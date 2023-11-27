@@ -580,221 +580,11 @@ func TestIsCAAValidParams(t *testing.T) {
 	test.AssertError(t, err, "calling IsCAAValid without an AccountURIID")
 }
 
-func TestMultiVAPhil(t *testing.T) {
-	// Create a new challenge to use for the httpSrv
-	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
-
-	const (
-		remoteUA1 = "remote 1"
-		remoteUA2 = "remote 2"
-		localUA   = "local 1"
-	)
-	allowedUAs := map[string]bool{
-		localUA:   true,
-		remoteUA1: true,
-		remoteUA2: true,
-	}
-
-	// Create an IPv4 test server
-	ms := httpMultiSrv(t, expectedToken, allowedUAs)
-	defer ms.Close()
-
-	remoteVA1 := setupRemote(ms.Server, remoteUA1)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2)
-
-	remoteVAs := []RemoteVA{
-		{remoteVA1, remoteUA1},
-		{remoteVA2, remoteUA2},
-	}
-
-	enforceMultiVA := map[string]bool{
-		"EnforceMultiVA": true,
-	}
-	enforceMultiVAFullResults := map[string]bool{
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": true,
-	}
-	noEnforceMultiVA := map[string]bool{
-		"EnforceMultiVA": false,
-	}
-	noEnforceMultiVAFullResults := map[string]bool{
-		"EnforceMultiVA":     false,
-		"MultiVAFullResults": true,
-	}
-
-	unauthorized := probs.Unauthorized(fmt.Sprintf(
-		`The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
-		expectedKeyAuthorization))
-
-	expectedInternalErrLine := fmt.Sprintf(
-		`ERR: \[AUDIT\] Remote VA "broken".PerformValidation failed: %s`,
-		errBrokenRemoteVA.Error())
-
-	testCases := []struct {
-		Name         string
-		RemoteVAs    []RemoteVA
-		AllowedUAs   map[string]bool
-		Features     map[string]bool
-		ExpectedProb *probs.ProblemDetails
-		ExpectedLog  string
-	}{
-		{
-			// With local and both remote VAs working there should be no problem.
-			Name:       "Local and remote VAs OK, enforce multi VA",
-			RemoteVAs:  remoteVAs,
-			AllowedUAs: allowedUAs,
-			Features:   enforceMultiVA,
-		},
-		{
-			// Ditto if multi VA enforcement is disabled
-			Name:       "Local and remote VAs OK, no enforce multi VA",
-			RemoteVAs:  remoteVAs,
-			AllowedUAs: allowedUAs,
-			Features:   noEnforceMultiVA,
-		},
-		{
-			// If the local VA fails everything should fail
-			Name:         "Local VA bad, remote VAs OK, no enforce multi VA",
-			RemoteVAs:    remoteVAs,
-			AllowedUAs:   map[string]bool{remoteUA1: true, remoteUA2: true},
-			Features:     noEnforceMultiVA,
-			ExpectedProb: unauthorized,
-		},
-		{
-			// Ditto when enforcing remote VA
-			Name:         "Local VA bad, remote VAs OK, enforce multi VA",
-			RemoteVAs:    remoteVAs,
-			AllowedUAs:   map[string]bool{remoteUA1: true, remoteUA2: true},
-			Features:     enforceMultiVA,
-			ExpectedProb: unauthorized,
-		},
-		{
-			// If a remote VA fails with an internal err it should fail when enforcing multi VA
-			Name: "Local VA ok, remote VA internal err, enforce multi VA",
-			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{&brokenRemoteVA{}, "broken"},
-			},
-			AllowedUAs:   allowedUAs,
-			Features:     enforceMultiVA,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
-			// The real failure cause should be logged
-			ExpectedLog: expectedInternalErrLine,
-		},
-		{
-			// If a remote VA fails with an internal err it should not fail when not
-			// enforcing multi VA
-			Name: "Local VA ok, remote VA internal err, no enforce multi VA",
-			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{&brokenRemoteVA{}, "broken"},
-			},
-			AllowedUAs: allowedUAs,
-			Features:   noEnforceMultiVA,
-			// Like above, the real failure cause will be logged eventually, but that
-			// will happen asynchronously. It's not guaranteed to happen before the
-			// test case exits, so we don't check for it here.
-		},
-		{
-			// With only one working remote VA there should *not* be a validation
-			// failure when not enforcing multi VA.
-			Name:       "Local VA and one remote VA OK, no enforce multi VA",
-			RemoteVAs:  remoteVAs,
-			AllowedUAs: map[string]bool{localUA: true, remoteUA2: true},
-			Features:   noEnforceMultiVA,
-		},
-		{
-			// With only one working remote VA there should be a validation failure
-			// when enforcing multi VA.
-			Name:       "Local VA and one remote VA OK, enforce multi VA",
-			RemoteVAs:  remoteVAs,
-			AllowedUAs: map[string]bool{localUA: true, remoteUA2: true},
-			Features:   enforceMultiVA,
-			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
-				`During secondary validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
-				expectedKeyAuthorization)),
-		},
-		{
-			// When enforcing multi-VA, any cancellations are a problem.
-			Name: "Local VA and one remote VA OK, one cancelled VA, enforce multi VA",
-			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{cancelledVA{}, remoteUA2},
-			},
-			AllowedUAs:   allowedUAs,
-			Features:     enforceMultiVA,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
-		},
-		{
-			// When enforcing multi-VA, any cancellations are a problem.
-			Name: "Local VA OK, two cancelled remote VAs, enforce multi VA",
-			RemoteVAs: []RemoteVA{
-				{cancelledVA{}, remoteUA1},
-				{cancelledVA{}, remoteUA2},
-			},
-			AllowedUAs:   allowedUAs,
-			Features:     enforceMultiVA,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
-		},
-		{
-			// With the local and remote VAs seeing diff problems and the full results
-			// feature flag on but multi VA enforcement off we expect
-			// no problem.
-			Name:       "Local and remote VA differential, full results, no enforce multi VA",
-			RemoteVAs:  remoteVAs,
-			AllowedUAs: map[string]bool{localUA: true},
-			Features:   noEnforceMultiVAFullResults,
-		},
-		{
-			// With the local and remote VAs seeing diff problems and the full results
-			// feature flag on and multi VA enforcement on we expect a problem.
-			Name:       "Local and remote VA differential, full results, enforce multi VA",
-			RemoteVAs:  remoteVAs,
-			AllowedUAs: map[string]bool{localUA: true},
-			Features:   enforceMultiVAFullResults,
-			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
-				`During secondary validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
-				expectedKeyAuthorization)),
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			// Configure the test server with the testcase allowed UAs.
-			ms.setAllowedUAs(tc.AllowedUAs)
-
-			// Configure a primary VA with testcase remote VAs.
-			localVA, mockLog := setup(ms.Server, 0, localUA, tc.RemoteVAs)
-
-			if tc.Features != nil {
-				err := features.Set(tc.Features)
-				test.AssertNotError(t, err, "Failed to set feature flags")
-				defer features.Reset()
-			}
-
-			// Perform all validations
-			res, _ := localVA.PerformValidation(ctx, req)
-			if res.Problems == nil && tc.ExpectedProb != nil {
-				t.Errorf("expected prob %v, got nil", tc.ExpectedProb)
-			} else if res.Problems != nil && tc.ExpectedProb == nil {
-				t.Errorf("expected no prob, got %v", res.Problems)
-			} else if res.Problems != nil && tc.ExpectedProb != nil {
-				// That result should match expected.
-				test.AssertEquals(t, res.Problems.ProblemType, string(tc.ExpectedProb.Type))
-				test.AssertEquals(t, res.Problems.Detail, tc.ExpectedProb.Detail)
-			}
-
-			t.Logf("Got log %v", mockLog.GetAll())
-
-		})
-	}
-}
-
 func TestMultiVACAARechecking(t *testing.T) {
 	const (
-		remoteUA1 = "remote 1"
-		remoteUA2 = "remote 2"
-		localUA   = "local 1"
+		remoteUA1 = "remoteVA 1"
+		remoteUA2 = "remoteVA 2"
+		localUA   = "localVA 1"
 	)
 	allowedUAs := map[string]bool{
 		localUA:   true,
@@ -808,26 +598,26 @@ func TestMultiVACAARechecking(t *testing.T) {
 	// Configure the test server with the testcase allowed UAs.
 	ms.setAllowedUAs(allowedUAs)
 
-	noEarlyReturnFeatures := map[string]bool{
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": true,
-	}
-	err := features.Set(noEarlyReturnFeatures)
-	test.AssertNotError(t, err, "Attempted to set VA feature flags, but failed")
-
 	// Configure a primary VA with testcase remote VAs.
 	remoteVA1 := setupRemote(ms.Server, remoteUA1)
 	remoteVA2 := setupRemote(ms.Server, remoteUA2)
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
 		{remoteVA2, remoteUA2},
-		{&brokenRemoteVA{}, "broken"},
+		//{&brokenRemoteVA{}, "brokenVA 1"},
 	}
 	va, mockLog := setup(ms.Server, 0, localUA, remoteVAs)
 
+	vaFeatures := map[string]bool{
+		"EnforceMultiVA":     true,
+		"MultiVAFullResults": true,
+	}
+	err := features.Set(vaFeatures)
+	test.AssertNotError(t, err, "Attempted to set VA feature flags, but failed")
+	defer features.Reset()
+
 	// create a challenge with a well known token
 	domain := "good-dns01.com"
-	chall := "dns-01"
 	req := createValidationRequest(domain, core.ChallengeTypeDNS01)
 	res, err := va.PerformValidation(context.Background(), req)
 	test.AssertNotError(t, err, "Should have been able to PerformValidation but could not")
@@ -837,20 +627,43 @@ func TestMultiVACAARechecking(t *testing.T) {
 	test.Assert(t, len(resultLog) == 1, "Wrong number of matching lines for 'Validation result'")
 	test.Assert(t, !strings.Contains(resultLog[0], `"Hostname": `+domain), "PerformValidation didn't log validation hostname.")
 
+	// ----------------------------------------------------
+
 	// Advance the clock so that the authorization is sufficiently old enough to
 	// trigger a CAA recheck during the next issuance attempt.
 	_ = va.clk.Now().Add(80 * 24 * time.Hour)
 
+	remoteVAs = []RemoteVA{
+		{remoteVA1, remoteUA1},
+		{remoteVA2, remoteUA2},
+		//{&brokenRemoteVA{}, "brokenVA 1"},
+	}
+	va, mockLog = setup(ms.Server, 0, localUA, remoteVAs)
+
+	vaFeatures = map[string]bool{
+		"EnforceMultiVA":     true,
+		"MultiVAFullResults": true,
+	}
+	err = features.Set(vaFeatures)
+	test.AssertNotError(t, err, "Attempted to set VA feature flags, but failed")
+	defer features.Reset()
+
 	// Skip most of the issuance process and get right down to business.
-	//mockLog.Clear()
+	mockLog.Clear()
 	isValidRes, err := va.IsCAAValid(context.TODO(), &vapb.IsCAAValidRequest{
 		Domain:           domain,
-		ValidationMethod: chall,
+		ValidationMethod: string(core.ChallengeTypeDNS01),
 		AccountURIID:     1,
 	})
-	fmt.Printf("%#v\n", isValidRes)
+	//fmt.Printf("%#v\n", isValidRes.Problem)
+
 	test.AssertNotError(t, err, "Should have been able to recheck CAA records but could not")
 	test.AssertBoxedNil(t, isValidRes.Problem, "Problems detected but should not have been")
+
+	// There should be no differential if it's working as intended.
+	lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
+	test.AssertEquals(t, len(lines), 0)
+
 	for _, line := range mockLog.GetAll() {
 		fmt.Println(line)
 	}

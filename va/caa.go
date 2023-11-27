@@ -13,6 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
@@ -53,6 +54,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	}
 
 	prob := va.checkCAA(ctx, acmeID, params)
+	fmt.Printf("PHIL: remoteCAAResults=%v\n", remoteCAAResults)
 	if prob != nil {
 		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
 		return &vapb.IsCAAValidResponse{
@@ -62,36 +64,51 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			},
 		}, nil
 	} else if remoteCAAResults != nil {
-		remoteProb := va.processRemoteResults(
-			req.Domain,
-			req.AccountURIID,
-			string(validationMethod),
-			prob,
-			remoteCAAResults,
-			len(va.remoteVAs))
+		if !features.Enabled(features.EnforceMultiVA) && features.Enabled(features.MultiVAFullResults) {
+			// If we're not going to enforce multi VA but we are logging the
+			// differentials then collect and log the remote results in a separate go
+			// routine to avoid blocking the primary VA.
+			go func() {
+				_ = va.processRemoteResults(
+					req.Domain,
+					req.AccountURIID,
+					string(validationMethod),
+					prob,
+					remoteCAAResults,
+					len(va.remoteVAs))
+			}()
+			// Since prob was nil and we're not enforcing the results from
+			// `processRemoteResults` set the challenge status to valid so the
+			// validationTime metrics increment has the correct result label.
+			//challenge.Status = core.StatusValid
+		} else if features.Enabled(features.EnforceMultiVA) {
+			remoteProb := va.processRemoteResults(
+				req.Domain,
+				req.AccountURIID,
+				string(validationMethod),
+				prob,
+				remoteCAAResults,
+				len(va.remoteVAs))
 
-		// If the remote result was a non-nil problem then fail the validation
-		if remoteProb != nil {
-			prob = remoteProb
-			//challenge.Status = core.StatusInvalid
-			//challenge.Error = remoteProb
-			//logEvent.Error = remoteProb.Error()
-			va.log.Infof("PHIL: Rechecking CAA Validation failed due to remote failures: identifier=%v err=%s",
-				req.Domain, remoteProb)
-			va.metrics.remoteValidationFailures.Inc()
+			// If the remote result was a non-nil problem then fail the validation
+			if remoteProb != nil {
+				va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
+					req.Domain, remoteProb)
+				va.metrics.remoteValidationFailures.Inc()
+			}
 		}
 	}
+
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
-// performRemoteCAARecheck calls `PerformValidation` for each of the configured
+// performRemoteCAARecheck calls `isCAAValid` for each of the configured
 // remoteVAs in a random order. The provided `results` chan should have an equal
 // size to the number of remote VAs. The validations will be performed in
-// separate go-routines. If the result `error` from a remote
-// `PerformValidation` RPC is nil or a nil `ProblemDetails` instance it is
-// written directly to the `results` chan. If the err is a cancelled error it is
-// treated as a nil error. Otherwise the error/problem is written to the results
-// channel as-is.
+// separate go-routines. If the result `error` from a remote `isCAAValid` RPC is
+// nil or a nil `ProblemDetails` instance it is written directly to the
+// `results` chan. If the err is a cancelled error it is treated as a nil error.
+// Otherwise the error/problem is written to the results channel as-is.
 func (va *ValidationAuthorityImpl) performRemoteCAARecheck(
 	ctx context.Context,
 	req *vapb.IsCAAValidRequest,
@@ -148,8 +165,8 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return probs.DNS(err.Error())
 	}
 
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q] Response=%q",
-		identifier.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, response)
+	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q, VA: %s] Response=%q",
+		identifier.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, va.userAgent, response)
 	if !valid {
 		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", foundAt))
 	}
