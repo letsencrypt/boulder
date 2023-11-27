@@ -4,19 +4,19 @@
 	},
 	"debugAddr": ":8016",
 	"files": [
-		"/var/log/akamai-purger.log",
-		"/var/log/bad-key-revoker.log",
-		"/var/log/boulder-ca.log",
-		"/var/log/boulder-observer.log",
-		"/var/log/boulder-publisher.log",
-		"/var/log/boulder-ra.log",
-		"/var/log/boulder-remoteva.log",
-		"/var/log/boulder-sa.log",
-		"/var/log/boulder-va.log",
-		"/var/log/boulder-wfe2.log",
-		"/var/log/crl-storer.log",
-		"/var/log/crl-updater.log",
-		"/var/log/nonce-service.log",
-		"/var/log/ocsp-responder.log"
+		"/var/log/boulder/akamai-purger.log",
+		"/var/log/boulder/bad-key-revoker.log",
+		"/var/log/boulder/boulder-ca.log",
+		"/var/log/boulder/boulder-observer.log",
+		"/var/log/boulder/boulder-publisher.log",
+		"/var/log/boulder/boulder-ra.log",
+		"/var/log/boulder/boulder-remoteva.log",
+		"/var/log/boulder/boulder-sa.log",
+		"/var/log/boulder/boulder-va.log",
+		"/var/log/boulder/boulder-wfe2.log",
+		"/var/log/boulder/crl-storer.log",
+		"/var/log/boulder/crl-updater.log",
+		"/var/log/boulder/nonce-service.log",
+		"/var/log/boulder/ocsp-responder.log"
 	]
 }
