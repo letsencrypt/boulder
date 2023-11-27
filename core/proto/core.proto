@@ -17,7 +17,7 @@ message Challenge {
   repeated ValidationRecord validationrecords = 10;
   ProblemDetails error = 7;
   reserved 8; // Unused and accidentally skipped during initial commit.
-  int64 validatedNS = 11;
+  reserved 11; // Previously validatedNS
   google.protobuf.Timestamp validated = 12;
 }
 
@@ -47,9 +47,9 @@ message Certificate {
   string serial = 2;
   string digest = 3;
   bytes der = 4;
-  int64 issuedNS = 5;  // Unix timestamp (nanoseconds)
+  reserved 5;  // Previously issuedNS
   google.protobuf.Timestamp issued = 7;
-  int64 expiresNS = 6; // Unix timestamp (nanoseconds)
+  reserved 6; // Previously expiresNS
   google.protobuf.Timestamp expires = 8;
 }
 
@@ -58,15 +58,15 @@ message CertificateStatus {
   string serial = 1;
   reserved 2; // previously subscriberApproved
   string status = 3;
-  int64 ocspLastUpdatedNS = 4; // Unix timestamp (nanoseconds)
+  reserved 4; // Previously ocspLastUpdatedNS
   google.protobuf.Timestamp ocspLastUpdated = 15;
-  int64 revokedDateNS = 5; // Unix timestamp (nanoseconds)
+  reserved 5; // Previously revokedDateNS
   google.protobuf.Timestamp revokedDate = 12;
   int64 revokedReason = 6;
-  int64 lastExpirationNagSentNS = 7; // Unix timestamp (nanoseconds)
+  reserved 7; // Previously lastExpirationNagSentNS
   reserved 8; // previously ocspResponse
   google.protobuf.Timestamp lastExpirationNagSent = 13;
-  int64 notAfterNS = 9; // Unix timestamp (nanoseconds)
+  reserved 9; // Previously notAfterNS
   google.protobuf.Timestamp notAfter = 14;
   bool isExpired = 10;
   int64 issuerID = 11;
@@ -80,7 +80,7 @@ message Registration {
   bool contactsPresent = 4;
   string agreement = 5;
   bytes initialIP = 6;
-  int64 createdAtNS = 7; // Unix timestamp (nanoseconds)
+  reserved 7; // Previously createdAtNS
   google.protobuf.Timestamp createdAt = 9;
   string status = 8;
 }
@@ -91,7 +91,7 @@ message Authorization {
   string identifier = 2;
   int64 registrationID = 3;
   string status = 4;
-  int64 expiresNS = 5; // Unix timestamp (nanoseconds)
+  reserved 5; // Previously expiresNS
   google.protobuf.Timestamp expires = 9;
   repeated core.Challenge challenges = 6;
   reserved 7; // previously ACMEv1 combinations
@@ -102,7 +102,7 @@ message Order {
   // Next unused field number: 14
   int64 id = 1;
   int64 registrationID = 2;
-  int64 expiresNS = 3; // Unix timestamp (nanoseconds)
+  reserved 3; // Previously expiresNS
   google.protobuf.Timestamp expires = 12;
   ProblemDetails error = 4;
   string certificateSerial = 5;
@@ -110,7 +110,7 @@ message Order {
   string status = 7;
   repeated string names = 8;
   bool beganProcessing = 9;
-  int64 createdNS = 10; // Unix timestamp (nanoseconds)
+  reserved 10; // Previously createdNS
   google.protobuf.Timestamp created = 13;
   repeated int64 v2Authorizations = 11;
 }
@@ -119,6 +119,6 @@ message CRLEntry {
   // Next unused field number: 5
   string serial = 1;
   int32 reason = 2;
-  int64 revokedAtNS = 3; // Unix timestamp (nanoseconds)
+  reserved 3; // Previously revokedAtNS
   google.protobuf.Timestamp revokedAt = 4;
 }

@@ -44,9 +44,7 @@ func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *ca
 		RegistrationID: 1,
 		Serial:         "mock",
 		Digest:         "mock",
-		IssuedNS:       now.UnixNano(),
 		Issued:         timestamppb.New(now),
-		ExpiresNS:      expires.UnixNano(),
 		Expires:        timestamppb.New(expires),
 	}, nil
 }

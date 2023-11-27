@@ -71,15 +71,12 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		}
 	}
 
-	var validatedInt int64 = 0
-	validatedTS := timestamppb.New(time.Time{})
+	var validated *timestamppb.Timestamp
 	if challenge.Validated != nil {
-		validatedInt = challenge.Validated.UTC().UnixNano()
-		validatedTS = timestamppb.New(challenge.Validated.UTC())
-	}
-
-	if !validatedTS.IsValid() {
-		return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Challenge object")
+		validated = timestamppb.New(challenge.Validated.UTC())
+		if !validated.IsValid() {
+			return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Challenge object")
+		}
 	}
 
 	return &corepb.Challenge{
@@ -89,8 +86,7 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		KeyAuthorization:  challenge.ProvidedKeyAuthorization,
 		Error:             prob,
 		Validationrecords: recordAry,
-		ValidatedNS:       validatedInt,
-		Validated:         validatedTS,
+		Validated:         validated,
 	}, nil
 }
 
@@ -116,7 +112,7 @@ func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		return core.Challenge{}, err
 	}
 	var validated *time.Time
-	if in.Validated != nil && !in.Validated.AsTime().IsZero() {
+	if !core.IsAnyNilOrZero(in.Validated) {
 		val := in.Validated.AsTime()
 		validated = &val
 	}
@@ -240,14 +236,12 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	if reg.Contact != nil {
 		contacts = *reg.Contact
 	}
-	var createdAtInt int64 = 0
-	createdAtTS := timestamppb.New(time.Time{})
+	var createdAt *timestamppb.Timestamp
 	if reg.CreatedAt != nil {
-		createdAtInt = reg.CreatedAt.UTC().UnixNano()
-		createdAtTS = timestamppb.New(reg.CreatedAt.UTC())
-	}
-	if !createdAtTS.IsValid() {
-		return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Authorization object")
+		createdAt = timestamppb.New(reg.CreatedAt.UTC())
+		if !createdAt.IsValid() {
+			return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Authorization object")
+		}
 	}
 
 	return &corepb.Registration{
@@ -257,8 +251,7 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 		ContactsPresent: contactsPresent,
 		Agreement:       reg.Agreement,
 		InitialIP:       ipBytes,
-		CreatedAtNS:     createdAtInt,
-		CreatedAt:       createdAtTS,
+		CreatedAt:       createdAt,
 		Status:          string(reg.Status),
 	}, nil
 }
@@ -275,7 +268,7 @@ func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 		return core.Registration{}, err
 	}
 	var createdAt *time.Time
-	if pb.CreatedAt != nil && !pb.CreatedAt.AsTime().IsZero() {
+	if !core.IsAnyNilOrZero(pb.CreatedAt) {
 		c := pb.CreatedAt.AsTime()
 		createdAt = &c
 	}
@@ -313,14 +306,12 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		}
 		challs[i] = pbChall
 	}
-	var expiresInt int64 = 0
-	expiresTS := timestamppb.New(time.Time{})
+	var expires *timestamppb.Timestamp
 	if authz.Expires != nil {
-		expiresInt = authz.Expires.UTC().UnixNano()
-		expiresTS = timestamppb.New(authz.Expires.UTC())
-	}
-	if !expiresTS.IsValid() {
-		return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Authorization object")
+		expires = timestamppb.New(authz.Expires.UTC())
+		if !expires.IsValid() {
+			return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Authorization object")
+		}
 	}
 
 	return &corepb.Authorization{
@@ -328,8 +319,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		Identifier:     authz.Identifier.Value,
 		RegistrationID: authz.RegistrationID,
 		Status:         string(authz.Status),
-		ExpiresNS:      expiresInt,
-		Expires:        expiresTS,
+		Expires:        expires,
 		Challenges:     challs,
 	}, nil
 }
@@ -344,7 +334,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		challs[i] = chall
 	}
 	var expires *time.Time
-	if pb.Expires != nil && !pb.Expires.AsTime().IsZero() {
+	if !core.IsAnyNilOrZero(pb.Expires) {
 		c := pb.Expires.AsTime()
 		expires = &c
 	}
@@ -363,7 +353,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 // from `newOrderValid` it ensures the order ID and the Created fields are not
 // the zero value.
 func orderValid(order *corepb.Order) bool {
-	return order.Id != 0 && order.CreatedNS != 0 && newOrderValid(order)
+	return order.Id != 0 && order.Created != nil && newOrderValid(order)
 }
 
 // newOrderValid checks that a corepb.Order is valid. It allows for a nil
@@ -374,7 +364,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0)
+	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.Names) == 0)
 }
 
 func CertToPB(cert core.Certificate) *corepb.Certificate {
@@ -383,9 +373,7 @@ func CertToPB(cert core.Certificate) *corepb.Certificate {
 		Serial:         cert.Serial,
 		Digest:         cert.Digest,
 		Der:            cert.DER,
-		IssuedNS:       cert.Issued.UnixNano(),
 		Issued:         timestamppb.New(cert.Issued),
-		ExpiresNS:      cert.Expires.UnixNano(),
 		Expires:        timestamppb.New(cert.Expires),
 	}
 }
@@ -403,19 +391,15 @@ func PBToCert(pb *corepb.Certificate) core.Certificate {
 
 func CertStatusToPB(certStatus core.CertificateStatus) *corepb.CertificateStatus {
 	return &corepb.CertificateStatus{
-		Serial:                  certStatus.Serial,
-		Status:                  string(certStatus.Status),
-		OcspLastUpdatedNS:       certStatus.OCSPLastUpdated.UnixNano(),
-		OcspLastUpdated:         timestamppb.New(certStatus.OCSPLastUpdated),
-		RevokedDateNS:           certStatus.RevokedDate.UnixNano(),
-		RevokedDate:             timestamppb.New(certStatus.RevokedDate),
-		RevokedReason:           int64(certStatus.RevokedReason),
-		LastExpirationNagSentNS: certStatus.LastExpirationNagSent.UnixNano(),
-		LastExpirationNagSent:   timestamppb.New(certStatus.LastExpirationNagSent),
-		NotAfterNS:              certStatus.NotAfter.UnixNano(),
-		NotAfter:                timestamppb.New(certStatus.NotAfter),
-		IsExpired:               certStatus.IsExpired,
-		IssuerID:                certStatus.IssuerNameID,
+		Serial:                certStatus.Serial,
+		Status:                string(certStatus.Status),
+		OcspLastUpdated:       timestamppb.New(certStatus.OCSPLastUpdated),
+		RevokedDate:           timestamppb.New(certStatus.RevokedDate),
+		RevokedReason:         int64(certStatus.RevokedReason),
+		LastExpirationNagSent: timestamppb.New(certStatus.LastExpirationNagSent),
+		NotAfter:              timestamppb.New(certStatus.NotAfter),
+		IsExpired:             certStatus.IsExpired,
+		IssuerID:              certStatus.IssuerNameID,
 	}
 }
 
