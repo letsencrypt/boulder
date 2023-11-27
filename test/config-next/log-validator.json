@@ -8,6 +8,11 @@
 	},
 	"debugAddr": ":8016",
 	"files": [
-		"/var/log/*.log"
+		"/var/log/akamai-purger.log",
+		"/var/log/bad-key-revoker.log",
+		"/var/log/boulder-*.log",
+		"/var/log/crl-*.log",
+		"/var/log/nonce-service.log",
+		"/var/log/ocsp-responder.log"
 	]
 }
