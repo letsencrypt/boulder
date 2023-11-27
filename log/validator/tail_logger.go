@@ -6,7 +6,7 @@ import (
 	"github.com/letsencrypt/boulder/log"
 )
 
-// tailLogger is an adapter to the hpcloud/tail module's logging interface.
+// tailLogger is an adapter to the nxadm/tail module's logging interface.
 type tailLogger struct {
 	log.Logger
 }

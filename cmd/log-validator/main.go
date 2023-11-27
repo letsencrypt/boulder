@@ -38,13 +38,8 @@ func main() {
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
-	v := validator.New(logger, stats)
+	v := validator.New(config.Files, logger, stats)
 	defer v.Shutdown()
-
-	for _, filename := range config.Files {
-		err := v.TailValidateFile(filename)
-		cmd.FailOnError(err, "failed to tail file")
-	}
 
 	cmd.WaitForSignal()
 }
