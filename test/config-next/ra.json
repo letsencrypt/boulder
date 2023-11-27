@@ -19,6 +19,9 @@
 			"/hierarchy/intermediate-cert-rsa-b.pem",
 			"/hierarchy/intermediate-cert-ecdsa-a.pem"
 		],
+		"crlDPBase": "http://c.boulder.test/crl",
+		"crlNumShards": 10,
+		"crlShardWidth": "240h",
 		"tls": {
 			"caCertFile": "test/grpc-creds/minica.pem",
 			"certFile": "test/grpc-creds/ra.boulder/cert.pem",

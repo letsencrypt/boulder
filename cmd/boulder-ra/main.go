@@ -90,6 +90,25 @@ type Config struct {
 		// generate OCSP URLs to purge during revocation.
 		IssuerCerts []string `validate:"min=1,dive,required"`
 
+		// CRLDPBase is the piece of the CRL Distribution Point URI which is common
+		// across all issuers and shards. It must use the http:// scheme, and must
+		// not end with a slash. Example: "http://prod.c.lencr.org".
+		// Warning: This value must exactly match the CA config.
+		// TODO(#7904): Make this mandatory once the configs are in place.
+		CRLDPBase string `validate:"omitempty,url,startswith=http://,endsnotwith=/"`
+
+		// CRLNumShards is the number of shards into which each issuer's "full and
+		// complete" CRL is split.
+		// Warning: This value must exactly match the crl-updater config.
+		// TODO(#7904): Make this mandatory once the configs are in place.
+		CRLNumShards int `validate:"omitempty,min=1"`
+
+		// CRLShardWidth is the amount of time (width on a timeline) that a single
+		// shard covers.
+		// Warning: This value must exactly match the crl-updater config.
+		// TODO(#7904): Make this mandatory once the configs are in place.
+		CRLShardWidth config.Duration `validate:"-"`
+
 		Features map[string]bool
 	}
 
@@ -244,6 +263,9 @@ func main() {
 		ctp,
 		apc,
 		issuerCerts,
+		c.RA.CRLDPBase,
+		c.RA.CRLNumShards,
+		c.RA.CRLShardWidth.Duration,
 	)
 	defer rai.DrainFinalize()
 

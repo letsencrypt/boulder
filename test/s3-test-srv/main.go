@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/x509"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -15,9 +16,14 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 )
 
+type revocationMetadata struct {
+	Reason revocation.Reason
+	Shard  string
+}
+
 type s3TestSrv struct {
 	sync.RWMutex
-	allSerials map[string]revocation.Reason
+	allSerials map[string]revocationMetadata
 	allShards  map[string][]byte
 }
 
@@ -50,7 +56,10 @@ func (srv *s3TestSrv) handleUpload(w http.ResponseWriter, r *http.Request) {
 	defer srv.Unlock()
 	srv.allShards[r.URL.Path] = body
 	for _, rc := range crl.RevokedCertificateEntries {
-		srv.allSerials[core.SerialToString(rc.SerialNumber)] = revocation.Reason(rc.ReasonCode)
+		srv.allSerials[core.SerialToString(rc.SerialNumber)] = revocationMetadata{
+			Reason: revocation.Reason(rc.ReasonCode),
+			Shard:  r.URL.Path,
+		}
 	}
 
 	w.WriteHeader(200)
@@ -81,14 +90,20 @@ func (srv *s3TestSrv) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	srv.RLock()
 	defer srv.RUnlock()
-	reason, ok := srv.allSerials[serial]
+	metadata, ok := srv.allSerials[serial]
 	if !ok {
 		w.WriteHeader(404)
 		return
 	}
 
+	body, err := json.Marshal(metadata)
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+
 	w.WriteHeader(200)
-	w.Write([]byte(fmt.Sprintf("%d", reason)))
+	w.Write(body)
 }
 
 func main() {
@@ -96,7 +111,7 @@ func main() {
 	flag.Parse()
 
 	srv := s3TestSrv{
-		allSerials: make(map[string]revocation.Reason),
+		allSerials: make(map[string]revocationMetadata),
 		allShards:  make(map[string][]byte),
 	}
 
