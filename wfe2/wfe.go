@@ -638,7 +638,7 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		wfe.log.Warningf("checking %s rate limit: %s", limit, err)
 	}
 
-	txn, err := ratelimits.NewRegistrationsPerIPAddressTransaction(ip, 1)
+	txn, err := ratelimits.RegistrationsPerIPAddressTransaction(ip, 1)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
@@ -655,7 +655,7 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		return
 	}
 
-	txn, err = ratelimits.NewRegistrationsPerIPv6RangeTransaction(ip, 1)
+	txn, err = ratelimits.RegistrationsPerIPv6RangeTransaction(ip, 1)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 		return
@@ -686,7 +686,7 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 		wfe.log.Warningf("refunding %s rate limit: %s", limit, err)
 	}
 
-	txn, err := ratelimits.NewRegistrationsPerIPAddressTransaction(ip, 1)
+	txn, err := ratelimits.RegistrationsPerIPAddressTransaction(ip, 1)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
@@ -702,7 +702,7 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 		return
 	}
 
-	txn, err = ratelimits.NewRegistrationsPerIPv6RangeTransaction(ip, 1)
+	txn, err = ratelimits.RegistrationsPerIPv6RangeTransaction(ip, 1)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 		return

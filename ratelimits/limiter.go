@@ -32,9 +32,9 @@ var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 // currently configured.
 var errLimitDisabled = errors.New("limit disabled")
 
-// disabledLimitDecision is an "allowed" *Decision that should be returned when
-// a checked limit is found to be disabled.
-var disabledLimitDecision = &Decision{Allowed: true, Remaining: math.MaxInt64}
+// allowedDecision is an "allowed" *Decision that should be returned when a
+// checked limit is found to be disabled.
+var allowedDecision = &Decision{Allowed: true, Remaining: math.MaxInt64}
 
 // Limiter provides a high-level interface for rate limiting requests by
 // utilizing a leaky bucket-style approach.
@@ -130,7 +130,7 @@ func (l *Limiter) Check(ctx context.Context, txn Transaction) (*Decision, error)
 	limit, err := l.getLimit(txn.limitName, txn.bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {
-			return disabledLimitDecision, nil
+			return allowedDecision, nil
 		}
 		return nil, err
 	}
@@ -160,8 +160,7 @@ func (l *Limiter) Check(ctx context.Context, txn Transaction) (*Decision, error)
 // and represents the current state of the bucket. If no bucket exists it WILL
 // be created WITH the cost factored into its initial state. The new bucket
 // state is persisted to the underlying datastore, if applicable, before
-// returning. Denied optimistic transactions are NOT persisted. Check-only
-// transactions are never persisted.
+// returning.
 func (l *Limiter) Spend(ctx context.Context, txn Transaction) (*Decision, error) {
 	if txn.cost < 0 {
 		return nil, ErrInvalidCost
@@ -170,7 +169,7 @@ func (l *Limiter) Spend(ctx context.Context, txn Transaction) (*Decision, error)
 	limit, err := l.getLimit(txn.limitName, txn.bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {
-			return disabledLimitDecision, nil
+			return allowedDecision, nil
 		}
 		return nil, err
 	}
@@ -213,14 +212,13 @@ func (l *Limiter) Spend(ctx context.Context, txn Transaction) (*Decision, error)
 	}
 
 	if !d.Allowed {
-		if txn.optimistic {
-			// Denials for optimistic transactions are NOT persisted.
-			return maybeSpend(l.clk, limit, tat, 0), nil
+		if txn.spendOnly() {
+			return allowedDecision, nil
 		}
 		return d, nil
 	}
 
-	if tat == d.newTAT || txn.checkOnly {
+	if tat == d.newTAT || txn.checkOnly() {
 		// No-op.
 		return d, nil
 	}
@@ -277,7 +275,7 @@ func newBatchDecision() *batchDecision {
 	}
 }
 
-func (d *batchDecision) consolidate(in *Decision) {
+func (d *batchDecision) merge(in *Decision) {
 	d.Allowed = d.Allowed && in.Allowed
 	d.Remaining = min(d.Remaining, in.Remaining)
 	d.RetryIn = max(d.RetryIn, in.RetryIn)
@@ -288,27 +286,22 @@ func (d *batchDecision) consolidate(in *Decision) {
 }
 
 // BatchSpend attempts to deduct the costs from the provided buckets'
-// capacities. The following rules are applied to consolidate the Decisions for
-// each transaction:
-//   - Allowed is true if all of the Decisions were allowed,
-//   - Remaining is the smallest value across all Decisions, and
-//   - RetryIn and ResetIn are the largest values across all Decisions.
-//   - newTAT is the largest value across all Decisions.
-//   - Optimistic transactions are NOT consolidated.
-//   - Denied optimistic transactions are NOT persisted.
-//   - Check-only transactions are NOT persisted.
-//
-// Non-existent buckets will be created WITH the cost factored into the initial
-// state. New bucket states are persisted to the underlying datastore, if
-// applicable, before returning.
+// capacities. If applicable, new bucket states are persisted to the underlying
+// datastore before returning. Non-existent buckets will be initialized WITH the
+// cost factored into the initial state. The following rules are applied to
+// merge the Decisions for each Transaction into a single batch Decision:
+//   - Allowed is true if all Transactions where check is true were allowed,
+//   - RetryIn and ResetIn are the largest values of each across all Decisions,
+//   - Remaining is the smallest value of each across all Decisions, and
+//   - Decisions resulting from spend-only Transactions are never merged.
 func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision, error) {
 	batch, bucketKeys, err := l.prepareBatch(txns)
 	if err != nil {
 		return nil, err
 	}
 	if len(batch) <= 0 {
-		// All buckets were disabled.
-		return disabledLimitDecision, nil
+		// All limits in the batch were disabled.
+		return allowedDecision, nil
 	}
 
 	// Remove cancellation from the request context so that transactions are not
@@ -326,33 +319,29 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 	for _, txn := range batch {
 		tat, exists := tats[txn.bucketKey]
 		if !exists {
-			// First request from this client. Initialize the bucket with a TAT of
-			// "now", which is equivalent to a full bucket.
+			// First request from this client.
 			tat = l.clk.Now()
 		}
 
-		// Spend the cost and update the consolidated decision.
 		d := maybeSpend(l.clk, txn.limit, tat, txn.cost)
-		if d.Allowed && !txn.checkOnly && tat != d.newTAT {
-			// Bucket should be updated.
-			newTATs[txn.bucketKey] = d.newTAT
-		}
 
 		if txn.limit.isOverride {
-			// Calculate the current utilization of the override limit.
 			utilization := float64(txn.limit.Burst-d.Remaining) / float64(txn.limit.Burst)
 			l.overrideUsageGauge.WithLabelValues(txn.limitName.String(), txn.bucketKey).Set(utilization)
 		}
 
-		if txn.optimistic {
-			// Decisions from optimistic transactions are NOT consolidated.
-			d = disabledLimitDecision
+		if d.Allowed && (tat != d.newTAT) && txn.spend {
+			// New bucket state should be persisted.
+			newTATs[txn.bucketKey] = d.newTAT
 		}
-		batchDecision.consolidate(d)
+
+		if txn.spendOnly() {
+			d = allowedDecision
+		}
+		batchDecision.merge(d)
 	}
 
 	if batchDecision.Allowed {
-		// Persist the batch.
 		err = l.source.BatchSet(ctx, newTATs)
 		if err != nil {
 			return nil, err
@@ -368,8 +357,8 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 // bucket. The returned *Decision indicates whether the refund was successful
 // and represents the current state of the bucket. The new bucket state is
 // persisted to the underlying datastore, if applicable, before returning. If no
-// bucket exists it will NOT be created. Denied optimistic transactions are NOT
-// persisted. Check-only transactions are never persisted.
+// bucket exists it will NOT be created. Spend-only Transactions are assumed to
+// be refundable. Check-only Transactions are never refunded.
 //
 // Note: The amount refunded cannot cause the bucket to exceed its maximum
 // capacity. Partial refunds are allowed and are considered successful. For
@@ -384,7 +373,7 @@ func (l *Limiter) Refund(ctx context.Context, txn Transaction) (*Decision, error
 	limit, err := l.getLimit(txn.limitName, txn.bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {
-			return disabledLimitDecision, nil
+			return allowedDecision, nil
 		}
 		return nil, err
 	}
@@ -397,35 +386,35 @@ func (l *Limiter) Refund(ctx context.Context, txn Transaction) (*Decision, error
 		return nil, err
 	}
 	d := maybeRefund(l.clk, limit, tat, txn.cost)
-	if !d.Allowed || tat == d.newTAT {
-		// No-op or bucket is already full.
-		return d, nil
+	if tat == d.newTAT || txn.checkOnly() {
+		return maybeRefund(l.clk, limit, tat, 0), nil
 	}
-	return d, l.source.Set(ctx, txn.bucketKey, d.newTAT)
+	if d.Allowed {
+		// Persist the new bucket state.
+		return d, l.source.Set(ctx, txn.bucketKey, d.newTAT)
+	}
+	// Bucket is already full.
+	return d, nil
 }
 
 // BatchRefund attempts to refund all or some of the costs to the provided
-// buckets' capacities. The following rules are applied to consolidate the
-// Decisions for each transaction:
-//   - Allowed is true if all of the Decisions were allowed,
-//   - Remaining is the smallest value across all Decisions, and
-//   - RetryIn and ResetIn are the largest values across all Decisions.
-//   - newTAT is the largest value across all Decisions.
-//   - Optimistic transactions are NOT consolidated.
-//   - Denied optimistic transactions are NOT persisted.
-//   - Check-only transactions are NOT persisted.
-//
-// Non-existent buckets within the batch are disregarded without error, as this
-// is equivalent to the bucket being full. The new bucket state is persisted to
-// the underlying datastore, if applicable, before returning.
+// buckets' capacities. Non-existent buckets will NOT be initialized. The new
+// bucket state is persisted to the underlying datastore, if applicable, before
+// returning. Spend-only Transactions are assumed to be refundable. Check-only
+// Transactions are never refunded. The following rules are applied to merge the
+// Decisions for each Transaction into a single batch Decision:
+//   - Allowed is true if all Transactions where check is true were allowed,
+//   - RetryIn and ResetIn are the largest values of each across all Decisions,
+//   - Remaining is the smallest value of each across all Decisions, and
+//   - Decisions resulting from spend-only Transactions are never merged.
 func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decision, error) {
 	batch, bucketKeys, err := l.prepareBatch(txns)
 	if err != nil {
 		return nil, err
 	}
 	if len(batch) <= 0 {
-		// All buckets were disabled.
-		return disabledLimitDecision, nil
+		// All limits in the batch were disabled.
+		return allowedDecision, nil
 	}
 
 	// Remove cancellation from the request context so that transactions are not
@@ -440,28 +429,24 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 	newTATs := make(map[string]time.Time)
 
 	for _, txn := range batch {
-		if txn.checkOnly {
-			// Suppress refund for check-only transaction.
-			continue
-		}
-
 		tat, exists := tats[txn.bucketKey]
 		if !exists {
 			// Ignore non-existent bucket.
 			continue
 		}
 
-		// Refund the cost and update the consolidated decision.
 		d := maybeRefund(l.clk, txn.limit, tat, txn.cost)
-		if d.Allowed && tat != d.newTAT {
-			// Bucket should be updated.
+		if tat == d.newTAT || txn.checkOnly() {
+			d = maybeRefund(l.clk, txn.limit, tat, 0)
+		}
+		batchDecision.merge(d)
+		if d.Allowed && (tat != d.newTAT) {
+			// New bucket state should be persisted.
 			newTATs[txn.bucketKey] = d.newTAT
 		}
-		batchDecision.consolidate(d)
 	}
 
 	if len(newTATs) > 0 {
-		// Persist the batch.
 		err = l.source.BatchSet(ctx, newTATs)
 		if err != nil {
 			return nil, err

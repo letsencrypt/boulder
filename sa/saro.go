@@ -507,7 +507,7 @@ func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, req *sapb.Count
 // CountFQDNSets counts the total number of issuances, for a set of domains,
 // that occurred during a given window of time.
 func (ssa *SQLStorageAuthorityRO) CountFQDNSets(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
-	if req.WindowNS == 0 || len(req.Domains) == 0 {
+	if core.IsAnyNilOrZero(req.Window) || len(req.Domains) == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -519,7 +519,7 @@ func (ssa *SQLStorageAuthorityRO) CountFQDNSets(ctx context.Context, req *sapb.C
 		WHERE setHash = ?
 		AND issued > ?`,
 		core.HashNames(req.Domains),
-		ssa.clk.Now().Add(-time.Duration(req.WindowNS)),
+		ssa.clk.Now().Add(-req.Window.AsDuration()),
 	)
 	return &sapb.Count{Count: count}, err
 }
@@ -532,7 +532,7 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.Cou
 // certificate, issued for a set of domains, during a given window of time,
 // starting from the most recent issuance.
 func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
-	if req.WindowNS == 0 || len(req.Domains) == 0 {
+	if core.IsAnyNilOrZero(req.Window) || len(req.Domains) == 0 {
 		return nil, errIncompleteRequest
 	}
 	type row struct {
@@ -547,7 +547,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 		AND issued > ?
 		ORDER BY issued DESC`,
 		core.HashNames(req.Domains),
-		ssa.clk.Now().Add(-time.Duration(req.WindowNS)),
+		ssa.clk.Now().Add(-req.Window.AsDuration()),
 	)
 	if err != nil {
 		return nil, err

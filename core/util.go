@@ -25,6 +25,7 @@ import (
 	"time"
 	"unicode"
 
+	"google.golang.org/protobuf/types/known/durationpb"
 	"gopkg.in/go-jose/go-jose.v2"
 )
 
@@ -212,8 +213,73 @@ func IsAnyNilOrZero(vals ...interface{}) bool {
 		switch v := val.(type) {
 		case nil:
 			return true
+		case string:
+			if v == "" {
+				return true
+			}
+		case []string:
+			if len(v) == 0 {
+				return true
+			}
+		case byte:
+			// Byte is an alias for uint8 and will cover that case.
+			if v == 0 {
+				return true
+			}
 		case []byte:
 			if len(v) == 0 {
+				return true
+			}
+		case int:
+			if v == 0 {
+				return true
+			}
+		case int8:
+			if v == 0 {
+				return true
+			}
+		case int16:
+			if v == 0 {
+				return true
+			}
+		case int32:
+			if v == 0 {
+				return true
+			}
+		case int64:
+			if v == 0 {
+				return true
+			}
+		case uint:
+			if v == 0 {
+				return true
+			}
+		case uint16:
+			if v == 0 {
+				return true
+			}
+		case uint32:
+			if v == 0 {
+				return true
+			}
+		case uint64:
+			if v == 0 {
+				return true
+			}
+		case float32:
+			if v == 0 {
+				return true
+			}
+		case float64:
+			if v == 0 {
+				return true
+			}
+		case time.Time:
+			if v.IsZero() {
+				return true
+			}
+		case *durationpb.Duration:
+			if v == nil || v.AsDuration() == time.Duration(0) {
 				return true
 			}
 		default:

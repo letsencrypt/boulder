@@ -179,7 +179,7 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			err = l.Reset(testCtx, normalBucket)
 			test.AssertNotError(t, err, "should not error")
 
-			// Spend the same bucket but in a batch with a transaction that is
+			// Spend the same bucket but in a batch with a Transaction that is
 			// check-only. This should succeed, but the decision should reflect
 			// that of the default bucket.
 			d, err = l.BatchSpend(testCtx, []Transaction{newTransaction(overriddenBucketId, 1), newCheckOnlyTransaction(normalBucket, 1)})
@@ -202,10 +202,10 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			test.AssertEquals(t, d.RetryIn, time.Duration(0))
 			test.AssertEquals(t, d.ResetIn, time.Duration(0))
 
-			// Spend the same bucket but in a batch with a transaction that is
-			// optimistic. This should succeed, but the decision should reflect
-			// that of the default bucket.
-			d, err = l.BatchSpend(testCtx, []Transaction{newTransaction(overriddenBucketId, 1), newOptimisticTransaction(normalBucket, 1)})
+			// Spend the same bucket but in a batch with a Transaction that is
+			// spend-only. This should succeed, but the decision should reflect
+			// that of the overridden bucket.
+			d, err = l.BatchSpend(testCtx, []Transaction{newTransaction(overriddenBucketId, 1), newSpendOnlyTransaction(normalBucket, 1)})
 			test.AssertNotError(t, err, "should not error")
 			test.AssertEquals(t, d.Remaining, int64(38))
 			test.AssertEquals(t, d.RetryIn, time.Duration(0))
@@ -225,10 +225,10 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			test.AssertEquals(t, d.RetryIn, time.Duration(0))
 			test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
 
-			// Once more, but in now the optimistic transaction will attempt to
-			// spend 20 requests. The optimistic transaction should fail, but
+			// Once more, but in now the spend-only Transaction will attempt to
+			// spend 20 requests. The spend-only Transaction should fail, but
 			// the decision should reflect that of the overridden bucket.
-			d, err = l.BatchSpend(testCtx, []Transaction{newTransaction(overriddenBucketId, 1), newOptimisticTransaction(normalBucket, 20)})
+			d, err = l.BatchSpend(testCtx, []Transaction{newTransaction(overriddenBucketId, 1), newSpendOnlyTransaction(normalBucket, 20)})
 			test.AssertNotError(t, err, "should not error")
 			test.AssertEquals(t, d.Remaining, int64(37))
 			test.AssertEquals(t, d.RetryIn, time.Duration(0))
@@ -452,6 +452,24 @@ func Test_Limiter_RefundAndReset(t *testing.T) {
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(20))
+
+			// Spend so we can refund.
+			_, err = l.Spend(testCtx, newTransaction(bucketId, 1))
+			test.AssertNotError(t, err, "should not error")
+
+			// Refund a spendOnly Transaction, which should succeed.
+			_, err = l.Refund(testCtx, newSpendOnlyTransaction(bucketId, 1))
+			test.AssertNotError(t, err, "should not error")
+
+			// Spend so we can refund.
+			expectedDecision, err := l.Spend(testCtx, newTransaction(bucketId, 1))
+			test.AssertNotError(t, err, "should not error")
+
+			// Refund a checkOnly Transaction, which shouldn't error but should
+			// return the same TAT as the previous spend.
+			newDecision, err := l.Refund(testCtx, newCheckOnlyTransaction(bucketId, 1))
+			test.AssertNotError(t, err, "should not error")
+			test.AssertEquals(t, newDecision.newTAT, expectedDecision.newTAT)
 		})
 	}
 }

@@ -84,7 +84,7 @@ func (r *RedisSource) Set(ctx context.Context, bucketKey string, tat time.Time) 
 }
 
 // BatchSet stores TATs at the specified bucketKeys using a pipelined Redis
-// transaction in order to reduce the number of round-trips to each Redis shard.
+// Transaction in order to reduce the number of round-trips to each Redis shard.
 // An error is returned if the operation failed and nil otherwise.
 func (r *RedisSource) BatchSet(ctx context.Context, buckets map[string]time.Time) error {
 	start := r.clk.Now()
@@ -125,7 +125,7 @@ func (r *RedisSource) Get(ctx context.Context, bucketKey string) (time.Time, err
 }
 
 // BatchGet retrieves the TATs at the specified bucketKeys using a pipelined
-// Redis transaction in order to reduce the number of round-trips to each Redis
+// Redis Transaction in order to reduce the number of round-trips to each Redis
 // shard. An error is returned if the operation failed and nil otherwise. If a
 // bucketKey does not exist, it WILL NOT be included in the returned map.
 func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[string]time.Time, error) {
