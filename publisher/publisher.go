@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/canceled"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -164,7 +165,7 @@ func initMetrics(stats prometheus.Registerer) *pubMetrics {
 			Help:    "Time taken to submit a certificate to a CT log",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"log", "status", "http_status"},
+		[]string{"log", "type", "status", "http_status"},
 	)
 	stats.MustRegister(submissionLatency)
 
@@ -183,7 +184,7 @@ func initMetrics(stats prometheus.Registerer) *pubMetrics {
 			Name: "ct_errors_count",
 			Help: "Count of errors by type",
 		},
-		[]string{"type"},
+		[]string{"log", "type"},
 	)
 	stats.MustRegister(errorCount)
 
@@ -219,14 +220,20 @@ func New(
 	}
 }
 
-// SubmitToSingleCTWithResult will submit the certificate represented by certDER to the CT
-// log specified by log URL and public key (base64) and return the SCT to the caller
+// SubmitToSingleCTWithResult will submit the certificate represented by certDER
+// to the CT log specified by log URL and public key (base64) and return the SCT
+// to the caller.
 func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
+	if core.IsAnyNilOrZero(req.Der, req.LogURL, req.LogPublicKey) {
+		return nil, errors.New("incomplete gRPC request message")
+	}
+
 	cert, err := x509.ParseCertificate(req.Der)
 	if err != nil {
 		pub.log.AuditErrf("Failed to parse certificate: %s", err)
 		return nil, err
 	}
+
 	chain := []ct.ASN1Cert{{Data: req.Der}}
 	id := issuance.GetIssuerNameID(cert)
 	issuerBundle, ok := pub.issuerBundles[id]
@@ -246,9 +253,19 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		return nil, err
 	}
 
-	isPrecert := req.Precert
+	// TODO(#7161): Simply check req.Kind using IsAnyNilOrZero once it is always
+	// being set by the RA. Note that this block is not capable of producing
+	// pubpb.SubmissionType_info, which matches prior behavior.
+	kind := req.Kind
+	if kind == pubpb.SubmissionType_unknown {
+		if req.Precert {
+			kind = pubpb.SubmissionType_sct
+		} else {
+			kind = pubpb.SubmissionType_final
+		}
+	}
 
-	sct, err := pub.singleLogSubmit(ctx, chain, isPrecert, ctLog)
+	sct, err := pub.singleLogSubmit(ctx, chain, kind, ctLog)
 	if err != nil {
 		if canceled.Is(err) {
 			return nil, err
@@ -273,12 +290,11 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 func (pub *Impl) singleLogSubmit(
 	ctx context.Context,
 	chain []ct.ASN1Cert,
-	isPrecert bool,
+	kind pubpb.SubmissionType,
 	ctLog *Log,
 ) (*ct.SignedCertificateTimestamp, error) {
-	var submissionMethod func(context.Context, []ct.ASN1Cert) (*ct.SignedCertificateTimestamp, error)
-	submissionMethod = ctLog.client.AddChain
-	if isPrecert {
+	submissionMethod := ctLog.client.AddChain
+	if kind == pubpb.SubmissionType_sct || kind == pubpb.SubmissionType_info {
 		submissionMethod = ctLog.client.AddPreChain
 	}
 
@@ -297,18 +313,19 @@ func (pub *Impl) singleLogSubmit(
 		}
 		pub.metrics.submissionLatency.With(prometheus.Labels{
 			"log":         ctLog.uri,
+			"type":        kind.String(),
 			"status":      status,
 			"http_status": httpStatus,
 		}).Observe(took)
-		if isPrecert {
-			pub.metrics.errorCount.WithLabelValues("precert").Inc()
-		} else {
-			pub.metrics.errorCount.WithLabelValues("final").Inc()
-		}
+		pub.metrics.errorCount.With(prometheus.Labels{
+			"log":  ctLog.uri,
+			"type": kind.String(),
+		}).Inc()
 		return nil, err
 	}
 	pub.metrics.submissionLatency.With(prometheus.Labels{
 		"log":         ctLog.uri,
+		"type":        kind.String(),
 		"status":      "success",
 		"http_status": "",
 	}).Observe(took)
@@ -317,9 +334,10 @@ func (pub *Impl) singleLogSubmit(
 	if time.Until(timestamp) > time.Minute {
 		return nil, fmt.Errorf("SCT Timestamp was too far in the future (%s)", timestamp)
 	}
+
 	// For regular certificates, we could get an old SCT, but that shouldn't
 	// happen for precertificates.
-	if isPrecert && time.Until(timestamp) < -10*time.Minute {
+	if kind != pubpb.SubmissionType_final && time.Until(timestamp) < -10*time.Minute {
 		return nil, fmt.Errorf("SCT Timestamp was too far in the past (%s)", timestamp)
 	}
 

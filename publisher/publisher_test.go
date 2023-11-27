@@ -332,52 +332,115 @@ func TestLogErrorBody(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching("well this isn't good now is it")), 1)
 }
 
-func TestHTTPStatusMetric(t *testing.T) {
+// TestErrorMetrics checks that the ct_errors_count and
+// ct_submission_time_seconds metrics are updated with the correct labels when
+// the publisher encounters errors.
+func TestErrorMetrics(t *testing.T) {
 	pub, leaf, k := setup(t)
 
+	pkDER, err := x509.MarshalPKIXPublicKey(&k.PublicKey)
+	test.AssertNotError(t, err, "Failed to marshal key")
+	pkB64 := base64.StdEncoding.EncodeToString(pkDER)
+
+	// Set up a bad server that will always produce errors.
 	badSrv := errorBodyLogSrv()
 	defer badSrv.Close()
 	port, err := getPort(badSrv.URL)
 	test.AssertNotError(t, err, "Failed to get test server port")
 	logURI := fmt.Sprintf("http://localhost:%d", port)
 
-	pkDER, err := x509.MarshalPKIXPublicKey(&k.PublicKey)
-	test.AssertNotError(t, err, "Failed to marshal key")
-	pkB64 := base64.StdEncoding.EncodeToString(pkDER)
 	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
 		LogURL:       logURI,
 		LogPublicKey: pkB64,
 		Der:          leaf.Raw,
+		Precert:      true,
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
 	test.AssertMetricWithLabelsEquals(t, pub.metrics.submissionLatency, prometheus.Labels{
 		"log":         logURI,
+		"type":        "sct",
 		"status":      "error",
 		"http_status": "400",
 	}, 1)
-
-	pub, leaf, k = setup(t)
-	pkDER, err = x509.MarshalPKIXPublicKey(&k.PublicKey)
-	test.AssertNotError(t, err, "Failed to marshal key")
-	pkB64 = base64.StdEncoding.EncodeToString(pkDER)
-	workingSrv := logSrv(k)
-	defer workingSrv.Close()
-	port, err = getPort(workingSrv.URL)
-	test.AssertNotError(t, err, "Failed to get test server port")
-	logURI = fmt.Sprintf("http://localhost:%d", port)
+	test.AssertMetricWithLabelsEquals(t, pub.metrics.errorCount, prometheus.Labels{
+		"log":  logURI,
+		"type": "sct",
+	}, 1)
 
 	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
 		LogURL:       logURI,
 		LogPublicKey: pkB64,
 		Der:          leaf.Raw,
+		Precert:      false,
+	})
+	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
+	test.AssertMetricWithLabelsEquals(t, pub.metrics.submissionLatency, prometheus.Labels{
+		"log":         logURI,
+		"type":        "final",
+		"status":      "error",
+		"http_status": "400",
+	}, 1)
+	test.AssertMetricWithLabelsEquals(t, pub.metrics.errorCount, prometheus.Labels{
+		"log":  logURI,
+		"type": "final",
+	}, 1)
+
+	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
+		LogURL:       logURI,
+		LogPublicKey: pkB64,
+		Der:          leaf.Raw,
+		Kind:         pubpb.SubmissionType_info,
+	})
+	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
+	test.AssertMetricWithLabelsEquals(t, pub.metrics.submissionLatency, prometheus.Labels{
+		"log":         logURI,
+		"type":        "info",
+		"status":      "error",
+		"http_status": "400",
+	}, 1)
+	test.AssertMetricWithLabelsEquals(t, pub.metrics.errorCount, prometheus.Labels{
+		"log":  logURI,
+		"type": "info",
+	}, 1)
+}
+
+// TestSuccessMetrics checks that the ct_errors_count and
+// ct_submission_time_seconds metrics are updated with the correct labels when
+// the publisher succeeds.
+func TestSuccessMetrics(t *testing.T) {
+	pub, leaf, k := setup(t)
+
+	pkDER, err := x509.MarshalPKIXPublicKey(&k.PublicKey)
+	test.AssertNotError(t, err, "Failed to marshal key")
+	pkB64 := base64.StdEncoding.EncodeToString(pkDER)
+
+	// Set up a working server that will succeed.
+	workingSrv := logSrv(k)
+	defer workingSrv.Close()
+	port, err := getPort(workingSrv.URL)
+	test.AssertNotError(t, err, "Failed to get test server port")
+	logURI := fmt.Sprintf("http://localhost:%d", port)
+
+	// Only the latency metric should be updated on a success.
+	_, err = pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
+		LogURL:       logURI,
+		LogPublicKey: pkB64,
+		Der:          leaf.Raw,
+		Kind:         pubpb.SubmissionType_final,
 	})
 	test.AssertNotError(t, err, "SubmitToSingleCTWithResult failed")
 	test.AssertMetricWithLabelsEquals(t, pub.metrics.submissionLatency, prometheus.Labels{
 		"log":         logURI,
+		"type":        "final",
 		"status":      "success",
 		"http_status": "",
 	}, 1)
+	test.AssertMetricWithLabelsEquals(t, pub.metrics.errorCount, prometheus.Labels{
+		"log":  logURI,
+		"type": "final",
+	}, 0)
 }
+
 func Test_GetCTBundleForChain(t *testing.T) {
 	chain, err := issuance.LoadChain([]string{
 		"../test/hierarchy/int-r3.cert.pem",
