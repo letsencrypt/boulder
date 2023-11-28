@@ -24,7 +24,7 @@ type bucketId struct {
 
 // newIPAddressBucketId validates and returns a bucketId for limits that use the
 // 'enum:ipAddress' bucket key format.
-func newIPAddressBucketId(name Name, ip net.IP) (bucketId, error) {
+func newIPAddressBucketId(name Name, ip net.IP) (bucketId, error) { //nolint: unparam
 	id := ip.String()
 	err := validateIdForName(name, id)
 	if err != nil {
