@@ -644,9 +644,9 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 
 	logJSON, err := json.Marshal(logOb)
 	if err != nil {
-		// log a warning - a marshaling failure isn't expected given the data and
-		// isn't critical enough to break validation for by returning an error to
-		// the caller.
+		// log a warning - a marshaling failure isn't expected given the data
+		// and isn't critical enough to break validation by returning an error
+		// to the caller.
 		va.log.Warningf("Could not marshal log object in "+
 			"logRemoteValidationDifferentials: %s", err)
 		return
