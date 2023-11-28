@@ -24,7 +24,7 @@ type bucketId struct {
 
 // newIPAddressBucketId validates and returns a bucketId for limits that use the
 // 'enum:ipAddress' bucket key format.
-func newIPAddressBucketId(name Name, ip net.IP) (bucketId, error) { //nolint: unparam
+func newIPAddressBucketId(name Name, ip net.IP) (bucketId, error) {
 	id := ip.String()
 	err := validateIdForName(name, id)
 	if err != nil {
@@ -97,10 +97,14 @@ func newFQDNSetBucketId(name Name, orderNames []string) (bucketId, error) {
 }
 
 // Transaction is used to represent a single rate limit Transaction. It contains
-// the bucketId and cost of the Transaction, and flags indicating how the
-// Transaction should be processed. Acceptable check and spend combinations are:
-//   - check-and-spend: when check and spend are true, the cost will be checked
-//     against the bucket's capacity and spent/refunded, when possible.
+// the bucketId identifying the limit and subscriber. A cost which MUST be
+// greater than or equal to 0. Cost is variable to allow for limits such as
+// CertificatesPerDomainPerAccount, where the cost is the number of domain names
+// in the order. The check and spend fields are are not mutually exclusive, and
+// indicate how the limiter should process the Transaction; the following are
+// acceptable combinations of both:
+//   - check-and-spend: when check and spend are both true, the cost will be
+//     checked against the bucket's capacity and spent/refunded, when possible.
 //   - check-only: when only check is true, the cost will be checked against the
 //     bucket's capacity, but will never be spent/refunded.
 //   - spend-only: when only spend is true, spending is best-effort. Regardless
@@ -147,54 +151,54 @@ func newSpendOnlyTransaction(b bucketId, cost int64) Transaction {
 
 // RegistrationsPerIPAddressTransaction returns a Transaction for the
 // NewRegistrationsPerIPAddress limit for the provided IP address.
-func RegistrationsPerIPAddressTransaction(ip net.IP, cost int64) (Transaction, error) {
+func RegistrationsPerIPAddressTransaction(ip net.IP) (Transaction, error) {
 	bucketId, err := newIPAddressBucketId(NewRegistrationsPerIPAddress, ip)
 	if err != nil {
 		return Transaction{}, err
 	}
-	return newTransaction(bucketId, cost), nil
+	return newTransaction(bucketId, 1), nil
 }
 
 // RegistrationsPerIPv6RangeTransaction returns a Transaction for the
 // NewRegistrationsPerIPv6Range limit for the /48 IPv6 range which contains the
 // provided IPv6 address.
-func RegistrationsPerIPv6RangeTransaction(ip net.IP, cost int64) (Transaction, error) {
+func RegistrationsPerIPv6RangeTransaction(ip net.IP) (Transaction, error) {
 	bucketId, err := newIPv6RangeCIDRBucketId(NewRegistrationsPerIPv6Range, ip)
 	if err != nil {
 		return Transaction{}, err
 	}
-	return newTransaction(bucketId, cost), nil
+	return newTransaction(bucketId, 1), nil
 }
 
 // OrdersPerAccountTransaction returns a Transaction for the NewOrdersPerAccount
 // limit for the provided ACME registration Id.
-func OrdersPerAccountTransaction(regId, cost int64) (Transaction, error) {
+func OrdersPerAccountTransaction(regId int64) (Transaction, error) {
 	bucketId, err := newRegIdBucketId(NewOrdersPerAccount, regId)
 	if err != nil {
 		return Transaction{}, err
 	}
-	return newTransaction(bucketId, cost), nil
+	return newTransaction(bucketId, 1), nil
 }
 
-// FailedAuthorizationsPerAccountCheckOnlyTransaction returns a 0 cost
-// check-only Transaction for the provided ACME registration Id for the
+// FailedAuthorizationsPerAccountCheckOnlyTransaction returns a check-only
+// Transaction for the provided ACME registration Id for the
 // FailedAuthorizationsPerAccount limit.
 func FailedAuthorizationsPerAccountCheckOnlyTransaction(regId int64) (Transaction, error) {
 	bucketId, err := newRegIdBucketId(FailedAuthorizationsPerAccount, regId)
 	if err != nil {
 		return Transaction{}, err
 	}
-	return newCheckOnlyTransaction(bucketId, 0), nil
+	return newCheckOnlyTransaction(bucketId, 1), nil
 }
 
 // FailedAuthorizationsPerAccountTransaction returns a Transaction for the
 // FailedAuthorizationsPerAccount limit for the provided ACME registration Id.
-func FailedAuthorizationsPerAccountTransaction(regId, cost int64) (Transaction, error) {
+func FailedAuthorizationsPerAccountTransaction(regId int64) (Transaction, error) {
 	bucketId, err := newRegIdBucketId(FailedAuthorizationsPerAccount, regId)
 	if err != nil {
 		return Transaction{}, err
 	}
-	return newTransaction(bucketId, cost), nil
+	return newTransaction(bucketId, 1), nil
 }
 
 // CertificatesPerDomainTransactions returns a slice of Transactions for the for
@@ -210,7 +214,7 @@ func FailedAuthorizationsPerAccountTransaction(regId, cost int64) (Transaction, 
 // When a CertificatesPerDomainPerAccount override is NOT configured, only
 // CertificatesPerDomain Transactions, which will be denied if the bucket lacks
 // the required capacity, are returned.
-func CertificatesPerDomainTransactions(limiter *Limiter, regId int64, orderDomains []string, cost int64) ([]Transaction, error) {
+func CertificatesPerDomainTransactions(limiter *Limiter, regId int64, orderDomains []string) ([]Transaction, error) {
 	certsPerDomainPerAccountId, err := newRegIdBucketId(CertificatesPerDomainPerAccount, regId)
 	if err != nil {
 		return nil, err
@@ -229,11 +233,11 @@ func CertificatesPerDomainTransactions(limiter *Limiter, regId int64, orderDomai
 		if err != nil {
 			return nil, err
 		}
-		certsPerDomainPerAccountCost += cost
+		certsPerDomainPerAccountCost += 1
 		if certsPerDomainPerAccountLimit.isOverride {
-			txns = append(txns, newSpendOnlyTransaction(certsPerDomainId, cost))
+			txns = append(txns, newSpendOnlyTransaction(certsPerDomainId, 1))
 		} else {
-			txns = append(txns, newTransaction(certsPerDomainId, cost))
+			txns = append(txns, newTransaction(certsPerDomainId, 1))
 		}
 	}
 	if certsPerDomainPerAccountLimit.isOverride {
@@ -244,10 +248,10 @@ func CertificatesPerDomainTransactions(limiter *Limiter, regId int64, orderDomai
 
 // CertificatesPerFQDNSetTransaction returns a Transaction for the provided
 // order domain names.
-func CertificatesPerFQDNSetTransaction(orderNames []string, cost int64) (Transaction, error) {
+func CertificatesPerFQDNSetTransaction(orderNames []string) (Transaction, error) {
 	bucketId, err := newFQDNSetBucketId(CertificatesPerFQDNSet, orderNames)
 	if err != nil {
 		return Transaction{}, err
 	}
-	return newTransaction(bucketId, cost), nil
+	return newTransaction(bucketId, 1), nil
 }
