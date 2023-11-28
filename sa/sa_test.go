@@ -876,20 +876,17 @@ func TestFQDNSets(t *testing.T) {
 
 	// Invalid Window
 	req := &sapb.CountFQDNSetsRequest{
-		Domains:  names,
-		WindowNS: 0,
-		Window:   nil,
+		Domains: names,
+		Window:  nil,
 	}
 	_, err = sa.CountFQDNSets(ctx, req)
 	test.AssertErrorIs(t, err, errIncompleteRequest)
 
 	threeHours := time.Hour * 3
 	req = &sapb.CountFQDNSetsRequest{
-		Domains:  names,
-		WindowNS: threeHours.Nanoseconds(),
-		Window:   durationpb.New(threeHours),
+		Domains: names,
+		Window:  durationpb.New(threeHours),
 	}
-	test.AssertEquals(t, time.Duration(req.WindowNS), req.Window.AsDuration())
 	// only one valid
 	count, err := sa.CountFQDNSets(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
@@ -945,20 +942,17 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 
 	// Invalid Window
 	req := &sapb.CountFQDNSetsRequest{
-		Domains:  names,
-		WindowNS: 0,
-		Window:   nil,
+		Domains: names,
+		Window:  nil,
 	}
 	_, err = sa.FQDNSetTimestampsForWindow(ctx, req)
 	test.AssertErrorIs(t, err, errIncompleteRequest)
 
 	window := time.Hour * 3
 	req = &sapb.CountFQDNSetsRequest{
-		Domains:  names,
-		WindowNS: window.Nanoseconds(),
-		Window:   durationpb.New(window),
+		Domains: names,
+		Window:  durationpb.New(window),
 	}
-	test.AssertEquals(t, time.Duration(req.WindowNS), req.Window.AsDuration())
 
 	// Ensure zero issuance has occurred for names.
 	resp, err := sa.FQDNSetTimestampsForWindow(ctx, req)

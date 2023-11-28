@@ -1496,9 +1496,8 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 	}
 
 	prevIssuances, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
-		Domains:  names,
-		WindowNS: limit.Window.Duration.Nanoseconds(),
-		Window:   durationpb.New(limit.Window.Duration),
+		Domains: names,
+		Window:  durationpb.New(limit.Window.Duration),
 	})
 	if err != nil {
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
