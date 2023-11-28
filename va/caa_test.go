@@ -11,6 +11,7 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -580,48 +581,141 @@ func TestIsCAAValidParams(t *testing.T) {
 
 func TestMultiVACAARechecking(t *testing.T) {
 	const (
-		remoteUA1 = "remoteVA 1"
-		remoteUA2 = "remoteVA 2"
-		localUA   = "localVA 1"
+		remoteUA1 = "remote01"
+		remoteUA2 = "remote02"
+		remoteUA3 = "remote03"
+		localUA   = "local01"
 	)
-	allowedUAs := map[string]bool{
-		localUA:   true,
-		remoteUA1: true,
-		remoteUA2: true,
+
+	remoteVA1 := setupRemote(nil, remoteUA1)
+	remoteVA2 := setupRemote(nil, remoteUA2)
+	remoteVA3 := setupRemote(nil, remoteUA3)
+
+	//va, mockLog := setup(nil, 0, localUA, remoteVAs)
+	/*
+		isValidRes, err := va.IsCAAValid(context.TODO(), &vapb.IsCAAValidRequest{
+			Domain:           "good-dns01.com",
+			ValidationMethod: string(core.ChallengeTypeDNS01),
+			AccountURIID:     1,
+		})
+
+		test.AssertNotError(t, err, "Should have been able to recheck CAA records but could not")
+		test.AssertBoxedNil(t, isValidRes.Problem, "Problems detected but should not have been")
+
+		lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
+		test.AssertEquals(t, len(lines), 0)
+	*/
+
+	/*
+		for _, line := range mockLog.GetAll() {
+			fmt.Println(line)
+		}
+	*/
+	// -------------------------------------
+
+	//egProbA := probs.DNS("root DNS servers closed at 4:30pm")
+	//egProbB := probs.OrderNotReady("please take a number")
+
+	testCases := []struct {
+		name          string
+		primaryResult *probs.ProblemDetails
+		//remoteProbs   []*remoteValidationResult
+		maxValidationFailures   int
+		expectDifferentialCount int
+		remoteVAs               []RemoteVA
+	}{
+		{
+			name:                  "1 functioning local with 3 functioning remotes",
+			primaryResult:         nil,
+			maxValidationFailures: 0,
+			remoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{remoteVA3, remoteUA3},
+			},
+
+			/*
+				remoteProbs: []*remoteValidationResult{
+					{Problem: nil, VAHostname: "remoteA"},
+					{Problem: nil, VAHostname: "remoteB"},
+					{Problem: nil, VAHostname: "remoteC"},
+				},
+			*/
+		},
+		{
+			name:                  "1 functioning local with 0 configured remotes",
+			primaryResult:         nil,
+			maxValidationFailures: 0,
+			remoteVAs:             []RemoteVA{},
+		},
+		{
+			name:                  "1 functioning local with 2 functioning and 1 broken remote",
+			primaryResult:         nil,
+			maxValidationFailures: 0,
+			remoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{&brokenRemoteVA{}, "brokenVA 1"},
+			},
+		},
+		{
+			name:                  "1 functioning local with 1 functioning and 2 broken remotes",
+			primaryResult:         nil,
+			maxValidationFailures: 0,
+			remoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{&brokenRemoteVA{}, "brokenVA 1"},
+				{&brokenRemoteVA{}, "brokenVA 2"},
+			},
+		},
+		{
+			name:                  "1 functioning local with 3 broken remotes",
+			primaryResult:         nil,
+			maxValidationFailures: 0,
+			remoteVAs: []RemoteVA{
+				{&brokenRemoteVA{}, "brokenVA 1"},
+				{&brokenRemoteVA{}, "brokenVA 2"},
+				{&brokenRemoteVA{}, "brokenVA 3"},
+			},
+		},
 	}
 
-	ms := httpMultiSrv(t, expectedToken, allowedUAs)
-	defer ms.Close()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			va, mockLog := setup(nil, tc.maxValidationFailures, localUA, tc.remoteVAs)
+			defer mockLog.Clear()
 
-	// Configure the test server with the testcase allowed UAs.
-	ms.setAllowedUAs(allowedUAs)
+			// Ensure multi VA enforcement is enabled, don't wait for full multi VA
+			// results.
+			err := features.Set(map[string]bool{
+				"EnforceMultiVA":     true,
+				"MultiVAFullResults": false,
+			})
+			test.AssertNotError(t, err, "setting feature flags")
+			defer features.Reset()
 
-	// Configure a primary VA with testcase remote VAs.
-	remoteVA1 := setupRemote(ms.Server, remoteUA1)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2)
-	remoteVAs := []RemoteVA{
-		{remoteVA1, remoteUA1},
-		{remoteVA2, remoteUA2},
-		//{&brokenRemoteVA{}, "brokenVA 1"},
-	}
-	va, mockLog := setup(ms.Server, 0, localUA, remoteVAs)
+			isValidRes, err := va.IsCAAValid(context.TODO(), &vapb.IsCAAValidRequest{
+				Domain:           "good-dns01.com",
+				ValidationMethod: string(core.ChallengeTypeDNS01),
+				AccountURIID:     1,
+			})
 
-	isValidRes, err := va.IsCAAValid(context.TODO(), &vapb.IsCAAValidRequest{
-		Domain:           "good-dns01.com",
-		ValidationMethod: string(core.ChallengeTypeDNS01),
-		AccountURIID:     1,
-	})
-	//fmt.Printf("%#v\n", isValidRes.Problem)
+			test.AssertNotError(t, err, "Should have been able to recheck CAA records but could not")
+			test.AssertBoxedNil(t, isValidRes.Problem, "Problems detected but should not have been")
 
-	test.AssertNotError(t, err, "Should have been able to recheck CAA records but could not")
-	test.AssertBoxedNil(t, isValidRes.Problem, "Problems detected but should not have been")
+			for _, line := range mockLog.GetAll() {
+				fmt.Println(line)
+			}
+			/*
+				lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
+					for _, line := range mockLog.GetAll() {
+						fmt.Println(line)
+					}
+			*/
+			//test.AssertEquals(t, len(lines), tc.expectDifferentialCount)
+			//test.AssertEquals(t, lines[0], tc.expectedLog)
 
-	// There should be no differential if it's working as intended.
-	lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
-	test.AssertEquals(t, len(lines), 0)
-
-	for _, line := range mockLog.GetAll() {
-		fmt.Println(line)
+		})
 	}
 }
 

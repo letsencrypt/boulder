@@ -54,7 +54,6 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	}
 
 	prob := va.checkCAA(ctx, acmeID, params)
-	fmt.Printf("PHIL: remoteCAAResults=%v\n", remoteCAAResults)
 	if prob != nil {
 		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
 		return &vapb.IsCAAValidResponse{
@@ -96,6 +95,8 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 					req.Domain, remoteProb)
 				va.metrics.remoteValidationFailures.Inc()
 			}
+		} else {
+			fmt.Println("PHIL: Why am I here?")
 		}
 	}
 
@@ -144,7 +145,7 @@ func (va *ValidationAuthorityImpl) performRemoteCAARecheck(
 					result.Problem = prob
 				}
 			}
-			fmt.Printf("PHIL: %#v, %#v\n", rva, result)
+			//fmt.Printf("PHIL: %#v, %#v\n", rva, result)
 			results <- result
 		}(remoteVA)
 	}
