@@ -617,17 +617,17 @@ func TestMultiVACAARechecking(t *testing.T) {
 	//egProbB := probs.OrderNotReady("please take a number")
 
 	testCases := []struct {
-		name          string
-		primaryResult *probs.ProblemDetails
-		//remoteProbs   []*remoteValidationResult
-		maxValidationFailures   int
-		expectDifferentialCount int
-		remoteVAs               []RemoteVA
+		name    string
+		domains string
+		//remoteProbs   []*remoteVAResult
+		maxValidationFailures int
+		expectedRVALog        string
+		remoteVAs             []RemoteVA
 	}{
 		{
 			name:                  "1 functioning local with 3 functioning remotes",
-			primaryResult:         nil,
 			maxValidationFailures: 0,
+			domains:               "good-dns01.com",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -635,7 +635,7 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 
 			/*
-				remoteProbs: []*remoteValidationResult{
+				remoteProbs: []*remoteVAResult{
 					{Problem: nil, VAHostname: "remoteA"},
 					{Problem: nil, VAHostname: "remoteB"},
 					{Problem: nil, VAHostname: "remoteC"},
@@ -644,39 +644,46 @@ func TestMultiVACAARechecking(t *testing.T) {
 		},
 		{
 			name:                  "1 functioning local with 0 configured remotes",
-			primaryResult:         nil,
+			domains:               "good-dns01.com",
 			maxValidationFailures: 0,
 			remoteVAs:             []RemoteVA{},
 		},
 		{
 			name:                  "1 functioning local with 2 functioning and 1 broken remote",
-			primaryResult:         nil,
+			domains:               "good-dns01.com",
 			maxValidationFailures: 0,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
-				{&brokenRemoteVA{}, "brokenVA 1"},
+				{&brokenRemoteVA{}, "brokenVA1"},
 			},
+			expectedRVALog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"brokenVA1","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
 		},
 		{
 			name:                  "1 functioning local with 1 functioning and 2 broken remotes",
-			primaryResult:         nil,
+			domains:               "good-dns01.com",
 			maxValidationFailures: 0,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
-				{&brokenRemoteVA{}, "brokenVA 1"},
-				{&brokenRemoteVA{}, "brokenVA 2"},
+				// The same Address is used so we can fudge the expectedLog. The
+				// RemoteFailures log order is non-deterministic.
+				{&brokenRemoteVA{}, "brokenVA"},
+				{&brokenRemoteVA{}, "brokenVA"},
 			},
+			expectedRVALog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}},{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
 		},
 		{
 			name:                  "1 functioning local with 3 broken remotes",
-			primaryResult:         nil,
+			domains:               "good-dns01.com",
 			maxValidationFailures: 0,
+			// The same Address is used so we can fudge the expectedLog. The
+			// RemoteFailures log order is non-deterministic.
 			remoteVAs: []RemoteVA{
-				{&brokenRemoteVA{}, "brokenVA 1"},
-				{&brokenRemoteVA{}, "brokenVA 2"},
-				{&brokenRemoteVA{}, "brokenVA 3"},
+				{&brokenRemoteVA{}, "brokenVA"},
+				{&brokenRemoteVA{}, "brokenVA"},
+				{&brokenRemoteVA{}, "brokenVA"},
 			},
+			expectedRVALog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}},{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}},{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
 		},
 	}
 
@@ -689,13 +696,13 @@ func TestMultiVACAARechecking(t *testing.T) {
 			// results.
 			err := features.Set(map[string]bool{
 				"EnforceMultiVA":     true,
-				"MultiVAFullResults": false,
+				"MultiVAFullResults": true,
 			})
 			test.AssertNotError(t, err, "setting feature flags")
 			defer features.Reset()
 
 			isValidRes, err := va.IsCAAValid(context.TODO(), &vapb.IsCAAValidRequest{
-				Domain:           "good-dns01.com",
+				Domain:           tc.domains,
 				ValidationMethod: string(core.ChallengeTypeDNS01),
 				AccountURIID:     1,
 			})
@@ -706,15 +713,12 @@ func TestMultiVACAARechecking(t *testing.T) {
 			for _, line := range mockLog.GetAll() {
 				fmt.Println(line)
 			}
-			/*
-				lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
-					for _, line := range mockLog.GetAll() {
-						fmt.Println(line)
-					}
-			*/
-			//test.AssertEquals(t, len(lines), tc.expectDifferentialCount)
-			//test.AssertEquals(t, lines[0], tc.expectedLog)
 
+			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
+			if tc.expectedRVALog != "" {
+				test.AssertEquals(t, len(lines), 1)
+				test.AssertEquals(t, lines[0], tc.expectedRVALog)
+			}
 		})
 	}
 }

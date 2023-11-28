@@ -776,13 +776,13 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 	testCases := []struct {
 		name          string
 		primaryResult *probs.ProblemDetails
-		remoteProbs   []*remoteValidationResult
+		remoteProbs   []*remoteVAResult
 		expectedLog   string
 	}{
 		{
 			name:          "remote and primary results equal (all nil)",
 			primaryResult: nil,
-			remoteProbs: []*remoteValidationResult{
+			remoteProbs: []*remoteVAResult{
 				{Problem: nil, VAHostname: "remoteA"},
 				{Problem: nil, VAHostname: "remoteB"},
 				{Problem: nil, VAHostname: "remoteC"},
@@ -791,7 +791,7 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 		{
 			name:          "remote and primary results equal (not nil)",
 			primaryResult: egProbA,
-			remoteProbs: []*remoteValidationResult{
+			remoteProbs: []*remoteVAResult{
 				{Problem: egProbA, VAHostname: "remoteA"},
 				{Problem: egProbA, VAHostname: "remoteB"},
 				{Problem: egProbA, VAHostname: "remoteC"},
@@ -800,7 +800,7 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 		{
 			name:          "remote and primary differ (primary nil)",
 			primaryResult: nil,
-			remoteProbs: []*remoteValidationResult{
+			remoteProbs: []*remoteVAResult{
 				{Problem: egProbA, VAHostname: "remoteA"},
 				{Problem: nil, VAHostname: "remoteB"},
 				{Problem: egProbB, VAHostname: "remoteC"},
@@ -810,7 +810,7 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 		{
 			name:          "remote and primary differ (primary not nil)",
 			primaryResult: egProbA,
-			remoteProbs: []*remoteValidationResult{
+			remoteProbs: []*remoteVAResult{
 				{Problem: nil, VAHostname: "remoteA"},
 				{Problem: egProbB, VAHostname: "remoteB"},
 				{Problem: nil, VAHostname: "remoteC"},

@@ -452,11 +452,11 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 func (va *ValidationAuthorityImpl) performRemoteValidation(
 	ctx context.Context,
 	req *vapb.PerformValidationRequest,
-	results chan *remoteValidationResult) {
+	results chan *remoteVAResult) {
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA) {
-			result := &remoteValidationResult{
+			result := &remoteVAResult{
 				VAHostname: rva.Address,
 			}
 			res, err := rva.PerformValidation(ctx, req)
@@ -507,7 +507,7 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	acctID int64,
 	challengeType string,
 	primaryResult *probs.ProblemDetails,
-	remoteResultsChan chan *remoteValidationResult,
+	remoteResultsChan chan *remoteVAResult,
 	numRemoteVAs int) *probs.ProblemDetails {
 
 	state := "failure"
@@ -524,7 +524,7 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	good := 0
 	bad := 0
 
-	var remoteResults []*remoteValidationResult
+	var remoteResults []*remoteVAResult
 	var firstProb *probs.ProblemDetails
 	// Due to channel behavior this could block indefinitely and we rely on gRPC
 	// honoring the context deadline used in client calls to prevent that from
@@ -597,10 +597,10 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 	acctID int64,
 	challengeType string,
 	primaryResult *probs.ProblemDetails,
-	remoteResults []*remoteValidationResult) {
+	remoteResults []*remoteVAResult) {
 
-	var successes []*remoteValidationResult
-	var failures []*remoteValidationResult
+	var successes []*remoteVAResult
+	var failures []*remoteVAResult
 
 	allEqual := true
 	for _, result := range remoteResults {
@@ -632,7 +632,7 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 		ChallengeType   string
 		PrimaryResult   *probs.ProblemDetails
 		RemoteSuccesses int
-		RemoteFailures  []*remoteValidationResult
+		RemoteFailures  []*remoteVAResult
 	}{
 		Domain:          domain,
 		AccountID:       acctID,
@@ -655,9 +655,9 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 	va.log.Infof("remoteVADifferentials JSON=%s", string(logJSON))
 }
 
-// remoteValidationResult is a struct that combines a problem details instance
-// (that may be nil) with the remote VA hostname that produced it.
-type remoteValidationResult struct {
+// remoteVAResult is a struct that combines a problem details instance (that may
+// be nil) with the remote VA hostname that produced it.
+type remoteVAResult struct {
 	VAHostname string
 	Problem    *probs.ProblemDetails
 }
@@ -676,9 +676,9 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	}
 	vStart := va.clk.Now()
 
-	var remoteResults chan *remoteValidationResult
+	var remoteResults chan *remoteVAResult
 	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
-		remoteResults = make(chan *remoteValidationResult, remoteVACount)
+		remoteResults = make(chan *remoteVAResult, remoteVACount)
 		go va.performRemoteValidation(ctx, req, remoteResults)
 	}
 

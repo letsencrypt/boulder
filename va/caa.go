@@ -47,9 +47,9 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		validationMethod: validationMethod,
 	}
 
-	var remoteCAAResults chan *remoteValidationResult
+	var remoteCAAResults chan *remoteVAResult
 	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
-		remoteCAAResults = make(chan *remoteValidationResult, remoteVACount)
+		remoteCAAResults = make(chan *remoteVAResult, remoteVACount)
 		go va.performRemoteCAARecheck(ctx, req, remoteCAAResults)
 	}
 
@@ -76,10 +76,6 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 					remoteCAAResults,
 					len(va.remoteVAs))
 			}()
-			// Since prob was nil and we're not enforcing the results from
-			// `processRemoteResults` set the challenge status to valid so the
-			// validationTime metrics increment has the correct result label.
-			//challenge.Status = core.StatusValid
 		} else if features.Enabled(features.EnforceMultiVA) {
 			remoteProb := va.processRemoteResults(
 				req.Domain,
@@ -89,14 +85,16 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 				remoteCAAResults,
 				len(va.remoteVAs))
 
-			// If the remote result was a non-nil problem then fail the validation
+			// If the remote result was a non-nil problem then fail the CAA check
 			if remoteProb != nil {
-				va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
+				va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
+				// TODO(@pgporada) Change this metric to a more meaningful one.
 				va.metrics.remoteValidationFailures.Inc()
 			}
 		} else {
-			fmt.Println("PHIL: Why am I here?")
+			// TODO(@pgporada) Remove this debugging.
+			fmt.Println("PHIL: Why am I here 1?")
 		}
 	}
 
@@ -105,7 +103,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 
 // performRemoteCAARecheck calls `isCAAValid` for each of the configured
 // remoteVAs in a random order. The provided `results` chan should have an equal
-// size to the number of remote VAs. The validations will be performed in
+// size to the number of remote VAs. The CAA rechecks will be performed in
 // separate go-routines. If the result `error` from a remote `isCAAValid` RPC is
 // nil or a nil `ProblemDetails` instance it is written directly to the
 // `results` chan. If the err is a cancelled error it is treated as a nil error.
@@ -113,12 +111,12 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 func (va *ValidationAuthorityImpl) performRemoteCAARecheck(
 	ctx context.Context,
 	req *vapb.IsCAAValidRequest,
-	results chan *remoteValidationResult) {
+	results chan *remoteVAResult) {
 	// A remoteVA should never have remoteVAs of its own.
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA) {
-			result := &remoteValidationResult{
+			result := &remoteVAResult{
 				VAHostname: rva.Address,
 			}
 			// Recursively call IsCAAValid, but with a remoteVA masquerading as
@@ -166,8 +164,8 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return probs.DNS(err.Error())
 	}
 
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q, VA: %s] Response=%q",
-		identifier.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, va.userAgent, response)
+	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q] Response=%q",
+		identifier.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, response)
 	if !valid {
 		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", foundAt))
 	}
