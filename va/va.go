@@ -486,29 +486,28 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	}
 }
 
-// processRemoteResults evaluates a primary VA result, and a channel of remote
+// processRemoteValidationResults evaluates a primary VA result, and a channel of remote
 // VA problems to produce a single overall validation result based on configured
 // feature flags. The overall result is calculated based on the VA's configured
 // `maxRemoteFailures` value.
 //
-// If the `MultiVAFullResults` feature is enabled then `processRemoteResults`
+// If the `MultiVAFullResults` feature is enabled then `processRemoteValidationResults`
 // will expect to read a result from the `remoteErrors` channel for each VA and
 // will not produce an overall result until all remote VAs have responded. In
 // this case `logRemoteFailureDifferentials` will also be called to describe the
 // differential between the primary and all of the remote VAs.
 //
 // If the `MultiVAFullResults` feature flag is not enabled then
-// `processRemoteResults` will potentially return before all remote VAs have had
+// `processRemoteValidationResults` will potentially return before all remote VAs have had
 // a chance to respond. This happens if the success or failure threshold is met.
 // This doesn't allow for logging the differential between the primary and
 // remote VAs but is more performant.
-func (va *ValidationAuthorityImpl) processRemoteResults(
+func (va *ValidationAuthorityImpl) processRemoteValidationResults(
 	domain string,
 	acctID int64,
 	challengeType string,
 	primaryResult *probs.ProblemDetails,
-	remoteResultsChan chan *remoteVAResult,
-	numRemoteVAs int) *probs.ProblemDetails {
+	remoteResultsChan chan *remoteVAResult) *probs.ProblemDetails {
 
 	state := "failure"
 	start := va.clk.Now()
@@ -520,6 +519,7 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 		}).Observe(va.clk.Since(start).Seconds())
 	}()
 
+	numRemoteVAs := len(va.remoteVAs)
 	required := numRemoteVAs - va.maxRemoteFailures
 	good := 0
 	bad := 0
@@ -567,7 +567,7 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	// If we are using `features.MultiVAFullResults` then we haven't returned
 	// early and can now log the differential between what the primary VA saw and
 	// what all of the remote VAs saw.
-	va.logRemoteValidationDifferentials(
+	va.logRemoteDifferentials(
 		domain,
 		acctID,
 		challengeType,
@@ -589,10 +589,11 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	return probs.ServerInternal("Too few remote PerformValidation RPC results")
 }
 
-// logRemoteValidationDifferentials is called by `processRemoteResults` when the
-// `MultiVAFullResults` feature flag is enabled. It produces a JSON log line
-// that contains the primary VA result and the results each remote VA returned.
-func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
+// logRemoteDifferentials is called by `processRemoteValidationResults` and
+// `performRemoteCAARecheckResults` when the `MultiVAFullResults` feature flag
+// is enabled. It produces a JSON log line that contains the primary VA result
+// and the results each remote VA returned.
+func (va *ValidationAuthorityImpl) logRemoteDifferentials(
 	domain string,
 	acctID int64,
 	challengeType string,
@@ -648,7 +649,7 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 		// and isn't critical enough to break validation by returning an error
 		// to the caller.
 		va.log.Warningf("Could not marshal log object in "+
-			"logRemoteValidationDifferentials: %s", err)
+			"logRemoteDifferential: %s", err)
 		return
 	}
 
@@ -708,26 +709,25 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 			// differentials then collect and log the remote results in a separate go
 			// routine to avoid blocking the primary VA.
 			go func() {
-				_ = va.processRemoteResults(
+				_ = va.processRemoteValidationResults(
 					req.Domain,
 					req.Authz.RegID,
 					string(challenge.Type),
 					prob,
-					remoteResults,
-					len(va.remoteVAs))
+					remoteResults)
 			}()
 			// Since prob was nil and we're not enforcing the results from
-			// `processRemoteResults` set the challenge status to valid so the
-			// validationTime metrics increment has the correct result label.
+			// `processRemoteValidationResults` set the challenge status to
+			// valid so the validationTime metrics increment has the correct
+			// result label.
 			challenge.Status = core.StatusValid
 		} else if features.Enabled(features.EnforceMultiVA) {
-			remoteProb := va.processRemoteResults(
+			remoteProb := va.processRemoteValidationResults(
 				req.Domain,
 				req.Authz.RegID,
 				string(challenge.Type),
 				prob,
-				remoteResults,
-				len(va.remoteVAs))
+				remoteResults)
 
 			// If the remote result was a non-nil problem then fail the validation
 			if remoteProb != nil {
