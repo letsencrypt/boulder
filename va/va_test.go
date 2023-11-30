@@ -756,7 +756,7 @@ func TestDetailedError(t *testing.T) {
 	}
 }
 
-func TestLogRemoteValidationDifferentials(t *testing.T) {
+func TestLogRemoteDifferentials(t *testing.T) {
 	// Create some remote VAs
 	remoteVA1 := setupRemote(nil, "remote 1")
 	remoteVA2 := setupRemote(nil, "remote 2")
@@ -823,7 +823,7 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mockLog.Clear()
 
-			localVA.logRemoteValidationDifferentials(
+			localVA.logRemoteDifferentials(
 				"example.com", 1999, "blorpus-01", tc.primaryResult, tc.remoteProbs)
 
 			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")

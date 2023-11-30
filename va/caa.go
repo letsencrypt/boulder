@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
@@ -34,6 +35,8 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
 
+	vStart := va.clk.Now()
+
 	validationMethod := core.AcmeChallenge(req.ValidationMethod)
 	if !validationMethod.IsValid() {
 		return nil, berrors.InternalServerError("unrecognized validation method %q", req.ValidationMethod)
@@ -54,6 +57,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		go va.performRemoteCAARecheck(ctx, req, remoteCAAResults)
 	}
 
+	//var problemType string
 	prob := va.checkCAA(ctx, acmeID, params)
 	if prob != nil {
 		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
@@ -69,7 +73,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			// differentials then collect and log the remote results in a separate go
 			// routine to avoid blocking the primary VA.
 			go func() {
-				_ = va.processRemoteCAARecheckResults(
+				_ = va.processRemoteCAARecheckResultsOuter(
 					req.Domain,
 					req.AccountURIID,
 					string(validationMethod),
@@ -77,7 +81,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 					remoteCAAResults)
 			}()
 		} else if features.Enabled(features.EnforceMultiVA) {
-			remoteProb := va.processRemoteCAARecheckResults(
+			remoteProb := va.processRemoteCAARecheckResultsOuter(
 				req.Domain,
 				req.AccountURIID,
 				string(validationMethod),
@@ -86,6 +90,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 
 			// If the remote result was a non-nil problem then fail the CAA check
 			if remoteProb != nil {
+				prob = remoteProb
 				va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
 				// TODO(@pgporada) Change this metric to a more meaningful one.
@@ -97,112 +102,56 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		}
 	}
 
+	recheckLatency := time.Since(vStart)
+	fmt.Println(recheckLatency)
+	//logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
+	/*
+		va.metrics.localCAARecheckTime.With(prometheus.Labels{
+			"type":   string(challenge.Type),
+			"result": string(challenge.Status),
+		}).Observe(localValidationLatency.Seconds())
+		va.metrics.validationTime.With(prometheus.Labels{
+			"type":         string(challenge.Type),
+			"result":       string(challenge.Status),
+			"problem_type": problemType,
+		}).Observe(validationLatency.Seconds())
+	*/
+	//va.log.AuditObject("Validation result", logEvent)
+
+	//return &vapb.IsCAAValidResponse{}, nil
+	fmt.Printf("PHIL IsCAAValid prob: %v\n", prob)
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
-// processRemoteCAARecheckResults evaluates a primary VA result, and a channel
-// of remote VA problems to produce a single overall validation result based on
-// configured feature flags. The overall result is calculated based on the VA's
-// configured `maxRemoteFailures` value.
-//
-// If the `MultiVAFullResults` feature is enabled then
-// `processRemoteCAARecheckResults` will expect to read a result from the
-// `remoteErrors` channel for each VA and will not produce an overall result
-// until all remote VAs have responded. In this case
-// `logRemoteFailureDifferentials` will also be called to describe the
-// differential between the primary and all of the remote VAs.
-//
-// If the `MultiVAFullResults` feature flag is not enabled then
-// `processRemoteCAARecheckResults` will potentially return before all remote
-// VAs have had a chance to respond. This happens if the success or failure
-// threshold is met. This doesn't allow for logging the differential between the
-// primary and remote VAs but is more performant.
-func (va *ValidationAuthorityImpl) processRemoteCAARecheckResults(
-	domain string,
-	acctID int64,
-	challengeType string,
-	primaryResult *probs.ProblemDetails,
-	remoteResultsChan chan *remoteVAResult) *probs.ProblemDetails {
-
-	state := "failure"
+// processRemoteCAARecheckResultsOuter is a helper method that supplies metadata
+// to the generic `va.processRemoteResultsInner` method and returns its problem
+// details.
+func (va *ValidationAuthorityImpl) processRemoteCAARecheckResultsOuter(domain string, acctID int64, challengeType string, primaryResult *probs.ProblemDetails, remoteResultsChan chan *remoteVAResult) *probs.ProblemDetails {
+	var isOk bool
 	start := va.clk.Now()
 
-	defer func() {
-		// TODO(@pgporada) Change this metric to a more meaningful one.
-		va.metrics.remoteValidationTime.With(prometheus.Labels{
-			"type":   challengeType,
-			"result": state,
-		}).Observe(va.clk.Since(start).Seconds())
-	}()
-
-	numRemoteVAs := len(va.remoteVAs)
-	required := numRemoteVAs - va.maxRemoteFailures
-	good := 0
-	bad := 0
-
-	var remoteResults []*remoteVAResult
-	var firstProb *probs.ProblemDetails
-	// Due to channel behavior this could block indefinitely and we rely on gRPC
-	// honoring the context deadline used in client calls to prevent that from
-	// happening.
-	for result := range remoteResultsChan {
-		// Add the result to the slice
-		remoteResults = append(remoteResults, result)
-		if result.Problem == nil {
-			good++
+	defer func(ok *bool) {
+		var result string
+		if *ok {
+			result = "success"
 		} else {
-			bad++
+			result = "failure"
 		}
+		fmt.Printf("PHIL IsCAAValid: %s\n", result)
+		va.metrics.remoteCAARecheckTime.With(prometheus.Labels{
+			"type":   challengeType,
+			"result": result,
+		}).Observe(va.clk.Since(start).Seconds())
+	}(&isOk)
 
-		// Store the first non-nil problem to return later (if `MultiVAFullResults`
-		// is enabled).
-		if firstProb == nil && result.Problem != nil {
-			firstProb = result.Problem
-		}
-
-		// If MultiVAFullResults isn't enabled then return early whenever the
-		// success or failure threshold is met.
-		if !features.Enabled(features.MultiVAFullResults) {
-			if good >= required {
-				state = "success"
-				return nil
-			} else if bad > va.maxRemoteFailures {
-				modifiedProblem := *result.Problem
-				modifiedProblem.Detail = "During secondary CAA rechecking: " + firstProb.Detail
-				return &modifiedProblem
-			}
-		}
-
-		// If we haven't returned early because of MultiVAFullResults being enabled
-		// we need to break the loop once all of the VAs have returned a result.
-		if len(remoteResults) == numRemoteVAs {
-			break
-		}
+	metadata := remoteMetadata{
+		rpc:    "IsCAAValid",
+		action: "CAA rechecking",
 	}
+	probs, isOk := va.processRemoteResultsInner(domain, acctID, challengeType, primaryResult, remoteResultsChan, metadata)
+	fmt.Printf("PHIL IsCAAValid probs: %v\n", probs)
 
-	// If we are using `features.MultiVAFullResults` then we haven't returned
-	// early and can now log the differential between what the primary VA saw and
-	// what all of the remote VAs saw.
-	va.logRemoteDifferentials(
-		domain,
-		acctID,
-		challengeType,
-		primaryResult,
-		remoteResults)
-
-	// Based on the threshold of good/bad return nil or a problem.
-	if good >= required {
-		state = "success"
-		return nil
-	} else if bad > va.maxRemoteFailures {
-		modifiedProblem := *firstProb
-		modifiedProblem.Detail = "During secondary CAA rechecking: " + firstProb.Detail
-		return &modifiedProblem
-	}
-
-	// This condition should not occur - it indicates the good/bad counts didn't
-	// meet either the required threshold or the maxRemoteFailures threshold.
-	return probs.ServerInternal("Too few remote IsCAAValid RPC results")
+	return probs
 }
 
 // performRemoteCAARecheck calls `isCAAValid` for each of the configured
@@ -216,7 +165,6 @@ func (va *ValidationAuthorityImpl) performRemoteCAARecheck(
 	ctx context.Context,
 	req *vapb.IsCAAValidRequest,
 	results chan *remoteVAResult) {
-	// A remoteVA should never have remoteVAs of its own.
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA) {
@@ -247,7 +195,6 @@ func (va *ValidationAuthorityImpl) performRemoteCAARecheck(
 					result.Problem = prob
 				}
 			}
-			//fmt.Printf("PHIL: %#v, %#v\n", rva, result)
 			results <- result
 		}(remoteVA)
 	}
