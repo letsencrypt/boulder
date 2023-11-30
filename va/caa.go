@@ -8,7 +8,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
@@ -35,7 +34,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
 
-	vStart := va.clk.Now()
+	//vStart := va.clk.Now()
 
 	validationMethod := core.AcmeChallenge(req.ValidationMethod)
 	if !validationMethod.IsValid() {
@@ -96,14 +95,11 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 				// TODO(@pgporada) Change this metric to a more meaningful one.
 				va.metrics.remoteValidationFailures.Inc()
 			}
-		} else {
-			// TODO(@pgporada) Remove this debugging.
-			fmt.Println("PHIL: Why am I here 1?")
 		}
 	}
 
-	recheckLatency := time.Since(vStart)
-	fmt.Println(recheckLatency)
+	//recheckLatency := time.Since(vStart)
+	//fmt.Println(recheckLatency)
 	//logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
 	/*
 		va.metrics.localCAARecheckTime.With(prometheus.Labels{
