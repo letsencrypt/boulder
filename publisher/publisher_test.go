@@ -228,7 +228,12 @@ func TestTimestampVerificationFuture(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create test leaf")
 	pub.issuerBundles = issuerBundles
 
-	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: testLog.uri, LogPublicKey: testLog.logID, Der: precert, Precert: true})
+	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
+		LogURL:       testLog.uri,
+		LogPublicKey: testLog.logID,
+		Der:          precert,
+		Kind:         pubpb.SubmissionType_sct,
+	})
 	if err == nil {
 		t.Fatal("Expected error for lying log server, got none")
 	}
@@ -252,7 +257,12 @@ func TestTimestampVerificationPast(t *testing.T) {
 
 	pub.issuerBundles = issuerBundles
 
-	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{LogURL: testLog.uri, LogPublicKey: testLog.logID, Der: precert, Precert: true})
+	_, err = pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
+		LogURL:       testLog.uri,
+		LogPublicKey: testLog.logID,
+		Der:          precert,
+		Kind:         pubpb.SubmissionType_sct,
+	})
 	if err == nil {
 		t.Fatal("Expected error for lying log server, got none")
 	}
@@ -327,6 +337,7 @@ func TestLogErrorBody(t *testing.T) {
 		LogURL:       logURI,
 		LogPublicKey: pkB64,
 		Der:          leaf.Raw,
+		Kind:         pubpb.SubmissionType_final,
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
 	test.AssertEquals(t, len(log.GetAllMatching("well this isn't good now is it")), 1)
@@ -353,7 +364,7 @@ func TestErrorMetrics(t *testing.T) {
 		LogURL:       logURI,
 		LogPublicKey: pkB64,
 		Der:          leaf.Raw,
-		Precert:      true,
+		Kind:         pubpb.SubmissionType_sct,
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
 	test.AssertMetricWithLabelsEquals(t, pub.metrics.submissionLatency, prometheus.Labels{
@@ -371,7 +382,7 @@ func TestErrorMetrics(t *testing.T) {
 		LogURL:       logURI,
 		LogPublicKey: pkB64,
 		Der:          leaf.Raw,
-		Precert:      false,
+		Kind:         pubpb.SubmissionType_final,
 	})
 	test.AssertError(t, err, "SubmitToSingleCTWithResult didn't fail")
 	test.AssertMetricWithLabelsEquals(t, pub.metrics.submissionLatency, prometheus.Labels{

@@ -16,7 +16,7 @@ message Request {
   bytes der = 1;
   string LogURL = 2;
   string LogPublicKey = 3;
-  bool precert = 4; // Deprecated, use kind instead
+  reserved 4; // Previously precert
   SubmissionType kind = 5;
 }
 
