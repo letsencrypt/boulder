@@ -325,13 +325,28 @@ func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64
 			}
 			// Add a check-and-spend transaction for each per account per domain
 			// bucket.
-			txns = append(txns, newTransaction(perAccountLimit, perAccountPerDomainKey, perAccountPerDomainCost))
+			txn := newTransaction(perAccountLimit, perAccountPerDomainKey, perAccountPerDomainCost)
+			err = txn.validate()
+			if err != nil {
+				return nil, err
+			}
+			txns = append(txns, txn)
 
 			// Add a spend-only transaction for each per domain bucket.
-			txns = append(txns, newSpendOnlyTransaction(perDomainLimit, perDomainBucketKey, 1))
+			txn = newSpendOnlyTransaction(perDomainLimit, perDomainBucketKey, 1)
+			err = txn.validate()
+			if err != nil {
+				return nil, err
+			}
+			txns = append(txns, txn)
 		} else {
 			// Add a check-and-spend transaction for each per domain bucket.
-			txns = append(txns, newTransaction(perDomainLimit, perDomainBucketKey, 1))
+			txn := newTransaction(perDomainLimit, perDomainBucketKey, 1)
+			err = txn.validate()
+			if err != nil {
+				return nil, err
+			}
+			txns = append(txns, txn)
 		}
 	}
 	return txns, nil
