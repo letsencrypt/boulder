@@ -340,6 +340,7 @@ func main() {
 	pendingAuthorizationLifetime := time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
 	var limiter *ratelimits.Limiter
+	var txnBuilder *ratelimits.TransactionBuilder
 	var limiterRedis *bredis.Ring
 	if c.WFE.Limiter.Defaults != "" {
 		// Setup rate limiting.
@@ -347,8 +348,10 @@ func main() {
 		cmd.FailOnError(err, "Failed to create Redis ring")
 
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, stats)
-		limiter, err = ratelimits.NewLimiter(clk, source, c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, stats)
+		limiter, err = ratelimits.NewLimiter(clk, source, stats)
 		cmd.FailOnError(err, "Failed to create rate limiter")
+		txnBuilder, err = ratelimits.NewTransactionBuilder(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides)
+		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
 	}
 
 	var accountGetter wfe2.AccountGetter
@@ -380,6 +383,7 @@ func main() {
 		npKey,
 		accountGetter,
 		limiter,
+		txnBuilder,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
 

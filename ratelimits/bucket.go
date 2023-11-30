@@ -9,95 +9,84 @@ import (
 	"github.com/letsencrypt/boulder/core"
 )
 
-// bucketId should only be created using the new*bucketId functions. It is used
-// by the Limiter to look up the bucket and limit overrides for a specific
-// subscriber and limit.
-type bucketId struct {
-	// limitName is the name of the associated rate limit. It is used for
-	// looking up default limits.
-	limitName Name
+// ErrInvalidCost indicates that the cost specified was < 0.
+var ErrInvalidCost = fmt.Errorf("invalid cost, must be >= 0")
 
-	// bucketKey is the limit Name enum (e.g. "1") concatenated with the
-	// subscriber identifier specific to the associated limit Name type.
-	bucketKey string
-}
+// ErrInvalidCostOverLimit indicates that the cost specified was > limit.Burst.
+var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 
-// newIPAddressBucketId validates and returns a bucketId for limits that use the
-// 'enum:ipAddress' bucket key format.
-func newIPAddressBucketId(name Name, ip net.IP) (bucketId, error) { //nolint: unparam
+// newIPAddressBucketKey validates and returns a bucketKey for limits that use
+// the 'enum:ipAddress' bucket key format.
+func newIPAddressBucketKey(name Name, ip net.IP) (string, error) { //nolint: unparam
 	id := ip.String()
 	err := validateIdForName(name, id)
 	if err != nil {
-		return bucketId{}, err
+		return "", err
 	}
-	return bucketId{
-		limitName: name,
-		bucketKey: joinWithColon(name.EnumString(), id),
-	}, nil
+	return joinWithColon(name.EnumString(), id), nil
 }
 
-// newIPv6RangeCIDRBucketId validates and returns a bucketId for limits that use
-// the 'enum:ipv6RangeCIDR' bucket key format.
-func newIPv6RangeCIDRBucketId(name Name, ip net.IP) (bucketId, error) {
+// newIPv6RangeCIDRBucketKey validates and returns a bucketKey for limits that
+// use the 'enum:ipv6RangeCIDR' bucket key format.
+func newIPv6RangeCIDRBucketKey(name Name, ip net.IP) (string, error) {
 	if ip.To4() != nil {
-		return bucketId{}, fmt.Errorf("invalid IPv6 address, %q must be an IPv6 address", ip.String())
+		return "", fmt.Errorf("invalid IPv6 address, %q must be an IPv6 address", ip.String())
 	}
 	ipMask := net.CIDRMask(48, 128)
 	ipNet := &net.IPNet{IP: ip.Mask(ipMask), Mask: ipMask}
 	id := ipNet.String()
 	err := validateIdForName(name, id)
 	if err != nil {
-		return bucketId{}, err
+		return "", err
 	}
-	return bucketId{
-		limitName: name,
-		bucketKey: joinWithColon(name.EnumString(), id),
-	}, nil
+	return joinWithColon(name.EnumString(), id), nil
 }
 
-// newRegIdBucketId validates ands returns a bucketId for limits that use the
+// newRegIdBucketKey validates ands returns a bucketKey for limits that use the
 // 'enum:regId' bucket key format.
-func newRegIdBucketId(name Name, regId int64) (bucketId, error) {
+func newRegIdBucketKey(name Name, regId int64) (string, error) {
 	id := strconv.FormatInt(regId, 10)
 	err := validateIdForName(name, id)
 	if err != nil {
-		return bucketId{}, err
+		return "", err
 	}
-	return bucketId{
-		limitName: name,
-		bucketKey: joinWithColon(name.EnumString(), id),
-	}, nil
+	return joinWithColon(name.EnumString(), id), nil
 }
 
-// newDomainBucketId validates and returns a bucketId for limits that use the
+// newDomainBucketKey validates and returns a bucketKey for limits that use the
 // 'enum:domain' bucket key format.
-func newDomainBucketId(name Name, orderName string) (bucketId, error) {
+func newDomainBucketKey(name Name, orderName string) (string, error) {
 	err := validateIdForName(name, orderName)
 	if err != nil {
-		return bucketId{}, err
+		return "", err
 	}
-	return bucketId{
-		limitName: name,
-		bucketKey: joinWithColon(name.EnumString(), orderName),
-	}, nil
+	return joinWithColon(name.EnumString(), orderName), nil
 }
 
-// newFQDNSetBucketId validates and returns a bucketId for limits that use the
+// newRegIdDomainBucketKey validates and returns a bucketKey for limits that use
+// the 'enum:regId:domain' bucket key format.
+func newRegIdDomainBucketKey(name Name, regId int64, orderName string) (string, error) {
+	regIdStr := strconv.FormatInt(regId, 10)
+	err := validateIdForName(name, joinWithColon(regIdStr, orderName))
+	if err != nil {
+		return "", err
+	}
+	return joinWithColon(name.EnumString(), regIdStr, orderName), nil
+}
+
+// newFQDNSetBucketKey validates and returns a bucketKey for limits that use the
 // 'enum:fqdnSet' bucket key format.
-func newFQDNSetBucketId(name Name, orderNames []string) (bucketId, error) {
+func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) {
 	id := string(core.HashNames(orderNames))
 	err := validateIdForName(name, id)
 	if err != nil {
-		return bucketId{}, err
+		return "", err
 	}
-	return bucketId{
-		limitName: name,
-		bucketKey: joinWithColon(name.EnumString(), id),
-	}, nil
+	return joinWithColon(name.EnumString(), id), nil
 }
 
 // Transaction is used to represent a single rate limit Transaction. It contains
-// the bucketId identifying the limit and subscriber. A cost which MUST be
+// the bucketKey identifying the limit and subscriber. A cost which MUST be
 // greater than or equal to 0. Cost is variable to allow for limits such as
 // CertificatesPerDomainPerAccount, where the cost is the number of domain names
 // in the order. The check and spend fields are are not mutually exclusive, and
@@ -109,117 +98,204 @@ func newFQDNSetBucketId(name Name, orderNames []string) (bucketId, error) {
 //     bucket's capacity, but will never be spent/refunded.
 //   - spend-only: when only spend is true, spending is best-effort. Regardless
 //     of the bucket's capacity, the transaction will be considered "allowed".
+//   - allow-only: when neither check nor spend are true, the transaction will
+//     be considered "allowed" regardless of the bucket's capacity. This is
+//     useful for limits that are disabled.
 type Transaction struct {
-	bucketId
-	cost  int64
-	check bool
-	spend bool
+	bucketKey string
+	limit     limit
+	cost      int64
+	check     bool
+	spend     bool
 }
 
-func (t Transaction) checkOnly() bool {
-	return t.check && !t.spend
+func (txn Transaction) checkOnly() bool {
+	return txn.check && !txn.spend
 }
 
-func (t Transaction) spendOnly() bool {
-	return t.spend && !t.check
+func (txn Transaction) spendOnly() bool {
+	return txn.spend && !txn.check
 }
 
-func newTransaction(b bucketId, cost int64) Transaction {
+func (txn Transaction) allowOnly() bool {
+	return !txn.check && !txn.spend
+}
+
+func (txn Transaction) validate() error {
+	if txn.allowOnly() {
+		return nil
+	}
+	if txn.cost < 0 {
+		return ErrInvalidCost
+	}
+	if txn.cost > txn.limit.Burst {
+		return ErrInvalidCostOverLimit
+	}
+	return nil
+}
+
+func newTransaction(limit limit, bucketKey string, cost int64) Transaction {
 	return Transaction{
-		bucketId: b,
-		cost:     cost,
-		check:    true,
-		spend:    true,
+		bucketKey: bucketKey,
+		limit:     limit,
+		cost:      cost,
+		check:     true,
+		spend:     true,
 	}
 }
 
-func newCheckOnlyTransaction(b bucketId, cost int64) Transaction {
+func newCheckOnlyTransaction(limit limit, bucketKey string, cost int64) Transaction {
 	return Transaction{
-		bucketId: b,
-		cost:     cost,
-		check:    true,
+		bucketKey: bucketKey,
+		limit:     limit,
+		cost:      cost,
+		check:     true,
 	}
 }
 
-func newSpendOnlyTransaction(b bucketId, cost int64) Transaction {
+func newSpendOnlyTransaction(limit limit, bucketKey string, cost int64) Transaction {
 	return Transaction{
-		bucketId: b,
-		cost:     cost,
-		spend:    true,
+		bucketKey: bucketKey,
+		limit:     limit,
+		cost:      cost,
+		spend:     true,
 	}
+}
+
+func newAllowOnlyTransaction() Transaction {
+	// Zero values are sufficient.
+	return Transaction{}
+}
+
+// TransactionBuilder is used to build Transactions for various rate limits.
+// Each rate limit has a corresponding method that returns a Transaction for
+// that limit. Call NewTransactionBuilder to create a new *TransactionBuilder.
+type TransactionBuilder struct {
+	*limitRegistry
+}
+
+// NewTransactionBuilder returns a new *TransactionBuilder. The provided
+// defaults and overrides paths are expected to be paths to YAML files that
+// contain the default and override limits, respectively. Overrides is optional,
+// defaults is required.
+func NewTransactionBuilder(defaults, overrides string) (*TransactionBuilder, error) {
+	registry, err := newLimitRegistry(defaults, overrides)
+	if err != nil {
+		return nil, err
+	}
+	return &TransactionBuilder{registry}, nil
 }
 
 // RegistrationsPerIPAddressTransaction returns a Transaction for the
 // NewRegistrationsPerIPAddress limit for the provided IP address.
-func RegistrationsPerIPAddressTransaction(ip net.IP) (Transaction, error) {
-	bucketId, err := newIPAddressBucketId(NewRegistrationsPerIPAddress, ip)
+func (builder *TransactionBuilder) RegistrationsPerIPAddressTransaction(ip net.IP) (Transaction, error) {
+	bucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, ip)
 	if err != nil {
 		return Transaction{}, err
 	}
-	return newTransaction(bucketId, 1), nil
+	limit, err := builder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
+	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return newAllowOnlyTransaction(), nil
+		}
+		return Transaction{}, err
+	}
+	txn := newTransaction(limit, bucketKey, 1)
+	return txn, txn.validate()
 }
 
 // RegistrationsPerIPv6RangeTransaction returns a Transaction for the
 // NewRegistrationsPerIPv6Range limit for the /48 IPv6 range which contains the
 // provided IPv6 address.
-func RegistrationsPerIPv6RangeTransaction(ip net.IP) (Transaction, error) {
-	bucketId, err := newIPv6RangeCIDRBucketId(NewRegistrationsPerIPv6Range, ip)
+func (builder *TransactionBuilder) RegistrationsPerIPv6RangeTransaction(ip net.IP) (Transaction, error) {
+	bucketKey, err := newIPv6RangeCIDRBucketKey(NewRegistrationsPerIPv6Range, ip)
 	if err != nil {
 		return Transaction{}, err
 	}
-	return newTransaction(bucketId, 1), nil
+	limit, err := builder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
+	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return newAllowOnlyTransaction(), nil
+		}
+		return Transaction{}, err
+	}
+	txn := newTransaction(limit, bucketKey, 1)
+	return txn, txn.validate()
 }
 
 // OrdersPerAccountTransaction returns a Transaction for the NewOrdersPerAccount
 // limit for the provided ACME registration Id.
-func OrdersPerAccountTransaction(regId int64) (Transaction, error) {
-	bucketId, err := newRegIdBucketId(NewOrdersPerAccount, regId)
+func (builder *TransactionBuilder) OrdersPerAccountTransaction(regId int64) (Transaction, error) {
+	bucketKey, err := newRegIdBucketKey(NewOrdersPerAccount, regId)
 	if err != nil {
 		return Transaction{}, err
 	}
-	return newTransaction(bucketId, 1), nil
+	limit, err := builder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
+	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return newAllowOnlyTransaction(), nil
+		}
+		return Transaction{}, err
+	}
+	txn := newTransaction(limit, bucketKey, 1)
+	return txn, txn.validate()
 }
 
 // FailedAuthorizationsPerAccountCheckOnlyTransaction returns a check-only
 // Transaction for the provided ACME registration Id for the
 // FailedAuthorizationsPerAccount limit.
-func FailedAuthorizationsPerAccountCheckOnlyTransaction(regId int64) (Transaction, error) {
-	bucketId, err := newRegIdBucketId(FailedAuthorizationsPerAccount, regId)
+func (builder *TransactionBuilder) FailedAuthorizationsPerAccountCheckOnlyTransaction(regId int64) (Transaction, error) {
+	bucketKey, err := newRegIdBucketKey(FailedAuthorizationsPerAccount, regId)
 	if err != nil {
 		return Transaction{}, err
 	}
-	return newCheckOnlyTransaction(bucketId, 1), nil
+	limit, err := builder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
+	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return newAllowOnlyTransaction(), nil
+		}
+		return Transaction{}, err
+	}
+	txn := newCheckOnlyTransaction(limit, bucketKey, 1)
+	return txn, txn.validate()
 }
 
 // FailedAuthorizationsPerAccountTransaction returns a Transaction for the
 // FailedAuthorizationsPerAccount limit for the provided ACME registration Id.
-func FailedAuthorizationsPerAccountTransaction(regId int64) (Transaction, error) {
-	bucketId, err := newRegIdBucketId(FailedAuthorizationsPerAccount, regId)
+func (builder *TransactionBuilder) FailedAuthorizationsPerAccountTransaction(regId int64) (Transaction, error) {
+	bucketKey, err := newRegIdBucketKey(FailedAuthorizationsPerAccount, regId)
 	if err != nil {
 		return Transaction{}, err
 	}
-	return newTransaction(bucketId, 1), nil
+	limit, err := builder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
+	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return newAllowOnlyTransaction(), nil
+		}
+		return Transaction{}, err
+	}
+	txn := newTransaction(limit, bucketKey, 1)
+	return txn, txn.validate()
 }
 
 // CertificatesPerDomainTransactions returns a slice of Transactions for the for
 // the provided order domain names. An error is returned if any of the order
 // domain names are invalid. When a CertificatesPerDomainPerAccount override is
 // configured, two types of Transactions are returned:
-//   - CertificatesPerDomain Transaction(s), which will NOT be denied if the
-//     bucket lacks the capacity to satisfy the cost, and
-//   - a CertificatesPerDomainPerAccount Transaction, which will be denied if
-//     the bucket lacks the capacity to satisfy combined cost of each
-//     CertificatesPerDomain Transaction(s).
+//   - A spend-only Transaction for each per domain bucket. Spend-only transactions
+//     will not be denied if the bucket lacks the capacity to satisfy the cost.
+//   - A check-and-spend Transaction for each per account per domain bucket. Check-
+//     and-spend transactions will be denied if the bucket lacks the capacity to
+//     satisfy the cost.
 //
-// When a CertificatesPerDomainPerAccount override is NOT configured, only
-// CertificatesPerDomain Transactions, which will be denied if the bucket lacks
-// the required capacity, are returned.
-func CertificatesPerDomainTransactions(limiter *Limiter, regId int64, orderDomains []string) ([]Transaction, error) {
-	certsPerDomainPerAccountId, err := newRegIdBucketId(CertificatesPerDomainPerAccount, regId)
+// When a CertificatesPerDomainPerAccount override is not configured, a check-
+// and-spend Transaction is returned for each per domain bucket.
+func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64, orderDomains []string) ([]Transaction, error) {
+	perAccountLimitBucketKey, err := newRegIdBucketKey(CertificatesPerDomainPerAccount, regId)
 	if err != nil {
 		return nil, err
 	}
-	certsPerDomainPerAccountLimit, err := limiter.getLimit(CertificatesPerDomainPerAccount, certsPerDomainPerAccountId.bucketKey)
+	perAccountLimit, err := builder.getLimit(CertificatesPerDomainPerAccount, perAccountLimitBucketKey)
 	if err != nil {
 		if !errors.Is(err, errLimitDisabled) {
 			return nil, err
@@ -227,31 +303,54 @@ func CertificatesPerDomainTransactions(limiter *Limiter, regId int64, orderDomai
 	}
 
 	var txns []Transaction
-	var certsPerDomainPerAccountCost int64
+	var perAccountPerDomainCost int64
 	for _, name := range DomainsForRateLimiting(orderDomains) {
-		certsPerDomainId, err := newDomainBucketId(CertificatesPerDomain, name)
+		perDomainBucketKey, err := newDomainBucketKey(CertificatesPerDomain, name)
 		if err != nil {
 			return nil, err
 		}
-		certsPerDomainPerAccountCost += 1
-		if certsPerDomainPerAccountLimit.isOverride {
-			txns = append(txns, newSpendOnlyTransaction(certsPerDomainId, 1))
-		} else {
-			txns = append(txns, newTransaction(certsPerDomainId, 1))
+		perDomainLimit, err := builder.getLimit(CertificatesPerDomain, perDomainBucketKey)
+		if err != nil {
+			if !errors.Is(err, errLimitDisabled) {
+				return nil, err
+			}
 		}
-	}
-	if certsPerDomainPerAccountLimit.isOverride {
-		txns = append(txns, newTransaction(certsPerDomainPerAccountId, certsPerDomainPerAccountCost))
+		perAccountPerDomainCost += 1
+		if perAccountLimit.isOverride {
+			// An override is configured for the CertificatesPerDomainPerAccount
+			// limit.
+			perAccountPerDomainKey, err := newRegIdDomainBucketKey(CertificatesPerDomainPerAccount, regId, name)
+			if err != nil {
+				return nil, err
+			}
+			// Add a check-and-spend transaction for each per account per domain
+			// bucket.
+			txns = append(txns, newTransaction(perAccountLimit, perAccountPerDomainKey, perAccountPerDomainCost))
+
+			// Add a spend-only transaction for each per domain bucket.
+			txns = append(txns, newSpendOnlyTransaction(perDomainLimit, perDomainBucketKey, 1))
+		} else {
+			// Add a check-and-spend transaction for each per domain bucket.
+			txns = append(txns, newTransaction(perDomainLimit, perDomainBucketKey, 1))
+		}
 	}
 	return txns, nil
 }
 
 // CertificatesPerFQDNSetTransaction returns a Transaction for the provided
 // order domain names.
-func CertificatesPerFQDNSetTransaction(orderNames []string) (Transaction, error) {
-	bucketId, err := newFQDNSetBucketId(CertificatesPerFQDNSet, orderNames)
+func (builder *TransactionBuilder) CertificatesPerFQDNSetTransaction(orderNames []string) (Transaction, error) {
+	bucketKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, orderNames)
 	if err != nil {
 		return Transaction{}, err
 	}
-	return newTransaction(bucketId, 1), nil
+	limit, err := builder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
+	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return newAllowOnlyTransaction(), nil
+		}
+		return Transaction{}, err
+	}
+	txn := newTransaction(limit, bucketKey, 1)
+	return txn, txn.validate()
 }
