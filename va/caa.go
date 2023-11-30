@@ -118,8 +118,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	*/
 	//va.log.AuditObject("Validation result", logEvent)
 
-	//return &vapb.IsCAAValidResponse{}, nil
-	fmt.Printf("PHIL IsCAAValid prob: %v\n", prob)
+	//fmt.Printf("PHIL IsCAAValid prob: %v\n", prob)
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
@@ -149,7 +148,7 @@ func (va *ValidationAuthorityImpl) processRemoteCAARecheckResultsOuter(domain st
 		action: "CAA rechecking",
 	}
 	probs, isOk := va.processRemoteResultsInner(domain, acctID, challengeType, primaryResult, remoteResultsChan, metadata)
-	fmt.Printf("PHIL IsCAAValid probs: %v\n", probs)
+	//fmt.Printf("PHIL IsCAAValid probs: %v\n", probs)
 
 	return probs
 }

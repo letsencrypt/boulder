@@ -537,7 +537,7 @@ func (va *ValidationAuthorityImpl) processRemoteValidationResultsOuter(domain st
 		action: "validation",
 	}
 	probs, isOk := va.processRemoteResultsInner(domain, acctID, challengeType, primaryResult, remoteResultsChan, metadata)
-	fmt.Printf("PHIL PerformValidation probs: %v\n", probs)
+	//fmt.Printf("PHIL PerformValidation probs: %v\n", probs)
 
 	return probs
 }
@@ -596,7 +596,7 @@ func (va *ValidationAuthorityImpl) processRemoteResultsInner(
 		// success or failure threshold is met.
 		if !features.Enabled(features.MultiVAFullResults) {
 			if good >= required {
-				return nil, false
+				return nil, true
 			} else if bad > va.maxRemoteFailures {
 				modifiedProblem := *result.Problem
 				modifiedProblem.Detail = "During secondary " + metadata.action + ": " + firstProb.Detail
@@ -807,6 +807,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	}).Observe(validationLatency.Seconds())
 
 	va.log.AuditObject("Validation result", logEvent)
-	fmt.Printf("PHIL PerformValidation prob: %v\n", prob)
+	//fmt.Printf("PHIL PerformValidation prob: %v\n", prob)
 	return bgrpc.ValidationResultToPB(records, prob)
 }
