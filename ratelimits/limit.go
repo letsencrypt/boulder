@@ -198,9 +198,9 @@ func newLimitRegistry(defaults, overrides string) (*limitRegistry, error) {
 }
 
 // getLimit returns the limit for the specified by name and bucketKey, name is
-// required, bucketKey is optional. If bucketkey is left unspecified, the
-// default limit for the limit specified by name is returned. If no default
-// limit exists for the specified name, errLimitDisabled is returned.
+// required, bucketKey is optional. If bucketkey is empty, the default for the
+// limit specified by name is returned. If no default limit exists for the
+// specified name, errLimitDisabled is returned.
 func (l *limitRegistry) getLimit(name Name, bucketKey string) (limit, error) {
 	if !name.isValid() {
 		// This should never happen. Callers should only be specifying the limit

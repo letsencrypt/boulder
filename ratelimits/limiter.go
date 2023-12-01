@@ -152,7 +152,7 @@ func (l *Limiter) Spend(ctx context.Context, txn Transaction) (*Decision, error)
 	}
 
 	if tat == d.newTAT || txn.checkOnly() {
-		// No-op.
+		// Don't update storage
 		return d, nil
 	}
 
@@ -254,10 +254,9 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 			newTATs[txn.bucketKey] = d.newTAT
 		}
 
-		if txn.spendOnly() {
-			d = allowedDecision
+		if !txn.spendOnly() {
+			batchDecision.merge(d)
 		}
-		batchDecision.merge(d)
 	}
 
 	if batchDecision.Allowed {
