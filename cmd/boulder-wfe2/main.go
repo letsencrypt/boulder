@@ -407,6 +407,12 @@ func main() {
 	logger.Infof("Server running, listening on %s....", c.WFE.ListenAddress)
 	handler := wfe.Handler(stats, c.OpenTelemetryHTTPConfig.Options()...)
 
+	if c.WFE.ListenAddress == "" {
+		cmd.Fail("HTTP listen address is not configured")
+	}
+
+	logger.Infof("HTTP server listening on %s", c.WFE.ListenAddress)
+
 	srv := http.Server{
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 120 * time.Second,
@@ -433,6 +439,7 @@ func main() {
 	}
 	if tlsSrv.Addr != "" {
 		go func() {
+			logger.Infof("TLS server listening on %s", tlsSrv.Addr)
 			err := tlsSrv.ListenAndServeTLS(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
 			if err != nil && err != http.ErrServerClosed {
 				cmd.FailOnError(err, "Running TLS server")
