@@ -10,7 +10,6 @@
 		],
 		"shutdownStopTimeout": "10s",
 		"subscriberAgreementURL": "https://boulder.service.consul:4431/terms/v7",
-		"debugAddr": ":8013",
 		"directoryCAAIdentity": "happy-hacker-ca.invalid",
 		"directoryWebsite": "https://github.com/letsencrypt/boulder",
 		"legacyKeyIDPrefix": "http://boulder.service.consul:4000/reg/",

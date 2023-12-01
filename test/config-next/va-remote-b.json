@@ -1,7 +1,6 @@
 {
 	"va": {
 		"userAgent": "boulder-remote-b",
-		"debugAddr": ":8012",
 		"dnsTries": 3,
 		"dnsProvider": {
 			"dnsAuthority": "consul.service.consul",
@@ -20,7 +19,6 @@
 		},
 		"grpc": {
 			"maxConnectionAge": "30s",
-			"address": ":9098",
 			"services": {
 				"va.VA": {
 					"clientNames": [

@@ -6,7 +6,6 @@
 		"endpoint": "bjaeger:4317",
 		"sampleratio": 1
 	},
-	"debugAddr": ":8016",
 	"files": [
 		"/var/log/akamai-purger.log",
 		"/var/log/bad-key-revoker.log",

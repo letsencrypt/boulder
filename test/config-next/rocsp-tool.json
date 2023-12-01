@@ -1,6 +1,5 @@
 {
 	"rocspTool": {
-		"debugAddr": ":9101",
 		"redis": {
 			"username": "rocsp-tool",
 			"passwordFile": "test/secrets/rocsp_tool_password",

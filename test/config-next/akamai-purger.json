@@ -1,6 +1,5 @@
 {
 	"akamaiPurger": {
-		"debugAddr": ":9666",
 		"purgeRetries": 10,
 		"purgeRetryBackoff": "50ms",
 		"throughput": {

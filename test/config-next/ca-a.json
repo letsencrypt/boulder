@@ -1,6 +1,5 @@
 {
 	"ca": {
-		"debugAddr": ":8001",
 		"tls": {
 			"caCertFile": "test/grpc-creds/minica.pem",
 			"certFile": "test/grpc-creds/ca.boulder/cert.pem",
@@ -9,7 +8,6 @@
 		"hostnamePolicyFile": "test/hostname-policy.yaml",
 		"grpcCA": {
 			"maxConnectionAge": "30s",
-			"address": ":9093",
 			"services": {
 				"ca.CertificateAuthority": {
 					"clientNames": [
