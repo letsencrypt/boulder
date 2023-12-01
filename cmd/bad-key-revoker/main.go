@@ -391,7 +391,7 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 type Config struct {
 	BadKeyRevoker struct {
 		DB        cmd.DBConfig
-		DebugAddr string `validate:"hostname_port"`
+		DebugAddr string `validate:"omitempty,hostname_port"`
 
 		TLS       cmd.TLSConfig
 		RAService *cmd.GRPCClientConfig

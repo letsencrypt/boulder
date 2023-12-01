@@ -25,7 +25,7 @@ import (
 
 type Config struct {
 	ROCSPTool struct {
-		DebugAddr string `validate:"required,hostname_port"`
+		DebugAddr string `validate:"omitempty,hostname_port"`
 		Redis     rocsp_config.RedisConfig
 
 		// If using load-from-db, this provides credentials to connect to the DB

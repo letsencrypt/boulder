@@ -33,7 +33,7 @@ import (
 
 type Config struct {
 	WFE struct {
-		DebugAddr string `validate:"required,hostname_port"`
+		DebugAddr string `validate:"omitempty,hostname_port"`
 
 		// ListenAddress is the address:port on which to listen for incoming
 		// HTTP requests. Defaults to ":80".

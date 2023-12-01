@@ -644,7 +644,7 @@ func (ds durationSlice) Swap(a, b int) {
 
 type Config struct {
 	Mailer struct {
-		DebugAddr string `validate:"required,hostname_port"`
+		DebugAddr string `validate:"omitempty,hostname_port"`
 		DB        cmd.DBConfig
 		cmd.SMTPConfig
 

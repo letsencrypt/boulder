@@ -32,7 +32,7 @@ import (
 
 type Config struct {
 	OCSPResponder struct {
-		DebugAddr string       `validate:"hostname_port"`
+		DebugAddr string       `validate:"omitempty,hostname_port"`
 		DB        cmd.DBConfig `validate:"required_without_all=Source SAService,structonly"`
 
 		// Source indicates the source of pre-signed OCSP responses to be used. It
