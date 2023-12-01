@@ -275,6 +275,7 @@ func (ew errorWriter) Write(p []byte) (n int, err error) {
 
 func main() {
 	listenAddr := flag.String("addr", "", "HTTP listen address override")
+	tlsAddr := flag.String("tls-addr", "", "HTTPS listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -292,6 +293,9 @@ func main() {
 
 	if *listenAddr != "" {
 		c.WFE.ListenAddress = *listenAddr
+	}
+	if *tlsAddr != "" {
+		c.WFE.TLSListenAddress = *tlsAddr
 	}
 	if *debugAddr != "" {
 		c.WFE.DebugAddr = *debugAddr
