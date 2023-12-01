@@ -257,7 +257,7 @@ func main() {
 	if os.Args[1] == "manual" {
 		manualMode = true
 		_ = manualFlags.Parse(os.Args[2:])
-		if *configFile == "" {
+		if *manualConfigFile == "" {
 			manualFlags.Usage()
 			os.Exit(1)
 		}
