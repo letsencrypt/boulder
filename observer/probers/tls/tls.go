@@ -1,6 +1,7 @@
 package probers
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/letsencrypt/boulder/observer/obsdialer"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
@@ -123,14 +125,22 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 			return err
 		},
 	}
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.hostname+":443", config)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	tlsDialer := tls.Dialer{
+		NetDialer: &obsdialer.Dialer,
+		Config:    config,
+	}
+	conn, err := tlsDialer.DialContext(ctx, "tcp", p.hostname+":443")
 	if err != nil {
 		p.exportMetrics(nil, internalError)
 		return false
 	}
-
 	defer conn.Close()
-	peers := conn.ConnectionState().PeerCertificates
+
+	// tls.Dialer.DialContext is documented to always return *tls.Conn
+	tlsConn := conn.(*tls.Conn)
+	peers := tlsConn.ConnectionState().PeerCertificates
 	if time.Until(peers[0].NotAfter) > 0 {
 		p.exportMetrics(peers[0], responseDidNotMatch)
 		return false

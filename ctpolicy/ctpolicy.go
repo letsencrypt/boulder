@@ -138,7 +138,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 			LogURL:       url,
 			LogPublicKey: key,
 			Der:          cert,
-			Precert:      true,
+			Kind:         pubpb.SubmissionType_sct,
 		})
 		if err != nil {
 			return nil, url, fmt.Errorf("ct submission to %q (%q) failed: %w", g, url, err)
@@ -198,9 +198,9 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 // submitAllBestEffort submits the given certificate or precertificate to every
 // log ("informational" for precerts, "final" for certs) configured in the policy.
 // It neither waits for these submission to complete, nor tracks their success.
-func (ctp *CTPolicy) submitAllBestEffort(blob core.CertDER, isPrecert bool, expiry time.Time) {
+func (ctp *CTPolicy) submitAllBestEffort(blob core.CertDER, kind pubpb.SubmissionType, expiry time.Time) {
 	logs := ctp.finalLogs
-	if isPrecert {
+	if kind == pubpb.SubmissionType_info {
 		logs = ctp.infoLogs
 	}
 
@@ -217,7 +217,7 @@ func (ctp *CTPolicy) submitAllBestEffort(blob core.CertDER, isPrecert bool, expi
 						LogURL:       log.Url,
 						LogPublicKey: log.Key,
 						Der:          blob,
-						Precert:      isPrecert,
+						Kind:         kind,
 					},
 				)
 				if err != nil {
@@ -232,11 +232,11 @@ func (ctp *CTPolicy) submitAllBestEffort(blob core.CertDER, isPrecert bool, expi
 // submitPrecertInformational submits precertificates to any configured
 // "informational" logs, but does not care about success or returned SCTs.
 func (ctp *CTPolicy) submitPrecertInformational(cert core.CertDER, expiration time.Time) {
-	ctp.submitAllBestEffort(cert, true, expiration)
+	ctp.submitAllBestEffort(cert, pubpb.SubmissionType_info, expiration)
 }
 
 // SubmitFinalCert submits finalized certificates created from precertificates
 // to any configured "final" logs, but does not care about success.
 func (ctp *CTPolicy) SubmitFinalCert(cert core.CertDER, expiration time.Time) {
-	ctp.submitAllBestEffort(cert, false, expiration)
+	ctp.submitAllBestEffort(cert, pubpb.SubmissionType_final, expiration)
 }

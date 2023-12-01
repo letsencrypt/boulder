@@ -307,6 +307,17 @@ ALTER TABLE people ADD isWizard BOOLEAN SET DEFAULT false;
 ALTER TABLE people DROP isWizard BOOLEAN SET DEFAULT false;
 ```
 
+# Expressing "optional" Timestamps
+Timestamps in protocol buffers must always be expressed as
+[timestamppb.Timestamp](https://pkg.go.dev/google.golang.org/protobuf/types/known/timestamppb).
+Timestamps must never contain their zero value, in the sense of
+`timestamp.AsTime().IsZero()`. When a timestamp field is optional, absence must
+be expressed through the absence of the field, rather than present with a zero
+value. The `core.IsAnyNilOrZero` function can check these cases.
+
+Senders must check that timestamps are non-zero before sending them. Receivers
+must check that timestamps are non-zero before accepting them.
+
 # Release Process
 
 The current Boulder release process is described in

@@ -409,13 +409,11 @@ func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, p
 	rawCert, err := x509.CreateCertificate(rand.Reader, template, c.issuer.Certificate, &pubKey, c.signer)
 	test.AssertNotError(t, err, "Failed to generate test cert")
 
-	now := time.Now()
 	_, err = c.ssa.AddPrecertificate(
 		context.Background(), &sapb.AddCertificateRequest{
 			Der:          rawCert,
 			RegID:        regId,
-			IssuedNS:     now.UnixNano(),
-			Issued:       timestamppb.New(now),
+			Issued:       timestamppb.New(time.Now()),
 			IssuerNameID: 1,
 		},
 	)

@@ -191,7 +191,6 @@ type MockRegistrationAuthority struct {
 func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	in.Id = 1
 	created := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
-	in.CreatedAtNS = created.UnixNano()
 	in.CreatedAt = timestamppb.New(created)
 	return in, nil
 }
@@ -244,9 +243,7 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewO
 	return &corepb.Order{
 		Id:               1,
 		RegistrationID:   in.RegistrationID,
-		CreatedNS:        created.UnixNano(),
 		Created:          timestamppb.New(created),
-		ExpiresNS:        expires.UnixNano(),
 		Expires:          timestamppb.New(expires),
 		Names:            in.Names,
 		Status:           string(core.StatusPending),
@@ -1846,9 +1843,7 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial, _ 
 	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(sa.cert.SerialNumber),
-		IssuedNS:       sa.cert.NotBefore.UnixNano(),
 		Issued:         timestamppb.New(sa.cert.NotBefore),
-		ExpiresNS:      sa.cert.NotAfter.UnixNano(),
 		Expires:        timestamppb.New(sa.cert.NotAfter),
 		Der:            sa.cert.Raw,
 	}, nil
@@ -1883,8 +1878,7 @@ func newMockSAWithIncident(sa sapb.StorageAuthorityReadOnlyClient, serial []stri
 					Id:          0,
 					SerialTable: "incident_foo",
 					Url:         agreementURL,
-					RenewByNS:   0,
-					RenewBy:     timestamppb.New(time.Time{}),
+					RenewBy:     nil,
 					Enabled:     true,
 				},
 			},
@@ -2144,13 +2138,10 @@ func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial,
 		return nil, fmt.Errorf("failed to parse test cert: %w", err)
 	}
 
-	issued := sa.clk.Now().Add(-1 * time.Second)
-
 	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(cert.SerialNumber),
-		IssuedNS:       issued.UnixNano(),
-		Issued:         timestamppb.New(issued),
+		Issued:         timestamppb.New(sa.clk.Now().Add(-1 * time.Second)),
 		Der:            cert.Raw,
 	}, nil
 }
@@ -3390,7 +3381,6 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 		RegistrationID:   1,
 		Names:            []string{"a"},
 		Status:           string(core.StatusPending),
-		ExpiresNS:        expires.UnixNano(),
 		Expires:          timestamppb.New(expires),
 		V2Authorizations: []int64{1, 2},
 	})

@@ -301,12 +301,9 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		return nil, err
 	}
 
-	// Converting the int64 zero-value to a unix timestamp does not produce
-	// the time.Time zero-value (the former is 1970; the latter is year 0),
-	// so we have to do this check.
 	var createdAt time.Time
-	if reg.CreatedAtNS != 0 {
-		createdAt = time.Unix(0, reg.CreatedAtNS)
+	if !core.IsAnyNilOrZero(reg.CreatedAt) {
+		createdAt = reg.CreatedAt.AsTime()
 	}
 
 	return &regModel{
@@ -353,7 +350,6 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 		ContactsPresent: contactsPresent,
 		Agreement:       reg.Agreement,
 		InitialIP:       ipBytes,
-		CreatedAtNS:     reg.CreatedAt.UTC().UnixNano(),
 		CreatedAt:       timestamppb.New(reg.CreatedAt.UTC()),
 		Status:          reg.Status,
 	}, nil
@@ -401,8 +397,8 @@ func orderToModel(order *corepb.Order) (*orderModel, error) {
 	om := &orderModel{
 		ID:                order.Id,
 		RegistrationID:    order.RegistrationID,
-		Expires:           time.Unix(0, order.ExpiresNS),
-		Created:           time.Unix(0, order.CreatedNS),
+		Expires:           order.Expires.AsTime(),
+		Created:           order.Created.AsTime(),
 		BeganProcessing:   order.BeganProcessing,
 		CertificateSerial: order.CertificateSerial,
 	}
@@ -424,9 +420,7 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	order := &corepb.Order{
 		Id:                om.ID,
 		RegistrationID:    om.RegistrationID,
-		ExpiresNS:         om.Expires.UnixNano(),
 		Expires:           timestamppb.New(om.Expires),
-		CreatedNS:         om.Created.UnixNano(),
 		Created:           timestamppb.New(om.Created),
 		CertificateSerial: om.CertificateSerial,
 		BeganProcessing:   om.BeganProcessing,
@@ -638,7 +632,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 		IdentifierValue: authz.Identifier,
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.AcmeStatus(authz.Status)],
-		Expires:         time.Unix(0, authz.ExpiresNS).UTC(),
+		Expires:         authz.Expires.AsTime(),
 	}
 	if authz.Id != "" {
 		// The v1 internal authorization objects use a string for the ID, the v2
@@ -676,8 +670,8 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 
 			// If validated Unix timestamp is zero then keep the core.Challenge Validated object nil.
 			var validated *time.Time
-			if chall.ValidatedNS != 0 {
-				val := time.Unix(0, chall.ValidatedNS).UTC()
+			if !core.IsAnyNilOrZero(chall.Validated) {
+				val := chall.Validated.AsTime()
 				validated = &val
 			}
 			am.AttemptedAt = validated
@@ -781,7 +775,6 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 		Status:         string(uintToStatus[am.Status]),
 		Identifier:     am.IdentifierValue,
 		RegistrationID: am.RegistrationID,
-		ExpiresNS:      am.Expires.UTC().UnixNano(),
 		Expires:        timestamppb.New(am.Expires),
 	}
 	// Populate authorization challenge array. We do this by iterating through
@@ -811,14 +804,11 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 						return nil, err
 					}
 					// Get the attemptedAt time and assign to the challenge validated time.
-					var validatedInt int64 = 0
-					validatedTS := timestamppb.New(time.Time{})
+					var validated *timestamppb.Timestamp
 					if am.AttemptedAt != nil {
-						validatedInt = am.AttemptedAt.UTC().UnixNano()
-						validatedTS = timestamppb.New(*am.AttemptedAt)
+						validated = timestamppb.New(*am.AttemptedAt)
 					}
-					challenge.ValidatedNS = validatedInt
-					challenge.Validated = validatedTS
+					challenge.Validated = validated
 					pb.Challenges = append(pb.Challenges, challenge)
 				}
 			} else {
@@ -857,7 +847,6 @@ func incidentModelToPB(i incidentModel) sapb.Incident {
 		Id:          i.ID,
 		SerialTable: i.SerialTable,
 		Url:         i.URL,
-		RenewByNS:   i.RenewBy.UnixNano(),
 		RenewBy:     timestamppb.New(i.RenewBy),
 		Enabled:     i.Enabled,
 	}
@@ -1015,8 +1004,7 @@ func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now
 	// in ra.NewOrder), and expired authorizations may be purged from the DB.
 	// Because of this purging fetching the authz's for an expired order may
 	// return fewer authz objects than expected, triggering a 500 error response.
-	orderExpiry := time.Unix(0, order.ExpiresNS)
-	if orderExpiry.Before(now) {
+	if order.Expires.AsTime().Before(now) {
 		return string(core.StatusInvalid), nil
 	}
 

@@ -49,8 +49,6 @@ type mockInvalidPlusValidAuthzAuthority struct {
 }
 
 func (sa *mockInvalidPlusValidAuthzAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
-	date := time.Date(2101, 12, 3, 0, 0, 0, 0, time.UTC)
-
 	return &sapb.Authorizations{
 		Authz: []*sapb.Authorizations_MapElement{
 			{
@@ -59,8 +57,7 @@ func (sa *mockInvalidPlusValidAuthzAuthority) GetAuthorizations2(ctx context.Con
 					Status:         "valid",
 					Identifier:     sa.domainWithFailures,
 					RegistrationID: 1234,
-					ExpiresNS:      date.Unix(),
-					Expires:        timestamppb.New(date),
+					Expires:        timestamppb.New(time.Date(2101, 12, 3, 0, 0, 0, 0, time.UTC)),
 				},
 			},
 		},

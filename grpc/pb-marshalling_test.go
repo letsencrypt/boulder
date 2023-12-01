@@ -296,13 +296,11 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                1,
 				RegistrationID:    1,
-				ExpiresNS:         expires.UnixNano(),
 				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				Names:             []string{"example.com"},
 				BeganProcessing:   false,
-				CreatedNS:         created.UnixNano(),
 				Created:           timestamppb.New(created),
 			},
 			ExpectedValid: true,
@@ -312,12 +310,10 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:               1,
 				RegistrationID:   1,
-				ExpiresNS:        expires.UnixNano(),
 				Expires:          timestamppb.New(expires),
 				V2Authorizations: []int64{},
 				Names:            []string{"example.com"},
 				BeganProcessing:  false,
-				CreatedNS:        created.UnixNano(),
 				Created:          timestamppb.New(created),
 			},
 			ExpectedValid: true,
@@ -331,7 +327,6 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                0,
 				RegistrationID:    1,
-				ExpiresNS:         expires.UnixNano(),
 				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
@@ -344,7 +339,6 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                1,
 				RegistrationID:    0,
-				ExpiresNS:         expires.UnixNano(),
 				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
@@ -357,7 +351,6 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                1,
 				RegistrationID:    1,
-				ExpiresNS:         0,
 				Expires:           nil,
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
@@ -370,7 +363,6 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                1,
 				RegistrationID:    1,
-				ExpiresNS:         expires.UnixNano(),
 				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
