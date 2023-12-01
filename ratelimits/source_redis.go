@@ -68,21 +68,6 @@ func resultForError(err error) string {
 	return "failed"
 }
 
-// Set stores the TAT at the specified bucketKey. It returns an error if the
-// operation failed and nil otherwise.
-func (r *RedisSource) Set(ctx context.Context, bucketKey string, tat time.Time) error {
-	start := r.clk.Now()
-
-	err := r.client.Set(ctx, bucketKey, tat.UnixNano(), 0).Err()
-	if err != nil {
-		r.latency.With(prometheus.Labels{"call": "set", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
-		return err
-	}
-
-	r.latency.With(prometheus.Labels{"call": "set", "result": "success"}).Observe(time.Since(start).Seconds())
-	return nil
-}
-
 // BatchSet stores TATs at the specified bucketKeys using a pipelined Redis
 // Transaction in order to reduce the number of round-trips to each Redis shard.
 // An error is returned if the operation failed and nil otherwise.

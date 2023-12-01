@@ -12,13 +12,6 @@ var ErrBucketNotFound = fmt.Errorf("bucket not found")
 
 // source is an interface for creating and modifying TATs.
 type source interface {
-	// Set stores the TAT at the specified bucketKey (formatted as 'name:id').
-	// Implementations MUST ensure non-blocking operations by either:
-	//   a) applying a deadline or timeout to the context WITHIN the method, or
-	//   b) guaranteeing the operation will not block indefinitely (e.g. via
-	//    the underlying storage client implementation).
-	Set(ctx context.Context, bucketKey string, tat time.Time) error
-
 	// BatchSet stores the TATs at the specified bucketKeys (formatted as
 	// 'name:id'). Implementations MUST ensure non-blocking operations by
 	// either:
@@ -61,13 +54,6 @@ type inmem struct {
 
 func newInmem() *inmem {
 	return &inmem{m: make(map[string]time.Time)}
-}
-
-func (in *inmem) Set(_ context.Context, bucketKey string, tat time.Time) error {
-	in.Lock()
-	defer in.Unlock()
-	in.m[bucketKey] = tat
-	return nil
 }
 
 func (in *inmem) BatchSet(_ context.Context, bucketKeys map[string]time.Time) error {

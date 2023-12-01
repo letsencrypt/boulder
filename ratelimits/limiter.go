@@ -113,55 +113,7 @@ func (l *Limiter) Check(ctx context.Context, txn Transaction) (*Decision, error)
 // state is persisted to the underlying datastore, if applicable, before
 // returning.
 func (l *Limiter) Spend(ctx context.Context, txn Transaction) (*Decision, error) {
-	if txn.allowOnly() {
-		return allowedDecision, nil
-	}
-
-	start := l.clk.Now()
-	status := Denied
-	defer func() {
-		l.spendLatency.WithLabelValues(txn.limit.name.String(), status).Observe(l.clk.Since(start).Seconds())
-	}()
-
-	// Remove cancellation from the request context so that transactions are not
-	// interrupted by a client disconnect.
-	ctx = context.WithoutCancel(ctx)
-	tat, err := l.source.Get(ctx, txn.bucketKey)
-	if err != nil {
-		if !errors.Is(err, ErrBucketNotFound) {
-			return nil, err
-
-		}
-		// First request from this client.
-		tat = l.clk.Now()
-	}
-
-	d := maybeSpend(l.clk, txn.limit, tat, txn.cost)
-
-	if txn.limit.isOverride {
-		// Calculate the current utilization of the override limit.
-		utilization := float64(txn.limit.Burst-d.Remaining) / float64(txn.limit.Burst)
-		l.overrideUsageGauge.WithLabelValues(txn.limit.name.String(), txn.bucketKey).Set(utilization)
-	}
-
-	if !d.Allowed {
-		if txn.spendOnly() {
-			return allowedDecision, nil
-		}
-		return d, nil
-	}
-
-	if tat == d.newTAT || txn.checkOnly() {
-		// Don't update storage
-		return d, nil
-	}
-
-	err = l.source.Set(ctx, txn.bucketKey, d.newTAT)
-	if err != nil {
-		return nil, err
-	}
-	status = Allowed
-	return d, nil
+	return l.BatchSpend(ctx, []Transaction{txn})
 }
 
 func prepareBatch(txns []Transaction) ([]Transaction, []string, error) {
@@ -284,26 +236,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 // requests remaining, a refund request of 7 will result in the bucket reaching
 // its maximum capacity of 10, not 12.
 func (l *Limiter) Refund(ctx context.Context, txn Transaction) (*Decision, error) {
-	if txn.allowOnly() {
-		return allowedDecision, nil
-	}
-	// Remove cancellation from the request context so that transactions are not
-	// interrupted by a client disconnect.
-	ctx = context.WithoutCancel(ctx)
-	tat, err := l.source.Get(ctx, txn.bucketKey)
-	if err != nil {
-		return nil, err
-	}
-	d := maybeRefund(l.clk, txn.limit, tat, txn.cost)
-	if tat == d.newTAT || txn.checkOnly() {
-		return maybeRefund(l.clk, txn.limit, tat, 0), nil
-	}
-	if d.Allowed {
-		// Persist the new bucket state.
-		return d, l.source.Set(ctx, txn.bucketKey, d.newTAT)
-	}
-	// Bucket is already full.
-	return d, nil
+	return l.BatchRefund(ctx, []Transaction{txn})
 }
 
 // BatchRefund attempts to refund all or some of the costs to the provided
@@ -344,12 +277,13 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 			continue
 		}
 
-		d := maybeRefund(l.clk, txn.limit, tat, txn.cost)
-		if tat == d.newTAT || txn.checkOnly() {
-			d = maybeRefund(l.clk, txn.limit, tat, 0)
+		var cost int64
+		if !txn.checkOnly() {
+			cost = txn.cost
 		}
+		d := maybeRefund(l.clk, txn.limit, tat, cost)
 		batchDecision.merge(d)
-		if d.Allowed && (tat != d.newTAT) {
+		if d.Allowed && tat != d.newTAT {
 			// New bucket state should be persisted.
 			newTATs[txn.bucketKey] = d.newTAT
 		}
