@@ -20,7 +20,7 @@ import (
 
 type Config struct {
 	CRLUpdater struct {
-		DebugAddr string
+		DebugAddr string `validate:"omitempty,hostname_port"`
 
 		// TLS client certificate, private key, and trusted root bundle.
 		TLS cmd.TLSConfig
