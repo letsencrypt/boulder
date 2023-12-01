@@ -432,6 +432,7 @@ type Config struct {
 }
 
 func main() {
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configPath := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 
@@ -442,6 +443,10 @@ func main() {
 	var config Config
 	err := cmd.ReadConfigFile(*configPath, &config)
 	cmd.FailOnError(err, "Failed reading config file")
+
+	if *debugAddr != "" {
+		config.BadKeyRevoker.DebugAddr = *debugAddr
+	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
 	defer oTelShutdown(context.Background())

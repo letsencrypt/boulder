@@ -274,6 +274,8 @@ func (ew errorWriter) Write(p []byte) (n int, err error) {
 }
 
 func main() {
+	listenAddr := flag.String("addr", "", "HTTP listen address override")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -287,6 +289,13 @@ func main() {
 
 	err = features.Set(c.WFE.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	if *listenAddr != "" {
+		c.WFE.ListenAddress = *listenAddr
+	}
+	if *debugAddr != "" {
+		c.WFE.DebugAddr = *debugAddr
+	}
 
 	certChains := map[issuance.IssuerNameID][][]byte{}
 	issuerCerts := map[issuance.IssuerNameID]*issuance.Certificate{}
