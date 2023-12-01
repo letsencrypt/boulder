@@ -77,6 +77,7 @@ func main() {
 var startFromID *int64
 
 func main2() error {
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	startFromID = flag.Int64("start-from-id", 0, "For load-from-db, the first ID in the certificateStatus table to scan")
 	flag.Usage = helpExit
@@ -89,6 +90,10 @@ func main2() error {
 	err := cmd.ReadConfigFile(*configFile, &conf)
 	if err != nil {
 		return fmt.Errorf("reading JSON config file: %w", err)
+	}
+
+	if *debugAddr != "" {
+		conf.ROCSPTool.DebugAddr = *debugAddr
 	}
 
 	_, logger, oTelShutdown := cmd.StatsAndLogging(conf.Syslog, conf.OpenTelemetry, conf.ROCSPTool.DebugAddr)
