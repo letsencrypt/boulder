@@ -86,11 +86,15 @@ const (
 	// compliant truncated SHA256 Subject Key Identifier in end-entity
 	// certificates.
 	SHA256SubjectKeyIdentifier
+
+	// DOH enables DNS-over-HTTPS queries for validation
+	DOH
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
 	unused:                            false,
+	DOH:                               false,
 	CAAValidationMethods:              false,
 	CAAAccountURI:                     false,
 	EnforceMultiVA:                    false,

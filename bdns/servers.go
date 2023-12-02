@@ -109,6 +109,8 @@ type dynamicProvider struct {
 	// service is the service name to look up SRV records for within the domain.
 	// If this field is left unspecified 'dns' will be used as the service name.
 	service string
+	// proto is the IP protocol (tcp or udp) to look up SRV records for.
+	proto string
 	// domain is the name to look up SRV records within.
 	domain string
 	// A map of IP addresses (results of A record lookups for SRV Targets) to
@@ -174,7 +176,9 @@ var _ ServerProvider = &dynamicProvider{}
 // at refresh intervals and uses the resulting IP/port combos to populate the
 // list returned by Addrs. The update process ignores the Priority and Weight
 // attributes of the SRV records.
-func StartDynamicProvider(c *cmd.DNSProvider, refresh time.Duration) (*dynamicProvider, error) {
+//
+// `proto` is the IP protocol (tcp or udp) to look up SRV records for.
+func StartDynamicProvider(c *cmd.DNSProvider, refresh time.Duration, proto string) (*dynamicProvider, error) {
 	if c.SRVLookup.Domain == "" {
 		return nil, fmt.Errorf("'domain' cannot be empty")
 	}
@@ -200,6 +204,7 @@ func StartDynamicProvider(c *cmd.DNSProvider, refresh time.Duration) (*dynamicPr
 	dp := dynamicProvider{
 		dnsAuthority: dnsAuthority,
 		service:      service,
+		proto:        proto,
 		domain:       c.SRVLookup.Domain,
 		addrs:        make(map[string][]uint16),
 		cancel:       make(chan interface{}),
@@ -263,9 +268,9 @@ func (dp *dynamicProvider) update() error {
 	}
 
 	// RFC 2782 formatted SRV record being queried e.g. "_service._proto.name."
-	record := fmt.Sprintf("_%s._udp.%s.", dp.service, dp.domain)
+	record := fmt.Sprintf("_%s._%s.%s.", dp.service, dp.proto, dp.domain)
 
-	_, srvs, err := resolver.LookupSRV(ctx, dp.service, "udp", dp.domain)
+	_, srvs, err := resolver.LookupSRV(ctx, dp.service, dp.proto, dp.domain)
 	if err != nil {
 		return fmt.Errorf("during SRV lookup of %q: %w", record, err)
 	}

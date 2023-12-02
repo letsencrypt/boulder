@@ -85,9 +85,16 @@ func main() {
 	}
 
 	var servers bdns.ServerProvider
-	servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second)
+	proto := "udp"
+	if features.Enabled(features.DOH) {
+		proto = "tcp"
+	}
+	servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, proto)
 	cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
 	defer servers.Stop()
+
+	tlsConfig, err := c.VA.TLS.Load(scope)
+	cmd.FailOnError(err, "tlsConfig config")
 
 	var resolver bdns.Client
 	if !c.VA.DNSAllowLoopbackAddresses {
@@ -97,7 +104,8 @@ func main() {
 			scope,
 			clk,
 			dnsTries,
-			logger)
+			logger,
+			tlsConfig)
 	} else {
 		resolver = bdns.NewTest(
 			c.VA.DNSTimeout.Duration,
@@ -105,11 +113,9 @@ func main() {
 			scope,
 			clk,
 			dnsTries,
-			logger)
+			logger,
+			tlsConfig)
 	}
-
-	tlsConfig, err := c.VA.TLS.Load(scope)
-	cmd.FailOnError(err, "tlsConfig config")
 
 	var remotes []va.RemoteVA
 	if len(c.VA.RemoteVAs) > 0 {
