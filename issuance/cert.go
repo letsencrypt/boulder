@@ -281,7 +281,7 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 		return nil, nil, err
 	}
 	template.SubjectKeyId = skid
-	
+
 	switch req.PublicKey.(type) {
 	case *rsa.PublicKey:
 		template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
