@@ -633,6 +633,12 @@ func TestMultiVACAARechecking(t *testing.T) {
 			maxValidationFailures: 0,
 			domains:               "good-dns01.com",
 			features:              noEarlyReturn,
+			allowedUAs: map[string]bool{
+				localUA:   false,
+				remoteUA1: true,
+				remoteUA2: true,
+				remoteUA3: true,
+			},
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -673,14 +679,30 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:                  "1 functioning local with 0 configured remotes",
+			name:                  "1 functioning local with 0 configured remotes, wait for full results",
 			domains:               "good-dns01.com",
+			features:              noEarlyReturn,
 			maxValidationFailures: 0,
 			remoteVAs:             []RemoteVA{},
 		},
 		{
-			name:                  "1 non-functioning local with 0 configured remotes",
+			name:                  "1 functioning local with 0 configured remotes, dont wait for full results",
 			domains:               "good-dns01.com",
+			features:              earlyReturn,
+			maxValidationFailures: 0,
+			remoteVAs:             []RemoteVA{},
+		},
+		{
+			name:                  "1 non-functioning local with 0 configured remotes, wait for full results",
+			domains:               "good-dns01.com",
+			features:              noEarlyReturn,
+			maxValidationFailures: 0,
+			remoteVAs:             []RemoteVA{},
+		},
+		{
+			name:                  "1 non-functioning local with 0 configured remotes, dont wait for full results",
+			domains:               "good-dns01.com",
+			features:              earlyReturn,
 			maxValidationFailures: 0,
 			remoteVAs:             []RemoteVA{},
 		},
@@ -697,9 +719,33 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"brokenVA1","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
 		},
 		{
+			name:                  "1 functioning local with 2 functioning and 1 broken remote, dont wait for full results",
+			domains:               "good-dns01.com",
+			features:              earlyReturn,
+			maxValidationFailures: 0,
+			remoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{&brokenRemoteVA{}, "brokenVA1"},
+			},
+			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"brokenVA1","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
+		},
+		{
 			name:                  "1 functioning local with 2 functioning and 1 broken remote, wait for full results",
 			domains:               "good-dns01.com",
 			features:              noEarlyReturn,
+			maxValidationFailures: 0,
+			remoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{&brokenRemoteVA{}, "brokenVA1"},
+			},
+			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"brokenVA1","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
+		},
+		{
+			name:                  "1 functioning local with 2 functioning and 1 broken remote, dont wait for full results",
+			domains:               "good-dns01.com",
+			features:              earlyReturn,
 			maxValidationFailures: 0,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
@@ -712,6 +758,21 @@ func TestMultiVACAARechecking(t *testing.T) {
 			name:                  "1 functioning local with 1 functioning and 2 broken remotes, wait for full results",
 			domains:               "good-dns01.com",
 			features:              noEarlyReturn,
+			maxValidationFailures: 0,
+			remoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				// The same Address is used so we can fudge the expectedLog. The
+				// RemoteFailures log order is non-deterministic.
+				{&brokenRemoteVA{}, "brokenVA"},
+				{&brokenRemoteVA{}, "brokenVA"},
+			},
+			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}},{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
+			expectedLog:             expectedInternalErrLine,
+		},
+		{
+			name:                  "1 functioning local with 1 functioning and 2 broken remotes, dont wait for full results",
+			domains:               "good-dns01.com",
+			features:              earlyReturn,
 			maxValidationFailures: 0,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
@@ -777,18 +838,15 @@ func TestMultiVACAARechecking(t *testing.T) {
 			test.AssertNotError(t, err, "Should have been able to recheck CAA records but could not")
 			test.AssertBoxedNil(t, isValidRes.Problem, "Problems detected but should not have been")
 
-			/*
-				for _, line := range mockLog.GetAll() {
-					fmt.Println(line)
-				}
-			*/
-			/*
-				if tc.expectedDifferentialLog != "" {
-					lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
-					test.AssertEquals(t, len(lines), 1)
-					test.AssertEquals(t, lines[0], tc.expectedDifferentialLog)
-				}
-			*/
+			for _, line := range mockLog.GetAll() {
+				fmt.Println(line)
+			}
+
+			if tc.expectedDifferentialLog != "" {
+				lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
+				test.AssertEquals(t, len(lines), 1)
+				test.AssertEquals(t, lines[0], tc.expectedDifferentialLog)
+			}
 
 			elapsed := time.Since(start).Round(time.Millisecond).Milliseconds()
 			// The slow UA should sleep for `slowRemoteSleepMillis`. In the early return
