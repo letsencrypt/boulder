@@ -764,3 +764,13 @@ func TestMismatchedProfiles(t *testing.T) {
 	test.AssertError(t, err, "preparing final cert issuance")
 	test.AssertContains(t, err.Error(), "precert does not correspond to linted final cert")
 }
+
+func TestGenerateSKID(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Error genering key")
+
+	skid, err := generateSKID(key.Public())
+	test.AssertNotError(t, err, "Error generating SKID")
+	test.AssertEquals(t, len(skid), 20)
+	test.AssertEquals(t, cap(skid), 20)
+}
