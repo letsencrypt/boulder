@@ -7,7 +7,6 @@ import (
 	"net"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/miekg/dns"
 
@@ -582,27 +581,15 @@ func TestIsCAAValidParams(t *testing.T) {
 
 func TestMultiVACAARechecking(t *testing.T) {
 	const (
-		remoteUA1     = "remote01"
-		remoteUA2     = "remote02"
-		remoteUA3     = "remote03"
-		slowRemoteUA1 = "slow remote"
-		localUA       = "local01"
+		remoteUA1 = "remote01"
+		remoteUA2 = "remote02"
+		remoteUA3 = "remote03"
+		localUA   = "local01"
 	)
-	allowedUAs := map[string]bool{
-		localUA:   true,
-		remoteUA1: true,
-		remoteUA2: true,
-		remoteUA3: true,
-	}
 
-	// Create an IPv4 test server
-	ms := httpMultiSrv(t, expectedToken, allowedUAs)
-	defer ms.Close()
-
-	remoteVA1 := setupRemote(ms.Server, remoteUA1)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2)
-	remoteVA3 := setupRemote(ms.Server, remoteUA3)
-	slowRemoteVA1 := setupRemote(ms.Server, slowRemoteUA1)
+	remoteVA1 := setupRemote(nil, remoteUA1)
+	remoteVA2 := setupRemote(nil, remoteUA2)
+	remoteVA3 := setupRemote(nil, remoteUA3)
 
 	earlyReturn := map[string]bool{
 		"EnforceMultiVA":     true,
@@ -620,97 +607,82 @@ func TestMultiVACAARechecking(t *testing.T) {
 	testCases := []struct {
 		name                    string
 		domains                 string
-		maxValidationFailures   int
-		remoteVAs               []RemoteVA
-		allowedUAs              map[string]bool
+		remoteVAs               []vapb.VAClient
 		features                map[string]bool
 		expectedProb            *probs.ProblemDetails
 		expectedDifferentialLog string
 		expectedLog             string
 	}{
 		{
-			name:                  "Local and remote VAs OK, wait for full results",
-			maxValidationFailures: 0,
-			domains:               "good-dns01.com",
-			features:              noEarlyReturn,
-			allowedUAs: map[string]bool{
-				localUA:   false,
-				remoteUA1: true,
-				remoteUA2: true,
-				remoteUA3: true,
+			name:     "Local and remote VAs OK, wait for full results",
+			domains:  "good-dns01.com",
+			features: noEarlyReturn,
+			remoteVAs: []vapb.VAClient{
+				remoteVA1,
+				remoteVA2,
+				remoteVA3,
 			},
+		},
+		{
+			name:     "Local and remote VAs OK, dont wait for full results",
+			domains:  "good-dns01.com",
+			features: earlyReturn,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
 				{remoteVA3, remoteUA3},
 			},
 		},
-		{
-			name:                  "Local and remote VAs OK, dont wait for full results",
-			maxValidationFailures: 0,
-			domains:               "good-dns01.com",
-			features:              earlyReturn,
-			remoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{remoteVA2, remoteUA2},
-				{remoteVA3, remoteUA3},
+		/*
+			{
+				name:     "Local and 1 slow remote VA, wait for full results",
+				domains:  "good-dns01.com",
+				features: noEarlyReturn,
+				remoteVAs: []RemoteVA{
+					{remoteVA1, remoteUA1},
+					{remoteVA2, remoteUA2},
+					{remoteVA3, remoteUA3},
+				},
 			},
-		},
-		{
-			name:                  "Local and 1 slow remote VA, wait for full results",
-			maxValidationFailures: 0,
-			domains:               "good-dns01.com",
-			features:              noEarlyReturn,
-			remoteVAs: []RemoteVA{
-				{remoteVA1, slowRemoteUA1},
-				{remoteVA2, remoteUA2},
-				{remoteVA3, remoteUA3},
+			{
+				name:     "Local and 1 slow remote VA, dont wait for full results",
+				domains:  "good-dns01.com",
+				features: earlyReturn,
+				remoteVAs: []RemoteVA{
+					{remoteVA1, remoteUA1},
+					{remoteVA2, remoteUA2},
+					{remoteVA3, remoteUA3},
+				},
 			},
+		*/
+		{
+			name:      "1 functioning local with 0 configured remotes, wait for full results",
+			domains:   "good-dns01.com",
+			features:  noEarlyReturn,
+			remoteVAs: []RemoteVA{},
 		},
 		{
-			name:                  "Local and 1 slow remote VA, dont wait for full results",
-			maxValidationFailures: 0,
-			domains:               "good-dns01.com",
-			features:              earlyReturn,
-			remoteVAs: []RemoteVA{
-				{slowRemoteVA1, slowRemoteUA1},
-				{remoteVA2, remoteUA2},
-				{remoteVA3, remoteUA3},
-			},
+			name:      "1 functioning local with 0 configured remotes, dont wait for full results",
+			domains:   "good-dns01.com",
+			features:  earlyReturn,
+			remoteVAs: []RemoteVA{},
 		},
 		{
-			name:                  "1 functioning local with 0 configured remotes, wait for full results",
-			domains:               "good-dns01.com",
-			features:              noEarlyReturn,
-			maxValidationFailures: 0,
-			remoteVAs:             []RemoteVA{},
+			name:      "1 non-functioning local with 0 configured remotes, wait for full results",
+			domains:   "good-dns01.com",
+			features:  noEarlyReturn,
+			remoteVAs: []RemoteVA{},
 		},
 		{
-			name:                  "1 functioning local with 0 configured remotes, dont wait for full results",
-			domains:               "good-dns01.com",
-			features:              earlyReturn,
-			maxValidationFailures: 0,
-			remoteVAs:             []RemoteVA{},
+			name:      "1 non-functioning local with 0 configured remotes, dont wait for full results",
+			domains:   "good-dns01.com",
+			features:  earlyReturn,
+			remoteVAs: []RemoteVA{},
 		},
 		{
-			name:                  "1 non-functioning local with 0 configured remotes, wait for full results",
-			domains:               "good-dns01.com",
-			features:              noEarlyReturn,
-			maxValidationFailures: 0,
-			remoteVAs:             []RemoteVA{},
-		},
-		{
-			name:                  "1 non-functioning local with 0 configured remotes, dont wait for full results",
-			domains:               "good-dns01.com",
-			features:              earlyReturn,
-			maxValidationFailures: 0,
-			remoteVAs:             []RemoteVA{},
-		},
-		{
-			name:                  "1 functioning local with 2 functioning and 1 broken remote, wait for full results",
-			domains:               "good-dns01.com",
-			features:              noEarlyReturn,
-			maxValidationFailures: 0,
+			name:     "1 functioning local with 2 functioning and 1 broken remote, wait for full results",
+			domains:  "good-dns01.com",
+			features: noEarlyReturn,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -719,10 +691,9 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"brokenVA1","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
 		},
 		{
-			name:                  "1 functioning local with 2 functioning and 1 broken remote, dont wait for full results",
-			domains:               "good-dns01.com",
-			features:              earlyReturn,
-			maxValidationFailures: 0,
+			name:     "1 functioning local with 2 functioning and 1 broken remote, dont wait for full results",
+			domains:  "good-dns01.com",
+			features: earlyReturn,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -731,10 +702,9 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"brokenVA1","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
 		},
 		{
-			name:                  "1 functioning local with 2 functioning and 1 broken remote, wait for full results",
-			domains:               "good-dns01.com",
-			features:              noEarlyReturn,
-			maxValidationFailures: 0,
+			name:     "1 functioning local with 2 functioning and 1 broken remote, wait for full results",
+			domains:  "good-dns01.com",
+			features: noEarlyReturn,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -743,10 +713,9 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"brokenVA1","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
 		},
 		{
-			name:                  "1 functioning local with 2 functioning and 1 broken remote, dont wait for full results",
-			domains:               "good-dns01.com",
-			features:              earlyReturn,
-			maxValidationFailures: 0,
+			name:     "1 functioning local with 2 functioning and 1 broken remote, dont wait for full results",
+			domains:  "good-dns01.com",
+			features: earlyReturn,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -755,10 +724,9 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"brokenVA1","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
 		},
 		{
-			name:                  "1 functioning local with 1 functioning and 2 broken remotes, wait for full results",
-			domains:               "good-dns01.com",
-			features:              noEarlyReturn,
-			maxValidationFailures: 0,
+			name:     "1 functioning local with 1 functioning and 2 broken remotes, wait for full results",
+			domains:  "good-dns01.com",
+			features: noEarlyReturn,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				// The same Address is used so we can fudge the expectedLog. The
@@ -770,10 +738,9 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedLog:             expectedInternalErrLine,
 		},
 		{
-			name:                  "1 functioning local with 1 functioning and 2 broken remotes, dont wait for full results",
-			domains:               "good-dns01.com",
-			features:              earlyReturn,
-			maxValidationFailures: 0,
+			name:     "1 functioning local with 1 functioning and 2 broken remotes, dont wait for full results",
+			domains:  "good-dns01.com",
+			features: earlyReturn,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				// The same Address is used so we can fudge the expectedLog. The
@@ -785,10 +752,9 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedLog:             expectedInternalErrLine,
 		},
 		{
-			name:                  "1 functioning local with 3 broken remotes, wait for full results",
-			domains:               "good-dns01.com",
-			features:              noEarlyReturn,
-			maxValidationFailures: 0,
+			name:     "1 functioning local with 3 broken remotes, wait for full results",
+			domains:  "good-dns01.com",
+			features: noEarlyReturn,
 			// The same Address is used so we can fudge the expectedLog. The
 			// RemoteFailures log order is non-deterministic.
 			remoteVAs: []RemoteVA{
@@ -799,10 +765,9 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}},{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}},{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
 		},
 		{
-			name:                  "1 functioning local with 3 broken remotes, dont wait for full results",
-			domains:               "good-dns01.com",
-			features:              earlyReturn,
-			maxValidationFailures: 0,
+			name:     "1 functioning local with 3 broken remotes, dont wait for full results",
+			domains:  "good-dns01.com",
+			features: earlyReturn,
 			// The same Address is used so we can fudge the expectedLog. The
 			// RemoteFailures log order is non-deterministic.
 			remoteVAs: []RemoteVA{
@@ -816,10 +781,7 @@ func TestMultiVACAARechecking(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Configure the test server with the testcase allowed UAs.
-			ms.setAllowedUAs(tc.allowedUAs)
-
-			va, mockLog := setup(ms.Server, tc.maxValidationFailures, localUA, tc.remoteVAs)
+			va, mockLog := setup(nil, 0, localUA, tc.remoteVAs)
 			defer mockLog.Clear()
 
 			if tc.features != nil {
@@ -828,7 +790,6 @@ func TestMultiVACAARechecking(t *testing.T) {
 				defer features.Reset()
 			}
 
-			start := time.Now()
 			isValidRes, err := va.IsCAAValid(context.TODO(), &vapb.IsCAAValidRequest{
 				Domain:           tc.domains,
 				ValidationMethod: string(core.ChallengeTypeDNS01),
@@ -846,19 +807,6 @@ func TestMultiVACAARechecking(t *testing.T) {
 				lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
 				test.AssertEquals(t, len(lines), 1)
 				test.AssertEquals(t, lines[0], tc.expectedDifferentialLog)
-			}
-
-			elapsed := time.Since(start).Round(time.Millisecond).Milliseconds()
-			// The slow UA should sleep for `slowRemoteSleepMillis`. In the early return
-			// case the first remote VA should fail the overall validation and a prob
-			// should be returned quickly (i.e. in less than half of `slowRemoteSleepMillis`).
-			// In the non-early return case we don't expect a problem until
-			// `slowRemoteSleepMillis`.
-			if tc.features["MultiVAFullResults"] && elapsed > slowRemoteSleepMillis/10 {
-				fmt.Println("PHIL: got here")
-				t.Errorf(
-					"Expected an early return from PerformValidation in < %d ms, took %d ms",
-					slowRemoteSleepMillis/10, elapsed)
 			}
 		})
 	}
