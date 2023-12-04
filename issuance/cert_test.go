@@ -767,7 +767,7 @@ func TestMismatchedProfiles(t *testing.T) {
 
 func TestGenerateSKID(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "Error genering key")
+	test.AssertNotError(t, err, "Error generating key")
 
 	skid, err := generateSKID(key.Public())
 	test.AssertNotError(t, err, "Error generating SKID")
