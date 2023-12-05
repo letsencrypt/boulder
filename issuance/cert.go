@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -21,6 +22,7 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/precert"
 )
 
@@ -212,15 +214,20 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 		return nil, err
 	}
 
-	// RFC 7093 section 2. Additional Methods for Generating Key Identifiers
-	// 		[RFC5280] specifies two examples for generating key identifiers
-	//	    from public keys. Four additional mechanisms are as follows:
-	//
-	//	    1) The keyIdentifier is composed of the leftmost 160-bits of the SHA-256
-	//	       hash of the value of the BIT STRING subjectPublicKey (excluding the
-	//	       tag, length, and number of unused bits).
-	skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
-	return skid[0:20:20], nil
+	if features.Enabled(features.SHA256SubjectKeyIdentifier) {
+		// RFC 7093 section 2. Additional Methods for Generating Key Identifiers
+		// 		[RFC5280] specifies two examples for generating key identifiers
+		//	    from public keys. Four additional mechanisms are as follows:
+		//
+		//	    1) The keyIdentifier is composed of the leftmost 160-bits of the SHA-256
+		//	       hash of the value of the BIT STRING subjectPublicKey (excluding the
+		//	       tag, length, and number of unused bits).
+		skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
+		return skid[0:20:20], nil
+	} else {
+		skid := sha1.Sum(pkixPublicKey.BitString.Bytes)
+		return skid[:], nil
+	}
 }
 
 // IssuanceRequest describes a certificate issuance request

@@ -81,6 +81,9 @@ const (
 	// successful validations slower by serializing the DCV and CAA work, but
 	// makes unsuccessful validations easier by not doing CAA work at all.
 	CAAAfterValidation
+
+	// SHA256SubjectKeyIdentifier does XYZ
+	SHA256SubjectKeyIdentifier
 )
 
 // List of features and their default value, protected by fMu
@@ -104,6 +107,7 @@ var features = map[FeatureFlag]bool{
 	AllowNoCommonName:                 false,
 	LeaseCRLShards:                    false,
 	CAAAfterValidation:                false,
+	SHA256SubjectKeyIdentifier:        false,
 
 	StoreLintingCertificateInsteadOfPrecertificate: false,
 }
