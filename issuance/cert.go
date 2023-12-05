@@ -275,12 +275,13 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 		template.Subject.CommonName = req.CommonName
 	}
 	template.DNSNames = req.DNSNames
-	template.AuthorityKeyId = i.Cert.SubjectKeyId
+
 	skid, err := generateSKID(req.PublicKey)
 	if err != nil {
 		return nil, nil, err
 	}
 	template.SubjectKeyId = skid
+
 	switch req.PublicKey.(type) {
 	case *rsa.PublicKey:
 		template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
