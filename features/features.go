@@ -82,7 +82,9 @@ const (
 	// makes unsuccessful validations easier by not doing CAA work at all.
 	CAAAfterValidation
 
-	// SHA256SubjectKeyIdentifier does XYZ
+	// SHA256SubjectKeyIdentifier enables the generation and use of an RFC 7093
+	// compliant truncated SHA256 Subject Key Identifier in end-entity
+	// certificates.
 	SHA256SubjectKeyIdentifier
 )
 
