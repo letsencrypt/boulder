@@ -3,8 +3,6 @@ package notmain
 import (
 	"bufio"
 	"context"
-	"crypto"
-	"crypto/sha256"
 	"crypto/x509"
 	"errors"
 	"flag"
@@ -330,7 +328,7 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, comment string, private
 		return err
 	}
 
-	spkiHash, err := getPublicKeySPKIHash(publicKey)
+	spkiHash, err := core.KeyDigest(publicKey)
 	if err != nil {
 		return err
 	}
@@ -343,7 +341,7 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, comment string, private
 	dbcomment := fmt.Sprintf("%s: %s", u.Username, comment)
 
 	req := &sapb.AddBlockedKeyRequest{
-		KeyHash:   spkiHash,
+		KeyHash:   spkiHash[:],
 		Added:     timestamppb.New(r.clk.Now()),
 		Source:    "admin-revoker",
 		Comment:   dbcomment,
@@ -370,12 +368,12 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey string) err
 		return err
 	}
 
-	spkiHash, err := getPublicKeySPKIHash(publicKey)
+	spkiHash, err := core.KeyDigest(publicKey)
 	if err != nil {
 		return err
 	}
 
-	matches, err := r.getCertsMatchingSPKIHash(ctx, spkiHash)
+	matches, err := r.getCertsMatchingSPKIHash(ctx, spkiHash[:])
 	if err != nil {
 		return err
 	}
@@ -529,17 +527,6 @@ func privateKeyRevoke(r *revoker, dryRun bool, comment string, count int, keyPat
 	return nil
 }
 
-// getPublicKeySPKIHash returns a hash of the SubjectPublicKeyInfo for the
-// provided public key.
-func getPublicKeySPKIHash(pubKey crypto.PublicKey) ([]byte, error) {
-	rawSubjectPublicKeyInfo, err := x509.MarshalPKIXPublicKey(pubKey)
-	if err != nil {
-		return nil, err
-	}
-	spkiHash := sha256.Sum256(rawSubjectPublicKeyInfo)
-	return spkiHash[:], nil
-}
-
 func main() {
 	usage := func() {
 		fmt.Fprint(os.Stderr, usageString)
@@ -640,15 +627,15 @@ func main() {
 		cmd.FailOnError(err, "Failed to load the provided private key")
 		r.log.AuditInfo("The provided private key has been successfully verified")
 
-		spkiHash, err := getPublicKeySPKIHash(publicKey)
+		spkiHash, err := core.KeyDigest(publicKey)
 		cmd.FailOnError(err, "While obtaining the SPKI hash for the provided key")
 
-		count, err := r.countCertsMatchingSPKIHash(ctx, spkiHash)
+		count, err := r.countCertsMatchingSPKIHash(ctx, spkiHash[:])
 		cmd.FailOnError(err, "While retrieving a count of certificates matching the provided key")
 		r.log.AuditInfof("Found %d certificates matching the provided key", count)
 
 		if command == "private-key-block" {
-			err := privateKeyBlock(ctx, r, *dryRun, *comment, count, spkiHash, keyPath)
+			err := privateKeyBlock(ctx, r, *dryRun, *comment, count, spkiHash[:], keyPath)
 			cmd.FailOnError(err, "")
 		}
 
