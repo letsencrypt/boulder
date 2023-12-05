@@ -373,7 +373,7 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey string) err
 		return err
 	}
 
-	matches, err := r.getCertsMatchingSPKIHash(ctx, spkiHash[:])
+	matches, err := r.getCertsMatchingSPKIHash(ctx, spkiHash)
 	if err != nil {
 		return err
 	}
@@ -409,9 +409,9 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey string) err
 	return nil
 }
 
-func (r *revoker) spkiHashInBlockedKeys(ctx context.Context, spkiHash []byte) (bool, error) {
+func (r *revoker) spkiHashInBlockedKeys(ctx context.Context, spkiHash core.Sha256Digest) (bool, error) {
 	var count int
-	err := r.dbMap.SelectOne(ctx, &count, "SELECT COUNT(*) as count FROM blockedKeys WHERE keyHash = ?", spkiHash)
+	err := r.dbMap.SelectOne(ctx, &count, "SELECT COUNT(*) as count FROM blockedKeys WHERE keyHash = ?", spkiHash[:])
 	if err != nil {
 		return false, err
 	}
@@ -422,9 +422,9 @@ func (r *revoker) spkiHashInBlockedKeys(ctx context.Context, spkiHash []byte) (b
 	return false, nil
 }
 
-func (r *revoker) countCertsMatchingSPKIHash(ctx context.Context, spkiHash []byte) (int, error) {
+func (r *revoker) countCertsMatchingSPKIHash(ctx context.Context, spkiHash core.Sha256Digest) (int, error) {
 	var count int
-	err := r.dbMap.SelectOne(ctx, &count, "SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ?", spkiHash)
+	err := r.dbMap.SelectOne(ctx, &count, "SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ?", spkiHash[:])
 	if err != nil {
 		return 0, err
 	}
@@ -448,9 +448,9 @@ func (r *revoker) getRegIDsMatchingEmail(ctx context.Context, email string) ([]i
 
 // TODO(#5899) Use an non-wrapped sql.Db client to iterate over results and
 // return them on a channel.
-func (r *revoker) getCertsMatchingSPKIHash(ctx context.Context, spkiHash []byte) ([]string, error) {
+func (r *revoker) getCertsMatchingSPKIHash(ctx context.Context, spkiHash core.Sha256Digest) ([]string, error) {
 	var h []string
-	_, err := r.dbMap.Select(ctx, &h, "SELECT certSerial FROM keyHashToSerial WHERE keyHash = ?", spkiHash)
+	_, err := r.dbMap.Select(ctx, &h, "SELECT certSerial FROM keyHashToSerial WHERE keyHash = ?", spkiHash[:])
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("no certificates with a matching SPKI hash were found")
@@ -467,7 +467,7 @@ func (rc revocationCodes) Len() int           { return len(rc) }
 func (rc revocationCodes) Less(i, j int) bool { return rc[i] < rc[j] }
 func (rc revocationCodes) Swap(i, j int)      { rc[i], rc[j] = rc[j], rc[i] }
 
-func privateKeyBlock(ctx context.Context, r *revoker, dryRun bool, comment string, count int, spkiHash []byte, keyPath string) error {
+func privateKeyBlock(ctx context.Context, r *revoker, dryRun bool, comment string, count int, spkiHash core.Sha256Digest, keyPath string) error {
 	keyExists, err := r.spkiHashInBlockedKeys(ctx, spkiHash)
 	if err != nil {
 		return fmt.Errorf("while checking if the provided key already exists in the 'blockedKeys' table: %s", err)
@@ -630,12 +630,12 @@ func main() {
 		spkiHash, err := core.KeyDigest(publicKey)
 		cmd.FailOnError(err, "While obtaining the SPKI hash for the provided key")
 
-		count, err := r.countCertsMatchingSPKIHash(ctx, spkiHash[:])
+		count, err := r.countCertsMatchingSPKIHash(ctx, spkiHash)
 		cmd.FailOnError(err, "While retrieving a count of certificates matching the provided key")
 		r.log.AuditInfof("Found %d certificates matching the provided key", count)
 
 		if command == "private-key-block" {
-			err := privateKeyBlock(ctx, r, *dryRun, *comment, count, spkiHash[:], keyPath)
+			err := privateKeyBlock(ctx, r, *dryRun, *comment, count, spkiHash, keyPath)
 			cmd.FailOnError(err, "")
 		}
 

@@ -151,7 +151,7 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 
 	// Ensure that the SPKI hash hasn't already been added to the blockedKeys
 	// table.
-	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(ctx, spkiHash[:])
+	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(ctx, spkiHash)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
@@ -190,7 +190,7 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	test.AssertNotError(t, err, "While attempting to revoke certificates for the provided key")
 
 	// Ensure that the key is not blocked, yet.
-	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(ctx, spkiHash[:])
+	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(ctx, spkiHash)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
@@ -199,7 +199,7 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// Ensure that the key is now blocked.
-	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(ctx, spkiHash[:])
+	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(ctx, spkiHash)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
 
@@ -238,30 +238,30 @@ func TestPrivateKeyBlock(t *testing.T) {
 
 	// Query the 'keyHashToSerial' table for certificates with a matching SPKI
 	// hash. We expect that since this key was re-used we'll find 2 matches.
-	count, err := testCtx.revoker.countCertsMatchingSPKIHash(ctx, duplicateKeySPKI[:])
+	count, err := testCtx.revoker.countCertsMatchingSPKIHash(ctx, duplicateKeySPKI)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.AssertEquals(t, count, 2)
 
 	// With dryRun=true this should not block the key.
-	err = privateKeyBlock(ctx, &testCtx.revoker, true, "", count, duplicateKeySPKI[:], duplicateKeyFile.Name())
+	err = privateKeyBlock(ctx, &testCtx.revoker, true, "", count, duplicateKeySPKI, duplicateKeyFile.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// Ensure that the key is not blocked, yet.
-	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(ctx, duplicateKeySPKI[:])
+	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(ctx, duplicateKeySPKI)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
 	// With dryRun=false this should block the key.
 	comment := "key blocked as part of test"
-	err = privateKeyBlock(ctx, &testCtx.revoker, false, comment, count, duplicateKeySPKI[:], duplicateKeyFile.Name())
+	err = privateKeyBlock(ctx, &testCtx.revoker, false, comment, count, duplicateKeySPKI, duplicateKeyFile.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// With dryRun=false this should result in an error as the key is already blocked.
-	err = privateKeyBlock(ctx, &testCtx.revoker, false, "", count, duplicateKeySPKI[:], duplicateKeyFile.Name())
+	err = privateKeyBlock(ctx, &testCtx.revoker, false, "", count, duplicateKeySPKI, duplicateKeyFile.Name())
 	test.AssertError(t, err, "Attempting to block a key which is already blocked should have failed.")
 
 	// Ensure that the key is now blocked.
-	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(ctx, duplicateKeySPKI[:])
+	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(ctx, duplicateKeySPKI)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
 
@@ -304,7 +304,7 @@ func TestPrivateKeyRevoke(t *testing.T) {
 
 	// Query the 'keyHashToSerial' table for certificates with a matching SPKI
 	// hash. We expect that since this key was re-used we'll find 2 matches.
-	count, err := testCtx.revoker.countCertsMatchingSPKIHash(ctx, duplicateKeySPKI[:])
+	count, err := testCtx.revoker.countCertsMatchingSPKIHash(ctx, duplicateKeySPKI)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.AssertEquals(t, count, 2)
 
@@ -313,7 +313,7 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// Ensure that the key is not blocked, yet.
-	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(ctx, duplicateKeySPKI[:])
+	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(ctx, duplicateKeySPKI)
 	test.AssertNotError(t, err, "spkiHashInBlockedKeys failed for key that shouldn't be blocked yet")
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
@@ -323,7 +323,7 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// Ensure that the key is now blocked.
-	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(ctx, duplicateKeySPKI[:])
+	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(ctx, duplicateKeySPKI)
 	test.AssertNotError(t, err, "spkiHashInBlockedKeys failed for key that should now be blocked")
 	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
 
@@ -342,7 +342,7 @@ type entry struct {
 	names    []string
 	testKey  *rsa.PrivateKey
 	regId    int64
-	spkiHash []byte
+	spkiHash core.Sha256Digest
 }
 
 func setupUniqueTestEntries(t *testing.T) ([]*entry, *entry) {
@@ -436,9 +436,8 @@ func (c testCtx) createAndRegisterEntry(t *testing.T, e *entry) {
 	e.regId = c.addRegistation(t, e.names, e.jwk)
 	cert := c.addCertificate(t, e.serial, e.names, e.testKey.PublicKey, e.regId)
 	var err error
-	spkiHash, err := core.KeyDigest(cert.PublicKey)
+	e.spkiHash, err = core.KeyDigest(cert.PublicKey)
 	test.AssertNotError(t, err, "Failed to get SPKI hash")
-	e.spkiHash = spkiHash[:]
 }
 
 func setup(t *testing.T) testCtx {
