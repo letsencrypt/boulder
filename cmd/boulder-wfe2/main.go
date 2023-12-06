@@ -404,14 +404,12 @@ func main() {
 
 	logger.Infof("WFE using key policy: %#v", kp)
 
-	logger.Infof("Server running, listening on %s....", c.WFE.ListenAddress)
-	handler := wfe.Handler(stats, c.OpenTelemetryHTTPConfig.Options()...)
-
 	if c.WFE.ListenAddress == "" {
 		cmd.Fail("HTTP listen address is not configured")
 	}
 
-	logger.Infof("HTTP server listening on %s", c.WFE.ListenAddress)
+	logger.Infof("Server running, listening on %s....", c.WFE.ListenAddress)
+	handler := wfe.Handler(stats, c.OpenTelemetryHTTPConfig.Options()...)
 
 	srv := http.Server{
 		ReadTimeout:  30 * time.Second,
