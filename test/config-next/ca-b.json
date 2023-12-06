@@ -113,7 +113,8 @@
 		"ctLogListFile": "test/ct-test-srv/log_list.json",
 		"features": {
 			"ECDSAForAll": true,
-			"AllowNoCommonName": true
+			"AllowNoCommonName": true,
+			"SHA256SubjectKeyIdentifier": true
 		}
 	},
 	"pa": {

@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -21,6 +22,7 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/precert"
 )
 
@@ -211,8 +213,18 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 	if _, err := asn1.Unmarshal(pkBytes, &pkixPublicKey); err != nil {
 		return nil, err
 	}
-	skid := sha1.Sum(pkixPublicKey.BitString.Bytes)
-	return skid[:], nil
+
+	if features.Enabled(features.SHA256SubjectKeyIdentifier) {
+		// RFC 7093 Section 2 Additional Methods for Generating Key Identifiers:
+		// The keyIdentifier [may be] composed of the leftmost 160-bits of the
+		// SHA-256 hash of the value of the BIT STRING subjectPublicKey
+		// (excluding the tag, length, and number of unused bits).
+		skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
+		return skid[0:20:20], nil
+	} else {
+		skid := sha1.Sum(pkixPublicKey.BitString.Bytes)
+		return skid[:], nil
+	}
 }
 
 // IssuanceRequest describes a certificate issuance request
