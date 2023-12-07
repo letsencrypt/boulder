@@ -3,6 +3,7 @@ import collections
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -183,6 +184,14 @@ def start(fakeclock):
     """
     signal.signal(signal.SIGTERM, lambda _, __: stop())
     signal.signal(signal.SIGINT, lambda _, __: stop())
+
+    # Check that we can resolve the service names before we try to start any
+    # services. This prevents a confusing error (timed out health check).
+    try:
+        socket.getaddrinfo('publisher1.service.consul', None)
+    except Exception as e:
+        print("Error querying DNS. Is consul running? `docker compose ps bconsul`. %s" % (e))
+        return False
 
     # Start the pebble-challtestsrv first so it can be used to resolve DNS for
     # gRPC.
