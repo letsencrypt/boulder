@@ -356,6 +356,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	var rncKey string
 	var inmemNonceService *inmemnonce.Service
 	var limiter *ratelimits.Limiter
+	var txnBuilder *ratelimits.TransactionBuilder
 	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		// Use derived nonces.
 		noncePrefix := nonce.DerivePrefix("192.168.1.1:8080", "b8c758dd85e113ea340ce0b3a99f389d40a308548af94d1730a7692c1874f1f")
@@ -389,8 +390,10 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		test.AssertNotError(t, err, "making redis ring client")
 		source := ratelimits.NewRedisSource(ring.Ring, fc, stats)
 		test.AssertNotNil(t, source, "source should not be nil")
-		limiter, err = ratelimits.NewLimiter(fc, source, "../test/config-next/wfe2-ratelimit-defaults.yml", "", stats)
+		limiter, err = ratelimits.NewLimiter(fc, source, stats)
 		test.AssertNotError(t, err, "making limiter")
+		txnBuilder, err = ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+		test.AssertNotError(t, err, "making transaction composer")
 	} else {
 		// TODO(#6610): Remove this once we've moved to derived to prefixes.
 		noncePrefix := "mlem"
@@ -421,7 +424,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		rnc,
 		rncKey,
 		mockSA,
-		limiter)
+		limiter,
+		txnBuilder)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL

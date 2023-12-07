@@ -168,6 +168,7 @@ type WebFrontEndImpl struct {
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
 	limiter                      *ratelimits.Limiter
+	txnBuilder                   *ratelimits.TransactionBuilder
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -190,6 +191,7 @@ func NewWebFrontEndImpl(
 	rncKey string,
 	accountGetter AccountGetter,
 	limiter *ratelimits.Limiter,
+	txnBuilder *ratelimits.TransactionBuilder,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
@@ -227,6 +229,7 @@ func NewWebFrontEndImpl(
 		rncKey:                       rncKey,
 		accountGetter:                accountGetter,
 		limiter:                      limiter,
+		txnBuilder:                   txnBuilder,
 	}
 
 	return wfe, nil
@@ -624,7 +627,7 @@ func link(url, relation string) string {
 // This should eventually return a berrors.RateLimit error containing the retry
 // after duration among other information available in the ratelimits.Decision.
 func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) {
-	if wfe.limiter == nil {
+	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Limiter is disabled.
 		return
 	}
@@ -638,13 +641,13 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		wfe.log.Warningf("checking %s rate limit: %s", limit, err)
 	}
 
-	bucketId, err := ratelimits.NewRegistrationsPerIPAddressBucketId(ip)
+	txn, err := wfe.txnBuilder.RegistrationsPerIPAddressTransaction(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
 	}
 
-	decision, err := wfe.limiter.Spend(ctx, ratelimits.NewTransaction(bucketId, 1))
+	decision, err := wfe.limiter.Spend(ctx, txn)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
@@ -655,13 +658,13 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		return
 	}
 
-	bucketId, err = ratelimits.NewRegistrationsPerIPv6RangeBucketId(ip)
+	txn, err = wfe.txnBuilder.RegistrationsPerIPv6RangeTransaction(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 		return
 	}
 
-	_, err = wfe.limiter.Spend(ctx, ratelimits.NewTransaction(bucketId, 1))
+	_, err = wfe.limiter.Spend(ctx, txn)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 	}
@@ -672,7 +675,7 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 // retry immediately. If an error is encountered during the refund, it is logged
 // but not returned.
 func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.IP) {
-	if wfe.limiter == nil {
+	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Limiter is disabled.
 		return
 	}
@@ -686,13 +689,13 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 		wfe.log.Warningf("refunding %s rate limit: %s", limit, err)
 	}
 
-	bucketId, err := ratelimits.NewRegistrationsPerIPAddressBucketId(ip)
+	txn, err := wfe.txnBuilder.RegistrationsPerIPAddressTransaction(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
 	}
 
-	_, err = wfe.limiter.Refund(ctx, ratelimits.NewTransaction(bucketId, 1))
+	_, err = wfe.limiter.Refund(ctx, txn)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
@@ -702,13 +705,13 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 		return
 	}
 
-	bucketId, err = ratelimits.NewRegistrationsPerIPv6RangeBucketId(ip)
+	txn, err = wfe.txnBuilder.RegistrationsPerIPv6RangeTransaction(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 		return
 	}
 
-	_, err = wfe.limiter.Refund(ctx, ratelimits.NewTransaction(bucketId, 1))
+	_, err = wfe.limiter.Refund(ctx, txn)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 	}

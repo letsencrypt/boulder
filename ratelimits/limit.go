@@ -1,6 +1,7 @@
 package ratelimits
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -9,6 +10,10 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
+
+// errLimitDisabled indicates that the limit name specified is valid but is not
+// currently configured.
+var errLimitDisabled = errors.New("limit disabled")
 
 type limit struct {
 	// Burst specifies maximum concurrent allowed requests at any given time. It
@@ -22,6 +27,10 @@ type limit struct {
 	// Period is the duration of time in which the count (of requests) is
 	// allowed. It must be greater than zero.
 	Period config.Duration
+
+	// name is the name of the limit. It must be one of the Name enums defined
+	// in this package.
+	name Name
 
 	// emissionInterval is the interval, in nanoseconds, at which tokens are
 	// added to a bucket (period / count). This is also the steady-state rate at
@@ -127,6 +136,7 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 			// and compute the hash here.
 			id = string(core.HashNames(strings.Split(id, ",")))
 		}
+		v.name = name
 		v.isOverride = true
 		parsed[joinWithColon(name.EnumString(), id)] = precomputeLimit(v)
 	}
@@ -151,7 +161,62 @@ func loadAndParseDefaultLimits(path string) (limits, error) {
 		if !ok {
 			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, limitNames)
 		}
+		v.name = name
 		parsed[name.EnumString()] = precomputeLimit(v)
 	}
 	return parsed, nil
+}
+
+type limitRegistry struct {
+	// defaults stores default limits by 'name'.
+	defaults limits
+
+	// overrides stores override limits by 'name:id'.
+	overrides limits
+}
+
+func newLimitRegistry(defaults, overrides string) (*limitRegistry, error) {
+	var err error
+	registry := &limitRegistry{}
+	registry.defaults, err = loadAndParseDefaultLimits(defaults)
+	if err != nil {
+		return nil, err
+	}
+
+	if overrides == "" {
+		// No overrides specified, initialize an empty map.
+		registry.overrides = make(limits)
+		return registry, nil
+	}
+
+	registry.overrides, err = loadAndParseOverrideLimits(overrides)
+	if err != nil {
+		return nil, err
+	}
+
+	return registry, nil
+}
+
+// getLimit returns the limit for the specified by name and bucketKey, name is
+// required, bucketKey is optional. If bucketkey is empty, the default for the
+// limit specified by name is returned. If no default limit exists for the
+// specified name, errLimitDisabled is returned.
+func (l *limitRegistry) getLimit(name Name, bucketKey string) (limit, error) {
+	if !name.isValid() {
+		// This should never happen. Callers should only be specifying the limit
+		// Name enums defined in this package.
+		return limit{}, fmt.Errorf("specified name enum %q, is invalid", name)
+	}
+	if bucketKey != "" {
+		// Check for override.
+		ol, ok := l.overrides[bucketKey]
+		if ok {
+			return ol, nil
+		}
+	}
+	dl, ok := l.defaults[name.EnumString()]
+	if ok {
+		return dl, nil
+	}
+	return limit{}, errLimitDisabled
 }
