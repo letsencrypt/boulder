@@ -2,7 +2,7 @@ version: '3'
 services:
   boulder:
     # Should match one of the GO_DEV_VERSIONS in test/boulder-tools/tag_and_upload.sh.
-    image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.21.4_2023-11-09}
+    image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.21.5_2023-12-05}
     environment:
       # To solve HTTP-01 and TLS-ALPN-01 challenges, change the IP in FAKE_DNS
       # to the IP address where your ACME client's solver is listening.

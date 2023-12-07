@@ -18,6 +18,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -763,4 +764,26 @@ func TestMismatchedProfiles(t *testing.T) {
 	_, _, err = issuer2.Prepare(request2)
 	test.AssertError(t, err, "preparing final cert issuance")
 	test.AssertContains(t, err.Error(), "precert does not correspond to linted final cert")
+}
+
+func TestGenerateSKID(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Error generating key")
+
+	_ = features.Set(map[string]bool{"SHA256SubjectKeyIdentifier": true})
+	defer features.Reset()
+	// RFC 7093 section 2 method 1 allows us to use 160 of the leftmost bits for
+	// the Subject Key Identifier. This is the same amount of bits as the
+	// related SHA1 hash.
+	sha256skid, err := generateSKID(key.Public())
+	test.AssertNotError(t, err, "Error generating SKID")
+	test.AssertEquals(t, len(sha256skid), 20)
+	test.AssertEquals(t, cap(sha256skid), 20)
+	features.Reset()
+
+	_ = features.Set(map[string]bool{"SHA256SubjectKeyIdentifier": false})
+	sha1skid, err := generateSKID(key.Public())
+	test.AssertNotError(t, err, "Error generating SKID")
+	test.AssertEquals(t, len(sha1skid), 20)
+	test.AssertEquals(t, cap(sha1skid), 20)
 }

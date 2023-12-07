@@ -12,11 +12,11 @@ DOCKER_REPO="letsencrypt/boulder-tools"
 # .github/workflows/release.yml,
 # .github/workflows/try-release.yml if appropriate,
 # and .github/workflows/boulder-ci.yml with the new container tag.
-GO_CI_VERSIONS=( "1.21.4" )
+GO_CI_VERSIONS=( "1.21.4" "1.21.5" )
 # These versions are built for both platforms that boulder devs use.
 # When updating GO_DEV_VERSIONS, please also update
 # ../../docker-compose.yml's default Go version.
-GO_DEV_VERSIONS=( "1.21.4" )
+GO_DEV_VERSIONS=( "1.21.5" )
 
 echo "Please login to allow push to DockerHub"
 docker login
