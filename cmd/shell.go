@@ -286,6 +286,12 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 		ErrorLog: promLogger{logger},
 	}))
 
+	if addr == "" {
+		logger.Err("Debug listen address is not configured")
+		os.Exit(1)
+	}
+	logger.Infof("Debug server listening on %s", addr)
+
 	server := http.Server{
 		Addr:        addr,
 		Handler:     mux,

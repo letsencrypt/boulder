@@ -1,13 +1,11 @@
 {
 	"crlStorer": {
-		"debugAddr": ":9667",
 		"tls": {
 			"caCertfile": "test/grpc-creds/minica.pem",
 			"certFile": "test/grpc-creds/crl-storer.boulder/cert.pem",
 			"keyFile": "test/grpc-creds/crl-storer.boulder/key.pem"
 		},
 		"grpc": {
-			"address": ":9109",
 			"maxConnectionAge": "30s",
 			"services": {
 				"storer.CRLStorer": {

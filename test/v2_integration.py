@@ -1416,7 +1416,9 @@ def test_expiration_mailer():
     requests.post("http://localhost:9381/clear", data='')
     for time in (no_reminder, first_reminder, last_reminder):
         print(get_future_output(
-            ["./bin/boulder", "expiration-mailer", "--config", "%s/expiration-mailer.json" % config_dir],
+            ["./bin/boulder", "expiration-mailer",
+             "--config", "%s/expiration-mailer.json" % config_dir,
+             "--debug-addr", ":8008"],
             time))
     resp = requests.get("http://localhost:9381/count?to=%s" % email_addr)
     mailcount = int(resp.text)

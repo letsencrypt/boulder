@@ -68,6 +68,8 @@ func (log awsLogger) Logf(c awsl.Classification, format string, v ...interface{}
 }
 
 func main() {
+	grpcAddr := flag.String("addr", "", "gRPC listen address override")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -81,6 +83,13 @@ func main() {
 
 	err = features.Set(c.CRLStorer.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	if *grpcAddr != "" {
+		c.CRLStorer.GRPC.Address = *grpcAddr
+	}
+	if *debugAddr != "" {
+		c.CRLStorer.DebugAddr = *debugAddr
+	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLStorer.DebugAddr)
 	defer oTelShutdown(context.Background())

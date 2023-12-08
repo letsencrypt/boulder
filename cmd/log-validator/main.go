@@ -2,9 +2,7 @@ package notmain
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
-	"os"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/log/validator"
@@ -12,13 +10,14 @@ import (
 
 type Config struct {
 	Files         []string `validate:"min=1,dive,required"`
-	DebugAddr     string   `validate:"required,hostname_port"`
+	DebugAddr     string   `validate:"omitempty,hostname_port"`
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 func main() {
-	configPath := flag.String("config", "", "File path to the configuration file for this service")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
+	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	checkFile := flag.String("check-file", "", "File path to a file to directly validate, if this argument is provided the config will not be parsed and only this file will be inspected")
 	flag.Parse()
 
@@ -28,11 +27,13 @@ func main() {
 		return
 	}
 
-	configBytes, err := os.ReadFile(*configPath)
-	cmd.FailOnError(err, "failed to read config file")
 	var config Config
-	err = json.Unmarshal(configBytes, &config)
-	cmd.FailOnError(err, "failed to parse config file")
+	err := cmd.ReadConfigFile(*configFile, &config)
+	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	if *debugAddr != "" {
+		config.DebugAddr = *debugAddr
+	}
 
 	stats, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.DebugAddr)
 	defer oTelShutdown(context.Background())
