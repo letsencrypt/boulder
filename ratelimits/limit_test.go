@@ -134,6 +134,99 @@ func TestValidateIdForName(t *testing.T) {
 	test.AssertError(t, err, "valid regId with empty domain")
 }
 
+// TODO(#7198): Remove this.
+func TestLoadAndParseOverrideLimitsDeprecated(t *testing.T) {
+	// Load a single valid override limit with Id formatted as 'enum:RegId'.
+	l, err := loadAndParseOverrideLimitsDeprecated("testdata/working_override_deprecated.yml")
+	test.AssertNotError(t, err, "valid single override limit")
+	expectKey := joinWithColon(NewRegistrationsPerIPAddress.EnumString(), "10.0.0.2")
+	test.AssertEquals(t, l[expectKey].Burst, int64(40))
+	test.AssertEquals(t, l[expectKey].Count, int64(40))
+	test.AssertEquals(t, l[expectKey].Period.Duration, time.Second)
+
+	// Load single valid override limit with Id formatted as 'regId:domain'.
+	l, err = loadAndParseOverrideLimitsDeprecated("testdata/working_override_regid_domain_deprecated.yml")
+	test.AssertNotError(t, err, "valid single override limit with Id of regId:domain")
+	expectKey = joinWithColon(CertificatesPerDomain.EnumString(), "example.com")
+	test.AssertEquals(t, l[expectKey].Burst, int64(40))
+	test.AssertEquals(t, l[expectKey].Count, int64(40))
+	test.AssertEquals(t, l[expectKey].Period.Duration, time.Second)
+
+	// Load multiple valid override limits with 'enum:RegId' Ids.
+	l, err = loadAndParseOverrideLimitsDeprecated("testdata/working_overrides_deprecated.yml")
+	expectKey1 := joinWithColon(NewRegistrationsPerIPAddress.EnumString(), "10.0.0.2")
+	test.AssertNotError(t, err, "multiple valid override limits")
+	test.AssertEquals(t, l[expectKey1].Burst, int64(40))
+	test.AssertEquals(t, l[expectKey1].Count, int64(40))
+	test.AssertEquals(t, l[expectKey1].Period.Duration, time.Second)
+	expectKey2 := joinWithColon(NewRegistrationsPerIPv6Range.EnumString(), "2001:0db8:0000::/48")
+	test.AssertEquals(t, l[expectKey2].Burst, int64(50))
+	test.AssertEquals(t, l[expectKey2].Count, int64(50))
+	test.AssertEquals(t, l[expectKey2].Period.Duration, time.Second*2)
+
+	// Load multiple valid override limits with 'fqdnSet' Ids, as follows:
+	//   - CertificatesPerFQDNSet:example.com
+	//   - CertificatesPerFQDNSet:example.com,example.net
+	//   - CertificatesPerFQDNSet:example.com,example.net,example.org
+	firstEntryFQDNSetHash := string(core.HashNames([]string{"example.com"}))
+	secondEntryFQDNSetHash := string(core.HashNames([]string{"example.com", "example.net"}))
+	thirdEntryFQDNSetHash := string(core.HashNames([]string{"example.com", "example.net", "example.org"}))
+	firstEntryKey := joinWithColon(CertificatesPerFQDNSet.EnumString(), firstEntryFQDNSetHash)
+	secondEntryKey := joinWithColon(CertificatesPerFQDNSet.EnumString(), secondEntryFQDNSetHash)
+	thirdEntryKey := joinWithColon(CertificatesPerFQDNSet.EnumString(), thirdEntryFQDNSetHash)
+	l, err = loadAndParseOverrideLimitsDeprecated("testdata/working_overrides_regid_fqdnset_deprecated.yml")
+	test.AssertNotError(t, err, "multiple valid override limits with 'fqdnSet' Ids")
+	test.AssertEquals(t, l[firstEntryKey].Burst, int64(40))
+	test.AssertEquals(t, l[firstEntryKey].Count, int64(40))
+	test.AssertEquals(t, l[firstEntryKey].Period.Duration, time.Second)
+	test.AssertEquals(t, l[secondEntryKey].Burst, int64(50))
+	test.AssertEquals(t, l[secondEntryKey].Count, int64(50))
+	test.AssertEquals(t, l[secondEntryKey].Period.Duration, time.Second*2)
+	test.AssertEquals(t, l[thirdEntryKey].Burst, int64(60))
+	test.AssertEquals(t, l[thirdEntryKey].Count, int64(60))
+	test.AssertEquals(t, l[thirdEntryKey].Period.Duration, time.Second*3)
+
+	// Path is empty string.
+	_, err = loadAndParseOverrideLimitsDeprecated("")
+	test.AssertError(t, err, "path is empty string")
+	test.Assert(t, os.IsNotExist(err), "path is empty string")
+
+	// Path to file which does not exist.
+	_, err = loadAndParseOverrideLimitsDeprecated("testdata/file_does_not_exist_deprecated.yml")
+	test.AssertError(t, err, "a file that does not exist ")
+	test.Assert(t, os.IsNotExist(err), "test file should not exist")
+
+	// Burst cannot be 0.
+	_, err = loadAndParseOverrideLimitsDeprecated("testdata/busted_override_burst_0_deprecated.yml")
+	test.AssertError(t, err, "single override limit with burst=0")
+	test.Assert(t, !os.IsNotExist(err), "test file should exist")
+
+	// Id cannot be empty.
+	_, err = loadAndParseOverrideLimitsDeprecated("testdata/busted_override_empty_id_deprecated.yml")
+	test.AssertError(t, err, "single override limit with empty id")
+	test.Assert(t, !os.IsNotExist(err), "test file should exist")
+
+	// Name cannot be empty.
+	_, err = loadAndParseOverrideLimitsDeprecated("testdata/busted_override_empty_name_deprecated.yml")
+	test.AssertError(t, err, "single override limit with empty name")
+	test.Assert(t, !os.IsNotExist(err), "test file should exist")
+
+	// Name must be a string representation of a valid Name enumeration.
+	_, err = loadAndParseOverrideLimitsDeprecated("testdata/busted_override_invalid_name_deprecated.yml")
+	test.AssertError(t, err, "single override limit with invalid name")
+	test.Assert(t, !os.IsNotExist(err), "test file should exist")
+
+	// Multiple entries, second entry has a bad name.
+	_, err = loadAndParseOverrideLimitsDeprecated("testdata/busted_overrides_second_entry_bad_name_deprecated.yml")
+	test.AssertError(t, err, "multiple override limits, second entry is bad")
+	test.Assert(t, !os.IsNotExist(err), "test file should exist")
+
+	// Multiple entries, third entry has id of "lol", instead of an IPv4 address.
+	_, err = loadAndParseOverrideLimitsDeprecated("testdata/busted_overrides_third_entry_bad_id_deprecated.yml")
+	test.AssertError(t, err, "multiple override limits, third entry has bad Id value")
+	test.Assert(t, !os.IsNotExist(err), "test file should exist")
+}
+
 func TestLoadAndParseOverrideLimits(t *testing.T) {
 	// Load a single valid override limit with Id formatted as 'enum:RegId'.
 	l, err := loadAndParseOverrideLimits("testdata/working_override.yml")
@@ -143,7 +236,7 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 	test.AssertEquals(t, l[expectKey].Count, int64(40))
 	test.AssertEquals(t, l[expectKey].Period.Duration, time.Second)
 
-	// Load single valid override limit with Id formatted as 'regId:domain'.
+	// Load single valid override limit with a 'domain' Id.
 	l, err = loadAndParseOverrideLimits("testdata/working_override_regid_domain.yml")
 	test.AssertNotError(t, err, "valid single override limit with Id of regId:domain")
 	expectKey = joinWithColon(CertificatesPerDomain.EnumString(), "example.com")
@@ -151,10 +244,10 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 	test.AssertEquals(t, l[expectKey].Count, int64(40))
 	test.AssertEquals(t, l[expectKey].Period.Duration, time.Second)
 
-	// Load multiple valid override limits with 'enum:RegId' Ids.
+	// Load multiple valid override limits with 'regId' Ids.
 	l, err = loadAndParseOverrideLimits("testdata/working_overrides.yml")
-	expectKey1 := joinWithColon(NewRegistrationsPerIPAddress.EnumString(), "10.0.0.2")
 	test.AssertNotError(t, err, "multiple valid override limits")
+	expectKey1 := joinWithColon(NewRegistrationsPerIPAddress.EnumString(), "10.0.0.2")
 	test.AssertEquals(t, l[expectKey1].Burst, int64(40))
 	test.AssertEquals(t, l[expectKey1].Count, int64(40))
 	test.AssertEquals(t, l[expectKey1].Period.Duration, time.Second)

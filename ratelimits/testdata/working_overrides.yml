@@ -1,8 +1,10 @@
-NewRegistrationsPerIPAddress:10.0.0.2:
-  burst: 40
-  count: 40
-  period: 1s
-NewRegistrationsPerIPv6Range:2001:0db8:0000::/48:
-  burst: 50
-  count: 50
-  period: 2s
+- NewRegistrationsPerIPAddress:
+    burst: 40
+    count: 40
+    period: 1s
+    ids: [10.0.0.2]
+- NewRegistrationsPerIPv6Range:
+    burst: 50
+    count: 50
+    period: 2s
+    ids: [2001:0db8:0000::/48]
