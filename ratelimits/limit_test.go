@@ -10,7 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func Test_parseOverrideNameId(t *testing.T) {
+func TestParseOverrideNameId(t *testing.T) {
 	// 'enum:ipv4'
 	// Valid IPv4 address.
 	name, id, err := parseOverrideNameId(NewRegistrationsPerIPAddress.String() + ":10.0.0.1")
@@ -42,7 +42,7 @@ func Test_parseOverrideNameId(t *testing.T) {
 	test.AssertError(t, err, "invalid enum")
 }
 
-func Test_validateLimit(t *testing.T) {
+func TestValidateLimit(t *testing.T) {
 	err := validateLimit(limit{Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}})
 	test.AssertNotError(t, err, "valid limit")
 
@@ -57,7 +57,7 @@ func Test_validateLimit(t *testing.T) {
 	}
 }
 
-func Test_validateIdForName(t *testing.T) {
+func TestValidateIdForName(t *testing.T) {
 	// 'enum:ipAddress'
 	// Valid IPv4 address.
 	err := validateIdForName(NewRegistrationsPerIPAddress, "10.0.0.1")
@@ -134,7 +134,7 @@ func Test_validateIdForName(t *testing.T) {
 	test.AssertError(t, err, "valid regId with empty domain")
 }
 
-func Test_loadAndParseOverrideLimits(t *testing.T) {
+func TestLoadAndParseOverrideLimits(t *testing.T) {
 	// Load a single valid override limit with Id formatted as 'enum:RegId'.
 	l, err := loadAndParseOverrideLimits("testdata/working_override.yml")
 	test.AssertNotError(t, err, "valid single override limit")
@@ -226,7 +226,7 @@ func Test_loadAndParseOverrideLimits(t *testing.T) {
 	test.Assert(t, !os.IsNotExist(err), "test file should exist")
 }
 
-func Test_loadAndParseDefaultLimits(t *testing.T) {
+func TestLoadAndParseDefaultLimits(t *testing.T) {
 	// Load a single valid default limit.
 	l, err := loadAndParseDefaultLimits("testdata/working_default.yml")
 	test.AssertNotError(t, err, "valid single default limit")

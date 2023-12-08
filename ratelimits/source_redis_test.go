@@ -43,7 +43,7 @@ func newRedisTestLimiter(t *testing.T, clk clock.FakeClock) *Limiter {
 	}), clk)
 }
 
-func Test_RedisSource_Ping(t *testing.T) {
+func TestRedisSource_Ping(t *testing.T) {
 	clk := clock.NewFake()
 	workingSource := newTestRedisSource(clk, map[string]string{
 		"shard1": "10.33.33.4:4218",
@@ -70,7 +70,7 @@ func Test_RedisSource_Ping(t *testing.T) {
 	test.AssertError(t, err, "Ping should not error")
 }
 
-func Test_RedisSource_BatchSetAndGet(t *testing.T) {
+func TestRedisSource_BatchSetAndGet(t *testing.T) {
 	clk := clock.NewFake()
 	s := newTestRedisSource(clk, map[string]string{
 		"shard1": "10.33.33.4:4218",
