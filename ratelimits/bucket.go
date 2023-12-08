@@ -78,6 +78,10 @@ func newRegIdDomainBucketKey(name Name, regId int64, orderName string) (string, 
 // 'enum:fqdnSet' bucket key format.
 func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) {
 	id := string(core.HashNames(orderNames))
+	err := validateIdForName(name, id)
+	if err != nil {
+		return "", err
+	}
 	return joinWithColon(name.EnumString(), id), nil
 }
 
