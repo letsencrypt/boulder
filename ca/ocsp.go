@@ -127,7 +127,7 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 		}
 	}
 
-	now := oi.clk.Now().Truncate(time.Minute)
+	now := oi.clk.Now().Truncate(time.Hour)
 	tbsResponse := ocsp.Response{
 		Status:       ocspStatusToCode[req.Status],
 		SerialNumber: serial,
