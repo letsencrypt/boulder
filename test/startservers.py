@@ -258,7 +258,7 @@ def startChallSrv():
         '--defaultIPv4', os.environ.get("FAKE_DNS"),
         '-defaultIPv6', '',
         '--dns01', ':8053,:8054',
-        '--doh', ':8443',
+        '--doh', '10.77.77.77:8443,10.88.88.88:8443',
         '--doh-cert', 'test/grpc-creds/10.77.77.77/cert.pem',
         '--doh-cert-key', 'test/grpc-creds/10.77.77.77/key.pem',
         '--management', ':8055',

@@ -25,7 +25,7 @@ docker login
 build_and_push_image() {
   GO_VERSION="$1"
   PLATFORMS="$2"
-  TAG_NAME="${DOCKER_REPO}:go${GO_VERSION}_${DATESTAMP}a"
+  TAG_NAME="${DOCKER_REPO}:go${GO_VERSION}_${DATESTAMP}"
   echo "Building boulder-tools image ${TAG_NAME}"
 
   # build, tag, and push the image.
