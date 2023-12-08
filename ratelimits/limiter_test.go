@@ -52,7 +52,7 @@ func setup(t *testing.T) (context.Context, map[string]*Limiter, *TransactionBuil
 	}, newTestTransactionBuilder(t), clk, randIP.String()
 }
 
-func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
+func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 	t.Parallel()
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
 	for name, l := range limiters {
@@ -252,7 +252,7 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 	}
 }
 
-func Test_Limiter_InitializationViaCheckAndSpend(t *testing.T) {
+func TestLimiter_InitializationViaCheckAndSpend(t *testing.T) {
 	t.Parallel()
 	testCtx, limiters, txnBuilder, _, testIP := setup(t)
 	for name, l := range limiters {
@@ -315,7 +315,7 @@ func Test_Limiter_InitializationViaCheckAndSpend(t *testing.T) {
 	}
 }
 
-func Test_Limiter_DefaultLimits(t *testing.T) {
+func TestLimiter_DefaultLimits(t *testing.T) {
 	t.Parallel()
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
 	for name, l := range limiters {
@@ -378,7 +378,7 @@ func Test_Limiter_DefaultLimits(t *testing.T) {
 	}
 }
 
-func Test_Limiter_RefundAndReset(t *testing.T) {
+func TestLimiter_RefundAndReset(t *testing.T) {
 	t.Parallel()
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
 	for name, l := range limiters {
