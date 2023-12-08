@@ -525,7 +525,7 @@ func (va *ValidationAuthorityImpl) processRemoteValidationResultsOuter(domain st
 		} else {
 			result = "failure"
 		}
-		fmt.Printf("PHIL PerformValidation: %s\n", result)
+
 		va.metrics.remoteValidationTime.With(prometheus.Labels{
 			"type":   challengeType,
 			"result": result,
@@ -537,7 +537,6 @@ func (va *ValidationAuthorityImpl) processRemoteValidationResultsOuter(domain st
 		action: "validation",
 	}
 	probs, isOk := va.processRemoteResultsInner(domain, acctID, challengeType, primaryResult, remoteResultsChan, metadata)
-	//fmt.Printf("PHIL PerformValidation probs: %v\n", probs)
 
 	return probs
 }
@@ -807,6 +806,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	}).Observe(validationLatency.Seconds())
 
 	va.log.AuditObject("Validation result", logEvent)
-	//fmt.Printf("PHIL PerformValidation prob: %v\n", prob)
+
 	return bgrpc.ValidationResultToPB(records, prob)
 }

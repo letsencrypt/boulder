@@ -156,8 +156,11 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 	return va, logger
 }
 
-func setupRemote(srv *httptest.Server, userAgent string) vapb.VAClient {
+func setupRemote(srv *httptest.Server, userAgent string, clientOverride *bdns.Client) vapb.VAClient {
 	innerVA, _ := setup(srv, 0, userAgent, nil)
+	if clientOverride != nil {
+		innerVA.dnsClient = *clientOverride
+	}
 	return &localRemoteVA{remote: *innerVA}
 }
 
@@ -377,8 +380,8 @@ func TestMultiVA(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2)
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil)
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -587,8 +590,8 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2)
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil)
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -675,8 +678,8 @@ func TestMultiVAPolicy(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2)
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil)
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -758,9 +761,9 @@ func TestDetailedError(t *testing.T) {
 
 func TestLogRemoteDifferentials(t *testing.T) {
 	// Create some remote VAs
-	remoteVA1 := setupRemote(nil, "remote 1")
-	remoteVA2 := setupRemote(nil, "remote 2")
-	remoteVA3 := setupRemote(nil, "remote 3")
+	remoteVA1 := setupRemote(nil, "remote 1", nil)
+	remoteVA2 := setupRemote(nil, "remote 2", nil)
+	remoteVA3 := setupRemote(nil, "remote 3", nil)
 	remoteVAs := []RemoteVA{
 		{remoteVA1, "remote 1"},
 		{remoteVA2, "remote 2"},

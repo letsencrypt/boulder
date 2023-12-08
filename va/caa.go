@@ -34,8 +34,6 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
 
-	//vStart := va.clk.Now()
-
 	validationMethod := core.AcmeChallenge(req.ValidationMethod)
 	if !validationMethod.IsValid() {
 		return nil, berrors.InternalServerError("unrecognized validation method %q", req.ValidationMethod)
@@ -60,6 +58,8 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	prob := va.checkCAA(ctx, acmeID, params)
 	if prob != nil {
 		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
+
+		// I don't think
 		return &vapb.IsCAAValidResponse{
 			Problem: &corepb.ProblemDetails{
 				ProblemType: string(prob.Type),
@@ -114,7 +114,6 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	*/
 	//va.log.AuditObject("Validation result", logEvent)
 
-	//fmt.Printf("PHIL IsCAAValid prob: %v\n", prob)
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
@@ -132,7 +131,7 @@ func (va *ValidationAuthorityImpl) processRemoteCAARecheckResultsOuter(domain st
 		} else {
 			result = "failure"
 		}
-		fmt.Printf("PHIL IsCAAValid: %s\n", result)
+
 		va.metrics.remoteCAARecheckTime.With(prometheus.Labels{
 			"type":   challengeType,
 			"result": result,
@@ -144,7 +143,6 @@ func (va *ValidationAuthorityImpl) processRemoteCAARecheckResultsOuter(domain st
 		action: "CAA rechecking",
 	}
 	probs, isOk := va.processRemoteResultsInner(domain, acctID, challengeType, primaryResult, remoteResultsChan, metadata)
-	//fmt.Printf("PHIL IsCAAValid probs: %v\n", probs)
 
 	return probs
 }
