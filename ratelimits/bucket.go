@@ -78,10 +78,6 @@ func newRegIdDomainBucketKey(name Name, regId int64, orderName string) (string, 
 // 'enum:fqdnSet' bucket key format.
 func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) {
 	id := string(core.HashNames(orderNames))
-	err := validateIdForName(name, id)
-	if err != nil {
-		return "", err
-	}
 	return joinWithColon(name.EnumString(), id), nil
 }
 
@@ -299,12 +295,6 @@ func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64
 		if err != nil {
 			return nil, err
 		}
-		perDomainLimit, err := builder.getLimit(CertificatesPerDomain, perDomainBucketKey)
-		if err != nil {
-			if !errors.Is(err, errLimitDisabled) {
-				return nil, err
-			}
-		}
 		if perAccountLimit.isOverride {
 			// An override is configured for the CertificatesPerDomainPerAccount
 			// limit.
@@ -320,19 +310,45 @@ func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64
 			}
 			txns = append(txns, txn)
 
-			// Add a spend-only transaction for each per domain bucket.
-			txn, err = newSpendOnlyTransaction(perDomainLimit, perDomainBucketKey, 1)
+			perDomainLimit, err := builder.getLimit(CertificatesPerDomain, perDomainBucketKey)
 			if err != nil {
-				return nil, err
+				if errors.Is(err, errLimitDisabled) {
+					return nil, err
+				}
+				// Add an allow-only transaction for each per domain bucket.
+				txn, err = newAllowOnlyTransaction()
+				if err != nil {
+					return nil, err
+				}
+				txns = append(txns, txn)
+			} else {
+				// Add a spend-only transaction for each per domain bucket.
+				txn, err = newSpendOnlyTransaction(perDomainLimit, perDomainBucketKey, 1)
+				if err != nil {
+					return nil, err
+				}
+				txns = append(txns, txn)
 			}
-			txns = append(txns, txn)
 		} else {
-			// Add a check-and-spend transaction for each per domain bucket.
-			txn, err := newTransaction(perDomainLimit, perDomainBucketKey, 1)
+			perDomainLimit, err := builder.getLimit(CertificatesPerDomain, perDomainBucketKey)
 			if err != nil {
-				return nil, err
+				if !errors.Is(err, errLimitDisabled) {
+					return nil, err
+				}
+				// Add an allow-only transaction for each per domain bucket.
+				txn, err := newAllowOnlyTransaction()
+				if err != nil {
+					return nil, err
+				}
+				txns = append(txns, txn)
+			} else {
+				// Add a check-and-spend transaction for each per domain bucket.
+				txn, err := newTransaction(perDomainLimit, perDomainBucketKey, 1)
+				if err != nil {
+					return nil, err
+				}
+				txns = append(txns, txn)
 			}
-			txns = append(txns, txn)
 		}
 	}
 	return txns, nil
