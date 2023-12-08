@@ -194,6 +194,7 @@ func New(
 	var client exchanger
 	if features.Enabled(features.DOH) {
 		client = &dohExchanger{
+			clk: clk,
 			hc: http.Client{
 				Timeout: readTimeout,
 				Transport: &http.Transport{
@@ -642,7 +643,8 @@ func logDNSError(
 }
 
 type dohExchanger struct {
-	hc http.Client
+	clk clock.Clock
+	hc  http.Client
 }
 
 // Exchange sends a DoH query to the provided DoH server and returns the response.
@@ -661,27 +663,27 @@ func (d *dohExchanger) Exchange(query *dns.Msg, server string) (*dns.Msg, time.D
 	req.Header.Set("Content-Type", "application/dns-message")
 	req.Header.Set("Accept", "application/dns-message")
 
-	start := time.Now()
+	start := d.clk.Now()
 	resp, err := d.hc.Do(req)
 	if err != nil {
-		return nil, time.Since(start), err
+		return nil, d.clk.Since(start), err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, time.Since(start), fmt.Errorf("doh: http status %d", resp.StatusCode)
+		return nil, d.clk.Since(start), fmt.Errorf("doh: http status %d", resp.StatusCode)
 	}
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, time.Since(start), fmt.Errorf("doh: reading response body: %w", err)
+		return nil, d.clk.Since(start), fmt.Errorf("doh: reading response body: %w", err)
 	}
 
 	response := new(dns.Msg)
 	err = response.Unpack(b)
 	if err != nil {
-		return nil, time.Since(start), fmt.Errorf("doh: unpacking response: %w", err)
+		return nil, d.clk.Since(start), fmt.Errorf("doh: unpacking response: %w", err)
 	}
 
-	return response, time.Since(start), nil
+	return response, d.clk.Since(start), nil
 }
