@@ -21,5 +21,7 @@ for SERVICE in publisher nonce ra ca sa va rva ; do
   minica -domains "${SERVICE}.boulder,${SERVICE}1.boulder,${SERVICE}2.boulder"
 done
 
+minica -ip-addresses 10.77.77.77,10.88.88.88
+
 # minica sets restrictive directory permissions, but we don't want that
 chmod -R go+rX .

@@ -19,7 +19,7 @@ go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.0
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0
 go install github.com/rubenv/sql-migrate/sql-migrate@v1.1.2
 go install golang.org/x/tools/cmd/stringer@latest
-go install github.com/letsencrypt/pebble/cmd/pebble-challtestsrv@master
+go install github.com/letsencrypt/pebble/v2/cmd/pebble-challtestsrv@66511d8
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.53.3
 go install honnef.co/go/tools/cmd/staticcheck@2023.1.5
 
