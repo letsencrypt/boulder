@@ -322,7 +322,7 @@ func TestDCVAndCAASequencing(t *testing.T) {
 	caaLog := mockLog.GetAllMatching(`Checked CAA records for`)
 	test.AssertEquals(t, len(caaLog), 1)
 
-	_ = features.Set(map[string]bool{features.CAAAfterValidation.String(): true})
+	features.Set(features.FeatureSet{CAAAfterValidation: true})
 	defer features.Reset()
 
 	// When performing successful validation with the CAAAfterValidation flag,
@@ -373,19 +373,19 @@ func TestMultiVA(t *testing.T) {
 		{remoteVA2, remoteUA2},
 	}
 
-	enforceMultiVA := map[string]bool{
-		"EnforceMultiVA": true,
+	enforceMultiVA := features.FeatureSet{
+		EnforceMultiVA: true,
 	}
-	enforceMultiVAFullResults := map[string]bool{
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": true,
+	enforceMultiVAFullResults := features.FeatureSet{
+		EnforceMultiVA:     true,
+		MultiVAFullResults: true,
 	}
-	noEnforceMultiVA := map[string]bool{
-		"EnforceMultiVA": false,
+	noEnforceMultiVA := features.FeatureSet{
+		EnforceMultiVA: false,
 	}
-	noEnforceMultiVAFullResults := map[string]bool{
-		"EnforceMultiVA":     false,
-		"MultiVAFullResults": true,
+	noEnforceMultiVAFullResults := features.FeatureSet{
+		EnforceMultiVA:     false,
+		MultiVAFullResults: true,
 	}
 
 	unauthorized := probs.Unauthorized(fmt.Sprintf(
@@ -400,7 +400,7 @@ func TestMultiVA(t *testing.T) {
 		Name         string
 		RemoteVAs    []RemoteVA
 		AllowedUAs   map[string]bool
-		Features     map[string]bool
+		Features     features.FeatureSet
 		ExpectedProb *probs.ProblemDetails
 		ExpectedLog  string
 	}{
@@ -532,11 +532,7 @@ func TestMultiVA(t *testing.T) {
 			// Configure a primary VA with testcase remote VAs.
 			localVA, mockLog := setup(ms.Server, 0, localUA, tc.RemoteVAs)
 
-			if tc.Features != nil {
-				err := features.Set(tc.Features)
-				test.AssertNotError(t, err, "Failed to set feature flags")
-				defer features.Reset()
-			}
+			features.Set(tc.Features)
 
 			// Perform all validations
 			res, _ := localVA.PerformValidation(ctx, req)
@@ -599,13 +595,13 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 		},
 	}
 
-	earlyReturnFeatures := map[string]bool{
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": false,
+	earlyReturnFeatures := features.FeatureSet{
+		EnforceMultiVA:     true,
+		MultiVAFullResults: false,
 	}
-	noEarlyReturnFeatures := map[string]bool{
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": true,
+	noEarlyReturnFeatures := features.FeatureSet{
+		EnforceMultiVA:     true,
+		MultiVAFullResults: true,
 	}
 
 	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
@@ -615,9 +611,9 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 
 			var err error
 			if tc.EarlyReturn {
-				err = features.Set(earlyReturnFeatures)
+				features.Set(earlyReturnFeatures)
 			} else {
-				err = features.Set(noEarlyReturnFeatures)
+				features.Set(noEarlyReturnFeatures)
 			}
 			test.AssertNotError(t, err, "Failed to set MultiVAFullResults feature flag")
 			defer features.Reset()
@@ -676,11 +672,10 @@ func TestMultiVAPolicy(t *testing.T) {
 
 	// Ensure multi VA enforcement is enabled, don't wait for full multi VA
 	// results.
-	err := features.Set(map[string]bool{
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": false,
+	features.Set(features.FeatureSet{
+		EnforceMultiVA:     true,
+		MultiVAFullResults: false,
 	})
-	test.AssertNotError(t, err, "setting feature flags")
 	defer features.Reset()
 
 	// Perform validation for a domain not in the disabledDomains list
