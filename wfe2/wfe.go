@@ -2379,13 +2379,13 @@ func (c deprecatedCertID) Serial() string {
 	return core.SerialToString(c.SerialNumber)
 }
 
-// newDeprecatedCertID parses a unique identifier (certID) for a certificate as
-// per the ACME protocol's "renewalInfo" resource, as specified in draft-ietf-
-// acme-ari-02. For more details see:
+// parseDeprecatedCertID parses a unique identifier (certID) for a certificate
+// as per the ACME protocol's "renewalInfo" resource, as specified in
+// draft-ietf- acme-ari-02. For more details see:
 // https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-01#section-4.1.
 //
 // TODO(#7183): Remove this.
-func newDeprecatedCertID(path string) (ariCertID, error) {
+func parseDeprecatedCertID(path string) (ariCertID, error) {
 	der, err := base64.RawURLEncoding.DecodeString(path)
 	if err != nil {
 		return deprecatedCertID{}, err
@@ -2399,7 +2399,6 @@ func newDeprecatedCertID(path string) (ariCertID, error) {
 
 	// Verify that the hash algorithm is SHA-256, so people don't use SHA-1 here.
 	if !id.HashAlgorithm.Algorithm.Equal(asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}) {
-		// wfe.sendError(response, logEvent, probs.Malformed("Request used hash algorithm other than SHA-256"), err)
 		return deprecatedCertID{}, errors.New("Request used hash algorithm other than SHA-256")
 	}
 	return id, nil
@@ -2421,20 +2420,20 @@ func (c certID) Serial() string {
 	return core.SerialToString(c.serialNumber)
 }
 
-// newCertID parses a unique identifier (certID) as specified in
+// parseCertID parses a unique identifier (certID) as specified in
 // draft-ietf-acme-ari-02. It takes the composite string as input returns a
 // certID struct with the keyIdentifier and serialNumber extracted and decoded.
 // For more details see:
 // https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-02#section-4.1.
-func newCertID(path string, issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate) (ariCertID, *probs.ProblemDetails, error) {
+func parseCertID(path string, issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate) (ariCertID, *probs.ProblemDetails, error) {
 	parts := strings.Split(path, ".")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return certID{}, probs.Malformed("Path was not a composite CertID"), nil
+		return certID{}, probs.Malformed("Invalid path"), nil
 	}
 
 	akid, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return certID{}, probs.Malformed("Path did not contain a base64url-encoded Authority Key Identifier"), err
+		return certID{}, probs.Malformed("Authority Key Identifier was not base64url-encoded or contained padding", err), err
 	}
 
 	var found bool
@@ -2445,12 +2444,12 @@ func newCertID(path string, issuerCertificates map[issuance.IssuerNameID]*issuan
 		}
 	}
 	if !found {
-		return certID{}, probs.Malformed("Path contained an Authority Key Identifier that did not match a known issuer"), nil
+		return certID{}, probs.NotFound("Path contained an Authority Key Identifier that did not match a known issuer"), nil
 	}
 
 	serialNumber, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return certID{}, probs.Malformed("Path did not contain a base64url-encoded serial number"), err
+		return certID{}, probs.Malformed("Serial number was not base64url-encoded or contained padding", err), err
 	}
 
 	return certID{
@@ -2479,11 +2478,11 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 
 	// Try parsing certID param using the draft-ietf-acme-ari-01 format.
 	// TODO(#7183): Remove this.
-	certID, err := newDeprecatedCertID(request.URL.Path)
+	certID, err := parseDeprecatedCertID(request.URL.Path)
 	if err != nil {
 		// Try parsing certID param using the draft-ietf-acme-ari-02 format.
 		var prob *probs.ProblemDetails
-		certID, prob, err = newCertID(request.URL.Path, wfe.issuerCertificates)
+		certID, prob, err = parseCertID(request.URL.Path, wfe.issuerCertificates)
 		if prob != nil {
 			wfe.sendError(response, logEvent, prob, err)
 			return
@@ -2583,11 +2582,11 @@ func (wfe *WebFrontEndImpl) UpdateRenewal(ctx context.Context, logEvent *web.Req
 
 	// Try parsing certID param using the draft-ietf-acme-ari-01 format.
 	// TODO(#7183): Remove this.
-	certID, err := newDeprecatedCertID(updateRenewalRequest.CertID)
+	certID, err := parseDeprecatedCertID(updateRenewalRequest.CertID)
 	if err != nil {
 		// Try parsing certID param using the draft-ietf-acme-ari-02 format.
 		var prob *probs.ProblemDetails
-		certID, prob, err = newCertID(updateRenewalRequest.CertID, wfe.issuerCertificates)
+		certID, prob, err = parseCertID(updateRenewalRequest.CertID, wfe.issuerCertificates)
 		if prob != nil {
 			wfe.sendError(response, logEvent, prob, err)
 			return
