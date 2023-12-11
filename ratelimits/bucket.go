@@ -76,7 +76,7 @@ func newRegIdDomainBucketKey(name Name, regId int64, orderName string) (string, 
 
 // newFQDNSetBucketKey validates and returns a bucketKey for limits that use the
 // 'enum:fqdnSet' bucket key format.
-func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) {
+func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) { //nolint: unparam
 	hash := core.HashNames(orderNames)
 	id := fmt.Sprintf("%x", hash)
 	err := validateIdForName(name, id)
