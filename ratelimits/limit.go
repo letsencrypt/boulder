@@ -202,8 +202,7 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 					// FQDNSet hashes are not a nice thing to ask for in a
 					// config file, so we allow the user to specify a
 					// comma-separated list of FQDNs and compute the hash here.
-					hash := core.HashNames(strings.Split(id, ","))
-					id = fmt.Sprintf("%x", hash)
+					id = fmt.Sprintf("%x", core.HashNames(strings.Split(id, ",")))
 				}
 				parsed[joinWithColon(name.EnumString(), id)] = precomputeLimit(v.limit)
 			}
