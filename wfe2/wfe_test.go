@@ -3664,7 +3664,7 @@ func TestARI(t *testing.T) {
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
-	test.AssertContains(t, resp.Body.String(), "Path was not a composite CertID")
+	test.AssertContains(t, resp.Body.String(), "Invalid path")
 
 	// Ensure that a query with no path slug at all bails out early.
 	req, event = makeGet("", renewalInfoPath)
