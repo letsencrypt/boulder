@@ -2050,6 +2050,56 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	return respObj
 }
 
+// orderMatchesReplacement checks if the order matches the provided certificate
+// as identified by the provided ARI CertID. This function ensures that:
+//   - the certificate being replaced exists,
+//   - the requesting account owns that certificate, and
+//   - the names in this new order match the names in the certificate
+//     being replaced.
+func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *core.Registration, names []string, replaces string) (*probs.ProblemDetails, error) {
+	certID, prob, err := parseCertID(replaces, wfe.issuerCertificates)
+	if err != nil {
+		return prob, err
+	}
+	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: certID.Serial()})
+	if err != nil {
+		if errors.Is(err, berrors.NotFound) {
+			return probs.NotFound("Certificate replaced by this order does not exist"), nil
+		}
+		return web.ProblemDetailsForError(err, "Failed to retrieve certificate replaced by this order"), err
+	}
+	if cert.RegistrationID != acct.ID {
+		return probs.Unauthorized("Account does not own certificate replaced by this order"), nil
+	}
+	var namesMatch bool
+	parsedCert, err := x509.ParseCertificate(cert.Der)
+	if err != nil {
+		return probs.ServerInternal("Error parsing certificate replaced by this order"), err
+	}
+	// Check that at least 50% of the names in the order match the names in the
+	// certificate being replaced.
+	countNewOrderNames := len(names)
+	countCertNames := len(parsedCert.DNSNames)
+	if countNewOrderNames > countCertNames {
+		// If the order has more names than the certificate being replaced, then
+		// we only need to check that the certificate names are a subset of the
+		// order names.
+		countNewOrderNames = countCertNames
+	}
+	for _, name := range names {
+		if parsedCert.VerifyHostname(name) == nil {
+			countNewOrderNames--
+		}
+	}
+	if countNewOrderNames >= len(names)/2 {
+		namesMatch = true
+	}
+	if !namesMatch {
+		return probs.Malformed("Certificate replaced by this order does not have matching identifiers"), nil
+	}
+	return nil, nil
+}
+
 // NewOrder is used by clients to create a new order object and a set of
 // authorizations to fulfill for issuance.
 func (wfe *WebFrontEndImpl) NewOrder(
@@ -2069,8 +2119,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// `notBefore` and/or `notAfter` fields described in Section 7.4 of acme-08
 	// are sent we return a probs.Malformed as we do not support them
 	var newOrderRequest struct {
-		Identifiers         []identifier.ACMEIdentifier `json:"identifiers"`
-		NotBefore, NotAfter string
+		Identifiers                   []identifier.ACMEIdentifier `json:"identifiers"`
+		NotBefore, NotAfter, Replaces string
 	}
 	err := json.Unmarshal(body, &newOrderRequest)
 	if err != nil {
@@ -2123,6 +2173,14 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	logEvent.DNSNames = names
+
+	if newOrderRequest.Replaces != "" {
+		prob, err := wfe.orderMatchesReplacement(ctx, acct, names, newOrderRequest.Replaces)
+		if prob != nil || err != nil {
+			wfe.sendError(response, logEvent, prob, err)
+			return
+		}
+	}
 
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: acct.ID,
