@@ -134,7 +134,8 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 			// FQDNSet hashes are not a nice thing to ask for in a config file,
 			// so we allow the user to specify a comma-separated list of FQDNs
 			// and compute the hash here.
-			id = string(core.HashNames(strings.Split(id, ",")))
+			hash := core.HashNames(strings.Split(id, ","))
+			id = fmt.Sprintf("%x", hash)
 		}
 		v.name = name
 		v.isOverride = true
