@@ -2200,14 +2200,22 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	// TODO(#5545): Spending and Refunding can be async until these rate limits
 	// are authoritative. This saves us from adding latency to each request.
+	doneCheckingLimits := make(chan struct{})
 	var ratelimitTxns []ratelimits.Transaction
 	var newOrderSuccessful bool
+
 	go func() {
+		// Close the channel on goroutine completion.
+		defer close(doneCheckingLimits)
 		ratelimitTxns = wfe.checkNewOrderLimits(ctx, acct.ID, names)
 	}()
+
 	defer func() {
+		// Wait for the rate limit check to complete before attempting to refund
+		// the limits. If the check failed, we don't want to refund anything.
+		<-doneCheckingLimits
 		if !newOrderSuccessful && ratelimitTxns != nil {
-			go wfe.refundNewOrderLimits(ctx, ratelimitTxns)
+			wfe.refundNewOrderLimits(ctx, ratelimitTxns)
 		}
 	}()
 
