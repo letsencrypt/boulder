@@ -4,7 +4,7 @@ FROM buildpack-deps:focal-scm
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 
-ENV TARGETPLATFORM=$TARGETPLATFORM
+ENV TARGETPLATFORM=${TARGETPLATFORM:-$BUILDPLATFORM}
 ENV PATH /usr/local/go/bin:/usr/local/protoc/bin:$PATH
 
 COPY requirements.txt /tmp/requirements.txt
