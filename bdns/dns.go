@@ -2,10 +2,13 @@ package bdns
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +18,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 )
@@ -175,6 +179,9 @@ type exchanger interface {
 
 // New constructs a new DNS resolver object that utilizes the
 // provided list of DNS servers for resolution.
+//
+// `tlsConfig` is the configuration used for outbound DoH queries,
+// if applicable.
 func New(
 	readTimeout time.Duration,
 	servers ServerProvider,
@@ -182,12 +189,26 @@ func New(
 	clk clock.Clock,
 	maxTries int,
 	log blog.Logger,
+	tlsConfig *tls.Config,
 ) Client {
-	dnsClient := new(dns.Client)
-
-	// Set timeout for underlying net.Conn
-	dnsClient.ReadTimeout = readTimeout
-	dnsClient.Net = "udp"
+	var client exchanger
+	if features.Enabled(features.DOH) {
+		client = &dohExchanger{
+			clk: clk,
+			hc: http.Client{
+				Timeout: readTimeout,
+				Transport: &http.Transport{
+					TLSClientConfig: tlsConfig,
+				},
+			},
+		}
+	} else {
+		client = &dns.Client{
+			// Set timeout for underlying net.Conn
+			ReadTimeout: readTimeout,
+			Net:         "udp",
+		}
+	}
 
 	queryTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -220,9 +241,8 @@ func New(
 		[]string{"qtype", "resolver"},
 	)
 	stats.MustRegister(queryTime, totalLookupTime, timeoutCounter, idMismatchCounter)
-
 	return &impl{
-		dnsClient:                dnsClient,
+		dnsClient:                client,
 		servers:                  servers,
 		allowRestrictedAddresses: false,
 		maxTries:                 maxTries,
@@ -244,8 +264,10 @@ func NewTest(
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	maxTries int,
-	log blog.Logger) Client {
-	resolver := New(readTimeout, servers, stats, clk, maxTries, log)
+	log blog.Logger,
+	tlsConfig *tls.Config,
+) Client {
+	resolver := New(readTimeout, servers, stats, clk, maxTries, log, tlsConfig)
 	resolver.(*impl).allowRestrictedAddresses = true
 	return resolver
 }
@@ -618,4 +640,50 @@ func logDNSError(
 			queryType,
 			underlying)
 	}
+}
+
+type dohExchanger struct {
+	clk clock.Clock
+	hc  http.Client
+}
+
+// Exchange sends a DoH query to the provided DoH server and returns the response.
+func (d *dohExchanger) Exchange(query *dns.Msg, server string) (*dns.Msg, time.Duration, error) {
+	q, err := query.Pack()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// The default Unbound URL template
+	url := fmt.Sprintf("https://%s/dns-query", server)
+	req, err := http.NewRequest("POST", url, strings.NewReader(string(q)))
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Content-Type", "application/dns-message")
+	req.Header.Set("Accept", "application/dns-message")
+
+	start := d.clk.Now()
+	resp, err := d.hc.Do(req)
+	if err != nil {
+		return nil, d.clk.Since(start), err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, d.clk.Since(start), fmt.Errorf("doh: http status %d", resp.StatusCode)
+	}
+
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, d.clk.Since(start), fmt.Errorf("doh: reading response body: %w", err)
+	}
+
+	response := new(dns.Msg)
+	err = response.Unpack(b)
+	if err != nil {
+		return nil, d.clk.Since(start), fmt.Errorf("doh: unpacking response: %w", err)
+	}
+
+	return response, d.clk.Since(start), nil
 }

@@ -116,6 +116,22 @@ services {
 }
 
 services {
+  id      = "doh-a"
+  name    = "doh"
+  address = "10.77.77.77"
+  port    = 8443
+  tags    = ["tcp"]
+}
+
+services {
+  id      = "doh-b"
+  name    = "doh"
+  address = "10.88.88.88"
+  port    = 8443
+  tags    = ["tcp"]
+}
+
+services {
   id      = "nonce-a"
   name    = "nonce"
   address = "10.77.77.77"

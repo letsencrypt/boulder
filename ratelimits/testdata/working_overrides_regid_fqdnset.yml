@@ -1,12 +1,15 @@
-CertificatesPerFQDNSet:example.com:
-  burst: 40
-  count: 40
-  period: 1s
-CertificatesPerFQDNSet:example.com,example.net:
-  burst: 50
-  count: 50
-  period: 2s
-CertificatesPerFQDNSet:example.com,example.net,example.org:
-  burst: 60
-  count: 60
-  period: 3s
+- CertificatesPerFQDNSet:
+    burst: 40
+    count: 40
+    period: 1s
+    ids: [example.com]
+- CertificatesPerFQDNSet:
+    burst: 50
+    count: 50
+    period: 2s
+    ids: ["example.com,example.net"]
+- CertificatesPerFQDNSet:
+    burst: 60
+    count: 60
+    period: 3s
+    ids: ["example.com,example.net,example.org"]
