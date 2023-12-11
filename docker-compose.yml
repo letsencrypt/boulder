@@ -1,8 +1,15 @@
 version: '3'
 services:
   boulder:
-    # Should match one of the GO_DEV_VERSIONS in test/boulder-tools/tag_and_upload.sh.
-    image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.21.5_2023-12-05}
+    # The `letsencrypt/boulder-tools:latest` tag is automatically built in local
+    # dev environments. In CI a specific BOULDER_TOOLS_TAG is passed, and it is
+    # pulled with `docker compose pull`.
+    image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-latest}
+    build:
+      context: test/boulder-tools/
+      # Should match one of the GO_DEV_VERSIONS in test/boulder-tools/tag_and_upload.sh.
+      args:
+        GO_VERSION: 1.21.5
     environment:
       # To solve HTTP-01 and TLS-ALPN-01 challenges, change the IP in FAKE_DNS
       # to the IP address where your ACME client's solver is listening.
