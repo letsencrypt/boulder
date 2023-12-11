@@ -147,7 +147,7 @@ func validateRegId(id string) error {
 func validateDomain(id string) error {
 	err := policy.ValidDomain(id)
 	if err != nil {
-		return fmt.Errorf("invalid domain, %q must be formatted 'domain'", id)
+		return fmt.Errorf("invalid domain, %q must be formatted 'domain': %w", id, err)
 	}
 	return nil
 }
@@ -169,7 +169,7 @@ func validateRegIdDomain(id string) error {
 	err = policy.ValidDomain(regIdDomain[1])
 	if err != nil {
 		return fmt.Errorf(
-			"invalid domain, %q must be formatted 'regId:domain'", id)
+			"invalid domain, %q must be formatted 'regId:domain': %w", id, err)
 	}
 	return nil
 }
@@ -186,7 +186,7 @@ func validateFQDNSet(id string) error {
 		err := policy.ValidDomain(domain)
 		if err != nil {
 			return fmt.Errorf(
-				"invalid domain, %q must be formatted 'fqdnSet'", id)
+				"invalid domain, %q must be formatted 'fqdnSet': %w", id, err)
 		}
 	}
 	return nil
