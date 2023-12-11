@@ -3,14 +3,11 @@ package ratelimits
 import (
 	"fmt"
 	"net"
-	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/letsencrypt/boulder/policy"
 )
-
-var sha256Exp = regexp.MustCompile("^[a-fA-F0-9]{64}$")
 
 // Name is an enumeration of all rate limit names. It is used to intern rate
 // limit names as strings and to provide a type-safe way to refer to rate
@@ -180,11 +177,6 @@ func validateRegIdDomain(id string) error {
 // validateFQDNSet validates that the provided string is formatted 'fqdnSet',
 // where fqdnSet is a comma-separated list of domain names.
 func validateFQDNSet(id string) error {
-	if sha256Exp.MatchString(id) {
-		// This is likely a hashed set of unique eTLD+1 domain names.
-		return nil
-	}
-
 	domains := strings.Split(id, ",")
 	if len(domains) == 0 {
 		return fmt.Errorf(
