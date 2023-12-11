@@ -692,7 +692,7 @@ type Config struct {
 		// during the SMTP connection (as opposed to the gRPC connections).
 		SMTPTrustedRootFile string
 
-		Features features.FeatureSet
+		Features features.Config
 	}
 
 	Syslog        cmd.SyslogConfig

@@ -20,7 +20,7 @@ type Config struct {
 		ReadOnlyDB  cmd.DBConfig `validate:"-"`
 		IncidentsDB cmd.DBConfig `validate:"-"`
 
-		Features features.FeatureSet
+		Features features.Config
 
 		// Max simultaneous SQL queries caused by a single RPC.
 		ParallelismPerRPC int `validate:"omitempty,min=1"`

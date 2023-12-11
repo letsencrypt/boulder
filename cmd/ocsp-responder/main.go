@@ -84,7 +84,7 @@ type Config struct {
 
 		RequiredSerialPrefixes []string `validate:"omitempty,dive,hexadecimal"`
 
-		Features features.FeatureSet
+		Features features.Config
 
 		// Configuration for using Redis as a cache. This configuration should
 		// allow for both read and write access.

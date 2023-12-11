@@ -90,7 +90,7 @@ type Config struct {
 		// generate OCSP URLs to purge during revocation.
 		IssuerCerts []string `validate:"min=1,dive,required"`
 
-		Features features.FeatureSet
+		Features features.Config
 	}
 
 	PA cmd.PAConfig

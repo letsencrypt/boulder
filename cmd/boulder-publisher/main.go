@@ -20,7 +20,7 @@ import (
 type Config struct {
 	Publisher struct {
 		cmd.ServiceConfig
-		Features features.FeatureSet
+		Features features.Config
 
 		// If this is non-zero, profile blocking events such that one even is
 		// sampled every N nanoseconds.

@@ -514,7 +514,7 @@ type Config struct {
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 		CTLogListFile string
 
-		Features features.FeatureSet
+		Features features.Config
 	}
 	PA     cmd.PAConfig
 	Syslog cmd.SyslogConfig

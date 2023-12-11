@@ -3536,7 +3536,7 @@ func TestARI(t *testing.T) {
 	msa := newMockSAWithCert(t, wfe.sa)
 	wfe.sa = msa
 
-	features.Set(features.FeatureSet{ServeRenewalInfo: true})
+	features.Set(features.Config{ServeRenewalInfo: true})
 	defer features.Reset()
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
@@ -3664,7 +3664,7 @@ func TestIncidentARI(t *testing.T) {
 	expectSerialString := core.SerialToString(big.NewInt(12345))
 	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerialString})
 
-	features.Set(features.FeatureSet{ServeRenewalInfo: true})
+	features.Set(features.Config{ServeRenewalInfo: true})
 	defer features.Reset()
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
@@ -3722,7 +3722,7 @@ func (sa *mockSAWithSerialMetadata) GetSerialMetadata(_ context.Context, req *sa
 func TestUpdateARI(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 
-	features.Set(features.FeatureSet{ServeRenewalInfo: true})
+	features.Set(features.Config{ServeRenewalInfo: true})
 	defer features.Reset()
 
 	makePost := func(regID int64, body string) *http.Request {

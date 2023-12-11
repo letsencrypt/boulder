@@ -322,7 +322,7 @@ func TestDCVAndCAASequencing(t *testing.T) {
 	caaLog := mockLog.GetAllMatching(`Checked CAA records for`)
 	test.AssertEquals(t, len(caaLog), 1)
 
-	features.Set(features.FeatureSet{CAAAfterValidation: true})
+	features.Set(features.Config{CAAAfterValidation: true})
 	defer features.Reset()
 
 	// When performing successful validation with the CAAAfterValidation flag,
@@ -373,17 +373,17 @@ func TestMultiVA(t *testing.T) {
 		{remoteVA2, remoteUA2},
 	}
 
-	enforceMultiVA := features.FeatureSet{
+	enforceMultiVA := features.Config{
 		EnforceMultiVA: true,
 	}
-	enforceMultiVAFullResults := features.FeatureSet{
+	enforceMultiVAFullResults := features.Config{
 		EnforceMultiVA:     true,
 		MultiVAFullResults: true,
 	}
-	noEnforceMultiVA := features.FeatureSet{
+	noEnforceMultiVA := features.Config{
 		EnforceMultiVA: false,
 	}
-	noEnforceMultiVAFullResults := features.FeatureSet{
+	noEnforceMultiVAFullResults := features.Config{
 		EnforceMultiVA:     false,
 		MultiVAFullResults: true,
 	}
@@ -400,7 +400,7 @@ func TestMultiVA(t *testing.T) {
 		Name         string
 		RemoteVAs    []RemoteVA
 		AllowedUAs   map[string]bool
-		Features     features.FeatureSet
+		Features     features.Config
 		ExpectedProb *probs.ProblemDetails
 		ExpectedLog  string
 	}{
@@ -595,11 +595,11 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 		},
 	}
 
-	earlyReturnFeatures := features.FeatureSet{
+	earlyReturnFeatures := features.Config{
 		EnforceMultiVA:     true,
 		MultiVAFullResults: false,
 	}
-	noEarlyReturnFeatures := features.FeatureSet{
+	noEarlyReturnFeatures := features.Config{
 		EnforceMultiVA:     true,
 		MultiVAFullResults: true,
 	}
@@ -672,7 +672,7 @@ func TestMultiVAPolicy(t *testing.T) {
 
 	// Ensure multi VA enforcement is enabled, don't wait for full multi VA
 	// results.
-	features.Set(features.FeatureSet{
+	features.Set(features.Config{
 		EnforceMultiVA:     true,
 		MultiVAFullResults: false,
 	})

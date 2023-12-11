@@ -101,7 +101,7 @@ type Config struct {
 		// preventing any CRLs from being issued.
 		DisableCRLService bool
 
-		Features features.FeatureSet
+		Features features.Config
 	}
 
 	PA cmd.PAConfig

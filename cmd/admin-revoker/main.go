@@ -85,7 +85,7 @@ type Config struct {
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
 
-		Features features.FeatureSet
+		Features features.Config
 	}
 
 	Syslog cmd.SyslogConfig

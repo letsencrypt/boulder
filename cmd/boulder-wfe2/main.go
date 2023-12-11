@@ -101,7 +101,7 @@ type Config struct {
 		// not request a specific chain.
 		Chains [][]string `validate:"required,min=1,dive,min=2,dive,required"`
 
-		Features features.FeatureSet
+		Features features.Config
 
 		// DirectoryCAAIdentity is used for the /directory response's "meta"
 		// element's "caaIdentities" field. It should match the VA's "issuerDomain"

@@ -34,7 +34,7 @@ type Config struct {
 		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
 		MaxRemoteValidationFailures int                    `validate:"omitempty,min=0,required_with=RemoteVAs"`
 
-		Features features.FeatureSet
+		Features features.Config
 
 		AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
 	}

@@ -46,7 +46,7 @@ type Config struct {
 		// https://docs.aws.amazon.com/sdkref/latest/guide/file-format.html.
 		AWSCredsFile string
 
-		Features features.FeatureSet
+		Features features.Config
 	}
 
 	Syslog        cmd.SyslogConfig

@@ -228,7 +228,7 @@ type Config struct {
 	ContactExporter struct {
 		DB cmd.DBConfig
 		cmd.PasswordConfig
-		Features features.FeatureSet
+		Features features.Config
 	}
 }
 

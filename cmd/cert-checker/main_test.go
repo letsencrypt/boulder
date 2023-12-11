@@ -660,7 +660,7 @@ func TestIgnoredLint(t *testing.T) {
 }
 
 func TestPrecertCorrespond(t *testing.T) {
-	features.Set(features.FeatureSet{CertCheckerRequiresCorrespondence: true})
+	features.Set(features.Config{CertCheckerRequiresCorrespondence: true})
 	checker := newChecker(nil, clock.New(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
 	checker.getPrecert = func(_ context.Context, _ string) ([]byte, error) {
 		return []byte("hello"), nil

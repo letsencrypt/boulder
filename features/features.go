@@ -1,6 +1,6 @@
-// features provides the FeatureSet struct which is used to define feature flags
+// features provides the Config struct which is used to define feature flags
 // that can affect behavior across Boulder components. It also maintains a
-// global singleton FeatureSet which can be referenced by arbitrary Boulder code
+// global singleton Config which can be referenced by arbitrary Boulder code
 // without having to pass a collection of feature flags through the function
 // call graph.
 package features
@@ -9,12 +9,12 @@ import (
 	"sync"
 )
 
-// FeatureSet contains one boolean field for every Boulder feature flag. It can
-// be included directly in executable's Config structs to have feature flag
-// setting be automatically parsed by the json config loader; executables that
-// do so must then call features.Set(parsedConfigFeatureSet) to load the parsed
-// struct into this package's global FeatureSet.
-type FeatureSet struct {
+// Config contains one boolean field for every Boulder feature flag. It can be
+// included directly in executable's Config structs to have feature flag setting
+// be automatically parsed by the json config loader; executables that do so
+// must then call features.Set(parsedConfigFeatureSet) to load the parsed struct
+// into this package's global Config.
+type Config struct {
 	// Deprecated features. Safe for removal once all references to them have
 	// been removed from deployed configuration.
 	StoreRevokerInfo                               bool
@@ -95,11 +95,11 @@ type FeatureSet struct {
 }
 
 var fMu = new(sync.RWMutex)
-var global = FeatureSet{}
+var global = Config{}
 
 // Set changes the global FeatureSet to match the input FeatureSet. This
 // overrides any previous changes made to the global FeatureSet.
-func Set(fs FeatureSet) {
+func Set(fs Config) {
 	fMu.Lock()
 	defer fMu.Unlock()
 	global = fs
@@ -109,7 +109,7 @@ func Set(fs FeatureSet) {
 func Reset() {
 	fMu.Lock()
 	defer fMu.Unlock()
-	global = FeatureSet{}
+	global = Config{}
 }
 
 // Enabled returns a copy of the current global FeatureSet, indicating which
@@ -117,7 +117,7 @@ func Reset() {
 // like:
 //
 //	features.Enabled().FeatureName
-func Enabled() FeatureSet {
+func Enabled() Config {
 	fMu.RLock()
 	defer fMu.RUnlock()
 	// If the FeatureSet type ever changes, this must be updated to still return

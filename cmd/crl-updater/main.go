@@ -103,7 +103,7 @@ type Config struct {
 		// load of said run. The default is 1.
 		MaxAttempts int `validate:"omitempty,min=1"`
 
-		Features features.FeatureSet
+		Features features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
