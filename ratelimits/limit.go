@@ -70,8 +70,8 @@ func validateLimit(l limit) error {
 
 type limits map[string]limit
 
-// loadLimits marshals the YAML file at path into a map of limis.
-func loadLimits(path string) (limits, error) {
+// loadDefaults marshals the defaults YAML file at path into a map of limits.
+func loadDefaults(path string) (limits, error) {
 	lm := make(limits)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -82,6 +82,28 @@ func loadLimits(path string) (limits, error) {
 		return nil, err
 	}
 	return lm, nil
+}
+
+type overrideYAML struct {
+	limit `yaml:",inline"`
+	// Ids is a list of ids that this override applies to.
+	Ids []string
+}
+
+type overridesYAML []map[string]overrideYAML
+
+// loadOverrides marshals the YAML file at path into a map of overrides.
+func loadOverrides(path string) (overridesYAML, error) {
+	ov := overridesYAML{}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	err = strictyaml.Unmarshal(data, &ov)
+	if err != nil {
+		return nil, err
+	}
+	return ov, nil
 }
 
 // parseOverrideNameId is broken out for ease of testing.
@@ -107,10 +129,12 @@ func parseOverrideNameId(key string) (Name, string, error) {
 	return name, id, nil
 }
 
-// loadAndParseOverrideLimits loads override limits from YAML, validates them,
-// and parses them into a map of limits keyed by 'Name:id'.
-func loadAndParseOverrideLimits(path string) (limits, error) {
-	fromFile, err := loadLimits(path)
+// loadAndParseOverrideLimitsDeprecated loads override limits from YAML,
+// validates them, and parses them into a map of limits keyed by 'Name:id'.
+//
+// TODO(#7198): Remove this.
+func loadAndParseOverrideLimitsDeprecated(path string) (limits, error) {
+	fromFile, err := loadDefaults(path)
 	if err != nil {
 		return nil, err
 	}
@@ -143,10 +167,53 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 	return parsed, nil
 }
 
+// loadAndParseOverrideLimits loads override limits from YAML. The YAML file
+// must be formatted as a list of maps, where each map has a single key
+// representing the limit name and a value that is a map containing the limit
+// fields and an additional 'ids' field that is a list of ids that this override
+// applies to.
+func loadAndParseOverrideLimits(path string) (limits, error) {
+	fromFile, err := loadOverrides(path)
+	if err != nil {
+		return nil, err
+	}
+	parsed := make(limits)
+
+	for _, ov := range fromFile {
+		for k, v := range ov {
+			err = validateLimit(v.limit)
+			if err != nil {
+				return nil, fmt.Errorf("validating override limit %q: %w", k, err)
+			}
+			name, ok := stringToName[k]
+			if !ok {
+				return nil, fmt.Errorf("unrecognized name %q in override limit, must be one of %v", k, limitNames)
+			}
+			v.limit.name = name
+			v.limit.isOverride = true
+			for _, id := range v.Ids {
+				err = validateIdForName(name, id)
+				if err != nil {
+					return nil, fmt.Errorf(
+						"validating name %s and id %q for override limit %q: %w", name, id, k, err)
+				}
+				if name == CertificatesPerFQDNSet {
+					// FQDNSet hashes are not a nice thing to ask for in a
+					// config file, so we allow the user to specify a
+					// comma-separated list of FQDNs and compute the hash here.
+					id = string(core.HashNames(strings.Split(id, ",")))
+				}
+				parsed[joinWithColon(name.EnumString(), id)] = precomputeLimit(v.limit)
+			}
+		}
+	}
+	return parsed, nil
+}
+
 // loadAndParseDefaultLimits loads default limits from YAML, validates them, and
 // parses them into a map of limits keyed by 'Name'.
 func loadAndParseDefaultLimits(path string) (limits, error) {
-	fromFile, err := loadLimits(path)
+	fromFile, err := loadDefaults(path)
 	if err != nil {
 		return nil, err
 	}
@@ -189,9 +256,13 @@ func newLimitRegistry(defaults, overrides string) (*limitRegistry, error) {
 		return registry, nil
 	}
 
-	registry.overrides, err = loadAndParseOverrideLimits(overrides)
+	registry.overrides, err = loadAndParseOverrideLimitsDeprecated(overrides)
 	if err != nil {
-		return nil, err
+		// TODO(#7198): Leave this, remove the call above.
+		registry.overrides, err = loadAndParseOverrideLimits(overrides)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return registry, nil

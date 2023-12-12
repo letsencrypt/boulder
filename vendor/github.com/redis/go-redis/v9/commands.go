@@ -210,21 +210,23 @@ type Cmdable interface {
 	ModuleLoadex(ctx context.Context, conf *ModuleLoadexConfig) *StringCmd
 
 	ACLCmdable
+	BitMapCmdable
+	ClusterCmdable
+	GearsCmdable
+	GenericCmdable
+	GeoCmdable
 	HashCmdable
 	HyperLogLogCmdable
-	GeoCmdable
-	GenericCmdable
 	ListCmdable
+	ProbabilisticCmdable
+	PubSubCmdable
+	ScriptingFunctionsCmdable
 	SetCmdable
 	SortedSetCmdable
-	ClusterCmdable
-	ScriptingFunctionsCmdable
 	StringCmdable
-	PubSubCmdable
-	GearsCmdable
-	ProbabilisticCmdable
-	TimeseriesCmdable
 	StreamCmdable
+	TimeseriesCmdable
+	JSONCmdable
 }
 
 type StatefulCmdable interface {
@@ -565,6 +567,17 @@ func (c cmdable) Info(ctx context.Context, sections ...string) *StringCmd {
 		args[i+1] = section
 	}
 	cmd := NewStringCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) InfoMap(ctx context.Context, sections ...string) *InfoCmd {
+	args := make([]interface{}, 1+len(sections))
+	args[0] = "info"
+	for i, section := range sections {
+		args[i+1] = section
+	}
+	cmd := NewInfoCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }

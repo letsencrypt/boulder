@@ -5,7 +5,7 @@
 		"dnsProvider": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
-				"service": "dns",
+				"service": "doh",
 				"domain": "service.consul"
 			}
 		},
@@ -41,6 +41,7 @@
 			"EnforceMultiVA": true,
 			"MultiVAFullResults": true,
 			"CAAAfterValidation": true,
+			"DOH": true,
 			"RVACAARechecking": true
 		},
 		"remoteVAs": [

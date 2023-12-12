@@ -87,8 +87,11 @@ const (
 	// certificates.
 	SHA256SubjectKeyIdentifier
 
+	// DOH enables DNS-over-HTTPS queries for validation
+	DOH
+
 	// RVACAARechecking causes the VA to instruct each configured RVA to recheck
-	// CAA records when true. When false, only the VA will perform the CAA
+	// CAA records when set to true. When false, only the VA will perform the CAA
 	// recheck.
 	RVACAARechecking
 )
@@ -96,6 +99,7 @@ const (
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
 	unused:                            false,
+	DOH:                               false,
 	CAAValidationMethods:              false,
 	CAAAccountURI:                     false,
 	EnforceMultiVA:                    false,
