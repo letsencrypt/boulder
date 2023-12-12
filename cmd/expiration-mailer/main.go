@@ -479,7 +479,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 
 		var certs []certDERWithRegID
 		var err error
-		if features.Enabled().ExpirationMailerUsesJoin {
+		if features.Get().ExpirationMailerUsesJoin {
 			certs, err = m.getCertsWithJoin(ctx, left, right, expiresIn)
 		} else {
 			certs, err = m.getCerts(ctx, left, right, expiresIn)

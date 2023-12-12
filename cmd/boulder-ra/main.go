@@ -216,7 +216,7 @@ func main() {
 	}
 	pendingAuthorizationLifetime := time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
-	if features.Enabled().AsyncFinalize && c.RA.FinalizeTimeout.Duration == 0 {
+	if features.Get().AsyncFinalize && c.RA.FinalizeTimeout.Duration == 0 {
 		cmd.Fail("finalizeTimeout must be supplied when AsyncFinalize feature is enabled")
 	}
 

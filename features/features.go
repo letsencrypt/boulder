@@ -117,12 +117,12 @@ func Reset() {
 	global = Config{}
 }
 
-// Enabled returns a copy of the current global FeatureSet, indicating which
+// Get returns a copy of the current global FeatureSet, indicating which
 // features are currently enabled (set to true). Expected caller behavior looks
 // like:
 //
-//	if features.Enabled().FeatureName { ...
-func Enabled() Config {
+//	if features.Get().FeatureName { ...
+func Get() Config {
 	fMu.RLock()
 	defer fMu.RUnlock()
 	// If the FeatureSet type ever changes, this must be updated to still return

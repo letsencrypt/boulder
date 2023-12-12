@@ -455,7 +455,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
 		}
 
-		if features.Enabled().CertCheckerRequiresCorrespondence {
+		if features.Get().CertCheckerRequiresCorrespondence {
 			precertDER, err := c.getPrecert(ctx, cert.Serial)
 			if err != nil {
 				// Log and continue, since we want the problems slice to only contains
@@ -471,10 +471,10 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 			}
 		}
 
-		if features.Enabled().CertCheckerChecksValidations {
+		if features.Get().CertCheckerChecksValidations {
 			err = c.checkValidations(ctx, cert, parsedCert.DNSNames)
 			if err != nil {
-				if features.Enabled().CertCheckerRequiresValidations {
+				if features.Get().CertCheckerRequiresValidations {
 					problems = append(problems, err.Error())
 				} else {
 					c.logger.Errf("Certificate %s %s: %s", cert.Serial, parsedCert.DNSNames, err)

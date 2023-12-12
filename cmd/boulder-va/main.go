@@ -85,7 +85,7 @@ func main() {
 
 	var servers bdns.ServerProvider
 	proto := "udp"
-	if features.Enabled().DOH {
+	if features.Get().DOH {
 		proto = "tcp"
 	}
 	servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, proto)
