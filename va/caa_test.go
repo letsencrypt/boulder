@@ -674,15 +674,15 @@ func TestMultiVACAARechecking(t *testing.T) {
 	hijackedVA2 := setupRemote(nil, hijackedUA, hijackedDNSClient)
 	hijackedVA3 := setupRemote(nil, hijackedUA, hijackedDNSClient)
 
-	earlyReturn := map[string]bool{
-		"RVACAARechecking":   true,
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": false,
+	earlyReturn := features.Config{
+		RVACAARechecking:   true,
+		EnforceMultiVA:     true,
+		MultiVAFullResults: false,
 	}
-	noEarlyReturn := map[string]bool{
-		"RVACAARechecking":   true,
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": true,
+	noEarlyReturn := features.Config{
+		RVACAARechecking:   true,
+		EnforceMultiVA:     true,
+		MultiVAFullResults: true,
 	}
 
 	testCases := []struct {
@@ -690,7 +690,7 @@ func TestMultiVACAARechecking(t *testing.T) {
 		maxLookupFailures        int
 		domains                  string
 		remoteVAs                []RemoteVA
-		features                 map[string]bool
+		features                 features.Config
 		overallResult            string
 		expectedProb             *probs.ProblemDetails
 		expectedDifferentialLog  string
@@ -1121,11 +1121,8 @@ func TestMultiVACAARechecking(t *testing.T) {
 				va.dnsClient = *tc.localVADNSClientOverride
 			}
 
-			if tc.features != nil {
-				err := features.Set(tc.features)
-				test.AssertNotError(t, err, "Failed to set feature flags")
-				defer features.Reset()
-			}
+			features.Set(tc.features)
+			defer features.Reset()
 
 			isValidRes, err := va.IsCAAValid(context.TODO(), &vapb.IsCAAValidRequest{
 				Domain:           tc.domains,
