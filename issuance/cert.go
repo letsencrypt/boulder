@@ -214,7 +214,7 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 		return nil, err
 	}
 
-	if features.Enabled(features.SHA256SubjectKeyIdentifier) {
+	if features.Get().SHA256SubjectKeyIdentifier {
 		// RFC 7093 Section 2 Additional Methods for Generating Key Identifiers:
 		// The keyIdentifier [may be] composed of the leftmost 160-bits of the
 		// SHA-256 hash of the value of the BIT STRING subjectPublicKey

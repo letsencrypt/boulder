@@ -101,7 +101,7 @@ type Config struct {
 		// preventing any CRLs from being issued.
 		DisableCRLService bool
 
-		Features map[string]bool
+		Features features.Config
 	}
 
 	PA cmd.PAConfig
@@ -152,8 +152,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.CA.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.CA.Features)
 
 	if *grpcAddr != "" {
 		c.CA.GRPCCA.Address = *grpcAddr

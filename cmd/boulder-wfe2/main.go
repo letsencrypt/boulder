@@ -101,7 +101,7 @@ type Config struct {
 		// not request a specific chain.
 		Chains [][]string `validate:"required,min=1,dive,min=2,dive,required"`
 
-		Features map[string]bool
+		Features features.Config
 
 		// DirectoryCAAIdentity is used for the /directory response's "meta"
 		// element's "caaIdentities" field. It should match the VA's "issuerDomain"
@@ -288,8 +288,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.WFE.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.WFE.Features)
 
 	if *listenAddr != "" {
 		c.WFE.ListenAddress = *listenAddr

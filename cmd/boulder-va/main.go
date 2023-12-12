@@ -34,7 +34,7 @@ type Config struct {
 		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
 		MaxRemoteValidationFailures int                    `validate:"omitempty,min=0,required_with=RemoteVAs"`
 
-		Features map[string]bool
+		Features features.Config
 
 		AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
 	}
@@ -57,8 +57,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.VA.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.VA.Features)
 
 	if *grpcAddr != "" {
 		c.VA.GRPC.Address = *grpcAddr
@@ -86,7 +85,7 @@ func main() {
 
 	var servers bdns.ServerProvider
 	proto := "udp"
-	if features.Enabled(features.DOH) {
+	if features.Get().DOH {
 		proto = "tcp"
 	}
 	servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, proto)

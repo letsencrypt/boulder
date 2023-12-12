@@ -435,7 +435,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
 
 	// Endpoint for draft-aaron-ari
-	if features.Enabled(features.ServeRenewalInfo) {
+	if features.Get().ServeRenewalInfo {
 		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET", "POST")
 	}
 
@@ -514,7 +514,7 @@ func (wfe *WebFrontEndImpl) Directory(
 		"keyChange":  rolloverPath,
 	}
 
-	if features.Enabled(features.ServeRenewalInfo) {
+	if features.Get().ServeRenewalInfo {
 		directoryEndpoints["renewalInfo"] = renewalInfoPath
 	}
 
@@ -2120,7 +2120,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			hasValidCNLen = true
 		}
 	}
-	if !hasValidCNLen && !features.Enabled(features.AllowNoCommonName) {
+	if !hasValidCNLen && !features.Get().AllowNoCommonName {
 		wfe.sendError(response, logEvent,
 			probs.RejectedIdentifier("NewOrder request did not include a SAN short enough to fit in CN"),
 			nil)
@@ -2374,7 +2374,7 @@ type certID struct {
 // RenewalInfo is used to get information about the suggested renewal window
 // for the given certificate. It only accepts unauthenticated GET requests.
 func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	if !features.Enabled(features.ServeRenewalInfo) {
+	if !features.Get().ServeRenewalInfo {
 		wfe.sendError(response, logEvent, probs.NotFound("Feature not enabled"), nil)
 		return
 	}
@@ -2477,7 +2477,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 // replaced the certificate in question, so it can be safely revoked. All
 // requests must be authenticated to the account which ordered the cert.
 func (wfe *WebFrontEndImpl) UpdateRenewal(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	if !features.Enabled(features.ServeRenewalInfo) {
+	if !features.Get().ServeRenewalInfo {
 		wfe.sendError(response, logEvent, probs.NotFound("Feature not enabled"), nil)
 		return
 	}

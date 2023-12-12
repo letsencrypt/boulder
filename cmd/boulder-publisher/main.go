@@ -20,7 +20,7 @@ import (
 type Config struct {
 	Publisher struct {
 		cmd.ServiceConfig
-		Features map[string]bool
+		Features features.Config
 
 		// If this is non-zero, profile blocking events such that one even is
 		// sampled every N nanoseconds.
@@ -51,8 +51,7 @@ func main() {
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-	err = features.Set(c.Publisher.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.Publisher.Features)
 
 	runtime.SetBlockProfileRate(c.Publisher.BlockProfileRate)
 

@@ -12,7 +12,6 @@ RUN curl "https://dl.google.com/go/go${GO_VERSION}.$(echo $TARGETPLATFORM | sed 
 RUN go install github.com/rubenv/sql-migrate/sql-migrate@v1.1.2
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.0
 RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0
-RUN go install golang.org/x/tools/cmd/stringer@latest
 RUN go install github.com/letsencrypt/pebble/v2/cmd/pebble-challtestsrv@66511d8
 RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.53.3
 RUN go install honnef.co/go/tools/cmd/staticcheck@2023.1.5

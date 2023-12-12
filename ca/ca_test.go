@@ -497,7 +497,7 @@ func TestECDSAAllowList(t *testing.T) {
 
 	// With empty allowlist but ECDSAForAll enabled, issuance should come from ECDSA issuer.
 	ca, _ = issueCertificateSubTestSetup(t, nil)
-	_ = features.Set(map[string]bool{"ECDSAForAll": true})
+	features.Set(features.Config{ECDSAForAll: true})
 	defer features.Reset()
 	result, err = ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")

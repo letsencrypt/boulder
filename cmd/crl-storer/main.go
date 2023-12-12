@@ -46,7 +46,7 @@ type Config struct {
 		// https://docs.aws.amazon.com/sdkref/latest/guide/file-format.html.
 		AWSCredsFile string
 
-		Features map[string]bool
+		Features features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -81,8 +81,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.CRLStorer.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.CRLStorer.Features)
 
 	if *grpcAddr != "" {
 		c.CRLStorer.GRPC.Address = *grpcAddr

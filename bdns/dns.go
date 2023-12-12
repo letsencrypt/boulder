@@ -192,7 +192,7 @@ func New(
 	tlsConfig *tls.Config,
 ) Client {
 	var client exchanger
-	if features.Enabled(features.DOH) {
+	if features.Get().DOH {
 		client = &dohExchanger{
 			clk: clk,
 			hc: http.Client{

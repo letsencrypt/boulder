@@ -20,7 +20,7 @@ type Config struct {
 		ReadOnlyDB  cmd.DBConfig `validate:"-"`
 		IncidentsDB cmd.DBConfig `validate:"-"`
 
-		Features map[string]bool
+		Features features.Config
 
 		// Max simultaneous SQL queries caused by a single RPC.
 		ParallelismPerRPC int `validate:"omitempty,min=1"`
@@ -47,8 +47,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.SA.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.SA.Features)
 
 	if *grpcAddr != "" {
 		c.SA.GRPC.Address = *grpcAddr
