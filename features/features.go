@@ -1,4 +1,4 @@
-// features provides the Config struct which is used to define feature flags
+// features provides the Config struct, which is used to define feature flags
 // that can affect behavior across Boulder components. It also maintains a
 // global singleton Config which can be referenced by arbitrary Boulder code
 // without having to pass a collection of feature flags through the function
@@ -10,10 +10,10 @@ import (
 )
 
 // Config contains one boolean field for every Boulder feature flag. It can be
-// included directly in executable's Config structs to have feature flag setting
-// be automatically parsed by the json config loader; executables that do so
-// must then call features.Set(parsedConfigFeatureSet) to load the parsed struct
-// into this package's global Config.
+// included directly in an executable's Config struct to have feature flags be
+// automatically parsed by the json config loader; executables that do so must
+// then call features.Set(parsedConfig) to load the parsed struct into this
+// package's global Config.
 type Config struct {
 	// Deprecated features. Safe for removal once all references to them have
 	// been removed from deployed configuration.
@@ -99,9 +99,14 @@ var global = Config{}
 
 // Set changes the global FeatureSet to match the input FeatureSet. This
 // overrides any previous changes made to the global FeatureSet.
+//
+// When used in tests, the caller must defer features.Reset() to avoid leaving
+// dirty global state.
 func Set(fs Config) {
 	fMu.Lock()
 	defer fMu.Unlock()
+	// If the FeatureSet type ever changes, this must be updated to still copy
+	// the input argument, never hold a reference to it.
 	global = fs
 }
 
@@ -116,7 +121,7 @@ func Reset() {
 // features are currently enabled (set to true). Expected caller behavior looks
 // like:
 //
-//	features.Enabled().FeatureName
+//	if features.Enabled().FeatureName { ...
 func Enabled() Config {
 	fMu.RLock()
 	defer fMu.RUnlock()

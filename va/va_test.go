@@ -533,6 +533,7 @@ func TestMultiVA(t *testing.T) {
 			localVA, mockLog := setup(ms.Server, 0, localUA, tc.RemoteVAs)
 
 			features.Set(tc.Features)
+			defer features.Reset()
 
 			// Perform all validations
 			res, _ := localVA.PerformValidation(ctx, req)
