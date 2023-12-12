@@ -455,7 +455,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
 		}
 
-		if features.Enabled(features.CertCheckerRequiresCorrespondence) {
+		if features.Get().CertCheckerRequiresCorrespondence {
 			precertDER, err := c.getPrecert(ctx, cert.Serial)
 			if err != nil {
 				// Log and continue, since we want the problems slice to only contains
@@ -471,10 +471,10 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 			}
 		}
 
-		if features.Enabled(features.CertCheckerChecksValidations) {
+		if features.Get().CertCheckerChecksValidations {
 			err = c.checkValidations(ctx, cert, parsedCert.DNSNames)
 			if err != nil {
-				if features.Enabled(features.CertCheckerRequiresValidations) {
+				if features.Get().CertCheckerRequiresValidations {
 					problems = append(problems, err.Error())
 				} else {
 					c.logger.Errf("Certificate %s %s: %s", cert.Serial, parsedCert.DNSNames, err)
@@ -514,7 +514,7 @@ type Config struct {
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 		CTLogListFile string
 
-		Features map[string]bool
+		Features features.Config
 	}
 	PA     cmd.PAConfig
 	Syslog cmd.SyslogConfig
@@ -532,8 +532,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &config)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(config.CertChecker.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(config.CertChecker.Features)
 
 	syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	cmd.FailOnError(err, "Failed to dial syslog")

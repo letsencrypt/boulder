@@ -4,7 +4,6 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
-    - 'features/featureflag_string.go'
     - 'test/config-next/*.json'
     - 'test/config-next/*.yaml'
     - 'test/config-next/*.yml'

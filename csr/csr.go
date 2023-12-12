@@ -75,7 +75,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	if len(names.SANs) == 0 && names.CN == "" {
 		return invalidNoDNS
 	}
-	if names.CN == "" && !features.Enabled(features.AllowNoCommonName) {
+	if names.CN == "" && !features.Get().AllowNoCommonName {
 		return invalidAllSANTooLong
 	}
 	if len(names.CN) > maxCNLength {
