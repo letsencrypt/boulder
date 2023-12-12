@@ -49,17 +49,17 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	}
 
 	var remoteCAAResults chan *remoteVAResult
-	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
-		remoteCAAResults = make(chan *remoteVAResult, remoteVACount)
-		go va.performRemoteCAARecheck(ctx, req, remoteCAAResults)
+	if features.Enabled(features.RVACAARechecking) {
+		if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
+			remoteCAAResults = make(chan *remoteVAResult, remoteVACount)
+			go va.performRemoteCAARecheck(ctx, req, remoteCAAResults)
+		}
 	}
 
-	//var problemType string
 	prob := va.checkCAA(ctx, acmeID, params)
 	if prob != nil {
 		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
 
-		// I don't think
 		return &vapb.IsCAAValidResponse{
 			Problem: &corepb.ProblemDetails{
 				ProblemType: string(prob.Type),

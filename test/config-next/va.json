@@ -40,7 +40,8 @@
 		"features": {
 			"EnforceMultiVA": true,
 			"MultiVAFullResults": true,
-			"CAAAfterValidation": true
+			"CAAAfterValidation": true,
+			"RVACAARechecking": true
 		},
 		"remoteVAs": [
 			{

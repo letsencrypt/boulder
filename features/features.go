@@ -86,6 +86,11 @@ const (
 	// compliant truncated SHA256 Subject Key Identifier in end-entity
 	// certificates.
 	SHA256SubjectKeyIdentifier
+
+	// RVACAARechecking causes the VA to instruct each configured RVA to recheck
+	// CAA records when true. When false, only the VA will perform the CAA
+	// recheck.
+	RVACAARechecking
 )
 
 // List of features and their default value, protected by fMu
@@ -110,6 +115,7 @@ var features = map[FeatureFlag]bool{
 	LeaseCRLShards:                    false,
 	CAAAfterValidation:                false,
 	SHA256SubjectKeyIdentifier:        false,
+	RVACAARechecking:                  false,
 
 	StoreLintingCertificateInsteadOfPrecertificate: false,
 }

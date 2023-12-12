@@ -21,22 +21,22 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
-var caaBrokenDNSClient = errors.New("dnsClient is broken")
-
 // caaBrokenDNS implements the `dns.DNSClient` interface, but always returns
 // errors.
 type caaBrokenDNS struct{}
 
+var errCAABrokenDNSClient = errors.New("dnsClient is broken")
+
 func (b caaBrokenDNS) LookupTXT(_ context.Context, hostname string) ([]string, error) {
-	return nil, caaBrokenDNSClient
+	return nil, errCAABrokenDNSClient
 }
 
 func (b caaBrokenDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
-	return nil, caaBrokenDNSClient
+	return nil, errCAABrokenDNSClient
 }
 
 func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, error) {
-	return nil, "", caaBrokenDNSClient
+	return nil, "", errCAABrokenDNSClient
 }
 
 // caaHijackedDNS implements the `dns.DNSClient` interface with a set of useful
@@ -64,10 +64,16 @@ func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA,
 		record.Tag = "issue"
 		record.Value = "www.honestachmed.dyndns.org"
 		results = append(results, &record)
-	case "com":
+	case "present-dns-only.com":
 		return results, "", fmt.Errorf("SERVFAIL")
 	case "satisfiable-wildcard.com":
-		return nil, "", nil
+		record.Tag = "issuewild"
+		record.Value = ";"
+		results = append(results, &record)
+		secondRecord := record
+		secondRecord.Tag = "issue"
+		secondRecord.Value = ";"
+		results = append(results, &secondRecord)
 	}
 	var response string
 	if len(results) > 0 {
@@ -648,11 +654,13 @@ func TestMultiVACAARechecking(t *testing.T) {
 		// the same UA for all applicable RVAs.
 		hijackedUA = "hijacked"
 	)
+	// Functional
 	remoteVA1 := setupRemote(nil, remoteUA1, nil)
 	remoteVA2 := setupRemote(nil, remoteUA2, nil)
 	remoteVA3 := setupRemote(nil, remoteUA3, nil)
 
 	var bClient, hClient bdns.Client
+	// Only returns errors
 	bClient = caaBrokenDNS{}
 	brokenDNSClient := &bClient
 	brokenVA1 := setupRemote(nil, brokenUA1, brokenDNSClient)
@@ -660,27 +668,22 @@ func TestMultiVACAARechecking(t *testing.T) {
 	brokenVA3 := setupRemote(nil, brokenUA3, brokenDNSClient)
 
 	hClient = caaHijackedDNS{}
+	// Returns incorrect results
 	hijackedDNSClient := &hClient
 	hijackedVA1 := setupRemote(nil, hijackedUA, hijackedDNSClient)
 	hijackedVA2 := setupRemote(nil, hijackedUA, hijackedDNSClient)
 	hijackedVA3 := setupRemote(nil, hijackedUA, hijackedDNSClient)
 
 	earlyReturn := map[string]bool{
+		"RVACAARechecking":   true,
 		"EnforceMultiVA":     true,
 		"MultiVAFullResults": false,
 	}
 	noEarlyReturn := map[string]bool{
+		"RVACAARechecking":   true,
 		"EnforceMultiVA":     true,
 		"MultiVAFullResults": true,
 	}
-
-	/*
-		expectedInternalErrLine := fmt.Sprintf(
-			`ERR: \[AUDIT\] Remote VA "brokenVA".IsCAAValidRequest failed: %s`,
-			errBrokenRemoteVA.Error())
-	*/
-
-	//			localVADNSClientOverride: brokenDNSClient,
 
 	testCases := []struct {
 		name                     string
@@ -688,16 +691,17 @@ func TestMultiVACAARechecking(t *testing.T) {
 		domains                  string
 		remoteVAs                []RemoteVA
 		features                 map[string]bool
+		overallResult            string
 		expectedProb             *probs.ProblemDetails
 		expectedDifferentialLog  string
 		expectedLog              string
-		expectedErr              error
 		localVADNSClientOverride *bdns.Client // The test runner will default to caaMockDNS{}
 	}{
 		{
-			name:     "all VAs functional, no CAA records, wait for full results",
-			domains:  "com",
-			features: noEarlyReturn,
+			name:          "all VAs functional, no CAA records, wait for full results",
+			domains:       "present-dns-only.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -705,9 +709,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "all VAs functional, no CAA records, dont wait for full results",
-			domains:  "com",
-			features: earlyReturn,
+			name:          "all VAs functional, no CAA records, dont wait for full results",
+			domains:       "present-dns-only.com",
+			features:      earlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -716,10 +721,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "broken localVA, RVAs functional, no CAA records, wait for full results",
-			domains:                  "com",
+			domains:                  "present-dns-only.com",
 			features:                 noEarlyReturn,
 			localVADNSClientOverride: brokenDNSClient,
-			expectedProb:             probs.DNS("While processing CAA for com: dnsClient is broken"),
+			expectedProb:             probs.DNS("While processing CAA for present-dns-only.com: dnsClient is broken"),
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -728,10 +733,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "broken localVA, RVAs functional, no CAA records, dont wait for full results",
-			domains:                  "com",
+			domains:                  "present-dns-only.com",
 			features:                 earlyReturn,
 			localVADNSClientOverride: brokenDNSClient,
-			expectedProb:             probs.DNS("While processing CAA for com: dnsClient is broken"),
+			expectedProb:             probs.DNS("While processing CAA for present-dns-only.com: dnsClient is broken"),
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -739,9 +744,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "functional localVA, 1 broken RVA, no CAA records, wait for full results",
-			domains:  "com",
-			features: noEarlyReturn,
+			name:          "functional localVA, 1 broken RVA, no CAA records, wait for full results",
+			domains:       "present-dns-only.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{brokenVA1, brokenUA1},
 				{remoteVA2, remoteUA2},
@@ -749,9 +755,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "functional localVA, 1 broken RVA, no CAA records, dont wait for full results",
-			domains:  "com",
-			features: earlyReturn,
+			name:          "functional localVA, 1 broken RVA, no CAA records, dont wait for full results",
+			domains:       "present-dns-only.com",
+			features:      earlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{brokenVA1, brokenUA1},
 				{remoteVA2, remoteUA2},
@@ -759,9 +766,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "functional localVA, all broken RVAs, no CAA records, wait for full results",
-			domains:  "com",
-			features: noEarlyReturn,
+			name:          "functional localVA, all broken RVAs, no CAA records, wait for full results",
+			domains:       "present-dns-only.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{brokenVA1, brokenUA1},
 				{brokenVA2, brokenUA2},
@@ -769,9 +777,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "functional localVA, all broken RVAs, no CAA records, dont wait for full results",
-			domains:  "com",
-			features: earlyReturn,
+			name:          "functional localVA, all broken RVAs, no CAA records, dont wait for full results",
+			domains:       "present-dns-only.com",
+			overallResult: "Valid for issuance: true",
+			features:      earlyReturn,
 			remoteVAs: []RemoteVA{
 				{brokenVA1, brokenUA1},
 				{brokenVA2, brokenUA2},
@@ -780,9 +789,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 		},
 		////////////////////////////
 		{
-			name:     "all VAs functional, CAA issue type present, wait for full results",
-			domains:  "present.com",
-			features: noEarlyReturn,
+			name:          "all VAs functional, CAA issue type present, wait for full results",
+			domains:       "present.com",
+			overallResult: "Valid for issuance: true",
+			features:      noEarlyReturn,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -790,9 +800,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "all VAs functional, CAA issue type present, dont wait for full results",
-			domains:  "present.com",
-			features: earlyReturn,
+			name:          "all VAs functional, CAA issue type present, dont wait for full results",
+			domains:       "present.com",
+			overallResult: "Valid for issuance: true",
+			features:      earlyReturn,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -800,9 +811,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "functional localVA, 1 broken RVA, CAA issue type present, wait for full results",
-			domains:  "present.com",
-			features: noEarlyReturn,
+			name:          "functional localVA, 1 broken RVA, CAA issue type present, wait for full results",
+			domains:       "present.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{brokenVA1, brokenUA1},
 				{remoteVA2, remoteUA2},
@@ -810,9 +822,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "functional localVA, 1 broken RVA, CAA issue type present, dont wait for full results",
-			domains:  "present.com",
-			features: earlyReturn,
+			name:          "functional localVA, 1 broken RVA, CAA issue type present, dont wait for full results",
+			domains:       "present.com",
+			features:      earlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{brokenVA1, brokenUA1},
 				{remoteVA2, remoteUA2},
@@ -820,9 +833,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "functional localVA, all broken RVAs, CAA issue type present, wait for full results",
-			domains:  "present.com",
-			features: noEarlyReturn,
+			name:          "functional localVA, all broken RVAs, CAA issue type present, wait for full results",
+			domains:       "present.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{brokenVA1, brokenUA1},
 				{brokenVA2, brokenUA2},
@@ -830,9 +844,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "functional localVA, all broken RVAs, CAA issue type present, dont wait for full results",
-			domains:  "present.com",
-			features: earlyReturn,
+			name:          "functional localVA, all broken RVAs, CAA issue type present, dont wait for full results",
+			domains:       "present.com",
+			features:      earlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{brokenVA1, brokenUA1},
 				{brokenVA2, brokenUA2},
@@ -843,10 +858,11 @@ func TestMultiVACAARechecking(t *testing.T) {
 		{
 			// The RVA results are dropped because the localVA lookup determined
 			// issuance was forbidden.
-			name:         "all VAs functional, CAA issue type forbids issuance, wait for full results",
-			domains:      "unsatisfiable.com",
-			features:     noEarlyReturn,
-			expectedProb: probs.CAA("While processing CAA for unsatisfiable.com: CAA record for unsatisfiable.com prevents issuance"),
+			name:          "all VAs functional, CAA issue type forbids issuance, wait for full results",
+			domains:       "unsatisfiable.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: false",
+			expectedProb:  probs.CAA("While processing CAA for unsatisfiable.com: CAA record for unsatisfiable.com prevents issuance"),
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -856,10 +872,11 @@ func TestMultiVACAARechecking(t *testing.T) {
 		{
 			// The RVA results are dropped because the localVA lookup determined
 			// issuance was forbidden.
-			name:         "all VAs functional, CAA issue type forbids issuance, dont wait for full results",
-			domains:      "unsatisfiable.com",
-			features:     earlyReturn,
-			expectedProb: probs.CAA("While processing CAA for unsatisfiable.com: CAA record for unsatisfiable.com prevents issuance"),
+			name:          "all VAs functional, CAA issue type forbids issuance, dont wait for full results",
+			domains:       "unsatisfiable.com",
+			features:      earlyReturn,
+			overallResult: "Valid for issuance: false",
+			expectedProb:  probs.CAA("While processing CAA for unsatisfiable.com: CAA record for unsatisfiable.com prevents issuance"),
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -868,9 +885,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 		},
 		/////////////////////////////////
 		{
-			name:     "1 hijacked RVA, CAA issue type present, wait for full results",
-			domains:  "present.com",
-			features: noEarlyReturn,
+			name:          "1 hijacked RVA, CAA issue type present, wait for full results",
+			domains:       "present.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -879,9 +897,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"present.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for present.com: CAA record for present.com prevents issuance"}}]}`,
 		},
 		{
-			name:     "1 hijacked RVA, CAA issue type present, dont wait for full results",
-			domains:  "present.com",
-			features: earlyReturn,
+			name:          "1 hijacked RVA, CAA issue type present, dont wait for full results",
+			domains:       "present.com",
+			features:      earlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -890,9 +909,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedLog: `INFO: CAA check failed due to remote failures: identifier=present.com err=caa :: During secondary CAA rechecking: While processing CAA for present.com: CAA record for present.com prevents issuance`,
 		},
 		{
-			name:     "2 hijacked RVAs, CAA issue type present, wait for full results",
-			domains:  "present.com",
-			features: noEarlyReturn,
+			name:          "2 hijacked RVAs, CAA issue type present, wait for full results",
+			domains:       "present.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{hijackedVA1, hijackedUA},
@@ -901,9 +921,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"present.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for present.com: CAA record for present.com prevents issuance"}},{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for present.com: CAA record for present.com prevents issuance"}}]}`,
 		},
 		{
-			name:     "2 hijacked RVAs, CAA issue type present, dont wait for full results",
-			domains:  "present.com",
-			features: earlyReturn,
+			name:          "2 hijacked RVAs, CAA issue type present, dont wait for full results",
+			domains:       "present.com",
+			features:      earlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{hijackedVA1, hijackedUA},
@@ -912,9 +933,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedLog: `INFO: CAA check failed due to remote failures: identifier=present.com err=caa :: During secondary CAA rechecking: While processing CAA for present.com: CAA record for present.com prevents issuance`,
 		},
 		{
-			name:     "3 hijacked RVAs, CAA issue type present, wait for full results",
-			domains:  "present.com",
-			features: noEarlyReturn,
+			name:          "3 hijacked RVAs, CAA issue type present, wait for full results",
+			domains:       "present.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{hijackedVA1, hijackedUA},
 				{hijackedVA2, hijackedUA},
@@ -923,9 +945,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"present.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for present.com: CAA record for present.com prevents issuance"}},{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for present.com: CAA record for present.com prevents issuance"}},{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for present.com: CAA record for present.com prevents issuance"}}]}`,
 		},
 		{
-			name:     "3 hijacked RVAs, CAA issue type present, dont wait for full results",
-			domains:  "present.com",
-			features: earlyReturn,
+			name:          "3 hijacked RVAs, CAA issue type present, dont wait for full results",
+			domains:       "present.com",
+			features:      earlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{hijackedVA1, hijackedUA},
 				{hijackedVA2, hijackedUA},
@@ -935,70 +958,76 @@ func TestMultiVACAARechecking(t *testing.T) {
 		},
 		//////////////
 		{
-			name:     "1 hijacked RVA, CAA issuewild type present, wait for full results",
-			domains:  "satisfiable-wildcard.com",
-			features: noEarlyReturn,
+			name:          "1 hijacked RVA, CAA issuewild type present, wait for full results",
+			domains:       "satisfiable-wildcard.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
 				{hijackedVA1, hijackedUA},
 			},
-			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"satisfiable-wildcard.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"dns","detail":"While processing CAA for satisfiable-wildcard.com: SERVFAIL"}}]}`,
+			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"satisfiable-wildcard.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance"}}]}`,
 		},
 		{
-			name:     "1 hijacked RVA, CAA issuewild type present, dont wait for full results",
-			domains:  "satisfiable-wildcard.com",
-			features: earlyReturn,
+			name:          "1 hijacked RVA, CAA issuewild type present, dont wait for full results",
+			domains:       "satisfiable-wildcard.com",
+			features:      earlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
 				{hijackedVA1, hijackedUA},
 			},
-			expectedLog: `INFO: CAA check failed due to remote failures: identifier=satisfiable-wildcard.com err=dns :: During secondary CAA rechecking: While processing CAA for satisfiable-wildcard.com: SERVFAIL`,
+			expectedLog: `INFO: CAA check failed due to remote failures: identifier=satisfiable-wildcard.com err=caa :: During secondary CAA rechecking: While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance`,
 		},
 		{
-			name:     "2 hijacked RVAs, CAA issuewild type present, wait for full results",
-			domains:  "satisfiable-wildcard.com",
-			features: noEarlyReturn,
+			name:          "2 hijacked RVAs, CAA issuewild type present, wait for full results",
+			domains:       "satisfiable-wildcard.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{hijackedVA1, hijackedUA},
 				{hijackedVA2, hijackedUA},
 			},
-			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"satisfiable-wildcard.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"dns","detail":"While processing CAA for satisfiable-wildcard.com: SERVFAIL"}},{"VAHostname":"hijacked","Problem":{"type":"dns","detail":"While processing CAA for satisfiable-wildcard.com: SERVFAIL"}}]}`,
+			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"satisfiable-wildcard.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance"}},{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance"}}]}`,
 		},
 		{
-			name:     "2 hijacked RVAs, CAA issuewild type present, dont wait for full results",
-			domains:  "satisfiable-wildcard.com",
-			features: earlyReturn,
+			name:          "2 hijacked RVAs, CAA issuewild type present, dont wait for full results",
+			domains:       "satisfiable-wildcard.com",
+			features:      earlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{hijackedVA1, hijackedUA},
 				{hijackedVA2, hijackedUA},
 			},
-			expectedLog: `INFO: CAA check failed due to remote failures: identifier=satisfiable-wildcard.com err=dns :: During secondary CAA rechecking: While processing CAA for satisfiable-wildcard.com: SERVFAIL`,
+			expectedLog: `INFO: CAA check failed due to remote failures: identifier=satisfiable-wildcard.com err=caa :: During secondary CAA rechecking: While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance`,
 		},
 		{
-			name:     "3 hijacked RVAs, CAA issuewild type present, wait for full results",
-			domains:  "satisfiable-wildcard.com",
-			features: noEarlyReturn,
+			name:          "3 hijacked RVAs, CAA issuewild type present, wait for full results",
+			domains:       "satisfiable-wildcard.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{hijackedVA1, hijackedUA},
 				{hijackedVA2, hijackedUA},
 				{hijackedVA3, hijackedUA},
 			},
-			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"satisfiable-wildcard.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"dns","detail":"While processing CAA for satisfiable-wildcard.com: SERVFAIL"}},{"VAHostname":"hijacked","Problem":{"type":"dns","detail":"While processing CAA for satisfiable-wildcard.com: SERVFAIL"}},{"VAHostname":"hijacked","Problem":{"type":"dns","detail":"While processing CAA for satisfiable-wildcard.com: SERVFAIL"}}]}`,
+			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"satisfiable-wildcard.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance"}},{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance"}},{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance"}}]}`,
 		},
 		{
-			name:     "3 hijacked RVAs, CAA issuewild type present, dont wait for full results",
-			domains:  "satisfiable-wildcard.com",
-			features: earlyReturn,
+			name:          "3 hijacked RVAs, CAA issuewild type present, dont wait for full results",
+			domains:       "satisfiable-wildcard.com",
+			features:      earlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{hijackedVA1, hijackedUA},
 				{hijackedVA2, hijackedUA},
 				{hijackedVA3, hijackedUA},
 			},
-			expectedLog: `INFO: CAA check failed due to remote failures: identifier=satisfiable-wildcard.com err=dns :: During secondary CAA rechecking: While processing CAA for satisfiable-wildcard.com: SERVFAIL`,
+			expectedLog: `INFO: CAA check failed due to remote failures: identifier=satisfiable-wildcard.com err=caa :: During secondary CAA rechecking: While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance`,
 		},
 		////////////////////////////////////
 		{
@@ -1006,173 +1035,79 @@ func TestMultiVACAARechecking(t *testing.T) {
 			domains:           "satisfiable-wildcard.com",
 			maxLookupFailures: 1,
 			features:          noEarlyReturn,
+			overallResult:     "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
 				{hijackedVA1, hijackedUA},
 			},
-			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"satisfiable-wildcard.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"dns","detail":"While processing CAA for satisfiable-wildcard.com: SERVFAIL"}}]}`,
+			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"satisfiable-wildcard.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance"}}]}`,
 		},
 		{
 			name:              "1 hijacked RVA, CAA issuewild type present, dont wait for full results, 1 failure allowed",
 			domains:           "satisfiable-wildcard.com",
 			maxLookupFailures: 1,
 			features:          earlyReturn,
+			overallResult:     "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
 				{hijackedVA1, hijackedUA},
 			},
-			expectedLog: `INFO: CAA check failed due to remote failures: identifier=satisfiable-wildcard.com err=dns :: During secondary CAA rechecking: While processing CAA for satisfiable-wildcard.com: SERVFAIL`,
+			//	expectedProb: probs.CAA("While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance"),
 		},
 		{
 			name:              "2 hijacked RVAs, CAA issuewild type present, wait for full results, 1 failure allowed",
 			domains:           "satisfiable-wildcard.com",
 			maxLookupFailures: 1,
 			features:          noEarlyReturn,
+			overallResult:     "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{hijackedVA1, hijackedUA},
 				{hijackedVA2, hijackedUA},
 			},
-			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"satisfiable-wildcard.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"dns","detail":"While processing CAA for satisfiable-wildcard.com: SERVFAIL"}},{"VAHostname":"hijacked","Problem":{"type":"dns","detail":"While processing CAA for satisfiable-wildcard.com: SERVFAIL"}}]}`,
+			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"satisfiable-wildcard.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance"}},{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance"}}]}`,
 		},
 		{
 			name:              "2 hijacked RVAs, CAA issuewild type present, dont wait for full results, 1 failure allowed",
 			domains:           "satisfiable-wildcard.com",
 			maxLookupFailures: 1,
 			features:          earlyReturn,
+			overallResult:     "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{hijackedVA1, hijackedUA},
 				{hijackedVA2, hijackedUA},
 			},
-			expectedLog: `INFO: CAA check failed due to remote failures: identifier=satisfiable-wildcard.com err=dns :: During secondary CAA rechecking: While processing CAA for satisfiable-wildcard.com: SERVFAIL`,
+			expectedLog: `INFO: CAA check failed due to remote failures: identifier=satisfiable-wildcard.com err=caa :: During secondary CAA rechecking: While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance`,
 		},
 		{
 			name:              "3 hijacked RVAs, CAA issuewild type present, wait for full results, 1 failure allowed",
 			domains:           "satisfiable-wildcard.com",
 			maxLookupFailures: 1,
 			features:          noEarlyReturn,
+			overallResult:     "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{hijackedVA1, hijackedUA},
 				{hijackedVA2, hijackedUA},
 				{hijackedVA3, hijackedUA},
 			},
-			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"satisfiable-wildcard.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"dns","detail":"While processing CAA for satisfiable-wildcard.com: SERVFAIL"}},{"VAHostname":"hijacked","Problem":{"type":"dns","detail":"While processing CAA for satisfiable-wildcard.com: SERVFAIL"}},{"VAHostname":"hijacked","Problem":{"type":"dns","detail":"While processing CAA for satisfiable-wildcard.com: SERVFAIL"}}]}`,
+			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"satisfiable-wildcard.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance"}},{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance"}},{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance"}}]}`,
 		},
 		{
 			name:              "3 hijacked RVAs, CAA issuewild type present, dont wait for full results, 1 failure allowed",
 			domains:           "satisfiable-wildcard.com",
 			maxLookupFailures: 1,
 			features:          earlyReturn,
+			overallResult:     "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{hijackedVA1, hijackedUA},
 				{hijackedVA2, hijackedUA},
 				{hijackedVA3, hijackedUA},
 			},
-			expectedLog: `INFO: CAA check failed due to remote failures: identifier=satisfiable-wildcard.com err=dns :: During secondary CAA rechecking: While processing CAA for satisfiable-wildcard.com: SERVFAIL`,
+			expectedLog: `INFO: CAA check failed due to remote failures: identifier=satisfiable-wildcard.com err=caa :: During secondary CAA rechecking: While processing CAA for satisfiable-wildcard.com: CAA record for satisfiable-wildcard.com prevents issuance`,
 		},
-		/*
-			{
-				name:     "1 functioning local with 2 functioning and 1 broken remote, wait for full results",
-				domains:  "good-dns01.com",
-				features: noEarlyReturn,
-				remoteVAs: []RemoteVA{
-					{remoteVA1, remoteUA1},
-					{remoteVA2, remoteUA2},
-					{&brokenRemoteVA{}, "brokenVA1"},
-				},
-				expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"brokenVA1","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
-			},
-			{
-				name:     "1 functioning local with 2 functioning and 1 broken remote, dont wait for full results",
-				domains:  "good-dns01.com",
-				features: earlyReturn,
-				remoteVAs: []RemoteVA{
-					{remoteVA1, remoteUA1},
-					{remoteVA2, remoteUA2},
-					{&brokenRemoteVA{}, "brokenVA1"},
-				},
-				expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"brokenVA1","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
-			},
-			{
-				name:     "1 functioning local with 2 functioning and 1 broken remote, wait for full results",
-				domains:  "good-dns01.com",
-				features: noEarlyReturn,
-				remoteVAs: []RemoteVA{
-					{remoteVA1, remoteUA1},
-					{remoteVA2, remoteUA2},
-					{&brokenRemoteVA{}, "brokenVA1"},
-				},
-				expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"brokenVA1","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
-			},
-			{
-				name:     "1 functioning local with 2 functioning and 1 broken remote, dont wait for full results",
-				domains:  "good-dns01.com",
-				features: earlyReturn,
-				remoteVAs: []RemoteVA{
-					{remoteVA1, remoteUA1},
-					{remoteVA2, remoteUA2},
-					{&brokenRemoteVA{}, "brokenVA1"},
-				},
-				expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"brokenVA1","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
-			},
-			{
-				name:     "1 functioning local with 1 functioning and 2 broken remotes, wait for full results",
-				domains:  "good-dns01.com",
-				features: noEarlyReturn,
-				remoteVAs: []RemoteVA{
-					{remoteVA1, remoteUA1},
-					// The same Address is used so we can fudge the expectedLog. The
-					// RemoteFailures log order is non-deterministic.
-					{&brokenRemoteVA{}, "brokenVA"},
-					{&brokenRemoteVA{}, "brokenVA"},
-				},
-				expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}},{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
-				expectedLog:             expectedInternalErrLine,
-			},
-			{
-				name:     "1 functioning local with 1 functioning and 2 broken remotes, dont wait for full results",
-				domains:  "good-dns01.com",
-				features: earlyReturn,
-				remoteVAs: []RemoteVA{
-					{remoteVA1, remoteUA1},
-					// The same Address is used so we can fudge the expectedLog. The
-					// RemoteFailures log order is non-deterministic.
-					{&brokenRemoteVA{}, "brokenVA"},
-					{&brokenRemoteVA{}, "brokenVA"},
-				},
-				expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}},{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
-				expectedLog:             expectedInternalErrLine,
-			},
-			{
-				name:     "1 functioning local with 3 broken remotes, wait for full results",
-				domains:  "good-dns01.com",
-				features: noEarlyReturn,
-				// The same Address is used so we can fudge the expectedLog. The
-				// RemoteFailures log order is non-deterministic.
-				remoteVAs: []RemoteVA{
-					{&brokenRemoteVA{}, "brokenVA"},
-					{&brokenRemoteVA{}, "brokenVA"},
-					{&brokenRemoteVA{}, "brokenVA"},
-				},
-				expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}},{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}},{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
-			},
-			{
-				name:     "1 functioning local with 3 broken remotes, dont wait for full results",
-				domains:  "good-dns01.com",
-				features: earlyReturn,
-				// The same Address is used so we can fudge the expectedLog. The
-				// RemoteFailures log order is non-deterministic.
-				remoteVAs: []RemoteVA{
-					{&brokenRemoteVA{}, "brokenVA"},
-					{&brokenRemoteVA{}, "brokenVA"},
-					{&brokenRemoteVA{}, "brokenVA"},
-				},
-				expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"good-dns01.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}},{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}},{"VAHostname":"brokenVA","Problem":{"type":"serverInternal","detail":"Remote IsCAAValidRequest RPC failed","status":500}}]}`,
-			},
-		*/
 	}
 
 	for _, tc := range testCases {
@@ -1197,9 +1132,8 @@ func TestMultiVACAARechecking(t *testing.T) {
 				ValidationMethod: string(core.ChallengeTypeDNS01),
 				AccountURIID:     1,
 			})
-
-			fmt.Println(isValidRes.Problem)
 			test.AssertNotError(t, err, "Should not have errored, but did")
+
 			if tc.expectedProb == nil {
 				test.AssertBoxedNil(t, isValidRes.Problem, "Problems detected but should not have been")
 			} else {
@@ -1208,6 +1142,11 @@ func TestMultiVACAARechecking(t *testing.T) {
 
 			for _, line := range mockLog.GetAll() {
 				fmt.Println(line)
+			}
+
+			if tc.overallResult != "" {
+				err = mockLog.ExpectMatch(fmt.Sprintf("%s, Found at:", tc.overallResult))
+				test.AssertNotError(t, err, "Could not determine if the CAA recheck was valid for issuance")
 			}
 
 			// For the case of MultiVA is enabled, and wait for the full result set.

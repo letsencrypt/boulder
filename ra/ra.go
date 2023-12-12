@@ -894,6 +894,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 		err   error
 	}
 	ch := make(chan authzCAAResult, len(authzs))
+
 	for _, authz := range authzs {
 		go func(authz *core.Authorization) {
 			name := authz.Identifier.Value
