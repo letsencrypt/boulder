@@ -170,6 +170,8 @@ func isDNSCharacter(ch byte) bool {
 // If these values change, the related error messages should be updated.
 
 var (
+	// ErrWildcardNotSupported is exported for use in the ratelimits package.
+	ErrWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
 	errInvalidIdentifier    = berrors.MalformedError("Invalid identifier type")
 	errNonPublic            = berrors.MalformedError("Domain name does not end with a valid public suffix (TLD)")
 	errICANNTLD             = berrors.MalformedError("Domain name is an ICANN TLD")
@@ -188,7 +190,6 @@ var (
 	errTooManyWildcards     = berrors.MalformedError("Domain name has more than one wildcard")
 	errMalformedWildcard    = berrors.MalformedError("Domain name contains an invalid wildcard. A wildcard is only permitted before the first dot in a domain name")
 	errICANNTLDWildcard     = berrors.MalformedError("Domain name is a wildcard for an ICANN TLD")
-	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
 )
 
 // ValidDomain checks that a domain isn't:
@@ -211,7 +212,7 @@ func ValidDomain(domain string) error {
 	}
 
 	if strings.HasPrefix(domain, "*.") {
-		return errWildcardNotSupported
+		return ErrWildcardNotSupported
 	}
 
 	for _, ch := range []byte(domain) {
