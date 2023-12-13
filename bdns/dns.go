@@ -198,7 +198,8 @@ func New(
 			hc: http.Client{
 				Timeout: readTimeout,
 				Transport: &http.Transport{
-					TLSClientConfig: tlsConfig,
+					ForceAttemptHTTP2: true,
+					TLSClientConfig:   tlsConfig.Clone(),
 				},
 			},
 		}
