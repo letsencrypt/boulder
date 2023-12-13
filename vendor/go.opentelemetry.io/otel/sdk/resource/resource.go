@@ -36,7 +36,6 @@ type Resource struct {
 }
 
 var (
-	emptyResource       Resource
 	defaultResource     *Resource
 	defaultResourceOnce sync.Once
 )
@@ -70,18 +69,18 @@ func NewWithAttributes(schemaURL string, attrs ...attribute.KeyValue) *Resource 
 // of the attrs is known use NewWithAttributes instead.
 func NewSchemaless(attrs ...attribute.KeyValue) *Resource {
 	if len(attrs) == 0 {
-		return &emptyResource
+		return &Resource{}
 	}
 
 	// Ensure attributes comply with the specification:
-	// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.0.1/specification/common/common.md#attributes
+	// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.20.0/specification/common/README.md#attribute
 	s, _ := attribute.NewSetWithFiltered(attrs, func(kv attribute.KeyValue) bool {
 		return kv.Valid()
 	})
 
 	// If attrs only contains invalid entries do not allocate a new resource.
 	if s.Len() == 0 {
-		return &emptyResource
+		return &Resource{}
 	}
 
 	return &Resource{attrs: s} //nolint
@@ -154,7 +153,7 @@ func (r *Resource) Equal(eq *Resource) bool {
 // if resource b's value is empty.
 //
 // The SchemaURL of the resources will be merged according to the spec rules:
-// https://github.com/open-telemetry/opentelemetry-specification/blob/bad49c714a62da5493f2d1d9bafd7ebe8c8ce7eb/specification/resource/sdk.md#merge
+// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.20.0/specification/resource/sdk.md#merge
 // If the resources have different non-empty schemaURL an empty resource and an error
 // will be returned.
 func Merge(a, b *Resource) (*Resource, error) {
@@ -195,7 +194,7 @@ func Merge(a, b *Resource) (*Resource, error) {
 // Empty returns an instance of Resource with no attributes. It is
 // equivalent to a `nil` Resource.
 func Empty() *Resource {
-	return &emptyResource
+	return &Resource{}
 }
 
 // Default returns an instance of Resource with a default
@@ -214,7 +213,7 @@ func Default() *Resource {
 		}
 		// If Detect did not return a valid resource, fall back to emptyResource.
 		if defaultResource == nil {
-			defaultResource = &emptyResource
+			defaultResource = &Resource{}
 		}
 	})
 	return defaultResource
