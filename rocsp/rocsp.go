@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
-	bredis "github.com/letsencrypt/boulder/redis"
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,21 +26,8 @@ type ROClient struct {
 
 // NewReadingClient creates a read-only client. The timeout applies to all
 // requests, though a shorter timeout can be applied on a per-request basis
-// using context.Context. rdb must be non-nil and calls to rdb.Options().Addrs
-// must return at least one entry.
+// using context.Context. rdb must be non-nil.
 func NewReadingClient(rdb *redis.Ring, timeout time.Duration, clk clock.Clock, stats prometheus.Registerer) *ROClient {
-	if len(rdb.Options().Addrs) == 0 {
-		return nil
-	}
-	var addrs []string
-	for addr := range rdb.Options().Addrs {
-		addrs = append(addrs, addr)
-	}
-	labels := prometheus.Labels{
-		"addresses": strings.Join(addrs, ", "),
-		"user":      rdb.Options().Username,
-	}
-	stats.MustRegister(bredis.NewMetricsCollector(rdb, labels))
 	getLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name: "rocsp_get_latency",

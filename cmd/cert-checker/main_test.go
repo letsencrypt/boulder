@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
@@ -55,7 +56,7 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = pa.SetHostnamePolicyFile("../../test/hostname-policy.yaml")
+	err = pa.LoadHostnamePolicyFile("../../test/hostname-policy.yaml")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -240,13 +241,12 @@ func TestCheckCert(t *testing.T) {
 				NotBefore: issued,
 				NotAfter:  goodExpiry.AddDate(0, 0, 1), // Period too long
 				DNSNames: []string{
-					// longName should be flagged along with the long CN
-					longName,
 					"example-a.com",
 					"foodnotbombs.mil",
 					// `dev-myqnapcloud.com` is included because it is an exact private
 					// entry on the public suffix list
 					"dev-myqnapcloud.com",
+					// don't include longName in the SANs, so the unique CN gets flagged
 				},
 				SerialNumber:          serial,
 				BasicConstraintsValid: false,
@@ -282,6 +282,7 @@ func TestCheckCert(t *testing.T) {
 				"Certificate has incorrect key usage extensions":                            1,
 				"Certificate has common name >64 characters long (65)":                      1,
 				"Certificate contains an unexpected extension: 1.3.3.7":                     1,
+				"Certificate Common Name does not appear in Subject Alternative Names: \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeexample.com\" !< [example-a.com foodnotbombs.mil dev-myqnapcloud.com]": 1,
 			}
 			for _, p := range problems {
 				_, ok := problemsMap[p]
@@ -359,15 +360,15 @@ func TestGetAndProcessCerts(t *testing.T) {
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
 		_, err = sa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
-			Der:      certDER,
-			RegID:    reg.Id,
-			IssuedNS: fc.Now().UnixNano(),
+			Der:    certDER,
+			RegID:  reg.Id,
+			Issued: timestamppb.New(fc.Now()),
 		})
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
 
 	batchSize = 2
-	err = checker.getCerts(context.Background(), false)
+	err = checker.getCerts(context.Background())
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 	test.AssertEquals(t, len(checker.certs), 5)
 	wg := new(sync.WaitGroup)
@@ -431,7 +432,7 @@ func TestGetCertsEmptyResults(t *testing.T) {
 	checker.dbMap = mismatchedCountDB{}
 
 	batchSize = 3
-	err = checker.getCerts(context.Background(), false)
+	err = checker.getCerts(context.Background())
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 }
 
@@ -453,13 +454,58 @@ func (db emptyDB) SelectNullInt(_ context.Context, _ string, _ ...interface{}) (
 // expected if the DB finds no certificates to match the SELECT query and
 // should return an error.
 func TestGetCertsNullResults(t *testing.T) {
-	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
-	test.AssertNotError(t, err, "Couldn't connect to database")
-	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
-	checker.dbMap = emptyDB{}
+	checker := newChecker(emptyDB{}, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
 
-	err = checker.getCerts(context.Background(), false)
+	err := checker.getCerts(context.Background())
 	test.AssertError(t, err, "Should have gotten error from empty DB")
+	if !strings.Contains(err.Error(), "no rows found for certificates issued between") {
+		t.Errorf("expected error to contain 'no rows found for certificates issued between', got '%s'", err.Error())
+	}
+}
+
+// lateDB is a certDB object that helps with TestGetCertsLate.
+// It pretends to contain a single cert issued at the given time.
+type lateDB struct {
+	issuedTime    time.Time
+	selectedACert bool
+}
+
+// SelectNullInt is a method that returns a false sql.NullInt64 struct to
+// mock a null DB response
+func (db *lateDB) SelectNullInt(_ context.Context, _ string, args ...interface{}) (sql.NullInt64, error) {
+	args2 := args[0].(map[string]interface{})
+	begin := args2["begin"].(time.Time)
+	end := args2["end"].(time.Time)
+	if begin.Compare(db.issuedTime) < 0 && end.Compare(db.issuedTime) > 0 {
+		return sql.NullInt64{Int64: 23, Valid: true}, nil
+	}
+	return sql.NullInt64{Valid: false}, nil
+}
+
+func (db *lateDB) Select(_ context.Context, output interface{}, _ string, args ...interface{}) ([]interface{}, error) {
+	db.selectedACert = true
+	// For expediency we respond with an empty list of certificates; the checker will treat this as if it's
+	// reached the end of the list of certificates to process.
+	return nil, nil
+}
+
+func (db *lateDB) SelectOne(_ context.Context, _ interface{}, _ string, _ ...interface{}) error {
+	return nil
+}
+
+// TestGetCertsLate checks for correct behavior when certificates exist only late in the provided window.
+func TestGetCertsLate(t *testing.T) {
+	clk := clock.NewFake()
+	db := &lateDB{issuedTime: clk.Now().Add(-time.Hour)}
+	checkPeriod := 24 * time.Hour
+	checker := newChecker(db, clk, pa, kp, checkPeriod, testValidityDurations, blog.NewMock())
+
+	err := checker.getCerts(context.Background())
+	test.AssertNotError(t, err, "getting certs")
+
+	if !db.selectedACert {
+		t.Errorf("checker never selected a certificate after getting a MIN(id)")
+	}
 }
 
 func TestSaveReport(t *testing.T) {
@@ -614,10 +660,7 @@ func TestIgnoredLint(t *testing.T) {
 }
 
 func TestPrecertCorrespond(t *testing.T) {
-	err := features.Set(map[string]bool{"CertCheckerRequiresCorrespondence": true})
-	if err != nil {
-		t.Fatal(err)
-	}
+	features.Set(features.Config{CertCheckerRequiresCorrespondence: true})
 	checker := newChecker(nil, clock.New(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
 	checker.getPrecert = func(_ context.Context, _ string) ([]byte, error) {
 		return []byte("hello"), nil

@@ -4,10 +4,16 @@ package s3
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	internalauth "github.com/aws/aws-sdk-go-v2/internal/auth"
+	"github.com/aws/aws-sdk-go-v2/internal/v4a"
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithyendpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
@@ -16,16 +22,21 @@ import (
 // access control list (ACL) of a bucket. To use GET to return the ACL of the
 // bucket, you must have READ_ACP access to the bucket. If READ_ACP permission is
 // granted to the anonymous user, you can return the ACL of the bucket without
-// using an authorization header. If your bucket uses the bucket owner enforced
-// setting for S3 Object Ownership, requests to read ACLs are still supported and
-// return the bucket-owner-full-control ACL with the owner being the account that
-// created the bucket. For more information, see  Controlling object ownership and
-// disabling ACLs
-// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/about-object-ownership.html)
-// in the Amazon S3 User Guide. Related Resources
-//
-// * ListObjects
-// (https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html)
+// using an authorization header. To use this API operation against an access
+// point, provide the alias of the access point in place of the bucket name. To use
+// this API operation against an Object Lambda access point, provide the alias of
+// the Object Lambda access point in place of the bucket name. If the Object Lambda
+// access point alias in a request is not valid, the error code
+// InvalidAccessPointAliasError is returned. For more information about
+// InvalidAccessPointAliasError , see List of Error Codes (https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList)
+// . If your bucket uses the bucket owner enforced setting for S3 Object Ownership,
+// requests to read ACLs are still supported and return the
+// bucket-owner-full-control ACL with the owner being the account that created the
+// bucket. For more information, see Controlling object ownership and disabling
+// ACLs (https://docs.aws.amazon.com/AmazonS3/latest/userguide/about-object-ownership.html)
+// in the Amazon S3 User Guide. The following operations are related to
+// GetBucketAcl :
+//   - ListObjects (https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjects.html)
 func (c *Client) GetBucketAcl(ctx context.Context, params *GetBucketAclInput, optFns ...func(*Options)) (*GetBucketAclOutput, error) {
 	if params == nil {
 		params = &GetBucketAclInput{}
@@ -43,7 +54,14 @@ func (c *Client) GetBucketAcl(ctx context.Context, params *GetBucketAclInput, op
 
 type GetBucketAclInput struct {
 
-	// Specifies the S3 bucket whose ACL is being requested.
+	// Specifies the S3 bucket whose ACL is being requested. To use this API operation
+	// against an access point, provide the alias of the access point in place of the
+	// bucket name. To use this API operation against an Object Lambda access point,
+	// provide the alias of the Object Lambda access point in place of the bucket name.
+	// If the Object Lambda access point alias in a request is not valid, the error
+	// code InvalidAccessPointAliasError is returned. For more information about
+	// InvalidAccessPointAliasError , see List of Error Codes (https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList)
+	// .
 	//
 	// This member is required.
 	Bucket *string
@@ -79,6 +97,9 @@ func (c *Client) addOperationGetBucketAclMiddlewares(stack *middleware.Stack, op
 	if err != nil {
 		return err
 	}
+	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
+		return err
+	}
 	if err = addSetLoggerMiddleware(stack, options); err != nil {
 		return err
 	}
@@ -106,7 +127,7 @@ func (c *Client) addOperationGetBucketAclMiddlewares(stack *middleware.Stack, op
 	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
 		return err
 	}
-	if err = addClientUserAgent(stack); err != nil {
+	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
@@ -118,6 +139,9 @@ func (c *Client) addOperationGetBucketAclMiddlewares(stack *middleware.Stack, op
 	if err = swapWithCustomHTTPSignerMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addGetBucketAclResolveEndpointMiddleware(stack, options); err != nil {
+		return err
+	}
 	if err = addOpGetBucketAclValidationMiddleware(stack); err != nil {
 		return err
 	}
@@ -125,6 +149,9 @@ func (c *Client) addOperationGetBucketAclMiddlewares(stack *middleware.Stack, op
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
+		return err
+	}
+	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addGetBucketAclUpdateEndpoint(stack, options); err != nil {
@@ -142,7 +169,20 @@ func (c *Client) addOperationGetBucketAclMiddlewares(stack *middleware.Stack, op
 	if err = addRequestResponseLogging(stack, options); err != nil {
 		return err
 	}
+	if err = addendpointDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (v *GetBucketAclInput) bucket() (string, bool) {
+	if v.Bucket == nil {
+		return "", false
+	}
+	return *v.Bucket, true
 }
 
 func newServiceMetadataMiddleware_opGetBucketAcl(region string) *awsmiddleware.RegisterServiceMetadata {
@@ -178,4 +218,140 @@ func addGetBucketAclUpdateEndpoint(stack *middleware.Stack, options Options) err
 		UseARNRegion:                   options.UseARNRegion,
 		DisableMultiRegionAccessPoints: options.DisableMultiRegionAccessPoints,
 	})
+}
+
+type opGetBucketAclResolveEndpointMiddleware struct {
+	EndpointResolver EndpointResolverV2
+	BuiltInResolver  builtInParameterResolver
+}
+
+func (*opGetBucketAclResolveEndpointMiddleware) ID() string {
+	return "ResolveEndpointV2"
+}
+
+func (m *opGetBucketAclResolveEndpointMiddleware) HandleSerialize(ctx context.Context, in middleware.SerializeInput, next middleware.SerializeHandler) (
+	out middleware.SerializeOutput, metadata middleware.Metadata, err error,
+) {
+	if awsmiddleware.GetRequiresLegacyEndpoints(ctx) {
+		return next.HandleSerialize(ctx, in)
+	}
+
+	req, ok := in.Request.(*smithyhttp.Request)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)
+	}
+
+	input, ok := in.Parameters.(*GetBucketAclInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)
+	}
+
+	if m.EndpointResolver == nil {
+		return out, metadata, fmt.Errorf("expected endpoint resolver to not be nil")
+	}
+
+	params := EndpointParameters{}
+
+	m.BuiltInResolver.ResolveBuiltIns(&params)
+
+	params.Bucket = input.Bucket
+
+	var resolvedEndpoint smithyendpoints.Endpoint
+	resolvedEndpoint, err = m.EndpointResolver.ResolveEndpoint(ctx, params)
+	if err != nil {
+		return out, metadata, fmt.Errorf("failed to resolve service endpoint, %w", err)
+	}
+
+	req.URL = &resolvedEndpoint.URI
+
+	for k := range resolvedEndpoint.Headers {
+		req.Header.Set(
+			k,
+			resolvedEndpoint.Headers.Get(k),
+		)
+	}
+
+	authSchemes, err := internalauth.GetAuthenticationSchemes(&resolvedEndpoint.Properties)
+	if err != nil {
+		var nfe *internalauth.NoAuthenticationSchemesFoundError
+		if errors.As(err, &nfe) {
+			// if no auth scheme is found, default to sigv4
+			signingName := "s3"
+			signingRegion := m.BuiltInResolver.(*builtInResolver).Region
+			ctx = awsmiddleware.SetSigningName(ctx, signingName)
+			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
+			ctx = s3cust.SetSignerVersion(ctx, internalauth.SigV4)
+		}
+		var ue *internalauth.UnSupportedAuthenticationSchemeSpecifiedError
+		if errors.As(err, &ue) {
+			return out, metadata, fmt.Errorf(
+				"This operation requests signer version(s) %v but the client only supports %v",
+				ue.UnsupportedSchemes,
+				internalauth.SupportedSchemes,
+			)
+		}
+	}
+
+	for _, authScheme := range authSchemes {
+		switch authScheme.(type) {
+		case *internalauth.AuthenticationSchemeV4:
+			v4Scheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4)
+			var signingName, signingRegion string
+			if v4Scheme.SigningName == nil {
+				signingName = "s3"
+			} else {
+				signingName = *v4Scheme.SigningName
+			}
+			if v4Scheme.SigningRegion == nil {
+				signingRegion = m.BuiltInResolver.(*builtInResolver).Region
+			} else {
+				signingRegion = *v4Scheme.SigningRegion
+			}
+			if v4Scheme.DisableDoubleEncoding != nil {
+				// The signer sets an equivalent value at client initialization time.
+				// Setting this context value will cause the signer to extract it
+				// and override the value set at client initialization time.
+				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4Scheme.DisableDoubleEncoding)
+			}
+			ctx = awsmiddleware.SetSigningName(ctx, signingName)
+			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
+			ctx = s3cust.SetSignerVersion(ctx, v4Scheme.Name)
+			break
+		case *internalauth.AuthenticationSchemeV4A:
+			v4aScheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4A)
+			if v4aScheme.SigningName == nil {
+				v4aScheme.SigningName = aws.String("s3")
+			}
+			if v4aScheme.DisableDoubleEncoding != nil {
+				// The signer sets an equivalent value at client initialization time.
+				// Setting this context value will cause the signer to extract it
+				// and override the value set at client initialization time.
+				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4aScheme.DisableDoubleEncoding)
+			}
+			ctx = awsmiddleware.SetSigningName(ctx, *v4aScheme.SigningName)
+			ctx = awsmiddleware.SetSigningRegion(ctx, v4aScheme.SigningRegionSet[0])
+			ctx = s3cust.SetSignerVersion(ctx, v4a.Version)
+			break
+		case *internalauth.AuthenticationSchemeNone:
+			break
+		}
+	}
+
+	return next.HandleSerialize(ctx, in)
+}
+
+func addGetBucketAclResolveEndpointMiddleware(stack *middleware.Stack, options Options) error {
+	return stack.Serialize.Insert(&opGetBucketAclResolveEndpointMiddleware{
+		EndpointResolver: options.EndpointResolverV2,
+		BuiltInResolver: &builtInResolver{
+			Region:                         options.Region,
+			UseFIPS:                        options.EndpointOptions.UseFIPSEndpoint,
+			UseDualStack:                   options.EndpointOptions.UseDualStackEndpoint,
+			Endpoint:                       options.BaseEndpoint,
+			ForcePathStyle:                 options.UsePathStyle,
+			Accelerate:                     options.UseAccelerate,
+			DisableMultiRegionAccessPoints: options.DisableMultiRegionAccessPoints,
+			UseArnRegion:                   options.UseARNRegion,
+		},
+	}, "ResolveEndpoint", middleware.After)
 }

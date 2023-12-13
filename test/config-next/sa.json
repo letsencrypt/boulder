@@ -14,7 +14,6 @@
 		},
 		"ParallelismPerRPC": 20,
 		"lagFactor": "200ms",
-		"debugAddr": ":8003",
 		"tls": {
 			"caCertFile": "test/grpc-creds/minica.pem",
 			"certFile": "test/grpc-creds/sa.boulder/cert.pem",
@@ -22,7 +21,6 @@
 		},
 		"grpc": {
 			"maxConnectionAge": "30s",
-			"address": ":9095",
 			"services": {
 				"sa.StorageAuthority": {
 					"clientNames": [

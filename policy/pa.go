@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net"
 	"net/mail"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -21,7 +22,6 @@ import (
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
@@ -74,22 +74,17 @@ type blockedNamesPolicy struct {
 	AdminBlockedNames []string `yaml:"AdminBlockedNames"`
 }
 
-// SetHostnamePolicyFile will load the given policy file, returning error if it
-// fails. It will also start a reloader in case the file changes
-func (pa *AuthorityImpl) SetHostnamePolicyFile(f string) error {
-	if _, err := reloader.New(f, pa.loadHostnamePolicy, pa.log); err != nil {
+// LoadHostnamePolicyFile will load the given policy file, returning an error if
+// it fails.
+func (pa *AuthorityImpl) LoadHostnamePolicyFile(f string) error {
+	configBytes, err := os.ReadFile(f)
+	if err != nil {
 		return err
 	}
-	return nil
-}
-
-// loadHostnamePolicy is a callback suitable for use with reloader.New() that
-// will unmarshal a YAML hostname policy.
-func (pa *AuthorityImpl) loadHostnamePolicy(contents []byte) error {
-	hash := sha256.Sum256(contents)
+	hash := sha256.Sum256(configBytes)
 	pa.log.Infof("loading hostname policy, sha256: %s", hex.EncodeToString(hash[:]))
 	var policy blockedNamesPolicy
-	err := strictyaml.Unmarshal(contents, &policy)
+	err = strictyaml.Unmarshal(configBytes, &policy)
 	if err != nil {
 		return err
 	}

@@ -36,6 +36,7 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type mockOCSPA struct {
@@ -143,7 +144,7 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	defer os.Remove(duplicateKeyFile.Name())
 
 	// Get the SPKI hash for the provided keypair.
-	spkiHash, err := getPublicKeySPKIHash(&duplicateEntry.testKey.PublicKey)
+	spkiHash, err := core.KeyDigest(&duplicateEntry.testKey.PublicKey)
 	test.AssertNotError(t, err, "Failed to get SPKI hash for dupe.")
 
 	ctx := context.Background()
@@ -232,7 +233,7 @@ func TestPrivateKeyBlock(t *testing.T) {
 	defer os.Remove(duplicateKeyFile.Name())
 
 	// Get the SPKI hash for the provided keypair.
-	duplicateKeySPKI, err := getPublicKeySPKIHash(&duplicateEntry.testKey.PublicKey)
+	duplicateKeySPKI, err := core.KeyDigest(&duplicateEntry.testKey.PublicKey)
 	test.AssertNotError(t, err, "Failed to get SPKI hash for dupe.")
 
 	// Query the 'keyHashToSerial' table for certificates with a matching SPKI
@@ -265,7 +266,7 @@ func TestPrivateKeyBlock(t *testing.T) {
 	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
 
 	// Ensure that the comment was set as expected
-	commentFromDB, err := testCtx.dbMap.SelectStr(ctx, "SELECT comment from blockedKeys WHERE keyHash = ?", duplicateKeySPKI)
+	commentFromDB, err := testCtx.dbMap.SelectStr(ctx, "SELECT comment from blockedKeys WHERE keyHash = ?", duplicateKeySPKI[:])
 	test.AssertNotError(t, err, "Failed to get comment from database")
 	u, err := user.Current()
 	test.AssertNotError(t, err, "Failed to get current user")
@@ -298,7 +299,7 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	defer os.Remove(duplicateKeyFile.Name())
 
 	// Get the SPKI hash for the provided keypair.
-	duplicateKeySPKI, err := getPublicKeySPKIHash(&duplicateEntry.testKey.PublicKey)
+	duplicateKeySPKI, err := core.KeyDigest(&duplicateEntry.testKey.PublicKey)
 	test.AssertNotError(t, err, "Failed to get SPKI hash for dupe.")
 
 	// Query the 'keyHashToSerial' table for certificates with a matching SPKI
@@ -327,7 +328,7 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
 
 	// Ensure that the comment was set as expected
-	commentFromDB, err := testCtx.dbMap.SelectStr(ctx, "SELECT comment from blockedKeys WHERE keyHash = ?", duplicateKeySPKI)
+	commentFromDB, err := testCtx.dbMap.SelectStr(ctx, "SELECT comment from blockedKeys WHERE keyHash = ?", duplicateKeySPKI[:])
 	test.AssertNotError(t, err, "Failed to get comment from database")
 	u, err := user.Current()
 	test.AssertNotError(t, err, "Failed to get current user")
@@ -341,7 +342,7 @@ type entry struct {
 	names    []string
 	testKey  *rsa.PrivateKey
 	regId    int64
-	spkiHash []byte
+	spkiHash core.Sha256Digest
 }
 
 func setupUniqueTestEntries(t *testing.T) ([]*entry, *entry) {
@@ -412,7 +413,7 @@ func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, p
 		context.Background(), &sapb.AddCertificateRequest{
 			Der:          rawCert,
 			RegID:        regId,
-			IssuedNS:     time.Now().UnixNano(),
+			Issued:       timestamppb.New(time.Now()),
 			IssuerNameID: 1,
 		},
 	)
@@ -435,7 +436,7 @@ func (c testCtx) createAndRegisterEntry(t *testing.T, e *entry) {
 	e.regId = c.addRegistation(t, e.names, e.jwk)
 	cert := c.addCertificate(t, e.serial, e.names, e.testKey.PublicKey, e.regId)
 	var err error
-	e.spkiHash, err = getPublicKeySPKIHash(cert.PublicKey)
+	e.spkiHash, err = core.KeyDigest(cert.PublicKey)
 	test.AssertNotError(t, err, "Failed to get SPKI hash")
 }
 

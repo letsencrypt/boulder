@@ -579,3 +579,10 @@ func TestLoadCert(t *testing.T) {
 	_, err = loadCert("../../test/test-root.pubkey.pem")
 	test.AssertError(t, err, "should have failed when trying to parse a public key")
 }
+
+func TestGenerateSKID(t *testing.T) {
+	sha256skid, err := generateSKID(samplePubkey())
+	test.AssertNotError(t, err, "Error generating SKID")
+	test.AssertEquals(t, len(sha256skid), 20)
+	test.AssertEquals(t, cap(sha256skid), 20)
+}

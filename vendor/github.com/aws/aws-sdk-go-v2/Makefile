@@ -10,7 +10,7 @@ BUILD_TAGS=-tags "example,codegen,integration,ec2env,perftest"
 
 SMITHY_GO_SRC ?= $(shell pwd)/../smithy-go
 
-SDK_MIN_GO_VERSION ?= 1.15
+SDK_MIN_GO_VERSION ?= 1.19
 
 EACHMODULE_FAILFAST ?= true
 EACHMODULE_FAILFAST_FLAG=-fail-fast=${EACHMODULE_FAILFAST}
@@ -86,7 +86,10 @@ tidy-modules-. add-module-license-files gen-aws-ptrs format
 
 generate-tmpreplace-smithy: smithy-generate update-requires gen-repo-mod-replace update-module-metadata smithy-annotate-stable \
 gen-config-asserts gen-internal-codegen copy-attributevalue-feature gen-mod-replace-smithy-. min-go-version-. \
-tidy-modules-. add-module-license-files gen-aws-ptrs format gen-mod-dropreplace-smithy-.
+tidy-modules-. add-module-license-files gen-aws-ptrs format gen-mod-dropreplace-smithy-. reset-sum
+
+reset-sum:
+	find . -name go.sum -exec git checkout -- {} \;
 
 smithy-generate:
 	cd codegen && ./gradlew clean build -Plog-tests && ./gradlew clean

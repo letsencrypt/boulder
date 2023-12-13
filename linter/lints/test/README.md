@@ -12,10 +12,10 @@ To create a new test CRL to exercise a new lint:
    $ go install github.com/syncsynchalt/der2text/cmds/der2text@latest
    ```
 
-2. Use `der2text` to create an editable version of CRL you want to start with, usually `good.pem`:
+2. Use `der2text` to create an editable version of CRL you want to start with, usually `crl_good.pem`:
   
    ```sh
-   $ der2text good.pem > my_new_crl.txt
+   $ der2text crl_good.pem > my_new_crl.txt
    ```
 
 3. Edit the text file. See [the der2text readme](https://github.com/syncsynchalt/der2text) for details about the file format.

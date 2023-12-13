@@ -4,7 +4,6 @@
 			"dbConnectFile": "test/secrets/badkeyrevoker_dburl",
 			"maxOpenConns": 10
 		},
-		"debugAddr": ":8020",
 		"tls": {
 			"caCertFile": "test/grpc-creds/minica.pem",
 			"certFile": "test/grpc-creds/bad-key-revoker.boulder/cert.pem",

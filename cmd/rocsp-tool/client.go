@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/ocsp/helper"
 	"golang.org/x/crypto/ocsp"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type client struct {
@@ -209,11 +210,11 @@ func (cl *client) signAndStoreResponses(ctx context.Context, input <-chan *sa.Ce
 	}()
 	for status := range input {
 		ocspReq := &capb.GenerateOCSPRequest{
-			Serial:      status.Serial,
-			IssuerID:    status.IssuerID,
-			Status:      string(status.Status),
-			Reason:      int32(status.RevokedReason),
-			RevokedAtNS: status.RevokedDate.UnixNano(),
+			Serial:    status.Serial,
+			IssuerID:  status.IssuerID,
+			Status:    string(status.Status),
+			Reason:    int32(status.RevokedReason),
+			RevokedAt: timestamppb.New(status.RevokedDate),
 		}
 		result, err := cl.ocspGenerator.GenerateOCSP(ctx, ocspReq)
 		if err != nil {

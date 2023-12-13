@@ -1,0 +1,12 @@
+NewRegistrationsPerIPAddress:10.0.0.2:
+  burst: 40
+  count: 40
+  period: 1s
+NewRegistrationsPerIPAddress:10.0.0.5:
+  burst: 40
+  count: 40
+  period: 1s
+NewRegistrationsPerIPAddress:lol:
+  burst: 40
+  count: 40
+  period: 1s

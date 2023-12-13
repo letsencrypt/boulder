@@ -11,8 +11,6 @@ import (
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
-	bcreds "github.com/letsencrypt/boulder/grpc/creds"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
@@ -23,6 +21,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/letsencrypt/boulder/cmd"
+	bcreds "github.com/letsencrypt/boulder/grpc/creds"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // CodedError is a alias required to appease go vet
@@ -181,6 +181,11 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	for _, service := range sb.services {
 		server.RegisterService(service.desc, service.impl)
 	}
+
+	if sb.cfg.Address == "" {
+		return nil, errors.New("GRPC listen address not configured")
+	}
+	sb.logger.Infof("grpc listening on %s", sb.cfg.Address)
 
 	// Finally return the functions which will start and stop the server.
 	listener, err := net.Listen("tcp", sb.cfg.Address)

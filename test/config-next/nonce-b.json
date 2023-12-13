@@ -13,10 +13,8 @@
 			"endpoint": "bjaeger:4317",
 			"sampleratio": 1
 		},
-		"debugAddr": ":8111",
 		"grpc": {
 			"maxConnectionAge": "30s",
-			"address": ":9101",
 			"services": {
 				"nonce.NonceService": {
 					"clientNames": [

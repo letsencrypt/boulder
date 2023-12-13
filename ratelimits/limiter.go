@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"slices"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -20,63 +22,37 @@ const (
 	Denied = "denied"
 )
 
-// ErrInvalidCost indicates that the cost specified was <= 0.
-var ErrInvalidCost = fmt.Errorf("invalid cost, must be > 0")
-
-// ErrInvalidCostForCheck indicates that the check cost specified was < 0.
-var ErrInvalidCostForCheck = fmt.Errorf("invalid check cost, must be >= 0")
-
-// ErrInvalidCostOverLimit indicates that the cost specified was > limit.Burst.
-var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
-
-// ErrBucketAlreadyFull indicates that the bucket already has reached its
-// maximum capacity.
-var ErrBucketAlreadyFull = fmt.Errorf("bucket already full")
+// allowedDecision is an "allowed" *Decision that should be returned when a
+// checked limit is found to be disabled.
+var allowedDecision = &Decision{Allowed: true, Remaining: math.MaxInt64}
 
 // Limiter provides a high-level interface for rate limiting requests by
 // utilizing a leaky bucket-style approach.
 type Limiter struct {
-	// defaults stores default limits by 'name'.
-	defaults limits
-
-	// overrides stores override limits by 'name:id'.
-	overrides limits
-
 	// source is used to store buckets. It must be safe for concurrent use.
 	source source
 	clk    clock.Clock
 
+	spendLatency       *prometheus.HistogramVec
 	overrideUsageGauge *prometheus.GaugeVec
 }
 
 // NewLimiter returns a new *Limiter. The provided source must be safe for
-// concurrent use. The defaults and overrides paths are expected to be paths to
-// YAML files that contain the default and override limits, respectively. The
-// overrides file is optional, all other arguments are required.
-func NewLimiter(clk clock.Clock, source source, defaults, overrides string, stats prometheus.Registerer) (*Limiter, error) {
+// concurrent use.
+func NewLimiter(clk clock.Clock, source source, stats prometheus.Registerer) (*Limiter, error) {
 	limiter := &Limiter{source: source, clk: clk}
-
-	var err error
-	limiter.defaults, err = loadAndParseDefaultLimits(defaults)
-	if err != nil {
-		return nil, err
-	}
-
-	if overrides == "" {
-		// No overrides specified, initialize an empty map.
-		limiter.overrides = make(limits)
-		return limiter, nil
-	}
-
-	limiter.overrides, err = loadAndParseOverrideLimits(overrides)
-	if err != nil {
-		return nil, err
-	}
+	limiter.spendLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "ratelimits_spend_latency",
+		Help: fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", Allowed, Denied),
+		// Exponential buckets ranging from 0.0005s to 3s.
+		Buckets: prometheus.ExponentialBuckets(0.0005, 3, 8),
+	}, []string{"limit", "decision"})
+	stats.MustRegister(limiter.spendLatency)
 
 	limiter.overrideUsageGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "ratelimits_override_usage",
-		Help: "Proportion of override limit used, by limit name and client id.",
-	}, []string{"limit", "client_id"})
+		Help: "Proportion of override limit used, by limit name and bucket key.",
+	}, []string{"limit", "bucket_key"})
 	stats.MustRegister(limiter.overrideUsageGauge)
 
 	return limiter, nil
@@ -105,157 +81,228 @@ type Decision struct {
 	newTAT time.Time
 }
 
-// Check returns a *Decision that indicates whether there's enough capacity to
-// allow the request, given the cost, for the specified limit Name and client
-// id. However, it DOES NOT deduct the cost of the request from the bucket's
-// capacity. Hence, the returned *Decision represents the hypothetical state of
-// the bucket if the cost WERE to be deducted. The returned *Decision will
-// always include the number of remaining requests in the bucket, the required
-// wait time before the client can make another request, and the time until the
-// bucket refills to its maximum capacity (resets). If no bucket exists for the
-// given limit Name and client id, a new one will be created WITHOUT the
-// request's cost deducted from its initial capacity.
-func (l *Limiter) Check(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
-	if cost < 0 {
-		return nil, ErrInvalidCostForCheck
+// Check DOES NOT deduct the cost of the request from the provided bucket's
+// capacity. The returned *Decision indicates whether the capacity exists to
+// satisfy the cost and represents the hypothetical state of the bucket IF the
+// cost WERE to be deducted. If no bucket exists it will NOT be created. No
+// state is persisted to the underlying datastore.
+func (l *Limiter) Check(ctx context.Context, txn Transaction) (*Decision, error) {
+	if txn.allowOnly() {
+		return allowedDecision, nil
 	}
-
-	limit, err := l.getLimit(name, id)
-	if err != nil {
-		return nil, err
-	}
-
-	if cost > limit.Burst {
-		return nil, ErrInvalidCostOverLimit
-	}
-
-	tat, err := l.source.Get(ctx, bucketKey(name, id))
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
+	tat, err := l.source.Get(ctx, txn.bucketKey)
 	if err != nil {
 		if !errors.Is(err, ErrBucketNotFound) {
 			return nil, err
 		}
-		// First request from this client. The cost is not deducted from the
-		// initial capacity because this is only a check.
-		d, err := l.initialize(ctx, limit, name, id, 0)
+		// First request from this client. No need to initialize the bucket
+		// because this is a check, not a spend. A TAT of "now" is equivalent to
+		// a full bucket.
+		return maybeSpend(l.clk, txn.limit, l.clk.Now(), txn.cost), nil
+	}
+	return maybeSpend(l.clk, txn.limit, tat, txn.cost), nil
+}
+
+// Spend attempts to deduct the cost from the provided bucket's capacity. The
+// returned *Decision indicates whether the capacity existed to satisfy the cost
+// and represents the current state of the bucket. If no bucket exists it WILL
+// be created WITH the cost factored into its initial state. The new bucket
+// state is persisted to the underlying datastore, if applicable, before
+// returning.
+func (l *Limiter) Spend(ctx context.Context, txn Transaction) (*Decision, error) {
+	return l.BatchSpend(ctx, []Transaction{txn})
+}
+
+func prepareBatch(txns []Transaction) ([]Transaction, []string, error) {
+	var bucketKeys []string
+	var transactions []Transaction
+	for _, txn := range txns {
+		if txn.allowOnly() {
+			// Ignore allow-only transactions.
+			continue
+		}
+		if slices.Contains(bucketKeys, txn.bucketKey) {
+			return nil, nil, fmt.Errorf("found duplicate bucket %q in batch", txn.bucketKey)
+		}
+		bucketKeys = append(bucketKeys, txn.bucketKey)
+		transactions = append(transactions, txn)
+	}
+	return transactions, bucketKeys, nil
+}
+
+type batchDecision struct {
+	*Decision
+}
+
+func newBatchDecision() *batchDecision {
+	return &batchDecision{
+		Decision: &Decision{
+			Allowed:   true,
+			Remaining: math.MaxInt64,
+		},
+	}
+}
+
+func (d *batchDecision) merge(in *Decision) {
+	d.Allowed = d.Allowed && in.Allowed
+	d.Remaining = min(d.Remaining, in.Remaining)
+	d.RetryIn = max(d.RetryIn, in.RetryIn)
+	d.ResetIn = max(d.ResetIn, in.ResetIn)
+	if in.newTAT.After(d.newTAT) {
+		d.newTAT = in.newTAT
+	}
+}
+
+// BatchSpend attempts to deduct the costs from the provided buckets'
+// capacities. If applicable, new bucket states are persisted to the underlying
+// datastore before returning. Non-existent buckets will be initialized WITH the
+// cost factored into the initial state. The following rules are applied to
+// merge the Decisions for each Transaction into a single batch Decision:
+//   - Allowed is true if all Transactions where check is true were allowed,
+//   - RetryIn and ResetIn are the largest values of each across all Decisions,
+//   - Remaining is the smallest value of each across all Decisions, and
+//   - Decisions resulting from spend-only Transactions are never merged.
+func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision, error) {
+	batch, bucketKeys, err := prepareBatch(txns)
+	if err != nil {
+		return nil, err
+	}
+	if len(batch) == 0 {
+		// All Transactions were allow-only.
+		return allowedDecision, nil
+	}
+
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
+	tats, err := l.source.BatchGet(ctx, bucketKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	start := l.clk.Now()
+	batchDecision := newBatchDecision()
+	newTATs := make(map[string]time.Time)
+
+	for _, txn := range batch {
+		tat, exists := tats[txn.bucketKey]
+		if !exists {
+			// First request from this client.
+			tat = l.clk.Now()
+		}
+
+		d := maybeSpend(l.clk, txn.limit, tat, txn.cost)
+
+		if txn.limit.isOverride {
+			utilization := float64(txn.limit.Burst-d.Remaining) / float64(txn.limit.Burst)
+			l.overrideUsageGauge.WithLabelValues(txn.limit.name.String(), txn.bucketKey).Set(utilization)
+		}
+
+		if d.Allowed && (tat != d.newTAT) && txn.spend {
+			// New bucket state should be persisted.
+			newTATs[txn.bucketKey] = d.newTAT
+		}
+
+		if !txn.spendOnly() {
+			batchDecision.merge(d)
+		}
+	}
+
+	if batchDecision.Allowed {
+		err = l.source.BatchSet(ctx, newTATs)
 		if err != nil {
 			return nil, err
 		}
-		return maybeSpend(l.clk, limit, d.newTAT, cost), nil
+		l.spendLatency.WithLabelValues("batch", Allowed).Observe(l.clk.Since(start).Seconds())
+	} else {
+		l.spendLatency.WithLabelValues("batch", Denied).Observe(l.clk.Since(start).Seconds())
 	}
-	return maybeSpend(l.clk, limit, tat, cost), nil
+	return batchDecision.Decision, nil
 }
 
-// Spend returns a *Decision that indicates if enough capacity was available to
-// process the request, given the cost, for the specified limit Name and client
-// id. If capacity existed, the cost of the request HAS been deducted from the
-// bucket's capacity, otherwise no cost was deducted. The returned *Decision
-// will always include the number of remaining requests in the bucket, the
-// required wait time before the client can make another request, and the time
-// until the bucket refills to its maximum capacity (resets). If no bucket
-// exists for the given limit Name and client id, a new one will be created WITH
-// the request's cost deducted from its initial capacity.
-func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
-	if cost <= 0 {
-		return nil, ErrInvalidCost
-	}
-
-	limit, err := l.getLimit(name, id)
-	if err != nil {
-		return nil, err
-	}
-
-	if cost > limit.Burst {
-		return nil, ErrInvalidCostOverLimit
-	}
-
-	tat, err := l.source.Get(ctx, bucketKey(name, id))
-	if err != nil {
-		if errors.Is(err, ErrBucketNotFound) {
-			// First request from this client.
-			return l.initialize(ctx, limit, name, id, cost)
-		}
-		return nil, err
-	}
-
-	d := maybeSpend(l.clk, limit, tat, cost)
-
-	if limit.isOverride {
-		// Calculate the current utilization of the override limit for the
-		// specified client id.
-		utilization := float64(limit.Burst-d.Remaining) / float64(limit.Burst)
-		l.overrideUsageGauge.WithLabelValues(nameToString[name], id).Set(utilization)
-	}
-
-	if !d.Allowed {
-		return d, nil
-	}
-	return d, l.source.Set(ctx, bucketKey(name, id), d.newTAT)
-}
-
-// Refund attempts to refund the cost to the bucket identified by limit name and
-// client id. The returned *Decision indicates whether the refund was successful
-// or not. If the refund was successful, the cost of the request was added back
-// to the bucket's capacity. If the refund is not possible (i.e., the bucket is
-// already full or the refund amount is invalid), no cost is refunded.
+// Refund attempts to refund all of the cost to the capacity of the specified
+// bucket. The returned *Decision indicates whether the refund was successful
+// and represents the current state of the bucket. The new bucket state is
+// persisted to the underlying datastore, if applicable, before returning. If no
+// bucket exists it will NOT be created. Spend-only Transactions are assumed to
+// be refundable. Check-only Transactions are never refunded.
 //
 // Note: The amount refunded cannot cause the bucket to exceed its maximum
-// capacity. However, partial refunds are allowed and are considered successful.
-// For instance, if a bucket has a maximum capacity of 10 and currently has 5
+// capacity. Partial refunds are allowed and are considered successful. For
+// instance, if a bucket has a maximum capacity of 10 and currently has 5
 // requests remaining, a refund request of 7 will result in the bucket reaching
 // its maximum capacity of 10, not 12.
-func (l *Limiter) Refund(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
-	if cost <= 0 {
-		return nil, ErrInvalidCost
+func (l *Limiter) Refund(ctx context.Context, txn Transaction) (*Decision, error) {
+	return l.BatchRefund(ctx, []Transaction{txn})
+}
+
+// BatchRefund attempts to refund all or some of the costs to the provided
+// buckets' capacities. Non-existent buckets will NOT be initialized. The new
+// bucket state is persisted to the underlying datastore, if applicable, before
+// returning. Spend-only Transactions are assumed to be refundable. Check-only
+// Transactions are never refunded. The following rules are applied to merge the
+// Decisions for each Transaction into a single batch Decision:
+//   - Allowed is true if all Transactions where check is true were allowed,
+//   - RetryIn and ResetIn are the largest values of each across all Decisions,
+//   - Remaining is the smallest value of each across all Decisions, and
+//   - Decisions resulting from spend-only Transactions are never merged.
+func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decision, error) {
+	batch, bucketKeys, err := prepareBatch(txns)
+	if err != nil {
+		return nil, err
+	}
+	if len(batch) == 0 {
+		// All Transactions were allow-only.
+		return allowedDecision, nil
 	}
 
-	limit, err := l.getLimit(name, id)
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
+	tats, err := l.source.BatchGet(ctx, bucketKeys)
 	if err != nil {
 		return nil, err
 	}
 
-	tat, err := l.source.Get(ctx, bucketKey(name, id))
-	if err != nil {
-		return nil, err
-	}
-	d := maybeRefund(l.clk, limit, tat, cost)
-	if !d.Allowed {
-		return d, ErrBucketAlreadyFull
-	}
-	return d, l.source.Set(ctx, bucketKey(name, id), d.newTAT)
+	batchDecision := newBatchDecision()
+	newTATs := make(map[string]time.Time)
 
-}
+	for _, txn := range batch {
+		tat, exists := tats[txn.bucketKey]
+		if !exists {
+			// Ignore non-existent bucket.
+			continue
+		}
 
-// Reset resets the specified bucket.
-func (l *Limiter) Reset(ctx context.Context, name Name, id string) error {
-	return l.source.Delete(ctx, bucketKey(name, id))
-}
-
-// initialize creates a new bucket, specified by limit name and id, with the
-// cost of the request factored into the initial state.
-func (l *Limiter) initialize(ctx context.Context, rl limit, name Name, id string, cost int64) (*Decision, error) {
-	d := maybeSpend(l.clk, rl, l.clk.Now(), cost)
-	err := l.source.Set(ctx, bucketKey(name, id), d.newTAT)
-	if err != nil {
-		return nil, err
-	}
-	return d, nil
-
-}
-
-// GetLimit returns the limit for the specified by name and id, name is
-// required, id is optional. If id is left unspecified, the default limit for
-// the limit specified by name is returned.
-func (l *Limiter) getLimit(name Name, id string) (limit, error) {
-	if id != "" {
-		// Check for override.
-		ol, ok := l.overrides[bucketKey(name, id)]
-		if ok {
-			return ol, nil
+		var cost int64
+		if !txn.checkOnly() {
+			cost = txn.cost
+		}
+		d := maybeRefund(l.clk, txn.limit, tat, cost)
+		batchDecision.merge(d)
+		if d.Allowed && tat != d.newTAT {
+			// New bucket state should be persisted.
+			newTATs[txn.bucketKey] = d.newTAT
 		}
 	}
-	dl, ok := l.defaults[nameToEnumString(name)]
-	if ok {
-		return dl, nil
+
+	if len(newTATs) > 0 {
+		err = l.source.BatchSet(ctx, newTATs)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return limit{}, fmt.Errorf("limit %q does not exist", name)
+	return batchDecision.Decision, nil
+}
+
+// Reset resets the specified bucket to its maximum capacity. The new bucket
+// state is persisted to the underlying datastore before returning.
+func (l *Limiter) Reset(ctx context.Context, bucketKey string) error {
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
+	return l.source.Delete(ctx, bucketKey)
 }

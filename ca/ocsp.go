@@ -127,7 +127,7 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 		}
 	}
 
-	now := oi.clk.Now().Truncate(time.Hour)
+	now := oi.clk.Now().Truncate(time.Minute)
 	tbsResponse := ocsp.Response{
 		Status:       ocspStatusToCode[req.Status],
 		SerialNumber: serial,
@@ -135,7 +135,7 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 		NextUpdate:   now.Add(oi.ocspLifetime - time.Second),
 	}
 	if tbsResponse.Status == ocsp.Revoked {
-		tbsResponse.RevokedAt = time.Unix(0, req.RevokedAtNS)
+		tbsResponse.RevokedAt = req.RevokedAt.AsTime()
 		tbsResponse.RevocationReason = int(req.Reason)
 	}
 

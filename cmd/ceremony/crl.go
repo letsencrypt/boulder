@@ -3,6 +3,8 @@ package main
 import (
 	"crypto"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -34,17 +36,14 @@ func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nex
 	if nextUpdate.Sub(thisUpdate) > time.Hour*24*365 {
 		return nil, errors.New("nextUpdate must be less than 12 months after thisUpdate")
 	}
+	// Add the Issuing Distribution Point extension.
+	idp, err := makeIDPExt()
+	if err != nil {
+		return nil, fmt.Errorf("creating IDP extension: %w", err)
+	}
+	template.ExtraExtensions = append(template.ExtraExtensions, *idp)
 
-	err := linter.CheckCRL(template, issuer, signer, []string{
-		// We skip this lint because our ceremony tooling issues CRLs with validity
-		// periods up to 12 months, but the lint only allows up to 10 days (which
-		// is the limit for CRLs containing Subscriber Certificates).
-		"e_crl_validity_period",
-		// We skip this lint because it is only applicable for sharded/partitioned
-		// CRLs, which our Subscriber CRLs are, but our higher-level CRLs issued by
-		// this tool are not.
-		"e_crl_has_idp",
-	})
+	err = linter.CheckCRL(template, issuer, signer, []string{})
 	if err != nil {
 		return nil, fmt.Errorf("crl failed pre-issuance lint: %w", err)
 	}
@@ -60,4 +59,31 @@ func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nex
 	}
 
 	return pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: crlBytes}), nil
+}
+
+// issuingDistributionPoint represents the ASN.1 IssuingDistributionPoint
+// SEQUENCE as defined in RFC 5280 Section 5.2.5. We only use one of the fields,
+// all others are omitted.
+// https://datatracker.ietf.org/doc/html/rfc5280#page-66
+type issuingDistributionPoint struct {
+	OnlyContainsCACerts bool `asn1:"optional,tag:2"`
+}
+
+// makeIDPExt returns a critical IssuingDistributionPoint extension enabling the
+// OnlyContainsCACerts boolean.
+func makeIDPExt() (*pkix.Extension, error) {
+	val := issuingDistributionPoint{
+		OnlyContainsCACerts: true,
+	}
+
+	valBytes, err := asn1.Marshal(val)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pkix.Extension{
+		Id:       asn1.ObjectIdentifier{2, 5, 29, 28}, // id-ce-issuingDistributionPoint
+		Value:    valBytes,
+		Critical: true,
+	}, nil
 }

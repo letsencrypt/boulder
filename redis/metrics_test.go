@@ -25,7 +25,7 @@ func (mockPoolStatGetter) PoolStats() *redis.PoolStats {
 }
 
 func TestMetrics(t *testing.T) {
-	mets := NewMetricsCollector(mockPoolStatGetter{},
+	mets := newClientMetricsCollector(mockPoolStatGetter{},
 		prometheus.Labels{
 			"foo": "bar",
 		})
@@ -61,4 +61,15 @@ Desc{fqName: "redis_connection_pool_stale_conns", help: "Number of stale connect
 		t.Errorf("expected metrics to contain %d entries, but they contained %d",
 			len(expected), len(results))
 	}
+}
+
+func TestMustRegisterClientMetricsCollector(t *testing.T) {
+	client := mockPoolStatGetter{}
+	stats := prometheus.NewRegistry()
+	// First registration should succeed.
+	MustRegisterClientMetricsCollector(client, stats, map[string]string{"foo": "bar"}, "baz")
+	// Duplicate registration should succeed.
+	MustRegisterClientMetricsCollector(client, stats, map[string]string{"foo": "bar"}, "baz")
+	// Registration with different label values should succeed.
+	MustRegisterClientMetricsCollector(client, stats, map[string]string{"f00": "b4r"}, "b4z")
 }

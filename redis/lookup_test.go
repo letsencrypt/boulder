@@ -41,7 +41,7 @@ func TestNewLookup(t *testing.T) {
 	logger := blog.NewMock()
 	ring := newTestRedisRing()
 
-	_, err := NewLookup([]cmd.ServiceDomain{
+	_, err := newLookup([]cmd.ServiceDomain{
 		{
 			Service: "redisratelimits",
 			Domain:  "service.consul",
@@ -51,8 +51,9 @@ func TestNewLookup(t *testing.T) {
 		250*time.Millisecond,
 		ring,
 		logger,
+		metrics.NoopRegisterer,
 	)
-	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
+	test.AssertNotError(t, err, "Expected newLookup construction to succeed")
 }
 
 func TestStart(t *testing.T) {
@@ -61,7 +62,7 @@ func TestStart(t *testing.T) {
 	logger := blog.NewMock()
 	ring := newTestRedisRing()
 
-	lookup, err := NewLookup([]cmd.ServiceDomain{
+	lookup, err := newLookup([]cmd.ServiceDomain{
 		{
 			Service: "redisratelimits",
 			Domain:  "service.consul",
@@ -71,13 +72,12 @@ func TestStart(t *testing.T) {
 		250*time.Millisecond,
 		ring,
 		logger,
+		metrics.NoopRegisterer,
 	)
-	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
+	test.AssertNotError(t, err, "Expected newLookup construction to succeed")
 
-	testCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	lookup.Start(testCtx)
+	lookup.start()
+	lookup.stop()
 }
 
 func TestNewLookupWithOneFailingSRV(t *testing.T) {
@@ -86,7 +86,7 @@ func TestNewLookupWithOneFailingSRV(t *testing.T) {
 	logger := blog.NewMock()
 	ring := newTestRedisRing()
 
-	_, err := NewLookup([]cmd.ServiceDomain{
+	_, err := newLookup([]cmd.ServiceDomain{
 		{
 			Service: "doesnotexist",
 			Domain:  "service.consuls",
@@ -100,8 +100,9 @@ func TestNewLookupWithOneFailingSRV(t *testing.T) {
 		250*time.Millisecond,
 		ring,
 		logger,
+		metrics.NoopRegisterer,
 	)
-	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
+	test.AssertNotError(t, err, "Expected newLookup construction to succeed")
 }
 
 func TestNewLookupWithAllFailingSRV(t *testing.T) {
@@ -110,7 +111,7 @@ func TestNewLookupWithAllFailingSRV(t *testing.T) {
 	logger := blog.NewMock()
 	ring := newTestRedisRing()
 
-	_, err := NewLookup([]cmd.ServiceDomain{
+	_, err := newLookup([]cmd.ServiceDomain{
 		{
 			Service: "doesnotexist",
 			Domain:  "service.consuls",
@@ -124,8 +125,9 @@ func TestNewLookupWithAllFailingSRV(t *testing.T) {
 		250*time.Millisecond,
 		ring,
 		logger,
+		metrics.NoopRegisterer,
 	)
-	test.AssertError(t, err, "Expected NewLookup construction to fail")
+	test.AssertError(t, err, "Expected newLookup construction to fail")
 }
 
 func TestUpdateNowWithAllFailingSRV(t *testing.T) {
@@ -134,7 +136,7 @@ func TestUpdateNowWithAllFailingSRV(t *testing.T) {
 	logger := blog.NewMock()
 	ring := newTestRedisRing()
 
-	lookup, err := NewLookup([]cmd.ServiceDomain{
+	lookup, err := newLookup([]cmd.ServiceDomain{
 		{
 			Service: "redisratelimits",
 			Domain:  "service.consul",
@@ -144,8 +146,9 @@ func TestUpdateNowWithAllFailingSRV(t *testing.T) {
 		250*time.Millisecond,
 		ring,
 		logger,
+		metrics.NoopRegisterer,
 	)
-	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
+	test.AssertNotError(t, err, "Expected newLookup construction to succeed")
 
 	lookup.srvLookups = []cmd.ServiceDomain{
 		{
@@ -172,7 +175,7 @@ func TestUpdateNowWithAllFailingSRVs(t *testing.T) {
 	logger := blog.NewMock()
 	ring := newTestRedisRing()
 
-	lookup, err := NewLookup([]cmd.ServiceDomain{
+	lookup, err := newLookup([]cmd.ServiceDomain{
 		{
 			Service: "redisratelimits",
 			Domain:  "service.consul",
@@ -182,8 +185,9 @@ func TestUpdateNowWithAllFailingSRVs(t *testing.T) {
 		250*time.Millisecond,
 		ring,
 		logger,
+		metrics.NoopRegisterer,
 	)
-	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
+	test.AssertNotError(t, err, "Expected newLookup construction to succeed")
 
 	// Replace the dnsAuthority with a non-existent DNS server, this will cause
 	// a timeout error, which is technically a temporary error, but will
@@ -204,7 +208,7 @@ func TestUpdateNowWithOneFailingSRV(t *testing.T) {
 	logger := blog.NewMock()
 	ring := newTestRedisRing()
 
-	lookup, err := NewLookup([]cmd.ServiceDomain{
+	lookup, err := newLookup([]cmd.ServiceDomain{
 		{
 			Service: "doesnotexist",
 			Domain:  "service.consuls",
@@ -218,8 +222,9 @@ func TestUpdateNowWithOneFailingSRV(t *testing.T) {
 		250*time.Millisecond,
 		ring,
 		logger,
+		metrics.NoopRegisterer,
 	)
-	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
+	test.AssertNotError(t, err, "Expected newLookup construction to succeed")
 
 	// The Consul service entry for 'redisratelimits' is configured to return
 	// two SRV targets. We should only have two shards in the ring.

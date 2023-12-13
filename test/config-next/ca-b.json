@@ -1,6 +1,5 @@
 {
 	"ca": {
-		"debugAddr": ":8001",
 		"tls": {
 			"caCertFile": "test/grpc-creds/minica.pem",
 			"certFile": "test/grpc-creds/ca.boulder/cert.pem",
@@ -9,7 +8,6 @@
 		"hostnamePolicyFile": "test/hostname-policy.yaml",
 		"grpcCA": {
 			"maxConnectionAge": "30s",
-			"address": ":9093",
 			"services": {
 				"ca.CertificateAuthority": {
 					"clientNames": [
@@ -74,7 +72,6 @@
 					"useForECDSALeaves": true,
 					"issuerURL": "http://127.0.0.1:4001/aia/issuer/6605440498369741",
 					"ocspURL": "http://127.0.0.1:4002/",
-					"crlURL": "http://example.com/crl",
 					"location": {
 						"configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
 						"certFile": "/hierarchy/intermediate-cert-rsa-a.pem",
@@ -86,7 +83,6 @@
 					"useForECDSALeaves": false,
 					"issuerURL": "http://127.0.0.1:4001/aia/issuer/41127673797486028",
 					"ocspURL": "http://127.0.0.1:4002/",
-					"crlURL": "http://example.com/crl",
 					"location": {
 						"configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
 						"certFile": "/hierarchy/intermediate-cert-rsa-b.pem",
@@ -115,7 +111,8 @@
 		"ctLogListFile": "test/ct-test-srv/log_list.json",
 		"features": {
 			"ECDSAForAll": true,
-			"RequireCommonName": false
+			"AllowNoCommonName": true,
+			"SHA256SubjectKeyIdentifier": true
 		}
 	},
 	"pa": {

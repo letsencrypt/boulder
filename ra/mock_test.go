@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type mockInvalidAuthorizationsAuthority struct {
@@ -56,7 +57,7 @@ func (sa *mockInvalidPlusValidAuthzAuthority) GetAuthorizations2(ctx context.Con
 					Status:         "valid",
 					Identifier:     sa.domainWithFailures,
 					RegistrationID: 1234,
-					ExpiresNS:      time.Date(2101, 12, 3, 0, 0, 0, 0, time.UTC).Unix(),
+					Expires:        timestamppb.New(time.Date(2101, 12, 3, 0, 0, 0, 0, time.UTC)),
 				},
 			},
 		},

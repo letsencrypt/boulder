@@ -1,6 +1,10 @@
 package redis
 
 import (
+	"errors"
+	"slices"
+	"strings"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 )
@@ -49,7 +53,8 @@ func (dbc metricsCollector) Collect(ch chan<- prometheus.Metric) {
 	writeGauge(dbc.staleConns, stats.StaleConns)
 }
 
-func NewMetricsCollector(statGetter poolStatGetter, labels prometheus.Labels) metricsCollector {
+// newClientMetricsCollector is broken out for testing purposes.
+func newClientMetricsCollector(statGetter poolStatGetter, labels prometheus.Labels) metricsCollector {
 	return metricsCollector{
 		statGetter: statGetter,
 		lookups: prometheus.NewDesc(
@@ -68,5 +73,31 @@ func NewMetricsCollector(statGetter poolStatGetter, labels prometheus.Labels) me
 			"redis_connection_pool_stale_conns",
 			"Number of stale connections removed from the pool.",
 			nil, labels),
+	}
+}
+
+// MustRegisterClientMetricsCollector registers a metrics collector for the
+// given Redis client with the provided prometheus.Registerer. The collector
+// will report metrics labelled by the provided addresses and username. If the
+// collector is already registered, this function is a no-op.
+func MustRegisterClientMetricsCollector(client poolStatGetter, stats prometheus.Registerer, addrs map[string]string, user string) {
+	var labelAddrs []string
+	for addr := range addrs {
+		labelAddrs = append(labelAddrs, addr)
+	}
+	// Keep the list of addresses sorted for consistency.
+	slices.Sort(labelAddrs)
+	labels := prometheus.Labels{
+		"addresses": strings.Join(labelAddrs, ", "),
+		"user":      user,
+	}
+	err := stats.Register(newClientMetricsCollector(client, labels))
+	if err != nil {
+		are := prometheus.AlreadyRegisteredError{}
+		if errors.As(err, &are) {
+			// The collector is already registered using the same labels.
+			return
+		}
+		panic(err)
 	}
 }

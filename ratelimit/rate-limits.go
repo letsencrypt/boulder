@@ -1,7 +1,7 @@
 package ratelimit
 
 import (
-	"sync"
+	"strconv"
 	"time"
 
 	"github.com/letsencrypt/boulder/config"
@@ -11,7 +11,7 @@ import (
 const (
 	// CertificatesPerName is the name of the CertificatesPerName rate limit
 	// when referenced in metric labels.
-	CertificatesPerName = "certificates_per_domain_per_account"
+	CertificatesPerName = "certificates_per_domain"
 
 	// RegistrationsPerIP is the name of the RegistrationsPerIP rate limit when
 	// referenced in metric labels.
@@ -33,11 +33,11 @@ const (
 
 	// CertificatesPerFQDNSet is the name of the CertificatesPerFQDNSet rate
 	// limit when referenced in metric labels.
-	CertificatesPerFQDNSet = "certificates_per_fqdn_set_per_account"
+	CertificatesPerFQDNSet = "certificates_per_fqdn_set"
 
 	// CertificatesPerFQDNSetFast is the name of the CertificatesPerFQDNSetFast
 	// rate limit when referenced in metric labels.
-	CertificatesPerFQDNSetFast = "certificates_per_fqdn_set_per_account_fast"
+	CertificatesPerFQDNSetFast = "certificates_per_fqdn_set_fast"
 
 	// NewOrdersPerAccount is the name of the NewOrdersPerAccount rate limit
 	// when referenced in metric labels.
@@ -59,17 +59,12 @@ type Limits interface {
 }
 
 // limitsImpl is an unexported implementation of the Limits interface. It acts
-// as a container for a rateLimitConfig and a mutex. This allows the inner
-// rateLimitConfig pointer to be updated safely when the overall configuration
-// changes (e.g. due to a reload of the policy file)
+// as a container for a rateLimitConfig.
 type limitsImpl struct {
-	sync.RWMutex
 	rlPolicy *rateLimitConfig
 }
 
 func (r *limitsImpl) CertificatesPerName() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -77,8 +72,6 @@ func (r *limitsImpl) CertificatesPerName() RateLimitPolicy {
 }
 
 func (r *limitsImpl) RegistrationsPerIP() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -86,8 +79,6 @@ func (r *limitsImpl) RegistrationsPerIP() RateLimitPolicy {
 }
 
 func (r *limitsImpl) RegistrationsPerIPRange() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -95,8 +86,6 @@ func (r *limitsImpl) RegistrationsPerIPRange() RateLimitPolicy {
 }
 
 func (r *limitsImpl) PendingAuthorizationsPerAccount() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -104,8 +93,6 @@ func (r *limitsImpl) PendingAuthorizationsPerAccount() RateLimitPolicy {
 }
 
 func (r *limitsImpl) InvalidAuthorizationsPerAccount() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -113,8 +100,6 @@ func (r *limitsImpl) InvalidAuthorizationsPerAccount() RateLimitPolicy {
 }
 
 func (r *limitsImpl) CertificatesPerFQDNSet() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -122,8 +107,6 @@ func (r *limitsImpl) CertificatesPerFQDNSet() RateLimitPolicy {
 }
 
 func (r *limitsImpl) CertificatesPerFQDNSetFast() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -131,8 +114,6 @@ func (r *limitsImpl) CertificatesPerFQDNSetFast() RateLimitPolicy {
 }
 
 func (r *limitsImpl) NewOrdersPerAccount() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -140,17 +121,14 @@ func (r *limitsImpl) NewOrdersPerAccount() RateLimitPolicy {
 }
 
 // LoadPolicies loads various rate limiting policies from a byte array of
-// YAML configuration (typically read from disk by a reloader)
+// YAML configuration.
 func (r *limitsImpl) LoadPolicies(contents []byte) error {
 	var newPolicy rateLimitConfig
 	err := strictyaml.Unmarshal(contents, &newPolicy)
 	if err != nil {
 		return err
 	}
-
-	r.Lock()
 	r.rlPolicy = &newPolicy
-	r.Unlock()
 	return nil
 }
 
@@ -223,32 +201,33 @@ func (rlp *RateLimitPolicy) Enabled() bool {
 	return rlp.Threshold != 0
 }
 
-// GetThreshold returns the threshold for this rate limit and true if that
-// threshold is an override for the default limit, false otherwise. The
-// threshold returned takes into account any overrides for `key` or `regID`. If
-// both `key` and `regID` have an override the largest of the two will be used.
-func (rlp *RateLimitPolicy) GetThreshold(key string, regID int64) (int64, bool) {
+// GetThreshold returns the threshold for this rate limit and the override
+// Id/Key if that threshold is the result of an override for the default limit,
+// empty-string otherwise. The threshold returned takes into account any
+// overrides for `key` or `regID`. If both `key` and `regID` have an override
+// the largest of the two will be used.
+func (rlp *RateLimitPolicy) GetThreshold(key string, regID int64) (int64, string) {
 	regOverride, regOverrideExists := rlp.RegistrationOverrides[regID]
 	keyOverride, keyOverrideExists := rlp.Overrides[key]
 
 	if regOverrideExists && !keyOverrideExists {
 		// If there is a regOverride and no keyOverride use the regOverride
-		return regOverride, true
+		return regOverride, strconv.FormatInt(regID, 10)
 	} else if !regOverrideExists && keyOverrideExists {
 		// If there is a keyOverride and no regOverride use the keyOverride
-		return keyOverride, true
+		return keyOverride, key
 	} else if regOverrideExists && keyOverrideExists {
 		// If there is both a regOverride and a keyOverride use whichever is larger.
 		if regOverride > keyOverride {
-			return regOverride, true
+			return regOverride, strconv.FormatInt(regID, 10)
 		} else {
-			return keyOverride, true
+			return keyOverride, key
 		}
 	}
 
 	// Otherwise there was no regOverride and no keyOverride, use the base
 	// Threshold
-	return rlp.Threshold, false
+	return rlp.Threshold, ""
 }
 
 // WindowBegin returns the time that a RateLimitPolicy's window begins, given a

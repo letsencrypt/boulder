@@ -10,15 +10,16 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/redis/go-redis/v9"
 )
 
 var ErrNoShardsResolved = errors.New("0 shards were resolved")
 
-// Lookup wraps a Redis ring client by reference and keeps the Redis ring shards
+// lookup wraps a Redis ring client by reference and keeps the Redis ring shards
 // up to date via periodic SRV lookups.
-type Lookup struct {
+type lookup struct {
 	// srvLookups is a list of SRV records to be looked up.
 	srvLookups []cmd.ServiceDomain
 
@@ -37,15 +38,20 @@ type Lookup struct {
 	// will be used for resolution.
 	dnsAuthority string
 
+	// stop is a context.CancelFunc that can be used to stop the goroutine
+	// responsible for performing periodic SRV lookups.
+	stop context.CancelFunc
+
 	resolver *net.Resolver
 	ring     *redis.Ring
 	logger   blog.Logger
+	stats    prometheus.Registerer
 }
 
-// NewLookup constructs and returns a new Lookup instance. An initial SRV lookup
+// newLookup constructs and returns a new lookup instance. An initial SRV lookup
 // is performed to populate the Redis ring shards. If this lookup fails or
 // otherwise results in an empty set of resolved shards, an error is returned.
-func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency time.Duration, ring *redis.Ring, logger blog.Logger) (*Lookup, error) {
+func newLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency time.Duration, ring *redis.Ring, logger blog.Logger, stats prometheus.Registerer) (*lookup, error) {
 	updateFrequency := frequency
 	if updateFrequency <= 0 {
 		// Set default frequency.
@@ -54,10 +60,11 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 	// Set default timeout to 90% of the update frequency.
 	updateTimeout := updateFrequency - updateFrequency/10
 
-	lookup := &Lookup{
+	lookup := &lookup{
 		srvLookups:      srvLookups,
 		ring:            ring,
 		logger:          logger,
+		stats:           stats,
 		updateFrequency: updateFrequency,
 		updateTimeout:   updateTimeout,
 		dnsAuthority:    dnsAuthority,
@@ -108,7 +115,7 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 // lookup succeeds, the Redis ring is updated, and all errors are discarded.
 // Non-temporary DNS errors are always logged as they occur, as they're likely
 // to be indicative of a misconfiguration.
-func (look *Lookup) updateNow(ctx context.Context) (tempError, nonTempError error) {
+func (look *lookup) updateNow(ctx context.Context) (tempError, nonTempError error) {
 	var tempErrs []error
 	handleDNSError := func(err error, srv cmd.ServiceDomain) {
 		var dnsErr *net.DNSError
@@ -166,23 +173,28 @@ func (look *Lookup) updateNow(ctx context.Context) (tempError, nonTempError erro
 
 	// Some shards were resolved, update the Redis ring and discard all errors.
 	look.ring.SetAddrs(nextAddrs)
+
+	// Update the Redis client metrics.
+	MustRegisterClientMetricsCollector(look.ring, look.stats, nextAddrs, look.ring.Options().Username)
+
 	return nil, nil
 }
 
-// Start starts a goroutine that keeps the Redis ring shards up to date via
-// periodic SRV lookups. The goroutine will exit when the provided context is
-// cancelled.
-func (look *Lookup) Start(ctx context.Context) {
+// start starts a goroutine that keeps the Redis ring shards up-to-date by
+// periodically performing SRV lookups.
+func (look *lookup) start() {
+	var lookupCtx context.Context
+	lookupCtx, look.stop = context.WithCancel(context.Background())
 	go func() {
 		ticker := time.NewTicker(look.updateFrequency)
 		defer ticker.Stop()
 		for {
 			// Check for context cancellation before we do any work.
-			if ctx.Err() != nil {
+			if lookupCtx.Err() != nil {
 				return
 			}
 
-			timeoutCtx, cancel := context.WithTimeout(ctx, look.updateTimeout)
+			timeoutCtx, cancel := context.WithTimeout(lookupCtx, look.updateTimeout)
 			tempErrs, nonTempErrs := look.updateNow(timeoutCtx)
 			cancel()
 			if tempErrs != nil {
@@ -198,7 +210,7 @@ func (look *Lookup) Start(ctx context.Context) {
 			case <-ticker.C:
 				continue
 
-			case <-ctx.Done():
+			case <-lookupCtx.Done():
 				return
 			}
 		}

@@ -1,62 +1,20 @@
 package ca
 
 import (
-	"sync"
+	"os"
 
-	"github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/boulder/strictyaml"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
-// ECDSAAllowList acts as a container for a map of Registration IDs, a
-// mutex, and a file reloader. This allows the map of IDs to be updated
-// safely if changes to the allow list are detected.
+// ECDSAAllowList acts as a container for a map of Registration IDs.
 type ECDSAAllowList struct {
-	sync.RWMutex
 	regIDsMap map[int64]bool
-	reloader  *reloader.Reloader
-	logger    log.Logger
-}
-
-// Update is an exported method (typically specified as a callback to a
-// file reloader) that replaces the inner `regIDsMap` with the contents
-// of a YAML list (as bytes).
-func (e *ECDSAAllowList) Update(contents []byte) error {
-	var regIDs []int64
-	err := strictyaml.Unmarshal(contents, &regIDs)
-	if err != nil {
-		return err
-	}
-	e.Lock()
-	defer e.Unlock()
-	e.regIDsMap = makeRegIDsMap(regIDs)
-	return nil
 }
 
 // permitted checks if ECDSA issuance is permitted for the specified
 // Registration ID.
 func (e *ECDSAAllowList) permitted(regID int64) bool {
-	e.RLock()
-	defer e.RUnlock()
 	return e.regIDsMap[regID]
-}
-
-// length returns the number of entries currently in the allow list.
-func (e *ECDSAAllowList) length() int {
-	e.RLock()
-	defer e.RUnlock()
-	return len(e.regIDsMap)
-}
-
-// Stop stops an active allow list reloader. Typically called during
-// boulder-ca shutdown.
-func (e *ECDSAAllowList) Stop() {
-	e.Lock()
-	defer e.Unlock()
-	if e.reloader != nil {
-		e.reloader.Stop()
-	}
 }
 
 func makeRegIDsMap(regIDs []int64) map[int64]bool {
@@ -67,17 +25,21 @@ func makeRegIDsMap(regIDs []int64) map[int64]bool {
 	return regIDsMap
 }
 
-// NewECDSAAllowListFromFile is exported to allow `boulder-ca` to
-// construct a new `ECDSAAllowList` object. An initial entry count is
-// returned to `boulder-ca` for logging purposes.
-func NewECDSAAllowListFromFile(filename string, logger log.Logger, metric *prometheus.GaugeVec) (*ECDSAAllowList, int, error) {
-	allowList := &ECDSAAllowList{logger: logger}
-	// Create an allow list reloader. This also populates the inner
-	// allowList regIDsMap.
-	reloader, err := reloader.New(filename, allowList.Update, logger)
+// NewECDSAAllowListFromFile is exported to allow `boulder-ca` to construct a
+// new `ECDSAAllowList` object. It returns the ECDSAAllowList, the size of allow
+// list after attempting to load it (for CA logging purposes so inner fields don't need to be exported), or an error.
+func NewECDSAAllowListFromFile(filename string) (*ECDSAAllowList, int, error) {
+	configBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, 0, err
 	}
-	allowList.reloader = reloader
-	return allowList, allowList.length(), nil
+
+	var regIDs []int64
+	err = strictyaml.Unmarshal(configBytes, &regIDs)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	allowList := &ECDSAAllowList{regIDsMap: makeRegIDsMap(regIDs)}
+	return allowList, len(allowList.regIDsMap), nil
 }

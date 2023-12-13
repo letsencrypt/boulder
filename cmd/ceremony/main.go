@@ -938,6 +938,9 @@ func crlCeremony(configBytes []byte) error {
 		if err != nil {
 			return fmt.Errorf("failed to load revoked certificate %q: %s", rc.CertificatePath, err)
 		}
+		if !cert.IsCA {
+			return fmt.Errorf("certificate with serial %d is not a CA certificate", cert.SerialNumber)
+		}
 		revokedAt, err := time.Parse(time.DateTime, rc.RevocationDate)
 		if err != nil {
 			return fmt.Errorf("unable to parse crl-profile.revoked-certificates.revocation-date")

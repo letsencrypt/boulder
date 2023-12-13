@@ -33,9 +33,11 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -52,6 +54,8 @@ import (
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/ratelimits"
+	bredis "github.com/letsencrypt/boulder/redis"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -186,7 +190,8 @@ type MockRegistrationAuthority struct {
 
 func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	in.Id = 1
-	in.CreatedAtNS = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
+	created := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
+	in.CreatedAt = timestamppb.New(created)
 	return in, nil
 }
 
@@ -232,11 +237,14 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *co
 }
 
 func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	created := time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC)
+	expires := time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC)
+
 	return &corepb.Order{
 		Id:               1,
 		RegistrationID:   in.RegistrationID,
-		CreatedNS:        time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
-		ExpiresNS:        time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
+		Created:          timestamppb.New(created),
+		Expires:          timestamppb.New(expires),
 		Names:            in.Names,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
@@ -340,11 +348,15 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 
 	mockSA := mocks.NewStorageAuthorityReadOnly(fc)
 
+	log := blog.NewMock()
+
 	var gnc nonce.Getter
 	var noncePrefixMap map[string]nonce.Redeemer
 	var rnc nonce.Redeemer
 	var rncKey string
 	var inmemNonceService *inmemnonce.Service
+	var limiter *ratelimits.Limiter
+	var txnBuilder *ratelimits.TransactionBuilder
 	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		// Use derived nonces.
 		noncePrefix := nonce.DerivePrefix("192.168.1.1:8080", "b8c758dd85e113ea340ce0b3a99f389d40a308548af94d1730a7692c1874f1f")
@@ -354,6 +366,34 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		inmemNonceService = &inmemnonce.Service{NonceService: nonceService}
 		gnc = inmemNonceService
 		rnc = inmemNonceService
+
+		// Setup rate limiting.
+		rc := bredis.Config{
+			Username: "unittest-rw",
+			TLS: cmd.TLSConfig{
+				CACertFile: "../test/redis-tls/minica.pem",
+				CertFile:   "../test/redis-tls/boulder/cert.pem",
+				KeyFile:    "../test/redis-tls/boulder/key.pem",
+			},
+			Lookups: []cmd.ServiceDomain{
+				{
+					Service: "redisratelimits",
+					Domain:  "service.consul",
+				},
+			},
+			LookupDNSAuthority: "consul.service.consul",
+		}
+		rc.PasswordConfig = cmd.PasswordConfig{
+			PasswordFile: "../test/secrets/ratelimits_redis_password",
+		}
+		ring, err := bredis.NewRingFromConfig(rc, stats, log)
+		test.AssertNotError(t, err, "making redis ring client")
+		source := ratelimits.NewRedisSource(ring.Ring, fc, stats)
+		test.AssertNotNil(t, source, "source should not be nil")
+		limiter, err = ratelimits.NewLimiter(fc, source, stats)
+		test.AssertNotError(t, err, "making limiter")
+		txnBuilder, err = ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+		test.AssertNotError(t, err, "making transaction composer")
 	} else {
 		// TODO(#6610): Remove this once we've moved to derived to prefixes.
 		noncePrefix := "mlem"
@@ -383,7 +423,9 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		noncePrefixMap,
 		rnc,
 		rncKey,
-		mockSA)
+		mockSA,
+		limiter,
+		txnBuilder)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
@@ -1805,8 +1847,8 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial, _ 
 	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(sa.cert.SerialNumber),
-		IssuedNS:       sa.cert.NotBefore.UnixNano(),
-		ExpiresNS:      sa.cert.NotAfter.UnixNano(),
+		Issued:         timestamppb.New(sa.cert.NotBefore),
+		Expires:        timestamppb.New(sa.cert.NotAfter),
 		Der:            sa.cert.Raw,
 	}, nil
 }
@@ -1840,7 +1882,7 @@ func newMockSAWithIncident(sa sapb.StorageAuthorityReadOnlyClient, serial []stri
 					Id:          0,
 					SerialTable: "incident_foo",
 					Url:         agreementURL,
-					RenewByNS:   0,
+					RenewBy:     nil,
 					Enabled:     true,
 				},
 			},
@@ -2103,7 +2145,7 @@ func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial,
 	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(cert.SerialNumber),
-		IssuedNS:       sa.clk.Now().Add(-1 * time.Second).UnixNano(),
+		Issued:         timestamppb.New(sa.clk.Now().Add(-1 * time.Second)),
 		Der:            cert.Raw,
 	}, nil
 }
@@ -2699,7 +2741,7 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `
 {
   "status": "processing",
-  "expires": "1970-01-01T00:00:00.9466848Z",
+  "expires": "2000-01-01T00:00:00Z",
   "identifiers": [
     {"type":"dns","value":"example.com"}
   ],
@@ -2821,6 +2863,8 @@ func TestKeyRollover(t *testing.T) {
 			_, _, inner := signer.embeddedJWK(tc.NewKey, "http://localhost/key-change", tc.Payload)
 			_, _, outer := signer.byKeyID(1, nil, "http://localhost/key-change", inner)
 			wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("key-change", outer))
+			t.Log(responseWriter.Body.String())
+			t.Log(tc.ExpectedResponse)
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedResponse)
 			if tc.ErrorStatType != "" {
 				test.AssertMetricWithLabelsEquals(
@@ -2872,7 +2916,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "Good request",
 			Request:  makeGet("1/1"),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "404 request",
@@ -2917,7 +2961,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "Valid POST-as-GET",
 			Request:  makePost(1, "1/1", ""),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "GET new order",
@@ -2928,17 +2972,17 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "GET new order from old endpoint",
 			Request:  makeGet("1/9"),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "POST-as-GET new order",
 			Request:  makePost(1, "1/9", ""),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "POST-as-GET processing order",
 			Request:  makePost(1, "1/10", ""),
-			Response: `{"status": "processing","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/10"}`,
+			Response: `{"status": "processing","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/10"}`,
 			Headers:  map[string]string{"Retry-After": "3"},
 		},
 	}
@@ -3335,13 +3379,13 @@ func TestFinalizeSCTError(t *testing.T) {
 
 func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	wfe, fc, _ := setupWFE(t)
-
+	expires := fc.Now()
 	orderJSON := wfe.orderToOrderJSON(&http.Request{}, &corepb.Order{
 		Id:               1,
 		RegistrationID:   1,
 		Names:            []string{"a"},
 		Status:           string(core.StatusPending),
-		ExpiresNS:        fc.Now().UnixNano(),
+		Expires:          timestamppb.New(expires),
 		V2Authorizations: []int64{1, 2},
 	})
 	test.AssertDeepEquals(t, orderJSON.Authorizations, []string{
@@ -3492,8 +3536,7 @@ func TestARI(t *testing.T) {
 	msa := newMockSAWithCert(t, wfe.sa)
 	wfe.sa = msa
 
-	err := features.Set(map[string]bool{"ServeRenewalInfo": true})
-	test.AssertNotError(t, err, "setting feature flag")
+	features.Set(features.Config{ServeRenewalInfo: true})
 	defer features.Reset()
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
@@ -3621,8 +3664,7 @@ func TestIncidentARI(t *testing.T) {
 	expectSerialString := core.SerialToString(big.NewInt(12345))
 	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerialString})
 
-	err := features.Set(map[string]bool{"ServeRenewalInfo": true})
-	test.AssertNotError(t, err, "setting feature flag")
+	features.Set(features.Config{ServeRenewalInfo: true})
 	defer features.Reset()
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
@@ -3680,8 +3722,7 @@ func (sa *mockSAWithSerialMetadata) GetSerialMetadata(_ context.Context, req *sa
 func TestUpdateARI(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 
-	err := features.Set(map[string]bool{"ServeRenewalInfo": true})
-	test.AssertNotError(t, err, "setting feature flag")
+	features.Set(features.Config{ServeRenewalInfo: true})
 	defer features.Reset()
 
 	makePost := func(regID int64, body string) *http.Request {

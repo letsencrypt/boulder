@@ -43,7 +43,6 @@
 		},
 		"logSampleRate": 1,
 		"path": "/",
-		"listenAddress": "0.0.0.0:4002",
 		"issuerCerts": [
 			"/hierarchy/intermediate-cert-rsa-a.pem",
 			"/hierarchy/intermediate-cert-rsa-b.pem",
@@ -54,7 +53,6 @@
 		"maxInflightSignings": 2,
 		"maxSigningWaiters": 1,
 		"shutdownStopTimeout": "10s",
-		"debugAddr": ":8005",
 		"requiredSerialPrefixes": [
 			"ff"
 		],

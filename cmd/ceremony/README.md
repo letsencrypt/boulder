@@ -15,7 +15,7 @@ ceremony --config path/to/config.yml
 * `crl-signer` - creates a delegated CRL signing certificate and signs it using a signing key already on a HSM, outputting a PEM certificate
 * `key` - generates a signing key on HSM, outputting a PEM public key
 * `ocsp-response` - creates a OCSP response for the provided certificate and signs it using a signing key already on a HSM, outputting a base64 encoded response
-* `crl` - creates a CRL from the provided profile and signs it using a signing key already on a HSM, outputting a PEM CRL
+* `crl` - creates a CRL with the IDP extension and `onlyContainsCACerts = true` from the provided profile and signs it using a signing key already on a HSM, outputting a PEM CRL
 
 These modes are set in the `ceremony-type` field of the configuration file.
 
@@ -403,7 +403,7 @@ crl-profile:
           revocation-date: 2019-12-31 12:00:00
 ```
 
-This config generates a CRL signed by a key in the HSM, identified by the object label `root signing key` and object ID `ffff`. The CRL will have the number `80` and will contain revocation information for the certificate `/home/user/revoked-cert.pem`
+This config generates a CRL that must only contain subordinate CA certificates signed by a key in the HSM, identified by the object label `root signing key` and object ID `ffff`. The CRL will have the number `80` and will contain revocation information for the certificate `/home/user/revoked-cert.pem`. Each of the revoked certificates provided are checked to ensure they have the `IsCA` flag set to `true`.
 
 ### Certificate profile format
 

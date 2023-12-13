@@ -1,5 +1,4 @@
 --- 
-debugaddr: :8040
 buckets: [.001, .002, .005, .01, .02, .05, .1, .2, .5, 1, 2, 5, 10]
 syslog:
   stdoutlevel: 6

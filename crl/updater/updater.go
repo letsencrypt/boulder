@@ -211,10 +211,10 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 	var crlEntries []*proto.CRLEntry
 	for _, chunk := range chunks {
 		saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
-			IssuerNameID:    int64(issuerNameID),
-			ExpiresAfterNS:  chunk.start.UnixNano(),
-			ExpiresBeforeNS: chunk.end.UnixNano(),
-			RevokedBeforeNS: atTime.UnixNano(),
+			IssuerNameID:  int64(issuerNameID),
+			ExpiresAfter:  timestamppb.New(chunk.start),
+			ExpiresBefore: timestamppb.New(chunk.end),
+			RevokedBefore: timestamppb.New(atTime),
 		})
 		if err != nil {
 			return fmt.Errorf("connecting to SA: %w", err)
@@ -246,7 +246,7 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(issuerNameID),
-				ThisUpdateNS: atTime.UnixNano(),
+				ThisUpdate:   timestamppb.New(atTime),
 				ShardIdx:     int64(shardIdx),
 			},
 		},
@@ -347,7 +347,7 @@ func anchorTime() time.Time {
 type chunk struct {
 	start time.Time
 	end   time.Time
-	idx   int
+	Idx   int
 }
 
 // shardMap is a mapping of shard indices to the set of chunks which should be
@@ -413,7 +413,7 @@ func (cu *crlUpdater) getShardMappings(ctx context.Context, atTime time.Time) (s
 
 	// Find the id number and boundaries of the earliest chunk we care about.
 	first := atTime.Add(-cu.lookbackPeriod)
-	c, err := cu.getChunkAtTime(first)
+	c, err := GetChunkAtTime(cu.shardWidth, cu.numShards, first)
 	if err != nil {
 		return nil, err
 	}
@@ -421,20 +421,21 @@ func (cu *crlUpdater) getShardMappings(ctx context.Context, atTime time.Time) (s
 	// Iterate over chunks until we get completely beyond the farthest-future
 	// expiration.
 	for c.start.Before(lastExpiry.AsTime()) {
-		res[c.idx] = append(res[c.idx], c)
+		res[c.Idx] = append(res[c.Idx], c)
 		c = chunk{
 			start: c.end,
 			end:   c.end.Add(cu.shardWidth),
-			idx:   (c.idx + 1) % cu.numShards,
+			Idx:   (c.Idx + 1) % cu.numShards,
 		}
 	}
 
 	return res, nil
 }
 
-// getChunkAtTime returns the chunk whose boundaries contain the given time.
-// It is broken out solely for the purpose of unit testing.
-func (cu *crlUpdater) getChunkAtTime(atTime time.Time) (chunk, error) {
+// GetChunkAtTime returns the chunk whose boundaries contain the given time.
+// It is exported so that it can be used by both the crl-updater and the RA
+// as we transition from dynamic to static shard mappings.
+func GetChunkAtTime(shardWidth time.Duration, numShards int, atTime time.Time) (chunk, error) {
 	// Compute the amount of time between the current time and the anchor time.
 	timeSinceAnchor := atTime.Sub(anchorTime())
 	if timeSinceAnchor == time.Duration(math.MaxInt64) || timeSinceAnchor < 0 {
@@ -443,13 +444,13 @@ func (cu *crlUpdater) getChunkAtTime(atTime time.Time) (chunk, error) {
 
 	// Determine how many full chunks fit within that time, and from that the
 	// index number of the desired chunk.
-	chunksSinceAnchor := timeSinceAnchor.Nanoseconds() / cu.shardWidth.Nanoseconds()
-	chunkIdx := int(chunksSinceAnchor) % cu.numShards
+	chunksSinceAnchor := timeSinceAnchor.Nanoseconds() / shardWidth.Nanoseconds()
+	chunkIdx := int(chunksSinceAnchor) % numShards
 
 	// Determine the boundaries of the chunk.
-	timeSinceChunk := time.Duration(timeSinceAnchor.Nanoseconds() % cu.shardWidth.Nanoseconds())
+	timeSinceChunk := time.Duration(timeSinceAnchor.Nanoseconds() % shardWidth.Nanoseconds())
 	left := atTime.Add(-timeSinceChunk)
-	right := left.Add(cu.shardWidth)
+	right := left.Add(shardWidth)
 
 	return chunk{left, right, chunkIdx}, nil
 }

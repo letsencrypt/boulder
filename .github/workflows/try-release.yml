@@ -15,14 +15,14 @@ jobs:
       fail-fast: false
       matrix:
         GO_VERSION:
-          - "1.21.1"
+          - "1.21.5"
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      # Enable https://github.com/golang/go/wiki/LoopvarExperiment 
+      # Enable https://github.com/golang/go/wiki/LoopvarExperiment
       - run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
 
       - name: Build .deb

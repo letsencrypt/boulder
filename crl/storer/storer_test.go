@@ -10,10 +10,12 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -269,11 +271,14 @@ func TestUploadCRLMismatchedNumbers(t *testing.T) {
 	test.AssertContains(t, err.Error(), "mismatched")
 }
 
-type fakeS3Putter struct {
+// fakeSimpleS3 implements the simpleS3 interface, provides prevBytes for
+// downloads, and checks that uploads match the expectBytes.
+type fakeSimpleS3 struct {
+	prevBytes   []byte
 	expectBytes []byte
 }
 
-func (p *fakeS3Putter) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+func (p *fakeSimpleS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	recvBytes, err := io.ReadAll(params.Body)
 	if err != nil {
 		return nil, err
@@ -282,6 +287,13 @@ func (p *fakeS3Putter) PutObject(ctx context.Context, params *s3.PutObjectInput,
 		return nil, errors.New("received bytes did not match expectation")
 	}
 	return &s3.PutObjectOutput{}, nil
+}
+
+func (p *fakeSimpleS3) GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	if p.prevBytes != nil {
+		return &s3.GetObjectOutput{Body: io.NopCloser(bytes.NewReader(p.prevBytes))}, nil
+	}
+	return nil, &smithyhttp.ResponseError{Response: &smithyhttp.Response{Response: &http.Response{StatusCode: 404}}}
 }
 
 // Test that the correct bytes get propagated to S3.
@@ -297,10 +309,72 @@ func TestUploadCRLSuccess(t *testing.T) {
 		Payload: &cspb.UploadCRLRequest_Metadata{
 			Metadata: &cspb.CRLMetadata{
 				IssuerNameID: int64(iss.Cert.NameID()),
+				Number:       2,
+			},
+		},
+	}
+
+	prevCRLBytes, err := x509.CreateRevocationList(
+		rand.Reader,
+		&x509.RevocationList{
+			ThisUpdate: storer.clk.Now(),
+			NextUpdate: storer.clk.Now().Add(time.Hour),
+			Number:     big.NewInt(1),
+			RevokedCertificateEntries: []x509.RevocationListEntry{
+				{SerialNumber: big.NewInt(123), RevocationTime: time.Now().Add(-time.Hour)},
+			},
+		},
+		iss.Cert.Certificate,
+		iss.Signer,
+	)
+	test.AssertNotError(t, err, "creating test CRL")
+
+	storer.clk.Sleep(time.Minute)
+
+	crlBytes, err := x509.CreateRevocationList(
+		rand.Reader,
+		&x509.RevocationList{
+			ThisUpdate: storer.clk.Now(),
+			NextUpdate: storer.clk.Now().Add(time.Hour),
+			Number:     big.NewInt(2),
+			RevokedCertificateEntries: []x509.RevocationListEntry{
+				{SerialNumber: big.NewInt(123), RevocationTime: time.Now().Add(-time.Hour)},
+			},
+		},
+		iss.Cert.Certificate,
+		iss.Signer,
+	)
+	test.AssertNotError(t, err, "creating test CRL")
+
+	storer.s3Client = &fakeSimpleS3{prevBytes: prevCRLBytes, expectBytes: crlBytes}
+	ins <- &cspb.UploadCRLRequest{
+		Payload: &cspb.UploadCRLRequest_CrlChunk{
+			CrlChunk: crlBytes,
+		},
+	}
+	close(ins)
+	err = <-errs
+	test.AssertNotError(t, err, "uploading valid CRL should work")
+}
+
+// Test that the correct bytes get propagated to S3 for a CRL with to predecessor.
+func TestUploadNewCRLSuccess(t *testing.T) {
+	storer, iss := setupTestUploadCRL(t)
+	errs := make(chan error, 1)
+
+	ins := make(chan *cspb.UploadCRLRequest)
+	go func() {
+		errs <- storer.UploadCRL(&fakeUploadCRLServerStream{input: ins})
+	}()
+	ins <- &cspb.UploadCRLRequest{
+		Payload: &cspb.UploadCRLRequest_Metadata{
+			Metadata: &cspb.CRLMetadata{
+				IssuerNameID: int64(iss.Cert.NameID()),
 				Number:       1,
 			},
 		},
 	}
+
 	crlBytes, err := x509.CreateRevocationList(
 		rand.Reader,
 		&x509.RevocationList{
@@ -315,7 +389,8 @@ func TestUploadCRLSuccess(t *testing.T) {
 		iss.Signer,
 	)
 	test.AssertNotError(t, err, "creating test CRL")
-	storer.s3Client = &fakeS3Putter{expectBytes: crlBytes}
+
+	storer.s3Client = &fakeSimpleS3{expectBytes: crlBytes}
 	ins <- &cspb.UploadCRLRequest{
 		Payload: &cspb.UploadCRLRequest_CrlChunk{
 			CrlChunk: crlBytes,
@@ -326,10 +401,78 @@ func TestUploadCRLSuccess(t *testing.T) {
 	test.AssertNotError(t, err, "uploading valid CRL should work")
 }
 
-type brokenS3Putter struct{}
+// Test that we get an error when the previous CRL has a higher CRL number.
+func TestUploadCRLBackwardsNumber(t *testing.T) {
+	storer, iss := setupTestUploadCRL(t)
+	errs := make(chan error, 1)
 
-func (p *brokenS3Putter) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	ins := make(chan *cspb.UploadCRLRequest)
+	go func() {
+		errs <- storer.UploadCRL(&fakeUploadCRLServerStream{input: ins})
+	}()
+	ins <- &cspb.UploadCRLRequest{
+		Payload: &cspb.UploadCRLRequest_Metadata{
+			Metadata: &cspb.CRLMetadata{
+				IssuerNameID: int64(iss.Cert.NameID()),
+				Number:       1,
+			},
+		},
+	}
+
+	prevCRLBytes, err := x509.CreateRevocationList(
+		rand.Reader,
+		&x509.RevocationList{
+			ThisUpdate: storer.clk.Now(),
+			NextUpdate: storer.clk.Now().Add(time.Hour),
+			Number:     big.NewInt(2),
+			RevokedCertificateEntries: []x509.RevocationListEntry{
+				{SerialNumber: big.NewInt(123), RevocationTime: time.Now().Add(-time.Hour)},
+			},
+		},
+		iss.Cert.Certificate,
+		iss.Signer,
+	)
+	test.AssertNotError(t, err, "creating test CRL")
+
+	storer.clk.Sleep(time.Minute)
+
+	crlBytes, err := x509.CreateRevocationList(
+		rand.Reader,
+		&x509.RevocationList{
+			ThisUpdate: storer.clk.Now(),
+			NextUpdate: storer.clk.Now().Add(time.Hour),
+			Number:     big.NewInt(1),
+			RevokedCertificateEntries: []x509.RevocationListEntry{
+				{SerialNumber: big.NewInt(123), RevocationTime: time.Now().Add(-time.Hour)},
+			},
+		},
+		iss.Cert.Certificate,
+		iss.Signer,
+	)
+	test.AssertNotError(t, err, "creating test CRL")
+
+	storer.s3Client = &fakeSimpleS3{prevBytes: prevCRLBytes, expectBytes: crlBytes}
+	ins <- &cspb.UploadCRLRequest{
+		Payload: &cspb.UploadCRLRequest_CrlChunk{
+			CrlChunk: crlBytes,
+		},
+	}
+	close(ins)
+	err = <-errs
+	test.AssertError(t, err, "uploading out-of-order numbers should fail")
+	test.AssertContains(t, err.Error(), "crlNumber not strictly increasing")
+}
+
+// brokenSimpleS3 implements the simpleS3 interface. It returns errors for all
+// uploads and downloads.
+type brokenSimpleS3 struct{}
+
+func (p *brokenSimpleS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	return nil, errors.New("sorry")
+}
+
+func (p *brokenSimpleS3) GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	return nil, errors.New("oops")
 }
 
 // Test that we get an error when S3 falls over.
@@ -363,7 +506,7 @@ func TestUploadCRLBrokenS3(t *testing.T) {
 		iss.Signer,
 	)
 	test.AssertNotError(t, err, "creating test CRL")
-	storer.s3Client = &brokenS3Putter{}
+	storer.s3Client = &brokenSimpleS3{}
 	ins <- &cspb.UploadCRLRequest{
 		Payload: &cspb.UploadCRLRequest_CrlChunk{
 			CrlChunk: crlBytes,
@@ -372,5 +515,5 @@ func TestUploadCRLBrokenS3(t *testing.T) {
 	close(ins)
 	err = <-errs
 	test.AssertError(t, err, "uploading to broken S3 should fail")
-	test.AssertContains(t, err.Error(), "uploading to S3")
+	test.AssertContains(t, err.Error(), "getting previous CRL")
 }

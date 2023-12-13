@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"log/syslog"
@@ -141,23 +140,32 @@ func newChecker(saDbMap certDB,
 	}
 }
 
-func (c *certChecker) getCerts(ctx context.Context, unexpiredOnly bool) error {
-	c.issuedReport.end = c.clock.Now()
-	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod)
-
-	args := map[string]interface{}{"issued": c.issuedReport.begin, "now": 0}
-	if unexpiredOnly {
-		args["now"] = c.clock.Now()
-	}
-
-	var sni sql.NullInt64
+// findStartingID returns the lowest `id` in the certificates table within the
+// time window specified. The time window is a half-open interval [begin, end).
+func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) (int64, error) {
+	var output sql.NullInt64
 	var err error
 	var retries int
-	for {
-		sni, err = c.dbMap.SelectNullInt(
+
+	// Rather than querying `MIN(id)` across that whole window, we query it across the first
+	// hour of the window. This allows the query planner to use the index on `issued` more
+	// effectively. For a busy, actively issuing CA, that will always return results in the
+	// first query. For a less busy CA, or during integration tests, there may only exist
+	// certificates towards the end of the window, so we try querying later hourly chunks until
+	// we find a certificate or hit the end of the window. We also retry transient errors.
+	queryBegin := begin
+	queryEnd := begin.Add(time.Hour)
+
+	for queryBegin.Compare(end) < 0 {
+		output, err = c.dbMap.SelectNullInt(
 			ctx,
-			"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
-			args,
+			`SELECT MIN(id) FROM certificates
+				WHERE issued >= :begin AND
+					  issued < :end`,
+			map[string]interface{}{
+				"begin": queryBegin,
+				"end":   queryEnd,
+			},
 		)
 		if err != nil {
 			c.logger.AuditErrf("finding starting certificate: %s", err)
@@ -165,32 +173,61 @@ func (c *certChecker) getCerts(ctx context.Context, unexpiredOnly bool) error {
 			time.Sleep(core.RetryBackoff(retries, time.Second, time.Minute, 2))
 			continue
 		}
-		retries = 0
-		break
-	}
-	if !sni.Valid {
-		// a nil response was returned by the DB, so return error and fail
-		return errors.New("the SELECT query resulted in a NULL response from the DB")
+		// https://mariadb.com/kb/en/min/
+		// MIN() returns NULL if there were no matching rows
+		// https://pkg.go.dev/database/sql#NullInt64
+		// Valid is true if Int64 is not NULL
+		if !output.Valid {
+			// No matching rows, try the next hour
+			queryBegin = queryBegin.Add(time.Hour)
+			queryEnd = queryEnd.Add(time.Hour)
+			if queryEnd.Compare(end) > 0 {
+				queryEnd = end
+			}
+			continue
+		}
+
+		return output.Int64, nil
 	}
 
-	initialID := sni.Int64
+	// Fell through the loop without finding a valid ID
+	return 0, fmt.Errorf("no rows found for certificates issued between %s and %s", begin, end)
+}
+
+func (c *certChecker) getCerts(ctx context.Context) error {
+	// The end of the report is the current time, rounded up to the nearest second.
+	c.issuedReport.end = c.clock.Now().Truncate(time.Second).Add(time.Second)
+	// The beginning of the report is the end minus the check period, rounded down to the nearest second.
+	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod).Truncate(time.Second)
+
+	initialID, err := c.findStartingID(ctx, c.issuedReport.begin, c.issuedReport.end)
+	if err != nil {
+		return err
+	}
 	if initialID > 0 {
 		// decrement the initial ID so that we select below as we aren't using >=
 		initialID -= 1
 	}
 
-	// Retrieve certs in batches of 1000 (the size of the certificate channel)
-	// so that we don't eat unnecessary amounts of memory and avoid the 16MB MySQL
-	// packet limit.
-	args["limit"] = batchSize
-	args["id"] = initialID
-
+	batchStartID := initialID
+	var retries int
 	for {
 		certs, err := sa.SelectCertificates(
 			ctx,
 			c.dbMap,
-			"WHERE id > :id AND issued >= :issued AND expires >= :now ORDER BY id LIMIT :limit",
-			args,
+			`WHERE id > :id AND
+			       issued >= :begin AND
+				   issued < :end
+			 ORDER BY id LIMIT :limit`,
+			map[string]interface{}{
+				"begin": c.issuedReport.begin,
+				"end":   c.issuedReport.end,
+				// Retrieve certs in batches of 1000 (the size of the certificate channel)
+				// so that we don't eat unnecessary amounts of memory and avoid the 16MB MySQL
+				// packet limit.
+				"limit": batchSize,
+				"id":    batchStartID,
+			},
 		)
 		if err != nil {
 			c.logger.AuditErrf("selecting certificates: %s", err)
@@ -206,7 +243,7 @@ func (c *certChecker) getCerts(ctx context.Context, unexpiredOnly bool) error {
 			break
 		}
 		lastCert := certs[len(certs)-1]
-		args["id"] = lastCert.ID
+		batchStartID = lastCert.ID
 		if lastCert.Issued.After(c.issuedReport.end) {
 			break
 		}
@@ -352,16 +389,25 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		if parsedCert.NotBefore.Before(cert.Issued.Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.Add(6*time.Hour)) {
 			problems = append(problems, "Stored issuance date is outside of 6 hour window of certificate NotBefore")
 		}
-		// Check if the CommonName is <= 64 characters.
-		if len(parsedCert.Subject.CommonName) > 64 {
-			problems = append(
-				problems,
-				fmt.Sprintf("Certificate has common name >64 characters long (%d)", len(parsedCert.Subject.CommonName)),
-			)
+		if parsedCert.Subject.CommonName != "" {
+			// Check if the CommonName is <= 64 characters.
+			if len(parsedCert.Subject.CommonName) > 64 {
+				problems = append(
+					problems,
+					fmt.Sprintf("Certificate has common name >64 characters long (%d)", len(parsedCert.Subject.CommonName)),
+				)
+			}
+
+			// Check that the CommonName is included in the SANs.
+			if !slices.Contains(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
+				problems = append(problems, fmt.Sprintf("Certificate Common Name does not appear in Subject Alternative Names: %q !< %v",
+					parsedCert.Subject.CommonName, parsedCert.DNSNames))
+			}
 		}
-		// Check that the PA is still willing to issue for each name in DNSNames
-		// + CommonName.
-		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
+		// Check that the PA is still willing to issue for each name in DNSNames.
+		// We do not check the CommonName here, as (if it exists) we already checked
+		// that it is identical to one of the DNSNames in the SAN.
+		for _, name := range parsedCert.DNSNames {
 			id := identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
 			err = c.pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{id})
 			if err != nil {
@@ -409,7 +455,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
 		}
 
-		if features.Enabled(features.CertCheckerRequiresCorrespondence) {
+		if features.Get().CertCheckerRequiresCorrespondence {
 			precertDER, err := c.getPrecert(ctx, cert.Serial)
 			if err != nil {
 				// Log and continue, since we want the problems slice to only contains
@@ -425,10 +471,10 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 			}
 		}
 
-		if features.Enabled(features.CertCheckerChecksValidations) {
+		if features.Get().CertCheckerChecksValidations {
 			err = c.checkValidations(ctx, cert, parsedCert.DNSNames)
 			if err != nil {
-				if features.Enabled(features.CertCheckerRequiresValidations) {
+				if features.Get().CertCheckerRequiresValidations {
 					problems = append(problems, err.Error())
 				} else {
 					c.logger.Errf("Certificate %s %s: %s", cert.Serial, parsedCert.DNSNames, err)
@@ -444,7 +490,8 @@ type Config struct {
 		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
-		Workers        int `validate:"required,min=1"`
+		Workers int `validate:"required,min=1"`
+		// Deprecated: this is ignored, and cert checker always checks both expired and unexpired.
 		UnexpiredOnly  bool
 		BadResultsOnly bool
 		CheckPeriod    config.Duration
@@ -467,7 +514,7 @@ type Config struct {
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 		CTLogListFile string
 
-		Features map[string]bool
+		Features features.Config
 	}
 	PA     cmd.PAConfig
 	Syslog cmd.SyslogConfig
@@ -485,8 +532,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &config)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(config.CertChecker.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(config.CertChecker.Features)
 
 	syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	cmd.FailOnError(err, "Failed to dial syslog")
@@ -539,7 +585,7 @@ func main() {
 	pa, err := policy.New(config.PA.Challenges, logger)
 	cmd.FailOnError(err, "Failed to create PA")
 
-	err = pa.SetHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
+	err = pa.LoadHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
 	cmd.FailOnError(err, "Failed to load HostnamePolicyFile")
 
 	if config.CertChecker.CTLogListFile != "" {
@@ -567,7 +613,7 @@ func main() {
 	// is finished it will close the certificate channel which allows the range
 	// loops in checker.processCerts to break
 	go func() {
-		err := checker.getCerts(context.TODO(), config.CertChecker.UnexpiredOnly)
+		err := checker.getCerts(context.TODO())
 		cmd.FailOnError(err, "Batch retrieval of certificates failed")
 	}()
 

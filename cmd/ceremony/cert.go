@@ -207,8 +207,13 @@ func generateSKID(pk []byte) ([]byte, error) {
 	if _, err := asn1.Unmarshal(pk, &pkixPublicKey); err != nil {
 		return nil, err
 	}
+
+	// RFC 7093 Section 2 Additional Methods for Generating Key Identifiers: The
+	// keyIdentifier [may be] composed of the leftmost 160-bits of the SHA-256
+	// hash of the value of the BIT STRING subjectPublicKey (excluding the tag,
+	// length, and number of unused bits).
 	skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
-	return skid[:], nil
+	return skid[0:20:20], nil
 }
 
 // makeTemplate generates the certificate template for use in x509.CreateCertificate

@@ -73,11 +73,6 @@ func TestCRLPipeline(t *testing.T) {
 	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 5)
 	test.AssertNotError(t, err, "failed to revoke test certificate")
 
-	// Clear the s3-test-srv to prepare for another round of CRLs.
-	resp, err = http.Post("http://localhost:7890/clear", "text/plain", nil)
-	test.AssertNotError(t, err, "s3-test-srv GET /clear failed")
-	test.AssertEquals(t, resp.StatusCode, 200)
-
 	// Reset the "leasedUntil" column to prepare for another round of CRLs.
 	_, err = db.Exec(`UPDATE crlShards SET leasedUntil = ?`, fc.Now().Add(-time.Minute))
 	test.AssertNotError(t, err, "resetting leasedUntil column")

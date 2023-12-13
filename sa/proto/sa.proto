@@ -6,6 +6,7 @@ option go_package = "github.com/letsencrypt/boulder/sa/proto";
 import "core/proto/core.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
 
 // StorageAuthorityReadOnly exposes only those SA methods which are read-only.
 service StorageAuthorityReadOnly {
@@ -96,7 +97,7 @@ message RegistrationID {
 }
 
 message JSONWebKey {
-  bytes jwk = 1; 
+  bytes jwk = 1;
 }
 
 message AuthorizationID {
@@ -104,17 +105,21 @@ message AuthorizationID {
 }
 
 message GetPendingAuthorizationRequest {
+  // Next unused field number: 6
   int64 registrationID = 1;
   string identifierType = 2;
   string identifierValue = 3;
   // Result must be valid until at least this Unix timestamp (nanos)
-  int64 validUntilNS = 4;
+  reserved 4; // Previously validUntilNS
+  google.protobuf.Timestamp validUntil = 5; // Result must be valid until at least this timestamp
 }
 
 message GetValidAuthorizationsRequest {
+  // Next unused field number: 5
   int64 registrationID = 1;
   repeated string domains = 2;
-  int64 nowNS = 3; // Unix timestamp (nanoseconds)
+  reserved 3; // Previously nowNS
+  google.protobuf.Timestamp now = 4;
 }
 
 message ValidAuthorizations {
@@ -130,15 +135,21 @@ message Serial {
 }
 
 message SerialMetadata {
+  // Next unused field number: 7
   string serial = 1;
   int64 registrationID = 2;
-  int64 createdNS = 3; // Unix timestamp (nanoseconds)
-  int64 expiresNS = 4; // Unix timestamp (nanoseconds)
+  reserved 3; // Previously createdNS
+  google.protobuf.Timestamp created = 5;
+  reserved 4; // Previously expiresNS
+  google.protobuf.Timestamp expires = 6;
 }
 
 message Range {
-  int64 earliestNS = 1; // Unix timestamp (nanoseconds)
-  int64 latestNS = 2;   // Unix timestamp (nanoseconds)
+  // Next unused field number: 5
+  reserved 1; // Previously earliestNS
+  google.protobuf.Timestamp earliest = 3;
+  reserved 2;   // Previously latestNS
+  google.protobuf.Timestamp latest = 4;
 }
 
 message Count {
@@ -146,7 +157,9 @@ message Count {
 }
 
 message Timestamps {
-	repeated int64 timestampsNS = 1; // Unix timestamp (nanoseconds)
+  // Next unused field number: 3
+	reserved 1; // Previously repeated timestampsNS
+  repeated google.protobuf.Timestamp timestamps = 2;
 }
 
 message CountCertificatesByNamesRequest {
@@ -177,8 +190,10 @@ message CountOrdersRequest {
 }
 
 message CountFQDNSetsRequest {
-  int64 window = 1;
+  // Next unused field number: 4
+  reserved 1; // Previously windowNS
   repeated string domains = 2;
+  google.protobuf.Duration window = 3;
 }
 
 message FQDNSetExistsRequest {
@@ -195,19 +210,24 @@ message Exists {
 }
 
 message AddSerialRequest {
+  // Next unused field number: 7
   int64 regID = 1;
   string serial = 2;
-  int64 createdNS = 3; // Unix timestamp (nanoseconds)
-  int64 expiresNS = 4; // Unix timestamp (nanoseconds)
+  reserved 3; // Previously createdNS
+  google.protobuf.Timestamp created = 5;
+  reserved 4; // Previously expiresNS
+  google.protobuf.Timestamp expires = 6;
 }
 
 message AddCertificateRequest {
+  // Next unused field number: 8
   bytes der = 1;
   int64 regID = 2;
   reserved 3; // previously ocsp
   // An issued time. When not present the SA defaults to using
   // the current time.
-  int64 issuedNS = 4; // Unix timestamp (nanoseconds)
+  reserved 4; // Previously issuedNS
+  google.protobuf.Timestamp issued = 7;
   int64 issuerNameID = 5; // https://pkg.go.dev/github.com/letsencrypt/boulder/issuance#IssuerNameID
 
   // If this is set to true, the certificateStatus.status column will be set to
@@ -217,7 +237,7 @@ message AddCertificateRequest {
   // If the OCSP responder receives a request for the status of a certificate
   // serial number that is “unused”, then ...
   // the responder MUST NOT respond with a “good” status for such requests.
-  // 
+  //
   // Paraphrasing, a certificate serial number is unused if neither a
   // Certificate nor a Precertificate has been issued with it. So when we write
   // a linting certificate to the precertificates table, we want to make sure
@@ -231,8 +251,10 @@ message OrderRequest {
 }
 
 message NewOrderRequest {
+  // Next unused field number: 6
   int64 registrationID = 1;
-  int64 expiresNS = 2; // Unix timestamp (nanoseconds)
+  reserved 2; // Previously expiresNS
+  google.protobuf.Timestamp expires = 5;
   repeated string names = 3;
   repeated int64 v2Authorizations = 4;
 }
@@ -263,9 +285,11 @@ message FinalizeOrderRequest {
 }
 
 message GetAuthorizationsRequest {
+  // Next unused field number: 5
   int64 registrationID = 1;
   repeated string domains = 2;
-  int64 nowNS = 3; // Unix timestamp (nanoseconds)
+  reserved 3; // Previously nowNS
+  google.protobuf.Timestamp now = 4;
 }
 
 message Authorizations {
@@ -285,27 +309,36 @@ message AuthorizationID2 {
 }
 
 message RevokeCertificateRequest {
+  // Next unused field number: 10
   string serial = 1;
   int64 reason = 2;
-  int64 dateNS = 3; // Unix timestamp (nanoseconds)
-  int64 backdateNS = 5; // Unix timestamp (nanoseconds)
+  reserved 3; // Previously dateNS
+  google.protobuf.Timestamp date = 8;
+  reserved 5; // Previously backdateNS
+  google.protobuf.Timestamp backdate = 9;
   bytes response = 4;
   int64 issuerID = 6;
+  int64 shardIdx = 7;
 }
 
 message FinalizeAuthorizationRequest {
+  // Next unused field number: 10
   int64 id = 1;
   string status = 2;
-  int64 expiresNS = 3; // Unix timestamp (nanoseconds)
+  reserved 3; // Previously
+  google.protobuf.Timestamp expires = 8;
   string attempted = 4;
   repeated core.ValidationRecord validationRecords = 5;
   core.ProblemDetails validationError = 6;
-  int64 attemptedAtNS = 7; // Unix timestamp (nanoseconds)
+  reserved 7; // Previously attemptedAtNS
+  google.protobuf.Timestamp attemptedAt = 9;
 }
 
 message AddBlockedKeyRequest {
+  // Next unused field number: 7
   bytes keyHash = 1;
-  int64 addedNS = 2; // Unix timestamp (nanoseconds)
+  reserved 2; // Previously addedNS
+  google.protobuf.Timestamp added = 6;
   string source = 3;
   string comment = 4;
   int64 revokedBy = 5;
@@ -316,10 +349,12 @@ message KeyBlockedRequest {
 }
 
 message Incident {
+  // Next unused field number: 7
   int64 id = 1;
   string serialTable = 2;
   string url = 3;
-  int64 renewByNS = 4; // Unix timestamp (nanoseconds)
+  reserved 4; // Previously renewByNS
+  google.protobuf.Timestamp renewBy = 6;
   bool enabled = 5;
 }
 
@@ -332,17 +367,24 @@ message SerialsForIncidentRequest {
 }
 
 message IncidentSerial {
+  // Next unused field number: 6
   string serial = 1;
   int64 registrationID = 2; // May be 0 (NULL)
   int64 orderID = 3; // May be 0 (NULL)
-  int64 lastNoticeSentNS = 4; // Unix timestamp (nanoseconds), may be 0 (NULL)
+  reserved 4; // Previously lastNoticeSentNS
+  google.protobuf.Timestamp lastNoticeSent = 5;
 }
 
 message GetRevokedCertsRequest {
+  // Next unused field number: 9
   int64 issuerNameID = 1;
-  int64 expiresAfterNS = 2; // Unix timestamp (nanoseconds), inclusive
-  int64 expiresBeforeNS = 3; // Unix timestamp (nanoseconds), exclusive
-  int64 revokedBeforeNS = 4; // Unix timestamp (nanoseconds)
+  reserved 2; // Previously expiresAfterNS
+  google.protobuf.Timestamp expiresAfter = 6; // inclusive
+  reserved 3; // Previously expiresBeforeNS
+  google.protobuf.Timestamp expiresBefore = 7; // exclusive
+  reserved 4; // Previously revokedBeforeNS
+  google.protobuf.Timestamp revokedBefore = 8;
+  int64 shardIdx = 5; // Must not be set until the revokedCertificates table has 90+ days of entries.
 }
 
 message RevocationStatus {

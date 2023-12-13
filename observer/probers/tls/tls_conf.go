@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	notAfterName = "obs_tls_not_after"
-	reasonName   = "obs_tls_reason"
+	notAfterName  = "obs_tls_not_after"
+	notBeforeName = "obs_tls_not_before"
+	reasonName    = "obs_tls_reason"
 )
 
 // TLSConf is exported to receive YAML configuration.
@@ -94,6 +95,16 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", notAfterName, coll)
 	}
 
+	coll, ok = collectors[notBeforeName]
+	if !ok {
+		return nil, fmt.Errorf("tls prober did not receive collector %q", notBeforeName)
+	}
+
+	notBeforeColl, ok := coll.(*prometheus.GaugeVec)
+	if !ok {
+		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", notBeforeName, coll)
+	}
+
 	coll, ok = collectors[reasonName]
 	if !ok {
 		return nil, fmt.Errorf("tls prober did not receive collector %q", reasonName)
@@ -104,7 +115,7 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.CounterVec", reasonName, coll)
 	}
 
-	return TLSProbe{c.Hostname, c.RootOrg, c.RootCN, strings.ToLower(c.Response), notAfterColl, reasonColl}, nil
+	return TLSProbe{c.Hostname, c.RootOrg, c.RootCN, strings.ToLower(c.Response), notAfterColl, notBeforeColl, reasonColl}, nil
 }
 
 // Instrument constructs any `prometheus.Collector` objects the `TLSProbe` will
@@ -112,6 +123,12 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 // objects, indexed by the name of the Promtheus metric.  If no objects were
 // constructed, nil is returned.
 func (c TLSConf) Instrument() map[string]prometheus.Collector {
+	notBefore := prometheus.Collector(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: notBeforeName,
+			Help: "Certificate notBefore value as a Unix timestamp in seconds",
+		}, []string{"hostname"},
+	))
 	notAfter := prometheus.Collector(prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: notAfterName,
@@ -125,8 +142,9 @@ func (c TLSConf) Instrument() map[string]prometheus.Collector {
 		}, []string{"hostname", "reason"},
 	))
 	return map[string]prometheus.Collector{
-		notAfterName: notAfter,
-		reasonName:   reason,
+		notAfterName:  notAfter,
+		notBeforeName: notBefore,
+		reasonName:    reason,
 	}
 }
 

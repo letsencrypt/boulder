@@ -13,8 +13,10 @@ import (
 // limit names as strings and to provide a type-safe way to refer to rate
 // limits.
 //
-// IMPORTANT: If you add a new limit Name, you MUST add it to the 'nameToString'
-// mapping and idValidForName function below.
+// IMPORTANT: If you add a new limit Name, you MUST add:
+//   - it to the nameToString mapping,
+//   - an entry for it in the validateIdForName(), and
+//   - provide the appropriate constructors in bucket.go.
 type Name int
 
 const (
@@ -26,36 +28,82 @@ const (
 	NewRegistrationsPerIPAddress
 
 	// NewRegistrationsPerIPv6Range uses bucket key 'enum:ipv6rangeCIDR'. The
-	// address range must be a /48.
+	// address range must be a /48. RFC 3177, which was published in 2001,
+	// advised operators to allocate a /48 block of IPv6 addresses for most end
+	// sites. RFC 6177, which was published in 2011 and obsoletes RFC 3177,
+	// advises allocating a smaller /56 block. We've chosen to use the larger
+	// /48 block for our IPv6 rate limiting. See:
+	//   1. https://tools.ietf.org/html/rfc3177#section-3
+	//   2. https://datatracker.ietf.org/doc/html/rfc6177#section-2
 	NewRegistrationsPerIPv6Range
 
 	// NewOrdersPerAccount uses bucket key 'enum:regId'.
 	NewOrdersPerAccount
 
 	// FailedAuthorizationsPerAccount uses bucket key 'enum:regId', where regId
-	// is the registration id of the account.
+	// is the ACME registration Id of the account. Cost MUST be consumed from
+	// this bucket only when the authorization is considered "failed". It SHOULD
+	// be checked before new authorizations are created.
 	FailedAuthorizationsPerAccount
 
-	// CertificatesPerDomainPerAccount uses bucket key 'enum:regId:domain',
-	// where name is the a name in a certificate issued to the account matching
-	// regId.
+	// CertificatesPerDomain uses bucket key 'enum:domain', where domain is a
+	// domain name in the certificate.
+	CertificatesPerDomain
+
+	// CertificatesPerDomainPerAccount uses two different bucket keys depending
+	// on the context:
+	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
+	//    where regId is the ACME registration Id of the account.
+	//  - When referenced in a transaction: uses bucket key 'enum:regId:domain',
+	//    where regId is the ACME registration Id of the account and domain is a
+	//    domain name in the certificate.
+	//
+	// When overrides to the CertificatesPerDomainPerAccount are configured for a
+	// subscriber, the cost:
+	//   - MUST be consumed from each CertificatesPerDomainPerAccount bucket and
+	//   - SHOULD be consumed from each CertificatesPerDomain bucket, if possible.
 	CertificatesPerDomainPerAccount
 
-	// CertificatesPerFQDNSetPerAccount uses bucket key 'enum:regId:fqdnSet',
-	// where nameSet is a set of names in a certificate issued to the account
-	// matching regId.
-	CertificatesPerFQDNSetPerAccount
+	// CertificatesPerFQDNSet uses bucket key 'enum:fqdnSet', where fqdnSet is a
+	// hashed set of unique eTLD+1 domain names in the certificate.
+	//
+	// Note: When this is referenced in an overrides file, the fqdnSet MUST be
+	// passed as a comma-separated list of domain names.
+	CertificatesPerFQDNSet
 )
+
+// isValid returns true if the Name is a valid rate limit name.
+func (n Name) isValid() bool {
+	return n > Unknown && n < Name(len(nameToString))
+}
+
+// String returns the string representation of the Name. It allows Name to
+// satisfy the fmt.Stringer interface.
+func (n Name) String() string {
+	if !n.isValid() {
+		return nameToString[Unknown]
+	}
+	return nameToString[n]
+}
+
+// EnumString returns the string representation of the Name enumeration.
+func (n Name) EnumString() string {
+	if !n.isValid() {
+		return nameToString[Unknown]
+	}
+	return strconv.Itoa(int(n))
+}
 
 // nameToString is a map of Name values to string names.
 var nameToString = map[Name]string{
-	Unknown:                          "Unknown",
-	NewRegistrationsPerIPAddress:     "NewRegistrationsPerIPAddress",
-	NewRegistrationsPerIPv6Range:     "NewRegistrationsPerIPv6Range",
-	NewOrdersPerAccount:              "NewOrdersPerAccount",
-	FailedAuthorizationsPerAccount:   "FailedAuthorizationsPerAccount",
-	CertificatesPerDomainPerAccount:  "CertificatesPerDomainPerAccount",
-	CertificatesPerFQDNSetPerAccount: "CertificatesPerFQDNSetPerAccount",
+	Unknown:                         "Unknown",
+	NewRegistrationsPerIPAddress:    "NewRegistrationsPerIPAddress",
+	NewRegistrationsPerIPv6Range:    "NewRegistrationsPerIPv6Range",
+	NewOrdersPerAccount:             "NewOrdersPerAccount",
+	FailedAuthorizationsPerAccount:  "FailedAuthorizationsPerAccount",
+	CertificatesPerDomain:           "CertificatesPerDomain",
+	CertificatesPerDomainPerAccount: "CertificatesPerDomainPerAccount",
+	CertificatesPerFQDNSet:          "CertificatesPerFQDNSet",
 }
 
 // validIPAddress validates that the provided string is a valid IP address.
@@ -94,48 +142,51 @@ func validateRegId(id string) error {
 	return nil
 }
 
-// validateRegIdDomain validates that the provided string is formatted
-// 'regId:domain', where regId is an ACME registration Id and domain is a single
-// domain name.
-func validateRegIdDomain(id string) error {
-	parts := strings.SplitN(id, ":", 2)
-	if len(parts) != 2 {
-		return fmt.Errorf(
-			"invalid regId:domain, %q must be formatted 'regId:domain'", id)
-	}
-	if validateRegId(parts[0]) != nil {
-		return fmt.Errorf(
-			"invalid regId, %q must be formatted 'regId:domain'", id)
-	}
-	if policy.ValidDomain(parts[1]) != nil {
-		return fmt.Errorf(
-			"invalid domain, %q must be formatted 'regId:domain'", id)
+// validateDomain validates that the provided string is formatted 'domain',
+// where domain is a domain name.
+func validateDomain(id string) error {
+	err := policy.ValidDomain(id)
+	if err != nil {
+		return fmt.Errorf("invalid domain, %q must be formatted 'domain': %w", id, err)
 	}
 	return nil
 }
 
-// validateRegIdFQDNSet validates that the provided string is formatted
-// 'regId:fqdnSet', where regId is an ACME registration Id and fqdnSet is a
-// comma-separated list of domain names.
-func validateRegIdFQDNSet(id string) error {
-	parts := strings.SplitN(id, ":", 2)
-	if len(parts) != 2 {
+// validateRegIdDomain validates that the provided string is formatted
+// 'regId:domain', where regId is an ACME registration Id and domain is a domain
+// name.
+func validateRegIdDomain(id string) error {
+	regIdDomain := strings.Split(id, ":")
+	if len(regIdDomain) != 2 {
 		return fmt.Errorf(
-			"invalid regId:fqdnSet, %q must be formatted 'regId:fqdnSet'", id)
+			"invalid regId:domain, %q must be formatted 'regId:domain'", id)
 	}
-	if validateRegId(parts[0]) != nil {
+	err := validateRegId(regIdDomain[0])
+	if err != nil {
 		return fmt.Errorf(
-			"invalid regId, %q must be formatted 'regId:fqdnSet'", id)
+			"invalid regId, %q must be formatted 'regId:domain'", id)
 	}
-	domains := strings.Split(parts[1], ",")
+	err = policy.ValidDomain(regIdDomain[1])
+	if err != nil {
+		return fmt.Errorf(
+			"invalid domain, %q must be formatted 'regId:domain': %w", id, err)
+	}
+	return nil
+}
+
+// validateFQDNSet validates that the provided string is formatted 'fqdnSet',
+// where fqdnSet is a comma-separated list of domain names.
+func validateFQDNSet(id string) error {
+	domains := strings.Split(id, ",")
 	if len(domains) == 0 {
 		return fmt.Errorf(
-			"invalid fqdnSet, %q must be formatted 'regId:fqdnSet'", id)
+			"invalid fqdnSet, %q must be formatted 'fqdnSet'", id)
 	}
 	for _, domain := range domains {
-		if policy.ValidDomain(domain) != nil {
+		err := policy.ValidDomain(domain)
+		if err != nil {
 			return fmt.Errorf(
-				"invalid domain, %q must be formatted 'regId:fqdnSet'", id)
+				"invalid domain, %q must be formatted 'fqdnSet': %w", id, err)
 		}
 	}
 	return nil
@@ -156,12 +207,21 @@ func validateIdForName(name Name, id string) error {
 		return validateRegId(id)
 
 	case CertificatesPerDomainPerAccount:
-		// 'enum:regId:domain'
-		return validateRegIdDomain(id)
+		// 'enum:regId:domain' for transaction
+		err := validateRegIdDomain(id)
+		if err == nil {
+			return nil
+		}
+		// 'enum:regId' for overrides
+		return validateRegId(id)
 
-	case CertificatesPerFQDNSetPerAccount:
-		// 'enum:regId:fqdnSet'
-		return validateRegIdFQDNSet(id)
+	case CertificatesPerDomain:
+		// 'enum:domain'
+		return validateDomain(id)
+
+	case CertificatesPerFQDNSet:
+		// 'enum:fqdnSet'
+		return validateFQDNSet(id)
 
 	case Unknown:
 		fallthrough
@@ -189,14 +249,3 @@ var limitNames = func() []string {
 	}
 	return names
 }()
-
-// nameToEnumString converts the integer value of the Name enumeration to its
-// string representation.
-func nameToEnumString(s Name) string {
-	return strconv.Itoa(int(s))
-}
-
-// bucketKey returns the key used to store a rate limit bucket.
-func bucketKey(name Name, id string) string {
-	return nameToEnumString(name) + ":" + id
-}

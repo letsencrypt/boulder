@@ -15,12 +15,12 @@ jobs:
       fail-fast: false
       matrix:
         GO_VERSION:
-          - "1.21.1"
+          - "1.21.5"
     runs-on: ubuntu-20.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
 

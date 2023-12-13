@@ -228,7 +228,7 @@ type Config struct {
 	ContactExporter struct {
 		DB cmd.DBConfig
 		cmd.PasswordConfig
-		Features map[string]bool
+		Features features.Config
 	}
 }
 
@@ -266,8 +266,7 @@ func main() {
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Unmarshaling config")
 
-	err = features.Set(cfg.ContactExporter.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(cfg.ContactExporter.Features)
 
 	dbMap, err := sa.InitWrappedDb(cfg.ContactExporter.DB, nil, log)
 	cmd.FailOnError(err, "While initializing dbMap")
