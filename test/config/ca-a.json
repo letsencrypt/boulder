@@ -106,9 +106,7 @@
 		"ocspLogMaxLength": 4000,
 		"ocspLogPeriod": "500ms",
 		"ecdsaAllowListFilename": "test/config/ecdsaAllowList.yml",
-		"features": {
-			"ROCSPStage7": true
-		}
+		"features": {}
 	},
 	"pa": {
 		"challenges": {

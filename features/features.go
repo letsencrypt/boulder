@@ -17,12 +17,7 @@ import (
 type Config struct {
 	// Deprecated features. Safe for removal once all references to them have
 	// been removed from deployed configuration.
-	StoreRevokerInfo                               bool
-	ROCSPStage6                                    bool
-	ROCSPStage7                                    bool
 	StoreLintingCertificateInsteadOfPrecertificate bool
-	CAAValidationMethods                           bool
-	CAAAccountURI                                  bool
 	LeaseCRLShards                                 bool
 	AllowUnrecognizedFeatures                      bool
 

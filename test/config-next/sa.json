@@ -46,9 +46,7 @@
 			}
 		},
 		"healthCheckInterval": "4s",
-		"features": {
-			"StoreRevokerInfo": true
-		}
+		"features": {}
 	},
 	"syslog": {
 		"stdoutlevel": 6,
