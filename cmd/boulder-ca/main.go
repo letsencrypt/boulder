@@ -46,7 +46,7 @@ type Config struct {
 		Backdate config.Duration
 
 		// What digits we should prepend to serials after randomly generating them.
-		SerialPrefix int `validate:"required,min=1,max=255"`
+		SerialPrefix int `validate:"required,min=1,max=127"`
 
 		// The maximum number of subjectAltNames in a single certificate
 		MaxNames int `validate:"required,min=1,max=100"`
