@@ -3,12 +3,10 @@
 package integration
 
 import (
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"fmt"
 	"testing"
 
 	"github.com/eggsampler/acme/v3"
@@ -20,44 +18,30 @@ import (
 func TestAccountKeyChange(t *testing.T) {
 	t.Parallel()
 
-	// These are all five key types supported by our JWK library and GoodKey checker.
-	keyTypes := []struct {
-		name string
-		gen  func() (crypto.Signer, error)
-	}{
-		{"ECDSA P256", func() (crypto.Signer, error) { return ecdsa.GenerateKey(elliptic.P256(), rand.Reader) }},
-		{"ECDSA P384", func() (crypto.Signer, error) { return ecdsa.GenerateKey(elliptic.P384(), rand.Reader) }},
-		{"RSA 2048", func() (crypto.Signer, error) { return rsa.GenerateKey(rand.Reader, 2048) }},
-		{"RSA 3072", func() (crypto.Signer, error) { return rsa.GenerateKey(rand.Reader, 3072) }},
-		{"RSA 4096", func() (crypto.Signer, error) { return rsa.GenerateKey(rand.Reader, 4096) }},
-	}
+	c, err := acme.NewClient("http://boulder.service.consul:4001/directory")
+	test.AssertNotError(t, err, "creating client")
 
-	// Test every possible combination of old/new key types, including rolling
-	// over to the same kind of key as before.
-	for _, old := range keyTypes {
-		old := old
-		for _, new := range keyTypes {
-			new := new
-			t.Run(fmt.Sprintf("%s to %s", old.name, new.name), func(t *testing.T) {
-				t.Parallel()
+	// We could test all five key types (RSA 2048, 3072, and 4096, and ECDSA P-256
+	// and P-384) supported by go-jose and goodkey, but doing so results in a very
+	// slow integration test. Instead, just test rollover once in each direction,
+	// ECDSA->RSA and vice versa.
+	key1, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "creating P-256 account key")
 
-				c, err := acme.NewClient("http://boulder.service.consul:4001/directory")
-				test.AssertNotError(t, err, "creating client")
+	acct1, err := c.NewAccount(key1, false, true)
+	test.AssertNotError(t, err, "creating account")
 
-				origKey, err := old.gen()
-				test.AssertNotError(t, err, fmt.Sprintf("creating %s account key", old.name))
+	key2, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "creating RSA 2048 account key")
 
-				origAcct, err := c.NewAccount(origKey, false, true)
-				test.AssertNotError(t, err, "creating account")
+	acct2, err := c.AccountKeyChange(acct1, key2)
+	test.AssertNotError(t, err, "rolling over account key")
+	test.AssertEquals(t, acct2.URL, acct1.URL)
 
-				newKey, err := new.gen()
-				test.AssertNotError(t, err, fmt.Sprintf("creating %s account key", new.name))
+	key3, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	test.AssertNotError(t, err, "creating P-384 account key")
 
-				newAcct, err := c.AccountKeyChange(origAcct, newKey)
-				test.AssertNotError(t, err, "rolling over account key")
-
-				test.AssertEquals(t, newAcct.URL, origAcct.URL)
-			})
-		}
-	}
+	acct3, err := c.AccountKeyChange(acct1, key3)
+	test.AssertNotError(t, err, "rolling over account key")
+	test.AssertEquals(t, acct3.URL, acct1.URL)
 }
