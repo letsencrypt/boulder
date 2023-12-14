@@ -79,6 +79,8 @@ type vaMetrics struct {
 	localValidationTime                 *prometheus.HistogramVec
 	remoteValidationTime                *prometheus.HistogramVec
 	remoteValidationFailures            prometheus.Counter
+	caaRecheckTime                      *prometheus.HistogramVec
+	localCAARecheckTime                 *prometheus.HistogramVec
 	remoteCAARecheckTime                *prometheus.HistogramVec
 	remoteCAARecheckFailures            prometheus.Counter
 	prospectiveRemoteValidationFailures prometheus.Counter
@@ -120,9 +122,25 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 			Help: "Number of validations failed due to remote VAs returning failure when consensus is enforced",
 		})
 	stats.MustRegister(remoteValidationFailures)
+	caaRecheckTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "caa_recheck_time",
+			Help:    "Total time taken to recheck CAA records and aggregate results",
+			Buckets: metrics.InternetFacingBuckets,
+		},
+		[]string{"type", "result", "problem_type"})
+	stats.MustRegister(caaRecheckTime)
+	localCAARecheckTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "caa_recheck_time_local",
+			Help:    "Time taken to locally recheck CAA records",
+			Buckets: metrics.InternetFacingBuckets,
+		},
+		[]string{"type", "result"})
+	stats.MustRegister(localCAARecheckTime)
 	remoteCAARecheckTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "remote_caa_recheck_time",
+			Name:    "caa_recheck_time_remote",
 			Help:    "Time taken to remotely recheck CAA records",
 			Buckets: metrics.InternetFacingBuckets,
 		},
@@ -176,6 +194,8 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		remoteValidationTime:                remoteValidationTime,
 		localValidationTime:                 localValidationTime,
 		remoteValidationFailures:            remoteValidationFailures,
+		caaRecheckTime:                      caaRecheckTime,
+		localCAARecheckTime:                 localCAARecheckTime,
 		remoteCAARecheckTime:                remoteCAARecheckTime,
 		remoteCAARecheckFailures:            remoteCAARecheckFailures,
 		prospectiveRemoteValidationFailures: prospectiveRemoteValidationFailures,

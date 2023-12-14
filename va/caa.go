@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
@@ -33,6 +34,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	if core.IsAnyNilOrZero(req.Domain, req.ValidationMethod, req.AccountURIID) {
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
+	checkStartTime := va.clk.Now()
 
 	validationMethod := core.AcmeChallenge(req.ValidationMethod)
 	if !validationMethod.IsValid() {
@@ -54,18 +56,16 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		go va.performRemoteCAARecheck(ctx, req, remoteCAAResults)
 	}
 
-	//var problemType string
+	var checkResult string
+	pbProblem := &corepb.ProblemDetails{}
 	prob := va.checkCAA(ctx, acmeID, params)
+	fmt.Printf("%#v\n", prob)
+	localRecheckLatency := time.Since(checkStartTime)
 	if prob != nil {
 		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
-
-		// I don't think
-		return &vapb.IsCAAValidResponse{
-			Problem: &corepb.ProblemDetails{
-				ProblemType: string(prob.Type),
-				Detail:      replaceInvalidUTF8([]byte(detail)),
-			},
-		}, nil
+		pbProblem.ProblemType = string(prob.Type)
+		pbProblem.Detail = replaceInvalidUTF8([]byte(detail))
+		checkResult = "failure"
 	} else if remoteCAAResults != nil {
 		if !features.Enabled(features.EnforceMultiVA) && features.Enabled(features.MultiVAFullResults) {
 			// If we're not going to enforce multi VA but we are logging the
@@ -80,6 +80,12 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 					remoteCAAResults)
 			}()
 		} else if features.Enabled(features.EnforceMultiVA) {
+			// Since prob was nil and we're not enforcing the results from
+			// `processRemoteValidationResultsOuter` set the challenge status to
+			// valid so the validationTime metrics increment has the correct
+			// result label.
+			checkResult = "success"
+		} else if features.Enabled(features.EnforceMultiVA) {
 			remoteProb := va.processRemoteCAARecheckResultsOuter(
 				req.Domain,
 				req.AccountURIID,
@@ -90,31 +96,44 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			// If the remote result was a non-nil problem then fail the CAA check
 			if remoteProb != nil {
 				prob = remoteProb
+				checkResult = "failure"
 				va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
 				// TODO(@pgporada) Change this metric to a more meaningful one.
 				va.metrics.remoteValidationFailures.Inc()
+			} else {
+				checkResult = "success"
 			}
 		}
 	}
 
-	//recheckLatency := time.Since(vStart)
-	//fmt.Println(recheckLatency)
-	//logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
-	/*
-		va.metrics.localCAARecheckTime.With(prometheus.Labels{
-			"type":   string(challenge.Type),
-			"result": string(challenge.Status),
-		}).Observe(localValidationLatency.Seconds())
-		va.metrics.validationTime.With(prometheus.Labels{
-			"type":         string(challenge.Type),
-			"result":       string(challenge.Status),
-			"problem_type": problemType,
-		}).Observe(validationLatency.Seconds())
-	*/
-	//va.log.AuditObject("Validation result", logEvent)
+	recheckLatency := time.Since(checkStartTime)
+	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
+		va.metrics.localValidationTime.With(prometheus.Labels{
+			"type":   req.ValidationMethod,
+			"result": checkResult,
+		}).Observe(localRecheckLatency.Seconds())
+		if prob != nil {
+			va.metrics.caaRecheckTime.With(prometheus.Labels{
+				"type":         req.ValidationMethod,
+				"result":       checkResult,
+				"problem_type": string(prob.Type),
+			}).Observe(recheckLatency.Seconds())
+		}
+		va.metrics.caaRecheckTime.With(prometheus.Labels{
+			"type":         req.ValidationMethod,
+			"result":       checkResult,
+			"problem_type": "",
+		}).Observe(recheckLatency.Seconds())
+	}
 
-	return &vapb.IsCAAValidResponse{}, nil
+	if prob == nil {
+		fmt.Println("PHIL: 1")
+		return &vapb.IsCAAValidResponse{}, nil
+	} else {
+		fmt.Println("PHIL: 2")
+		return &vapb.IsCAAValidResponse{Problem: pbProblem}, nil
+	}
 }
 
 // processRemoteCAARecheckResultsOuter is a helper method that supplies metadata
