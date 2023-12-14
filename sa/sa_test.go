@@ -528,52 +528,51 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 }
 
 func TestAddCertificate(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
+	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
 	reg := createWorkingRegistration(t, sa)
 
-	// An example cert taken from EFF's website
-	certDER, err := os.ReadFile("www.eff.org.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	serial, testCert := test.ThrowAwayCert(t, clk)
 
-	// Calling AddCertificate with a non-nil issued should succeed
 	issuedTime := sa.clk.Now()
-	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
+	_, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
 		RegID:  reg.Id,
 		Issued: timestamppb.New(issuedTime),
 	})
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test cert")
 
-	retrievedCert, err := sa.GetCertificate(ctx, &sapb.Serial{Serial: "000000000000000000000000000000021bd4"})
-	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by full serial")
-	test.AssertByteEquals(t, certDER, retrievedCert.Der)
-	// Because nil was provided as the Issued time we expect the cert was stored
-	// with an issued time equal to now
+	retrievedCert, err := sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
+	test.AssertNotError(t, err, "Couldn't get test cert by full serial")
+	test.AssertByteEquals(t, testCert.Raw, retrievedCert.Der)
 	test.AssertEquals(t, retrievedCert.Issued.AsTime(), issuedTime)
 
-	// Test cert generated locally by Boulder, with names [example.com,
-	// www.example.com, admin.example.com]
-	certDER2, err := os.ReadFile("test-cert.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	serial := "ffdd9b8a82126d96f61d378d5ba99a0474f0"
-
-	// Add the certificate with a specific issued time instead of nil
-	issuedTime = time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
+	// Calling AddCertificate with empty args should fail.
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER2,
+		Der:    nil,
 		RegID:  reg.Id,
 		Issued: timestamppb.New(issuedTime),
 	})
-	test.AssertNotError(t, err, "Couldn't add test-cert.der")
-
-	retrievedCert2, err := sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
-	test.AssertNotError(t, err, "Couldn't get test-cert.der")
-	test.AssertByteEquals(t, certDER2, retrievedCert2.Der)
-	// The cert should have been added with the specific issued time we provided
-	// as the issued field.
-	test.AssertEquals(t, retrievedCert2.Issued.AsTime(), issuedTime)
+	test.AssertError(t, err, "shouldn't be able to add cert with no DER")
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  0,
+		Issued: timestamppb.New(issuedTime),
+	})
+	test.AssertError(t, err, "shouldn't be able to add cert with no regID")
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  reg.Id,
+		Issued: nil,
+	})
+	test.AssertError(t, err, "shouldn't be able to add cert with no issued timestamp")
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(time.Time{}),
+	})
+	test.AssertError(t, err, "shouldn't be able to add cert with zero issued timestamp")
 }
 
 func TestAddCertificateDuplicate(t *testing.T) {
@@ -1144,25 +1143,23 @@ func TestAddIssuedNames(t *testing.T) {
 }
 
 func TestPreviousCertificateExists(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
+	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
 	reg := createWorkingRegistration(t, sa)
 
-	// An example cert taken from EFF's website
-	certDER, err := os.ReadFile("www.eff.org.der")
-	test.AssertNotError(t, err, "reading cert DER")
+	_, testCert := test.ThrowAwayCert(t, clk)
 
 	issued := sa.clk.Now()
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          certDER,
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          testCert.Raw,
 		Issued:       timestamppb.New(issued),
 		RegID:        reg.Id,
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
+		Der:    testCert.Raw,
 		RegID:  reg.Id,
 		Issued: timestamppb.New(issued),
 	})
@@ -1174,9 +1171,9 @@ func TestPreviousCertificateExists(t *testing.T) {
 		regID    int64
 		expected bool
 	}{
-		{"matches", "www.eff.org", reg.Id, true},
-		{"wrongDomain", "wwoof.org", reg.Id, false},
-		{"wrongAccount", "www.eff.org", 3333, false},
+		{"matches", testCert.DNSNames[0], reg.Id, true},
+		{"wrongDomain", "example.org", reg.Id, false},
+		{"wrongAccount", testCert.DNSNames[0], 3333, false},
 	}
 
 	for _, testCase := range cases {
@@ -2054,18 +2051,15 @@ func TestRevokeCertificate(t *testing.T) {
 
 	reg := createWorkingRegistration(t, sa)
 	// Add a cert to the DB to test with.
-	certDER, err := os.ReadFile("www.eff.org.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	serial, testCert := test.ThrowAwayCert(t, fc)
 	issuedTime := sa.clk.Now()
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          certDER,
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          testCert.Raw,
 		RegID:        reg.Id,
 		Issued:       timestamppb.New(issuedTime),
 		IssuerNameID: 1,
 	})
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
-
-	serial := "000000000000000000000000000000021bd4"
+	test.AssertNotError(t, err, "Couldn't add test cert")
 
 	status, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
@@ -2163,17 +2157,15 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 
 	// Add a cert to the DB to test with.
 	reg := createWorkingRegistration(t, sa)
-	certDER, err := os.ReadFile("www.eff.org.der")
-	serial := "000000000000000000000000000000021bd4"
+	serial, testCert := test.ThrowAwayCert(t, fc)
 	issuedTime := fc.Now()
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          certDER,
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          testCert.Raw,
 		RegID:        reg.Id,
 		Issued:       timestamppb.New(issuedTime),
 		IssuerNameID: 1,
 	})
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test cert")
 	fc.Add(1 * time.Hour)
 
 	// Try to update it before its been revoked
@@ -2277,22 +2269,21 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 
 	// Add a cert to the DB to test with.
 	reg := createWorkingRegistration(t, sa)
-	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
-	test.AssertNotError(t, err, "failed to load test cert")
-	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
+	serial, testCert := test.ThrowAwayCert(t, fc)
+	_, err := sa.AddSerial(ctx, &sapb.AddSerialRequest{
 		RegID:   reg.Id,
-		Serial:  core.SerialToString(eeCert.SerialNumber),
-		Created: timestamppb.New(eeCert.NotBefore),
-		Expires: timestamppb.New(eeCert.NotAfter),
+		Serial:  core.SerialToString(testCert.SerialNumber),
+		Created: timestamppb.New(testCert.NotBefore),
+		Expires: timestamppb.New(testCert.NotAfter),
 	})
 	test.AssertNotError(t, err, "failed to add test serial")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          eeCert.Raw,
+		Der:          testCert.Raw,
 		RegID:        reg.Id,
-		Issued:       timestamppb.New(eeCert.NotBefore),
+		Issued:       timestamppb.New(testCert.NotBefore),
 		IssuerNameID: 1,
 	})
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test cert")
 	fc.Add(1 * time.Hour)
 
 	// Now revoke it with a shardIdx, so that it gets updated in both the
@@ -2301,7 +2292,7 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		ShardIdx: 9,
-		Serial:   core.SerialToString(eeCert.SerialNumber),
+		Serial:   serial,
 		Date:     timestamppb.New(revokedTime),
 		Reason:   ocsp.CessationOfOperation,
 		Response: []byte{1, 2, 3},
@@ -2313,7 +2304,7 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		ShardIdx: 9,
-		Serial:   core.SerialToString(eeCert.SerialNumber),
+		Serial:   serial,
 		Date:     timestamppb.New(fc.Now()),
 		Backdate: timestamppb.New(revokedTime),
 		Reason:   ocsp.KeyCompromise,
@@ -2323,7 +2314,7 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 
 	var result revokedCertModel
 	err = sa.dbMap.SelectOne(
-		ctx, &result, `SELECT * FROM revokedCertificates WHERE serial = ?`, core.SerialToString(eeCert.SerialNumber))
+		ctx, &result, `SELECT * FROM revokedCertificates WHERE serial = ?`, serial)
 	test.AssertNotError(t, err, "should be exactly one row in revokedCertificates")
 	test.AssertEquals(t, result.ShardIdx, int64(9))
 	test.AssertEquals(t, result.RevokedReason, revocation.Reason(ocsp.KeyCompromise))
@@ -2339,22 +2330,21 @@ func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
 
 	// Add a cert to the DB to test with.
 	reg := createWorkingRegistration(t, sa)
-	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
-	test.AssertNotError(t, err, "failed to load test cert")
-	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
+	serial, testCert := test.ThrowAwayCert(t, fc)
+	_, err := sa.AddSerial(ctx, &sapb.AddSerialRequest{
 		RegID:   reg.Id,
-		Serial:  core.SerialToString(eeCert.SerialNumber),
-		Created: timestamppb.New(eeCert.NotBefore),
-		Expires: timestamppb.New(eeCert.NotAfter),
+		Serial:  serial,
+		Created: timestamppb.New(testCert.NotBefore),
+		Expires: timestamppb.New(testCert.NotAfter),
 	})
 	test.AssertNotError(t, err, "failed to add test serial")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          eeCert.Raw,
+		Der:          testCert.Raw,
 		RegID:        reg.Id,
-		Issued:       timestamppb.New(eeCert.NotBefore),
+		Issued:       timestamppb.New(testCert.NotBefore),
 		IssuerNameID: 1,
 	})
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't add test cert")
 	fc.Add(1 * time.Hour)
 
 	// Now revoke it *without* a shardIdx, so that it only gets updated in the
@@ -2362,7 +2352,7 @@ func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
 	revokedTime := timestamppb.New(fc.Now())
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
-		Serial:   core.SerialToString(eeCert.SerialNumber),
+		Serial:   serial,
 		Date:     revokedTime,
 		Reason:   ocsp.CessationOfOperation,
 		Response: []byte{1, 2, 3},
@@ -2371,7 +2361,7 @@ func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
 
 	// Confirm that setup worked as expected.
 	status, err := sa.GetCertificateStatus(
-		ctx, &sapb.Serial{Serial: core.SerialToString(eeCert.SerialNumber)})
+		ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
 	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
 
@@ -2386,7 +2376,7 @@ func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		ShardIdx: 9,
-		Serial:   core.SerialToString(eeCert.SerialNumber),
+		Serial:   serial,
 		Date:     timestamppb.New(fc.Now()),
 		Backdate: revokedTime,
 		Reason:   ocsp.KeyCompromise,
@@ -2396,7 +2386,7 @@ func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
 
 	var result revokedCertModel
 	err = sa.dbMap.SelectOne(
-		ctx, &result, `SELECT * FROM revokedCertificates WHERE serial = ?`, core.SerialToString(eeCert.SerialNumber))
+		ctx, &result, `SELECT * FROM revokedCertificates WHERE serial = ?`, serial)
 	test.AssertNotError(t, err, "should be exactly one row in revokedCertificates")
 	test.AssertEquals(t, result.ShardIdx, int64(9))
 	test.AssertEquals(t, result.RevokedReason, revocation.Reason(ocsp.KeyCompromise))
@@ -2407,39 +2397,6 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	defer cleanUp()
 
 	reg := createWorkingRegistration(t, sa)
-
-	// An example cert taken from EFF's website
-	certDER, err := os.ReadFile("www.eff.org.der")
-	test.AssertNotError(t, err, "Unexpected error reading www.eff.org.der test file")
-	cert, err := x509.ParseCertificate(certDER)
-	test.AssertNotError(t, err, "Unexpected error parsing www.eff.org.der test file")
-	names := cert.DNSNames
-
-	expires := fc.Now().Add(time.Hour * 2).UTC()
-	issued := fc.Now()
-	serial := "thrilla"
-
-	// Add a FQDN set for the names so that it will be considered a renewal
-	tx, err := sa.dbMap.BeginTx(ctx)
-	test.AssertNotError(t, err, "Failed to open transaction")
-	err = addFQDNSet(ctx, tx, names, serial, issued, expires)
-	test.AssertNotError(t, err, "Failed to add name set")
-	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
-
-	// Add the certificate with the same names.
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          certDER,
-		Issued:       timestamppb.New(issued),
-		RegID:        reg.Id,
-		IssuerNameID: 1,
-	})
-	test.AssertNotError(t, err, "Failed to add precertificate")
-	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
-		RegID:  reg.Id,
-		Issued: timestamppb.New(issued),
-	})
-	test.AssertNotError(t, err, "Failed to add certificate")
 
 	assertIsRenewal := func(t *testing.T, name string, expected bool) {
 		t.Helper()
@@ -2457,35 +2414,50 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 		test.AssertEquals(t, count, 1)
 	}
 
-	// All of the names should have a issuedNames row marking it as a renewal.
-	for _, name := range names {
-		assertIsRenewal(t, name, true)
-	}
-
-	// Add a certificate with different names.
-	certDER, err = os.ReadFile("test-cert.der")
-	test.AssertNotError(t, err, "Unexpected error reading test-cert.der test file")
-	cert, err = x509.ParseCertificate(certDER)
-	test.AssertNotError(t, err, "Unexpected error parsing test-cert.der test file")
-	names = cert.DNSNames
-
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          certDER,
-		Issued:       timestamppb.New(issued),
+	// Add a certificate with a never-before-seen name.
+	_, testCert := test.ThrowAwayCert(t, fc)
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          testCert.Raw,
+		Issued:       timestamppb.New(testCert.NotBefore),
 		RegID:        reg.Id,
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
+		Der:    testCert.Raw,
 		RegID:  reg.Id,
-		Issued: timestamppb.New(issued),
+		Issued: timestamppb.New(testCert.NotBefore),
 	})
 	test.AssertNotError(t, err, "Failed to add certificate")
 
 	// None of the names should have a issuedNames row marking it as a renewal.
-	for _, name := range names {
+	for _, name := range testCert.DNSNames {
 		assertIsRenewal(t, name, false)
+	}
+	serial, testCert := test.ThrowAwayCert(t, fc)
+
+	// Make a new cert and add its FQDN set to the db so it will be considered a
+	// renewal
+	_, testCert = test.ThrowAwayCert(t, fc)
+	err = addFQDNSet(ctx, sa.dbMap, testCert.DNSNames, serial, testCert.NotBefore, testCert.NotAfter)
+	test.AssertNotError(t, err, "Failed to add name set")
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          testCert.Raw,
+		Issued:       timestamppb.New(testCert.NotBefore),
+		RegID:        reg.Id,
+		IssuerNameID: 1,
+	})
+	test.AssertNotError(t, err, "Failed to add precertificate")
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(testCert.NotBefore),
+	})
+	test.AssertNotError(t, err, "Failed to add certificate")
+
+	// All of the names should have a issuedNames row marking it as a renewal.
+	for _, name := range testCert.DNSNames {
+		assertIsRenewal(t, name, true)
 	}
 }
 
