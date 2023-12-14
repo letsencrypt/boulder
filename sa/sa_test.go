@@ -2456,11 +2456,10 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	for _, name := range testCert.DNSNames {
 		assertIsRenewal(t, name, false)
 	}
-	serial, testCert := test.ThrowAwayCert(t, fc)
 
 	// Make a new cert and add its FQDN set to the db so it will be considered a
 	// renewal
-	_, testCert = test.ThrowAwayCert(t, fc)
+	serial, testCert := test.ThrowAwayCert(t, fc)
 	err = addFQDNSet(ctx, sa.dbMap, testCert.DNSNames, serial, testCert.NotBefore, testCert.NotAfter)
 	test.AssertNotError(t, err, "Failed to add name set")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
