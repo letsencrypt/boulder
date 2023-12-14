@@ -623,7 +623,7 @@ func TestCountCertificatesByNamesTimeRange(t *testing.T) {
 
 	// Count for a name that doesn't have any certs
 	counts, err := sa.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
-		Names: []string{"doesnot.exist"},
+		Names: []string{"does.not.exist"},
 		Range: &sapb.Range{
 			Earliest: timestamppb.New(yesterday),
 			Latest:   timestamppb.New(now),
@@ -631,7 +631,7 @@ func TestCountCertificatesByNamesTimeRange(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Error counting certs.")
 	test.AssertEquals(t, len(counts.Counts), 1)
-	test.AssertEquals(t, counts.Counts["doesnot.exist"], int64(0))
+	test.AssertEquals(t, counts.Counts["does.not.exist"], int64(0))
 
 	// Time range including now should find the cert.
 	counts, err = sa.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
@@ -697,7 +697,7 @@ func TestCountCertificatesByNamesParallel(t *testing.T) {
 	// Override countCertificatesByName with an implementation of certCountFunc
 	// that will block forever if it's called in serial, but will succeed if
 	// called in parallel.
-	names := []string{"doesnot.exist", testCert.DNSNames[0], testCert2.DNSNames[0]}
+	names := []string{"does.not.exist", testCert.DNSNames[0], testCert2.DNSNames[0]}
 
 	var interlocker sync.WaitGroup
 	interlocker.Add(len(names))
@@ -723,7 +723,7 @@ func TestCountCertificatesByNamesParallel(t *testing.T) {
 	// test.ThrowAwayCert creates certs for subdomains of example.com, and
 	// CountCertificatesByNames counts all certs under the same registered domain.
 	expected := map[string]int64{
-		"doesnot.exist":       0,
+		"does.not.exist":      0,
 		testCert.DNSNames[0]:  2,
 		testCert2.DNSNames[0]: 2,
 	}
