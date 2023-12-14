@@ -317,11 +317,11 @@ func ValidEmail(address string) error {
 	}
 
 	// Names must end in an ICANN TLD, but they can be equal to an ICANN TLD.
-	icannTLD, err := iana.ExtractSuffix(domain)
+	_, err = iana.ExtractSuffix(domain)
 	if err != nil {
 		return errNonPublic
 	}
-	
+
 	if forbiddenMailDomains[domain] {
 		return berrors.InvalidEmailError(
 			"invalid contact domain. Contact emails @%s are forbidden",
