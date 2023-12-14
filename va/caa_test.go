@@ -700,7 +700,7 @@ func TestMultiVACAARechecking(t *testing.T) {
 	}{
 		{
 			name:     "all VAs functional, no CAA records, wait for full results",
-			domains:  "com",
+			domains:  "present.com",
 			features: noEarlyReturn,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
@@ -710,7 +710,7 @@ func TestMultiVACAARechecking(t *testing.T) {
 		},
 		{
 			name:     "all VAs functional, no CAA records, dont wait for full results",
-			domains:  "com",
+			domains:  "present.com",
 			features: earlyReturn,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
@@ -720,7 +720,7 @@ func TestMultiVACAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "broken localVA, RVAs functional, no CAA records, wait for full results",
-			domains:                  "com",
+			domains:                  "present.com",
 			features:                 noEarlyReturn,
 			localVADNSClientOverride: brokenDNSClient,
 			expectedProb:             probs.DNS("While processing CAA for com: dnsClient is broken"),
@@ -732,10 +732,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "broken localVA, RVAs functional, no CAA records, dont wait for full results",
-			domains:                  "com",
+			domains:                  "present.com",
 			features:                 earlyReturn,
 			localVADNSClientOverride: brokenDNSClient,
-			expectedProb:             probs.DNS("While processing CAA for com: dnsClient is broken"),
+			expectedProb:             probs.DNS("While processing CAA for present-dns-only.com: dnsClient is broken"),
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -743,9 +743,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "functional localVA, 1 broken RVA, no CAA records, wait for full results",
-			domains:  "com",
-			features: noEarlyReturn,
+			name:          "functional localVA, 1 broken RVA, no CAA records, wait for full results",
+			domains:       "present-dns-only.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{brokenVA1, brokenUA},
 				{remoteVA2, remoteUA2},
@@ -754,9 +755,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			expectedDifferentialLog: `INFO: remoteVADifferentials JSON={"Domain":"present-dns-only.com","AccountID":1,"ChallengeType":"dns-01","PrimaryResult":null,"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for present-dns-only.com: dnsClient is broken"}}]}`,
 		},
 		{
-			name:     "functional localVA, 1 broken RVA, no CAA records, dont wait for full results",
-			domains:  "com",
-			features: earlyReturn,
+			name:          "functional localVA, 1 broken RVA, no CAA records, dont wait for full results",
+			domains:       "present-dns-only.com",
+			features:      earlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{brokenVA1, brokenUA},
 				{remoteVA2, remoteUA2},
@@ -764,9 +766,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "functional localVA, all broken RVAs, no CAA records, wait for full results",
-			domains:  "com",
-			features: noEarlyReturn,
+			name:          "functional localVA, all broken RVAs, no CAA records, wait for full results",
+			domains:       "present-dns-only.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{brokenVA1, brokenUA},
 				{brokenVA2, brokenUA},
@@ -774,9 +777,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "functional localVA, all broken RVAs, no CAA records, dont wait for full results",
-			domains:  "com",
-			features: earlyReturn,
+			name:          "functional localVA, all broken RVAs, no CAA records, dont wait for full results",
+			domains:       "present-dns-only.com",
+			overallResult: "Valid for issuance: true",
+			features:      earlyReturn,
 			remoteVAs: []RemoteVA{
 				{brokenVA1, brokenUA},
 				{brokenVA2, brokenUA},
@@ -784,9 +788,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "all VAs functional, CAA issue type present, wait for full results",
-			domains:  "present.com",
-			features: noEarlyReturn,
+			name:          "all VAs functional, CAA issue type present, wait for full results",
+			domains:       "present.com",
+			overallResult: "Valid for issuance: true",
+			features:      noEarlyReturn,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -794,9 +799,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:     "all VAs functional, CAA issue type present, dont wait for full results",
-			domains:  "present.com",
-			features: earlyReturn,
+			name:          "all VAs functional, CAA issue type present, dont wait for full results",
+			domains:       "present.com",
+			overallResult: "Valid for issuance: true",
+			features:      earlyReturn,
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -828,8 +834,8 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		*/
 		{
-			name:     "functional localVA, all broken RVAs, CAA issue type present, wait for full results",
-			domains:  "present.com",
+			name:     "functional localVA, all broken RVAs, no CAA records, wait for full results",
+			domains:  "com",
 			features: noEarlyReturn,
 			remoteVAs: []RemoteVA{
 				{brokenVA1, brokenUA},
@@ -1005,9 +1011,10 @@ func TestMultiVACAARechecking(t *testing.T) {
 			},
 		*/
 		{
-			name:     "3 hijacked RVAs, CAA issuewild type present, wait for full results",
-			domains:  "satisfiable-wildcard.com",
-			features: noEarlyReturn,
+			name:          "3 hijacked RVAs, CAA issuewild type present, wait for full results",
+			domains:       "satisfiable-wildcard.com",
+			features:      noEarlyReturn,
+			overallResult: "Valid for issuance: true",
 			remoteVAs: []RemoteVA{
 				{hijackedVA1, hijackedUA},
 				{hijackedVA2, hijackedUA},

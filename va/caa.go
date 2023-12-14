@@ -79,7 +79,6 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 					prob,
 					remoteCAAResults)
 			}()
-		} else if features.Enabled(features.EnforceMultiVA) {
 			// Since prob was nil and we're not enforcing the results from
 			// `processRemoteValidationResultsOuter` set the challenge status to
 			// valid so the validationTime metrics increment has the correct
