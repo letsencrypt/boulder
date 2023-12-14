@@ -193,14 +193,20 @@ func New(
 ) Client {
 	var client exchanger
 	if features.Get().DOH {
+		// Clone the default transport because it comes with various settings
+		// that we like, which are different from the zero value of an
+		// `http.Transport`.
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = tlsConfig
+		// The default transport already sets this field, but it isn't
+		// documented that it will always be set. Set it again to be sure,
+		// because Unbound will reject non-HTTP/2 DoH requests.
+		transport.ForceAttemptHTTP2 = true
 		client = &dohExchanger{
 			clk: clk,
 			hc: http.Client{
-				Timeout: readTimeout,
-				Transport: &http.Transport{
-					ForceAttemptHTTP2: true,
-					TLSClientConfig:   tlsConfig.Clone(),
-				},
+				Timeout:   readTimeout,
+				Transport: transport,
 			},
 		}
 	} else {
