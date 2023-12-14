@@ -281,6 +281,15 @@ func ValidDomain(domain string) error {
 		}
 	}
 
+	// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
+	icannTLD, err := iana.ExtractSuffix(domain)
+	if err != nil {
+		return errNonPublic
+	}
+	if icannTLD == domain {
+		return errICANNTLD
+	}
+
 	return nil
 }
 
@@ -310,20 +319,11 @@ func ValidEmail(address string) error {
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
 	err = ValidDomain(domain)
-	if err != nil {
+	if err != nil && !errors.Is(err, errICANNTLD) {
 		return berrors.InvalidEmailError(
 			"contact email %q has invalid domain : %s",
 			email.Address, err)
 	}
-
-	// Names must end in an ICANN TLD, but they can be equal to an ICANN TLD.
-	_, err = iana.ExtractSuffix(domain)
-	if err != nil {
-		return berrors.InvalidEmailError(
-			"contact email %q has invalid domain : Domain name does not end with a valid public suffix (TLD)",
-			email.Address)
-	}
-
 	if forbiddenMailDomains[domain] {
 		return berrors.InvalidEmailError(
 			"invalid contact domain. Contact emails @%s are forbidden",
@@ -361,15 +361,6 @@ func (pa *AuthorityImpl) willingToIssue(id identifier.ACMEIdentifier) error {
 	err := ValidDomain(domain)
 	if err != nil {
 		return err
-	}
-
-	// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
-	icannTLD, err := iana.ExtractSuffix(domain)
-	if err != nil {
-		return errNonPublic
-	}
-	if icannTLD == domain {
-		return errICANNTLD
 	}
 
 	// Require no match against hostname block lists
