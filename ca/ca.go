@@ -120,8 +120,8 @@ func NewCertificateAuthorityImpl(
 		certBackdate = time.Hour
 	}
 
-	if serialPrefix <= 0 || serialPrefix >= 256 {
-		err = errors.New("Must have a positive non-zero serial prefix less than 256 for CA.")
+	if serialPrefix < 1 || serialPrefix > 127 {
+		err = errors.New("serial prefix must be between 1 and 127")
 		return nil, err
 	}
 
