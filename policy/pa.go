@@ -319,7 +319,9 @@ func ValidEmail(address string) error {
 	// Names must end in an ICANN TLD, but they can be equal to an ICANN TLD.
 	_, err = iana.ExtractSuffix(domain)
 	if err != nil {
-		return errNonPublic
+		return berrors.InvalidEmailError(
+			"contact email %q has invalid domain : Domain name does not end with a valid public suffix (TLD)",
+			email.Address)
 	}
 
 	if forbiddenMailDomains[domain] {
