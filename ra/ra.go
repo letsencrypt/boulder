@@ -1747,10 +1747,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 		ValidationRecords: vr.Records,
 		ValidationError:   vr.Problems,
 	})
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // PerformValidation initiates validation for a specific challenge associated
@@ -1889,8 +1886,13 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 		err = ra.recordValidation(vaCtx, authz.ID, authz.Expires, challenge)
 		if err != nil {
-			ra.log.AuditErrf("Could not record updated validation: regID=[%d] authzID=[%s] err=[%s]",
-				authz.RegistrationID, authz.ID, err)
+			if errors.Is(err, berrors.AlreadyRevoked) {
+				ra.log.Infof("Didn't record already-finalized validation: regID=[%d] authzID=[%s] err=[%s]",
+					authz.RegistrationID, authz.ID, err)
+			} else {
+				ra.log.AuditErrf("Failed to record validation: regID=[%d] authzID=[%s] err=[%s]",
+					authz.RegistrationID, authz.ID, err)
+			}
 		}
 	}(authz)
 	return bgrpc.AuthzToPB(authz)
