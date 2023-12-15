@@ -2388,7 +2388,7 @@ func (c deprecatedCertID) Serial() string {
 func parseDeprecatedCertID(path string) (ariCertID, error) {
 	der, err := base64.RawURLEncoding.DecodeString(path)
 	if err != nil {
-		return deprecatedCertID{}, err
+		return nil, err
 	}
 
 	var id deprecatedCertID
