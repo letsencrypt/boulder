@@ -51,15 +51,16 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	}
 
 	var remoteCAAResults chan *remoteVAResult
-	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
-		remoteCAAResults = make(chan *remoteVAResult, remoteVACount)
-		go va.performRemoteCAARecheck(ctx, req, remoteCAAResults)
+	if features.Get().RVACAARechecking {
+		if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
+			remoteCAAResults = make(chan *remoteVAResult, remoteVACount)
+			go va.performRemoteCAARecheck(ctx, req, remoteCAAResults)
+		}
 	}
 
 	var checkResult string
 	pbProblem := &corepb.ProblemDetails{}
 	prob := va.checkCAA(ctx, acmeID, params)
-	fmt.Printf("%#v\n", prob)
 	localRecheckLatency := time.Since(checkStartTime)
 	if prob != nil {
 		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
@@ -67,7 +68,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		pbProblem.Detail = replaceInvalidUTF8([]byte(detail))
 		checkResult = "failure"
 	} else if remoteCAAResults != nil {
-		if !features.Enabled(features.EnforceMultiVA) && features.Enabled(features.MultiVAFullResults) {
+		if !features.Get().EnforceMultiVA && features.Get().MultiVAFullResults {
 			// If we're not going to enforce multi VA but we are logging the
 			// differentials then collect and log the remote results in a separate go
 			// routine to avoid blocking the primary VA.
@@ -84,7 +85,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			// valid so the validationTime metrics increment has the correct
 			// result label.
 			checkResult = "success"
-		} else if features.Enabled(features.EnforceMultiVA) {
+		} else if features.Get().EnforceMultiVA {
 			remoteProb := va.processRemoteCAARecheckResultsOuter(
 				req.Domain,
 				req.AccountURIID,
@@ -95,6 +96,8 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			// If the remote result was a non-nil problem then fail the CAA check
 			if remoteProb != nil {
 				prob = remoteProb
+				pbProblem.ProblemType = string(prob.Type)
+				pbProblem.Detail = replaceInvalidUTF8([]byte(prob.Detail))
 				checkResult = "failure"
 				va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
@@ -104,6 +107,8 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 				checkResult = "success"
 			}
 		}
+	} else {
+		checkResult = "success"
 	}
 
 	recheckLatency := time.Since(checkStartTime)
@@ -127,10 +132,8 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	}
 
 	if prob == nil {
-		fmt.Println("PHIL: 1")
 		return &vapb.IsCAAValidResponse{}, nil
 	} else {
-		fmt.Println("PHIL: 2")
 		return &vapb.IsCAAValidResponse{Problem: pbProblem}, nil
 	}
 }
