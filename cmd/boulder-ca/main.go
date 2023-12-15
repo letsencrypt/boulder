@@ -46,7 +46,7 @@ type Config struct {
 		Backdate config.Duration
 
 		// What digits we should prepend to serials after randomly generating them.
-		SerialPrefix int `validate:"required,min=1,max=255"`
+		SerialPrefix int `validate:"required,min=1,max=127"`
 
 		// The maximum number of subjectAltNames in a single certificate
 		MaxNames int `validate:"required,min=1,max=100"`
@@ -101,7 +101,7 @@ type Config struct {
 		// preventing any CRLs from being issued.
 		DisableCRLService bool
 
-		Features map[string]bool
+		Features features.Config
 	}
 
 	PA cmd.PAConfig
@@ -152,8 +152,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.CA.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.CA.Features)
 
 	if *grpcAddr != "" {
 		c.CA.GRPCCA.Address = *grpcAddr

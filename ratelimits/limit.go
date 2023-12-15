@@ -1,6 +1,7 @@
 package ratelimits
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -9,6 +10,10 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
+
+// errLimitDisabled indicates that the limit name specified is valid but is not
+// currently configured.
+var errLimitDisabled = errors.New("limit disabled")
 
 type limit struct {
 	// Burst specifies maximum concurrent allowed requests at any given time. It
@@ -22,6 +27,10 @@ type limit struct {
 	// Period is the duration of time in which the count (of requests) is
 	// allowed. It must be greater than zero.
 	Period config.Duration
+
+	// name is the name of the limit. It must be one of the Name enums defined
+	// in this package.
+	name Name
 
 	// emissionInterval is the interval, in nanoseconds, at which tokens are
 	// added to a bucket (period / count). This is also the steady-state rate at
@@ -61,8 +70,8 @@ func validateLimit(l limit) error {
 
 type limits map[string]limit
 
-// loadLimits marshals the YAML file at path into a map of limis.
-func loadLimits(path string) (limits, error) {
+// loadDefaults marshals the defaults YAML file at path into a map of limits.
+func loadDefaults(path string) (limits, error) {
 	lm := make(limits)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -73,6 +82,28 @@ func loadLimits(path string) (limits, error) {
 		return nil, err
 	}
 	return lm, nil
+}
+
+type overrideYAML struct {
+	limit `yaml:",inline"`
+	// Ids is a list of ids that this override applies to.
+	Ids []string
+}
+
+type overridesYAML []map[string]overrideYAML
+
+// loadOverrides marshals the YAML file at path into a map of overrides.
+func loadOverrides(path string) (overridesYAML, error) {
+	ov := overridesYAML{}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	err = strictyaml.Unmarshal(data, &ov)
+	if err != nil {
+		return nil, err
+	}
+	return ov, nil
 }
 
 // parseOverrideNameId is broken out for ease of testing.
@@ -98,10 +129,12 @@ func parseOverrideNameId(key string) (Name, string, error) {
 	return name, id, nil
 }
 
-// loadAndParseOverrideLimits loads override limits from YAML, validates them,
-// and parses them into a map of limits keyed by 'Name:id'.
-func loadAndParseOverrideLimits(path string) (limits, error) {
-	fromFile, err := loadLimits(path)
+// loadAndParseOverrideLimitsDeprecated loads override limits from YAML,
+// validates them, and parses them into a map of limits keyed by 'Name:id'.
+//
+// TODO(#7198): Remove this.
+func loadAndParseOverrideLimitsDeprecated(path string) (limits, error) {
+	fromFile, err := loadDefaults(path)
 	if err != nil {
 		return nil, err
 	}
@@ -127,8 +160,52 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 			// and compute the hash here.
 			id = string(core.HashNames(strings.Split(id, ",")))
 		}
+		v.name = name
 		v.isOverride = true
 		parsed[joinWithColon(name.EnumString(), id)] = precomputeLimit(v)
+	}
+	return parsed, nil
+}
+
+// loadAndParseOverrideLimits loads override limits from YAML. The YAML file
+// must be formatted as a list of maps, where each map has a single key
+// representing the limit name and a value that is a map containing the limit
+// fields and an additional 'ids' field that is a list of ids that this override
+// applies to.
+func loadAndParseOverrideLimits(path string) (limits, error) {
+	fromFile, err := loadOverrides(path)
+	if err != nil {
+		return nil, err
+	}
+	parsed := make(limits)
+
+	for _, ov := range fromFile {
+		for k, v := range ov {
+			err = validateLimit(v.limit)
+			if err != nil {
+				return nil, fmt.Errorf("validating override limit %q: %w", k, err)
+			}
+			name, ok := stringToName[k]
+			if !ok {
+				return nil, fmt.Errorf("unrecognized name %q in override limit, must be one of %v", k, limitNames)
+			}
+			v.limit.name = name
+			v.limit.isOverride = true
+			for _, id := range v.Ids {
+				err = validateIdForName(name, id)
+				if err != nil {
+					return nil, fmt.Errorf(
+						"validating name %s and id %q for override limit %q: %w", name, id, k, err)
+				}
+				if name == CertificatesPerFQDNSet {
+					// FQDNSet hashes are not a nice thing to ask for in a
+					// config file, so we allow the user to specify a
+					// comma-separated list of FQDNs and compute the hash here.
+					id = string(core.HashNames(strings.Split(id, ",")))
+				}
+				parsed[joinWithColon(name.EnumString(), id)] = precomputeLimit(v.limit)
+			}
+		}
 	}
 	return parsed, nil
 }
@@ -136,7 +213,7 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 // loadAndParseDefaultLimits loads default limits from YAML, validates them, and
 // parses them into a map of limits keyed by 'Name'.
 func loadAndParseDefaultLimits(path string) (limits, error) {
-	fromFile, err := loadLimits(path)
+	fromFile, err := loadDefaults(path)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +228,66 @@ func loadAndParseDefaultLimits(path string) (limits, error) {
 		if !ok {
 			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, limitNames)
 		}
+		v.name = name
 		parsed[name.EnumString()] = precomputeLimit(v)
 	}
 	return parsed, nil
+}
+
+type limitRegistry struct {
+	// defaults stores default limits by 'name'.
+	defaults limits
+
+	// overrides stores override limits by 'name:id'.
+	overrides limits
+}
+
+func newLimitRegistry(defaults, overrides string) (*limitRegistry, error) {
+	var err error
+	registry := &limitRegistry{}
+	registry.defaults, err = loadAndParseDefaultLimits(defaults)
+	if err != nil {
+		return nil, err
+	}
+
+	if overrides == "" {
+		// No overrides specified, initialize an empty map.
+		registry.overrides = make(limits)
+		return registry, nil
+	}
+
+	registry.overrides, err = loadAndParseOverrideLimitsDeprecated(overrides)
+	if err != nil {
+		// TODO(#7198): Leave this, remove the call above.
+		registry.overrides, err = loadAndParseOverrideLimits(overrides)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return registry, nil
+}
+
+// getLimit returns the limit for the specified by name and bucketKey, name is
+// required, bucketKey is optional. If bucketkey is empty, the default for the
+// limit specified by name is returned. If no default limit exists for the
+// specified name, errLimitDisabled is returned.
+func (l *limitRegistry) getLimit(name Name, bucketKey string) (limit, error) {
+	if !name.isValid() {
+		// This should never happen. Callers should only be specifying the limit
+		// Name enums defined in this package.
+		return limit{}, fmt.Errorf("specified name enum %q, is invalid", name)
+	}
+	if bucketKey != "" {
+		// Check for override.
+		ol, ok := l.overrides[bucketKey]
+		if ok {
+			return ol, nil
+		}
+	}
+	dl, ok := l.defaults[name.EnumString()]
+	if ok {
+		return dl, nil
+	}
+	return limit{}, errLimitDisabled
 }

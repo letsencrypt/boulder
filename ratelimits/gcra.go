@@ -65,7 +65,7 @@ func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision 
 // or greater. A cost will only be refunded up to the burst capacity of the
 // limit. A partial refund is still considered successful.
 func maybeRefund(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision {
-	if cost <= 0 || cost > rl.Burst {
+	if cost < 0 || cost > rl.Burst {
 		// The condition above is checked in the Refund method of Limiter. If
 		// this panic is reached, it means that the caller has introduced a bug.
 		panic("invalid cost for maybeRefund")

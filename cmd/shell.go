@@ -31,7 +31,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"google.golang.org/grpc/grpclog"
 
 	"github.com/letsencrypt/boulder/core"
@@ -285,6 +285,12 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{
 		ErrorLog: promLogger{logger},
 	}))
+
+	if addr == "" {
+		logger.Err("Debug listen address is not configured")
+		os.Exit(1)
+	}
+	logger.Infof("Debug server listening on %s", addr)
 
 	server := http.Server{
 		Addr:        addr,

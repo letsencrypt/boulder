@@ -107,46 +107,8 @@ def main():
     if not startservers.check():
         raise(Exception("startservers.check failed"))
 
-    # This test is flaky, so it's temporarily disabled.
-    # TODO(#4583): Re-enable this test.
-    #check_slow_queries()
-
     global exit_status
     exit_status = 0
-
-def check_slow_queries():
-    """Checks that we haven't run any slow queries during the integration test.
-
-    This depends on flags set on mysqld in docker-compose.yml.
-
-    We skip the boulder_sa_test database because we manually run a bunch of
-    non-indexed queries in unittests. We skip actions by the setup and root
-    users because they're known to be non-indexed. Similarly we skip the
-    cert_checker, mailer, and janitor's work because they are known to be
-    slow (though we should eventually improve these).
-    The SELECT ... IN () on the authz2 table shows up in the slow query log
-    a lot. Presumably when there are a lot of entries in the IN() argument
-    and the table is small, it's not efficient to use the index. But we
-    should dig into this more.
-    """
-    query = """
-        SELECT * FROM mysql.slow_log
-            WHERE db != 'boulder_sa_test'
-            AND user_host NOT LIKE "test_setup%"
-            AND user_host NOT LIKE "root%"
-            AND user_host NOT LIKE "cert_checker%"
-            AND user_host NOT LIKE "mailer%"
-            AND user_host NOT LIKE "janitor%"
-            AND sql_text NOT LIKE 'SELECT status, expires FROM authz2 WHERE id IN %'
-            AND sql_text NOT LIKE '%LEFT JOIN orderToAuthz2 %'
-        \G
-    """
-    output = subprocess.check_output(
-      ["mysql", "-h", "boulder-proxysql", "-e", query],
-      stderr=subprocess.STDOUT).decode()
-    if len(output) > 0:
-        print(output)
-        raise Exception("Found slow queries in the slow query log")
 
 def run_chisel(test_case_filter):
     for key, value in inspect.getmembers(v2_integration):

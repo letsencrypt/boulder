@@ -45,10 +45,7 @@
 				}
 			}
 		},
-		"features": {
-			"StoreRevokerInfo": true,
-			"ROCSPStage6": true
-		}
+		"features": {}
 	},
 	"syslog": {
 		"stdoutlevel": 6,

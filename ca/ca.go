@@ -120,8 +120,8 @@ func NewCertificateAuthorityImpl(
 		certBackdate = time.Hour
 	}
 
-	if serialPrefix <= 0 || serialPrefix >= 256 {
-		err = errors.New("Must have a positive non-zero serial prefix less than 256 for CA.")
+	if serialPrefix < 1 || serialPrefix > 127 {
+		err = errors.New("serial prefix must be between 1 and 127")
 		return nil, err
 	}
 
@@ -365,7 +365,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		// contained in the CSR, unless we have an allowlist of registration IDs
 		// for ECDSA, in which case switch all not-allowed accounts to RSA issuance.
 		alg := csr.PublicKeyAlgorithm
-		if alg == x509.ECDSA && !features.Enabled(features.ECDSAForAll) && ca.ecdsaAllowList != nil && !ca.ecdsaAllowList.permitted(issueReq.RegistrationID) {
+		if alg == x509.ECDSA && !features.Get().ECDSAForAll && ca.ecdsaAllowList != nil && !ca.ecdsaAllowList.permitted(issueReq.RegistrationID) {
 			alg = x509.RSA
 		}
 		issuer, ok = ca.issuers.byAlg[alg]

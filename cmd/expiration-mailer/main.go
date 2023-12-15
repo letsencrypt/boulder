@@ -479,7 +479,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 
 		var certs []certDERWithRegID
 		var err error
-		if features.Enabled(features.ExpirationMailerUsesJoin) {
+		if features.Get().ExpirationMailerUsesJoin {
 			certs, err = m.getCertsWithJoin(ctx, left, right, expiresIn)
 		} else {
 			certs, err = m.getCerts(ctx, left, right, expiresIn)
@@ -644,7 +644,7 @@ func (ds durationSlice) Swap(a, b int) {
 
 type Config struct {
 	Mailer struct {
-		DebugAddr string `validate:"required,hostname_port"`
+		DebugAddr string `validate:"omitempty,hostname_port"`
 		DB        cmd.DBConfig
 		cmd.SMTPConfig
 
@@ -692,7 +692,7 @@ type Config struct {
 		// during the SMTP connection (as opposed to the gRPC connections).
 		SMTPTrustedRootFile string
 
-		Features map[string]bool
+		Features features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -785,6 +785,7 @@ func initStats(stats prometheus.Registerer) mailerStats {
 }
 
 func main() {
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	certLimit := flag.Int("cert_limit", 0, "Count of certificates to process per expiration period")
 	reconnBase := flag.Duration("reconnectBase", 1*time.Second, "Base sleep duration between reconnect attempts")
@@ -800,8 +801,12 @@ func main() {
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-	err = features.Set(c.Mailer.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+
+	features.Set(c.Mailer.Features)
+
+	if *debugAddr != "" {
+		c.Mailer.DebugAddr = *debugAddr
+	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Mailer.DebugAddr)
 	defer oTelShutdown(context.Background())

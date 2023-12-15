@@ -9,7 +9,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func Test_decide(t *testing.T) {
+func TestDecide(t *testing.T) {
 	clk := clock.NewFake()
 	limit := precomputeLimit(
 		limit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}},
@@ -133,7 +133,7 @@ func Test_decide(t *testing.T) {
 	test.AssertEquals(t, d.ResetIn, time.Second*5)
 }
 
-func Test_maybeRefund(t *testing.T) {
+func TestMaybeRefund(t *testing.T) {
 	clk := clock.NewFake()
 	limit := precomputeLimit(
 		limit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}},
@@ -148,6 +148,12 @@ func Test_maybeRefund(t *testing.T) {
 
 	// Refund back to 10.
 	d = maybeRefund(clk, limit, d.newTAT, 1)
+	test.AssertEquals(t, d.Remaining, int64(10))
+	test.AssertEquals(t, d.RetryIn, time.Duration(0))
+	test.AssertEquals(t, d.ResetIn, time.Duration(0))
+
+	// Refund 0, we should still have 10.
+	d = maybeRefund(clk, limit, d.newTAT, 0)
 	test.AssertEquals(t, d.Remaining, int64(10))
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
 	test.AssertEquals(t, d.ResetIn, time.Duration(0))

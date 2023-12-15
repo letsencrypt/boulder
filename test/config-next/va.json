@@ -1,12 +1,11 @@
 {
 	"va": {
 		"userAgent": "boulder",
-		"debugAddr": ":8004",
 		"dnsTries": 3,
 		"dnsProvider": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
-				"service": "dns",
+				"service": "doh",
 				"domain": "service.consul"
 			}
 		},
@@ -20,7 +19,6 @@
 		},
 		"grpc": {
 			"maxConnectionAge": "30s",
-			"address": ":9092",
 			"services": {
 				"va.VA": {
 					"clientNames": [
@@ -42,7 +40,8 @@
 		"features": {
 			"EnforceMultiVA": true,
 			"MultiVAFullResults": true,
-			"CAAAfterValidation": true
+			"CAAAfterValidation": true,
+			"DOH": true
 		},
 		"remoteVAs": [
 			{

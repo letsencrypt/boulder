@@ -93,7 +93,7 @@
 		},
 		"expiry": "7776000s",
 		"backdate": "1h",
-		"serialPrefix": 255,
+		"serialPrefix": 127,
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
 		"lifespanCRL": "216h",
@@ -106,9 +106,7 @@
 		"ocspLogMaxLength": 4000,
 		"ocspLogPeriod": "500ms",
 		"ecdsaAllowListFilename": "test/config/ecdsaAllowList.yml",
-		"features": {
-			"ROCSPStage7": true
-		}
+		"features": {}
 	},
 	"pa": {
 		"challenges": {

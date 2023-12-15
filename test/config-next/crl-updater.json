@@ -1,6 +1,5 @@
 {
 	"crlUpdater": {
-		"debugAddr": ":8021",
 		"tls": {
 			"caCertFile": "test/grpc-creds/minica.pem",
 			"certFile": "test/grpc-creds/crl-updater.boulder/cert.pem",

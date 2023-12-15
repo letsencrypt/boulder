@@ -16,7 +16,7 @@ import (
 // IMPORTANT: If you add a new limit Name, you MUST add:
 //   - it to the nameToString mapping,
 //   - an entry for it in the validateIdForName(), and
-//   - provide a Bucket constructor in bucket.go.
+//   - provide the appropriate constructors in bucket.go.
 type Name int
 
 const (
@@ -41,21 +41,31 @@ const (
 	NewOrdersPerAccount
 
 	// FailedAuthorizationsPerAccount uses bucket key 'enum:regId', where regId
-	// is the ACME registration Id of the account.
+	// is the ACME registration Id of the account. Cost MUST be consumed from
+	// this bucket only when the authorization is considered "failed". It SHOULD
+	// be checked before new authorizations are created.
 	FailedAuthorizationsPerAccount
 
 	// CertificatesPerDomain uses bucket key 'enum:domain', where domain is a
-	// domain name in the issued certificate.
+	// domain name in the certificate.
 	CertificatesPerDomain
 
-	// CertificatesPerDomainPerAccount uses bucket key 'enum:regId', where regId
-	// is the ACME registration Id of the account. This limit is never checked
-	// or enforced by the Limiter. Instead, it is used to override the
-	// CertificatesPerDomain limit for the specified account.
+	// CertificatesPerDomainPerAccount uses two different bucket keys depending
+	// on the context:
+	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
+	//    where regId is the ACME registration Id of the account.
+	//  - When referenced in a transaction: uses bucket key 'enum:regId:domain',
+	//    where regId is the ACME registration Id of the account and domain is a
+	//    domain name in the certificate.
+	//
+	// When overrides to the CertificatesPerDomainPerAccount are configured for a
+	// subscriber, the cost:
+	//   - MUST be consumed from each CertificatesPerDomainPerAccount bucket and
+	//   - SHOULD be consumed from each CertificatesPerDomain bucket, if possible.
 	CertificatesPerDomainPerAccount
 
 	// CertificatesPerFQDNSet uses bucket key 'enum:fqdnSet', where fqdnSet is a
-	// hashed set of unique eTLD+1 domain names in the issued certificate.
+	// hashed set of unique eTLD+1 domain names in the certificate.
 	//
 	// Note: When this is referenced in an overrides file, the fqdnSet MUST be
 	// passed as a comma-separated list of domain names.
@@ -137,7 +147,29 @@ func validateRegId(id string) error {
 func validateDomain(id string) error {
 	err := policy.ValidDomain(id)
 	if err != nil {
-		return fmt.Errorf("invalid domain, %q must be formatted 'domain'", id)
+		return fmt.Errorf("invalid domain, %q must be formatted 'domain': %w", id, err)
+	}
+	return nil
+}
+
+// validateRegIdDomain validates that the provided string is formatted
+// 'regId:domain', where regId is an ACME registration Id and domain is a domain
+// name.
+func validateRegIdDomain(id string) error {
+	regIdDomain := strings.Split(id, ":")
+	if len(regIdDomain) != 2 {
+		return fmt.Errorf(
+			"invalid regId:domain, %q must be formatted 'regId:domain'", id)
+	}
+	err := validateRegId(regIdDomain[0])
+	if err != nil {
+		return fmt.Errorf(
+			"invalid regId, %q must be formatted 'regId:domain'", id)
+	}
+	err = policy.ValidDomain(regIdDomain[1])
+	if err != nil {
+		return fmt.Errorf(
+			"invalid domain, %q must be formatted 'regId:domain': %w", id, err)
 	}
 	return nil
 }
@@ -154,7 +186,7 @@ func validateFQDNSet(id string) error {
 		err := policy.ValidDomain(domain)
 		if err != nil {
 			return fmt.Errorf(
-				"invalid domain, %q must be formatted 'fqdnSet'", id)
+				"invalid domain, %q must be formatted 'fqdnSet': %w", id, err)
 		}
 	}
 	return nil
@@ -170,8 +202,17 @@ func validateIdForName(name Name, id string) error {
 		// 'enum:ipv6rangeCIDR'
 		return validIPv6RangeCIDR(id)
 
-	case NewOrdersPerAccount, FailedAuthorizationsPerAccount, CertificatesPerDomainPerAccount:
+	case NewOrdersPerAccount, FailedAuthorizationsPerAccount:
 		// 'enum:regId'
+		return validateRegId(id)
+
+	case CertificatesPerDomainPerAccount:
+		// 'enum:regId:domain' for transaction
+		err := validateRegIdDomain(id)
+		if err == nil {
+			return nil
+		}
+		// 'enum:regId' for overrides
 		return validateRegId(id)
 
 	case CertificatesPerDomain:

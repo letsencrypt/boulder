@@ -145,7 +145,8 @@ func TestDNSValidationNoServer(t *testing.T) {
 		metrics.NoopRegisterer,
 		clock.New(),
 		1,
-		log)
+		log,
+		nil)
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), dnsChallenge())
 
