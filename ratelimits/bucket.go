@@ -288,10 +288,8 @@ func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64
 		return nil, err
 	}
 	perAccountLimit, err := builder.getLimit(CertificatesPerDomainPerAccount, perAccountLimitBucketKey)
-	if err != nil {
-		if !errors.Is(err, errLimitDisabled) {
-			return nil, err
-		}
+	if err != nil && !errors.Is(err, errLimitDisabled) {
+		return nil, err
 	}
 
 	var txns []Transaction
@@ -316,12 +314,8 @@ func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64
 			txns = append(txns, txn)
 
 			perDomainLimit, err := builder.getLimit(CertificatesPerDomain, perDomainBucketKey)
-			if err != nil {
-				if !errors.Is(err, errLimitDisabled) {
-					return nil, err
-				}
-				// Skip disabled per domain limit.
-				continue
+			if err != nil && !errors.Is(err, errLimitDisabled) {
+				return nil, err
 			} else {
 				// Add a spend-only transaction for each per domain bucket.
 				txn, err = newSpendOnlyTransaction(perDomainLimit, perDomainBucketKey, 1)
@@ -332,12 +326,8 @@ func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64
 			}
 		} else {
 			perDomainLimit, err := builder.getLimit(CertificatesPerDomain, perDomainBucketKey)
-			if err != nil {
-				if !errors.Is(err, errLimitDisabled) {
-					return nil, err
-				}
-				// Skip disabled per domain limit.
-				continue
+			if err != nil && !errors.Is(err, errLimitDisabled) {
+				return nil, err
 			} else {
 				// Add a check-and-spend transaction for each per domain bucket.
 				txn, err := newTransaction(perDomainLimit, perDomainBucketKey, 1)
