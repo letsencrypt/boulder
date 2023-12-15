@@ -87,6 +87,11 @@ type Config struct {
 
 	// DOH enables DNS-over-HTTPS queries for validation
 	DOH bool
+
+	// RVACAARechecking causes the VA to instruct each configured RVA to recheck
+	// CAA records when set to true. When false, only the VA will perform the CAA
+	// recheck.
+	RVACAARechecking bool
 }
 
 var fMu = new(sync.RWMutex)

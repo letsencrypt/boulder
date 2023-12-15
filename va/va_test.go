@@ -156,8 +156,11 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 	return va, logger
 }
 
-func setupRemote(srv *httptest.Server, userAgent string) vapb.VAClient {
+func setupRemote(srv *httptest.Server, userAgent string, clientOverride *bdns.Client) vapb.VAClient {
 	innerVA, _ := setup(srv, 0, userAgent, nil)
+	if clientOverride != nil {
+		innerVA.dnsClient = *clientOverride
+	}
 	return &localRemoteVA{remote: *innerVA}
 }
 
@@ -210,6 +213,10 @@ func (v cancelledVA) PerformValidation(_ context.Context, _ *vapb.PerformValidat
 	return nil, context.Canceled
 }
 
+func (v cancelledVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return nil, context.Canceled
+}
+
 // brokenRemoteVA is a mock for the vapb.VAClient interface mocked to
 // always return errors.
 type brokenRemoteVA struct{}
@@ -223,6 +230,10 @@ func (b brokenRemoteVA) PerformValidation(_ context.Context, _ *vapb.PerformVali
 	return nil, errBrokenRemoteVA
 }
 
+func (b brokenRemoteVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return nil, errBrokenRemoteVA
+}
+
 // localRemoteVA is a wrapper which fulfills the VAClient interface, but then
 // forwards requests directly to its inner ValidationAuthorityImpl rather than
 // over the network. This lets a local in-memory mock VA act like a remote VA.
@@ -232,6 +243,10 @@ type localRemoteVA struct {
 
 func (lrva localRemoteVA) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return lrva.remote.PerformValidation(ctx, req)
+}
+
+func (lrva localRemoteVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return lrva.remote.IsCAAValid(ctx, req)
 }
 
 func TestValidateMalformedChallenge(t *testing.T) {
@@ -365,8 +380,8 @@ func TestMultiVA(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2)
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil)
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -572,8 +587,8 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2)
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil)
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -660,8 +675,8 @@ func TestMultiVAPolicy(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2)
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil)
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -740,11 +755,11 @@ func TestDetailedError(t *testing.T) {
 	}
 }
 
-func TestLogRemoteValidationDifferentials(t *testing.T) {
+func TestLogRemoteDifferentials(t *testing.T) {
 	// Create some remote VAs
-	remoteVA1 := setupRemote(nil, "remote 1")
-	remoteVA2 := setupRemote(nil, "remote 2")
-	remoteVA3 := setupRemote(nil, "remote 3")
+	remoteVA1 := setupRemote(nil, "remote 1", nil)
+	remoteVA2 := setupRemote(nil, "remote 2", nil)
+	remoteVA3 := setupRemote(nil, "remote 3", nil)
 	remoteVAs := []RemoteVA{
 		{remoteVA1, "remote 1"},
 		{remoteVA2, "remote 2"},
@@ -760,13 +775,13 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 	testCases := []struct {
 		name          string
 		primaryResult *probs.ProblemDetails
-		remoteProbs   []*remoteValidationResult
+		remoteProbs   []*remoteVAResult
 		expectedLog   string
 	}{
 		{
 			name:          "remote and primary results equal (all nil)",
 			primaryResult: nil,
-			remoteProbs: []*remoteValidationResult{
+			remoteProbs: []*remoteVAResult{
 				{Problem: nil, VAHostname: "remoteA"},
 				{Problem: nil, VAHostname: "remoteB"},
 				{Problem: nil, VAHostname: "remoteC"},
@@ -775,7 +790,7 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 		{
 			name:          "remote and primary results equal (not nil)",
 			primaryResult: egProbA,
-			remoteProbs: []*remoteValidationResult{
+			remoteProbs: []*remoteVAResult{
 				{Problem: egProbA, VAHostname: "remoteA"},
 				{Problem: egProbA, VAHostname: "remoteB"},
 				{Problem: egProbA, VAHostname: "remoteC"},
@@ -784,7 +799,7 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 		{
 			name:          "remote and primary differ (primary nil)",
 			primaryResult: nil,
-			remoteProbs: []*remoteValidationResult{
+			remoteProbs: []*remoteVAResult{
 				{Problem: egProbA, VAHostname: "remoteA"},
 				{Problem: nil, VAHostname: "remoteB"},
 				{Problem: egProbB, VAHostname: "remoteC"},
@@ -794,7 +809,7 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 		{
 			name:          "remote and primary differ (primary not nil)",
 			primaryResult: egProbA,
-			remoteProbs: []*remoteValidationResult{
+			remoteProbs: []*remoteVAResult{
 				{Problem: nil, VAHostname: "remoteA"},
 				{Problem: egProbB, VAHostname: "remoteB"},
 				{Problem: nil, VAHostname: "remoteC"},
@@ -807,7 +822,7 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mockLog.Clear()
 
-			localVA.logRemoteValidationDifferentials(
+			localVA.logRemoteDifferentials(
 				"example.com", 1999, "blorpus-01", tc.primaryResult, tc.remoteProbs)
 
 			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")

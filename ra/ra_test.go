@@ -157,14 +157,23 @@ func numAuthorizations(o *corepb.Order) int {
 }
 
 type DummyValidationAuthority struct {
-	request      chan *vapb.PerformValidationRequest
-	ResultError  error
-	ResultReturn *vapb.ValidationResult
+	performValidationRequest             chan *vapb.PerformValidationRequest
+	PerformValidationRequestResultError  error
+	PerformValidationRequestResultReturn *vapb.ValidationResult
+
+	isCAAValidRequest        chan *vapb.IsCAAValidRequest
+	IsCAAValidError          error
+	IsCAAValidResponseReturn *vapb.IsCAAValidResponse
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
-	dva.request <- req
-	return dva.ResultReturn, dva.ResultError
+	dva.performValidationRequest <- req
+	return dva.PerformValidationRequestResultReturn, dva.PerformValidationRequestResultError
+}
+
+func (dva *DummyValidationAuthority) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	dva.isCAAValidRequest <- req
+	return dva.IsCAAValidResponseReturn, dva.IsCAAValidError
 }
 
 var (
@@ -323,7 +332,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 
 	saDBCleanUp := test.ResetBoulderTestDatabase(t)
 
-	va := &DummyValidationAuthority{request: make(chan *vapb.PerformValidationRequest, 1)}
+	va := &DummyValidationAuthority{
+		performValidationRequest: make(chan *vapb.PerformValidationRequest, 1),
+		isCAAValidRequest:        make(chan *vapb.IsCAAValidRequest, 1),
+	}
 
 	pa, err := policy.New(map[core.AcmeChallenge]bool{
 		core.ChallengeTypeHTTP01: true,
@@ -818,7 +830,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 	authzPB, err := bgrpc.AuthzToPB(authz)
 	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
 
-	va.ResultReturn = &vapb.ValidationResult{
+	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed: []byte("192.168.0.1"),
@@ -847,7 +859,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// We know this is OK because of TestNewAuthorization
 	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
 
-	va.ResultReturn = &vapb.ValidationResult{
+	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed: []byte("192.168.0.1"),
@@ -869,7 +881,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 	var vaRequest *vapb.PerformValidationRequest
 	select {
-	case r := <-va.request:
+	case r := <-va.performValidationRequest:
 		vaRequest = r
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
@@ -908,7 +920,7 @@ func TestPerformValidationVAError(t *testing.T) {
 
 	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
 
-	va.ResultError = fmt.Errorf("Something went wrong")
+	va.PerformValidationRequestResultError = fmt.Errorf("Something went wrong")
 
 	challIdx := dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
@@ -920,7 +932,7 @@ func TestPerformValidationVAError(t *testing.T) {
 
 	var vaRequest *vapb.PerformValidationRequest
 	select {
-	case r := <-va.request:
+	case r := <-va.performValidationRequest:
 		vaRequest = r
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")

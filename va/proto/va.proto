@@ -7,6 +7,7 @@ import "core/proto/core.proto";
 
 service VA {
   rpc PerformValidation(PerformValidationRequest) returns (ValidationResult) {}
+  rpc IsCAAValid(IsCAAValidRequest) returns (IsCAAValidResponse) {}
 }
 
 service CAA {
