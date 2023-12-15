@@ -21,22 +21,22 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
-var caaBrokenDNSClient = errors.New("dnsClient is broken")
+var errCAABrokenDNSClient = errors.New("dnsClient is broken")
 
 // caaBrokenDNS implements the `dns.DNSClient` interface, but always returns
 // errors.
 type caaBrokenDNS struct{}
 
 func (b caaBrokenDNS) LookupTXT(_ context.Context, hostname string) ([]string, error) {
-	return nil, caaBrokenDNSClient
+	return nil, errCAABrokenDNSClient
 }
 
 func (b caaBrokenDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
-	return nil, caaBrokenDNSClient
+	return nil, errCAABrokenDNSClient
 }
 
 func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, error) {
-	return nil, "", caaBrokenDNSClient
+	return nil, "", errCAABrokenDNSClient
 }
 
 // caaHijackedDNS implements the `dns.DNSClient` interface with a set of useful
@@ -679,14 +679,6 @@ func TestMultiVACAARechecking(t *testing.T) {
 		EnforceMultiVA:     true,
 		MultiVAFullResults: true,
 	}
-
-	/*
-		expectedInternalErrLine := fmt.Sprintf(
-			`ERR: \[AUDIT\] Remote VA "brokenVA".IsCAAValidRequest failed: %s`,
-			errBrokenRemoteVA.Error())
-	*/
-
-	//			localVADNSClientOverride: brokenDNSClient,
 
 	testCases := []struct {
 		name                     string
