@@ -276,7 +276,7 @@ func setup(t *testing.T) *testCtx {
 	}
 }
 
-func TestFailNoSerialPrefix(t *testing.T) {
+func TestSerialPrefix(t *testing.T) {
 	testCtx := setup(t)
 
 	_, err := NewCertificateAuthorityImpl(
@@ -295,6 +295,23 @@ func TestFailNoSerialPrefix(t *testing.T) {
 		nil,
 		testCtx.fc)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
+
+	_, err = NewCertificateAuthorityImpl(
+		nil,
+		nil,
+		nil,
+		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		128,
+		testCtx.maxNames,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		testCtx.stats,
+		nil,
+		nil,
+		testCtx.fc)
+	test.AssertError(t, err, "CA should have failed with too-large SerialPrefix")
 }
 
 type TestCertificateIssuance struct {
