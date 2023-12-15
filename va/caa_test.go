@@ -655,14 +655,14 @@ func TestMultiVACAARechecking(t *testing.T) {
 	remoteVA2 := setupRemote(nil, remoteUA2, nil)
 	remoteVA3 := setupRemote(nil, remoteUA3, nil)
 
-	var bClient bdns.Client
+	var bClient, hClient bdns.Client
 	bClient = caaBrokenDNS{}
 	brokenDNSClient := &bClient
 	brokenVA1 := setupRemote(nil, brokenUA, brokenDNSClient)
 	brokenVA2 := setupRemote(nil, brokenUA, brokenDNSClient)
 	brokenVA3 := setupRemote(nil, brokenUA, brokenDNSClient)
 
-	var hClient bdns.Client
+	// Returns incorrect results
 	hClient = caaHijackedDNS{}
 	hijackedDNSClient := &hClient
 	hijackedVA1 := setupRemote(nil, hijackedUA, hijackedDNSClient)
