@@ -90,7 +90,7 @@ type Config struct {
 		// generate OCSP URLs to purge during revocation.
 		IssuerCerts []string `validate:"min=1,dive,required"`
 
-		Features map[string]bool
+		Features features.Config
 	}
 
 	PA cmd.PAConfig
@@ -113,8 +113,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.RA.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.RA.Features)
 
 	if *grpcAddr != "" {
 		c.RA.GRPC.Address = *grpcAddr
@@ -217,7 +216,7 @@ func main() {
 	}
 	pendingAuthorizationLifetime := time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
-	if features.Enabled(features.AsyncFinalize) && c.RA.FinalizeTimeout.Duration == 0 {
+	if features.Get().AsyncFinalize && c.RA.FinalizeTimeout.Duration == 0 {
 		cmd.Fail("finalizeTimeout must be supplied when AsyncFinalize feature is enabled")
 	}
 

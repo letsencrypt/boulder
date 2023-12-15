@@ -381,7 +381,7 @@ func (va *ValidationAuthorityImpl) validate(
 	// Create this channel outside of the feature-conditional block so that it is
 	// also in scope for the matching block below.
 	ch := make(chan *probs.ProblemDetails, 1)
-	if !features.Enabled(features.CAAAfterValidation) {
+	if !features.Get().CAAAfterValidation {
 		// va.checkCAA accepts wildcard identifiers and handles them appropriately so
 		// we can dispatch `checkCAA` with the provided `identifier` instead of
 		// `baseIdentifier`
@@ -405,7 +405,7 @@ func (va *ValidationAuthorityImpl) validate(
 		return validationRecords, prob
 	}
 
-	if !features.Enabled(features.CAAAfterValidation) {
+	if !features.Get().CAAAfterValidation {
 		for i := 0; i < cap(ch); i++ {
 			if extraProblem := <-ch; extraProblem != nil {
 				return validationRecords, extraProblem
@@ -546,7 +546,7 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 
 		// If MultiVAFullResults isn't enabled then return early whenever the
 		// success or failure threshold is met.
-		if !features.Enabled(features.MultiVAFullResults) {
+		if !features.Get().MultiVAFullResults {
 			if good >= required {
 				state = "success"
 				return nil
@@ -703,7 +703,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
 	} else if remoteResults != nil {
-		if !features.Enabled(features.EnforceMultiVA) && features.Enabled(features.MultiVAFullResults) {
+		if !features.Get().EnforceMultiVA && features.Get().MultiVAFullResults {
 			// If we're not going to enforce multi VA but we are logging the
 			// differentials then collect and log the remote results in a separate go
 			// routine to avoid blocking the primary VA.
@@ -720,7 +720,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 			// `processRemoteResults` set the challenge status to valid so the
 			// validationTime metrics increment has the correct result label.
 			challenge.Status = core.StatusValid
-		} else if features.Enabled(features.EnforceMultiVA) {
+		} else if features.Get().EnforceMultiVA {
 			remoteProb := va.processRemoteResults(
 				req.Domain,
 				req.Authz.RegID,

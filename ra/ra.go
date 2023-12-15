@@ -1069,7 +1069,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Steps 3 (issuance) and 4 (cleanup) are done inside a helper function so
 	// that we can control whether or not that work happens asynchronously.
-	if features.Enabled(features.AsyncFinalize) {
+	if features.Get().AsyncFinalize {
 		// We do this work in a goroutine so that we can better handle latency from
 		// getting SCTs and writing the (pre)certificate to the database. This lets
 		// us return the order in the Processing state to the client immediately,
@@ -1272,7 +1272,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	csr *x509.CertificateRequest,
 	acctID accountID,
 	oID orderID) (*x509.Certificate, error) {
-	if features.Enabled(features.AsyncFinalize) {
+	if features.Get().AsyncFinalize {
 		// If we're in async mode, use a context with a much longer timeout.
 		var cancel func()
 		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), ra.finalizeTimeout)

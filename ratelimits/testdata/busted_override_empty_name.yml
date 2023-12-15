@@ -1,4 +1,5 @@
-":10.0.0.2":
-  burst: 40
-  count: 40
-  period: 1s
+- "":
+    burst: 40
+    count: 40
+    period: 1s
+    ids: [10.0.0.2]

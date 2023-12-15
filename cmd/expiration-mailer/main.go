@@ -479,7 +479,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 
 		var certs []certDERWithRegID
 		var err error
-		if features.Enabled(features.ExpirationMailerUsesJoin) {
+		if features.Get().ExpirationMailerUsesJoin {
 			certs, err = m.getCertsWithJoin(ctx, left, right, expiresIn)
 		} else {
 			certs, err = m.getCerts(ctx, left, right, expiresIn)
@@ -692,7 +692,7 @@ type Config struct {
 		// during the SMTP connection (as opposed to the gRPC connections).
 		SMTPTrustedRootFile string
 
-		Features map[string]bool
+		Features features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -801,8 +801,8 @@ func main() {
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-	err = features.Set(c.Mailer.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+
+	features.Set(c.Mailer.Features)
 
 	if *debugAddr != "" {
 		c.Mailer.DebugAddr = *debugAddr

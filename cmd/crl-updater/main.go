@@ -103,7 +103,7 @@ type Config struct {
 		// load of said run. The default is 1.
 		MaxAttempts int `validate:"omitempty,min=1"`
 
-		Features map[string]bool
+		Features features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -128,8 +128,7 @@ func main() {
 		c.CRLUpdater.DebugAddr = *debugAddr
 	}
 
-	err = features.Set(c.CRLUpdater.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.CRLUpdater.Features)
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLUpdater.DebugAddr)
 	defer oTelShutdown(context.Background())
