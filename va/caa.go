@@ -81,7 +81,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 					remoteCAAResults)
 			}()
 			// Since prob was nil and we're not enforcing the results from
-			// `processRemoteValidationResultsOuter` set the challenge status to
+			// `processRemoteCAARecheckResultsOuter` set the challenge status to
 			// valid so the validationTime metrics increment has the correct
 			// result label.
 			checkResult = "success"
