@@ -101,7 +101,6 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 				checkResult = "failure"
 				va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
-				// TODO(@pgporada) Change this metric to a more meaningful one.
 				va.metrics.remoteCAARecheckFailures.Inc()
 			} else {
 				checkResult = "success"
@@ -117,18 +116,19 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			"type":   req.ValidationMethod,
 			"result": checkResult,
 		}).Observe(localRecheckLatency.Seconds())
-		if prob != nil {
+		if prob == nil {
+			va.metrics.caaRecheckTime.With(prometheus.Labels{
+				"type":         req.ValidationMethod,
+				"result":       checkResult,
+				"problem_type": "",
+			}).Observe(recheckLatency.Seconds())
+		} else {
 			va.metrics.caaRecheckTime.With(prometheus.Labels{
 				"type":         req.ValidationMethod,
 				"result":       checkResult,
 				"problem_type": string(prob.Type),
 			}).Observe(recheckLatency.Seconds())
 		}
-		va.metrics.caaRecheckTime.With(prometheus.Labels{
-			"type":         req.ValidationMethod,
-			"result":       checkResult,
-			"problem_type": "",
-		}).Observe(recheckLatency.Seconds())
 	}
 
 	if prob == nil {
