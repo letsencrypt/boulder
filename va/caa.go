@@ -102,7 +102,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 				va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
 				// TODO(@pgporada) Change this metric to a more meaningful one.
-				va.metrics.remoteValidationFailures.Inc()
+				va.metrics.remoteCAARecheckFailures.Inc()
 			} else {
 				checkResult = "success"
 			}
