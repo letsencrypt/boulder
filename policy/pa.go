@@ -291,19 +291,9 @@ func ValidDomain(domain string) error {
 	return nil
 }
 
-// ValidWildcardDomain is like ValidDomain but it supports properly formatted
-// wildcard domains. It checks that a domain isn't:
-//   - empty
-//   - made of invalid DNS characters
-//   - longer than the maxDNSIdentifierLength
-//   - an IPv4 or IPv6 address
-//   - suffixed with just "."
-//   - made of too many DNS labels
-//   - made of any invalid DNS labels
-//   - suffixed with something other than an IANA registered TLD
-//   - exactly equal to an IANA registered TLD
-//
-// It does NOT ensure that the domain is absent from any PA blocked lists.
+// ValidWildcardDomain checks that the domain begins with *. followed by a
+// domain that passes ValidDomain. It does NOT ensure that the domain is absent
+// from any PA blocked lists.
 func ValidWildcardDomain(domain string) error {
 	// Names containing more than one wildcard are invalid.
 	if strings.Count(domain, "*") > 1 {
@@ -329,7 +319,6 @@ func ValidWildcardDomain(domain string) error {
 	if baseDomain == icannTLD {
 		return errICANNTLDWildcard
 	}
-
 	return ValidDomain(baseDomain)
 }
 
@@ -389,11 +378,7 @@ func ValidEmail(address string) error {
 //   - MUST NOT be a label-wise suffix match for a name on the block list,
 //     where comparison is case-independent (normalized to lower case)
 //
-// If this function returns an error, it will be of type MalformedRequestError
-// or RejectedIdentifierError
-//
-// In addition to the aformention checks this function also checks each wildcard
-// domain to enforce that:
+// If a domain contains a *, we additionally require:
 //   - There is at most one `*` wildcard character
 //   - That the wildcard character is the leftmost label
 //   - That the wildcard label is not immediately adjacent to a top level ICANN
@@ -402,8 +387,8 @@ func ValidEmail(address string) error {
 //     blocklist entry for "foo.example.com" should prevent issuance for
 //     "*.example.com")
 //
-// If any of the domains are not valid then an error with suberrors specific
-// to the rejected domains will be returned.
+// If any of the domains are not valid then an error with suberrors specific to
+// the rejected domains will be returned.
 func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
 	var subErrors []berrors.SubBoulderError
 	appendSubError := func(name string, err error) {
@@ -450,7 +435,7 @@ func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
 				continue
 			}
 		}
-		// Require no exact match against hostname block lists
+		// Require no match against hostname block lists
 		err := pa.checkHostLists(domain)
 		if err != nil {
 			appendSubError(domain, err)
