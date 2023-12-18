@@ -68,6 +68,10 @@ func NewOCSPImpl(
 		issuersByID[issuer.ID()] = issuer
 	}
 
+	if ocspLifetime < 1 || ocspLifetime > 240*time.Hour {
+		return nil, fmt.Errorf("invalid OCSP lifetime %q", ocspLifetime)
+	}
+
 	var ocspLogQueue *ocspLogQueue
 	if ocspLogMaxLength > 0 {
 		ocspLogQueue = newOCSPLogQueue(ocspLogMaxLength, ocspLogPeriod, stats, logger)
