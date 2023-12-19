@@ -3,6 +3,7 @@ package sa
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -223,11 +224,12 @@ func adjustMySQLConfig(conf *mysql.Config) error {
 	// `?max_statement_time=2`. A zero value in the DSN means these won't be
 	// sent on new connections.
 	if conf.ReadTimeout != 0 {
-		// In MariaDB, max_statement_time and long_query_time are both seconds.
+		// In MariaDB, max_statement_time and long_query_time are both seconds,
+		// but can have up to microsecond granularity.
 		// Note: in MySQL (which we don't use), max_statement_time is millis.
 		readTimeout := conf.ReadTimeout.Seconds()
-		setDefault("max_statement_time", fmt.Sprintf("%g", readTimeout*0.95))
-		setDefault("long_query_time", fmt.Sprintf("%g", readTimeout*0.80))
+		setDefault("max_statement_time", strconv.FormatFloat((readTimeout*0.95), 'f', 6, 64))
+		setDefault("long_query_time", strconv.FormatFloat((readTimeout*0.80), 'f', 6, 64))
 	}
 
 	omitZero("max_statement_time")
