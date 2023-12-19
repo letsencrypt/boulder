@@ -1,7 +1,6 @@
 package ratelimits
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -147,7 +146,7 @@ func validateRegId(id string) error {
 // where domain is a domain name.
 func validateDomain(id string) error {
 	err := policy.ValidDomain(id)
-	if err != nil && !errors.Is(err, policy.ErrWildcardNotSupported) {
+	if err != nil {
 		return fmt.Errorf("invalid domain, %q must be formatted 'domain': %w", id, err)
 	}
 	return nil
@@ -168,7 +167,7 @@ func validateRegIdDomain(id string) error {
 			"invalid regId, %q must be formatted 'regId:domain'", id)
 	}
 	err = policy.ValidDomain(regIdDomain[1])
-	if err != nil && !errors.Is(err, policy.ErrWildcardNotSupported) {
+	if err != nil {
 		return fmt.Errorf(
 			"invalid domain, %q must be formatted 'regId:domain': %w", id, err)
 	}
@@ -185,7 +184,7 @@ func validateFQDNSet(id string) error {
 	}
 	for _, domain := range domains {
 		err := policy.ValidDomain(domain)
-		if err != nil && !errors.Is(err, policy.ErrWildcardNotSupported) {
+		if err != nil {
 			return fmt.Errorf(
 				"invalid domain, %q must be formatted 'fqdnSet': %w", id, err)
 		}
