@@ -351,7 +351,7 @@ func ValidEmail(address string) error {
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	err = ValidDomain(domain)
+	err = ValidNonWildcardDomain(domain)
 	if err != nil {
 		return berrors.InvalidEmailError(
 			"contact email %q has invalid domain : %s",
