@@ -2337,22 +2337,6 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	return &emptypb.Empty{}, nil
 }
 
-// checkOrderNames validates that the RA's policy authority allows issuing for
-// each of the names in an order. If any of the names are unacceptable a
-// malformed or rejectedIdentifier error with suberrors for each rejected
-// identifier is returned.
-func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
-	idents := make([]identifier.ACMEIdentifier, len(names))
-	for i, name := range names {
-		idents[i] = identifier.DNSIdentifier(name)
-	}
-	err := ra.PA.WillingToIssueWildcards(idents)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 // GenerateOCSP looks up a certificate's status, then requests a signed OCSP
 // response for it from the CA. If the certificate status is not available
 // or the certificate is expired, it returns berrors.NotFoundError.
@@ -2409,7 +2393,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
-	err := ra.checkOrderNames(newOrder.Names)
+	err := ra.PA.WillingToIssue(newOrder.Names)
 	if err != nil {
 		return nil, err
 	}
