@@ -1,15 +1,12 @@
 package lints
 
 import (
-	"bytes"
 	"net/url"
 	"time"
 
 	"github.com/zmap/zcrypto/encoding/asn1"
 	"github.com/zmap/zcrypto/x509/pkix"
 	"github.com/zmap/zlint/v3/lint"
-	"golang.org/x/crypto/cryptobyte"
-	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
 
 const (
@@ -75,57 +72,4 @@ func GetExtWithOID(exts []pkix.Extension, oid asn1.ObjectIdentifier) *pkix.Exten
 		}
 	}
 	return nil
-}
-
-// ReadOptionalASN1BooleanWithTag attempts to read and advance incoming to
-// search for an optional DER-encoded ASN.1 element tagged with the given tag.
-// Unless out is nil, it stores whether an element with the tag was found in
-// out, otherwise out will take the default value. It reports whether all reads
-// were successful.
-func ReadOptionalASN1BooleanWithTag(incoming *cryptobyte.String, out *bool, tag cryptobyte_asn1.Tag, defaultValue bool) bool {
-	// ReadOptionalASN1 performs a peek and will not advance if the tag is
-	// missing, meaning that incoming will retain bytes.
-	var valuePresent bool
-	var valueBytes cryptobyte.String
-	if !incoming.ReadOptionalASN1(&valueBytes, &valuePresent, tag) {
-		return false
-	}
-	val := defaultValue
-	if valuePresent {
-		/*
-			X.690 (07/2002)
-			https://www.itu.int/rec/T-REC-X.690-200207-S/en
-
-			Section 8.2.2:
-				If the boolean value is:
-				FALSE
-				the octet shall be zero.
-				If the boolean value is
-				TRUE
-				the octet shall have any non-zero value, as a sender's option.
-
-			Section 11.1 Boolean values:
-				If the encoding represents the boolean value TRUE, its single contents octet shall have all eight
-				bits set to one. (Contrast with 8.2.2.)
-
-			Succinctly, BER encoding states any nonzero value is TRUE. The DER
-			encoding restricts the value 0xFF as TRUE and any other: 0x01,
-			0x23, 0xFE, etc as invalid encoding.
-		*/
-		boolBytes := []byte(valueBytes)
-		if bytes.Equal(boolBytes, []byte{0xFF}) {
-			val = true
-		} else if bytes.Equal(boolBytes, []byte{0x00}) {
-			val = false
-		} else {
-			// Unrecognized DER encoding of boolean!
-			return false
-		}
-	}
-	if out != nil {
-		*out = val
-	}
-
-	// All reads were successful.
-	return true
 }

@@ -90,7 +90,7 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	// sanity checks.
 	idp := lints.NewIssuingDistributionPoint()
 	onlyContainsUserCertsTag := cryptobyte_asn1.Tag(1).ContextSpecific()
-	if !lints.ReadOptionalASN1BooleanWithTag(&idpv, &idp.OnlyContainsUserCerts, onlyContainsUserCertsTag, false) {
+	if !idpv.ReadOptionalASN1Boolean(&idp.OnlyContainsUserCerts, onlyContainsUserCertsTag, false) {
 		return &lint.LintResult{
 			Status:  lint.Warn,
 			Details: "Failed to read IssuingDistributionPoint onlyContainsUserCerts",
@@ -98,7 +98,7 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	}
 
 	onlyContainsCACertsTag := cryptobyte_asn1.Tag(2).ContextSpecific()
-	if !lints.ReadOptionalASN1BooleanWithTag(&idpv, &idp.OnlyContainsCACerts, onlyContainsCACertsTag, false) {
+	if !idpv.ReadOptionalASN1Boolean(&idp.OnlyContainsCACerts, onlyContainsCACertsTag, false) {
 		return &lint.LintResult{
 			Status:  lint.Warn,
 			Details: "Failed to read IssuingDistributionPoint onlyContainsCACerts",
