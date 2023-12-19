@@ -58,7 +58,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		}
 	}
 
-	var checkResult string
+	checkResult := "success"
 	pbProblem := &corepb.ProblemDetails{}
 	prob := va.checkCAA(ctx, acmeID, params)
 	localRecheckLatency := time.Since(checkStartTime)
@@ -82,9 +82,8 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			}()
 			// Since prob was nil and we're not enforcing the results from
 			// `processRemoteCAARecheckResultsOuter` set the challenge status to
-			// valid so the validationTime metrics increment has the correct
+			// valid so the caaRecheckTime metrics increment has the correct
 			// result label.
-			checkResult = "success"
 		} else if features.Get().EnforceMultiVA {
 			remoteProb := va.processRemoteCAARecheckResultsOuter(
 				req.Domain,
@@ -102,16 +101,12 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 				va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
 				va.metrics.remoteCAARecheckFailures.Inc()
-			} else {
-				checkResult = "success"
 			}
 		}
-	} else {
-		checkResult = "success"
 	}
 
-	recheckLatency := time.Since(checkStartTime)
 	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
+		recheckLatency := time.Since(checkStartTime)
 		va.metrics.localValidationTime.With(prometheus.Labels{
 			"type":   req.ValidationMethod,
 			"result": checkResult,
@@ -131,10 +126,10 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		}
 	}
 
-	if prob == nil {
-		return &vapb.IsCAAValidResponse{}, nil
-	} else {
+	if prob != nil {
 		return &vapb.IsCAAValidResponse{Problem: pbProblem}, nil
+	} else {
+		return &vapb.IsCAAValidResponse{}, nil
 	}
 }
 

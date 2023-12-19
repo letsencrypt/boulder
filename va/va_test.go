@@ -826,6 +826,7 @@ func TestLogRemoteDifferentials(t *testing.T) {
 				"example.com", 1999, "blorpus-01", tc.primaryResult, tc.remoteProbs)
 
 			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
+			fmt.Println(lines)
 			if tc.expectedLog != "" {
 				test.AssertEquals(t, len(lines), 1)
 				test.AssertEquals(t, lines[0], tc.expectedLog)
