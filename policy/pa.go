@@ -190,7 +190,7 @@ var (
 	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
 )
 
-// ValidDomain checks that a domain isn't:
+// ValidNonWildcardDomain checks that a domain isn't:
 //   - empty
 //   - prefixed with the wildcard label `*.`
 //   - made of invalid DNS characters
@@ -203,7 +203,7 @@ var (
 //   - exactly equal to an IANA registered TLD
 //
 // It does NOT ensure that the domain is absent from any PA blocked lists.
-func ValidDomain(domain string) error {
+func ValidNonWildcardDomain(domain string) error {
 	if domain == "" {
 		return errEmptyName
 	}
@@ -291,10 +291,14 @@ func ValidDomain(domain string) error {
 	return nil
 }
 
-// ValidWildcardDomain checks that the domain begins with *. followed by a
-// domain that passes ValidDomain. It does NOT ensure that the domain is absent
+// ValidDomain checks that a domain is valid and that it doesn't contain any
+// invalid wildcard characters. It does NOT ensure that the domain is absent
 // from any PA blocked lists.
-func ValidWildcardDomain(domain string) error {
+func ValidDomain(domain string) error {
+	if strings.Count(domain, "*") <= 0 {
+		return ValidNonWildcardDomain(domain)
+	}
+
 	// Names containing more than one wildcard are invalid.
 	if strings.Count(domain, "*") > 1 {
 		return errTooManyWildcards
@@ -319,7 +323,7 @@ func ValidWildcardDomain(domain string) error {
 	if baseDomain == icannTLD {
 		return errICANNTLDWildcard
 	}
-	return ValidDomain(baseDomain)
+	return ValidNonWildcardDomain(baseDomain)
 }
 
 // forbiddenMailDomains is a map of domain names we do not allow after the
@@ -412,7 +416,7 @@ func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
 	for _, domain := range domains {
 		if strings.Count(domain, "*") > 0 {
 			// Domain contains a wildcard, check that it is valid.
-			err := ValidWildcardDomain(domain)
+			err := ValidDomain(domain)
 			if err != nil {
 				appendSubError(domain, err)
 				continue
@@ -429,7 +433,7 @@ func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
 			}
 		} else {
 			// Validate that the domain is well-formed.
-			err := ValidDomain(domain)
+			err := ValidNonWildcardDomain(domain)
 			if err != nil {
 				appendSubError(domain, err)
 				continue
