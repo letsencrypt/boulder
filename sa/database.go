@@ -227,8 +227,8 @@ func adjustMySQLConfig(conf *mysql.Config) error {
 		// but can have up to microsecond granularity.
 		// Note: in MySQL (which we don't use), max_statement_time is millis.
 		readTimeout := conf.ReadTimeout.Seconds()
-		setDefault("max_statement_time", fmt.Sprintf("%f", readTimeout*0.95))
-		setDefault("long_query_time", fmt.Sprintf("%f", readTimeout*0.80))
+		setDefault("max_statement_time", fmt.Sprintf("%.6f", readTimeout*0.95))
+		setDefault("long_query_time", fmt.Sprintf("%.6f", readTimeout*0.80))
 	}
 
 	omitZero("max_statement_time")
