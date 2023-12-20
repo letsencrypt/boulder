@@ -68,7 +68,7 @@ func NewOCSPImpl(
 		issuersByID[issuer.ID()] = issuer
 	}
 
-	if ocspLifetime < 1 || ocspLifetime > 240*time.Hour {
+	if ocspLifetime < 8*time.Hour || ocspLifetime > 7*24*time.Hour {
 		return nil, fmt.Errorf("invalid OCSP lifetime %q", ocspLifetime)
 	}
 
