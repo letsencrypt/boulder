@@ -13,13 +13,15 @@ import (
 type subordinateCACertValidityTooLong struct{}
 
 func init() {
-	lint.RegisterLint(&lint.Lint{
-		Name:          "e_validity_period_greater_than_8_years",
-		Description:   "Let's Encrypt Intermediate CA Certificates have Validity Periods of up to 8 years",
-		Citation:      "CPS: 7.1",
-		Source:        lints.LetsEncryptCPS,
-		EffectiveDate: lints.CPSV33Date,
-		Lint:          NewSubordinateCACertValidityTooLong,
+	lint.RegisterCertificateLint(&lint.CertificateLint{
+		LintMetadata: lint.LintMetadata{
+			Name:          "e_validity_period_greater_than_8_years",
+			Description:   "Let's Encrypt Intermediate CA Certificates have Validity Periods of up to 8 years",
+			Citation:      "CPS: 7.1",
+			Source:        lints.LetsEncryptCPS,
+			EffectiveDate: lints.CPSV33Date,
+		},
+		Lint: NewSubordinateCACertValidityTooLong,
 	})
 }
 

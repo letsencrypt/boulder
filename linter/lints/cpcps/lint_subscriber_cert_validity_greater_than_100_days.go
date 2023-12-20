@@ -13,13 +13,15 @@ import (
 type subscriberCertValidityTooLong struct{}
 
 func init() {
-	lint.RegisterLint(&lint.Lint{
-		Name:          "e_subscriber_cert_validity_period_greater_than_100_days",
-		Description:   "Let's Encrypt Subscriber Certificates have Validity Periods of up to 100 days",
-		Citation:      "CPS: 7.1",
-		Source:        lints.LetsEncryptCPS,
-		EffectiveDate: lints.CPSV33Date,
-		Lint:          NewSubscriberCertValidityTooLong,
+	lint.RegisterCertificateLint(&lint.CertificateLint{
+		LintMetadata: lint.LintMetadata{
+			Name:          "e_subscriber_cert_validity_period_greater_than_100_days",
+			Description:   "Let's Encrypt Subscriber Certificates have Validity Periods of up to 100 days",
+			Citation:      "CPS: 7.1",
+			Source:        lints.LetsEncryptCPS,
+			EffectiveDate: lints.CPSV33Date,
+		},
+		Lint: NewSubscriberCertValidityTooLong,
 	})
 }
 
