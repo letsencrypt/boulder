@@ -29,7 +29,7 @@ func init() {
 	})
 }
 
-func NewSCTsFromSameOperator() lint.LintInterface {
+func NewSCTsFromSameOperator() lint.CertificateLintInterface {
 	return &sctsFromSameOperator{logList: loglist.GetLintList()}
 }
 

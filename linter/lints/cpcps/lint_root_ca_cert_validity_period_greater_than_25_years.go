@@ -25,7 +25,7 @@ func init() {
 	})
 }
 
-func NewRootCACertValidityTooLong() lint.LintInterface {
+func NewRootCACertValidityTooLong() lint.CertificateLintInterface {
 	return &rootCACertValidityTooLong{}
 }
 

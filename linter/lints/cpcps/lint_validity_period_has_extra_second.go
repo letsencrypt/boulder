@@ -24,7 +24,7 @@ func init() {
 	})
 }
 
-func NewCertValidityNotRound() lint.LintInterface {
+func NewCertValidityNotRound() lint.CertificateLintInterface {
 	return &certValidityNotRound{}
 }
 

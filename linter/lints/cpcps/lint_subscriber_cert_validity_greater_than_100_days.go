@@ -25,7 +25,7 @@ func init() {
 	})
 }
 
-func NewSubscriberCertValidityTooLong() lint.LintInterface {
+func NewSubscriberCertValidityTooLong() lint.CertificateLintInterface {
 	return &subscriberCertValidityTooLong{}
 }
 

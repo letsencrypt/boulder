@@ -25,7 +25,7 @@ func init() {
 	})
 }
 
-func NewSubordinateCACertValidityTooLong() lint.LintInterface {
+func NewSubordinateCACertValidityTooLong() lint.CertificateLintInterface {
 	return &subordinateCACertValidityTooLong{}
 }
 
