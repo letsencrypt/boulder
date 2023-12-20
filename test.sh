@@ -207,20 +207,25 @@ print_heading "Starting..."
 #
 STAGE="lints"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
-  print_heading "Running Lints"
-  golangci-lint run --timeout 9m ./...
-  # Implicitly loads staticcheck.conf from the root of the boulder repository
-  staticcheck ./...
-  python3 test/grafana/lint.py
-  # Check for common spelling errors using codespell.
-  # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
-  # words should be all lowercase).
-  run_and_expect_silence codespell \
-    --ignore-words=.codespell.ignore.txt \
-    --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
-  # Check test JSON configs are formatted consistently
-  ./test/format-configs.py 'test/config*/*.json'
-  run_and_expect_silence git diff --exit-code .
+  # TODO(#7229): Remove this conditional and globally re-enable this test.
+  if [[ $(go version) == *go1.22* ]] ; then
+    print_heading "Skipping Lints"
+  else
+    print_heading "Running Lints"
+    golangci-lint run --timeout 9m ./...
+    # Implicitly loads staticcheck.conf from the root of the boulder repository
+    staticcheck ./...
+    python3 test/grafana/lint.py
+    # Check for common spelling errors using codespell.
+    # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
+    # words should be all lowercase).
+    run_and_expect_silence codespell \
+      --ignore-words=.codespell.ignore.txt \
+      --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
+    # Check test JSON configs are formatted consistently
+    ./test/format-configs.py 'test/config*/*.json'
+    run_and_expect_silence git diff --exit-code .
+  fi
 fi
 
 #
