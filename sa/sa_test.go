@@ -252,12 +252,14 @@ func TestSelectRegistration(t *testing.T) {
 	test.AssertNotError(t, err, fmt.Sprintf("couldn't create new registration: %s", err))
 	test.Assert(t, reg.Id != 0, "ID shouldn't be 0")
 
-	_, err = selectRegistration(ctx, sa.dbMap, "id", reg.Id)
+	_, err = selectRegistration(ctx, sa.dbMap, false, "id", reg.Id)
 	test.AssertNotError(t, err, "selecting by id should work")
-	_, err = selectRegistration(ctx, sa.dbMap, "jwk_sha256", sha)
+	_, err = selectRegistration(ctx, sa.dbMap, false, "jwk_sha256", sha)
 	test.AssertNotError(t, err, "selecting by jwk_sha256 should work")
-	_, err = selectRegistration(ctx, sa.dbMap, "initialIP", reg.Id)
+	_, err = selectRegistration(ctx, sa.dbMap, false, "initialIP", reg.Id)
 	test.AssertError(t, err, "selecting by any other column should not work")
+	_, err = selectRegistration(ctx, sa.dbMap, true, "id", reg.Id)
+	test.AssertNotError(t, err, "selecting with the extra primary token should work")
 }
 
 func TestReplicationLagRetries(t *testing.T) {

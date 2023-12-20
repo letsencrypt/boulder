@@ -124,7 +124,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 		return nil, errIncompleteRequest
 	}
 
-	curr, err := selectRegistration(ctx, ssa.dbMap, "id", req.Id)
+	curr, err := selectRegistration(ctx, ssa.dbMap, false, "id", req.Id)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)

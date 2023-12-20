@@ -65,7 +65,7 @@ const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt
 // address is not present, it does not modify the registration and will return a nil error.
 func ClearEmail(ctx context.Context, dbMap db.DatabaseMap, regID int64, email string) error {
 	_, overallError := db.WithTransaction(ctx, dbMap, func(tx db.Executor) (interface{}, error) {
-		curr, err := selectRegistration(ctx, tx, "id", regID)
+		curr, err := selectRegistration(ctx, tx, false, "id", regID)
 		if err != nil {
 			return nil, err
 		}
@@ -103,16 +103,21 @@ func ClearEmail(ctx context.Context, dbMap db.DatabaseMap, regID int64, email st
 }
 
 // selectRegistration selects all fields of one registration model
-func selectRegistration(ctx context.Context, s db.OneSelector, whereCol string, args ...interface{}) (*regModel, error) {
+func selectRegistration(ctx context.Context, s db.OneSelector, primary bool, whereCol string, args ...interface{}) (*regModel, error) {
 	if whereCol != "id" && whereCol != "jwk_sha256" {
 		return nil, fmt.Errorf("column name %q invalid for registrations table WHERE clause", whereCol)
+	}
+
+	primaryToken := ""
+	if primary {
+		primaryToken = "AND \"primary\" = \"primary\""
 	}
 
 	var model regModel
 	err := s.SelectOne(
 		ctx,
 		&model,
-		"SELECT "+regFields+" FROM registrations WHERE "+whereCol+" = ? LIMIT 1",
+		"SELECT "+regFields+" FROM registrations WHERE "+whereCol+" = ? "+primaryToken+" LIMIT 1",
 		args...,
 	)
 	return &model, err
