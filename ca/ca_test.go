@@ -238,7 +238,7 @@ func setup(t *testing.T) *testCtx {
 
 	ocsp, err := NewOCSPImpl(
 		boulderIssuers,
-		time.Hour,
+		24*time.Hour,
 		0,
 		time.Second,
 		blog.NewMock(),
