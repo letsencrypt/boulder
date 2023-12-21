@@ -17,17 +17,19 @@ type sctsFromSameOperator struct {
 }
 
 func init() {
-	lint.RegisterLint(&lint.Lint{
-		Name:          "e_scts_from_same_operator",
-		Description:   "Let's Encrypt Subscriber Certificates have two SCTs from logs run by different operators",
-		Citation:      "Chrome CT Policy",
-		Source:        lints.ChromeCTPolicy,
-		EffectiveDate: time.Date(2022, time.April, 15, 0, 0, 0, 0, time.UTC),
-		Lint:          NewSCTsFromSameOperator,
+	lint.RegisterCertificateLint(&lint.CertificateLint{
+		LintMetadata: lint.LintMetadata{
+			Name:          "e_scts_from_same_operator",
+			Description:   "Let's Encrypt Subscriber Certificates have two SCTs from logs run by different operators",
+			Citation:      "Chrome CT Policy",
+			Source:        lints.ChromeCTPolicy,
+			EffectiveDate: time.Date(2022, time.April, 15, 0, 0, 0, 0, time.UTC),
+		},
+		Lint: NewSCTsFromSameOperator,
 	})
 }
 
-func NewSCTsFromSameOperator() lint.LintInterface {
+func NewSCTsFromSameOperator() lint.CertificateLintInterface {
 	return &sctsFromSameOperator{logList: loglist.GetLintList()}
 }
 
