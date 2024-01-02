@@ -664,8 +664,7 @@ func (va *ValidationAuthorityImpl) logRemoteDifferentials(
 	primaryResult *probs.ProblemDetails,
 	remoteResults []*remoteVAResult) {
 
-	var successes []*remoteVAResult
-	var failures []*remoteVAResult
+	var successes, failures []*remoteVAResult
 
 	allEqual := true
 	for _, result := range remoteResults {
