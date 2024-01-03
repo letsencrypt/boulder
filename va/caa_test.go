@@ -641,10 +641,8 @@ func TestIsCAAValidParams(t *testing.T) {
 }
 
 func TestDisabledMultiVACAARechecking(t *testing.T) {
-	var bClient bdns.Client
-	bClient = caaBrokenDNS{}
-	brokenDNSClient := &bClient
-	brokenVA := setupRemote(nil, "broken01", brokenDNSClient)
+	var bClient bdns.Client = caaBrokenDNS{}
+	brokenVA := setupRemote(nil, "broken01", &bClient)
 	remoteVAs := []RemoteVA{{brokenVA, "broken01"}}
 
 	va, _ := setup(nil, 0, "local01", remoteVAs)
@@ -685,19 +683,16 @@ func TestMultiVACAARechecking(t *testing.T) {
 	remoteVA2 := setupRemote(nil, remoteUA2, nil)
 	remoteVA3 := setupRemote(nil, remoteUA3, nil)
 
-	var bClient, hClient bdns.Client
-	bClient = caaBrokenDNS{}
-	brokenDNSClient := &bClient
-	brokenVA1 := setupRemote(nil, brokenUA, brokenDNSClient)
-	brokenVA2 := setupRemote(nil, brokenUA, brokenDNSClient)
-	brokenVA3 := setupRemote(nil, brokenUA, brokenDNSClient)
+	var bClient bdns.Client = caaBrokenDNS{}
+	brokenVA1 := setupRemote(nil, brokenUA, &bClient)
+	brokenVA2 := setupRemote(nil, brokenUA, &bClient)
+	brokenVA3 := setupRemote(nil, brokenUA, &bClient)
 
 	// Returns incorrect results
-	hClient = caaHijackedDNS{}
-	hijackedDNSClient := &hClient
-	hijackedVA1 := setupRemote(nil, hijackedUA, hijackedDNSClient)
-	hijackedVA2 := setupRemote(nil, hijackedUA, hijackedDNSClient)
-	hijackedVA3 := setupRemote(nil, hijackedUA, hijackedDNSClient)
+	var hClient bdns.Client = caaHijackedDNS{}
+	hijackedVA1 := setupRemote(nil, hijackedUA, &hClient)
+	hijackedVA2 := setupRemote(nil, hijackedUA, &hClient)
+	hijackedVA3 := setupRemote(nil, hijackedUA, &hClient)
 
 	testCases := []struct {
 		name                     string
@@ -720,7 +715,7 @@ func TestMultiVACAARechecking(t *testing.T) {
 		{
 			name:                     "broken localVA, RVAs functional, no CAA records",
 			domains:                  "present-dns-only.com",
-			localVADNSClientOverride: brokenDNSClient,
+			localVADNSClientOverride: &bClient,
 			expectedProb:             probs.DNS("While processing CAA for present-dns-only.com: dnsClient is broken"),
 			remoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
