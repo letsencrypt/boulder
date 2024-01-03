@@ -13,7 +13,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -154,20 +153,21 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		mi.metrics.grpcMetrics.UnaryServerInterceptor(),
 		ai.Unary,
 		mi.Unary,
-		otelgrpc.UnaryServerInterceptor(otelgrpc.WithInterceptorFilter(filters.Not(filters.HealthCheck()))),
 	}
 
 	streamInterceptors := []grpc.StreamServerInterceptor{
 		mi.metrics.grpcMetrics.StreamServerInterceptor(),
 		ai.Stream,
 		mi.Stream,
-		otelgrpc.StreamServerInterceptor(),
 	}
 
 	options := []grpc.ServerOption{
 		grpc.Creds(creds),
 		grpc.ChainUnaryInterceptor(unaryInterceptors...),
 		grpc.ChainStreamInterceptor(streamInterceptors...),
+		// TODO(https://github.com/open-telemetry/opentelemetry-go-contrib/issues/4575):
+		// Re-add the HealthCheck filter when upstream supports it.
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	}
 	if sb.cfg.MaxConnectionAge.Duration > 0 {
 		options = append(options,
