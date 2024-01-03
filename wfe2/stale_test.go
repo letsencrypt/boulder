@@ -10,6 +10,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/web"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestRequiredStale(t *testing.T) {
@@ -50,10 +51,10 @@ func TestSaleEnoughToGETOrder(t *testing.T) {
 	fc := clock.NewFake()
 	wfe := WebFrontEndImpl{clk: fc, staleTimeout: time.Minute * 30}
 	fc.Add(time.Hour * 24)
-	created := fc.Now().UnixNano()
+	created := fc.Now()
 	fc.Add(time.Hour)
 	prob := wfe.staleEnoughToGETOrder(&corepb.Order{
-		Created: created,
+		Created: timestamppb.New(created),
 	})
 	test.Assert(t, prob == nil, "wfe.staleEnoughToGETOrder returned a non-nil problem")
 }
@@ -67,11 +68,11 @@ func TestStaleEnoughToGETAuthzDeactivated(t *testing.T) {
 		authorizationLifetime:        30 * 24 * time.Hour,
 	}
 	fc.Add(time.Hour * 24)
-	expires := fc.Now().Add(wfe.authorizationLifetime).UnixNano()
+	expires := fc.Now().Add(wfe.authorizationLifetime)
 	fc.Add(time.Hour)
 	prob := wfe.staleEnoughToGETAuthz(&corepb.Authorization{
 		Status:  string(core.StatusDeactivated),
-		Expires: expires,
+		Expires: timestamppb.New(expires),
 	})
 	test.Assert(t, prob == nil, "wfe.staleEnoughToGETOrder returned a non-nil problem")
 }

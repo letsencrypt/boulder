@@ -18,7 +18,6 @@
 				},
 				"ca.OCSPGenerator": {
 					"clientNames": [
-						"orphan-finder.boulder",
 						"ra.boulder"
 					]
 				},
@@ -55,18 +54,6 @@
 			},
 			"issuers": [
 				{
-					"useForRSALeaves": true,
-					"useForECDSALeaves": true,
-					"issuerURL": "http://127.0.0.1:4001/aia/issuer/6605440498369741",
-					"ocspURL": "http://127.0.0.1:4002/",
-					"crlURL": "http://example.com/crl",
-					"location": {
-						"configFile": "test/test-ca.key-pkcs11.json",
-						"certFile": "/hierarchy/intermediate-cert-rsa-a.pem",
-						"numSessions": 2
-					}
-				},
-				{
 					"useForRSALeaves": false,
 					"useForECDSALeaves": true,
 					"issuerURL": "http://127.0.0.1:4001/aia/issuer/5214744660557630",
@@ -78,11 +65,21 @@
 					}
 				},
 				{
+					"useForRSALeaves": true,
+					"useForECDSALeaves": true,
+					"issuerURL": "http://127.0.0.1:4001/aia/issuer/6605440498369741",
+					"ocspURL": "http://127.0.0.1:4002/",
+					"location": {
+						"configFile": "test/test-ca.key-pkcs11.json",
+						"certFile": "/hierarchy/intermediate-cert-rsa-a.pem",
+						"numSessions": 2
+					}
+				},
+				{
 					"useForRSALeaves": false,
 					"useForECDSALeaves": false,
 					"issuerURL": "http://127.0.0.1:4001/aia/issuer/41127673797486028",
 					"ocspURL": "http://127.0.0.1:4002/",
-					"crlURL": "http://example.com/crl",
 					"location": {
 						"configFile": "test/test-ca.key-pkcs11.json",
 						"certFile": "/hierarchy/intermediate-cert-rsa-b.pem",
@@ -96,7 +93,7 @@
 		},
 		"expiry": "7776000s",
 		"backdate": "1h",
-		"serialPrefix": 255,
+		"serialPrefix": 127,
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
 		"lifespanCRL": "216h",
@@ -106,13 +103,10 @@
 			"blockedKeyFile": "test/example-blocked-keys.yaml",
 			"fermatRounds": 100
 		},
-		"orphanQueueDir": "/tmp/orphaned-certificates-a",
 		"ocspLogMaxLength": 4000,
 		"ocspLogPeriod": "500ms",
 		"ecdsaAllowListFilename": "test/config/ecdsaAllowList.yml",
-		"features": {
-			"ROCSPStage7": true
-		}
+		"features": {}
 	},
 	"pa": {
 		"challenges": {

@@ -310,6 +310,42 @@ func TestPerformValidationWildcard(t *testing.T) {
 	}
 }
 
+func TestDCVAndCAASequencing(t *testing.T) {
+	va, mockLog := setup(nil, 0, "", nil)
+
+	// When performing validation without the CAAAfterValidation flag, CAA should
+	// be checked.
+	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	res, err := va.PerformValidation(context.Background(), req)
+	test.AssertNotError(t, err, "performing validation")
+	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
+	caaLog := mockLog.GetAllMatching(`Checked CAA records for`)
+	test.AssertEquals(t, len(caaLog), 1)
+
+	features.Set(features.Config{CAAAfterValidation: true})
+	defer features.Reset()
+
+	// When performing successful validation with the CAAAfterValidation flag,
+	// CAA should be checked.
+	mockLog.Clear()
+	req = createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	res, err = va.PerformValidation(context.Background(), req)
+	test.AssertNotError(t, err, "performing validation")
+	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
+	caaLog = mockLog.GetAllMatching(`Checked CAA records for`)
+	test.AssertEquals(t, len(caaLog), 1)
+
+	// When performing failed validation with the CAAAfterValidation flag,
+	// CAA should be skipped
+	mockLog.Clear()
+	req = createValidationRequest("bad-dns01.com", core.ChallengeTypeDNS01)
+	res, err = va.PerformValidation(context.Background(), req)
+	test.AssertNotError(t, err, "performing validation")
+	test.Assert(t, res.Problems != nil, "validation succeeded")
+	caaLog = mockLog.GetAllMatching(`Checked CAA records for`)
+	test.AssertEquals(t, len(caaLog), 0)
+}
+
 func TestMultiVA(t *testing.T) {
 	// Create a new challenge to use for the httpSrv
 	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
@@ -337,19 +373,19 @@ func TestMultiVA(t *testing.T) {
 		{remoteVA2, remoteUA2},
 	}
 
-	enforceMultiVA := map[string]bool{
-		"EnforceMultiVA": true,
+	enforceMultiVA := features.Config{
+		EnforceMultiVA: true,
 	}
-	enforceMultiVAFullResults := map[string]bool{
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": true,
+	enforceMultiVAFullResults := features.Config{
+		EnforceMultiVA:     true,
+		MultiVAFullResults: true,
 	}
-	noEnforceMultiVA := map[string]bool{
-		"EnforceMultiVA": false,
+	noEnforceMultiVA := features.Config{
+		EnforceMultiVA: false,
 	}
-	noEnforceMultiVAFullResults := map[string]bool{
-		"EnforceMultiVA":     false,
-		"MultiVAFullResults": true,
+	noEnforceMultiVAFullResults := features.Config{
+		EnforceMultiVA:     false,
+		MultiVAFullResults: true,
 	}
 
 	unauthorized := probs.Unauthorized(fmt.Sprintf(
@@ -364,7 +400,7 @@ func TestMultiVA(t *testing.T) {
 		Name         string
 		RemoteVAs    []RemoteVA
 		AllowedUAs   map[string]bool
-		Features     map[string]bool
+		Features     features.Config
 		ExpectedProb *probs.ProblemDetails
 		ExpectedLog  string
 	}{
@@ -496,11 +532,8 @@ func TestMultiVA(t *testing.T) {
 			// Configure a primary VA with testcase remote VAs.
 			localVA, mockLog := setup(ms.Server, 0, localUA, tc.RemoteVAs)
 
-			if tc.Features != nil {
-				err := features.Set(tc.Features)
-				test.AssertNotError(t, err, "Failed to set feature flags")
-				defer features.Reset()
-			}
+			features.Set(tc.Features)
+			defer features.Reset()
 
 			// Perform all validations
 			res, _ := localVA.PerformValidation(ctx, req)
@@ -563,13 +596,13 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 		},
 	}
 
-	earlyReturnFeatures := map[string]bool{
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": false,
+	earlyReturnFeatures := features.Config{
+		EnforceMultiVA:     true,
+		MultiVAFullResults: false,
 	}
-	noEarlyReturnFeatures := map[string]bool{
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": true,
+	noEarlyReturnFeatures := features.Config{
+		EnforceMultiVA:     true,
+		MultiVAFullResults: true,
 	}
 
 	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
@@ -579,9 +612,9 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 
 			var err error
 			if tc.EarlyReturn {
-				err = features.Set(earlyReturnFeatures)
+				features.Set(earlyReturnFeatures)
 			} else {
-				err = features.Set(noEarlyReturnFeatures)
+				features.Set(noEarlyReturnFeatures)
 			}
 			test.AssertNotError(t, err, "Failed to set MultiVAFullResults feature flag")
 			defer features.Reset()
@@ -640,11 +673,10 @@ func TestMultiVAPolicy(t *testing.T) {
 
 	// Ensure multi VA enforcement is enabled, don't wait for full multi VA
 	// results.
-	err := features.Set(map[string]bool{
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": false,
+	features.Set(features.Config{
+		EnforceMultiVA:     true,
+		MultiVAFullResults: false,
 	})
-	test.AssertNotError(t, err, "setting feature flags")
 	defer features.Reset()
 
 	// Perform validation for a domain not in the disabledDomains list

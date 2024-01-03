@@ -4,8 +4,8 @@ import (
 	"context"
 	"flag"
 	"os"
+	"time"
 
-	"github.com/beeker1121/goque"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/ca"
@@ -47,13 +47,13 @@ type Config struct {
 		Backdate config.Duration
 
 		// What digits we should prepend to serials after randomly generating them.
-		SerialPrefix int `validate:"required,min=1,max=255"`
+		SerialPrefix int `validate:"required,min=1,max=127"`
 
 		// The maximum number of subjectAltNames in a single certificate
 		MaxNames int `validate:"required,min=1,max=100"`
 
 		// LifespanOCSP is how long OCSP responses are valid for. Per the BRs,
-		// Section 4.9.10, it MUST NOT be more than 10 days.
+		// Section 4.9.10, it MUST NOT be more than 10 days. Default 96h.
 		LifespanOCSP config.Duration
 
 		// LifespanCRL is how long CRLs are valid for. It should be longer than the
@@ -63,10 +63,6 @@ type Config struct {
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
-
-		// Path to directory holding orphan queue files, if not provided an orphan queue
-		// is not used.
-		OrphanQueueDir string
 
 		// Maximum length (in bytes) of a line accumulating OCSP audit log entries.
 		// Recommended to be around 4000. If this is 0, do not perform OCSP audit
@@ -106,7 +102,7 @@ type Config struct {
 		// preventing any CRLs from being issued.
 		DisableCRLService bool
 
-		Features map[string]bool
+		Features features.Config
 	}
 
 	PA cmd.PAConfig
@@ -157,8 +153,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.CA.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.CA.Features)
 
 	if *grpcAddr != "" {
 		c.CA.GRPCCA.Address = *grpcAddr
@@ -169,6 +164,10 @@ func main() {
 
 	if c.CA.MaxNames == 0 {
 		cmd.Fail("Error in CA config: MaxNames must not be 0")
+	}
+
+	if c.CA.LifespanOCSP.Duration == 0 {
+		c.CA.LifespanOCSP.Duration = 96 * time.Hour
 	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)
@@ -199,7 +198,7 @@ func main() {
 	if c.CA.HostnamePolicyFile == "" {
 		cmd.Fail("HostnamePolicyFile was empty")
 	}
-	err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
+	err = pa.LoadHostnamePolicyFile(c.CA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
 	// Do this before creating the issuers to ensure the log list is loaded before
@@ -225,28 +224,13 @@ func main() {
 	kp, err := sagoodkey.NewKeyPolicy(&c.CA.GoodKey, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
-	var orphanQueue *goque.Queue
-	if c.CA.OrphanQueueDir != "" {
-		orphanQueue, err = goque.OpenQueue(c.CA.OrphanQueueDir)
-		cmd.FailOnError(err, "Failed to open orphaned certificate queue")
-		defer func() { _ = orphanQueue.Close() }()
-	}
-
 	var ecdsaAllowList *ca.ECDSAAllowList
+	var entries int
 	if c.CA.ECDSAAllowListFilename != "" {
-		// Create a gauge vector to track allow list reloads.
-		allowListGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "ecdsa_allow_list_status",
-			Help: "Number of ECDSA allow list entries and status of most recent update attempt",
-		}, []string{"result"})
-		scope.MustRegister(allowListGauge)
-
-		// Create a reloadable allow list object.
-		var entries int
-		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename, logger, allowListGauge)
+		// Create an allow list object.
+		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename)
 		cmd.FailOnError(err, "Unable to load ECDSA allow list from YAML file")
-		defer ecdsaAllowList.Stop()
-		logger.Infof("Created a reloadable allow list, it was initialized with %d entries", entries)
+		logger.Infof("Loaded an ECDSA allow list with %d entries", entries)
 	}
 
 	srv := bgrpc.NewServer(c.CA.GRPCCA, logger)
@@ -294,17 +278,12 @@ func main() {
 			c.CA.SerialPrefix,
 			c.CA.MaxNames,
 			kp,
-			orphanQueue,
 			logger,
 			scope,
 			signatureCount,
 			signErrorCount,
 			clk)
 		cmd.FailOnError(err, "Failed to create CA impl")
-
-		if orphanQueue != nil {
-			go cai.OrphanIntegrationLoop()
-		}
 
 		srv = srv.Add(&capb.CertificateAuthority_ServiceDesc, cai)
 	}

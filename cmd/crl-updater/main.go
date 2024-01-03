@@ -20,7 +20,7 @@ import (
 
 type Config struct {
 	CRLUpdater struct {
-		DebugAddr string
+		DebugAddr string `validate:"omitempty,hostname_port"`
 
 		// TLS client certificate, private key, and trusted root bundle.
 		TLS cmd.TLSConfig
@@ -79,12 +79,22 @@ type Config struct {
 		// UpdatePeriod, starting from the Unix Epoch plus UpdateOffset, and
 		// continuing forward into the future forever. This value must be strictly
 		// less than the UpdatePeriod.
-		UpdateOffset config.Duration
+		// DEPRECATED: This config value is not relevant with continuous updating.
+		// TODO(#7023): Remove this value.
+		UpdateOffset config.Duration `validate:"-"`
+
+		// UpdateTimeout controls how long a single CRL shard is allowed to attempt
+		// to update before being timed out. The total CRL updating process may take
+		// significantly longer, since a full update cycle may consist of updating
+		// many shards with varying degrees of parallelism. This value must be
+		// strictly less than the UpdatePeriod. Defaults to 10 minutes, one order
+		// of magnitude greater than our p99 update latency.
+		UpdateTimeout config.Duration `validate:"-"`
 
 		// MaxParallelism controls how many workers may be running in parallel.
 		// A higher value reduces the total time necessary to update all CRL shards
 		// that this updater is responsible for, but also increases the memory used
-		// by this updater.
+		// by this updater. Only relevant in -runOnce mode.
 		MaxParallelism int `validate:"min=0"`
 
 		// MaxAttempts control how many times the updater will attempt to generate
@@ -93,7 +103,7 @@ type Config struct {
 		// load of said run. The default is 1.
 		MaxAttempts int `validate:"omitempty,min=1"`
 
-		Features map[string]bool
+		Features features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -118,8 +128,7 @@ func main() {
 		c.CRLUpdater.DebugAddr = *debugAddr
 	}
 
-	err = features.Set(c.CRLUpdater.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.CRLUpdater.Features)
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLUpdater.DebugAddr)
 	defer oTelShutdown(context.Background())
@@ -142,10 +151,13 @@ func main() {
 	if c.CRLUpdater.LookbackPeriod.Duration == 0 {
 		c.CRLUpdater.LookbackPeriod.Duration = 24 * time.Hour
 	}
+	if c.CRLUpdater.UpdateTimeout.Duration == 0 {
+		c.CRLUpdater.UpdateTimeout.Duration = 10 * time.Minute
+	}
 
 	saConn, err := bgrpc.ClientSetup(c.CRLUpdater.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
+	sac := sapb.NewStorageAuthorityClient(saConn)
 
 	caConn, err := bgrpc.ClientSetup(c.CRLUpdater.CRLGeneratorService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CRLGenerator")
@@ -161,7 +173,7 @@ func main() {
 		c.CRLUpdater.ShardWidth.Duration,
 		c.CRLUpdater.LookbackPeriod.Duration,
 		c.CRLUpdater.UpdatePeriod.Duration,
-		c.CRLUpdater.UpdateOffset.Duration,
+		c.CRLUpdater.UpdateTimeout.Duration,
 		c.CRLUpdater.MaxParallelism,
 		c.CRLUpdater.MaxAttempts,
 		sac,
@@ -177,7 +189,7 @@ func main() {
 	go cmd.CatchSignals(cancel)
 
 	if *runOnce {
-		err = u.Tick(ctx, clk.Now())
+		err = u.RunOnce(ctx)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			cmd.FailOnError(err, "")
 		}

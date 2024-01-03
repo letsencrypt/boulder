@@ -31,7 +31,7 @@ var (
 	validIncidentTableRegexp = regexp.MustCompile(`^incident_[0-9a-zA-Z_]{1,100}$`)
 )
 
-type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error)
+type certCountFunc func(ctx context.Context, db db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error)
 
 // SQLStorageAuthorityRO defines a read-only subset of a Storage Authority
 type SQLStorageAuthorityRO struct {
@@ -70,7 +70,7 @@ type SQLStorageAuthorityRO struct {
 }
 
 // NewSQLStorageAuthorityRO provides persistence using a SQL backend for
-// Boulder. It will modify the given gorp.DbMap by adding relevant tables.
+// Boulder. It will modify the given borp.DbMap by adding relevant tables.
 func NewSQLStorageAuthorityRO(
 	dbReadOnlyMap *db.WrappedMap,
 	dbIncidentsMap *db.WrappedMap,
@@ -107,13 +107,13 @@ func (ssa *SQLStorageAuthorityRO) GetRegistration(ctx context.Context, req *sapb
 		return nil, errIncompleteRequest
 	}
 
-	model, err := selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), "id", req.Id)
+	model, err := selectRegistration(ctx, ssa.dbReadOnlyMap, "id", req.Id)
 	if db.IsNoRows(err) && ssa.lagFactor != 0 {
 		// GetRegistration is often called to validate a JWK belonging to a brand
 		// new account whose registrations table row hasn't propagated to the read
 		// replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
-		model, err = selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), "id", req.Id)
+		model, err = selectRegistration(ctx, ssa.dbReadOnlyMap, "id", req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
 				ssa.lagFactorCounter.WithLabelValues("GetRegistration", "notfound").Inc()
@@ -154,7 +154,7 @@ func (ssa *SQLStorageAuthorityRO) GetRegistrationByKey(ctx context.Context, req 
 	if err != nil {
 		return nil, err
 	}
-	model, err := selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), "jwk_sha256", sha)
+	model, err := selectRegistration(ctx, ssa.dbReadOnlyMap, "jwk_sha256", sha)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
@@ -218,12 +218,14 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 // CountRegistrationsByIP returns the number of registrations created in the
 // time range for a single IP address.
 func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
-	if len(req.Ip) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if len(req.Ip) == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 
 	var count int64
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+	err := ssa.dbReadOnlyMap.SelectOne(
+		ctx,
 		&count,
 		`SELECT COUNT(*) FROM registrations
 		 WHERE
@@ -232,8 +234,8 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIP(ctx context.Context, re
 		 createdAt <= :latest`,
 		map[string]interface{}{
 			"ip":       req.Ip,
-			"earliest": time.Unix(0, req.Range.Earliest),
-			"latest":   time.Unix(0, req.Range.Latest),
+			"earliest": req.Range.Earliest.AsTime(),
+			"latest":   req.Range.Latest.AsTime(),
 		})
 	if err != nil {
 		return nil, err
@@ -250,13 +252,15 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, req 
 // the single IP. For IPv6 addresses, that range is a /48, since it's not
 // uncommon for one person to have a /48 to themselves.
 func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
-	if len(req.Ip) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if len(req.Ip) == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 
 	var count int64
 	beginIP, endIP := ipRange(req.Ip)
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+	err := ssa.dbReadOnlyMap.SelectOne(
+		ctx,
 		&count,
 		`SELECT COUNT(*) FROM registrations
 		 WHERE
@@ -265,8 +269,8 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIPRange(ctx context.Contex
 		 :earliest < createdAt AND
 		 createdAt <= :latest`,
 		map[string]interface{}{
-			"earliest": time.Unix(0, req.Range.Earliest),
-			"latest":   time.Unix(0, req.Range.Latest),
+			"earliest": req.Range.Earliest.AsTime(),
+			"latest":   req.Range.Latest.AsTime(),
 			"beginIP":  beginIP,
 			"endIP":    endIP,
 		})
@@ -288,7 +292,8 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context,
 // issued for any of the domains during the provided range of time. Queries will
 // be run in parallel. If any of them error, only one error will be returned.
 func (ssa *SQLStorageAuthorityRO) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
-	if len(req.Names) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if len(req.Names) == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 
@@ -321,7 +326,7 @@ func (ssa *SQLStorageAuthorityRO) CountCertificatesByNames(ctx context.Context, 
 					return
 				default:
 				}
-				count, earliest, err := ssa.countCertificatesByName(ssa.dbReadOnlyMap.WithContext(ctx), domain, req.Range)
+				count, earliest, err := ssa.countCertificatesByName(ctx, ssa.dbReadOnlyMap, domain, req.Range)
 				if err != nil {
 					results <- result{err: err}
 					// Skip any further work
@@ -341,7 +346,7 @@ func (ssa *SQLStorageAuthorityRO) CountCertificatesByNames(ctx context.Context, 
 
 	// Set earliest to the latest possible time, so that we can find the
 	// earliest certificate in the results.
-	earliest := timestamppb.New(time.Unix(0, req.Range.Latest))
+	earliest := req.Range.Latest
 	counts := make(map[string]int64)
 	for r := range results {
 		if r.err != nil {
@@ -386,7 +391,8 @@ func (ssa *SQLStorageAuthorityRO) GetSerialMetadata(ctx context.Context, req *sa
 	}
 
 	recordedSerial := recordedSerialModel{}
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+	err := ssa.dbReadOnlyMap.SelectOne(
+		ctx,
 		&recordedSerial,
 		"SELECT * FROM serials WHERE serial = ?",
 		req.Serial,
@@ -401,8 +407,8 @@ func (ssa *SQLStorageAuthorityRO) GetSerialMetadata(ctx context.Context, req *sa
 	return &sapb.SerialMetadata{
 		Serial:         recordedSerial.Serial,
 		RegistrationID: recordedSerial.RegistrationID,
-		Created:        recordedSerial.Created.UnixNano(),
-		Expires:        recordedSerial.Expires.UnixNano(),
+		Created:        timestamppb.New(recordedSerial.Created),
+		Expires:        timestamppb.New(recordedSerial.Expires),
 	}, nil
 }
 
@@ -420,7 +426,7 @@ func (ssa *SQLStorageAuthorityRO) GetCertificate(ctx context.Context, req *sapb.
 		return nil, fmt.Errorf("invalid certificate serial %s", req.Serial)
 	}
 
-	cert, err := SelectCertificate(ssa.dbReadOnlyMap.WithContext(ctx), req.Serial)
+	cert, err := SelectCertificate(ctx, ssa.dbReadOnlyMap, req.Serial)
 	if db.IsNoRows(err) {
 		return nil, berrors.NotFoundError("certificate with serial %q not found", req.Serial)
 	}
@@ -446,7 +452,7 @@ func (ssa *SQLStorageAuthorityRO) GetCertificateStatus(ctx context.Context, req 
 		return nil, err
 	}
 
-	certStatus, err := SelectCertificateStatus(ssa.dbReadOnlyMap.WithContext(ctx), req.Serial)
+	certStatus, err := SelectCertificateStatus(ctx, ssa.dbReadOnlyMap, req.Serial)
 	if db.IsNoRows(err) {
 		return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
 	}
@@ -472,7 +478,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 		return nil, fmt.Errorf("invalid certificate serial %s", req.Serial)
 	}
 
-	status, err := SelectRevocationStatus(ssa.dbReadOnlyMap.WithContext(ctx), req.Serial)
+	status, err := SelectRevocationStatus(ctx, ssa.dbReadOnlyMap, req.Serial)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
@@ -488,11 +494,12 @@ func (ssa *SQLStorageAuthority) GetRevocationStatus(ctx context.Context, req *sa
 }
 
 func (ssa *SQLStorageAuthorityRO) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
-	if req.AccountID == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if req.AccountID == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 
-	return countNewOrders(ssa.dbReadOnlyMap.WithContext(ctx), req)
+	return countNewOrders(ctx, ssa.dbReadOnlyMap, req)
 }
 
 func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
@@ -502,18 +509,19 @@ func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, req *sapb.Count
 // CountFQDNSets counts the total number of issuances, for a set of domains,
 // that occurred during a given window of time.
 func (ssa *SQLStorageAuthorityRO) CountFQDNSets(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
-	if req.Window == 0 || len(req.Domains) == 0 {
+	if core.IsAnyNilOrZero(req.Window) || len(req.Domains) == 0 {
 		return nil, errIncompleteRequest
 	}
 
 	var count int64
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+	err := ssa.dbReadOnlyMap.SelectOne(
+		ctx,
 		&count,
 		`SELECT COUNT(*) FROM fqdnSets
 		WHERE setHash = ?
 		AND issued > ?`,
-		HashNames(req.Domains),
-		ssa.clk.Now().Add(-time.Duration(req.Window)),
+		core.HashNames(req.Domains),
+		ssa.clk.Now().Add(-req.Window.AsDuration()),
 	)
 	return &sapb.Count{Count: count}, err
 }
@@ -526,29 +534,30 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.Cou
 // certificate, issued for a set of domains, during a given window of time,
 // starting from the most recent issuance.
 func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
-	if req.Window == 0 || len(req.Domains) == 0 {
+	if core.IsAnyNilOrZero(req.Window) || len(req.Domains) == 0 {
 		return nil, errIncompleteRequest
 	}
 	type row struct {
 		Issued time.Time
 	}
 	var rows []row
-	_, err := ssa.dbReadOnlyMap.WithContext(ctx).Select(
+	_, err := ssa.dbReadOnlyMap.Select(
+		ctx,
 		&rows,
 		`SELECT issued FROM fqdnSets 
 		WHERE setHash = ?
 		AND issued > ?
 		ORDER BY issued DESC`,
-		HashNames(req.Domains),
-		ssa.clk.Now().Add(-time.Duration(req.Window)),
+		core.HashNames(req.Domains),
+		ssa.clk.Now().Add(-req.Window.AsDuration()),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	var results []int64
+	var results []*timestamppb.Timestamp
 	for _, i := range rows {
-		results = append(results, i.Issued.UnixNano())
+		results = append(results, timestamppb.New(i.Issued))
 	}
 	return &sapb.Timestamps{Timestamps: results}, nil
 }
@@ -563,7 +572,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetExists(ctx context.Context, req *sapb.F
 	if len(req.Domains) == 0 {
 		return nil, errIncompleteRequest
 	}
-	exists, err := ssa.checkFQDNSetExists(ssa.dbReadOnlyMap.WithContext(ctx).SelectOne, req.Domains)
+	exists, err := ssa.checkFQDNSetExists(ctx, ssa.dbReadOnlyMap.SelectOne, req.Domains)
 	if err != nil {
 		return nil, err
 	}
@@ -574,16 +583,17 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, req *sapb.FQD
 	return ssa.SQLStorageAuthorityRO.FQDNSetExists(ctx, req)
 }
 
-// oneSelectorFunc is a func type that matches both gorp.Transaction.SelectOne
-// and gorp.DbMap.SelectOne.
-type oneSelectorFunc func(holder interface{}, query string, args ...interface{}) error
+// oneSelectorFunc is a func type that matches both borp.Transaction.SelectOne
+// and borp.DbMap.SelectOne.
+type oneSelectorFunc func(ctx context.Context, holder interface{}, query string, args ...interface{}) error
 
 // checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
 // for the given names exists.
-func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(selector oneSelectorFunc, names []string) (bool, error) {
-	namehash := HashNames(names)
+func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(ctx context.Context, selector oneSelectorFunc, names []string) (bool, error) {
+	namehash := core.HashNames(names)
 	var exists bool
 	err := selector(
+		ctx,
 		&exists,
 		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? LIMIT 1)`,
 		namehash,
@@ -608,7 +618,8 @@ func (ssa *SQLStorageAuthorityRO) PreviousCertificateExists(ctx context.Context,
 
 	// Find the most recently issued certificate containing this domain name.
 	var serial string
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+	err := ssa.dbReadOnlyMap.SelectOne(
+		ctx,
 		&serial,
 		`SELECT serial FROM issuedNames
 		WHERE reversedName = ?
@@ -625,7 +636,8 @@ func (ssa *SQLStorageAuthorityRO) PreviousCertificateExists(ctx context.Context,
 
 	// Check whether that certificate was issued to the specified account.
 	var count int
-	err = ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+	err = ssa.dbReadOnlyMap.SelectOne(
+		ctx,
 		&count,
 		`SELECT COUNT(*) FROM certificates
 		WHERE serial = ?
@@ -658,8 +670,8 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		return nil, errIncompleteRequest
 	}
 
-	txn := func(txWithCtx db.Executor) (interface{}, error) {
-		omObj, err := txWithCtx.Get(orderModel{}, req.Id)
+	txn := func(tx db.Executor) (interface{}, error) {
+		omObj, err := tx.Get(ctx, orderModel{}, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
 				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
@@ -675,18 +687,18 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, err
 		}
 
-		orderExp := time.Unix(0, order.Expires)
+		orderExp := order.Expires.AsTime()
 		if orderExp.Before(ssa.clk.Now()) {
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
 
-		v2AuthzIDs, err := authzForOrder(txWithCtx, order.Id)
+		v2AuthzIDs, err := authzForOrder(ctx, tx, order.Id)
 		if err != nil {
 			return nil, err
 		}
 		order.V2Authorizations = v2AuthzIDs
 
-		names, err := namesForOrder(txWithCtx, order.Id)
+		names, err := namesForOrder(ctx, tx, order.Id)
 		if err != nil {
 			return nil, err
 		}
@@ -700,7 +712,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		order.Names = reversedNames
 
 		// Calculate the status for the order
-		status, err := statusForOrder(txWithCtx, order, ssa.clk.Now())
+		status, err := statusForOrder(ctx, tx, order, ssa.clk.Now())
 		if err != nil {
 			return nil, err
 		}
@@ -747,13 +759,12 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 // unexpired orders are considered. If no order meeting these requirements is
 // found a nil corepb.Order pointer is returned.
 func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
-
 	if req.AcctID == 0 || len(req.Names) == 0 {
 		return nil, errIncompleteRequest
 	}
 
 	// Hash the names requested for lookup in the orderFqdnSets table
-	fqdnHash := HashNames(req.Names)
+	fqdnHash := core.HashNames(req.Names)
 
 	// Find a possibly-suitable order. We don't include the account ID or order
 	// status in this query because there's no index that includes those, so
@@ -772,7 +783,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 		RegistrationID int64
 	}
 	var err error
-	err = ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(&result, `
+	err = ssa.dbReadOnlyMap.SelectOne(ctx, &result, `
 					SELECT orderID, registrationID
 					FROM orderFqdnSets
 					WHERE setHash = ?
@@ -814,13 +825,13 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
-	obj, err := ssa.dbReadOnlyMap.Get(authzModel{}, req.Id)
+	obj, err := ssa.dbReadOnlyMap.Get(ctx, authzModel{}, req.Id)
 	if db.IsNoRows(err) && ssa.lagFactor != 0 {
 		// GetAuthorization2 is often called shortly after a new order is created,
 		// sometimes before the order's associated authz rows have propagated to the
 		// read replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
-		obj, err = ssa.dbReadOnlyMap.Get(authzModel{}, req.Id)
+		obj, err = ssa.dbReadOnlyMap.Get(ctx, authzModel{}, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
 				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "notfound").Inc()
@@ -861,7 +872,8 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 // GetAuthorizations2 returns any valid or pending authorizations that exist for the list of domains
 // provided. If both a valid and pending authorization exist only the valid one will be returned.
 func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if len(req.Domains) == 0 || req.RegistrationID == 0 || req.Now == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if len(req.Domains) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.Now) {
 		return nil, errIncompleteRequest
 	}
 	var authzModels []authzModel
@@ -869,7 +881,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		req.RegistrationID,
 		statusUint(core.StatusValid),
 		statusUint(core.StatusPending),
-		time.Unix(0, req.Now),
+		req.Now.AsTime(),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 
@@ -890,6 +902,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 	)
 
 	_, err := ssa.dbReadOnlyMap.Select(
+		ctx,
 		&authzModels,
 		query,
 		params...,
@@ -921,11 +934,13 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 // the given identifier, if available. This method only supports DNS identifier types.
 // TODO(#5816): Consider removing this method, as it has no callers.
 func (ssa *SQLStorageAuthorityRO) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
-	if req.RegistrationID == 0 || req.IdentifierValue == "" || req.ValidUntil == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if req.RegistrationID == 0 || req.IdentifierValue == "" || core.IsAnyNilOrZero(req.ValidUntil) {
 		return nil, errIncompleteRequest
 	}
 	var am authzModel
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+	err := ssa.dbReadOnlyMap.SelectOne(
+		ctx,
 		&am,
 		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
 			registrationID = :regID AND
@@ -938,7 +953,7 @@ func (ssa *SQLStorageAuthorityRO) GetPendingAuthorization2(ctx context.Context, 
 		map[string]interface{}{
 			"regID":      req.RegistrationID,
 			"status":     statusUint(core.StatusPending),
-			"validUntil": time.Unix(0, req.ValidUntil),
+			"validUntil": req.ValidUntil.AsTime(),
 			"dnsType":    identifierTypeToUint[string(identifier.DNS)],
 			"ident":      req.IdentifierValue,
 		},
@@ -964,7 +979,7 @@ func (ssa *SQLStorageAuthorityRO) CountPendingAuthorizations2(ctx context.Contex
 	}
 
 	var count int64
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(&count,
+	err := ssa.dbReadOnlyMap.SelectOne(ctx, &count,
 		`SELECT COUNT(*) FROM authz2 WHERE
 		registrationID = :regID AND
 		expires > :expires AND
@@ -1003,7 +1018,8 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 	}
 
 	var ams []authzModel
-	_, err := ssa.dbReadOnlyMap.WithContext(ctx).Select(
+	_, err := ssa.dbReadOnlyMap.Select(
+		ctx,
 		&ams,
 		fmt.Sprintf(`SELECT %s FROM authz2
 			LEFT JOIN orderToAuthz2 ON authz2.ID = orderToAuthz2.authzID
@@ -1045,12 +1061,14 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
 // in a given time range. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	if req.RegistrationID == 0 || req.Hostname == "" || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if req.RegistrationID == 0 || req.Hostname == "" || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 
 	var count int64
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+	err := ssa.dbReadOnlyMap.SelectOne(
+		ctx,
 		&count,
 		`SELECT COUNT(*) FROM authz2 WHERE
 		registrationID = :regID AND
@@ -1063,8 +1081,8 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 			"regID":           req.RegistrationID,
 			"dnsType":         identifierTypeToUint[string(identifier.DNS)],
 			"ident":           req.Hostname,
-			"expiresEarliest": time.Unix(0, req.Range.Earliest),
-			"expiresLatest":   time.Unix(0, req.Range.Latest),
+			"expiresEarliest": req.Range.Earliest.AsTime(),
+			"expiresLatest":   req.Range.Latest.AsTime(),
 			"status":          statusUint(core.StatusInvalid),
 		},
 	)
@@ -1082,7 +1100,8 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 // domain names that the account has authorizations for. This method
 // only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if len(req.Domains) == 0 || req.RegistrationID == 0 || req.Now == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if len(req.Domains) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.Now) {
 		return nil, errIncompleteRequest
 	}
 
@@ -1100,7 +1119,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 	params := []interface{}{
 		req.RegistrationID,
 		statusUint(core.StatusValid),
-		time.Unix(0, req.Now),
+		req.Now.AsTime(),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 	for _, domain := range req.Domains {
@@ -1109,6 +1128,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 
 	var authzModels []authzModel
 	_, err := ssa.dbReadOnlyMap.Select(
+		ctx,
 		&authzModels,
 		query,
 		params...,
@@ -1144,7 +1164,7 @@ func (ssa *SQLStorageAuthorityRO) KeyBlocked(ctx context.Context, req *sapb.KeyB
 	}
 
 	var id int64
-	err := ssa.dbReadOnlyMap.SelectOne(&id, `SELECT ID FROM blockedKeys WHERE keyHash = ?`, req.KeyHash)
+	err := ssa.dbReadOnlyMap.SelectOne(ctx, &id, `SELECT ID FROM blockedKeys WHERE keyHash = ?`, req.KeyHash)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return &sapb.Exists{Exists: false}, nil
@@ -1167,7 +1187,7 @@ func (ssa *SQLStorageAuthorityRO) IncidentsForSerial(ctx context.Context, req *s
 	}
 
 	var activeIncidents []incidentModel
-	_, err := ssa.dbReadOnlyMap.Select(&activeIncidents, `SELECT * FROM incidents WHERE enabled = 1`)
+	_, err := ssa.dbReadOnlyMap.Select(ctx, &activeIncidents, `SELECT * FROM incidents WHERE enabled = 1`)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return &sapb.Incidents{}, nil
@@ -1178,7 +1198,7 @@ func (ssa *SQLStorageAuthorityRO) IncidentsForSerial(ctx context.Context, req *s
 	var incidentsForSerial []*sapb.Incident
 	for _, i := range activeIncidents {
 		var count int
-		err := ssa.dbIncidentsMap.SelectOne(&count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = ?",
+		err := ssa.dbIncidentsMap.SelectOne(ctx, &count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = ?",
 			i.SerialTable), req.Serial)
 		if err != nil {
 			if db.IsNoRows(err) {
@@ -1247,7 +1267,7 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 			ispb.OrderID = *ism.OrderID
 		}
 		if ism.LastNoticeSent != nil {
-			ispb.LastNoticeSent = ism.LastNoticeSent.UnixNano()
+			ispb.LastNoticeSent = timestamppb.New(*ism.LastNoticeSent)
 		}
 
 		err = stream.Send(ispb)
@@ -1274,26 +1294,45 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 // notAfter date are included), but the ending timestamp is exclusive (certs
 // with exactly that notAfter date are *not* included).
 func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthorityReadOnly_GetRevokedCertsServer) error {
-	atTime := time.Unix(0, req.RevokedBefore)
+	if req.ShardIdx != 0 {
+		return ssa.getRevokedCertsFromRevokedCertificatesTable(req, stream)
+	} else {
+		return ssa.getRevokedCertsFromCertificateStatusTable(req, stream)
+	}
+}
 
-	clauses := `
-		WHERE notAfter >= ?
-		AND notAfter < ?
-		AND issuerID = ?
-		AND status = ?`
-	params := []interface{}{
-		time.Unix(0, req.ExpiresAfter),
-		time.Unix(0, req.ExpiresBefore),
-		req.IssuerNameID,
-		core.OCSPStatusRevoked,
+func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthority_GetRevokedCertsServer) error {
+	return ssa.SQLStorageAuthorityRO.GetRevokedCerts(req, stream)
+}
+
+// getRevokedCertsFromRevokedCertificatesTable uses the new revokedCertificates
+// table to implement GetRevokedCerts. It must only be called when the request
+// contains a non-zero ShardIdx.
+func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthorityReadOnly_GetRevokedCertsServer) error {
+	if req.ShardIdx == 0 {
+		return errors.New("can't select shard 0 from revokedCertificates table")
 	}
 
-	selector, err := db.NewMappedSelector[crlEntryModel](ssa.dbReadOnlyMap)
+	atTime := req.RevokedBefore.AsTime()
+
+	clauses := `
+		WHERE issuerID = ?
+		AND shardIdx = ?
+		AND notAfterHour >= ?`
+	params := []interface{}{
+		req.IssuerNameID,
+		req.ShardIdx,
+		// Round the expiry down to the nearest hour, to take advantage of our
+		// smaller index while still capturing at least as many certs as intended.
+		req.ExpiresAfter.AsTime().Truncate(time.Hour),
+	}
+
+	selector, err := db.NewMappedSelector[revokedCertModel](ssa.dbReadOnlyMap)
 	if err != nil {
 		return fmt.Errorf("initializing db map: %w", err)
 	}
 
-	rows, err := selector.Query(stream.Context(), clauses, params...)
+	rows, err := selector.QueryContext(stream.Context(), clauses, params...)
 	if err != nil {
 		return fmt.Errorf("reading db: %w", err)
 	}
@@ -1322,7 +1361,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsReque
 		err = stream.Send(&corepb.CRLEntry{
 			Serial:    row.Serial,
 			Reason:    int32(row.RevokedReason),
-			RevokedAt: row.RevokedDate.UnixNano(),
+			RevokedAt: timestamppb.New(row.RevokedDate),
 		})
 		if err != nil {
 			return fmt.Errorf("sending crl entry: %w", err)
@@ -1337,8 +1376,70 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsReque
 	return nil
 }
 
-func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthority_GetRevokedCertsServer) error {
-	return ssa.SQLStorageAuthorityRO.GetRevokedCerts(req, stream)
+// getRevokedCertsFromCertificateStatusTable uses the new old certificateStatus
+// table to implement GetRevokedCerts.
+func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthorityReadOnly_GetRevokedCertsServer) error {
+	atTime := req.RevokedBefore.AsTime()
+
+	clauses := `
+		WHERE notAfter >= ?
+		AND notAfter < ?
+		AND issuerID = ?
+		AND status = ?`
+	params := []interface{}{
+		req.ExpiresAfter.AsTime(),
+		req.ExpiresBefore.AsTime(),
+		req.IssuerNameID,
+		core.OCSPStatusRevoked,
+	}
+
+	selector, err := db.NewMappedSelector[crlEntryModel](ssa.dbReadOnlyMap)
+	if err != nil {
+		return fmt.Errorf("initializing db map: %w", err)
+	}
+
+	rows, err := selector.QueryContext(stream.Context(), clauses, params...)
+	if err != nil {
+		return fmt.Errorf("reading db: %w", err)
+	}
+
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			ssa.log.AuditErrf("closing row reader: %s", err)
+		}
+	}()
+
+	for rows.Next() {
+		row, err := rows.Get()
+		if err != nil {
+			return fmt.Errorf("reading row: %w", err)
+		}
+
+		// Double-check that the cert wasn't revoked between the time at which we're
+		// constructing this snapshot CRL and right now. If the cert was revoked
+		// at-or-after the "atTime", we'll just include it in the next generation
+		// of CRLs.
+		if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
+			continue
+		}
+
+		err = stream.Send(&corepb.CRLEntry{
+			Serial:    row.Serial,
+			Reason:    int32(row.RevokedReason),
+			RevokedAt: timestamppb.New(row.RevokedDate),
+		})
+		if err != nil {
+			return fmt.Errorf("sending crl entry: %w", err)
+		}
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return fmt.Errorf("iterating over row reader: %w", err)
+	}
+
+	return nil
 }
 
 // GetMaxExpiration returns the timestamp of the farthest-future notAfter date
@@ -1347,16 +1448,20 @@ func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest
 // have to look.
 func (ssa *SQLStorageAuthorityRO) GetMaxExpiration(ctx context.Context, req *emptypb.Empty) (*timestamppb.Timestamp, error) {
 	var model struct {
-		MaxNotAfter time.Time `db:"maxNotAfter"`
+		MaxNotAfter *time.Time `db:"maxNotAfter"`
 	}
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+	err := ssa.dbReadOnlyMap.SelectOne(
+		ctx,
 		&model,
 		"SELECT MAX(notAfter) AS maxNotAfter FROM certificateStatus",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("selecting max notAfter: %w", err)
 	}
-	return timestamppb.New(model.MaxNotAfter), err
+	if model.MaxNotAfter == nil {
+		return nil, errors.New("certificateStatus table notAfter column is empty")
+	}
+	return timestamppb.New(*model.MaxNotAfter), err
 }
 
 func (ssa *SQLStorageAuthority) GetMaxExpiration(ctx context.Context, req *emptypb.Empty) (*timestamppb.Timestamp, error) {
@@ -1365,7 +1470,7 @@ func (ssa *SQLStorageAuthority) GetMaxExpiration(ctx context.Context, req *empty
 
 // Health implements the grpc.checker interface.
 func (ssa *SQLStorageAuthorityRO) Health(ctx context.Context) error {
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(new(int), "SELECT 1")
+	err := ssa.dbReadOnlyMap.SelectOne(ctx, new(int), "SELECT 1")
 	if err != nil {
 		return err
 	}

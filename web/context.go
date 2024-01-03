@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
-
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -132,9 +130,7 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// We specifically override the default r.Context() because we would prefer
 	// for clients to not be able to cancel our operations in arbitrary places.
 	// Instead we start a new context, and apply timeouts in our various RPCs.
-	// TODO(go1.22?): Use context.Detach()
-	span := trace.SpanFromContext(r.Context())
-	ctx := trace.ContextWithSpan(context.Background(), span)
+	ctx := context.WithoutCancel(r.Context())
 	r = r.WithContext(ctx)
 
 	// Some clients will send a HTTP Host header that includes the default port
@@ -183,10 +179,9 @@ func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 		int(logEvent.Latency*1000), logEvent.RealIP, jsonEvent)
 }
 
-// Comma-separated list of HTTP clients involved in making this
-// request, starting with the original requester and ending with the
-// remote end of our TCP connection (which is typically our own
-// proxy).
+// GetClientAddr returns a comma-separated list of HTTP clients involved in
+// making this request, starting with the original requester and ending with the
+// remote end of our TCP connection (which is typically our own proxy).
 func GetClientAddr(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		return xff + "," + r.RemoteAddr

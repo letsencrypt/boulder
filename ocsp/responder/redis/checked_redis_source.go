@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/go-gorp/gorp/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 
@@ -22,8 +21,7 @@ import (
 // dbSelector is a limited subset of the db.WrappedMap interface to allow for
 // easier mocking of mysql operations in tests.
 type dbSelector interface {
-	SelectOne(holder interface{}, query string, args ...interface{}) error
-	WithContext(ctx context.Context) gorp.SqlExecutor
+	SelectOne(ctx context.Context, holder interface{}, query string, args ...interface{}) error
 }
 
 // rocspSourceInterface expands on responder.Source by adding a private signAndSave method.
@@ -102,7 +100,7 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 		if src.sac != nil {
 			dbStatus, dbErr = src.sac.GetRevocationStatus(ctx, &sapb.Serial{Serial: serialString})
 		} else {
-			dbStatus, dbErr = sa.SelectRevocationStatus(src.dbMap.WithContext(ctx), serialString)
+			dbStatus, dbErr = sa.SelectRevocationStatus(ctx, src.dbMap, serialString)
 		}
 	}()
 	go func() {

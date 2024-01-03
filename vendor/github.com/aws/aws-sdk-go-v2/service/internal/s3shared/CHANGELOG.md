@@ -1,3 +1,61 @@
+# v1.16.1 (2023-11-01)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.16.0 (2023-10-31)
+
+* **Feature**: **BREAKING CHANGE**: Bump minimum go version to 1.19 per the revised [go version support policy](https://aws.amazon.com/blogs/developer/aws-sdk-for-go-aligns-with-go-release-policy-on-supported-runtimes/).
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.15.6 (2023-10-12)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.15.5 (2023-10-06)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.15.4 (2023-08-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.15.3 (2023-08-18)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.15.2 (2023-08-17)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.15.1 (2023-08-07)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.15.0 (2023-07-31)
+
+* **Feature**: Adds support for smithy-modeled endpoint resolution. A new rules-based endpoint resolution will be added to the SDK which will supercede and deprecate existing endpoint resolution. Specifically, EndpointResolver will be deprecated while BaseEndpoint and EndpointResolverV2 will take its place. For more information, please see the Endpoints section in our Developer Guide.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.14.5 (2023-07-28)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.14.4 (2023-07-13)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.14.3 (2023-06-13)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.14.2 (2023-04-24)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.14.1 (2023-04-07)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.14.0 (2023-03-21)
 
 * **Feature**: port v1 sdk 100-continue http header customization for s3 PutObject/UploadPart request and enable user config

@@ -14,7 +14,6 @@ import (
 	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 
 	_ "github.com/letsencrypt/boulder/linter/lints/cabf_br"
 	_ "github.com/letsencrypt/boulder/linter/lints/chrome"
@@ -25,25 +24,29 @@ import (
 var ErrLinting = fmt.Errorf("failed lint(s)")
 
 // Check accomplishes the entire process of linting: it generates a throwaway
-// signing key, uses that to create a throwaway cert, and runs a default set
-// of lints (everything except for the ETSI and EV lints) against it. If the
+// signing key, uses that to create a linting cert, and runs a default set of
+// lints (everything except for the ETSI and EV lints) against it. If the
 // subjectPubKey and realSigner indicate that this is a self-signed cert, the
-// throwaway cert will have its pubkey replaced to also be self-signed. This is
-// the primary public interface of this package, but it can be inefficient;
-// creating a new signer and a new lint registry are expensive operations which
+// cert will have its pubkey replaced to also be self-signed. This is the
+// primary public interface of this package, but it can be inefficient; creating
+// a new signer and a new lint registry are expensive operations which
 // performance-sensitive clients may want to cache via linter.New().
-func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) error {
+func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) ([]byte, error) {
 	linter, err := New(realIssuer, realSigner, skipLints)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = linter.Check(tbs, subjectPubKey)
-	return err
+	lintCertBytes, err := linter.Check(tbs, subjectPubKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return lintCertBytes, nil
 }
 
 // CheckCRL is like Check, but for CRLs.
-func CheckCRL(tbs *crl_x509.RevocationList, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) error {
+func CheckCRL(tbs *x509.RevocationList, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) error {
 	linter, err := New(realIssuer, realSigner, skipLints)
 	if err != nil {
 		return err
@@ -54,7 +57,7 @@ func CheckCRL(tbs *crl_x509.RevocationList, realIssuer *x509.Certificate, realSi
 // Linter is capable of linting a to-be-signed (TBS) certificate. It does so by
 // signing that certificate with a throwaway private key and a fake issuer whose
 // public key matches the throwaway private key, and then running the resulting
-// throwaway certificate through a registry of zlint lints.
+// certificate through a registry of zlint lints.
 type Linter struct {
 	issuer     *x509.Certificate
 	signer     crypto.Signer
@@ -117,7 +120,7 @@ func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey) ([]
 // CheckCRL signs the given RevocationList template using the Linter's fake
 // issuer cert and private key, then runs the resulting CRL through our suite
 // of CRL checks. It returns an error if any check fails.
-func (l Linter) CheckCRL(tbs *crl_x509.RevocationList) error {
+func (l Linter) CheckCRL(tbs *x509.RevocationList) error {
 	crl, err := makeLintCRL(tbs, l.issuer, l.signer)
 	if err != nil {
 		return err
@@ -148,10 +151,17 @@ func makeSigner(realSigner crypto.Signer) (crypto.Signer, error) {
 
 func makeIssuer(realIssuer *x509.Certificate, lintSigner crypto.Signer) (*x509.Certificate, error) {
 	lintIssuerTBS := &x509.Certificate{
-		// This is the full list of attributes that x509.CreateCertificate() says it
-		// carries over from the template. Constructing this TBS certificate in
-		// this way ensures that the resulting lint issuer is as identical to the
-		// real issuer as we can get, without sharing a public key.
+		// This is nearly the full list of attributes that
+		// x509.CreateCertificate() says it carries over from the template.
+		// Constructing this TBS certificate in this way ensures that the
+		// resulting lint issuer is as identical to the real issuer as we can
+		// get, without sharing a public key.
+		//
+		// We do not copy the SignatureAlgorithm field while constructing the
+		// lintIssuer because the lintIssuer is self-signed. Depending on the
+		// realIssuer, which could be either an intermediate or cross-signed
+		// intermediate, the SignatureAlgorithm of that certificate may differ
+		// from the root certificate that had signed it.
 		AuthorityKeyId:              realIssuer.AuthorityKeyId,
 		BasicConstraintsValid:       realIssuer.BasicConstraintsValid,
 		CRLDistributionPoints:       realIssuer.CRLDistributionPoints,
@@ -179,7 +189,6 @@ func makeIssuer(realIssuer *x509.Certificate, lintSigner crypto.Signer) (*x509.C
 		PermittedURIDomains:         realIssuer.PermittedURIDomains,
 		PolicyIdentifiers:           realIssuer.PolicyIdentifiers,
 		SerialNumber:                realIssuer.SerialNumber,
-		SignatureAlgorithm:          realIssuer.SignatureAlgorithm,
 		Subject:                     realIssuer.Subject,
 		SubjectKeyId:                realIssuer.SubjectKeyId,
 		URIs:                        realIssuer.URIs,
@@ -238,8 +247,8 @@ func ProcessResultSet(lintRes *zlint.ResultSet) error {
 	return nil
 }
 
-func makeLintCRL(tbs *crl_x509.RevocationList, issuer *x509.Certificate, signer crypto.Signer) (*zlintx509.RevocationList, error) {
-	lintCRLBytes, err := crl_x509.CreateRevocationList(rand.Reader, tbs, issuer, signer)
+func makeLintCRL(tbs *x509.RevocationList, issuer *x509.Certificate, signer crypto.Signer) (*zlintx509.RevocationList, error) {
+	lintCRLBytes, err := x509.CreateRevocationList(rand.Reader, tbs, issuer, signer)
 	if err != nil {
 		return nil, err
 	}

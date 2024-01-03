@@ -33,12 +33,17 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 const (
 	defaultExpirationSubject = "Let's Encrypt certificate expiration notice for domain {{.ExpirationSubject}}"
+)
+
+var (
+	errNoValidEmail = errors.New("no usable contact address")
 )
 
 type regStore interface {
@@ -157,6 +162,11 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 			continue
 		}
 		address := parsed.Opaque
+		err = policy.ValidEmail(address)
+		if err != nil {
+			m.log.Debugf("skipping invalid email %q: %s", address, err)
+			continue
+		}
 		err = m.addressLimiter.check(address)
 		if err != nil {
 			m.log.Infof("not sending mail: %s", err)
@@ -166,7 +176,7 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 		emails = append(emails, parsed.Opaque)
 	}
 	if len(emails) == 0 {
-		return nil
+		return errNoValidEmail
 	}
 
 	expiresIn := time.Duration(math.MaxInt64)
@@ -296,7 +306,7 @@ func (m *mailer) updateLastNagTimestampsChunk(ctx context.Context, certs []*x509
 	)
 	params[0] = m.clk.Now()
 
-	_, err := m.dbMap.WithContext(ctx).Exec(query, params...)
+	_, err := m.dbMap.ExecContext(ctx, query, params...)
 	if err != nil {
 		m.log.AuditErrf("Error updating certificate status for %d certs: %s", len(certs), err)
 		m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
@@ -304,10 +314,11 @@ func (m *mailer) updateLastNagTimestampsChunk(ctx context.Context, certs []*x509
 }
 
 func (m *mailer) certIsRenewed(ctx context.Context, names []string, issued time.Time) (bool, error) {
-	namehash := sa.HashNames(names)
+	namehash := core.HashNames(names)
 
 	var present bool
-	err := m.dbMap.WithContext(ctx).SelectOne(
+	err := m.dbMap.SelectOne(
+		ctx,
 		&present,
 		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? AND issued > ? LIMIT 1)`,
 		namehash,
@@ -440,10 +451,10 @@ func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int6
 
 	err = m.sendNags(conn, reg.Contact, parsedCerts)
 	if err != nil {
-		// Check to see if the error was due to the mail being undeliverable,
-		// in which case we don't want to try again later.
+		// If the error was due to the address(es) being unusable or the mail being
+		// undeliverable, we don't want to try again later.
 		var badAddrErr *bmail.BadAddressSMTPError
-		if ok := errors.As(err, &badAddrErr); ok {
+		if errors.Is(err, errNoValidEmail) || errors.As(err, &badAddrErr) {
 			m.updateLastNagTimestamps(ctx, parsedCerts)
 		}
 
@@ -478,7 +489,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 
 		var certs []certDERWithRegID
 		var err error
-		if features.Enabled(features.ExpirationMailerUsesJoin) {
+		if features.Get().ExpirationMailerUsesJoin {
 			certs, err = m.getCertsWithJoin(ctx, left, right, expiresIn)
 		} else {
 			certs, err = m.getCerts(ctx, left, right, expiresIn)
@@ -530,7 +541,8 @@ func (m *mailer) getCertsWithJoin(ctx context.Context, left, right time.Time, ex
 	// sequentially fetch the certificate details. This avoids an expensive
 	// JOIN.
 	var certs []certDERWithRegID
-	_, err := m.dbMap.WithContext(ctx).Select(
+	_, err := m.dbMap.Select(
+		ctx,
 		&certs,
 		`SELECT
 				cert.der as der, cert.registrationID as regID
@@ -564,7 +576,8 @@ func (m *mailer) getCerts(ctx context.Context, left, right time.Time, expiresIn 
 	// sequentially fetch the certificate details. This avoids an expensive
 	// JOIN.
 	var serials []string
-	_, err := m.dbMap.WithContext(ctx).Select(
+	_, err := m.dbMap.Select(
+		ctx,
 		&serials,
 		`SELECT
 				cs.serial
@@ -596,7 +609,7 @@ func (m *mailer) getCerts(ctx context.Context, left, right time.Time, expiresIn 
 			return nil, ctx.Err()
 		}
 		var cert core.Certificate
-		cert, err := sa.SelectCertificate(m.dbMap.WithContext(ctx), serial)
+		cert, err := sa.SelectCertificate(ctx, m.dbMap, serial)
 		if err != nil {
 			// We can get a NoRowsErr when processing a serial number corresponding
 			// to a precertificate with no final certificate. Since this certificate
@@ -641,7 +654,7 @@ func (ds durationSlice) Swap(a, b int) {
 
 type Config struct {
 	Mailer struct {
-		DebugAddr string `validate:"required,hostname_port"`
+		DebugAddr string `validate:"omitempty,hostname_port"`
 		DB        cmd.DBConfig
 		cmd.SMTPConfig
 
@@ -689,7 +702,7 @@ type Config struct {
 		// during the SMTP connection (as opposed to the gRPC connections).
 		SMTPTrustedRootFile string
 
-		Features map[string]bool
+		Features features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -782,6 +795,7 @@ func initStats(stats prometheus.Registerer) mailerStats {
 }
 
 func main() {
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	certLimit := flag.Int("cert_limit", 0, "Count of certificates to process per expiration period")
 	reconnBase := flag.Duration("reconnectBase", 1*time.Second, "Base sleep duration between reconnect attempts")
@@ -797,8 +811,12 @@ func main() {
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-	err = features.Set(c.Mailer.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+
+	features.Set(c.Mailer.Features)
+
+	if *debugAddr != "" {
+		c.Mailer.DebugAddr = *debugAddr
+	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Mailer.DebugAddr)
 	defer oTelShutdown(context.Background())
@@ -931,7 +949,7 @@ func main() {
 					cmd.FailOnError(err, "expiration-mailer has failed")
 				}
 			case <-ctx.Done():
-				break
+				return
 			}
 		}
 	} else {

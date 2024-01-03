@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -18,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 )
@@ -50,17 +50,18 @@ func makeClient() (*rocsp.RWClient, clock.Clock) {
 }
 
 func TestGetStartingID(t *testing.T) {
+	ctx := context.Background()
+
 	clk := clock.NewFake()
 	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetBoulderTestDatabase(t)()
-	sa.SetSQLDebug(dbMap, blog.Get())
 
 	cs := core.CertificateStatus{
 		Serial:   "1337",
 		NotAfter: clk.Now().Add(12 * time.Hour),
 	}
-	err = dbMap.Insert(&cs)
+	err = dbMap.Insert(ctx, &cs)
 	test.AssertNotError(t, err, "inserting certificate status")
 	firstID := cs.ID
 
@@ -68,7 +69,7 @@ func TestGetStartingID(t *testing.T) {
 		Serial:   "1338",
 		NotAfter: clk.Now().Add(36 * time.Hour),
 	}
-	err = dbMap.Insert(&cs)
+	err = dbMap.Insert(ctx, &cs)
 	test.AssertNotError(t, err, "inserting certificate status")
 	secondID := cs.ID
 	t.Logf("first ID %d, second ID %d", firstID, secondID)
@@ -129,7 +130,7 @@ func TestLoadFromDB(t *testing.T) {
 	defer test.ResetBoulderTestDatabase(t)
 
 	for i := 0; i < 100; i++ {
-		err = dbMap.Insert(&core.CertificateStatus{
+		err = dbMap.Insert(context.Background(), &core.CertificateStatus{
 			Serial:          fmt.Sprintf("%036x", i),
 			NotAfter:        clk.Now().Add(200 * time.Hour),
 			OCSPLastUpdated: clk.Now(),

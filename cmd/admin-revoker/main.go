@@ -3,8 +3,6 @@ package notmain
 import (
 	"bufio"
 	"context"
-	"crypto"
-	"crypto/sha256"
 	"crypto/x509"
 	"errors"
 	"flag"
@@ -30,12 +28,14 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const usageString = `
 usage:
   list-reasons           -config <path>
   serial-revoke          -config <path> <serial>           <reason-code>
+  malformed-revoke       -config <path> <serial>           <reason-code>
   batched-serial-revoke  -config <path> <serial-file-path> <reason-code>   <parallelism>
   incident-table-revoke  -config <path> <table-name>       <reason-code>   <parallelism>
   reg-revoke             -config <path> <registration-id>  <reason-code>
@@ -85,7 +85,7 @@ type Config struct {
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
 
-		Features map[string]bool
+		Features features.Config
 	}
 
 	Syslog cmd.SyslogConfig
@@ -101,6 +101,7 @@ type revoker struct {
 
 func newRevoker(c Config) *revoker {
 	logger := cmd.NewLogger(c.Syslog)
+	logger.Info(cmd.VersionString())
 
 	// TODO(#6840) Rework admin-revoker to export prometheus metrics.
 	tlsConfig, err := c.Revoker.TLS.Load(metrics.NoopRegisterer)
@@ -167,7 +168,7 @@ func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificat
 }
 
 func (r *revoker) revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, skipBlockKey bool) error {
-	certObj, err := sa.SelectPrecertificate(r.dbMap, serial)
+	certObj, err := sa.SelectPrecertificate(ctx, r.dbMap, serial)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return berrors.NotFoundError("precertificate with serial %q not found", serial)
@@ -224,7 +225,7 @@ func (r *revoker) revokeSerialBatchFile(ctx context.Context, serialPath string, 
 // Finding relevant accounts will be very slow because it does not use an index.
 func (r *revoker) clearEmailAddress(ctx context.Context, email string) error {
 	r.log.AuditInfof("Scanning database for accounts with email addresses matching %q in order to clear the email addresses.", email)
-	regIDs, err := r.getRegIDsMatchingEmail(email)
+	regIDs, err := r.getRegIDsMatchingEmail(ctx, email)
 	if err != nil {
 		return err
 	}
@@ -233,7 +234,7 @@ func (r *revoker) clearEmailAddress(ctx context.Context, email string) error {
 
 	failures := 0
 	for _, regID := range regIDs {
-		err := sa.ClearEmail(r.dbMap, ctx, regID, email)
+		err := sa.ClearEmail(ctx, r.dbMap, regID, email)
 		if err != nil {
 			// Log, but don't fail, because it took a long time to find the relevant registration IDs
 			// and we don't want to have to redo that work.
@@ -297,7 +298,7 @@ func (r *revoker) revokeByReg(ctx context.Context, regID int64, reasonCode revoc
 		return fmt.Errorf("couldn't fetch registration: %w", err)
 	}
 
-	certObjs, err := sa.SelectPrecertificates(r.dbMap, "WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
+	certObjs, err := sa.SelectPrecertificates(ctx, r.dbMap, "WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
 		return err
 	}
@@ -327,7 +328,7 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, comment string, private
 		return err
 	}
 
-	spkiHash, err := getPublicKeySPKIHash(publicKey)
+	spkiHash, err := core.KeyDigest(publicKey)
 	if err != nil {
 		return err
 	}
@@ -340,8 +341,8 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, comment string, private
 	dbcomment := fmt.Sprintf("%s: %s", u.Username, comment)
 
 	req := &sapb.AddBlockedKeyRequest{
-		KeyHash:   spkiHash,
-		Added:     r.clk.Now().UnixNano(),
+		KeyHash:   spkiHash[:],
+		Added:     timestamppb.New(r.clk.Now()),
 		Source:    "admin-revoker",
 		Comment:   dbcomment,
 		RevokedBy: 0,
@@ -367,12 +368,12 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey string) err
 		return err
 	}
 
-	spkiHash, err := getPublicKeySPKIHash(publicKey)
+	spkiHash, err := core.KeyDigest(publicKey)
 	if err != nil {
 		return err
 	}
 
-	matches, err := r.getCertsMatchingSPKIHash(spkiHash)
+	matches, err := r.getCertsMatchingSPKIHash(ctx, spkiHash)
 	if err != nil {
 		return err
 	}
@@ -408,9 +409,9 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey string) err
 	return nil
 }
 
-func (r *revoker) spkiHashInBlockedKeys(spkiHash []byte) (bool, error) {
+func (r *revoker) spkiHashInBlockedKeys(ctx context.Context, spkiHash core.Sha256Digest) (bool, error) {
 	var count int
-	err := r.dbMap.SelectOne(&count, "SELECT COUNT(*) as count FROM blockedKeys WHERE keyHash = ?", spkiHash)
+	err := r.dbMap.SelectOne(ctx, &count, "SELECT COUNT(*) as count FROM blockedKeys WHERE keyHash = ?", spkiHash[:])
 	if err != nil {
 		return false, err
 	}
@@ -421,9 +422,9 @@ func (r *revoker) spkiHashInBlockedKeys(spkiHash []byte) (bool, error) {
 	return false, nil
 }
 
-func (r *revoker) countCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
+func (r *revoker) countCertsMatchingSPKIHash(ctx context.Context, spkiHash core.Sha256Digest) (int, error) {
 	var count int
-	err := r.dbMap.SelectOne(&count, "SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ?", spkiHash)
+	err := r.dbMap.SelectOne(ctx, &count, "SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ?", spkiHash[:])
 	if err != nil {
 		return 0, err
 	}
@@ -434,11 +435,11 @@ func (r *revoker) countCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
 // contains the given email address. Since this uses a substring match, it is important
 // to subsequently parse the JSON list of addresses and look for exact matches.
 // Note: Since this does not use an index, it is very slow.
-func (r *revoker) getRegIDsMatchingEmail(email string) ([]int64, error) {
+func (r *revoker) getRegIDsMatchingEmail(ctx context.Context, email string) ([]int64, error) {
 	// We use SQL `CONCAT` rather than interpolating with `+` or `%s` because we want to
 	// use a `?` placeholder for the email, which prevents SQL injection.
 	var regIDs []int64
-	_, err := r.dbMap.Select(&regIDs, "SELECT id FROM registrations WHERE contact LIKE CONCAT('%\"mailto:', ?, '\"%')", email)
+	_, err := r.dbMap.Select(ctx, &regIDs, "SELECT id FROM registrations WHERE contact LIKE CONCAT('%\"mailto:', ?, '\"%')", email)
 	if err != nil {
 		return nil, err
 	}
@@ -447,9 +448,9 @@ func (r *revoker) getRegIDsMatchingEmail(email string) ([]int64, error) {
 
 // TODO(#5899) Use an non-wrapped sql.Db client to iterate over results and
 // return them on a channel.
-func (r *revoker) getCertsMatchingSPKIHash(spkiHash []byte) ([]string, error) {
+func (r *revoker) getCertsMatchingSPKIHash(ctx context.Context, spkiHash core.Sha256Digest) ([]string, error) {
 	var h []string
-	_, err := r.dbMap.Select(&h, "SELECT certSerial FROM keyHashToSerial WHERE keyHash = ?", spkiHash)
+	_, err := r.dbMap.Select(ctx, &h, "SELECT certSerial FROM keyHashToSerial WHERE keyHash = ?", spkiHash[:])
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("no certificates with a matching SPKI hash were found")
@@ -466,8 +467,8 @@ func (rc revocationCodes) Len() int           { return len(rc) }
 func (rc revocationCodes) Less(i, j int) bool { return rc[i] < rc[j] }
 func (rc revocationCodes) Swap(i, j int)      { rc[i], rc[j] = rc[j], rc[i] }
 
-func privateKeyBlock(r *revoker, dryRun bool, comment string, count int, spkiHash []byte, keyPath string) error {
-	keyExists, err := r.spkiHashInBlockedKeys(spkiHash)
+func privateKeyBlock(ctx context.Context, r *revoker, dryRun bool, comment string, count int, spkiHash core.Sha256Digest, keyPath string) error {
+	keyExists, err := r.spkiHashInBlockedKeys(ctx, spkiHash)
 	if err != nil {
 		return fmt.Errorf("while checking if the provided key already exists in the 'blockedKeys' table: %s", err)
 	}
@@ -526,17 +527,6 @@ func privateKeyRevoke(r *revoker, dryRun bool, comment string, count int, keyPat
 	return nil
 }
 
-// getPublicKeySPKIHash returns a hash of the SubjectPublicKeyInfo for the
-// provided public key.
-func getPublicKeySPKIHash(pubKey crypto.PublicKey) ([]byte, error) {
-	rawSubjectPublicKeyInfo, err := x509.MarshalPKIXPublicKey(pubKey)
-	if err != nil {
-		return nil, err
-	}
-	spkiHash := sha256.Sum256(rawSubjectPublicKeyInfo)
-	return spkiHash[:], nil
-}
-
 func main() {
 	usage := func() {
 		fmt.Fprint(os.Stderr, usageString)
@@ -568,8 +558,7 @@ func main() {
 	var c Config
 	err = cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-	err = features.Set(c.Revoker.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.Revoker.Features)
 
 	ctx := context.Background()
 	r := newRevoker(c)
@@ -637,15 +626,15 @@ func main() {
 		cmd.FailOnError(err, "Failed to load the provided private key")
 		r.log.AuditInfo("The provided private key has been successfully verified")
 
-		spkiHash, err := getPublicKeySPKIHash(publicKey)
+		spkiHash, err := core.KeyDigest(publicKey)
 		cmd.FailOnError(err, "While obtaining the SPKI hash for the provided key")
 
-		count, err := r.countCertsMatchingSPKIHash(spkiHash)
+		count, err := r.countCertsMatchingSPKIHash(ctx, spkiHash)
 		cmd.FailOnError(err, "While retrieving a count of certificates matching the provided key")
 		r.log.AuditInfof("Found %d certificates matching the provided key", count)
 
 		if command == "private-key-block" {
-			err := privateKeyBlock(r, *dryRun, *comment, count, spkiHash, keyPath)
+			err := privateKeyBlock(ctx, r, *dryRun, *comment, count, spkiHash, keyPath)
 			cmd.FailOnError(err, "")
 		}
 

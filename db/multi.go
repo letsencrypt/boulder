@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -68,7 +69,7 @@ func (mi *MultiInserter) Add(row []interface{}) error {
 }
 
 // query returns the formatted query string, and the slice of arguments for
-// for gorp to use in place of the query's question marks. Currently only
+// for borp to use in place of the query's question marks. Currently only
 // used by .Insert(), below.
 func (mi *MultiInserter) query() (string, []interface{}) {
 	var questionsBuf strings.Builder
@@ -101,12 +102,11 @@ func (mi *MultiInserter) query() (string, []interface{}) {
 }
 
 // Insert inserts all the collected rows into the database represented by
-// `queryer`. `queryer` is assumed to already have a context attached. If a
-// non-empty returningColumn was provided, then it returns the list of values
-// from that column returned by the query.
-func (mi *MultiInserter) Insert(queryer Queryer) ([]int64, error) {
+// `queryer`. If a non-empty returningColumn was provided, then it returns
+// the list of values from that column returned by the query.
+func (mi *MultiInserter) Insert(ctx context.Context, queryer Queryer) ([]int64, error) {
 	query, queryArgs := mi.query()
-	rows, err := queryer.Query(query, queryArgs...)
+	rows, err := queryer.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, err
 	}

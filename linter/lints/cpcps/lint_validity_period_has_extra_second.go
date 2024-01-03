@@ -12,17 +12,19 @@ import (
 type certValidityNotRound struct{}
 
 func init() {
-	lint.RegisterLint(&lint.Lint{
-		Name:          "w_validity_period_has_extra_second",
-		Description:   "Let's Encrypt Certificates have Validity Periods that are a round number of seconds",
-		Citation:      "CPS: 7.1",
-		Source:        lints.LetsEncryptCPS,
-		EffectiveDate: lints.CPSV33Date,
-		Lint:          NewCertValidityNotRound,
+	lint.RegisterCertificateLint(&lint.CertificateLint{
+		LintMetadata: lint.LintMetadata{
+			Name:          "w_validity_period_has_extra_second",
+			Description:   "Let's Encrypt Certificates have Validity Periods that are a round number of seconds",
+			Citation:      "CPS: 7.1",
+			Source:        lints.LetsEncryptCPS,
+			EffectiveDate: lints.CPSV33Date,
+		},
+		Lint: NewCertValidityNotRound,
 	})
 }
 
-func NewCertValidityNotRound() lint.LintInterface {
+func NewCertValidityNotRound() lint.CertificateLintInterface {
 	return &certValidityNotRound{}
 }
 

@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"os"
@@ -107,7 +108,7 @@ func TestDbSettings(t *testing.T) {
 // TODO: Change this to test `newDbMapFromMySQLConfig` instead?
 func TestNewDbMap(t *testing.T) {
 	const mysqlConnectURL = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
-	const expected = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&long_query_time=0.6400000000000001&max_statement_time=0.76&sql_mode=%27STRICT_ALL_TABLES%27"
+	const expected = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&long_query_time=0.640000&max_statement_time=0.760000&sql_mode=%27STRICT_ALL_TABLES%27"
 	oldSQLOpen := sqlOpen
 	defer func() {
 		sqlOpen = oldSQLOpen
@@ -134,7 +135,7 @@ func TestStrictness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = dbMap.Exec(`insert into orderToAuthz2 set
+	_, err = dbMap.ExecContext(ctx, `insert into orderToAuthz2 set
 		orderID=999999999999999999999999999,
 		authzID=999999999999999999999999999;`)
 	if err == nil {
@@ -153,7 +154,7 @@ func TestTimeouts(t *testing.T) {
 	// SLEEP is defined to return 1 if it was interrupted, but we want to actually
 	// get an error to simulate what would happen with a slow query. So we wrap
 	// the SLEEP in a subselect.
-	_, err = dbMap.Exec(`SELECT 1 FROM (SELECT SLEEP(5)) as subselect;`)
+	_, err = dbMap.ExecContext(ctx, `SELECT 1 FROM (SELECT SLEEP(5)) as subselect;`)
 	if err == nil {
 		t.Fatal("Expected error when running slow query, got none.")
 	}
@@ -175,6 +176,7 @@ func TestAutoIncrementSchema(t *testing.T) {
 
 	var count int64
 	err = dbMap.SelectOne(
+		context.Background(),
 		&count,
 		`SELECT COUNT(*) FROM columns WHERE
 			table_schema LIKE 'boulder%' AND
@@ -197,8 +199,8 @@ func TestAdjustMySQLConfig(t *testing.T) {
 	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode":           "'STRICT_ALL_TABLES'",
-		"max_statement_time": "95",
-		"long_query_time":    "80",
+		"max_statement_time": "95.000000",
+		"long_query_time":    "80.000000",
 	})
 
 	conf = &mysql.Config{
@@ -211,7 +213,7 @@ func TestAdjustMySQLConfig(t *testing.T) {
 	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode":        "'STRICT_ALL_TABLES'",
-		"long_query_time": "80",
+		"long_query_time": "80.000000",
 	})
 
 	conf = &mysql.Config{

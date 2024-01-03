@@ -1,14 +1,22 @@
 version: '3'
 services:
   boulder:
-    # Should match one of the GO_DEV_VERSIONS in test/boulder-tools/tag_and_upload.sh.
-    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.20.6_2023-07-11}
+    # The `letsencrypt/boulder-tools:latest` tag is automatically built in local
+    # dev environments. In CI a specific BOULDER_TOOLS_TAG is passed, and it is
+    # pulled with `docker compose pull`.
+    image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-latest}
+    build:
+      context: test/boulder-tools/
+      # Should match one of the GO_DEV_VERSIONS in test/boulder-tools/tag_and_upload.sh.
+      args:
+        GO_VERSION: 1.21.5
     environment:
       # To solve HTTP-01 and TLS-ALPN-01 challenges, change the IP in FAKE_DNS
       # to the IP address where your ACME client's solver is listening.
       # FAKE_DNS: 172.17.0.1
       FAKE_DNS: 10.77.77.77
-      BOULDER_CONFIG_DIR: &boulder_config_dir test/config
+      BOULDER_CONFIG_DIR: test/config
+      GOCACHE: /boulder/.gocache/go-build
       GOFLAGS: -mod=vendor
       # Forward the parent env's GOEXPERIMENT value into the container.
       GOEXPERIMENT: ${GOEXPERIMENT}
@@ -44,6 +52,8 @@ services:
       - bproxysql
       - bredis_1
       - bredis_2
+      - bredis_3
+      - bredis_4
       - bconsul
       - bjaeger
     entrypoint: test/entrypoint.sh
@@ -66,7 +76,7 @@ services:
     logging:
       driver: none
   bproxysql:
-    image: proxysql/proxysql:2.5.3
+    image: proxysql/proxysql:2.5.4
     # The --initial flag force resets the ProxySQL database on startup. By
     # default, ProxySQL ignores new configuration if the database already
     # exists. Without this flag, new configuration wouldn't be applied until you
@@ -85,7 +95,7 @@ services:
     image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
-    command: redis-server /test/redis.config
+    command: redis-server /test/redis-ocsp.config
     networks:
       redisnet:
         ipv4_address: 10.33.33.2
@@ -94,13 +104,31 @@ services:
     image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
-    command: redis-server /test/redis.config
+    command: redis-server /test/redis-ocsp.config
     networks:
       redisnet:
         ipv4_address: 10.33.33.3
 
+  bredis_3:
+    image: redis:6.2.7
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis-ratelimits.config
+    networks:
+      redisnet:
+        ipv4_address: 10.33.33.4
+
+  bredis_4:
+    image: redis:6.2.7
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis-ratelimits.config
+    networks:
+      redisnet:
+        ipv4_address: 10.33.33.5
+
   bconsul:
-    image: hashicorp/consul:1.14.2
+    image: hashicorp/consul:1.15.4
     volumes:
      - ./test/:/test/:cached
     networks:
@@ -112,23 +140,8 @@ services:
         ipv4_address: 10.88.88.10
     command: "consul agent -dev -config-format=hcl -config-file=/test/consul/config.hcl"
 
-  netaccess:
-    image: *boulder_image
-    environment:
-      GO111MODULE: "on"
-      GOFLAGS: -mod=vendor
-      BOULDER_CONFIG_DIR: *boulder_config_dir
-    networks:
-      - bluenet
-    volumes:
-      - .:/boulder
-    working_dir: *boulder_working_dir
-    entrypoint: test/entrypoint-netaccess.sh
-
   bjaeger:
-    image: jaegertracing/all-in-one:1.44
-    environment:
-      COLLECTOR_OTLP_ENABLED: "true"
+    image: jaegertracing/all-in-one:1.50
     networks:
       bluenet:
         ipv4_address: 10.77.77.17

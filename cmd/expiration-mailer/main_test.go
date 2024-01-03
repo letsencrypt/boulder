@@ -177,7 +177,7 @@ func TestSendNags(t *testing.T) {
 	conn, err = m.mailer.Connect()
 	test.AssertNotError(t, err, "connecting SMTP")
 	err = m.sendNags(conn, []string{}, []*x509.Certificate{cert})
-	test.AssertNotError(t, err, "Not an error to pass no email contacts")
+	test.AssertErrorIs(t, err, errNoValidEmail)
 	test.AssertEquals(t, len(mc.Messages), 0)
 
 	sendLogs := log.GetAllMatching("INFO: attempting send JSON=.*")
@@ -231,7 +231,7 @@ func TestSendNagsAddressLimited(t *testing.T) {
 
 	// Try sending a message to an over-the-limit address
 	err = m.sendNags(conn, []string{emailA}, []*x509.Certificate{cert})
-	test.AssertNotError(t, err, "sending warning messages")
+	test.AssertErrorIs(t, err, errNoValidEmail)
 	// Expect that no messages were sent because this address was over the limit
 	test.AssertEquals(t, len(mc.Messages), 0)
 
@@ -329,6 +329,8 @@ func TestNoContactCertIsNotRenewed(t *testing.T) {
 // An account with no contact info has a certificate that is expiring but has been renewed.
 // We should only examine that certificate once.
 func TestNoContactCertIsRenewed(t *testing.T) {
+	ctx := context.Background()
+
 	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
 
 	reg, err := makeRegistration(testCtx.ssa, 1, jsonKeyA, []string{})
@@ -350,15 +352,15 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 
 	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "setting up DB")
-	err = setupDBMap.Insert(&core.FQDNSet{
-		SetHash: sa.HashNames(names),
+	err = setupDBMap.Insert(ctx, &core.FQDNSet{
+		SetHash: core.HashNames(names),
 		Serial:  core.SerialToString(serial2),
 		Issued:  testCtx.fc.Now().Add(time.Hour),
 		Expires: expires.Add(time.Hour),
 	})
 	test.AssertNotError(t, err, "inserting FQDNSet for renewal")
 
-	err = testCtx.m.findExpiringCertificates(context.Background())
+	err = testCtx.m.findExpiringCertificates(ctx)
 	test.AssertNotError(t, err, "finding expired certificates")
 
 	// We should have examined exactly one certificate
@@ -370,7 +372,7 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 
 	// Run findExpiringCertificates again. The count of examined certificates
 	// should not increase again.
-	err = testCtx.m.findExpiringCertificates(context.Background())
+	err = testCtx.m.findExpiringCertificates(ctx)
 	test.AssertNotError(t, err, "finding expired certificates")
 	test.AssertMetricWithLabelsEquals(t, certsExamined, prometheus.Labels{}, 1.0)
 	test.AssertMetricWithLabelsEquals(t, certsAlreadyRenewed, prometheus.Labels{}, 1.0)
@@ -498,6 +500,8 @@ func makeCertificate(regID int64, serial *big.Int, dnsNames []string, expires ti
 }
 
 func insertCertificate(cert certDERWithRegID, lastNagSent time.Time) error {
+	ctx := context.Background()
+
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	if err != nil {
 		return err
@@ -507,7 +511,7 @@ func insertCertificate(cert certDERWithRegID, lastNagSent time.Time) error {
 	if err != nil {
 		return err
 	}
-	err = setupDBMap.Insert(&core.Certificate{
+	err = setupDBMap.Insert(ctx, &core.Certificate{
 		RegistrationID: cert.RegID,
 		Serial:         core.SerialToString(parsedCert.SerialNumber),
 		Issued:         parsedCert.NotBefore,
@@ -518,7 +522,7 @@ func insertCertificate(cert certDERWithRegID, lastNagSent time.Time) error {
 		return fmt.Errorf("inserting certificate: %w", err)
 	}
 
-	return setupDBMap.Insert(&core.CertificateStatus{
+	return setupDBMap.Insert(ctx, &core.CertificateStatus{
 		Serial:                core.SerialToString(parsedCert.SerialNumber),
 		LastExpirationNagSent: lastNagSent,
 		Status:                core.OCSPStatusGood,
@@ -576,13 +580,13 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []certDERWithRegID {
 	test.AssertNotError(t, err, "creating cert D")
 
 	fqdnStatusD := &core.FQDNSet{
-		SetHash: sa.HashNames(certDNames),
+		SetHash: core.HashNames(certDNames),
 		Serial:  serial4String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -87),
 		Expires: ctx.fc.Now().AddDate(0, 0, 3),
 	}
 	fqdnStatusDRenewed := &core.FQDNSet{
-		SetHash: sa.HashNames(certDNames),
+		SetHash: core.HashNames(certDNames),
 		Serial:  serial5String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -3),
 		Expires: ctx.fc.Now().AddDate(0, 0, 87),
@@ -599,9 +603,9 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []certDERWithRegID {
 
 	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "setting up DB")
-	err = setupDBMap.Insert(fqdnStatusD)
+	err = setupDBMap.Insert(context.Background(), fqdnStatusD)
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusD")
-	err = setupDBMap.Insert(fqdnStatusDRenewed)
+	err = setupDBMap.Insert(context.Background(), fqdnStatusDRenewed)
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusDRenewed")
 	return []certDERWithRegID{certA, certB, certC, certD}
 }
@@ -743,7 +747,7 @@ func TestCertIsRenewed(t *testing.T) {
 			t.Fatal(err)
 		}
 		fqdnStatus := &core.FQDNSet{
-			SetHash: sa.HashNames(testData.DNS),
+			SetHash: core.HashNames(testData.DNS),
 			Serial:  testData.stringSerial,
 			Issued:  testData.NotBefore,
 			Expires: testData.NotAfter,
@@ -752,7 +756,7 @@ func TestCertIsRenewed(t *testing.T) {
 		err = insertCertificate(certDERWithRegID{DER: certDer, RegID: reg.Id}, time.Time{})
 		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add cert %s", testData.stringSerial))
 
-		err = setupDBMap.Insert(fqdnStatus)
+		err = setupDBMap.Insert(context.Background(), fqdnStatus)
 		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add fqdnStatus %s", testData.stringSerial))
 	}
 
@@ -858,13 +862,15 @@ func TestDontFindRevokedCert(t *testing.T) {
 	err = insertCertificate(certA, time.Time{})
 	test.AssertNotError(t, err, "inserting certificate")
 
+	ctx := context.Background()
+
 	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "sa.NewDbMap failed")
-	_, err = setupDBMap.Exec("UPDATE certificateStatus SET status = ? WHERE serial = ?",
+	_, err = setupDBMap.ExecContext(ctx, "UPDATE certificateStatus SET status = ? WHERE serial = ?",
 		string(core.OCSPStatusRevoked), core.SerialToString(serial1))
 	test.AssertNotError(t, err, "revoking certificate")
 
-	err = testCtx.m.findExpiringCertificates(context.Background())
+	err = testCtx.m.findExpiringCertificates(ctx)
 	test.AssertNotError(t, err, "err from findExpiringCertificates")
 
 	if len(testCtx.mc.Messages) != 0 {
@@ -931,15 +937,16 @@ type testCtx struct {
 }
 
 func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
+	log := blog.NewMock()
+
 	// We use the test_setup user (which has full permissions to everything)
 	// because the SA we return is used for inserting data to set up the test.
-	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
+	dbMap, err := sa.DBMapForTestWithLog(vars.DBConnSAFullPerms, log)
 	if err != nil {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}
 
 	fc := clock.NewFake()
-	log := blog.NewMock()
 	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, 0, fc, log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)

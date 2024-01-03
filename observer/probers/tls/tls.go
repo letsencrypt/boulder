@@ -1,6 +1,7 @@
 package probers
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/letsencrypt/boulder/observer/obsdialer"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
@@ -43,12 +45,13 @@ func getReasons() []string {
 // TLSProbe is the exported `Prober` object for monitors configured to perform
 // TLS protocols.
 type TLSProbe struct {
-	hostname string
-	rootOrg  string
-	rootCN   string
-	response string
-	notAfter *prometheus.GaugeVec
-	reason   *prometheus.CounterVec
+	hostname  string
+	rootOrg   string
+	rootCN    string
+	response  string
+	notAfter  *prometheus.GaugeVec
+	notBefore *prometheus.GaugeVec
+	reason    *prometheus.CounterVec
 }
 
 // Name returns a string that uniquely identifies the monitor.
@@ -97,9 +100,10 @@ func (p TLSProbe) checkRoot(rootOrg, rootCN string) error {
 }
 
 // Export expiration timestamp and reason to Prometheus.
-func (p TLSProbe) exportMetrics(notAfter time.Time, reason reason) {
-	if !notAfter.IsZero() {
-		p.notAfter.WithLabelValues(p.hostname).Set(float64(notAfter.Unix()))
+func (p TLSProbe) exportMetrics(cert *x509.Certificate, reason reason) {
+	if cert != nil {
+		p.notAfter.WithLabelValues(p.hostname).Set(float64(cert.NotAfter.Unix()))
+		p.notBefore.WithLabelValues(p.hostname).Set(float64(cert.NotBefore.Unix()))
 	}
 	p.reason.WithLabelValues(p.hostname, reasonToString[reason]).Inc()
 }
@@ -121,34 +125,42 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 			return err
 		},
 	}
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.hostname+":443", config)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	tlsDialer := tls.Dialer{
+		NetDialer: &obsdialer.Dialer,
+		Config:    config,
+	}
+	conn, err := tlsDialer.DialContext(ctx, "tcp", p.hostname+":443")
 	if err != nil {
-		p.exportMetrics(time.Time{}, internalError)
+		p.exportMetrics(nil, internalError)
 		return false
 	}
-
 	defer conn.Close()
-	peers := conn.ConnectionState().PeerCertificates
+
+	// tls.Dialer.DialContext is documented to always return *tls.Conn
+	tlsConn := conn.(*tls.Conn)
+	peers := tlsConn.ConnectionState().PeerCertificates
 	if time.Until(peers[0].NotAfter) > 0 {
-		p.exportMetrics(peers[0].NotAfter, responseDidNotMatch)
+		p.exportMetrics(peers[0], responseDidNotMatch)
 		return false
 	}
 
 	root := peers[len(peers)-1].Issuer
 	err = p.checkRoot(root.Organization[0], root.CommonName)
 	if err != nil {
-		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
+		p.exportMetrics(peers[0], rootDidNotMatch)
 		return false
 	}
 
-	p.exportMetrics(peers[0].NotAfter, none)
+	p.exportMetrics(peers[0], none)
 	return true
 }
 
 func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.hostname+":443", &tls.Config{})
 	if err != nil {
-		p.exportMetrics(time.Time{}, internalError)
+		p.exportMetrics(nil, internalError)
 		return false
 	}
 
@@ -157,7 +169,7 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 	root := peers[len(peers)-1].Issuer
 	err = p.checkRoot(root.Organization[0], root.CommonName)
 	if err != nil {
-		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
+		p.exportMetrics(peers[0], rootDidNotMatch)
 		return false
 	}
 
@@ -169,16 +181,16 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 		ocspStatus, err = checkOCSP(peers[0], peers[1], ocsp.Revoked)
 	}
 	if err != nil {
-		p.exportMetrics(peers[0].NotAfter, ocspError)
+		p.exportMetrics(peers[0], ocspError)
 		return false
 	}
 
 	if !ocspStatus {
-		p.exportMetrics(peers[0].NotAfter, responseDidNotMatch)
+		p.exportMetrics(peers[0], responseDidNotMatch)
 		return false
 	}
 
-	p.exportMetrics(peers[0].NotAfter, none)
+	p.exportMetrics(peers[0], none)
 	return true
 }
 

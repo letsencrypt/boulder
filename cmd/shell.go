@@ -21,17 +21,17 @@ import (
 	"time"
 
 	"github.com/go-logr/stdr"
-	"github.com/go-redis/redis/v8"
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"google.golang.org/grpc/grpclog"
 
 	"github.com/letsencrypt/boulder/core"
@@ -286,6 +286,12 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 		ErrorLog: promLogger{logger},
 	}))
 
+	if addr == "" {
+		logger.Err("Debug listen address is not configured")
+		os.Exit(1)
+	}
+	logger.Infof("Debug server listening on %s", addr)
+
 	server := http.Server{
 		Addr:        addr,
 		Handler:     mux,
@@ -442,12 +448,10 @@ func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
 
 	// Initialize the validator and load any custom tags.
 	validate := validator.New()
-	if cv.Validators != nil {
-		for tag, v := range cv.Validators {
-			err := validate.RegisterValidation(tag, v)
-			if err != nil {
-				return err
-			}
+	for tag, v := range cv.Validators {
+		err := validate.RegisterValidation(tag, v)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -486,12 +490,10 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 
 	// Initialize the validator and load any custom tags.
 	validate := validator.New()
-	if cv.Validators != nil {
-		for tag, v := range cv.Validators {
-			err := validate.RegisterValidation(tag, v)
-			if err != nil {
-				return err
-			}
+	for tag, v := range cv.Validators {
+		err := validate.RegisterValidation(tag, v)
+		if err != nil {
+			return err
 		}
 	}
 

@@ -2,6 +2,7 @@ package notmain
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -68,9 +69,10 @@ func (i *idExporterResults) writeToFile(outfile string) error {
 }
 
 // findIDs gathers all registration IDs with unexpired certificates.
-func (c idExporter) findIDs() (idExporterResults, error) {
+func (c idExporter) findIDs(ctx context.Context) (idExporterResults, error) {
 	var holder idExporterResults
 	_, err := c.dbMap.Select(
+		ctx,
 		&holder,
 		`SELECT DISTINCT r.id
 		FROM registrations AS r
@@ -89,9 +91,10 @@ func (c idExporter) findIDs() (idExporterResults, error) {
 
 // findIDsWithExampleHostnames gathers all registration IDs with
 // unexpired certificates and a corresponding example hostname.
-func (c idExporter) findIDsWithExampleHostnames() (idExporterResults, error) {
+func (c idExporter) findIDsWithExampleHostnames(ctx context.Context) (idExporterResults, error) {
 	var holder idExporterResults
 	_, err := c.dbMap.Select(
+		ctx,
 		&holder,
 		`SELECT SQL_BIG_RESULT
 			cert.registrationID AS id,
@@ -116,13 +119,14 @@ func (c idExporter) findIDsWithExampleHostnames() (idExporterResults, error) {
 
 // findIDsForHostnames gathers all registration IDs with unexpired
 // certificates for each `hostnames` entry.
-func (c idExporter) findIDsForHostnames(hostnames []string) (idExporterResults, error) {
+func (c idExporter) findIDsForHostnames(ctx context.Context, hostnames []string) (idExporterResults, error) {
 	var holder idExporterResults
 	for _, hostname := range hostnames {
-		// Pass the same list in each time, gorp will happily just append to the slice
+		// Pass the same list in each time, borp will happily just append to the slice
 		// instead of overwriting it each time
-		// https://github.com/go-gorp/gorp/blob/2ae7d174a4cf270240c4561092402affba25da5e/select.go#L348-L355
+		// https://github.com/letsencrypt/borp/blob/c87bd6443d59746a33aca77db34a60cfc344adb2/select.go#L349-L353
 		_, err := c.dbMap.Select(
+			ctx,
 			&holder,
 			`SELECT DISTINCT c.registrationID AS id
 			FROM certificates AS c
@@ -224,7 +228,7 @@ type Config struct {
 	ContactExporter struct {
 		DB cmd.DBConfig
 		cmd.PasswordConfig
-		Features map[string]bool
+		Features features.Config
 	}
 }
 
@@ -251,6 +255,7 @@ func main() {
 	}
 
 	log := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
+	log.Info(cmd.VersionString())
 
 	// Load configuration file.
 	configData, err := os.ReadFile(*configFile)
@@ -261,8 +266,7 @@ func main() {
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Unmarshaling config")
 
-	err = features.Set(cfg.ContactExporter.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(cfg.ContactExporter.Features)
 
 	dbMap, err := sa.InitWrappedDb(cfg.ContactExporter.DB, nil, log)
 	cmd.FailOnError(err, "While initializing dbMap")
@@ -279,15 +283,15 @@ func main() {
 		hostnames, err := unmarshalHostnames(*hostnamesFile)
 		cmd.FailOnError(err, "Problem unmarshalling hostnames")
 
-		results, err = exporter.findIDsForHostnames(hostnames)
+		results, err = exporter.findIDsForHostnames(context.TODO(), hostnames)
 		cmd.FailOnError(err, "Could not find IDs for hostnames")
 
 	} else if *withExampleHostnames {
-		results, err = exporter.findIDsWithExampleHostnames()
+		results, err = exporter.findIDsWithExampleHostnames(context.TODO())
 		cmd.FailOnError(err, "Could not find IDs with hostnames")
 
 	} else {
-		results, err = exporter.findIDs()
+		results, err = exporter.findIDs(context.TODO())
 		cmd.FailOnError(err, "Could not find IDs")
 	}
 

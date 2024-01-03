@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc/resolver"
@@ -40,7 +39,7 @@ func (pc *PasswordConfig) Pass() (string, error) {
 // be embedded in other config structs.
 type ServiceConfig struct {
 	// DebugAddr is the address to run the /debug handlers on.
-	DebugAddr string `validate:"hostname_port"`
+	DebugAddr string `validate:"omitempty,hostname_port"`
 	GRPC      *GRPCServerConfig
 	TLS       TLSConfig
 
@@ -86,20 +85,6 @@ type DBConfig struct {
 func (d *DBConfig) URL() (string, error) {
 	url, err := os.ReadFile(d.DBConnectFile)
 	return strings.TrimSpace(string(url)), err
-}
-
-// DSNAddressAndUser returns the Address and User of the DBConnect DSN from
-// this object.
-func (d *DBConfig) DSNAddressAndUser() (string, string, error) {
-	dsnStr, err := d.URL()
-	if err != nil {
-		return "", "", fmt.Errorf("failed to load DBConnect URL: %s", err)
-	}
-	config, err := mysql.ParseDSN(dsnStr)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to parse DSN from the DBConnect URL: %s", err)
-	}
-	return config.Addr, config.User, nil
 }
 
 type SMTPConfig struct {
@@ -245,8 +230,13 @@ type SyslogConfig struct {
 // ServiceDomain contains the service and domain name the gRPC or bdns provider
 // will use to construct a SRV DNS query to lookup backends.
 type ServiceDomain struct {
+	// Service is the service name to be used for SRV lookups. For example: if
+	// record is 'foo.service.consul', then the Service is 'foo'.
 	Service string `validate:"required"`
-	Domain  string `validate:"required"`
+
+	// Domain is the domain name to be used for SRV lookups. For example: if the
+	// record is 'foo.service.consul', then the Domain is 'service.consul'.
+	Domain string `validate:"required"`
 }
 
 // GRPCClientConfig contains the information necessary to setup a gRPC client
@@ -453,7 +443,7 @@ func (c *GRPCClientConfig) makeSRVScheme() (string, error) {
 
 // GRPCServerConfig contains the information needed to start a gRPC server.
 type GRPCServerConfig struct {
-	Address string `json:"address" validate:"hostname_port"`
+	Address string `json:"address" validate:"omitempty,hostname_port"`
 	// Services is a map of service names to configuration specific to that service.
 	// These service names must match the service names advertised by gRPC itself,
 	// which are identical to the names set in our gRPC .proto files prefixed by
@@ -525,10 +515,7 @@ type DNSProvider struct {
 	// a hostname it will be resolved via the system DNS. If the port is left
 	// unspecified it will default to '53'. If this field is left unspecified
 	// the system DNS will be used for resolution of DNS backends.
-	//
-	// TODO(#6868): Make this field required once 'dnsResolver' is removed from
-	// the boulder-va JSON config in favor of 'dnsProvider'.
-	DNSAuthority string `validate:"omitempty,ip|hostname|hostname_port"`
+	DNSAuthority string `validate:"required,ip|hostname|hostname_port"`
 
 	// SRVLookup contains the service and domain name used to construct a SRV
 	// DNS query to lookup DNS backends. 'Domain' is required. 'Service' is

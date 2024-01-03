@@ -1416,7 +1416,9 @@ def test_expiration_mailer():
     requests.post("http://localhost:9381/clear", data='')
     for time in (no_reminder, first_reminder, last_reminder):
         print(get_future_output(
-            ["./bin/boulder", "expiration-mailer", "--config", "%s/expiration-mailer.json" % config_dir],
+            ["./bin/boulder", "expiration-mailer",
+             "--config", "%s/expiration-mailer.json" % config_dir,
+             "--debug-addr", ":8008"],
             time))
     resp = requests.get("http://localhost:9381/count?to=%s" % email_addr)
     mailcount = int(resp.text)
@@ -1490,11 +1492,6 @@ def test_caa_extensions():
     ]
     for policy in caa_records:
         challSrv.add_caa_issue(policy["domain"], policy["value"])
-
-    # TODO(@4a6f656c): Once the `CAAValidationMethods` feature flag is enabled by
-    # default, remove this early return.
-    if not CONFIG_NEXT:
-        return
 
     chisel2.expect_problem("urn:ietf:params:acme:error:caa",
         lambda: chisel2.auth_and_issue(["dns-01-only.good-caa-reserved.com"], chall_type="http-01"))

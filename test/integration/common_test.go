@@ -89,17 +89,12 @@ func delHTTP01Response(token string) error {
 	return nil
 }
 
-type issuanceResult struct {
-	acme.Order
-	certs []*x509.Certificate
-}
-
-func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*issuanceResult, error) {
+func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*client, *acme.Order, error) {
 	var err error
 	if c == nil {
 		c, err = makeClient()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
@@ -109,46 +104,83 @@ func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool
 	}
 	order, err := c.Client.NewOrder(c.Account, ids)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, authUrl := range order.Authorizations {
 		auth, err := c.Client.FetchAuthorization(c.Account, authUrl)
 		if err != nil {
-			return nil, fmt.Errorf("fetching authorization at %s: %s", authUrl, err)
+			return nil, nil, fmt.Errorf("fetching authorization at %s: %s", authUrl, err)
 		}
 
 		chal, ok := auth.ChallengeMap[acme.ChallengeTypeHTTP01]
 		if !ok {
-			return nil, fmt.Errorf("no HTTP challenge at %s", authUrl)
+			return nil, nil, fmt.Errorf("no HTTP challenge at %s", authUrl)
 		}
 
 		err = addHTTP01Response(chal.Token, chal.KeyAuthorization)
 		if err != nil {
-			return nil, fmt.Errorf("adding HTTP-01 response: %s", err)
+			return nil, nil, fmt.Errorf("adding HTTP-01 response: %s", err)
 		}
 		chal, err = c.Client.UpdateChallenge(c.Account, chal)
 		if err != nil {
 			delHTTP01Response(chal.Token)
-			return nil, fmt.Errorf("updating challenge: %s", err)
+			return nil, nil, fmt.Errorf("updating challenge: %s", err)
 		}
 		delHTTP01Response(chal.Token)
 	}
 
 	csr, err := makeCSR(csrKey, domains, cn)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	order, err = c.Client.FinalizeOrder(c.Account, order, csr)
 	if err != nil {
-		return nil, fmt.Errorf("finalizing order: %s", err)
+		return nil, nil, fmt.Errorf("finalizing order: %s", err)
 	}
+
+	return c, &order, nil
+}
+
+type issuanceResult struct {
+	acme.Order
+	certs []*x509.Certificate
+}
+
+func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*issuanceResult, error) {
+	var err error
+
+	c, order, err := makeClientAndOrder(c, csrKey, domains, cn)
+	if err != nil {
+		return nil, err
+	}
+
 	certs, err := c.Client.FetchCertificates(c.Account, order.Certificate)
 	if err != nil {
 		return nil, fmt.Errorf("fetching certificates: %s", err)
 	}
-	return &issuanceResult{order, certs}, nil
+	return &issuanceResult{*order, certs}, nil
+}
+
+type issuanceResultAllChains struct {
+	acme.Order
+	certs map[string][]*x509.Certificate
+}
+
+func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*issuanceResultAllChains, error) {
+	c, order, err := makeClientAndOrder(c, csrKey, domains, cn)
+	if err != nil {
+		return nil, err
+	}
+
+	// Retrieve all the certificate chains served by the WFE2.
+	certs, err := c.Client.FetchAllCertificates(c.Account, order.Certificate)
+	if err != nil {
+		return nil, fmt.Errorf("fetching certificates: %s", err)
+	}
+
+	return &issuanceResultAllChains{*order, certs}, nil
 }
 
 func makeCSR(k *ecdsa.PrivateKey, domains []string, cn bool) (*x509.CertificateRequest, error) {

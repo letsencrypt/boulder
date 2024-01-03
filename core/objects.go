@@ -342,11 +342,18 @@ type Authorization struct {
 	// slice and the order of these challenges may not be predictable.
 	Challenges []Challenge `json:"challenges,omitempty" db:"-"`
 
-	// Wildcard is a Boulder-specific Authorization field that indicates the
-	// authorization was created as a result of an order containing a name with
-	// a `*.`wildcard prefix. This will help convey to users that an
-	// Authorization with the identifier `example.com` and one DNS-01 challenge
-	// corresponds to a name `*.example.com` from an associated order.
+	// https://datatracker.ietf.org/doc/html/rfc8555#page-29
+	//
+	// wildcard (optional, boolean):  This field MUST be present and true
+	//   for authorizations created as a result of a newOrder request
+	//   containing a DNS identifier with a value that was a wildcard
+	//   domain name.  For other authorizations, it MUST be absent.
+	//   Wildcard domain names are described in Section 7.1.3.
+	//
+	// This is not represented in the database because we calculate it from
+	// the identifier stored in the database. Unlike the identifier returned
+	// as part of the authorization, the identifier we store in the database
+	// can contain an asterisk.
 	Wildcard bool `json:"wildcard,omitempty" db:"-"`
 }
 

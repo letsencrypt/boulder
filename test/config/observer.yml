@@ -83,9 +83,14 @@ monitors:
       recurse: true
       query_name: google.com
       query_type: A
-  - 
+  -
     period: 2s
     kind: HTTP
-    settings: 
+    settings:
       url: http://letsencrypt.org/foo
       rcodes: [200, 404]
+  -
+    period: 10s
+    kind: TCP
+    settings:
+      hostport: acme-v02.api.letsencrypt.org:443

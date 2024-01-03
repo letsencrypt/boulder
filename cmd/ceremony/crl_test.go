@@ -1,4 +1,4 @@
-package notmain
+package main
 
 import (
 	"crypto"
@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -80,23 +79,16 @@ func TestGenerateCRLLints(t *testing.T) {
 	cert, err = x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse test cert")
 
-	// This CRL should fail the following lints:
-	// - e_crl_has_idp (because our ceremony CRLs don't have the IDP extension)
-	// - e_crl_validity_period (because our ceremony CRLs are valid for a long time)
+	// This CRL should fail the following lint:
 	// - e_crl_acceptable_reason_codes (because 6 is forbidden)
-	// However, only the last of those should show up in the error message,
-	// because the first two should be explicitly removed from the lint registry
-	// by the ceremony tool.
-	six := 6
-	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []crl_x509.RevokedCertificate{
+	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []x509.RevocationListEntry{
 		{
-			SerialNumber: big.NewInt(12345),
-			ReasonCode:   &six,
+			SerialNumber:   big.NewInt(12345),
+			RevocationTime: time.Now().Add(time.Hour),
+			ReasonCode:     6,
 		},
 	})
 	test.AssertError(t, err, "generateCRL did not fail")
-	test.AssertNotContains(t, err.Error(), "e_crl_has_idp")
-	test.AssertNotContains(t, err.Error(), "e_crl_validity_period")
 	test.AssertContains(t, err.Error(), "e_crl_acceptable_reason_codes")
 }
 
@@ -131,7 +123,7 @@ func TestGenerateCRL(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse CRL")
 	err = goCRL.CheckSignatureFrom(cert)
 	test.AssertNotError(t, err, "CRL signature check failed")
-	test.AssertEquals(t, len(goCRL.RevokedCertificates), 0)
+	test.AssertEquals(t, len(goCRL.RevokedCertificateEntries), 0)
 
 	// fully parse the CRL to check that the version is correct, and that
 	// it contains the CRL number extension containing the number we expect
@@ -139,8 +131,9 @@ func TestGenerateCRL(t *testing.T) {
 	_, err = asn1.Unmarshal(crlDER, &crl)
 	test.AssertNotError(t, err, "failed to parse CRL")
 	test.AssertEquals(t, crl.TBS.Version, 1)         // x509v2 == 1
-	test.AssertEquals(t, len(crl.TBS.Extensions), 2) // AKID, CRL number
+	test.AssertEquals(t, len(crl.TBS.Extensions), 3) // AKID, CRL number, IssuingDistributionPoint
 	test.Assert(t, crl.TBS.Extensions[1].Id.Equal(asn1.ObjectIdentifier{2, 5, 29, 20}), "unexpected OID in extension")
+	test.Assert(t, crl.TBS.Extensions[2].Id.Equal(asn1.ObjectIdentifier{2, 5, 29, 28}), "unexpected OID in extension")
 	var number int
 	_, err = asn1.Unmarshal(crl.TBS.Extensions[1].Value, &number)
 	test.AssertNotError(t, err, "failed to parse CRL number extension")

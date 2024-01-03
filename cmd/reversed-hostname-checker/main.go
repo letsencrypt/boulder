@@ -12,7 +12,6 @@ import (
 	"os"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -39,18 +38,19 @@ func main() {
 
 	scanner := bufio.NewScanner(input)
 	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
+	logger.Info(cmd.VersionString())
 	pa, err := policy.New(nil, logger)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = pa.SetHostnamePolicyFile(*policyFile)
+	err = pa.LoadHostnamePolicyFile(*policyFile)
 	if err != nil {
 		log.Fatalf("reading %s: %s", *policyFile, err)
 	}
 	var errors bool
 	for scanner.Scan() {
 		n := sa.ReverseName(scanner.Text())
-		err := pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{identifier.DNSIdentifier(n)})
+		err := pa.WillingToIssue([]string{n})
 		if err != nil {
 			errors = true
 			fmt.Printf("%s: %s\n", n, err)

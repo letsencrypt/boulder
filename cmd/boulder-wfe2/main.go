@@ -25,13 +25,15 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/nonce"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/ratelimits"
+	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/wfe2"
 )
 
 type Config struct {
 	WFE struct {
-		DebugAddr string `validate:"required,hostname_port"`
+		DebugAddr string `validate:"omitempty,hostname_port"`
 
 		// ListenAddress is the address:port on which to listen for incoming
 		// HTTP requests. Defaults to ":80".
@@ -99,7 +101,7 @@ type Config struct {
 		// not request a specific chain.
 		Chains [][]string `validate:"required,min=1,dive,min=2,dive,required"`
 
-		Features map[string]bool
+		Features features.Config
 
 		// DirectoryCAAIdentity is used for the /directory response's "meta"
 		// element's "caaIdentities" field. It should match the VA's "issuerDomain"
@@ -137,6 +139,25 @@ type Config struct {
 		PendingAuthorizationLifetimeDays int `validate:"required,min=1,max=29"`
 
 		AccountCache *CacheConfig
+
+		Limiter struct {
+			// Redis contains the configuration necessary to connect to Redis
+			// for rate limiting. This field is required to enable rate
+			// limiting.
+			Redis *bredis.Config `validate:"required_with=Defaults"`
+
+			// Defaults is a path to a YAML file containing default rate limits.
+			// See: ratelimits/README.md for details. This field is required to
+			// enable rate limiting. If any individual rate limit is not set,
+			// that limit will be disabled.
+			Defaults string `validate:"required_with=Redis"`
+
+			// Overrides is a path to a YAML file containing overrides for the
+			// default rate limits. See: ratelimits/README.md for details. If
+			// this field is not set, all requesters will be subject to the
+			// default rate limits.
+			Overrides string
+		}
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -253,6 +274,9 @@ func (ew errorWriter) Write(p []byte) (n int, err error) {
 }
 
 func main() {
+	listenAddr := flag.String("addr", "", "HTTP listen address override")
+	tlsAddr := flag.String("tls-addr", "", "HTTPS listen address override")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 	if *configFile == "" {
@@ -264,8 +288,17 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.WFE.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.WFE.Features)
+
+	if *listenAddr != "" {
+		c.WFE.ListenAddress = *listenAddr
+	}
+	if *tlsAddr != "" {
+		c.WFE.TLSListenAddress = *tlsAddr
+	}
+	if *debugAddr != "" {
+		c.WFE.DebugAddr = *debugAddr
+	}
 
 	certChains := map[issuance.IssuerNameID][][]byte{}
 	issuerCerts := map[issuance.IssuerNameID]*issuance.Certificate{}
@@ -318,6 +351,21 @@ func main() {
 	}
 	pendingAuthorizationLifetime := time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
+	var limiter *ratelimits.Limiter
+	var txnBuilder *ratelimits.TransactionBuilder
+	var limiterRedis *bredis.Ring
+	if c.WFE.Limiter.Defaults != "" {
+		// Setup rate limiting.
+		limiterRedis, err = bredis.NewRingFromConfig(*c.WFE.Limiter.Redis, stats, logger)
+		cmd.FailOnError(err, "Failed to create Redis ring")
+
+		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, stats)
+		limiter, err = ratelimits.NewLimiter(clk, source, stats)
+		cmd.FailOnError(err, "Failed to create rate limiter")
+		txnBuilder, err = ratelimits.NewTransactionBuilder(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides)
+		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
+	}
+
 	var accountGetter wfe2.AccountGetter
 	if c.WFE.AccountCache != nil {
 		accountGetter = wfe2.NewAccountCache(sac,
@@ -346,6 +394,8 @@ func main() {
 		rnc,
 		npKey,
 		accountGetter,
+		limiter,
+		txnBuilder,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
 
@@ -356,6 +406,10 @@ func main() {
 	wfe.LegacyKeyIDPrefix = c.WFE.LegacyKeyIDPrefix
 
 	logger.Infof("WFE using key policy: %#v", kp)
+
+	if c.WFE.ListenAddress == "" {
+		cmd.Fail("HTTP listen address is not configured")
+	}
 
 	logger.Infof("Server running, listening on %s....", c.WFE.ListenAddress)
 	handler := wfe.Handler(stats, c.OpenTelemetryHTTPConfig.Options()...)
@@ -386,6 +440,7 @@ func main() {
 	}
 	if tlsSrv.Addr != "" {
 		go func() {
+			logger.Infof("TLS server listening on %s", tlsSrv.Addr)
 			err := tlsSrv.ListenAndServeTLS(c.WFE.ServerCertificatePath, c.WFE.ServerKeyPath)
 			if err != nil && err != http.ErrServerClosed {
 				cmd.FailOnError(err, "Running TLS server")
@@ -402,6 +457,7 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 		_ = tlsSrv.Shutdown(ctx)
+		limiterRedis.StopLookups()
 		oTelShutdown(ctx)
 	}()
 

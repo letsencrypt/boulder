@@ -1,6 +1,5 @@
 {
 	"crlUpdater": {
-		"debugAddr": ":8021",
 		"tls": {
 			"caCertFile": "test/grpc-creds/minica.pem",
 			"certFile": "test/grpc-creds/crl-updater.boulder/cert.pem",
@@ -42,12 +41,13 @@
 			"/hierarchy/intermediate-cert-ecdsa-a.pem"
 		],
 		"numShards": 10,
-		"shardWidth": "18h",
+		"shardWidth": "240h",
 		"lookbackPeriod": "24h",
-		"updatePeriod": "6h",
-		"updateOffset": "9120s",
+		"updatePeriod": "10m",
+		"updateTimeout": "1m",
 		"maxParallelism": 10,
-		"maxAttempts": 5
+		"maxAttempts": 2,
+		"features": {}
 	},
 	"syslog": {
 		"stdoutlevel": 6,

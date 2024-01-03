@@ -4,8 +4,11 @@ import (
 	"errors"
 
 	"github.com/letsencrypt/boulder/nonce"
+
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -20,6 +23,15 @@ const (
 	SRVResolverScheme = "nonce-srv"
 )
 
+// ErrNoBackendsMatchPrefix indicates that no backends were found which match
+// the nonce prefix provided in the RPC context. This can happen when the
+// provided nonce is stale, valid but the backend has since been removed from
+// the balancer, or valid but the backend has not yet been added to the
+// balancer.
+//
+// In any case, when the WFE receives this error it will return a badNonce error
+// to the ACME client.
+var ErrNoBackendsMatchPrefix = status.New(codes.Unavailable, "no backends match the nonce prefix")
 var errMissingPrefixCtxKey = errors.New("nonce.PrefixCtxKey value required in RPC context")
 var errMissingHMACKeyCtxKey = errors.New("nonce.HMACKeyCtxKey value required in RPC context")
 var errInvalidPrefixCtxKeyType = errors.New("nonce.PrefixCtxKey value in RPC context must be a string")
@@ -35,9 +47,12 @@ var _ base.PickerBuilder = (*Balancer)(nil)
 
 // Build implements the base.PickerBuilder interface. It is called by the gRPC
 // runtime when the balancer is first initialized and when the set of backend
-// (SubConn) addresses changes. It is responsible for initializing the Picker's
-// backends map and returning a balancer.Picker.
+// (SubConn) addresses changes.
 func (b *Balancer) Build(buildInfo base.PickerBuildInfo) balancer.Picker {
+	if len(buildInfo.ReadySCs) == 0 {
+		// The Picker must be rebuilt if there are no backends available.
+		return base.NewErrPicker(balancer.ErrNoSubConnAvailable)
+	}
 	return &Picker{
 		backends: buildInfo.ReadySCs,
 	}
@@ -58,7 +73,8 @@ var _ balancer.Picker = (*Picker)(nil)
 // (SubConn) based on the context of each RPC message.
 func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	if len(p.backends) == 0 {
-		// The Picker must be rebuilt if there are no backends available.
+		// This should never happen, the Picker should only be built when there
+		// are backends available.
 		return balancer.PickResult{}, balancer.ErrNoSubConnAvailable
 	}
 
@@ -75,8 +91,7 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	}
 
 	if p.prefixToBackend == nil {
-		// Iterate over the backends and build a map of the derived prefix for
-		// each backend SubConn.
+		// First call to Pick with a new Picker.
 		prefixToBackend := make(map[string]balancer.SubConn)
 		for sc, scInfo := range p.backends {
 			scPrefix := nonce.DerivePrefix(scInfo.Address.Addr, hmacKey)
@@ -100,7 +115,7 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	sc, ok := p.prefixToBackend[destPrefix]
 	if !ok {
 		// No backend SubConn was found for the destination prefix.
-		return balancer.PickResult{}, balancer.ErrNoSubConnAvailable
+		return balancer.PickResult{}, ErrNoBackendsMatchPrefix.Err()
 	}
 	return balancer.PickResult{SubConn: sc}, nil
 }

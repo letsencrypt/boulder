@@ -3,21 +3,16 @@ package ca
 import (
 	"context"
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
 	"fmt"
-	"math/big"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/beeker1121/goque"
 	ct "github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
@@ -98,7 +93,6 @@ var (
 )
 
 const arbitraryRegID int64 = 1001
-const yamlLoadErrMsg = "Error loading YAML bytes for ECDSA allow list:"
 
 // Useful key and certificate files.
 const caKeyFile = "../test/test-ca.key"
@@ -182,7 +176,7 @@ func setup(t *testing.T) *testCtx {
 
 	pa, err := policy.New(nil, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.yaml")
+	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
 	boulderProfile := func(rsa, ecdsa bool) *issuance.Profile {
@@ -244,7 +238,7 @@ func setup(t *testing.T) *testCtx {
 
 	ocsp, err := NewOCSPImpl(
 		boulderIssuers,
-		time.Hour,
+		24*time.Hour,
 		0,
 		time.Second,
 		blog.NewMock(),
@@ -282,7 +276,7 @@ func setup(t *testing.T) *testCtx {
 	}
 }
 
-func TestFailNoSerialPrefix(t *testing.T) {
+func TestSerialPrefix(t *testing.T) {
 	testCtx := setup(t)
 
 	_, err := NewCertificateAuthorityImpl(
@@ -295,13 +289,29 @@ func TestFailNoSerialPrefix(t *testing.T) {
 		0,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		nil,
 		nil,
 		testCtx.fc)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
+
+	_, err = NewCertificateAuthorityImpl(
+		nil,
+		nil,
+		nil,
+		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		128,
+		testCtx.maxNames,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		testCtx.stats,
+		nil,
+		nil,
+		testCtx.fc)
+	test.AssertError(t, err, "CA should have failed with too-large SerialPrefix")
 }
 
 type TestCertificateIssuance struct {
@@ -334,7 +344,7 @@ func TestIssuePrecertificate(t *testing.T) {
 		// the precertificates previously generated from the preceding
 		// "precertificate" test.
 		for _, mode := range []string{"precertificate", "certificate-for-precertificate"} {
-			ca, sa := issueCertificateSubTestSetup(t)
+			ca, sa := issueCertificateSubTestSetup(t, nil)
 
 			t.Run(fmt.Sprintf("%s - %s", mode, testCase.name), func(t *testing.T) {
 				req, err := x509.ParseCertificateRequest(testCase.csr)
@@ -372,27 +382,23 @@ func TestIssuePrecertificate(t *testing.T) {
 	}
 }
 
-func makeECDSAAllowListBytes(regID int64) []byte {
-	regIDBytes := []byte(fmt.Sprintf("%d", regID))
-	contents := []byte(`
-- `)
-	return append(contents, regIDBytes...)
-}
-
-func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *mockSA) {
+func issueCertificateSubTestSetup(t *testing.T, e *ECDSAAllowList) (*certificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
+	ecdsaAllowList := &ECDSAAllowList{}
+	if e == nil {
+		e = ecdsaAllowList
+	}
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
 		testCtx.pa,
 		testCtx.boulderIssuers,
-		&ECDSAAllowList{},
+		e,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.signatureCount,
@@ -438,7 +444,6 @@ func TestNoIssuers(t *testing.T) {
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.signatureCount,
@@ -462,7 +467,6 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.signatureCount,
@@ -491,39 +495,17 @@ func TestECDSAAllowList(t *testing.T) {
 	req := &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID}
 
 	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
-	ca, _ := issueCertificateSubTestSetup(t)
-	contents := makeECDSAAllowListBytes(arbitraryRegID)
-	err := ca.ecdsaAllowList.Update(contents)
-	if err != nil {
-		t.Errorf("%s %s", yamlLoadErrMsg, err)
-		t.FailNow()
-	}
+	regIDMap := makeRegIDsMap([]int64{arbitraryRegID})
+	ca, _ := issueCertificateSubTestSetup(t, &ECDSAAllowList{regIDMap})
 	result, err := ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err := x509.ParseCertificate(result.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
 
-	// Attempts to update the allow list with malformed YAML should
-	// fail, but the allowlist should still contain arbitraryRegID, so
-	// issuance should come from ECDSA issuer
-	malformed_yaml := []byte(`
-)(\/=`)
-	err = ca.ecdsaAllowList.Update(malformed_yaml)
-	test.AssertError(t, err, "Update method accepted malformed YAML")
-	result, err = ca.IssuePrecertificate(ctx, req)
-	test.AssertNotError(t, err, "Failed to issue certificate after Update was called with malformed YAML")
-	cert, err = x509.ParseCertificate(result.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
-
 	// With allowlist not containing arbitraryRegID, issuance should fall back to RSA issuer.
-	contents = makeECDSAAllowListBytes(int64(2002))
-	err = ca.ecdsaAllowList.Update(contents)
-	if err != nil {
-		t.Errorf("%s %s", yamlLoadErrMsg, err)
-		t.FailNow()
-	}
+	regIDMap = makeRegIDsMap([]int64{2002})
+	ca, _ = issueCertificateSubTestSetup(t, &ECDSAAllowList{regIDMap})
 	result, err = ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err = x509.ParseCertificate(result.DER)
@@ -531,8 +513,8 @@ func TestECDSAAllowList(t *testing.T) {
 	test.AssertByteEquals(t, cert.RawIssuer, caCert.RawSubject)
 
 	// With empty allowlist but ECDSAForAll enabled, issuance should come from ECDSA issuer.
-	ca, _ = issueCertificateSubTestSetup(t)
-	_ = features.Set(map[string]bool{"ECDSAForAll": true})
+	ca, _ = issueCertificateSubTestSetup(t, nil)
+	features.Set(features.Config{ECDSAForAll: true})
 	defer features.Reset()
 	result, err = ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
@@ -606,7 +588,6 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.serialPrefix,
 			testCtx.maxNames,
 			testCtx.keyPolicy,
-			nil,
 			testCtx.logger,
 			testCtx.stats,
 			testCtx.signatureCount,
@@ -643,7 +624,6 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		nil,
@@ -744,7 +724,6 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.signatureCount,
@@ -850,7 +829,6 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.signatureCount,
@@ -892,7 +870,6 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.signatureCount,
@@ -911,149 +888,5 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "error checking for duplicate") {
 		t.Fatalf("Wrong type of error issuing duplicate serial. Expected 'error checking for duplicate', got '%s'", err)
-	}
-}
-
-type queueSA struct {
-	mockSA
-
-	fail      bool
-	duplicate bool
-
-	issued        time.Time
-	issuedPrecert time.Time
-}
-
-func (qsa *queueSA) AddCertificate(_ context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	if qsa.fail {
-		return nil, errors.New("bad")
-	} else if qsa.duplicate {
-		return nil, berrors.DuplicateError("is a dupe")
-	}
-	qsa.issued = time.Unix(0, req.Issued).UTC()
-	return nil, nil
-}
-
-func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	if qsa.fail {
-		return nil, errors.New("bad")
-	} else if qsa.duplicate {
-		return nil, berrors.DuplicateError("is a dupe")
-	}
-	qsa.issuedPrecert = time.Unix(0, req.Issued).UTC()
-	return nil, nil
-}
-
-func TestOrphanQueue(t *testing.T) {
-	tmpDir := t.TempDir()
-	orphanQueue, err := goque.OpenQueue(tmpDir)
-	test.AssertNotError(t, err, "Failed to open orphaned certificate queue")
-
-	qsa := &queueSA{fail: true}
-	testCtx := setup(t)
-	fakeNow, err := time.Parse(time.ANSIC, "Mon Jan 2 15:04:05 2006")
-	if err != nil {
-		t.Fatal(err)
-	}
-	testCtx.fc.Set(fakeNow)
-	ca, err := NewCertificateAuthorityImpl(
-		qsa,
-		testCtx.pa,
-		testCtx.boulderIssuers,
-		nil,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		orphanQueue,
-		testCtx.logger,
-		testCtx.stats,
-		nil,
-		nil,
-		testCtx.fc)
-	test.AssertNotError(t, err, "Failed to create CA")
-
-	err = ca.integrateOrphan()
-	if err != goque.ErrEmpty {
-		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
-	}
-
-	// generate basic test cert
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "Failed to generate test key")
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		DNSNames:     []string{"test.invalid"},
-		NotBefore:    fakeNow.Add(-time.Hour),
-	}
-	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Public(), k)
-	test.AssertNotError(t, err, "Failed to generate test cert")
-	err = ca.storeCertificate(
-		context.Background(),
-		1,
-		1,
-		tmpl.SerialNumber,
-		certDER,
-		1,
-	)
-	test.AssertError(t, err, "storeCertificate didn't fail when AddCertificate failed")
-
-	qsa.fail = false
-	err = ca.integrateOrphan()
-	test.AssertNotError(t, err, "integrateOrphan failed")
-	if !qsa.issued.Equal(fakeNow) {
-		t.Errorf("expected issued time to be %s, got %s", fakeNow, qsa.issued)
-	}
-	err = ca.integrateOrphan()
-	if err != goque.ErrEmpty {
-		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
-	}
-
-	// test with a duplicate cert
-	ca.queueOrphan(&orphanedCert{
-		DER:   certDER,
-		RegID: 1,
-	})
-
-	qsa.duplicate = true
-	err = ca.integrateOrphan()
-	test.AssertNotError(t, err, "integrateOrphan failed with duplicate cert")
-	if !qsa.issued.Equal(fakeNow) {
-		t.Errorf("expected issued time to be %s, got %s", fakeNow, qsa.issued)
-	}
-	err = ca.integrateOrphan()
-	if err != goque.ErrEmpty {
-		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
-	}
-
-	// add cert to queue, and recreate queue to make sure it still has the cert
-	qsa.fail = true
-	qsa.duplicate = false
-	err = ca.storeCertificate(
-		context.Background(),
-		1,
-		1,
-		tmpl.SerialNumber,
-		certDER,
-		1,
-	)
-	test.AssertError(t, err, "storeCertificate didn't fail when AddCertificate failed")
-	err = orphanQueue.Close()
-	test.AssertNotError(t, err, "Failed to close the queue cleanly")
-	orphanQueue, err = goque.OpenQueue(tmpDir)
-	test.AssertNotError(t, err, "Failed to open orphaned certificate queue")
-	defer func() { _ = orphanQueue.Close() }()
-	ca.orphanQueue = orphanQueue
-
-	qsa.fail = false
-	err = ca.integrateOrphan()
-	test.AssertNotError(t, err, "integrateOrphan failed")
-	if !qsa.issued.Equal(fakeNow) {
-		t.Errorf("expected issued time to be %s, got %s", fakeNow, qsa.issued)
-	}
-	err = ca.integrateOrphan()
-	if err != goque.ErrEmpty {
-		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
 	}
 }

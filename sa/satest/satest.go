@@ -9,6 +9,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // CreateWorkingRegistration inserts a new, correct Registration into
@@ -24,7 +25,7 @@ func CreateWorkingRegistration(t *testing.T, sa sapb.StorageAuthorityClient) *co
 }`),
 		Contact:   []string{"mailto:foo@example.com"},
 		InitialIP: initialIP,
-		CreatedAt: time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC).UnixNano(),
+		CreatedAt: timestamppb.New(time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC)),
 		Status:    string(core.StatusValid),
 	})
 	if err != nil {

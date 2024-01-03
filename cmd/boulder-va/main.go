@@ -27,17 +27,16 @@ type Config struct {
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries                  int
-		DNSResolver               string           `validate:"required_without=DNSProvider,excluded_with=DNSProvider,omitempty,hostname|hostname_port"`
-		DNSProvider               *cmd.DNSProvider `validate:"required_without=DNSResolver,excluded_with=DNSResolver,omitempty"`
+		DNSProvider               *cmd.DNSProvider `validate:"required"`
 		DNSTimeout                config.Duration  `validate:"required"`
 		DNSAllowLoopbackAddresses bool
 
 		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
-		MaxRemoteValidationFailures int
+		MaxRemoteValidationFailures int                    `validate:"omitempty,min=0,required_with=RemoteVAs"`
 
-		Features map[string]bool
+		Features features.Config
 
-		AccountURIPrefixes []string
+		AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -58,8 +57,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.VA.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.VA.Features)
 
 	if *grpcAddr != "" {
 		c.VA.GRPC.Address = *grpcAddr
@@ -81,28 +79,21 @@ func main() {
 	}
 	clk := cmd.Clock()
 
-	// TODO(#6868) Remove this once all instances of VA.DNSResolver have been
-	// removed from production config files.
-	if c.VA.DNSResolver != "" && c.VA.DNSProvider != nil {
-		cmd.Fail("Cannot specify both 'dnsResolver' and dnsProvider")
-	}
-
-	if c.VA.DNSResolver == "" && c.VA.DNSProvider == nil {
-		cmd.Fail("Must specify either 'dnsResolver' or dnsProvider")
-	}
-
-	if c.VA.DNSProvider == nil && c.VA.DNSResolver != "" {
-		c.VA.DNSProvider = &cmd.DNSProvider{
-			SRVLookup: cmd.ServiceDomain{
-				Domain: c.VA.DNSResolver,
-			},
-		}
+	if c.VA.DNSProvider == nil {
+		cmd.Fail("Must specify dnsProvider")
 	}
 
 	var servers bdns.ServerProvider
-	servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second)
+	proto := "udp"
+	if features.Get().DOH {
+		proto = "tcp"
+	}
+	servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, proto)
 	cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
 	defer servers.Stop()
+
+	tlsConfig, err := c.VA.TLS.Load(scope)
+	cmd.FailOnError(err, "tlsConfig config")
 
 	var resolver bdns.Client
 	if !c.VA.DNSAllowLoopbackAddresses {
@@ -112,7 +103,8 @@ func main() {
 			scope,
 			clk,
 			dnsTries,
-			logger)
+			logger,
+			tlsConfig)
 	} else {
 		resolver = bdns.NewTest(
 			c.VA.DNSTimeout.Duration,
@@ -120,11 +112,9 @@ func main() {
 			scope,
 			clk,
 			dnsTries,
-			logger)
+			logger,
+			tlsConfig)
 	}
-
-	tlsConfig, err := c.VA.TLS.Load(scope)
-	cmd.FailOnError(err, "tlsConfig config")
 
 	var remotes []va.RemoteVA
 	if len(c.VA.RemoteVAs) > 0 {

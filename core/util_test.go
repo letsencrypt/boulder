@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -11,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/test"
@@ -114,15 +117,48 @@ func TestIsAnyNilOrZero(t *testing.T) {
 	test.Assert(t, IsAnyNilOrZero(false), "False bool seen as non-zero")
 	test.Assert(t, !IsAnyNilOrZero(true), "True bool seen as zero")
 
-	test.Assert(t, IsAnyNilOrZero(0), "Zero num seen as non-zero")
-	test.Assert(t, !IsAnyNilOrZero(uint32(5)), "Non-zero num seen as zero")
-	test.Assert(t, !IsAnyNilOrZero(-12.345), "Non-zero num seen as zero")
+	test.Assert(t, IsAnyNilOrZero(0), "Untyped constant zero seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(1), "Untyped constant 1 seen as zero")
+	test.Assert(t, IsAnyNilOrZero(int(0)), "int(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(int(1)), "int(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(int8(0)), "int8(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(int8(1)), "int8(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(int16(0)), "int16(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(int16(1)), "int16(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(int32(0)), "int32(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(int32(1)), "int32(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(int64(0)), "int64(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(int64(1)), "int64(1) seen as zero")
+
+	test.Assert(t, IsAnyNilOrZero(uint(0)), "uint(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(uint(1)), "uint(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(uint8(0)), "uint8(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(uint8(1)), "uint8(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(uint16(0)), "uint16(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(uint16(1)), "uint16(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(uint32(0)), "uint32(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(uint32(1)), "uint32(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(uint64(0)), "uint64(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(uint64(1)), "uint64(1) seen as zero")
+
+	test.Assert(t, !IsAnyNilOrZero(-12.345), "Untyped float32 seen as zero")
+	test.Assert(t, !IsAnyNilOrZero(float32(6.66)), "Non-empty float32 seen as zero")
+	test.Assert(t, IsAnyNilOrZero(float32(0)), "Empty float32 seen as non-zero")
+
+	test.Assert(t, !IsAnyNilOrZero(float64(7.77)), "Non-empty float64 seen as zero")
+	test.Assert(t, IsAnyNilOrZero(float64(0)), "Empty float64 seen as non-zero")
 
 	test.Assert(t, IsAnyNilOrZero(""), "Empty string seen as non-zero")
 	test.Assert(t, !IsAnyNilOrZero("string"), "Non-empty string seen as zero")
 
+	test.Assert(t, IsAnyNilOrZero([]string{}), "Empty string slice seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero([]string{"barncats"}), "Non-empty string slice seen as zero")
+
 	test.Assert(t, IsAnyNilOrZero([]byte{}), "Empty byte slice seen as non-zero")
 	test.Assert(t, !IsAnyNilOrZero([]byte("byte")), "Non-empty byte slice seen as zero")
+
+	test.Assert(t, IsAnyNilOrZero(time.Time{}), "No specified time value seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(time.Now()), "Current time seen as zero")
 
 	type Foo struct {
 		foo int
@@ -134,6 +170,78 @@ func TestIsAnyNilOrZero(t *testing.T) {
 
 	test.Assert(t, IsAnyNilOrZero(1, ""), "Mixed values seen as non-zero")
 	test.Assert(t, IsAnyNilOrZero("", 1), "Mixed values seen as non-zero")
+
+	var p *timestamppb.Timestamp
+	test.Assert(t, IsAnyNilOrZero(p), "Pointer to uninitialized timestamppb.Timestamp seen as non-zero")
+	test.Assert(t, IsAnyNilOrZero(timestamppb.New(time.Time{})), "*timestamppb.Timestamp containing an uninitialized inner time.Time{} is seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(timestamppb.Now()), "A *timestamppb.Timestamp with valid inner time is seen as zero")
+
+	var d *durationpb.Duration
+	var zeroDuration time.Duration
+	test.Assert(t, IsAnyNilOrZero(d), "Pointer to uninitialized durationpb.Duration seen as non-zero")
+	test.Assert(t, IsAnyNilOrZero(durationpb.New(zeroDuration)), "*durationpb.Duration containing an zero value time.Duration is seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(durationpb.New(666)), "A *durationpb.Duration with valid inner duration is seen as zero")
+}
+
+func BenchmarkIsAnyNilOrZero(b *testing.B) {
+	var thyme *time.Time
+	var sage *time.Duration
+	var table = []struct {
+		input interface{}
+	}{
+		{input: int(0)},
+		{input: int(1)},
+		{input: int8(0)},
+		{input: int8(1)},
+		{input: int16(0)},
+		{input: int16(1)},
+		{input: int32(0)},
+		{input: int32(1)},
+		{input: int64(0)},
+		{input: int64(1)},
+		{input: uint(0)},
+		{input: uint(1)},
+		{input: uint8(0)},
+		{input: uint8(1)},
+		{input: uint16(0)},
+		{input: uint16(1)},
+		{input: uint32(0)},
+		{input: uint32(1)},
+		{input: uint64(0)},
+		{input: uint64(1)},
+		{input: float32(0)},
+		{input: float32(0.1)},
+		{input: float64(0)},
+		{input: float64(0.1)},
+		{input: ""},
+		{input: "ahoyhoy"},
+		{input: []string{}},
+		{input: []string{""}},
+		{input: []string{"oodley_doodley"}},
+		{input: []byte{}},
+		{input: []byte{0}},
+		{input: []byte{1}},
+		{input: []rune{}},
+		{input: []rune{2}},
+		{input: []rune{3}},
+		{input: nil},
+		{input: false},
+		{input: true},
+		{input: thyme},
+		{input: time.Time{}},
+		{input: time.Date(2015, time.June, 04, 11, 04, 38, 0, time.UTC)},
+		{input: sage},
+		{input: time.Duration(1)},
+		{input: time.Duration(0)},
+	}
+
+	for _, v := range table {
+		b.Run(fmt.Sprintf("input_%T_%v", v.input, v.input), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = IsAnyNilOrZero(v.input)
+			}
+		})
+	}
 }
 
 func TestUniqueLowerNames(t *testing.T) {
@@ -205,4 +313,31 @@ func TestRetryBackoff(t *testing.T) {
 	backoff = RetryBackoff(7, base, max, factor)
 	assertBetween(float64(backoff), float64(expected)*0.8, float64(expected)*1.2)
 
+}
+
+func TestHashNames(t *testing.T) {
+	// Test that it is deterministic
+	h1 := HashNames([]string{"a"})
+	h2 := HashNames([]string{"a"})
+	test.AssertByteEquals(t, h1, h2)
+
+	// Test that it differentiates
+	h1 = HashNames([]string{"a"})
+	h2 = HashNames([]string{"b"})
+	test.Assert(t, !bytes.Equal(h1, h2), "Should have been different")
+
+	// Test that it is not subject to ordering
+	h1 = HashNames([]string{"a", "b"})
+	h2 = HashNames([]string{"b", "a"})
+	test.AssertByteEquals(t, h1, h2)
+
+	// Test that it is not subject to case
+	h1 = HashNames([]string{"a", "b"})
+	h2 = HashNames([]string{"A", "B"})
+	test.AssertByteEquals(t, h1, h2)
+
+	// Test that it is not subject to duplication
+	h1 = HashNames([]string{"a", "a"})
+	h2 = HashNames([]string{"a"})
+	test.AssertByteEquals(t, h1, h2)
 }

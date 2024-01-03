@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -28,7 +29,9 @@ func TestCAALogChecker(t *testing.T) {
 	stdErr := new(bytes.Buffer)
 	cmd.Stderr = stdErr
 	out, err := cmd.Output()
-	test.AssertEquals(t, string(out), "")
+	numLines := strings.Split(string(bytes.TrimSpace(out)), "\n")
+	test.AssertEquals(t, len(numLines), 1)
+	test.AssertContains(t, string(out), "Versions: caa-log-checker=(Unspecified Unspecified) Golang=(")
 	test.AssertEquals(t, stdErr.String(), "")
 	test.AssertNotError(t, err, "caa-log-checker failed")
 

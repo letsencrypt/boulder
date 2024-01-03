@@ -41,7 +41,7 @@ func TestContactAuditor(t *testing.T) {
 	testCtx.addRegistrations(t)
 
 	resChan := make(chan *result, 10)
-	err := testCtx.c.run(resChan)
+	err := testCtx.c.run(context.Background(), resChan)
 	test.AssertNotError(t, err, "received error")
 
 	// We should get back A, B, C, and D

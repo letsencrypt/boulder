@@ -33,9 +33,11 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -52,6 +54,8 @@ import (
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/ratelimits"
+	bredis "github.com/letsencrypt/boulder/redis"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -186,7 +190,8 @@ type MockRegistrationAuthority struct {
 
 func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	in.Id = 1
-	in.CreatedAt = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
+	created := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
+	in.CreatedAt = timestamppb.New(created)
 	return in, nil
 }
 
@@ -232,11 +237,14 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *co
 }
 
 func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	created := time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC)
+	expires := time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC)
+
 	return &corepb.Order{
 		Id:               1,
 		RegistrationID:   in.RegistrationID,
-		Created:          time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
-		Expires:          time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
+		Created:          timestamppb.New(created),
+		Expires:          timestamppb.New(expires),
 		Names:            in.Names,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
@@ -339,11 +347,63 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	}
 
 	mockSA := mocks.NewStorageAuthorityReadOnly(fc)
-	noncePrefix := "mlem"
-	nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
-	test.AssertNotError(t, err, "making nonceService")
-	nonceGRPCService := &inmemnonce.Service{
-		NonceService: nonceService,
+
+	log := blog.NewMock()
+
+	var gnc nonce.Getter
+	var noncePrefixMap map[string]nonce.Redeemer
+	var rnc nonce.Redeemer
+	var rncKey string
+	var inmemNonceService *inmemnonce.Service
+	var limiter *ratelimits.Limiter
+	var txnBuilder *ratelimits.TransactionBuilder
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// Use derived nonces.
+		noncePrefix := nonce.DerivePrefix("192.168.1.1:8080", "b8c758dd85e113ea340ce0b3a99f389d40a308548af94d1730a7692c1874f1f")
+		nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
+		test.AssertNotError(t, err, "making nonceService")
+
+		inmemNonceService = &inmemnonce.Service{NonceService: nonceService}
+		gnc = inmemNonceService
+		rnc = inmemNonceService
+
+		// Setup rate limiting.
+		rc := bredis.Config{
+			Username: "unittest-rw",
+			TLS: cmd.TLSConfig{
+				CACertFile: "../test/redis-tls/minica.pem",
+				CertFile:   "../test/redis-tls/boulder/cert.pem",
+				KeyFile:    "../test/redis-tls/boulder/key.pem",
+			},
+			Lookups: []cmd.ServiceDomain{
+				{
+					Service: "redisratelimits",
+					Domain:  "service.consul",
+				},
+			},
+			LookupDNSAuthority: "consul.service.consul",
+		}
+		rc.PasswordConfig = cmd.PasswordConfig{
+			PasswordFile: "../test/secrets/ratelimits_redis_password",
+		}
+		ring, err := bredis.NewRingFromConfig(rc, stats, log)
+		test.AssertNotError(t, err, "making redis ring client")
+		source := ratelimits.NewRedisSource(ring.Ring, fc, stats)
+		test.AssertNotNil(t, source, "source should not be nil")
+		limiter, err = ratelimits.NewLimiter(fc, source, stats)
+		test.AssertNotError(t, err, "making limiter")
+		txnBuilder, err = ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+		test.AssertNotError(t, err, "making transaction composer")
+	} else {
+		// TODO(#6610): Remove this once we've moved to derived to prefixes.
+		noncePrefix := "mlem"
+		nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
+		test.AssertNotError(t, err, "making nonceService")
+
+		inmemNonceService = &inmemnonce.Service{NonceService: nonceService}
+		gnc = inmemNonceService
+		noncePrefixMap = map[string]nonce.Redeemer{noncePrefix: inmemNonceService}
+		rnc = inmemNonceService
 	}
 
 	wfe, err := NewWebFrontEndImpl(
@@ -359,16 +419,18 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		7*24*time.Hour,
 		&MockRegistrationAuthority{},
 		mockSA,
-		nonceGRPCService,
-		map[string]nonce.Redeemer{noncePrefix: nonceGRPCService},
-		nonceGRPCService,
-		"",
-		mockSA)
+		gnc,
+		noncePrefixMap,
+		rnc,
+		rncKey,
+		mockSA,
+		limiter,
+		txnBuilder)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
 
-	return wfe, fc, requestSigner{t, nonceGRPCService.AsSource()}
+	return wfe, fc, requestSigner{t, inmemNonceService.AsSource()}
 }
 
 // makePostRequestWithPath creates an http.Request for localhost with method
@@ -1785,8 +1847,8 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial, _ 
 	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(sa.cert.SerialNumber),
-		Issued:         sa.cert.NotBefore.UnixNano(),
-		Expires:        sa.cert.NotAfter.UnixNano(),
+		Issued:         timestamppb.New(sa.cert.NotBefore),
+		Expires:        timestamppb.New(sa.cert.NotAfter),
 		Der:            sa.cert.Raw,
 	}, nil
 }
@@ -1820,7 +1882,7 @@ func newMockSAWithIncident(sa sapb.StorageAuthorityReadOnlyClient, serial []stri
 					Id:          0,
 					SerialTable: "incident_foo",
 					Url:         agreementURL,
-					RenewBy:     0,
+					RenewBy:     nil,
 					Enabled:     true,
 				},
 			},
@@ -2083,7 +2145,7 @@ func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial,
 	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(cert.SerialNumber),
-		Issued:         sa.clk.Now().Add(-1 * time.Second).UnixNano(),
+		Issued:         timestamppb.New(sa.clk.Now().Add(-1 * time.Second)),
 		Der:            cert.Raw,
 	}, nil
 }
@@ -2679,7 +2741,7 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `
 {
   "status": "processing",
-  "expires": "1970-01-01T00:00:00.9466848Z",
+  "expires": "2000-01-01T00:00:00Z",
   "identifiers": [
     {"type":"dns","value":"example.com"}
   ],
@@ -2801,6 +2863,8 @@ func TestKeyRollover(t *testing.T) {
 			_, _, inner := signer.embeddedJWK(tc.NewKey, "http://localhost/key-change", tc.Payload)
 			_, _, outer := signer.byKeyID(1, nil, "http://localhost/key-change", inner)
 			wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("key-change", outer))
+			t.Log(responseWriter.Body.String())
+			t.Log(tc.ExpectedResponse)
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedResponse)
 			if tc.ErrorStatType != "" {
 				test.AssertMetricWithLabelsEquals(
@@ -2852,7 +2916,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "Good request",
 			Request:  makeGet("1/1"),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "404 request",
@@ -2897,7 +2961,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "Valid POST-as-GET",
 			Request:  makePost(1, "1/1", ""),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "GET new order",
@@ -2908,17 +2972,17 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "GET new order from old endpoint",
 			Request:  makeGet("1/9"),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "POST-as-GET new order",
 			Request:  makePost(1, "1/9", ""),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "POST-as-GET processing order",
 			Request:  makePost(1, "1/10", ""),
-			Response: `{"status": "processing","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/10"}`,
+			Response: `{"status": "processing","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/10"}`,
 			Headers:  map[string]string{"Retry-After": "3"},
 		},
 	}
@@ -3315,13 +3379,13 @@ func TestFinalizeSCTError(t *testing.T) {
 
 func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	wfe, fc, _ := setupWFE(t)
-
+	expires := fc.Now()
 	orderJSON := wfe.orderToOrderJSON(&http.Request{}, &corepb.Order{
 		Id:               1,
 		RegistrationID:   1,
 		Names:            []string{"a"},
 		Status:           string(core.StatusPending),
-		Expires:          fc.Now().UnixNano(),
+		Expires:          timestamppb.New(expires),
 		V2Authorizations: []int64{1, 2},
 	})
 	test.AssertDeepEquals(t, orderJSON.Authorizations, []string{
@@ -3472,8 +3536,7 @@ func TestARI(t *testing.T) {
 	msa := newMockSAWithCert(t, wfe.sa)
 	wfe.sa = msa
 
-	err := features.Set(map[string]bool{"ServeRenewalInfo": true})
-	test.AssertNotError(t, err, "setting feature flag")
+	features.Set(features.Config{ServeRenewalInfo: true})
 	defer features.Reset()
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
@@ -3487,14 +3550,15 @@ func TestARI(t *testing.T) {
 	issuer, err := core.LoadCert("../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "failed to load test issuer")
 
-	// Take advantage of OCSP to build the issuer hashes.
+	// Take advantage of OCSP to build the issuer hashes used for
+	// draft-ietf-acme-ari01.
 	ocspReqBytes, err := ocsp.CreateRequest(cert, issuer, &ocsp.RequestOptions{Hash: crypto.SHA256})
 	test.AssertNotError(t, err, "failed to create ocsp request")
 	ocspReq, err := ocsp.ParseRequest(ocspReqBytes)
 	test.AssertNotError(t, err, "failed to parse ocsp request")
 
-	// Ensure that a correct query results in a 200.
-	idBytes, err := asn1.Marshal(certID{
+	// Ensure that a correct draft-ietf-acme-ari01 query results in a 200.
+	idBytes, err := asn1.Marshal(deprecatedCertID{
 		pkix.AlgorithmIdentifier{ // SHA256
 			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
 			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
@@ -3515,8 +3579,23 @@ func TestARI(t *testing.T) {
 	test.Assert(t, ri.SuggestedWindow.Start.After(cert.NotBefore), "suggested window begins before cert issuance")
 	test.Assert(t, ri.SuggestedWindow.End.Before(cert.NotAfter), "suggested window ends after cert expiry")
 
-	// Ensure that a correct query for a revoked cert results in a renewal window
-	// in the past.
+	// Ensure that a correct draft-ietf-acme-ari02 query results in a 200.
+	certID := fmt.Sprintf("%s.%s",
+		base64.RawURLEncoding.EncodeToString(cert.AuthorityKeyId),
+		base64.RawURLEncoding.EncodeToString(cert.SerialNumber.Bytes()),
+	)
+	req, event = makeGet(certID, renewalInfoPath)
+	resp = httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, http.StatusOK)
+	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
+	err = json.Unmarshal(resp.Body.Bytes(), &ri)
+	test.AssertNotError(t, err, "unmarshalling renewal info")
+	test.Assert(t, ri.SuggestedWindow.Start.After(cert.NotBefore), "suggested window begins before cert issuance")
+	test.Assert(t, ri.SuggestedWindow.End.Before(cert.NotAfter), "suggested window ends after cert expiry")
+
+	// Ensure that a correct draft-ietf-acme-ari01 query for a revoked cert
+	// results in a renewal window in the past.
 	msa.status = core.OCSPStatusRevoked
 	req, event = makeGet(base64.RawURLEncoding.EncodeToString(idBytes), renewalInfoPath)
 	resp = httptest.NewRecorder()
@@ -3528,8 +3607,22 @@ func TestARI(t *testing.T) {
 	test.Assert(t, ri.SuggestedWindow.End.Before(wfe.clk.Now()), "suggested window should end in the past")
 	test.Assert(t, ri.SuggestedWindow.Start.Before(ri.SuggestedWindow.End), "suggested window should start before it ends")
 
-	// Ensure that a query for a non-existent serial results in a 404.
-	idBytes, err = asn1.Marshal(certID{
+	// Ensure that a correct draft-ietf-acme-ari02 query for a revoked cert
+	// results in a renewal window in the past.
+	msa.status = core.OCSPStatusRevoked
+	req, event = makeGet(certID, renewalInfoPath)
+	resp = httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, http.StatusOK)
+	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
+	err = json.Unmarshal(resp.Body.Bytes(), &ri)
+	test.AssertNotError(t, err, "unmarshalling renewal info")
+	test.Assert(t, ri.SuggestedWindow.End.Before(wfe.clk.Now()), "suggested window should end in the past")
+	test.Assert(t, ri.SuggestedWindow.Start.Before(ri.SuggestedWindow.End), "suggested window should start before it ends")
+
+	// Ensure that a draft-ietf-acme-ari01 query for a non-existent serial
+	// results in a 404.
+	idBytes, err = asn1.Marshal(deprecatedCertID{
 		pkix.AlgorithmIdentifier{ // SHA256
 			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
 			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
@@ -3545,44 +3638,26 @@ func TestARI(t *testing.T) {
 	test.AssertEquals(t, resp.Code, http.StatusNotFound)
 	test.AssertEquals(t, resp.Header().Get("Retry-After"), "")
 
-	// Ensure that a query with a bad hash algorithm fails.
-	idBytes, err = asn1.Marshal(certID{
-		pkix.AlgorithmIdentifier{ // SHA-1
-			Algorithm:  asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26},
-			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
-		},
-		ocspReq.IssuerNameHash,
-		ocspReq.IssuerKeyHash,
-		big.NewInt(0).Add(cert.SerialNumber, big.NewInt(1)),
-	})
-	test.AssertNotError(t, err, "failed to marshal certID")
-	req, event = makeGet(base64.RawURLEncoding.EncodeToString(idBytes), renewalInfoPath)
+	// Ensure that a draft-ietf-acme-ari02 query for a non-existent serial
+	// results in a 404.
+	certID = fmt.Sprintf("%s.%s",
+		base64.RawURLEncoding.EncodeToString(cert.AuthorityKeyId),
+		base64.RawURLEncoding.EncodeToString(
+			big.NewInt(0).Add(cert.SerialNumber, big.NewInt(1)).Bytes(),
+		),
+	)
+	req, event = makeGet(certID, renewalInfoPath)
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
-	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
-	test.AssertContains(t, resp.Body.String(), "Request used hash algorithm other than SHA-256")
+	test.AssertEquals(t, resp.Code, http.StatusNotFound)
+	test.AssertEquals(t, resp.Header().Get("Retry-After"), "")
 
 	// Ensure that a query with a non-CertID path fails.
 	req, event = makeGet(base64.RawURLEncoding.EncodeToString(ocspReqBytes), renewalInfoPath)
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
-	test.AssertContains(t, resp.Body.String(), "Path was not a DER-encoded CertID sequence")
-
-	// Ensure that a query with a non-Base64URL path (including one in the old
-	// request path style, which included slashes) fails.
-	req, event = makeGet(
-		fmt.Sprintf(
-			"%s/%s/%s",
-			base64.RawURLEncoding.EncodeToString(ocspReq.IssuerNameHash),
-			base64.RawURLEncoding.EncodeToString(ocspReq.IssuerKeyHash),
-			base64.RawURLEncoding.EncodeToString(cert.SerialNumber.Bytes()),
-		),
-		renewalInfoPath)
-	resp = httptest.NewRecorder()
-	wfe.RenewalInfo(context.Background(), event, resp, req)
-	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
-	test.AssertContains(t, resp.Body.String(), "Path was not base64url-encoded")
+	test.AssertContains(t, resp.Body.String(), "Invalid path")
 
 	// Ensure that a query with no path slug at all bails out early.
 	req, event = makeGet("", renewalInfoPath)
@@ -3601,8 +3676,7 @@ func TestIncidentARI(t *testing.T) {
 	expectSerialString := core.SerialToString(big.NewInt(12345))
 	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerialString})
 
-	err := features.Set(map[string]bool{"ServeRenewalInfo": true})
-	test.AssertNotError(t, err, "setting feature flag")
+	features.Set(features.Config{ServeRenewalInfo: true})
 	defer features.Reset()
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
@@ -3610,7 +3684,8 @@ func TestIncidentARI(t *testing.T) {
 			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
 	}
 
-	idBytes, err := asn1.Marshal(certID{
+	// draft-ietf-acme-ari01
+	idBytes, err := asn1.Marshal(deprecatedCertID{
 		pkix.AlgorithmIdentifier{ // SHA256
 			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
 			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
@@ -3627,6 +3702,32 @@ func TestIncidentARI(t *testing.T) {
 	test.AssertEquals(t, resp.Code, 200)
 	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
 	var ri core.RenewalInfo
+	err = json.Unmarshal(resp.Body.Bytes(), &ri)
+	test.AssertNotError(t, err, "unmarshalling renewal info")
+	// The start of the window should be in the past.
+	test.AssertEquals(t, ri.SuggestedWindow.Start.Before(wfe.clk.Now()), true)
+	// The end of the window should be after the start.
+	test.AssertEquals(t, ri.SuggestedWindow.End.After(ri.SuggestedWindow.Start), true)
+	// The end of the window should also be in the past.
+	test.AssertEquals(t, ri.SuggestedWindow.End.Before(wfe.clk.Now()), true)
+
+	// draft-ietf-acme-ari02
+	test.AssertNotError(t, err, "failed to load test certificate")
+	var issuer issuance.IssuerNameID
+	for k := range wfe.issuerCertificates {
+		// Grab the first known issuer.
+		issuer = k
+		break
+	}
+	certID := fmt.Sprintf("%s.%s",
+		base64.RawURLEncoding.EncodeToString(wfe.issuerCertificates[issuer].SubjectKeyId),
+		base64.RawURLEncoding.EncodeToString(expectSerial.Bytes()),
+	)
+	req, event = makeGet(certID, renewalInfoPath)
+	resp = httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, 200)
+	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
 	err = json.Unmarshal(resp.Body.Bytes(), &ri)
 	test.AssertNotError(t, err, "unmarshalling renewal info")
 	// The start of the window should be in the past.
@@ -3660,8 +3761,7 @@ func (sa *mockSAWithSerialMetadata) GetSerialMetadata(_ context.Context, req *sa
 func TestUpdateARI(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 
-	err := features.Set(map[string]bool{"ServeRenewalInfo": true})
-	test.AssertNotError(t, err, "setting feature flag")
+	features.Set(features.Config{ServeRenewalInfo: true})
 	defer features.Reset()
 
 	makePost := func(regID int64, body string) *http.Request {
@@ -3701,8 +3801,9 @@ func TestUpdateARI(t *testing.T) {
 	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
 
+	// draft-ietf-acme-ari01
 	// Non-sha256 hash algorithm should result in an error.
-	idBytes, err := asn1.Marshal(certID{
+	idBytes, err := asn1.Marshal(deprecatedCertID{
 		pkix.AlgorithmIdentifier{ // definitely not SHA256
 			Algorithm:  asn1.ObjectIdentifier{1, 2, 3, 4, 5},
 			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
@@ -3722,8 +3823,9 @@ func TestUpdateARI(t *testing.T) {
 	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
 
+	// draft-ietf-acme-ari01
 	// Unrecognized serial should result in an error.
-	idBytes, err = asn1.Marshal(certID{
+	idBytes, err = asn1.Marshal(deprecatedCertID{
 		pkix.AlgorithmIdentifier{ // SHA256
 			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
 			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
@@ -3743,9 +3845,26 @@ func TestUpdateARI(t *testing.T) {
 	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
 
+	// draft-ietf-acme-ari02
+	// Unrecognized serial should result in an error.
+	certID := fmt.Sprintf("%s.%s",
+		base64.RawURLEncoding.EncodeToString(cert.AuthorityKeyId),
+		base64.RawURLEncoding.EncodeToString(big.NewInt(12345).Bytes()),
+	)
+	body, err = json.Marshal(jsonReq{
+		CertID:   certID,
+		Replaced: true,
+	})
+	test.AssertNotError(t, err, "failed to marshal request body")
+	req = makePost(1, string(body))
+	responseWriter = httptest.NewRecorder()
+	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
+
+	// draft-ietf-acme-ari01
 	// Recognized serial but owned by the wrong account should result in an error.
 	msa.regID = 2
-	idBytes, err = asn1.Marshal(certID{
+	idBytes, err = asn1.Marshal(deprecatedCertID{
 		pkix.AlgorithmIdentifier{ // SHA256
 			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
 			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
@@ -3765,9 +3884,27 @@ func TestUpdateARI(t *testing.T) {
 	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
 
+	// draft-ietf-acme-ari02
+	// Recognized serial but owned by the wrong account should result in an error.
+	msa.regID = 2
+	certID = fmt.Sprintf("%s.%s",
+		base64.RawURLEncoding.EncodeToString(cert.AuthorityKeyId),
+		base64.RawURLEncoding.EncodeToString(cert.SerialNumber.Bytes()),
+	)
+	body, err = json.Marshal(jsonReq{
+		CertID:   certID,
+		Replaced: true,
+	})
+	test.AssertNotError(t, err, "failed to marshal request body")
+	req = makePost(1, string(body))
+	responseWriter = httptest.NewRecorder()
+	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
+
+	// draft-ietf-acme-ari01
 	// Recognized serial and owned by the right account should work.
 	msa.regID = 1
-	idBytes, err = asn1.Marshal(certID{
+	idBytes, err = asn1.Marshal(deprecatedCertID{
 		pkix.AlgorithmIdentifier{ // SHA256
 			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
 			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
@@ -3779,6 +3916,23 @@ func TestUpdateARI(t *testing.T) {
 	test.AssertNotError(t, err, "failed to marshal certID")
 	body, err = json.Marshal(jsonReq{
 		CertID:   base64.RawURLEncoding.EncodeToString(idBytes),
+		Replaced: true,
+	})
+	test.AssertNotError(t, err, "failed to marshal request body")
+	req = makePost(1, string(body))
+	responseWriter = httptest.NewRecorder()
+	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+
+	// draft-ietf-acme-ari02
+	// Recognized serial and owned by the right account should work.
+	msa.regID = 1
+	certID = fmt.Sprintf("%s.%s",
+		base64.RawURLEncoding.EncodeToString(cert.AuthorityKeyId),
+		base64.RawURLEncoding.EncodeToString(cert.SerialNumber.Bytes()),
+	)
+	body, err = json.Marshal(jsonReq{
+		CertID:   certID,
 		Replaced: true,
 	})
 	test.AssertNotError(t, err, "failed to marshal request body")

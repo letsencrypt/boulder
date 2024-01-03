@@ -1,0 +1,33 @@
+ceremony-type: cross-certificate
+pkcs11:
+    module: /usr/lib/softhsm/libsofthsm2.so
+    pin: 1234
+    signing-key-slot: {{ .SlotID}}
+    signing-key-label: root signing key ({{ .RootAlgorithm }})
+inputs:
+    public-key-path: {{ .PublicKeyPath }}
+    issuer-certificate-path: {{ .IssuerCertPath }}
+    certificate-to-cross-sign-path: {{ .InputCertPath }}
+outputs:
+    certificate-path: {{ .OutputCertPath }}
+certificate-profile:
+    signature-algorithm: {{ .SigAlgorithm }}
+    common-name: {{ .CommonName }}
+    organization: good guys
+    country: US
+    not-before: 2020-01-01 12:00:00
+    not-after: 2040-01-01 12:00:00
+    crl-url:  http://{{ .RootAlgorithm }}.example.com/crl
+    issuer-url:  http://{{ .RootAlgorithm }}.example.com/cert
+    policies:
+        - oid: 2.23.140.1.2.1
+    key-usages:
+        - Digital Signature
+        - Cert Sign
+        - CRL Sign
+skip-lints:
+  # The extKeyUsage extension is required for intermediate certificates, but is
+  # optional for cross-signed certs which share a Subject DN and Public Key with
+  # a Root Certificate (BRs 7.1.2.2.g). This cert is a cross-sign.
+  - n_mp_allowed_eku
+  - n_sub_ca_eku_missing

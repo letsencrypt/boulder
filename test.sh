@@ -100,7 +100,6 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
     -n, --config-next                     Changes BOULDER_CONFIG_DIR from test/config to test/config-next
     -i, --integration                     Adds integration to the list of tests to run
     -s, --start-py                        Adds start to the list of tests to run
-    -m, --gomod-vendor                    Adds gomod-vendor to the list of tests to run
     -g, --generate                        Adds generate to the list of tests to run
     -o, --list-integration-tests          Outputs a list of the available integration tests
     -f <REGEX>, --filter=<REGEX>          Run only those tests matching the regular expression
@@ -135,7 +134,6 @@ while getopts luvweciosmgnhp:f:-: OPT; do
     o | list-integration-tests )     print_list_of_integration_tests ;;
     f | filter )                     check_arg; FILTER+=("${OPTARG}") ;;
     s | start-py )                   RUN+=("start") ;;
-    m | gomod-vendor )               RUN+=("gomod-vendor") ;;
     g | generate )                   RUN+=("generate") ;;
     n | config-next )                BOULDER_CONFIG_DIR="test/config-next" ;;
     h | help )                       print_usage_exit ;;
@@ -145,9 +143,7 @@ while getopts luvweciosmgnhp:f:-: OPT; do
 done
 shift $((OPTIND-1)) # remove parsed options and args from $@ list
 
-# The list of segments to run. Order doesn't matter. Note: gomod-vendor
-# is specifically left out of the defaults, because we don't want to run
-# it locally (it could delete local state).
+# The list of segments to run. Order doesn't matter.
 if [ -z "${RUN[@]+x}" ]
 then
   RUN+=("lints" "unit" "integration")
@@ -195,6 +191,7 @@ trap "print_outcome" EXIT
 settings="$(cat -- <<-EOM
     RUN:                ${RUN[@]}
     BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR
+    GOCACHE:            $(go env GOCACHE)
     UNIT_PACKAGES:      ${UNIT_PACKAGES[@]}
     UNIT_FLAGS:         ${UNIT_FLAGS[@]}
     FILTER:             ${FILTER[@]}
@@ -210,18 +207,25 @@ print_heading "Starting..."
 #
 STAGE="lints"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
-  print_heading "Running Lints"
-  golangci-lint run --timeout 9m ./...
-  python3 test/grafana/lint.py
-  # Check for common spelling errors using codespell.
-  # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
-  # words should be all lowercase).
-  run_and_expect_silence codespell \
-    --ignore-words=.codespell.ignore.txt \
-    --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
-  # Check test JSON configs are formatted consistently
-  ./test/format-configs.py 'test/config*/*.json'
-  run_and_expect_silence git diff --exit-code .
+  # TODO(#7229): Remove this conditional and globally re-enable this test.
+  if [[ $(go version) == *go1.22* ]] ; then
+    print_heading "Skipping Lints"
+  else
+    print_heading "Running Lints"
+    golangci-lint run --timeout 9m ./...
+    # Implicitly loads staticcheck.conf from the root of the boulder repository
+    staticcheck ./...
+    python3 test/grafana/lint.py
+    # Check for common spelling errors using codespell.
+    # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
+    # words should be all lowercase).
+    run_and_expect_silence codespell \
+      --ignore-words=.codespell.ignore.txt \
+      --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
+    # Check test JSON configs are formatted consistently
+    ./test/format-configs.py 'test/config*/*.json'
+    run_and_expect_silence git diff --exit-code .
+  fi
 fi
 
 #
@@ -248,25 +252,14 @@ STAGE="start"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Start Test"
   python3 start.py &
-  for I in $(seq 1 100); do
+  for I in {1..115}; do
     sleep 1
-    curl -s http://localhost:4001/directory && break
+    curl -s http://localhost:4001/directory && echo "Boulder took ${I} seconds to come up" && break
   done
-  if [[ "$I" = 100 ]]; then
-    echo "Boulder did not come up after ./start.py."
+  if [ "${I}" -eq 115 ]; then
+    echo "Boulder did not come up after ${I} seconds during ./start.py."
     exit 1
   fi
-fi
-
-# Run go mod vendor (happens only in CI) to check that the versions in
-# vendor/ really exist in the remote repo and match what we have.
-STAGE="gomod-vendor"
-if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
-  print_heading "Running Go Mod Tidy"
-  go mod tidy
-  print_heading "Running Go Mod Vendor"
-  go mod vendor
-  run_and_expect_silence git diff --exit-code .
 fi
 
 # Run generate to make sure all our generated code can be re-generated with
