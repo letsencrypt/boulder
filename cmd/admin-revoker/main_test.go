@@ -379,7 +379,7 @@ type testCtx struct {
 	log     *blog.Mock
 }
 
-func (c testCtx) addRegistation(t *testing.T, names []string, jwk string) int64 {
+func (c testCtx) addRegistration(t *testing.T, names []string, jwk string) int64 {
 	t.Helper()
 	initialIP, err := net.ParseIP("127.0.0.1").MarshalText()
 	test.AssertNotError(t, err, "Failed to create initialIP")
@@ -433,7 +433,7 @@ func (c testCtx) createAndRegisterEntries(t *testing.T, entries []*entry) {
 
 func (c testCtx) createAndRegisterEntry(t *testing.T, e *entry) {
 	t.Helper()
-	e.regId = c.addRegistation(t, e.names, e.jwk)
+	e.regId = c.addRegistration(t, e.names, e.jwk)
 	cert := c.addCertificate(t, e.serial, e.names, e.testKey.PublicKey, e.regId)
 	var err error
 	e.spkiHash, err = core.KeyDigest(cert.PublicKey)
