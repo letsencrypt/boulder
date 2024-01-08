@@ -11,9 +11,14 @@
 			"keyFile": "test/grpc-creds/bad-key-revoker.boulder/key.pem"
 		},
 		"raService": {
-			"serverAddress": "ra.service.consul:9094",
-			"timeout": "15s",
-			"hostOverride": "ra.boulder"
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "ra",
+				"domain": "service.consul"
+			},
+			"hostOverride": "ra.boulder",
+			"noWaitForReady": true,
+			"timeout": "15s"
 		},
 		"mailer": {
 			"server": "localhost",
