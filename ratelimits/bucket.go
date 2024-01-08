@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 
 	"github.com/letsencrypt/boulder/core"
 )
@@ -76,12 +77,12 @@ func newRegIdDomainBucketKey(name Name, regId int64, orderName string) (string, 
 
 // newFQDNSetBucketKey validates and returns a bucketKey for limits that use the
 // 'enum:fqdnSet' bucket key format.
-func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) {
-	id := string(core.HashNames(orderNames))
-	err := validateIdForName(name, id)
+func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) { //nolint: unparam
+	err := validateIdForName(name, strings.Join(orderNames, ","))
 	if err != nil {
 		return "", err
 	}
+	id := fmt.Sprintf("%x", core.HashNames(orderNames))
 	return joinWithColon(name.EnumString(), id), nil
 }
 
@@ -287,10 +288,8 @@ func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64
 		return nil, err
 	}
 	perAccountLimit, err := builder.getLimit(CertificatesPerDomainPerAccount, perAccountLimitBucketKey)
-	if err != nil {
-		if !errors.Is(err, errLimitDisabled) {
-			return nil, err
-		}
+	if err != nil && !errors.Is(err, errLimitDisabled) {
+		return nil, err
 	}
 
 	var txns []Transaction
@@ -298,12 +297,6 @@ func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64
 		perDomainBucketKey, err := newDomainBucketKey(CertificatesPerDomain, name)
 		if err != nil {
 			return nil, err
-		}
-		perDomainLimit, err := builder.getLimit(CertificatesPerDomain, perDomainBucketKey)
-		if err != nil {
-			if !errors.Is(err, errLimitDisabled) {
-				return nil, err
-			}
 		}
 		if perAccountLimit.isOverride {
 			// An override is configured for the CertificatesPerDomainPerAccount
@@ -320,6 +313,15 @@ func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64
 			}
 			txns = append(txns, txn)
 
+			perDomainLimit, err := builder.getLimit(CertificatesPerDomain, perDomainBucketKey)
+			if errors.Is(err, errLimitDisabled) {
+				// Skip disabled limit.
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+
 			// Add a spend-only transaction for each per domain bucket.
 			txn, err = newSpendOnlyTransaction(perDomainLimit, perDomainBucketKey, 1)
 			if err != nil {
@@ -327,6 +329,14 @@ func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64
 			}
 			txns = append(txns, txn)
 		} else {
+			perDomainLimit, err := builder.getLimit(CertificatesPerDomain, perDomainBucketKey)
+			if errors.Is(err, errLimitDisabled) {
+				// Skip disabled limit.
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
 			// Add a check-and-spend transaction for each per domain bucket.
 			txn, err := newTransaction(perDomainLimit, perDomainBucketKey, 1)
 			if err != nil {
