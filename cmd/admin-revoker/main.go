@@ -539,12 +539,18 @@ func main() {
 	command := os.Args[1]
 	flagSet := flag.NewFlagSet(command, flag.ContinueOnError)
 	configFile := flagSet.String("config", "", "File path to the configuration file for this service")
-	dryRun := flagSet.Bool(
-		"dry-run",
-		true,
-		"true (default): only queries for affected certificates. false: will perform the requested block or revoke action",
-	)
-	comment := flagSet.String("comment", "", "Comment to include in the blocked key database entry ")
+
+	var dryRun *bool = new(bool)
+	var comment *string = new(string)
+	if command == "private-key-block" || command == "private-key-revoke" {
+		dryRun = flagSet.Bool(
+			"dry-run",
+			true,
+			"true (default): only queries for affected certificates. false: will perform the requested block or revoke action",
+		)
+
+		comment = flagSet.String("comment", "", "Comment to include in the blocked key database entry ")
+	}
 	err := flagSet.Parse(os.Args[2:])
 	if err == flag.ErrHelp {
 		os.Exit(1)
