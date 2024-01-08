@@ -51,7 +51,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	}
 
 	var remoteCAAResults chan *remoteVAResult
-	if features.Get().RVACAARechecking {
+	if features.Get().EnforceMultiCAA {
 		if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
 			remoteCAAResults = make(chan *remoteVAResult, remoteVACount)
 			go va.performRemoteCAARecheck(ctx, req, remoteCAAResults)
@@ -68,7 +68,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		pbProblem.Detail = replaceInvalidUTF8([]byte(detail))
 		checkResult = "failure"
 	} else if remoteCAAResults != nil {
-		if !features.Get().EnforceMultiVA && features.Get().MultiVAFullResults {
+		if !features.Get().EnforceMultiCAA && features.Get().MultiCAAFullResults {
 			// If we're not going to enforce multi VA but we are logging the
 			// differentials then collect and log the remote results in a separate go
 			// routine to avoid blocking the primary VA.
@@ -84,7 +84,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			// `processRemoteCAARecheckResultsOuter` set the challenge status to
 			// valid so the caaRecheckTime metrics increment has the correct
 			// result label.
-		} else if features.Get().EnforceMultiVA {
+		} else if features.Get().EnforceMultiCAA {
 			remoteProb := va.processRemoteCAARecheckResultsOuter(
 				req.Domain,
 				req.AccountURIID,

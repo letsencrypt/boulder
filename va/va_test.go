@@ -117,7 +117,7 @@ func setChallengeToken(ch *core.Challenge, token string) {
 	ch.ProvidedKeyAuthorization = token + ".9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 }
 
-func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remoteVAs []RemoteVA) (*ValidationAuthorityImpl, *blog.Mock) {
+func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remoteVAs []RemoteVA, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
 	features.Reset()
 	fc := clock.NewFake()
 
@@ -139,6 +139,12 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 		accountURIPrefixes,
 	)
 
+	if mockDNSClientOverride != nil {
+		va.dnsClient = mockDNSClientOverride
+	} else {
+		va.dnsClient = caaMockDNS{}
+	}
+
 	// Adjusting industry regulated ACME challenge port settings is fine during
 	// testing
 	if srv != nil {
@@ -156,11 +162,9 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 	return va, logger
 }
 
-func setupRemote(srv *httptest.Server, userAgent string, clientOverride *bdns.Client) vapb.VAClient {
-	innerVA, _ := setup(srv, 0, userAgent, nil)
-	if clientOverride != nil {
-		innerVA.dnsClient = *clientOverride
-	}
+func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride bdns.Client) *localRemoteVA {
+	innerVA, _ := setup(srv, 0, userAgent, nil, mockDNSClientOverride)
+
 	return &localRemoteVA{remote: *innerVA}
 }
 
@@ -241,6 +245,14 @@ type localRemoteVA struct {
 	remote ValidationAuthorityImpl
 }
 
+/*
+va.RemoteVA{
+	VAClient:  vapb.NewVAClient(vaConn),
+	CAAClient: vapb.NewCAAClient(vaConn),
+	Address:   rva.ServerAddress,
+},
+*/
+
 func (lrva localRemoteVA) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return lrva.remote.PerformValidation(ctx, req)
 }
@@ -250,7 +262,7 @@ func (lrva localRemoteVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRe
 }
 
 func TestValidateMalformedChallenge(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 
 	_, prob := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"))
 
@@ -258,7 +270,7 @@ func TestValidateMalformedChallenge(t *testing.T) {
 }
 
 func TestPerformValidationInvalid(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 
 	req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
@@ -272,7 +284,7 @@ func TestPerformValidationInvalid(t *testing.T) {
 }
 
 func TestPerformValidationValid(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil)
+	va, mockLog := setup(nil, 0, "", nil, nil)
 
 	// create a challenge with well known token
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
@@ -296,7 +308,7 @@ func TestPerformValidationValid(t *testing.T) {
 // TestPerformValidationWildcard tests that the VA properly strips the `*.`
 // prefix from a wildcard name provided to the PerformValidation function.
 func TestPerformValidationWildcard(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil)
+	va, mockLog := setup(nil, 0, "", nil, nil)
 
 	// create a challenge with well known token
 	req := createValidationRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
@@ -326,7 +338,7 @@ func TestPerformValidationWildcard(t *testing.T) {
 }
 
 func TestDCVAndCAASequencing(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil)
+	va, mockLog := setup(nil, 0, "", nil, nil)
 
 	// When performing validation without the CAAAfterValidation flag, CAA should
 	// be checked.
@@ -454,7 +466,7 @@ func TestMultiVA(t *testing.T) {
 			Name: "Local VA ok, remote VA internal err, enforce multi VA",
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
-				{&brokenRemoteVA{}, "broken"},
+				{brokenRemoteVA{}, "broken"},
 			},
 			AllowedUAs:   allowedUAs,
 			Features:     enforceMultiVA,
@@ -468,7 +480,7 @@ func TestMultiVA(t *testing.T) {
 			Name: "Local VA ok, remote VA internal err, no enforce multi VA",
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
-				{&brokenRemoteVA{}, "broken"},
+				{brokenRemoteVA{}, "broken"},
 			},
 			AllowedUAs: allowedUAs,
 			Features:   noEnforceMultiVA,
@@ -545,7 +557,7 @@ func TestMultiVA(t *testing.T) {
 			ms.setAllowedUAs(tc.AllowedUAs)
 
 			// Configure a primary VA with testcase remote VAs.
-			localVA, mockLog := setup(ms.Server, 0, localUA, tc.RemoteVAs)
+			localVA, mockLog := setup(ms.Server, 0, localUA, tc.RemoteVAs, nil)
 
 			features.Set(tc.Features)
 			defer features.Reset()
@@ -596,7 +608,7 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	}
 
 	// Create a local test VA with the two remote VAs
-	localVA, mockLog := setup(ms.Server, 0, localUA, remoteVAs)
+	localVA, mockLog := setup(ms.Server, 0, localUA, remoteVAs, nil)
 
 	testCases := []struct {
 		Name        string
@@ -684,7 +696,7 @@ func TestMultiVAPolicy(t *testing.T) {
 	}
 
 	// Create a local test VA with the two remote VAs
-	localVA, _ := setup(ms.Server, 0, localUA, remoteVAs)
+	localVA, _ := setup(ms.Server, 0, localUA, remoteVAs, nil)
 
 	// Ensure multi VA enforcement is enabled, don't wait for full multi VA
 	// results.
@@ -767,7 +779,7 @@ func TestLogRemoteDifferentials(t *testing.T) {
 	}
 
 	// Set up a local VA that allows a max of 2 remote failures.
-	localVA, mockLog := setup(nil, 2, "local 1", remoteVAs)
+	localVA, mockLog := setup(nil, 2, "local 1", remoteVAs, nil)
 
 	egProbA := probs.DNS("root DNS servers closed at 4:30pm")
 	egProbB := probs.OrderNotReady("please take a number")
@@ -826,7 +838,6 @@ func TestLogRemoteDifferentials(t *testing.T) {
 				"example.com", 1999, "blorpus-01", tc.primaryResult, tc.remoteProbs)
 
 			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
-			fmt.Println(lines)
 			if tc.expectedLog != "" {
 				test.AssertEquals(t, len(lines), 1)
 				test.AssertEquals(t, lines[0], tc.expectedLog)

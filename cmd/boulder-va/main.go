@@ -125,8 +125,9 @@ func main() {
 			remotes = append(
 				remotes,
 				va.RemoteVA{
-					VAClient: vapb.NewVAClient(vaConn),
-					Address:  rva.ServerAddress,
+					VAClient:  vapb.NewVAClient(vaConn),
+					CAAClient: vapb.NewCAAClient(vaConn),
+					Address:   rva.ServerAddress,
 				},
 			)
 		}
