@@ -52,9 +52,17 @@ services {
 }
 
 services {
-  id      = "ca"
+  id      = "ca1"
   name    = "ca"
   address = "10.77.77.77"
+  port    = 9093
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+}
+
+services {
+  id      = "ca2"
+  name    = "ca"
+  address = "10.88.88.88"
   port    = 9093
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
