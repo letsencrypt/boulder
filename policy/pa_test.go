@@ -395,17 +395,18 @@ func TestChallengesForWildcard(t *testing.T) {
 	}
 
 	// First try to get a challenge for the wildcard ident without the
-	// DNS-01 challenge type enabled. This should produce an error
+	// DNS-based challenge types enabled. This should produce an error
 	var enabledChallenges = map[core.AcmeChallenge]bool{
-		core.ChallengeTypeHTTP01: true,
-		core.ChallengeTypeDNS01:  false,
+		core.ChallengeTypeHTTP01:       true,
+		core.ChallengeTypeDNS01:        false,
+		core.ChallengeTypeDNSAccount01: false,
 	}
 	pa := must.Do(New(enabledChallenges, blog.NewMock()))
 	_, err := pa.ChallengesFor(wildcardIdent)
 	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
 		"when DNS-01 was disabled")
 	test.AssertEquals(t, err.Error(), "Challenges requested for wildcard "+
-		"identifier but DNS-01 challenge type is not enabled")
+		"identifier but a DNS-01 or DNS-ACCOUNT-01 challenge type is not enabled")
 
 	// Try again with DNS-01 enabled. It should not error and
 	// should return only one DNS-01 type challenge

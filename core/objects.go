@@ -53,20 +53,30 @@ type AcmeChallenge string
 
 // These types are the available challenges
 const (
-	ChallengeTypeHTTP01    = AcmeChallenge("http-01")
-	ChallengeTypeDNS01     = AcmeChallenge("dns-01")
-	ChallengeTypeTLSALPN01 = AcmeChallenge("tls-alpn-01")
+	ChallengeTypeHTTP01       = AcmeChallenge("http-01")
+	ChallengeTypeDNS01        = AcmeChallenge("dns-01")
+	ChallengeTypeDNSAccount01 = AcmeChallenge("dns-account-01")
+	ChallengeTypeTLSALPN01    = AcmeChallenge("tls-alpn-01")
 )
 
 // IsValid tests whether the challenge is a known challenge
 func (c AcmeChallenge) IsValid() bool {
 	switch c {
-	case ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeTLSALPN01:
+	case ChallengeTypeHTTP01, ChallengeTypeDNS01, ChallengeTypeDNSAccount01, ChallengeTypeTLSALPN01:
 		return true
 	default:
 		return false
 	}
 }
+
+// AuthorizationScope defines the scope of an authorization.
+// This is used to determine challenge validation behavior.
+type AuthorizationScope string
+
+const (
+	AuthorizationScopeHost     = AuthorizationScope("host")
+	AuthorizationScopeWildcard = AuthorizationScope("wildcard")
+)
 
 // OCSPStatus defines the state of OCSP for a domain
 type OCSPStatus string
@@ -192,7 +202,7 @@ type Challenge struct {
 	// For the V2 API the "URI" field is deprecated in favour of URL.
 	URL string `json:"url,omitempty"`
 
-	// Used by http-01, tls-sni-01, tls-alpn-01 and dns-01 challenges
+	// Used by http-01, tls-sni-01, tls-alpn-01, dns-01 and dns-account-01 challenges
 	Token string `json:"token,omitempty"`
 
 	// The expected KeyAuthorization for validation of the challenge. Populated by
@@ -256,7 +266,7 @@ func (ch Challenge) RecordsSane() bool {
 			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
-	case ChallengeTypeDNS01:
+	case ChallengeTypeDNS01, ChallengeTypeDNSAccount01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}

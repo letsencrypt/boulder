@@ -2529,6 +2529,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 		authz := nameToExistingAuthz[name]
 		authzAge := (ra.authorizationLifetime - authz.Expires.AsTime().Sub(ra.clk.Now())).Seconds()
+		// TODO: Allow DNS-ACCOUNT-01 authorizations to be reused for wildcards.
 		// If the identifier is a wildcard and the existing authz only has one
 		// DNS-01 type challenge we can reuse it. In theory we will
 		// never get back an authorization for a domain with a wildcard prefix

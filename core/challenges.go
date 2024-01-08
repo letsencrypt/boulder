@@ -20,6 +20,11 @@ func DNSChallenge01(token string) Challenge {
 	return newChallenge(ChallengeTypeDNS01, token)
 }
 
+// DNSAccountChallenge01 constructs a dns-account-01 challenge.
+func DNSAccountChallenge01(token string) Challenge {
+	return newChallenge(ChallengeTypeDNSAccount01, token)
+}
+
 // TLSALPNChallenge01 constructs a tls-alpn-01 challenge.
 func TLSALPNChallenge01(token string) Challenge {
 	return newChallenge(ChallengeTypeTLSALPN01, token)
@@ -33,6 +38,8 @@ func NewChallenge(kind AcmeChallenge, token string) (Challenge, error) {
 		return HTTPChallenge01(token), nil
 	case ChallengeTypeDNS01:
 		return DNSChallenge01(token), nil
+	case ChallengeTypeDNSAccount01:
+		return DNSAccountChallenge01(token), nil
 	case ChallengeTypeTLSALPN01:
 		return TLSALPNChallenge01(token), nil
 	default:

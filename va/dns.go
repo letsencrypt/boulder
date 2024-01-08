@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base32"
 	"encoding/base64"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -48,19 +50,16 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 	return
 }
 
-func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, error) {
-	if ident.Type != identifier.DNS {
-		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
-		return nil, berrors.MalformedError("Identifier type for DNS was not itself DNS")
-	}
-
-	// Compute the digest of the key authorization file
-	h := sha256.New()
-	h.Write([]byte(challenge.ProvidedKeyAuthorization))
-	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
-
+// validateTXT will query for all TXT records associated with challengeSubdomain and
+// return a ValidationRecord if the authorizedKeysDigest is found in the TXT records.
+func (va *ValidationAuthorityImpl) validateTXT(
+	ctx context.Context,
+	ident identifier.ACMEIdentifier,
+	challenge core.Challenge,
+	authorizedKeysDigest string,
+	challengeSubdomain string,
+) ([]core.ValidationRecord, error) {
 	// Look for the required record in the DNS
-	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, ident.Value)
 	txts, resolvers, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
 		return nil, berrors.DNSError("%s", err)
@@ -90,4 +89,69 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 	}
 	return nil, berrors.UnauthorizedError("Incorrect TXT record %q%s found at %s",
 		invalidRecord, andMore, challengeSubdomain)
+}
+
+func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, error) {
+	if ident.Type != identifier.DNS {
+		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
+		return nil, berrors.MalformedError("Identifier type for DNS was not itself DNS")
+	}
+
+	// Compute the digest of the key authorization file
+	h := sha256.New()
+	h.Write([]byte(challenge.ProvidedKeyAuthorization))
+	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+
+	// Look for the required record in the DNS
+	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, ident.Value)
+
+	// Return the validation record if the correct TXT record is found
+	return va.validateTXT(ctx, ident, challenge, authorizedKeysDigest, challengeSubdomain)
+}
+
+// validateDNSAccount01 validates a DNS-ACCOUNT-01 challenge using the account's URI
+// (derived from the accountID).
+func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context,
+	ident identifier.ACMEIdentifier,
+	challenge core.Challenge,
+	scope core.AuthorizationScope,
+	accountID int64,
+) ([]core.ValidationRecord, error) {
+	if ident.Type != identifier.DNS {
+		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
+		return nil, berrors.MalformedError("Identifier type for DNS was not itself DNS")
+	}
+
+	// Compute the digest of the key authorization file
+	h := sha256.New()
+	h.Write([]byte(challenge.ProvidedKeyAuthorization))
+	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
+
+	// Iterate over the account URIs to find the correct one
+	// for the accountID and track any errors
+	var validationError error
+	for _, accountURIPrefix := range va.accountURIPrefixes {
+		// Construct the account resource URL
+		accountResourceURL := fmt.Sprintf("%s%d", accountURIPrefix, accountID)
+
+		// Compute the challenge subdomain as:
+		// "_" || base32(SHA-256(<ACCOUNT_RESOURCE_URL>)[0:10]) || "._acme-" || <SCOPE> || "-challenge"
+		acctHash := sha256.Sum256([]byte(accountResourceURL))
+		acctLabel := strings.ToLower(base32.StdEncoding.EncodeToString(acctHash[0:10]))
+		challengeSubdomain := fmt.Sprintf("_%s._acme-%s-challenge.%s",
+			acctLabel, scope, ident.Value)
+
+		// Look for the required record in the DNS
+		validationRecords, err := va.validateTXT(ctx, ident, challenge, authorizedKeysDigest, challengeSubdomain)
+		if err == nil {
+			// Successful challenge validation
+			return validationRecords, nil
+		}
+
+		// Track the latest error and continue
+		validationError = err
+	}
+
+	// Return error from last accountURIPrefix attempted
+	return nil, validationError
 }

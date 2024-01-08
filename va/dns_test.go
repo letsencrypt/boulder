@@ -99,7 +99,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 
 	chall := dnsChallenge()
 	chall.Token = ""
-	_, err := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, err := va.validateChallenge(ctx, dnsi("localhost"), chall, core.AuthorizationScopeHost)
 	prob := detailedError(err)
 	if prob.Type != probs.MalformedProblem {
 		t.Errorf("Got wrong error type: expected %s, got %s",
@@ -110,7 +110,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 	}
 
 	chall.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
-	_, err = va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, err = va.validateChallenge(ctx, dnsi("localhost"), chall, core.AuthorizationScopeHost)
 	prob = detailedError(err)
 	if prob.Type != probs.MalformedProblem {
 		t.Errorf("Got wrong error type: expected %s, got %s",
@@ -121,7 +121,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 	}
 
 	chall.ProvidedKeyAuthorization = "a"
-	_, err = va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, err = va.validateChallenge(ctx, dnsi("localhost"), chall, core.AuthorizationScopeHost)
 	prob = detailedError(err)
 	if prob.Type != probs.MalformedProblem {
 		t.Errorf("Got wrong error type: expected %s, got %s",
@@ -136,7 +136,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 func TestDNSValidationServFail(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, err := va.validateChallenge(ctx, dnsi("servfail.com"), dnsChallenge())
+	_, err := va.validateChallenge(ctx, dnsi("servfail.com"), dnsChallenge(), core.AuthorizationScopeHost)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
@@ -156,7 +156,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 		log,
 		nil)
 
-	_, err = va.validateChallenge(ctx, dnsi("localhost"), dnsChallenge())
+	_, err = va.validateChallenge(ctx, dnsi("localhost"), dnsChallenge(), core.AuthorizationScopeHost)
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
@@ -164,7 +164,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 func TestDNSValidationOK(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsChallenge())
+	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsChallenge(), core.AuthorizationScopeHost)
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }
@@ -172,7 +172,7 @@ func TestDNSValidationOK(t *testing.T) {
 func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("no-authority-dns01.com"), dnsChallenge())
+	_, prob := va.validateChallenge(ctx, dnsi("no-authority-dns01.com"), dnsChallenge(), core.AuthorizationScopeHost)
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }
