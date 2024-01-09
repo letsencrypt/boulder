@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	email1 = "mailto:one@example.com"
-	email2 = "mailto:two@example.com"
+	email1 = "mailto:one@shared-example.com"
+	email2 = "mailto:two@shared-example.com"
 )
 
 func TestSendEarliestCertInfo(t *testing.T) {
@@ -52,9 +52,9 @@ func TestSendEarliestCertInfo(t *testing.T) {
 			domains,
 			rawCertB.NotAfter.Format(time.DateOnly)),
 	}
-	expected.To = "one@example.com"
+	expected.To = "one@shared-example.com"
 	test.AssertEquals(t, expected, ctx.mc.Messages[0])
-	expected.To = "two@example.com"
+	expected.To = "two@shared-example.com"
 	test.AssertEquals(t, expected, ctx.mc.Messages[1])
 }
 

@@ -391,7 +391,7 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 type Config struct {
 	BadKeyRevoker struct {
 		DB        cmd.DBConfig
-		DebugAddr string `validate:"hostname_port"`
+		DebugAddr string `validate:"omitempty,hostname_port"`
 
 		TLS       cmd.TLSConfig
 		RAService *cmd.GRPCClientConfig
@@ -432,6 +432,7 @@ type Config struct {
 }
 
 func main() {
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configPath := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 
@@ -442,6 +443,10 @@ func main() {
 	var config Config
 	err := cmd.ReadConfigFile(*configPath, &config)
 	cmd.FailOnError(err, "Failed reading config file")
+
+	if *debugAddr != "" {
+		config.BadKeyRevoker.DebugAddr = *debugAddr
+	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
 	defer oTelShutdown(context.Background())

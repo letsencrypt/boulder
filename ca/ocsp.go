@@ -68,6 +68,10 @@ func NewOCSPImpl(
 		issuersByID[issuer.ID()] = issuer
 	}
 
+	if ocspLifetime < 8*time.Hour || ocspLifetime > 7*24*time.Hour {
+		return nil, fmt.Errorf("invalid OCSP lifetime %q", ocspLifetime)
+	}
+
 	var ocspLogQueue *ocspLogQueue
 	if ocspLogMaxLength > 0 {
 		ocspLogQueue = newOCSPLogQueue(ocspLogMaxLength, ocspLogPeriod, stats, logger)
@@ -127,7 +131,7 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 		}
 	}
 
-	now := oi.clk.Now().Truncate(time.Hour)
+	now := oi.clk.Now().Truncate(time.Minute)
 	tbsResponse := ocsp.Response{
 		Status:       ocspStatusToCode[req.Status],
 		SerialNumber: serial,
@@ -135,7 +139,7 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 		NextUpdate:   now.Add(oi.ocspLifetime - time.Second),
 	}
 	if tbsResponse.Status == ocsp.Revoked {
-		tbsResponse.RevokedAt = time.Unix(0, req.RevokedAtNS)
+		tbsResponse.RevokedAt = req.RevokedAt.AsTime()
 		tbsResponse.RevocationReason = int(req.Reason)
 	}
 

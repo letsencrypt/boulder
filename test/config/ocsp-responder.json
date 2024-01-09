@@ -48,7 +48,7 @@
 		"shutdownStopTimeout": "10s",
 		"debugAddr": ":8005",
 		"requiredSerialPrefixes": [
-			"ff"
+			"7f"
 		],
 		"features": {}
 	},

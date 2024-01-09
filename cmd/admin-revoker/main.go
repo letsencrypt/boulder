@@ -3,8 +3,6 @@ package notmain
 import (
 	"bufio"
 	"context"
-	"crypto"
-	"crypto/sha256"
 	"crypto/x509"
 	"errors"
 	"flag"
@@ -87,7 +85,7 @@ type Config struct {
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
 
-		Features map[string]bool
+		Features features.Config
 	}
 
 	Syslog cmd.SyslogConfig
@@ -330,7 +328,7 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, comment string, private
 		return err
 	}
 
-	spkiHash, err := getPublicKeySPKIHash(publicKey)
+	spkiHash, err := core.KeyDigest(publicKey)
 	if err != nil {
 		return err
 	}
@@ -342,11 +340,9 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, comment string, private
 
 	dbcomment := fmt.Sprintf("%s: %s", u.Username, comment)
 
-	now := r.clk.Now()
 	req := &sapb.AddBlockedKeyRequest{
-		KeyHash:   spkiHash,
-		AddedNS:   now.UnixNano(),
-		Added:     timestamppb.New(now),
+		KeyHash:   spkiHash[:],
+		Added:     timestamppb.New(r.clk.Now()),
 		Source:    "admin-revoker",
 		Comment:   dbcomment,
 		RevokedBy: 0,
@@ -372,7 +368,7 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey string) err
 		return err
 	}
 
-	spkiHash, err := getPublicKeySPKIHash(publicKey)
+	spkiHash, err := core.KeyDigest(publicKey)
 	if err != nil {
 		return err
 	}
@@ -413,9 +409,9 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey string) err
 	return nil
 }
 
-func (r *revoker) spkiHashInBlockedKeys(ctx context.Context, spkiHash []byte) (bool, error) {
+func (r *revoker) spkiHashInBlockedKeys(ctx context.Context, spkiHash core.Sha256Digest) (bool, error) {
 	var count int
-	err := r.dbMap.SelectOne(ctx, &count, "SELECT COUNT(*) as count FROM blockedKeys WHERE keyHash = ?", spkiHash)
+	err := r.dbMap.SelectOne(ctx, &count, "SELECT COUNT(*) as count FROM blockedKeys WHERE keyHash = ?", spkiHash[:])
 	if err != nil {
 		return false, err
 	}
@@ -426,9 +422,9 @@ func (r *revoker) spkiHashInBlockedKeys(ctx context.Context, spkiHash []byte) (b
 	return false, nil
 }
 
-func (r *revoker) countCertsMatchingSPKIHash(ctx context.Context, spkiHash []byte) (int, error) {
+func (r *revoker) countCertsMatchingSPKIHash(ctx context.Context, spkiHash core.Sha256Digest) (int, error) {
 	var count int
-	err := r.dbMap.SelectOne(ctx, &count, "SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ?", spkiHash)
+	err := r.dbMap.SelectOne(ctx, &count, "SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ?", spkiHash[:])
 	if err != nil {
 		return 0, err
 	}
@@ -452,9 +448,9 @@ func (r *revoker) getRegIDsMatchingEmail(ctx context.Context, email string) ([]i
 
 // TODO(#5899) Use an non-wrapped sql.Db client to iterate over results and
 // return them on a channel.
-func (r *revoker) getCertsMatchingSPKIHash(ctx context.Context, spkiHash []byte) ([]string, error) {
+func (r *revoker) getCertsMatchingSPKIHash(ctx context.Context, spkiHash core.Sha256Digest) ([]string, error) {
 	var h []string
-	_, err := r.dbMap.Select(ctx, &h, "SELECT certSerial FROM keyHashToSerial WHERE keyHash = ?", spkiHash)
+	_, err := r.dbMap.Select(ctx, &h, "SELECT certSerial FROM keyHashToSerial WHERE keyHash = ?", spkiHash[:])
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("no certificates with a matching SPKI hash were found")
@@ -471,7 +467,7 @@ func (rc revocationCodes) Len() int           { return len(rc) }
 func (rc revocationCodes) Less(i, j int) bool { return rc[i] < rc[j] }
 func (rc revocationCodes) Swap(i, j int)      { rc[i], rc[j] = rc[j], rc[i] }
 
-func privateKeyBlock(ctx context.Context, r *revoker, dryRun bool, comment string, count int, spkiHash []byte, keyPath string) error {
+func privateKeyBlock(ctx context.Context, r *revoker, dryRun bool, comment string, count int, spkiHash core.Sha256Digest, keyPath string) error {
 	keyExists, err := r.spkiHashInBlockedKeys(ctx, spkiHash)
 	if err != nil {
 		return fmt.Errorf("while checking if the provided key already exists in the 'blockedKeys' table: %s", err)
@@ -531,17 +527,6 @@ func privateKeyRevoke(r *revoker, dryRun bool, comment string, count int, keyPat
 	return nil
 }
 
-// getPublicKeySPKIHash returns a hash of the SubjectPublicKeyInfo for the
-// provided public key.
-func getPublicKeySPKIHash(pubKey crypto.PublicKey) ([]byte, error) {
-	rawSubjectPublicKeyInfo, err := x509.MarshalPKIXPublicKey(pubKey)
-	if err != nil {
-		return nil, err
-	}
-	spkiHash := sha256.Sum256(rawSubjectPublicKeyInfo)
-	return spkiHash[:], nil
-}
-
 func main() {
 	usage := func() {
 		fmt.Fprint(os.Stderr, usageString)
@@ -573,8 +558,7 @@ func main() {
 	var c Config
 	err = cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-	err = features.Set(c.Revoker.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.Revoker.Features)
 
 	ctx := context.Background()
 	r := newRevoker(c)
@@ -642,7 +626,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to load the provided private key")
 		r.log.AuditInfo("The provided private key has been successfully verified")
 
-		spkiHash, err := getPublicKeySPKIHash(publicKey)
+		spkiHash, err := core.KeyDigest(publicKey)
 		cmd.FailOnError(err, "While obtaining the SPKI hash for the provided key")
 
 		count, err := r.countCertsMatchingSPKIHash(ctx, spkiHash)

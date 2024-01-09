@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -46,13 +47,13 @@ type Config struct {
 		Backdate config.Duration
 
 		// What digits we should prepend to serials after randomly generating them.
-		SerialPrefix int `validate:"required,min=1,max=255"`
+		SerialPrefix int `validate:"required,min=1,max=127"`
 
 		// The maximum number of subjectAltNames in a single certificate
 		MaxNames int `validate:"required,min=1,max=100"`
 
 		// LifespanOCSP is how long OCSP responses are valid for. Per the BRs,
-		// Section 4.9.10, it MUST NOT be more than 10 days.
+		// Section 4.9.10, it MUST NOT be more than 10 days. Default 96h.
 		LifespanOCSP config.Duration
 
 		// LifespanCRL is how long CRLs are valid for. It should be longer than the
@@ -101,7 +102,7 @@ type Config struct {
 		// preventing any CRLs from being issued.
 		DisableCRLService bool
 
-		Features map[string]bool
+		Features features.Config
 	}
 
 	PA cmd.PAConfig
@@ -152,8 +153,7 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	err = features.Set(c.CA.Features)
-	cmd.FailOnError(err, "Failed to set feature flags")
+	features.Set(c.CA.Features)
 
 	if *grpcAddr != "" {
 		c.CA.GRPCCA.Address = *grpcAddr
@@ -164,6 +164,10 @@ func main() {
 
 	if c.CA.MaxNames == 0 {
 		cmd.Fail("Error in CA config: MaxNames must not be 0")
+	}
+
+	if c.CA.LifespanOCSP.Duration == 0 {
+		c.CA.LifespanOCSP.Duration = 96 * time.Hour
 	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)

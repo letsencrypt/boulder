@@ -1,12 +1,11 @@
 {
 	"va": {
 		"userAgent": "boulder-remote-b",
-		"debugAddr": ":8012",
 		"dnsTries": 3,
 		"dnsProvider": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
-				"service": "dns",
+				"service": "doh",
 				"domain": "service.consul"
 			}
 		},
@@ -20,7 +19,6 @@
 		},
 		"grpc": {
 			"maxConnectionAge": "30s",
-			"address": ":9098",
 			"services": {
 				"va.VA": {
 					"clientNames": [
@@ -35,7 +33,8 @@
 			}
 		},
 		"features": {
-			"CAAAfterValidation": true
+			"CAAAfterValidation": true,
+			"DOH": true
 		},
 		"accountURIPrefixes": [
 			"http://boulder.service.consul:4000/acme/reg/",

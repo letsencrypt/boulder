@@ -79,10 +79,8 @@ func TestCertsPerNameRateLimitTable(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
 			timeRange := &sapb.Range{
-				EarliestNS: aprilFirst.Add(-1 * time.Second).UnixNano(),
-				Earliest:   timestamppb.New(aprilFirst.Add(-1 * time.Second)),
-				LatestNS:   aprilFirst.Add(aWeek).UnixNano(),
-				Latest:     timestamppb.New(aprilFirst.Add(aWeek)),
+				Earliest: timestamppb.New(aprilFirst.Add(-1 * time.Second)),
+				Latest:   timestamppb.New(aprilFirst.Add(aWeek)),
 			}
 			count, earliest, err := sa.countCertificatesByName(ctx, sa.dbMap, tc.domainName, timeRange)
 			if err != nil {
@@ -110,10 +108,8 @@ func TestNewOrdersRateLimitTable(t *testing.T) {
 	req := &sapb.CountOrdersRequest{
 		AccountID: 1,
 		Range: &sapb.Range{
-			EarliestNS: start.UnixNano(),
-			Earliest:   timestamppb.New(start),
-			LatestNS:   start.Add(time.Minute * 10).UnixNano(),
-			Latest:     timestamppb.New(start.Add(time.Minute * 10)),
+			Earliest: timestamppb.New(start),
+			Latest:   timestamppb.New(start.Add(time.Minute * 10)),
 		},
 	}
 
@@ -136,8 +132,8 @@ func TestNewOrdersRateLimitTable(t *testing.T) {
 	test.AssertNotError(t, err, "countNewOrders failed")
 	test.AssertEquals(t, count.Count, int64(65))
 
-	req.Range.EarliestNS = start.Add(time.Minute * 5).UnixNano()
-	req.Range.LatestNS = start.Add(time.Minute * 10).UnixNano()
+	req.Range.Earliest = timestamppb.New(start.Add(time.Minute * 5))
+	req.Range.Latest = timestamppb.New(start.Add(time.Minute * 10))
 	count, err = countNewOrders(ctx, sa.dbMap, req)
 	test.AssertNotError(t, err, "countNewOrders failed")
 	test.AssertEquals(t, count.Count, int64(45))

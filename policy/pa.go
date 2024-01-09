@@ -170,7 +170,6 @@ func isDNSCharacter(ch byte) bool {
 // If these values change, the related error messages should be updated.
 
 var (
-	errInvalidIdentifier    = berrors.MalformedError("Invalid identifier type")
 	errNonPublic            = berrors.MalformedError("Domain name does not end with a valid public suffix (TLD)")
 	errICANNTLD             = berrors.MalformedError("Domain name is an ICANN TLD")
 	errPolicyForbidden      = berrors.RejectedIdentifierError("The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy")
@@ -191,21 +190,20 @@ var (
 	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
 )
 
-// ValidDomain checks that a domain isn't:
+// ValidNonWildcardDomain checks that a domain isn't:
+//   - empty
+//   - prefixed with the wildcard label `*.`
+//   - made of invalid DNS characters
+//   - longer than the maxDNSIdentifierLength
+//   - an IPv4 or IPv6 address
+//   - suffixed with just "."
+//   - made of too many DNS labels
+//   - made of any invalid DNS labels
+//   - suffixed with something other than an IANA registered TLD
+//   - exactly equal to an IANA registered TLD
 //
-// * empty
-// * prefixed with the wildcard label `*.`
-// * made of invalid DNS characters
-// * longer than the maxDNSIdentifierLength
-// * an IPv4 or IPv6 address
-// * suffixed with just "."
-// * made of too many DNS labels
-// * made of any invalid DNS labels
-// * suffixed with something other than an IANA registered TLD
-// * exactly equal to an IANA registered TLD
-//
-// It does _not_ check that the domain isn't on any PA blocked lists.
-func ValidDomain(domain string) error {
+// It does NOT ensure that the domain is absent from any PA blocked lists.
+func ValidNonWildcardDomain(domain string) error {
 	if domain == "" {
 		return errEmptyName
 	}
@@ -293,6 +291,41 @@ func ValidDomain(domain string) error {
 	return nil
 }
 
+// ValidDomain checks that a domain is valid and that it doesn't contain any
+// invalid wildcard characters. It does NOT ensure that the domain is absent
+// from any PA blocked lists.
+func ValidDomain(domain string) error {
+	if strings.Count(domain, "*") <= 0 {
+		return ValidNonWildcardDomain(domain)
+	}
+
+	// Names containing more than one wildcard are invalid.
+	if strings.Count(domain, "*") > 1 {
+		return errTooManyWildcards
+	}
+
+	// If the domain has a wildcard character, but it isn't the first most
+	// label of the domain name then the wildcard domain is malformed
+	if !strings.HasPrefix(domain, "*.") {
+		return errMalformedWildcard
+	}
+
+	// The base domain is the wildcard request with the `*.` prefix removed
+	baseDomain := strings.TrimPrefix(domain, "*.")
+
+	// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
+	icannTLD, err := iana.ExtractSuffix(baseDomain)
+	if err != nil {
+		return errNonPublic
+	}
+	// Names must have a non-wildcard label immediately adjacent to the ICANN
+	// TLD. No `*.com`!
+	if baseDomain == icannTLD {
+		return errICANNTLDWildcard
+	}
+	return ValidNonWildcardDomain(baseDomain)
+}
+
 // forbiddenMailDomains is a map of domain names we do not allow after the
 // @ symbol in contact mailto addresses. These are frequently used when
 // copy-pasting example configurations and would not result in expiration
@@ -318,7 +351,7 @@ func ValidEmail(address string) error {
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	err = ValidDomain(domain)
+	err = ValidNonWildcardDomain(domain)
 	if err != nil {
 		return berrors.InvalidEmailError(
 			"contact email %q has invalid domain : %s",
@@ -332,12 +365,11 @@ func ValidEmail(address string) error {
 	return nil
 }
 
-// willingToIssue determines whether the CA is willing to issue for the provided
-// identifier. It expects domains in id to be lowercase to prevent mismatched
-// cases breaking queries. It is a helper method for WillingToIssueWildcards.
+// WillingToIssue determines whether the CA is willing to issue for the provided
+// domains. It expects each domain to be lowercase to prevent mismatched cases
+// breaking queries.
 //
-// We place several criteria on identifiers we are willing to issue for:
-//   - MUST self-identify as DNS identifiers
+// We place several criteria on domains we are willing to issue for:
 //   - MUST contain only bytes in the DNS hostname character set
 //   - MUST NOT have more than maxLabels labels
 //   - MUST follow the DNS hostname syntax rules in RFC 1035 and RFC 2181
@@ -350,36 +382,7 @@ func ValidEmail(address string) error {
 //   - MUST NOT be a label-wise suffix match for a name on the block list,
 //     where comparison is case-independent (normalized to lower case)
 //
-// If willingToIssue returns an error, it will be of type MalformedRequestError
-// or RejectedIdentifierError
-func (pa *AuthorityImpl) willingToIssue(id identifier.ACMEIdentifier) error {
-	if id.Type != identifier.DNS {
-		return errInvalidIdentifier
-	}
-	domain := id.Value
-
-	err := ValidDomain(domain)
-	if err != nil {
-		return err
-	}
-
-	// Require no match against hostname block lists
-	err = pa.checkHostLists(domain)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// WillingToIssueWildcards is an extension of WillingToIssue that accepts DNS
-// identifiers for well formed wildcard domains in addition to regular
-// identifiers.
-//
-// All provided identifiers are run through WillingToIssue and any errors are
-// returned. In addition to the regular WillingToIssue checks this function
-// also checks each wildcard identifier to enforce that:
-//   - The identifier is a DNS type identifier
+// If a domain contains a *, we additionally require:
 //   - There is at most one `*` wildcard character
 //   - That the wildcard character is the leftmost label
 //   - That the wildcard label is not immediately adjacent to a top level ICANN
@@ -388,26 +391,59 @@ func (pa *AuthorityImpl) willingToIssue(id identifier.ACMEIdentifier) error {
 //     blocklist entry for "foo.example.com" should prevent issuance for
 //     "*.example.com")
 //
-// If any of the identifiers are not valid then an error with suberrors specific
-// to the rejected identifiers will be returned.
-func (pa *AuthorityImpl) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
+// If any of the domains are not valid then an error with suberrors specific to
+// the rejected domains will be returned.
+func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
 	var subErrors []berrors.SubBoulderError
-	for _, ident := range idents {
-		err := pa.willingToIssueWildcard(ident)
-		if err != nil {
-			var bErr *berrors.BoulderError
-			if errors.As(err, &bErr) {
-				subErrors = append(subErrors, berrors.SubBoulderError{
-					Identifier:   ident,
-					BoulderError: bErr})
-			} else {
-				subErrors = append(subErrors, berrors.SubBoulderError{
-					Identifier: ident,
-					BoulderError: &berrors.BoulderError{
-						Type:   berrors.RejectedIdentifier,
-						Detail: err.Error(),
-					}})
+	appendSubError := func(name string, err error) {
+		var bErr *berrors.BoulderError
+		if errors.As(err, &bErr) {
+			subErrors = append(subErrors, berrors.SubBoulderError{
+				Identifier:   identifier.DNSIdentifier(name),
+				BoulderError: bErr,
+			})
+		} else {
+			subErrors = append(subErrors, berrors.SubBoulderError{
+				Identifier: identifier.DNSIdentifier(name),
+				BoulderError: &berrors.BoulderError{
+					Type:   berrors.RejectedIdentifier,
+					Detail: err.Error(),
+				},
+			})
+		}
+	}
+
+	for _, domain := range domains {
+		if strings.Count(domain, "*") > 0 {
+			// Domain contains a wildcard, check that it is valid.
+			err := ValidDomain(domain)
+			if err != nil {
+				appendSubError(domain, err)
+				continue
 			}
+
+			// The base domain is the wildcard request with the `*.` prefix removed
+			baseDomain := strings.TrimPrefix(domain, "*.")
+
+			// The base domain can't be in the wildcard exact blocklist
+			err = pa.checkWildcardHostList(baseDomain)
+			if err != nil {
+				appendSubError(domain, err)
+				continue
+			}
+		} else {
+			// Validate that the domain is well-formed.
+			err := ValidNonWildcardDomain(domain)
+			if err != nil {
+				appendSubError(domain, err)
+				continue
+			}
+		}
+		// Require no match against hostname block lists
+		err := pa.checkHostLists(domain)
+		if err != nil {
+			appendSubError(domain, err)
+			continue
 		}
 	}
 	if len(subErrors) > 0 {
@@ -433,64 +469,6 @@ func (pa *AuthorityImpl) WillingToIssueWildcards(idents []identifier.ACMEIdentif
 		}).WithSubErrors(subErrors)
 	}
 	return nil
-}
-
-// willingToIssueWildcard vets a single identifier. It is used by
-// the plural WillingToIssueWildcards when evaluating a list of identifiers.
-func (pa *AuthorityImpl) willingToIssueWildcard(ident identifier.ACMEIdentifier) error {
-	// We're only willing to process DNS identifiers
-	if ident.Type != identifier.DNS {
-		return errInvalidIdentifier
-	}
-	rawDomain := ident.Value
-
-	// If there is more than one wildcard in the domain the ident is invalid
-	if strings.Count(rawDomain, "*") > 1 {
-		return errTooManyWildcards
-	}
-
-	// If there is exactly one wildcard in the domain we need to do some special
-	// processing to ensure that it is a well formed wildcard request and to
-	// translate the identifier to its base domain for use with WillingToIssue
-	if strings.Count(rawDomain, "*") == 1 {
-		// If the rawDomain has a wildcard character, but it isn't the first most
-		// label of the domain name then the wildcard domain is malformed
-		if !strings.HasPrefix(rawDomain, "*.") {
-			return errMalformedWildcard
-		}
-		// The base domain is the wildcard request with the `*.` prefix removed
-		baseDomain := strings.TrimPrefix(rawDomain, "*.")
-		// Names must end in an ICANN TLD, but they must not be equal to an ICANN TLD.
-		icannTLD, err := iana.ExtractSuffix(baseDomain)
-		if err != nil {
-			return errNonPublic
-		}
-		// Names must have a non-wildcard label immediately adjacent to the ICANN
-		// TLD. No `*.com`!
-		if baseDomain == icannTLD {
-			return errICANNTLDWildcard
-		}
-		// The base domain can't be in the wildcard exact blocklist
-		err = pa.checkWildcardHostList(baseDomain)
-		if err != nil {
-			return err
-		}
-		// Check that the PA is willing to issue for the base domain
-		// Since the base domain without the "*." may trip the exact hostname policy
-		// blocklist when the "*." is removed we replace it with a single "x"
-		// character to differentiate "*.example.com" from "example.com" for the
-		// exact hostname check.
-		//
-		// NOTE(@cpu): This is pretty hackish! Boulder issue #3323[0] describes
-		// a better follow-up that we should land to replace this code.
-		// [0] https://github.com/letsencrypt/boulder/issues/3323
-		return pa.willingToIssue(identifier.ACMEIdentifier{
-			Type:  identifier.DNS,
-			Value: "x." + baseDomain,
-		})
-	}
-
-	return pa.willingToIssue(ident)
 }
 
 // checkWildcardHostList checks the wildcardExactBlocklist for a given domain.

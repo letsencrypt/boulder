@@ -39,7 +39,7 @@ func (pc *PasswordConfig) Pass() (string, error) {
 // be embedded in other config structs.
 type ServiceConfig struct {
 	// DebugAddr is the address to run the /debug handlers on.
-	DebugAddr string `validate:"hostname_port"`
+	DebugAddr string `validate:"omitempty,hostname_port"`
 	GRPC      *GRPCServerConfig
 	TLS       TLSConfig
 
@@ -443,7 +443,7 @@ func (c *GRPCClientConfig) makeSRVScheme() (string, error) {
 
 // GRPCServerConfig contains the information needed to start a gRPC server.
 type GRPCServerConfig struct {
-	Address string `json:"address" validate:"hostname_port"`
+	Address string `json:"address" validate:"omitempty,hostname_port"`
 	// Services is a map of service names to configuration specific to that service.
 	// These service names must match the service names advertised by gRPC itself,
 	// which are identical to the names set in our gRPC .proto files prefixed by

@@ -17,7 +17,6 @@
 			"240h"
 		],
 		"emailTemplate": "test/config-next/expiration-mailer.gotmpl",
-		"debugAddr": ":8008",
 		"parallelSends": 10,
 		"tls": {
 			"caCertFile": "test/grpc-creds/minica.pem",

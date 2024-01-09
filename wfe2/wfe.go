@@ -169,6 +169,7 @@ type WebFrontEndImpl struct {
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
 	limiter                      *ratelimits.Limiter
+	txnBuilder                   *ratelimits.TransactionBuilder
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -191,6 +192,7 @@ func NewWebFrontEndImpl(
 	rncKey string,
 	accountGetter AccountGetter,
 	limiter *ratelimits.Limiter,
+	txnBuilder *ratelimits.TransactionBuilder,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
@@ -228,6 +230,7 @@ func NewWebFrontEndImpl(
 		rncKey:                       rncKey,
 		accountGetter:                accountGetter,
 		limiter:                      limiter,
+		txnBuilder:                   txnBuilder,
 	}
 
 	return wfe, nil
@@ -433,7 +436,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
 
 	// Endpoint for draft-aaron-ari
-	if features.Enabled(features.ServeRenewalInfo) {
+	if features.Get().ServeRenewalInfo {
 		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET", "POST")
 	}
 
@@ -512,7 +515,7 @@ func (wfe *WebFrontEndImpl) Directory(
 		"keyChange":  rolloverPath,
 	}
 
-	if features.Enabled(features.ServeRenewalInfo) {
+	if features.Get().ServeRenewalInfo {
 		directoryEndpoints["renewalInfo"] = renewalInfoPath
 	}
 
@@ -625,7 +628,7 @@ func link(url, relation string) string {
 // This should eventually return a berrors.RateLimit error containing the retry
 // after duration among other information available in the ratelimits.Decision.
 func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) {
-	if wfe.limiter == nil {
+	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Limiter is disabled.
 		return
 	}
@@ -639,13 +642,13 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		wfe.log.Warningf("checking %s rate limit: %s", limit, err)
 	}
 
-	bucketId, err := ratelimits.NewRegistrationsPerIPAddressBucketId(ip)
+	txn, err := wfe.txnBuilder.RegistrationsPerIPAddressTransaction(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
 	}
 
-	decision, err := wfe.limiter.Spend(ctx, ratelimits.NewTransaction(bucketId, 1))
+	decision, err := wfe.limiter.Spend(ctx, txn)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
@@ -656,13 +659,13 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		return
 	}
 
-	bucketId, err = ratelimits.NewRegistrationsPerIPv6RangeBucketId(ip)
+	txn, err = wfe.txnBuilder.RegistrationsPerIPv6RangeTransaction(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 		return
 	}
 
-	_, err = wfe.limiter.Spend(ctx, ratelimits.NewTransaction(bucketId, 1))
+	_, err = wfe.limiter.Spend(ctx, txn)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 	}
@@ -673,7 +676,7 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 // retry immediately. If an error is encountered during the refund, it is logged
 // but not returned.
 func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.IP) {
-	if wfe.limiter == nil {
+	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Limiter is disabled.
 		return
 	}
@@ -687,13 +690,13 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 		wfe.log.Warningf("refunding %s rate limit: %s", limit, err)
 	}
 
-	bucketId, err := ratelimits.NewRegistrationsPerIPAddressBucketId(ip)
+	txn, err := wfe.txnBuilder.RegistrationsPerIPAddressTransaction(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
 	}
 
-	_, err = wfe.limiter.Refund(ctx, ratelimits.NewTransaction(bucketId, 1))
+	_, err = wfe.limiter.Refund(ctx, txn)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
@@ -703,13 +706,13 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 		return
 	}
 
-	bucketId, err = ratelimits.NewRegistrationsPerIPv6RangeBucketId(ip)
+	txn, err = wfe.txnBuilder.RegistrationsPerIPv6RangeTransaction(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 		return
 	}
 
-	_, err = wfe.limiter.Refund(ctx, ratelimits.NewTransaction(bucketId, 1))
+	_, err = wfe.limiter.Refund(ctx, txn)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 	}
@@ -1149,7 +1152,8 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Ensure gRPC response is complete.
-	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.ExpiresNS == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || core.IsAnyNilOrZero(authzPB.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -1347,7 +1351,8 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
 		})
-		if err != nil || authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.ExpiresNS == 0 {
+		// TODO(#7153): Check each value via core.IsAnyNilOrZero
+		if err != nil || authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || core.IsAnyNilOrZero(authzPB.Expires) {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
 		}
@@ -1591,7 +1596,8 @@ func (wfe *WebFrontEndImpl) Authorization(
 	}
 
 	// Ensure gRPC response is complete.
-	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.ExpiresNS == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || core.IsAnyNilOrZero(authzPB.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -1602,7 +1608,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 	logEvent.Status = authzPB.Status
 
 	// After expiring, authorizations are inaccessible
-	if time.Unix(0, authzPB.ExpiresNS).Before(wfe.clk.Now()) {
+	if authzPB.Expires.AsTime().Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}
@@ -2025,7 +2031,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		fmt.Sprintf("%s%d/%d", finalizeOrderPath, order.RegistrationID, order.Id))
 	respObj := orderJSON{
 		Status:      core.AcmeStatus(order.Status),
-		Expires:     time.Unix(0, order.ExpiresNS).UTC(),
+		Expires:     order.Expires.AsTime(),
 		Identifiers: idents,
 		Finalize:    finalizeURL,
 	}
@@ -2165,7 +2171,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			hasValidCNLen = true
 		}
 	}
-	if !hasValidCNLen && !features.Enabled(features.AllowNoCommonName) {
+	if !hasValidCNLen && !features.Get().AllowNoCommonName {
 		wfe.sendError(response, logEvent,
 			probs.RejectedIdentifier("NewOrder request did not include a SAN short enough to fit in CN"),
 			nil)
@@ -2186,7 +2192,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		RegistrationID: acct.ID,
 		Names:          names,
 	})
-	if err != nil || order == nil || order.Id == 0 || order.CreatedNS == 0 || order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
@@ -2246,7 +2253,8 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	if order.Id == 0 || order.CreatedNS == 0 || order.Status == "" || order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if order.Id == 0 || order.Status == "" || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2326,7 +2334,8 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	if order.Id == 0 || order.CreatedNS == 0 || order.Status == "" || order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if order.Id == 0 || order.Status == "" || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2354,7 +2363,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 
 	// If the order is expired we can not finalize it and must return an error
-	orderExpiry := time.Unix(order.ExpiresNS, 0)
+	orderExpiry := order.Expires.AsTime()
 	if orderExpiry.Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("Order %d is expired", order.Id)), nil)
 		return
@@ -2387,7 +2396,8 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error finalizing order"), err)
 		return
 	}
-	if updatedOrder == nil || order.Id == 0 || order.CreatedNS == 0 || order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0 {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if updatedOrder == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}
@@ -2519,7 +2529,7 @@ func parseCertID(path string, issuerCertificates map[issuance.IssuerNameID]*issu
 // RenewalInfo is used to get information about the suggested renewal window
 // for the given certificate. It only accepts unauthenticated GET requests.
 func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	if !features.Enabled(features.ServeRenewalInfo) {
+	if !features.Get().ServeRenewalInfo {
 		wfe.sendError(response, logEvent, probs.NotFound("Feature not enabled"), nil)
 		return
 	}
@@ -2606,16 +2616,14 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	// using that to compute the actual issuerNameHash and issuerKeyHash, and
 	// comparing those to the ones in the request.
 
-	sendRI(core.RenewalInfoSimple(
-		time.Unix(0, cert.IssuedNS).UTC(),
-		time.Unix(0, cert.ExpiresNS).UTC()))
+	sendRI(core.RenewalInfoSimple(cert.Issued.AsTime(), cert.Expires.AsTime()))
 }
 
 // UpdateRenewal is used by the client to inform the server that they have
 // replaced the certificate in question, so it can be safely revoked. All
 // requests must be authenticated to the account which ordered the cert.
 func (wfe *WebFrontEndImpl) UpdateRenewal(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	if !features.Enabled(features.ServeRenewalInfo) {
+	if !features.Get().ServeRenewalInfo {
 		wfe.sendError(response, logEvent, probs.NotFound("Feature not enabled"), nil)
 		return
 	}

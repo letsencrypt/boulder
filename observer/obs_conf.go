@@ -25,7 +25,7 @@ var (
 
 // ObsConf is exported to receive YAML configuration.
 type ObsConf struct {
-	DebugAddr     string           `yaml:"debugaddr" validate:"required,hostname_port"`
+	DebugAddr     string           `yaml:"debugaddr" validate:"omitempty,hostname_port"`
 	Buckets       []float64        `yaml:"buckets" validate:"min=1,dive"`
 	Syslog        cmd.SyslogConfig `yaml:"syslog"`
 	OpenTelemetry cmd.OpenTelemetryConfig

@@ -238,7 +238,7 @@ func setup(t *testing.T) *testCtx {
 
 	ocsp, err := NewOCSPImpl(
 		boulderIssuers,
-		time.Hour,
+		24*time.Hour,
 		0,
 		time.Second,
 		blog.NewMock(),
@@ -276,7 +276,7 @@ func setup(t *testing.T) *testCtx {
 	}
 }
 
-func TestFailNoSerialPrefix(t *testing.T) {
+func TestSerialPrefix(t *testing.T) {
 	testCtx := setup(t)
 
 	_, err := NewCertificateAuthorityImpl(
@@ -295,6 +295,23 @@ func TestFailNoSerialPrefix(t *testing.T) {
 		nil,
 		testCtx.fc)
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
+
+	_, err = NewCertificateAuthorityImpl(
+		nil,
+		nil,
+		nil,
+		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		128,
+		testCtx.maxNames,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		testCtx.stats,
+		nil,
+		nil,
+		testCtx.fc)
+	test.AssertError(t, err, "CA should have failed with too-large SerialPrefix")
 }
 
 type TestCertificateIssuance struct {
@@ -497,7 +514,7 @@ func TestECDSAAllowList(t *testing.T) {
 
 	// With empty allowlist but ECDSAForAll enabled, issuance should come from ECDSA issuer.
 	ca, _ = issueCertificateSubTestSetup(t, nil)
-	_ = features.Set(map[string]bool{"ECDSAForAll": true})
+	features.Set(features.Config{ECDSAForAll: true})
 	defer features.Reset()
 	result, err = ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")

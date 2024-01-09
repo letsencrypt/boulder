@@ -3,6 +3,7 @@ import collections
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -16,11 +17,11 @@ Service = collections.namedtuple('Service', ('name', 'debug_port', 'grpc_addr', 
 SERVICES = (
     Service('boulder-remoteva-a',
         8011, 'rva1.service.consul:9097',
-        ('./bin/boulder', 'boulder-remoteva', '--config', os.path.join(config_dir, 'va-remote-a.json')),
+        ('./bin/boulder', 'boulder-remoteva', '--config', os.path.join(config_dir, 'va-remote-a.json'), '--addr', ':9097', '--debug-addr', ':8011'),
         None),
     Service('boulder-remoteva-b',
         8012, 'rva1.service.consul:9098',
-        ('./bin/boulder', 'boulder-remoteva', '--config', os.path.join(config_dir, 'va-remote-b.json')),
+        ('./bin/boulder', 'boulder-remoteva', '--config', os.path.join(config_dir, 'va-remote-b.json'), '--addr', ':9098', '--debug-addr', ':8012'),
         None),
     Service('boulder-sa-1',
         8003, 'sa1.service.consul:9095',
@@ -47,7 +48,7 @@ SERVICES = (
         None),
     Service('ocsp-responder',
         8005, None,
-        ('./bin/boulder', 'ocsp-responder', '--config', os.path.join(config_dir, 'ocsp-responder.json')),
+        ('./bin/boulder', 'ocsp-responder', '--config', os.path.join(config_dir, 'ocsp-responder.json'), '--addr', '0.0.0.0:4002', '--debug-addr', ':8005'),
         ('boulder-ra-1', 'boulder-ra-2')),
     Service('boulder-va-1',
         8004, 'va1.service.consul:9092',
@@ -57,13 +58,13 @@ SERVICES = (
         8104, 'va2.service.consul:9092',
         ('./bin/boulder', 'boulder-va', '--config', os.path.join(config_dir, 'va.json'), '--addr', 'va2.service.consul:9092', '--debug-addr', ':8104'),
         ('boulder-remoteva-a', 'boulder-remoteva-b')),
-    Service('boulder-ca-a',
+    Service('boulder-ca-1',
         8001, 'ca1.service.consul:9093',
-        ('./bin/boulder', 'boulder-ca', '--config', os.path.join(config_dir, 'ca-a.json'), '--addr', 'ca1.service.consul:9093', '--debug-addr', ':8001'),
+        ('./bin/boulder', 'boulder-ca', '--config', os.path.join(config_dir, 'ca.json'), '--addr', 'ca1.service.consul:9093', '--debug-addr', ':8001'),
         ('boulder-sa-1', 'boulder-sa-2')),
-    Service('boulder-ca-b',
+    Service('boulder-ca-2',
         8101, 'ca2.service.consul:9093',
-        ('./bin/boulder', 'boulder-ca', '--config', os.path.join(config_dir, 'ca-b.json'), '--addr', 'ca2.service.consul:9093', '--debug-addr', ':8101'),
+        ('./bin/boulder', 'boulder-ca', '--config', os.path.join(config_dir, 'ca.json'), '--addr', 'ca2.service.consul:9093', '--debug-addr', ':8101'),
         ('boulder-sa-1', 'boulder-sa-2')),
     Service('akamai-test-srv',
         6789, None,
@@ -71,7 +72,7 @@ SERVICES = (
         None),
     Service('akamai-purger',
         9666, None,
-        ('./bin/boulder', 'akamai-purger', '--config', os.path.join(config_dir, 'akamai-purger.json')),
+        ('./bin/boulder', 'akamai-purger', '--config', os.path.join(config_dir, 'akamai-purger.json'), '--debug-addr', ':9666'),
         ('akamai-test-srv',)),
     Service('s3-test-srv',
         7890, None,
@@ -79,23 +80,23 @@ SERVICES = (
         None),
     Service('crl-storer',
         9667, None,
-        ('./bin/boulder', 'crl-storer', '--config', os.path.join(config_dir, 'crl-storer.json')),
+        ('./bin/boulder', 'crl-storer', '--config', os.path.join(config_dir, 'crl-storer.json'), '--addr', ':9109', '--debug-addr', ':9667'),
         ('s3-test-srv',)),
     Service('crl-updater',
         8021, None,
-        ('./bin/boulder', 'crl-updater', '--config', os.path.join(config_dir, 'crl-updater.json')),
-        ('boulder-ca-a', 'boulder-ca-b', 'boulder-sa-1', 'boulder-sa-2', 'crl-storer')),
+        ('./bin/boulder', 'crl-updater', '--config', os.path.join(config_dir, 'crl-updater.json'), '--debug-addr', ':8021'),
+        ('boulder-ca-1', 'boulder-ca-2', 'boulder-sa-1', 'boulder-sa-2', 'crl-storer')),
     Service('boulder-ra-1',
         8002, 'ra1.service.consul:9094',
         ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', 'ra1.service.consul:9094', '--debug-addr', ':8002'),
-        ('boulder-sa-1', 'boulder-sa-2', 'boulder-ca-a', 'boulder-ca-b', 'boulder-va-1', 'boulder-va-2', 'akamai-purger', 'boulder-publisher-1', 'boulder-publisher-2')),
+        ('boulder-sa-1', 'boulder-sa-2', 'boulder-ca-1', 'boulder-ca-2', 'boulder-va-1', 'boulder-va-2', 'akamai-purger', 'boulder-publisher-1', 'boulder-publisher-2')),
     Service('boulder-ra-2',
         8102, 'ra2.service.consul:9094',
         ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', 'ra2.service.consul:9094', '--debug-addr', ':8102'),
-        ('boulder-sa-1', 'boulder-sa-2', 'boulder-ca-a', 'boulder-ca-b', 'boulder-va-1', 'boulder-va-2', 'akamai-purger', 'boulder-publisher-1', 'boulder-publisher-2')),
+        ('boulder-sa-1', 'boulder-sa-2', 'boulder-ca-1', 'boulder-ca-2', 'boulder-va-1', 'boulder-va-2', 'akamai-purger', 'boulder-publisher-1', 'boulder-publisher-2')),
     Service('bad-key-revoker',
         8020, None,
-        ('./bin/boulder', 'bad-key-revoker', '--config', os.path.join(config_dir, 'bad-key-revoker.json')),
+        ('./bin/boulder', 'bad-key-revoker', '--config', os.path.join(config_dir, 'bad-key-revoker.json'), '--debug-addr', ':8020'),
         ('boulder-ra-1', 'boulder-ra-2', 'mail-test-srv')),
     Service('nonce-service-taro',
         8111, 'nonce1.service.consul:9101',
@@ -107,11 +108,11 @@ SERVICES = (
         None),
     Service('boulder-wfe2',
         4001, None,
-        ('./bin/boulder', 'boulder-wfe2', '--config', os.path.join(config_dir, 'wfe2.json')),
+        ('./bin/boulder', 'boulder-wfe2', '--config', os.path.join(config_dir, 'wfe2.json'), '--addr', '0.0.0.0:4001', '--tls-addr', '0.0.0.0:4431', '--debug-addr', ':8013'),
         ('boulder-ra-1', 'boulder-ra-2', 'boulder-sa-1', 'boulder-sa-2', 'nonce-service-taro', 'nonce-service-zinc')),
     Service('log-validator',
         8016, None,
-        ('./bin/boulder', 'log-validator', '--config', os.path.join(config_dir, 'log-validator.json')),
+        ('./bin/boulder', 'log-validator', '--config', os.path.join(config_dir, 'log-validator.json'), '--debug-addr', ':8016'),
         None),
 )
 
@@ -184,6 +185,14 @@ def start(fakeclock):
     signal.signal(signal.SIGTERM, lambda _, __: stop())
     signal.signal(signal.SIGINT, lambda _, __: stop())
 
+    # Check that we can resolve the service names before we try to start any
+    # services. This prevents a confusing error (timed out health check).
+    try:
+        socket.getaddrinfo('publisher1.service.consul', None)
+    except Exception as e:
+        print("Error querying DNS. Is consul running? `docker compose ps bconsul`. %s" % (e))
+        return False
+
     # Start the pebble-challtestsrv first so it can be used to resolve DNS for
     # gRPC.
     startChallSrv()
@@ -249,6 +258,9 @@ def startChallSrv():
         '--defaultIPv4', os.environ.get("FAKE_DNS"),
         '-defaultIPv6', '',
         '--dns01', ':8053,:8054',
+        '--doh', '10.77.77.77:8443,10.88.88.88:8443',
+        '--doh-cert', 'test/grpc-creds/10.77.77.77/cert.pem',
+        '--doh-cert-key', 'test/grpc-creds/10.77.77.77/key.pem',
         '--management', ':8055',
         '--http01', '10.77.77.77:80',
         '-https01', '10.77.77.77:443',

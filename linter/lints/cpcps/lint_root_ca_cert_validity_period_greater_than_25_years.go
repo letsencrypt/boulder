@@ -13,17 +13,19 @@ import (
 type rootCACertValidityTooLong struct{}
 
 func init() {
-	lint.RegisterLint(&lint.Lint{
-		Name:          "e_root_ca_cert_validity_period_greater_than_25_years",
-		Description:   "Let's Encrypt Root CA Certificates have Validity Periods of up to 25 years",
-		Citation:      "CPS: 7.1",
-		Source:        lints.LetsEncryptCPS,
-		EffectiveDate: lints.CPSV33Date,
-		Lint:          NewRootCACertValidityTooLong,
+	lint.RegisterCertificateLint(&lint.CertificateLint{
+		LintMetadata: lint.LintMetadata{
+			Name:          "e_root_ca_cert_validity_period_greater_than_25_years",
+			Description:   "Let's Encrypt Root CA Certificates have Validity Periods of up to 25 years",
+			Citation:      "CPS: 7.1",
+			Source:        lints.LetsEncryptCPS,
+			EffectiveDate: lints.CPSV33Date,
+		},
+		Lint: NewRootCACertValidityTooLong,
 	})
 }
 
-func NewRootCACertValidityTooLong() lint.LintInterface {
+func NewRootCACertValidityTooLong() lint.CertificateLintInterface {
 	return &rootCACertValidityTooLong{}
 }
 

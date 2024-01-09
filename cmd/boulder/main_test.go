@@ -30,10 +30,7 @@ func TestConfigValidation(t *testing.T) {
 		var fileNames []string
 		switch cmdName {
 		case "boulder-ca":
-			fileNames = []string{
-				"ca-a.json",
-				"ca-b.json",
-			}
+			fileNames = []string{"ca.json"}
 		case "boulder-observer":
 			fileNames = []string{"observer.yml"}
 		case "boulder-publisher":
