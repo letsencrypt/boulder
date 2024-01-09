@@ -116,6 +116,11 @@ services {
   id      = "nonce-taro-b"
   name    = "nonce-taro"
   address = "10.77.77.77"
+  port    = 9401
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+}
+
+  address = "10.77.77.77"
   port    = 9501
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
