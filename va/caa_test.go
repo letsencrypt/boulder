@@ -637,11 +637,12 @@ func TestIsCAAValidParams(t *testing.T) {
 
 func TestDisabledMultiVACAARechecking(t *testing.T) {
 	brokenRVA := setupRemote(nil, "broken01", caaBrokenDNS{})
+	//brokenRVA2 := setupRemote(nil, "broken02", caaBrokenDNS{})
 	remoteVAs := []RemoteVA{{brokenRVA, "broken01"}}
 	va, _ := setup(nil, 0, "local01", remoteVAs, nil)
 
 	features.Set(features.Config{
-		EnforceMultiCAA:    false,
+		EnforceMultiCAA:    true,
 		EnforceMultiVA:     true,
 		MultiVAFullResults: true,
 	})

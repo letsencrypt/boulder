@@ -65,8 +65,8 @@ var (
 	h2SettingsFrameErrRegex = regexp.MustCompile(`(?:net\/http\: HTTP\/1\.x transport connection broken: )?malformed HTTP response \"\\x00\\x00\\x[a-f0-9]{2}\\x04\\x00\\x00\\x00\\x00\\x00.*"`)
 )
 
-// TODO(Phil): remoteVAClient needs a proper description
-type remoteVAClient interface {
+// TODO(Phil): remoteClients needs a proper description
+type RemoteClients struct {
 	vapb.VAClient
 	vapb.CAAClient
 }
@@ -76,7 +76,7 @@ type remoteVAClient interface {
 // gRPC client doesn't provide a way to extract this metadata which is useful
 // for debugging gRPC connection issues.
 type RemoteVA struct {
-	remoteVAClient
+	RemoteClients
 	Address string
 }
 

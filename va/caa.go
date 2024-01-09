@@ -180,8 +180,6 @@ func (va *ValidationAuthorityImpl) performRemoteCAARecheck(
 			result := &remoteVAResult{
 				VAHostname: rva.Address,
 			}
-			// Recursively call IsCAAValid, but with a remoteVA masquerading as
-			// a fully-fledged VA.
 			res, err := rva.IsCAAValid(ctx, req)
 			if err != nil && canceled.Is(err) {
 				// If the non-nil err was a canceled error, ignore it. That's fine: it
