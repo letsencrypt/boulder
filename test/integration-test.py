@@ -125,16 +125,16 @@ def check_balance():
     metric is present, which means that backend handled at least one request.
     """
     addresses = [
-        "sa1.service.consul:8003",
-        "sa2.service.consul:8103",
-        "publisher1.service.consul:8009",
-        "publisher2.service.consul:8109",
-        "va1.service.consul:8004",
-        "va2.service.consul:8104",
-        "ca1.service.consul:8001",
-        "ca2.service.consul:8101",
-        "ra1.service.consul:8002",
-        "ra2.service.consul:8102",
+        "localhost:8003",
+        "localhost:8103",
+        "localhost:8009",
+        "localhost:8109",
+        "localhost:8004",
+        "localhost:8104",
+        "localhost:8001",
+        "localhost:8101",
+        "localhost:8002",
+        "localhost:8102",
     ]
     for address in addresses:
         metrics = requests.get("http://%s/metrics" % address)

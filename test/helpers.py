@@ -177,8 +177,9 @@ def waitport(port, prog, perTickCheck=None):
                 raise
     raise(Exception("timed out waiting for debug port %d (%s)" % (port, prog)))
 
-def waithealth(prog, addr):
+def waithealth(prog, addr, host_override):
     subprocess.check_call([
         './bin/health-checker',
         '-addr', addr,
+        '-hostOverride', host_override,
         '-config', os.path.join(config_dir, 'health-checker.json')])
