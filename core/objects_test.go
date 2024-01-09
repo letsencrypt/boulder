@@ -32,7 +32,7 @@ func TestExpectedKeyAuthorization(t *testing.T) {
 	}
 }
 
-func TestRecordSanityCheckOnUnsupportChallengeType(t *testing.T) {
+func TestRecordSanityCheckOnUnsupportedChallengeType(t *testing.T) {
 	rec := []ValidationRecord{
 		{
 			URL:               "http://localhost/test",

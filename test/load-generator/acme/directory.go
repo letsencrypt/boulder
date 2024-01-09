@@ -41,7 +41,7 @@ var (
 	// ErrInvalidDirectoryMeta is returned if NewDirectory is provided a directory
 	// URL that returns a directory resource with an invalid or  missing "meta" key.
 	ErrInvalidDirectoryMeta = errors.New(`server's directory resource had invalid or missing "meta" key`)
-	// ErrInvalidTermsOfSerivce is returned if NewDirectory is provided
+	// ErrInvalidTermsOfService is returned if NewDirectory is provided
 	// a directory URL that returns a directory resource with an invalid or
 	// missing "termsOfService" key in the "meta" map.
 	ErrInvalidTermsOfService = errors.New(`server's directory resource had invalid or missing "meta.termsOfService" key`)
