@@ -33,4 +33,4 @@ COPY --from=godeps /usr/local/bin/* /usr/local/bin/
 COPY --from=godeps /usr/local/go/ /usr/local/go/
 COPY --from=rustdeps /usr/local/cargo/bin/typos /usr/local/bin/typos
 
-ENV PATH /usr/local/go/bin:/usr/local/protoc/bin:$PATH
+ENV PATH /usr/local/go/bin:/usr/local/protoc/bin:/usr/local/bin:$PATH
