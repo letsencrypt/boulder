@@ -5,11 +5,8 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/asn1"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -156,10 +153,8 @@ type IssuerNameID int64
 // that this certificate can be used for issuance.
 type Certificate struct {
 	*x509.Certificate
-	id       IssuerID
-	nameID   IssuerNameID
-	nameHash [20]byte
-	keyHash  [20]byte
+	id     IssuerID
+	nameID IssuerNameID
 }
 
 // NewCertificate wraps an in-memory cert in an issuance.Certificate, marking it
@@ -174,25 +169,6 @@ func NewCertificate(ic *x509.Certificate) (*Certificate, error) {
 
 	// Compute ic.NameID()
 	res.nameID = truncatedHash(ic.RawSubject)
-
-	// Compute ic.NameHash()
-	res.nameHash = sha1.Sum(ic.RawSubject)
-
-	// Compute ic.KeyHash()
-	// The issuerKeyHash in OCSP requests is constructed over the DER encoding of
-	// the public key per RFC6960 (defined in RFC4055 for RSA and RFC5480 for
-	// ECDSA). We can't use MarshalPKIXPublicKey for this since it encodes keys
-	// using the SPKI structure itself, and we just want the contents of the
-	// subjectPublicKey for the hash, so we need to extract it ourselves.
-	var spki struct {
-		Algorithm pkix.AlgorithmIdentifier
-		PublicKey asn1.BitString
-	}
-	_, err := asn1.Unmarshal(ic.RawSubjectPublicKeyInfo, &spki)
-	if err != nil {
-		return nil, err
-	}
-	res.keyHash = sha1.Sum(spki.PublicKey.RightAlign())
 
 	return &res, nil
 }
@@ -209,20 +185,6 @@ func (ic *Certificate) ID() IssuerID {
 // a lookup key in contexts that don't expect hash collisions.
 func (ic *Certificate) NameID() IssuerNameID {
 	return ic.nameID
-}
-
-// NameHash returns the SHA1 hash over the issuer certificate's Subject
-// Distinguished Name. This is one of the values used to uniquely identify the
-// issuer cert in an RFC6960 + RFC5019 OCSP request.
-func (ic *Certificate) NameHash() [20]byte {
-	return ic.nameHash
-}
-
-// KeyHash returns the SHA1 hash over the issuer certificate's Subject Public
-// Key Info. This is one of the values used to uniquely identify the issuer cert
-// in an RFC6960 + RFC5019 OCSP request.
-func (ic *Certificate) KeyHash() [20]byte {
-	return ic.keyHash
 }
 
 // GetIssuerNameID returns the IssuerNameID (a truncated hash over the raw bytes
