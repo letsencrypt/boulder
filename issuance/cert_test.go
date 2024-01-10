@@ -312,7 +312,7 @@ func TestIssue(t *testing.T) {
 				[]string{
 					"w_ct_sct_policy_count_unsatisfied",
 					"e_scts_from_same_operator",
-					"n_subject_common_name_included",
+					"w_subject_common_name_included",
 				},
 			)
 			test.AssertNotError(t, err, "failed to create linter")
@@ -394,7 +394,7 @@ func TestIssueCommonName(t *testing.T) {
 		[]string{
 			"w_ct_sct_policy_count_unsatisfied",
 			"e_scts_from_same_operator",
-			"n_subject_common_name_included",
+			"w_subject_common_name_included",
 		},
 	)
 	test.AssertNotError(t, err, "failed to create linter")
@@ -713,7 +713,7 @@ func TestMismatchedProfiles(t *testing.T) {
 	linter, err := linter.New(
 		issuerCert.Certificate,
 		issuerSigner,
-		[]string{"n_subject_common_name_included"},
+		[]string{"w_subject_common_name_included"},
 	)
 	test.AssertNotError(t, err, "failed to create linter")
 
