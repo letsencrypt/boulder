@@ -22,13 +22,23 @@
 			"keyFile": "test/grpc-creds/wfe.boulder/key.pem"
 		},
 		"raService": {
-			"serverAddress": "ra.service.consul:9094",
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "ra",
+				"domain": "service.consul"
+			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "ra.boulder"
 		},
 		"saService": {
-			"serverAddress": "sa.service.consul:9095",
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "sa",
+				"domain": "service.consul"
+			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
 		"accountCache": {
@@ -36,21 +46,34 @@
 			"ttl": "5s"
 		},
 		"getNonceService": {
-			"serverAddress": "nonce.service.consul:9101",
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "nonce",
+				"domain": "service.consul"
+			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "nonce.boulder"
 		},
-		"redeemNonceServices": {
-			"taro": {
-				"serverAddress": "nonce1.service.consul:9101",
-				"timeout": "15s",
-				"hostOverride": "nonce1.boulder"
-			},
-			"zinc": {
-				"serverAddress": "nonce2.service.consul:9101",
-				"timeout": "15s",
-				"hostOverride": "nonce2.boulder"
-			}
+		"redeemNonceService": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookups": [
+				{
+					"service": "nonce1",
+					"domain": "service.consul"
+				},
+				{
+					"service": "nonce2",
+					"domain": "service.consul"
+				}
+			],
+			"srvResolver": "nonce-srv",
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "nonce.boulder"
+		},
+		"noncePrefixKey": {
+			"passwordFile": "test/secrets/nonce_prefix_key"
 		},
 		"chains": [
 			[
