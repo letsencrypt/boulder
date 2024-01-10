@@ -272,6 +272,7 @@ func (n Name) ToRDNSequence() (ret RDNSequence) {
 	if len(n.CommonName) > 0 {
 		ret = n.appendRDNs(ret, []string{n.CommonName}, oidCommonName)
 	}
+	ret = n.appendRDNs(ret, n.EmailAddress, oidDNEmailAddress)
 	ret = n.appendRDNs(ret, n.OrganizationalUnit, oidOrganizationalUnit)
 	ret = n.appendRDNs(ret, n.Organization, oidOrganization)
 	ret = n.appendRDNs(ret, n.StreetAddress, oidStreetAddress)
