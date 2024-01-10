@@ -216,12 +216,9 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
     # Implicitly loads staticcheck.conf from the root of the boulder repository
     staticcheck ./...
     python3 test/grafana/lint.py
-    # Check for common spelling errors using codespell.
-    # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
-    # words should be all lowercase).
-    run_and_expect_silence codespell \
-      --ignore-words=.codespell.ignore.txt \
-      --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
+    # Check for common spelling errors using typos.
+    # Update .typos.toml if you find false positives
+    run_and_expect_silence typos
     # Check test JSON configs are formatted consistently
     ./test/format-configs.py 'test/config*/*.json'
     run_and_expect_silence git diff --exit-code .
