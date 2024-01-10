@@ -1,7 +1,6 @@
 [files]
 extend-exclude = [
     ".git/",
-    ".codespell.ignore.txt",
     "go.mod",
     "go.sum",
     "vendor/",
