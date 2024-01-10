@@ -10,4 +10,4 @@ fi
 # Use a predictable name for the container so we can grab the logs later
 # for use when testing logs analysis tools.
 docker rm boulder_tests
-exec docker compose run --name boulder_tests boulder ./test.sh "$@"
+exec docker compose run --build --name boulder_tests boulder ./test.sh "$@"
