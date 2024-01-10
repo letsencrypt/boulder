@@ -18,9 +18,12 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/test"
+)
+
+var (
+	goodSKID = []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 )
 
 func defaultProfile() *Profile {
@@ -43,6 +46,7 @@ func TestNewProfileNoOCSPURL(t *testing.T) {
 func TestRequestValid(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Add(time.Hour * 24)
+
 	tests := []struct {
 		name          string
 		profile       *Profile
@@ -68,158 +72,6 @@ func TestRequestValid(t *testing.T) {
 			expectedError: "cannot sign ECDSA public keys",
 		},
 		{
-			name: "must staple not allowed",
-			profile: &Profile{
-				useForECDSALeaves: true,
-			},
-			request: &IssuanceRequest{
-				PublicKey:         &ecdsa.PublicKey{},
-				IncludeMustStaple: true,
-			},
-			expectedError: "must-staple extension cannot be included",
-		},
-		{
-			name: "ct poison not allowed",
-			profile: &Profile{
-				useForECDSALeaves: true,
-			},
-			request: &IssuanceRequest{
-				PublicKey:       &ecdsa.PublicKey{},
-				IncludeCTPoison: true,
-			},
-			expectedError: "ct poison extension cannot be included",
-		},
-		{
-			name: "sct list not allowed",
-			profile: &Profile{
-				useForECDSALeaves: true,
-			},
-			request: &IssuanceRequest{
-				PublicKey: &ecdsa.PublicKey{},
-				sctList:   []ct.SignedCertificateTimestamp{},
-			},
-			expectedError: "sct list extension cannot be included",
-		},
-		{
-			name: "sct list and ct poison not allowed",
-			profile: &Profile{
-				useForECDSALeaves: true,
-				allowCTPoison:     true,
-				allowSCTList:      true,
-			},
-			request: &IssuanceRequest{
-				PublicKey:       &ecdsa.PublicKey{},
-				IncludeCTPoison: true,
-				sctList:         []ct.SignedCertificateTimestamp{},
-			},
-			expectedError: "cannot include both ct poison and sct list extensions",
-		},
-		{
-			name: "common name not allowed",
-			profile: &Profile{
-				useForECDSALeaves: true,
-			},
-			request: &IssuanceRequest{
-				PublicKey:  &ecdsa.PublicKey{},
-				CommonName: "cn",
-			},
-			expectedError: "common name cannot be included",
-		},
-		{
-			name: "negative validity",
-			profile: &Profile{
-				useForECDSALeaves: true,
-			},
-			request: &IssuanceRequest{
-				PublicKey: &ecdsa.PublicKey{},
-				NotBefore: fc.Now().Add(time.Hour),
-				NotAfter:  fc.Now(),
-			},
-			expectedError: "NotAfter must be after NotBefore",
-		},
-		{
-			name: "validity larger than max",
-			profile: &Profile{
-				useForECDSALeaves: true,
-				maxValidity:       time.Minute,
-			},
-			request: &IssuanceRequest{
-				PublicKey: &ecdsa.PublicKey{},
-				NotBefore: fc.Now(),
-				NotAfter:  fc.Now().Add(time.Hour - time.Second),
-			},
-			expectedError: "validity period is more than the maximum allowed period (1h0m0s>1m0s)",
-		},
-		{
-			name: "validity larger than max due to inclusivity",
-			profile: &Profile{
-				useForECDSALeaves: true,
-				maxValidity:       time.Hour,
-			},
-			request: &IssuanceRequest{
-				PublicKey: &ecdsa.PublicKey{},
-				NotBefore: fc.Now(),
-				NotAfter:  fc.Now().Add(time.Hour),
-			},
-			expectedError: "validity period is more than the maximum allowed period (1h0m1s>1h0m0s)",
-		},
-		{
-			name: "validity backdated more than max",
-			profile: &Profile{
-				useForECDSALeaves: true,
-				maxValidity:       time.Hour * 2,
-				maxBackdate:       time.Hour,
-			},
-			request: &IssuanceRequest{
-				PublicKey: &ecdsa.PublicKey{},
-				NotBefore: fc.Now().Add(-time.Hour * 2),
-				NotAfter:  fc.Now().Add(-time.Hour),
-			},
-			expectedError: "NotBefore is backdated more than the maximum allowed period (2h0m0s>1h0m0s)",
-		},
-		{
-			name: "validity is forward dated",
-			profile: &Profile{
-				useForECDSALeaves: true,
-				maxValidity:       time.Hour * 2,
-				maxBackdate:       time.Hour,
-			},
-			request: &IssuanceRequest{
-				PublicKey: &ecdsa.PublicKey{},
-				NotBefore: fc.Now().Add(time.Hour),
-				NotAfter:  fc.Now().Add(time.Hour * 2),
-			},
-			expectedError: "NotBefore is in the future",
-		},
-		{
-			name: "serial too short",
-			profile: &Profile{
-				useForECDSALeaves: true,
-				maxValidity:       time.Hour * 2,
-			},
-			request: &IssuanceRequest{
-				PublicKey: &ecdsa.PublicKey{},
-				NotBefore: fc.Now(),
-				NotAfter:  fc.Now().Add(time.Hour),
-				Serial:    []byte{0, 1, 2, 3, 4, 5, 6, 7},
-			},
-			expectedError: "serial must be between 9 and 19 bytes",
-		},
-		{
-			name: "serial too long",
-			profile: &Profile{
-				useForECDSALeaves: true,
-				maxValidity:       time.Hour * 2,
-			},
-			request: &IssuanceRequest{
-				PublicKey: &ecdsa.PublicKey{},
-				NotBefore: fc.Now(),
-				NotAfter:  fc.Now().Add(time.Hour),
-				Serial:    []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-			},
-			expectedError: "serial must be between 9 and 19 bytes",
-		},
-		{
 			name: "skid too short",
 			profile: &Profile{
 				useForECDSALeaves: true,
@@ -235,27 +87,178 @@ func TestRequestValid(t *testing.T) {
 			expectedError: "unexpected subject key ID length",
 		},
 		{
-			name: "good",
+			name: "must staple not allowed",
+			profile: &Profile{
+				useForECDSALeaves: true,
+			},
+			request: &IssuanceRequest{
+				PublicKey:         &ecdsa.PublicKey{},
+				SubjectKeyId:      goodSKID,
+				IncludeMustStaple: true,
+			},
+			expectedError: "must-staple extension cannot be included",
+		},
+		{
+			name: "ct poison not allowed",
+			profile: &Profile{
+				useForECDSALeaves: true,
+			},
+			request: &IssuanceRequest{
+				PublicKey:       &ecdsa.PublicKey{},
+				SubjectKeyId:    goodSKID,
+				IncludeCTPoison: true,
+			},
+			expectedError: "ct poison extension cannot be included",
+		},
+		{
+			name: "sct list not allowed",
+			profile: &Profile{
+				useForECDSALeaves: true,
+			},
+			request: &IssuanceRequest{
+				PublicKey:    &ecdsa.PublicKey{},
+				SubjectKeyId: goodSKID,
+				sctList:      []ct.SignedCertificateTimestamp{},
+			},
+			expectedError: "sct list extension cannot be included",
+		},
+		{
+			name: "sct list and ct poison not allowed",
+			profile: &Profile{
+				useForECDSALeaves: true,
+				allowCTPoison:     true,
+				allowSCTList:      true,
+			},
+			request: &IssuanceRequest{
+				PublicKey:       &ecdsa.PublicKey{},
+				SubjectKeyId:    goodSKID,
+				IncludeCTPoison: true,
+				sctList:         []ct.SignedCertificateTimestamp{},
+			},
+			expectedError: "cannot include both ct poison and sct list extensions",
+		},
+		{
+			name: "common name not allowed",
+			profile: &Profile{
+				useForECDSALeaves: true,
+			},
+			request: &IssuanceRequest{
+				PublicKey:    &ecdsa.PublicKey{},
+				SubjectKeyId: goodSKID,
+				CommonName:   "cn",
+			},
+			expectedError: "common name cannot be included",
+		},
+		{
+			name: "negative validity",
+			profile: &Profile{
+				useForECDSALeaves: true,
+			},
+			request: &IssuanceRequest{
+				PublicKey:    &ecdsa.PublicKey{},
+				SubjectKeyId: goodSKID,
+				NotBefore:    fc.Now().Add(time.Hour),
+				NotAfter:     fc.Now(),
+			},
+			expectedError: "NotAfter must be after NotBefore",
+		},
+		{
+			name: "validity larger than max",
+			profile: &Profile{
+				useForECDSALeaves: true,
+				maxValidity:       time.Minute,
+			},
+			request: &IssuanceRequest{
+				PublicKey:    &ecdsa.PublicKey{},
+				SubjectKeyId: goodSKID,
+				NotBefore:    fc.Now(),
+				NotAfter:     fc.Now().Add(time.Hour - time.Second),
+			},
+			expectedError: "validity period is more than the maximum allowed period (1h0m0s>1m0s)",
+		},
+		{
+			name: "validity larger than max due to inclusivity",
+			profile: &Profile{
+				useForECDSALeaves: true,
+				maxValidity:       time.Hour,
+			},
+			request: &IssuanceRequest{
+				PublicKey:    &ecdsa.PublicKey{},
+				SubjectKeyId: goodSKID,
+				NotBefore:    fc.Now(),
+				NotAfter:     fc.Now().Add(time.Hour),
+			},
+			expectedError: "validity period is more than the maximum allowed period (1h0m1s>1h0m0s)",
+		},
+		{
+			name: "validity backdated more than max",
 			profile: &Profile{
 				useForECDSALeaves: true,
 				maxValidity:       time.Hour * 2,
+				maxBackdate:       time.Hour,
 			},
 			request: &IssuanceRequest{
-				PublicKey: &ecdsa.PublicKey{},
-				NotBefore: fc.Now(),
-				NotAfter:  fc.Now().Add(time.Hour),
-				Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				PublicKey:    &ecdsa.PublicKey{},
+				SubjectKeyId: goodSKID,
+				NotBefore:    fc.Now().Add(-time.Hour * 2),
+				NotAfter:     fc.Now().Add(-time.Hour),
 			},
+			expectedError: "NotBefore is backdated more than the maximum allowed period (2h0m0s>1h0m0s)",
 		},
 		{
-			name: "good with skid",
+			name: "validity is forward dated",
+			profile: &Profile{
+				useForECDSALeaves: true,
+				maxValidity:       time.Hour * 2,
+				maxBackdate:       time.Hour,
+			},
+			request: &IssuanceRequest{
+				PublicKey:    &ecdsa.PublicKey{},
+				SubjectKeyId: goodSKID,
+				NotBefore:    fc.Now().Add(time.Hour),
+				NotAfter:     fc.Now().Add(time.Hour * 2),
+			},
+			expectedError: "NotBefore is in the future",
+		},
+		{
+			name: "serial too short",
 			profile: &Profile{
 				useForECDSALeaves: true,
 				maxValidity:       time.Hour * 2,
 			},
 			request: &IssuanceRequest{
 				PublicKey:    &ecdsa.PublicKey{},
-				SubjectKeyId: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+				SubjectKeyId: goodSKID,
+				NotBefore:    fc.Now(),
+				NotAfter:     fc.Now().Add(time.Hour),
+				Serial:       []byte{0, 1, 2, 3, 4, 5, 6, 7},
+			},
+			expectedError: "serial must be between 9 and 19 bytes",
+		},
+		{
+			name: "serial too long",
+			profile: &Profile{
+				useForECDSALeaves: true,
+				maxValidity:       time.Hour * 2,
+			},
+			request: &IssuanceRequest{
+				PublicKey:    &ecdsa.PublicKey{},
+				SubjectKeyId: goodSKID,
+				NotBefore:    fc.Now(),
+				NotAfter:     fc.Now().Add(time.Hour),
+				Serial:       []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			},
+			expectedError: "serial must be between 9 and 19 bytes",
+		},
+		{
+			name: "good",
+			profile: &Profile{
+				useForECDSALeaves: true,
+				maxValidity:       time.Hour * 2,
+			},
+			request: &IssuanceRequest{
+				PublicKey:    &ecdsa.PublicKey{},
+				SubjectKeyId: goodSKID,
 				NotBefore:    fc.Now(),
 				NotAfter:     fc.Now().Add(time.Hour),
 				Serial:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
@@ -351,6 +354,7 @@ func TestIssue(t *testing.T) {
 			test.AssertNotError(t, err, "failed to generate test key")
 			lintCertBytes, issuanceToken, err := signer.Prepare(&IssuanceRequest{
 				PublicKey:       pk.Public(),
+				SubjectKeyId:    goodSKID,
 				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 				CommonName:      "example.com",
 				DNSNames:        []string{"example.com"},
@@ -395,6 +399,7 @@ func TestIssueRSA(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, issuanceToken, err := signer.Prepare(&IssuanceRequest{
 		PublicKey:       pk.Public(),
+		SubjectKeyId:    goodSKID,
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
@@ -433,6 +438,7 @@ func TestIssueCommonName(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	ir := &IssuanceRequest{
 		PublicKey:       pk.Public(),
+		SubjectKeyId:    goodSKID,
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		CommonName:      "example.com",
 		DNSNames:        []string{"example.com", "www.example.com"},
@@ -482,6 +488,7 @@ func TestIssueCTPoison(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, issuanceToken, err := signer.Prepare(&IssuanceRequest{
 		PublicKey:       pk.Public(),
+		SubjectKeyId:    goodSKID,
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:        []string{"example.com"},
 		IncludeCTPoison: true,
@@ -526,6 +533,7 @@ func TestIssueSCTList(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, issuanceToken, err := signer.Prepare(&IssuanceRequest{
 		PublicKey:       pk.Public(),
+		SubjectKeyId:    goodSKID,
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
@@ -597,6 +605,7 @@ func TestIssueMustStaple(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, issuanceToken, err := signer.Prepare(&IssuanceRequest{
 		PublicKey:         pk.Public(),
+		SubjectKeyId:      goodSKID,
 		Serial:            []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:          []string{"example.com"},
 		IncludeMustStaple: true,
@@ -628,6 +637,7 @@ func TestIssueBadLint(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, _, err = signer.Prepare(&IssuanceRequest{
 		PublicKey:       pk.Public(),
+		SubjectKeyId:    goodSKID,
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:        []string{"example-com"},
 		NotBefore:       fc.Now(),
@@ -656,6 +666,7 @@ func TestIssuanceToken(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, issuanceToken, err := signer.Prepare(&IssuanceRequest{
 		PublicKey:       pk.Public(),
+		SubjectKeyId:    goodSKID,
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
@@ -672,6 +683,7 @@ func TestIssuanceToken(t *testing.T) {
 
 	_, issuanceToken, err = signer.Prepare(&IssuanceRequest{
 		PublicKey:       pk.Public(),
+		SubjectKeyId:    goodSKID,
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
@@ -705,6 +717,7 @@ func TestInvalidProfile(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, _, err = signer.Prepare(&IssuanceRequest{
 		PublicKey:       pk.Public(),
+		SubjectKeyId:    goodSKID,
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
@@ -715,11 +728,12 @@ func TestInvalidProfile(t *testing.T) {
 	test.AssertError(t, err, "Invalid IssuanceRequest")
 
 	_, _, err = signer.Prepare(&IssuanceRequest{
-		PublicKey: pk.Public(),
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
-		DNSNames:  []string{"example.com"},
-		NotBefore: fc.Now(),
-		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+		PublicKey:    pk.Public(),
+		SubjectKeyId: goodSKID,
+		Serial:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:     []string{"example.com"},
+		NotBefore:    fc.Now(),
+		NotAfter:     fc.Now().Add(time.Hour - time.Second),
 		sctList: []ct.SignedCertificateTimestamp{
 			{
 				SCTVersion: ct.V1,
@@ -752,6 +766,7 @@ func TestMismatchedProfiles(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, issuanceToken, err := issuer1.Prepare(&IssuanceRequest{
 		PublicKey:       pk.Public(),
+		SubjectKeyId:    goodSKID,
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		CommonName:      "example.com",
 		DNSNames:        []string{"example.com"},
@@ -793,26 +808,4 @@ func TestMismatchedProfiles(t *testing.T) {
 	_, _, err = issuer2.Prepare(request2)
 	test.AssertError(t, err, "preparing final cert issuance")
 	test.AssertContains(t, err.Error(), "precert does not correspond to linted final cert")
-}
-
-func TestGenerateSKID(t *testing.T) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "Error generating key")
-
-	features.Set(features.Config{SHA256SubjectKeyIdentifier: true})
-	defer features.Reset()
-	// RFC 7093 section 2 method 1 allows us to use 160 of the leftmost bits for
-	// the Subject Key Identifier. This is the same amount of bits as the
-	// related SHA1 hash.
-	sha256skid, err := generateSKID(key.Public())
-	test.AssertNotError(t, err, "Error generating SKID")
-	test.AssertEquals(t, len(sha256skid), 20)
-	test.AssertEquals(t, cap(sha256skid), 20)
-	features.Reset()
-
-	features.Set(features.Config{SHA256SubjectKeyIdentifier: false})
-	sha1skid, err := generateSKID(key.Public())
-	test.AssertNotError(t, err, "Error generating SKID")
-	test.AssertEquals(t, len(sha1skid), 20)
-	test.AssertEquals(t, cap(sha1skid), 20)
 }

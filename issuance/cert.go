@@ -6,8 +6,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha1"
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -22,7 +20,6 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
 
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/precert"
 )
 
@@ -88,7 +85,7 @@ func (p *Profile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 		return errors.New("unsupported public key type")
 	}
 
-	if req.SubjectKeyId != nil && len(req.SubjectKeyId) != 20 {
+	if len(req.SubjectKeyId) != 20 {
 		return errors.New("unexpected subject key ID length")
 	}
 
@@ -205,32 +202,6 @@ var mustStapleExt = pkix.Extension{
 	Value: []byte{0x30, 0x03, 0x02, 0x01, 0x05},
 }
 
-func generateSKID(pk crypto.PublicKey) ([]byte, error) {
-	pkBytes, err := x509.MarshalPKIXPublicKey(pk)
-	if err != nil {
-		return nil, err
-	}
-	var pkixPublicKey struct {
-		Algo      pkix.AlgorithmIdentifier
-		BitString asn1.BitString
-	}
-	if _, err := asn1.Unmarshal(pkBytes, &pkixPublicKey); err != nil {
-		return nil, err
-	}
-
-	if features.Get().SHA256SubjectKeyIdentifier {
-		// RFC 7093 Section 2 Additional Methods for Generating Key Identifiers:
-		// The keyIdentifier [may be] composed of the leftmost 160-bits of the
-		// SHA-256 hash of the value of the BIT STRING subjectPublicKey
-		// (excluding the tag, length, and number of unused bits).
-		skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
-		return skid[0:20:20], nil
-	} else {
-		skid := sha1.Sum(pkixPublicKey.BitString.Bytes)
-		return skid[:], nil
-	}
-}
-
 // IssuanceRequest describes a certificate issuance request
 type IssuanceRequest struct {
 	PublicKey    crypto.PublicKey
@@ -293,22 +264,14 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 	}
 	template.DNSNames = req.DNSNames
 
-	if req.SubjectKeyId != nil {
-		template.SubjectKeyId = req.SubjectKeyId
-	} else {
-		skid, err := generateSKID(req.PublicKey)
-		if err != nil {
-			return nil, nil, err
-		}
-		template.SubjectKeyId = skid
-	}
-
 	switch req.PublicKey.(type) {
 	case *rsa.PublicKey:
 		template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
 	case *ecdsa.PublicKey:
 		template.KeyUsage = x509.KeyUsageDigitalSignature
 	}
+
+	template.SubjectKeyId = req.SubjectKeyId
 
 	if req.IncludeCTPoison {
 		template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
