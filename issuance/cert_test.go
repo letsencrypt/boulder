@@ -227,7 +227,7 @@ func TestRequestValid(t *testing.T) {
 			},
 			request: &IssuanceRequest{
 				PublicKey:    &ecdsa.PublicKey{},
-				SubjectKeyID: []byte{0, 1, 2, 3, 4},
+				SubjectKeyId: []byte{0, 1, 2, 3, 4},
 				NotBefore:    fc.Now(),
 				NotAfter:     fc.Now().Add(time.Hour),
 				Serial:       []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
@@ -255,7 +255,7 @@ func TestRequestValid(t *testing.T) {
 			},
 			request: &IssuanceRequest{
 				PublicKey:    &ecdsa.PublicKey{},
-				SubjectKeyID: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+				SubjectKeyId: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 				NotBefore:    fc.Now(),
 				NotAfter:     fc.Now().Add(time.Hour),
 				Serial:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},

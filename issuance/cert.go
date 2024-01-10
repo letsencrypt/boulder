@@ -88,7 +88,7 @@ func (p *Profile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 		return errors.New("unsupported public key type")
 	}
 
-	if req.SubjectKeyID != nil && len(req.SubjectKeyID) != 20 {
+	if req.SubjectKeyId != nil && len(req.SubjectKeyId) != 20 {
 		return errors.New("unexpected subject key ID length")
 	}
 
@@ -234,7 +234,7 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 // IssuanceRequest describes a certificate issuance request
 type IssuanceRequest struct {
 	PublicKey    crypto.PublicKey
-	SubjectKeyID []byte
+	SubjectKeyId []byte
 
 	Serial []byte
 
@@ -293,8 +293,8 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 	}
 	template.DNSNames = req.DNSNames
 
-	if req.SubjectKeyID != nil {
-		template.SubjectKeyId = req.SubjectKeyID
+	if req.SubjectKeyId != nil {
+		template.SubjectKeyId = req.SubjectKeyId
 	} else {
 		skid, err := generateSKID(req.PublicKey)
 		if err != nil {
@@ -396,7 +396,7 @@ func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTi
 	}
 	return &IssuanceRequest{
 		PublicKey:         precert.PublicKey,
-		SubjectKeyID:      precert.SubjectKeyId,
+		SubjectKeyId:      precert.SubjectKeyId,
 		Serial:            precert.SerialNumber.Bytes(),
 		NotBefore:         precert.NotBefore,
 		NotAfter:          precert.NotAfter,
