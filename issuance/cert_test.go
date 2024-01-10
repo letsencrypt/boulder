@@ -220,6 +220,21 @@ func TestRequestValid(t *testing.T) {
 			expectedError: "serial must be between 9 and 19 bytes",
 		},
 		{
+			name: "skid too short",
+			profile: &Profile{
+				useForECDSALeaves: true,
+				maxValidity:       time.Hour * 2,
+			},
+			request: &IssuanceRequest{
+				PublicKey:    &ecdsa.PublicKey{},
+				SubjectKeyID: []byte{0, 1, 2, 3, 4},
+				NotBefore:    fc.Now(),
+				NotAfter:     fc.Now().Add(time.Hour),
+				Serial:       []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			},
+			expectedError: "unexpected subject key ID length",
+		},
+		{
 			name: "good",
 			profile: &Profile{
 				useForECDSALeaves: true,
@@ -230,6 +245,20 @@ func TestRequestValid(t *testing.T) {
 				NotBefore: fc.Now(),
 				NotAfter:  fc.Now().Add(time.Hour),
 				Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+			},
+		},
+		{
+			name: "good with skid",
+			profile: &Profile{
+				useForECDSALeaves: true,
+				maxValidity:       time.Hour * 2,
+			},
+			request: &IssuanceRequest{
+				PublicKey:    &ecdsa.PublicKey{},
+				SubjectKeyID: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+				NotBefore:    fc.Now(),
+				NotAfter:     fc.Now().Add(time.Hour),
+				Serial:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 			},
 		},
 	}

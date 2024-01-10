@@ -88,6 +88,10 @@ func (p *Profile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 		return errors.New("unsupported public key type")
 	}
 
+	if req.SubjectKeyID != nil && len(req.SubjectKeyID) != 20 {
+		return errors.New("unexpected subject key ID length")
+	}
+
 	if !p.allowMustStaple && req.IncludeMustStaple {
 		return errors.New("must-staple extension cannot be included")
 	}
@@ -229,7 +233,8 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 
 // IssuanceRequest describes a certificate issuance request
 type IssuanceRequest struct {
-	PublicKey crypto.PublicKey
+	PublicKey    crypto.PublicKey
+	SubjectKeyID []byte
 
 	Serial []byte
 
@@ -288,11 +293,15 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 	}
 	template.DNSNames = req.DNSNames
 
-	skid, err := generateSKID(req.PublicKey)
-	if err != nil {
-		return nil, nil, err
+	if req.SubjectKeyID != nil {
+		template.SubjectKeyId = req.SubjectKeyID
+	} else {
+		skid, err := generateSKID(req.PublicKey)
+		if err != nil {
+			return nil, nil, err
+		}
+		template.SubjectKeyId = skid
 	}
-	template.SubjectKeyId = skid
 
 	switch req.PublicKey.(type) {
 	case *rsa.PublicKey:
@@ -387,6 +396,7 @@ func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTi
 	}
 	return &IssuanceRequest{
 		PublicKey:         precert.PublicKey,
+		SubjectKeyID:      precert.SubjectKeyId,
 		Serial:            precert.SerialNumber.Bytes(),
 		NotBefore:         precert.NotBefore,
 		NotAfter:          precert.NotAfter,
