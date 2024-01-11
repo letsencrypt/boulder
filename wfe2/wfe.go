@@ -170,6 +170,7 @@ type WebFrontEndImpl struct {
 	pendingAuthorizationLifetime time.Duration
 	limiter                      *ratelimits.Limiter
 	txnBuilder                   *ratelimits.TransactionBuilder
+	maxNames                     int
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -193,6 +194,7 @@ func NewWebFrontEndImpl(
 	accountGetter AccountGetter,
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,
+	maxNames int,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
@@ -231,6 +233,7 @@ func NewWebFrontEndImpl(
 		accountGetter:                accountGetter,
 		limiter:                      limiter,
 		txnBuilder:                   txnBuilder,
+		maxNames:                     maxNames,
 	}
 
 	return wfe, nil
@@ -2090,7 +2093,7 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 	}
 	transactions = append(transactions, txn)
 
-	txns, err := wfe.txnBuilder.CertificatesPerDomainTransactions(regId, names)
+	txns, err := wfe.txnBuilder.CertificatesPerDomainTransactions(regId, names, wfe.maxNames)
 	if err != nil {
 		logTxnErr(err, ratelimits.CertificatesPerDomain)
 		return nil

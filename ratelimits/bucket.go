@@ -282,7 +282,11 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerAccountTransaction(reg
 //
 // When a CertificatesPerDomainPerAccount override is not configured, a check-
 // and-spend Transaction is returned for each per domain bucket.
-func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64, orderDomains []string) ([]Transaction, error) {
+func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64, orderDomains []string, maxNames int) ([]Transaction, error) {
+	if len(orderDomains) > maxNames {
+		return nil, fmt.Errorf("order contains more than %d DNS names", maxNames)
+	}
+
 	perAccountLimitBucketKey, err := newRegIdBucketKey(CertificatesPerDomainPerAccount, regId)
 	if err != nil {
 		return nil, err
