@@ -142,7 +142,7 @@ def test_tls_alpn_challenge_dns_err():
 def test_http_challenge_broken_redirect():
     """
     test_http_challenge_broken_redirect tests that a common webserver
-    mis-configuration receives the correct specialized error message when attempting
+    misconfiguration receives the correct specialized error message when attempting
     an HTTP-01 challenge.
     """
     client = chisel2.make_client()
@@ -598,7 +598,7 @@ def test_order_reuse_failed_authz():
     """
     Test that creating an order for a domain name, failing an authorization in
     that order, and submitting another new order request for the same name
-    doesn't reuse a failed authorizaton in the new order.
+    doesn't reuse a failed authorization in the new order.
     """
 
     client = chisel2.make_client(None)

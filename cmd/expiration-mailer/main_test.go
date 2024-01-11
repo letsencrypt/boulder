@@ -177,7 +177,7 @@ func TestSendNags(t *testing.T) {
 	conn, err = m.mailer.Connect()
 	test.AssertNotError(t, err, "connecting SMTP")
 	err = m.sendNags(conn, []string{}, []*x509.Certificate{cert})
-	test.AssertNotError(t, err, "Not an error to pass no email contacts")
+	test.AssertErrorIs(t, err, errNoValidEmail)
 	test.AssertEquals(t, len(mc.Messages), 0)
 
 	sendLogs := log.GetAllMatching("INFO: attempting send JSON=.*")
@@ -231,7 +231,7 @@ func TestSendNagsAddressLimited(t *testing.T) {
 
 	// Try sending a message to an over-the-limit address
 	err = m.sendNags(conn, []string{emailA}, []*x509.Certificate{cert})
-	test.AssertNotError(t, err, "sending warning messages")
+	test.AssertErrorIs(t, err, errNoValidEmail)
 	// Expect that no messages were sent because this address was over the limit
 	test.AssertEquals(t, len(mc.Messages), 0)
 

@@ -784,7 +784,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		return nil, err
 	}
 	if rows == 0 {
-		return nil, berrors.NotFoundError("authorization with id %d not found", req.Id)
+		return nil, berrors.NotFoundError("no pending authorization with id %d", req.Id)
 	} else if rows > 1 {
 		return nil, berrors.InternalServerError("multiple rows updated for authorization id %d", req.Id)
 	}

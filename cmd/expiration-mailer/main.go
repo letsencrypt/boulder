@@ -33,12 +33,17 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 const (
 	defaultExpirationSubject = "Let's Encrypt certificate expiration notice for domain {{.ExpirationSubject}}"
+)
+
+var (
+	errNoValidEmail = errors.New("no usable contact address")
 )
 
 type regStore interface {
@@ -157,6 +162,11 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 			continue
 		}
 		address := parsed.Opaque
+		err = policy.ValidEmail(address)
+		if err != nil {
+			m.log.Debugf("skipping invalid email %q: %s", address, err)
+			continue
+		}
 		err = m.addressLimiter.check(address)
 		if err != nil {
 			m.log.Infof("not sending mail: %s", err)
@@ -166,7 +176,7 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 		emails = append(emails, parsed.Opaque)
 	}
 	if len(emails) == 0 {
-		return nil
+		return errNoValidEmail
 	}
 
 	expiresIn := time.Duration(math.MaxInt64)
@@ -441,10 +451,10 @@ func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int6
 
 	err = m.sendNags(conn, reg.Contact, parsedCerts)
 	if err != nil {
-		// Check to see if the error was due to the mail being undeliverable,
-		// in which case we don't want to try again later.
+		// If the error was due to the address(es) being unusable or the mail being
+		// undeliverable, we don't want to try again later.
 		var badAddrErr *bmail.BadAddressSMTPError
-		if ok := errors.As(err, &badAddrErr); ok {
+		if errors.Is(err, errNoValidEmail) || errors.As(err, &badAddrErr) {
 			m.updateLastNagTimestamps(ctx, parsedCerts)
 		}
 

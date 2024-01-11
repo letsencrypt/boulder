@@ -54,7 +54,7 @@
 		"maxSigningWaiters": 1,
 		"shutdownStopTimeout": "10s",
 		"requiredSerialPrefixes": [
-			"ff"
+			"7f"
 		],
 		"features": {}
 	},

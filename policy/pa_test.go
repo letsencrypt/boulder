@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -59,12 +60,11 @@ func TestWillingToIssue(t *testing.T) {
 		{`---.net`, errInvalidDNSCharacter},       // First label is only hyphens
 		{`0`, errTooFewLabels},
 		{`1`, errTooFewLabels},
-		{`*`, errInvalidDNSCharacter},
-		{`**`, errInvalidDNSCharacter},
-		{`*.*`, errWildcardNotSupported},
-		{`zombo*com`, errInvalidDNSCharacter},
-		{`*.com`, errWildcardNotSupported},
-		{`*.zombo.com`, errWildcardNotSupported},
+		{`*`, errMalformedWildcard},
+		{`**`, errTooManyWildcards},
+		{`*.*`, errTooManyWildcards},
+		{`zombo*com`, errMalformedWildcard},
+		{`*.com`, errICANNTLDWildcard},
 		{`..a`, errLabelTooShort},
 		{`a..a`, errLabelTooShort},
 		{`.a..a`, errLabelTooShort},
@@ -162,60 +162,56 @@ func TestWillingToIssue(t *testing.T) {
 	err = pa.LoadHostnamePolicyFile(yamlPolicyFile.Name())
 	test.AssertNotError(t, err, "Couldn't load rules")
 
-	// Test for invalid identifier type
-	ident := identifier.ACMEIdentifier{Type: "ip", Value: "example.com"}
-	err = pa.willingToIssue(ident)
-	if err != errInvalidIdentifier {
-		t.Error("Identifier was not correctly forbidden: ", ident)
-	}
-
 	// Test syntax errors
 	for _, tc := range testCases {
-		ident := identifier.DNSIdentifier(tc.domain)
-		err := pa.willingToIssue(ident)
-		if err != tc.err {
-			t.Errorf("WillingToIssue(%q) = %q, expected %q", tc.domain, err, tc.err)
+		err := pa.WillingToIssue([]string{tc.domain})
+		if tc.err == nil {
+			test.AssertNil(t, err, fmt.Sprintf("Unexpected error for domain %q, got %s", tc.domain, err))
+		} else {
+			test.AssertError(t, err, fmt.Sprintf("Expected error for domain %q, but got none", tc.domain))
+			var berr *berrors.BoulderError
+			test.AssertErrorWraps(t, err, &berr)
+			test.AssertContains(t, berr.Error(), tc.err.Error())
 		}
 	}
 
 	// Invalid encoding
-	err = pa.willingToIssue(identifier.DNSIdentifier("www.xn--m.com"))
+	err = pa.WillingToIssue([]string{"www.xn--m.com"})
 	test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
 	// Valid encoding
-	err = pa.willingToIssue(identifier.DNSIdentifier("www.xn--mnich-kva.com"))
+	err = pa.WillingToIssue([]string{"www.xn--mnich-kva.com"})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
 	// IDN TLD
-	err = pa.willingToIssue(identifier.DNSIdentifier("xn--example--3bhk5a.xn--p1ai"))
+	err = pa.WillingToIssue([]string{"xn--example--3bhk5a.xn--p1ai"})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
 	features.Reset()
 
 	// Test domains that are equal to public suffixes
 	for _, domain := range shouldBeTLDError {
-		ident := identifier.DNSIdentifier(domain)
-		err := pa.willingToIssue(ident)
-		if err != errICANNTLD {
-			t.Error("Identifier was not correctly forbidden: ", ident, err)
-		}
+		err := pa.WillingToIssue([]string{domain})
+		test.AssertError(t, err, "domain was not correctly forbidden")
+		var berr *berrors.BoulderError
+		test.AssertErrorWraps(t, err, &berr)
+		test.AssertContains(t, berr.Detail, errICANNTLD.Error())
 	}
 
 	// Test expected blocked domains
 	for _, domain := range shouldBeBlocked {
-		ident := identifier.DNSIdentifier(domain)
-		err := pa.willingToIssue(ident)
-		if err != errPolicyForbidden {
-			t.Error("Identifier was not correctly forbidden: ", ident, err)
-		}
+		err := pa.WillingToIssue([]string{domain})
+		test.AssertError(t, err, "domain was not correctly forbidden")
+		var berr *berrors.BoulderError
+		test.AssertErrorWraps(t, err, &berr)
+		test.AssertContains(t, berr.Detail, errPolicyForbidden.Error())
 	}
 
 	// Test acceptance of good names
 	for _, domain := range shouldBeAccepted {
-		ident := identifier.DNSIdentifier(domain)
-		err := pa.willingToIssue(ident)
-		test.AssertNotError(t, err, "identiier was incorrectly forbidden")
+		err := pa.WillingToIssue([]string{domain})
+		test.AssertNotError(t, err, "domain was incorrectly forbidden")
 	}
 }
 
-func TestWillingToIssueWildcard(t *testing.T) {
+func TestWillingToIssue_Wildcards(t *testing.T) {
 	bannedDomains := []string{
 		"zombo.gov.us",
 	}
@@ -238,78 +234,80 @@ func TestWillingToIssueWildcard(t *testing.T) {
 
 	testCases := []struct {
 		Name        string
-		Ident       identifier.ACMEIdentifier
+		Domain      string
 		ExpectedErr error
 	}{
 		{
-			Name:        "Non-DNS identifier",
-			Ident:       identifier.ACMEIdentifier{Type: "nickname", Value: "cpu"},
-			ExpectedErr: errInvalidIdentifier,
-		},
-		{
 			Name:        "Too many wildcards",
-			Ident:       identifier.DNSIdentifier("ok.*.whatever.*.example.com"),
+			Domain:      "ok.*.whatever.*.example.com",
 			ExpectedErr: errTooManyWildcards,
 		},
 		{
 			Name:        "Misplaced wildcard",
-			Ident:       identifier.DNSIdentifier("ok.*.whatever.example.com"),
+			Domain:      "ok.*.whatever.example.com",
 			ExpectedErr: errMalformedWildcard,
 		},
 		{
 			Name:        "Missing ICANN TLD",
-			Ident:       identifier.DNSIdentifier("*.ok.madeup"),
+			Domain:      "*.ok.madeup",
 			ExpectedErr: errNonPublic,
 		},
 		{
 			Name:        "Wildcard for ICANN TLD",
-			Ident:       identifier.DNSIdentifier("*.com"),
+			Domain:      "*.com",
 			ExpectedErr: errICANNTLDWildcard,
 		},
 		{
 			Name:        "Forbidden base domain",
-			Ident:       identifier.DNSIdentifier("*.zombo.gov.us"),
+			Domain:      "*.zombo.gov.us",
 			ExpectedErr: errPolicyForbidden,
 		},
 		// We should not allow getting a wildcard for that would cover an exact
 		// blocklist domain
 		{
 			Name:        "Wildcard for ExactBlocklist base domain",
-			Ident:       identifier.DNSIdentifier("*.letsdecrypt.org"),
+			Domain:      "*.letsdecrypt.org",
 			ExpectedErr: errPolicyForbidden,
 		},
 		// We should allow a wildcard for a domain that doesn't match the exact
 		// blocklist domain
 		{
 			Name:        "Wildcard for non-matching subdomain of ExactBlocklist domain",
-			Ident:       identifier.DNSIdentifier("*.lowvalue.letsdecrypt.org"),
+			Domain:      "*.lowvalue.letsdecrypt.org",
 			ExpectedErr: nil,
 		},
 		// We should allow getting a wildcard for an exact blocklist domain since it
 		// only covers subdomains, not the exact name.
 		{
 			Name:        "Wildcard for ExactBlocklist domain",
-			Ident:       identifier.DNSIdentifier("*.highvalue.letsdecrypt.org"),
+			Domain:      "*.highvalue.letsdecrypt.org",
 			ExpectedErr: nil,
 		},
 		{
 			Name:        "Valid wildcard domain",
-			Ident:       identifier.DNSIdentifier("*.everything.is.possible.at.zombo.com"),
+			Domain:      "*.everything.is.possible.at.zombo.com",
 			ExpectedErr: nil,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			result := pa.willingToIssueWildcard(tc.Ident)
-			test.AssertEquals(t, result, tc.ExpectedErr)
+			err := pa.WillingToIssue([]string{tc.Domain})
+			if tc.ExpectedErr == nil {
+				test.AssertNil(t, err, fmt.Sprintf("Unexpected error for domain %q, got %s", tc.Domain, err))
+			} else {
+				test.AssertError(t, err, fmt.Sprintf("Expected error for domain %q, but got none", tc.Domain))
+				var berr *berrors.BoulderError
+				test.AssertErrorWraps(t, err, &berr)
+				test.AssertContains(t, berr.Error(), tc.ExpectedErr.Error())
+			}
 		})
 	}
 }
 
 // TestWillingToIssueWildcards tests that more than one rejected identifier
 // results in an error with suberrors.
-func TestWillingToIssueWildcards(t *testing.T) {
+func TestWillingToIssue_Wildcard(t *testing.T) {
 	banned := []string{
 		"letsdecrypt.org",
 	}
@@ -327,18 +325,21 @@ func TestWillingToIssueWildcards(t *testing.T) {
 	err = pa.LoadHostnamePolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
 
-	idents := []identifier.ACMEIdentifier{
-		identifier.DNSIdentifier("perfectly-fine.com"),
-		identifier.DNSIdentifier("letsdecrypt.org"),
-		identifier.DNSIdentifier("ok.*.this.is.a.*.weird.one.com"),
-		identifier.DNSIdentifier("also-perfectly-fine.com"),
+	domains := []string{
+		"perfectly-fine.com",             // fine
+		"letsdecrypt.org",                // banned
+		"ok.*.this.is.a.*.weird.one.com", // malformed
+		"also-perfectly-fine.com",        // fine
 	}
 
-	err = pa.WillingToIssueWildcards(idents)
+	err = pa.WillingToIssue(domains)
 	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
 
 	var berr *berrors.BoulderError
 	test.AssertErrorWraps(t, err, &berr)
+	for _, err := range berr.SubErrors {
+		fmt.Println(err)
+	}
 	test.AssertEquals(t, len(berr.SubErrors), 2)
 	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. Refer to sub-problems for more information.)")
 
@@ -357,9 +358,7 @@ func TestWillingToIssueWildcards(t *testing.T) {
 	test.AssertEquals(t, subErrB.Type, berrors.Malformed)
 
 	// Test willing to issue with only *one* bad identifier.
-	err = pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{
-		identifier.DNSIdentifier("letsdecrypt.org"),
-	})
+	err = pa.WillingToIssue([]string{"letsdecrypt.org"})
 	// It should error
 	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
 

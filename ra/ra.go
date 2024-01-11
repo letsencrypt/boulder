@@ -1747,10 +1747,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 		ValidationRecords: vr.Records,
 		ValidationError:   vr.Problems,
 	})
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // PerformValidation initiates validation for a specific challenge associated
@@ -1889,8 +1886,13 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 		err = ra.recordValidation(vaCtx, authz.ID, authz.Expires, challenge)
 		if err != nil {
-			ra.log.AuditErrf("Could not record updated validation: regID=[%d] authzID=[%s] err=[%s]",
-				authz.RegistrationID, authz.ID, err)
+			if errors.Is(err, berrors.AlreadyRevoked) {
+				ra.log.Infof("Didn't record already-finalized validation: regID=[%d] authzID=[%s] err=[%s]",
+					authz.RegistrationID, authz.ID, err)
+			} else {
+				ra.log.AuditErrf("Failed to record validation: regID=[%d] authzID=[%s] err=[%s]",
+					authz.RegistrationID, authz.ID, err)
+			}
 		}
 	}(authz)
 	return bgrpc.AuthzToPB(authz)
@@ -2335,22 +2337,6 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	return &emptypb.Empty{}, nil
 }
 
-// checkOrderNames validates that the RA's policy authority allows issuing for
-// each of the names in an order. If any of the names are unacceptable a
-// malformed or rejectedIdentifier error with suberrors for each rejected
-// identifier is returned.
-func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
-	idents := make([]identifier.ACMEIdentifier, len(names))
-	for i, name := range names {
-		idents[i] = identifier.DNSIdentifier(name)
-	}
-	err := ra.PA.WillingToIssueWildcards(idents)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 // GenerateOCSP looks up a certificate's status, then requests a signed OCSP
 // response for it from the CA. If the certificate status is not available
 // or the certificate is expired, it returns berrors.NotFoundError.
@@ -2407,7 +2393,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
-	err := ra.checkOrderNames(newOrder.Names)
+	err := ra.PA.WillingToIssue(newOrder.Names)
 	if err != nil {
 		return nil, err
 	}
