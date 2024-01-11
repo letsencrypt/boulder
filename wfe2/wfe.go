@@ -842,10 +842,21 @@ func (wfe *WebFrontEndImpl) NewAccount(
 
 	// TODO(#5545): Spending and Refunding can be async until these rate limits
 	// are authoritative. This saves us from adding latency to each request.
-	go wfe.checkNewAccountLimits(ctx, ip)
+	doneCheckingLimits := make(chan struct{})
 	var newRegistrationSuccessful bool
+	var errIsRateLimit bool
+
+	go func() {
+		// Close the channel on goroutine completion.
+		defer close(doneCheckingLimits)
+		wfe.checkNewAccountLimits(ctx, ip)
+	}()
+
 	defer func() {
-		if !newRegistrationSuccessful {
+		if !newRegistrationSuccessful && !errIsRateLimit {
+			// Wait for the rate limit check to complete before attempting to refund
+			// the limits. If the check failed, we don't want to refund anything.
+			<-doneCheckingLimits
 			go wfe.refundNewAccountLimits(ctx, ip)
 		}
 	}()
@@ -853,6 +864,9 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	// Send the registration to the RA via grpc
 	acctPB, err := wfe.ra.NewRegistration(ctx, &reg)
 	if err != nil {
+		if errors.Is(err, berrors.RateLimit) {
+			errIsRateLimit = true
+		}
 		if errors.Is(err, berrors.Duplicate) {
 			existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
 			if err == nil {
