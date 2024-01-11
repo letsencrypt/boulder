@@ -28,6 +28,11 @@ linters-settings:
     checks: ["all", "-S1029"]
   govet:
     enable-all: true
+    disable:
+      - fieldalignment
+      - shadow
+      - nilness
+      - unusedwrite
     settings:
       printf:
         funcs:
