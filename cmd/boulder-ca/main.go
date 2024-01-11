@@ -48,8 +48,11 @@ type Config struct {
 
 		// What digits we should prepend to serials after randomly generating them.
 		SerialPrefix int `validate:"required,min=1,max=127"`
-
-		// The maximum number of subjectAltNames in a single certificate
+		// MaxNames is the maximum number of subjectAltNames in a single cert.
+		// The value supplied MUST be greater than 0 and no more than 100,
+		// defaults to 100. These limits are per section 7.1 of our combined
+		// CP/CPS, under "DV-SSL Subscriber Certificate". The value must match
+		// the RA and WFE configurations.
 		MaxNames int `validate:"required,min=1,max=100"`
 
 		// LifespanOCSP is how long OCSP responses are valid for. Per the BRs,
@@ -162,8 +165,10 @@ func main() {
 		c.CA.DebugAddr = *debugAddr
 	}
 
-	if c.CA.MaxNames == 0 {
-		cmd.Fail("Error in CA config: MaxNames must not be 0")
+	maxNames := c.CA.MaxNames
+	if maxNames == 0 {
+		// Use default.
+		maxNames = 100
 	}
 
 	if c.CA.LifespanOCSP.Duration == 0 {
@@ -276,7 +281,7 @@ func main() {
 			c.CA.Expiry.Duration,
 			c.CA.Backdate.Duration,
 			c.CA.SerialPrefix,
-			c.CA.MaxNames,
+			maxNames,
 			kp,
 			logger,
 			scope,

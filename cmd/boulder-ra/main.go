@@ -42,7 +42,12 @@ type Config struct {
 		PublisherService    *cmd.GRPCClientConfig
 		AkamaiPurgerService *cmd.GRPCClientConfig
 
-		MaxNames int `validate:"required,min=1"`
+		// MaxNames is the maximum number of subjectAltNames in a single cert.
+		// The value supplied MUST be greater than 0 and no more than 100,
+		// defaults to 100. These limits are per section 7.1 of our combined
+		// CP/CPS, under "DV-SSL Subscriber Certificate". The value must match
+		// the CA and WFE configurations.
+		MaxNames int `validate:"required,min=1,max=100"`
 
 		// AuthorizationLifetimeDays defines how long authorizations will be
 		// considered valid for. Given a value of 300 days when used with a 90-day
@@ -223,8 +228,10 @@ func main() {
 	kp, err := sagoodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
-	if c.RA.MaxNames == 0 {
-		cmd.Fail("Error in RA config: MaxNames must not be 0")
+	maxNames := c.RA.MaxNames
+	if maxNames == 0 {
+		// Use default.
+		maxNames = 100
 	}
 
 	rai := ra.NewRegistrationAuthorityImpl(
@@ -233,7 +240,7 @@ func main() {
 		scope,
 		c.RA.MaxContactsPerRegistration,
 		kp,
-		c.RA.MaxNames,
+		maxNames,
 		authorizationLifetime,
 		pendingAuthorizationLifetime,
 		pubc,
