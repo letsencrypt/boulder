@@ -27,6 +27,7 @@ linters-settings:
     # S1029: Range over the string directly
     checks: ["all", "-S1029"]
   govet:
+    enable-all: true
     settings:
       printf:
         funcs:
