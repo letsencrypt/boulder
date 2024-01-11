@@ -32,7 +32,6 @@ linters-settings:
       - fieldalignment
       - shadow
       - nilness
-      - unusedwrite
     settings:
       printf:
         funcs:
