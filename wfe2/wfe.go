@@ -2207,6 +2207,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	doneCheckingLimits := make(chan struct{})
 	var ratelimitTxns []ratelimits.Transaction
 	var newOrderSuccessful bool
+	var errIsRateLimit bool
 
 	go func() {
 		// Close the channel on goroutine completion.
@@ -2218,7 +2219,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		// Wait for the rate limit check to complete before attempting to refund
 		// the limits. If the check failed, we don't want to refund anything.
 		<-doneCheckingLimits
-		if !newOrderSuccessful && ratelimitTxns != nil {
+		if !newOrderSuccessful && !errIsRateLimit && ratelimitTxns != nil {
 			wfe.refundNewOrderLimits(ctx, ratelimitTxns)
 		}
 	}()
@@ -2230,6 +2231,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
+		if errors.Is(err, berrors.RateLimit) {
+			errIsRateLimit = true
+		}
 		return
 	}
 	logEvent.Created = fmt.Sprintf("%d", order.Id)
