@@ -43,11 +43,11 @@ type Config struct {
 		AkamaiPurgerService *cmd.GRPCClientConfig
 
 		// MaxNames is the maximum number of subjectAltNames in a single cert.
-		// The value supplied MUST be greater than 0 and no more than 100,
+		// The value supplied SHOULD be greater than 0 and no more than 100,
 		// defaults to 100. These limits are per section 7.1 of our combined
 		// CP/CPS, under "DV-SSL Subscriber Certificate". The value must match
 		// the CA and WFE configurations.
-		MaxNames int `validate:"required,min=1,max=100"`
+		MaxNames int `validate:"min=0,max=100"`
 
 		// AuthorizationLifetimeDays defines how long authorizations will be
 		// considered valid for. Given a value of 300 days when used with a 90-day
