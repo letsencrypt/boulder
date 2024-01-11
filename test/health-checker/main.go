@@ -78,6 +78,9 @@ func main() {
 			}
 			resp, err := client.Check(ctx2, req)
 			if err != nil {
+				if strings.Contains(err.Error(), "authentication handshake failed") {
+					cmd.Fail(fmt.Sprintf("error connecting to health service %s: %s\n", *serverAddr, err))
+				}
 				fmt.Fprintf(os.Stderr, "got error connecting to health service %s: %s\n", *serverAddr, err)
 			} else if resp.Status == healthpb.HealthCheckResponse_SERVING {
 				return
