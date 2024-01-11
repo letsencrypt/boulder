@@ -31,7 +31,6 @@ linters-settings:
     disable:
       - fieldalignment
       - shadow
-      - nilness
     settings:
       printf:
         funcs:
