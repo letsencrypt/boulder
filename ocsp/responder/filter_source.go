@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/sha1"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -20,6 +23,33 @@ import (
 type responderID struct {
 	nameHash []byte
 	keyHash  []byte
+}
+
+// computeLightweightResponderID computes the SHA1 hashes of the certificate's
+// name and key, exactly as the issuerNameHash and issuerKeyHash fields should
+// be computed by OCSP clients that are compliant with RFC 5019, Lightweight
+// OCSP Profile for High-Volume Environments.
+func computeLightweightResponderID(ic *issuance.Certificate) (responderID, error) {
+	// nameHash is the SHA1 hash over the DER encoding of the issuer certificate's
+	// Subject Distinguished Name.
+	nameHash := sha1.Sum(ic.RawSubject)
+
+	// keyHash is the SHA1 hash over the DER encoding of the issuer certificate's
+	// Subject Public Key Info. We can't use MarshalPKIXPublicKey for this since
+	// it encodes keys using the SPKI structure itself, and we just want the
+	// contents of the subjectPublicKey for the hash, so we need to extract it
+	// ourselves.
+	var spki struct {
+		Algorithm pkix.AlgorithmIdentifier
+		PublicKey asn1.BitString
+	}
+	_, err := asn1.Unmarshal(ic.RawSubjectPublicKeyInfo, &spki)
+	if err != nil {
+		return responderID{}, err
+	}
+	keyHash := sha1.Sum(spki.PublicKey.RightAlign())
+
+	return responderID{nameHash[:], keyHash[:]}, nil
 }
 
 type filterSource struct {
@@ -42,11 +72,9 @@ func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []strin
 
 	issuersByNameId := make(map[issuance.IssuerNameID]responderID)
 	for _, issuerCert := range issuerCerts {
-		keyHash := issuerCert.KeyHash()
-		nameHash := issuerCert.NameHash()
-		rid := responderID{
-			keyHash:  keyHash[:],
-			nameHash: nameHash[:],
+		rid, err := computeLightweightResponderID(issuerCert)
+		if err != nil {
+			return nil, fmt.Errorf("computing lightweight OCSP responder ID: %w", err)
 		}
 		issuersByNameId[issuerCert.NameID()] = rid
 	}
