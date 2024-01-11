@@ -600,7 +600,7 @@ func TestIgnoredLint(t *testing.T) {
 		},
 		BasicConstraintsValid: true,
 		IsCA:                  true,
-		IssuingCertificateURL: []string{"http://ca.cpu"},
+		IssuingCertificateURL: []string{"http://aia.example.org"},
 		SubjectKeyId:          []byte("foobar"),
 	}
 
