@@ -130,9 +130,9 @@ def check_balance():
         "publisher1.service.consul:8009",
         "publisher2.service.consul:8109",
         "va1.service.consul:8004",
-        "va2.service.consul:8101",
+        "va2.service.consul:8104",
         "ca1.service.consul:8001",
-        "ca2.service.consul:8105",
+        "ca2.service.consul:8101",
         "ra1.service.consul:8002",
         "ra2.service.consul:8102",
     ]
