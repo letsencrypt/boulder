@@ -20,6 +20,7 @@
 		},
 		"grpc": {
 			"maxConnectionAge": "30s",
+			"address": ":9092",
 			"services": {
 				"va.VA": {
 					"clientNames": [
@@ -44,12 +45,12 @@
 		},
 		"remoteVAs": [
 			{
-				"serverAddress": "rva1.service.consul:9397",
+				"serverAddress": "rva1.service.consul:9097",
 				"timeout": "15s",
 				"hostOverride": "rva1.boulder"
 			},
 			{
-				"serverAddress": "rva1.service.consul:9498",
+				"serverAddress": "rva1.service.consul:9098",
 				"timeout": "15s",
 				"hostOverride": "rva1.boulder"
 			}
