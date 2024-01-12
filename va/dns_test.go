@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -41,7 +42,8 @@ func TestDNSValidationEmpty(t *testing.T) {
 
 func TestDNSValidationWrong(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
-
+	x := reflect.TypeOf(va.dnsClient)
+	fmt.Println(x)
 	_, prob := va.validateDNS01(context.Background(), dnsi("wrong-dns01.com"), dnsChallenge())
 	if prob == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")

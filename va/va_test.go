@@ -117,6 +117,8 @@ func setChallengeToken(ch *core.Challenge, token string) {
 	ch.ProvidedKeyAuthorization = token + ".9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 }
 
+// setup returns an in-memory VA and a mock logger. The default resolver client
+// is MockClient{}, but can be overridden.
 func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remoteVAs []RemoteVA, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
 	features.Reset()
 	fc := clock.NewFake()
@@ -141,8 +143,6 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 
 	if mockDNSClientOverride != nil {
 		va.dnsClient = mockDNSClientOverride
-	} else {
-		va.dnsClient = caaMockDNS{}
 	}
 
 	// Adjusting industry regulated ACME challenge port settings is fine during
@@ -163,9 +163,9 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 }
 
 func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride bdns.Client) RemoteClients {
-	innerVA, _ := setup(srv, 0, userAgent, nil, mockDNSClientOverride)
+	rva, _ := setup(srv, 0, userAgent, nil, mockDNSClientOverride)
 
-	return RemoteClients{VAClient: &localRemoteVA{*innerVA}, CAAClient: &localRemoteVA{*innerVA}}
+	return RemoteClients{VAClient: &inMemVA{*rva}, CAAClient: &inMemVA{*rva}}
 }
 
 type multiSrv struct {
@@ -221,8 +221,8 @@ func (v cancelledVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest, _ 
 	return nil, context.Canceled
 }
 
-// brokenRemoteVA is a mock for the vapb.VAClient interface mocked to
-// always return errors.
+// brokenRemoteVA is a mock for the vapb.VAClient and vapb.CAAClient interfaces
+// that always return errors.
 type brokenRemoteVA struct{}
 
 // errBrokenRemoteVA is the error returned by a brokenRemoteVA's
@@ -238,20 +238,20 @@ func (b brokenRemoteVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest,
 	return nil, errBrokenRemoteVA
 }
 
-// localRemoteVA is a wrapper which fulfills the VAClient and CAAClient
+// inMemVA is a wrapper which fulfills the VAClient and CAAClient
 // interfaces, but then forwards requests directly to its inner
 // ValidationAuthorityImpl rather than over the network. This lets a local
 // in-memory mock VA act like a remote VA.
-type localRemoteVA struct {
-	ValidationAuthorityImpl
+type inMemVA struct {
+	rva ValidationAuthorityImpl
 }
 
-func (lrva localRemoteVA) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
-	return lrva.PerformValidation(ctx, req)
+func (inmem inMemVA) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+	return inmem.rva.PerformValidation(ctx, req)
 }
 
-func (lrva localRemoteVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
-	return lrva.IsCAAValid(ctx, req)
+func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return inmem.rva.IsCAAValid(ctx, req)
 }
 
 func TestValidateMalformedChallenge(t *testing.T) {

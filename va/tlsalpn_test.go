@@ -207,8 +207,7 @@ func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 func TestTLSALPN01DialTimeout(t *testing.T) {
 	chall := tlsalpnChallenge()
 	hs := slowTLSSrv()
-	va, _ := setup(hs, 0, "", nil, nil)
-	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockClient{}}
+	va, _ := setup(hs, 0, "", nil, dnsMockReturnsUnroutable{&bdns.MockClient{}})
 	started := time.Now()
 
 	timeout := 50 * time.Millisecond

@@ -160,20 +160,11 @@ type DummyValidationAuthority struct {
 	performValidationRequest             chan *vapb.PerformValidationRequest
 	PerformValidationRequestResultError  error
 	PerformValidationRequestResultReturn *vapb.ValidationResult
-
-	isCAAValidRequest        chan *vapb.IsCAAValidRequest
-	IsCAAValidError          error
-	IsCAAValidResponseReturn *vapb.IsCAAValidResponse
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	dva.performValidationRequest <- req
 	return dva.PerformValidationRequestResultReturn, dva.PerformValidationRequestResultError
-}
-
-func (dva *DummyValidationAuthority) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
-	dva.isCAAValidRequest <- req
-	return dva.IsCAAValidResponseReturn, dva.IsCAAValidError
 }
 
 var (
@@ -334,7 +325,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 
 	va := &DummyValidationAuthority{
 		performValidationRequest: make(chan *vapb.PerformValidationRequest, 1),
-		isCAAValidRequest:        make(chan *vapb.IsCAAValidRequest, 1),
 	}
 
 	pa, err := policy.New(map[core.AcmeChallenge]bool{
