@@ -224,7 +224,7 @@ func (si *ShortIDIssuer) ShortID() byte {
 	return si.shortID
 }
 
-// FindIssuerByID returns the issuer that matches the given IssuerID or IssuerNameID.
+// FindIssuerByID returns the issuer that matches the given IssuerNameID.
 func FindIssuerByID(longID int64, issuers []ShortIDIssuer) (*ShortIDIssuer, error) {
 	for _, iss := range issuers {
 		if iss.NameID() == issuance.IssuerNameID(longID) {
