@@ -58,14 +58,14 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		}
 	}
 
+	var probType, detail string
 	checkResult := "success"
-	pbProblem := &corepb.ProblemDetails{}
 	prob := va.checkCAA(ctx, acmeID, params)
 	localRecheckLatency := time.Since(checkStartTime)
 	if prob != nil {
-		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
-		pbProblem.ProblemType = string(prob.Type)
-		pbProblem.Detail = replaceInvalidUTF8([]byte(detail))
+		originalDetail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
+		probType = string(prob.Type)
+		detail = replaceInvalidUTF8([]byte(originalDetail))
 		checkResult = "failure"
 	} else if remoteCAAResults != nil {
 		if !features.Get().EnforceMultiCAA && features.Get().MultiCAAFullResults {
@@ -95,8 +95,8 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			// If the remote result was a non-nil problem then fail the CAA check
 			if remoteProb != nil {
 				prob = remoteProb
-				pbProblem.ProblemType = string(prob.Type)
-				pbProblem.Detail = replaceInvalidUTF8([]byte(prob.Detail))
+				probType = string(prob.Type)
+				detail = replaceInvalidUTF8([]byte(prob.Detail))
 				checkResult = "failure"
 				va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
@@ -127,7 +127,10 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	}
 
 	if prob != nil {
-		return &vapb.IsCAAValidResponse{Problem: pbProblem}, nil
+		return &vapb.IsCAAValidResponse{Problem: &corepb.ProblemDetails{
+			ProblemType: probType,
+			Detail:      detail,
+		}}, nil
 	} else {
 		return &vapb.IsCAAValidResponse{}, nil
 	}

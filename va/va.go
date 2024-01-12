@@ -530,13 +530,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	}
 }
 
-// remoteMetadata is used to fill in detailed information provided via a an
-// outer helper method for `va.processRemoteResults`.
-type remoteMetadata struct {
-	rpc    string
-	action string
-}
-
 // processRemoteValidationResults evaluates a primary VA result, and a channel
 // of remote VA problems to produce a single overall validation result based on
 // configured feature flags. The overall result is calculated based on the VA's
