@@ -196,7 +196,7 @@ type Impl struct {
 	pubpb.UnimplementedPublisherServer
 	log           blog.Logger
 	userAgent     string
-	issuerBundles map[issuance.IssuerNameID][]ct.ASN1Cert
+	issuerBundles map[issuance.NameID][]ct.ASN1Cert
 	ctLogsCache   logCache
 	metrics       *pubMetrics
 }
@@ -204,7 +204,7 @@ type Impl struct {
 // New creates a Publisher that will submit certificates
 // to requested CT logs
 func New(
-	bundles map[issuance.IssuerNameID][]ct.ASN1Cert,
+	bundles map[issuance.NameID][]ct.ASN1Cert,
 	userAgent string,
 	logger blog.Logger,
 	stats prometheus.Registerer,
@@ -235,7 +235,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 	}
 
 	chain := []ct.ASN1Cert{{Data: req.Der}}
-	id := issuance.GetIssuerNameID(cert)
+	id := issuance.IssuerNameID(cert)
 	issuerBundle, ok := pub.issuerBundles[id]
 	if !ok {
 		err := fmt.Errorf("No issuerBundle matching issuerNameID: %d", int64(id))

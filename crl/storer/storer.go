@@ -38,7 +38,7 @@ type crlStorer struct {
 	cspb.UnimplementedCRLStorerServer
 	s3Client         simpleS3
 	s3Bucket         string
-	issuers          map[issuance.IssuerNameID]*issuance.Certificate
+	issuers          map[issuance.NameID]*issuance.Certificate
 	uploadCount      *prometheus.CounterVec
 	sizeHistogram    *prometheus.HistogramVec
 	latencyHistogram *prometheus.HistogramVec
@@ -54,7 +54,7 @@ func New(
 	log blog.Logger,
 	clk clock.Clock,
 ) (*crlStorer, error) {
-	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Certificate, len(issuers))
+	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate, len(issuers))
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
 	}
@@ -126,7 +126,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 			crlNumber = crl.Number(time.Unix(0, payload.Metadata.Number))
 
 			var ok bool
-			issuer, ok = cs.issuers[issuance.IssuerNameID(payload.Metadata.IssuerNameID)]
+			issuer, ok = cs.issuers[issuance.NameID(payload.Metadata.IssuerNameID)]
 			if !ok {
 				return fmt.Errorf("got unrecognized IssuerID: %d", payload.Metadata.IssuerNameID)
 			}

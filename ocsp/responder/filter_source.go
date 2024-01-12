@@ -55,7 +55,7 @@ func computeLightweightResponderID(ic *issuance.Certificate) (responderID, error
 type filterSource struct {
 	wrapped        Source
 	hashAlgorithm  crypto.Hash
-	issuers        map[issuance.IssuerNameID]responderID
+	issuers        map[issuance.NameID]responderID
 	serialPrefixes []string
 	counter        *prometheus.CounterVec
 	log            blog.Logger
@@ -70,7 +70,7 @@ func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []strin
 		return nil, errors.New("filter must include at least 1 issuer cert")
 	}
 
-	issuersByNameId := make(map[issuance.IssuerNameID]responderID)
+	issuersByNameId := make(map[issuance.NameID]responderID)
 	for _, issuerCert := range issuerCerts {
 		rid, err := computeLightweightResponderID(issuerCert)
 		if err != nil {
@@ -137,7 +137,7 @@ func (src *filterSource) checkNextUpdate(resp *Response) error {
 // the requirements of an OCSP request, or nil if the request should be handled.
 // If the request passes all checks, then checkRequest returns the unique id of
 // the issuer cert specified in the request.
-func (src *filterSource) checkRequest(req *ocsp.Request) (issuance.IssuerNameID, error) {
+func (src *filterSource) checkRequest(req *ocsp.Request) (issuance.NameID, error) {
 	if req.HashAlgorithm != src.hashAlgorithm {
 		return 0, fmt.Errorf("unsupported issuer key/name hash algorithm %s: %w", req.HashAlgorithm, ErrNotFound)
 	}
@@ -168,8 +168,8 @@ func (src *filterSource) checkRequest(req *ocsp.Request) (issuance.IssuerNameID,
 // issuer as was identified in the request, or an error otherwise. This filters
 // out, for example, responses which are for a serial that we issued, but from a
 // different issuer than that contained in the request.
-func (src *filterSource) checkResponse(reqIssuerID issuance.IssuerNameID, resp *Response) error {
-	respIssuerID := issuance.GetOCSPIssuerNameID(resp.Response)
+func (src *filterSource) checkResponse(reqIssuerID issuance.NameID, resp *Response) error {
+	respIssuerID := issuance.ResponderNameID(resp.Response)
 	if reqIssuerID != respIssuerID {
 		// This would be allowed if we used delegated responders, but we don't.
 		return fmt.Errorf("responder name does not match requested issuer name")

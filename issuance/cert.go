@@ -20,8 +20,28 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/precert"
 )
+
+// ProfileConfig describes the certificate issuance constraints for all issuers.
+type ProfileConfig struct {
+	AllowMustStaple bool
+	AllowCTPoison   bool
+	AllowSCTList    bool
+	AllowCommonName bool
+
+	MaxValidityPeriod   config.Duration
+	MaxValidityBackdate config.Duration
+
+	// Deprecated: we do not respect this field.
+	Policies []PolicyConfig `validate:"-"`
+}
+
+// PolicyConfig describes a policy
+type PolicyConfig struct {
+	OID string `validate:"required"`
+}
 
 // Profile is the validated structure created by reading in ProfileConfigs and IssuerConfigs
 type Profile struct {

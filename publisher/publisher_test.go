@@ -145,7 +145,7 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	test.AssertNotError(t, err, "failed to load chain3.")
 
 	// Create an example issuerNameID to CT bundle mapping
-	issuerBundles := map[issuance.IssuerNameID][]ct.ASN1Cert{
+	issuerBundles := map[issuance.NameID][]ct.ASN1Cert{
 		chain1[0].NameID(): GetCTBundleForChain(chain1),
 		chain2[0].NameID(): GetCTBundleForChain(chain2),
 		chain3[0].NameID(): GetCTBundleForChain(chain3),
@@ -176,7 +176,7 @@ func addLog(t *testing.T, port int, pubKey *ecdsa.PublicKey) *Log {
 	return newLog
 }
 
-func makePrecert(k *ecdsa.PrivateKey) (map[issuance.IssuerNameID][]ct.ASN1Cert, []byte, error) {
+func makePrecert(k *ecdsa.PrivateKey) (map[issuance.NameID][]ct.ASN1Cert, []byte, error) {
 	rootTmpl := x509.Certificate{
 		SerialNumber:          big.NewInt(0),
 		Subject:               pkix.Name{CommonName: "root"},
@@ -205,8 +205,8 @@ func makePrecert(k *ecdsa.PrivateKey) (map[issuance.IssuerNameID][]ct.ASN1Cert, 
 	if err != nil {
 		return nil, nil, err
 	}
-	precertIssuerNameID := issuance.GetIssuerNameID(precertX509)
-	bundles := map[issuance.IssuerNameID][]ct.ASN1Cert{
+	precertIssuerNameID := issuance.IssuerNameID(precertX509)
+	bundles := map[issuance.NameID][]ct.ASN1Cert{
 		precertIssuerNameID: {
 			ct.ASN1Cert{Data: rootBytes},
 		},

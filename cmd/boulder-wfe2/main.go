@@ -300,8 +300,8 @@ func main() {
 		c.WFE.DebugAddr = *debugAddr
 	}
 
-	certChains := map[issuance.IssuerNameID][][]byte{}
-	issuerCerts := map[issuance.IssuerNameID]*issuance.Certificate{}
+	certChains := map[issuance.NameID][][]byte{}
+	issuerCerts := map[issuance.NameID]*issuance.Certificate{}
 	if c.WFE.Chains == nil {
 		cmd.Fail("'chains' must be configured")
 	}

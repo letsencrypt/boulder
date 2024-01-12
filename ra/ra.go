@@ -101,7 +101,7 @@ type RegistrationAuthorityImpl struct {
 	finalizeTimeout              time.Duration
 	finalizeWG                   sync.WaitGroup
 
-	issuersByNameID map[issuance.IssuerNameID]*issuance.Certificate
+	issuersByNameID map[issuance.NameID]*issuance.Certificate
 	purger          akamaipb.AkamaiPurgerClient
 
 	ctpolicy *ctpolicy.CTPolicy
@@ -233,7 +233,7 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(inflightFinalizes)
 
-	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Certificate)
+	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
 	}
@@ -1955,7 +1955,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 // for the given certificate.
 // TODO(#5152) make the issuerID argument an issuance.IssuerNameID
 func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x509.Certificate, issuerID int64) error {
-	issuer, ok := ra.issuersByNameID[issuance.IssuerNameID(issuerID)]
+	issuer, ok := ra.issuersByNameID[issuance.NameID(issuerID)]
 	if !ok {
 		return fmt.Errorf("unable to identify issuer of cert with serial %q", core.SerialToString(cert.SerialNumber))
 	}
@@ -2060,7 +2060,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		logEvent.Reason = req.Code
 	}
 
-	issuerID := issuance.GetIssuerNameID(cert)
+	issuerID := issuance.IssuerNameID(cert)
 	err = ra.revokeCertificate(
 		ctx,
 		cert.SerialNumber,
@@ -2116,7 +2116,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		return nil, err
 	}
 
-	issuerID := issuance.GetIssuerNameID(cert)
+	issuerID := issuance.IssuerNameID(cert)
 
 	logEvent := certificateRevocationEvent{
 		ID:           core.NewToken(),
@@ -2229,7 +2229,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		if err != nil {
 			return nil, err
 		}
-		issuerID = int64(issuance.GetIssuerNameID(cert))
+		issuerID = int64(issuance.IssuerNameID(cert))
 	}
 
 	logEvent := certificateRevocationEvent{
