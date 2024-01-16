@@ -85,11 +85,12 @@ type vaMetrics struct {
 	localValidationTime                 *prometheus.HistogramVec
 	remoteValidationTime                *prometheus.HistogramVec
 	remoteValidationFailures            prometheus.Counter
+	prospectiveRemoteValidationFailures prometheus.Counter
 	caaCheckTime                        *prometheus.HistogramVec
 	localCAACheckTime                   *prometheus.HistogramVec
 	remoteCAACheckTime                  *prometheus.HistogramVec
 	remoteCAACheckFailures              prometheus.Counter
-	prospectiveRemoteValidationFailures prometheus.Counter
+	prospectiveRemoteCAACheckFailures   prometheus.Counter
 	tlsALPNOIDCounter                   *prometheus.CounterVec
 	http01Fallbacks                     prometheus.Counter
 	http01Redirects                     prometheus.Counter
@@ -164,6 +165,12 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 			Help: "Number of validations that would have failed due to remote VAs returning failure if consesus were enforced",
 		})
 	stats.MustRegister(prospectiveRemoteValidationFailures)
+	prospectiveRemoteCAACheckFailures := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "prospective_remote_caa_check_failures",
+			Help: "Number of CAA rechecks that would have failed due to remote VAs returning failure if consesus were enforced",
+		})
+	stats.MustRegister(prospectiveRemoteCAACheckFailures)
 	tlsALPNOIDCounter := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "tls_alpn_oid_usage",
@@ -205,6 +212,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		remoteCAACheckTime:                  remoteCAACheckTime,
 		remoteCAACheckFailures:              remoteCAACheckFailures,
 		prospectiveRemoteValidationFailures: prospectiveRemoteValidationFailures,
+		prospectiveRemoteCAACheckFailures:   prospectiveRemoteCAACheckFailures,
 		tlsALPNOIDCounter:                   tlsALPNOIDCounter,
 		http01Fallbacks:                     http01Fallbacks,
 		http01Redirects:                     http01Redirects,
@@ -622,6 +630,12 @@ func (va *ValidationAuthorityImpl) processRemoteValidationResults(
 	} else if bad > va.maxRemoteFailures {
 		modifiedProblem := *firstProb
 		modifiedProblem.Detail = "During secondary validation: " + firstProb.Detail
+		// If the primary result was OK and there were more failures than the allowed
+		// threshold increment a stat that indicates this overall validation will have
+		// failed.
+		if primaryResult == nil {
+			va.metrics.prospectiveRemoteValidationFailures.Inc()
+		}
 		return &modifiedProblem
 	}
 
@@ -630,8 +644,9 @@ func (va *ValidationAuthorityImpl) processRemoteValidationResults(
 	return probs.ServerInternal("Too few remote PerformValidation RPC results")
 }
 
-// logRemoteDifferentials is called by `processRemoteResults` when the
-// `MultiVAFullResults` feature flag is enabled. It produces a JSON log line
+// logRemoteDifferentials is called by `processRemoteValidationResults` when the
+// `MultiVAFullResults` feature flag is enabled and `processRemoteCAAResults`
+// `MultiCAAFullResults` feature flag is enabled. It produces a JSON log line
 // that contains the primary VA result and the results each remote VA returned.
 func (va *ValidationAuthorityImpl) logRemoteDifferentials(
 	domain string,
@@ -657,13 +672,6 @@ func (va *ValidationAuthorityImpl) logRemoteDifferentials(
 		// There's no point logging a differential line if the primary VA and remote
 		// VAs all agree.
 		return
-	}
-
-	// If the primary result was OK and there were more failures than the allowed
-	// threshold increment a stat that indicates this overall validation will have
-	// failed if features.EnforceMultiVA is enabled.
-	if primaryResult == nil && len(failures) > va.maxRemoteFailures {
-		va.metrics.prospectiveRemoteValidationFailures.Inc()
 	}
 
 	logOb := struct {
