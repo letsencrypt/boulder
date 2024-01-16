@@ -50,10 +50,10 @@ type Config struct {
 		SerialPrefix int `validate:"required,min=1,max=127"`
 
 		// MaxNames is the maximum number of subjectAltNames in a single cert.
-		// The value supplied MUST be greater than 0 and no more than 100,
-		// defaults to 100. These limits are per section 7.1 of our combined
-		// CP/CPS, under "DV-SSL Subscriber Certificate". The value must match
-		// the RA and WFE configurations.
+		// The value supplied MUST be greater than 0 and no more than 100. These
+		// limits are per section 7.1 of our combined CP/CPS, under "DV-SSL
+		// Subscriber Certificate". The value must match the RA and WFE
+		// configurations.
 		MaxNames int `validate:"required,min=1,max=100"`
 
 		// LifespanOCSP is how long OCSP responses are valid for. Per the BRs,
