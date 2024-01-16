@@ -85,10 +85,10 @@ type vaMetrics struct {
 	localValidationTime                 *prometheus.HistogramVec
 	remoteValidationTime                *prometheus.HistogramVec
 	remoteValidationFailures            prometheus.Counter
-	caaRecheckTime                      *prometheus.HistogramVec
-	localCAARecheckTime                 *prometheus.HistogramVec
-	remoteCAARecheckTime                *prometheus.HistogramVec
-	remoteCAARecheckFailures            prometheus.Counter
+	caaCheckTime                        *prometheus.HistogramVec
+	localCAACheckTime                   *prometheus.HistogramVec
+	remoteCAACheckTime                  *prometheus.HistogramVec
+	remoteCAACheckFailures              prometheus.Counter
 	prospectiveRemoteValidationFailures prometheus.Counter
 	tlsALPNOIDCounter                   *prometheus.CounterVec
 	http01Fallbacks                     prometheus.Counter
@@ -128,36 +128,36 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 			Help: "Number of validations failed due to remote VAs returning failure when consensus is enforced",
 		})
 	stats.MustRegister(remoteValidationFailures)
-	caaRecheckTime := prometheus.NewHistogramVec(
+	caaCheckTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "caa_recheck_time",
-			Help:    "Total time taken to recheck CAA records and aggregate results",
+			Name:    "caa_check_time",
+			Help:    "Total time taken to check CAA records and aggregate results",
 			Buckets: metrics.InternetFacingBuckets,
 		},
 		[]string{"type", "result", "problem_type"})
-	stats.MustRegister(caaRecheckTime)
-	localCAARecheckTime := prometheus.NewHistogramVec(
+	stats.MustRegister(caaCheckTime)
+	localCAACheckTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "caa_recheck_time_local",
-			Help:    "Time taken to locally recheck CAA records",
+			Name:    "caa_check_time_local",
+			Help:    "Time taken to locally check CAA records",
 			Buckets: metrics.InternetFacingBuckets,
 		},
 		[]string{"type", "result"})
-	stats.MustRegister(localCAARecheckTime)
-	remoteCAARecheckTime := prometheus.NewHistogramVec(
+	stats.MustRegister(localCAACheckTime)
+	remoteCAACheckTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "caa_recheck_time_remote",
-			Help:    "Time taken to remotely recheck CAA records",
+			Name:    "caa_check_time_remote",
+			Help:    "Time taken to remotely check CAA records",
 			Buckets: metrics.InternetFacingBuckets,
 		},
 		[]string{"type", "result"})
-	stats.MustRegister(remoteCAARecheckTime)
-	remoteCAARecheckFailures := prometheus.NewCounter(
+	stats.MustRegister(remoteCAACheckTime)
+	remoteCAACheckFailures := prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "remote_caa_recheck_failures",
-			Help: "Number of CAA rechecks failed due to remote VAs returning failure when consensus is enforced",
+			Name: "remote_caa_check_failures",
+			Help: "Number of CAA checks failed due to remote VAs returning failure when consensus is enforced",
 		})
-	stats.MustRegister(remoteCAARecheckFailures)
+	stats.MustRegister(remoteCAACheckFailures)
 	prospectiveRemoteValidationFailures := prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "prospective_remote_validation_failures",
@@ -200,10 +200,10 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		remoteValidationTime:                remoteValidationTime,
 		localValidationTime:                 localValidationTime,
 		remoteValidationFailures:            remoteValidationFailures,
-		caaRecheckTime:                      caaRecheckTime,
-		localCAARecheckTime:                 localCAARecheckTime,
-		remoteCAARecheckTime:                remoteCAARecheckTime,
-		remoteCAARecheckFailures:            remoteCAARecheckFailures,
+		caaCheckTime:                        caaCheckTime,
+		localCAACheckTime:                   localCAACheckTime,
+		remoteCAACheckTime:                  remoteCAACheckTime,
+		remoteCAACheckFailures:              remoteCAACheckFailures,
 		prospectiveRemoteValidationFailures: prospectiveRemoteValidationFailures,
 		tlsALPNOIDCounter:                   tlsALPNOIDCounter,
 		http01Fallbacks:                     http01Fallbacks,
