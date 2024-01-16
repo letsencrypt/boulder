@@ -20,36 +20,16 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// TODO(#5152): Simplify this when we've fully deprecated old-style IssuerIDs.
-type ocspIssuerMaps struct {
-	byID     map[issuance.IssuerID]*issuance.Issuer
-	byNameID map[issuance.IssuerNameID]*issuance.Issuer
-}
-
 // ocspImpl provides a backing implementation for the OCSP gRPC service.
 type ocspImpl struct {
 	capb.UnimplementedOCSPGeneratorServer
-	issuers        ocspIssuerMaps
+	issuers        map[issuance.IssuerNameID]*issuance.Issuer
 	ocspLifetime   time.Duration
 	ocspLogQueue   *ocspLogQueue
 	log            blog.Logger
 	signatureCount *prometheus.CounterVec
 	signErrorCount *prometheus.CounterVec
 	clk            clock.Clock
-}
-
-// makeOCSPIssuerMaps processes a list of issuers into a set of maps, mapping
-// nearly-unique identifiers of those issuers to the issuers themselves. Note
-// that, if two issuers have the same nearly-unique ID, the *latter* one in
-// the input list "wins".
-func makeOCSPIssuerMaps(issuers []*issuance.Issuer) ocspIssuerMaps {
-	issuersByID := make(map[issuance.IssuerID]*issuance.Issuer, len(issuers))
-	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Issuer, len(issuers))
-	for _, issuer := range issuers {
-		issuersByID[issuer.ID()] = issuer
-		issuersByNameID[issuer.Cert.NameID()] = issuer
-	}
-	return ocspIssuerMaps{issuersByID, issuersByNameID}
 }
 
 func NewOCSPImpl(
@@ -63,9 +43,9 @@ func NewOCSPImpl(
 	signErrorCount *prometheus.CounterVec,
 	clk clock.Clock,
 ) (*ocspImpl, error) {
-	issuersByID := make(map[issuance.IssuerID]*issuance.Issuer, len(issuers))
+	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
-		issuersByID[issuer.ID()] = issuer
+		issuersByNameID[issuer.Cert.NameID()] = issuer
 	}
 
 	if ocspLifetime < 8*time.Hour || ocspLifetime > 7*24*time.Hour {
@@ -77,10 +57,8 @@ func NewOCSPImpl(
 		ocspLogQueue = newOCSPLogQueue(ocspLogMaxLength, ocspLogPeriod, stats, logger)
 	}
 
-	issuerMaps := makeOCSPIssuerMaps(issuers)
-
 	oi := &ocspImpl{
-		issuers:        issuerMaps,
+		issuers:        issuersByNameID,
 		ocspLifetime:   ocspLifetime,
 		ocspLogQueue:   ocspLogQueue,
 		log:            logger,
@@ -122,13 +100,9 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 	}
 	serial := serialInt
 
-	issuer, ok := oi.issuers.byNameID[issuance.IssuerNameID(req.IssuerID)]
+	issuer, ok := oi.issuers[issuance.IssuerNameID(req.IssuerID)]
 	if !ok {
-		// TODO(#5152): Remove this fallback to old-style IssuerIDs.
-		issuer, ok = oi.issuers.byID[issuance.IssuerID(req.IssuerID)]
-		if !ok {
-			return nil, fmt.Errorf("This CA doesn't have an issuer cert with ID %d", req.IssuerID)
-		}
+		return nil, fmt.Errorf("unrecognized issuer ID %d", req.IssuerID)
 	}
 
 	now := oi.clk.Now().Truncate(time.Minute)

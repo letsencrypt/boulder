@@ -38,8 +38,8 @@ func defaultIssuerConfig() IssuerConfig {
 	return IssuerConfig{
 		UseForECDSALeaves: true,
 		UseForRSALeaves:   true,
-		IssuerURL:         "http://issuer-url",
-		OCSPURL:           "http://ocsp-url",
+		IssuerURL:         "http://issuer-url.example.org",
+		OCSPURL:           "http://ocsp-url.example.org",
 	}
 }
 
