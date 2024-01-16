@@ -2118,11 +2118,19 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 	return transactions
 }
 
-func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, transactions []ratelimits.Transaction) {
+func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, limitCheck chan struct{}, txns []ratelimits.Transaction) {
 	if wfe.limiter == nil || wfe.txnBuilder == nil {
 		return
 	}
-	_, err := wfe.limiter.BatchRefund(ctx, transactions)
+
+	select {
+	case <-ctx.Done():
+		return
+	case <-limitCheck:
+		// Continue with refunding the limits.
+	}
+
+	_, err := wfe.limiter.BatchRefund(ctx, txns)
 	if err != nil {
 		wfe.log.Errf("refunding newOrder limits: %s", err)
 	}
@@ -2204,23 +2212,20 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	// TODO(#5545): Spending and Refunding can be async until these rate limits
 	// are authoritative. This saves us from adding latency to each request.
-	doneCheckingLimits := make(chan struct{})
+	limitCheck := make(chan struct{})
 	var ratelimitTxns []ratelimits.Transaction
 	var newOrderSuccessful bool
 	var errIsRateLimit bool
 
 	go func() {
 		// Close the channel on goroutine completion.
-		defer close(doneCheckingLimits)
+		defer close(limitCheck)
 		ratelimitTxns = wfe.checkNewOrderLimits(ctx, acct.ID, names)
 	}()
 
 	defer func() {
-		// Wait for the rate limit check to complete before attempting to refund
-		// the limits. If the check failed, we don't want to refund anything.
-		<-doneCheckingLimits
-		if !newOrderSuccessful && !errIsRateLimit && ratelimitTxns != nil {
-			wfe.refundNewOrderLimits(ctx, ratelimitTxns)
+		if !newOrderSuccessful && !errIsRateLimit {
+			go wfe.refundNewOrderLimits(ctx, limitCheck, ratelimitTxns)
 		}
 	}()
 
@@ -2232,6 +2237,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		if errors.Is(err, berrors.RateLimit) {
+			// Request was denied by a legacy rate limit. In this error case we
+			// do not want to refund the quota consumed by the request because
+			// repeated requests would result in unearned refunds.
 			errIsRateLimit = true
 		}
 		return
