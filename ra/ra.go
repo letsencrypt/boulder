@@ -102,7 +102,6 @@ type RegistrationAuthorityImpl struct {
 	finalizeWG                   sync.WaitGroup
 
 	issuersByNameID map[issuance.IssuerNameID]*issuance.Certificate
-	issuersByID     map[issuance.IssuerID]*issuance.Certificate
 	purger          akamaipb.AkamaiPurgerClient
 
 	ctpolicy *ctpolicy.CTPolicy
@@ -235,10 +234,8 @@ func NewRegistrationAuthorityImpl(
 	stats.MustRegister(inflightFinalizes)
 
 	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Certificate)
-	issuersByID := make(map[issuance.IssuerID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
-		issuersByID[issuer.ID()] = issuer
 	}
 
 	ra := &RegistrationAuthorityImpl{
@@ -258,7 +255,6 @@ func NewRegistrationAuthorityImpl(
 		ctpolicyResults:              ctpolicyResults,
 		purger:                       purger,
 		issuersByNameID:              issuersByNameID,
-		issuersByID:                  issuersByID,
 		namesPerCert:                 namesPerCert,
 		rlCheckLatency:               rlCheckLatency,
 		rlOverrideUsageGauge:         overrideUsageGauge,
@@ -1961,12 +1957,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x509.Certificate, issuerID int64) error {
 	issuer, ok := ra.issuersByNameID[issuance.IssuerNameID(issuerID)]
 	if !ok {
-		// TODO(#5152): Remove this fallback (which only gets used when revoking by
-		// serial, so the issuer ID had to be read from the db).
-		issuer, ok = ra.issuersByID[issuance.IssuerID(issuerID)]
-		if !ok {
-			return fmt.Errorf("unable to identify issuer of cert with serial %q", core.SerialToString(cert.SerialNumber))
-		}
+		return fmt.Errorf("unable to identify issuer of cert with serial %q", core.SerialToString(cert.SerialNumber))
 	}
 
 	purgeURLs, err := akamai.GeneratePurgeURLs(cert, issuer.Certificate)

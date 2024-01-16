@@ -3805,9 +3805,6 @@ func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
 		ic.NameID(): ic,
 	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
-	}
 	ra.SA = newMockSARevocation(cert, clk)
 
 	// Revoking without a regID should fail.
@@ -3859,9 +3856,6 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
 		ic.NameID(): ic,
 	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
-	}
 	mockSA := newMockSARevocation(cert, clk)
 	ra.SA = mockSA
 
@@ -3899,9 +3893,6 @@ func TestRevokeCertByKey(t *testing.T) {
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
 		ic.NameID(): ic,
-	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
 	}
 	mockSA := newMockSARevocation(cert, clk)
 	ra.SA = mockSA
@@ -3952,9 +3943,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
 		ic.NameID(): ic,
-	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
 	}
 	mockSA := newMockSARevocation(cert, clk)
 	ra.SA = mockSA

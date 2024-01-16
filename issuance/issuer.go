@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -136,13 +135,6 @@ func loadSigner(location IssuerLoc, cert *Certificate) (crypto.Signer, error) {
 		pkcs11Config.TokenLabel, pkcs11Config.PIN, cert.PublicKey)
 }
 
-// IssuerID is a statistically-unique small ID computed from a hash over the
-// entirety of the issuer certificate.
-// DEPRECATED: This identifier is being phased out in favor of IssuerNameID.
-// It exists in the database in certificateStatus rows for certs issued prior
-// to approximately November 2021, but is not being written for new rows.
-type IssuerID int64
-
 // IssuerNameID is a statistically-unique small ID which can be computed from
 // both CA and end-entity certs to link them together into a validation chain.
 // It is computed as a truncated hash over the issuer Subject Name bytes, or
@@ -153,7 +145,6 @@ type IssuerNameID int64
 // that this certificate can be used for issuance.
 type Certificate struct {
 	*x509.Certificate
-	id     IssuerID
 	nameID IssuerNameID
 }
 
@@ -163,21 +154,10 @@ type Certificate struct {
 func NewCertificate(ic *x509.Certificate) (*Certificate, error) {
 	res := Certificate{Certificate: ic}
 
-	// Compute ic.ID()
-	h := sha256.Sum256(ic.Raw)
-	res.id = IssuerID(big.NewInt(0).SetBytes(h[:4]).Int64())
-
 	// Compute ic.NameID()
 	res.nameID = truncatedHash(ic.RawSubject)
 
 	return &res, nil
-}
-
-// ID returns the IssuerID (a truncated hash over the raw bytes of the whole
-// cert) of this issuer certificate.
-// DEPRECATED: Use .NameID() instead.
-func (ic *Certificate) ID() IssuerID {
-	return ic.id
 }
 
 // NameID returns the IssuerNameID (a truncated hash over the raw bytes of the
@@ -280,12 +260,6 @@ func (i *Issuer) Algs() []x509.PublicKeyAlgorithm {
 // Name provides the Common Name specified in the issuer's certificate.
 func (i *Issuer) Name() string {
 	return i.Cert.Subject.CommonName
-}
-
-// ID provides a stable ID for an issuer's certificate. This is used for
-// identifying which issuer issued a certificate in the certificateStatus table.
-func (i *Issuer) ID() IssuerID {
-	return i.Cert.ID()
 }
 
 // LoadChain takes a list of filenames containing pem-formatted certificates,
