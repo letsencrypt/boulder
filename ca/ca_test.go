@@ -168,8 +168,8 @@ func init() {
 	if err != nil {
 		panic(fmt.Sprintf("Unable to parse %q: %s", caCertFile2, err))
 	}
-	caLinter, _ = linter.New(caCert.Certificate, caKey, []string{"n_subject_common_name_included"})
-	caLinter2, _ = linter.New(caCert2.Certificate, caKey, []string{"n_subject_common_name_included"})
+	caLinter, _ = linter.New(caCert.Certificate, caKey, []string{"w_subject_common_name_included"})
+	caLinter2, _ = linter.New(caCert2.Certificate, caKey, []string{"w_subject_common_name_included"})
 }
 
 func setup(t *testing.T) *testCtx {
