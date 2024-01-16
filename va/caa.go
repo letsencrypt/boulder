@@ -266,17 +266,17 @@ func (va *ValidationAuthorityImpl) performRemoteCAACheck(
 				// just means we cancelled the remote VA request before it was
 				// finished because we didn't care about its result. Don't log to avoid
 				// spamming the logs.
-				result.Problem = probs.ServerInternal(fmt.Sprintf("Remote VA %q.IsCAAValid RPC canceled", rva.Address))
+				result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC canceled")
 			} else if err != nil {
 				// This is a real error, not just a problem with the validation.
 				va.log.Errf("Remote VA %q.IsCAAValid failed: %s", rva.Address, err)
-				result.Problem = probs.ServerInternal(fmt.Sprintf("Remote VA %q.IsCAAValid RPC failed", rva.Address))
+				result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC failed")
 			} else if res.Problem != nil {
 				prob, err := bgrpc.PBToProblemDetails(res.Problem)
 				if err != nil {
 					va.log.Infof("Remote VA %q.IsCAAValid returned malformed problem: %s", rva.Address, err)
 					result.Problem = probs.ServerInternal(
-						fmt.Sprintf("Remote VA %q.IsCAAValid RPC returned malformed result: %s", rva.Address, err))
+						fmt.Sprintf("Remote VA IsCAAValid RPC returned malformed result: %s", err))
 				} else {
 					va.log.Infof("Remote VA %q.IsCAAValid returned problem: %s", rva.Address, prob)
 					result.Problem = prob
