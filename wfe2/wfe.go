@@ -675,7 +675,7 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 // It refunds the limit quota consumed by the request, allowing the caller to
 // retry immediately. If an error is encountered during the refund, it is logged
 // but not returned.
-func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.IP) {
+func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, limitCheck <-chan struct{}, ip net.IP) {
 	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Limiter is disabled.
 		return
@@ -688,6 +688,13 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 		// TODO(#5545): Once key-value rate limits are authoritative this log
 		// line should be removed in favor of returning the error.
 		wfe.log.Warningf("refunding %s rate limit: %s", limit, err)
+	}
+
+	select {
+	case <-ctx.Done():
+		return
+	case <-limitCheck:
+		// Continue with refunding the limits.
 	}
 
 	txn, err := wfe.txnBuilder.RegistrationsPerIPAddressTransaction(ip)
@@ -842,22 +849,19 @@ func (wfe *WebFrontEndImpl) NewAccount(
 
 	// TODO(#5545): Spending and Refunding can be async until these rate limits
 	// are authoritative. This saves us from adding latency to each request.
-	doneCheckingLimits := make(chan struct{})
+	limitCheck := make(chan struct{})
 	var newRegistrationSuccessful bool
 	var errIsRateLimit bool
 
 	go func() {
 		// Close the channel on goroutine completion.
-		defer close(doneCheckingLimits)
+		defer close(limitCheck)
 		wfe.checkNewAccountLimits(ctx, ip)
 	}()
 
 	defer func() {
 		if !newRegistrationSuccessful && !errIsRateLimit {
-			// Wait for the rate limit check to complete before attempting to refund
-			// the limits. If the check failed, we don't want to refund anything.
-			<-doneCheckingLimits
-			go wfe.refundNewAccountLimits(ctx, ip)
+			go wfe.refundNewAccountLimits(ctx, limitCheck, ip)
 		}
 	}()
 
@@ -865,6 +869,9 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	acctPB, err := wfe.ra.NewRegistration(ctx, &reg)
 	if err != nil {
 		if errors.Is(err, berrors.RateLimit) {
+			// Request was denied by a legacy rate limit. In this error case we
+			// do not want to refund the quota consumed by the request because
+			// repeated requests would result in unearned refunds.
 			errIsRateLimit = true
 		}
 		if errors.Is(err, berrors.Duplicate) {
