@@ -1,7 +1,6 @@
 {
 	"grpc": {
-		"timeout": "1s",
-		"noWaitForReady": true
+		"timeout": "1s"
 	},
 	"tls": {
 		"caCertFile": "test/grpc-creds/minica.pem",
