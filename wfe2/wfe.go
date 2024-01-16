@@ -1,6 +1,7 @@
 package wfe2
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -73,7 +74,7 @@ const (
 	getCertPath      = getAPIPrefix + "cert/"
 
 	// Draft or likely-to-change paths
-	renewalInfoPath = "/draft-ietf-acme-ari-01/renewalInfo/"
+	renewalInfoPath = "/draft-ietf-acme-ari-02/renewalInfo/"
 
 	// Non-ACME paths
 	aiaIssuerPath = "/aia/issuer/"
@@ -2363,12 +2364,108 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 }
 
-// certID matches the ASN.1 structure of the CertID sequence defined by RFC6960.
-type certID struct {
+// ariCertID is an interface that represents a unique identifier for a
+// certificate. It is implemented by both the deprecatedCertID and certID
+// structs.
+//
+// TODO(#7183): Remove this.
+type ariCertID interface {
+	Serial() string
+}
+
+// deprecatedCertID matches the ASN.1 structure of the CertID sequence defined
+// by RFC6960. Its fields are exported so that they can be unmarshaled using the
+// asn1 package.
+//
+// TODO(#7183): Remove this.
+type deprecatedCertID struct {
 	HashAlgorithm  pkix.AlgorithmIdentifier
 	IssuerNameHash []byte
 	IssuerKeyHash  []byte
 	SerialNumber   *big.Int
+}
+
+func (c deprecatedCertID) Serial() string {
+	return core.SerialToString(c.SerialNumber)
+}
+
+// parseDeprecatedCertID parses a unique identifier (certID) for a certificate
+// as per the ACME protocol's "renewalInfo" resource, as specified in
+// draft-ietf- acme-ari-02. For more details see:
+// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-01#section-4.1.
+//
+// TODO(#7183): Remove this.
+func parseDeprecatedCertID(path string) (ariCertID, error) {
+	der, err := base64.RawURLEncoding.DecodeString(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var id deprecatedCertID
+	rest, err := asn1.Unmarshal(der, &id)
+	if err != nil || len(rest) != 0 {
+		return deprecatedCertID{}, err
+	}
+
+	// Verify that the hash algorithm is SHA-256, so people don't use SHA-1 here.
+	if !id.HashAlgorithm.Algorithm.Equal(asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}) {
+		return deprecatedCertID{}, errors.New("Request used hash algorithm other than SHA-256")
+	}
+	return id, nil
+}
+
+// certID represents a unique identifier (certID) for a certificate as per the
+// ACME protocol's "renewalInfo" resource, as specified in draft-ietf-acme-ari-
+// 02. The certID is a composite string derived from the base64url-encoded
+// keyIdentifier of the certificate's Authority Key Identifier (AKI) and the
+// base64url-encoded serial number of the certificate, separated by a period.
+// For more details see:
+// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-02#section-4.1.
+type certID struct {
+	keyIdentifier []byte
+	serialNumber  *big.Int
+}
+
+func (c certID) Serial() string {
+	return core.SerialToString(c.serialNumber)
+}
+
+// parseCertID parses a unique identifier (certID) as specified in
+// draft-ietf-acme-ari-02. It takes the composite string as input returns a
+// certID struct with the keyIdentifier and serialNumber extracted and decoded.
+// For more details see:
+// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-02#section-4.1.
+func parseCertID(path string, issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate) (ariCertID, *probs.ProblemDetails, error) {
+	parts := strings.Split(path, ".")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return certID{}, probs.Malformed("Invalid path"), nil
+	}
+
+	akid, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return certID{}, probs.Malformed("Authority Key Identifier was not base64url-encoded or contained padding", err), err
+	}
+
+	var found bool
+	for _, issuer := range issuerCertificates {
+		if bytes.Equal(issuer.SubjectKeyId, akid) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return certID{}, probs.NotFound("Path contained an Authority Key Identifier that did not match a known issuer"), nil
+	}
+
+	serialNumber, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return certID{}, probs.Malformed("Serial number was not base64url-encoded or contained padding", err), err
+	}
+
+	return certID{
+		keyIdentifier: akid,
+		serialNumber:  new(big.Int).SetBytes(serialNumber),
+	}, nil, nil
 }
 
 // RenewalInfo is used to get information about the suggested renewal window
@@ -2389,35 +2486,26 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	// The path prefix has already been stripped, so request.URL.Path here is just
-	// the base64url-encoded DER CertID sequence.
-	der, err := base64.RawURLEncoding.DecodeString(request.URL.Path)
+	// Try parsing certID param using the draft-ietf-acme-ari-01 format.
+	// TODO(#7183): Remove this.
+	certID, err := parseDeprecatedCertID(request.URL.Path)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Path was not base64url-encoded or had padding"), err)
-		return
+		// Try parsing certID param using the draft-ietf-acme-ari-02 format.
+		var prob *probs.ProblemDetails
+		certID, prob, err = parseCertID(request.URL.Path, wfe.issuerCertificates)
+		if prob != nil {
+			wfe.sendError(response, logEvent, prob, err)
+			return
+		}
 	}
-
-	var id certID
-	rest, err := asn1.Unmarshal(der, &id)
-	if err != nil || len(rest) != 0 {
-		wfe.sendError(response, logEvent, probs.Malformed("Path was not a DER-encoded CertID sequence"), err)
-		return
-	}
-
-	// Verify that the hash algorithm is SHA-256, so people don't use SHA-1 here.
-	if !id.HashAlgorithm.Algorithm.Equal(asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}) {
-		wfe.sendError(response, logEvent, probs.Malformed("Request used hash algorithm other than SHA-256"), err)
-		return
-	}
-
 	// We can do all of our processing based just on the serial, because Boulder
 	// does not re-use the same serial across multiple issuers.
-	serial := core.SerialToString(id.SerialNumber)
+	serial := certID.Serial()
 	logEvent.Extra["RequestedSerial"] = serial
 
 	sendRI := func(ri core.RenewalInfo) {
 		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
-		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
+		err := wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 			return
@@ -2500,27 +2588,21 @@ func (wfe *WebFrontEndImpl) UpdateRenewal(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	der, err := base64.RawURLEncoding.DecodeString(updateRenewalRequest.CertID)
+	// Try parsing certID param using the draft-ietf-acme-ari-01 format.
+	// TODO(#7183): Remove this.
+	certID, err := parseDeprecatedCertID(updateRenewalRequest.CertID)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("certID was not base64url-encoded or contained padding"), err)
-		return
+		// Try parsing certID param using the draft-ietf-acme-ari-02 format.
+		var prob *probs.ProblemDetails
+		certID, prob, err = parseCertID(updateRenewalRequest.CertID, wfe.issuerCertificates)
+		if prob != nil {
+			wfe.sendError(response, logEvent, prob, err)
+			return
+		}
 	}
-
-	var id certID
-	rest, err := asn1.Unmarshal(der, &id)
-	if err != nil || len(rest) != 0 {
-		wfe.sendError(response, logEvent, probs.Malformed("certID was not a DER-encoded CertID ASN.1 sequence"), err)
-		return
-	}
-
-	if !id.HashAlgorithm.Algorithm.Equal(asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}) {
-		wfe.sendError(response, logEvent, probs.Malformed("Decoded CertID used a hashAlgorithm other than SHA-256"), err)
-		return
-	}
-
 	// We can do all of our processing based just on the serial, because Boulder
 	// does not re-use the same serial across multiple issuers.
-	serial := core.SerialToString(id.SerialNumber)
+	serial := certID.Serial()
 	logEvent.Extra["RequestedSerial"] = serial
 
 	metadata, err := wfe.sa.GetSerialMetadata(ctx, &sapb.Serial{Serial: serial})

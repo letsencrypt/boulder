@@ -1572,7 +1572,7 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 	test.AssertNotError(t, err, "certificate per name rate limit not applied correctly")
 
 	// Trying to issue for "test3.dedyn.io" and "dynv6.net" should fail because
-	// "dynv6.net" is an exact public suffic match with 2 certificates issued for
+	// "dynv6.net" is an exact public suffix match with 2 certificates issued for
 	// it.
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dynv6.net"}, certsPerNamePolicy, 99)
 	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
@@ -3807,9 +3807,6 @@ func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
 		ic.NameID(): ic,
 	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
-	}
 	ra.SA = newMockSARevocation(cert, clk)
 
 	// Revoking without a regID should fail.
@@ -3861,9 +3858,6 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
 		ic.NameID(): ic,
 	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
-	}
 	mockSA := newMockSARevocation(cert, clk)
 	ra.SA = mockSA
 
@@ -3901,9 +3895,6 @@ func TestRevokeCertByKey(t *testing.T) {
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
 		ic.NameID(): ic,
-	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
 	}
 	mockSA := newMockSARevocation(cert, clk)
 	ra.SA = mockSA
@@ -3954,9 +3945,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
 		ic.NameID(): ic,
-	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
 	}
 	mockSA := newMockSARevocation(cert, clk)
 	ra.SA = mockSA

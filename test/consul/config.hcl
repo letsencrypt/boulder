@@ -1,3 +1,5 @@
+# Keep this file in sync with the ports bound in test/startservers.py
+
 client_addr = "0.0.0.0"
 bind_addr   = "10.55.55.10"
 log_level   = "ERROR"
@@ -27,15 +29,7 @@ services {
   id      = "akamai-purger-a"
   name    = "akamai-purger"
   address = "10.77.77.77"
-  port    = 9099
-  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
-}
-
-services {
-  id      = "akamai-purger-b"
-  name    = "akamai-purger"
-  address = "10.88.88.88"
-  port    = 9099
+  port    = 9399
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -55,7 +49,7 @@ services {
   id      = "ca-a"
   name    = "ca"
   address = "10.77.77.77"
-  port    = 9093
+  port    = 9393
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -63,7 +57,7 @@ services {
   id      = "ca-b"
   name    = "ca"
   address = "10.88.88.88"
-  port    = 9093
+  port    = 9493
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -71,7 +65,7 @@ services {
   id      = "ca1"
   name    = "ca1"
   address = "10.77.77.77"
-  port    = 9093
+  port    = 9393
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -79,7 +73,7 @@ services {
   id      = "ca2"
   name    = "ca2"
   address = "10.88.88.88"
-  port    = 9093
+  port    = 9493
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -87,15 +81,7 @@ services {
   id      = "crl-storer-a"
   name    = "crl-storer"
   address = "10.77.77.77"
-  port    = 9109
-  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
-}
-
-services {
-  id      = "crl-storer-b"
-  name    = "crl-storer"
-  address = "10.88.88.88"
-  port    = 9109
+  port    = 9309
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -119,7 +105,7 @@ services {
   id      = "doh-a"
   name    = "doh"
   address = "10.77.77.77"
-  port    = 8443
+  port    = 8343
   tags    = ["tcp"]
 }
 
@@ -135,7 +121,7 @@ services {
   id      = "nonce-a"
   name    = "nonce"
   address = "10.77.77.77"
-  port    = 9101
+  port    = 9301
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -143,7 +129,7 @@ services {
   id      = "nonce-b"
   name    = "nonce"
   address = "10.88.88.88"
-  port    = 9101
+  port    = 9401
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -151,7 +137,7 @@ services {
   id      = "nonce1"
   name    = "nonce1"
   address = "10.77.77.77"
-  port    = 9101
+  port    = 9301
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -159,7 +145,7 @@ services {
   id      = "nonce2"
   name    = "nonce2"
   address = "10.88.88.88"
-  port    = 9101
+  port    = 9401
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -167,7 +153,7 @@ services {
   id      = "publisher-a"
   name    = "publisher"
   address = "10.77.77.77"
-  port    = 9091
+  port    = 9391
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -175,7 +161,7 @@ services {
   id      = "publisher-b"
   name    = "publisher"
   address = "10.88.88.88"
-  port    = 9091
+  port    = 9491
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -183,7 +169,7 @@ services {
   id      = "publisher1"
   name    = "publisher1"
   address = "10.77.77.77"
-  port    = 9091
+  port    = 9391
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -191,7 +177,7 @@ services {
   id      = "publisher2"
   name    = "publisher2"
   address = "10.88.88.88"
-  port    = 9091
+  port    = 9491
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -199,7 +185,7 @@ services {
   id      = "ra-a"
   name    = "ra"
   address = "10.77.77.77"
-  port    = 9094
+  port    = 9394
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -207,7 +193,7 @@ services {
   id      = "ra-b"
   name    = "ra"
   address = "10.88.88.88"
-  port    = 9094
+  port    = 9494
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -215,7 +201,7 @@ services {
   id      = "ra1"
   name    = "ra1"
   address = "10.77.77.77"
-  port    = 9094
+  port    = 9394
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -223,7 +209,7 @@ services {
   id      = "ra2"
   name    = "ra2"
   address = "10.88.88.88"
-  port    = 9094
+  port    = 9494
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -231,7 +217,7 @@ services {
   id      = "rva1-a"
   name    = "rva1"
   address = "10.77.77.77"
-  port    = 9097
+  port    = 9397
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -239,7 +225,7 @@ services {
   id      = "rva1-b"
   name    = "rva1"
   address = "10.77.77.77"
-  port    = 9098
+  port    = 9498
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -247,13 +233,13 @@ services {
   id      = "sa-a"
   name    = "sa"
   address = "10.77.77.77"
-  port    = 9095
+  port    = 9395
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
   checks = [
     {
       id              = "sa-a-grpc"
       name            = "sa-a-grpc"
-      grpc            = "10.77.77.77:9095"
+      grpc            = "10.77.77.77:9395"
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
@@ -262,7 +248,7 @@ services {
     {
       id              = "sa-a-grpc-sa"
       name            = "sa-a-grpc-sa"
-      grpc            = "10.77.77.77:9095/sa.StorageAuthority"
+      grpc            = "10.77.77.77:9395/sa.StorageAuthority"
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
@@ -271,7 +257,7 @@ services {
     {
       id              = "sa-a-grpc-saro"
       name            = "sa-a-grpc-saro"
-      grpc            = "10.77.77.77:9095/sa.StorageAuthorityReadOnly"
+      grpc            = "10.77.77.77:9395/sa.StorageAuthorityReadOnly"
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
@@ -284,13 +270,13 @@ services {
   id      = "sa-b"
   name    = "sa"
   address = "10.88.88.88"
-  port    = 9095
+  port    = 9495
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
   checks = [
     {
       id              = "sa-b-grpc"
       name            = "sa-b-grpc"
-      grpc            = "10.88.88.88:9095"
+      grpc            = "10.88.88.88:9495"
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
@@ -299,7 +285,7 @@ services {
     {
       id              = "sa-b-grpc-sa"
       name            = "sa-b-grpc-sa"
-      grpc            = "10.88.88.88:9095/sa.StorageAuthority"
+      grpc            = "10.88.88.88:9495/sa.StorageAuthority"
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
@@ -308,7 +294,7 @@ services {
     {
       id              = "sa-b-grpc-saro"
       name            = "sa-b-grpc-saro"
-      grpc            = "10.88.88.88:9095/sa.StorageAuthorityReadOnly"
+      grpc            = "10.88.88.88:9495/sa.StorageAuthorityReadOnly"
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
@@ -321,7 +307,7 @@ services {
   id      = "sa1"
   name    = "sa1"
   address = "10.77.77.77"
-  port    = 9095
+  port    = 9395
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -329,7 +315,7 @@ services {
   id      = "sa2"
   name    = "sa2"
   address = "10.88.88.88"
-  port    = 9095
+  port    = 9495
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -337,7 +323,7 @@ services {
   id      = "va-a"
   name    = "va"
   address = "10.77.77.77"
-  port    = 9092
+  port    = 9392
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -345,7 +331,7 @@ services {
   id      = "va-b"
   name    = "va"
   address = "10.88.88.88"
-  port    = 9092
+  port    = 9492
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -353,7 +339,7 @@ services {
   id      = "va1"
   name    = "va1"
   address = "10.77.77.77"
-  port    = 9092
+  port    = 9392
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -361,7 +347,7 @@ services {
   id      = "va2"
   name    = "va2"
   address = "10.88.88.88"
-  port    = 9092
+  port    = 9492
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -382,7 +368,9 @@ services {
 }
 
 //
-// The following services are used for testing the gRPC DNS resolver.
+// The following services are used for testing the gRPC DNS resolver in
+// test/integration/srv_resolver_test.go and
+// test/integration/testdata/srv-resolver-config.json.
 //
 
 // CaseOne config will have 2 SRV records. The first will have 0 backends, the
@@ -391,7 +379,7 @@ services {
   id      = "case1a"
   name    = "case1a"
   address = "10.77.77.77"
-  port    = 9101
+  port    = 9301
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
   checks = [
     {
@@ -408,7 +396,7 @@ services {
   id      = "case1b"
   name    = "case1b"
   address = "10.88.88.88"
-  port    = 9101
+  port    = 9401
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -418,7 +406,7 @@ services {
   id      = "case2b"
   name    = "case2b"
   address = "10.88.88.88"
-  port    = 9101
+  port    = 9401
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
@@ -432,7 +420,7 @@ services {
   name    = "case4a"
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
   address = "10.77.77.77"
-  port    = 9101
+  port    = 9301
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
   checks = [
     {
@@ -449,7 +437,7 @@ services {
   id      = "case4b"
   name    = "case4b"
   address = "10.88.88.88"
-  port    = 9101
+  port    = 9401
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
   checks = [
     {

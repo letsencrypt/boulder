@@ -96,22 +96,8 @@ func TestFindIssuerByID(t *testing.T) {
 	}
 	test.AssertEquals(t, issuer.shortID, uint8(23))
 
-	// an IssuerID
-	issuer, err = FindIssuerByID(2823400738, issuers)
-	if err != nil {
-		t.Fatalf("couldn't find issuer: %s", err)
-	}
-	test.AssertEquals(t, issuer.shortID, uint8(23))
-
 	// an IssuerNameID
 	issuer, err = FindIssuerByID(58923463773186183, issuers)
-	if err != nil {
-		t.Fatalf("couldn't find issuer: %s", err)
-	}
-	test.AssertEquals(t, issuer.shortID, uint8(99))
-
-	// an IssuerID
-	issuer, err = FindIssuerByID(2890189813, issuers)
 	if err != nil {
 		t.Fatalf("couldn't find issuer: %s", err)
 	}

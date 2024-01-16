@@ -30,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
-	"github.com/letsencrypt/boulder/identifier"
 	_ "github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
@@ -408,8 +407,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		// We do not check the CommonName here, as (if it exists) we already checked
 		// that it is identical to one of the DNSNames in the SAN.
 		for _, name := range parsedCert.DNSNames {
-			id := identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
-			err = c.pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{id})
+			err = c.pa.WillingToIssue([]string{name})
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			} else {

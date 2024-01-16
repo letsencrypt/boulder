@@ -600,7 +600,7 @@ func TestIgnoredLint(t *testing.T) {
 		},
 		BasicConstraintsValid: true,
 		IsCA:                  true,
-		IssuingCertificateURL: []string{"http://ca.cpu"},
+		IssuingCertificateURL: []string{"http://aia.example.org"},
 		SubjectKeyId:          []byte("foobar"),
 	}
 
@@ -636,7 +636,7 @@ func TestIgnoredLint(t *testing.T) {
 	// missing OCSP url in the template.
 	expectedProblems := []string{
 		"zlint error: e_sub_cert_aia_does_not_contain_ocsp_url",
-		"zlint info: n_subject_common_name_included",
+		"zlint warn: w_subject_common_name_included",
 		"zlint info: w_ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.",
 		"zlint error: e_scts_from_same_operator Certificate had too few embedded SCTs; browser policy requires 2.",
 	}
@@ -652,7 +652,7 @@ func TestIgnoredLint(t *testing.T) {
 	// lints. This should return no problems.
 	_, problems = checker.checkCert(context.Background(), cert, map[string]bool{
 		"e_sub_cert_aia_does_not_contain_ocsp_url": true,
-		"n_subject_common_name_included":           true,
+		"w_subject_common_name_included":           true,
 		"w_ct_sct_policy_count_unsatisfied":        true,
 		"e_scts_from_same_operator":                true,
 	})

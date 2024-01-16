@@ -12,7 +12,6 @@ import (
 	"os"
 
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -51,7 +50,7 @@ func main() {
 	var errors bool
 	for scanner.Scan() {
 		n := sa.ReverseName(scanner.Text())
-		err := pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{identifier.DNSIdentifier(n)})
+		err := pa.WillingToIssue([]string{n})
 		if err != nil {
 			errors = true
 			fmt.Printf("%s: %s\n", n, err)

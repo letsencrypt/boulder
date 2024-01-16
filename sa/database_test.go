@@ -108,7 +108,7 @@ func TestDbSettings(t *testing.T) {
 // TODO: Change this to test `newDbMapFromMySQLConfig` instead?
 func TestNewDbMap(t *testing.T) {
 	const mysqlConnectURL = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
-	const expected = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&long_query_time=0.6400000000000001&max_statement_time=0.76&sql_mode=%27STRICT_ALL_TABLES%27"
+	const expected = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&long_query_time=0.640000&max_statement_time=0.760000&sql_mode=%27STRICT_ALL_TABLES%27"
 	oldSQLOpen := sqlOpen
 	defer func() {
 		sqlOpen = oldSQLOpen
@@ -199,8 +199,8 @@ func TestAdjustMySQLConfig(t *testing.T) {
 	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode":           "'STRICT_ALL_TABLES'",
-		"max_statement_time": "95",
-		"long_query_time":    "80",
+		"max_statement_time": "95.000000",
+		"long_query_time":    "80.000000",
 	})
 
 	conf = &mysql.Config{
@@ -213,7 +213,7 @@ func TestAdjustMySQLConfig(t *testing.T) {
 	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode":        "'STRICT_ALL_TABLES'",
-		"long_query_time": "80",
+		"long_query_time": "80.000000",
 	})
 
 	conf = &mysql.Config{

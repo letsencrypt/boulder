@@ -3,6 +3,9 @@ package ca
 import (
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -165,8 +168,8 @@ func init() {
 	if err != nil {
 		panic(fmt.Sprintf("Unable to parse %q: %s", caCertFile2, err))
 	}
-	caLinter, _ = linter.New(caCert.Certificate, caKey, []string{"n_subject_common_name_included"})
-	caLinter2, _ = linter.New(caCert2.Certificate, caKey, []string{"n_subject_common_name_included"})
+	caLinter, _ = linter.New(caCert.Certificate, caKey, []string{"w_subject_common_name_included"})
+	caLinter2, _ = linter.New(caCert2.Certificate, caKey, []string{"w_subject_common_name_included"})
 }
 
 func setup(t *testing.T) *testCtx {
@@ -238,7 +241,7 @@ func setup(t *testing.T) *testCtx {
 
 	ocsp, err := NewOCSPImpl(
 		boulderIssuers,
-		time.Hour,
+		24*time.Hour,
 		0,
 		time.Second,
 		blog.NewMock(),
@@ -889,4 +892,26 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	if !strings.Contains(err.Error(), "error checking for duplicate") {
 		t.Fatalf("Wrong type of error issuing duplicate serial. Expected 'error checking for duplicate', got '%s'", err)
 	}
+}
+
+func TestGenerateSKID(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Error generating key")
+
+	features.Set(features.Config{SHA256SubjectKeyIdentifier: true})
+	defer features.Reset()
+	// RFC 7093 section 2 method 1 allows us to use 160 of the leftmost bits for
+	// the Subject Key Identifier. This is the same amount of bits as the
+	// related SHA1 hash.
+	sha256skid, err := generateSKID(key.Public())
+	test.AssertNotError(t, err, "Error generating SKID")
+	test.AssertEquals(t, len(sha256skid), 20)
+	test.AssertEquals(t, cap(sha256skid), 20)
+	features.Reset()
+
+	features.Set(features.Config{SHA256SubjectKeyIdentifier: false})
+	sha1skid, err := generateSKID(key.Public())
+	test.AssertNotError(t, err, "Error generating SKID")
+	test.AssertEquals(t, len(sha1skid), 20)
+	test.AssertEquals(t, cap(sha1skid), 20)
 }

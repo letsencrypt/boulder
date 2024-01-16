@@ -80,7 +80,7 @@ func (s *Session) getPublicKeyID(label string, publicKey crypto.PublicKey) ([]by
 		// PKCS#11 v2.20 specified that the CKA_EC_POINT was to be store in a DER-encoded
 		// OCTET STRING.
 		rawValue := asn1.RawValue{
-			Tag:   4, // in Go 1.6+ this is asn1.TagOctetString
+			Tag:   asn1.TagOctetString,
 			Bytes: elliptic.Marshal(key.Curve, key.X, key.Y),
 		}
 		marshalledPoint, err := asn1.Marshal(rawValue)

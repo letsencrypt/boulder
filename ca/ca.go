@@ -2,8 +2,13 @@ package ca
 
 import (
 	"context"
+	"crypto"
 	"crypto/rand"
+	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -344,6 +349,32 @@ func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
+func generateSKID(pk crypto.PublicKey) ([]byte, error) {
+	pkBytes, err := x509.MarshalPKIXPublicKey(pk)
+	if err != nil {
+		return nil, err
+	}
+	var pkixPublicKey struct {
+		Algo      pkix.AlgorithmIdentifier
+		BitString asn1.BitString
+	}
+	if _, err := asn1.Unmarshal(pkBytes, &pkixPublicKey); err != nil {
+		return nil, err
+	}
+
+	if features.Get().SHA256SubjectKeyIdentifier {
+		// RFC 7093 Section 2 Additional Methods for Generating Key Identifiers:
+		// The keyIdentifier [may be] composed of the leftmost 160-bits of the
+		// SHA-256 hash of the value of the BIT STRING subjectPublicKey
+		// (excluding the tag, length, and number of unused bits).
+		skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
+		return skid[0:20:20], nil
+	} else {
+		skid := sha1.Sum(pkixPublicKey.BitString.Bytes)
+		return skid[:], nil
+	}
+}
+
 func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *issuance.Issuer, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
@@ -385,6 +416,11 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
+	subjectKeyId, err := generateSKID(csr.PublicKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("computing subject key ID: %w", err)
+	}
+
 	serialHex := core.SerialToString(serialBigInt)
 
 	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
@@ -393,6 +429,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	names := csrlib.NamesFromCSR(csr)
 	req := &issuance.IssuanceRequest{
 		PublicKey:         csr.PublicKey,
+		SubjectKeyId:      subjectKeyId,
 		Serial:            serialBigInt.Bytes(),
 		DNSNames:          names.SANs,
 		CommonName:        names.CN,
