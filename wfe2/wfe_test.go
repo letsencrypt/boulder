@@ -312,8 +312,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	fc := clock.NewFake()
 	stats := metrics.NoopRegisterer
 
-	certChains := map[issuance.IssuerNameID][][]byte{}
-	issuerCertificates := map[issuance.IssuerNameID]*issuance.Certificate{}
+	certChains := map[issuance.NameID][][]byte{}
+	issuerCertificates := map[issuance.NameID]*issuance.Certificate{}
 	for _, files := range [][]string{
 		{
 			"../test/hierarchy/int-r3.cert.pem",
@@ -3710,7 +3710,7 @@ func TestIncidentARI(t *testing.T) {
 
 	// draft-ietf-acme-ari02
 	test.AssertNotError(t, err, "failed to load test certificate")
-	var issuer issuance.IssuerNameID
+	var issuer issuance.NameID
 	for k := range wfe.issuerCertificates {
 		// Grab the first known issuer.
 		issuer = k

@@ -50,7 +50,7 @@ const (
 // issuer based on the issuer of a given (pre)certificate.
 type issuerMaps struct {
 	byAlg    map[x509.PublicKeyAlgorithm]*issuance.Issuer
-	byNameID map[issuance.IssuerNameID]*issuance.Issuer
+	byNameID map[issuance.NameID]*issuance.Issuer
 }
 
 // certificateAuthorityImpl represents a CA that signs certificates.
@@ -82,7 +82,7 @@ type certificateAuthorityImpl struct {
 // the input list "wins".
 func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 	issuersByAlg := make(map[x509.PublicKeyAlgorithm]*issuance.Issuer, 2)
-	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Issuer, len(issuers))
+	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
 		for _, alg := range issuer.Algs() {
 			// TODO(#5259): Enforce that there is only one issuer for each algorithm,
@@ -91,7 +91,7 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 				issuersByAlg[alg] = issuer
 			}
 		}
-		issuersByNameID[issuer.Cert.NameID()] = issuer
+		issuersByNameID[issuer.NameID()] = issuer
 	}
 	return issuerMaps{issuersByAlg, issuersByNameID}
 }
@@ -266,7 +266,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		scts = append(scts, sct)
 	}
 
-	issuer, ok := ca.issuers.byNameID[issuance.GetIssuerNameID(precert)]
+	issuer, ok := ca.issuers.byNameID[issuance.IssuerNameID(precert)]
 	if !ok {
 		return nil, berrors.InternalServerError("no issuer found for Issuer Name %s", precert.Issuer)
 	}
@@ -307,7 +307,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	})
 	if err != nil {
 		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
-			serialHex, hex.EncodeToString(certDER), int64(issuer.Cert.NameID()), req.RegistrationID, req.OrderID, err)
+			serialHex, hex.EncodeToString(certDER), issuer.NameID(), req.RegistrationID, req.OrderID, err)
 		return nil, err
 	}
 
@@ -404,7 +404,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 			return nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
 		}
 	} else {
-		issuer, ok = ca.issuers.byNameID[issuance.IssuerNameID(issueReq.IssuerNameID)]
+		issuer, ok = ca.issuers.byNameID[issuance.NameID(issueReq.IssuerNameID)]
 		if !ok {
 			return nil, nil, berrors.InternalServerError("no issuer found for IssuerNameID %d", issueReq.IssuerNameID)
 		}
@@ -453,7 +453,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		Der:          lintCertBytes,
 		RegID:        issueReq.RegistrationID,
 		Issued:       timestamppb.New(ca.clk.Now()),
-		IssuerNameID: int64(issuer.Cert.NameID()),
+		IssuerNameID: int64(issuer.NameID()),
 		OcspNotReady: true,
 	})
 	if err != nil {

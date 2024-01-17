@@ -123,12 +123,12 @@ type WebFrontEndImpl struct {
 	// newline and one or more PEM encoded certificates separated by a newline,
 	// sorted from leaf to root. The first []byte is the default certificate chain,
 	// and any subsequent []byte is an alternate certificate chain.
-	certificateChains map[issuance.IssuerNameID][][]byte
+	certificateChains map[issuance.NameID][][]byte
 
 	// issuerCertificates is a map of IssuerNameIDs to issuer certificates built with the
 	// first entry from each of the certificateChains. These certificates are used
 	// to verify the signature of certificates provided in revocation requests.
-	issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate
+	issuerCertificates map[issuance.NameID]*issuance.Certificate
 
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
@@ -177,8 +177,8 @@ func NewWebFrontEndImpl(
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
-	certificateChains map[issuance.IssuerNameID][][]byte,
-	issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate,
+	certificateChains map[issuance.NameID][][]byte,
+	issuerCertificates map[issuance.NameID]*issuance.Certificate,
 	logger blog.Logger,
 	requestTimeout time.Duration,
 	staleTimeout time.Duration,
@@ -938,8 +938,7 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 
 	// Try to validate the signature on the provided cert using its corresponding
 	// issuer certificate.
-	issuerNameID := issuance.GetIssuerNameID(parsedCertificate)
-	issuerCert, ok := wfe.issuerCertificates[issuerNameID]
+	issuerCert, ok := wfe.issuerCertificates[issuance.IssuerNameID(parsedCertificate)]
 	if !ok || issuerCert == nil {
 		return nil, 0, probs.NotFound("Certificate from unrecognized issuer")
 	}
@@ -1744,7 +1743,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			)
 		}
 
-		issuerNameID := issuance.GetIssuerNameID(parsedCert)
+		issuerNameID := issuance.IssuerNameID(parsedCert)
 		availableChains, ok := wfe.certificateChains[issuerNameID]
 		if !ok || len(availableChains) == 0 {
 			// If there is no wfe.certificateChains entry for the IssuerNameID then
@@ -2435,7 +2434,7 @@ func (c certID) Serial() string {
 // certID struct with the keyIdentifier and serialNumber extracted and decoded.
 // For more details see:
 // https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-02#section-4.1.
-func parseCertID(path string, issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate) (ariCertID, *probs.ProblemDetails, error) {
+func parseCertID(path string, issuerCertificates map[issuance.NameID]*issuance.Certificate) (ariCertID, *probs.ProblemDetails, error) {
 	parts := strings.Split(path, ".")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return certID{}, probs.Malformed("Invalid path"), nil

@@ -23,7 +23,7 @@ import (
 // ocspImpl provides a backing implementation for the OCSP gRPC service.
 type ocspImpl struct {
 	capb.UnimplementedOCSPGeneratorServer
-	issuers        map[issuance.IssuerNameID]*issuance.Issuer
+	issuers        map[issuance.NameID]*issuance.Issuer
 	ocspLifetime   time.Duration
 	ocspLogQueue   *ocspLogQueue
 	log            blog.Logger
@@ -43,9 +43,9 @@ func NewOCSPImpl(
 	signErrorCount *prometheus.CounterVec,
 	clk clock.Clock,
 ) (*ocspImpl, error) {
-	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Issuer, len(issuers))
+	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
-		issuersByNameID[issuer.Cert.NameID()] = issuer
+		issuersByNameID[issuer.NameID()] = issuer
 	}
 
 	if ocspLifetime < 8*time.Hour || ocspLifetime > 7*24*time.Hour {
@@ -100,7 +100,7 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 	}
 	serial := serialInt
 
-	issuer, ok := oi.issuers[issuance.IssuerNameID(req.IssuerID)]
+	issuer, ok := oi.issuers[issuance.NameID(req.IssuerID)]
 	if !ok {
 		return nil, fmt.Errorf("unrecognized issuer ID %d", req.IssuerID)
 	}

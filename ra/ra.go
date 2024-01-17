@@ -101,7 +101,7 @@ type RegistrationAuthorityImpl struct {
 	finalizeTimeout              time.Duration
 	finalizeWG                   sync.WaitGroup
 
-	issuersByNameID map[issuance.IssuerNameID]*issuance.Certificate
+	issuersByNameID map[issuance.NameID]*issuance.Certificate
 	purger          akamaipb.AkamaiPurgerClient
 
 	ctpolicy *ctpolicy.CTPolicy
@@ -233,7 +233,7 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(inflightFinalizes)
 
-	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Certificate)
+	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
 	}
@@ -1896,15 +1896,14 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 // revokeCertificate updates the database to mark the certificate as revoked,
 // with the given reason and current timestamp.
-// TODO(#5152) make the issuerID argument an issuance.IssuerNameID
-func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, serial *big.Int, issuerID int64, reason revocation.Reason) error {
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, serial *big.Int, issuerID issuance.NameID, reason revocation.Reason) error {
 	serialString := core.SerialToString(serial)
 
 	_, err := ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
 		Reason:   int64(reason),
 		Date:     timestamppb.New(ra.clk.Now()),
-		IssuerID: issuerID,
+		IssuerID: int64(issuerID),
 	})
 	if err != nil {
 		return err
@@ -1918,8 +1917,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 // as revoked, with the given reason and current timestamp. This only works for
 // certificates that were previously revoked for a reason other than
 // keyCompromise, and which are now being updated to keyCompromise instead.
-// TODO(#5152) make the issuerID argument an issuance.IssuerNameID
-func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serial *big.Int, issuerID int64) error {
+func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serial *big.Int, issuerID issuance.NameID) error {
 	serialString := core.SerialToString(serial)
 
 	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serialString})
@@ -1941,7 +1939,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 		Reason:   int64(ocsp.KeyCompromise),
 		Date:     timestamppb.New(ra.clk.Now()),
 		Backdate: status.RevokedDate,
-		IssuerID: issuerID,
+		IssuerID: int64(issuerID),
 	})
 	if err != nil {
 		return err
@@ -1953,9 +1951,8 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 
 // purgeOCSPCache makes a request to akamai-purger to purge the cache entries
 // for the given certificate.
-// TODO(#5152) make the issuerID argument an issuance.IssuerNameID
-func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x509.Certificate, issuerID int64) error {
-	issuer, ok := ra.issuersByNameID[issuance.IssuerNameID(issuerID)]
+func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x509.Certificate, issuerID issuance.NameID) error {
+	issuer, ok := ra.issuersByNameID[issuerID]
 	if !ok {
 		return fmt.Errorf("unable to identify issuer of cert with serial %q", core.SerialToString(cert.SerialNumber))
 	}
@@ -2060,11 +2057,11 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		logEvent.Reason = req.Code
 	}
 
-	issuerID := issuance.GetIssuerNameID(cert)
+	issuerID := issuance.IssuerNameID(cert)
 	err = ra.revokeCertificate(
 		ctx,
 		cert.SerialNumber,
-		int64(issuerID),
+		issuerID,
 		revocation.Reason(req.Code),
 	)
 	if err != nil {
@@ -2072,7 +2069,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	}
 
 	// Don't propagate purger errors to the client.
-	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+	_ = ra.purgeOCSPCache(ctx, cert, issuerID)
 
 	return &emptypb.Empty{}, nil
 }
@@ -2116,7 +2113,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		return nil, err
 	}
 
-	issuerID := issuance.GetIssuerNameID(cert)
+	issuerID := issuance.IssuerNameID(cert)
 
 	logEvent := certificateRevocationEvent{
 		ID:           core.NewToken(),
@@ -2143,7 +2140,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	revokeErr := ra.revokeCertificate(
 		ctx,
 		cert.SerialNumber,
-		int64(issuerID),
+		issuerID,
 		revocation.Reason(ocsp.KeyCompromise),
 	)
 
@@ -2161,18 +2158,18 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		// If the revocation and blocked keys list addition were successful, then
 		// just purge and return.
 		// Don't propagate purger errors to the client.
-		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+		_ = ra.purgeOCSPCache(ctx, cert, issuerID)
 		return &emptypb.Empty{}, nil
 	} else if errors.Is(err, berrors.AlreadyRevoked) {
 		// If it was an AlreadyRevoked error, try to re-revoke the cert in case
 		// it was revoked for a reason other than keyCompromise.
-		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
+		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, issuerID)
 
 		// Perform an Akamai cache purge to handle occurrences of a client
 		// previously successfully revoking a certificate, but the cache purge had
 		// unexpectedly failed. Allows clients to re-attempt revocation and purge the
 		// Akamai cache.
-		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+		_ = ra.purgeOCSPCache(ctx, cert, issuerID)
 		if err != nil {
 			return nil, err
 		}
@@ -2216,20 +2213,20 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	// that in case we are administratively revoking the certificate because it is
 	// so badly malformed that it can't be parsed.
 	var cert *x509.Certificate
-	var issuerID int64 // TODO(#5152) make this an issuance.IssuerNameID
+	var issuerID issuance.NameID
 	var err error
 	if req.Cert == nil {
 		status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: req.Serial})
 		if err != nil {
 			return nil, fmt.Errorf("unable to confirm that serial %q was ever issued: %w", req.Serial, err)
 		}
-		issuerID = status.IssuerID
+		issuerID = issuance.NameID(status.IssuerID)
 	} else {
 		cert, err = x509.ParseCertificate(req.Cert)
 		if err != nil {
 			return nil, err
 		}
-		issuerID = int64(issuance.GetIssuerNameID(cert))
+		issuerID = issuance.IssuerNameID(cert)
 	}
 
 	logEvent := certificateRevocationEvent{

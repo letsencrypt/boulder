@@ -73,7 +73,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	bundles := make(map[issuance.IssuerNameID][]ct.ASN1Cert)
+	bundles := make(map[issuance.NameID][]ct.ASN1Cert)
 	for _, files := range c.Publisher.Chains {
 		chain, err := issuance.LoadChain(files)
 		cmd.FailOnError(err, "failed to load chain.")

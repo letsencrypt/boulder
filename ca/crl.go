@@ -22,7 +22,7 @@ import (
 
 type crlImpl struct {
 	capb.UnimplementedCRLGeneratorServer
-	issuers   map[issuance.IssuerNameID]*issuance.Issuer
+	issuers   map[issuance.NameID]*issuance.Issuer
 	lifetime  time.Duration
 	idpBase   string
 	maxLogLen int
@@ -35,9 +35,9 @@ type crlImpl struct {
 // resulting CRLs. idpBase is the base URL from which IssuingDistributionPoint
 // URIs will constructed; it must use the http:// scheme.
 func NewCRLImpl(issuers []*issuance.Issuer, lifetime time.Duration, idpBase string, maxLogLen int, logger blog.Logger) (*crlImpl, error) {
-	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Issuer, len(issuers))
+	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
-		issuersByNameID[issuer.Cert.NameID()] = issuer
+		issuersByNameID[issuer.NameID()] = issuer
 	}
 
 	if lifetime == 0 {
@@ -92,7 +92,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 			}
 
 			var ok bool
-			issuer, ok = ci.issuers[issuance.IssuerNameID(payload.Metadata.IssuerNameID)]
+			issuer, ok = ci.issuers[issuance.NameID(payload.Metadata.IssuerNameID)]
 			if !ok {
 				return fmt.Errorf("got unrecognized IssuerNameID: %d", payload.Metadata.IssuerNameID)
 			}
@@ -117,7 +117,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 	}
 
 	// Add the Issuing Distribution Point extension.
-	idp, err := makeIDPExt(ci.idpBase, issuer.Cert.NameID(), shard)
+	idp, err := makeIDPExt(ci.idpBase, issuer.NameID(), shard)
 	if err != nil {
 		return fmt.Errorf("creating IDP extension: %w", err)
 	}
@@ -125,7 +125,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 
 	// Compute a unique ID for this issuer-number-shard combo, to tie together all
 	// the audit log lines related to its issuance.
-	logID := blog.LogLineChecksum(fmt.Sprintf("%d", issuer.Cert.NameID()) + template.Number.String() + fmt.Sprintf("%d", shard))
+	logID := blog.LogLineChecksum(fmt.Sprintf("%d", issuer.NameID()) + template.Number.String() + fmt.Sprintf("%d", shard))
 	ci.log.AuditInfof(
 		"Signing CRL: logID=[%s] issuer=[%s] number=[%s] shard=[%d] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
 		logID, issuer.Cert.Subject.CommonName, template.Number.String(), shard, template.ThisUpdate, template.NextUpdate, len(rcs),
@@ -247,7 +247,7 @@ type issuingDistributionPoint struct {
 // makeIDPExt returns a critical IssuingDistributionPoint extension containing a
 // URI built from the base url, the issuer's NameID, and the shard number. It
 // also sets the OnlyContainsUserCerts boolean to true.
-func makeIDPExt(base string, issuer issuance.IssuerNameID, shardIdx int64) (*pkix.Extension, error) {
+func makeIDPExt(base string, issuer issuance.NameID, shardIdx int64) (*pkix.Extension, error) {
 	val := issuingDistributionPoint{
 		DistributionPoint: distributionPointName{
 			[]asn1.RawValue{ // GeneralNames
