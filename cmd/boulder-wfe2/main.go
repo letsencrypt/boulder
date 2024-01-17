@@ -302,9 +302,6 @@ func main() {
 
 	certChains := map[issuance.NameID][][]byte{}
 	issuerCerts := map[issuance.NameID]*issuance.Certificate{}
-	if c.WFE.Chains == nil {
-		cmd.Fail("'chains' must be configured")
-	}
 	for _, files := range c.WFE.Chains {
 		issuer, chain, err := loadChain(files)
 		cmd.FailOnError(err, "Failed to load chain")

@@ -307,7 +307,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	})
 	if err != nil {
 		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
-			serialHex, hex.EncodeToString(certDER), int64(issuer.NameID()), req.RegistrationID, req.OrderID, err)
+			serialHex, hex.EncodeToString(certDER), issuer.NameID(), req.RegistrationID, req.OrderID, err)
 		return nil, err
 	}
 

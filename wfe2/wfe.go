@@ -938,8 +938,7 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 
 	// Try to validate the signature on the provided cert using its corresponding
 	// issuer certificate.
-	issuerNameID := issuance.IssuerNameID(parsedCertificate)
-	issuerCert, ok := wfe.issuerCertificates[issuerNameID]
+	issuerCert, ok := wfe.issuerCertificates[issuance.IssuerNameID(parsedCertificate)]
 	if !ok || issuerCert == nil {
 		return nil, 0, probs.NotFound("Certificate from unrecognized issuer")
 	}
