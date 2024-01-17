@@ -101,33 +101,28 @@ services {
   tags    = ["tcp"]
 }
 
+# Unlike most components, we have two completely independent nonce services,
+# simulating two sets of nonce servers running in two different datacenters:
+# taro and zinc.
 services {
-  id      = "nonce-a"
-  name    = "nonce"
+  id      = "nonce-taro-a"
+  name    = "nonce-taro"
   address = "10.77.77.77"
   port    = 9301
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
-  id      = "nonce-b"
-  name    = "nonce"
+  id      = "nonce-taro-b"
+  name    = "nonce-taro"
   address = "10.77.77.77"
-  port    = 9401
+  port    = 9501
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
-  id      = "nonce1"
-  name    = "nonce1"
-  address = "10.77.77.77"
-  port    = 9301
-  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
-}
-
-services {
-  id      = "nonce2"
-  name    = "nonce2"
+  id      = "nonce-zinc"
+  name    = "nonce-zinc"
   address = "10.77.77.77"
   port    = 9401
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.

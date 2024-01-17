@@ -99,21 +99,29 @@ SERVICES = (
         8020, None, None,
         ('./bin/boulder', 'bad-key-revoker', '--config', os.path.join(config_dir, 'bad-key-revoker.json'), '--debug-addr', ':8020'),
         ('boulder-ra-1', 'boulder-ra-2', 'mail-test-srv')),
-    # Note: the nonce services bind to specific ports, not "all interfaces",
+    # Note: the nonce-service instances bind to specific ports, not "all interfaces",
     # because they use their explicitly bound port in calculating the nonce
     # prefix, which is used by WFEs when deciding where to redeem nonces.
-    Service('nonce-service-1',
+    # The `taro` and `zinc` instances simulate nonce services in two different
+    # datacenters. The WFE is configured to get nonces from one of these
+    # services, and potentially redeeem from either service (though in practice
+    # it will only redeem from the one that is configured for getting nonces).
+    Service('nonce-service-taro-1',
         8111, None, None,
         ('./bin/boulder', 'nonce-service', '--config', os.path.join(config_dir, 'nonce-a.json'), '--addr', '10.77.77.77:9301', '--debug-addr', ':8111',),
         None),
-    Service('nonce-service-2',
+    Service('nonce-service-taro-2',
+        8113, None, None,
+        ('./bin/boulder', 'nonce-service', '--config', os.path.join(config_dir, 'nonce-a.json'), '--addr', '10.77.77.77:9501', '--debug-addr', ':8113',),
+        None),
+    Service('nonce-service-zinc-1',
         8112, None, None,
         ('./bin/boulder', 'nonce-service', '--config', os.path.join(config_dir, 'nonce-b.json'), '--addr', '10.77.77.77:9401', '--debug-addr', ':8112',),
         None),
     Service('boulder-wfe2',
         4001, None, None,
         ('./bin/boulder', 'boulder-wfe2', '--config', os.path.join(config_dir, 'wfe2.json'), '--addr', ':4001', '--tls-addr', ':4431', '--debug-addr', ':8013'),
-        ('boulder-ra-1', 'boulder-ra-2', 'boulder-sa-1', 'boulder-sa-2', 'nonce-service-1', 'nonce-service-2')),
+        ('boulder-ra-1', 'boulder-ra-2', 'boulder-sa-1', 'boulder-sa-2', 'nonce-service-taro-1', 'nonce-service-taro-2', 'nonce-service-zinc-1')),
     Service('log-validator',
         8016, None, None,
         ('./bin/boulder', 'log-validator', '--config', os.path.join(config_dir, 'log-validator.json'), '--debug-addr', ':8016'),
