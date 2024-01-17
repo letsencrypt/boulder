@@ -12,35 +12,35 @@ import time
 
 from helpers import waithealth, waitport, config_dir, CONFIG_NEXT
 
-Service = collections.namedtuple('Service', ('name', 'debug_port', 'grpc_addr', 'host_override', 'cmd', 'deps'))
+Service = collections.namedtuple('Service', ('name', 'debug_port', 'grpc_port', 'host_override', 'cmd', 'deps'))
 
 # Keep these ports in sync with consul/config.hcl
 SERVICES = (
     Service('boulder-remoteva-a',
-        8011, '10.77.77.77:9397', 'rva.boulder',
+        8011, 9397, 'rva.boulder',
         ('./bin/boulder', 'boulder-remoteva', '--config', os.path.join(config_dir, 'va-remote-a.json'), '--addr', ':9397', '--debug-addr', ':8011'),
         None),
     Service('boulder-remoteva-b',
-        8012, '10.77.77.77:9498', 'rva.boulder',
+        8012, 9498, 'rva.boulder',
         ('./bin/boulder', 'boulder-remoteva', '--config', os.path.join(config_dir, 'va-remote-b.json'), '--addr', ':9498', '--debug-addr', ':8012'),
         None),
     Service('boulder-sa-1',
-        8003, '10.77.77.77:9395', 'sa.boulder',
+        8003, 9395, 'sa.boulder',
         ('./bin/boulder', 'boulder-sa', '--config', os.path.join(config_dir, 'sa.json'), '--addr', ':9395', '--debug-addr', ':8003'),
         None),
     Service('boulder-sa-2',
-        8103, '10.77.77.77:9495', 'sa.boulder',
+        8103, 9495, 'sa.boulder',
         ('./bin/boulder', 'boulder-sa', '--config', os.path.join(config_dir, 'sa.json'), '--addr', ':9495', '--debug-addr', ':8103'),
         None),
     Service('ct-test-srv',
         4500, None, None,
         ('./bin/ct-test-srv', '--config', 'test/ct-test-srv/ct-test-srv.json'), None),
     Service('boulder-publisher-1',
-        8009, '10.77.77.77:9391', 'publisher.boulder',
+        8009, 9391, 'publisher.boulder',
         ('./bin/boulder', 'boulder-publisher', '--config', os.path.join(config_dir, 'publisher.json'), '--addr', ':9391', '--debug-addr', ':8009'),
         None),
     Service('boulder-publisher-2',
-        8109, '10.77.77.77:9491', 'publisher.boulder',
+        8109, 9491, 'publisher.boulder',
         ('./bin/boulder', 'boulder-publisher', '--config', os.path.join(config_dir, 'publisher.json'), '--addr', ':9491', '--debug-addr', ':8109'),
         None),
     Service('mail-test-srv',
@@ -52,19 +52,19 @@ SERVICES = (
         ('./bin/boulder', 'ocsp-responder', '--config', os.path.join(config_dir, 'ocsp-responder.json'), '--addr', ':4002', '--debug-addr', ':8005'),
         ('boulder-ra-1', 'boulder-ra-2')),
     Service('boulder-va-1',
-        8004, '10.77.77.77:9392', 'va.boulder',
+        8004, 9392, 'va.boulder',
         ('./bin/boulder', 'boulder-va', '--config', os.path.join(config_dir, 'va.json'), '--addr', ':9392', '--debug-addr', ':8004'),
         ('boulder-remoteva-a', 'boulder-remoteva-b')),
     Service('boulder-va-2',
-        8104, '10.77.77.77:9492', 'va.boulder',
+        8104, 9492, 'va.boulder',
         ('./bin/boulder', 'boulder-va', '--config', os.path.join(config_dir, 'va.json'), '--addr', ':9492', '--debug-addr', ':8104'),
         ('boulder-remoteva-a', 'boulder-remoteva-b')),
     Service('boulder-ca-1',
-        8001, '10.77.77.77:9393', 'ca.boulder',
+        8001, 9393, 'ca.boulder',
         ('./bin/boulder', 'boulder-ca', '--config', os.path.join(config_dir, 'ca.json'), '--addr', ':9393', '--debug-addr', ':8001'),
         ('boulder-sa-1', 'boulder-sa-2')),
     Service('boulder-ca-2',
-        8101, '10.77.77.77:9493', 'ca.boulder',
+        8101, 9493, 'ca.boulder',
         ('./bin/boulder', 'boulder-ca', '--config', os.path.join(config_dir, 'ca.json'), '--addr', ':9493', '--debug-addr', ':8101'),
         ('boulder-sa-1', 'boulder-sa-2')),
     Service('akamai-test-srv',
@@ -88,11 +88,11 @@ SERVICES = (
         ('./bin/boulder', 'crl-updater', '--config', os.path.join(config_dir, 'crl-updater.json'), '--debug-addr', ':8021'),
         ('boulder-ca-1', 'boulder-ca-2', 'boulder-sa-1', 'boulder-sa-2', 'crl-storer')),
     Service('boulder-ra-1',
-        8002, '10.77.77.77:9394', 'ra.boulder',
+        8002, 9394, 'ra.boulder',
         ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', ':9394', '--debug-addr', ':8002'),
         ('boulder-sa-1', 'boulder-sa-2', 'boulder-ca-1', 'boulder-ca-2', 'boulder-va-1', 'boulder-va-2', 'akamai-purger', 'boulder-publisher-1', 'boulder-publisher-2')),
     Service('boulder-ra-2',
-        8102, '10.77.77.77:9494', 'ra.boulder',
+        8102, 9494, 'ra.boulder',
         ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', ':9494', '--debug-addr', ':8102'),
         ('boulder-sa-1', 'boulder-sa-2', 'boulder-ca-1', 'boulder-ca-2', 'boulder-va-1', 'boulder-va-2', 'akamai-purger', 'boulder-publisher-1', 'boulder-publisher-2')),
     Service('bad-key-revoker',
@@ -218,8 +218,8 @@ def start(fakeclock):
             global processes
             p = run(service.cmd, fakeclock)
             processes.append(p)
-            if service.grpc_addr is not None:
-                waithealth(' '.join(p.args), service.grpc_addr, service.host_override)
+            if service.grpc_port is not None:
+                waithealth(' '.join(p.args), service.grpc_port, service.host_override)
             else:
                 if not waitport(service.debug_port, ' '.join(p.args), perTickCheck=check):
                     return False
