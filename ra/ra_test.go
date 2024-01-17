@@ -3265,11 +3265,11 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "failed to deserialize authz")
 
 	// Twiddle the authz to pretend its been validated by the VA
-	authz.Status = "valid"
 	authz.Challenges[0].Status = "valid"
 	err = ra.recordValidation(ctx, authz.ID, authz.Expires, &authz.Challenges[0])
 	test.AssertNotError(t, err, "ra.recordValidation failed")
 
+	// Try to record the same validation a second time.
 	err = ra.recordValidation(ctx, authz.ID, authz.Expires, &authz.Challenges[0])
 	test.AssertError(t, err, "ra.recordValidation didn't fail")
 	test.AssertErrorIs(t, err, berrors.NotFound)

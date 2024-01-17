@@ -3009,9 +3009,6 @@ func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
 		return nil, err
 	}
 	certBlock, _ := pem.Decode(certPemBytes)
-	if err != nil {
-		return nil, err
-	}
 	return makeRevokeRequestJSONForCert(certBlock.Bytes, reason)
 }
 

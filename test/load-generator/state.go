@@ -260,9 +260,6 @@ func (s *State) Restore(filename string) error {
 		if err != nil {
 			continue
 		}
-		if err != nil {
-			continue
-		}
 		s.accts = append(s.accts, &account{
 			key:             key,
 			id:              a.ID,

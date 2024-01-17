@@ -90,7 +90,7 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(ctx context.Context,
 		cert, cs, prob := va.getChallengeCert(ctx, address, identifier, challenge, tlsConfig)
 
 		// If there is no problem, return immediately
-		if err == nil {
+		if prob == nil {
 			return cert, cs, validationRecords, prob
 		}
 
