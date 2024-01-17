@@ -2059,14 +2059,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	return respObj
 }
 
-// checkNewOrderLimits checks whether sufficient limit quota exists for the
-// creation of a new order. If so, that quota is spent. If an error is
-// encountered during the check, it is logged but not returned.
-//
-// TODO(#5545): For now we're simply exercising the new rate limiter codepath.
-// This should eventually return a berrors.RateLimit error containing the retry
-// after duration among other information available in the ratelimits.Decision.
-func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, names []string) []ratelimits.Transaction {
+func (wfe *WebFrontEndImpl) newNewOrderLimitTransactions(regId int64, names []string) []ratelimits.Transaction {
 	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Limiter is disabled.
 		return nil
@@ -2105,32 +2098,37 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 		logTxnErr(err, ratelimits.CertificatesPerFQDNSet)
 		return nil
 	}
-	transactions = append(transactions, txn)
-
-	_, err = wfe.limiter.BatchSpend(ctx, transactions)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil
-		}
-		wfe.log.Errf("checking limits for newOrder: %s", err)
-		return nil
-	}
-	return transactions
+	return append(transactions, txn)
 }
 
-func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, limitCheck chan struct{}, txns []ratelimits.Transaction) {
+// checkNewOrderLimits checks whether sufficient limit quota exists for the
+// creation of a new order. If so, that quota is spent. If an error is
+// encountered during the check, it is logged but not returned.
+//
+// TODO(#5545): For now we're simply exercising the new rate limiter codepath.
+// This should eventually return a berrors.RateLimit error containing the retry
+// after duration among other information available in the ratelimits.Decision.
+func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, transactions []ratelimits.Transaction) {
+	if wfe.limiter == nil && wfe.txnBuilder == nil {
+		// Limiter is disabled.
+		return
+	}
+
+	_, err := wfe.limiter.BatchSpend(ctx, transactions)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		wfe.log.Errf("checking newOrder limits: %s", err)
+	}
+}
+
+func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, transactions []ratelimits.Transaction) {
 	if wfe.limiter == nil || wfe.txnBuilder == nil {
 		return
 	}
 
-	select {
-	case <-ctx.Done():
-		return
-	case <-limitCheck:
-		// Continue with refunding the limits.
-	}
-
-	_, err := wfe.limiter.BatchRefund(ctx, txns)
+	_, err := wfe.limiter.BatchRefund(ctx, transactions)
 	if err != nil {
 		wfe.log.Errf("refunding newOrder limits: %s", err)
 	}
@@ -2212,20 +2210,19 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	// TODO(#5545): Spending and Refunding can be async until these rate limits
 	// are authoritative. This saves us from adding latency to each request.
-	limitCheck := make(chan struct{})
-	var ratelimitTxns []ratelimits.Transaction
+	// Goroutines spun out below will respect a context deadline set by the
+	// ratelimits package and cannot be prematurely canceled by the requester.
+	txns := wfe.newNewOrderLimitTransactions(acct.ID, names)
+	go wfe.checkNewOrderLimits(ctx, txns)
+
 	var newOrderSuccessful bool
 	var errIsRateLimit bool
-
-	go func() {
-		// Close the channel on goroutine completion.
-		defer close(limitCheck)
-		ratelimitTxns = wfe.checkNewOrderLimits(ctx, acct.ID, names)
-	}()
-
 	defer func() {
 		if !newOrderSuccessful && !errIsRateLimit {
-			go wfe.refundNewOrderLimits(ctx, limitCheck, ratelimitTxns)
+			// This can be a little racy, but we're not going to worry about it
+			// for now. If the check hasn't completed yet, we can pretty safely
+			// assume that the refund will be similarly delayed.
+			go wfe.refundNewOrderLimits(ctx, txns)
 		}
 	}()
 
@@ -2240,6 +2237,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			// Request was denied by a legacy rate limit. In this error case we
 			// do not want to refund the quota consumed by the request because
 			// repeated requests would result in unearned refunds.
+			//
+			// TODO(#5545): Once key-value rate limits are authoritative this
+			// can be removed.
 			errIsRateLimit = true
 		}
 		return
