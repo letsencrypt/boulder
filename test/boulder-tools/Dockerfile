@@ -16,8 +16,12 @@ RUN go install github.com/letsencrypt/pebble/v2/cmd/pebble-challtestsrv@66511d8
 RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.53.3
 RUN go install honnef.co/go/tools/cmd/staticcheck@2023.1.5
 
-FROM rust:bookworm as rustdeps
-RUN cargo install typos-cli --target x86_64-unknown-linux-musl
+FROM rust:bullseye as rustdeps
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ENV TARGETPLATFORM=${TARGETPLATFORM:-$BUILDPLATFORM}
+COPY build-rust-deps.sh /tmp/build-rust-deps.sh
+RUN /tmp/build-rust-deps.sh
 
 FROM buildpack-deps:focal-scm
 COPY requirements.txt /tmp/requirements.txt

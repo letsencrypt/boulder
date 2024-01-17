@@ -12,10 +12,7 @@ DOCKER_REPO="letsencrypt/boulder-tools"
 # .github/workflows/release.yml,
 # .github/workflows/try-release.yml if appropriate,
 # and .github/workflows/boulder-ci.yml with the new container tag.
-GO_CI_VERSIONS=( "1.21.5" "1.22rc1" )
-
-echo "Please login to allow push to DockerHub"
-docker login
+GO_CI_VERSIONS=( "1.21.5")
 
 # Usage: build_and_push_image $GO_VERSION
 build_and_push_image() {
@@ -27,8 +24,8 @@ build_and_push_image() {
   docker buildx build \
     --build-arg "GO_VERSION=${GO_VERSION}" \
     --progress plain \
-    --push \
     --tag "${TAG_NAME}" \
+    --load \
     --platform "linux/amd64" \
     .
 }
