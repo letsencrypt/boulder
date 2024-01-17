@@ -17,12 +17,19 @@ RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.53.3
 RUN go install honnef.co/go/tools/cmd/staticcheck@2023.1.5
 
 FROM rust:bullseye as rustdeps
+# Provided automatically by docker buildx.
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 ENV TARGETPLATFORM=${TARGETPLATFORM:-$BUILDPLATFORM}
 COPY build-rust-deps.sh /tmp/build-rust-deps.sh
 RUN /tmp/build-rust-deps.sh
 
+# When the version of Ubuntu (focal, jammy, etc) changes, ensure that the
+# version of libc6 is compatible with the rustdeps container above. See
+# https://github.com/letsencrypt/boulder/pull/7248#issuecomment-1896612920 for
+# more information. 
+#
+# Run this command in each container: dpkg -l libc6
 FROM buildpack-deps:focal-scm
 COPY requirements.txt /tmp/requirements.txt
 COPY boulder.rsyslog.conf /etc/rsyslog.d/
