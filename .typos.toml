@@ -1,0 +1,39 @@
+[files]
+extend-exclude = [
+    ".git/",
+    "go.mod",
+    "go.sum",
+    "vendor/",
+]
+ignore-hidden = false
+
+[default]
+extend-ignore-re = [
+    # PEM
+    "\\b[+/0-9=A-Za-z]{64}\\b",
+    ' := `\{"[0-9A-Z_a-z-]{36,}"\}`',
+    '"(csr|d|dp|n|protected|qi|signature|y)": ?"[0-9=A-Z_a-z-]{36,}"',
+    'bigIntFromB64\("[0-9=A-Z_a-z-]{36,}"\)',
+    "0002a4ba3cf408927759",
+    "65CuDAA",
+    '"sql_warnings", "TrUe"',
+    '"tx_read_only", "FalSe"',
+    "evenMOREcaps",
+    '"iSsUe"',
+]
+
+[default.extend-words]
+# Extended DNS Error
+"ede" = "ede"
+# Alternative spelling
+"unmarshaling" = "unmarshaling"
+
+[default.extend-identifiers]
+"caaFailer" = "caaFailer"
+"challStrat" = "challStrat"
+"ExpectedStratType" = "ExpectedStratType"
+"otConf" = "otConf"
+"serInt" = "serInt"
+"StratName" = "StratName"
+"UPDATEs" = "UPDATEs"
+"vai" = "vai"
