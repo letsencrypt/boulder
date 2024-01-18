@@ -26,7 +26,7 @@ func main() {
 	// Flag and config parsing and validation.
 	configFile := flag.String("config", "", "Path to the TLS configuration file")
 	serverAddr := flag.String("addr", "", "Address of the gRPC server to check")
-	hostOverride := flag.String("hostOverride", "", "Hostname to use for TLS certificate validation")
+	hostOverride := flag.String("host-override", "", "Hostname to use for TLS certificate validation")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()

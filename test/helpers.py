@@ -181,5 +181,5 @@ def waithealth(prog, port, host_override):
     subprocess.check_call([
         './bin/health-checker',
         '-addr', ("localhost:%d" % (port)),
-        '-hostOverride', host_override,
+        '-host-override', host_override,
         '-config', os.path.join(config_dir, 'health-checker.json')])
