@@ -157,9 +157,9 @@ func (r ResolverAddr) String() string {
 
 // Client queries for DNS records
 type Client interface {
-	LookupTXT(context.Context, string) (txts []string, err error)
+	LookupTXT(context.Context, string) (txts []string, resolver ResolverAddr, err error)
 	LookupHost(context.Context, string) ([]net.IP, ResolverAddr, error)
-	LookupCAA(context.Context, string) ([]*dns.CAA, string, error)
+	LookupCAA(context.Context, string) ([]*dns.CAA, string, ResolverAddr, error)
 }
 
 // impl represents a client that talks to an external resolver
@@ -448,14 +448,13 @@ type dnsResp struct {
 // LookupTXT sends a DNS query to find all TXT records associated with
 // the provided hostname which it returns along with the returned
 // DNS authority section.
-func (dnsClient *impl) LookupTXT(ctx context.Context, hostname string) ([]string, error) {
+func (dnsClient *impl) LookupTXT(ctx context.Context, hostname string) ([]string, ResolverAddr, error) {
 	var txt []string
 	dnsType := dns.TypeTXT
-	// TODO(Phil implement resolver)
-	r, _, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
+	r, resolver, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 	errWrap := wrapErr(dnsType, hostname, r, err)
 	if errWrap != nil {
-		return nil, errWrap
+		return nil, resolver, errWrap
 	}
 
 	for _, answer := range r.Answer {
@@ -466,7 +465,7 @@ func (dnsClient *impl) LookupTXT(ctx context.Context, hostname string) ([]string
 		}
 	}
 
-	return txt, err
+	return txt, resolver, err
 }
 
 func isPrivateV4(ip net.IP) bool {
@@ -565,10 +564,9 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 // the provided hostname and the complete dig-style RR `response`. This
 // response is quite verbose, however it's only populated when the CAA
 // response is non-empty.
-func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, string, error) {
+func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, string, ResolverAddr, error) {
 	dnsType := dns.TypeCAA
-	// TODO(Phil: implement resolver return)
-	r, _, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
+	r, resolver, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 
 	// Special case: when checking CAA for non-TLD names, treat NXDOMAIN as a
 	// successful response containing an empty set of records. This can come up in
@@ -577,12 +575,12 @@ func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.C
 	// rechecking. But allow NXDOMAIN for TLDs to fall through to the error code
 	// below, so we don't issue for gTLDs that have been removed by ICANN.
 	if err == nil && r.Rcode == dns.RcodeNameError && strings.Contains(hostname, ".") {
-		return nil, "", nil
+		return nil, "", resolver, nil
 	}
 
 	errWrap := wrapErr(dnsType, hostname, r, err)
 	if errWrap != nil {
-		return nil, "", errWrap
+		return nil, "", resolver, errWrap
 	}
 
 	var CAAs []*dns.CAA
@@ -595,7 +593,7 @@ func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.C
 	if len(CAAs) > 0 {
 		response = r.String()
 	}
-	return CAAs, response, nil
+	return CAAs, response, resolver, nil
 }
 
 // logDNSError logs the provided err result from making a query for hostname to

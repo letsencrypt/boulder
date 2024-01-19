@@ -414,10 +414,9 @@ func TestSetupHTTPValidation(t *testing.T) {
 				path: "idk",
 			},
 			ExpectedRecord: core.ValidationRecord{
-				URL:             "http://ipv4.and.ipv6.localhost/yellow/brick/road",
-				Hostname:        "ipv4.and.ipv6.localhost",
-				Port:            strconv.Itoa(va.httpPort),
-				ResolverAddress: "MockClient",
+				URL:      "http://ipv4.and.ipv6.localhost/yellow/brick/road",
+				Hostname: "ipv4.and.ipv6.localhost",
+				Port:     strconv.Itoa(va.httpPort),
 			},
 			ExpectedError: fmt.Errorf(`host "ipv4.and.ipv6.localhost" has no IP addresses remaining to use`),
 		},
@@ -767,6 +766,7 @@ func TestFetchHTTP(t *testing.T) {
 				URL:               url,
 				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("127.0.0.1"),
+				ResolverAddress:   "MockClient",
 			})
 	}
 
@@ -787,6 +787,7 @@ func TestFetchHTTP(t *testing.T) {
 				URL:               url,
 				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("127.0.0.1"),
+				ResolverAddress:   "MockClient",
 			})
 	}
 
@@ -827,6 +828,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/timeout",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddress:   "MockClient",
 				},
 			},
 		},
@@ -844,6 +846,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/timeout",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddress:   "MockClient",
 				},
 			},
 		},
@@ -878,6 +881,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-bad-proto",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddress:   "MockClient",
 				},
 			},
 		},
@@ -895,6 +899,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-bad-port",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddress:   "MockClient",
 				},
 			},
 		},
@@ -912,6 +917,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-bad-host",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddress:   "MockClient",
 				},
 			},
 		},
@@ -928,6 +934,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-path-too-long",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddress:   "MockClient",
 				},
 			},
 		},
@@ -944,6 +951,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/bad-status-code",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddress:   "MockClient",
 				},
 			},
 		},
@@ -960,6 +968,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/303-see-other",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddress:   "MockClient",
 				},
 			},
 		},
@@ -977,6 +986,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/resp-too-big",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddress:   "MockClient",
 				},
 			},
 		},
@@ -993,6 +1003,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1")},
 					AddressUsed:       net.ParseIP("::1"),
+					ResolverAddress:   "MockClient",
 				},
 			},
 		},
@@ -1008,7 +1019,8 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 					// The first validation record should have used the IPv6 addr
-					AddressUsed: net.ParseIP("::1"),
+					AddressUsed:     net.ParseIP("::1"),
+					ResolverAddress: "MockClient",
 				},
 				{
 					Hostname:          "ipv4.and.ipv6.localhost",
@@ -1016,7 +1028,8 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 					// The second validation record should have used the IPv4 addr as a fallback
-					AddressUsed: net.ParseIP("127.0.0.1"),
+					AddressUsed:     net.ParseIP("127.0.0.1"),
+					ResolverAddress: "MockClient",
 				},
 			},
 		},
@@ -1032,6 +1045,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/ok",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddress:   "MockClient",
 				},
 			},
 		},
@@ -1047,6 +1061,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-uppercase-publicsuffix",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddress:   "MockClient",
 				},
 				{
 					Hostname:          "example.com",
@@ -1054,6 +1069,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/ok",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddress:   "MockClient",
 				},
 			},
 		},
@@ -1074,6 +1090,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/printf-verbs",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddress:   "MockClient",
 				},
 			},
 		},
@@ -1519,8 +1536,7 @@ func TestValidateHTTP(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil)
 
-	rec, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
-	fmt.Printf("PHIL: %+v\n", rec)
+	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
 	test.Assert(t, prob == nil, "validation failed")
 }
 

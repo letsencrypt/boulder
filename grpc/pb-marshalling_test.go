@@ -121,6 +121,8 @@ func TestValidationRecord(t *testing.T) {
 		AddressUsed:       ip,
 		URL:               "http://exampleA.com",
 		AddressesTried:    []net.IP{ip},
+		// TODO(#7140): Add ResolverAddress only after the core.proto change is
+		// deployed.
 	}
 
 	pb, err := ValidationRecordToPB(vr)
@@ -141,6 +143,8 @@ func TestValidationResult(t *testing.T) {
 		AddressUsed:       ip,
 		URL:               "https://exampleA.com",
 		AddressesTried:    []net.IP{ip},
+		// TODO(#7140): Add ResolverAddress only after the core.proto change is
+		// deployed.
 	}
 	vrB := core.ValidationRecord{
 		Hostname:          "exampleB.com",
@@ -149,6 +153,8 @@ func TestValidationResult(t *testing.T) {
 		AddressUsed:       ip,
 		URL:               "https://exampleB.com",
 		AddressesTried:    []net.IP{ip},
+		// TODO(#7140): Add ResolverAddress only after the core.proto change is
+		// deployed.
 	}
 	result := []core.ValidationRecord{vrA, vrB}
 	prob := &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}

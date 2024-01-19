@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -86,6 +87,7 @@ type caaResult struct {
 	issuewild       []*dns.CAA
 	criticalUnknown bool
 	dig             string
+	resolver        bdns.ResolverAddr
 	err             error
 }
 
@@ -140,7 +142,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		go func(name string, r *caaResult) {
 			r.name = name
 			var records []*dns.CAA
-			records, r.dig, r.err = va.dnsClient.LookupCAA(ctx, name)
+			records, r.dig, r.resolver, r.err = va.dnsClient.LookupCAA(ctx, name)
 			if len(records) > 0 {
 				r.present = true
 			}

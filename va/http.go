@@ -226,10 +226,8 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 		resolver:  resolver,
 	}
 	if err != nil {
-		fmt.Println("HERE 666")
 		return target, err
 	}
-	fmt.Printf("PHIL va.newHTTPValidation resolver %v\n", resolver)
 	/*
 		target := &httpValidationTarget{
 			host:      host,
@@ -240,32 +238,26 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 			resolver:  resolver,
 		}
 	*/
-	fmt.Printf("PHIL va.newHTTPValidation target.resolver %v\n", target.resolver)
 
 	// Separate the addresses into the available v4 and v6 addresses
 	v4Addrs, v6Addrs := availableAddresses(addrs)
 	hasV6Addrs := len(v6Addrs) > 0
 	hasV4Addrs := len(v4Addrs) > 0
-	fmt.Println("HERE 1")
 
 	if !hasV6Addrs && !hasV4Addrs {
 		// If there are no v6 addrs and no v4addrs there was a bug with getAddrs or
 		// availableAddresses and we need to return an error.
-		fmt.Println("HERE 2")
 
 		return target, fmt.Errorf("host %q has no IPv4 or IPv6 addresses", host)
 	} else if !hasV6Addrs && hasV4Addrs {
-		fmt.Println("HERE 3")
 		// If there are no v6 addrs and there are v4 addrs then use the first v4
 		// address. There's no fallback address.
 		target.next = []net.IP{v4Addrs[0]}
 	} else if hasV6Addrs && hasV4Addrs {
-		fmt.Println("HERE 4")
 		// If there are both v6 addrs and v4 addrs then use the first v6 address and
 		// fallback with the first v4 address.
 		target.next = []net.IP{v6Addrs[0], v4Addrs[0]}
 	} else if hasV6Addrs && !hasV4Addrs {
-		fmt.Println("HERE 5")
 		// If there are just v6 addrs then use the first v6 address. There's no
 		// fallback address.
 		target.next = []net.IP{v6Addrs[0]}
@@ -416,7 +408,6 @@ func (va *ValidationAuthorityImpl) fetchHTTP(
 	host string,
 	path string) ([]byte, []core.ValidationRecord, *probs.ProblemDetails) {
 	body, records, err := va.processHTTPValidation(ctx, host, path)
-	fmt.Printf("PHIL va.fetchHTTP %d: %v\n", len(records), records[0].ResolverAddress)
 	if err != nil {
 		// Use detailedError to convert the error into a problem
 		return body, records, detailedError(err)
@@ -454,7 +445,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		return nil, nil, err
 	}
 
-	fmt.Printf("PHIL va.processHTTPValidation %v\n", target.resolver)
 	// newIPError implements the error interface. It wraps an error and the IP
 	// of the remote host in an IPError so we can display the IP in the problem
 	// details returned to the client.
@@ -506,7 +496,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 	// Set up the initial validation request and a base validation record
 	dialer, baseRecord, err := va.setupHTTPValidation(initialReq.URL.String(), target)
-	fmt.Printf("PHIL baseRecord %+v\n", baseRecord)
 	if err != nil {
 		return nil, []core.ValidationRecord{}, newIPError(target, err)
 	}
@@ -687,7 +676,6 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident ide
 	if prob != nil {
 		return validationRecords, prob
 	}
-	fmt.Printf("PHIL: va.validateHTTP01 %v\n", validationRecords[0].ResolverAddress)
 	payload := strings.TrimRightFunc(string(body), unicode.IsSpace)
 
 	if payload != challenge.ProvidedKeyAuthorization {

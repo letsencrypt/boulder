@@ -24,8 +24,8 @@ import (
 // answers for CAA queries.
 type caaMockDNS struct{}
 
-func (mock caaMockDNS) LookupTXT(_ context.Context, hostname string) ([]string, error) {
-	return nil, nil
+func (mock caaMockDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddr, error) {
+	return nil, "caaMockDNS", nil
 }
 
 func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddr, error) {
@@ -33,12 +33,12 @@ func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]net.IP,
 	return []net.IP{ip}, "caaMockDNS", nil
 }
 
-func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, error) {
+func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddr, error) {
 	var results []*dns.CAA
 	var record dns.CAA
 	switch strings.TrimRight(domain, ".") {
 	case "caa-timeout.com":
-		return nil, "", fmt.Errorf("error")
+		return nil, "", "caaMockDNS", fmt.Errorf("error")
 	case "reserved.com":
 		record.Tag = "issue"
 		record.Value = "ca.com"
@@ -58,11 +58,11 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		results = append(results, &record)
 	case "com":
 		// com has no CAA records.
-		return nil, "", nil
+		return nil, "", "caaMockDNS", nil
 	case "gonetld":
-		return nil, "", fmt.Errorf("NXDOMAIN")
+		return nil, "", "caaMockDNS", fmt.Errorf("NXDOMAIN")
 	case "servfail.com", "servfail.present.com":
-		return results, "", fmt.Errorf("SERVFAIL")
+		return results, "", "caaMockDNS", fmt.Errorf("SERVFAIL")
 	case "multi-crit-present.com":
 		record.Flag = 1
 		record.Tag = "issue"
@@ -184,7 +184,7 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 	if len(results) > 0 {
 		response = "foo"
 	}
-	return results, response, nil
+	return results, response, "caaMockDNS", nil
 }
 
 func TestCAATimeout(t *testing.T) {
@@ -683,9 +683,9 @@ func TestSelectCAA(t *testing.T) {
 
 	// A slice of empty caaResults should return nil, "", nil
 	r = []caaResult{
-		{"", false, nil, nil, false, "", nil},
-		{"", false, nil, nil, false, "", nil},
-		{"", false, nil, nil, false, "", nil},
+		{"", false, nil, nil, false, "", "", nil},
+		{"", false, nil, nil, false, "", "", nil},
+		{"", false, nil, nil, false, "", "", nil},
 	}
 	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
@@ -694,8 +694,8 @@ func TestSelectCAA(t *testing.T) {
 	// A slice of caaResults containing an error followed by a CAA
 	// record should return the error
 	r = []caaResult{
-		{"foo.com", false, nil, nil, false, "", errors.New("oops")},
-		{"com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
+		{"foo.com", false, nil, nil, false, "", "", errors.New("oops")},
+		{"com", true, []*dns.CAA{&expected}, nil, false, "foo", "", nil},
 	}
 	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
@@ -705,8 +705,8 @@ func TestSelectCAA(t *testing.T) {
 	//  A slice of caaResults containing a good record that precedes an
 	//  error, should return that good record, not the error
 	r = []caaResult{
-		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
-		{"com", false, nil, nil, false, "", errors.New("")},
+		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", "", nil},
+		{"com", false, nil, nil, false, "", "", errors.New("")},
 	}
 	s, err = selectCAA(r)
 	test.AssertEquals(t, len(s.issue), 1)
@@ -717,9 +717,9 @@ func TestSelectCAA(t *testing.T) {
 	// A slice of caaResults containing multiple CAA records should
 	// return the first non-empty CAA record
 	r = []caaResult{
-		{"bar.foo.com", false, []*dns.CAA{}, []*dns.CAA{}, false, "", nil},
-		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
-		{"com", true, []*dns.CAA{&expected}, nil, false, "bar", nil},
+		{"bar.foo.com", false, []*dns.CAA{}, []*dns.CAA{}, false, "", "", nil},
+		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", "", nil},
+		{"com", true, []*dns.CAA{&expected}, nil, false, "bar", "", nil},
 	}
 	s, err = selectCAA(r)
 	test.AssertEquals(t, len(s.issue), 1)

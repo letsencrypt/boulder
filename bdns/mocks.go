@@ -18,36 +18,36 @@ type MockClient struct {
 }
 
 // LookupTXT is a mock
-func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string, error) {
+func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string, ResolverAddr, error) {
 	if hostname == "_acme-challenge.servfail.com" {
-		return nil, fmt.Errorf("SERVFAIL")
+		return nil, "MockClient", fmt.Errorf("SERVFAIL")
 	}
 	if hostname == "_acme-challenge.good-dns01.com" {
 		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
 		// expected token + test account jwk thumbprint
-		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, nil
+		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, "MockClient", nil
 	}
 	if hostname == "_acme-challenge.wrong-dns01.com" {
-		return []string{"a"}, nil
+		return []string{"a"}, "MockClient", nil
 	}
 	if hostname == "_acme-challenge.wrong-many-dns01.com" {
-		return []string{"a", "b", "c", "d", "e"}, nil
+		return []string{"a", "b", "c", "d", "e"}, "MockClient", nil
 	}
 	if hostname == "_acme-challenge.long-dns01.com" {
-		return []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, nil
+		return []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, "MockClient", nil
 	}
 	if hostname == "_acme-challenge.no-authority-dns01.com" {
 		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
 		// expected token + test account jwk thumbprint
-		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, nil
+		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, "MockClient", nil
 	}
 	// empty-txts.com always returns zero TXT records
 	if hostname == "_acme-challenge.empty-txts.com" {
-		return []string{}, nil
+		return []string{}, "MockClient", nil
 	}
-	return []string{"hostname"}, nil
+	return []string{"hostname"}, "MockClient", nil
 }
 
 // makeTimeoutError returns a a net.OpError for which Timeout() returns true.
@@ -119,6 +119,6 @@ func (mock *MockClient) LookupHost(_ context.Context, hostname string) ([]net.IP
 }
 
 // LookupCAA returns mock records for use in tests.
-func (mock *MockClient) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, error) {
-	return nil, "", nil
+func (mock *MockClient) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, ResolverAddr, error) {
+	return nil, "", "MockClient", nil
 }

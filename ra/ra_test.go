@@ -850,10 +850,11 @@ func TestPerformValidationSuccess(t *testing.T) {
 	va.ResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
-				AddressUsed: []byte("192.168.0.1"),
-				Hostname:    "example.com",
-				Port:        "8080",
-				Url:         "http://example.com/",
+				AddressUsed:     []byte("192.168.0.1"),
+				Hostname:        "example.com",
+				Port:            "8080",
+				Url:             "http://example.com/",
+				ResolverAddress: "rebound",
 			},
 		},
 		Problems: nil,
@@ -888,6 +889,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// Verify that the responses are reflected
 	challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
 	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
+	fmt.Println(challenge)
 	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
 
 	test.AssertNotNil(t, vaRequest.Challenge, "Request passed to VA has no challenge")

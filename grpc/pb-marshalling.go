@@ -144,7 +144,6 @@ func ValidationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("PHIL234: %v\n", record.ResolverAddress)
 	return &corepb.ValidationRecord{
 		Hostname:          record.Hostname,
 		Port:              record.Port,
@@ -180,8 +179,8 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 		AddressUsed:       addrUsed,
 		URL:               in.Url,
 		AddressesTried:    addrsTried,
-		// TODO(PHIL: can't do this yet until the ValidationRecordToPB change is successfully deployed)
-		//ResolverAddress:   in.ResolverAddress,
+		// TODO(#7140): Add ResolverAddress only after the core.proto change is
+		// deployed.
 	}, nil
 }
 

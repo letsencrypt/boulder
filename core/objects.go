@@ -146,7 +146,7 @@ type ValidationRecord struct {
 	AddressesTried []net.IP `json:"addressesTried,omitempty"`
 	// ResolverAddress is the host:port of the DNS resolver that fufilled the
 	// lookup for AddressUsed.
-	ResolverAddress string `json:"ResolverAddress,omitempty"`
+	ResolverAddress string `json:"resolverAddress,omitempty"`
 }
 
 func looksLikeKeyAuthorization(str string) error {
@@ -225,11 +225,14 @@ func (ch Challenge) RecordsSane() bool {
 		return false
 	}
 
+	fmt.Println("RecordsSane()")
 	switch ch.Type {
 	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
+			// TODO(#7140): Add a check for ResolverAddress == "" only after the
+			// core.proto change has been deployed.
 			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
-				len(rec.AddressesResolved) == 0 || rec.ResolverAddress == "" {
+				len(rec.AddressesResolved) == 0 {
 				return false
 			}
 		}
@@ -240,15 +243,19 @@ func (ch Challenge) RecordsSane() bool {
 		if ch.ValidationRecord[0].URL != "" {
 			return false
 		}
+		// TODO(#7140): Add a check for ResolverAddress == "" only after the
+		// core.proto change has been deployed.
 		if ch.ValidationRecord[0].Hostname == "" || ch.ValidationRecord[0].Port == "" ||
-			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 || ch.ValidationRecord[0].ResolverAddress == "" {
+			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
 	case ChallengeTypeDNS01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
-		if ch.ValidationRecord[0].Hostname == "" || ch.ValidationRecord[0].ResolverAddress == "" {
+		// TODO(#7140): Add a check for ResolverAddress == "" only after the
+		// core.proto change has been deployed.
+		if ch.ValidationRecord[0].Hostname == "" {
 			return false
 		}
 		return true

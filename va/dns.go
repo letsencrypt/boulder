@@ -33,7 +33,6 @@ func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string)
 		return nil, resolver, berrors.DNSError("No valid IP addresses found for %s", hostname)
 	}
 	va.log.Debugf("Resolved addresses for %s: %s", hostname, addrs)
-	fmt.Printf("PHIL: Found resolver from bdns %v\n", resolver)
 	return addrs, resolver, nil
 }
 
@@ -63,7 +62,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 
 	// Look for the required record in the DNS
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, ident.Value)
-	txts, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
+	txts, resolver, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
 		return nil, probs.DNS(err.Error())
 	}
@@ -78,7 +77,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 	for _, element := range txts {
 		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
 			// Successful challenge validation
-			return []core.ValidationRecord{{Hostname: ident.Value}}, nil
+			return []core.ValidationRecord{{Hostname: ident.Value, ResolverAddress: resolver.String()}}, nil
 		}
 	}
 

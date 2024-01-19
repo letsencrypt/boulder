@@ -2599,6 +2599,8 @@ func TestFinalizeAuthorization2(t *testing.T) {
 				Port:        "80",
 				Url:         "http://example.com",
 				AddressUsed: ip,
+				// TODO(#7140): Add ResolverAddress only after the core.proto change is
+				// deployed.
 			},
 		},
 		Status:      string(core.StatusValid),
@@ -2629,6 +2631,8 @@ func TestFinalizeAuthorization2(t *testing.T) {
 				Port:        "80",
 				Url:         "http://example.com",
 				AddressUsed: ip,
+				// TODO(#7140): Add ResolverAddress only after the core.proto change is
+				// deployed.
 			},
 		},
 		ValidationError: prob,
