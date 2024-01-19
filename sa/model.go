@@ -1188,3 +1188,13 @@ type revokedCertModel struct {
 	RevokedDate   time.Time         `db:"revokedDate"`
 	RevokedReason revocation.Reason `db:"revokedReason"`
 }
+
+// replacementOrderModel represents a row in the replacementOrders table. It
+// contains all of the information necessary to link a new order to the
+// previously issued certificate that it replaces.
+type replacementOrderModel struct {
+	ID            int64     `db:"id"`
+	NewOrderID    *int64    `db:"newOrderId"`
+	OldCertSerial string    `db:"oldCertSerial"`
+	FinalizedAt   time.Time `db:"finalizedAt"`
+}

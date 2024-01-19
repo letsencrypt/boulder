@@ -52,6 +52,8 @@ type StorageAuthorityReadOnlyClient interface {
 	IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error)
 	KeyBlocked(ctx context.Context, in *KeyBlockedRequest, opts ...grpc.CallOption) (*Exists, error)
 	PreviousCertificateExists(ctx context.Context, in *PreviousCertificateExistsRequest, opts ...grpc.CallOption) (*Exists, error)
+	ReplacementOrderExistsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
+	ReplacementOrderForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Order, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthorityReadOnly_SerialsForIncidentClient, error)
 }
 
@@ -323,6 +325,15 @@ func (c *storageAuthorityReadOnlyClient) KeyBlocked(ctx context.Context, in *Key
 func (c *storageAuthorityReadOnlyClient) PreviousCertificateExists(ctx context.Context, in *PreviousCertificateExistsRequest, opts ...grpc.CallOption) (*Exists, error) {
 	out := new(Exists)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthorityReadOnly/PreviousCertificateExists", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityReadOnlyClient) ReplacementOrderExistsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error) {
+	out := new(Exists)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthorityReadOnly/ReplacementOrderExistsForSerial", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}

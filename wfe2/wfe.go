@@ -2062,43 +2062,24 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 //   - the requesting account owns that certificate, and
 //   - the names in this new order match the names in the certificate
 //     being replaced.
-func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *core.Registration, names []string, replaces string) (*probs.ProblemDetails, error) {
-	certID, prob, err := parseCertID(replaces, wfe.issuerCertificates)
-	if err != nil {
-		return prob, err
+func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *core.Registration, names []string, oldCert *corepb.Certificate) (*probs.ProblemDetails, error) {
+	if oldCert.RegistrationID != acct.ID {
+		return probs.Unauthorized("Requester account did request the certificate being replaced by this order"), nil
 	}
-	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: certID.Serial()})
-	if err != nil {
-		if errors.Is(err, berrors.NotFound) {
-			return probs.NotFound("Certificate replaced by this order does not exist"), nil
-		}
-		return web.ProblemDetailsForError(err, "Failed to retrieve certificate replaced by this order"), err
-	}
-	if cert.RegistrationID != acct.ID {
-		return probs.Unauthorized("Account does not own certificate replaced by this order"), nil
-	}
-	var namesMatch bool
-	parsedCert, err := x509.ParseCertificate(cert.Der)
+	parsedCert, err := x509.ParseCertificate(oldCert.Der)
 	if err != nil {
 		return probs.ServerInternal("Error parsing certificate replaced by this order"), err
 	}
-	// Check that at least 50% of the names in the order match the names in the
-	// certificate being replaced.
-	countNewOrderNames := len(names)
-	countCertNames := len(parsedCert.DNSNames)
-	if countNewOrderNames > countCertNames {
-		// If the order has more names than the certificate being replaced, then
-		// we only need to check that the certificate names are a subset of the
-		// order names.
-		countNewOrderNames = countCertNames
-	}
+
+	// While draft-ietf-acme-ari-02 calls for the new order to "share a
+	// preponderance of identifiers" with the certificate being replaced, our
+	// implementation will be more lenient, requiring just one.
+	var namesMatch bool
 	for _, name := range names {
 		if parsedCert.VerifyHostname(name) == nil {
-			countNewOrderNames--
+			namesMatch = true
+			break
 		}
-	}
-	if countNewOrderNames >= len(names)/2 {
-		namesMatch = true
 	}
 	if !namesMatch {
 		return probs.Malformed("Certificate replaced by this order does not have matching identifiers"), nil
@@ -2181,7 +2162,39 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	logEvent.DNSNames = names
 
 	if newOrderRequest.Replaces != "" {
-		prob, err := wfe.orderMatchesReplacement(ctx, acct, names, newOrderRequest.Replaces)
+		// Implementing draft-ietf-acme-ari-02, in order for a new order to be
+		// considered a replacement for an existing certificate, it:
+		//   1. MUST NOT have been replaced by another finalized order,
+		//   2. MUST be associated with the same ACME account as its predecessor, and
+		//   3. MUST have at least one identifier in common with its predecessor.
+		certID, prob, err := parseCertID(newOrderRequest.Replaces, wfe.issuerCertificates)
+		if err != nil {
+			wfe.sendError(response, logEvent, prob, err)
+			return
+		}
+
+		// Check SA.GetReplacmentOrder to see if the certificate has already been replaced.
+		exists, err := wfe.sa.ReplacementOrderExistsForSerial(ctx, &sapb.Serial{Serial: certID.Serial()})
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to check if certificate has been replaced"), err)
+			return
+		}
+		if exists.Exists {
+			wfe.sendError(response, logEvent, probs.Malformed("Certificate replaced by this order has already been replaced"), nil)
+			return
+		}
+
+		oldCert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: certID.Serial()})
+		if err != nil {
+			if errors.Is(err, berrors.NotFound) {
+				wfe.sendError(response, logEvent, probs.NotFound("Certificate replaced by this order could not found"), nil)
+				return
+			}
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to retrieve certificate replaced by this order"), err)
+			return
+		}
+
+		prob, err = wfe.orderMatchesReplacement(ctx, acct, names, oldCert)
 		if prob != nil || err != nil {
 			wfe.sendError(response, logEvent, prob, err)
 			return
@@ -2456,7 +2469,7 @@ func (c deprecatedCertID) Serial() string {
 func parseDeprecatedCertID(path string) (ariCertID, error) {
 	der, err := base64.RawURLEncoding.DecodeString(path)
 	if err != nil {
-		return deprecatedCertID{}, err
+		return nil, err
 	}
 
 	var id deprecatedCertID
