@@ -119,7 +119,7 @@ type Registration struct {
 }
 
 // ValidationRecord represents a validation attempt against a specific URL/hostname
-// and the IP addresses that were resolved and used
+// and the IP addresses that were resolved and used.
 type ValidationRecord struct {
 	// SimpleHTTP only
 	URL string `json:"url,omitempty"`
@@ -144,6 +144,9 @@ type ValidationRecord struct {
 	//   ...
 	// }
 	AddressesTried []net.IP `json:"addressesTried,omitempty"`
+	// ResolverAddress is the host:port of the DNS resolver that fufilled the
+	// lookup for AddressUsed.
+	ResolverAddress string `json:"ResolverAddress,omitempty"`
 }
 
 func looksLikeKeyAuthorization(str string) error {
@@ -226,7 +229,7 @@ func (ch Challenge) RecordsSane() bool {
 	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
 			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
-				len(rec.AddressesResolved) == 0 {
+				len(rec.AddressesResolved) == 0 || rec.ResolverAddress == "" {
 				return false
 			}
 		}
@@ -238,14 +241,14 @@ func (ch Challenge) RecordsSane() bool {
 			return false
 		}
 		if ch.ValidationRecord[0].Hostname == "" || ch.ValidationRecord[0].Port == "" ||
-			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
+			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 || ch.ValidationRecord[0].ResolverAddress == "" {
 			return false
 		}
 	case ChallengeTypeDNS01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
-		if ch.ValidationRecord[0].Hostname == "" {
+		if ch.ValidationRecord[0].Hostname == "" || ch.ValidationRecord[0].ResolverAddress == "" {
 			return false
 		}
 		return true

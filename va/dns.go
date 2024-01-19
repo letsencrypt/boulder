@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
@@ -20,19 +21,20 @@ import (
 // used by net/http. If there is an error resolving the hostname, or if no
 // usable IP addresses are available then a berrors.DNSError instance is
 // returned with a nil net.IP slice.
-func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, error) {
-	addrs, err := va.dnsClient.LookupHost(ctx, hostname)
+func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, bdns.ResolverAddr, error) {
+	addrs, resolver, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
-		return nil, berrors.DNSError("%v", err)
+		return nil, resolver, berrors.DNSError("%v", err)
 	}
 
 	if len(addrs) == 0 {
 		// This should be unreachable, as no valid IP addresses being found results
 		// in an error being returned from LookupHost.
-		return nil, berrors.DNSError("No valid IP addresses found for %s", hostname)
+		return nil, resolver, berrors.DNSError("No valid IP addresses found for %s", hostname)
 	}
 	va.log.Debugf("Resolved addresses for %s: %s", hostname, addrs)
-	return addrs, nil
+	fmt.Printf("PHIL: Found resolver from bdns %v\n", resolver)
+	return addrs, resolver, nil
 }
 
 // availableAddresses takes a ValidationRecord and splits the AddressesResolved

@@ -414,9 +414,10 @@ func TestSetupHTTPValidation(t *testing.T) {
 				path: "idk",
 			},
 			ExpectedRecord: core.ValidationRecord{
-				URL:      "http://ipv4.and.ipv6.localhost/yellow/brick/road",
-				Hostname: "ipv4.and.ipv6.localhost",
-				Port:     strconv.Itoa(va.httpPort),
+				URL:             "http://ipv4.and.ipv6.localhost/yellow/brick/road",
+				Hostname:        "ipv4.and.ipv6.localhost",
+				Port:            strconv.Itoa(va.httpPort),
+				ResolverAddress: "MockClient",
 			},
 			ExpectedError: fmt.Errorf(`host "ipv4.and.ipv6.localhost" has no IP addresses remaining to use`),
 		},
@@ -430,6 +431,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 				URL:               "http://ipv4.and.ipv6.localhost/yellow/brick/road",
 				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("::1"),
+				ResolverAddress:   "MockClient",
 			},
 			ExpectedDialer: &preresolvedDialer{
 				ip:      net.ParseIP("::1"),
@@ -447,6 +449,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 				URL:               "https://ipv4.and.ipv6.localhost/yellow/brick/road",
 				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("::1"),
+				ResolverAddress:   "MockClient",
 			},
 			ExpectedDialer: &preresolvedDialer{
 				ip:      net.ParseIP("::1"),
@@ -1342,8 +1345,8 @@ type dnsMockReturnsUnroutable struct {
 	*bdns.MockClient
 }
 
-func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
-	return []net.IP{net.ParseIP("198.51.100.1")}, nil
+func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddr, error) {
+	return []net.IP{net.ParseIP("198.51.100.1")}, "dnsMockReturnsUnroutable", nil
 }
 
 // TestHTTPDialTimeout tests that we give the proper "Timeout during connect"
@@ -1516,7 +1519,8 @@ func TestValidateHTTP(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	rec, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	fmt.Printf("PHIL: %+v\n", rec)
 	test.Assert(t, prob == nil, "validation failed")
 }
 

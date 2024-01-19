@@ -250,7 +250,7 @@ func TestDNSNoServers(t *testing.T) {
 
 	obj := NewTest(time.Hour, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
 
-	_, err = obj.LookupHost(context.Background(), "letsencrypt.org")
+	_, _, err = obj.LookupHost(context.Background(), "letsencrypt.org")
 	test.AssertError(t, err, "No servers")
 
 	_, err = obj.LookupTXT(context.Background(), "letsencrypt.org")
@@ -266,7 +266,7 @@ func TestDNSOneServer(t *testing.T) {
 
 	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
 
-	_, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
+	_, _, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 
 	test.AssertNotError(t, err, "No message")
 }
@@ -277,7 +277,7 @@ func TestDNSDuplicateServers(t *testing.T) {
 
 	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
 
-	_, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
+	_, _, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 
 	test.AssertNotError(t, err, "No message")
 }
@@ -292,7 +292,7 @@ func TestDNSServFail(t *testing.T) {
 	_, err = obj.LookupTXT(context.Background(), bad)
 	test.AssertError(t, err, "LookupTXT didn't return an error")
 
-	_, err = obj.LookupHost(context.Background(), bad)
+	_, _, err = obj.LookupHost(context.Background(), bad)
 	test.AssertError(t, err, "LookupHost didn't return an error")
 
 	emptyCaa, _, err := obj.LookupCAA(context.Background(), bad)
@@ -323,34 +323,34 @@ func TestDNSLookupHost(t *testing.T) {
 
 	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
 
-	ip, err := obj.LookupHost(context.Background(), "servfail.com")
+	ip, _, err := obj.LookupHost(context.Background(), "servfail.com")
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
 	test.AssertError(t, err, "Server failure")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
 
-	ip, err = obj.LookupHost(context.Background(), "nonexistent.letsencrypt.org")
+	ip, _, err = obj.LookupHost(context.Background(), "nonexistent.letsencrypt.org")
 	t.Logf("nonexistent.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertError(t, err, "No valid A or AAAA records should error")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
 
 	// Single IPv4 address
-	ip, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
+	ip, _, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have IP")
-	ip, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
+	ip, _, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have IP")
 
 	// Single IPv6 address
-	ip, err = obj.LookupHost(context.Background(), "v6.letsencrypt.org")
+	ip, _, err = obj.LookupHost(context.Background(), "v6.letsencrypt.org")
 	t.Logf("v6.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should not have IPs")
 
 	// Both IPv6 and IPv4 address
-	ip, err = obj.LookupHost(context.Background(), "dualstack.letsencrypt.org")
+	ip, _, err = obj.LookupHost(context.Background(), "dualstack.letsencrypt.org")
 	t.Logf("dualstack.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 2, "Should have 2 IPs")
@@ -360,7 +360,7 @@ func TestDNSLookupHost(t *testing.T) {
 	test.Assert(t, ip[1].To16().Equal(expected), "wrong ipv6 address")
 
 	// IPv6 error, IPv4 success
-	ip, err = obj.LookupHost(context.Background(), "v6error.letsencrypt.org")
+	ip, _, err = obj.LookupHost(context.Background(), "v6error.letsencrypt.org")
 	t.Logf("v6error.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have 1 IP")
@@ -368,7 +368,7 @@ func TestDNSLookupHost(t *testing.T) {
 	test.Assert(t, ip[0].To4().Equal(expected), "wrong ipv4 address")
 
 	// IPv6 success, IPv4 error
-	ip, err = obj.LookupHost(context.Background(), "v4error.letsencrypt.org")
+	ip, _, err = obj.LookupHost(context.Background(), "v4error.letsencrypt.org")
 	t.Logf("v4error.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have 1 IP")
@@ -378,7 +378,7 @@ func TestDNSLookupHost(t *testing.T) {
 	// IPv6 error, IPv4 error
 	// Should return both the IPv4 error (Refused) and the IPv6 error (NotImplemented)
 	hostname := "dualstackerror.letsencrypt.org"
-	ip, err = obj.LookupHost(context.Background(), hostname)
+	ip, _, err = obj.LookupHost(context.Background(), hostname)
 	t.Logf("%s - IP: %s, Err: %s", hostname, ip, err)
 	test.AssertError(t, err, "Should be an error")
 	test.AssertContains(t, err.Error(), "REFUSED looking up A for")
@@ -392,7 +392,7 @@ func TestDNSNXDOMAIN(t *testing.T) {
 	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
 
 	hostname := "nxdomain.letsencrypt.org"
-	_, err = obj.LookupHost(context.Background(), hostname)
+	_, _, err = obj.LookupHost(context.Background(), hostname)
 	test.AssertContains(t, err.Error(), "NXDOMAIN looking up A for")
 	test.AssertContains(t, err.Error(), "NXDOMAIN looking up AAAA for")
 

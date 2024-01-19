@@ -10,6 +10,7 @@ import (
 
 	"github.com/miekg/dns"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
@@ -27,9 +28,9 @@ func (mock caaMockDNS) LookupTXT(_ context.Context, hostname string) ([]string, 
 	return nil, nil
 }
 
-func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
+func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddr, error) {
 	ip := net.ParseIP("127.0.0.1")
-	return []net.IP{ip}, nil
+	return []net.IP{ip}, "caaMockDNS", nil
 }
 
 func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, error) {
