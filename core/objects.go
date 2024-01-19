@@ -225,7 +225,6 @@ func (ch Challenge) RecordsSane() bool {
 		return false
 	}
 
-	fmt.Println("RecordsSane()")
 	switch ch.Type {
 	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
