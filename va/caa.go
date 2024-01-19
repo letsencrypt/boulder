@@ -261,16 +261,16 @@ func (va *ValidationAuthorityImpl) performRemoteCAACheck(
 				VAHostname: rva.Address,
 			}
 			res, err := rva.IsCAAValid(ctx, req)
-			if err != nil && canceled.Is(err) {
-				// If the non-nil err was a canceled error, ignore it. That's fine: it
-				// just means we cancelled the remote VA request before it was
-				// finished because we didn't care about its result. Don't log to avoid
-				// spamming the logs.
-				result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC canceled")
-			} else if err != nil {
-				// This is a real error, not just a problem with the validation.
-				va.log.Errf("Remote VA %q.IsCAAValid failed: %s", rva.Address, err)
-				result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC failed")
+			if err != nil {
+				if canceled.Is(err) {
+					// Handle the cancellation error.
+					va.log.Errf("Remote VA %q.IsCAAValid cancelled: %w", rva.Address, err)
+					result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC cancelled")
+				} else {
+					// Handle validation error.
+					va.log.Errf("Remote VA %q.IsCAAValid failed: %w", rva.Address, err)
+					result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC failed")
+				}
 			} else if res.Problem != nil {
 				prob, err := bgrpc.PBToProblemDetails(res.Problem)
 				if err != nil {
