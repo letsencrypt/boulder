@@ -187,12 +187,13 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 			good++
 		} else {
 			bad++
+			// Store the first non-nil problem to return later (if `MultiCAAFullResults`
+			// is enabled).
+			if firstProb == nil {
+				firstProb = result.Problem
+			}
 		}
-		// Store the first non-nil problem to return later (if `MultiCAAFullResults`
-		// is enabled).
-		if firstProb == nil && result.Problem != nil {
-			firstProb = result.Problem
-		}
+
 		// If MultiCAAFullResults isn't enabled then return early whenever the
 		// success or failure threshold is met.
 		if !features.Get().MultiCAAFullResults {
