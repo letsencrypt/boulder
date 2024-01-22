@@ -159,7 +159,7 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 	acctID int64,
 	challengeType string,
 	primaryResult *probs.ProblemDetails,
-	remoteResultsChan chan *remoteVAResult) *probs.ProblemDetails {
+	remoteResultsChan <-chan *remoteVAResult) *probs.ProblemDetails {
 
 	state := "failure"
 	start := va.clk.Now()
