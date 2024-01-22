@@ -268,7 +268,7 @@ func (va *ValidationAuthorityImpl) performRemoteCAACheck(
 					result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC cancelled")
 				} else {
 					// Handle validation error.
-					va.log.Errf("Remote VA %q.IsCAAValid failed: %w", rva.Address, err)
+					va.log.Errf("Remote VA %q.IsCAAValid failed: %s", rva.Address, err)
 					result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC failed")
 				}
 			} else if res.Problem != nil {
