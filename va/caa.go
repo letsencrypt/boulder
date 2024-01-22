@@ -253,7 +253,7 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 func (va *ValidationAuthorityImpl) performRemoteCAACheck(
 	ctx context.Context,
 	req *vapb.IsCAAValidRequest,
-	results chan *remoteVAResult) {
+	results chan<- *remoteVAResult) {
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA) {
