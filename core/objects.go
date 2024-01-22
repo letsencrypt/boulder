@@ -144,7 +144,7 @@ type ValidationRecord struct {
 	//   ...
 	// }
 	AddressesTried []net.IP `json:"addressesTried,omitempty"`
-	// ResolverAddress is the host:port of the DNS resolver that fufilled the
+	// ResolverAddress is the host:port of the DNS resolver that fulfilled the
 	// lookup for AddressUsed.
 	ResolverAddress string `json:"resolverAddress,omitempty"`
 }
