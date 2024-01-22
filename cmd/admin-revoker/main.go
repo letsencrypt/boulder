@@ -198,6 +198,7 @@ func (r *revoker) revokeSerialBatchFile(ctx context.Context, serialPath string, 
 					continue
 				}
 				err := r.revokeBySerial(ctx, serial, reasonCode, false)
+				fmt.Printf("revoking %q, got %q\n", serial, err)
 				if err != nil {
 					r.log.Errf("failed to revoke %q: %s", serial, err)
 				}
