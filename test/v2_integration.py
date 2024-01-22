@@ -1590,9 +1590,12 @@ def test_admin_revoker_cert():
 
     # Revoke certificate by serial
     reset_akamai_purges()
-    run(["./bin/boulder", "admin-revoker", "serial-revoke",
-        "--config", "%s/admin-revoker.json" % config_dir,
-        '%x' % parsed_cert.serial_number, '1'])
+    run(["./bin/admin", 
+        "-config", "%s/admin.json" % config_dir,
+        "-dry-run=false",
+        "revoke-cert",
+        "-serial", '%x' % parsed_cert.serial_number,
+        "-reason", "1"])
 
     # Wait for OCSP response to indicate revocation took place
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
@@ -1611,9 +1614,13 @@ def test_admin_revoker_batched():
         serialFile.write("%x\n" % parse_cert(order).serial_number)
     serialFile.close()
 
-    run(["./bin/boulder", "admin-revoker", "batched-serial-revoke",
-        "--config", "%s/admin-revoker.json" % config_dir,
-        serialFile.name, '0', '2'])
+    run(["./bin/admin", 
+        "-config", "%s/admin.json" % config_dir,
+        "-dry-run=false",
+        "revoke-cert",
+        "-serials-file", serialFile.name,
+        "-reason", "0",
+        "-parallelism", "2"])
 
     for cert_file in cert_files:
         verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")

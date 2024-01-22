@@ -152,11 +152,15 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	test.AssertNotError(t, err, "expected 500 error from OCSP")
 
 	// Revoke by invoking admin-revoker
-	config := fmt.Sprintf("%s/%s", os.Getenv("BOULDER_CONFIG_DIR"), "admin-revoker.json")
-	output, err := exec.Command("./bin/admin-revoker", "serial-revoke",
+	config := fmt.Sprintf("%s/%s", os.Getenv("BOULDER_CONFIG_DIR"), "admin.json")
+	output, err := exec.Command(
+		"./bin/admin",
 		"-config", config,
-		core.SerialToString(cert.SerialNumber),
-		"0").CombinedOutput()
+		"-dry-run=false",
+		"revoke-cert",
+		"-serial", core.SerialToString(cert.SerialNumber),
+		"-reason", "0",
+	).CombinedOutput()
 	test.AssertNotError(t, err, fmt.Sprintf("revoking via admin-revoker: %s", string(output)))
 
 	_, err = ocsp_helper.Req(cert,
