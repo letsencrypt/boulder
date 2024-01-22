@@ -60,7 +60,7 @@ func derivePrefix(key string, grpcAddr string) (string, error) {
 		if hostIP == nil {
 			return "", fmt.Errorf("gRPC address host part was not an IP address")
 		}
-		if hostIP.Equal(net.IPv4zero) {
+		if hostIP.IsUnspecified() {
 			return "", fmt.Errorf("nonce service gRPC address must be a specific IP address: got %q", grpcAddr)
 		}
 	}
