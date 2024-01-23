@@ -73,7 +73,7 @@ type Config struct {
 		// this should contain all nonce-services from all DCs as we want to be
 		// able to redeem nonces generated at any DC.
 		//
-		// DEPRECATED: See RedeemNonceService, below.
+		// Deprecated: See RedeemNonceService, below.
 		// TODO (#6610) Remove this after all configs have migrated to
 		// `RedeemNonceService`.
 		RedeemNonceServices map[string]cmd.GRPCClientConfig `validate:"required_without=RedeemNonceService,omitempty,min=1,dive"`
