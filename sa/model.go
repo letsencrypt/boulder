@@ -1188,3 +1188,58 @@ type revokedCertModel struct {
 	RevokedDate   time.Time         `db:"revokedDate"`
 	RevokedReason revocation.Reason `db:"revokedReason"`
 }
+
+// replacementOrderModel represents one row in the replacementOrders table. It
+// contains all of the information necessary to link a renewal order to the
+// certificate it replaces.
+type replacementOrderModel struct {
+	// ID is an auto-incrementing row ID.
+	ID int64 `db:"id"`
+	// Serial is the serial number of the replaced certificate.
+	Serial string `db:"serial"`
+	// OrderId is the ID of the replacement order
+	OrderID int64 `db:"orderId"`
+	// OrderExpiry is the expiry time of the new order. This is used to
+	// determine if we can accept a new replacement order for the same Serial.
+	OrderExpires time.Time `db:"orderExpires"`
+	// Replaced is a boolean indicating whether the certificate has been
+	// replaced, i.e. whether the new order has been finalized. Once this is
+	// true, no new replacement orders can be accepted for the same Serial.
+	Replaced bool `db:"replaced"`
+}
+
+// addReplacementOrder inserts or updates the replacementOrders row matching the
+// provided serial with the details provided. This function accepts a
+// transaction so that the upsert can take place within the new order
+// transaction.
+func addReplacementOrder(ctx context.Context, db db.Execer, serial string, orderID int64, expires time.Time) error {
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO replacementOrders (serial, orderID, expires)
+		VALUES (?, ?, ?)
+		ON DUPLICATE KEY UPDATE orderID = ?, expires = ?`,
+		serial, orderID, expires,
+		orderID, expires,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// setReplacementOrderFinalized sets the replaced flag for the replacementOrder
+// row matching the provided orderId to true. This function accepts a
+// transaction so that the update can take place within the finalization
+// transaction.
+func setReplacementOrderFinalized(ctx context.Context, db db.Execer, orderId int64) error {
+	_, err := db.ExecContext(ctx, `
+		UPDATE replacementOrders
+		SET replaced = true
+		WHERE orderId = ?
+		LIMIT 1`,
+		orderId,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
+}

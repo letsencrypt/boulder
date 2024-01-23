@@ -566,6 +566,15 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			BeganProcessing: false,
 		}
 
+		if req.NewOrder.Replaces != "" {
+			// Update the replacementOrders table to indicate that this order
+			// replaces the provided certificate serial.
+			err := addReplacementOrder(ctx, tx, req.NewOrder.Replaces, order.ID, order.Expires)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		// Calculate the order status before returning it. Since it may have reused
 		// all valid authorizations the order may be "born" in a ready status.
 		status, err := statusForOrder(ctx, tx, res, ssa.clk.Now())
@@ -692,6 +701,11 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 		// Delete the orderFQDNSet row for the order now that it has been finalized.
 		// We use this table for order reuse and should not reuse a finalized order.
 		err = deleteOrderFQDNSet(ctx, tx, req.Id)
+		if err != nil {
+			return nil, err
+		}
+
+		err = setReplacementOrderFinalized(ctx, tx, req.Id)
 		if err != nil {
 			return nil, err
 		}

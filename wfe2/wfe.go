@@ -2041,6 +2041,75 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	return respObj
 }
 
+// orderMatchesReplacement checks if the order matches the provided certificate
+// as identified by the provided ARI CertID. This function ensures that:
+//   - the certificate being replaced exists,
+//   - the requesting account owns that certificate, and
+//   - the names in this new order match the names in the certificate
+//     being replaced.
+func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *core.Registration, names []string, oldCert *corepb.Certificate) (*probs.ProblemDetails, error) {
+	if oldCert.RegistrationID != acct.ID {
+		return probs.Unauthorized("Requester account did request the certificate being replaced by this order"), nil
+	}
+	parsedCert, err := x509.ParseCertificate(oldCert.Der)
+	if err != nil {
+		return probs.ServerInternal("Error parsing certificate replaced by this order"), err
+	}
+
+	// While draft-ietf-acme-ari-02 calls for the new order to "share a
+	// preponderance of identifiers" with the certificate being replaced, our
+	// implementation will be more lenient, requiring just one.
+	var namesMatch bool
+	for _, name := range names {
+		if parsedCert.VerifyHostname(name) == nil {
+			namesMatch = true
+			break
+		}
+	}
+	if !namesMatch {
+		return probs.Malformed("Certificate replaced by this order does not have matching identifiers"), nil
+	}
+	return nil, nil
+}
+
+func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial string) (core.RenewalInfo, *probs.ProblemDetails, error) {
+	// Check if the serial is impacted by an incident.
+	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		return core.RenewalInfo{}, web.ProblemDetailsForError(err, "Checking if existing certificate is impacted by an incident"), err
+	}
+
+	if len(result.Incidents) > 0 {
+		// The existing certificate is impacted by an incident, renew immediately.
+		return core.RenewalInfoImmediate(wfe.clk.Now()), nil, nil
+	}
+
+	// Check if the serial is revoked.
+	status, err := wfe.sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		return core.RenewalInfo{}, web.ProblemDetailsForError(err, "Checking if existing certificate has been revoked"), err
+	}
+
+	if status.Status == string(core.OCSPStatusRevoked) {
+		// The existing certificate is revoked, renew immediately.
+		return core.RenewalInfoImmediate(wfe.clk.Now()), nil, nil
+	}
+
+	// It's okay to use GetCertificate (vs trying to get a precertificate),
+	// because we don't intend to serve ARI for certs that never made it past
+	// the precert stage.
+	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		if errors.Is(err, berrors.NotFound) {
+			return core.RenewalInfo{}, probs.NotFound("Existing certificate not found"), nil
+		} else {
+			return core.RenewalInfo{}, web.ProblemDetailsForError(err, "Retrieving existing certificate"), err
+		}
+	}
+
+	return core.RenewalInfoSimple(cert.Issued.AsTime(), cert.Expires.AsTime()), nil, nil
+}
+
 // NewOrder is used by clients to create a new order object and a set of
 // authorizations to fulfill for issuance.
 func (wfe *WebFrontEndImpl) NewOrder(
@@ -2060,8 +2129,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// `notBefore` and/or `notAfter` fields described in Section 7.4 of acme-08
 	// are sent we return a probs.Malformed as we do not support them
 	var newOrderRequest struct {
-		Identifiers         []identifier.ACMEIdentifier `json:"identifiers"`
-		NotBefore, NotAfter string
+		Identifiers                   []identifier.ACMEIdentifier `json:"identifiers"`
+		NotBefore, NotAfter, Replaces string
 	}
 	err := json.Unmarshal(body, &newOrderRequest)
 	if err != nil {
@@ -2115,9 +2184,62 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	logEvent.DNSNames = names
 
+	var replaces string
+	var limitsExempt bool
+	if newOrderRequest.Replaces != "" {
+		// Implementing draft-ietf-acme-ari-02: For a new order to be considered
+		// a replacement for an existing certificate, it:
+		//   1. MUST NOT have been replaced by another finalized order,
+		//   2. MUST be associated with the same ACME account as its predecessor, and
+		//   3. MUST have at least one identifier in common with its predecessor.
+		certID, prob, err := parseCertID(newOrderRequest.Replaces, wfe.issuerCertificates)
+		if err != nil {
+			wfe.sendError(response, logEvent, prob, err)
+			return
+		}
+
+		exists, err := wfe.sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: certID.Serial()})
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to check replacement status of existing certificate"), err)
+			return
+		}
+		if exists.Exists {
+			wfe.sendError(response, logEvent, probs.Malformed("An order already exists which replaces this certificate"), nil)
+			return
+		}
+
+		oldCert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: certID.Serial()})
+		if err != nil {
+			if errors.Is(err, berrors.NotFound) {
+				wfe.sendError(response, logEvent, probs.NotFound("Existing certificate could not found"), nil)
+				return
+			}
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to retrieve existing certificate"), err)
+			return
+		}
+
+		prob, err = wfe.orderMatchesReplacement(ctx, acct, names, oldCert)
+		if prob != nil || err != nil {
+			wfe.sendError(response, logEvent, prob, err)
+			return
+		}
+		replaces = certID.Serial()
+
+		// For an order to be exempt from rate limits, it must be a replacement
+		// and the request must be made within the suggested renewal window.
+		renewalInfo, prob, err := wfe.determineARIWindow(ctx, replaces)
+		if prob != nil || err != nil {
+			wfe.sendError(response, logEvent, prob, err)
+			return
+		}
+		limitsExempt = renewalInfo.SuggestedWindow.IsWithin(wfe.clk.Now())
+	}
+
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: acct.ID,
 		Names:          names,
+		ReplacementFor: replaces,
+		LimitsExempt:   limitsExempt,
 	})
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
@@ -2488,62 +2610,18 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	serial := certID.Serial()
 	logEvent.Extra["RequestedSerial"] = serial
 
-	sendRI := func(ri core.RenewalInfo) {
-		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
-		err := wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
-		if err != nil {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
-			return
-		}
+	renewalInfo, prob, err := wfe.determineARIWindow(ctx, serial)
+	if prob != nil || err != nil {
+		wfe.sendError(response, logEvent, prob, err)
+		return
 	}
 
-	// Check if the serial is part of an ongoing/active incident, in which case
-	// the client should replace it now.
-	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
+	response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, renewalInfo)
 	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
-			"checking if certificate is impacted by an incident"), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 		return
 	}
-
-	if len(result.Incidents) > 0 {
-		sendRI(core.RenewalInfoImmediate(wfe.clk.Now()))
-		return
-	}
-
-	// Check if the serial is revoked, in which case the client should replace it
-	// now.
-	status, err := wfe.sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
-	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
-			"checking if certificate has been revoked"), err)
-		return
-	}
-
-	if status.Status == string(core.OCSPStatusRevoked) {
-		sendRI(core.RenewalInfoImmediate(wfe.clk.Now()))
-		return
-	}
-
-	// It's okay to use GetCertificate (vs trying to get a precertificate),
-	// because we don't intend to serve ARI for certs that never made it past
-	// the precert stage.
-	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
-	if err != nil {
-		if errors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
-		} else {
-			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "getting certificate"), err)
-		}
-		return
-	}
-
-	// TODO(#6033): Consider parsing cert.Der, using that to get its IssuerNameID,
-	// using that to look up the actual issuer cert in wfe.issuerCertificates,
-	// using that to compute the actual issuerNameHash and issuerKeyHash, and
-	// comparing those to the ones in the request.
-
-	sendRI(core.RenewalInfoSimple(cert.Issued.AsTime(), cert.Expires.AsTime()))
 }
 
 // UpdateRenewal is used by the client to inform the server that they have

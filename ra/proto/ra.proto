@@ -69,6 +69,8 @@ message AdministrativelyRevokeCertificateRequest {
 message NewOrderRequest {
   int64 registrationID = 1;
   repeated string names = 2;
+  string replacementFor = 3;
+  bool limitsExempt = 4;
 }
 
 message FinalizeOrderRequest {

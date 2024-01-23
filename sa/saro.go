@@ -1476,3 +1476,47 @@ func (ssa *SQLStorageAuthorityRO) Health(ctx context.Context) error {
 	}
 	return nil
 }
+
+// ReplacementOrderExists returns whether a valid replacement order exists for
+// the given certificate serial number. An existing but expired or otherwise
+// invalid order is considered not to exist.
+func (ssa *SQLStorageAuthorityRO) ReplacementOrderExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	if req == nil || req.Serial == "" {
+		return nil, errIncompleteRequest
+	}
+
+	var replacement replacementOrderModel
+	err := ssa.dbReadOnlyMap.SelectOne(
+		ctx,
+		&replacement,
+		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		req.Serial,
+	)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return &sapb.Exists{Exists: false}, nil
+		}
+		return nil, err
+	}
+	if replacement.OrderExpires.Before(ssa.clk.Now()) {
+		// The existing replacement order has expired.
+		return &sapb.Exists{Exists: false}, nil
+	}
+
+	// Check if the order is valid.
+	order, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: replacement.OrderID})
+	if err != nil {
+		return nil, err
+	}
+	if order.Status != string(core.StatusValid) {
+		// The existing replacement order is not valid.
+		return &sapb.Exists{Exists: false}, nil
+	}
+
+	// A valid replacement order exists.
+	return &sapb.Exists{Exists: true}, nil
+}
+
+func (ssa *SQLStorageAuthority) ReplacementOrderExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	return ssa.SQLStorageAuthorityRO.ReplacementOrderExists(ctx, req)
+}
