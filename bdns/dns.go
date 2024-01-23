@@ -502,21 +502,27 @@ func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uin
 // both the A and AAAA lookups fail or are empty, but succeeds otherwise.
 func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.IP, ResolverAddr, error) {
 	var recordsA, recordsAAAA []dns.RR
-	var resolver ResolverAddr
 	var errA, errAAAA error
+	var resolverA, resolverAAAA ResolverAddr
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		recordsA, resolver, errA = dnsClient.lookupIP(ctx, hostname, dns.TypeA)
+		recordsA, resolverA, errA = dnsClient.lookupIP(ctx, hostname, dns.TypeA)
+		resolverA = "A:" + resolverA
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		recordsAAAA, resolver, errAAAA = dnsClient.lookupIP(ctx, hostname, dns.TypeAAAA)
+		recordsAAAA, resolverAAAA, errAAAA = dnsClient.lookupIP(ctx, hostname, dns.TypeAAAA)
+		resolverAAAA = "AAAA:" + resolverAAAA
 	}()
 	wg.Wait()
+
+	var resolvers []string
+	resolvers = append(resolvers, resolverA.String(), resolverAAAA.String())
+	resolver := ResolverAddr(strings.Join(resolvers, ","))
 
 	var addrsA []net.IP
 	if errA == nil {
