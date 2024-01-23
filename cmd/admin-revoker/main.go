@@ -185,9 +185,6 @@ func (r *revoker) revokeSerialBatchFile(ctx context.Context, serialPath string, 
 	}
 
 	scanner := bufio.NewScanner(file)
-	if err != nil {
-		return err
-	}
 
 	wg := new(sync.WaitGroup)
 	work := make(chan string, parallelism)

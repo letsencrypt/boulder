@@ -16,7 +16,7 @@ import (
 func (cu *crlUpdater) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 
-	shardWorker := func(issuerNameID issuance.IssuerNameID, shardIdx int) {
+	shardWorker := func(issuerNameID issuance.NameID, shardIdx int) {
 		defer wg.Done()
 
 		// Wait for a random number of nanoseconds less than the updatePeriod, so

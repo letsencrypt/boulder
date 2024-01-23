@@ -73,7 +73,7 @@ type Config struct {
 		// this should contain all nonce-services from all DCs as we want to be
 		// able to redeem nonces generated at any DC.
 		//
-		// DEPRECATED: See RedeemNonceService, below.
+		// Deprecated: See RedeemNonceService, below.
 		// TODO (#6610) Remove this after all configs have migrated to
 		// `RedeemNonceService`.
 		RedeemNonceServices map[string]cmd.GRPCClientConfig `validate:"required_without=RedeemNonceService,omitempty,min=1,dive"`
@@ -300,11 +300,8 @@ func main() {
 		c.WFE.DebugAddr = *debugAddr
 	}
 
-	certChains := map[issuance.IssuerNameID][][]byte{}
-	issuerCerts := map[issuance.IssuerNameID]*issuance.Certificate{}
-	if c.WFE.Chains == nil {
-		cmd.Fail("'chains' must be configured")
-	}
+	certChains := map[issuance.NameID][][]byte{}
+	issuerCerts := map[issuance.NameID]*issuance.Certificate{}
 	for _, files := range c.WFE.Chains {
 		issuer, chain, err := loadChain(files)
 		cmd.FailOnError(err, "Failed to load chain")

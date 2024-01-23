@@ -123,12 +123,12 @@ type WebFrontEndImpl struct {
 	// newline and one or more PEM encoded certificates separated by a newline,
 	// sorted from leaf to root. The first []byte is the default certificate chain,
 	// and any subsequent []byte is an alternate certificate chain.
-	certificateChains map[issuance.IssuerNameID][][]byte
+	certificateChains map[issuance.NameID][][]byte
 
 	// issuerCertificates is a map of IssuerNameIDs to issuer certificates built with the
 	// first entry from each of the certificateChains. These certificates are used
 	// to verify the signature of certificates provided in revocation requests.
-	issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate
+	issuerCertificates map[issuance.NameID]*issuance.Certificate
 
 	// URL to the current subscriber agreement (should contain some version identifier)
 	SubscriberAgreementURL string
@@ -177,8 +177,8 @@ func NewWebFrontEndImpl(
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	keyPolicy goodkey.KeyPolicy,
-	certificateChains map[issuance.IssuerNameID][][]byte,
-	issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate,
+	certificateChains map[issuance.NameID][][]byte,
+	issuerCertificates map[issuance.NameID]*issuance.Certificate,
 	logger blog.Logger,
 	requestTimeout time.Duration,
 	staleTimeout time.Duration,
@@ -619,55 +619,55 @@ func link(url, relation string) string {
 	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
 }
 
-// checkNewAccountLimits checks whether sufficient limit quota exists for the
-// creation of a new account from the given IP address. If so, that quota is
-// spent. If an error is encountered during the check, it is logged but not
-// returned.
-//
-// TODO(#5545): For now we're simply exercising the new rate limiter codepath.
-// This should eventually return a berrors.RateLimit error containing the retry
-// after duration among other information available in the ratelimits.Decision.
-func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) {
+func (wfe *WebFrontEndImpl) newNewAccountLimitTransactions(ip net.IP) []ratelimits.Transaction {
 	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Limiter is disabled.
-		return
+		return nil
 	}
 
 	warn := func(err error, limit ratelimits.Name) {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return
-		}
 		// TODO(#5545): Once key-value rate limits are authoritative this log
 		// line should be removed in favor of returning the error.
 		wfe.log.Warningf("checking %s rate limit: %s", limit, err)
 	}
 
+	var transactions []ratelimits.Transaction
 	txn, err := wfe.txnBuilder.RegistrationsPerIPAddressTransaction(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
-		return
+		return nil
 	}
+	transactions = append(transactions, txn)
 
-	decision, err := wfe.limiter.Spend(ctx, txn)
-	if err != nil {
-		warn(err, ratelimits.NewRegistrationsPerIPAddress)
-		return
-	}
-	if !decision.Allowed || ip.To4() != nil {
-		// This requester is being limited or the request was made from an IPv4
-		// address.
-		return
+	if ip.To4() != nil {
+		// This request was made from an IPv4 address.
+		return transactions
 	}
 
 	txn, err = wfe.txnBuilder.RegistrationsPerIPv6RangeTransaction(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
+		return nil
+	}
+	return append(transactions, txn)
+}
+
+// checkNewAccountLimits checks whether sufficient limit quota exists for the
+// creation of a new account. If so, that quota is spent. If an error is
+// encountered during the check, it is logged but not returned.
+//
+// TODO(#5545): For now we're simply exercising the new rate limiter codepath.
+// This should eventually return a berrors.RateLimit error containing the retry
+// after duration among other information available in the ratelimits.Decision.
+func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, transactions []ratelimits.Transaction) {
+	if wfe.limiter == nil && wfe.txnBuilder == nil {
+		// Limiter is disabled.
 		return
 	}
 
-	_, err = wfe.limiter.Spend(ctx, txn)
+	_, err := wfe.limiter.BatchSpend(ctx, transactions)
 	if err != nil {
-		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
+		wfe.log.Errf("checking newAccount limits: %s", err)
 	}
 }
 
@@ -675,46 +675,15 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 // It refunds the limit quota consumed by the request, allowing the caller to
 // retry immediately. If an error is encountered during the refund, it is logged
 // but not returned.
-func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.IP) {
+func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, transactions []ratelimits.Transaction) {
 	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Limiter is disabled.
 		return
 	}
 
-	warn := func(err error, limit ratelimits.Name) {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return
-		}
-		// TODO(#5545): Once key-value rate limits are authoritative this log
-		// line should be removed in favor of returning the error.
-		wfe.log.Warningf("refunding %s rate limit: %s", limit, err)
-	}
-
-	txn, err := wfe.txnBuilder.RegistrationsPerIPAddressTransaction(ip)
+	_, err := wfe.limiter.BatchRefund(ctx, transactions)
 	if err != nil {
-		warn(err, ratelimits.NewRegistrationsPerIPAddress)
-		return
-	}
-
-	_, err = wfe.limiter.Refund(ctx, txn)
-	if err != nil {
-		warn(err, ratelimits.NewRegistrationsPerIPAddress)
-		return
-	}
-	if ip.To4() != nil {
-		// Request was made from an IPv4 address.
-		return
-	}
-
-	txn, err = wfe.txnBuilder.RegistrationsPerIPv6RangeTransaction(ip)
-	if err != nil {
-		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
-		return
-	}
-
-	_, err = wfe.limiter.Refund(ctx, txn)
-	if err != nil {
-		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
+		wfe.log.Errf("refunding newAccount limits: %s", err)
 	}
 }
 
@@ -842,17 +811,34 @@ func (wfe *WebFrontEndImpl) NewAccount(
 
 	// TODO(#5545): Spending and Refunding can be async until these rate limits
 	// are authoritative. This saves us from adding latency to each request.
-	go wfe.checkNewAccountLimits(ctx, ip)
+	// Goroutines spun out below will respect a context deadline set by the
+	// ratelimits package and cannot be prematurely canceled by the requester.
+	txns := wfe.newNewAccountLimitTransactions(ip)
+	go wfe.checkNewAccountLimits(ctx, txns)
+
 	var newRegistrationSuccessful bool
+	var errIsRateLimit bool
 	defer func() {
-		if !newRegistrationSuccessful {
-			go wfe.refundNewAccountLimits(ctx, ip)
+		if !newRegistrationSuccessful && !errIsRateLimit {
+			// This can be a little racy, but we're not going to worry about it
+			// for now. If the check hasn't completed yet, we can pretty safely
+			// assume that the refund will be similarly delayed.
+			go wfe.refundNewAccountLimits(ctx, txns)
 		}
 	}()
 
 	// Send the registration to the RA via grpc
 	acctPB, err := wfe.ra.NewRegistration(ctx, &reg)
 	if err != nil {
+		if errors.Is(err, berrors.RateLimit) {
+			// Request was denied by a legacy rate limit. In this error case we
+			// do not want to refund the quota consumed by the request because
+			// repeated requests would result in unearned refunds.
+			//
+			// TODO(#5545): Once key-value rate limits are authoritative this
+			// can be removed.
+			errIsRateLimit = true
+		}
 		if errors.Is(err, berrors.Duplicate) {
 			existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
 			if err == nil {
@@ -938,8 +924,7 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 
 	// Try to validate the signature on the provided cert using its corresponding
 	// issuer certificate.
-	issuerNameID := issuance.GetIssuerNameID(parsedCertificate)
-	issuerCert, ok := wfe.issuerCertificates[issuerNameID]
+	issuerCert, ok := wfe.issuerCertificates[issuance.IssuerNameID(parsedCertificate)]
 	if !ok || issuerCert == nil {
 		return nil, 0, probs.NotFound("Certificate from unrecognized issuer")
 	}
@@ -1744,7 +1729,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 			)
 		}
 
-		issuerNameID := issuance.GetIssuerNameID(parsedCert)
+		issuerNameID := issuance.IssuerNameID(parsedCert)
 		availableChains, ok := wfe.certificateChains[issuerNameID]
 		if !ok || len(availableChains) == 0 {
 			// If there is no wfe.certificateChains entry for the IssuerNameID then
@@ -2506,7 +2491,7 @@ func (c certID) Serial() string {
 // certID struct with the keyIdentifier and serialNumber extracted and decoded.
 // For more details see:
 // https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-02#section-4.1.
-func parseCertID(path string, issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate) (ariCertID, *probs.ProblemDetails, error) {
+func parseCertID(path string, issuerCertificates map[issuance.NameID]*issuance.Certificate) (ariCertID, *probs.ProblemDetails, error) {
 	parts := strings.Split(path, ".")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return certID{}, probs.Malformed("Invalid path"), nil

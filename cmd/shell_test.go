@@ -256,7 +256,7 @@ func TestFailExit(t *testing.T) {
 
 func testPanicStackTraceHelper() {
 	var x *int
-	*x = 1
+	*x = 1 //nolint:govet
 }
 
 func TestPanicStackTrace(t *testing.T) {

@@ -34,8 +34,13 @@
 			}
 		},
 		"saService": {
-			"serverAddress": "sa.service.consul:9095",
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "sa",
+				"domain": "service.consul"
+			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
 		"issuance": {
@@ -88,7 +93,9 @@
 				}
 			],
 			"ignoredLints": [
-				"n_subject_common_name_included"
+				"n_subject_common_name_included",
+				"w_subject_common_name_included",
+				"w_sub_cert_aia_contains_internal_names"
 			]
 		},
 		"expiry": "7776000s",

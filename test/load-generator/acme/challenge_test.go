@@ -50,12 +50,12 @@ func TestNewChallengeStrategy(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			strategy, err := NewChallengeStrategy(tc.InputName)
-			if err == nil && tc.ExpectedError != "" {
+			if err == nil && tc.ExpectedError == "" {
+				test.AssertEquals(t, fmt.Sprintf("%T", strategy), tc.ExpectedStratType)
+			} else if err == nil && tc.ExpectedError != "" {
 				t.Errorf("Expected %q got no error\n", tc.ExpectedError)
 			} else if err != nil {
 				test.AssertEquals(t, err.Error(), tc.ExpectedError)
-			} else if err == nil && tc.ExpectedError == "" {
-				test.AssertEquals(t, fmt.Sprintf("%T", strategy), tc.ExpectedStratType)
 			}
 		})
 	}
@@ -126,12 +126,12 @@ func TestPickChallenge(t *testing.T) {
 			strategy, err := NewChallengeStrategy(tc.StratName)
 			test.AssertNotError(t, err, "Failed to create challenge strategy")
 			chall, err := strategy.PickChallenge(tc.InputAuthz)
-			if err == nil && tc.ExpectedError != "" {
+			if err == nil && tc.ExpectedError == "" {
+				test.AssertDeepEquals(t, chall, tc.ExpectedChallenge)
+			} else if err == nil && tc.ExpectedError != "" {
 				t.Errorf("Expected %q got no error\n", tc.ExpectedError)
 			} else if err != nil {
 				test.AssertEquals(t, err.Error(), tc.ExpectedError)
-			} else if err == nil && tc.ExpectedError == "" {
-				test.AssertDeepEquals(t, chall, tc.ExpectedChallenge)
 			}
 		})
 	}

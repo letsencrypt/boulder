@@ -20,7 +20,7 @@
 		},
 		"grpc": {
 			"maxConnectionAge": "30s",
-			"address": ":9098",
+			"address": ":9498",
 			"services": {
 				"va.VA": {
 					"clientNames": [

@@ -22,7 +22,7 @@ func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEve
 		return
 	}
 
-	issuer, ok := wfe.issuerCertificates[issuance.IssuerNameID(id)]
+	issuer, ok := wfe.issuerCertificates[issuance.NameID(id)]
 	if !ok {
 		wfe.sendError(response, logEvent, probs.NotFound("Issuer ID did not match any known issuer"), nil)
 		return

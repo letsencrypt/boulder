@@ -1570,7 +1570,7 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 	test.AssertNotError(t, err, "certificate per name rate limit not applied correctly")
 
 	// Trying to issue for "test3.dedyn.io" and "dynv6.net" should fail because
-	// "dynv6.net" is an exact public suffic match with 2 certificates issued for
+	// "dynv6.net" is an exact public suffix match with 2 certificates issued for
 	// it.
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dynv6.net"}, certsPerNamePolicy, 99)
 	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
@@ -3265,11 +3265,11 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "failed to deserialize authz")
 
 	// Twiddle the authz to pretend its been validated by the VA
-	authz.Status = "valid"
 	authz.Challenges[0].Status = "valid"
 	err = ra.recordValidation(ctx, authz.ID, authz.Expires, &authz.Challenges[0])
 	test.AssertNotError(t, err, "ra.recordValidation failed")
 
+	// Try to record the same validation a second time.
 	err = ra.recordValidation(ctx, authz.ID, authz.Expires, &authz.Challenges[0])
 	test.AssertError(t, err, "ra.recordValidation didn't fail")
 	test.AssertErrorIs(t, err, berrors.NotFound)
@@ -3638,7 +3638,7 @@ func newMockSARevocation(known *x509.Certificate, clk clock.Clock) *mockSARevoca
 		StorageAuthority: *mocks.NewStorageAuthority(clk),
 		known: &corepb.CertificateStatus{
 			Serial:   core.SerialToString(known.SerialNumber),
-			IssuerID: int64(issuance.GetIssuerNameID(known)),
+			IssuerID: int64(issuance.IssuerNameID(known)),
 		},
 		blocked: make([]*sapb.AddBlockedKeyRequest, 0),
 		revoked: make(map[string]int64),
@@ -3799,14 +3799,13 @@ func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
+	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
+	cert.IsCA = true
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
-	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
 		ic.NameID(): ic,
-	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
 	}
 	ra.SA = newMockSARevocation(cert, clk)
 
@@ -3853,14 +3852,13 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
+	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
+	cert.IsCA = true
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
-	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
 		ic.NameID(): ic,
-	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
 	}
 	mockSA := newMockSARevocation(cert, clk)
 	ra.SA = mockSA
@@ -3892,16 +3890,15 @@ func TestRevokeCertByKey(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
+	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
 	digest, err := core.KeyDigest(cert.PublicKey)
 	test.AssertNotError(t, err, "core.KeyDigest failed")
+	cert.IsCA = true
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
-	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
 		ic.NameID(): ic,
-	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
 	}
 	mockSA := newMockSARevocation(cert, clk)
 	ra.SA = mockSA
@@ -3945,16 +3942,15 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
+	// Use the same self-signed cert as both issuer and issuee for revocation.
 	serial, cert := test.ThrowAwayCert(t, clk)
 	digest, err := core.KeyDigest(cert.PublicKey)
 	test.AssertNotError(t, err, "core.KeyDigest failed")
+	cert.IsCA = true
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
-	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
 		ic.NameID(): ic,
-	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
 	}
 	mockSA := newMockSARevocation(cert, clk)
 	ra.SA = mockSA
