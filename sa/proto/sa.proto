@@ -22,6 +22,7 @@ service StorageAuthorityReadOnly {
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
   rpc GetAuthorizations2(GetAuthorizationsRequest) returns (Authorizations) {}
   rpc GetCertificate(Serial) returns (core.Certificate) {}
+  rpc GetLintPrecertificate(Serial) returns (core.Certificate) {}
   rpc GetCertificateStatus(Serial) returns (core.CertificateStatus) {}
   rpc GetMaxExpiration(google.protobuf.Empty) returns (google.protobuf.Timestamp) {}
   rpc GetOrder(OrderRequest) returns (core.Order) {}
@@ -55,6 +56,7 @@ service StorageAuthority {
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
   rpc GetAuthorizations2(GetAuthorizationsRequest) returns (Authorizations) {}
   rpc GetCertificate(Serial) returns (core.Certificate) {}
+  rpc GetLintPrecertificate(Serial) returns (core.Certificate) {}
   rpc GetCertificateStatus(Serial) returns (core.CertificateStatus) {}
   rpc GetMaxExpiration(google.protobuf.Empty) returns (google.protobuf.Timestamp) {}
   rpc GetOrder(OrderRequest) returns (core.Order) {}
