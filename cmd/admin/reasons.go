@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/letsencrypt/boulder/revocation"
 	"golang.org/x/exp/maps"
+
+	"github.com/letsencrypt/boulder/revocation"
 )
 
 // subcommandListReasons encapsulates the "admin list-reasons" command.
