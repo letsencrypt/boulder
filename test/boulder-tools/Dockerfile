@@ -1,6 +1,6 @@
 FROM buildpack-deps:focal-scm as godeps
 ARG GO_VERSION
-# Provided automatically by docker buildx.
+# Provided automatically by docker build.
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 ENV TARGETPLATFORM=${TARGETPLATFORM:-$BUILDPLATFORM}
