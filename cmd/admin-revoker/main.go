@@ -668,8 +668,5 @@ func main() {
 }
 
 func init() {
-	// admin-revoker is the old name. Now that this can also clear email addresses,
-	// admin is the new name
 	cmd.RegisterCommand("admin-revoker", main, &cmd.ConfigValidator{Config: &Config{}})
-	cmd.RegisterCommand("admin", main, &cmd.ConfigValidator{Config: &Config{}})
 }
