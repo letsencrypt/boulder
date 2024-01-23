@@ -287,8 +287,9 @@ func parseAndMarshalIP(t *testing.T, ip string) []byte {
 }
 
 func newAcctKey(t *testing.T) []byte {
-	key := &jose.JSONWebKey{Key: testKey()}
-	acctKey, err := key.MarshalJSON()
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	jwk := &jose.JSONWebKey{Key: key.Public()}
+	acctKey, err := jwk.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	return acctKey
 }
@@ -606,12 +607,6 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	}
 	_, err = ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
-}
-
-// testKey returns a random 2048 bit RSA public key for test registrations
-func testKey() *rsa.PublicKey {
-	key, _ := rsa.GenerateKey(rand.Reader, 2048)
-	return &key.PublicKey
 }
 
 func TestNewRegistrationRateLimit(t *testing.T) {
@@ -989,14 +984,14 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 }
 
 func TestNewOrderRateLimiting(t *testing.T) {
-	_, _, ra, fc, cleanUp := initAuthorities(t)
+	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = 5 * 24 * time.Hour
 
-	rateLimitDuration := 5 * time.Minute
+	ra.orderLifetime = 5 * 24 * time.Hour
 
 	// Create a dummy rate limit config that sets a NewOrdersPerAccount rate
 	// limit with a very low threshold/short window
+	rateLimitDuration := 5 * time.Minute
 	ra.rlPolicies = &dummyRateLimitConfig{
 		NewOrdersPerAccountPolicy: ratelimit.RateLimitPolicy{
 			Threshold: 1,
@@ -1029,6 +1024,33 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	// new pending order is produced.
 	_, err = ra.NewOrder(ctx, orderOne)
 	test.AssertNotError(t, err, "Reuse of orderOne failed")
+
+	// Insert a specific certificate into the database, then create an order for
+	// the same set of names. This order should succeed because it's a renewal.
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "generating test key")
+	fakeCert := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		DNSNames:     []string{"renewing.example.com"},
+		NotBefore:    fc.Now().Add(-time.Hour),
+		NotAfter:     fc.Now().Add(time.Hour),
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, fakeCert, fakeCert, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "generating test certificate")
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          certDER,
+		RegID:        Registration.Id,
+		Issued:       timestamppb.New(fc.Now().Add(-time.Hour)),
+		IssuerNameID: 1,
+	})
+	test.AssertNotError(t, err, "Adding test certificate")
+
+	_, err = ra.NewOrder(ctx, &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"renewing.example.com"},
+	})
+	test.AssertNotError(t, err, "Renewal of orderRenewal failed")
 
 	// Advancing the clock by 2 * the rate limit duration should allow orderTwo to
 	// succeed
