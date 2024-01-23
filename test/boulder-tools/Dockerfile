@@ -31,6 +31,9 @@ RUN /tmp/build-rust-deps.sh
 #
 # Run this command in each container: dpkg -l libc6
 FROM buildpack-deps:focal-scm
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ENV TARGETPLATFORM=${TARGETPLATFORM:-$BUILDPLATFORM}
 COPY requirements.txt /tmp/requirements.txt
 COPY boulder.rsyslog.conf /etc/rsyslog.d/
 COPY build.sh /tmp/build.sh
