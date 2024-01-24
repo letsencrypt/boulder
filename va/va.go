@@ -129,6 +129,12 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 			Help: "Number of validations failed due to remote VAs returning failure when consensus is enforced",
 		})
 	stats.MustRegister(remoteValidationFailures)
+	prospectiveRemoteValidationFailures := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "prospective_remote_validation_failures",
+			Help: "Number of validations that would have failed due to remote VAs returning failure if consesus were enforced",
+		})
+	stats.MustRegister(prospectiveRemoteValidationFailures)
 	caaCheckTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "caa_check_time",
@@ -151,7 +157,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 			Help:    "Time taken to remotely check CAA records",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"type", "result"})
+		[]string{"result"})
 	stats.MustRegister(remoteCAACheckTime)
 	remoteCAACheckFailures := prometheus.NewCounter(
 		prometheus.CounterOpts{
@@ -159,12 +165,6 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 			Help: "Number of CAA checks failed due to remote VAs returning failure when consensus is enforced",
 		})
 	stats.MustRegister(remoteCAACheckFailures)
-	prospectiveRemoteValidationFailures := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "prospective_remote_validation_failures",
-			Help: "Number of validations that would have failed due to remote VAs returning failure if consesus were enforced",
-		})
-	stats.MustRegister(prospectiveRemoteValidationFailures)
 	prospectiveRemoteCAACheckFailures := prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "prospective_remote_caa_check_failures",
@@ -207,11 +207,11 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		remoteValidationTime:                remoteValidationTime,
 		localValidationTime:                 localValidationTime,
 		remoteValidationFailures:            remoteValidationFailures,
+		prospectiveRemoteValidationFailures: prospectiveRemoteValidationFailures,
 		caaCheckTime:                        caaCheckTime,
 		localCAACheckTime:                   localCAACheckTime,
 		remoteCAACheckTime:                  remoteCAACheckTime,
 		remoteCAACheckFailures:              remoteCAACheckFailures,
-		prospectiveRemoteValidationFailures: prospectiveRemoteValidationFailures,
 		prospectiveRemoteCAACheckFailures:   prospectiveRemoteCAACheckFailures,
 		tlsALPNOIDCounter:                   tlsALPNOIDCounter,
 		http01Fallbacks:                     http01Fallbacks,
@@ -504,7 +504,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 func (va *ValidationAuthorityImpl) performRemoteValidation(
 	ctx context.Context,
 	req *vapb.PerformValidationRequest,
-	results chan *remoteVAResult) {
+	results chan<- *remoteVAResult) {
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA) {
@@ -560,7 +560,7 @@ func (va *ValidationAuthorityImpl) processRemoteValidationResults(
 	acctID int64,
 	challengeType string,
 	primaryResult *probs.ProblemDetails,
-	remoteResultsChan chan *remoteVAResult) *probs.ProblemDetails {
+	remoteResultsChan <-chan *remoteVAResult) *probs.ProblemDetails {
 
 	state := "failure"
 	start := va.clk.Now()

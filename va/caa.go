@@ -64,15 +64,12 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		}
 	}
 
-	var probType, detail string
 	checkResult := "success"
 	prob := va.checkCAA(ctx, acmeID, params)
 	localCheckLatency := time.Since(checkStartTime)
 	if prob != nil {
-		originalDetail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
-		probType = string(prob.Type)
 		logEvent.Error = prob.Error()
-		detail = replaceInvalidUTF8([]byte(originalDetail))
+		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
 		checkResult = "failure"
 	} else if remoteCAAResults != nil {
 		if !features.Get().EnforceMultiCAA && features.Get().MultiCAAFullResults {
@@ -87,10 +84,6 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 					prob,
 					remoteCAAResults)
 			}()
-			// Since prob was nil and we're not enforcing the results from
-			// `processRemoteCAAResults` set the challenge status to valid so
-			// the caaCheckTime metrics increment has the correct result
-			// label.
 		} else if features.Get().EnforceMultiCAA {
 			remoteProb := va.processRemoteCAAResults(
 				req.Domain,
@@ -102,9 +95,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			// If the remote result was a non-nil problem then fail the CAA check
 			if remoteProb != nil {
 				prob = remoteProb
-				probType = string(remoteProb.Type)
 				logEvent.Error = remoteProb.Error()
-				detail = replaceInvalidUTF8([]byte(remoteProb.Detail))
 				checkResult = "failure"
 				va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
@@ -122,15 +113,15 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	va.metrics.caaCheckTime.With(prometheus.Labels{
 		"type":         req.ValidationMethod,
 		"result":       checkResult,
-		"problem_type": probType,
+		"problem_type": string(prob.Type),
 	}).Observe(checkLatency.Seconds())
 
 	va.log.AuditObject("CAA check result", logEvent)
 
 	if prob != nil {
 		return &vapb.IsCAAValidResponse{Problem: &corepb.ProblemDetails{
-			ProblemType: probType,
-			Detail:      detail,
+			ProblemType: string(prob.Type),
+			Detail:      replaceInvalidUTF8([]byte(prob.Detail)),
 		}}, nil
 	} else {
 		return &vapb.IsCAAValidResponse{}, nil
@@ -166,7 +157,6 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 
 	defer func() {
 		va.metrics.remoteCAACheckTime.With(prometheus.Labels{
-			"type":   challengeType,
 			"result": state,
 		}).Observe(va.clk.Since(start).Seconds())
 	}()
@@ -207,8 +197,9 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 			}
 		}
 
-		// If we haven't returned early because of MultiVAFullResults being enabled
-		// we need to break the loop once all of the VAs have returned a result.
+		// If we haven't returned early because of MultiCAAFullResults being
+		// enabled we need to break the loop once all of the VAs have returned a
+		// result.
 		if len(remoteResults) == len(va.remoteVAs) {
 			break
 		}
@@ -265,7 +256,6 @@ func (va *ValidationAuthorityImpl) performRemoteCAACheck(
 			if err != nil {
 				if canceled.Is(err) {
 					// Handle the cancellation error.
-					va.log.Errf("Remote VA %q.IsCAAValid cancelled: %s", rva.Address, err)
 					result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC cancelled")
 				} else {
 					// Handle validation error.

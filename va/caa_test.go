@@ -639,7 +639,7 @@ func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA,
 	switch strings.TrimRight(domain, ".") {
 	case "present.com", "present.servfail.com":
 		record.Tag = "issue"
-		record.Value = "www.honestachmed.dyndns.org"
+		record.Value = "other-ca.com"
 		results = append(results, &record)
 	case "present-dns-only.com":
 		return results, "", fmt.Errorf("SERVFAIL")
@@ -681,7 +681,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		expectedProbSubstring    string
 		expectedProbType         probs.ProblemType
 		expectedDiffLogSubstring string
-		localDNSClient           bdns.Client // The test runner will default to caaMockDNS{}
+		localDNSClient           bdns.Client
 	}{
 		{
 			name:           "all VAs functional, no CAA records",
@@ -710,7 +710,7 @@ func TestMultiCAARechecking(t *testing.T) {
 			domains:                  "present-dns-only.com",
 			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
-			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA`,
+			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []RemoteVA{
 				{brokenVA, brokenUA},
@@ -768,9 +768,9 @@ func TestMultiCAARechecking(t *testing.T) {
 			},
 		},
 		{
-			// The RVA results are dropped because the localVA lookup determined
-			// issuance was forbidden and never fired off the gRPCs to the RVAs
-			// meaning that no differential was created.
+			// The localVA kicks off the background goroutines before doing its
+			// own check. But if its own check fails, it doesn't wait for their
+			// results.
 			name:                  "all VAs functional, CAA issue type forbids issuance",
 			domains:               "unsatisfiable.com",
 			expectedProbSubstring: "CAA record for unsatisfiable.com prevents issuance",
