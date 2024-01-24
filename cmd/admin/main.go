@@ -21,18 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 )
 
-const usageString = `
-Subcommands:
-	list-reasons
-	revoke-cert
-	block-key
-	clear-email
-	deactivate-authz (TODO(#5909): Implement this)
-	init-incident (TODO(#6943): Implement this)
-
-You can run "admin -config /path/to/cfg.json <subcommand> -help" to get usage for that subcommand.
-`
-
 type Config struct {
 	Admin struct {
 		// DB controls the admin tool's direct connection to the database.
@@ -62,13 +50,40 @@ func main() {
 	// validation for free.
 	defer cmd.AuditPanic()
 
+	commands := map[string]struct {
+		command func(admin, context.Context, []string) error
+		desc    string
+	}{
+		"list-reasons": {
+			command: admin.subcommandListReasons,
+			desc:    "List revocation reasons",
+		},
+		"revoke-cert": {
+			command: admin.subcommandRevokeCert,
+			desc:    "Revoke a certificate",
+		},
+		"block-key": {
+			command: admin.subcommandBlockKey,
+			desc:    "Block a key",
+		},
+		"clear-email": {
+			admin.subcommandClearEmail,
+			"Clear subscriber email from registrations",
+		},
+	}
+
 	configFile := flag.String("config", "", "Path to the configuration file for this service (required)")
 	dryRun := flag.Bool("dry-run", true, "Print actions instead of mutating the database")
 
 	defaultUsage := flag.Usage
 	flag.Usage = func() {
 		defaultUsage()
-		fmt.Print(usageString)
+
+		fmt.Println("Subcommands:")
+		for name, command := range commands {
+			fmt.Printf("\t%s: %s\n", name, command.desc)
+		}
+		fmt.Print("\nYou can run \"admin -config /path/to/cfg.json <subcommand> -help\" to get usage for that subcommand.\n")
 	}
 
 	flag.Parse()
@@ -98,18 +113,11 @@ func main() {
 
 	ctx := context.Background()
 
-	switch unparsedArgs[0] {
-	case "list-reasons":
-		err = a.subcommandListReasons(ctx, unparsedArgs[1:])
-	case "revoke-cert":
-		err = a.subcommandRevokeCert(ctx, unparsedArgs[1:])
-	case "block-key":
-		err = a.subcommandBlockKey(ctx, unparsedArgs[1:])
-	case "clear-email":
-		err = a.subcommandClearEmail(ctx, unparsedArgs[1:])
-	default:
+	command, ok := commands[unparsedArgs[0]]
+	if !ok {
 		cmd.FailOnError(errors.New("no recognized subcommand name provided"), "")
 	}
+	err = command.command(*a, ctx, unparsedArgs[1:])
 
 	cmd.FailOnError(err, "executing subcommand")
 
