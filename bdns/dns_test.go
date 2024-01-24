@@ -834,7 +834,7 @@ func (dohE *dohAlwaysRetryExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, t
 		Err: &mockTempURLError{},
 	}
 
-	return nil, time.Duration(time.Second), tempURLerror
+	return nil, time.Second, tempURLerror
 }
 
 func TestDOHMetric(t *testing.T) {
