@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
@@ -809,4 +811,49 @@ func TestRotateServerOnErr(t *testing.T) {
 	// all of the lookups attempted.
 	test.AssertEquals(t, mock.lookups["[2606:4700:4700::1111]:53"], maxTries*2)
 
+}
+
+type mockTempURLError struct{}
+
+func (m *mockTempURLError) Error() string   { return "whoops, oh gosh" }
+func (m *mockTempURLError) Timeout() bool   { return false }
+func (m *mockTempURLError) Temporary() bool { return true }
+
+type dohAlwaysRetryExchanger struct {
+	sync.Mutex
+	err error
+}
+
+func (dohE *dohAlwaysRetryExchanger) Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error) {
+	dohE.Lock()
+	defer dohE.Unlock()
+
+	tempURLerror := &url.Error{
+		Op:  "GET",
+		URL: "https://example.com",
+		Err: &mockTempURLError{},
+	}
+
+	return nil, time.Second, tempURLerror
+}
+
+func TestDOHMetric(t *testing.T) {
+	features.Set(features.Config{DOH: true})
+	defer features.Reset()
+
+	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
+	test.AssertNotError(t, err, "Got error creating StaticProvider")
+
+	testClient := NewTest(time.Second*11, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 0, blog.UseMock(), nil)
+	resolver := testClient.(*impl)
+	resolver.dnsClient = &dohAlwaysRetryExchanger{err: &url.Error{Op: "read", Err: tempError(true)}}
+
+	// Starting out, we should count 0 "out of retries" errors.
+	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 0)
+
+	// Trigger the error.
+	_, _ = resolver.exchangeOne(context.Background(), "example.com", 0)
+
+	// Now, we should count 1 "out of retries" errors.
+	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 1)
 }
