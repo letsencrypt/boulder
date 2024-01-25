@@ -857,7 +857,7 @@ func TestDOHMetric(t *testing.T) {
 	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 0)
 
 	// Trigger the error.
-	_, _ = resolver.exchangeOne(context.Background(), "example.com", 0)
+	_, _, _ = resolver.exchangeOne(context.Background(), "example.com", 0)
 
 	// Now, we should count 1 "out of retries" errors.
 	test.AssertMetricWithLabelsEquals(t, resolver.timeoutCounter, prometheus.Labels{"qtype": "None", "type": "out of retries", "resolver": "127.0.0.1", "isTLD": "false"}, 1)

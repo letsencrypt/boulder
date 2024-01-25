@@ -581,16 +581,16 @@ var errCAABrokenDNSClient = errors.New("dnsClient is broken")
 // errors.
 type caaBrokenDNS struct{}
 
-func (b caaBrokenDNS) LookupTXT(_ context.Context, hostname string) ([]string, error) {
-	return nil, errCAABrokenDNSClient
+func (b caaBrokenDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddr, error) {
+	return nil, "caaBrokenDNS", errCAABrokenDNSClient
 }
 
-func (b caaBrokenDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
-	return nil, errCAABrokenDNSClient
+func (b caaBrokenDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddr, error) {
+	return nil, "caaBrokenDNS", errCAABrokenDNSClient
 }
 
-func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, error) {
-	return nil, "", errCAABrokenDNSClient
+func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddr, error) {
+	return nil, "", "caaBrokenDNS", errCAABrokenDNSClient
 }
 
 func TestDisabledMultiCAARechecking(t *testing.T) {
@@ -623,15 +623,15 @@ func TestDisabledMultiCAARechecking(t *testing.T) {
 // changed while queries were inflight.
 type caaHijackedDNS struct{}
 
-func (h caaHijackedDNS) LookupTXT(_ context.Context, hostname string) ([]string, error) {
-	return nil, nil
+func (h caaHijackedDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddr, error) {
+	return nil, "caaHijackedDNS", nil
 }
 
-func (h caaHijackedDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
+func (h caaHijackedDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddr, error) {
 	ip := net.ParseIP("127.0.0.1")
-	return []net.IP{ip}, nil
+	return []net.IP{ip}, "caaHijackedDNS", nil
 }
-func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, error) {
+func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddr, error) {
 	// These records are altered from their caaMockDNS counterparts. Use this to
 	// tickle remoteValidationFailures.
 	var results []*dns.CAA
@@ -642,7 +642,7 @@ func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA,
 		record.Value = "other-ca.com"
 		results = append(results, &record)
 	case "present-dns-only.com":
-		return results, "", fmt.Errorf("SERVFAIL")
+		return results, "", "caaHijackedDNS", fmt.Errorf("SERVFAIL")
 	case "satisfiable-wildcard.com":
 		record.Tag = "issuewild"
 		record.Value = ";"
@@ -656,7 +656,7 @@ func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA,
 	if len(results) > 0 {
 		response = "foo"
 	}
-	return results, response, nil
+	return results, response, "caaHijackedDNS", nil
 }
 
 func TestMultiCAARechecking(t *testing.T) {
