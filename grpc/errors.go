@@ -111,7 +111,7 @@ func unwrapError(err error, md metadata.MD) error {
 			)
 		}
 
-		utf8SubErrors, unquoteErr := strconv.Unquote(subErrorsVal[0])
+		unquotedSubErrors, unquoteErr := strconv.Unquote(subErrorsVal[0])
 		if unquoteErr != nil {
 			return fmt.Errorf(
 				"unquoting 'suberrors' %q, wrapped error %q: %w",
@@ -121,7 +121,7 @@ func unwrapError(err error, md metadata.MD) error {
 			)
 		}
 
-		unmarshalErr := json.Unmarshal([]byte(utf8SubErrors), &outErr.SubErrors)
+		unmarshalErr := json.Unmarshal([]byte(unquotedSubErrors), &outErr.SubErrors)
 		if unmarshalErr != nil {
 			return berrors.InternalServerError(
 				"JSON unmarshaling 'suberrors' %q, wrapped error %q: %s",
