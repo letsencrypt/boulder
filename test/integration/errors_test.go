@@ -148,3 +148,37 @@ func TestAccountEmailError(t *testing.T) {
 		})
 	}
 }
+
+func TestRejectedIdentifier(t *testing.T) {
+	t.Parallel()
+
+	// When a single malformed name is provided, we correctly reject it.
+	domains := []string{
+		"яџ–Х6яяdь}",
+	}
+
+	_, err := authAndIssue(nil, nil, domains, true)
+	test.AssertError(t, err, "authAndIssue failed")
+
+	var prob acme.Problem
+	test.AssertErrorWraps(t, err, &prob)
+	t.Logf("%#v", prob)
+	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:rejectedIdentifier")
+	test.AssertContains(t, prob.Detail, "Domain name contains an invalid character")
+
+	// When multiple malformed names are provided, we correctly reject all of
+	// them and reflect this in suberrors.
+	domains = []string{
+		"o-",
+		"ш№Ў",
+		"р±y",
+		"яџ–Х6яя",
+		"яџ–Х6яя`ь",
+	}
+	_, err = authAndIssue(nil, nil, domains, true)
+	test.AssertError(t, err, "authAndIssue failed")
+	test.AssertErrorWraps(t, err, &prob)
+	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:rejectedIdentifier")
+	test.AssertContains(t, prob.Detail, "Domain name contains an invalid character")
+	test.AssertContains(t, prob.Detail, "and 4 more problems")
+}
