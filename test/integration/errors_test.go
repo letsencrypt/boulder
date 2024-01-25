@@ -156,18 +156,17 @@ func TestRejectedIdentifier(t *testing.T) {
 	domains := []string{
 		"яџ–Х6яяdь}",
 	}
-
 	_, err := authAndIssue(nil, nil, domains, true)
-	test.AssertError(t, err, "authAndIssue failed")
-
+	test.AssertError(t, err, "issuance should fail for one malformed name")
 	var prob acme.Problem
 	test.AssertErrorWraps(t, err, &prob)
-	t.Logf("%#v", prob)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:rejectedIdentifier")
 	test.AssertContains(t, prob.Detail, "Domain name contains an invalid character")
 
 	// When multiple malformed names are provided, we correctly reject all of
-	// them and reflect this in suberrors.
+	// them and reflect this in suberrors. This test ensures that the way we
+	// encode these errors across the gRPC boundary is resilient to non-ascii
+	// characters.
 	domains = []string{
 		"o-",
 		"ш№Ў",
@@ -176,7 +175,7 @@ func TestRejectedIdentifier(t *testing.T) {
 		"яџ–Х6яя`ь",
 	}
 	_, err = authAndIssue(nil, nil, domains, true)
-	test.AssertError(t, err, "authAndIssue failed")
+	test.AssertError(t, err, "issuance should fail for multiple malformed names")
 	test.AssertErrorWraps(t, err, &prob)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:rejectedIdentifier")
 	test.AssertContains(t, prob.Detail, "Domain name contains an invalid character")
