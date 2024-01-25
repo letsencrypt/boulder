@@ -41,7 +41,7 @@ const (
 
 	// DeprecatedPrefixLen is the character length of a nonce prefix.
 	//
-	// DEPRECATED: Use PrefixLen instead.
+	// Deprecated: Use PrefixLen instead.
 	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
 	DeprecatedPrefixLen = 4
 

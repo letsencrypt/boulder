@@ -37,6 +37,7 @@ type StorageAuthorityReadOnlyClient interface {
 	GetAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto.Authorization, error)
 	GetAuthorizations2(ctx context.Context, in *GetAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
+	GetLintPrecertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
 	GetCertificateStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.CertificateStatus, error)
 	GetMaxExpiration(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*timestamppb.Timestamp, error)
 	GetOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
@@ -165,6 +166,15 @@ func (c *storageAuthorityReadOnlyClient) GetAuthorizations2(ctx context.Context,
 func (c *storageAuthorityReadOnlyClient) GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error) {
 	out := new(proto.Certificate)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthorityReadOnly/GetCertificate", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityReadOnlyClient) GetLintPrecertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error) {
+	out := new(proto.Certificate)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthorityReadOnly/GetLintPrecertificate", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -377,6 +387,7 @@ type StorageAuthorityReadOnlyServer interface {
 	GetAuthorization2(context.Context, *AuthorizationID2) (*proto.Authorization, error)
 	GetAuthorizations2(context.Context, *GetAuthorizationsRequest) (*Authorizations, error)
 	GetCertificate(context.Context, *Serial) (*proto.Certificate, error)
+	GetLintPrecertificate(context.Context, *Serial) (*proto.Certificate, error)
 	GetCertificateStatus(context.Context, *Serial) (*proto.CertificateStatus, error)
 	GetMaxExpiration(context.Context, *emptypb.Empty) (*timestamppb.Timestamp, error)
 	GetOrder(context.Context, *OrderRequest) (*proto.Order, error)
@@ -435,6 +446,9 @@ func (UnimplementedStorageAuthorityReadOnlyServer) GetAuthorizations2(context.Co
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetCertificate(context.Context, *Serial) (*proto.Certificate, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCertificate not implemented")
+}
+func (UnimplementedStorageAuthorityReadOnlyServer) GetLintPrecertificate(context.Context, *Serial) (*proto.Certificate, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLintPrecertificate not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetCertificateStatus(context.Context, *Serial) (*proto.CertificateStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCertificateStatus not implemented")
@@ -710,6 +724,24 @@ func _StorageAuthorityReadOnly_GetCertificate_Handler(srv interface{}, ctx conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityReadOnlyServer).GetCertificate(ctx, req.(*Serial))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthorityReadOnly_GetLintPrecertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Serial)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityReadOnlyServer).GetLintPrecertificate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sa.StorageAuthorityReadOnly/GetLintPrecertificate",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityReadOnlyServer).GetLintPrecertificate(ctx, req.(*Serial))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1064,6 +1096,10 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthorityReadOnly_GetCertificate_Handler,
 		},
 		{
+			MethodName: "GetLintPrecertificate",
+			Handler:    _StorageAuthorityReadOnly_GetLintPrecertificate_Handler,
+		},
+		{
 			MethodName: "GetCertificateStatus",
 			Handler:    _StorageAuthorityReadOnly_GetCertificateStatus_Handler,
 		},
@@ -1152,6 +1188,7 @@ type StorageAuthorityClient interface {
 	GetAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto.Authorization, error)
 	GetAuthorizations2(ctx context.Context, in *GetAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
+	GetLintPrecertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
 	GetCertificateStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.CertificateStatus, error)
 	GetMaxExpiration(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*timestamppb.Timestamp, error)
 	GetOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
@@ -1299,6 +1336,15 @@ func (c *storageAuthorityClient) GetAuthorizations2(ctx context.Context, in *Get
 func (c *storageAuthorityClient) GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error) {
 	out := new(proto.Certificate)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/GetCertificate", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityClient) GetLintPrecertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error) {
+	out := new(proto.Certificate)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/GetLintPrecertificate", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1674,6 +1720,7 @@ type StorageAuthorityServer interface {
 	GetAuthorization2(context.Context, *AuthorizationID2) (*proto.Authorization, error)
 	GetAuthorizations2(context.Context, *GetAuthorizationsRequest) (*Authorizations, error)
 	GetCertificate(context.Context, *Serial) (*proto.Certificate, error)
+	GetLintPrecertificate(context.Context, *Serial) (*proto.Certificate, error)
 	GetCertificateStatus(context.Context, *Serial) (*proto.CertificateStatus, error)
 	GetMaxExpiration(context.Context, *emptypb.Empty) (*timestamppb.Timestamp, error)
 	GetOrder(context.Context, *OrderRequest) (*proto.Order, error)
@@ -1751,6 +1798,9 @@ func (UnimplementedStorageAuthorityServer) GetAuthorizations2(context.Context, *
 }
 func (UnimplementedStorageAuthorityServer) GetCertificate(context.Context, *Serial) (*proto.Certificate, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCertificate not implemented")
+}
+func (UnimplementedStorageAuthorityServer) GetLintPrecertificate(context.Context, *Serial) (*proto.Certificate, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLintPrecertificate not implemented")
 }
 func (UnimplementedStorageAuthorityServer) GetCertificateStatus(context.Context, *Serial) (*proto.CertificateStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCertificateStatus not implemented")
@@ -2079,6 +2129,24 @@ func _StorageAuthority_GetCertificate_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityServer).GetCertificate(ctx, req.(*Serial))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthority_GetLintPrecertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Serial)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).GetLintPrecertificate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sa.StorageAuthority/GetLintPrecertificate",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).GetLintPrecertificate(ctx, req.(*Serial))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2755,6 +2823,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetCertificate",
 			Handler:    _StorageAuthority_GetCertificate_Handler,
+		},
+		{
+			MethodName: "GetLintPrecertificate",
+			Handler:    _StorageAuthority_GetLintPrecertificate_Handler,
 		},
 		{
 			MethodName: "GetCertificateStatus",

@@ -87,6 +87,18 @@ type Config struct {
 
 	// DOH enables DNS-over-HTTPS queries for validation
 	DOH bool
+
+	// EnforceMultiCAA causes the VA to kick off remote CAA rechecks when true.
+	// When false, no remote CAA rechecks will be performed. The primary VA will
+	// make a valid/invalid decision with the results. The primary VA will
+	// return an early decision if MultiCAAFullResults is false.
+	EnforceMultiCAA bool
+
+	// MultiCAAFullResults will cause the main VA to block and wait for all of
+	// the remote VA CAA recheck results instead of returning early if the
+	// number of failures is greater than the configured
+	// maxRemoteValidationFailures. Only used when EnforceMultiCAA is true.
+	MultiCAAFullResults bool
 }
 
 var fMu = new(sync.RWMutex)

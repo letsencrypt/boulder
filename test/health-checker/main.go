@@ -26,6 +26,7 @@ func main() {
 	// Flag and config parsing and validation.
 	configFile := flag.String("config", "", "Path to the TLS configuration file")
 	serverAddr := flag.String("addr", "", "Address of the gRPC server to check")
+	hostOverride := flag.String("host-override", "", "Hostname to use for TLS certificate validation")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -47,6 +48,10 @@ func main() {
 	tlsConfig, err := c.TLS.Load(metrics.NoopRegisterer)
 	cmd.FailOnError(err, "failed to load TLS credentials")
 
+	if *hostOverride != "" {
+		c.GRPC.HostOverride = *hostOverride
+	}
+
 	// GRPC connection prerequisites.
 	clk := cmd.Clock()
 
@@ -58,12 +63,12 @@ func main() {
 	for {
 		select {
 		case <-ticker.C:
-			fmt.Fprintf(os.Stderr, "Connecting to %s health service\n", *serverAddr)
 			_, hostOverride, err := c.GRPC.MakeTargetAndHostOverride()
 			cmd.FailOnError(err, "")
 
 			// Set the hostOverride to match the dNSName in the server certificate.
 			c.GRPC.HostOverride = strings.Replace(hostOverride, ".service.consul", ".boulder", 1)
+			fmt.Fprintf(os.Stderr, "health checking %s (%s)\n", c.GRPC.HostOverride, *serverAddr)
 
 			// Set up the GRPC connection.
 			conn, err := bgrpc.ClientSetup(c.GRPC, tlsConfig, metrics.NoopRegisterer, clk)
@@ -79,9 +84,9 @@ func main() {
 			resp, err := client.Check(ctx2, req)
 			if err != nil {
 				if strings.Contains(err.Error(), "authentication handshake failed") {
-					cmd.Fail(fmt.Sprintf("error connecting to health service %s: %s\n", *serverAddr, err))
+					cmd.Fail(fmt.Sprintf("health checking %s (%s): %s\n", c.GRPC.HostOverride, *serverAddr, err))
 				}
-				fmt.Fprintf(os.Stderr, "got error connecting to health service %s: %s\n", *serverAddr, err)
+				fmt.Fprintf(os.Stderr, "health checking %s (%s): %s\n", c.GRPC.HostOverride, *serverAddr, err)
 			} else if resp.Status == healthpb.HealthCheckResponse_SERVING {
 				return
 			} else {
