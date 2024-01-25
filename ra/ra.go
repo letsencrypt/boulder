@@ -888,7 +888,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	return nil
 }
 
-// recheckCAA accepts a list of of names that need to have their CAA records
+// recheckCAA accepts a list of names that need to have their CAA records
 // rechecked because their associated authorizations are sufficiently old and
 // performs the CAA checks required for each. If any of the rechecks fail an
 // error is returned.
