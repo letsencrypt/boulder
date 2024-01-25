@@ -107,11 +107,9 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	logEvent.ValidationLatency = checkLatency.Round(time.Millisecond).Seconds()
 
 	va.metrics.localCAACheckTime.With(prometheus.Labels{
-		"type":   req.ValidationMethod,
 		"result": checkResult,
 	}).Observe(localCheckLatency.Seconds())
 	va.metrics.caaCheckTime.With(prometheus.Labels{
-		"type":   req.ValidationMethod,
 		"result": checkResult,
 	}).Observe(checkLatency.Seconds())
 
@@ -156,7 +154,6 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 
 	defer func() {
 		va.metrics.remoteCAACheckTime.With(prometheus.Labels{
-			"type":   challengeType,
 			"result": state,
 		}).Observe(va.clk.Since(start).Seconds())
 	}()

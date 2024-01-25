@@ -141,7 +141,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 			Help:    "Total time taken to check CAA records and aggregate results",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"type", "result"})
+		[]string{"result"})
 	stats.MustRegister(caaCheckTime)
 	localCAACheckTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -149,7 +149,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 			Help:    "Time taken to locally check CAA records",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"type", "result"})
+		[]string{"result"})
 	stats.MustRegister(localCAACheckTime)
 	remoteCAACheckTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -157,7 +157,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 			Help:    "Time taken to remotely check CAA records",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"type", "result"})
+		[]string{"result"})
 	stats.MustRegister(remoteCAACheckTime)
 	remoteCAACheckFailures := prometheus.NewCounter(
 		prometheus.CounterOpts{
