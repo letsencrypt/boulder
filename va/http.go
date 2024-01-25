@@ -228,16 +228,6 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	if err != nil {
 		return target, err
 	}
-	/*
-		target := &httpValidationTarget{
-			host:      host,
-			port:      port,
-			path:      path,
-			query:     query,
-			available: addrs,
-			resolver:  resolver,
-		}
-	*/
 
 	// Separate the addresses into the available v4 and v6 addresses
 	v4Addrs, v6Addrs := availableAddresses(addrs)
@@ -247,7 +237,6 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	if !hasV6Addrs && !hasV4Addrs {
 		// If there are no v6 addrs and no v4addrs there was a bug with getAddrs or
 		// availableAddresses and we need to return an error.
-
 		return target, fmt.Errorf("host %q has no IPv4 or IPv6 addresses", host)
 	} else if !hasV6Addrs && hasV4Addrs {
 		// If there are no v6 addrs and there are v4 addrs then use the first v4

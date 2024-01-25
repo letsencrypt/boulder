@@ -889,7 +889,6 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// Verify that the responses are reflected
 	challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
 	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
-	fmt.Println(challenge)
 	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
 
 	test.AssertNotNil(t, vaRequest.Challenge, "Request passed to VA has no challenge")

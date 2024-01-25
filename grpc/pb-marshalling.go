@@ -179,8 +179,7 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 		AddressUsed:       addrUsed,
 		URL:               in.Url,
 		AddressesTried:    addrsTried,
-		// TODO(#7140): Add ResolverAddress only after the core.proto change is
-		// deployed.
+		ResolverAddress:   in.ResolverAddress,
 	}, nil
 }
 
