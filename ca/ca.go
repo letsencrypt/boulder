@@ -60,6 +60,7 @@ type certificateAuthorityImpl struct {
 	sa      sapb.StorageAuthorityCertificateClient
 	pa      core.PolicyAuthority
 	issuers issuerMaps
+	profile *issuance.Profile
 
 	// This is temporary, and will be used for testing and slow roll-out
 	// of ECDSA issuance, but will then be removed.
@@ -103,6 +104,7 @@ func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
+	certificateProfile *issuance.Profile,
 	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
 	certBackdate time.Duration,
@@ -147,6 +149,7 @@ func NewCertificateAuthorityImpl(
 		sa:             sa,
 		pa:             pa,
 		issuers:        issuers,
+		profile:        certificateProfile,
 		validityPeriod: certExpiry,
 		backdate:       certBackdate,
 		prefix:         serialPrefix,
@@ -281,7 +284,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] precert=[%s]",
 		serialHex, req.RegistrationID, names, hex.EncodeToString(precert.Raw))
 
-	_, issuanceToken, err := issuer.Prepare(issuanceReq)
+	_, issuanceToken, err := issuer.Prepare(ca.profile, issuanceReq)
 	if err != nil {
 		ca.log.AuditErrf("Preparing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, req.RegistrationID, names, err)
@@ -439,7 +442,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotAfter:          validity.NotAfter,
 	}
 
-	lintCertBytes, issuanceToken, err := issuer.Prepare(req)
+	lintCertBytes, issuanceToken, err := issuer.Prepare(ca.profile, req)
 	if err != nil {
 		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)

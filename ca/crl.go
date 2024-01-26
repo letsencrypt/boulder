@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zmap/zlint/v3/lint"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -22,7 +24,9 @@ import (
 
 type crlImpl struct {
 	capb.UnimplementedCRLGeneratorServer
-	issuers   map[issuance.NameID]*issuance.Issuer
+	issuers map[issuance.NameID]*issuance.Issuer
+	// TODO(#7159): Move this into the CRL profile
+	lints     lint.Registry
 	lifetime  time.Duration
 	idpBase   string
 	maxLogLen int
@@ -34,7 +38,7 @@ type crlImpl struct {
 // issue CRLs from. lifetime sets the validity period (inclusive) of the
 // resulting CRLs. idpBase is the base URL from which IssuingDistributionPoint
 // URIs will constructed; it must use the http:// scheme.
-func NewCRLImpl(issuers []*issuance.Issuer, lifetime time.Duration, idpBase string, maxLogLen int, logger blog.Logger) (*crlImpl, error) {
+func NewCRLImpl(issuers []*issuance.Issuer, lints lint.Registry, lifetime time.Duration, idpBase string, maxLogLen int, logger blog.Logger) (*crlImpl, error) {
 	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
@@ -58,6 +62,7 @@ func NewCRLImpl(issuers []*issuance.Issuer, lifetime time.Duration, idpBase stri
 
 	return &crlImpl{
 		issuers:   issuersByNameID,
+		lints:     lints,
 		lifetime:  lifetime,
 		idpBase:   idpBase,
 		maxLogLen: maxLogLen,
@@ -152,7 +157,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 
 	template.RevokedCertificateEntries = rcs
 
-	err = issuer.Linter.CheckCRL(template)
+	err = issuer.Linter.CheckCRL(template, ci.lints)
 	if err != nil {
 		return err
 	}
