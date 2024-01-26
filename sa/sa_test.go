@@ -3999,3 +3999,85 @@ func TestUpdateCRLShard(t *testing.T) {
 	)
 	test.AssertError(t, err, "updating an unknown shard")
 }
+
+func TestReplacementOrderExists(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires replacementOrders database table")
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	features.Set(features.Config{TrackReplacementsCertificatesARI: true})
+	defer features.Reset()
+
+	// Create a test registration to reference.
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	// Add one valid authz.
+	expires := fc.Now().Add(time.Hour)
+	attemptedAt := fc.Now()
+	authzID := createFinalizedAuthorization(t, sa, "example.com", expires, "valid", attemptedAt)
+
+	// Add a new order in pending status with no certificate serial.
+	expires1Year := sa.clk.Now().Add(365 * 24 * time.Hour)
+	order, err := sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:   reg.Id,
+			Expires:          timestamppb.New(expires1Year),
+			Names:            []string{"example.com"},
+			V2Authorizations: []int64{authzID},
+		},
+	})
+	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
+
+	// Set the order to processing so it can be finalized
+	_, err = sa.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "SetOrderProcessing failed")
+
+	// Finalize the order with a certificate serial.
+	order.CertificateSerial = "1234567890"
+	_, err = sa.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{Id: order.Id, CertificateSerial: order.CertificateSerial})
+	test.AssertNotError(t, err, "FinalizeOrder failed")
+
+	// Create a replacement order.
+	order, err = sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:   reg.Id,
+			Expires:          timestamppb.New(expires1Year),
+			Names:            []string{"example.com"},
+			V2Authorizations: []int64{authzID},
+			Replaces:         "1234567890",
+		},
+	})
+	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
+
+	// Check that a pending replacement order exists.
+	exists, err := sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: "1234567890"})
+	test.AssertNotError(t, err, "failed to check for replacement order")
+	test.Assert(t, exists.Exists, "replacement order should exist")
+
+	// Set the order to processing so it can be finalized.
+	_, err = sa.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "SetOrderProcessing failed")
+
+	// Check that a replacement order in processing still exists.
+	exists, err = sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: "1234567890"})
+	test.AssertNotError(t, err, "failed to check for replacement order")
+	test.Assert(t, exists.Exists, "replacement order in processing should still exist")
+
+	order.CertificateSerial = "0123456789"
+	_, err = sa.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{Id: order.Id, CertificateSerial: order.CertificateSerial})
+	test.AssertNotError(t, err, "FinalizeOrder failed")
+
+	// Check that a finalized replacement order still exists.
+	exists, err = sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: "1234567890"})
+	test.AssertNotError(t, err, "failed to check for replacement order")
+	test.Assert(t, exists.Exists, "replacement order in processing should still exist")
+}
