@@ -60,7 +60,7 @@ func TestDialerMismatchError(t *testing.T) {
 // will timeout after the expected singleDialTimeout. This ensures timeouts at
 // the TCP level are handled correctly.
 func TestPreresolvedDialerTimeout(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 	// Timeouts below 50ms tend to be flaky.
 	va.singleDialTimeout = 50 * time.Millisecond
 
@@ -160,7 +160,7 @@ func TestHTTPValidationTarget(t *testing.T) {
 		exampleQuery = "my-path=was&my=own"
 	)
 
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			target, err := va.newHTTPValidationTarget(
@@ -291,7 +291,7 @@ func TestExtractRequestTarget(t *testing.T) {
 		},
 	}
 
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			host, port, err := va.extractRequestTarget(tc.Req)
@@ -313,7 +313,7 @@ func TestExtractRequestTarget(t *testing.T) {
 // generates a DNS error, and checks that a log line with the detailed error is
 // generated.
 func TestHTTPValidationDNSError(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil)
+	va, mockLog := setup(nil, 0, "", nil, nil)
 
 	_, _, prob := va.fetchHTTP(ctx, "always.error", "/.well-known/acme-challenge/whatever")
 	test.AssertError(t, prob, "Expected validation fetch to fail")
@@ -329,7 +329,7 @@ func TestHTTPValidationDNSError(t *testing.T) {
 // the mock resolver results in valid query/response data being logged in
 // a format we can decode successfully.
 func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil)
+	va, mockLog := setup(nil, 0, "", nil, nil)
 
 	_, _, prob := va.fetchHTTP(ctx, "id.mismatch", "/.well-known/acme-challenge/whatever")
 	test.AssertError(t, prob, "Expected validation fetch to fail")
@@ -368,7 +368,7 @@ func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
 }
 
 func TestSetupHTTPValidation(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 
 	mustTarget := func(t *testing.T, host string, port int, path string) *httpValidationTarget {
 		target, err := va.newHTTPValidationTarget(
@@ -738,7 +738,7 @@ func TestFetchHTTP(t *testing.T) {
 
 	// Setup a VA. By providing the testSrv to setup the VA will use the testSrv's
 	// randomly assigned port as its HTTP port.
-	va, _ := setup(testSrv, 0, "", nil)
+	va, _ := setup(testSrv, 0, "", nil, nil)
 
 	// We need to know the randomly assigned HTTP port for testcases as well
 	httpPort := getPort(testSrv)
@@ -1190,7 +1190,7 @@ func TestHTTPBadPort(t *testing.T) {
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
 
-	va, _ := setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil, nil)
 
 	// Pick a random port between 40000 and 65000 - with great certainty we won't
 	// have an HTTP server listening on this port and the test will fail as
@@ -1216,7 +1216,7 @@ func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
 	})
 	hs.Start()
 
-	va, _ := setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil, nil)
 	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), httpChallenge())
 
 	if prob == nil {
@@ -1239,7 +1239,7 @@ func TestHTTP(t *testing.T) {
 	// TODO(#1989): close hs
 	hs := httpSrv(t, expectedToken)
 
-	va, log := setup(hs, 0, "", nil)
+	va, log := setup(hs, 0, "", nil, nil)
 
 	chall := httpChallenge()
 	t.Logf("Trying to validate: %+v\n", chall)
@@ -1308,7 +1308,7 @@ func TestHTTPTimeout(t *testing.T) {
 	hs := httpSrv(t, expectedToken)
 	// TODO(#1989): close hs
 
-	va, _ := setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil, nil)
 
 	chall := httpChallenge()
 	setChallengeToken(&chall, pathWaitLong)
@@ -1350,7 +1350,7 @@ func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname stri
 // error when dial fails. We do this by using a mock DNS client that resolves
 // everything to an unroutable IP address.
 func TestHTTPDialTimeout(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 
 	started := time.Now()
 	timeout := 250 * time.Millisecond
@@ -1395,7 +1395,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 func TestHTTPRedirectLookup(t *testing.T) {
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, log := setup(hs, 0, "", nil)
+	va, log := setup(hs, 0, "", nil, nil)
 
 	chall := httpChallenge()
 	setChallengeToken(&chall, pathMoved)
@@ -1461,7 +1461,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 func TestHTTPRedirectLoop(t *testing.T) {
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, _ := setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil, nil)
 
 	chall := httpChallenge()
 	setChallengeToken(&chall, "looper")
@@ -1474,7 +1474,7 @@ func TestHTTPRedirectLoop(t *testing.T) {
 func TestHTTPRedirectUserAgent(t *testing.T) {
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, _ := setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil, nil)
 	va.userAgent = rejectUserAgent
 
 	chall := httpChallenge()
@@ -1514,7 +1514,7 @@ func TestValidateHTTP(t *testing.T) {
 	hs := httpSrv(t, chall.Token)
 	defer hs.Close()
 
-	va, _ := setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil, nil)
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
 	test.Assert(t, prob == nil, "validation failed")
@@ -1525,7 +1525,7 @@ func TestLimitedReader(t *testing.T) {
 	setChallengeToken(&chall, core.NewToken())
 
 	hs := httpSrv(t, "012345\xff67890123456789012345678901234567890123456789012345678901234567890123456789")
-	va, _ := setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil, nil)
 	defer hs.Close()
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)

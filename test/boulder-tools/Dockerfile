@@ -1,6 +1,6 @@
 FROM buildpack-deps:focal-scm as godeps
 ARG GO_VERSION
-# Provided automatically by docker buildx.
+# Provided automatically by docker build.
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 ENV TARGETPLATFORM=${TARGETPLATFORM:-$BUILDPLATFORM}
@@ -17,7 +17,7 @@ RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.53.3
 RUN go install honnef.co/go/tools/cmd/staticcheck@2023.1.5
 
 FROM rust:bullseye as rustdeps
-# Provided automatically by docker buildx.
+# Provided automatically by docker build.
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 ENV TARGETPLATFORM=${TARGETPLATFORM:-$BUILDPLATFORM}
@@ -31,6 +31,10 @@ RUN /tmp/build-rust-deps.sh
 #
 # Run this command in each container: dpkg -l libc6
 FROM buildpack-deps:focal-scm
+# Provided automatically by docker build.
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ENV TARGETPLATFORM=${TARGETPLATFORM:-$BUILDPLATFORM}
 COPY requirements.txt /tmp/requirements.txt
 COPY boulder.rsyslog.conf /etc/rsyslog.d/
 COPY build.sh /tmp/build.sh

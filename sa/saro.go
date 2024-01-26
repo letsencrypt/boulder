@@ -440,6 +440,32 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, req *sapb.Se
 	return ssa.SQLStorageAuthorityRO.GetCertificate(ctx, req)
 }
 
+// GetLintPrecertificate takes a serial number and returns the corresponding
+// linting precertificate, or error if it does not exist. The returned precert
+// is identical to the actual submitted-to-CT-logs precertificate, except for
+// its signature.
+func (ssa *SQLStorageAuthorityRO) GetLintPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+	if req == nil || req.Serial == "" {
+		return nil, errIncompleteRequest
+	}
+	if !core.ValidSerial(req.Serial) {
+		return nil, fmt.Errorf("invalid precertificate serial %s", req.Serial)
+	}
+
+	cert, err := SelectPrecertificate(ctx, ssa.dbReadOnlyMap, req.Serial)
+	if db.IsNoRows(err) {
+		return nil, berrors.NotFoundError("precertificate with serial %q not found", req.Serial)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return bgrpc.CertToPB(cert), nil
+}
+
+func (ssa *SQLStorageAuthority) GetLintPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+	return ssa.SQLStorageAuthorityRO.GetCertificate(ctx, req)
+}
+
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
 // number of a certificate and returns data about that certificate's current
 // validity.

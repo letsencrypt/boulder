@@ -144,6 +144,10 @@ func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc
 	return nil, berrors.NotFoundError("cannot find the cert")
 }
 
+func (m *mockSA) GetLintPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, berrors.NotFoundError("cannot find the precert")
+}
+
 func (m *mockSA) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }

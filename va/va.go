@@ -65,12 +65,18 @@ var (
 	h2SettingsFrameErrRegex = regexp.MustCompile(`(?:net\/http\: HTTP\/1\.x transport connection broken: )?malformed HTTP response \"\\x00\\x00\\x[a-f0-9]{2}\\x04\\x00\\x00\\x00\\x00\\x00.*"`)
 )
 
-// RemoteVA wraps the vapb.VAClient interface and adds a field containing the
-// address of the remote gRPC server since the underlying gRPC client doesn't
-// provide a way to extract this metadata which is useful for debugging gRPC
-// connection issues.
-type RemoteVA struct {
+// RemoteClients wraps the vapb.VAClient and vapb.CAAClient interfaces to aid in
+// mocking remote VAs for testing.
+type RemoteClients struct {
 	vapb.VAClient
+	vapb.CAAClient
+}
+
+// RemoteVA embeds RemoteClients and adds a field containing the address of the
+// remote gRPC server since the underlying gRPC client doesn't provide a way to
+// extract this metadata which is useful for debugging gRPC connection issues.
+type RemoteVA struct {
+	RemoteClients
 	Address string
 }
 
@@ -80,6 +86,11 @@ type vaMetrics struct {
 	remoteValidationTime                *prometheus.HistogramVec
 	remoteValidationFailures            prometheus.Counter
 	prospectiveRemoteValidationFailures prometheus.Counter
+	caaCheckTime                        *prometheus.HistogramVec
+	localCAACheckTime                   *prometheus.HistogramVec
+	remoteCAACheckTime                  *prometheus.HistogramVec
+	remoteCAACheckFailures              prometheus.Counter
+	prospectiveRemoteCAACheckFailures   prometheus.Counter
 	tlsALPNOIDCounter                   *prometheus.CounterVec
 	http01Fallbacks                     prometheus.Counter
 	http01Redirects                     prometheus.Counter
@@ -124,6 +135,42 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 			Help: "Number of validations that would have failed due to remote VAs returning failure if consesus were enforced",
 		})
 	stats.MustRegister(prospectiveRemoteValidationFailures)
+	caaCheckTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "caa_check_time",
+			Help:    "Total time taken to check CAA records and aggregate results",
+			Buckets: metrics.InternetFacingBuckets,
+		},
+		[]string{"result"})
+	stats.MustRegister(caaCheckTime)
+	localCAACheckTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "caa_check_time_local",
+			Help:    "Time taken to locally check CAA records",
+			Buckets: metrics.InternetFacingBuckets,
+		},
+		[]string{"result"})
+	stats.MustRegister(localCAACheckTime)
+	remoteCAACheckTime := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "caa_check_time_remote",
+			Help:    "Time taken to remotely check CAA records",
+			Buckets: metrics.InternetFacingBuckets,
+		},
+		[]string{"result"})
+	stats.MustRegister(remoteCAACheckTime)
+	remoteCAACheckFailures := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "remote_caa_check_failures",
+			Help: "Number of CAA checks failed due to remote VAs returning failure when consensus is enforced",
+		})
+	stats.MustRegister(remoteCAACheckFailures)
+	prospectiveRemoteCAACheckFailures := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "prospective_remote_caa_check_failures",
+			Help: "Number of CAA rechecks that would have failed due to remote VAs returning failure if consesus were enforced",
+		})
+	stats.MustRegister(prospectiveRemoteCAACheckFailures)
 	tlsALPNOIDCounter := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "tls_alpn_oid_usage",
@@ -161,6 +208,11 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		localValidationTime:                 localValidationTime,
 		remoteValidationFailures:            remoteValidationFailures,
 		prospectiveRemoteValidationFailures: prospectiveRemoteValidationFailures,
+		caaCheckTime:                        caaCheckTime,
+		localCAACheckTime:                   localCAACheckTime,
+		remoteCAACheckTime:                  remoteCAACheckTime,
+		remoteCAACheckFailures:              remoteCAACheckFailures,
+		prospectiveRemoteCAACheckFailures:   prospectiveRemoteCAACheckFailures,
 		tlsALPNOIDCounter:                   tlsALPNOIDCounter,
 		http01Fallbacks:                     http01Fallbacks,
 		http01Redirects:                     http01Redirects,
@@ -452,11 +504,11 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 func (va *ValidationAuthorityImpl) performRemoteValidation(
 	ctx context.Context,
 	req *vapb.PerformValidationRequest,
-	results chan *remoteValidationResult) {
+	results chan<- *remoteVAResult) {
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA) {
-			result := &remoteValidationResult{
+			result := &remoteVAResult{
 				VAHostname: rva.Address,
 			}
 			res, err := rva.PerformValidation(ctx, req)
@@ -486,29 +538,29 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	}
 }
 
-// processRemoteResults evaluates a primary VA result, and a channel of remote
-// VA problems to produce a single overall validation result based on configured
-// feature flags. The overall result is calculated based on the VA's configured
-// `maxRemoteFailures` value.
+// processRemoteValidationResults evaluates a primary VA result, and a channel
+// of remote VA problems to produce a single overall validation result based on
+// configured feature flags. The overall result is calculated based on the VA's
+// configured `maxRemoteFailures` value.
 //
-// If the `MultiVAFullResults` feature is enabled then `processRemoteResults`
-// will expect to read a result from the `remoteErrors` channel for each VA and
-// will not produce an overall result until all remote VAs have responded. In
-// this case `logRemoteFailureDifferentials` will also be called to describe the
-// differential between the primary and all of the remote VAs.
+// If the `MultiVAFullResults` feature is enabled then
+// `processRemoteValidationResults` will expect to read a result from the
+// `remoteErrors` channel for each VA and will not produce an overall result
+// until all remote VAs have responded. In this case `logRemoteDifferentials`
+// will also be called to describe the differential between the primary and all
+// of the remote VAs.
 //
 // If the `MultiVAFullResults` feature flag is not enabled then
-// `processRemoteResults` will potentially return before all remote VAs have had
-// a chance to respond. This happens if the success or failure threshold is met.
-// This doesn't allow for logging the differential between the primary and
-// remote VAs but is more performant.
-func (va *ValidationAuthorityImpl) processRemoteResults(
+// `processRemoteValidationResults` will potentially return before all remote
+// VAs have had a chance to respond. This happens if the success or failure
+// threshold is met. This doesn't allow for logging the differential between the
+// primary and remote VAs but is more performant.
+func (va *ValidationAuthorityImpl) processRemoteValidationResults(
 	domain string,
 	acctID int64,
 	challengeType string,
 	primaryResult *probs.ProblemDetails,
-	remoteResultsChan chan *remoteValidationResult,
-	numRemoteVAs int) *probs.ProblemDetails {
+	remoteResultsChan <-chan *remoteVAResult) *probs.ProblemDetails {
 
 	state := "failure"
 	start := va.clk.Now()
@@ -520,11 +572,11 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 		}).Observe(va.clk.Since(start).Seconds())
 	}()
 
-	required := numRemoteVAs - va.maxRemoteFailures
+	required := len(va.remoteVAs) - va.maxRemoteFailures
 	good := 0
 	bad := 0
 
-	var remoteResults []*remoteValidationResult
+	var remoteResults []*remoteVAResult
 	var firstProb *probs.ProblemDetails
 	// Due to channel behavior this could block indefinitely and we rely on gRPC
 	// honoring the context deadline used in client calls to prevent that from
@@ -537,13 +589,11 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 		} else {
 			bad++
 		}
-
 		// Store the first non-nil problem to return later (if `MultiVAFullResults`
 		// is enabled).
 		if firstProb == nil && result.Problem != nil {
 			firstProb = result.Problem
 		}
-
 		// If MultiVAFullResults isn't enabled then return early whenever the
 		// success or failure threshold is met.
 		if !features.Get().MultiVAFullResults {
@@ -559,15 +609,14 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 
 		// If we haven't returned early because of MultiVAFullResults being enabled
 		// we need to break the loop once all of the VAs have returned a result.
-		if len(remoteResults) == numRemoteVAs {
+		if len(remoteResults) == len(va.remoteVAs) {
 			break
 		}
 	}
-
 	// If we are using `features.MultiVAFullResults` then we haven't returned
 	// early and can now log the differential between what the primary VA saw and
 	// what all of the remote VAs saw.
-	va.logRemoteValidationDifferentials(
+	va.logRemoteDifferentials(
 		domain,
 		acctID,
 		challengeType,
@@ -581,6 +630,12 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	} else if bad > va.maxRemoteFailures {
 		modifiedProblem := *firstProb
 		modifiedProblem.Detail = "During secondary validation: " + firstProb.Detail
+		// If the primary result was OK and there were more failures than the allowed
+		// threshold increment a stat that indicates this overall validation will have
+		// failed.
+		if primaryResult == nil {
+			va.metrics.prospectiveRemoteValidationFailures.Inc()
+		}
 		return &modifiedProblem
 	}
 
@@ -589,18 +644,18 @@ func (va *ValidationAuthorityImpl) processRemoteResults(
 	return probs.ServerInternal("Too few remote PerformValidation RPC results")
 }
 
-// logRemoteValidationDifferentials is called by `processRemoteResults` when the
-// `MultiVAFullResults` feature flag is enabled. It produces a JSON log line
+// logRemoteDifferentials is called by `processRemoteValidationResults` when the
+// `MultiVAFullResults` feature flag is enabled and `processRemoteCAAResults`
+// `MultiCAAFullResults` feature flag is enabled. It produces a JSON log line
 // that contains the primary VA result and the results each remote VA returned.
-func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
+func (va *ValidationAuthorityImpl) logRemoteDifferentials(
 	domain string,
 	acctID int64,
 	challengeType string,
 	primaryResult *probs.ProblemDetails,
-	remoteResults []*remoteValidationResult) {
+	remoteResults []*remoteVAResult) {
 
-	var successes []*remoteValidationResult
-	var failures []*remoteValidationResult
+	var successes, failures []*remoteVAResult
 
 	allEqual := true
 	for _, result := range remoteResults {
@@ -619,20 +674,13 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 		return
 	}
 
-	// If the primary result was OK and there were more failures than the allowed
-	// threshold increment a stat that indicates this overall validation will have
-	// failed if features.EnforceMultiVA is enabled.
-	if primaryResult == nil && len(failures) > va.maxRemoteFailures {
-		va.metrics.prospectiveRemoteValidationFailures.Inc()
-	}
-
 	logOb := struct {
 		Domain          string
 		AccountID       int64
 		ChallengeType   string
 		PrimaryResult   *probs.ProblemDetails
 		RemoteSuccesses int
-		RemoteFailures  []*remoteValidationResult
+		RemoteFailures  []*remoteVAResult
 	}{
 		Domain:          domain,
 		AccountID:       acctID,
@@ -644,20 +692,20 @@ func (va *ValidationAuthorityImpl) logRemoteValidationDifferentials(
 
 	logJSON, err := json.Marshal(logOb)
 	if err != nil {
-		// log a warning - a marshaling failure isn't expected given the data and
-		// isn't critical enough to break validation for by returning an error to
-		// the caller.
+		// log a warning - a marshaling failure isn't expected given the data
+		// isn't critical enough to break validation by returning an error the
+		// caller.
 		va.log.Warningf("Could not marshal log object in "+
-			"logRemoteValidationDifferentials: %s", err)
+			"logRemoteDifferential: %s", err)
 		return
 	}
 
 	va.log.Infof("remoteVADifferentials JSON=%s", string(logJSON))
 }
 
-// remoteValidationResult is a struct that combines a problem details instance
-// (that may be nil) with the remote VA hostname that produced it.
-type remoteValidationResult struct {
+// remoteVAResult is a struct that combines a problem details instance (that may
+// be nil) with the remote VA hostname that produced it.
+type remoteVAResult struct {
 	VAHostname string
 	Problem    *probs.ProblemDetails
 }
@@ -676,9 +724,9 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	}
 	vStart := va.clk.Now()
 
-	var remoteResults chan *remoteValidationResult
+	var remoteResults chan *remoteVAResult
 	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
-		remoteResults = make(chan *remoteValidationResult, remoteVACount)
+		remoteResults = make(chan *remoteVAResult, remoteVACount)
 		go va.performRemoteValidation(ctx, req, remoteResults)
 	}
 
@@ -708,26 +756,25 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 			// differentials then collect and log the remote results in a separate go
 			// routine to avoid blocking the primary VA.
 			go func() {
-				_ = va.processRemoteResults(
+				_ = va.processRemoteValidationResults(
 					req.Domain,
 					req.Authz.RegID,
 					string(challenge.Type),
 					prob,
-					remoteResults,
-					len(va.remoteVAs))
+					remoteResults)
 			}()
 			// Since prob was nil and we're not enforcing the results from
-			// `processRemoteResults` set the challenge status to valid so the
-			// validationTime metrics increment has the correct result label.
+			// `processRemoteValidationResults` set the challenge status to
+			// valid so the validationTime metrics increment has the correct
+			// result label.
 			challenge.Status = core.StatusValid
 		} else if features.Get().EnforceMultiVA {
-			remoteProb := va.processRemoteResults(
+			remoteProb := va.processRemoteValidationResults(
 				req.Domain,
 				req.Authz.RegID,
 				string(challenge.Type),
 				prob,
-				remoteResults,
-				len(va.remoteVAs))
+				remoteResults)
 
 			// If the remote result was a non-nil problem then fail the validation
 			if remoteProb != nil {
