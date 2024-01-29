@@ -567,7 +567,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			BeganProcessing: false,
 		}
 
-		if features.Get().TrackReplacementsCertificatesARI && req.NewOrder.Replaces != "" {
+		if features.Get().TrackReplacementCertificatesARI && req.NewOrder.Replaces != "" {
 			// Update the replacementOrders table to indicate that this order
 			// replaces the provided certificate serial.
 			err := addReplacementOrder(ctx, tx, req.NewOrder.Replaces, order.ID, order.Expires)
@@ -706,7 +706,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 			return nil, err
 		}
 
-		if features.Get().TrackReplacementsCertificatesARI {
+		if features.Get().TrackReplacementCertificatesARI {
 			err = setReplacementOrderFinalized(ctx, tx, req.Id)
 			if err != nil {
 				return nil, err

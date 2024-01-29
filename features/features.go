@@ -100,7 +100,7 @@ type Config struct {
 	// maxRemoteValidationFailures. Only used when EnforceMultiCAA is true.
 	MultiCAAFullResults bool
 
-	// TrackReplacementsCertificatesARI, when enabled, triggers the following
+	// TrackReplacementCertificatesARI, when enabled, triggers the following
 	// behavior:
 	//   - SA.NewOrderAndAuthzs: upon receiving a NewOrderRequest with a
 	//     'replaces' value, will create a new entry in the 'replacementOrders'
@@ -108,7 +108,7 @@ type Config struct {
 	//   - SA.FinalizeOrder will update the 'replaced' column of any row with
 	//     a 'orderID' matching the finalized order to true. This will occur
 	//     inside of the finalize (order) transaction.
-	TrackReplacementsCertificatesARI bool
+	TrackReplacementCertificatesARI bool
 }
 
 var fMu = new(sync.RWMutex)

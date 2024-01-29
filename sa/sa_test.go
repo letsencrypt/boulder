@@ -4008,17 +4008,18 @@ func TestReplacementOrderExists(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	features.Set(features.Config{TrackReplacementsCertificatesARI: true})
+	features.Set(features.Config{TrackReplacementCertificatesARI: true})
 	defer features.Reset()
 
+	oldCertSerial := "1234567890"
+
+	// Check that a non-existant replacement order does not exist.
+	exists, err := sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: oldCertSerial})
+	test.AssertNotError(t, err, "failed to check for replacement order")
+	test.Assert(t, !exists.Exists, "replacement for non-existant serial should not exist")
+
 	// Create a test registration to reference.
-	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
-	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
-	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-	})
-	test.AssertNotError(t, err, "Couldn't create test registration")
+	reg := createWorkingRegistration(t, sa)
 
 	// Add one valid authz.
 	expires := fc.Now().Add(time.Hour)
@@ -4041,8 +4042,8 @@ func TestReplacementOrderExists(t *testing.T) {
 	_, err = sa.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "SetOrderProcessing failed")
 
-	// Finalize the order with a certificate serial.
-	order.CertificateSerial = "1234567890"
+	// Finalize the order with a certificate oldCertSerial.
+	order.CertificateSerial = oldCertSerial
 	_, err = sa.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{Id: order.Id, CertificateSerial: order.CertificateSerial})
 	test.AssertNotError(t, err, "FinalizeOrder failed")
 
@@ -4053,13 +4054,13 @@ func TestReplacementOrderExists(t *testing.T) {
 			Expires:          timestamppb.New(expires1Year),
 			Names:            []string{"example.com"},
 			V2Authorizations: []int64{authzID},
-			Replaces:         "1234567890",
+			Replaces:         oldCertSerial,
 		},
 	})
 	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
 
 	// Check that a pending replacement order exists.
-	exists, err := sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: "1234567890"})
+	exists, err = sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: oldCertSerial})
 	test.AssertNotError(t, err, "failed to check for replacement order")
 	test.Assert(t, exists.Exists, "replacement order should exist")
 
@@ -4068,7 +4069,7 @@ func TestReplacementOrderExists(t *testing.T) {
 	test.AssertNotError(t, err, "SetOrderProcessing failed")
 
 	// Check that a replacement order in processing still exists.
-	exists, err = sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: "1234567890"})
+	exists, err = sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: oldCertSerial})
 	test.AssertNotError(t, err, "failed to check for replacement order")
 	test.Assert(t, exists.Exists, "replacement order in processing should still exist")
 
@@ -4077,7 +4078,7 @@ func TestReplacementOrderExists(t *testing.T) {
 	test.AssertNotError(t, err, "FinalizeOrder failed")
 
 	// Check that a finalized replacement order still exists.
-	exists, err = sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: "1234567890"})
+	exists, err = sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: oldCertSerial})
 	test.AssertNotError(t, err, "failed to check for replacement order")
 	test.Assert(t, exists.Exists, "replacement order in processing should still exist")
 }

@@ -1552,7 +1552,7 @@ func (ssa *SQLStorageAuthorityRO) ReplacementOrderExists(ctx context.Context, re
 		return &sapb.Exists{Exists: true}, nil
 
 	case string(core.StatusInvalid):
-		// The existing replacement order is cannot be finalized. The requester
+		// The existing replacement order cannot be finalized. The requester
 		// should create a new replacement order.
 		return &sapb.Exists{Exists: false}, nil
 
