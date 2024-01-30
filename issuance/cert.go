@@ -250,11 +250,12 @@ type issuanceToken struct {
 	issuer *Issuer
 }
 
-// Prepare applies this Issuer's profile to create a template certificate. It
-// then generates a linting certificate from that template and runs the linter
-// over it. If successful, returns both the linting certificate (which can be
-// stored) and an issuanceToken. The issuanceToken can be used to sign a
-// matching certificate with this Issuer's private key.
+// Prepare combines the given profile and request with the Issuer's information
+// to create a template certificate. It then generates a linting certificate
+// from that template and runs the linter over it. If successful, returns both
+// the linting certificate (which can be stored) and an issuanceToken. The
+// issuanceToken can be used to sign a matching certificate with this Issuer's
+// private key.
 func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 	// check request is valid according to the issuance profile
 	err := i.requestValid(i.Clk, prof, req)
