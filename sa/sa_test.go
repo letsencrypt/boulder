@@ -4013,10 +4013,10 @@ func TestReplacementOrderExists(t *testing.T) {
 
 	oldCertSerial := "1234567890"
 
-	// Check that a non-existant replacement order does not exist.
+	// Check that a non-existent replacement order does not exist.
 	exists, err := sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: oldCertSerial})
 	test.AssertNotError(t, err, "failed to check for replacement order")
-	test.Assert(t, !exists.Exists, "replacement for non-existant serial should not exist")
+	test.Assert(t, !exists.Exists, "replacement for non-existent serial should not exist")
 
 	// Create a test registration to reference.
 	reg := createWorkingRegistration(t, sa)

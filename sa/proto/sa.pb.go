@@ -1321,6 +1321,7 @@ type NewOrderRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// Next unused field number: 7
 	RegistrationID   int64                  `protobuf:"varint,1,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
 	Expires          *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires,proto3" json:"expires,omitempty"`
 	Names            []string               `protobuf:"bytes,3,rep,name=names,proto3" json:"names,omitempty"`
