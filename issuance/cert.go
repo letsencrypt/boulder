@@ -353,7 +353,7 @@ func ContainsMustStaple(extensions []pkix.Extension) bool {
 	return false
 }
 
-// containtsCTPoison returns true if the provided set of extensions includes
+// containsCTPoison returns true if the provided set of extensions includes
 // an entry whose OID and value both match the expected values for the CT
 // Poison extension.
 func containsCTPoison(extensions []pkix.Extension) bool {

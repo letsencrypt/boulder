@@ -116,11 +116,10 @@ func TestLoadSigner(t *testing.T) {
 		{"ECDSA key file", IssuerLoc{File: "../test/hierarchy/int-e1.key.pem"}, ""},
 		{"RSA key file", IssuerLoc{File: "../test/hierarchy/int-r3.key.pem"}, ""},
 		{"invalid config file", IssuerLoc{ConfigFile: "../test/example-weak-keys.json"}, "json: cannot unmarshal"},
-		// Note that this valid config file still results in an error, because we
-		// don't supply the correct public key so pkcs11key can't look up the
-		// corresponding private key in the softhsm (which we only want to use in
-		// integration tests anyway).
-		{"valid config file", IssuerLoc{ConfigFile: "../test/test-ca.key-pkcs11.json"}, "looking up public key: no objects found"},
+		// Note that we don't have a test for "valid config file" because it would
+		// always fail -- in CI, the softhsm hasn't been initialized, so there's no
+		// key to look up; locally even if the softhsm has been initialized, the
+		// keys in it don't match the fakeKey we generated above.
 	}
 	for _, tc := range tests {
 		tc := tc
