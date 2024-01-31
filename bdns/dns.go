@@ -515,7 +515,6 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 	var recordsA, recordsAAAA []dns.RR
 	var errA, errAAAA error
 	var resolverA, resolverAAAA ResolverAddr
-	var resolvers []string
 	var wg sync.WaitGroup
 
 	wg.Add(1)
@@ -524,7 +523,6 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 		recordsA, resolverA, errA = dnsClient.lookupIP(ctx, hostname, dns.TypeA)
 		if resolverA != "" {
 			resolverA = "A:" + resolverA
-			resolvers = append(resolvers, resolverA.String())
 		}
 	}()
 	wg.Add(1)
@@ -533,16 +531,19 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 		recordsAAAA, resolverAAAA, errAAAA = dnsClient.lookupIP(ctx, hostname, dns.TypeAAAA)
 		if resolverAAAA != "" {
 			resolverAAAA = "AAAA:" + resolverAAAA
-			resolvers = append(resolvers, resolverAAAA.String())
 		}
 	}()
 	wg.Wait()
 
-	var resolver ResolverAddr
-	if len(resolvers) > 0 {
-		slices.Sort(resolvers)
-		resolver = ResolverAddr(strings.Join(resolvers, ","))
+	var resolvers []string
+	if resolverA.String() != "" {
+		resolvers = append(resolvers, resolverA.String())
 	}
+	if resolverAAAA.String() != "" {
+		resolvers = append(resolvers, resolverAAAA.String())
+	}
+	slices.Sort(resolvers)
+	resolver := ResolverAddr(strings.Join(resolvers, ","))
 
 	var addrsA []net.IP
 	if errA == nil {
