@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -1210,18 +1211,42 @@ type replacementOrderModel struct {
 
 // addReplacementOrder inserts or updates the replacementOrders row matching the
 // provided serial with the details provided. This function accepts a
-// transaction so that the upsert can take place within the new order
+// transaction so that the insert or update takes place within the new order
 // transaction.
-func addReplacementOrder(ctx context.Context, db db.Execer, serial string, orderID int64, orderExpires time.Time) error {
-	_, err := db.ExecContext(ctx, `
-		INSERT INTO replacementOrders (serial, orderID, orderExpires)
-		VALUES (?, ?, ?)
-		ON DUPLICATE KEY UPDATE orderID = ?, orderExpires = ?`,
-		serial, orderID, orderExpires,
-		orderID, orderExpires,
+func addReplacementOrder(ctx context.Context, db db.SelectExecer, serial string, orderID int64, orderExpires time.Time) error {
+	var existingID []int64
+	_, err := db.Select(ctx, &existingID, `
+		SELECT id
+		FROM replacementOrders
+		WHERE serial = ?
+		LIMIT 1`,
+		serial,
 	)
-	if err != nil {
-		return err
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("checking for existing replacement order: %w", err)
+	}
+
+	if len(existingID) > 0 {
+		// Update existing replacementOrder row.
+		_, err = db.ExecContext(ctx, `
+			UPDATE replacementOrders
+			SET orderID = ?, orderExpires = ?
+			WHERE id = ?`,
+			orderID, orderExpires, existingID[0],
+		)
+		if err != nil {
+			return fmt.Errorf("updating replacement order: %w", err)
+		}
+	} else {
+		// Insert new replacementOrder row.
+		_, err = db.ExecContext(ctx, `
+			INSERT INTO replacementOrders (serial, orderID, orderExpires)
+			VALUES (?, ?, ?)`,
+			serial, orderID, orderExpires,
+		)
+		if err != nil {
+			return fmt.Errorf("creating replacement order: %w", err)
+		}
 	}
 	return nil
 }

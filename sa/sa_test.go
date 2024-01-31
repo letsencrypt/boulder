@@ -4081,4 +4081,30 @@ func TestReplacementOrderExists(t *testing.T) {
 	exists, err = sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: oldCertSerial})
 	test.AssertNotError(t, err, "failed to check for replacement order")
 	test.Assert(t, exists.Exists, "replacement order in processing should still exist")
+
+	// Try updating the replacement order.
+
+	// Create a replacement order.
+	newReplacementOrder, err := sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:   reg.Id,
+			Expires:          timestamppb.New(expires1Year),
+			Names:            []string{"example.com"},
+			V2Authorizations: []int64{authzID},
+			Replaces:         oldCertSerial,
+		},
+	})
+	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
+
+	// Select the full replacementRow order.
+	var replacementRow replacementOrderModel
+	err = sa.dbReadOnlyMap.SelectOne(
+		ctx,
+		&replacementRow,
+		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		oldCertSerial,
+	)
+	test.AssertNotError(t, err, "SELECT from replacementOrders failed")
+	test.AssertEquals(t, newReplacementOrder.Id, replacementRow.OrderID)
+	test.AssertEquals(t, newReplacementOrder.Expires.AsTime(), replacementRow.OrderExpires)
 }

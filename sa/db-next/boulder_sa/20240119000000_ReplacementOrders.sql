@@ -4,11 +4,11 @@
 CREATE TABLE `replacementOrders` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `serial` varchar(255) NOT NULL,
-  `orderID` bigint(20) DEFAULT NULL,
-  `orderExpires` datetime DEFAULT NULL,
+  `orderID` bigint(20) NOT NULL,
+  `orderExpires` datetime NOT NULL,
   `replaced` boolean DEFAULT false,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `serial_id_idx` (`serial`, `id`),
+  KEY `serial_idx` (`serial`),
   KEY `orderID_idx` (`orderID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
  PARTITION BY RANGE(id)
