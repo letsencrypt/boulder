@@ -15,12 +15,13 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/miekg/dns"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const dnsLoopbackAddr = "127.0.0.1:4053"
@@ -252,7 +253,8 @@ func TestDNSNoServers(t *testing.T) {
 
 	obj := NewTest(time.Hour, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
 
-	_, _, err = obj.LookupHost(context.Background(), "letsencrypt.org")
+	_, resolver, err := obj.LookupHost(context.Background(), "letsencrypt.org")
+	test.AssertEquals(t, resolver.String(), "")
 	test.AssertError(t, err, "No servers")
 
 	_, _, err = obj.LookupTXT(context.Background(), "letsencrypt.org")
@@ -268,8 +270,8 @@ func TestDNSOneServer(t *testing.T) {
 
 	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
 
-	_, _, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
-
+	_, resolver, err := obj.LookupHost(context.Background(), "cps.letsencrypt.org")
+	test.AssertEquals(t, resolver, ResolverAddr("A:127.0.0.1:4053,AAAA:127.0.0.1:4053"))
 	test.AssertNotError(t, err, "No message")
 }
 
@@ -279,8 +281,8 @@ func TestDNSDuplicateServers(t *testing.T) {
 
 	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
 
-	_, _, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
-
+	_, resolver, err := obj.LookupHost(context.Background(), "cps.letsencrypt.org")
+	test.AssertEquals(t, resolver, ResolverAddr("A:127.0.0.1:4053,AAAA:127.0.0.1:4053"))
 	test.AssertNotError(t, err, "No message")
 }
 
@@ -325,34 +327,39 @@ func TestDNSLookupHost(t *testing.T) {
 
 	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
 
-	ip, _, err := obj.LookupHost(context.Background(), "servfail.com")
+	ip, resolver, err := obj.LookupHost(context.Background(), "servfail.com")
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
 	test.AssertError(t, err, "Server failure")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
+	test.AssertEquals(t, resolver, ResolverAddr("A:127.0.0.1:4053,AAAA:127.0.0.1:4053"))
 
-	ip, _, err = obj.LookupHost(context.Background(), "nonexistent.letsencrypt.org")
+	ip, resolver, err = obj.LookupHost(context.Background(), "nonexistent.letsencrypt.org")
 	t.Logf("nonexistent.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertError(t, err, "No valid A or AAAA records should error")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
+	test.AssertEquals(t, resolver, ResolverAddr("A:127.0.0.1:4053,AAAA:127.0.0.1:4053"))
 
 	// Single IPv4 address
-	ip, _, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
+	ip, resolver, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have IP")
-	ip, _, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
+	test.AssertEquals(t, resolver, ResolverAddr("A:127.0.0.1:4053,AAAA:127.0.0.1:4053"))
+	ip, resolver, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 	t.Logf("cps.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have IP")
+	test.AssertEquals(t, resolver, ResolverAddr("A:127.0.0.1:4053,AAAA:127.0.0.1:4053"))
 
 	// Single IPv6 address
-	ip, _, err = obj.LookupHost(context.Background(), "v6.letsencrypt.org")
+	ip, resolver, err = obj.LookupHost(context.Background(), "v6.letsencrypt.org")
 	t.Logf("v6.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should not have IPs")
+	test.AssertEquals(t, resolver, ResolverAddr("A:127.0.0.1:4053,AAAA:127.0.0.1:4053"))
 
 	// Both IPv6 and IPv4 address
-	ip, _, err = obj.LookupHost(context.Background(), "dualstack.letsencrypt.org")
+	ip, resolver, err = obj.LookupHost(context.Background(), "dualstack.letsencrypt.org")
 	t.Logf("dualstack.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 2, "Should have 2 IPs")
@@ -360,31 +367,35 @@ func TestDNSLookupHost(t *testing.T) {
 	test.Assert(t, ip[0].To4().Equal(expected), "wrong ipv4 address")
 	expected = net.ParseIP("::1")
 	test.Assert(t, ip[1].To16().Equal(expected), "wrong ipv6 address")
+	test.AssertEquals(t, resolver, ResolverAddr("A:127.0.0.1:4053,AAAA:127.0.0.1:4053"))
 
 	// IPv6 error, IPv4 success
-	ip, _, err = obj.LookupHost(context.Background(), "v6error.letsencrypt.org")
-	t.Logf("v6error.letsencrypt.org - IP: %s, Err: %s", ip, err)
+	ip, resolver, err = obj.LookupHost(context.Background(), "v6error.letsencrypt.org")
+	//t.Logf("v6error.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have 1 IP")
 	expected = net.ParseIP("127.0.0.1")
 	test.Assert(t, ip[0].To4().Equal(expected), "wrong ipv4 address")
+	test.AssertEquals(t, resolver, ResolverAddr("A:127.0.0.1:4053,AAAA:127.0.0.1:4053"))
 
 	// IPv6 success, IPv4 error
-	ip, _, err = obj.LookupHost(context.Background(), "v4error.letsencrypt.org")
+	ip, resolver, err = obj.LookupHost(context.Background(), "v4error.letsencrypt.org")
 	t.Logf("v4error.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have 1 IP")
 	expected = net.ParseIP("::1")
 	test.Assert(t, ip[0].To16().Equal(expected), "wrong ipv6 address")
+	test.AssertEquals(t, resolver, ResolverAddr("A:127.0.0.1:4053,AAAA:127.0.0.1:4053"))
 
 	// IPv6 error, IPv4 error
 	// Should return both the IPv4 error (Refused) and the IPv6 error (NotImplemented)
 	hostname := "dualstackerror.letsencrypt.org"
-	ip, _, err = obj.LookupHost(context.Background(), hostname)
+	ip, resolver, err = obj.LookupHost(context.Background(), hostname)
 	t.Logf("%s - IP: %s, Err: %s", hostname, ip, err)
 	test.AssertError(t, err, "Should be an error")
 	test.AssertContains(t, err.Error(), "REFUSED looking up A for")
 	test.AssertContains(t, err.Error(), "NOTIMP looking up AAAA for")
+	test.AssertEquals(t, resolver, ResolverAddr("A:127.0.0.1:4053,AAAA:127.0.0.1:4053"))
 }
 
 func TestDNSNXDOMAIN(t *testing.T) {

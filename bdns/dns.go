@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -514,25 +515,34 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 	var recordsA, recordsAAAA []dns.RR
 	var errA, errAAAA error
 	var resolverA, resolverAAAA ResolverAddr
+	var resolvers []string
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		recordsA, resolverA, errA = dnsClient.lookupIP(ctx, hostname, dns.TypeA)
-		resolverA = "A:" + resolverA
+		if resolverA != "" {
+			resolverA = "A:" + resolverA
+			resolvers = append(resolvers, resolverA.String())
+		}
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		recordsAAAA, resolverAAAA, errAAAA = dnsClient.lookupIP(ctx, hostname, dns.TypeAAAA)
-		resolverAAAA = "AAAA:" + resolverAAAA
+		if resolverAAAA != "" {
+			resolverAAAA = "AAAA:" + resolverAAAA
+			resolvers = append(resolvers, resolverAAAA.String())
+		}
 	}()
 	wg.Wait()
 
-	var resolvers []string
-	resolvers = append(resolvers, resolverA.String(), resolverAAAA.String())
-	resolver := ResolverAddr(strings.Join(resolvers, ","))
+	var resolver ResolverAddr
+	if len(resolvers) > 0 {
+		slices.Sort(resolvers)
+		resolver = ResolverAddr(strings.Join(resolvers, ","))
+	}
 
 	var addrsA []net.IP
 	if errA == nil {
