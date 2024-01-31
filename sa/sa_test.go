@@ -4096,7 +4096,7 @@ func TestReplacementOrderExists(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
 
-	// Select the full replacementRow order.
+	// Fetch the replacement order so we can ensure it was updated.
 	var replacementRow replacementOrderModel
 	err = sa.dbReadOnlyMap.SelectOne(
 		ctx,
