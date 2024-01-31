@@ -2207,54 +2207,72 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	}
 
 	reasonCode := revocation.Reason(req.Code)
-	if reasonCode == ocsp.KeyCompromise && req.Cert == nil && !req.SkipBlockKey {
-		return nil, fmt.Errorf("cannot revoke and block for KeyCompromise by serial alone")
+	if _, present := revocation.AdminAllowedReasons[reasonCode]; !present {
+		return nil, fmt.Errorf("cannot revoke for reason %d", reasonCode)
 	}
 	if req.SkipBlockKey && reasonCode != ocsp.KeyCompromise {
 		return nil, fmt.Errorf("cannot skip key blocking for reasons other than KeyCompromise")
 	}
-
-	if _, present := revocation.AdminAllowedReasons[reasonCode]; !present {
-		return nil, fmt.Errorf("cannot revoke for reason %d", reasonCode)
-	}
-
-	// If we weren't passed a cert in the request, find IssuerID from the db.
-	// We could instead look up and parse the certificate itself, but we avoid
-	// that in case we are administratively revoking the certificate because it is
-	// so badly malformed that it can't be parsed.
-	var cert *x509.Certificate
-	var issuerID issuance.NameID
-	var err error
-	if req.Cert == nil {
-		status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: req.Serial})
-		if err != nil {
-			return nil, fmt.Errorf("unable to confirm that serial %q was ever issued: %w", req.Serial, err)
-		}
-		issuerID = issuance.NameID(status.IssuerID)
-	} else {
-		cert, err = x509.ParseCertificate(req.Cert)
-		if err != nil {
-			return nil, err
-		}
-		issuerID = issuance.IssuerNameID(cert)
+	if reasonCode == ocsp.KeyCompromise && req.Malformed {
+		return nil, fmt.Errorf("cannot revoke malformed certificate for KeyCompromise")
 	}
 
 	logEvent := certificateRevocationEvent{
 		ID:           core.NewToken(),
-		Method:       "key",
-		AdminName:    req.AdminName,
 		SerialNumber: req.Serial,
+		Reason:       req.Code,
+		Method:       "admin",
+		AdminName:    req.AdminName,
 	}
 
 	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
 	// nested scope. Doing so will create a new `err` variable that is not
 	// captured by this closure.
+	var err error
 	defer func() {
 		if err != nil {
 			logEvent.Error = err.Error()
 		}
 		ra.log.AuditObject("Revocation request:", logEvent)
 	}()
+
+	var cert *x509.Certificate
+	var issuerID issuance.NameID
+	if req.Cert != nil {
+		// If the incoming request includes a certificate body, just use that and
+		// avoid doing any database queries. This code path is deprecated and will
+		// be removed when req.Cert is removed.
+		cert, err = x509.ParseCertificate(req.Cert)
+		if err != nil {
+			return nil, err
+		}
+		issuerID = issuance.IssuerNameID(cert)
+	} else if !req.Malformed {
+		// As long as we don't believe the cert will be malformed, we should
+		// get the precertificate so we can block its pubkey if necessary and purge
+		// the akamai OCSP cache.
+		var certPB *corepb.Certificate
+		certPB, err = ra.SA.GetLintPrecertificate(ctx, &sapb.Serial{Serial: req.Serial})
+		if err != nil {
+			return nil, err
+		}
+		// Note that, although the thing we're parsing here is actually a linting
+		// precertificate, it has identical issuer info (and therefore an identical
+		// issuer NameID) to the real thing.
+		cert, err = x509.ParseCertificate(certPB.Der)
+		if err != nil {
+			return nil, err
+		}
+		issuerID = issuance.IssuerNameID(cert)
+	} else {
+		// But if the cert is malformed, we at least still need its IssuerID.
+		var status *corepb.CertificateStatus
+		status, err = ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: req.Serial})
+		if err != nil {
+			return nil, fmt.Errorf("unable to confirm that serial %q was ever issued: %w", req.Serial, err)
+		}
+		issuerID = issuance.NameID(status.IssuerID)
+	}
 
 	var serialInt *big.Int
 	serialInt, err = core.StringToSerial(req.Serial)

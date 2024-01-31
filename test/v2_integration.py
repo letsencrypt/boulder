@@ -1565,6 +1565,11 @@ def test_renewal_exemption():
     chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
         lambda: chisel2.auth_and_issue(["mail." + base_domain]))
 
+# TODO(#5545)
+#   - Phase 2: Once the new rate limits are authoritative in config-next, ensure
+#     that this test only runs in config.
+#   - Phase 3: Once the new rate limits are authoritative in config, remove this
+#     test entirely.
 def test_certificates_per_name():
     chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
         lambda: chisel2.auth_and_issue([random_domain() + ".lim.it"]))

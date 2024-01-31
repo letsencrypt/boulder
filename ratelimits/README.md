@@ -35,22 +35,30 @@ NewOrdersPerAccount:
 
 ## Override Limit Settings
 
-Each override key represents a specific bucket, consisting of two elements:
-_name_ and _id_. The name here refers to the Name of the particular limit, while
-the id is a client identifier. The format of the id is dependent on the limit.
-For example, the id for 'NewRegistrationsPerIPAddress' is a subscriber IP
-address, while the id for 'NewOrdersPerAccount' is the subscriber's registration
-ID.
+Each entry in the override list is a map, where the key is a limit name,
+corresponding to the `Name` enum of the limit, and the value is a set of
+overridden parameters. These parameters are applicable to a specific list of IDs
+included in each entry. It's important that the formatting of these IDs matches
+the ID format associated with their respective limit's `Name`. For more details on
+the relationship of ID format to limit `Name`s, please refer to the the documentation
+of each `Name` in the `//ratelimits/names.go` file or the [ratelimits package
+documentation](https://pkg.go.dev/github.com/letsencrypt/boulder/ratelimits#Name).
 
 ```yaml
-NewRegistrationsPerIPAddress:10.0.0.2:
-  burst: 20
-  count: 40
-  period: 1s
-NewOrdersPerAccount:12345678:
-  burst: 300
-  count: 600
-  period: 180m
+- NewRegistrationsPerIPAddress:
+    burst: 20
+    count: 40
+    period: 1s
+    ids:
+      - 10.0.0.2
+      - 10.0.0.5
+- NewOrdersPerAccount:
+    burst: 300
+    count: 600
+    period: 180m
+    ids:
+      - 12345678
+      - 87654321
 ```
 
 The above example overrides the default limits for specific subscribers. In both
@@ -67,33 +75,33 @@ format:
 A valid IPv4 or IPv6 address.
 
 Examples:
-  - `NewRegistrationsPerIPAddress:10.0.0.1`
-  - `NewRegistrationsPerIPAddress:2001:0db8:0000:0000:0000:ff00:0042:8329`
+  - `10.0.0.1`
+  - `2001:0db8:0000:0000:0000:ff00:0042:8329`
 
 #### ipv6RangeCIDR
 
 A valid IPv6 range in CIDR notation with a /48 mask. A /48 range is typically
 assigned to a single subscriber.
 
-Example: `NewRegistrationsPerIPv6Range:2001:0db8:0000::/48`
+Example: `2001:0db8:0000::/48`
 
 #### regId
 
 An ACME account registration ID.
 
-Example: `NewOrdersPerAccount:12345678`
+Example: `12345678`
 
 #### domain
 
 A valid eTLD+1 domain name.
 
-Example: `CertificatesPerDomain:example.com`
+Example: `example.com`
 
 #### fqdnSet
 
 A comma-separated list of domain names.
 
-Example: `CertificatesPerFQDNSet:example.com,example.org`
+Example: `example.com,example.org`
 
 ## Bucket Key Definitions
 
@@ -145,10 +153,12 @@ address are allowed 20 requests to the newFoo endpoint per second, with a
 maximum burst of 20 requests at any point-in-time, or:
 
 ```yaml
-NewFoosPerIPAddress:172.23.45.22:
-  burst: 20
-  count: 20
-  period: 1s
+- NewFoosPerIPAddress:
+    burst: 20
+    count: 20
+    period: 1s
+    ids:
+      - 172.23.45.22
 ```
 
 A subscriber calls the newFoo endpoint for the first time with an IP address of

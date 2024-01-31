@@ -42,7 +42,7 @@ services {
 services {
   id      = "boulder-a"
   name    = "boulder"
-  address = "10.88.88.88"
+  address = "10.77.77.77"
 }
 
 services {
@@ -56,7 +56,7 @@ services {
 services {
   id      = "ca-b"
   name    = "ca"
-  address = "10.88.88.88"
+  address = "10.77.77.77"
   port    = 9493
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
@@ -80,7 +80,7 @@ services {
 services {
   id      = "dns-b"
   name    = "dns"
-  address = "10.88.88.88"
+  address = "10.77.77.77"
   port    = 8054
   tags    = ["udp"] // Required for SRV RR support in VA RVA.
 }
@@ -96,7 +96,7 @@ services {
 services {
   id      = "doh-b"
   name    = "doh"
-  address = "10.88.88.88"
+  address = "10.77.77.77"
   port    = 8443
   tags    = ["tcp"]
 }
@@ -139,7 +139,7 @@ services {
 services {
   id      = "publisher-b"
   name    = "publisher"
-  address = "10.88.88.88"
+  address = "10.77.77.77"
   port    = 9491
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
@@ -155,7 +155,7 @@ services {
 services {
   id      = "ra-b"
   name    = "ra"
-  address = "10.88.88.88"
+  address = "10.77.77.77"
   port    = 9494
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
@@ -216,14 +216,14 @@ services {
 services {
   id      = "sa-b"
   name    = "sa"
-  address = "10.88.88.88"
+  address = "10.77.77.77"
   port    = 9495
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
   checks = [
     {
       id              = "sa-b-grpc"
       name            = "sa-b-grpc"
-      grpc            = "10.88.88.88:9495"
+      grpc            = "10.77.77.77:9495"
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
@@ -232,7 +232,7 @@ services {
     {
       id              = "sa-b-grpc-sa"
       name            = "sa-b-grpc-sa"
-      grpc            = "10.88.88.88:9495/sa.StorageAuthority"
+      grpc            = "10.77.77.77:9495/sa.StorageAuthority"
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
@@ -241,7 +241,7 @@ services {
     {
       id              = "sa-b-grpc-saro"
       name            = "sa-b-grpc-saro"
-      grpc            = "10.88.88.88:9495/sa.StorageAuthorityReadOnly"
+      grpc            = "10.77.77.77:9495/sa.StorageAuthorityReadOnly"
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
       tls_skip_verify = false
@@ -261,7 +261,7 @@ services {
 services {
   id      = "va-b"
   name    = "va"
-  address = "10.88.88.88"
+  address = "10.77.77.77"
   port    = 9492
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }

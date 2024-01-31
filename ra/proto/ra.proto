@@ -54,16 +54,17 @@ message RevokeCertByKeyRequest {
 }
 
 message AdministrativelyRevokeCertificateRequest {
-  // The `cert` field may be omitted. If it is omitted,
-  // the revocation reason (`code`) must not be keyCompromise,
-  // and purging the Akamai cache will not happen because the
-  // base URL for the certificate's OCSP server is not known.
+  // Deprecated: this field is ignored.
   bytes cert = 1;
   // The `serial` field is required.
   string serial = 4;
   int64 code = 2;
   string adminName = 3;
   bool skipBlockKey = 5;
+  // If the malformed flag is set, the RA will not attempt to parse the
+  // certificate in question. In this case, the keyCompromise reason cannot be
+  // specified, because the key cannot be blocked.
+  bool malformed = 6;
 }
 
 message NewOrderRequest {
