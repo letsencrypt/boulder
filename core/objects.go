@@ -493,6 +493,12 @@ type SuggestedWindow struct {
 	End   time.Time `json:"end"`
 }
 
+// IsWithin returns true if the given time is within the suggested window,
+// inclusive of the start and end times.
+func (window SuggestedWindow) IsWithin(now time.Time) bool {
+	return !now.Before(window.Start) && !now.After(window.End)
+}
+
 // RenewalInfo is a type which is exposed to clients which query the renewalInfo
 // endpoint specified in draft-aaron-ari.
 type RenewalInfo struct {

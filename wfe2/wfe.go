@@ -2119,6 +2119,45 @@ func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, transactio
 	}
 }
 
+// orderMatchesReplacement checks if the order matches the provided certificate
+// as identified by the provided ARI CertID. This function ensures that:
+//   - the certificate being replaced exists,
+//   - the requesting account owns that certificate, and
+//   - the names in this new order match the names in the certificate
+//     being replaced.
+func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *core.Registration, names []string, serial string) (*probs.ProblemDetails, error) {
+	oldCert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		if errors.Is(err, berrors.NotFound) {
+			return probs.NotFound("Existing certificate could not found"), err
+		}
+		return probs.ServerInternal("Failed to retrieve existing certificate"), err
+	}
+
+	if oldCert.RegistrationID != acct.ID {
+		return probs.Unauthorized("Requester account did request the certificate being replaced by this order"), nil
+	}
+	parsedCert, err := x509.ParseCertificate(oldCert.Der)
+	if err != nil {
+		return probs.ServerInternal("Error parsing certificate replaced by this order"), err
+	}
+
+	// While draft-ietf-acme-ari-02 calls for the new order to "share a
+	// preponderance of identifiers" with the certificate being replaced, our
+	// implementation will be more lenient, requiring just one.
+	var namesMatch bool
+	for _, name := range names {
+		if parsedCert.VerifyHostname(name) == nil {
+			namesMatch = true
+			break
+		}
+	}
+	if !namesMatch {
+		return probs.Malformed("Certificate replaced by this order does not have matching identifiers"), nil
+	}
+	return nil, nil
+}
+
 func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial string) (core.RenewalInfo, error) {
 	// Check if the serial is impacted by an incident.
 	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
@@ -2172,8 +2211,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// `notBefore` and/or `notAfter` fields described in Section 7.4 of acme-08
 	// are sent we return a probs.Malformed as we do not support them
 	var newOrderRequest struct {
-		Identifiers         []identifier.ACMEIdentifier `json:"identifiers"`
-		NotBefore, NotAfter string
+		Identifiers                   []identifier.ACMEIdentifier `json:"identifiers"`
+		NotBefore, NotAfter, Replaces string
 	}
 	err := json.Unmarshal(body, &newOrderRequest)
 	if err != nil {
@@ -2227,12 +2266,57 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	logEvent.DNSNames = names
 
+	var replaces string
+	var limitsExempt bool
+	if newOrderRequest.Replaces != "" {
+		// Implementing draft-ietf-acme-ari-02: For a new order to be considered
+		// a replacement for an existing certificate, it:
+		//   1. MUST NOT have been replaced by another finalized order,
+		//   2. MUST be associated with the same ACME account as its predecessor, and
+		//   3. MUST have at least one identifier in common with its predecessor.
+		certID, prob, err := parseCertID(newOrderRequest.Replaces, wfe.issuerCertificates)
+		if err != nil {
+			wfe.sendError(response, logEvent, prob, err)
+			return
+		}
+
+		exists, err := wfe.sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: certID.Serial()})
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to check replacement status of existing certificate"), err)
+			return
+		}
+		if exists.Exists {
+			wfe.sendError(response, logEvent, probs.Malformed("An order already exists which replaces this certificate"), nil)
+			return
+		}
+
+		prob, err = wfe.orderMatchesReplacement(ctx, acct, names, certID.Serial())
+		if prob != nil || err != nil {
+			wfe.sendError(response, logEvent, prob, err)
+			return
+		}
+		// This order is a replacement for an existing certificate.
+		replaces = certID.Serial()
+
+		// For an order to be exempt from rate limits, it must be a replacement
+		// and the request must be made within the suggested renewal window.
+		renewalInfo, err := wfe.determineARIWindow(ctx, replaces)
+		if err != nil {
+			wfe.sendError(response, logEvent, prob, err)
+			return
+		}
+		limitsExempt = renewalInfo.SuggestedWindow.IsWithin(wfe.clk.Now())
+	}
+
 	// TODO(#5545): Spending and Refunding can be async until these rate limits
 	// are authoritative. This saves us from adding latency to each request.
 	// Goroutines spun out below will respect a context deadline set by the
 	// ratelimits package and cannot be prematurely canceled by the requester.
-	txns := wfe.newNewOrderLimitTransactions(acct.ID, names)
-	go wfe.checkNewOrderLimits(ctx, txns)
+	var txns []ratelimits.Transaction
+	if !limitsExempt {
+		txns := wfe.newNewOrderLimitTransactions(acct.ID, names)
+		go wfe.checkNewOrderLimits(ctx, txns)
+	}
 
 	var newOrderSuccessful bool
 	var errIsRateLimit bool
@@ -2248,6 +2332,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: acct.ID,
 		Names:          names,
+		ReplacesSerial: replaces,
+		LimitsExempt:   limitsExempt,
 	})
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
