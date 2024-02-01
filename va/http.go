@@ -366,7 +366,7 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 		Port:              strconv.Itoa(target.port),
 		AddressesResolved: target.available,
 		URL:               reqURL,
-		ResolverAddress:   target.resolver.String(),
+		ResolverAddress:   string(target.resolver),
 	}
 
 	// Get the target IP to build a preresolved dialer with

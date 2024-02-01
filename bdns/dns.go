@@ -153,10 +153,6 @@ var (
 
 type ResolverAddr string
 
-func (r ResolverAddr) String() string {
-	return string(r)
-}
-
 // Client queries for DNS records
 type Client interface {
 	LookupTXT(context.Context, string) (txts []string, resolver ResolverAddr, err error)
@@ -499,6 +495,16 @@ func isPrivateV6(ip net.IP) bool {
 
 func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uint16) ([]dns.RR, ResolverAddr, error) {
 	resp, resolver, err := dnsClient.exchangeOne(ctx, hostname, ipType)
+	switch ipType {
+	case dns.TypeA:
+		if resolver != "" {
+			resolver = "A:" + resolver
+		}
+	case dns.TypeAAAA:
+		if resolver != "" {
+			resolver = "AAAA:" + resolver
+		}
+	}
 	errWrap := wrapErr(ipType, hostname, resp, err)
 	if errWrap != nil {
 		return nil, resolver, errWrap
@@ -521,27 +527,22 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 	go func() {
 		defer wg.Done()
 		recordsA, resolverA, errA = dnsClient.lookupIP(ctx, hostname, dns.TypeA)
-		if resolverA != "" {
-			resolverA = "A:" + resolverA
-		}
 	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		recordsAAAA, resolverAAAA, errAAAA = dnsClient.lookupIP(ctx, hostname, dns.TypeAAAA)
-		if resolverAAAA != "" {
-			resolverAAAA = "AAAA:" + resolverAAAA
-		}
 	}()
 	wg.Wait()
 
+	// Each go func above could choose a different resolver to query for A and
+	// AAAA records. We filter out empty strings and otherwise join the
+	// resolvers into a ResolverAddr such as: A:127.0.0.1:53,AAAA:127.0.0.1:5353
 	var resolvers []string
-	if resolverA.String() != "" {
-		resolvers = append(resolvers, resolverA.String())
-	}
-	if resolverAAAA.String() != "" {
-		resolvers = append(resolvers, resolverAAAA.String())
-	}
+	resolvers = append(resolvers, string(resolverA), string(resolverAAAA))
+	resolvers = slices.DeleteFunc(resolvers, func(a string) bool {
+		return a == ""
+	})
 	slices.Sort(resolvers)
 	resolver := ResolverAddr(strings.Join(resolvers, ","))
 

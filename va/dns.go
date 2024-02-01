@@ -77,7 +77,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 	for _, element := range txts {
 		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
 			// Successful challenge validation
-			return []core.ValidationRecord{{Hostname: ident.Value, ResolverAddress: resolver.String()}}, nil
+			return []core.ValidationRecord{{Hostname: ident.Value, ResolverAddress: string(resolver)}}, nil
 		}
 	}
 

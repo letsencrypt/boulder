@@ -254,7 +254,7 @@ func TestDNSNoServers(t *testing.T) {
 	obj := NewTest(time.Hour, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
 
 	_, resolver, err := obj.LookupHost(context.Background(), "letsencrypt.org")
-	test.AssertEquals(t, resolver.String(), "")
+	test.AssertEquals(t, string(resolver), "")
 	test.AssertError(t, err, "No servers")
 
 	_, _, err = obj.LookupTXT(context.Background(), "letsencrypt.org")
@@ -424,7 +424,7 @@ func TestDNSLookupCAA(t *testing.T) {
 	caas, resp, resolver, err := obj.LookupCAA(context.Background(), "bracewel.net")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should have CAA records")
-	test.AssertEquals(t, resolver.String(), "127.0.0.1:4053")
+	test.AssertEquals(t, string(resolver), "127.0.0.1:4053")
 	expectedResp := `;; opcode: QUERY, status: NOERROR, id: XXXX
 ;; flags: qr rd; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
 
@@ -439,21 +439,21 @@ bracewel.net.	0	IN	CAA	1 issue "letsencrypt.org"
 	caas, resp, resolver, err = obj.LookupCAA(context.Background(), "nonexistent.letsencrypt.org")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) == 0, "Shouldn't have CAA records")
-	test.AssertEquals(t, resolver.String(), "127.0.0.1:4053")
+	test.AssertEquals(t, string(resolver), "127.0.0.1:4053")
 	expectedResp = ""
 	test.AssertEquals(t, resp, expectedResp)
 
 	caas, resp, resolver, err = obj.LookupCAA(context.Background(), "nxdomain.letsencrypt.org")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) == 0, "Shouldn't have CAA records")
-	test.AssertEquals(t, resolver.String(), "127.0.0.1:4053")
+	test.AssertEquals(t, string(resolver), "127.0.0.1:4053")
 	expectedResp = ""
 	test.AssertEquals(t, resp, expectedResp)
 
 	caas, resp, resolver, err = obj.LookupCAA(context.Background(), "cname.example.com")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should follow CNAME to find CAA")
-	test.AssertEquals(t, resolver.String(), "127.0.0.1:4053")
+	test.AssertEquals(t, string(resolver), "127.0.0.1:4053")
 	expectedResp = `;; opcode: QUERY, status: NOERROR, id: XXXX
 ;; flags: qr rd; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
 
@@ -468,7 +468,7 @@ caa.example.com.	0	IN	CAA	1 issue "letsencrypt.org"
 	_, _, resolver, err = obj.LookupCAA(context.Background(), "gonetld")
 	test.AssertError(t, err, "should fail for TLD NXDOMAIN")
 	test.AssertContains(t, err.Error(), "NXDOMAIN")
-	test.AssertEquals(t, resolver.String(), "127.0.0.1:4053")
+	test.AssertEquals(t, string(resolver), "127.0.0.1:4053")
 }
 
 func TestIsPrivateIP(t *testing.T) {
