@@ -287,7 +287,7 @@ func NewTest(
 // out of the server list, returning the response, time, and error (if any).
 // We assume that the upstream resolver requests and validates DNSSEC records
 // itself.
-func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (resp *dns.Msg, resolver ResolverAddr, err error) {
+func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype uint16) (resp *dns.Msg, resolver string, err error) {
 	m := new(dns.Msg)
 	// Set question type
 	m.SetQuestion(dns.Fqdn(hostname), qtype)
@@ -309,7 +309,7 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 	}
 	chosenServerIndex := 0
 	chosenServer := servers[chosenServerIndex]
-	resolver = ResolverAddr(chosenServer)
+	resolver = chosenServer
 
 	// Strip off the IP address part of the server address because
 	// we talk to the same server on multiple ports, and don't want
@@ -418,7 +418,7 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 					// list.
 					chosenServerIndex = (chosenServerIndex + 1) % len(servers)
 					chosenServer = servers[chosenServerIndex]
-					resolver = ResolverAddr(chosenServer)
+					resolver = chosenServer
 					continue
 				} else if isRetryable && !hasRetriesLeft {
 					dnsClient.timeoutCounter.With(prometheus.Labels{
@@ -461,7 +461,7 @@ func (dnsClient *impl) LookupTXT(ctx context.Context, hostname string) ([]string
 	r, resolver, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
 	errWrap := wrapErr(dnsType, hostname, r, err)
 	if errWrap != nil {
-		return nil, resolver, errWrap
+		return nil, ResolverAddr(resolver), errWrap
 	}
 
 	for _, answer := range r.Answer {
@@ -472,7 +472,7 @@ func (dnsClient *impl) LookupTXT(ctx context.Context, hostname string) ([]string
 		}
 	}
 
-	return txt, resolver, err
+	return txt, ResolverAddr(resolver), err
 }
 
 func isPrivateV4(ip net.IP) bool {
@@ -493,7 +493,7 @@ func isPrivateV6(ip net.IP) bool {
 	return false
 }
 
-func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uint16) ([]dns.RR, ResolverAddr, error) {
+func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uint16) ([]dns.RR, string, error) {
 	resp, resolver, err := dnsClient.exchangeOne(ctx, hostname, ipType)
 	switch ipType {
 	case dns.TypeA:
@@ -520,7 +520,7 @@ func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uin
 func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.IP, ResolverAddr, error) {
 	var recordsA, recordsAAAA []dns.RR
 	var errA, errAAAA error
-	var resolverA, resolverAAAA ResolverAddr
+	var resolverA, resolverAAAA string
 	var wg sync.WaitGroup
 
 	wg.Add(1)
@@ -603,12 +603,12 @@ func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.C
 	// rechecking. But allow NXDOMAIN for TLDs to fall through to the error code
 	// below, so we don't issue for gTLDs that have been removed by ICANN.
 	if err == nil && r.Rcode == dns.RcodeNameError && strings.Contains(hostname, ".") {
-		return nil, "", resolver, nil
+		return nil, "", ResolverAddr(resolver), nil
 	}
 
 	errWrap := wrapErr(dnsType, hostname, r, err)
 	if errWrap != nil {
-		return nil, "", resolver, errWrap
+		return nil, "", ResolverAddr(resolver), errWrap
 	}
 
 	var CAAs []*dns.CAA
@@ -621,7 +621,7 @@ func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.C
 	if len(CAAs) > 0 {
 		response = r.String()
 	}
-	return CAAs, response, resolver, nil
+	return CAAs, response, ResolverAddr(resolver), nil
 }
 
 // logDNSError logs the provided err result from making a query for hostname to
