@@ -539,7 +539,7 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 	// AAAA records. We filter out empty strings and otherwise join the
 	// resolvers into a ResolverAddr such as: A:127.0.0.1:53,AAAA:127.0.0.1:5353
 	var resolvers []string
-	resolvers = append(resolvers, string(resolverA), string(resolverAAAA))
+	resolvers = append(resolvers, resolverA, resolverAAAA)
 	resolvers = slices.DeleteFunc(resolvers, func(a string) bool {
 		return a == ""
 	})
