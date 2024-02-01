@@ -156,19 +156,14 @@ var (
 // was done.
 type ResolverAddrs []string
 
-// Append appends a variadic amount of non-zero value strings to a slice of
-// ResolverAddrs. Zero value strings are discard.
+// Append appends a variadic amount of non-empty strings to a slice of
+// ResolverAddrs. Empty strings are discard.
 func (r *ResolverAddrs) append(s ...string) {
-	fmt.Printf("pre-loop length: %d\n", len(*r))
-
 	for _, element := range s {
-		if element == "" {
-			continue
+		if element != "" {
+			*r = append(*r, element)
 		}
-		*r = append(*r, element)
-		fmt.Printf("appended %+v\n", element)
 	}
-	fmt.Printf("post-loop length: %d\n", len(*r))
 }
 
 // Client queries for DNS records
