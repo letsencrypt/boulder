@@ -60,13 +60,13 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(ctx context.Context,
 	identifier identifier.ACMEIdentifier, challenge core.Challenge,
 	tlsConfig *tls.Config) (*x509.Certificate, *tls.ConnectionState, []core.ValidationRecord, *probs.ProblemDetails) {
 
-	allAddrs, resolver, err := va.getAddrs(ctx, identifier.Value)
+	allAddrs, resolvers, err := va.getAddrs(ctx, identifier.Value)
 	validationRecords := []core.ValidationRecord{
 		{
 			Hostname:          identifier.Value,
 			AddressesResolved: allAddrs,
 			Port:              strconv.Itoa(va.tlsPort),
-			ResolverAddress:   string(resolver),
+			ResolverAddresses: resolvers,
 		},
 	}
 	if err != nil {

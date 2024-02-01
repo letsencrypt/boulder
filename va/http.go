@@ -178,9 +178,8 @@ type httpValidationTarget struct {
 	next []net.IP
 	// the current IP address being used for validation (if any)
 	cur net.IP
-	// the DNS resolver host:port that will attempt to fulfill the validation
-	// request
-	resolver bdns.ResolverAddr
+	// the DNS resolver(s) that will attempt to fulfill the validation request
+	resolvers bdns.ResolverAddrs
 }
 
 // nextIP changes the cur IP by removing the first entry from the next slice and
@@ -216,14 +215,14 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	path string,
 	query string) (*httpValidationTarget, error) {
 	// Resolve IP addresses for the hostname
-	addrs, resolver, err := va.getAddrs(ctx, host)
+	addrs, resolvers, err := va.getAddrs(ctx, host)
 	target := &httpValidationTarget{
 		host:      host,
 		port:      port,
 		path:      path,
 		query:     query,
 		available: addrs,
-		resolver:  resolver,
+		resolvers: resolvers,
 	}
 	if err != nil {
 		return target, err
@@ -366,7 +365,7 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 		Port:              strconv.Itoa(target.port),
 		AddressesResolved: target.available,
 		URL:               reqURL,
-		ResolverAddress:   string(target.resolver),
+		ResolverAddresses: target.resolvers,
 	}
 
 	// Get the target IP to build a preresolved dialer with

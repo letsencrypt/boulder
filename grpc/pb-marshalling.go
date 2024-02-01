@@ -151,7 +151,7 @@ func ValidationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 		AddressUsed:       addrUsed,
 		Url:               record.URL,
 		AddressesTried:    addrsTried,
-		ResolverAddress:   record.ResolverAddress,
+		ResolverAddresses: record.ResolverAddresses,
 	}, nil
 }
 
@@ -179,7 +179,7 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 		AddressUsed:       addrUsed,
 		URL:               in.Url,
 		AddressesTried:    addrsTried,
-		ResolverAddress:   in.ResolverAddress,
+		ResolverAddresses: in.ResolverAddresses,
 	}, nil
 }
 
