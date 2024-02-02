@@ -2596,11 +2596,11 @@ func TestFinalizeAuthorization2(t *testing.T) {
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
 			{
-				Hostname:          "example.com",
-				Port:              "80",
-				Url:               "http://example.com",
-				AddressUsed:       ip,
-				ResolverAddresses: []string{"resolver:5353"},
+				Hostname:      "example.com",
+				Port:          "80",
+				Url:           "http://example.com",
+				AddressUsed:   ip,
+				ResolverAddrs: []string{"resolver:5353"},
 			},
 		},
 		Status:      string(core.StatusValid),
@@ -2618,7 +2618,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Hostname, "example.com")
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Port, "80")
-	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].ResolverAddresses[0], "resolver:5353")
+	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].ResolverAddrs[0], "resolver:5353")
 	test.AssertEquals(t, dbVer.Challenges[0].Validated.AsTime(), attemptedAt)
 
 	authzID = createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
@@ -2628,11 +2628,11 @@ func TestFinalizeAuthorization2(t *testing.T) {
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
 			{
-				Hostname:          "example.com",
-				Port:              "80",
-				Url:               "http://example.com",
-				AddressUsed:       ip,
-				ResolverAddresses: []string{"resolver:5353"},
+				Hostname:      "example.com",
+				Port:          "80",
+				Url:           "http://example.com",
+				AddressUsed:   ip,
+				ResolverAddrs: []string{"resolver:5353"},
 			},
 		},
 		ValidationError: prob,
@@ -2649,7 +2649,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Hostname, "example.com")
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Port, "80")
-	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].ResolverAddresses[0], "resolver:5353")
+	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].ResolverAddrs[0], "resolver:5353")
 	test.AssertDeepEquals(t, dbVer.Challenges[0].Error, prob)
 }
 

@@ -144,10 +144,10 @@ type ValidationRecord struct {
 	//   ...
 	// }
 	AddressesTried []net.IP `json:"addressesTried,omitempty"`
-	// ResolverAddresses is typically the host:port of the DNS resolver(s) that
-	// fulfilled the lookup for AddressUsed. During recursive A and AAAA
-	// lookups, a record may look like A:host:port or AAAA:host:port
-	ResolverAddresses []string `json:"resolverAddresses,omitempty"`
+	// ResolverAddrs is the host:port of the DNS resolver(s) that fulfilled the
+	// lookup for AddressUsed. During recursive A and AAAA lookups, a record may
+	// instead look like A:host:port or AAAA:host:port
+	ResolverAddrs []string `json:"resolverAddrs,omitempty"`
 }
 
 func looksLikeKeyAuthorization(str string) error {

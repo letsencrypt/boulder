@@ -66,7 +66,7 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(ctx context.Context,
 			Hostname:          identifier.Value,
 			AddressesResolved: allAddrs,
 			Port:              strconv.Itoa(va.tlsPort),
-			ResolverAddresses: resolvers,
+			ResolverAddrs:     resolvers,
 		},
 	}
 	if err != nil {

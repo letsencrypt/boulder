@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -155,16 +156,6 @@ var (
 // host:port, A:host:port, or AAAA:host:port depending on which type of lookup
 // was done.
 type ResolverAddrs []string
-
-// Append appends a variadic amount of non-empty strings to a slice of
-// ResolverAddrs. Empty strings are discard.
-func (r *ResolverAddrs) append(s ...string) {
-	for _, element := range s {
-		if element != "" {
-			*r = append(*r, element)
-		}
-	}
-}
 
 // Client queries for DNS records
 type Client interface {
@@ -548,8 +539,10 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 	}()
 	wg.Wait()
 
-	var resolvers ResolverAddrs
-	resolvers.append(resolverA, resolverAAAA)
+	resolvers := ResolverAddrs{resolverA, resolverAAAA}
+	resolvers = slices.DeleteFunc(resolvers, func(a string) bool {
+		return a == ""
+	})
 
 	var addrsA []net.IP
 	if errA == nil {

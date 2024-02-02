@@ -216,6 +216,10 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	query string) (*httpValidationTarget, error) {
 	// Resolve IP addresses for the hostname
 	addrs, resolvers, err := va.getAddrs(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+
 	target := &httpValidationTarget{
 		host:      host,
 		port:      port,
@@ -223,9 +227,6 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 		query:     query,
 		available: addrs,
 		resolvers: resolvers,
-	}
-	if err != nil {
-		return target, err
 	}
 
 	// Separate the addresses into the available v4 and v6 addresses
@@ -236,7 +237,7 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	if !hasV6Addrs && !hasV4Addrs {
 		// If there are no v6 addrs and no v4addrs there was a bug with getAddrs or
 		// availableAddresses and we need to return an error.
-		return target, fmt.Errorf("host %q has no IPv4 or IPv6 addresses", host)
+		return nil, fmt.Errorf("host %q has no IPv4 or IPv6 addresses", host)
 	} else if !hasV6Addrs && hasV4Addrs {
 		// If there are no v6 addrs and there are v4 addrs then use the first v4
 		// address. There's no fallback address.
@@ -365,7 +366,7 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 		Port:              strconv.Itoa(target.port),
 		AddressesResolved: target.available,
 		URL:               reqURL,
-		ResolverAddresses: target.resolvers,
+		ResolverAddrs:     target.resolvers,
 	}
 
 	// Get the target IP to build a preresolved dialer with
