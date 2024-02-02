@@ -49,13 +49,14 @@ var (
 					... }
 
 			* Appendix A.1, Page 128
+			  GeneralNames ::= SEQUENCE SIZE (1..MAX) OF GeneralName
 				GeneralName ::= CHOICE {
 					...
 			        uniformResourceIdentifier [6]  IA5String,
 					... }
 */
 type IssuingDistributionPoint struct {
-	DistributionPointURI  *url.URL
+	DistributionPointURIs []*url.URL
 	OnlyContainsUserCerts bool
 	OnlyContainsCACerts   bool
 }
