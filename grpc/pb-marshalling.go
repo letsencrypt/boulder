@@ -317,6 +317,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	return &corepb.Authorization{
 		Id:             authz.ID,
 		Identifier:     authz.Identifier.Value,
+		Identifiertype: string(authz.Identifier.Type),
 		RegistrationID: authz.RegistrationID,
 		Status:         string(authz.Status),
 		Expires:        expires,
@@ -338,9 +339,14 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		c := pb.Expires.AsTime()
 		expires = &c
 	}
+	tp := identifier.DNS
+	if pb.Identifiertype != "" {
+		tp = identifier.IdentifierType(pb.Identifiertype)
+	}
+	ident := identifier.ACMEIdentifier{Type: tp, Value: pb.Identifier}
 	authz := core.Authorization{
 		ID:             pb.Id,
-		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: pb.Identifier},
+		Identifier:     ident,
 		RegistrationID: pb.RegistrationID,
 		Status:         core.AcmeStatus(pb.Status),
 		Expires:        expires,

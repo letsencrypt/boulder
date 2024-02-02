@@ -27,6 +27,7 @@ message IsCAAValidResponse {
 
 message PerformValidationRequest {
   string domain = 1;
+  string identtype = 4;
   core.Challenge challenge = 2;
   AuthzMeta authz = 3;
 }

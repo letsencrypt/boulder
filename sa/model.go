@@ -774,6 +774,7 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 		Id:             fmt.Sprintf("%d", am.ID),
 		Status:         string(uintToStatus[am.Status]),
 		Identifier:     am.IdentifierValue,
+		Identifiertype: uintToIdentifierType[am.IdentifierType],
 		RegistrationID: am.RegistrationID,
 		Expires:        timestamppb.New(am.Expires),
 	}

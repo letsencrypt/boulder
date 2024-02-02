@@ -735,7 +735,13 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		return nil, probs.ServerInternal("Challenge failed to deserialize")
 	}
 
-	records, prob := va.validate(ctx, identifier.DNSIdentifier(req.Domain), req.Authz.RegID, challenge)
+	tp := identifier.DNS
+	if req.Identtype != "" {
+		tp = identifier.IdentifierType(req.Identtype)
+	}
+	ident := identifier.ACMEIdentifier{Type: tp, Value: req.Domain}
+
+	records, prob := va.validate(ctx, ident, req.Authz.RegID, challenge)
 	challenge.ValidationRecord = records
 	localValidationLatency := time.Since(vStart)
 
