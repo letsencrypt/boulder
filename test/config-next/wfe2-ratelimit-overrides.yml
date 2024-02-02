@@ -2,4 +2,39 @@
     burst: 1000000
     count: 1000000
     period: 168h
-    ids: [127.0.0.1]
+    ids:
+      - 127.0.0.1
+- CertificatesPerDomain:
+    burst: 1
+    count: 1
+    period: 2160h
+    ids:
+      - ratelimit.me
+- CertificatesPerDomain:
+    burst: 10000
+    count: 10000
+    period: 2160h
+    ids:
+      - le.wtf
+      - le1.wtf
+      - le2.wtf
+      - le3.wtf
+      - nginx.wtf
+      - good-caa-reserved.com
+      - bad-caa-reserved.com
+      - ecdsa.le.wtf
+      - must-staple.le.wtf
+- CertificatesPerFQDNSet:
+    burst: 10000
+    count: 10000
+    period: 168h
+    ids:
+      - le.wtf
+      - le1.wtf
+      - le2.wtf
+      - le3.wtf
+      - le.wtf,le1.wtf
+      - good-caa-reserved.com
+      - nginx.wtf
+      - ecdsa.le.wtf
+      - must-staple.le.wtf

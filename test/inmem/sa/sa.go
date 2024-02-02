@@ -117,6 +117,10 @@ func (sa SA) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateR
 	return sa.Impl.RevokeCertificate(ctx, req)
 }
 
+func (sa SA) GetLintPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return sa.Impl.GetLintPrecertificate(ctx, req)
+}
+
 func (sa SA) GetCertificateStatus(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
 	return sa.Impl.GetCertificateStatus(ctx, req)
 }
