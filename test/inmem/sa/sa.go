@@ -105,6 +105,10 @@ func (sa SA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequ
 	return sa.Impl.AddPrecertificate(ctx, req)
 }
 
+func (sa SA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return sa.Impl.AddCertificate(ctx, req)
+}
+
 func (sa SA) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
 	return sa.Impl.CountCertificatesByNames(ctx, req)
 }

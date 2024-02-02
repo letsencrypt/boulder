@@ -63,7 +63,7 @@ type Config struct {
 		// immediately; if the validity period of the issued certificates ever
 		// changes downwards, the value must not change until after all certificates with
 		// the old validity period have expired.
-		// DEPRECATED: This config value is no longer used.
+		// Deprecated: This config value is no longer used.
 		// TODO(#6438): Remove this value.
 		CertificateLifetime config.Duration `validate:"-"`
 
@@ -79,7 +79,7 @@ type Config struct {
 		// UpdatePeriod, starting from the Unix Epoch plus UpdateOffset, and
 		// continuing forward into the future forever. This value must be strictly
 		// less than the UpdatePeriod.
-		// DEPRECATED: This config value is not relevant with continuous updating.
+		// Deprecated: This config value is not relevant with continuous updating.
 		// TODO(#7023): Remove this value.
 		UpdateOffset config.Duration `validate:"-"`
 

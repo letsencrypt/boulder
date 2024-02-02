@@ -449,7 +449,7 @@ func (ssa *SQLStorageAuthorityRO) GetLintPrecertificate(ctx context.Context, req
 		return nil, errIncompleteRequest
 	}
 	if !core.ValidSerial(req.Serial) {
-		return nil, fmt.Errorf("invalid certificate serial %s", req.Serial)
+		return nil, fmt.Errorf("invalid precertificate serial %s", req.Serial)
 	}
 
 	cert, err := SelectPrecertificate(ctx, ssa.dbReadOnlyMap, req.Serial)

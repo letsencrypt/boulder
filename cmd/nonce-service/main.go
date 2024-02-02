@@ -52,17 +52,23 @@ func derivePrefix(key string, grpcAddr string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parsing gRPC listen address: %w", err)
 	}
+	if host == "" {
+		return "", fmt.Errorf("nonce service gRPC address must include an IP address: got %q", grpcAddr)
+	}
 	if host != "" && port != "" {
 		hostIP := net.ParseIP(host)
 		if hostIP == nil {
-			return "", fmt.Errorf("parsing IP from gRPC listen address: %w", err)
+			return "", fmt.Errorf("gRPC address host part was not an IP address")
+		}
+		if hostIP.IsUnspecified() {
+			return "", fmt.Errorf("nonce service gRPC address must be a specific IP address: got %q", grpcAddr)
 		}
 	}
 	return nonce.DerivePrefix(grpcAddr, key), nil
 }
 
 func main() {
-	grpcAddr := flag.String("addr", "", "gRPC listen address override")
+	grpcAddr := flag.String("addr", "", "gRPC listen address override. Also used to derive the nonce prefix.")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()

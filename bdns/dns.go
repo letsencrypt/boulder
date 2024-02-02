@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -392,9 +393,18 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 			return
 		case r := <-ch:
 			if r.err != nil {
-				var operr *net.OpError
-				ok := errors.As(r.err, &operr)
-				isRetryable := ok && operr.Temporary()
+				var isRetryable bool
+				if features.Get().DOH {
+					// According to the http package documentation, retryable
+					// errors emitted by the http package are of type *url.Error.
+					var urlErr *url.Error
+					isRetryable = errors.As(r.err, &urlErr) && urlErr.Temporary()
+				} else {
+					// According to the net package documentation, retryable
+					// errors emitted by the net package are of type *net.OpError.
+					var opErr *net.OpError
+					isRetryable = errors.As(r.err, &opErr) && opErr.Temporary()
+				}
 				hasRetriesLeft := tries < dnsClient.maxTries
 				if isRetryable && hasRetriesLeft {
 					tries++
