@@ -4054,7 +4054,7 @@ func TestReplacementOrderExists(t *testing.T) {
 			Expires:          timestamppb.New(expires1Year),
 			Names:            []string{"example.com"},
 			V2Authorizations: []int64{authzID},
-			Replaces:         oldCertSerial,
+			ReplacesSerial:   oldCertSerial,
 		},
 	})
 	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
@@ -4091,7 +4091,7 @@ func TestReplacementOrderExists(t *testing.T) {
 			Expires:          timestamppb.New(expires1Year),
 			Names:            []string{"example.com"},
 			V2Authorizations: []int64{authzID},
-			Replaces:         oldCertSerial,
+			ReplacesSerial:   oldCertSerial,
 		},
 	})
 	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")

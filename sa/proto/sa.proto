@@ -261,7 +261,7 @@ message NewOrderRequest {
   google.protobuf.Timestamp expires = 5;
   repeated string names = 3;
   repeated int64 v2Authorizations = 4;
-  string replaces = 6;
+  string replacesSerial = 6;
 }
 
 message NewOrderAndAuthzsRequest {
