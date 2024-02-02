@@ -1,0 +1,182 @@
+package issuance
+
+import (
+	"crypto/x509"
+	"encoding/asn1"
+	"encoding/hex"
+	"math/big"
+	"testing"
+	"time"
+
+	"github.com/jmhodges/clock"
+	"github.com/zmap/zlint/v3/lint"
+
+	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/test"
+)
+
+func TestNewCRLProfile(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		config      CRLProfileConfig
+		expected    *CRLProfile
+		expectedErr string
+	}{
+		{
+			name:        "validity too long",
+			config:      CRLProfileConfig{ValidityInterval: config.Duration{Duration: 30 * 24 * time.Hour}},
+			expected:    nil,
+			expectedErr: "lifetime cannot be more than 10 days",
+		},
+		{
+			name:        "validity too short",
+			config:      CRLProfileConfig{ValidityInterval: config.Duration{Duration: 0}},
+			expected:    nil,
+			expectedErr: "lifetime must be positive",
+		},
+		{
+			name: "negative backdate",
+			config: CRLProfileConfig{
+				ValidityInterval: config.Duration{Duration: 7 * 24 * time.Hour},
+				MaxBackdate:      config.Duration{Duration: -time.Hour},
+			},
+			expected:    nil,
+			expectedErr: "backdate must be non-negative",
+		},
+		{
+			name: "happy path",
+			config: CRLProfileConfig{
+				ValidityInterval: config.Duration{Duration: 7 * 24 * time.Hour},
+				MaxBackdate:      config.Duration{Duration: time.Hour},
+			},
+			expected: &CRLProfile{
+				validityInterval: 7 * 24 * time.Hour,
+				maxBackdate:      time.Hour,
+			},
+			expectedErr: "",
+		},
+	}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			actual, err := NewCRLProfile(tc.config)
+			if err != nil {
+				if tc.expectedErr == "" {
+					t.Errorf("NewCRLProfile expected success but got %q", err)
+					return
+				}
+				test.AssertContains(t, err.Error(), tc.expectedErr)
+			} else {
+				if tc.expectedErr != "" {
+					t.Errorf("NewCRLProfile succeeded but expected error %q", tc.expectedErr)
+					return
+				}
+				test.AssertEquals(t, actual.validityInterval, tc.expected.validityInterval)
+				test.AssertEquals(t, actual.maxBackdate, tc.expected.maxBackdate)
+				test.AssertNotNil(t, actual.lints, "lint registry should be populated")
+			}
+		})
+	}
+}
+
+func TestIssueCRL(t *testing.T) {
+	clk := clock.NewFake()
+	clk.Set(time.Now())
+
+	issuer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, clk)
+	test.AssertNotError(t, err, "creating test issuer")
+
+	defaultProfile := CRLProfile{
+		validityInterval: 7 * 24 * time.Hour,
+		maxBackdate:      1 * time.Hour,
+		lints:            lint.GlobalRegistry(),
+	}
+
+	defaultRequest := CRLRequest{
+		Number:     big.NewInt(123),
+		Shard:      100,
+		ThisUpdate: clk.Now().Add(-time.Second),
+		Entries: []x509.RevocationListEntry{
+			{
+				SerialNumber:   big.NewInt(987),
+				RevocationTime: clk.Now().Add(-24 * time.Hour),
+				ReasonCode:     1,
+			},
+		},
+		DeprecatedIDPBaseURL: "http://old.crl.url",
+	}
+
+	req := defaultRequest
+	req.ThisUpdate = clk.Now().Add(-24 * time.Hour)
+	_, err = issuer.IssueCRL(&defaultProfile, &req)
+	test.AssertError(t, err, "too old crl issuance should fail")
+	test.AssertContains(t, err.Error(), "ThisUpdate is too far in the past")
+
+	req = defaultRequest
+	req.ThisUpdate = clk.Now().Add(time.Second)
+	_, err = issuer.IssueCRL(&defaultProfile, &req)
+	test.AssertError(t, err, "future crl issuance should fail")
+	test.AssertContains(t, err.Error(), "ThisUpdate is in the future")
+
+	req = defaultRequest
+	req.Entries = append(req.Entries, x509.RevocationListEntry{
+		SerialNumber:   big.NewInt(876),
+		RevocationTime: clk.Now().Add(-24 * time.Hour),
+		ReasonCode:     6,
+	})
+	_, err = issuer.IssueCRL(&defaultProfile, &req)
+	test.AssertError(t, err, "invalid reason code should result in lint failure")
+	test.AssertContains(t, err.Error(), "Reason code not included in BR")
+
+	req = defaultRequest
+	res, err := issuer.IssueCRL(&defaultProfile, &req)
+	test.AssertNotError(t, err, "crl issuance should have succeeded")
+	parsedRes, err := x509.ParseRevocationList(res)
+	test.AssertNotError(t, err, "parsing test crl")
+	test.AssertEquals(t, parsedRes.Issuer.CommonName, issuer.Cert.Subject.CommonName)
+	test.AssertDeepEquals(t, parsedRes.Number, big.NewInt(123))
+	expectUpdate := req.ThisUpdate.Add(-time.Second).Add(defaultProfile.validityInterval).Truncate(time.Second).UTC()
+	test.AssertEquals(t, parsedRes.NextUpdate, expectUpdate)
+	test.AssertEquals(t, len(parsedRes.Extensions), 3)
+
+	req = defaultRequest
+	req.DeprecatedIDPBaseURL = ""
+	issuer.crlURLBase = ""
+	_, err = issuer.IssueCRL(&defaultProfile, &req)
+	test.AssertError(t, err, "crl issuance with no IDP should fail")
+	test.AssertContains(t, err.Error(), "must contain an issuingDistributionPoint")
+}
+
+func TestMakeIDPExt(t *testing.T) {
+	t.Parallel()
+	dehex := func(s string) []byte { r, _ := hex.DecodeString(s); return r }
+	tests := []struct {
+		name string
+		urls []string
+		want []byte
+	}{
+		{
+			name: "one (real) url",
+			urls: []string{"http://prod.c.lencr.org/20506757847264211/126.crl"},
+			want: dehex("303AA035A0338631687474703A2F2F70726F642E632E6C656E63722E6F72672F32303530363735373834373236343231312F3132362E63726C8101FF"),
+		},
+		{
+			name: "two urls",
+			urls: []string{"http://old.style/12345678/90.crl", "http://new.style/90.crl"},
+			want: dehex("3042A03DA03B8620687474703A2F2F6F6C642E7374796C652F31323334353637382F39302E63726C8617687474703A2F2F6E65772E7374796C652F39302E63726C8101FF"),
+		},
+	}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := makeIDPExt(tc.urls)
+			test.AssertNotError(t, err, "should never fail to marshal asn1 to bytes")
+			test.AssertDeepEquals(t, got.Id, asn1.ObjectIdentifier{2, 5, 29, 28})
+			test.AssertEquals(t, got.Critical, true)
+			test.AssertDeepEquals(t, got.Value, tc.want)
+		})
+	}
+}
