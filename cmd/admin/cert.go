@@ -9,16 +9,13 @@ import (
 	"io"
 	"os"
 	"os/user"
-	"slices"
 	"sync"
 
 	"golang.org/x/crypto/ocsp"
 	"golang.org/x/exp/maps"
 
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/privatekey"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -39,7 +36,7 @@ func (a *admin) subcommandRevokeCert(ctx context.Context, args []string) error {
 
 	// General flags relevant to all certificate input methods.
 	parallelism := subflags.Uint("parallelism", 10, "Number of concurrent workers to use while revoking certs")
-	reason := subflags.Uint("reason", 0, "Revocation reason (must be 0, 1, 4, 5, or 9)")
+	reasonStr := subflags.String("reason", "unspecified", "Revocation reason (unspecified, keyCompromise, superseded, cessationOfOperation, or privilegeWithdrawn)")
 	skipBlock := subflags.Bool("skip-block-key", false, "Skip blocking the key, if revoked for keyCompromise - use with extreme caution")
 	malformed := subflags.Bool("malformed", false, "Indicates that the cert cannot be parsed - use with caution")
 
@@ -60,19 +57,24 @@ func (a *admin) subcommandRevokeCert(ctx context.Context, args []string) error {
 		return fmt.Errorf("got unacceptable parallelism %d", *parallelism)
 	}
 
-	if !slices.Contains(maps.Keys(revocation.AdminAllowedReasons), revocation.Reason(*reason)) {
-		// The other revocation reasons are either disallowed by the BRs (e.g. 6
-		// certificateHold), or irrelevant to us (e.g. 3 affiliationChanged).
-		return fmt.Errorf("got unacceptable revocation reason %d", *reason)
+	reasonCode := revocation.Reason(-1)
+	for code := range revocation.AdminAllowedReasons {
+		if *reasonStr == revocation.ReasonToString[code] {
+			reasonCode = code
+			break
+		}
+	}
+	if reasonCode == revocation.Reason(-1) {
+		return fmt.Errorf("got unacceptable revocation reason %q", *reasonStr)
 	}
 
-	if *skipBlock && *reason == ocsp.KeyCompromise {
+	if *skipBlock && reasonCode == ocsp.KeyCompromise {
 		// We would only add the SPKI hash of the pubkey to the blockedKeys table if
 		// the revocation reason is keyCompromise.
 		return errors.New("-skip-block-key only makes sense with -reason=1")
 	}
 
-	if *malformed && *reason == ocsp.KeyCompromise {
+	if *malformed && reasonCode == ocsp.KeyCompromise {
 		// This is because we can't extract and block the pubkey if we can't
 		// parse the certificate.
 		return errors.New("cannot revoke malformed certs for reason keyCompromise")
@@ -120,7 +122,7 @@ func (a *admin) subcommandRevokeCert(ctx context.Context, args []string) error {
 	}
 	a.log.Infof("Found %d certificates to revoke", len(serials))
 
-	err = a.revokeSerials(ctx, serials, revocation.Reason(*reason), *malformed, *skipBlock, int(*parallelism))
+	err = a.revokeSerials(ctx, serials, reasonCode, *malformed, *skipBlock, int(*parallelism))
 	if err != nil {
 		return fmt.Errorf("revoking serials: %w", err)
 	}
@@ -169,14 +171,9 @@ func (a *admin) serialsFromFile(_ context.Context, filePath string) ([]string, e
 }
 
 func (a *admin) serialsFromPrivateKey(ctx context.Context, privkeyFile string) ([]string, error) {
-	_, publicKey, err := privatekey.Load(privkeyFile)
+	spkiHash, err := a.spkiHashFromPrivateKey(privkeyFile)
 	if err != nil {
-		return nil, fmt.Errorf("loading private key file: %w", err)
-	}
-
-	spkiHash, err := core.KeyDigest(publicKey)
-	if err != nil {
-		return nil, fmt.Errorf("computing SPKI hash: %w", err)
+		return nil, err
 	}
 
 	var serials []string

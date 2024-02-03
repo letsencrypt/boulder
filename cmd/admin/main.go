@@ -23,7 +23,6 @@ import (
 
 const usageString = `
 Subcommands:
-	list-reasons
 	revoke-cert
 	block-key
 	clear-email
@@ -99,8 +98,6 @@ func main() {
 	ctx := context.Background()
 
 	switch unparsedArgs[0] {
-	case "list-reasons":
-		err = a.subcommandListReasons(ctx, unparsedArgs[1:])
 	case "revoke-cert":
 		err = a.subcommandRevokeCert(ctx, unparsedArgs[1:])
 	case "block-key":

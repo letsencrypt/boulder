@@ -1600,10 +1600,10 @@ def test_admin_revoker_cert():
         "-dry-run=false",
         "revoke-cert",
         "-serial", '%x' % parsed_cert.serial_number,
-        "-reason", "1"])
+        "-reason", "keyCompromise"])
 
     # Wait for OCSP response to indicate revocation took place
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
@@ -1624,11 +1624,11 @@ def test_admin_revoker_batched():
         "-dry-run=false",
         "revoke-cert",
         "-serials-file", serialFile.name,
-        "-reason", "0",
+        "-reason", "unspecified",
         "-parallelism", "2"])
 
     for cert_file in cert_files:
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "unspecified")
 
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])
