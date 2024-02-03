@@ -21,17 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 )
 
-const usageString = `
-Subcommands:
-	revoke-cert
-	block-key
-	clear-email
-	deactivate-authz (TODO(#5909): Implement this)
-	init-incident (TODO(#6943): Implement this)
-
-You can run "admin -config /path/to/cfg.json <subcommand> -help" to get usage for that subcommand.
-`
-
 type Config struct {
 	Admin struct {
 		// DB controls the admin tool's direct connection to the database.
@@ -64,10 +53,39 @@ func main() {
 	configFile := flag.String("config", "", "Path to the configuration file for this service (required)")
 	dryRun := flag.Bool("dry-run", true, "Print actions instead of mutating the database")
 
+	subcommands := map[string]struct {
+		desc string
+		run  func(*admin, context.Context, []string) error
+	}{
+		"revoke-cert": {
+			"Revoke one or more certificates",
+			func(a *admin, ctx context.Context, args []string) error {
+				return a.subcommandRevokeCert(ctx, args)
+			},
+		},
+		"block-key": {
+			"Block a keypair from any future issuance",
+			func(a *admin, ctx context.Context, args []string) error {
+				return a.subcommandBlockKey(ctx, args)
+			},
+		},
+		"update-email": {
+			"Change or remove an email address across all accounts",
+			func(a *admin, ctx context.Context, args []string) error {
+				return a.subcommandUpdateEmail(ctx, args)
+			},
+		},
+	}
+
 	defaultUsage := flag.Usage
 	flag.Usage = func() {
 		defaultUsage()
-		fmt.Print(usageString)
+		fmt.Printf("\nSubcommands:\n")
+		for name, command := range subcommands {
+			fmt.Printf("  %s\n", name)
+			fmt.Printf("\t%s\n", command.desc)
+		}
+		fmt.Print("\nYou can run \"admin -config /path/to/cfg.json <subcommand> -help\" to get usage for that subcommand.\n")
 	}
 
 	flag.Parse()
@@ -96,19 +114,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
-
-	switch unparsedArgs[0] {
-	case "revoke-cert":
-		err = a.subcommandRevokeCert(ctx, unparsedArgs[1:])
-	case "block-key":
-		err = a.subcommandBlockKey(ctx, unparsedArgs[1:])
-	case "update-email":
-		err = a.subcommandUpdateEmail(ctx, unparsedArgs[1:])
-	default:
+	subcommand, ok := subcommands[unparsedArgs[0]]
+	if !ok {
 		cmd.FailOnError(errors.New("no recognized subcommand name provided"), "")
 	}
 
+	err = subcommand.run(a, context.Background(), unparsedArgs[1:])
 	cmd.FailOnError(err, "executing subcommand")
 
 	if a.dryRun {
