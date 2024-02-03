@@ -32,6 +32,7 @@
 				},
 				"sa.StorageAuthorityReadOnly": {
 					"clientNames": [
+						"admin-revoker.boulder",
 						"crl-updater.boulder",
 						"ocsp-responder.boulder",
 						"wfe.boulder"

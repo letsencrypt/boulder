@@ -131,7 +131,7 @@ func (a *admin) subcommandRevokeCert(ctx context.Context, args []string) error {
 }
 
 func (a *admin) serialsFromIncidentTable(ctx context.Context, tableName string) ([]string, error) {
-	stream, err := a.sac.SerialsForIncident(ctx, &sapb.SerialsForIncidentRequest{IncidentTable: tableName})
+	stream, err := a.saroc.SerialsForIncident(ctx, &sapb.SerialsForIncidentRequest{IncidentTable: tableName})
 	if err != nil {
 		return nil, fmt.Errorf("setting up stream of serials from incident table %q: %s", tableName, err)
 	}
@@ -186,7 +186,7 @@ func (a *admin) serialsFromPrivateKey(ctx context.Context, privkeyFile string) (
 }
 
 func (a *admin) serialsFromRegID(ctx context.Context, regID int64) ([]string, error) {
-	_, err := a.sac.GetRegistration(ctx, &sapb.RegistrationID{Id: regID})
+	_, err := a.saroc.GetRegistration(ctx, &sapb.RegistrationID{Id: regID})
 	if err != nil {
 		return nil, fmt.Errorf("couldn't confirm regID exists: %w", err)
 	}
@@ -213,19 +213,6 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 		go func() {
 			defer wg.Done()
 			for serial := range work {
-				req := &rapb.AdministrativelyRevokeCertificateRequest{
-					Serial:       serial,
-					Code:         int64(reason),
-					AdminName:    u.Username,
-					SkipBlockKey: skipBlockKey,
-					Malformed:    malformed,
-				}
-
-				if a.dryRun {
-					a.log.Infof("dry-run: %v", req)
-					continue
-				}
-
 				_, err := a.rac.AdministrativelyRevokeCertificate(
 					ctx,
 					&rapb.AdministrativelyRevokeCertificateRequest{

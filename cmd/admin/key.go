@@ -74,20 +74,13 @@ func (a *admin) blockSPKIHash(ctx context.Context, spkiHash []byte, comment stri
 		return fmt.Errorf("getting admin username: %w", err)
 	}
 
-	req := &sapb.AddBlockedKeyRequest{
+	_, err = a.sac.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
 		KeyHash:   spkiHash[:],
 		Added:     timestamppb.New(a.clk.Now()),
 		Source:    "admin-revoker",
 		Comment:   fmt.Sprintf("%s: %s", u.Username, comment),
 		RevokedBy: 0,
-	}
-
-	if a.dryRun {
-		a.log.Infof("dry-run: %v", req)
-		return nil
-	}
-
-	_, err = a.sac.AddBlockedKey(ctx, req)
+	})
 	if err != nil {
 		return fmt.Errorf("blocking key: %w", err)
 	}

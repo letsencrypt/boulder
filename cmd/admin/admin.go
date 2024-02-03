@@ -19,8 +19,13 @@ import (
 type admin struct {
 	rac   rapb.RegistrationAuthorityClient
 	sac   sapb.StorageAuthorityClient
+	saroc sapb.StorageAuthorityReadOnlyClient
+	// TODO: Remove this and only use sac and saroc to interact with the db.
+	// We cannot have true dry-run safety as long as we have a direct dbMap.
 	dbMap *db.WrappedMap
 
+	// TODO: Remove this when the dbMap is removed and the dryRunSAC and dryRunRAC
+	// handle all dry-run safety.
 	dryRun bool
 
 	clk clock.Clock
@@ -39,17 +44,25 @@ func newAdmin(c Config, dryRun bool, clk clock.Clock, logger blog.Logger, scope 
 		return nil, fmt.Errorf("loading TLS config: %w", err)
 	}
 
-	raConn, err := bgrpc.ClientSetup(c.Admin.RAService, tlsConfig, scope, clk)
-	if err != nil {
-		return nil, fmt.Errorf("creating RA gRPC client: %w", err)
+	var rac rapb.RegistrationAuthorityClient = dryRunRAC{log: logger}
+	if !dryRun {
+		raConn, err := bgrpc.ClientSetup(c.Admin.RAService, tlsConfig, scope, clk)
+		if err != nil {
+			return nil, fmt.Errorf("creating RA gRPC client: %w", err)
+		}
+		rac = rapb.NewRegistrationAuthorityClient(raConn)
 	}
-	rac := rapb.NewRegistrationAuthorityClient(raConn)
 
 	saConn, err := bgrpc.ClientSetup(c.Admin.SAService, tlsConfig, scope, clk)
 	if err != nil {
 		return nil, fmt.Errorf("creating SA gRPC client: %w", err)
 	}
-	sac := sapb.NewStorageAuthorityClient(saConn)
+	saroc := sapb.NewStorageAuthorityReadOnlyClient(saConn)
+
+	var sac sapb.StorageAuthorityClient = dryRunSAC{log: logger}
+	if !dryRun {
+		sac = sapb.NewStorageAuthorityClient(saConn)
+	}
 
 	dbMap, err := sa.InitWrappedDb(c.Admin.DB, nil, logger)
 	if err != nil {
@@ -59,6 +72,7 @@ func newAdmin(c Config, dryRun bool, clk clock.Clock, logger blog.Logger, scope 
 	return &admin{
 		rac:    rac,
 		sac:    sac,
+		saroc:  saroc,
 		dbMap:  dbMap,
 		dryRun: dryRun,
 		clk:    clk,
