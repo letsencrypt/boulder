@@ -53,8 +53,17 @@ func (a *admin) spkiHashFromPrivateKey(keyFile string) ([]byte, error) {
 }
 
 func (a *admin) blockSPKIHash(ctx context.Context, spkiHash []byte, comment string) error {
+	var exists bool
+	err := a.dbMap.SelectOne(ctx, &exists, "SELECT EXISTS(SELECT 1 FROM blockedKeys WHERE keyHash = ? LIMIT 1)", spkiHash[:])
+	if err != nil {
+		return fmt.Errorf("checking if key is already blocked: %w", err)
+	}
+	if exists {
+		return errors.New("the provided key already exists in the 'blockedKeys' table")
+	}
+
 	var count int
-	err := a.dbMap.SelectOne(ctx, &count, "SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ? AND certNotAfter > NOW()", spkiHash[:])
+	err = a.dbMap.SelectOne(ctx, &count, "SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ? AND certNotAfter > NOW()", spkiHash[:])
 	if err != nil {
 		return fmt.Errorf("counting affected certificates: %w", err)
 	}

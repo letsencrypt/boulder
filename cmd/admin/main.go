@@ -92,7 +92,8 @@ func main() {
 
 	unparsedArgs := flag.Args()
 	if len(unparsedArgs) == 0 {
-		cmd.FailOnError(errors.New("a subcommand name must be provided"), "")
+		flag.Usage()
+		os.Exit(1)
 	}
 
 	ctx := context.Background()
