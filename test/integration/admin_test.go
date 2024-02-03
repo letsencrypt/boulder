@@ -10,6 +10,7 @@ import (
 
 	"github.com/eggsampler/acme/v3"
 	_ "github.com/go-sql-driver/mysql"
+
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -35,8 +36,9 @@ func TestAdminClearEmail(t *testing.T) {
 		"./bin/admin",
 		"-config", config,
 		"-dry-run=false",
-		"clear-email",
-		"-address", deleteMe)
+		"update-email",
+		"-address", deleteMe,
+		"-clear")
 	output, err := cmd.CombinedOutput()
 	test.AssertNotError(t, err, fmt.Sprintf("clearing email via admin tool (%s): %s", cmd, string(output)))
 	t.Logf("clear-email output: %s\n", string(output))

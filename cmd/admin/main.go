@@ -102,8 +102,8 @@ func main() {
 		err = a.subcommandRevokeCert(ctx, unparsedArgs[1:])
 	case "block-key":
 		err = a.subcommandBlockKey(ctx, unparsedArgs[1:])
-	case "clear-email":
-		err = a.subcommandClearEmail(ctx, unparsedArgs[1:])
+	case "update-email":
+		err = a.subcommandUpdateEmail(ctx, unparsedArgs[1:])
 	default:
 		cmd.FailOnError(errors.New("no recognized subcommand name provided"), "")
 	}
