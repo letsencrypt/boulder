@@ -519,11 +519,12 @@ func (pa *AuthorityImpl) challengeTypesFor(identifier identifier.ACMEIdentifier)
 	// If the identifier is for a DNS wildcard name we only
 	// provide a DNS-01 challenge as a matter of CA policy.
 	if strings.HasPrefix(identifier.Value, "*.") {
-		// We must have the DNS-01 challenge type enabled to create challenges for
+		// We must have the DNS based challenge type enabled to create challenges for
 		// a wildcard identifier per LE policy.
-		if !pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
+		if !pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) &&
+			!pa.ChallengeTypeEnabled(core.ChallengeTypeDNSAccount01) {
 			return nil, fmt.Errorf(
-				"Challenges requested for wildcard identifier but DNS-01 " +
+				"Challenges requested for wildcard identifier but DNS based " +
 					"challenge type is not enabled")
 		}
 		// Only provide a DNS-01-Wildcard challenge
@@ -540,6 +541,10 @@ func (pa *AuthorityImpl) challengeTypesFor(identifier identifier.ACMEIdentifier)
 
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
 			challenges = append(challenges, core.ChallengeTypeDNS01)
+		}
+
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNSAccount01) {
+			challenges = append(challenges, core.ChallengeTypeDNSAccount01)
 		}
 	}
 

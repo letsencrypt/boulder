@@ -242,3 +242,87 @@ func TestAvailableAddresses(t *testing.T) {
 		}
 	}
 }
+func TestAccounturlHosts(t *testing.T) {
+	//example from rfc draft
+	accurlprefix := []string{"http://boulder.service.consul:4000/acme/reg/", "test.invalid/acct/"}
+	urls := accountURLHostname(accurlprefix, identifier.DNSIdentifier("test.dns-account-01.com"), 314159265359)
+	test.AssertEquals(t, urls[0], "_acme-challenge_rwuuxhw32v7vsbt5.test.dns-account-01.com")
+}
+
+func dnsAccountChallenge() core.Challenge {
+	return createChallenge(core.ChallengeTypeDNSAccount01)
+}
+
+var ctxwithaccount = context.WithValue(context.Background(), accountIDKey{}, int64(11111))
+
+func TestDNSAccountValidationGood(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+	_, prob := va.validateChallenge(ctxwithaccount, dnsi("good-dns01.com"), dnsAccountChallenge())
+
+	test.Assert(t, prob == nil, "Should be valid.")
+}
+
+func TestDNSAccountValidationServerFail(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+
+	_, prob := va.validateChallenge(ctxwithaccount, dnsi("servfail.com"), dnsAccountChallenge())
+
+	test.AssertEquals(t, prob.Type, probs.DNSProblem)
+}
+
+func TestDNSAccountWithMultiAccURLGood(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+	//add another account prefix
+	va.accountURIPrefixes = []string{"test.invalid/acct/", accountURIPrefixes[0]}
+	_, prob := va.validateChallenge(ctxwithaccount, dnsi("good-dns01.com"), dnsAccountChallenge())
+
+	test.Assert(t, prob == nil, "Should be valid.")
+}
+
+func TestDNSAccountWithMultiAccURLbothwrong(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+	//add another account prefix
+	va.accountURIPrefixes = []string{"test.invalid/acct/", accountURIPrefixes[0]}
+	_, prob := va.validateChallenge(ctxwithaccount, dnsi("wrong-dns01.com"), dnsAccountChallenge())
+
+	if prob == nil {
+		t.Fatalf("Successful DNS validation with wrong TXT record")
+	}
+	//problem should prefer domain with some txt record than empty one
+	test.AssertEquals(t, prob.Error(), "unauthorized :: Incorrect TXT record \"a\" found at _acme-challenge_62oc7an6git3ml2v.wrong-dns01.com")
+}
+
+func TestDNSAccountValidationNotSane(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+	chall := dnsAccountChallenge()
+	chall.Token = ""
+	_, prob := va.validateChallenge(ctxwithaccount, dnsi("localhost"), chall)
+	if prob.Type != probs.MalformedProblem {
+		t.Errorf("Got wrong error type: expected %s, got %s",
+			prob.Type, probs.MalformedProblem)
+	}
+	if !strings.Contains(prob.Error(), "Challenge failed consistency check:") {
+		t.Errorf("Got wrong error: %s", prob.Error())
+	}
+
+	chall.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
+	_, prob = va.validateChallenge(ctxwithaccount, dnsi("localhost"), chall)
+	if prob.Type != probs.MalformedProblem {
+		t.Errorf("Got wrong error type: expected %s, got %s",
+			prob.Type, probs.MalformedProblem)
+	}
+	if !strings.Contains(prob.Error(), "Challenge failed consistency check:") {
+		t.Errorf("Got wrong error: %s", prob.Error())
+	}
+
+	chall.ProvidedKeyAuthorization = "a"
+	_, prob = va.validateChallenge(ctxwithaccount, dnsi("localhost"), chall)
+	if prob.Type != probs.MalformedProblem {
+		t.Errorf("Got wrong error type: expected %s, got %s",
+			prob.Type, probs.MalformedProblem)
+	}
+	if !strings.Contains(prob.Error(), "Challenge failed consistency check:") {
+		t.Errorf("Got wrong error: %s", prob.Error())
+	}
+
+}
