@@ -13,7 +13,6 @@ CREATE USER IF NOT EXISTS 'cert_checker'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
 CREATE USER IF NOT EXISTS 'badkeyrevoker'@'localhost';
 CREATE USER IF NOT EXISTS 'proxysql'@'localhost';
-CREATE USER IF NOT EXISTS 'phil'@'localhost';
 
 -- Storage Authority
 GRANT SELECT,INSERT ON certificates TO 'sa'@'localhost';
@@ -85,9 +84,6 @@ GRANT SELECT ON registrations TO 'badkeyrevoker'@'localhost';
 
 -- ProxySQL --
 GRANT ALL PRIVILEGES ON monitor TO 'proxysql'@'localhost';
-
--- Best Key Revoker
-GRANT ALL PRIVILEGES ON * TO 'phil'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';
