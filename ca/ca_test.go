@@ -476,6 +476,29 @@ func TestMultipleIssuers(t *testing.T) {
 	test.AssertNotError(t, err, "Certificate failed signature validation")
 }
 
+func TestNoProfile(t *testing.T) {
+	testCtx := setup(t)
+	sa := &mockSA{}
+	_, err := NewCertificateAuthorityImpl(
+		sa,
+		testCtx.pa,
+		testCtx.boulderIssuers,
+		nil, // no profile
+		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		testCtx.stats,
+		testCtx.signatureCount,
+		testCtx.signErrorCount,
+		testCtx.fc)
+	test.AssertError(t, err, "No profile found during CA construction.")
+	test.AssertEquals(t, err.Error(), "must have at least one certificate profile")
+}
+
 func TestECDSAAllowList(t *testing.T) {
 	req := &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID}
 
