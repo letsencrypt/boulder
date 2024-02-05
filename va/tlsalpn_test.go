@@ -396,7 +396,7 @@ func TestTLSALPN01Success(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall, testregid)
 	if prob != nil {
 		t.Errorf("Validation failed: %v", prob)
 	}
@@ -422,7 +422,7 @@ func TestTLSALPN01ObsoleteFailure(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall, testregid)
 	test.AssertNotNil(t, prob, "expected validation to fail")
 }
 
@@ -562,7 +562,7 @@ func TestTLSALPN01TLSVersion(t *testing.T) {
 
 		va, _ := setup(hs, 0, "", nil, nil)
 
-		_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+		_, prob := va.validateChallenge(ctx, dnsi("expected"), chall, testregid)
 		if !tc.expectError {
 			if prob != nil {
 				t.Errorf("expected success, got: %v", prob)
@@ -589,7 +589,7 @@ func TestTLSALPN01WrongName(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall, testregid)
 	test.AssertError(t, prob, "validation should have failed")
 }
 
@@ -602,7 +602,7 @@ func TestTLSALPN01ExtraNames(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall, testregid)
 	test.AssertError(t, prob, "validation should have failed")
 }
 
@@ -660,7 +660,7 @@ func TestTLSALPN01NotSelfSigned(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall, testregid)
 	test.AssertError(t, prob, "validation should have failed")
 	test.AssertContains(t, prob.Detail, "not self-signed")
 }
@@ -707,7 +707,7 @@ func TestTLSALPN01ExtraIdentifiers(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall, testregid)
 	test.AssertError(t, prob, "validation should have failed")
 }
 
@@ -767,7 +767,7 @@ func TestTLSALPN01ExtraSANs(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall, testregid)
 	test.AssertError(t, prob, "validation should have failed")
 	// In go >= 1.19, the TLS client library detects that the certificate has
 	// a duplicate extension and terminates the connection itself.
@@ -822,7 +822,7 @@ func TestTLSALPN01ExtraAcmeExtensions(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall, testregid)
 	test.AssertError(t, prob, "validation should have failed")
 	// In go >= 1.19, the TLS client library detects that the certificate has
 	// a duplicate extension and terminates the connection itself.

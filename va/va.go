@@ -410,8 +410,6 @@ func detailedError(err error) *probs.ProblemDetails {
 	return probs.Connection("Error getting validation data")
 }
 
-type accountIDKey struct{} //empty struct for key
-
 // validate performs a challenge validation and, in parallel,
 // checks CAA and GSB for the identifier. If any of those steps fails, it
 // returns a ProblemDetails plus the validation records created during the
@@ -449,8 +447,7 @@ func (va *ValidationAuthorityImpl) validate(
 	}
 
 	// TODO(#1292): send into another goroutine
-	ctxwithid := context.WithValue(ctx, accountIDKey{}, regid)
-	validationRecords, prob := va.validateChallenge(ctxwithid, baseIdentifier, challenge)
+	validationRecords, prob := va.validateChallenge(ctx, baseIdentifier, challenge, regid)
 	if prob != nil {
 		// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
 		// It will also later be serialized in JSON, which defaults to UTF-8. Make
@@ -480,7 +477,7 @@ func (va *ValidationAuthorityImpl) validate(
 	return validationRecords, nil
 }
 
-func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge, regid int64) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	err := challenge.CheckConsistencyForValidation()
 	if err != nil {
 		return nil, probs.Malformed("Challenge failed consistency check: %s", err)
@@ -493,7 +490,6 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, identifier, challenge)
 	case core.ChallengeTypeDNSAccount01:
-		regid, _ := ctx.Value(accountIDKey{}).(int64)
 		//we know regid is filled for normal caller and regid 0 is invalid
 		return va.validateDNSAccount01(ctx, identifier, challenge, regid)
 	}

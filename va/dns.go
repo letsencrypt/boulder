@@ -37,14 +37,15 @@ func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string)
 	return addrs, nil
 }
 
+// accountURLHostname takes regid and known AccountURLPrefixes and create
+// possible list of dns-account-01 challenge subdomains.
 func accountURLHostname(AccountURLPrefixes []string, ident identifier.ACMEIdentifier, regid int64) []string {
-	const dnsacc01Prefix = "_acme-challenge_"
 	var testdomains []string
 	for _, prefix := range AccountURLPrefixes {
 		accturl := fmt.Sprintf("%s%d", prefix, regid)
 		hash := sha256.Sum256([]byte(accturl))
 		urlhash := strings.ToLower(base32.StdEncoding.EncodeToString(hash[0:10]))
-		testdomain := fmt.Sprintf("%s%s.%s", dnsacc01Prefix, urlhash, ident.Value)
+		testdomain := fmt.Sprintf("_acme-challenge_%s.%s", urlhash, ident.Value)
 		testdomains = append(testdomains, testdomain)
 	}
 	return testdomains

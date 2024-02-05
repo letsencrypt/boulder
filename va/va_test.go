@@ -254,10 +254,12 @@ func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest
 	return inmem.rva.IsCAAValid(ctx, req)
 }
 
+const testregid int64 = 11111
+
 func TestValidateMalformedChallenge(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"))
+	_, prob := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"), testregid)
 
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 }

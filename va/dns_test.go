@@ -94,7 +94,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 
 	chall := dnsChallenge()
 	chall.Token = ""
-	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
 	if prob.Type != probs.MalformedProblem {
 		t.Errorf("Got wrong error type: expected %s, got %s",
 			prob.Type, probs.MalformedProblem)
@@ -104,7 +104,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 	}
 
 	chall.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
-	_, prob = va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, prob = va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
 	if prob.Type != probs.MalformedProblem {
 		t.Errorf("Got wrong error type: expected %s, got %s",
 			prob.Type, probs.MalformedProblem)
@@ -114,7 +114,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 	}
 
 	chall.ProvidedKeyAuthorization = "a"
-	_, prob = va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, prob = va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
 	if prob.Type != probs.MalformedProblem {
 		t.Errorf("Got wrong error type: expected %s, got %s",
 			prob.Type, probs.MalformedProblem)
@@ -128,7 +128,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 func TestDNSValidationServFail(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("servfail.com"), dnsChallenge())
+	_, prob := va.validateChallenge(ctx, dnsi("servfail.com"), dnsChallenge(), testregid)
 
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
@@ -147,7 +147,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 		log,
 		nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("localhost"), dnsChallenge())
+	_, prob := va.validateChallenge(ctx, dnsi("localhost"), dnsChallenge(), testregid)
 
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
@@ -155,7 +155,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 func TestDNSValidationOK(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsChallenge())
+	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsChallenge(), testregid)
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }
@@ -163,7 +163,7 @@ func TestDNSValidationOK(t *testing.T) {
 func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("no-authority-dns01.com"), dnsChallenge())
+	_, prob := va.validateChallenge(ctx, dnsi("no-authority-dns01.com"), dnsChallenge(), testregid)
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }
@@ -253,11 +253,9 @@ func dnsAccountChallenge() core.Challenge {
 	return createChallenge(core.ChallengeTypeDNSAccount01)
 }
 
-var ctxwithaccount = context.WithValue(context.Background(), accountIDKey{}, int64(11111))
-
 func TestDNSAccountValidationGood(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
-	_, prob := va.validateChallenge(ctxwithaccount, dnsi("good-dns01.com"), dnsAccountChallenge())
+	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsAccountChallenge(), testregid)
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }
@@ -265,7 +263,7 @@ func TestDNSAccountValidationGood(t *testing.T) {
 func TestDNSAccountValidationServerFail(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctxwithaccount, dnsi("servfail.com"), dnsAccountChallenge())
+	_, prob := va.validateChallenge(ctx, dnsi("servfail.com"), dnsAccountChallenge(), testregid)
 
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
@@ -274,7 +272,7 @@ func TestDNSAccountWithMultiAccURLGood(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 	//add another account prefix
 	va.accountURIPrefixes = []string{"test.invalid/acct/", accountURIPrefixes[0]}
-	_, prob := va.validateChallenge(ctxwithaccount, dnsi("good-dns01.com"), dnsAccountChallenge())
+	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsAccountChallenge(), testregid)
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }
@@ -283,7 +281,7 @@ func TestDNSAccountWithMultiAccURLbothwrong(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 	//add another account prefix
 	va.accountURIPrefixes = []string{"test.invalid/acct/", accountURIPrefixes[0]}
-	_, prob := va.validateChallenge(ctxwithaccount, dnsi("wrong-dns01.com"), dnsAccountChallenge())
+	_, prob := va.validateChallenge(ctx, dnsi("wrong-dns01.com"), dnsAccountChallenge(), testregid)
 
 	if prob == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
@@ -296,7 +294,7 @@ func TestDNSAccountValidationNotSane(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 	chall := dnsAccountChallenge()
 	chall.Token = ""
-	_, prob := va.validateChallenge(ctxwithaccount, dnsi("localhost"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
 	if prob.Type != probs.MalformedProblem {
 		t.Errorf("Got wrong error type: expected %s, got %s",
 			prob.Type, probs.MalformedProblem)
@@ -306,7 +304,7 @@ func TestDNSAccountValidationNotSane(t *testing.T) {
 	}
 
 	chall.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
-	_, prob = va.validateChallenge(ctxwithaccount, dnsi("localhost"), chall)
+	_, prob = va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
 	if prob.Type != probs.MalformedProblem {
 		t.Errorf("Got wrong error type: expected %s, got %s",
 			prob.Type, probs.MalformedProblem)
@@ -316,7 +314,7 @@ func TestDNSAccountValidationNotSane(t *testing.T) {
 	}
 
 	chall.ProvidedKeyAuthorization = "a"
-	_, prob = va.validateChallenge(ctxwithaccount, dnsi("localhost"), chall)
+	_, prob = va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
 	if prob.Type != probs.MalformedProblem {
 		t.Errorf("Got wrong error type: expected %s, got %s",
 			prob.Type, probs.MalformedProblem)

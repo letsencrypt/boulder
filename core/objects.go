@@ -242,15 +242,7 @@ func (ch Challenge) RecordsSane() bool {
 			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
-	case ChallengeTypeDNS01:
-		if len(ch.ValidationRecord) > 1 {
-			return false
-		}
-		if ch.ValidationRecord[0].Hostname == "" {
-			return false
-		}
-		return true
-	case ChallengeTypeDNSAccount01:
+	case ChallengeTypeDNS01, ChallengeTypeDNSAccount01:
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}

@@ -1516,7 +1516,7 @@ func TestValidateHTTP(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
 	test.Assert(t, prob == nil, "validation failed")
 }
 
@@ -1528,7 +1528,7 @@ func TestLimitedReader(t *testing.T) {
 	va, _ := setup(hs, 0, "", nil, nil)
 	defer hs.Close()
 
-	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
 
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
 	test.Assert(t, strings.HasPrefix(prob.Detail, "127.0.0.1: Invalid response from "),
