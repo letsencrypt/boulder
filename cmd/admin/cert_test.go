@@ -37,13 +37,13 @@ import (
 // gRPC method. It can be initialized with a set of serials for that method
 // to return.
 type mockSAWithIncident struct {
-	sapb.StorageAuthorityClient
+	sapb.StorageAuthorityReadOnlyClient
 	incidentSerials []string
 }
 
 // SerialsForIncident returns a fake gRPC stream client object which itself
 // will return the mockSAWithIncident's serials in order.
-func (msa *mockSAWithIncident) SerialsForIncident(_ context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
+func (msa *mockSAWithIncident) SerialsForIncident(_ context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_SerialsForIncidentClient, error) {
 	return &mockSerialsForIncidentClient{unsentSerials: msa.incidentSerials}, nil
 }
 
@@ -67,7 +67,7 @@ func TestSerialsFromIncidentTable(t *testing.T) {
 	serials := []string{"foo", "bar", "baz"}
 
 	a := admin{
-		sac: &mockSAWithIncident{incidentSerials: serials},
+		saroc: &mockSAWithIncident{incidentSerials: serials},
 	}
 
 	res, err := a.serialsFromIncidentTable(context.Background(), "tablename")
@@ -133,7 +133,7 @@ func TestSerialsFromPrivateKey(t *testing.T) {
 // mockSAWithRegistration is a mock which only implements the GetRegistration
 // gRPC method. It can be initialized with a regID to recognize.
 type mockSAWithRegistration struct {
-	sapb.StorageAuthorityClient
+	sapb.StorageAuthorityReadOnlyClient
 	regID int64
 }
 
@@ -174,7 +174,7 @@ func TestSerialsFromRegID(t *testing.T) {
 		test.AssertNotError(t, err, "inserting fake serial into test db")
 	}
 
-	a := admin{sac: &mockSAWithRegistration{regID: 123}, dbMap: dbMap}
+	a := admin{saroc: &mockSAWithRegistration{regID: 123}, dbMap: dbMap}
 
 	res, err := a.serialsFromRegID(context.Background(), 123)
 	test.AssertNotError(t, err, "getting serials from serials table")
@@ -231,19 +231,11 @@ func TestRevokeSerials(t *testing.T) {
 		}
 	}
 
-	// Revoking in dry-run mode should result in no gRPC requests and three logs.
-	a.dryRun = true
-	err := a.revokeSerials(context.Background(), serials, 0, false, false, 1)
-	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, len(log.GetAllMatching("dry-run:")), 3)
-	test.AssertEquals(t, len(mra.revocationRequests), 0)
-	assertRequestsContain(mra.revocationRequests, 0, false, false)
-
 	// Revoking should result in 3 gRPC requests and quiet execution.
 	mra.reset()
 	log.Clear()
 	a.dryRun = false
-	err = a.revokeSerials(context.Background(), serials, 0, false, false, 1)
+	err := a.revokeSerials(context.Background(), serials, 0, false, false, 1)
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(log.GetAll()), 0)
 	test.AssertEquals(t, len(mra.revocationRequests), 3)
@@ -276,4 +268,15 @@ func TestRevokeSerials(t *testing.T) {
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(mra.revocationRequests), 3)
 	assertRequestsContain(mra.revocationRequests, 1, true, true)
+
+	// Revoking in dry-run mode should result in no gRPC requests and three logs.
+	mra.reset()
+	log.Clear()
+	a.dryRun = true
+	a.rac = dryRunRAC{log: log}
+	err = a.revokeSerials(context.Background(), serials, 0, false, false, 1)
+	test.AssertNotError(t, err, "")
+	test.AssertEquals(t, len(log.GetAllMatching("dry-run:")), 3)
+	test.AssertEquals(t, len(mra.revocationRequests), 0)
+	assertRequestsContain(mra.revocationRequests, 0, false, false)
 }

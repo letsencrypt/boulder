@@ -90,14 +90,6 @@ func TestBlockSPKIHash(t *testing.T) {
 
 	a := admin{sac: &msa, dbMap: dbMap, clk: fc, log: log}
 
-	// A dry-run should result in zero requests and two log lines.
-	a.dryRun = true
-	err = a.blockSPKIHash(context.Background(), keyHash[:], "")
-	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, len(log.GetAllMatching("Found 3 certificates")), 1)
-	test.AssertEquals(t, len(log.GetAllMatching("dry-run:")), 1)
-	test.AssertEquals(t, len(msa.blockRequests), 0)
-
 	// A full run should result in one request with the right fields.
 	msa.reset()
 	log.Clear()
@@ -108,4 +100,16 @@ func TestBlockSPKIHash(t *testing.T) {
 	test.AssertEquals(t, len(msa.blockRequests), 1)
 	test.AssertByteEquals(t, msa.blockRequests[0].KeyHash, keyHash[:])
 	test.AssertContains(t, msa.blockRequests[0].Comment, "hello world")
+
+	// A dry-run should result in zero requests and two log lines.
+	msa.reset()
+	log.Clear()
+	a.dryRun = true
+	a.sac = dryRunSAC{log: log}
+	err = a.blockSPKIHash(context.Background(), keyHash[:], "")
+	test.AssertNotError(t, err, "")
+	test.AssertEquals(t, len(log.GetAllMatching("Found 3 certificates")), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("dry-run:")), 1)
+	test.AssertEquals(t, len(msa.blockRequests), 0)
+
 }
