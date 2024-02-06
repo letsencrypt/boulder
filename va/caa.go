@@ -10,6 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -19,8 +23,6 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/miekg/dns"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type caaParams struct {
@@ -309,6 +311,7 @@ type caaResult struct {
 	issuewild       []*dns.CAA
 	criticalUnknown bool
 	dig             string
+	resolvers       bdns.ResolverAddrs
 	err             error
 }
 
@@ -363,7 +366,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		go func(name string, r *caaResult) {
 			r.name = name
 			var records []*dns.CAA
-			records, r.dig, r.err = va.dnsClient.LookupCAA(ctx, name)
+			records, r.dig, r.resolvers, r.err = va.dnsClient.LookupCAA(ctx, name)
 			if len(records) > 0 {
 				r.present = true
 			}

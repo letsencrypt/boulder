@@ -25,6 +25,14 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
+	"gopkg.in/go-jose/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
@@ -38,13 +46,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/durationpb"
-	"google.golang.org/protobuf/types/known/emptypb"
-	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/go-jose/go-jose.v2"
 )
 
 var log = blog.UseMock()
@@ -2595,10 +2596,11 @@ func TestFinalizeAuthorization2(t *testing.T) {
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
 			{
-				Hostname:    "example.com",
-				Port:        "80",
-				Url:         "http://example.com",
-				AddressUsed: ip,
+				Hostname:      "example.com",
+				Port:          "80",
+				Url:           "http://example.com",
+				AddressUsed:   ip,
+				ResolverAddrs: []string{"resolver:5353"},
 			},
 		},
 		Status:      string(core.StatusValid),
@@ -2616,6 +2618,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Hostname, "example.com")
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Port, "80")
+	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].ResolverAddrs[0], "resolver:5353")
 	test.AssertEquals(t, dbVer.Challenges[0].Validated.AsTime(), attemptedAt)
 
 	authzID = createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
@@ -2625,10 +2628,11 @@ func TestFinalizeAuthorization2(t *testing.T) {
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
 			{
-				Hostname:    "example.com",
-				Port:        "80",
-				Url:         "http://example.com",
-				AddressUsed: ip,
+				Hostname:      "example.com",
+				Port:          "80",
+				Url:           "http://example.com",
+				AddressUsed:   ip,
+				ResolverAddrs: []string{"resolver:5353"},
 			},
 		},
 		ValidationError: prob,
@@ -2645,6 +2649,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Hostname, "example.com")
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Port, "80")
+	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].ResolverAddrs[0], "resolver:5353")
 	test.AssertDeepEquals(t, dbVer.Challenges[0].Error, prob)
 }
 

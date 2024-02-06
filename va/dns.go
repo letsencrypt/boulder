@@ -10,6 +10,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
@@ -22,19 +23,19 @@ import (
 // used by net/http. If there is an error resolving the hostname, or if no
 // usable IP addresses are available then a berrors.DNSError instance is
 // returned with a nil net.IP slice.
-func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, error) {
-	addrs, err := va.dnsClient.LookupHost(ctx, hostname)
+func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, bdns.ResolverAddrs, error) {
+	addrs, resolvers, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
-		return nil, berrors.DNSError("%v", err)
+		return nil, resolvers, berrors.DNSError("%v", err)
 	}
 
 	if len(addrs) == 0 {
 		// This should be unreachable, as no valid IP addresses being found results
 		// in an error being returned from LookupHost.
-		return nil, berrors.DNSError("No valid IP addresses found for %s", hostname)
+		return nil, resolvers, berrors.DNSError("No valid IP addresses found for %s", hostname)
 	}
 	va.log.Debugf("Resolved addresses for %s: %s", hostname, addrs)
-	return addrs, nil
+	return addrs, resolvers, nil
 }
 
 // accountURLHostname takes regid and known AccountURLPrefixes and create
@@ -84,7 +85,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 func (va *ValidationAuthorityImpl) validateDNSsingle(ctx context.Context, ident identifier.ACMEIdentifier,
 	authorizedKeysDigest string, challengeSubdomain string) ([]core.ValidationRecord, *probs.ProblemDetails) {
 
-	txts, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
+	txts, resolvers, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
 		return nil, probs.DNS(err.Error())
 	}
@@ -99,7 +100,7 @@ func (va *ValidationAuthorityImpl) validateDNSsingle(ctx context.Context, ident 
 	for _, element := range txts {
 		if subtle.ConstantTimeCompare([]byte(element), []byte(authorizedKeysDigest)) == 1 {
 			// Successful challenge validation
-			return []core.ValidationRecord{{Hostname: ident.Value}}, nil
+			return []core.ValidationRecord{{Hostname: ident.Value, ResolverAddrs: resolvers}}, nil
 		}
 	}
 
