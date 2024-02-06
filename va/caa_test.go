@@ -12,6 +12,7 @@ import (
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
@@ -197,14 +198,8 @@ func TestCAATimeout(t *testing.T) {
 	}
 
 	err := va.checkCAA(ctx, identifier.DNSIdentifier("caa-timeout.com"), params)
-	if err.Type != probs.DNSProblem {
-		t.Errorf("Expected timeout error type %s, got %s", probs.DNSProblem, err.Type)
-	}
-
-	expected := "error"
-	if err.Detail != expected {
-		t.Errorf("checkCAA: got %#v, expected %#v", err.Detail, expected)
-	}
+	test.AssertErrorIs(t, err, berrors.DNS)
+	test.AssertContains(t, err.Error(), "error")
 }
 
 func TestCAAChecking(t *testing.T) {
@@ -970,16 +965,17 @@ func TestCAAFailure(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, caaMockDNS{})
 
-	_, prob := va.validate(ctx, dnsi("reserved.com"), 1, chall)
-	if prob == nil {
+	_, err := va.validate(ctx, dnsi("reserved.com"), 1, chall)
+	if err == nil {
 		t.Fatalf("Expected CAA rejection for reserved.com, got success")
 	}
-	test.AssertEquals(t, prob.Type, probs.CAAProblem)
+	test.AssertErrorIs(t, err, berrors.CAA)
 
-	_, prob = va.validate(ctx, dnsi("example.gonetld"), 1, chall)
-	if prob == nil {
+	_, err = va.validate(ctx, dnsi("example.gonetld"), 1, chall)
+	if err == nil {
 		t.Fatalf("Expected CAA rejection for gonetld, got success")
 	}
+	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 	test.AssertContains(t, prob.Error(), "NXDOMAIN")
 }

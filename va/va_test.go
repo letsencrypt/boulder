@@ -257,8 +257,9 @@ func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest
 func TestValidateMalformedChallenge(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"))
+	_, err := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"))
 
+	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 }
 
