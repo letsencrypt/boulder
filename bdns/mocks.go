@@ -54,17 +54,17 @@ func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string,
 		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
 		// expected token + test account jwk thumbprint
-		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, nil
+		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
 	}
 	if hostname == "_acme-challenge_62oc7an6git3ml2v.servfail.com" {
-		return nil, fmt.Errorf("SERVFAIL")
+		return nil, ResolverAddrs{"MockClient"}, fmt.Errorf("SERVFAIL")
 	}
 	if hostname == "_acme-challenge_62oc7an6git3ml2v.wrong-dns01.com" {
-		return []string{"a"}, nil
+		return []string{"a"}, ResolverAddrs{"MockClient"}, nil
 	}
 	// for nonspecified challenge subdomain we don't have and record there
 	if strings.HasPrefix(hostname, "_acme-challenge_") {
-		return []string{}, nil
+		return []string{}, ResolverAddrs{"MockClient"}, nil
 	}
 	return []string{"hostname"}, ResolverAddrs{"MockClient"}, nil
 }
