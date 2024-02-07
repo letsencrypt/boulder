@@ -1232,7 +1232,8 @@ func addReplacementOrder(ctx context.Context, db db.SelectExecer, serial string,
 			UPDATE replacementOrders
 			SET orderID = ?, orderExpires = ?
 			WHERE id = ?`,
-			orderID, orderExpires, existingID[0],
+			orderID, orderExpires,
+			existingID[0],
 		)
 		if err != nil {
 			return fmt.Errorf("updating replacement order: %w", err)
