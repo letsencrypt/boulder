@@ -118,6 +118,10 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	va.log.AuditObject("CAA check result", logEvent)
 
 	if prob != nil {
+		// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
+		// It will also later be serialized in JSON, which defaults to UTF-8. Make
+		// sure it is UTF-8 clean now.
+		prob = filterProblemDetails(prob)
 		return &vapb.IsCAAValidResponse{Problem: &corepb.ProblemDetails{
 			ProblemType: string(prob.Type),
 			Detail:      replaceInvalidUTF8([]byte(prob.Detail)),
