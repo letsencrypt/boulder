@@ -39,7 +39,7 @@ func NewCRLProfile(config CRLProfileConfig) (*CRLProfile, error) {
 		return nil, fmt.Errorf("crl max backdate must be non-negative, got %q", config.MaxBackdate)
 	}
 
-	reg, err := linter.NewRegistry([]string{})
+	reg, err := linter.NewRegistry(nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating lint registry: %w", err)
 	}
@@ -138,13 +138,13 @@ type issuingDistributionPoint struct {
 // makeIDPExt returns a critical IssuingDistributionPoint extension containing
 // the given URLs and with the OnlyContainsUserCerts boolean set to true.
 func makeIDPExt(urls []string) (pkix.Extension, error) {
-	gns := make([]asn1.RawValue, len(urls))
-	for i, url := range urls {
-		gns[i] = asn1.RawValue{ // GeneralName
+	var gns []asn1.RawValue
+	for _, url := range urls {
+		gns = append(gns, asn1.RawValue{ // GeneralName
 			Class: 2, // context-specific
 			Tag:   6, // uniformResourceIdentifier, IA5String
 			Bytes: []byte(url),
-		}
+		})
 	}
 
 	val := issuingDistributionPoint{
