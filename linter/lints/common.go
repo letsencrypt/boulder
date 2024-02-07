@@ -29,8 +29,8 @@ var (
 	MozillaPolicy281Date = time.Date(2023, time.February, 15, 0, 0, 0, 0, time.UTC)
 )
 
-// IssuingDistributionPoint stores the IA5STRING value of the optional
-// distribution point, and the (implied OPTIONAL) BOOLEAN values of
+// IssuingDistributionPoint stores the IA5STRING value(s) of the optional
+// distributionPoint, and the (implied OPTIONAL) BOOLEAN values of
 // onlyContainsUserCerts and onlyContainsCACerts.
 //
 //	RFC 5280
