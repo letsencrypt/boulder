@@ -2,8 +2,8 @@
 -- +migrate Up
 -- SQL in section 'Up' is executed when this migration is applied
 
-ALTER TABLE `requestedNames` ADD COLUMN `IdentType` TINYINT(4) DEFAULT 0 NOT NULL;
-ALTER TABLE `issuedNames`ADD COLUMN `IdentType` TINYINT(4) DEFAULT 0 NOT NULL;
+ALTER TABLE `requestedNames` ADD COLUMN `IdentType` TINYINT(4) DEFAULT 0 NOT NULL, ALGORITHM=INSTANT;
+ALTER TABLE `issuedNames`ADD COLUMN `IdentType` TINYINT(4) DEFAULT 0 NOT NULL, ALGORITHM=INSTANT;
 
 -- +migrate Down
 -- SQL section 'Down' is executed when this migration is rolled back
