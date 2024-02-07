@@ -847,10 +847,11 @@ func TestPerformValidationSuccess(t *testing.T) {
 	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
-				AddressUsed: []byte("192.168.0.1"),
-				Hostname:    "example.com",
-				Port:        "8080",
-				Url:         "http://example.com/",
+				AddressUsed:   []byte("192.168.0.1"),
+				Hostname:      "example.com",
+				Port:          "8080",
+				Url:           "http://example.com/",
+				ResolverAddrs: []string{"rebound"},
 			},
 		},
 		Problems: nil,

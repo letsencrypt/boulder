@@ -41,7 +41,8 @@ func wrapError(ctx context.Context, appErr error) error {
 				return berrors.InternalServerError(
 					"error marshaling json SubErrors, orig error %q", err)
 			}
-			pairs = append(pairs, "suberrors", string(jsonSubErrs))
+			headerSafeSubErrs := strconv.QuoteToASCII(string(jsonSubErrs))
+			pairs = append(pairs, "suberrors", headerSafeSubErrs)
 		}
 
 		// If there is a RetryAfter value then extend the metadata pairs to
@@ -110,7 +111,17 @@ func unwrapError(err error, md metadata.MD) error {
 			)
 		}
 
-		unmarshalErr := json.Unmarshal([]byte(subErrorsVal[0]), &outErr.SubErrors)
+		unquotedSubErrors, unquoteErr := strconv.Unquote(subErrorsVal[0])
+		if unquoteErr != nil {
+			return fmt.Errorf(
+				"unquoting 'suberrors' %q, wrapped error %q: %w",
+				subErrorsVal[0],
+				inErrMsg,
+				unquoteErr,
+			)
+		}
+
+		unmarshalErr := json.Unmarshal([]byte(unquotedSubErrors), &outErr.SubErrors)
 		if unmarshalErr != nil {
 			return berrors.InternalServerError(
 				"JSON unmarshaling 'suberrors' %q, wrapped error %q: %s",

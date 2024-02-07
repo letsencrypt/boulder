@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/ocsp"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"golang.org/x/crypto/ocsp"
 )
 
 func TestImplementationOCSP(t *testing.T) {
@@ -34,6 +35,7 @@ func TestOCSP(t *testing.T) {
 		&mockSA{},
 		testCtx.pa,
 		testCtx.boulderIssuers,
+		testCtx.profile,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -60,7 +62,7 @@ func TestOCSP(t *testing.T) {
 		Status:   string(core.OCSPStatusGood),
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
-	rsaOCSP, err := ocsp.ParseResponse(rsaOCSPPB.Response, caCert.Certificate)
+	rsaOCSP, err := ocsp.ParseResponse(rsaOCSPPB.Response, testCtx.boulderIssuers[1].Cert.Certificate)
 	test.AssertNotError(t, err, "Failed to parse / validate OCSP for rsaCert")
 	test.AssertEquals(t, rsaOCSP.Status, 0)
 	test.AssertEquals(t, rsaOCSP.RevocationReason, 0)
@@ -78,7 +80,7 @@ func TestOCSP(t *testing.T) {
 		Status:   string(core.OCSPStatusGood),
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
-	ecdsaOCSP, err := ocsp.ParseResponse(ecdsaOCSPPB.Response, caCert2.Certificate)
+	ecdsaOCSP, err := ocsp.ParseResponse(ecdsaOCSPPB.Response, testCtx.boulderIssuers[0].Cert.Certificate)
 	test.AssertNotError(t, err, "Failed to parse / validate OCSP for ecdsaCert")
 	test.AssertEquals(t, ecdsaOCSP.Status, 0)
 	test.AssertEquals(t, ecdsaOCSP.RevocationReason, 0)

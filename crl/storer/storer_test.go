@@ -57,20 +57,26 @@ func setupTestUploadCRL(t *testing.T) (*crlStorer, *issuance.Issuer) {
 
 	r3, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "loading fake RSA issuer cert")
-	e1, e1Signer, err := issuance.LoadIssuer(issuance.IssuerLoc{
-		File:     "../../test/hierarchy/int-e1.key.pem",
-		CertFile: "../../test/hierarchy/int-e1.cert.pem",
-	})
+	issuerE1, err := issuance.LoadIssuer(
+		issuance.IssuerConfig{
+			Location: issuance.IssuerLoc{
+				File:     "../../test/hierarchy/int-e1.key.pem",
+				CertFile: "../../test/hierarchy/int-e1.cert.pem",
+			},
+			IssuerURL: "http://not-example.com/issuer-url",
+			OCSPURL:   "http://not-example.com/ocsp",
+			CRLURL:    "http://not-example.com/crl",
+		}, clock.NewFake())
 	test.AssertNotError(t, err, "loading fake ECDSA issuer cert")
 
 	storer, err := New(
-		[]*issuance.Certificate{r3, e1},
+		[]*issuance.Certificate{r3, issuerE1.Cert},
 		nil, "le-crl.s3.us-west.amazonaws.com",
 		metrics.NoopRegisterer, blog.NewMock(), clock.NewFake(),
 	)
 	test.AssertNotError(t, err, "creating test crl-storer")
 
-	return storer, &issuance.Issuer{Cert: e1, Signer: e1Signer}
+	return storer, issuerE1
 }
 
 // Test that we get an error when no metadata is sent.

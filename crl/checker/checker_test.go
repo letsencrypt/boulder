@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/test"
@@ -52,10 +54,16 @@ func TestValidate(t *testing.T) {
 }
 
 func TestDiff(t *testing.T) {
-	issuer, signer, err := issuance.LoadIssuer(issuance.IssuerLoc{
-		File:     "../../test/hierarchy/int-e1.key.pem",
-		CertFile: "../../test/hierarchy/int-e1.cert.pem",
-	})
+	issuer, err := issuance.LoadIssuer(
+		issuance.IssuerConfig{
+			Location: issuance.IssuerLoc{
+				File:     "../../test/hierarchy/int-e1.key.pem",
+				CertFile: "../../test/hierarchy/int-e1.cert.pem",
+			},
+			IssuerURL: "http://not-example.com/issuer-url",
+			OCSPURL:   "http://not-example.com/ocsp",
+			CRLURL:    "http://not-example.com/crl",
+		}, clock.NewFake())
 	test.AssertNotError(t, err, "loading test issuer")
 
 	now := time.Now()
@@ -75,7 +83,7 @@ func TestDiff(t *testing.T) {
 		},
 	}
 
-	oldCRLDER, err := x509.CreateRevocationList(rand.Reader, &template, issuer.Certificate, signer)
+	oldCRLDER, err := x509.CreateRevocationList(rand.Reader, &template, issuer.Cert.Certificate, issuer.Signer)
 	test.AssertNotError(t, err, "creating old crl")
 	oldCRL, err := x509.ParseRevocationList(oldCRLDER)
 	test.AssertNotError(t, err, "parsing old crl")
@@ -97,7 +105,7 @@ func TestDiff(t *testing.T) {
 		},
 	}
 
-	newCRLDER, err := x509.CreateRevocationList(rand.Reader, &template, issuer.Certificate, signer)
+	newCRLDER, err := x509.CreateRevocationList(rand.Reader, &template, issuer.Cert.Certificate, issuer.Signer)
 	test.AssertNotError(t, err, "creating old crl")
 	newCRL, err := x509.ParseRevocationList(newCRLDER)
 	test.AssertNotError(t, err, "parsing old crl")

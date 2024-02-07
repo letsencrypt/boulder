@@ -97,7 +97,7 @@ func NewCertificate(ic *x509.Certificate) (*Certificate, error) {
 func LoadCertificate(path string) (*Certificate, error) {
 	cert, err := core.LoadCert(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading issuer certificate: %w", err)
 	}
 	return NewCertificate(cert)
 }
@@ -178,51 +178,83 @@ type IssuerLoc struct {
 	NumSessions int
 }
 
-// Issuer is capable of issuing new certificates
-// TODO(#5086): make Cert and Signer private when they're no longer needed by ca.internalIssuer
+// Issuer is capable of issuing new certificates.
 type Issuer struct {
-	Cert    *Certificate
-	Signer  crypto.Signer
-	Profile *Profile
-	Linter  *linter.Linter
-	Clk     clock.Clock
+	// TODO(#7159): make Cert, Signer, and Linter private when all signing ops
+	// are handled through this package (e.g. the CA doesn't need direct access
+	// while signing CRLs anymore).
+	Cert   *Certificate
+	Signer crypto.Signer
+	Linter *linter.Linter
+
+	sigAlg            x509.SignatureAlgorithm
+	useForRSALeaves   bool
+	useForECDSALeaves bool
+
+	issuerURL string
+	ocspURL   string
+	crlURL    string
+
+	// TODO(#7159): Make Clk private by giving ca_test.go a better way to build
+	// in-memory Issuers.
+	Clk clock.Clock
 }
 
-// NewIssuer constructs an Issuer on the heap, verifying that the profile
-// is well-formed.
-func NewIssuer(cert *Certificate, signer crypto.Signer, profile *Profile, linter *linter.Linter, clk clock.Clock) (*Issuer, error) {
+// newIssuer constructs a new Issuer from the in-memory certificate and signer.
+// It exists as a helper for LoadIssuer to make testing simpler.
+func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk clock.Clock) (*Issuer, error) {
+	var sigAlg x509.SignatureAlgorithm
 	switch k := cert.PublicKey.(type) {
 	case *rsa.PublicKey:
-		profile.sigAlg = x509.SHA256WithRSA
+		sigAlg = x509.SHA256WithRSA
 	case *ecdsa.PublicKey:
 		switch k.Curve {
 		case elliptic.P256():
-			profile.sigAlg = x509.ECDSAWithSHA256
+			sigAlg = x509.ECDSAWithSHA256
 		case elliptic.P384():
-			profile.sigAlg = x509.ECDSAWithSHA384
+			sigAlg = x509.ECDSAWithSHA384
 		default:
-			return nil, fmt.Errorf("unsupported ECDSA curve: %s", k.Curve.Params().Name)
+			return nil, fmt.Errorf("unsupported ECDSA curve: %q", k.Curve.Params().Name)
 		}
 	default:
 		return nil, errors.New("unsupported issuer key type")
 	}
 
-	if profile.useForRSALeaves || profile.useForECDSALeaves {
-		if cert.KeyUsage&x509.KeyUsageCertSign == 0 {
-			return nil, errors.New("end-entity signing cert does not have keyUsage certSign")
-		}
+	if config.IssuerURL == "" {
+		return nil, errors.New("Issuer URL is required")
 	}
-	// TODO(#5086): Only do this check for ocsp-issuing issuers.
+	if config.OCSPURL == "" {
+		return nil, errors.New("OCSP URL is required")
+	}
+
+	// We require that all of our issuers be capable of both issuing certs and
+	// providing revocation information.
+	if cert.KeyUsage&x509.KeyUsageCertSign == 0 {
+		return nil, errors.New("end-entity signing cert does not have keyUsage certSign")
+	}
+	if cert.KeyUsage&x509.KeyUsageCRLSign == 0 {
+		return nil, errors.New("end-entity signing cert does not have keyUsage crlSign")
+	}
 	if cert.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
-		return nil, errors.New("end-entity ocsp signing cert does not have keyUsage digitalSignature")
+		return nil, errors.New("end-entity signing cert does not have keyUsage digitalSignature")
+	}
+
+	lintSigner, err := linter.New(cert.Certificate, signer)
+	if err != nil {
+		return nil, fmt.Errorf("creating fake lint signer: %w", err)
 	}
 
 	i := &Issuer{
-		Cert:    cert,
-		Signer:  signer,
-		Profile: profile,
-		Linter:  linter,
-		Clk:     clk,
+		Cert:              cert,
+		Signer:            signer,
+		Linter:            lintSigner,
+		sigAlg:            sigAlg,
+		useForRSALeaves:   config.UseForRSALeaves,
+		useForECDSALeaves: config.UseForECDSALeaves,
+		issuerURL:         config.IssuerURL,
+		ocspURL:           config.OCSPURL,
+		crlURL:            config.CRLURL,
+		Clk:               clk,
 	}
 	return i, nil
 }
@@ -232,10 +264,10 @@ func NewIssuer(cert *Certificate, signer crypto.Signer, profile *Profile, linter
 // public key algorithm or signature algorithm in this issuer's own cert.
 func (i *Issuer) Algs() []x509.PublicKeyAlgorithm {
 	var algs []x509.PublicKeyAlgorithm
-	if i.Profile.useForRSALeaves {
+	if i.useForRSALeaves {
 		algs = append(algs, x509.RSA)
 	}
-	if i.Profile.useForECDSALeaves {
+	if i.useForECDSALeaves {
 		algs = append(algs, x509.ECDSA)
 	}
 	return algs
@@ -251,25 +283,32 @@ func (i *Issuer) NameID() NameID {
 	return i.Cert.NameID()
 }
 
-// LoadIssuer loads a signer (private key) and certificate from the locations specified.
-func LoadIssuer(location IssuerLoc) (*Certificate, crypto.Signer, error) {
-	issuerCert, err := LoadCertificate(location.CertFile)
+// LoadIssuer constructs a new Issuer, loading its certificate from disk and its
+// private key material from the indicated location. It also verifies that the
+// issuer metadata (such as AIA URLs) is well-formed.
+func LoadIssuer(config IssuerConfig, clk clock.Clock) (*Issuer, error) {
+	issuerCert, err := LoadCertificate(config.Location.CertFile)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	signer, err := loadSigner(location, issuerCert)
+	signer, err := loadSigner(config.Location, issuerCert.PublicKey)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	if !core.KeyDigestEquals(signer.Public(), issuerCert.PublicKey) {
-		return nil, nil, fmt.Errorf("Issuer key did not match issuer cert %s", location.CertFile)
+		return nil, fmt.Errorf("issuer key did not match issuer cert %q", config.Location.CertFile)
 	}
-	return issuerCert, signer, err
+
+	return newIssuer(config, issuerCert, signer, clk)
 }
 
-func loadSigner(location IssuerLoc, cert *Certificate) (crypto.Signer, error) {
+func loadSigner(location IssuerLoc, pubkey crypto.PublicKey) (crypto.Signer, error) {
+	if location.File == "" && location.ConfigFile == "" && location.PKCS11 == nil {
+		return nil, errors.New("must supply File, ConfigFile, or PKCS11")
+	}
+
 	if location.File != "" {
 		signer, _, err := privatekey.Load(location.File)
 		if err != nil {
@@ -305,5 +344,5 @@ func loadSigner(location IssuerLoc, cert *Certificate) (crypto.Signer, error) {
 	}
 
 	return pkcs11key.NewPool(numSessions, pkcs11Config.Module,
-		pkcs11Config.TokenLabel, pkcs11Config.PIN, cert.PublicKey)
+		pkcs11Config.TokenLabel, pkcs11Config.PIN, pubkey)
 }
