@@ -215,6 +215,7 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 	} else if bad > va.maxRemoteFailures {
 		modifiedProblem := *firstProb
 		modifiedProblem.Detail = "During secondary CAA checking: " + firstProb.Detail
+		va.metrics.prospectiveRemoteCAACheckFailures.Inc()
 		return &modifiedProblem
 	}
 
