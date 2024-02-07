@@ -759,12 +759,13 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 			// If we're not going to enforce multi VA but we are logging the
 			// differentials then collect and log the remote results in a separate go
 			// routine to avoid blocking the primary VA.
+			probClone := prob.Clone()
 			go func() {
 				_ = va.processRemoteValidationResults(
 					req.Domain,
 					req.Authz.RegID,
 					string(challenge.Type),
-					prob.Clone(),
+					probClone,
 					remoteResults)
 			}()
 			// Since prob was nil and we're not enforcing the results from
