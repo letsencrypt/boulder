@@ -1847,6 +1847,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		chall, _ := bgrpc.ChallengeToPB(authz.Challenges[challIndex])
 		req := vapb.PerformValidationRequest{
 			Domain:    authz.Identifier.Value,
+			Identtype: string(authz.Identifier.Type),
 			Challenge: chall,
 			Authz: &vapb.AuthzMeta{
 				Id:    authz.ID,
