@@ -2120,21 +2120,25 @@ func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, transactio
 }
 
 func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial string) (core.RenewalInfo, *probs.ProblemDetails, error) {
+	problem := func(message string, err error) (core.RenewalInfo, *probs.ProblemDetails, error) {
+		return core.RenewalInfo{}, web.ProblemDetailsForError(err, message), err
+	}
+
 	// Check if the serial is impacted by an incident.
 	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
-		return core.RenewalInfo{}, web.ProblemDetailsForError(err, "Checking if existing certificate is impacted by an incident"), err
+		return problem("Checking if existing certificate is impacted by an incident", err)
 	}
 
 	if len(result.Incidents) > 0 {
-		// The existing certificate is impacted by an incident, renew immediately.
+		// The existing cert is impacted by an incident, renew immediately.
 		return core.RenewalInfoImmediate(wfe.clk.Now()), nil, nil
 	}
 
 	// Check if the serial is revoked.
 	status, err := wfe.sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
-		return core.RenewalInfo{}, web.ProblemDetailsForError(err, "Checking if existing certificate has been revoked"), err
+		return problem("Checking if existing certificate has been revoked", err)
 	}
 
 	if status.Status == string(core.OCSPStatusRevoked) {
@@ -2149,9 +2153,8 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
 			return core.RenewalInfo{}, probs.NotFound("Existing certificate not found"), nil
-		} else {
-			return core.RenewalInfo{}, web.ProblemDetailsForError(err, "Retrieving existing certificate"), err
 		}
+		return problem("Retrieving existing certificate", err)
 	}
 
 	return core.RenewalInfoSimple(cert.Issued.AsTime(), cert.Expires.AsTime()), nil, nil
