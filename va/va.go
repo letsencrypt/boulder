@@ -737,7 +737,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 
 	tp := identifier.IdentifierType(req.Identtype)
 	if req.Identtype == "" {
-		//assume DNS type if undefined, as old version fo RA may not fill this at GRPC
+		//assume DNS type if undefined, as old version of RA may not fill this at GRPC
 		tp = identifier.DNS
 	}
 	ident := identifier.ACMEIdentifier{Type: tp, Value: req.Domain}
