@@ -23,7 +23,7 @@ jobs:
           script: |
             const commentMarker = '<!-- deployment_ticket_check -->';
             const prAuthor = context.payload.pull_request.user.login;
-            const commentBody = `${commentMarker}\n@${prAuthor}, this PR appears to contain configuration or SQL schema changes. Please ensure that a corresponding deployment ticket has been filed with the new values.\n`;
+            const commentBody = `${commentMarker}\n@${prAuthor}, this PR appears to contain configuration and/or SQL schema changes. Please ensure that a corresponding deployment ticket has been filed with the new values.\n`;
             const { owner, repo, number: issue_number } = context.issue;
             const issueRegexp = /IN-\d+/;
 
