@@ -205,7 +205,6 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 		domain,
 		acctID,
 		challengeType,
-		nil,
 		remoteResults)
 
 	// Based on the threshold of good/bad return nil or a problem.
