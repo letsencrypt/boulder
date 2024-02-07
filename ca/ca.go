@@ -136,6 +136,10 @@ func NewCertificateAuthorityImpl(
 		return nil, errors.New("must have at least one issuer")
 	}
 
+	if certificateProfile == nil {
+		return nil, errors.New("must have at least one certificate profile")
+	}
+
 	issuers := makeIssuerMaps(boulderIssuers)
 
 	lintErrorCount := prometheus.NewCounter(

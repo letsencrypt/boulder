@@ -143,6 +143,10 @@ func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc
 	return nil, berrors.NotFoundError("cannot find the cert")
 }
 
+func (m *mockSA) GetLintPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, berrors.NotFoundError("cannot find the precert")
+}
+
 func (m *mockSA) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
@@ -474,6 +478,29 @@ func TestMultipleIssuers(t *testing.T) {
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	err = cert.CheckSignatureFrom(testCtx.boulderIssuers[0].Cert.Certificate)
 	test.AssertNotError(t, err, "Certificate failed signature validation")
+}
+
+func TestNoProfile(t *testing.T) {
+	testCtx := setup(t)
+	sa := &mockSA{}
+	_, err := NewCertificateAuthorityImpl(
+		sa,
+		testCtx.pa,
+		testCtx.boulderIssuers,
+		nil, // no profile
+		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		testCtx.stats,
+		testCtx.signatureCount,
+		testCtx.signErrorCount,
+		testCtx.fc)
+	test.AssertError(t, err, "No profile found during CA construction.")
+	test.AssertEquals(t, err.Error(), "must have at least one certificate profile")
 }
 
 func TestECDSAAllowList(t *testing.T) {

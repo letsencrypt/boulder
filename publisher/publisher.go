@@ -96,12 +96,15 @@ func NewLog(uri, b64PK, userAgent string, logger blog.Logger) (*Log, error) {
 	}
 	url.Path = strings.TrimSuffix(url.Path, "/")
 
-	pemPK := fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----",
-		b64PK)
+	derPK, err := base64.StdEncoding.DecodeString(b64PK)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := jsonclient.Options{
-		Logger:    logAdaptor{logger},
-		PublicKey: pemPK,
-		UserAgent: userAgent,
+		Logger:       logAdaptor{logger},
+		PublicKeyDER: derPK,
+		UserAgent:    userAgent,
 	}
 	httpClient := &http.Client{
 		// We set the HTTP client timeout to about half of what we expect

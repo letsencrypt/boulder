@@ -285,7 +285,7 @@ func (i *Issuer) NameID() NameID {
 
 // LoadIssuer constructs a new Issuer, loading its certificate from disk and its
 // private key material from the indicated location. It also verifies that the
-// issuer metadata (such a AIA URLs) is well-formed.
+// issuer metadata (such as AIA URLs) is well-formed.
 func LoadIssuer(config IssuerConfig, clk clock.Clock) (*Issuer, error) {
 	issuerCert, err := LoadCertificate(config.Location.CertFile)
 	if err != nil {

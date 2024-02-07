@@ -21,8 +21,8 @@ in-memory server and client with persistence disabled for ease of use.
   services {
     id      = "foo-purger-b"
     name    = "foo-purger"
-    address = "10.88.88.88"
-    port    = 1338
+    address = "10.77.77.77"
+    port    = 1438
   }
   ```
 - To target individual `foo-purger`'s, add these additional `service` sections
@@ -39,8 +39,8 @@ in-memory server and client with persistence disabled for ease of use.
   services {
     id      = "foo-purger-2"
     name    = "foo-purger-2"
-    address = "10.88.88.88"
-    port    = 1338
+    address = "10.77.77.77"
+    port    = 1438
   }
   ```
 - For RFC 2782 (SRV RR) lookups to work ensure you that you add a tag for the
