@@ -383,7 +383,6 @@ func detailedError(err error) *probs.ProblemDetails {
 	if errors.As(err, &syscallErr) {
 		switch syscallErr.Err {
 		case syscall.ECONNREFUSED:
-			fmt.Println(err)
 			return probs.Connection("Connection refused")
 		case syscall.ENETUNREACH:
 			return probs.Connection("Network unreachable")
@@ -753,7 +752,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		problemType = string(prob.Type)
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
-		logEvent.Error = fmt.Sprintf("%s :: %s", prob.Type, prob.Detail)
+		logEvent.Error = prob.Error()
 	} else if remoteResults != nil {
 		if !features.Get().EnforceMultiVA && features.Get().MultiVAFullResults {
 			// If we're not going to enforce multi VA but we are logging the

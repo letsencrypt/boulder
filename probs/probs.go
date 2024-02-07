@@ -53,6 +53,9 @@ type ProblemDetails struct {
 }
 
 func (pd *ProblemDetails) Clone() *ProblemDetails {
+	if pd == nil {
+		return nil
+	}
 	var subs []SubProblemDetails
 	for _, sub := range pd.SubProblems {
 		subs = append(subs, sub.Clone())
