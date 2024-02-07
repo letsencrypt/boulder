@@ -52,12 +52,32 @@ type ProblemDetails struct {
 	SubProblems []SubProblemDetails `json:"subproblems,omitempty"`
 }
 
+func (pd *ProblemDetails) Clone() *ProblemDetails {
+	var subs []SubProblemDetails
+	for _, sub := range pd.SubProblems {
+		subs = append(subs, sub.Clone())
+	}
+	return &ProblemDetails{
+		Type:        pd.Type,
+		Detail:      pd.Detail,
+		HTTPStatus:  pd.HTTPStatus,
+		SubProblems: subs,
+	}
+}
+
 // SubProblemDetails represents sub-problems specific to an identifier that are
 // related to a top-level ProblemDetails.
 // See RFC 8555 Section 6.7.1: https://tools.ietf.org/html/rfc8555#section-6.7.1
 type SubProblemDetails struct {
 	ProblemDetails
 	Identifier identifier.ACMEIdentifier `json:"identifier"`
+}
+
+func (spd SubProblemDetails) Clone() SubProblemDetails {
+	return SubProblemDetails{
+		ProblemDetails: *spd.ProblemDetails.Clone(),
+		Identifier:     spd.Identifier,
+	}
 }
 
 func (pd *ProblemDetails) Error() string {
