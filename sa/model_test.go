@@ -485,7 +485,7 @@ func TestSetReplacementOrderFinalized(t *testing.T) {
 	orderId := int64(1337)
 	orderExpires := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
 
-	// Mark a non-existant certificate as finalized/ replaced.
+	// Mark a non-existent certificate as finalized/ replaced.
 	err := setReplacementOrderFinalized(ctx, sa.dbMap, orderId)
 	test.AssertNotError(t, err, "setReplacementOrderFinalized failed")
 
