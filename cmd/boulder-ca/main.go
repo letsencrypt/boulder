@@ -18,7 +18,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
-	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -115,34 +114,6 @@ type Config struct {
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
-func loadBoulderIssuers(profileConfig issuance.ProfileConfig, issuerConfigs []issuance.IssuerConfig, ignoredLints []string) ([]*issuance.Issuer, error) {
-	issuers := make([]*issuance.Issuer, 0, len(issuerConfigs))
-	for _, issuerConfig := range issuerConfigs {
-		profile, err := issuance.NewProfile(profileConfig, issuerConfig)
-		if err != nil {
-			return nil, err
-		}
-
-		cert, signer, err := issuance.LoadIssuer(issuerConfig.Location)
-		if err != nil {
-			return nil, err
-		}
-
-		linter, err := linter.New(cert.Certificate, signer, ignoredLints)
-		if err != nil {
-			return nil, err
-		}
-
-		issuer, err := issuance.NewIssuer(cert, signer, profile, linter, cmd.Clock())
-		if err != nil {
-			return nil, err
-		}
-
-		issuers = append(issuers, issuer)
-	}
-	return issuers, nil
-}
-
 func main() {
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
@@ -212,9 +183,15 @@ func main() {
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
 
-	var boulderIssuers []*issuance.Issuer
-	boulderIssuers, err = loadBoulderIssuers(c.CA.Issuance.Profile, c.CA.Issuance.Issuers, c.CA.Issuance.IgnoredLints)
-	cmd.FailOnError(err, "Couldn't load issuers")
+	issuers := make([]*issuance.Issuer, 0, len(c.CA.Issuance.Issuers))
+	for _, issuerConfig := range c.CA.Issuance.Issuers {
+		issuer, err := issuance.LoadIssuer(issuerConfig, cmd.Clock())
+		cmd.FailOnError(err, "Loading issuer")
+		issuers = append(issuers, issuer)
+	}
+
+	profile, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
+	cmd.FailOnError(err, "Couldn't load issuance profile")
 
 	tlsConfig, err := c.CA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
@@ -241,7 +218,7 @@ func main() {
 
 	if !c.CA.DisableOCSPService {
 		ocspi, err := ca.NewOCSPImpl(
-			boulderIssuers,
+			issuers,
 			c.CA.LifespanOCSP.Duration,
 			c.CA.OCSPLogMaxLength,
 			c.CA.OCSPLogPeriod.Duration,
@@ -260,7 +237,8 @@ func main() {
 
 	if !c.CA.DisableCRLService {
 		crli, err := ca.NewCRLImpl(
-			boulderIssuers,
+			issuers,
+			profile.Lints,
 			c.CA.LifespanCRL.Duration,
 			c.CA.CRLDPBase,
 			c.CA.OCSPLogMaxLength,
@@ -275,7 +253,8 @@ func main() {
 		cai, err := ca.NewCertificateAuthorityImpl(
 			sa,
 			pa,
-			boulderIssuers,
+			issuers,
+			profile,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,
 			c.CA.Backdate.Duration,
