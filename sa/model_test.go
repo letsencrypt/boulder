@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"math/big"
@@ -484,8 +485,22 @@ func TestSetReplacementOrderFinalized(t *testing.T) {
 	orderId := int64(1337)
 	orderExpires := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
 
+	// Mark a non-existant certificate as finalized/ replaced.
+	err := setReplacementOrderFinalized(ctx, sa.dbMap, orderId)
+	test.AssertNotError(t, err, "setReplacementOrderFinalized failed")
+
+	// Ensure no replacement order was added for some reason.
+	var replacementRow replacementOrderModel
+	err = sa.dbReadOnlyMap.SelectOne(
+		ctx,
+		&replacementRow,
+		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		oldCertSerial,
+	)
+	test.AssertErrorIs(t, err, sql.ErrNoRows)
+
 	// Add a replacement order.
-	err := addReplacementOrder(ctx, sa.dbMap, oldCertSerial, orderId, orderExpires)
+	err = addReplacementOrder(ctx, sa.dbMap, oldCertSerial, orderId, orderExpires)
 	test.AssertNotError(t, err, "addReplacementOrder failed")
 
 	// Mark the certificate as finalized/ replaced.
@@ -493,7 +508,6 @@ func TestSetReplacementOrderFinalized(t *testing.T) {
 	test.AssertNotError(t, err, "setReplacementOrderFinalized failed")
 
 	// Fetch the replacement order so we can ensure it was finalized.
-	var replacementRow replacementOrderModel
 	err = sa.dbReadOnlyMap.SelectOne(
 		ctx,
 		&replacementRow,
