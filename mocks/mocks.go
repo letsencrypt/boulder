@@ -237,6 +237,11 @@ func (sa *StorageAuthorityReadOnly) GetCertificate(_ context.Context, req *sapb.
 	}
 }
 
+// GetLintPrecertificate is a mock
+func (sa *StorageAuthorityReadOnly) GetLintPrecertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, berrors.NotFoundError("No cert")
+}
+
 // GetCertificateStatus is a mock
 func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
 	// Serial ee == 238.crt
@@ -605,6 +610,11 @@ func (sa *StorageAuthority) LeaseCRLShard(ctx context.Context, req *sapb.LeaseCR
 // UpdateCRLShard is a mock.
 func (sa *StorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.UpdateCRLShardRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, errors.New("unimplemented")
+}
+
+// ReplacementOrderExists is a mock.
+func (sa *StorageAuthorityReadOnly) ReplacementOrderExists(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Exists, error) {
+	return nil, nil
 }
 
 // PublisherClient is a mock

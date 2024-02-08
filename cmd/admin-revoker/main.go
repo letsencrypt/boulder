@@ -15,6 +15,8 @@ import (
 	"sync"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
@@ -28,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const usageString = `
@@ -667,8 +668,5 @@ func main() {
 }
 
 func init() {
-	// admin-revoker is the old name. Now that this can also clear email addresses,
-	// admin is the new name
 	cmd.RegisterCommand("admin-revoker", main, &cmd.ConfigValidator{Config: &Config{}})
-	cmd.RegisterCommand("admin", main, &cmd.ConfigValidator{Config: &Config{}})
 }

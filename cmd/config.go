@@ -274,8 +274,8 @@ type GRPCClientConfig struct {
 	// services {
 	//   id      = "some-unique-id-2"
 	//   name    = "foo"
-	//   address = "10.88.88.88"
-	//   port    = 8080
+	//   address = "10.77.77.77"
+	//   port    = 8180
 	//   tags    = ["tcp"]
 	// }
 	//
@@ -532,15 +532,15 @@ type DNSProvider struct {
 	//   id      = "unbound-1" // Must be unique
 	//   name    = "unbound"
 	//   address = "10.77.77.77"
-	//   port    = 53
+	//   port    = 8053
 	//   tags    = ["udp"]
 	// }
 	//
 	// services {
 	//   id      = "unbound-2" // Must be unique
 	//   name    = "unbound"
-	//   address = "10.88.88.88"
-	//   port    = 53
+	//   address = "10.77.77.77"
+	//   port    = 8153
 	//   tags    = ["udp"]
 	// }
 	//
@@ -548,7 +548,7 @@ type DNSProvider struct {
 	// Consul) then you should be able to resolve the following dig query:
 	//
 	// $ dig @10.55.55.10 -t SRV _unbound._udp.service.consul +short
-	// 1 1 53 0a585858.addr.dc1.consul.
-	// 1 1 53 0a4d4d4d.addr.dc1.consul.
+	// 1 1 8053 0a4d4d4d.addr.dc1.consul.
+	// 1 1 8153 0a4d4d4d.addr.dc1.consul.
 	SRVLookup ServiceDomain `validate:"required"`
 }

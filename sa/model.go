@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -1187,4 +1188,84 @@ type revokedCertModel struct {
 	ShardIdx      int64             `db:"shardIdx"`
 	RevokedDate   time.Time         `db:"revokedDate"`
 	RevokedReason revocation.Reason `db:"revokedReason"`
+}
+
+// replacementOrderModel represents one row in the replacementOrders table. It
+// contains all of the information necessary to link a renewal order to the
+// certificate it replaces.
+type replacementOrderModel struct {
+	// ID is an auto-incrementing row ID.
+	ID int64 `db:"id"`
+	// Serial is the serial number of the replaced certificate.
+	Serial string `db:"serial"`
+	// OrderId is the ID of the replacement order
+	OrderID int64 `db:"orderID"`
+	// OrderExpiry is the expiry time of the new order. This is used to
+	// determine if we can accept a new replacement order for the same Serial.
+	OrderExpires time.Time `db:"orderExpires"`
+	// Replaced is a boolean indicating whether the certificate has been
+	// replaced, i.e. whether the new order has been finalized. Once this is
+	// true, no new replacement orders can be accepted for the same Serial.
+	Replaced bool `db:"replaced"`
+}
+
+// addReplacementOrder inserts or updates the replacementOrders row matching the
+// provided serial with the details provided. This function accepts a
+// transaction so that the insert or update takes place within the new order
+// transaction.
+func addReplacementOrder(ctx context.Context, db db.SelectExecer, serial string, orderID int64, orderExpires time.Time) error {
+	var existingID []int64
+	_, err := db.Select(ctx, &existingID, `
+		SELECT id
+		FROM replacementOrders
+		WHERE serial = ?
+		LIMIT 1`,
+		serial,
+	)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("checking for existing replacement order: %w", err)
+	}
+
+	if len(existingID) > 0 {
+		// Update existing replacementOrder row.
+		_, err = db.ExecContext(ctx, `
+			UPDATE replacementOrders
+			SET orderID = ?, orderExpires = ?
+			WHERE id = ?`,
+			orderID, orderExpires,
+			existingID[0],
+		)
+		if err != nil {
+			return fmt.Errorf("updating replacement order: %w", err)
+		}
+	} else {
+		// Insert new replacementOrder row.
+		_, err = db.ExecContext(ctx, `
+			INSERT INTO replacementOrders (serial, orderID, orderExpires)
+			VALUES (?, ?, ?)`,
+			serial, orderID, orderExpires,
+		)
+		if err != nil {
+			return fmt.Errorf("creating replacement order: %w", err)
+		}
+	}
+	return nil
+}
+
+// setReplacementOrderFinalized sets the replaced flag for the replacementOrder
+// row matching the provided orderID to true. This function accepts a
+// transaction so that the update can take place within the finalization
+// transaction.
+func setReplacementOrderFinalized(ctx context.Context, db db.Execer, orderID int64) error {
+	_, err := db.ExecContext(ctx, `
+		UPDATE replacementOrders
+		SET replaced = true
+		WHERE orderID = ?
+		LIMIT 1`,
+		orderID,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
 }

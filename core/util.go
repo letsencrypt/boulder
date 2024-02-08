@@ -94,8 +94,7 @@ func Fingerprint256(data []byte) string {
 
 type Sha256Digest [sha256.Size]byte
 
-// KeyDigest produces a Base64-encoded SHA256 digest of a
-// provided public key.
+// KeyDigest produces the SHA256 digest of a provided public key.
 func KeyDigest(key crypto.PublicKey) (Sha256Digest, error) {
 	switch t := key.(type) {
 	case *jose.JSONWebKey:

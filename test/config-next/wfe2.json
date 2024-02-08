@@ -46,7 +46,7 @@
 		"getNonceService": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
-				"service": "nonce",
+				"service": "nonce-taro",
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
@@ -57,11 +57,11 @@
 			"dnsAuthority": "consul.service.consul",
 			"srvLookups": [
 				{
-					"service": "nonce1",
+					"service": "nonce-taro",
 					"domain": "service.consul"
 				},
 				{
-					"service": "nonce2",
+					"service": "nonce-zinc",
 					"domain": "service.consul"
 				}
 			],

@@ -19,6 +19,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
@@ -566,6 +567,15 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			BeganProcessing: false,
 		}
 
+		if features.Get().TrackReplacementCertificatesARI && req.NewOrder.ReplacesSerial != "" {
+			// Update the replacementOrders table to indicate that this order
+			// replaces the provided certificate serial.
+			err := addReplacementOrder(ctx, tx, req.NewOrder.ReplacesSerial, order.ID, order.Expires)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		// Calculate the order status before returning it. Since it may have reused
 		// all valid authorizations the order may be "born" in a ready status.
 		status, err := statusForOrder(ctx, tx, res, ssa.clk.Now())
@@ -694,6 +704,13 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 		err = deleteOrderFQDNSet(ctx, tx, req.Id)
 		if err != nil {
 			return nil, err
+		}
+
+		if features.Get().TrackReplacementCertificatesARI {
+			err = setReplacementOrderFinalized(ctx, tx, req.Id)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		return nil, nil

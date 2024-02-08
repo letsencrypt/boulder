@@ -1565,6 +1565,11 @@ def test_renewal_exemption():
     chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
         lambda: chisel2.auth_and_issue(["mail." + base_domain]))
 
+# TODO(#5545)
+#   - Phase 2: Once the new rate limits are authoritative in config-next, ensure
+#     that this test only runs in config.
+#   - Phase 3: Once the new rate limits are authoritative in config, remove this
+#     test entirely.
 def test_certificates_per_name():
     chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
         lambda: chisel2.auth_and_issue([random_domain() + ".lim.it"]))
@@ -1590,12 +1595,15 @@ def test_admin_revoker_cert():
 
     # Revoke certificate by serial
     reset_akamai_purges()
-    run(["./bin/boulder", "admin-revoker", "serial-revoke",
-        "--config", "%s/admin-revoker.json" % config_dir,
-        '%x' % parsed_cert.serial_number, '1'])
+    run(["./bin/admin", 
+        "-config", "%s/admin.json" % config_dir,
+        "-dry-run=false",
+        "revoke-cert",
+        "-serial", '%x' % parsed_cert.serial_number,
+        "-reason", "keyCompromise"])
 
     # Wait for OCSP response to indicate revocation took place
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
@@ -1611,12 +1619,16 @@ def test_admin_revoker_batched():
         serialFile.write("%x\n" % parse_cert(order).serial_number)
     serialFile.close()
 
-    run(["./bin/boulder", "admin-revoker", "batched-serial-revoke",
-        "--config", "%s/admin-revoker.json" % config_dir,
-        serialFile.name, '0', '2'])
+    run(["./bin/admin", 
+        "-config", "%s/admin.json" % config_dir,
+        "-dry-run=false",
+        "revoke-cert",
+        "-serials-file", serialFile.name,
+        "-reason", "unspecified",
+        "-parallelism", "2"])
 
     for cert_file in cert_files:
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "unspecified")
 
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])

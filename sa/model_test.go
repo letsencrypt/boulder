@@ -6,15 +6,18 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"math/big"
 	"net"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/db"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -412,4 +415,104 @@ func TestIncidentSerialModel(t *testing.T) {
 	test.AssertEquals(t, *res2.RegistrationID, int64(1))
 	test.AssertEquals(t, *res2.OrderID, int64(2))
 	test.AssertEquals(t, *res2.LastNoticeSent, time.Date(2023, 06, 29, 16, 9, 00, 00, time.UTC))
+}
+
+func TestAddReplacementOrder(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires replacementOrders database table")
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	features.Set(features.Config{TrackReplacementCertificatesARI: true})
+	defer features.Reset()
+
+	oldCertSerial := "1234567890"
+	orderId := int64(1337)
+	orderExpires := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
+
+	// Add a replacement order which doesn't exist.
+	err := addReplacementOrder(ctx, sa.dbMap, oldCertSerial, orderId, orderExpires)
+	test.AssertNotError(t, err, "addReplacementOrder failed")
+
+	// Fetch the replacement order so we can ensure it was added.
+	var replacementRow replacementOrderModel
+	err = sa.dbReadOnlyMap.SelectOne(
+		ctx,
+		&replacementRow,
+		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		oldCertSerial,
+	)
+	test.AssertNotError(t, err, "SELECT from replacementOrders failed")
+	test.AssertEquals(t, oldCertSerial, replacementRow.Serial)
+	test.AssertEquals(t, orderId, replacementRow.OrderID)
+	test.AssertEquals(t, orderExpires, replacementRow.OrderExpires)
+
+	nextOrderId := int64(1338)
+	nextOrderExpires := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Second)
+
+	// Add a replacement order which already exists.
+	err = addReplacementOrder(ctx, sa.dbMap, oldCertSerial, nextOrderId, nextOrderExpires)
+	test.AssertNotError(t, err, "addReplacementOrder failed")
+
+	// Fetch the replacement order so we can ensure it was updated.
+	err = sa.dbReadOnlyMap.SelectOne(
+		ctx,
+		&replacementRow,
+		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		oldCertSerial,
+	)
+	test.AssertNotError(t, err, "SELECT from replacementOrders failed")
+	test.AssertEquals(t, oldCertSerial, replacementRow.Serial)
+	test.AssertEquals(t, nextOrderId, replacementRow.OrderID)
+	test.AssertEquals(t, nextOrderExpires, replacementRow.OrderExpires)
+}
+
+func TestSetReplacementOrderFinalized(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires replacementOrders database table")
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	features.Set(features.Config{TrackReplacementCertificatesARI: true})
+	defer features.Reset()
+
+	oldCertSerial := "1234567890"
+	orderId := int64(1337)
+	orderExpires := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
+
+	// Mark a non-existent certificate as finalized/replaced.
+	err := setReplacementOrderFinalized(ctx, sa.dbMap, orderId)
+	test.AssertNotError(t, err, "setReplacementOrderFinalized failed")
+
+	// Ensure no replacement order was added for some reason.
+	var replacementRow replacementOrderModel
+	err = sa.dbReadOnlyMap.SelectOne(
+		ctx,
+		&replacementRow,
+		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		oldCertSerial,
+	)
+	test.AssertErrorIs(t, err, sql.ErrNoRows)
+
+	// Add a replacement order.
+	err = addReplacementOrder(ctx, sa.dbMap, oldCertSerial, orderId, orderExpires)
+	test.AssertNotError(t, err, "addReplacementOrder failed")
+
+	// Mark the certificate as finalized/replaced.
+	err = setReplacementOrderFinalized(ctx, sa.dbMap, orderId)
+	test.AssertNotError(t, err, "setReplacementOrderFinalized failed")
+
+	// Fetch the replacement order so we can ensure it was finalized.
+	err = sa.dbReadOnlyMap.SelectOne(
+		ctx,
+		&replacementRow,
+		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		oldCertSerial,
+	)
+	test.AssertNotError(t, err, "SELECT from replacementOrders failed")
+	test.Assert(t, replacementRow.Replaced, "replacement order should be marked as finalized")
 }

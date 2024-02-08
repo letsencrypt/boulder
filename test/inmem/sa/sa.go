@@ -105,12 +105,20 @@ func (sa SA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequ
 	return sa.Impl.AddPrecertificate(ctx, req)
 }
 
+func (sa SA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return sa.Impl.AddCertificate(ctx, req)
+}
+
 func (sa SA) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
 	return sa.Impl.CountCertificatesByNames(ctx, req)
 }
 
 func (sa SA) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.RevokeCertificate(ctx, req)
+}
+
+func (sa SA) GetLintPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return sa.Impl.GetLintPrecertificate(ctx, req)
 }
 
 func (sa SA) GetCertificateStatus(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {

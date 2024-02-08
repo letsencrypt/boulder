@@ -440,6 +440,32 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, req *sapb.Se
 	return ssa.SQLStorageAuthorityRO.GetCertificate(ctx, req)
 }
 
+// GetLintPrecertificate takes a serial number and returns the corresponding
+// linting precertificate, or error if it does not exist. The returned precert
+// is identical to the actual submitted-to-CT-logs precertificate, except for
+// its signature.
+func (ssa *SQLStorageAuthorityRO) GetLintPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+	if req == nil || req.Serial == "" {
+		return nil, errIncompleteRequest
+	}
+	if !core.ValidSerial(req.Serial) {
+		return nil, fmt.Errorf("invalid precertificate serial %s", req.Serial)
+	}
+
+	cert, err := SelectPrecertificate(ctx, ssa.dbReadOnlyMap, req.Serial)
+	if db.IsNoRows(err) {
+		return nil, berrors.NotFoundError("precertificate with serial %q not found", req.Serial)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return bgrpc.CertToPB(cert), nil
+}
+
+func (ssa *SQLStorageAuthority) GetLintPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+	return ssa.SQLStorageAuthorityRO.GetCertificate(ctx, req)
+}
+
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
 // number of a certificate and returns data about that certificate's current
 // validity.
@@ -1475,4 +1501,67 @@ func (ssa *SQLStorageAuthorityRO) Health(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// ReplacementOrderExists returns whether a valid replacement order exists for
+// the given certificate serial number. An existing but expired or otherwise
+// invalid replacement order is not considered to exist.
+func (ssa *SQLStorageAuthorityRO) ReplacementOrderExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	if req == nil || req.Serial == "" {
+		return nil, errIncompleteRequest
+	}
+
+	var replacement replacementOrderModel
+	err := ssa.dbReadOnlyMap.SelectOne(
+		ctx,
+		&replacement,
+		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		req.Serial,
+	)
+	if err != nil {
+		if db.IsNoRows(err) {
+			// No replacement order exists.
+			return &sapb.Exists{Exists: false}, nil
+		}
+		return nil, err
+	}
+	if replacement.Replaced {
+		// Certificate has already been replaced.
+		return &sapb.Exists{Exists: true}, nil
+	}
+	if replacement.OrderExpires.Before(ssa.clk.Now()) {
+		// The existing replacement order has expired.
+		return &sapb.Exists{Exists: false}, nil
+	}
+
+	// Pull the replacement order so we can inspect its status.
+	replacementOrder, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: replacement.OrderID})
+	if err != nil {
+		if errors.Is(err, berrors.NotFound) {
+			// The existing replacement order has been deleted. This should
+			// never happen.
+			ssa.log.Errf("replacement order %d for serial %q not found", replacement.OrderID, req.Serial)
+			return &sapb.Exists{Exists: false}, nil
+		}
+	}
+
+	switch replacementOrder.Status {
+	case string(core.StatusPending), string(core.StatusReady), string(core.StatusProcessing), string(core.StatusValid):
+		// An existing replacement order is either still being worked on or has
+		// already been finalized.
+		return &sapb.Exists{Exists: true}, nil
+
+	case string(core.StatusInvalid):
+		// The existing replacement order cannot be finalized. The requester
+		// should create a new replacement order.
+		return &sapb.Exists{Exists: false}, nil
+
+	default:
+		// Replacement order is in an unknown state. This should never happen.
+		return nil, fmt.Errorf("unknown replacement order status: %q", replacementOrder.Status)
+	}
+}
+
+func (ssa *SQLStorageAuthority) ReplacementOrderExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	return ssa.SQLStorageAuthorityRO.ReplacementOrderExists(ctx, req)
 }

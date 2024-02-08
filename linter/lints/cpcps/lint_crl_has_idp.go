@@ -92,7 +92,7 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 
 	idp := lints.NewIssuingDistributionPoint()
 	if distributionPointExists {
-		lintErr := parseSingleDistributionPointName(&dpName, idp)
+		lintErr := parseDistributionPointName(&dpName, idp)
 		if lintErr != nil {
 			return lintErr
 		}
@@ -150,11 +150,11 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 	return &lint.LintResult{Status: lint.Pass}
 }
 
-// parseSingleDistributionPointName examines the provided distributionPointName
+// parseDistributionPointName examines the provided distributionPointName
 // and updates idp with the URI if it is found. The distribution point name is
 // checked for validity and returns a non-nil LintResult if there were any
 // problems.
-func parseSingleDistributionPointName(distributionPointName *cryptobyte.String, idp *lints.IssuingDistributionPoint) *lint.LintResult {
+func parseDistributionPointName(distributionPointName *cryptobyte.String, idp *lints.IssuingDistributionPoint) *lint.LintResult {
 	fullNameTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
 	if !distributionPointName.ReadASN1(distributionPointName, fullNameTag) {
 		return &lint.LintResult{
