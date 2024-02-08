@@ -785,7 +785,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 				prob = remoteProb
 				challenge.Status = core.StatusInvalid
 				challenge.Error = remoteProb
-				logEvent.Error = fmt.Sprintf("%s :: %s", remoteProb.Type, remoteProb.Detail)
+				logEvent.Error = remoteProb.Error()
 				va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
 				va.metrics.remoteValidationFailures.Inc()
