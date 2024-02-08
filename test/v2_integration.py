@@ -45,6 +45,9 @@ import socket
 import challtestsrv
 challSrv = challtestsrv.ChallTestServer()
 
+def test_dns_account_challenge():
+    chisel2.auth_and_issue([random_domain(), random_domain()], chall_type="dns-account-01")
+
 def test_multidomain():
     chisel2.auth_and_issue([random_domain(), random_domain()])
 
