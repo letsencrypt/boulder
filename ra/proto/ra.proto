@@ -70,7 +70,7 @@ message AdministrativelyRevokeCertificateRequest {
 message NewOrderRequest {
   int64 registrationID = 1;
   repeated string names = 2;
-  string replaces = 3;
+  string replacesSerial = 3;
   bool limitsExempt = 4;
 }
 

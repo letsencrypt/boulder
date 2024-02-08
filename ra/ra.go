@@ -2401,7 +2401,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	newOrder := &sapb.NewOrderRequest{
 		RegistrationID: req.RegistrationID,
 		Names:          core.UniqueLowerNames(req.Names),
-		Replaces:       req.Replaces,
+		ReplacesSerial: req.ReplacesSerial,
 	}
 
 	if len(newOrder.Names) > ra.maxNames {
