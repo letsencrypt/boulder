@@ -612,6 +612,11 @@ func (sa *StorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Update
 	return nil, errors.New("unimplemented")
 }
 
+// ReplacementOrderExists is a mock.
+func (sa *StorageAuthorityReadOnly) ReplacementOrderExists(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Exists, error) {
+	return nil, nil
+}
+
 // PublisherClient is a mock
 type PublisherClient struct {
 	// empty

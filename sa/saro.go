@@ -1502,3 +1502,66 @@ func (ssa *SQLStorageAuthorityRO) Health(ctx context.Context) error {
 	}
 	return nil
 }
+
+// ReplacementOrderExists returns whether a valid replacement order exists for
+// the given certificate serial number. An existing but expired or otherwise
+// invalid replacement order is not considered to exist.
+func (ssa *SQLStorageAuthorityRO) ReplacementOrderExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	if req == nil || req.Serial == "" {
+		return nil, errIncompleteRequest
+	}
+
+	var replacement replacementOrderModel
+	err := ssa.dbReadOnlyMap.SelectOne(
+		ctx,
+		&replacement,
+		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		req.Serial,
+	)
+	if err != nil {
+		if db.IsNoRows(err) {
+			// No replacement order exists.
+			return &sapb.Exists{Exists: false}, nil
+		}
+		return nil, err
+	}
+	if replacement.Replaced {
+		// Certificate has already been replaced.
+		return &sapb.Exists{Exists: true}, nil
+	}
+	if replacement.OrderExpires.Before(ssa.clk.Now()) {
+		// The existing replacement order has expired.
+		return &sapb.Exists{Exists: false}, nil
+	}
+
+	// Pull the replacement order so we can inspect its status.
+	replacementOrder, err := ssa.GetOrder(ctx, &sapb.OrderRequest{Id: replacement.OrderID})
+	if err != nil {
+		if errors.Is(err, berrors.NotFound) {
+			// The existing replacement order has been deleted. This should
+			// never happen.
+			ssa.log.Errf("replacement order %d for serial %q not found", replacement.OrderID, req.Serial)
+			return &sapb.Exists{Exists: false}, nil
+		}
+	}
+
+	switch replacementOrder.Status {
+	case string(core.StatusPending), string(core.StatusReady), string(core.StatusProcessing), string(core.StatusValid):
+		// An existing replacement order is either still being worked on or has
+		// already been finalized.
+		return &sapb.Exists{Exists: true}, nil
+
+	case string(core.StatusInvalid):
+		// The existing replacement order cannot be finalized. The requester
+		// should create a new replacement order.
+		return &sapb.Exists{Exists: false}, nil
+
+	default:
+		// Replacement order is in an unknown state. This should never happen.
+		return nil, fmt.Errorf("unknown replacement order status: %q", replacementOrder.Status)
+	}
+}
+
+func (ssa *SQLStorageAuthority) ReplacementOrderExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
+	return ssa.SQLStorageAuthorityRO.ReplacementOrderExists(ctx, req)
+}
