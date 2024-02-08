@@ -69,7 +69,7 @@ func TestOCSP(t *testing.T) {
 	test.AssertEquals(t, rsaOCSP.SerialNumber.Cmp(rsaCert.SerialNumber), 0)
 
 	// Check that a different issuer cannot validate the OCSP response
-	rsaOCSP, err = ocsp.ParseResponse(rsaOCSPPB.Response, testCtx.boulderIssuers[0].Cert.Certificate)
+	_, err = ocsp.ParseResponse(rsaOCSPPB.Response, testCtx.boulderIssuers[0].Cert.Certificate)
 	test.AssertError(t, err, "Parsed / validated OCSP for rsaCert, but should not have")
 
 	// Issue a certificate from an ECDSA issuer, then check OCSP comes from that same issuer.
