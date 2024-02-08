@@ -832,7 +832,7 @@ func TestLogRemoteDifferentials(t *testing.T) {
 			mockLog.Clear()
 
 			localVA.logRemoteDifferentials(
-				"example.com", 1999, "blorpus-01", tc.primaryResult, tc.remoteProbs)
+				"example.com", 1999, "blorpus-01", tc.remoteProbs)
 
 			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
 			if tc.expectedLog != "" {
