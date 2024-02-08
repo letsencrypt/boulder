@@ -467,7 +467,6 @@ func TestAddReplacementOrder(t *testing.T) {
 	test.AssertEquals(t, oldCertSerial, replacementRow.Serial)
 	test.AssertEquals(t, nextOrderId, replacementRow.OrderID)
 	test.AssertEquals(t, nextOrderExpires, replacementRow.OrderExpires)
-
 }
 
 func TestSetReplacementOrderFinalized(t *testing.T) {
@@ -485,7 +484,7 @@ func TestSetReplacementOrderFinalized(t *testing.T) {
 	orderId := int64(1337)
 	orderExpires := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
 
-	// Mark a non-existent certificate as finalized/ replaced.
+	// Mark a non-existent certificate as finalized/replaced.
 	err := setReplacementOrderFinalized(ctx, sa.dbMap, orderId)
 	test.AssertNotError(t, err, "setReplacementOrderFinalized failed")
 
@@ -503,7 +502,7 @@ func TestSetReplacementOrderFinalized(t *testing.T) {
 	err = addReplacementOrder(ctx, sa.dbMap, oldCertSerial, orderId, orderExpires)
 	test.AssertNotError(t, err, "addReplacementOrder failed")
 
-	// Mark the certificate as finalized/ replaced.
+	// Mark the certificate as finalized/replaced.
 	err = setReplacementOrderFinalized(ctx, sa.dbMap, orderId)
 	test.AssertNotError(t, err, "setReplacementOrderFinalized failed")
 

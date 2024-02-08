@@ -47,7 +47,7 @@
 		},
 		"healthCheckInterval": "4s",
 		"features": {
-			"trackReplacementCertificatesARI": true
+			"TrackReplacementCertificatesARI": true
 		}
 	},
 	"syslog": {
