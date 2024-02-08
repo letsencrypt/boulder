@@ -5,8 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	linttest "github.com/letsencrypt/boulder/linter/lints/test"
 	"github.com/zmap/zlint/v3/lint"
+
+	linttest "github.com/letsencrypt/boulder/linter/lints/test"
 )
 
 func TestCrlHasIDP(t *testing.T) {
@@ -30,16 +31,26 @@ func TestCrlHasIDP(t *testing.T) {
 			want:       lint.Warn,
 			wantSubStr: "CRL missing IssuingDistributionPoint",
 		},
-
 		{
-			name:       "idp_no_uri",
+			name:       "idp_no_dpn",
 			want:       lint.Error,
-			wantSubStr: "IssuingDistributionPoint should have both DistributionPointName and onlyContainsUserCerts: TRUE",
+			wantSubStr: "User certificate CRLs MUST have at least one DistributionPointName FullName",
 		},
 		{
-			name:       "idp_two_uris",
-			want:       lint.Warn,
-			wantSubStr: "IssuingDistributionPoint should contain only one distributionPoint",
+			name:       "idp_no_fullname",
+			want:       lint.Error,
+			wantSubStr: "Failed to read IssuingDistributionPoint distributionPoint fullName",
+		},
+		{
+			name:       "idp_no_uris",
+			want:       lint.Error,
+			wantSubStr: "IssuingDistributionPoint FullName URI MUST be present",
+		},
+		{
+			// TODO(#7296): When we're back to only including one GeneralName within
+			// the distributionPoint's FullName, change this to expect a lint.Notice.
+			name: "idp_two_uris",
+			want: lint.Pass,
 		},
 		{
 			name:       "idp_https",
@@ -59,7 +70,7 @@ func TestCrlHasIDP(t *testing.T) {
 		{
 			name:       "idp_distributionPoint_and_onlyCA",
 			want:       lint.Error,
-			wantSubStr: "IssuingDistributionPoint should not have both DistributionPointName and onlyContainsCACerts: TRUE",
+			wantSubStr: "CA certificate CRLs SHOULD NOT have a DistributionPointName FullName",
 		},
 		{
 			name:       "idp_distributionPoint_and_onlyUser_and_onlyCA",
