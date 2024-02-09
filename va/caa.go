@@ -335,6 +335,12 @@ func filterCAA(rrs []*dns.CAA) ([]*dns.CAA, []*dns.CAA, bool) {
 			// do not store the contents of the property tag, but also avoid setting
 			// the criticalUnknown bit if there are critical iodef tags.
 			continue
+		case "issuemail":
+			// We support the issuemail property tag insofar as we recognize it and
+			// therefore do not bail out if someone has a critical issuemail tag. But
+			// of course we do not do any further processing, as we do not issue
+			// S/MIME certificates.
+			continue
 		default:
 			// The critical flag is the bit with significance 128. However, many CAA
 			// record users have misinterpreted the RFC and concluded that the bit

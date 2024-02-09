@@ -114,7 +114,11 @@ def verify_ocsp(cert_file, issuer_file, url, status="revoked", reason=None):
         if not re.search("%s: %s" % (cert_file, status), verify_output):
             print(verify_output)
             raise(Exception("OCSP response wasn't '%s'" % status))
-    if reason is not None:
+    if reason == "unspecified":
+        if re.search("Reason:", verify_output):
+            print(verify_output)
+            raise(Exception("OCSP response contained unexpected reason"))
+    elif reason is not None:
         if not re.search("Reason: %s" % reason, verify_output):
             print(verify_output)
             raise(Exception("OCSP response wasn't '%s'" % reason))
