@@ -19,7 +19,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -57,7 +56,7 @@ func TestMain(m *testing.M) {
 		Subject: pkix.Name{
 			CommonName: "big ca",
 		},
-		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		KeyUsage: x509.KeyUsageCRLSign | x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
 	}
 	issuer, err := x509.CreateCertificate(rand.Reader, template, template, tk.Public(), tk)
 	cmd.FailOnError(err, "failed to generate test issuer")
@@ -67,90 +66,150 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestNewIssuer(t *testing.T) {
-	_, err := NewIssuer(
+func TestLoadCertificate(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		path    string
+		wantErr string
+	}{
+		{"invalid cert file", "../test/hierarchy/int-e1.crl.pem", "loading issuer certificate"},
+		{"non-CA cert file", "../test/hierarchy/ee-e1.cert.pem", "not a CA certificate"},
+		{"happy path", "../test/hierarchy/int-e1.cert.pem", ""},
+	}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := LoadCertificate(tc.path)
+			if err != nil {
+				if tc.wantErr != "" {
+					test.AssertContains(t, err.Error(), tc.wantErr)
+				} else {
+					t.Errorf("expected no error but got %v", err)
+				}
+			} else {
+				if tc.wantErr != "" {
+					t.Errorf("expected error %q but got none", tc.wantErr)
+				}
+			}
+		})
+	}
+}
+
+func TestLoadSigner(t *testing.T) {
+	t.Parallel()
+
+	// We're using this for its pubkey. This definitely doesn't match the private
+	// key loaded in any of the tests below, but that's okay because it still gets
+	// us through all the logic in loadSigner.
+	fakeKey, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+	test.AssertNotError(t, err, "generating test key")
+
+	tests := []struct {
+		name    string
+		loc     IssuerLoc
+		wantErr string
+	}{
+		{"empty IssuerLoc", IssuerLoc{}, "must supply"},
+		{"invalid key file", IssuerLoc{File: "../test/hierarchy/int-e1.crl.pem"}, "unable to parse"},
+		{"ECDSA key file", IssuerLoc{File: "../test/hierarchy/int-e1.key.pem"}, ""},
+		{"RSA key file", IssuerLoc{File: "../test/hierarchy/int-r3.key.pem"}, ""},
+		{"invalid config file", IssuerLoc{ConfigFile: "../test/example-weak-keys.json"}, "json: cannot unmarshal"},
+		// Note that we don't have a test for "valid config file" because it would
+		// always fail -- in CI, the softhsm hasn't been initialized, so there's no
+		// key to look up; locally even if the softhsm has been initialized, the
+		// keys in it don't match the fakeKey we generated above.
+	}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := loadSigner(tc.loc, fakeKey.Public())
+			if err != nil {
+				if tc.wantErr != "" {
+					test.AssertContains(t, err.Error(), tc.wantErr)
+				} else {
+					t.Errorf("expected no error but got %v", err)
+				}
+			} else {
+				if tc.wantErr != "" {
+					t.Errorf("expected error %q but got none", tc.wantErr)
+				}
+			}
+		})
+	}
+}
+
+func TestLoadIssuer(t *testing.T) {
+	_, err := newIssuer(
+		defaultIssuerConfig(),
 		issuerCert,
 		issuerSigner,
-		defaultProfile(),
-		&linter.Linter{},
 		clock.NewFake(),
 	)
-	test.AssertNotError(t, err, "NewIssuer failed")
+	test.AssertNotError(t, err, "newIssuer failed")
 }
 
 func TestNewIssuerUnsupportedKeyType(t *testing.T) {
-	_, err := NewIssuer(
+	_, err := newIssuer(
+		defaultIssuerConfig(),
 		&Certificate{
 			Certificate: &x509.Certificate{
 				PublicKey: &ed25519.PublicKey{},
 			},
 		},
 		&ed25519.PrivateKey{},
-		defaultProfile(),
-		&linter.Linter{},
 		clock.NewFake(),
 	)
-	test.AssertError(t, err, "NewIssuer didn't fail")
+	test.AssertError(t, err, "newIssuer didn't fail")
 	test.AssertEquals(t, err.Error(), "unsupported issuer key type")
 }
 
-func TestNewIssuerNoCertSign(t *testing.T) {
-	_, err := NewIssuer(
-		&Certificate{
-			Certificate: &x509.Certificate{
-				PublicKey: &ecdsa.PublicKey{
-					Curve: elliptic.P256(),
-				},
-				KeyUsage: 0,
-			},
-		},
-		issuerSigner,
-		defaultProfile(),
-		&linter.Linter{},
-		clock.NewFake(),
-	)
-	test.AssertError(t, err, "NewIssuer didn't fail")
-	test.AssertEquals(t, err.Error(), "end-entity signing cert does not have keyUsage certSign")
-}
+func TestNewIssuerKeyUsage(t *testing.T) {
+	t.Parallel()
 
-func TestNewIssuerNoDigitalSignature(t *testing.T) {
-	_, err := NewIssuer(
-		&Certificate{
-			Certificate: &x509.Certificate{
-				PublicKey: &ecdsa.PublicKey{
-					Curve: elliptic.P256(),
+	tests := []struct {
+		name    string
+		ku      x509.KeyUsage
+		wantErr string
+	}{
+		{"missing certSign", x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature, "does not have keyUsage certSign"},
+		{"missing crlSign", x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature, "does not have keyUsage crlSign"},
+		{"missing digitalSignature", x509.KeyUsageCertSign | x509.KeyUsageCRLSign, "does not have keyUsage digitalSignature"},
+		{"all three", x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature, ""},
+	}
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := newIssuer(
+				defaultIssuerConfig(),
+				&Certificate{
+					Certificate: &x509.Certificate{
+						SerialNumber: big.NewInt(123),
+						PublicKey: &ecdsa.PublicKey{
+							Curve: elliptic.P256(),
+						},
+						KeyUsage: tc.ku,
+					},
 				},
-				KeyUsage: x509.KeyUsageCertSign,
-			},
-		},
-		issuerSigner,
-		defaultProfile(),
-		&linter.Linter{},
-		clock.NewFake(),
-	)
-	test.AssertError(t, err, "NewIssuer didn't fail")
-	test.AssertEquals(t, err.Error(), "end-entity ocsp signing cert does not have keyUsage digitalSignature")
-}
-
-func TestNewIssuerOCSPOnly(t *testing.T) {
-	p := defaultProfile()
-	p.useForRSALeaves = false
-	p.useForECDSALeaves = false
-	_, err := NewIssuer(
-		&Certificate{
-			Certificate: &x509.Certificate{
-				PublicKey: &ecdsa.PublicKey{
-					Curve: elliptic.P256(),
-				},
-				KeyUsage: x509.KeyUsageDigitalSignature,
-			},
-		},
-		issuerSigner,
-		p,
-		&linter.Linter{},
-		clock.NewFake(),
-	)
-	test.AssertNotError(t, err, "NewIssuer failed")
+				issuerSigner,
+				clock.NewFake(),
+			)
+			if err != nil {
+				if tc.wantErr != "" {
+					test.AssertContains(t, err.Error(), tc.wantErr)
+				} else {
+					t.Errorf("expected no error but got %v", err)
+				}
+			} else {
+				if tc.wantErr != "" {
+					t.Errorf("expected error %q but got none", tc.wantErr)
+				}
+			}
+		})
+	}
 }
 
 func TestLoadChain_Valid(t *testing.T) {

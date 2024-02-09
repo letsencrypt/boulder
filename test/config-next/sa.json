@@ -33,6 +33,7 @@
 				},
 				"sa.StorageAuthorityReadOnly": {
 					"clientNames": [
+						"admin-revoker.boulder",
 						"ocsp-responder.boulder",
 						"wfe.boulder"
 					]
@@ -46,7 +47,9 @@
 			}
 		},
 		"healthCheckInterval": "4s",
-		"features": {}
+		"features": {
+			"TrackReplacementCertificatesARI": true
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 6,

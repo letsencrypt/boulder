@@ -2119,6 +2119,40 @@ func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, transactio
 	}
 }
 
+func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial string) (core.RenewalInfo, error) {
+	// Check if the serial is impacted by an incident.
+	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		return core.RenewalInfo{}, fmt.Errorf("checking if existing certificate is impacted by an incident: %w", err)
+	}
+
+	if len(result.Incidents) > 0 {
+		// The existing cert is impacted by an incident, renew immediately.
+		return core.RenewalInfoImmediate(wfe.clk.Now()), nil
+	}
+
+	// Check if the serial is revoked.
+	status, err := wfe.sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		return core.RenewalInfo{}, fmt.Errorf("checking if existing certificate has been revoked: %w", err)
+	}
+
+	if status.Status == string(core.OCSPStatusRevoked) {
+		// The existing certificate is revoked, renew immediately.
+		return core.RenewalInfoImmediate(wfe.clk.Now()), nil
+	}
+
+	// It's okay to use GetCertificate (vs trying to get a precertificate),
+	// because we don't intend to serve ARI for certs that never made it past
+	// the precert stage.
+	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		return core.RenewalInfo{}, fmt.Errorf("retrieving existing certificate: %w", err)
+	}
+
+	return core.RenewalInfoSimple(cert.Issued.AsTime(), cert.Expires.AsTime()), nil
+}
+
 // NewOrder is used by clients to create a new order object and a set of
 // authorizations to fulfill for issuance.
 func (wfe *WebFrontEndImpl) NewOrder(
@@ -2594,62 +2628,22 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	serial := certID.Serial()
 	logEvent.Extra["RequestedSerial"] = serial
 
-	sendRI := func(ri core.RenewalInfo) {
-		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
-		err := wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
-		if err != nil {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
-			return
-		}
-	}
-
-	// Check if the serial is part of an ongoing/active incident, in which case
-	// the client should replace it now.
-	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
-	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
-			"checking if certificate is impacted by an incident"), err)
-		return
-	}
-
-	if len(result.Incidents) > 0 {
-		sendRI(core.RenewalInfoImmediate(wfe.clk.Now()))
-		return
-	}
-
-	// Check if the serial is revoked, in which case the client should replace it
-	// now.
-	status, err := wfe.sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
-	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
-			"checking if certificate has been revoked"), err)
-		return
-	}
-
-	if status.Status == string(core.OCSPStatusRevoked) {
-		sendRI(core.RenewalInfoImmediate(wfe.clk.Now()))
-		return
-	}
-
-	// It's okay to use GetCertificate (vs trying to get a precertificate),
-	// because we don't intend to serve ARI for certs that never made it past
-	// the precert stage.
-	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
+	renewalInfo, err := wfe.determineARIWindow(ctx, serial)
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
-		} else {
-			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "getting certificate"), err)
+			wfe.sendError(response, logEvent, probs.NotFound("Certificate replaced by this order was not found"), nil)
+			return
 		}
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error determining renewal window"), err)
 		return
 	}
 
-	// TODO(#6033): Consider parsing cert.Der, using that to get its IssuerNameID,
-	// using that to look up the actual issuer cert in wfe.issuerCertificates,
-	// using that to compute the actual issuerNameHash and issuerKeyHash, and
-	// comparing those to the ones in the request.
-
-	sendRI(core.RenewalInfoSimple(cert.Issued.AsTime(), cert.Expires.AsTime()))
+	response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, renewalInfo)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
+		return
+	}
 }
 
 // UpdateRenewal is used by the client to inform the server that they have

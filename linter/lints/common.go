@@ -29,33 +29,36 @@ var (
 	MozillaPolicy281Date = time.Date(2023, time.February, 15, 0, 0, 0, 0, time.UTC)
 )
 
-/*
-	 IssuingDistributionPoint stores the IA5STRING value of the optional
-	 distribution point, and the (implied OPTIONAL) BOOLEAN values of
-	 onlyContainsUserCerts and onlyContainsCACerts.
-
-			RFC 5280
-			* Section 5.2.5
-				IssuingDistributionPoint ::= SEQUENCE {
-					distributionPoint          [0] DistributionPointName OPTIONAL,
-					onlyContainsUserCerts      [1] BOOLEAN DEFAULT FALSE,
-					onlyContainsCACerts        [2] BOOLEAN DEFAULT FALSE,
-					...
-				}
-
-			* Section 4.2.1.13
-				DistributionPointName ::= CHOICE {
-					fullName                [0]     GeneralNames,
-					... }
-
-			* Appendix A.1, Page 128
-				GeneralName ::= CHOICE {
-					...
-			        uniformResourceIdentifier [6]  IA5String,
-					... }
-*/
+// IssuingDistributionPoint stores the IA5STRING value(s) of the optional
+// distributionPoint, and the (implied OPTIONAL) BOOLEAN values of
+// onlyContainsUserCerts and onlyContainsCACerts.
+//
+//	RFC 5280
+//	* Section 5.2.5
+//	  IssuingDistributionPoint ::= SEQUENCE {
+//	    distributionPoint          [0] DistributionPointName OPTIONAL,
+//	    onlyContainsUserCerts      [1] BOOLEAN DEFAULT FALSE,
+//	    onlyContainsCACerts        [2] BOOLEAN DEFAULT FALSE,
+//	    ...
+//	  }
+//
+//	* Section 4.2.1.13
+//	  DistributionPointName ::= CHOICE {
+//	    fullName                [0]     GeneralNames,
+//	    ... }
+//
+//	* Appendix A.1, Page 128
+//	  GeneralNames ::= SEQUENCE SIZE (1..MAX) OF GeneralName
+//	  GeneralName ::= CHOICE {
+//	    ...
+//	        uniformResourceIdentifier [6]  IA5String,
+//	    ... }
+//
+// Because this struct is used by cryptobyte (not by encoding/asn1), and because
+// we only care about the uniformResourceIdentifier flavor of GeneralName, we
+// are able to flatten the DistributionPointName down into a slice of URIs.
 type IssuingDistributionPoint struct {
-	DistributionPointURI  *url.URL
+	DistributionPointURIs []*url.URL
 	OnlyContainsUserCerts bool
 	OnlyContainsCACerts   bool
 }
