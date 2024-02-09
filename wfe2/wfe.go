@@ -2192,7 +2192,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	var hasValidCNLen bool
 	// Collect up all of the DNS identifier values into a []string for
 	// subsequent layers to process. We reject anything with a non-DNS
 	// type identifier here. Check to make sure one of the strings is
@@ -2211,18 +2210,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			return
 		}
 		names[i] = ident.Value
-		// The max length of a CommonName is 64 bytes. Check to make sure
-		// at least one DNS name meets this requirement to be promoted to
-		// the CN.
-		if len(names[i]) <= 64 {
-			hasValidCNLen = true
-		}
-	}
-	if !hasValidCNLen && !features.Get().AllowNoCommonName {
-		wfe.sendError(response, logEvent,
-			probs.RejectedIdentifier("NewOrder request did not include a SAN short enough to fit in CN"),
-			nil)
-		return
 	}
 
 	logEvent.DNSNames = names

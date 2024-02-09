@@ -102,8 +102,7 @@
 			}
 		},
 		"features": {
-			"AsyncFinalize": true,
-			"AllowNoCommonName": true
+			"AsyncFinalize": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

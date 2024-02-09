@@ -2575,9 +2575,20 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NotBefore and NotAfter are not supported","status":400}`,
 		},
 		{
-			Name:         "POST, no potential CNs 64 bytes or smaller",
-			Request:      signAndPost(signer, targetPath, signedURL, tooLongCNBody),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"NewOrder request did not include a SAN short enough to fit in CN","status":400}`,
+			Name:    "POST, good payload, all names too long to fit in CN",
+			Request: signAndPost(signer, targetPath, signedURL, tooLongCNBody),
+			ExpectedBody: `
+			{
+				"status": "pending",
+				"expires": "2021-02-01T01:01:01Z",
+				"identifiers": [
+					{ "type": "dns", "value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"}
+				],
+				"authorizations": [
+					"http://localhost/acme/authz-v3/1"
+				],
+				"finalize": "http://localhost/acme/finalize/1/1"
+			}`,
 		},
 		{
 			Name:    "POST, good payload, one potential CNs less than 64 bytes and one longer",

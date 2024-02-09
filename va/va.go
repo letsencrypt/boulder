@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
@@ -28,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -430,48 +431,21 @@ func (va *ValidationAuthorityImpl) validate(
 		baseIdentifier.Value = strings.TrimPrefix(identifier.Value, "*.")
 	}
 
-	// Create this channel outside of the feature-conditional block so that it is
-	// also in scope for the matching block below.
-	ch := make(chan *probs.ProblemDetails, 1)
-	if !features.Get().CAAAfterValidation {
-		// va.checkCAA accepts wildcard identifiers and handles them appropriately so
-		// we can dispatch `checkCAA` with the provided `identifier` instead of
-		// `baseIdentifier`
-		go func() {
-			params := &caaParams{
-				accountURIID:     regid,
-				validationMethod: challenge.Type,
-			}
-			ch <- va.checkCAA(ctx, identifier, params)
-		}()
-	}
-
 	// TODO(#1292): send into another goroutine
 	validationRecords, prob := va.validateChallenge(ctx, baseIdentifier, challenge)
 	if prob != nil {
 		// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
 		// It will also later be serialized in JSON, which defaults to UTF-8. Make
 		// sure it is UTF-8 clean now.
-		prob = filterProblemDetails(prob)
-
-		return validationRecords, prob
+		return validationRecords, filterProblemDetails(prob)
 	}
 
-	if !features.Get().CAAAfterValidation {
-		for i := 0; i < cap(ch); i++ {
-			if extraProblem := <-ch; extraProblem != nil {
-				return validationRecords, extraProblem
-			}
-		}
-	} else {
-		params := &caaParams{
-			accountURIID:     regid,
-			validationMethod: challenge.Type,
-		}
-		prob := va.checkCAA(ctx, identifier, params)
-		if prob != nil {
-			return validationRecords, prob
-		}
+	prob = va.checkCAA(ctx, identifier, &caaParams{
+		accountURIID:     regid,
+		validationMethod: challenge.Type,
+	})
+	if prob != nil {
+		return validationRecords, filterProblemDetails(prob)
 	}
 
 	return validationRecords, nil

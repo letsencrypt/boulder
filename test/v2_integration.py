@@ -1188,19 +1188,6 @@ def test_new_order_policy_errs():
     if not ok:
         raise(Exception("Expected problem, got no error"))
 
-def test_long_san_no_cn():
-    if CONFIG_NEXT:
-        return
-    try:
-        chisel2.auth_and_issue(["".join(random.choice(string.ascii_uppercase) for x in range(61)) + ".com"])
-        # if we get to this raise the auth_and_issue call didn't fail, so fail the test
-        raise(Exception("Issuance didn't fail when the only SAN in a certificate was longer than the max CN length"))
-    except messages.Error as e:
-        if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
-            raise(Exception("Expected malformed type problem, got {0}".format(e.typ)))
-        if e.detail != "NewOrder request did not include a SAN short enough to fit in CN":
-            raise(Exception("Problem detail did not match expected"))
-
 def test_delete_unused_challenges():
     order = chisel2.auth_and_issue([random_domain()], chall_type="dns-01")
     a = order.authorizations[0]

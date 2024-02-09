@@ -17,8 +17,8 @@ import (
 type Config struct {
 	// Deprecated features. Safe for removal once all references to them have
 	// been removed from deployed configuration.
-	CAAAfterValidation bool
-	AllowNoCommonName bool
+	CAAAfterValidation         bool
+	AllowNoCommonName          bool
 	SHA256SubjectKeyIdentifier bool
 
 	// EnforceMultiVA causes the VA to block on remote VA PerformValidation
