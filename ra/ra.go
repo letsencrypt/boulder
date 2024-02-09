@@ -2525,11 +2525,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		missingAuthzNames = append(missingAuthzNames, name)
 	}
 
-	if len(missingAuthzNames) > 0 {
+	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
+	if len(missingAuthzNames) > 0 && !req.LimitsExempt {
 		pendingAuthzLimits := ra.rlPolicies.PendingAuthorizationsPerAccount()
-
-		// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-		if pendingAuthzLimits.Enabled() && !req.LimitsExempt {
+		if pendingAuthzLimits.Enabled() {
 			// The order isn't fully authorized we need to check that the client
 			// has rate limit room for more pending authorizations.
 			started := ra.clk.Now()
