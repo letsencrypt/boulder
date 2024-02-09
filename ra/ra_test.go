@@ -4210,14 +4210,13 @@ func TestNewOrderFailedAuthzRateLimitingExempt(t *testing.T) {
 	test.AssertNotError(t, err, "limit exempt order should have succeeded")
 }
 
-func TestNewOrderRateLimitingExemptCarriesThroughToSA(t *testing.T) {
+func TestNewOrderReplacesSerialCarriesThroughToSA(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	exampleOrder := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		Names:          []string{"example.com"},
-		LimitsExempt:   true,
 		ReplacesSerial: "1234",
 	}
 
@@ -4226,5 +4225,5 @@ func TestNewOrderRateLimitingExemptCarriesThroughToSA(t *testing.T) {
 	ra.SA = &mockNewOrderMustBeReplacementAuthority{}
 
 	_, err := ra.NewOrder(ctx, exampleOrder)
-	test.AssertNotError(t, err, "limit exempt order should have succeeded")
+	test.AssertNotError(t, err, "order with ReplacesSerial should have succeeded")
 }
