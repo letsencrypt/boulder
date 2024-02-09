@@ -109,7 +109,7 @@ def check_challenge_dns_err(chalType):
             elif chalType == "tls-alpn-01":
                 c = chisel2.get_chall(authzr, challenges.TLSALPN01)
             else:
-                raise(Exception("Invalid challenge type requested: {0}".format(challType)))
+                raise(Exception("Invalid challenge type requested: {0}".format(chalType)))
 
             # The failed challenge's error should match expected
             error = c.error
