@@ -46,10 +46,22 @@ import challtestsrv
 challSrv = challtestsrv.ChallTestServer()
 
 def test_dns_account_challenge():
+    """
+    Test issuance for two random domains using DNS-ACCOUNT-01.
+    """
     # Only config-next has a dns-account-01 challenge
     if not CONFIG_NEXT:
         return
     chisel2.auth_and_issue([random_domain(), random_domain()], chall_type="dns-account-01")
+
+def test_dns_account_challenge_wildcardmultidomain():
+    """
+    Test issuance for a random domain and a random wildcard domain using DNS-ACCOUNT-01.
+    """
+    # Only config-next has a dns-account-01 challenge
+    if not CONFIG_NEXT:
+        return
+    chisel2.auth_and_issue([random_domain(), "*."+random_domain()], chall_type="dns-account-01")
 
 def test_multidomain():
     chisel2.auth_and_issue([random_domain(), random_domain()])
