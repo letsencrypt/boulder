@@ -108,6 +108,8 @@ def check_challenge_dns_err(chalType):
                 c = chisel2.get_chall(authzr, challenges.DNS01)
             elif chalType == "tls-alpn-01":
                 c = chisel2.get_chall(authzr, challenges.TLSALPN01)
+            elif chalType == "dns-account-01":
+                c = chisel2.get_chall(authzr, challenges.DNSACCOUNT01)
             else:
                 raise(Exception("Invalid challenge type requested: {0}".format(chalType)))
 
