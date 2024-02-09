@@ -782,14 +782,12 @@ func TestLogRemoteDifferentials(t *testing.T) {
 	egProbB := probs.OrderNotReady("please take a number")
 
 	testCases := []struct {
-		name          string
-		primaryResult *probs.ProblemDetails
-		remoteProbs   []*remoteVAResult
-		expectedLog   string
+		name        string
+		remoteProbs []*remoteVAResult
+		expectedLog string
 	}{
 		{
-			name:          "remote and primary results equal (all nil)",
-			primaryResult: nil,
+			name: "all results equal (nil)",
 			remoteProbs: []*remoteVAResult{
 				{Problem: nil, VAHostname: "remoteA"},
 				{Problem: nil, VAHostname: "remoteB"},
@@ -797,33 +795,22 @@ func TestLogRemoteDifferentials(t *testing.T) {
 			},
 		},
 		{
-			name:          "remote and primary results equal (not nil)",
-			primaryResult: egProbA,
+			name: "all results equal (not nil)",
 			remoteProbs: []*remoteVAResult{
 				{Problem: egProbA, VAHostname: "remoteA"},
 				{Problem: egProbA, VAHostname: "remoteB"},
 				{Problem: egProbA, VAHostname: "remoteC"},
 			},
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteB","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteC","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}}]}`,
 		},
 		{
-			name:          "remote and primary differ (primary nil)",
-			primaryResult: nil,
-			remoteProbs: []*remoteVAResult{
-				{Problem: egProbA, VAHostname: "remoteA"},
-				{Problem: nil, VAHostname: "remoteB"},
-				{Problem: egProbB, VAHostname: "remoteC"},
-			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteC","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
-		},
-		{
-			name:          "remote and primary differ (primary not nil)",
-			primaryResult: egProbA,
+			name: "differing results, some non-nil",
 			remoteProbs: []*remoteVAResult{
 				{Problem: nil, VAHostname: "remoteA"},
 				{Problem: egProbB, VAHostname: "remoteB"},
 				{Problem: nil, VAHostname: "remoteC"},
 			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","PrimaryResult":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400},"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
 		},
 	}
 
@@ -832,7 +819,7 @@ func TestLogRemoteDifferentials(t *testing.T) {
 			mockLog.Clear()
 
 			localVA.logRemoteDifferentials(
-				"example.com", 1999, "blorpus-01", tc.primaryResult, tc.remoteProbs)
+				"example.com", 1999, "blorpus-01", tc.remoteProbs)
 
 			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
 			if tc.expectedLog != "" {

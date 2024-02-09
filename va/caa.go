@@ -83,7 +83,6 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 					req.Domain,
 					req.AccountURIID,
 					string(validationMethod),
-					prob,
 					remoteCAAResults)
 			}()
 		} else if features.Get().EnforceMultiCAA {
@@ -91,7 +90,6 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 				req.Domain,
 				req.AccountURIID,
 				string(validationMethod),
-				prob,
 				remoteCAAResults)
 
 			// If the remote result was a non-nil problem then fail the CAA check
@@ -148,7 +146,6 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 	domain string,
 	acctID int64,
 	challengeType string,
-	primaryResult *probs.ProblemDetails,
 	remoteResultsChan <-chan *remoteVAResult) *probs.ProblemDetails {
 
 	state := "failure"
@@ -210,7 +207,6 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 		domain,
 		acctID,
 		challengeType,
-		primaryResult,
 		remoteResults)
 
 	// Based on the threshold of good/bad return nil or a problem.
@@ -220,12 +216,7 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 	} else if bad > va.maxRemoteFailures {
 		modifiedProblem := *firstProb
 		modifiedProblem.Detail = "During secondary CAA checking: " + firstProb.Detail
-		// If the primary result was OK and there were more failures than the allowed
-		// threshold increment a stat that indicates this overall validation will have
-		// failed.
-		if primaryResult == nil {
-			va.metrics.prospectiveRemoteCAACheckFailures.Inc()
-		}
+		va.metrics.prospectiveRemoteCAACheckFailures.Inc()
 		return &modifiedProblem
 	}
 

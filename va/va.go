@@ -559,7 +559,6 @@ func (va *ValidationAuthorityImpl) processRemoteValidationResults(
 	domain string,
 	acctID int64,
 	challengeType string,
-	primaryResult *probs.ProblemDetails,
 	remoteResultsChan <-chan *remoteVAResult) *probs.ProblemDetails {
 
 	state := "failure"
@@ -620,7 +619,6 @@ func (va *ValidationAuthorityImpl) processRemoteValidationResults(
 		domain,
 		acctID,
 		challengeType,
-		primaryResult,
 		remoteResults)
 
 	// Based on the threshold of good/bad return nil or a problem.
@@ -630,12 +628,7 @@ func (va *ValidationAuthorityImpl) processRemoteValidationResults(
 	} else if bad > va.maxRemoteFailures {
 		modifiedProblem := *firstProb
 		modifiedProblem.Detail = "During secondary validation: " + firstProb.Detail
-		// If the primary result was OK and there were more failures than the allowed
-		// threshold increment a stat that indicates this overall validation will have
-		// failed.
-		if primaryResult == nil {
-			va.metrics.prospectiveRemoteValidationFailures.Inc()
-		}
+		va.metrics.prospectiveRemoteValidationFailures.Inc()
 		return &modifiedProblem
 	}
 
@@ -652,25 +645,19 @@ func (va *ValidationAuthorityImpl) logRemoteDifferentials(
 	domain string,
 	acctID int64,
 	challengeType string,
-	primaryResult *probs.ProblemDetails,
 	remoteResults []*remoteVAResult) {
 
 	var successes, failures []*remoteVAResult
 
-	allEqual := true
 	for _, result := range remoteResults {
-		if result.Problem != primaryResult {
-			allEqual = false
-		}
-		if result.Problem == nil {
-			successes = append(successes, result)
-		} else {
+		if result.Problem != nil {
 			failures = append(failures, result)
+		} else {
+			successes = append(successes, result)
 		}
 	}
-	if allEqual {
-		// There's no point logging a differential line if the primary VA and remote
-		// VAs all agree.
+	if len(failures) == 0 {
+		// There's no point logging a differential line if everything succeeded.
 		return
 	}
 
@@ -678,14 +665,12 @@ func (va *ValidationAuthorityImpl) logRemoteDifferentials(
 		Domain          string
 		AccountID       int64
 		ChallengeType   string
-		PrimaryResult   *probs.ProblemDetails
 		RemoteSuccesses int
 		RemoteFailures  []*remoteVAResult
 	}{
 		Domain:          domain,
 		AccountID:       acctID,
 		ChallengeType:   challengeType,
-		PrimaryResult:   primaryResult,
 		RemoteSuccesses: len(successes),
 		RemoteFailures:  failures,
 	}
@@ -760,7 +745,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 					req.Domain,
 					req.Authz.RegID,
 					string(challenge.Type),
-					prob,
 					remoteResults)
 			}()
 			// Since prob was nil and we're not enforcing the results from
@@ -773,7 +757,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 				req.Domain,
 				req.Authz.RegID,
 				string(challenge.Type),
-				prob,
 				remoteResults)
 
 			// If the remote result was a non-nil problem then fail the validation
