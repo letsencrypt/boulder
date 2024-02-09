@@ -26,7 +26,9 @@ blocked:
   - cuwGhNNI6nfob5aqY90e7BleU6l7rfxku4X3UTJ3Z7M=
   # test/block-a-key/test/test.rsa.jwk.json
   - Qebc1V3SkX3izkYRGNJilm9Bcuvf0oox4U2Rn+b4JOE=
+  # test/hierarchy/int-r4.cert.pem
+  - +//lPMatuGvtf7yesXNv6FSf0UovKbP3BKdQZ23L4BY=
 blockedHashesHex:
   - 41e6dcd55dd2917de2ce461118d262966f4172ebdfd28a31e14d919fe6f824e1
 
-  
+

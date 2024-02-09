@@ -1351,7 +1351,7 @@ def test_blocked_key_account():
     if not CONFIG_NEXT:
         return
 
-    with open("test/test-ca.key", "rb") as key_file:
+    with open("test/hierarchy/int-r4.key.pem", "rb") as key_file:
         key = serialization.load_pem_private_key(key_file.read(), password=None, backend=default_backend())
 
     # Create a client with the JWK set to a blocked private key
@@ -1379,7 +1379,7 @@ def test_blocked_key_cert():
     if not CONFIG_NEXT:
         return
 
-    with open("test/test-ca.key", "r") as f:
+    with open("test/hierarchy/int-r4.key.pem", "r") as f:
         pemBytes = f.read()
 
     domains = [random_domain(), random_domain()]

@@ -96,9 +96,10 @@ var (
 const arbitraryRegID int64 = 1001
 
 // Useful key and certificate files.
-const caKeyFile = "../test/test-ca.key"
-const caCertFile = "../test/test-ca.pem"
-const caCertFile2 = "../test/test-ca2.pem"
+const rsaIntKey = "../test/hierarchy/int-r3.key.pem"
+const rsaIntCert = "../test/hierarchy/int-r3.cert.pem"
+const ecdsaIntKey = "../test/hierarchy/int-e1.key.pem"
+const ecdsaIntCert = "../test/hierarchy/int-e1.cert.pem"
 
 func mustRead(path string) []byte {
 	return must.Do(os.ReadFile(path))
@@ -185,7 +186,7 @@ func setup(t *testing.T) *testCtx {
 		IssuerURL:         "http://not-example.com/issuer-url",
 		OCSPURL:           "http://not-example.com/ocsp",
 		CRLURL:            "http://not-example.com/crl",
-		Location:          issuance.IssuerLoc{File: caKeyFile, CertFile: caCertFile2},
+		Location:          issuance.IssuerLoc{File: ecdsaIntKey, CertFile: ecdsaIntCert},
 	}, fc)
 	test.AssertNotError(t, err, "Couldn't load test issuer")
 
@@ -195,7 +196,7 @@ func setup(t *testing.T) *testCtx {
 		IssuerURL:         "http://not-example.com/issuer-url",
 		OCSPURL:           "http://not-example.com/ocsp",
 		CRLURL:            "http://not-example.com/crl",
-		Location:          issuance.IssuerLoc{File: caKeyFile, CertFile: caCertFile},
+		Location:          issuance.IssuerLoc{File: rsaIntKey, CertFile: rsaIntCert},
 	}, fc)
 	test.AssertNotError(t, err, "Couldn't load test issuer")
 
