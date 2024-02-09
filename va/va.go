@@ -649,18 +649,14 @@ func (va *ValidationAuthorityImpl) logRemoteDifferentials(
 
 	var successes, failures []*remoteVAResult
 
-	allNil := true
 	for _, result := range remoteResults {
 		if result.Problem != nil {
-			allNil = false
-		}
-		if result.Problem == nil {
-			successes = append(successes, result)
-		} else {
 			failures = append(failures, result)
+		} else {
+			successes = append(successes, result)
 		}
 	}
-	if allNil {
+	if len(failures) == 0 {
 		// There's no point logging a differential line if everything succeeded.
 		return
 	}
@@ -669,7 +665,6 @@ func (va *ValidationAuthorityImpl) logRemoteDifferentials(
 		Domain          string
 		AccountID       int64
 		ChallengeType   string
-		PrimaryResult   *probs.ProblemDetails
 		RemoteSuccesses int
 		RemoteFailures  []*remoteVAResult
 	}{
