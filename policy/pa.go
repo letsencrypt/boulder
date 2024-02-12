@@ -527,8 +527,14 @@ func (pa *AuthorityImpl) challengeTypesFor(identifier identifier.ACMEIdentifier)
 				"Challenges requested for wildcard identifier but DNS based " +
 					"challenge type is not enabled")
 		}
-		// Only provide a DNS-01-Wildcard challenge
-		challenges = []core.AcmeChallenge{core.ChallengeTypeDNS01}
+		// Only provide a DNS based challenge
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
+			challenges = append(challenges, core.ChallengeTypeDNS01)
+		}
+
+		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNSAccount01) {
+			challenges = append(challenges, core.ChallengeTypeDNSAccount01)
+		}
 	} else {
 		// Otherwise we collect up challenges based on what is enabled.
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeHTTP01) {
