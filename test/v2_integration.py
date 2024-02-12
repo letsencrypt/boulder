@@ -45,7 +45,7 @@ import socket
 import challtestsrv
 challSrv = challtestsrv.ChallTestServer()
 
-def test_dns_account_challenge():
+def test_dns_account_challenge_multidomain():
     """
     Test issuance for two random domains using DNS-ACCOUNT-01.
     """
