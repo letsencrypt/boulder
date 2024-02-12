@@ -157,7 +157,7 @@ type IssuerConfig struct {
 
 	IssuerURL  string `validate:"required,url"`
 	OCSPURL    string `validate:"required,url"`
-	CRLURLBase string `validate:"omitempty,url"`
+	CRLURLBase string `validate:"omitempty,url,startswith=http://,endswith=/"`
 
 	Location IssuerLoc
 }
