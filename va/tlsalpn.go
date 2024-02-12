@@ -159,6 +159,9 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 		va.log.AuditInfof("%s challenge for %s received certificate (%d of %d): cert=[%s]",
 			challenge.Type, identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw))
 	}
+
+	va.metrics.outboundKexTypes.WithLabelValues("tls-alpn-01", tls.CipherSuiteName(cs.CipherSuite)).Inc()
+
 	return certs[0], &cs, nil
 }
 

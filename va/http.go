@@ -140,12 +140,19 @@ type dialerFunc func(ctx context.Context, network, addr string) (net.Conn, error
 // httpTransport constructs a HTTP Transport with settings appropriate for
 // HTTP-01 validation. The provided dialerFunc is used as the Transport's
 // DialContext handler.
-func httpTransport(df dialerFunc) *http.Transport {
+func httpTransport(df dialerFunc, vf func(tls.ConnectionState) error) *http.Transport {
 	return &http.Transport{
 		DialContext: df,
-		// We are talking to a client that does not yet have a certificate,
-		// so we accept a temporary, invalid one.
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig: &tls.Config{
+			// We are talking to a client that does not yet have a certificate,
+			// so we accept a temporary, invalid one.
+			InsecureSkipVerify: true,
+			// If the connection is over TLS, we want to measure which key exchange
+			// mechanisms we're negotiating so we can know if it's possible to turn
+			// RSA key exchange off. We take this function as an argument because it
+			// references the VA's metrics.
+			VerifyConnection: vf,
+		},
 		// We don't expect to make multiple requests to a client, so close
 		// connection immediately.
 		DisableKeepAlives: true,
@@ -489,7 +496,10 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 	// Build a transport for this validation that will use the preresolvedDialer's
 	// DialContext function
-	transport := httpTransport(dialer.DialContext)
+	transport := httpTransport(dialer.DialContext, func(cs tls.ConnectionState) error {
+		va.metrics.outboundKexTypes.WithLabelValues("http-01", tls.CipherSuiteName(cs.CipherSuite)).Inc()
+		return nil
+	})
 
 	va.log.AuditInfof("Attempting to validate HTTP-01 for %q with GET to %q",
 		initialReq.Host, initialReq.URL.String())

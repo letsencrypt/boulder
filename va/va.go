@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
@@ -28,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -96,6 +97,7 @@ type vaMetrics struct {
 	http01Redirects                     prometheus.Counter
 	caaCounter                          *prometheus.CounterVec
 	ipv4FallbackCounter                 prometheus.Counter
+	outboundKexTypes                    *prometheus.CounterVec
 }
 
 func initMetrics(stats prometheus.Registerer) *vaMetrics {
@@ -201,6 +203,11 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		Help: "A counter of IPv4 fallbacks during TLS ALPN validation",
 	})
 	stats.MustRegister(ipv4FallbackCounter)
+	outboundKexTypes := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "va_kex_types",
+		Help: "Count of key exchange algorithms negotiated during HTTP-01 and TLS-ALPN-01",
+	}, []string{"method", "kex"})
+	stats.MustRegister(outboundKexTypes)
 
 	return &vaMetrics{
 		validationTime:                      validationTime,
@@ -218,6 +225,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		http01Redirects:                     http01Redirects,
 		caaCounter:                          caaCounter,
 		ipv4FallbackCounter:                 ipv4FallbackCounter,
+		outboundKexTypes:                    outboundKexTypes,
 	}
 }
 
