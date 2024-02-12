@@ -17,6 +17,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/miekg/dns"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -24,7 +26,6 @@ import (
 	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/miekg/dns"
 
 	"testing"
 )
@@ -432,6 +433,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 				URL:               "http://ipv4.and.ipv6.localhost/yellow/brick/road",
 				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("::1"),
+				ResolverAddrs:     []string{"MockClient"},
 			},
 			ExpectedDialer: &preresolvedDialer{
 				ip:      net.ParseIP("::1"),
@@ -449,6 +451,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 				URL:               "https://ipv4.and.ipv6.localhost/yellow/brick/road",
 				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("::1"),
+				ResolverAddrs:     []string{"MockClient"},
 			},
 			ExpectedDialer: &preresolvedDialer{
 				ip:      net.ParseIP("::1"),
@@ -766,6 +769,7 @@ func TestFetchHTTP(t *testing.T) {
 				URL:               url,
 				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("127.0.0.1"),
+				ResolverAddrs:     []string{"MockClient"},
 			})
 	}
 
@@ -786,6 +790,7 @@ func TestFetchHTTP(t *testing.T) {
 				URL:               url,
 				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("127.0.0.1"),
+				ResolverAddrs:     []string{"MockClient"},
 			})
 	}
 
@@ -826,6 +831,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/timeout",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -843,6 +849,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/timeout",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -877,6 +884,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-bad-proto",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -894,6 +902,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-bad-port",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -911,6 +920,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-bad-host",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -927,6 +937,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-path-too-long",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -943,6 +954,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/bad-status-code",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -959,6 +971,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/303-see-other",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -976,6 +989,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/resp-too-big",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -992,6 +1006,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1")},
 					AddressUsed:       net.ParseIP("::1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -1007,7 +1022,8 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 					// The first validation record should have used the IPv6 addr
-					AddressUsed: net.ParseIP("::1"),
+					AddressUsed:   net.ParseIP("::1"),
+					ResolverAddrs: []string{"MockClient"},
 				},
 				{
 					Hostname:          "ipv4.and.ipv6.localhost",
@@ -1015,7 +1031,8 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 					// The second validation record should have used the IPv4 addr as a fallback
-					AddressUsed: net.ParseIP("127.0.0.1"),
+					AddressUsed:   net.ParseIP("127.0.0.1"),
+					ResolverAddrs: []string{"MockClient"},
 				},
 			},
 		},
@@ -1031,6 +1048,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/ok",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -1046,6 +1064,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-uppercase-publicsuffix",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 				{
 					Hostname:          "example.com",
@@ -1053,6 +1072,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/ok",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -1073,6 +1093,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/printf-verbs",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -1349,8 +1370,8 @@ type dnsMockReturnsUnroutable struct {
 	*bdns.MockClient
 }
 
-func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
-	return []net.IP{net.ParseIP("198.51.100.1")}, nil
+func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddrs, error) {
+	return []net.IP{net.ParseIP("198.51.100.1")}, bdns.ResolverAddrs{"dnsMockReturnsUnroutable"}, nil
 }
 
 // TestHTTPDialTimeout tests that we give the proper "Timeout during connect"

@@ -10,6 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -19,8 +23,6 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/miekg/dns"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type caaParams struct {
@@ -83,7 +85,6 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 					req.Domain,
 					req.AccountURIID,
 					string(validationMethod),
-					nil,
 					remoteCAAResults)
 			}()
 		} else if features.Get().EnforceMultiCAA {
@@ -91,7 +92,6 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 				req.Domain,
 				req.AccountURIID,
 				string(validationMethod),
-				nil,
 				remoteCAAResults)
 
 			// If the remote result was a non-nil problem then fail the CAA check
@@ -152,7 +152,6 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 	domain string,
 	acctID int64,
 	challengeType string,
-	primaryResult *probs.ProblemDetails,
 	remoteResultsChan <-chan *remoteVAResult) *probs.ProblemDetails {
 
 	state := "failure"
@@ -214,7 +213,6 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 		domain,
 		acctID,
 		challengeType,
-		primaryResult,
 		remoteResults)
 
 	// Based on the threshold of good/bad return nil or a problem.
@@ -224,12 +222,7 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 	} else if bad > va.maxRemoteFailures {
 		modifiedProblem := *firstProb
 		modifiedProblem.Detail = "During secondary CAA checking: " + firstProb.Detail
-		// If the primary result was OK and there were more failures than the allowed
-		// threshold increment a stat that indicates this overall validation will have
-		// failed.
-		if primaryResult == nil {
-			va.metrics.prospectiveRemoteCAACheckFailures.Inc()
-		}
+		va.metrics.prospectiveRemoteCAACheckFailures.Inc()
 		return &modifiedProblem
 	}
 
@@ -315,6 +308,7 @@ type caaResult struct {
 	issuewild       []*dns.CAA
 	criticalUnknown bool
 	dig             string
+	resolvers       bdns.ResolverAddrs
 	err             error
 }
 
@@ -337,6 +331,12 @@ func filterCAA(rrs []*dns.CAA) ([]*dns.CAA, []*dns.CAA, bool) {
 			// never choose to send notifications to the specified addresses. So we
 			// do not store the contents of the property tag, but also avoid setting
 			// the criticalUnknown bit if there are critical iodef tags.
+			continue
+		case "issuemail":
+			// We support the issuemail property tag insofar as we recognize it and
+			// therefore do not bail out if someone has a critical issuemail tag. But
+			// of course we do not do any further processing, as we do not issue
+			// S/MIME certificates.
 			continue
 		default:
 			// The critical flag is the bit with significance 128. However, many CAA
@@ -369,7 +369,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		go func(name string, r *caaResult) {
 			r.name = name
 			var records []*dns.CAA
-			records, r.dig, r.err = va.dnsClient.LookupCAA(ctx, name)
+			records, r.dig, r.resolvers, r.err = va.dnsClient.LookupCAA(ctx, name)
 			if len(records) > 0 {
 				r.present = true
 			}

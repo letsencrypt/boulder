@@ -119,7 +119,7 @@ type Registration struct {
 }
 
 // ValidationRecord represents a validation attempt against a specific URL/hostname
-// and the IP addresses that were resolved and used
+// and the IP addresses that were resolved and used.
 type ValidationRecord struct {
 	// SimpleHTTP only
 	URL string `json:"url,omitempty"`
@@ -144,6 +144,10 @@ type ValidationRecord struct {
 	//   ...
 	// }
 	AddressesTried []net.IP `json:"addressesTried,omitempty"`
+	// ResolverAddrs is the host:port of the DNS resolver(s) that fulfilled the
+	// lookup for AddressUsed. During recursive A and AAAA lookups, a record may
+	// instead look like A:host:port or AAAA:host:port
+	ResolverAddrs []string `json:"resolverAddrs,omitempty"`
 }
 
 func looksLikeKeyAuthorization(str string) error {
@@ -225,6 +229,8 @@ func (ch Challenge) RecordsSane() bool {
 	switch ch.Type {
 	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
+			// TODO(#7140): Add a check for ResolverAddress == "" only after the
+			// core.proto change has been deployed.
 			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
 				len(rec.AddressesResolved) == 0 {
 				return false
@@ -237,6 +243,8 @@ func (ch Challenge) RecordsSane() bool {
 		if ch.ValidationRecord[0].URL != "" {
 			return false
 		}
+		// TODO(#7140): Add a check for ResolverAddress == "" only after the
+		// core.proto change has been deployed.
 		if ch.ValidationRecord[0].Hostname == "" || ch.ValidationRecord[0].Port == "" ||
 			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
@@ -245,6 +253,8 @@ func (ch Challenge) RecordsSane() bool {
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
+		// TODO(#7140): Add a check for ResolverAddress == "" only after the
+		// core.proto change has been deployed.
 		if ch.ValidationRecord[0].Hostname == "" {
 			return false
 		}

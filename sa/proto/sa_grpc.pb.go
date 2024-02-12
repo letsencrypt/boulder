@@ -53,6 +53,7 @@ type StorageAuthorityReadOnlyClient interface {
 	IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error)
 	KeyBlocked(ctx context.Context, in *KeyBlockedRequest, opts ...grpc.CallOption) (*Exists, error)
 	PreviousCertificateExists(ctx context.Context, in *PreviousCertificateExistsRequest, opts ...grpc.CallOption) (*Exists, error)
+	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthorityReadOnly_SerialsForIncidentClient, error)
 }
 
@@ -339,6 +340,15 @@ func (c *storageAuthorityReadOnlyClient) PreviousCertificateExists(ctx context.C
 	return out, nil
 }
 
+func (c *storageAuthorityReadOnlyClient) ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error) {
+	out := new(Exists)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthorityReadOnly/ReplacementOrderExists", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *storageAuthorityReadOnlyClient) SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthorityReadOnly_SerialsForIncidentClient, error) {
 	stream, err := c.cc.NewStream(ctx, &StorageAuthorityReadOnly_ServiceDesc.Streams[1], "/sa.StorageAuthorityReadOnly/SerialsForIncident", opts...)
 	if err != nil {
@@ -403,6 +413,7 @@ type StorageAuthorityReadOnlyServer interface {
 	IncidentsForSerial(context.Context, *Serial) (*Incidents, error)
 	KeyBlocked(context.Context, *KeyBlockedRequest) (*Exists, error)
 	PreviousCertificateExists(context.Context, *PreviousCertificateExistsRequest) (*Exists, error)
+	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, StorageAuthorityReadOnly_SerialsForIncidentServer) error
 	mustEmbedUnimplementedStorageAuthorityReadOnlyServer()
 }
@@ -494,6 +505,9 @@ func (UnimplementedStorageAuthorityReadOnlyServer) KeyBlocked(context.Context, *
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) PreviousCertificateExists(context.Context, *PreviousCertificateExistsRequest) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PreviousCertificateExists not implemented")
+}
+func (UnimplementedStorageAuthorityReadOnlyServer) ReplacementOrderExists(context.Context, *Serial) (*Exists, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplacementOrderExists not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) SerialsForIncident(*SerialsForIncidentRequest, StorageAuthorityReadOnly_SerialsForIncidentServer) error {
 	return status.Errorf(codes.Unimplemented, "method SerialsForIncident not implemented")
@@ -1019,6 +1033,24 @@ func _StorageAuthorityReadOnly_PreviousCertificateExists_Handler(srv interface{}
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageAuthorityReadOnly_ReplacementOrderExists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Serial)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityReadOnlyServer).ReplacementOrderExists(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sa.StorageAuthorityReadOnly/ReplacementOrderExists",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityReadOnlyServer).ReplacementOrderExists(ctx, req.(*Serial))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StorageAuthorityReadOnly_SerialsForIncident_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(SerialsForIncidentRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1155,6 +1187,10 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "PreviousCertificateExists",
 			Handler:    _StorageAuthorityReadOnly_PreviousCertificateExists_Handler,
 		},
+		{
+			MethodName: "ReplacementOrderExists",
+			Handler:    _StorageAuthorityReadOnly_ReplacementOrderExists_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -1204,6 +1240,7 @@ type StorageAuthorityClient interface {
 	IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error)
 	KeyBlocked(ctx context.Context, in *KeyBlockedRequest, opts ...grpc.CallOption) (*Exists, error)
 	PreviousCertificateExists(ctx context.Context, in *PreviousCertificateExistsRequest, opts ...grpc.CallOption) (*Exists, error)
+	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthority_SerialsForIncidentClient, error)
 	// Adders
 	AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -1509,6 +1546,15 @@ func (c *storageAuthorityClient) PreviousCertificateExists(ctx context.Context, 
 	return out, nil
 }
 
+func (c *storageAuthorityClient) ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error) {
+	out := new(Exists)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/ReplacementOrderExists", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *storageAuthorityClient) SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthority_SerialsForIncidentClient, error) {
 	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[1], "/sa.StorageAuthority/SerialsForIncident", opts...)
 	if err != nil {
@@ -1736,6 +1782,7 @@ type StorageAuthorityServer interface {
 	IncidentsForSerial(context.Context, *Serial) (*Incidents, error)
 	KeyBlocked(context.Context, *KeyBlockedRequest) (*Exists, error)
 	PreviousCertificateExists(context.Context, *PreviousCertificateExistsRequest) (*Exists, error)
+	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error
 	// Adders
 	AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error)
@@ -1846,6 +1893,9 @@ func (UnimplementedStorageAuthorityServer) KeyBlocked(context.Context, *KeyBlock
 }
 func (UnimplementedStorageAuthorityServer) PreviousCertificateExists(context.Context, *PreviousCertificateExistsRequest) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PreviousCertificateExists not implemented")
+}
+func (UnimplementedStorageAuthorityServer) ReplacementOrderExists(context.Context, *Serial) (*Exists, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplacementOrderExists not implemented")
 }
 func (UnimplementedStorageAuthorityServer) SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error {
 	return status.Errorf(codes.Unimplemented, "method SerialsForIncident not implemented")
@@ -2424,6 +2474,24 @@ func _StorageAuthority_PreviousCertificateExists_Handler(srv interface{}, ctx co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageAuthority_ReplacementOrderExists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Serial)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).ReplacementOrderExists(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sa.StorageAuthority/ReplacementOrderExists",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).ReplacementOrderExists(ctx, req.(*Serial))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StorageAuthority_SerialsForIncident_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(SerialsForIncidentRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -2883,6 +2951,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PreviousCertificateExists",
 			Handler:    _StorageAuthority_PreviousCertificateExists_Handler,
+		},
+		{
+			MethodName: "ReplacementOrderExists",
+			Handler:    _StorageAuthority_ReplacementOrderExists_Handler,
 		},
 		{
 			MethodName: "AddBlockedKey",

@@ -2401,6 +2401,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	newOrder := &sapb.NewOrderRequest{
 		RegistrationID: req.RegistrationID,
 		Names:          core.UniqueLowerNames(req.Names),
+		ReplacesSerial: req.ReplacesSerial,
 	}
 
 	if len(newOrder.Names) > ra.maxNames {
@@ -2444,10 +2445,14 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return existingOrder, nil
 	}
 
-	// Check if there is rate limit space for issuing a certificate.
-	err = ra.checkNewOrderLimits(ctx, newOrder.Names, newOrder.RegistrationID)
-	if err != nil {
-		return nil, err
+	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
+	if !req.LimitsExempt {
+
+		// Check if there is rate limit space for issuing a certificate.
+		err = ra.checkNewOrderLimits(ctx, newOrder.Names, newOrder.RegistrationID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// An order's lifetime is effectively bound by the shortest remaining lifetime
@@ -2520,11 +2525,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		missingAuthzNames = append(missingAuthzNames, name)
 	}
 
-	// If the order isn't fully authorized we need to check that the client has
-	// rate limit room for more pending authorizations
-	if len(missingAuthzNames) > 0 {
+	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
+	if len(missingAuthzNames) > 0 && !req.LimitsExempt {
 		pendingAuthzLimits := ra.rlPolicies.PendingAuthorizationsPerAccount()
 		if pendingAuthzLimits.Enabled() {
+			// The order isn't fully authorized we need to check that the client
+			// has rate limit room for more pending authorizations.
 			started := ra.clk.Now()
 			err := ra.checkPendingAuthorizationLimit(ctx, newOrder.RegistrationID, pendingAuthzLimits)
 			elapsed := ra.clk.Since(started)

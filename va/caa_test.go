@@ -26,21 +26,21 @@ import (
 // answers for CAA queries.
 type caaMockDNS struct{}
 
-func (mock caaMockDNS) LookupTXT(_ context.Context, hostname string) ([]string, error) {
-	return nil, nil
+func (mock caaMockDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddrs, error) {
+	return nil, bdns.ResolverAddrs{"caaMockDNS"}, nil
 }
 
-func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
+func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddrs, error) {
 	ip := net.ParseIP("127.0.0.1")
-	return []net.IP{ip}, nil
+	return []net.IP{ip}, bdns.ResolverAddrs{"caaMockDNS"}, nil
 }
 
-func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, error) {
+func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, error) {
 	var results []*dns.CAA
 	var record dns.CAA
 	switch strings.TrimRight(domain, ".") {
 	case "caa-timeout.com":
-		return nil, "", fmt.Errorf("error")
+		return nil, "", bdns.ResolverAddrs{"caaMockDNS"}, fmt.Errorf("error")
 	case "reserved.com":
 		record.Tag = "issue"
 		record.Value = "ca.com"
@@ -60,11 +60,11 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 		results = append(results, &record)
 	case "com":
 		// com has no CAA records.
-		return nil, "", nil
+		return nil, "", bdns.ResolverAddrs{"caaMockDNS"}, nil
 	case "gonetld":
-		return nil, "", fmt.Errorf("NXDOMAIN")
+		return nil, "", bdns.ResolverAddrs{"caaMockDNS"}, fmt.Errorf("NXDOMAIN")
 	case "servfail.com", "servfail.present.com":
-		return results, "", fmt.Errorf("SERVFAIL")
+		return results, "", bdns.ResolverAddrs{"caaMockDNS"}, fmt.Errorf("SERVFAIL")
 	case "multi-crit-present.com":
 		record.Flag = 1
 		record.Tag = "issue"
@@ -186,7 +186,7 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 	if len(results) > 0 {
 		response = "foo"
 	}
-	return results, response, nil
+	return results, response, bdns.ResolverAddrs{"caaMockDNS"}, nil
 }
 
 func TestCAATimeout(t *testing.T) {
@@ -576,16 +576,16 @@ var errCAABrokenDNSClient = errors.New("dnsClient is broken")
 // errors.
 type caaBrokenDNS struct{}
 
-func (b caaBrokenDNS) LookupTXT(_ context.Context, hostname string) ([]string, error) {
-	return nil, errCAABrokenDNSClient
+func (b caaBrokenDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddrs, error) {
+	return nil, bdns.ResolverAddrs{"caaBrokenDNS"}, errCAABrokenDNSClient
 }
 
-func (b caaBrokenDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
-	return nil, errCAABrokenDNSClient
+func (b caaBrokenDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddrs, error) {
+	return nil, bdns.ResolverAddrs{"caaBrokenDNS"}, errCAABrokenDNSClient
 }
 
-func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, error) {
-	return nil, "", errCAABrokenDNSClient
+func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, error) {
+	return nil, "", bdns.ResolverAddrs{"caaBrokenDNS"}, errCAABrokenDNSClient
 }
 
 func TestDisabledMultiCAARechecking(t *testing.T) {
@@ -618,15 +618,15 @@ func TestDisabledMultiCAARechecking(t *testing.T) {
 // changed while queries were inflight.
 type caaHijackedDNS struct{}
 
-func (h caaHijackedDNS) LookupTXT(_ context.Context, hostname string) ([]string, error) {
-	return nil, nil
+func (h caaHijackedDNS) LookupTXT(_ context.Context, hostname string) ([]string, bdns.ResolverAddrs, error) {
+	return nil, bdns.ResolverAddrs{"caaHijackedDNS"}, nil
 }
 
-func (h caaHijackedDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
+func (h caaHijackedDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddrs, error) {
 	ip := net.ParseIP("127.0.0.1")
-	return []net.IP{ip}, nil
+	return []net.IP{ip}, bdns.ResolverAddrs{"caaHijackedDNS"}, nil
 }
-func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, error) {
+func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, error) {
 	// These records are altered from their caaMockDNS counterparts. Use this to
 	// tickle remoteValidationFailures.
 	var results []*dns.CAA
@@ -637,7 +637,7 @@ func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA,
 		record.Value = "other-ca.com"
 		results = append(results, &record)
 	case "present-dns-only.com":
-		return results, "", fmt.Errorf("SERVFAIL")
+		return results, "", bdns.ResolverAddrs{"caaHijackedDNS"}, fmt.Errorf("SERVFAIL")
 	case "satisfiable-wildcard.com":
 		record.Tag = "issuewild"
 		record.Value = ";"
@@ -651,7 +651,7 @@ func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA,
 	if len(results) > 0 {
 		response = "foo"
 	}
-	return results, response, nil
+	return results, response, bdns.ResolverAddrs{"caaHijackedDNS"}, nil
 }
 
 func TestMultiCAARechecking(t *testing.T) {
@@ -994,6 +994,7 @@ func TestFilterCAA(t *testing.T) {
 				{Tag: "issue", Value: "a"},
 				{Tag: "issuewild", Value: "b"},
 				{Tag: "iodef", Value: "c"},
+				{Tag: "issuemail", Value: "c"},
 			},
 			expectedIssueVals: []string{"a"},
 			expectedWildVals:  []string{"b"},
@@ -1004,6 +1005,7 @@ func TestFilterCAA(t *testing.T) {
 				{Tag: "issue", Value: "a", Flag: 128},
 				{Tag: "issuewild", Value: "b", Flag: 128},
 				{Tag: "iodef", Value: "c", Flag: 128},
+				{Tag: "issuemail", Value: "c", Flag: 128},
 			},
 			expectedIssueVals: []string{"a"},
 			expectedWildVals:  []string{"b"},
@@ -1062,9 +1064,9 @@ func TestSelectCAA(t *testing.T) {
 
 	// A slice of empty caaResults should return nil, "", nil
 	r = []caaResult{
-		{"", false, nil, nil, false, "", nil},
-		{"", false, nil, nil, false, "", nil},
-		{"", false, nil, nil, false, "", nil},
+		{"", false, nil, nil, false, "", nil, nil},
+		{"", false, nil, nil, false, "", nil, nil},
+		{"", false, nil, nil, false, "", nil, nil},
 	}
 	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
@@ -1073,8 +1075,8 @@ func TestSelectCAA(t *testing.T) {
 	// A slice of caaResults containing an error followed by a CAA
 	// record should return the error
 	r = []caaResult{
-		{"foo.com", false, nil, nil, false, "", errors.New("oops")},
-		{"com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
+		{"foo.com", false, nil, nil, false, "", nil, errors.New("oops")},
+		{"com", true, []*dns.CAA{&expected}, nil, false, "foo", nil, nil},
 	}
 	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
@@ -1084,8 +1086,8 @@ func TestSelectCAA(t *testing.T) {
 	//  A slice of caaResults containing a good record that precedes an
 	//  error, should return that good record, not the error
 	r = []caaResult{
-		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
-		{"com", false, nil, nil, false, "", errors.New("")},
+		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil, nil},
+		{"com", false, nil, nil, false, "", nil, errors.New("")},
 	}
 	s, err = selectCAA(r)
 	test.AssertEquals(t, len(s.issue), 1)
@@ -1096,9 +1098,9 @@ func TestSelectCAA(t *testing.T) {
 	// A slice of caaResults containing multiple CAA records should
 	// return the first non-empty CAA record
 	r = []caaResult{
-		{"bar.foo.com", false, []*dns.CAA{}, []*dns.CAA{}, false, "", nil},
-		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
-		{"com", true, []*dns.CAA{&expected}, nil, false, "bar", nil},
+		{"bar.foo.com", false, []*dns.CAA{}, []*dns.CAA{}, false, "", nil, nil},
+		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil, nil},
+		{"com", true, []*dns.CAA{&expected}, nil, false, "bar", nil, nil},
 	}
 	s, err = selectCAA(r)
 	test.AssertEquals(t, len(s.issue), 1)

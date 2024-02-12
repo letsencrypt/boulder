@@ -92,7 +92,7 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 
 	idp := lints.NewIssuingDistributionPoint()
 	if distributionPointExists {
-		lintErr := parseSingleDistributionPointName(&dpName, idp)
+		lintErr := parseDistributionPointName(&dpName, idp)
 		if lintErr != nil {
 			return lintErr
 		}
@@ -121,24 +121,23 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 		}
 	}
 
-	if idp.OnlyContainsUserCerts {
-		if idp.OnlyContainsCACerts {
-			return &lint.LintResult{
-				Status:  lint.Error,
-				Details: "IssuingDistributionPoint should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
-			}
+	if idp.OnlyContainsUserCerts && idp.OnlyContainsCACerts {
+		return &lint.LintResult{
+			Status:  lint.Error,
+			Details: "IssuingDistributionPoint should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
 		}
-		if idp.DistributionPointURI == nil {
+	} else if idp.OnlyContainsUserCerts {
+		if len(idp.DistributionPointURIs) == 0 {
 			return &lint.LintResult{
 				Status:  lint.Error,
-				Details: "IssuingDistributionPoint should have both DistributionPointName and onlyContainsUserCerts: TRUE",
+				Details: "User certificate CRLs MUST have at least one DistributionPointName FullName",
 			}
 		}
 	} else if idp.OnlyContainsCACerts {
-		if idp.DistributionPointURI != nil {
+		if len(idp.DistributionPointURIs) != 0 {
 			return &lint.LintResult{
 				Status:  lint.Error,
-				Details: "IssuingDistributionPoint should not have both DistributionPointName and onlyContainsCACerts: TRUE",
+				Details: "CA certificate CRLs SHOULD NOT have a DistributionPointName FullName",
 			}
 		}
 	} else {
@@ -151,47 +150,51 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 	return &lint.LintResult{Status: lint.Pass}
 }
 
-// parseSingleDistributionPointName examines the provided distributionPointName
+// parseDistributionPointName examines the provided distributionPointName
 // and updates idp with the URI if it is found. The distribution point name is
 // checked for validity and returns a non-nil LintResult if there were any
 // problems.
-func parseSingleDistributionPointName(distributionPointName *cryptobyte.String, idp *lints.IssuingDistributionPoint) *lint.LintResult {
+func parseDistributionPointName(distributionPointName *cryptobyte.String, idp *lints.IssuingDistributionPoint) *lint.LintResult {
 	fullNameTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
 	if !distributionPointName.ReadASN1(distributionPointName, fullNameTag) {
 		return &lint.LintResult{
-			Status:  lint.Warn,
+			Status:  lint.Error,
 			Details: "Failed to read IssuingDistributionPoint distributionPoint fullName",
 		}
 	}
 
-	var uriBytes []byte
-	uriTag := cryptobyte_asn1.Tag(6).ContextSpecific()
-	if !distributionPointName.ReadASN1Bytes(&uriBytes, uriTag) {
-		return &lint.LintResult{
-			Status:  lint.Warn,
-			Details: "Failed to read IssuingDistributionPoint URI",
+	for !distributionPointName.Empty() {
+		var uriBytes []byte
+		uriTag := cryptobyte_asn1.Tag(6).ContextSpecific()
+		if !distributionPointName.ReadASN1Bytes(&uriBytes, uriTag) {
+			return &lint.LintResult{
+				Status:  lint.Error,
+				Details: "Failed to read IssuingDistributionPoint URI",
+			}
 		}
+		uri, err := url.Parse(string(uriBytes))
+		if err != nil {
+			return &lint.LintResult{
+				Status:  lint.Error,
+				Details: "Failed to parse IssuingDistributionPoint URI",
+			}
+		}
+		if uri.Scheme != "http" {
+			return &lint.LintResult{
+				Status:  lint.Error,
+				Details: "IssuingDistributionPoint URI MUST use http scheme",
+			}
+		}
+		idp.DistributionPointURIs = append(idp.DistributionPointURIs, uri)
 	}
-	var err error
-	idp.DistributionPointURI, err = url.Parse(string(uriBytes))
-	if err != nil {
+	if len(idp.DistributionPointURIs) == 0 {
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: "Failed to parse IssuingDistributionPoint URI",
+			Details: "IssuingDistributionPoint FullName URI MUST be present",
 		}
 	}
-	if idp.DistributionPointURI.Scheme != "http" {
-		return &lint.LintResult{
-			Status:  lint.Error,
-			Details: "IssuingDistributionPoint URI MUST use http scheme",
-		}
-	}
-	if !distributionPointName.Empty() {
-		return &lint.LintResult{
-			Status:  lint.Warn,
-			Details: "IssuingDistributionPoint should contain only one distributionPoint",
-		}
-	}
+	// TODO(#7296): When we're back to only including one GeneralName within the
+	// distributionPoint's FullName, re-add a check that len(uris) == 1.
 
 	return nil
 }

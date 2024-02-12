@@ -40,6 +40,7 @@ func TestRecordSanityCheckOnUnsupportedChallengeType(t *testing.T) {
 			Port:              "80",
 			AddressesResolved: []net.IP{{127, 0, 0, 1}},
 			AddressUsed:       net.IP{127, 0, 0, 1},
+			ResolverAddrs:     []string{"eastUnboundAndDown"},
 		},
 	}
 

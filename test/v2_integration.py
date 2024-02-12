@@ -1351,7 +1351,7 @@ def test_blocked_key_account():
     if not CONFIG_NEXT:
         return
 
-    with open("test/test-ca.key", "rb") as key_file:
+    with open("test/hierarchy/int-r4.key.pem", "rb") as key_file:
         key = serialization.load_pem_private_key(key_file.read(), password=None, backend=default_backend())
 
     # Create a client with the JWK set to a blocked private key
@@ -1379,7 +1379,7 @@ def test_blocked_key_cert():
     if not CONFIG_NEXT:
         return
 
-    with open("test/test-ca.key", "r") as f:
+    with open("test/hierarchy/int-r4.key.pem", "r") as f:
         pemBytes = f.read()
 
     domains = [random_domain(), random_domain()]
@@ -1595,12 +1595,15 @@ def test_admin_revoker_cert():
 
     # Revoke certificate by serial
     reset_akamai_purges()
-    run(["./bin/boulder", "admin-revoker", "serial-revoke",
-        "--config", "%s/admin-revoker.json" % config_dir,
-        '%x' % parsed_cert.serial_number, '1'])
+    run(["./bin/admin", 
+        "-config", "%s/admin.json" % config_dir,
+        "-dry-run=false",
+        "revoke-cert",
+        "-serial", '%x' % parsed_cert.serial_number,
+        "-reason", "keyCompromise"])
 
     # Wait for OCSP response to indicate revocation took place
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
@@ -1616,12 +1619,16 @@ def test_admin_revoker_batched():
         serialFile.write("%x\n" % parse_cert(order).serial_number)
     serialFile.close()
 
-    run(["./bin/boulder", "admin-revoker", "batched-serial-revoke",
-        "--config", "%s/admin-revoker.json" % config_dir,
-        serialFile.name, '0', '2'])
+    run(["./bin/admin", 
+        "-config", "%s/admin.json" % config_dir,
+        "-dry-run=false",
+        "revoke-cert",
+        "-serials-file", serialFile.name,
+        "-reason", "unspecified",
+        "-parallelism", "2"])
 
     for cert_file in cert_files:
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "unspecified")
 
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])

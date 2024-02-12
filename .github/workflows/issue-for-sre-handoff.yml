@@ -1,4 +1,4 @@
-name: Check PR for configuration changes
+name: Check PR for configuration and SQL changes
 
 on:
   pull_request:
@@ -7,6 +7,9 @@ on:
     - 'test/config-next/*.json'
     - 'test/config-next/*.yaml'
     - 'test/config-next/*.yml'
+    - 'sa/db-users/*.sql'
+    - 'sa/db-next/**/*.sql'
+    - 'sa/db/**/*.sql'
 
 jobs:
   check-changes:
@@ -20,7 +23,7 @@ jobs:
           script: |
             const commentMarker = '<!-- deployment_ticket_check -->';
             const prAuthor = context.payload.pull_request.user.login;
-            const commentBody = `${commentMarker}\n@${prAuthor}, this PR appears to contain configuration changes. Please ensure that a corresponding deployment ticket has been filed with the new configuration values.\n`;
+            const commentBody = `${commentMarker}\n@${prAuthor}, this PR appears to contain configuration and/or SQL schema changes. Please ensure that a corresponding deployment ticket has been filed with the new values.\n`;
             const { owner, repo, number: issue_number } = context.issue;
             const issueRegexp = /IN-\d+/;
 

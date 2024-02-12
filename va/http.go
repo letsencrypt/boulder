@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
@@ -176,6 +177,8 @@ type httpValidationTarget struct {
 	next []net.IP
 	// the current IP address being used for validation (if any)
 	cur net.IP
+	// the DNS resolver(s) that will attempt to fulfill the validation request
+	resolvers bdns.ResolverAddrs
 }
 
 // nextIP changes the cur IP by removing the first entry from the next slice and
@@ -211,7 +214,7 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	path string,
 	query string) (*httpValidationTarget, error) {
 	// Resolve IP addresses for the hostname
-	addrs, err := va.getAddrs(ctx, host)
+	addrs, resolvers, err := va.getAddrs(ctx, host)
 	if err != nil {
 		return nil, err
 	}
@@ -222,6 +225,7 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 		path:      path,
 		query:     query,
 		available: addrs,
+		resolvers: resolvers,
 	}
 
 	// Separate the addresses into the available v4 and v6 addresses
@@ -361,6 +365,7 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 		Port:              strconv.Itoa(target.port),
 		AddressesResolved: target.available,
 		URL:               reqURL,
+		ResolverAddrs:     target.resolvers,
 	}
 
 	// Get the target IP to build a preresolved dialer with
@@ -658,7 +663,6 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident ide
 	if err != nil {
 		return validationRecords, err
 	}
-
 	payload := strings.TrimRightFunc(string(body), unicode.IsSpace)
 
 	if payload != challenge.ProvidedKeyAuthorization {
