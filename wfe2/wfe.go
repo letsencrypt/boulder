@@ -2123,13 +2123,20 @@ func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, transactio
 // as identified by the provided ARI CertID. This function ensures that:
 //   - the certificate being replaced exists,
 //   - the requesting account owns that certificate, and
-//   - the names in this new order match the names in the certificate
-//     being replaced.
+//   - a name in this new order matches a name in the certificate being
+//     replaced.
+//
+// TODO(#7327): This method should be modified to return berrors instead of
+// *probs.ProblemDetails and an optional error. This should coincide with a
+// refactor of wfe.SendError to accept just an error or problem, not both.
 func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *core.Registration, names []string, serial string) (*probs.ProblemDetails, error) {
+	// It's okay to use GetCertificate (vs trying to get a precertificate),
+	// because we don't intend to serve ARI for certs that never made it past
+	// the precert stage.
 	oldCert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
-			return probs.NotFound("Existing certificate could not found"), err
+			return probs.NotFound("Existing certificate could not be found"), err
 		}
 		return probs.ServerInternal("Failed to retrieve existing certificate"), err
 	}
@@ -2142,17 +2149,16 @@ func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *c
 		return probs.ServerInternal("Error parsing certificate replaced by this order"), err
 	}
 
-	// While draft-ietf-acme-ari-02 calls for the new order to "share a
-	// preponderance of identifiers" with the certificate being replaced, our
-	// implementation will be more lenient, requiring just one.
-	var namesMatch bool
+	var nameMatch bool
 	for _, name := range names {
 		if parsedCert.VerifyHostname(name) == nil {
-			namesMatch = true
+			// At least one name in the new order matches a name in the
+			// predecessor certificate.
+			nameMatch = true
 			break
 		}
 	}
-	if !namesMatch {
+	if !nameMatch {
 		return probs.Malformed("Certificate replaced by this order does not have matching identifiers"), nil
 	}
 	return nil, nil
@@ -2186,7 +2192,10 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 	// the precert stage.
 	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
-		return core.RenewalInfo{}, fmt.Errorf("retrieving existing certificate: %w", err)
+		if errors.Is(err, berrors.NotFound) {
+			return core.RenewalInfo{}, err
+		}
+		return core.RenewalInfo{}, fmt.Errorf("failed to retrieve existing certificate: %w", err)
 	}
 
 	return core.RenewalInfoSimple(cert.Issued.AsTime(), cert.Expires.AsTime()), nil
@@ -2286,12 +2295,15 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			return
 		}
 		if exists.Exists {
-			wfe.sendError(response, logEvent, probs.Malformed("An order already exists which replaces this certificate"), nil)
+			wfe.sendError(response, logEvent, probs.Malformed("Cannot indicate an order replaces a certificate which already has a replacement order"), nil)
 			return
 		}
 
 		prob, err = wfe.orderMatchesReplacement(ctx, acct, names, certID.Serial())
 		if prob != nil || err != nil {
+			// The provided replacement field value failed to meet the required
+			// criteria. We're going to return the error to the caller instead
+			// of trying to create a regular (non-replacement) order.
 			wfe.sendError(response, logEvent, prob, err)
 			return
 		}
@@ -2314,7 +2326,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// ratelimits package and cannot be prematurely canceled by the requester.
 	var txns []ratelimits.Transaction
 	if !limitsExempt {
-		txns := wfe.newNewOrderLimitTransactions(acct.ID, names)
+		txns = wfe.newNewOrderLimitTransactions(acct.ID, names)
 		go wfe.checkNewOrderLimits(ctx, txns)
 	}
 
