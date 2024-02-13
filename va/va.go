@@ -97,7 +97,6 @@ type vaMetrics struct {
 	http01Redirects                     prometheus.Counter
 	caaCounter                          *prometheus.CounterVec
 	ipv4FallbackCounter                 prometheus.Counter
-	outboundKexTypes                    *prometheus.CounterVec
 }
 
 func initMetrics(stats prometheus.Registerer) *vaMetrics {
@@ -203,11 +202,6 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		Help: "A counter of IPv4 fallbacks during TLS ALPN validation",
 	})
 	stats.MustRegister(ipv4FallbackCounter)
-	outboundKexTypes := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "va_kex_types",
-		Help: "Count of key exchange algorithms negotiated during HTTP-01 and TLS-ALPN-01",
-	}, []string{"method", "kex"})
-	stats.MustRegister(outboundKexTypes)
 
 	return &vaMetrics{
 		validationTime:                      validationTime,
@@ -225,7 +219,6 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		http01Redirects:                     http01Redirects,
 		caaCounter:                          caaCounter,
 		ipv4FallbackCounter:                 ipv4FallbackCounter,
-		outboundKexTypes:                    outboundKexTypes,
 	}
 }
 
@@ -325,6 +318,7 @@ type verificationRequestEvent struct {
 	Hostname          string         `json:",omitempty"`
 	Challenge         core.Challenge `json:",omitempty"`
 	ValidationLatency float64
+	UsedRSAKEX        bool   `json:",omitempty"`
 	Error             string `json:",omitempty"`
 }
 
@@ -789,6 +783,14 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	validationLatency := time.Since(vStart)
 	logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
 
+	// TODO(#7321): Remove this when we have collected enough data.
+	for _, record := range records {
+		if record.UsedRSAKEX {
+			logEvent.UsedRSAKEX = true
+			break
+		}
+	}
+
 	va.metrics.localValidationTime.With(prometheus.Labels{
 		"type":   string(challenge.Type),
 		"result": string(challenge.Status),
@@ -806,4 +808,11 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// sure it is UTF-8 clean now.
 	prob = filterProblemDetails(prob)
 	return bgrpc.ValidationResultToPB(records, prob)
+}
+
+// usedRSAKEX returns true if the given cipher suite involves the use of an
+// RSA key exchange mechanism.
+// TODO(#7321): Remove this when we have collected enough data.
+func usedRSAKEX(cs uint16) bool {
+	return strings.HasPrefix(tls.CipherSuiteName(cs), "TLS_RSA_")
 }

@@ -3,7 +3,6 @@ package va
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -115,8 +114,7 @@ func TestHTTPTransport(t *testing.T) {
 	dummyDialerFunc := func(_ context.Context, _, _ string) (net.Conn, error) {
 		return nil, nil
 	}
-	dummyVerifyFunc := func(_ tls.ConnectionState) error { return nil }
-	transport := httpTransport(dummyDialerFunc, dummyVerifyFunc)
+	transport := httpTransport(dummyDialerFunc)
 	// The HTTP Transport should have a TLS config that skips verifying
 	// certificates.
 	test.AssertEquals(t, transport.TLSClientConfig.InsecureSkipVerify, true)

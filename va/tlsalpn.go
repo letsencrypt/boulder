@@ -160,8 +160,6 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 			challenge.Type, identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw))
 	}
 
-	va.metrics.outboundKexTypes.WithLabelValues("tls-alpn-01", tls.CipherSuiteName(cs.CipherSuite)).Inc()
-
 	return certs[0], &cs, nil
 }
 
@@ -290,6 +288,10 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 					hex.EncodeToString(h[:]),
 				))
 			}
+			// We were successful, so record the negotiated key exchange mechanism in
+			// the last validationRecord.
+			// TODO(#7321): Remove this when we have collected enough data.
+			validationRecords[len(validationRecords)-1].UsedRSAKEX = usedRSAKEX(cs.CipherSuite)
 			return validationRecords, nil
 		}
 	}

@@ -140,19 +140,12 @@ type dialerFunc func(ctx context.Context, network, addr string) (net.Conn, error
 // httpTransport constructs a HTTP Transport with settings appropriate for
 // HTTP-01 validation. The provided dialerFunc is used as the Transport's
 // DialContext handler.
-func httpTransport(df dialerFunc, vf func(tls.ConnectionState) error) *http.Transport {
+func httpTransport(df dialerFunc) *http.Transport {
 	return &http.Transport{
 		DialContext: df,
-		TLSClientConfig: &tls.Config{
-			// We are talking to a client that does not yet have a certificate,
-			// so we accept a temporary, invalid one.
-			InsecureSkipVerify: true,
-			// If the connection is over TLS, we want to measure which key exchange
-			// mechanisms we're negotiating so we can know if it's possible to turn
-			// RSA key exchange off. We take this function as an argument because it
-			// references the VA's metrics.
-			VerifyConnection: vf,
-		},
+		// We are talking to a client that does not yet have a certificate,
+		// so we accept a temporary, invalid one.
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		// We don't expect to make multiple requests to a client, so close
 		// connection immediately.
 		DisableKeepAlives: true,
@@ -496,10 +489,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 	// Build a transport for this validation that will use the preresolvedDialer's
 	// DialContext function
-	transport := httpTransport(dialer.DialContext, func(cs tls.ConnectionState) error {
-		va.metrics.outboundKexTypes.WithLabelValues("http-01", tls.CipherSuiteName(cs.CipherSuite)).Inc()
-		return nil
-	})
+	transport := httpTransport(dialer.DialContext)
 
 	va.log.AuditInfof("Attempting to validate HTTP-01 for %q with GET to %q",
 		initialReq.Host, initialReq.URL.String())
@@ -658,6 +648,14 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %q",
 			records[len(records)-1].URL, body))
 	}
+
+	// We were successful, so record the negotiated key exchange mechanism in the
+	// last validationRecord.
+	// TODO(#7321): Remove this when we have collected enough data.
+	if httpResponse.TLS != nil {
+		records[len(records)-1].UsedRSAKEX = usedRSAKEX(httpResponse.TLS.CipherSuite)
+	}
+
 	return body, records, nil
 }
 
