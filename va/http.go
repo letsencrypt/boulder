@@ -19,7 +19,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
-	"github.com/letsencrypt/boulder/probs"
 )
 
 const (
@@ -395,11 +394,10 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 func (va *ValidationAuthorityImpl) fetchHTTP(
 	ctx context.Context,
 	host string,
-	path string) ([]byte, []core.ValidationRecord, *probs.ProblemDetails) {
+	path string) ([]byte, []core.ValidationRecord, error) {
 	body, records, err := va.processHTTPValidation(ctx, host, path)
 	if err != nil {
-		// Use detailedError to convert the error into a problem
-		return body, records, detailedError(err)
+		return body, records, err
 	}
 	return body, records, nil
 }
@@ -653,24 +651,24 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	return body, records, nil
 }
 
-func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.DNS {
 		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", ident)
-		return nil, probs.Malformed("Identifier type for HTTP validation was not DNS")
+		return nil, berrors.MalformedError("Identifier type for HTTP validation was not DNS")
 	}
 
 	// Perform the fetch
 	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
-	body, validationRecords, prob := va.fetchHTTP(ctx, ident.Value, "/"+path)
-	if prob != nil {
-		return validationRecords, prob
+	body, validationRecords, err := va.fetchHTTP(ctx, ident.Value, "/"+path)
+	if err != nil {
+		return validationRecords, err
 	}
 	payload := strings.TrimRightFunc(string(body), unicode.IsSpace)
 
 	if payload != challenge.ProvidedKeyAuthorization {
-		problem := probs.Unauthorized(fmt.Sprintf("The key authorization file from the server did not match this challenge. Expected %q (got %q)",
-			challenge.ProvidedKeyAuthorization, payload))
-		va.log.Infof("%s for %s", problem.Detail, ident)
+		problem := berrors.UnauthorizedError("The key authorization file from the server did not match this challenge. Expected %q (got %q)",
+			challenge.ProvidedKeyAuthorization, payload)
+		va.log.Infof("%s for %s", problem, ident)
 		return validationRecords, problem
 	}
 

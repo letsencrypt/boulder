@@ -4130,3 +4130,100 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	})
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with just serial for keyCompromise")
 }
+
+func TestNewOrderRateLimitingExempt(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.orderLifetime = 5 * 24 * time.Hour
+
+	// Set up a rate limit policy that allows 1 order every 5 minutes.
+	rateLimitDuration := 5 * time.Minute
+	ra.rlPolicies = &dummyRateLimitConfig{
+		NewOrdersPerAccountPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 1,
+			Window:    config.Duration{Duration: rateLimitDuration},
+		},
+	}
+
+	exampleOrderOne := &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"first.example.com", "second.example.com"},
+	}
+	exampleOrderTwo := &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"first.example.com", "third.example.com"},
+	}
+
+	// Create an order immediately.
+	_, err := ra.NewOrder(ctx, exampleOrderOne)
+	test.AssertNotError(t, err, "orderOne should have succeeded")
+
+	// Create another order immediately. This should fail.
+	_, err = ra.NewOrder(ctx, exampleOrderTwo)
+	test.AssertError(t, err, "orderTwo should have failed")
+
+	// Exempt orderTwo from rate limiting.
+	exampleOrderTwo.LimitsExempt = true
+	_, err = ra.NewOrder(ctx, exampleOrderTwo)
+	test.AssertNotError(t, err, "orderTwo should have succeeded")
+}
+
+func TestNewOrderFailedAuthzRateLimitingExempt(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	exampleOrder := &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"example.com"},
+	}
+
+	// Create an order, and thus a pending authz, for "example.com".
+	ctx := context.Background()
+	order, err := ra.NewOrder(ctx, exampleOrder)
+	test.AssertNotError(t, err, "adding an initial order for regA")
+	test.AssertNotNil(t, order.Id, "initial order had a nil ID")
+	test.AssertEquals(t, numAuthorizations(order), 1)
+
+	// Mock SA that fails all authorizations for "example.com".
+	ra.SA = &mockInvalidPlusValidAuthzAuthority{
+		mockInvalidAuthorizationsAuthority{
+			domainWithFailures: "example.com"},
+	}
+
+	// Set up a rate limit policy that allows 1 order every 24 hours.
+	ra.rlPolicies = &dummyRateLimitConfig{
+		InvalidAuthorizationsPerAccountPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 1,
+			Window:    config.Duration{Duration: 24 * time.Hour},
+		},
+	}
+
+	// Requesting a new order for "example.com" should fail due to too many
+	// failed authorizations.
+	_, err = ra.NewOrder(ctx, exampleOrder)
+	test.AssertError(t, err, "expected error for domain with too many failures")
+
+	// Exempt the order from rate limiting.
+	exampleOrder.LimitsExempt = true
+	_, err = ra.NewOrder(ctx, exampleOrder)
+	test.AssertNotError(t, err, "limit exempt order should have succeeded")
+}
+
+func TestNewOrderReplacesSerialCarriesThroughToSA(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	exampleOrder := &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"example.com"},
+		ReplacesSerial: "1234",
+	}
+
+	// Mock SA that returns an error from NewOrderAndAuthzs if the
+	// "ReplacesSerial" field of the request is empty.
+	ra.SA = &mockNewOrderMustBeReplacementAuthority{}
+
+	_, err := ra.NewOrder(ctx, exampleOrder)
+	test.AssertNotError(t, err, "order with ReplacesSerial should have succeeded")
+}

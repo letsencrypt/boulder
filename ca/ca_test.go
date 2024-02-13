@@ -185,7 +185,7 @@ func setup(t *testing.T) *testCtx {
 		UseForECDSALeaves: true,
 		IssuerURL:         "http://not-example.com/issuer-url",
 		OCSPURL:           "http://not-example.com/ocsp",
-		CRLURL:            "http://not-example.com/crl",
+		CRLURLBase:        "http://not-example.com/crl/",
 		Location:          issuance.IssuerLoc{File: ecdsaIntKey, CertFile: ecdsaIntCert},
 	}, fc)
 	test.AssertNotError(t, err, "Couldn't load test issuer")
@@ -195,7 +195,7 @@ func setup(t *testing.T) *testCtx {
 		UseForECDSALeaves: true,
 		IssuerURL:         "http://not-example.com/issuer-url",
 		OCSPURL:           "http://not-example.com/ocsp",
-		CRLURL:            "http://not-example.com/crl",
+		CRLURLBase:        "http://not-example.com/crl/",
 		Location:          issuance.IssuerLoc{File: rsaIntKey, CertFile: rsaIntCert},
 	}, fc)
 	test.AssertNotError(t, err, "Couldn't load test issuer")
@@ -234,8 +234,10 @@ func setup(t *testing.T) *testCtx {
 
 	crl, err := NewCRLImpl(
 		boulderIssuers,
-		boulderProfile.Lints,
-		time.Hour,
+		issuance.CRLProfileConfig{
+			ValidityInterval: config.Duration{Duration: 216 * time.Hour},
+			MaxBackdate:      config.Duration{Duration: time.Hour},
+		},
 		"http://c.boulder.test",
 		100,
 		blog.NewMock(),
@@ -693,8 +695,8 @@ func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIss
 	test.AssertMetricWithLabelsEquals(t, i.ca.signatureCount, prometheus.Labels{"purpose": "precertificate"}, 1)
 
 	// NOTE: The hard-coded value here will have to change over time as Boulder
-	// adds new (unrequested) extensions to certificates.
-	expectedExtensionCount := 10
+	// adds or removes (unrequested/default) extensions in certificates.
+	expectedExtensionCount := 9
 	test.AssertEquals(t, len(i.cert.Extensions), expectedExtensionCount)
 }
 

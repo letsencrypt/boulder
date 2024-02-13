@@ -55,8 +55,7 @@ type Profile struct {
 	maxBackdate time.Duration
 	maxValidity time.Duration
 
-	// TODO(#7159): Make this private when CRLs have their own profile.
-	Lints lint.Registry
+	lints lint.Registry
 }
 
 // NewProfile synthesizes the profile config and issuer config into a single
@@ -74,7 +73,7 @@ func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, erro
 		allowCommonName: profileConfig.AllowCommonName,
 		maxBackdate:     profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:     profileConfig.MaxValidityPeriod.Duration,
-		Lints:           reg,
+		lints:           reg,
 	}
 
 	return sp, nil
@@ -161,9 +160,8 @@ func (i *Issuer) generateTemplate() *x509.Certificate {
 		PolicyIdentifiers: []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
 	}
 
-	if i.crlURL != "" {
-		template.CRLDistributionPoints = []string{i.crlURL}
-	}
+	// TODO(#7294): Use i.crlURLBase and a shard calculation to create a
+	// crlDistributionPoint.
 
 	return template
 }
@@ -258,7 +256,7 @@ type issuanceToken struct {
 // private key.
 func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 	// check request is valid according to the issuance profile
-	err := i.requestValid(i.Clk, prof, req)
+	err := i.requestValid(i.clk, prof, req)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -304,7 +302,7 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	lintCertBytes, err := i.Linter.Check(template, req.PublicKey, prof.Lints)
+	lintCertBytes, err := i.Linter.Check(template, req.PublicKey, prof.lints)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}
