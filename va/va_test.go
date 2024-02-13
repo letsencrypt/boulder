@@ -264,7 +264,7 @@ func TestValidateMalformedChallenge(t *testing.T) {
 }
 
 func TestPerformValidationInvalid(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, mockLog := setup(nil, 0, "", nil, nil)
 
 	req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
@@ -275,6 +275,24 @@ func TestPerformValidationInvalid(t *testing.T) {
 		"result":       "invalid",
 		"problem_type": "unauthorized",
 	}, 1)
+
+	test.AssertDeepEquals(t, mockLog.GetAllMatching(`Validation result`),
+		[]string{
+			"foo",
+		})
+}
+
+func TestInternalErrorLogged(t *testing.T) {
+	va, mockLog := setup(nil, 0, "", nil, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+	req := createValidationRequest("nonexistent.com", core.ChallengeTypeHTTP01)
+	_, err := va.PerformValidation(ctx, req)
+	test.AssertNotError(t, err, "failed validation should not be an error")
+	matchingLogs := mockLog.GetAllMatching(
+		`Validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: context deadline exceeded`)
+	test.AssertEquals(t, len(matchingLogs), 1)
 }
 
 func TestPerformValidationValid(t *testing.T) {
