@@ -784,10 +784,13 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
 
 	// Copy the "UsedRSAKEX" value from the last validationRecord into the log
-	// event. Only the last record will have this bool set, because we only
-	// record it if/when validation is finally successful.
+	// event. Only the last record should have this bool set, because we only
+	// record it if/when validation is finally successful, but we use the loop
+	// just in case that assumption changes.
 	// TODO(#7321): Remove this when we have collected enough data.
-	logEvent.UsedRSAKEX = records[len(records)-1].UsedRSAKEX
+	for _, record := range records {
+		logEvent.UsedRSAKEX = record.UsedRSAKEX || logEvent.UsedRSAKEX
+	}
 
 	va.metrics.localValidationTime.With(prometheus.Labels{
 		"type":   string(challenge.Type),
