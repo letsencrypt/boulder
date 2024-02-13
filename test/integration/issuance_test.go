@@ -94,9 +94,6 @@ func TestCommonNameSANsTooLong(t *testing.T) {
 
 	// Issue a cert using a CSR with no CN set.
 	ir, err := authAndIssue(client, key, []string{san1, san2}, false)
-
-	// But in config-next, the AllowNoCommonName flag is true, so issuance should
-	// have succeeded.
 	test.AssertNotError(t, err, "failed to issue test cert")
 	cert := ir.certs[0]
 
