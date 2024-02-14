@@ -117,9 +117,7 @@
 		"ocspLogPeriod": "500ms",
 		"ctLogListFile": "test/ct-test-srv/log_list.json",
 		"features": {
-			"ECDSAForAll": true,
-			"AllowNoCommonName": true,
-			"SHA256SubjectKeyIdentifier": true
+			"ECDSAForAll": true
 		}
 	},
 	"pa": {

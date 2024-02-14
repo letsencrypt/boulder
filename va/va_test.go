@@ -18,6 +18,10 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
+	"gopkg.in/go-jose/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -28,9 +32,6 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc"
-	"gopkg.in/go-jose/go-jose.v2"
 )
 
 func TestImplementation(t *testing.T) {
@@ -334,8 +335,8 @@ func TestPerformValidationWildcard(t *testing.T) {
 func TestDCVAndCAASequencing(t *testing.T) {
 	va, mockLog := setup(nil, 0, "", nil, nil)
 
-	// When performing validation without the CAAAfterValidation flag, CAA should
-	// be checked.
+	// When validation succeeds, CAA should be checked.
+	mockLog.Clear()
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 	res, err := va.PerformValidation(context.Background(), req)
 	test.AssertNotError(t, err, "performing validation")
@@ -343,21 +344,7 @@ func TestDCVAndCAASequencing(t *testing.T) {
 	caaLog := mockLog.GetAllMatching(`Checked CAA records for`)
 	test.AssertEquals(t, len(caaLog), 1)
 
-	features.Set(features.Config{CAAAfterValidation: true})
-	defer features.Reset()
-
-	// When performing successful validation with the CAAAfterValidation flag,
-	// CAA should be checked.
-	mockLog.Clear()
-	req = createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
-	res, err = va.PerformValidation(context.Background(), req)
-	test.AssertNotError(t, err, "performing validation")
-	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
-	caaLog = mockLog.GetAllMatching(`Checked CAA records for`)
-	test.AssertEquals(t, len(caaLog), 1)
-
-	// When performing failed validation with the CAAAfterValidation flag,
-	// CAA should be skipped
+	// When validation fails, CAA should be skipped.
 	mockLog.Clear()
 	req = createValidationRequest("bad-dns01.com", core.ChallengeTypeDNS01)
 	res, err = va.PerformValidation(context.Background(), req)

@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
@@ -28,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -436,43 +437,17 @@ func (va *ValidationAuthorityImpl) validate(
 		baseIdentifier.Value = strings.TrimPrefix(identifier.Value, "*.")
 	}
 
-	// Create this channel outside of the feature-conditional block so that it is
-	// also in scope for the matching block below.
-	ch := make(chan error, 1)
-	if !features.Get().CAAAfterValidation {
-		// va.checkCAA accepts wildcard identifiers and handles them appropriately so
-		// we can dispatch `checkCAA` with the provided `identifier` instead of
-		// `baseIdentifier`
-		go func() {
-			params := &caaParams{
-				accountURIID:     regid,
-				validationMethod: challenge.Type,
-			}
-			ch <- va.checkCAA(ctx, identifier, params)
-		}()
-	}
-
-	// TODO(#1292): send into another goroutine
 	validationRecords, err := va.validateChallenge(ctx, baseIdentifier, challenge)
 	if err != nil {
 		return validationRecords, err
 	}
 
-	if !features.Get().CAAAfterValidation {
-		for i := 0; i < cap(ch); i++ {
-			if extraErr := <-ch; extraErr != nil {
-				return validationRecords, extraErr
-			}
-		}
-	} else {
-		params := &caaParams{
-			accountURIID:     regid,
-			validationMethod: challenge.Type,
-		}
-		err := va.checkCAA(ctx, identifier, params)
-		if err != nil {
-			return validationRecords, err
-		}
+	err = va.checkCAA(ctx, identifier, &caaParams{
+		accountURIID:     regid,
+		validationMethod: challenge.Type,
+	})
+	if err != nil {
+		return validationRecords, err
 	}
 
 	return validationRecords, nil

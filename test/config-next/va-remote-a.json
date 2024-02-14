@@ -33,7 +33,6 @@
 			}
 		},
 		"features": {
-			"CAAAfterValidation": true,
 			"DOH": true
 		},
 		"accountURIPrefixes": [

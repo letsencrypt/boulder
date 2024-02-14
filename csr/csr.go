@@ -9,7 +9,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 )
 
@@ -30,13 +29,12 @@ var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 }
 
 var (
-	invalidPubKey        = berrors.BadCSRError("invalid public key in CSR")
-	unsupportedSigAlg    = berrors.BadCSRError("signature algorithm not supported")
-	invalidSig           = berrors.BadCSRError("invalid signature on CSR")
-	invalidEmailPresent  = berrors.BadCSRError("CSR contains one or more email address fields")
-	invalidIPPresent     = berrors.BadCSRError("CSR contains one or more IP address fields")
-	invalidNoDNS         = berrors.BadCSRError("at least one DNS name is required")
-	invalidAllSANTooLong = berrors.BadCSRError("CSR doesn't contain a SAN short enough to fit in CN")
+	invalidPubKey       = berrors.BadCSRError("invalid public key in CSR")
+	unsupportedSigAlg   = berrors.BadCSRError("signature algorithm not supported")
+	invalidSig          = berrors.BadCSRError("invalid signature on CSR")
+	invalidEmailPresent = berrors.BadCSRError("CSR contains one or more email address fields")
+	invalidIPPresent    = berrors.BadCSRError("CSR contains one or more IP address fields")
+	invalidNoDNS        = berrors.BadCSRError("at least one DNS name is required")
 )
 
 // VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes
@@ -73,9 +71,6 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 
 	if len(names.SANs) == 0 && names.CN == "" {
 		return invalidNoDNS
-	}
-	if names.CN == "" && !features.Get().AllowNoCommonName {
-		return invalidAllSANTooLong
 	}
 	if len(names.CN) > maxCNLength {
 		return berrors.BadCSRError("CN was longer than %d bytes", maxCNLength)

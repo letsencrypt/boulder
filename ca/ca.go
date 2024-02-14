@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto"
 	"crypto/rand"
-	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -356,11 +355,17 @@ func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
+// generateSKID computes the Subject Key Identifier using one of the methods in
+// RFC 7093 Section 2 Additional Methods for Generating Key Identifiers:
+// The keyIdentifier [may be] composed of the leftmost 160-bits of the
+// SHA-256 hash of the value of the BIT STRING subjectPublicKey
+// (excluding the tag, length, and number of unused bits).
 func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 	pkBytes, err := x509.MarshalPKIXPublicKey(pk)
 	if err != nil {
 		return nil, err
 	}
+
 	var pkixPublicKey struct {
 		Algo      pkix.AlgorithmIdentifier
 		BitString asn1.BitString
@@ -369,17 +374,8 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 		return nil, err
 	}
 
-	if features.Get().SHA256SubjectKeyIdentifier {
-		// RFC 7093 Section 2 Additional Methods for Generating Key Identifiers:
-		// The keyIdentifier [may be] composed of the leftmost 160-bits of the
-		// SHA-256 hash of the value of the BIT STRING subjectPublicKey
-		// (excluding the tag, length, and number of unused bits).
-		skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
-		return skid[0:20:20], nil
-	} else {
-		skid := sha1.Sum(pkixPublicKey.BitString.Bytes)
-		return skid[:], nil
-	}
+	skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
+	return skid[0:20:20], nil
 }
 
 func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *issuance.Issuer, error) {

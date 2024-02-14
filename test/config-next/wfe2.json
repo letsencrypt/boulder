@@ -127,8 +127,7 @@
 			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml"
 		},
 		"features": {
-			"ServeRenewalInfo": true,
-			"AllowNoCommonName": true
+			"ServeRenewalInfo": true
 		}
 	},
 	"syslog": {
