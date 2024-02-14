@@ -318,6 +318,7 @@ type verificationRequestEvent struct {
 	Hostname          string         `json:",omitempty"`
 	Challenge         core.Challenge `json:",omitempty"`
 	ValidationLatency float64
+	UsedRSAKEX        bool   `json:",omitempty"`
 	Error             string `json:",omitempty"`
 }
 
@@ -756,6 +757,15 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	validationLatency := time.Since(vStart)
 	logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
 
+	// Copy the "UsedRSAKEX" value from the last validationRecord into the log
+	// event. Only the last record should have this bool set, because we only
+	// record it if/when validation is finally successful, but we use the loop
+	// just in case that assumption changes.
+	// TODO(#7321): Remove this when we have collected enough data.
+	for _, record := range records {
+		logEvent.UsedRSAKEX = record.UsedRSAKEX || logEvent.UsedRSAKEX
+	}
+
 	va.metrics.localValidationTime.With(prometheus.Labels{
 		"type":   string(challenge.Type),
 		"result": string(challenge.Status),
@@ -773,4 +783,11 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// sure it is UTF-8 clean now.
 	prob = filterProblemDetails(prob)
 	return bgrpc.ValidationResultToPB(records, prob)
+}
+
+// usedRSAKEX returns true if the given cipher suite involves the use of an
+// RSA key exchange mechanism.
+// TODO(#7321): Remove this when we have collected enough data.
+func usedRSAKEX(cs uint16) bool {
+	return strings.HasPrefix(tls.CipherSuiteName(cs), "TLS_RSA_")
 }
