@@ -26,9 +26,9 @@ services:
       - ./.hierarchy:/hierarchy/:cached
       - ./.softhsm-tokens/:/var/lib/softhsm/tokens/:cached
     networks:
-      bluenet:
+      bouldernet:
         ipv4_address: 10.77.77.77
-      rednet:
+      integrationtestnet:
         ipv4_address: 10.88.88.88
       redisnet:
         ipv4_address: 10.33.33.33
@@ -62,7 +62,7 @@ services:
   bmysql:
     image: mariadb:10.5
     networks:
-      bluenet:
+      bouldernet:
         aliases:
           - boulder-mysql
     environment:
@@ -87,7 +87,7 @@ services:
     depends_on:
       - bmysql
     networks:
-      bluenet:
+      bouldernet:
         aliases:
           - boulder-proxysql
 
@@ -134,25 +134,37 @@ services:
     networks:
       consulnet:
         ipv4_address: 10.55.55.10
-      bluenet:
+      bouldernet:
         ipv4_address: 10.77.77.10
     command: "consul agent -dev -config-format=hcl -config-file=/test/consul/config.hcl"
 
   bjaeger:
     image: jaegertracing/all-in-one:1.50
     networks:
-      bluenet:
+      bouldernet:
         ipv4_address: 10.77.77.17
 
 networks:
-  bluenet:
+  # This network is primarily used for boulder services. It is also used by
+  # challtestsrv, which is used in the integration tests.
+  bouldernet:
     driver: bridge
     ipam:
       driver: default
       config:
         - subnet: 10.77.77.0/24
 
-  rednet:
+  # This network is used for two things in the integration tests:
+  #  - challtestsrv binds to 10.88.88.88:443 for its tls-alpn-01 challenge
+  #    responder, to avoid interfering with the HTTPS port used for testing
+  #    HTTP->HTTPS redirects during http-01 challenges. Note: this could
+  #    probably be updated in the future so that challtestsrv can handle
+  #    both tls-alpn-01 and HTTPS on the same port.
+  #  - test/v2_integration.py has some test cases that start their own HTTP
+  #    server instead of relying on challtestsrv, because they want very
+  #    specific behavior. For these cases, v2_integration.py creates a Python
+  #    HTTP server and binds it to 10.88.88.88:80.
+  integrationtestnet:
     driver: bridge
     ipam:
       driver: default
