@@ -52,14 +52,18 @@ type issuerMaps struct {
 	byNameID map[issuance.NameID]*issuance.Issuer
 }
 
+// certProfilesMap allows looking up the human-readable name of a certificate
+// profile to retrieve the actual profile.
+type certProfilesMap map[string]*issuance.Profile
+
 // certificateAuthorityImpl represents a CA that signs certificates.
 // It can sign OCSP responses as well, but only via delegation to an ocspImpl.
 type certificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
-	sa      sapb.StorageAuthorityCertificateClient
-	pa      core.PolicyAuthority
-	issuers issuerMaps
-	profile *issuance.Profile
+	sa           sapb.StorageAuthorityCertificateClient
+	pa           core.PolicyAuthority
+	issuers      issuerMaps
+	certProfiles certProfilesMap
 
 	// This is temporary, and will be used for testing and slow roll-out
 	// of ECDSA issuance, but will then be removed.
@@ -96,6 +100,26 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 	return issuerMaps{issuersByAlg, issuersByNameID}
 }
 
+// makeCertificateProfilesMap aggregates multiple certificate issuance profiles
+// and maps the human-readable name to the profile. It returns the map or an
+// error if a duplicate profile name is found.
+func makeCertificateProfilesMap(origProfile *issuance.Profile, certProfiles []*issuance.Profile) (certProfilesMap, error) {
+	var allProfiles []*issuance.Profile
+	allProfiles = append(allProfiles, origProfile)
+	allProfiles = append(allProfiles, certProfiles...)
+
+	profilesByName := make(map[string]*issuance.Profile, len(allProfiles))
+	for _, profile := range allProfiles {
+		if profilesByName[profile.Name()] == nil {
+			profilesByName[profile.Name()] = profile
+		} else {
+			return nil, fmt.Errorf("duplicate certificate profile name %+v", profile)
+		}
+	}
+
+	return profilesByName, nil
+}
+
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
 // from any number of issuance.Issuers according to their profiles, and can sign
 // OCSP (via delegation to an ocspImpl and its issuers).
@@ -104,6 +128,7 @@ func NewCertificateAuthorityImpl(
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
 	certificateProfile *issuance.Profile,
+	certificateProfiles []*issuance.Profile,
 	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
 	certBackdate time.Duration,
@@ -139,6 +164,11 @@ func NewCertificateAuthorityImpl(
 		return nil, errors.New("must have at least one certificate profile")
 	}
 
+	certProfiles, err := makeCertificateProfilesMap(certificateProfile, certificateProfiles)
+	if err != nil {
+		return nil, err
+	}
+
 	issuers := makeIssuerMaps(boulderIssuers)
 
 	lintErrorCount := prometheus.NewCounter(
@@ -152,7 +182,7 @@ func NewCertificateAuthorityImpl(
 		sa:             sa,
 		pa:             pa,
 		issuers:        issuers,
-		profile:        certificateProfile,
+		certProfiles:   certProfiles,
 		validityPeriod: certExpiry,
 		backdate:       certBackdate,
 		prefix:         serialPrefix,
@@ -167,6 +197,17 @@ func NewCertificateAuthorityImpl(
 	}
 
 	return ca, nil
+}
+
+// certificateProfileExists checks if the given certificate profile exists in
+// the CA's list of configured certificate profiles or returns an error.
+func (ca *certificateAuthorityImpl) certificateProfileExists(profile string) error {
+	_, ok := ca.certProfiles[profile]
+	if !ok {
+		return fmt.Errorf("the CA is not capable of using profile %s", profile)
+	}
+
+	return nil
 }
 
 // noteSignError is called after operations that may cause a PKCS11 signing error.
@@ -188,6 +229,10 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID) {
 		return nil, berrors.InternalServerError("Incomplete issue certificate request")
 	}
+
+	// TODO(@pgporada): Check that the CA is capable of creating a precert with
+	// the incoming profile name i.e. `err :=
+	// ca.certificateProfileExists(issueReq.CertProfileName)`
 
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
 	if err != nil {
@@ -249,6 +294,10 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return nil, berrors.InternalServerError("Incomplete cert for precertificate request")
 	}
 
+	// TODO(@pgporada): Check that the CA is capable of creating a certificate
+	// with the incoming profile name i.e. `err :=
+	// ca.certificateProfileExists(req.CertProfileName)`
+
 	precert, err := x509.ParseCertificate(req.DER)
 	if err != nil {
 		return nil, err
@@ -287,7 +336,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] precert=[%s]",
 		serialHex, req.RegistrationID, names, hex.EncodeToString(precert.Raw))
 
-	_, issuanceToken, err := issuer.Prepare(ca.profile, issuanceReq)
+	_, issuanceToken, err := issuer.Prepare(ca.certProfiles["defaultCertificateProfileName"], issuanceReq)
 	if err != nil {
 		ca.log.AuditErrf("Preparing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, req.RegistrationID, names, err)
@@ -442,7 +491,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotAfter:          validity.NotAfter,
 	}
 
-	lintCertBytes, issuanceToken, err := issuer.Prepare(ca.profile, req)
+	lintCertBytes, issuanceToken, err := issuer.Prepare(ca.certProfiles["defaultCertificateProfileName"], req)
 	if err != nil {
 		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)

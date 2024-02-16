@@ -34,7 +34,9 @@ type Config struct {
 
 		// Issuance contains all information necessary to load and initialize issuers.
 		Issuance struct {
-			Profile issuance.ProfileConfig
+			// Deprecated: Use CertProfiles instead.
+			Profile      issuance.ProfileConfig
+			CertProfiles []issuance.ProfileConfig
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile   issuance.CRLProfileConfig `validate:"-"`
 			Issuers      []issuance.IssuerConfig   `validate:"min=1,dive"`
@@ -203,8 +205,15 @@ func main() {
 		issuers = append(issuers, issuer)
 	}
 
-	profile, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
+	deprecatedProfile, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
 	cmd.FailOnError(err, "Couldn't load issuance profile")
+
+	var certProfiles []*issuance.Profile
+	for _, profileConfig := range c.CA.Issuance.CertProfiles {
+		profile, err := issuance.NewProfile(profileConfig, c.CA.Issuance.IgnoredLints)
+		cmd.FailOnError(err, "Couldn't load issuance profile")
+		certProfiles = append(certProfiles, profile)
+	}
 
 	tlsConfig, err := c.CA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
@@ -266,7 +275,8 @@ func main() {
 			sa,
 			pa,
 			issuers,
-			profile,
+			deprecatedProfile,
+			certProfiles,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,
 			c.CA.Backdate.Duration,

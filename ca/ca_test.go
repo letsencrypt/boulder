@@ -110,6 +110,7 @@ type testCtx struct {
 	ocsp           *ocspImpl
 	crl            *crlImpl
 	profile        *issuance.Profile
+	certProfiles   []*issuance.Profile
 	certExpiry     time.Duration
 	certBackdate   time.Duration
 	serialPrefix   int
@@ -245,10 +246,14 @@ func setup(t *testing.T) *testCtx {
 	test.AssertNotError(t, err, "Failed to create crl impl")
 
 	return &testCtx{
-		pa:             pa,
-		ocsp:           ocsp,
-		crl:            crl,
-		profile:        boulderProfile,
+		pa:      pa,
+		ocsp:    ocsp,
+		crl:     crl,
+		profile: boulderProfile,
+		// TODO(@pgporada): Once the issuance.ProfileConfig name field is exported
+		// and we can begin using multiple profiles, add an additional profile to
+		// populate certProfiles.
+		certProfiles:   []*issuance.Profile{},
 		certExpiry:     8760 * time.Hour,
 		certBackdate:   time.Hour,
 		serialPrefix:   17,
@@ -272,6 +277,7 @@ func TestSerialPrefix(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		0,
@@ -285,6 +291,7 @@ func TestSerialPrefix(t *testing.T) {
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 
 	_, err = NewCertificateAuthorityImpl(
+		nil,
 		nil,
 		nil,
 		nil,
@@ -334,11 +341,9 @@ func TestIssuePrecertificate(t *testing.T) {
 		// "precertificate" test.
 		for _, mode := range []string{"precertificate", "certificate-for-precertificate"} {
 			ca, sa := issueCertificateSubTestSetup(t, nil)
-
 			t.Run(fmt.Sprintf("%s - %s", mode, testCase.name), func(t *testing.T) {
 				req, err := x509.ParseCertificateRequest(testCase.csr)
 				test.AssertNotError(t, err, "Certificate request failed to parse")
-
 				issueReq := &capb.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: arbitraryRegID}
 
 				var certDER []byte
@@ -349,7 +354,6 @@ func TestIssuePrecertificate(t *testing.T) {
 
 				cert, err := x509.ParseCertificate(certDER)
 				test.AssertNotError(t, err, "Certificate failed to parse")
-
 				poisonExtension := findExtension(cert.Extensions, OIDExtensionCTPoison)
 				test.AssertNotNil(t, poisonExtension, "Precert doesn't contain poison extension")
 				if poisonExtension != nil {
@@ -383,6 +387,7 @@ func issueCertificateSubTestSetup(t *testing.T, e *ECDSAAllowList) (*certificate
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.profile,
+		testCtx.certProfiles,
 		e,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -395,6 +400,7 @@ func issueCertificateSubTestSetup(t *testing.T, e *ECDSAAllowList) (*certificate
 		testCtx.signErrorCount,
 		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
+
 	return ca, sa
 }
 
@@ -429,6 +435,7 @@ func TestNoIssuers(t *testing.T) {
 		testCtx.pa,
 		nil, // No issuers
 		testCtx.profile,
+		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -453,6 +460,7 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.profile,
+		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -483,27 +491,100 @@ func TestMultipleIssuers(t *testing.T) {
 	test.AssertNotError(t, err, "Certificate failed signature validation")
 }
 
-func TestNoProfile(t *testing.T) {
-	testCtx := setup(t)
+func TestProfiles(t *testing.T) {
+	ctx := setup(t)
+	test.AssertEquals(t, len(ctx.certProfiles), 0)
+
 	sa := &mockSA{}
-	_, err := NewCertificateAuthorityImpl(
-		sa,
-		testCtx.pa,
-		testCtx.boulderIssuers,
-		nil, // no profile
-		nil,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		testCtx.logger,
-		testCtx.stats,
-		testCtx.signatureCount,
-		testCtx.signErrorCount,
-		testCtx.fc)
-	test.AssertError(t, err, "No profile found during CA construction.")
-	test.AssertEquals(t, err.Error(), "must have at least one certificate profile")
+
+	duplicateProfile, err := issuance.NewProfile(
+		issuance.ProfileConfig{
+			AllowMustStaple: false,
+			AllowCTPoison:   false,
+			AllowSCTList:    false,
+			AllowCommonName: false,
+			Policies: []issuance.PolicyConfig{
+				{OID: "2.23.140.1.2.1"},
+			},
+			MaxValidityPeriod:   config.Duration{Duration: time.Hour * 8760},
+			MaxValidityBackdate: config.Duration{Duration: time.Hour},
+		},
+		[]string{"w_subject_common_name_included"},
+	)
+	test.AssertNotError(t, err, "Couldn't create extra profile")
+
+	var duplicateProfiles []*issuance.Profile
+	duplicateProfiles = append(duplicateProfiles, duplicateProfile)
+	test.AssertEquals(t, len(duplicateProfiles), 1)
+
+	// TODO(@pgporada): Once the issuance.ProfileConfig name field is exported
+	// and we can begin using multiple profiles, add a test that checks for
+	// existence of both profile and certProfiles without a duplicate name (the
+	// happy path).
+	testCases := []struct {
+		name              string
+		profile           *issuance.Profile
+		certProfiles      []*issuance.Profile
+		expectErrSubstr   string
+		expectProfileName string
+	}{
+		{
+			name:            "both empty",
+			profile:         nil,
+			certProfiles:    nil,
+			expectErrSubstr: "at least one certificate profile",
+		},
+		{
+			name:            "no profile",
+			profile:         nil,
+			certProfiles:    ctx.certProfiles,
+			expectErrSubstr: "at least one certificate profile",
+		},
+		{
+			name:              "no certProfiles",
+			profile:           ctx.profile,
+			certProfiles:      nil,
+			expectProfileName: "defaultCertificateProfileName",
+		},
+		{
+			name:            "both exist, but have a duplicate profile name",
+			profile:         ctx.profile,
+			certProfiles:    duplicateProfiles,
+			expectErrSubstr: "duplicate certificate profile name",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tCA, err := NewCertificateAuthorityImpl(
+				sa,
+				ctx.pa,
+				ctx.boulderIssuers,
+				tc.profile,
+				tc.certProfiles,
+				nil,
+				ctx.certExpiry,
+				ctx.certBackdate,
+				ctx.serialPrefix,
+				ctx.maxNames,
+				ctx.keyPolicy,
+				ctx.logger,
+				ctx.stats,
+				ctx.signatureCount,
+				ctx.signErrorCount,
+				ctx.fc)
+			if tc.expectErrSubstr != "" {
+				if !strings.Contains(err.Error(), tc.expectErrSubstr) {
+					t.Errorf("expected error to contain %q, got %q", tc.expectErrSubstr, err.Error())
+				}
+				test.AssertError(t, err, "No profile found during CA construction.")
+			} else {
+				test.AssertNotError(t, err, "Profiles should exist, but were not found")
+				err = tCA.certificateProfileExists(tc.expectProfileName)
+				test.AssertNotError(t, err, "Profile name not found in map")
+			}
+		})
+	}
 }
 
 func TestECDSAAllowList(t *testing.T) {
@@ -598,6 +679,7 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.pa,
 			testCtx.boulderIssuers,
 			testCtx.profile,
+			testCtx.certProfiles,
 			nil,
 			testCtx.certExpiry,
 			testCtx.certBackdate,
@@ -635,6 +717,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.profile,
+		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -736,6 +819,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.profile,
+		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -842,6 +926,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.profile,
+		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -884,6 +969,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.profile,
+		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
