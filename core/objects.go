@@ -494,9 +494,9 @@ type SuggestedWindow struct {
 }
 
 // IsWithin returns true if the given time is within the suggested window,
-// inclusive of the start and end times.
+// inclusive of the start time and exclusive of the end time.
 func (window SuggestedWindow) IsWithin(now time.Time) bool {
-	return !now.Before(window.Start) && !now.After(window.End)
+	return !now.Before(window.Start) && now.Before(window.End)
 }
 
 // RenewalInfo is a type which is exposed to clients which query the renewalInfo

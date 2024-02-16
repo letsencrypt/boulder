@@ -190,7 +190,7 @@ func TestRenewalInfoSuggestedWindowIsWithin(t *testing.T) {
 	test.Assert(t, window.IsWithin(now.Add(time.Minute*30)), "Middle of window should be within the window")
 
 	// Exactly the end, inclusive of the last nanosecond.
-	test.Assert(t, window.IsWithin(now.Add(time.Hour)), "End of window should be within the window")
+	test.Assert(t, !window.IsWithin(now.Add(time.Hour)), "End of window should be outside the window")
 
 	// Just before the first nanosecond.
 	test.Assert(t, !window.IsWithin(now.Add(-time.Nanosecond)), "Before the window should not be within the window")
