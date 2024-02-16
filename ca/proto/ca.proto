@@ -13,21 +13,27 @@ service CertificateAuthority {
 }
 
 message IssueCertificateRequest {
+  // Next unused field number: 6
   bytes csr = 1;
   int64 registrationID = 2;
   int64 orderID = 3;
   int64 issuerNameID = 4;
+  string certProfileName = 5;
 }
 
 message IssuePrecertificateResponse {
+  // Next unused field number: 3
   bytes DER = 1;
+  string certProfileName = 2;
 }
 
 message IssueCertificateForPrecertificateRequest {
+  // Next unused field number: 6
   bytes DER = 1;
   repeated bytes SCTs = 2;
   int64 registrationID = 3;
   int64 orderID = 4;
+  string certProfileName = 5;
 }
 
 // OCSPGenerator generates OCSP. We separate this out from
