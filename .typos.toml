@@ -10,7 +10,7 @@ ignore-hidden = false
 [default]
 extend-ignore-re = [
     # PEM
-    "\\b[+/0-9=A-Za-z]{64}\\b",
+    "\\s*[+/0-9=A-Za-z]{64}\\s*",
     ' := `\{"[0-9A-Z_a-z-]{36,}"\}`',
     '"(csr|d|dp|n|protected|qi|signature|y)": ?"[0-9=A-Z_a-z-]{36,}"',
     'bigIntFromB64\("[0-9=A-Z_a-z-]{36,}"\)',
