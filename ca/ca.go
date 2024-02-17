@@ -110,8 +110,8 @@ func makeCertificateProfilesMap(origProfile *issuance.Profile, certProfiles []*i
 
 	profilesByName := make(map[string]*issuance.Profile, len(allProfiles))
 	for _, profile := range allProfiles {
-		if profilesByName[profile.Name()] == nil {
-			profilesByName[profile.Name()] = profile
+		if profilesByName[profile.Name] == nil {
+			profilesByName[profile.Name] = profile
 		} else {
 			return nil, fmt.Errorf("duplicate certificate profile name %+v", profile)
 		}

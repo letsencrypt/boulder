@@ -24,7 +24,7 @@ import (
 
 func defaultProfileConfig() ProfileConfig {
 	return ProfileConfig{
-		name:                "testCertProfileName",
+		Name:                "testCertProfileName",
 		AllowCommonName:     true,
 		AllowCTPoison:       true,
 		AllowSCTList:        true,

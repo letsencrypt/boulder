@@ -28,7 +28,7 @@ import (
 
 // ProfileConfig describes the certificate issuance constraints for all issuers.
 type ProfileConfig struct {
-	name            string
+	Name            string
 	AllowMustStaple bool
 	AllowCTPoison   bool
 	AllowSCTList    bool
@@ -48,7 +48,7 @@ type PolicyConfig struct {
 
 // Profile is the validated structure created by reading in ProfileConfigs and IssuerConfigs
 type Profile struct {
-	name            string
+	Name            string
 	allowMustStaple bool
 	allowCTPoison   bool
 	allowSCTList    bool
@@ -60,11 +60,6 @@ type Profile struct {
 	lints lint.Registry
 }
 
-// Name gets the human-readable name of a certificate profile.
-func (p *Profile) Name() string {
-	return p.name
-}
-
 // NewProfile synthesizes the profile config and issuer config into a single
 // object, and checks various aspects for correctness.
 func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, error) {
@@ -74,11 +69,7 @@ func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, erro
 	}
 
 	sp := &Profile{
-		// TODO(@pgporada): Once the issuance.ProfileConfig name field is
-		// exported and we can begin using multiple profiles, allow for an
-		// operator to configure a profile name, but use a default name when one
-		// is not provided.
-		name:            "defaultCertificateProfileName",
+		Name:            "defaultCertificateProfileName",
 		allowMustStaple: profileConfig.AllowMustStaple,
 		allowCTPoison:   profileConfig.AllowCTPoison,
 		allowSCTList:    profileConfig.AllowSCTList,
