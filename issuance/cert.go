@@ -60,6 +60,8 @@ type Profile struct {
 	lints lint.Registry
 }
 
+const defaultCertProfileName = "boulderDefaultCertificateProfile"
+
 // NewProfile synthesizes the profile config and issuer config into a single
 // object, and checks various aspects for correctness.
 func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, error) {
@@ -68,8 +70,12 @@ func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, erro
 		return nil, fmt.Errorf("creating lint registry: %w", err)
 	}
 
+	if profileConfig.Name == "" {
+		profileConfig.Name = defaultCertProfileName
+	}
+
 	sp := &Profile{
-		Name:            "defaultCertificateProfileName",
+		Name:            profileConfig.Name,
 		allowMustStaple: profileConfig.AllowMustStaple,
 		allowCTPoison:   profileConfig.AllowCTPoison,
 		allowSCTList:    profileConfig.AllowSCTList,

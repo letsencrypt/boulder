@@ -1,6 +1,7 @@
 package ca
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/rand"
@@ -8,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/gob"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -54,7 +56,10 @@ type issuerMaps struct {
 
 // certProfilesMap allows looking up the human-readable name of a certificate
 // profile to retrieve the actual profile.
-type certProfilesMap map[string]*issuance.Profile
+type certProfilesMaps struct {
+	byHash map[[32]byte]*issuance.Profile
+	byName map[string]*issuance.Profile
+}
 
 // certificateAuthorityImpl represents a CA that signs certificates.
 // It can sign OCSP responses as well, but only via delegation to an ocspImpl.
@@ -63,7 +68,7 @@ type certificateAuthorityImpl struct {
 	sa           sapb.StorageAuthorityCertificateClient
 	pa           core.PolicyAuthority
 	issuers      issuerMaps
-	certProfiles certProfilesMap
+	certProfiles certProfilesMaps
 
 	// This is temporary, and will be used for testing and slow roll-out
 	// of ECDSA issuance, but will then be removed.
@@ -100,24 +105,48 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 	return issuerMaps{issuersByAlg, issuersByNameID}
 }
 
-// makeCertificateProfilesMap aggregates multiple certificate issuance profiles
-// and maps the human-readable name to the profile. It returns the map or an
-// error if a duplicate profile name is found.
-func makeCertificateProfilesMap(origProfile *issuance.Profile, certProfiles []*issuance.Profile) (certProfilesMap, error) {
+// makeCertificateProfilesMap processes a list of certificate issuance profiles
+// into a set of maps, mapping a human-readable name to the profile and a unique
+// hash over the profile to the profile itself. It returns the maps or an error
+// if a duplicate name or hash is found.
+//
+// The unique hash is useful in the case of
+//   - RA instructs CA1 to issue a precertificate
+//   - CA1 returns the precertificate DER bytes to the RA
+//   - RA instructs CA2 to issue a final certificate, but CA2 does not contain a
+//     profile corresponding to that hash and an issuance is prevented.
+func makeCertificateProfilesMap(origProfile *issuance.Profile, certProfiles []*issuance.Profile) (certProfilesMaps, error) {
 	var allProfiles []*issuance.Profile
 	allProfiles = append(allProfiles, origProfile)
 	allProfiles = append(allProfiles, certProfiles...)
 
 	profilesByName := make(map[string]*issuance.Profile, len(allProfiles))
+	profilesByHash := make(map[[32]byte]*issuance.Profile, len(allProfiles))
+
+	var encodedProfile bytes.Buffer
 	for _, profile := range allProfiles {
 		if profilesByName[profile.Name] == nil {
 			profilesByName[profile.Name] = profile
 		} else {
-			return nil, fmt.Errorf("duplicate certificate profile name %+v", profile)
+			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile name %+v", profile)
+		}
+
+		// We encode each profile into a byte slice then create a unique hash over those bytes.
+		enc := gob.NewEncoder(&encodedProfile)
+		err := enc.Encode(allProfiles)
+		if err != nil {
+			return certProfilesMaps{}, err
+		}
+		hash := sha256.Sum256(encodedProfile.Bytes())
+
+		if profilesByHash[hash] == nil {
+			profilesByHash[hash] = profile
+		} else {
+			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile hash %+v", profile)
 		}
 	}
 
-	return profilesByName, nil
+	return certProfilesMaps{profilesByHash, profilesByName}, nil
 }
 
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
@@ -199,12 +228,26 @@ func NewCertificateAuthorityImpl(
 	return ca, nil
 }
 
-// certificateProfileExists checks if the given certificate profile exists in
-// the CA's list of configured certificate profiles or returns an error.
-func (ca *certificateAuthorityImpl) certificateProfileExists(profile string) error {
-	_, ok := ca.certProfiles[profile]
+// certificateProfileNameExists checks if the given certificate profile name
+// exists in the CA's list of configured certificate profiles or returns an
+// error. The name is guaranteed to be unique, but the profile values may differ
+// between CA nodes and should not be solely relied upon.
+func (ca *certificateAuthorityImpl) certificateProfileNameExists(profile string) error {
+	_, ok := ca.certProfiles.byName[profile]
 	if !ok {
-		return fmt.Errorf("the CA is not capable of using profile %s", profile)
+		return fmt.Errorf("the CA is not capable of using a profile named %s", profile)
+	}
+
+	return nil
+}
+
+// certificateProfileHashExists checks if the given certificate profile hash
+// exists in the CA's list of configured certificate profiles or returns an
+// error. The hash over the whole profile is guaranteed to be unique.
+func (ca *certificateAuthorityImpl) certificateProfileHashExists(hash [32]byte) error {
+	_, ok := ca.certProfiles.byHash[hash]
+	if !ok {
+		return fmt.Errorf("the CA is not capable of using a profile with hash %d", hash)
 	}
 
 	return nil
@@ -336,7 +379,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] precert=[%s]",
 		serialHex, req.RegistrationID, names, hex.EncodeToString(precert.Raw))
 
-	_, issuanceToken, err := issuer.Prepare(ca.certProfiles["defaultCertificateProfileName"], issuanceReq)
+	_, issuanceToken, err := issuer.Prepare(ca.certProfiles.byName["defaultCertificateProfileName"], issuanceReq)
 	if err != nil {
 		ca.log.AuditErrf("Preparing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, req.RegistrationID, names, err)
@@ -491,7 +534,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotAfter:          validity.NotAfter,
 	}
 
-	lintCertBytes, issuanceToken, err := issuer.Prepare(ca.certProfiles["defaultCertificateProfileName"], req)
+	lintCertBytes, issuanceToken, err := issuer.Prepare(ca.certProfiles.byName["defaultCertificateProfileName"], req)
 	if err != nil {
 		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)

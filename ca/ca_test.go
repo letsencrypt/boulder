@@ -522,35 +522,35 @@ func TestProfiles(t *testing.T) {
 	// existence of both profile and certProfiles without a duplicate name (the
 	// happy path).
 	testCases := []struct {
-		name              string
-		profile           *issuance.Profile
-		certProfiles      []*issuance.Profile
-		expectErrSubstr   string
-		expectProfileName string
+		name                string
+		profile             *issuance.Profile
+		certProfiles        []*issuance.Profile
+		expectedErrSubstr   string
+		expectedProfileName string
 	}{
 		{
-			name:            "both empty",
-			profile:         nil,
-			certProfiles:    nil,
-			expectErrSubstr: "at least one certificate profile",
+			name:              "both empty",
+			profile:           nil,
+			certProfiles:      nil,
+			expectedErrSubstr: "at least one certificate profile",
 		},
 		{
-			name:            "no profile",
-			profile:         nil,
-			certProfiles:    ctx.certProfiles,
-			expectErrSubstr: "at least one certificate profile",
+			name:              "no profile",
+			profile:           nil,
+			certProfiles:      ctx.certProfiles,
+			expectedErrSubstr: "at least one certificate profile",
 		},
 		{
 			name:              "no certProfiles",
 			profile:           ctx.profile,
 			certProfiles:      nil,
-			expectProfileName: "defaultCertificateProfileName",
+			expectedErrSubstr: "defaultCertificateProfileName",
 		},
 		{
-			name:            "both exist, but have a duplicate profile name",
-			profile:         ctx.profile,
-			certProfiles:    duplicateProfiles,
-			expectErrSubstr: "duplicate certificate profile name",
+			name:              "both exist, but have a duplicate profile name",
+			profile:           ctx.profile,
+			certProfiles:      duplicateProfiles,
+			expectedErrSubstr: "duplicate certificate profile name",
 		},
 	}
 
@@ -573,15 +573,17 @@ func TestProfiles(t *testing.T) {
 				ctx.signatureCount,
 				ctx.signErrorCount,
 				ctx.fc)
-			if tc.expectErrSubstr != "" {
-				if !strings.Contains(err.Error(), tc.expectErrSubstr) {
-					t.Errorf("expected error to contain %q, got %q", tc.expectErrSubstr, err.Error())
+			if tc.expectedErrSubstr != "" {
+				if !strings.Contains(err.Error(), tc.expectedErrSubstr) {
+					t.Errorf("expected error to contain %q, got %q", tc.expectedErrSubstr, err.Error())
 				}
 				test.AssertError(t, err, "No profile found during CA construction.")
 			} else {
 				test.AssertNotError(t, err, "Profiles should exist, but were not found")
-				err = tCA.certificateProfileExists(tc.expectProfileName)
+				err = tCA.certificateProfileNameExists(tc.expectedProfileName)
 				test.AssertNotError(t, err, "Profile name not found in map")
+				err = tCA.certificateProfileHashExists(tc.expectedProfileHash)
+				test.AssertNotError(t, err, "Profile hash not found in map")
 			}
 		})
 	}
