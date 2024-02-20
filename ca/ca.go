@@ -1,7 +1,6 @@
 package ca
 
 import (
-	"bytes"
 	"context"
 	"crypto"
 	"crypto/rand"
@@ -9,7 +8,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/gob"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -123,7 +121,6 @@ func makeCertificateProfilesMap(origProfile *issuance.Profile, certProfiles []*i
 	profilesByName := make(map[string]*issuance.Profile, len(allProfiles))
 	profilesByHash := make(map[[32]byte]*issuance.Profile, len(allProfiles))
 
-	var encodedProfile bytes.Buffer
 	for _, profile := range allProfiles {
 		if profilesByName[profile.Name] == nil {
 			profilesByName[profile.Name] = profile
@@ -131,16 +128,8 @@ func makeCertificateProfilesMap(origProfile *issuance.Profile, certProfiles []*i
 			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile name %+v", profile)
 		}
 
-		// We encode each profile into a byte slice then create a unique hash over those bytes.
-		enc := gob.NewEncoder(&encodedProfile)
-		err := enc.Encode(allProfiles)
-		if err != nil {
-			return certProfilesMaps{}, err
-		}
-		hash := sha256.Sum256(encodedProfile.Bytes())
-
-		if profilesByHash[hash] == nil {
-			profilesByHash[hash] = profile
+		if profilesByHash[profile.GetHash()] == nil {
+			profilesByHash[profile.GetHash()] = profile
 		} else {
 			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile hash %+v", profile)
 		}

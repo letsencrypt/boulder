@@ -34,9 +34,20 @@ type Config struct {
 
 		// Issuance contains all information necessary to load and initialize issuers.
 		Issuance struct {
-			// Deprecated: Use CertProfiles instead.
-			Profile      issuance.ProfileConfig
-			CertProfiles []issuance.ProfileConfig
+			// The name of the certificate profile to use if one wasn't provided
+			// by the RA during NewOrder and Finalize requests. The name must
+			// exist in either Profile.Name or Issuance.CertProfiles[].Name. A
+			// default name will be assigned if one is not provided.
+			DefaultCertificateProfileName string
+
+			// Deprecated: Use CertProfiles instead. This value will be combined
+			// with CertProfiles when creating a *certificateAuthorityImpl.
+			Profile issuance.ProfileConfig
+
+			// TODO(#6966): Make this field required once Profile has been
+			// removed from all live configs.
+			CertProfiles []issuance.ProfileConfig `validate:"min=0"`
+
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile   issuance.CRLProfileConfig `validate:"-"`
 			Issuers      []issuance.IssuerConfig   `validate:"min=1,dive"`
@@ -203,6 +214,11 @@ func main() {
 		issuer, err := issuance.LoadIssuer(issuerConfig, cmd.Clock())
 		cmd.FailOnError(err, "Loading issuer")
 		issuers = append(issuers, issuer)
+	}
+
+	if c.CA.Issuance.DefaultCertificateProfileName == "" {
+		logger.Infof("Using default certificate profile name: %s", issuance.DefaultCertProfileName)
+		c.CA.Issuance.DefaultCertificateProfileName = issuance.DefaultCertProfileName
 	}
 
 	deprecatedProfile, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)

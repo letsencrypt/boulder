@@ -6,9 +6,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"math/big"
@@ -28,6 +30,8 @@ import (
 
 // ProfileConfig describes the certificate issuance constraints for all issuers.
 type ProfileConfig struct {
+	// A unique name identifying this ProfileConfig. A default name will be
+	// assigned if one is not provided.
 	Name            string
 	AllowMustStaple bool
 	AllowCTPoison   bool
@@ -58,12 +62,24 @@ type Profile struct {
 	maxValidity time.Duration
 
 	lints lint.Registry
+
+	// hash is a hashed encoding of a ProfileConfig's exported fields that are
+	// baked directly into the resulting Profile.
+	hash [32]byte
 }
 
-const defaultCertProfileName = "boulderDefaultCertificateProfile"
+// GetHash retrieves a given Profile's hash field.
+func (p *Profile) GetHash() [32]byte {
+	return p.hash
+}
+
+// DefaultCertProfileName will be assigned to any configured certificate profile
+// without a Name.
+const DefaultCertProfileName = "defaultBoulderCertificateProfile"
 
 // NewProfile synthesizes the profile config and issuer config into a single
-// object, and checks various aspects for correctness.
+// object, and checks various aspects for correctness. A default certificate
+// profile name will be assigned if it was absent from the config file.
 func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, error) {
 	reg, err := linter.NewRegistry(skipLints)
 	if err != nil {
@@ -71,8 +87,21 @@ func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, erro
 	}
 
 	if profileConfig.Name == "" {
-		profileConfig.Name = defaultCertProfileName
+		profileConfig.Name = DefaultCertProfileName
 	}
+
+	// We encode the provided ProfileConfig into a byte slice and hash those
+	// bytes to perform a sanity check that the core Profile contents have not
+	// changed. It's possbile that in the duration between multiple roundtrip
+	// gRPC calls from the RA to the CA that a CA could be restarted with a new
+	// Name (ok) or a different TLS extension or validity (not ok).
+	var encodedProfile bytes.Buffer
+	enc := gob.NewEncoder(&encodedProfile)
+	err = enc.Encode(profileConfig)
+	if err != nil {
+		return nil, err
+	}
+	hash := sha256.Sum256(encodedProfile.Bytes())
 
 	sp := &Profile{
 		Name:            profileConfig.Name,
@@ -83,6 +112,7 @@ func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, erro
 		maxBackdate:     profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:     profileConfig.MaxValidityPeriod.Duration,
 		lints:           reg,
+		hash:            hash,
 	}
 
 	return sp, nil

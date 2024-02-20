@@ -527,6 +527,7 @@ func TestProfiles(t *testing.T) {
 		certProfiles        []*issuance.Profile
 		expectedErrSubstr   string
 		expectedProfileName string
+		expectedProfileHash [32]byte
 	}{
 		{
 			name:              "both empty",
