@@ -25,7 +25,7 @@ require (
 	github.com/prometheus/client_model v0.4.0
 	github.com/redis/go-redis/v9 v9.3.0
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
-	github.com/weppos/publicsuffix-go v0.30.2-0.20230730094716-a20f9abcc222
+	github.com/weppos/publicsuffix-go v0.30.2-0.20240219083929-48f3a5ae027a
 	github.com/zmap/zcrypto v0.0.0-20231219022726-a1f61fb1661c
 	github.com/zmap/zlint/v3 v3.6.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.46.1
