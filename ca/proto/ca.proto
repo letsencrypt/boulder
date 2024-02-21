@@ -19,7 +19,7 @@ message CertificateProfile {
 
   // The name is guaranteed to be non-empty because a default name will be
   // assigned during *Profile construction if no name is provided.
-  string name = 1; 
+  string name = 1;
 
   // The hash over the full contents of a certificate profile ensures that the
   // profile remains unchanged after multiple roundtrips through the RA and CA.
@@ -44,7 +44,6 @@ message IssueCertificateRequest {
 message IssuePrecertificateResponse {
   // Next unused field number: 3
   bytes DER = 1;
-  
   // The CA will use the selected profile during issuance of the precertificate.
   // It must return a fully populated CertificateProfile message to the RA along
   // so that eventual issuance of the final certificate can be performed using
