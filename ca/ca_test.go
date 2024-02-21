@@ -165,8 +165,9 @@ func setup(t *testing.T) *testCtx {
 	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
-	boulderProfile, err := issuance.NewProfile(
+	deprecatedProfile, err := issuance.NewProfile(
 		issuance.ProfileConfig{
+			Name:            issuance.DefaultCertProfileName,
 			AllowMustStaple: true,
 			AllowCTPoison:   true,
 			AllowSCTList:    true,
@@ -180,6 +181,24 @@ func setup(t *testing.T) *testCtx {
 		[]string{"w_subject_common_name_included"},
 	)
 	test.AssertNotError(t, err, "Couldn't create test profile")
+
+	shortLived, err := issuance.NewProfile(
+		issuance.ProfileConfig{
+			Name:            "shortLived",
+			AllowMustStaple: true,
+			AllowCTPoison:   true,
+			AllowSCTList:    true,
+			AllowCommonName: true,
+			Policies: []issuance.PolicyConfig{
+				{OID: "2.23.140.1.2.1"},
+			},
+			MaxValidityPeriod:   config.Duration{Duration: time.Hour * 240},
+			MaxValidityBackdate: config.Duration{Duration: time.Hour},
+		},
+		[]string{"w_subject_common_name_included"},
+	)
+	test.AssertNotError(t, err, "Couldn't create test profile")
+	certProfiles := []*issuance.Profile{shortLived}
 
 	ecdsaOnlyIssuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
 		UseForRSALeaves:   false,
@@ -246,14 +265,11 @@ func setup(t *testing.T) *testCtx {
 	test.AssertNotError(t, err, "Failed to create crl impl")
 
 	return &testCtx{
-		pa:      pa,
-		ocsp:    ocsp,
-		crl:     crl,
-		profile: boulderProfile,
-		// TODO(@pgporada): Once the issuance.ProfileConfig name field is exported
-		// and we can begin using multiple profiles, add an additional profile to
-		// populate certProfiles.
-		certProfiles:   []*issuance.Profile{},
+		pa:             pa,
+		ocsp:           ocsp,
+		crl:            crl,
+		profile:        deprecatedProfile,
+		certProfiles:   certProfiles,
 		certExpiry:     8760 * time.Hour,
 		certBackdate:   time.Hour,
 		serialPrefix:   17,
@@ -575,15 +591,16 @@ func TestProfiles(t *testing.T) {
 				ctx.signErrorCount,
 				ctx.fc)
 			if tc.expectedErrSubstr != "" {
-				if !strings.Contains(err.Error(), tc.expectedErrSubstr) {
-					t.Errorf("expected error to contain %q, got %q", tc.expectedErrSubstr, err.Error())
-				}
+				test.AssertContains(t, err.Error(), tc.expectedErrSubstr)
 				test.AssertError(t, err, "No profile found during CA construction.")
 			} else {
 				test.AssertNotError(t, err, "Profiles should exist, but were not found")
-				err = tCA.certificateProfileNameExists(tc.expectedProfileName)
+
+				hash, err := tCA.certificateProfileNameExists(tc.expectedProfileName)
 				test.AssertNotError(t, err, "Profile name not found in map")
-				err = tCA.certificateProfileHashExists(tc.expectedProfileHash)
+				test.AssertEquals(t, hash, tc.expectedProfileHash)
+
+				_, err = tCA.certificateProfileHashExists(hash)
 				test.AssertNotError(t, err, "Profile hash not found in map")
 			}
 		})

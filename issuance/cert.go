@@ -92,14 +92,17 @@ func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, erro
 
 	// We encode the provided ProfileConfig into a byte slice and hash those
 	// bytes to perform a sanity check that the core Profile contents have not
-	// changed. It's possbile that in the duration between multiple roundtrip
-	// gRPC calls from the RA to the CA that a CA could be restarted with a new
-	// Name (ok) or a different TLS extension or validity (not ok).
+	// changed. It's possible that in the duration between multiple roundtrips
+	// between the RA and CA that a CA could be restarted with a new Name (ok)
+	// or a different TLS extension or validity (not ok).
 	var encodedProfile bytes.Buffer
 	enc := gob.NewEncoder(&encodedProfile)
 	err = enc.Encode(profileConfig)
 	if err != nil {
 		return nil, err
+	}
+	if len(encodedProfile.Bytes()) <= 0 {
+		return nil, errors.New("non-existent certificate profile bytes")
 	}
 	hash := sha256.Sum256(encodedProfile.Bytes())
 

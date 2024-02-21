@@ -218,28 +218,30 @@ func NewCertificateAuthorityImpl(
 }
 
 // certificateProfileNameExists checks if the given certificate profile name
-// exists in the CA's list of configured certificate profiles or returns an
-// error. The name is guaranteed to be unique, but the profile values may differ
-// between CA nodes and should not be solely relied upon.
-func (ca *certificateAuthorityImpl) certificateProfileNameExists(profile string) error {
-	_, ok := ca.certProfiles.byName[profile]
+// exists in the CA's list of configured certificate profiles. It returns the
+// hash of the profile or an error. The name is guaranteed to be unique, but the
+// profile values may differ between CA nodes and should not be solely relied
+// upon.
+func (ca *certificateAuthorityImpl) certificateProfileNameExists(name string) ([32]byte, error) {
+	profile, ok := ca.certProfiles.byName[name]
 	if !ok {
-		return fmt.Errorf("the CA is not capable of using a profile named %s", profile)
+		return [32]byte{}, fmt.Errorf("the CA is not capable of using a profile named %s", name)
 	}
 
-	return nil
+	return profile.GetHash(), nil
 }
 
 // certificateProfileHashExists checks if the given certificate profile hash
-// exists in the CA's list of configured certificate profiles or returns an
-// error. The hash over the whole profile is guaranteed to be unique.
-func (ca *certificateAuthorityImpl) certificateProfileHashExists(hash [32]byte) error {
-	_, ok := ca.certProfiles.byHash[hash]
+// exists in the CA's list of configured certificate profiles. It returns the
+// profile or an error. The hash over the whole profile is guaranteed to be
+// unique.
+func (ca *certificateAuthorityImpl) certificateProfileHashExists(hash [32]byte) (*issuance.Profile, error) {
+	profile, ok := ca.certProfiles.byHash[hash]
 	if !ok {
-		return fmt.Errorf("the CA is not capable of using a profile with hash %d", hash)
+		return nil, fmt.Errorf("the CA is not capable of using a profile with hash %d", hash)
 	}
 
-	return nil
+	return profile, nil
 }
 
 // noteSignError is called after operations that may cause a PKCS11 signing error.
@@ -262,9 +264,19 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, berrors.InternalServerError("Incomplete issue certificate request")
 	}
 
-	// TODO(@pgporada): Check that the CA is capable of creating a precert with
-	// the incoming profile name i.e. `err :=
-	// ca.certificateProfileExists(issueReq.CertProfileName)`
+	// This is problematic - Phil
+	if issueReq.CertProfile.Name == "" {
+		issueReq.CertProfile.Name = issuance.DefaultCertProfileName
+	}
+
+	// The name is checked here instead of the hash because the RA is unaware of
+	// what certificate profiles exist. The CA must first check if it is capable
+	// of issuing for the given certificate profile.
+	hashBytes, err := ca.certificateProfileNameExists(issueReq.CertProfile.Name)
+	if err != nil {
+		return nil, err
+	}
+	certProfileHash := hashBytes[:]
 
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
 	if err != nil {
@@ -293,8 +305,15 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
+	// TODO(#6966): After protobuf changes in #7331 are deployed in production,
+	// append the hash of the selected certificate profile to the
+	// IssuePrecertificateResponse.
 	return &capb.IssuePrecertificateResponse{
 		DER: precertDER,
+		CertProfile: &capb.CertificateProfile{
+			Name: issueReq.CertProfile.Name,
+			Hash: certProfileHash,
+		},
 	}, nil
 }
 
@@ -322,13 +341,18 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 // serial number at the same time.
 func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
-	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID) {
+	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID, req.CertProfile.Hash) {
 		return nil, berrors.InternalServerError("Incomplete cert for precertificate request")
 	}
 
-	// TODO(@pgporada): Check that the CA is capable of creating a certificate
-	// with the incoming profile name i.e. `err :=
-	// ca.certificateProfileExists(req.CertProfileName)`
+	// The certificate profile hash is checked here instead of the name because
+	// the hash is over the entire contents of a *ProfileConfig which includes
+	// the name giving more assurance that the certificate profile has remained
+	// unchanged during the roundtrip from a CA, to the RA, then back to a CA.
+	certProfile, err := ca.certificateProfileHashExists([32]byte(req.CertProfile.Hash))
+	if err != nil {
+		return nil, err
+	}
 
 	precert, err := x509.ParseCertificate(req.DER)
 	if err != nil {
@@ -368,7 +392,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] precert=[%s]",
 		serialHex, req.RegistrationID, names, hex.EncodeToString(precert.Raw))
 
-	_, issuanceToken, err := issuer.Prepare(ca.certProfiles.byName["defaultCertificateProfileName"], issuanceReq)
+	_, issuanceToken, err := issuer.Prepare(certProfile, issuanceReq)
 	if err != nil {
 		ca.log.AuditErrf("Preparing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, req.RegistrationID, names, err)
