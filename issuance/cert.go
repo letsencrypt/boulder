@@ -68,7 +68,7 @@ type Profile struct {
 	hash [32]byte
 }
 
-// GetHash retrieves a given Profile's hash field.
+// GetHash retrieves the Profile's hash field.
 func (p *Profile) GetHash() [32]byte {
 	return p.hash
 }
