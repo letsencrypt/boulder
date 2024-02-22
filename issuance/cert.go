@@ -68,6 +68,12 @@ type Profile struct {
 	hash [32]byte
 }
 
+// UnsafeSetHash sets a Profile's hash field. This only exists for testing
+// purposes and must not be used elsewhere.
+func (p *Profile) UnsafeSetHash(h [32]byte) {
+	p.hash = h
+}
+
 // GetHash retrieves the Profile's hash field.
 func (p *Profile) GetHash() [32]byte {
 	return p.hash

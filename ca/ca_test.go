@@ -509,9 +509,11 @@ func TestMultipleIssuers(t *testing.T) {
 
 func TestProfiles(t *testing.T) {
 	ctx := setup(t)
-	test.AssertEquals(t, len(ctx.certProfiles), 0)
+	test.AssertEquals(t, len(ctx.certProfiles), 1)
 
 	sa := &mockSA{}
+
+	var duplicateProfiles, extraProfiles []*issuance.Profile
 
 	duplicateProfile, err := issuance.NewProfile(
 		issuance.ProfileConfig{
@@ -528,22 +530,39 @@ func TestProfiles(t *testing.T) {
 		[]string{"w_subject_common_name_included"},
 	)
 	test.AssertNotError(t, err, "Couldn't create extra profile")
-
-	var duplicateProfiles []*issuance.Profile
 	duplicateProfiles = append(duplicateProfiles, duplicateProfile)
 	test.AssertEquals(t, len(duplicateProfiles), 1)
 
-	// TODO(@pgporada): Once the issuance.ProfileConfig name field is exported
-	// and we can begin using multiple profiles, add a test that checks for
-	// existence of both profile and certProfiles without a duplicate name (the
-	// happy path).
+	extraProfile, err := issuance.NewProfile(
+		issuance.ProfileConfig{
+			Name:            "Unique Profile Name",
+			AllowMustStaple: false,
+			AllowCTPoison:   false,
+			AllowSCTList:    false,
+			AllowCommonName: false,
+			Policies: []issuance.PolicyConfig{
+				{OID: "2.23.140.1.2.1"},
+			},
+			MaxValidityPeriod:   config.Duration{Duration: time.Hour * 9000},
+			MaxValidityBackdate: config.Duration{Duration: time.Hour},
+		},
+		[]string{"w_subject_common_name_included"},
+	)
+	test.AssertNotError(t, err, "Couldn't create extra profile")
+	extraProfiles = append(extraProfiles, extraProfile)
+	test.AssertEquals(t, len(extraProfiles), 1)
+
+	type nameToHash struct {
+		name string
+		hash [32]byte
+	}
+
 	testCases := []struct {
-		name                string
-		profile             *issuance.Profile
-		certProfiles        []*issuance.Profile
-		expectedErrSubstr   string
-		expectedProfileName string
-		expectedProfileHash [32]byte
+		name              string
+		profile           *issuance.Profile
+		certProfiles      []*issuance.Profile
+		expectedErrSubstr string
+		expectedProfiles  []nameToHash
 	}{
 		{
 			name:              "both empty",
@@ -558,16 +577,51 @@ func TestProfiles(t *testing.T) {
 			expectedErrSubstr: "at least one certificate profile",
 		},
 		{
-			name:              "no certProfiles",
-			profile:           ctx.profile,
-			certProfiles:      nil,
-			expectedErrSubstr: "defaultCertificateProfileName",
+			name:         "no certProfiles",
+			profile:      ctx.profile,
+			certProfiles: nil,
+			expectedProfiles: []nameToHash{
+				{
+					name: issuance.DefaultCertProfileName,
+					hash: [32]byte{},
+				},
+			},
 		},
 		{
 			name:              "both exist, but have a duplicate profile name",
 			profile:           ctx.profile,
 			certProfiles:      duplicateProfiles,
 			expectedErrSubstr: "duplicate certificate profile name",
+		},
+		{
+			name:         "both exist, and are unique",
+			profile:      ctx.profile,
+			certProfiles: extraProfiles,
+			expectedProfiles: []nameToHash{
+				{
+					name: issuance.DefaultCertProfileName,
+					hash: [32]byte{},
+				},
+				{
+					name: "Unique Profile Name",
+					hash: [32]byte{},
+				},
+			},
+		},
+		{
+			name:         "a certificate profile hash changes mid-issuance",
+			profile:      ctx.profile,
+			certProfiles: extraProfiles,
+			expectedProfiles: []nameToHash{
+				{
+					name: issuance.DefaultCertProfileName,
+					hash: [32]byte{},
+				},
+				{
+					name: "Unique Profile Name",
+					hash: [32]byte{},
+				},
+			},
 		},
 	}
 
@@ -590,18 +644,35 @@ func TestProfiles(t *testing.T) {
 				ctx.signatureCount,
 				ctx.signErrorCount,
 				ctx.fc)
+
+			if tc.expectedProfiles != nil {
+				test.AssertEquals(t, len(tc.expectedProfiles), len(tCA.certProfiles.byName))
+			}
+
+			for _, x := range tc.expectedProfiles {
+				hash, err := tCA.certificateProfileNameExists(x.name)
+				test.AssertNotError(t, err, "Profile name was not found, but should have been")
+
+				if tc.name == "a certificate profile hash changes mid-issuance" {
+					// This is an attempt to simulate the hash changing, but the
+					// name remaining the same on a CA node in the duration
+					// between the CA sending capb.IssuePrecerticateResponse and
+					// before the RA calls
+					// capb.IssueCertificateForPrecertificate. We expect the
+					// receiving CA to error that the hash could not be found.
+					badHash := [32]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 9, 8}
+					extraProfiles[0].UnsafeSetHash(badHash)
+				}
+
+				_, err = tCA.certificateProfileHashExists(hash)
+				test.AssertNotError(t, err, fmt.Sprintf("Hash %v != %v", hash, x.hexHash))
+			}
+
 			if tc.expectedErrSubstr != "" {
 				test.AssertContains(t, err.Error(), tc.expectedErrSubstr)
 				test.AssertError(t, err, "No profile found during CA construction.")
 			} else {
 				test.AssertNotError(t, err, "Profiles should exist, but were not found")
-
-				hash, err := tCA.certificateProfileNameExists(tc.expectedProfileName)
-				test.AssertNotError(t, err, "Profile name not found in map")
-				test.AssertEquals(t, hash, tc.expectedProfileHash)
-
-				_, err = tCA.certificateProfileHashExists(hash)
-				test.AssertNotError(t, err, "Profile hash not found in map")
 			}
 		})
 	}
