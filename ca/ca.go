@@ -117,9 +117,7 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 func makeCertificateProfilesMap(origProfile *issuance.Profile, certProfiles []*issuance.Profile) (certProfilesMaps, error) {
 	var allProfiles []*issuance.Profile
 	allProfiles = append(allProfiles, origProfile)
-	if certProfiles != nil {
-		allProfiles = append(allProfiles, certProfiles...)
-	}
+	allProfiles = append(allProfiles, certProfiles...)
 
 	profilesByName := make(map[string]*issuance.Profile, len(allProfiles))
 	profilesByHash := make(map[[32]byte]*issuance.Profile, len(allProfiles))
