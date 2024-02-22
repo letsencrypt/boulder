@@ -583,7 +583,7 @@ func TestProfiles(t *testing.T) {
 			expectedProfiles: []nameToHash{
 				{
 					name: issuance.DefaultCertProfileName,
-					hash: [32]byte{},
+					hash: [32]byte{69, 152, 186, 151, 215, 178, 120, 168, 236, 243, 126, 175, 36, 22, 99, 92, 243, 46, 171, 22, 22, 200, 180, 162, 214, 18, 226, 195, 3, 120, 164, 75},
 				},
 			},
 		},
@@ -600,26 +600,28 @@ func TestProfiles(t *testing.T) {
 			expectedProfiles: []nameToHash{
 				{
 					name: issuance.DefaultCertProfileName,
-					hash: [32]byte{},
+					hash: [32]byte{69, 152, 186, 151, 215, 178, 120, 168, 236, 243, 126, 175, 36, 22, 99, 92, 243, 46, 171, 22, 22, 200, 180, 162, 214, 18, 226, 195, 3, 120, 164, 75},
 				},
 				{
 					name: "Unique Profile Name",
-					hash: [32]byte{},
+					hash: [32]byte{69, 181, 80, 235, 136, 21, 174, 228, 53, 51, 208, 81, 158, 40, 233, 224, 179, 19, 27, 153, 98, 223, 149, 205, 147, 30, 187, 220, 159, 54, 145, 221},
 				},
 			},
 		},
 		{
-			name:         "a certificate profile hash changes mid-issuance",
+			name:         "a certificate profile hash changed mid-issuance",
 			profile:      ctx.profile,
 			certProfiles: extraProfiles,
 			expectedProfiles: []nameToHash{
 				{
 					name: issuance.DefaultCertProfileName,
-					hash: [32]byte{},
+					hash: [32]byte{69, 152, 186, 151, 215, 178, 120, 168, 236, 243, 126, 175, 36, 22, 99, 92, 243, 46, 171, 22, 22, 200, 180, 162, 214, 18, 226, 195, 3, 120, 164, 75},
 				},
 				{
+					// Same as the "both exist, and are unique" test, but we'll
+					// change the mapped hash key under the hood.
 					name: "Unique Profile Name",
-					hash: [32]byte{},
+					hash: [32]byte{69, 181, 80, 235, 136, 21, 174, 228, 53, 51, 208, 81, 158, 40, 233, 224, 179, 19, 27, 153, 98, 223, 149, 205, 147, 30, 187, 220, 159, 54, 145, 221},
 				},
 			},
 		},
@@ -643,36 +645,47 @@ func TestProfiles(t *testing.T) {
 				ctx.stats,
 				ctx.signatureCount,
 				ctx.signErrorCount,
-				ctx.fc)
+				ctx.fc,
+			)
 
 			if tc.expectedProfiles != nil {
 				test.AssertEquals(t, len(tc.expectedProfiles), len(tCA.certProfiles.byName))
+			} else if tc.expectedErrSubstr != "" {
+				test.AssertContains(t, err.Error(), tc.expectedErrSubstr)
+				test.AssertError(t, err, "No profile found during CA construction.")
+			} else {
+				test.AssertNotError(t, err, "Profiles should exist, but were not found")
 			}
 
-			for _, x := range tc.expectedProfiles {
-				hash, err := tCA.certificateProfileNameExists(x.name)
+			for _, profile := range tc.expectedProfiles {
+				hash, err := tCA.certificateProfileNameExists(profile.name)
 				test.AssertNotError(t, err, "Profile name was not found, but should have been")
 
-				if tc.name == "a certificate profile hash changes mid-issuance" {
+				if tc.name == "a certificate profile hash changed mid-issuance" {
 					// This is an attempt to simulate the hash changing, but the
 					// name remaining the same on a CA node in the duration
 					// between the CA sending capb.IssuePrecerticateResponse and
 					// before the RA calls
 					// capb.IssueCertificateForPrecertificate. We expect the
-					// receiving CA to error that the hash could not be found.
-					badHash := [32]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 9, 8}
+					// receiving CA to error that the hash we expect could not
+					// be found in the map.
+					badHash := [32]byte{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 6, 6, 6}
+
+					// Mutate existing in-memory certificate profile.
 					extraProfiles[0].UnsafeSetHash(badHash)
+
+					_, err = tCA.certificateProfileHashExists(hash)
+					if profile.name == "Unique Profile Name" {
+						test.AssertError(t, err, fmt.Sprintf("Expected %v != %v", profile.hash, hash))
+					} else {
+						test.AssertNotError(t, err, "Should have errored")
+						test.AssertEquals(t, profile.hash, hash)
+					}
+				} else {
+					_, err = tCA.certificateProfileHashExists(hash)
+					test.AssertNotError(t, err, "Should have errored")
+					test.AssertEquals(t, profile.hash, hash)
 				}
-
-				_, err = tCA.certificateProfileHashExists(hash)
-				test.AssertNotError(t, err, fmt.Sprintf("Hash %v != %v", hash, x.hexHash))
-			}
-
-			if tc.expectedErrSubstr != "" {
-				test.AssertContains(t, err.Error(), tc.expectedErrSubstr)
-				test.AssertError(t, err, "No profile found during CA construction.")
-			} else {
-				test.AssertNotError(t, err, "Profiles should exist, but were not found")
 			}
 		})
 	}
