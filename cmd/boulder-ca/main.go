@@ -3,6 +3,7 @@ package notmain
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -217,18 +218,29 @@ func main() {
 	}
 
 	if c.CA.Issuance.DefaultCertificateProfileName == "" {
-		logger.Infof("Using default certificate profile name: %s", issuance.DefaultCertProfileName)
 		c.CA.Issuance.DefaultCertificateProfileName = issuance.DefaultCertProfileName
 	}
+	logger.Infof("Using default certificate profile name: %s", c.CA.Issuance.DefaultCertificateProfileName)
 
 	deprecatedProfile, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
-	cmd.FailOnError(err, "Couldn't load issuance profile")
+	cmd.FailOnError(err, "Couldn't load certificate profile")
 
 	var certProfiles []*issuance.Profile
 	for _, profileConfig := range c.CA.Issuance.CertProfiles {
 		profile, err := issuance.NewProfile(profileConfig, c.CA.Issuance.IgnoredLints)
-		cmd.FailOnError(err, "Couldn't load issuance profile")
+		cmd.FailOnError(err, "Couldn't load certificate profile")
 		certProfiles = append(certProfiles, profile)
+	}
+
+	var defaultProfileExists bool
+	for index := range certProfiles {
+		if c.CA.Issuance.DefaultCertificateProfileName == certProfiles[index].Name {
+			defaultProfileExists = true
+			break
+		}
+	}
+	if !defaultProfileExists {
+		cmd.Fail(fmt.Sprintf("defaultCertificateProfileName %s was configured, but a matching profile object was not found", c.CA.Issuance.DefaultCertificateProfileName))
 	}
 
 	tlsConfig, err := c.CA.TLS.Load(scope)
