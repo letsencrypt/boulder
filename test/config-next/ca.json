@@ -42,6 +42,7 @@
 			"hostOverride": "sa.boulder"
 		},
 		"issuance": {
+			"defaultCertificateProfileName": "defaultBoulderCertificateProfile",
 			"profile": {
 				"allowMustStaple": true,
 				"allowCTPoison": true,
