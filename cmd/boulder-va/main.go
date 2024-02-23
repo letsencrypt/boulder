@@ -27,7 +27,8 @@ type Config struct {
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries                  int
-		DNSProvider               *cmd.DNSProvider `validate:"required"`
+		DNSProvider               *cmd.DNSProvider `validate:"required_without=DNSStaticResolver"`
+		DNSStaticResolver         string           `validate:"required_without=DNSProvider"`
 		DNSTimeout                config.Duration  `validate:"required"`
 		DNSAllowLoopbackAddresses bool
 
@@ -79,17 +80,19 @@ func main() {
 	}
 	clk := cmd.Clock()
 
-	if c.VA.DNSProvider == nil {
-		cmd.Fail("Must specify dnsProvider")
-	}
-
 	var servers bdns.ServerProvider
 	proto := "udp"
 	if features.Get().DOH {
 		proto = "tcp"
 	}
-	servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, proto)
-	cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
+
+	if c.VA.DNSStaticResolver != " " {
+		servers, err = bdns.NewStaticProvider([]string{c.VA.DNSStaticResolver})
+		cmd.FailOnError(err, "Couldn't start static DNS server resolver")
+	} else {
+		servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, proto)
+		cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
+	}
 	defer servers.Stop()
 
 	tlsConfig, err := c.VA.TLS.Load(scope)
