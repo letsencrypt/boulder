@@ -1142,6 +1142,16 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	selectedProfile := issuance.DefaultCertProfileName
+	hash, err := ca.certificateProfileNameExists(selectedProfile)
+	hexHash := hex.EncodeToString(hash[:])
+	test.AssertNotError(t, err, "Certificate profile was expected to exist")
+
+	certProfile := &capb.CertificateProfile{
+		Name: selectedProfile,
+		Hash: hash[:],
+	}
+
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
 	precert, err := ca.IssuePrecertificate(ctx, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue precert")
@@ -1151,6 +1161,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		SCTs:           sctBytes,
 		RegistrationID: arbitraryRegID,
 		OrderID:        0,
+		CertProfile:    certProfile,
 	})
 	if err == nil {
 		t.Error("Expected error issuing duplicate serial but got none.")
@@ -1189,6 +1200,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		SCTs:           sctBytes,
 		RegistrationID: arbitraryRegID,
 		OrderID:        0,
+		CertProfile:    certProfile,
 	})
 	if err == nil {
 		t.Fatal("Expected error issuing duplicate serial but got none.")
