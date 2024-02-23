@@ -3,8 +3,8 @@
 		"userAgent": "boulder-remote-b",
 		"dnsTries": 3,
 		"dnsStaticResolvers": [
-			"127.0.0.1:8053",
-			"127.0.0.1:8054"
+			"127.0.0.1:8343",
+			"127.0.0.1:8443"
 		],
 		"dnsTimeout": "1s",
 		"dnsAllowLoopbackAddresses": true,
