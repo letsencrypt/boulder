@@ -232,9 +232,12 @@ func main() {
 		certProfiles = append(certProfiles, profile)
 	}
 
+	var defaultNameCheck []*issuance.Profile
+	defaultNameCheck = append(defaultNameCheck, deprecatedProfile)
+	defaultNameCheck = append(defaultNameCheck, certProfiles...)
 	var defaultProfileExists bool
-	for index := range certProfiles {
-		if c.CA.Issuance.DefaultCertificateProfileName == certProfiles[index].Name {
+	for index := range defaultNameCheck {
+		if c.CA.Issuance.DefaultCertificateProfileName == defaultNameCheck[index].Name {
 			defaultProfileExists = true
 			break
 		}
