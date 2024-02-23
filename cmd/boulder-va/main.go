@@ -27,8 +27,8 @@ type Config struct {
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries                  int
-		DNSProvider               *cmd.DNSProvider `validate:"required_without=DNSStaticResolver"`
-		DNSStaticResolver         string           `validate:"required_without=DNSProvider"`
+		DNSProvider               *cmd.DNSProvider `validate:"required_without=DNSStaticResolvers"`
+		DNSStaticResolvers        []string         `validate:"required_without=DNSProvider"`
 		DNSTimeout                config.Duration  `validate:"required"`
 		DNSAllowLoopbackAddresses bool
 
@@ -86,8 +86,8 @@ func main() {
 		proto = "tcp"
 	}
 
-	if c.VA.DNSStaticResolver != "" {
-		servers, err = bdns.NewStaticProvider([]string{c.VA.DNSStaticResolver})
+	if len(c.VA.DNSStaticResolvers) != 0 {
+		servers, err = bdns.NewStaticProvider(c.VA.DNSStaticResolvers)
 		cmd.FailOnError(err, "Couldn't start static DNS server resolver")
 	} else {
 		servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, proto)

@@ -2,13 +2,10 @@
 	"va": {
 		"userAgent": "boulder-remote-a",
 		"dnsTries": 3,
-		"dnsProvider": {
-			"dnsAuthority": "consul.service.consul",
-			"srvLookup": {
-				"service": "doh",
-				"domain": "service.consul"
-			}
-		},
+		"dnsStaticResolvers": [
+			"127.0.0.1:8053",
+			"127.0.0.1:8054"
+		],
 		"dnsTimeout": "1s",
 		"dnsAllowLoopbackAddresses": true,
 		"issuerDomain": "happy-hacker-ca.invalid",
