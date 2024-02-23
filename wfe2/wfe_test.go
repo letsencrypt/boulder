@@ -4023,30 +4023,22 @@ func TestOrderMatchesReplacement(t *testing.T) {
 	}
 
 	// Working with a single matching identifier.
-	prob, err := wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example.com"}, expectSerial.String())
-	test.Assert(t, prob == nil, "expected no problem")
-	test.AssertNotError(t, err, "failed to check order replacement")
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example.com"}, expectSerial.String())
+	test.AssertNotError(t, err, "failed to check order is replacement")
 
 	// Working with a different matching identifier.
-	prob, err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example-a.com"}, expectSerial.String())
-	test.Assert(t, prob == nil, "expected no problem")
-	test.AssertNotError(t, err, "failed to check order replacement")
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example-a.com"}, expectSerial.String())
+	test.AssertNotError(t, err, "failed to check order is replacement")
 
 	// No matching identifiers.
-	prob, err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example-b.com"}, expectSerial.String())
-	test.Assert(t, prob != nil, "expected a problem")
-	test.AssertNotError(t, err, "failed to check order replacement")
-	test.AssertEquals(t, prob.Detail, "Certificate replaced by this order does not have matching identifiers")
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example-b.com"}, expectSerial.String())
+	test.AssertErrorIs(t, err, berrors.Malformed)
 
 	// RegID for predecessor order does not match.
-	prob, err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 2}, []string{"example.com"}, expectSerial.String())
-	test.Assert(t, prob != nil, "expected a problem")
-	test.AssertNotError(t, err, "failed to check order replacement")
-	test.AssertEquals(t, prob.Detail, "Requester account did request the certificate being replaced by this order")
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 2}, []string{"example.com"}, expectSerial.String())
+	test.AssertErrorIs(t, err, berrors.Unauthorized)
 
 	// Predecessor certificate not found.
-	prob, err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example.com"}, "1")
-	test.Assert(t, prob != nil, "expected a problem")
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example.com"}, "1")
 	test.AssertErrorIs(t, err, berrors.NotFound)
-	test.AssertEquals(t, prob.Detail, "Existing certificate could not be found")
 }
