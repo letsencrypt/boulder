@@ -2204,7 +2204,7 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 //  2. MUST be associated with the same ACME account as this request, and
 //  3. MUST have at least one identifier in common with this request.
 //
-// When a replacment order does not meet these criteria, an error is returned.
+// When a replacement order does not meet these criteria, an error is returned.
 // If it meets the criteria, but the request is not within the suggested renewal
 // window, the limitsExempt bool returned is set to false.
 func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *core.Registration, names []string, replaces string) (string, bool, error) {
