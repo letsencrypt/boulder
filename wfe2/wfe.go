@@ -2324,7 +2324,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	replaces, limitsExempt, err := wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Error validating replaces field"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement and error occurred"), err)
 		return
 	}
 
