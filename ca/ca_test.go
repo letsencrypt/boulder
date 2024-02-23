@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -165,7 +166,7 @@ func setup(t *testing.T) *testCtx {
 	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
-	deprecatedProfile, err := issuance.NewProfile(
+	profile, err := issuance.NewProfile(
 		issuance.ProfileConfig{
 			Name:            issuance.DefaultCertProfileName,
 			AllowMustStaple: true,
@@ -182,9 +183,9 @@ func setup(t *testing.T) *testCtx {
 	)
 	test.AssertNotError(t, err, "Couldn't create test profile")
 
-	shortLived, err := issuance.NewProfile(
+	longerLived, err := issuance.NewProfile(
 		issuance.ProfileConfig{
-			Name:            "shortLived",
+			Name:            "longerLived",
 			AllowMustStaple: true,
 			AllowCTPoison:   true,
 			AllowSCTList:    true,
@@ -192,13 +193,13 @@ func setup(t *testing.T) *testCtx {
 			Policies: []issuance.PolicyConfig{
 				{OID: "2.23.140.1.2.1"},
 			},
-			MaxValidityPeriod:   config.Duration{Duration: time.Hour * 240},
+			MaxValidityPeriod:   config.Duration{Duration: time.Hour * 8761},
 			MaxValidityBackdate: config.Duration{Duration: time.Hour},
 		},
 		[]string{"w_subject_common_name_included"},
 	)
 	test.AssertNotError(t, err, "Couldn't create test profile")
-	certProfiles := []*issuance.Profile{shortLived}
+	certProfiles := []*issuance.Profile{longerLived}
 
 	ecdsaOnlyIssuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
 		UseForRSALeaves:   false,
@@ -268,7 +269,7 @@ func setup(t *testing.T) *testCtx {
 		pa:             pa,
 		ocsp:           ocsp,
 		crl:            crl,
-		profile:        deprecatedProfile,
+		profile:        profile,
 		certProfiles:   certProfiles,
 		certExpiry:     8760 * time.Hour,
 		certBackdate:   time.Hour,
@@ -940,13 +941,18 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
+	selectedProfile := issuance.DefaultCertProfileName
+	hash, err := ca.certificateProfileNameExists(selectedProfile)
+	hexHash := hex.EncodeToString(hash[:])
+	test.AssertNotError(t, err, "Certificate profile was expected to exist")
+
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
 	precert, err := ca.IssuePrecertificate(ctx, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue precert")
 	parsedPrecert, err := x509.ParseCertificate(precert.DER)
 	test.AssertNotError(t, err, "Failed to parse precert")
-	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 1)
-	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "certificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 0)
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": selectedProfile, "hash": hexHash, "status": "success"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "certificate", "profile": selectedProfile, "hash": hexHash, "status": "success"}, 0)
 
 	// Check for poison extension
 	poisonExtension := findExtension(parsedPrecert.Extensions, OIDExtensionCTPoison)
@@ -969,7 +975,88 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to issue cert from precert")
 	parsedCert, err := x509.ParseCertificate(cert.Der)
 	test.AssertNotError(t, err, "Failed to parse cert")
-	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "certificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "certificate", "profile": selectedProfile, "hash": hexHash, "status": "success"}, 1)
+
+	// Check for SCT list extension
+	sctListExtension := findExtension(parsedCert.Extensions, OIDExtensionSCTList)
+	test.AssertNotNil(t, sctListExtension, "Couldn't find SCTList extension")
+	test.AssertEquals(t, sctListExtension.Critical, false)
+	var rawValue []byte
+	_, err = asn1.Unmarshal(sctListExtension.Value, &rawValue)
+	test.AssertNotError(t, err, "Failed to unmarshal extension value")
+	sctList, err := deserializeSCTList(rawValue)
+	test.AssertNotError(t, err, "Failed to deserialize SCT list")
+	test.Assert(t, len(sctList) == 1, fmt.Sprintf("Wrong number of SCTs, wanted: 1, got: %d", len(sctList)))
+}
+
+func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *testing.T) {
+	testCtx := setup(t)
+	sa := &mockSA{}
+	ca, err := NewCertificateAuthorityImpl(
+		sa,
+		testCtx.pa,
+		testCtx.boulderIssuers,
+		testCtx.profile,
+		testCtx.certProfiles,
+		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.keyPolicy,
+		testCtx.logger,
+		testCtx.stats,
+		testCtx.signatureCount,
+		testCtx.signErrorCount,
+		testCtx.fc)
+	test.AssertNotError(t, err, "Failed to create CA")
+
+	selectedProfile := "longerLived"
+	hash, err := ca.certificateProfileNameExists(selectedProfile)
+	hexHash := hex.EncodeToString(hash[:])
+	test.AssertNotError(t, err, "Certificate profile was expected to exist")
+
+	certProfile := &capb.CertificateProfile{
+		Name: selectedProfile,
+		Hash: hash[:],
+	}
+
+	issueReq := capb.IssueCertificateRequest{
+		Csr:            CNandSANCSR,
+		RegistrationID: arbitraryRegID,
+		OrderID:        0,
+		CertProfile:    certProfile,
+	}
+	precert, err := ca.IssuePrecertificate(ctx, &issueReq)
+	test.AssertNotError(t, err, "Failed to issue precert")
+	parsedPrecert, err := x509.ParseCertificate(precert.DER)
+	test.AssertNotError(t, err, "Failed to parse precert")
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": selectedProfile, "hash": hexHash, "status": "success"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "certificate", "profile": selectedProfile, "hash": hexHash, "status": "success"}, 0)
+
+	// Check for poison extension
+	poisonExtension := findExtension(parsedPrecert.Extensions, OIDExtensionCTPoison)
+	test.AssertNotNil(t, poisonExtension, "Couldn't find CTPoison extension")
+	test.AssertEquals(t, poisonExtension.Critical, true)
+	test.AssertDeepEquals(t, poisonExtension.Value, []byte{0x05, 0x00}) // ASN.1 DER NULL
+
+	sctBytes, err := makeSCTs()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	test.AssertNotError(t, err, "Failed to marshal SCT")
+	cert, err := ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
+		DER:            precert.DER,
+		SCTs:           sctBytes,
+		RegistrationID: arbitraryRegID,
+		OrderID:        0,
+		CertProfile:    certProfile,
+	})
+	test.AssertNotError(t, err, "Failed to issue cert from precert")
+	parsedCert, err := x509.ParseCertificate(cert.Der)
+	test.AssertNotError(t, err, "Failed to parse cert")
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "certificate", "profile": selectedProfile, "hash": hexHash, "status": "success"}, 1)
 
 	// Check for SCT list extension
 	sctListExtension := findExtension(parsedCert.Extensions, OIDExtensionSCTList)
@@ -1058,7 +1145,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
 	precert, err := ca.IssuePrecertificate(ctx, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue precert")
-	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": selectedProfile, "hash": hexHash, "status": "success"}, 1)
 	_, err = ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:            precert.DER,
 		SCTs:           sctBytes,
