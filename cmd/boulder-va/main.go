@@ -28,7 +28,7 @@ type Config struct {
 		// will be turned into 1.
 		DNSTries                  int
 		DNSProvider               *cmd.DNSProvider `validate:"required_without=DNSStaticResolvers"`
-		DNSStaticResolvers        []string         `validate:"required_without=DNSProvider"`
+		DNSStaticResolvers        []string         `validate:"required_without=DNSProvider,dive,hostname_port"`
 		DNSTimeout                config.Duration  `validate:"required"`
 		DNSAllowLoopbackAddresses bool
 
