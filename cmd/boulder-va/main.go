@@ -86,7 +86,7 @@ func main() {
 		proto = "tcp"
 	}
 
-	if c.VA.DNSStaticResolver != " " {
+	if c.VA.DNSStaticResolver != "" {
 		servers, err = bdns.NewStaticProvider([]string{c.VA.DNSStaticResolver})
 		cmd.FailOnError(err, "Couldn't start static DNS server resolver")
 	} else {
