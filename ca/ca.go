@@ -407,13 +407,14 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	}
 
 	names := strings.Join(issuanceReq.DNSNames, ", ")
+	certProfileCountLabels := prometheus.Labels{"purpose": string(certType), "profile": req.CertProfile.Name, "hash": hex.EncodeToString(req.CertProfile.Hash)}
 
 	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] precert=[%s]",
 		serialHex, req.RegistrationID, names, req.CertProfile.Name, hex.EncodeToString(req.CertProfile.Hash), hex.EncodeToString(precert.Raw))
 
 	_, issuanceToken, err := issuer.Prepare(certProfile, issuanceReq)
 	if err != nil {
-		ca.certProfileCount.With(prometheus.Labels{"purpose": string(certType), "profile": req.CertProfile.Name, "hash": hex.EncodeToString(req.CertProfile.Hash), "status": "preparation failure"}).Inc()
+		ca.certProfileCount.MustCurryWith(certProfileCountLabels).With(prometheus.Labels{"status": "preparation failure"}).Inc()
 		ca.log.AuditErrf("Preparing cert failed: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] err=[%v]",
 			serialHex, req.RegistrationID, names, req.CertProfile.Name, hex.EncodeToString(req.CertProfile.Hash), err)
 		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
@@ -422,13 +423,13 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.noteSignError(err)
-		ca.certProfileCount.With(prometheus.Labels{"purpose": string(certType), "profile": req.CertProfile.Name, "hash": hex.EncodeToString(req.CertProfile.Hash), "status": "signing failure"}).Inc()
+		ca.certProfileCount.MustCurryWith(certProfileCountLabels).With(prometheus.Labels{"status": "signing failure"}).Inc()
 		ca.log.AuditErrf("Signing cert failed: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] err=[%v]",
 			serialHex, req.RegistrationID, names, req.CertProfile.Name, hex.EncodeToString(req.CertProfile.Hash), err)
 		return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
 	}
 
-	ca.certProfileCount.With(prometheus.Labels{"purpose": string(certType), "profile": req.CertProfile.Name, "hash": hex.EncodeToString(req.CertProfile.Hash), "status": "success"}).Inc()
+	ca.certProfileCount.MustCurryWith(certProfileCountLabels).With(prometheus.Labels{"status": "success"}).Inc()
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing cert success: serial=[%s] regID=[%d] names=[%s] certificate=[%s] certProfileName=[%s] certProfileHash=[%s]",
 		serialHex, req.RegistrationID, names, hex.EncodeToString(certDER), req.CertProfile.Name, hex.EncodeToString(req.CertProfile.Hash))
@@ -587,8 +588,9 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	// the name giving more assurance that the certificate profile has remained
 	// unchanged during the roundtrip from a CA, to the RA, then back to a CA.
 	lintCertBytes, issuanceToken, err := issuer.Prepare(ca.certProfiles.byHash[[32]byte(issueReq.CertProfile.Hash)], req)
+	certProfileCountLabels := prometheus.Labels{"purpose": string(precertType), "profile": issueReq.CertProfile.Name, "hash": hex.EncodeToString(issueReq.CertProfile.Hash)}
 	if err != nil {
-		ca.certProfileCount.With(prometheus.Labels{"purpose": string(precertType), "profile": issueReq.CertProfile.Name, "hash": hex.EncodeToString(issueReq.CertProfile.Hash), "status": "preparation failure"}).Inc()
+		ca.certProfileCount.MustCurryWith(certProfileCountLabels).With(prometheus.Labels{"status": "preparation failure"}).Inc()
 		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), issueReq.CertProfile.Name, hex.EncodeToString(issueReq.CertProfile.Hash), err)
 		if errors.Is(err, linter.ErrLinting) {
@@ -611,14 +613,14 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.noteSignError(err)
-		ca.certProfileCount.With(prometheus.Labels{"purpose": string(precertType), "profile": issueReq.CertProfile.Name, "hash": hex.EncodeToString(issueReq.CertProfile.Hash), "status": "signing failure"}).Inc()
+		ca.certProfileCount.MustCurryWith(certProfileCountLabels).With(prometheus.Labels{"status": "signing failure"}).Inc()
 		ca.log.AuditErrf("Signing precert failed: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), issueReq.CertProfile.Name, hex.EncodeToString(issueReq.CertProfile.Hash), err)
 		return nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
 	}
 
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
-	ca.certProfileCount.With(prometheus.Labels{"purpose": string(precertType), "profile": issueReq.CertProfile.Name, "hash": hex.EncodeToString(issueReq.CertProfile.Hash), "status": "success"}).Inc()
+	ca.certProfileCount.MustCurryWith(certProfileCountLabels).With(prometheus.Labels{"status": "success"}).Inc()
 	ca.log.AuditInfof("Signing precert success: serial=[%s] regID=[%d] names=[%s] precertificate=[%s] certProfileName=[%s] certProfileHash=[%s]",
 		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(certDER), issueReq.CertProfile.Name, hex.EncodeToString(issueReq.CertProfile.Hash))
 
