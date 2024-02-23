@@ -264,7 +264,7 @@ func TestValidateMalformedChallenge(t *testing.T) {
 }
 
 func TestPerformValidationInvalid(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 
 	req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
