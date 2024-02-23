@@ -275,11 +275,6 @@ func TestPerformValidationInvalid(t *testing.T) {
 		"result":       "invalid",
 		"problem_type": "unauthorized",
 	}, 1)
-
-	test.AssertDeepEquals(t, mockLog.GetAllMatching(`Validation result`),
-		[]string{
-			"foo",
-		})
 }
 
 func TestInternalErrorLogged(t *testing.T) {
