@@ -497,6 +497,7 @@ func TestMultipleIssuers(t *testing.T) {
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	err = cert.CheckSignatureFrom(testCtx.boulderIssuers[1].Cert.Certificate)
 	test.AssertNotError(t, err, "Certificate failed signature validation")
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 1)
 
 	// Test that an ECDSA CSR gets issuance from the ECDSA issuer.
 	issuedCert, err = ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID})
@@ -505,6 +506,7 @@ func TestMultipleIssuers(t *testing.T) {
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	err = cert.CheckSignatureFrom(testCtx.boulderIssuers[0].Cert.Certificate)
 	test.AssertNotError(t, err, "Certificate failed signature validation")
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 2)
 }
 
 func TestProfiles(t *testing.T) {
@@ -619,7 +621,8 @@ func TestProfiles(t *testing.T) {
 				},
 				{
 					// Same as the "both exist, and are unique" test, but we'll
-					// change the mapped hash key under the hood.
+					// change the mapped hash key under the hood during the
+					// test.
 					name: "Unique Profile Name",
 					hash: [32]byte{69, 181, 80, 235, 136, 21, 174, 228, 53, 51, 208, 81, 158, 40, 233, 224, 179, 19, 27, 153, 98, 223, 149, 205, 147, 30, 187, 220, 159, 54, 145, 221},
 				},
@@ -942,6 +945,8 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to issue precert")
 	parsedPrecert, err := x509.ParseCertificate(precert.DER)
 	test.AssertNotError(t, err, "Failed to parse precert")
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "certificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 0)
 
 	// Check for poison extension
 	poisonExtension := findExtension(parsedPrecert.Extensions, OIDExtensionCTPoison)
@@ -964,6 +969,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to issue cert from precert")
 	parsedCert, err := x509.ParseCertificate(cert.Der)
 	test.AssertNotError(t, err, "Failed to parse cert")
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "certificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 1)
 
 	// Check for SCT list extension
 	sctListExtension := findExtension(parsedCert.Extensions, OIDExtensionSCTList)
@@ -1052,6 +1058,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
 	precert, err := ca.IssuePrecertificate(ctx, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue precert")
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 1)
 	_, err = ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:            precert.DER,
 		SCTs:           sctBytes,
@@ -1064,6 +1071,9 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	if !strings.Contains(err.Error(), "issuance of duplicate final certificate requested") {
 		t.Errorf("Wrong type of error issuing duplicate serial. Expected 'issuance of duplicate', got '%s'", err)
 	}
+	// The success metric doesn't increase when a duplicate certificate issuance
+	// is attempted.
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "certificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 0)
 
 	// Now check what happens if there is an error (e.g. timeout) while checking
 	// for the duplicate.
@@ -1099,6 +1109,9 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	if !strings.Contains(err.Error(), "error checking for duplicate") {
 		t.Fatalf("Wrong type of error issuing duplicate serial. Expected 'error checking for duplicate', got '%s'", err)
 	}
+	// The success metric doesn't increase when a duplicate certificate issuance
+	// is attempted.
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "certificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 0)
 }
 
 func TestGenerateSKID(t *testing.T) {
