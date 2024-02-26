@@ -2204,9 +2204,16 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 //  2. MUST be associated with the same ACME account as this request, and
 //  3. MUST have at least one identifier in common with this request.
 //
-// When a replacement order does not meet these criteria, an error is returned.
-// If it meets the criteria, but the request is not within the suggested renewal
-// window, the limitsExempt bool returned is set to false.
+// There are three values returned by this function:
+//   - The first return value is the serial number of the certificate being
+//     replaced. If the order is not a replacement, this value is an empty
+//     string.
+//   - The second return value is a boolean indicating whether the order is
+//     exempt from rate limits. If the order is a replacement and the request
+//     is made within the suggested renewal window, this value is true.
+//     Otherwise, this value is false.
+//   - The last value is an error, this is non-nil unless the order is not a
+//     replacement or there was an error while validating the replacement.
 func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *core.Registration, names []string, replaces string) (string, bool, error) {
 	if replaces == "" {
 		// No replacement indicated.
