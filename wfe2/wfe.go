@@ -2119,6 +2119,47 @@ func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, transactio
 	}
 }
 
+// orderMatchesReplacement checks if the order matches the provided certificate
+// as identified by the provided ARI CertID. This function ensures that:
+//   - the certificate being replaced exists,
+//   - the requesting account owns that certificate, and
+//   - a name in this new order matches a name in the certificate being
+//     replaced.
+func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *core.Registration, names []string, serial string) error {
+	// It's okay to use GetCertificate (vs trying to get a precertificate),
+	// because we don't intend to serve ARI for certs that never made it past
+	// the precert stage.
+	oldCert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		if errors.Is(err, berrors.NotFound) {
+			return berrors.NotFoundError("request included `replaces` field, but no current certificate with serial %q exists", serial)
+		}
+		return errors.New("failed to retrieve existing certificate")
+	}
+
+	if oldCert.RegistrationID != acct.ID {
+		return berrors.UnauthorizedError("requester account did not request the certificate being replaced by this order")
+	}
+	parsedCert, err := x509.ParseCertificate(oldCert.Der)
+	if err != nil {
+		return fmt.Errorf("error parsing certificate replaced by this order: %w", err)
+	}
+
+	var nameMatch bool
+	for _, name := range names {
+		if parsedCert.VerifyHostname(name) == nil {
+			// At least one name in the new order matches a name in the
+			// predecessor certificate.
+			nameMatch = true
+			break
+		}
+	}
+	if !nameMatch {
+		return berrors.MalformedError("identifiers in this order do not match any names in the certificate being replaced")
+	}
+	return nil
+}
+
 func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial string) (core.RenewalInfo, error) {
 	// Check if the serial is impacted by an incident.
 	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
@@ -2147,10 +2188,69 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 	// the precert stage.
 	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
-		return core.RenewalInfo{}, fmt.Errorf("retrieving existing certificate: %w", err)
+		if errors.Is(err, berrors.NotFound) {
+			return core.RenewalInfo{}, err
+		}
+		return core.RenewalInfo{}, fmt.Errorf("failed to retrieve existing certificate: %w", err)
 	}
 
 	return core.RenewalInfoSimple(cert.Issued.AsTime(), cert.Expires.AsTime()), nil
+}
+
+// validateReplacementOrder implements draft-ietf-acme-ari-02. For a new order
+// to be considered a replacement for an existing certificate, the existing
+// certificate:
+//  1. MUST NOT have been replaced by another finalized order,
+//  2. MUST be associated with the same ACME account as this request, and
+//  3. MUST have at least one identifier in common with this request.
+//
+// There are three values returned by this function:
+//   - The first return value is the serial number of the certificate being
+//     replaced. If the order is not a replacement, this value is an empty
+//     string.
+//   - The second return value is a boolean indicating whether the order is
+//     exempt from rate limits. If the order is a replacement and the request
+//     is made within the suggested renewal window, this value is true.
+//     Otherwise, this value is false.
+//   - The last value is an error, this is non-nil unless the order is not a
+//     replacement or there was an error while validating the replacement.
+func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *core.Registration, names []string, replaces string) (string, bool, error) {
+	if replaces == "" {
+		// No replacement indicated.
+		return "", false, nil
+	}
+
+	certID, err := parseCertID(replaces, wfe.issuerCertificates)
+	if err != nil {
+		return "", false, fmt.Errorf("while parsing ARI CertID an error occurred: %w", err)
+	}
+
+	exists, err := wfe.sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: certID.Serial()})
+	if err != nil {
+		return "", false, fmt.Errorf("checking replacement status of existing certificate: %w", err)
+	}
+	if exists.Exists {
+		return "", false, berrors.MalformedError("cannot indicate an order replaces a certificate which already has a replacement order")
+	}
+
+	err = wfe.orderMatchesReplacement(ctx, acct, names, certID.Serial())
+	if err != nil {
+		// The provided replacement field value failed to meet the required
+		// criteria. We're going to return the error to the caller instead
+		// of trying to create a regular (non-replacement) order.
+		return "", false, fmt.Errorf("while checking that this order is a replacement: %w", err)
+	}
+	// This order is a replacement for an existing certificate.
+	replaces = certID.Serial()
+
+	// For an order to be exempt from rate limits, it must be a replacement
+	// and the request must be made within the suggested renewal window.
+	renewalInfo, err := wfe.determineARIWindow(ctx, replaces)
+	if err != nil {
+		return "", false, err
+	}
+
+	return replaces, renewalInfo.SuggestedWindow.IsWithin(wfe.clk.Now()), nil
 }
 
 // NewOrder is used by clients to create a new order object and a set of
@@ -2168,12 +2268,14 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// We only allow specifying Identifiers in a new order request - if the
-	// `notBefore` and/or `notAfter` fields described in Section 7.4 of acme-08
-	// are sent we return a probs.Malformed as we do not support them
+	// newOrderRequest is the JSON structure of the request body. We only
+	// support the identifiers and replaces fields. If notBefore or notAfter are
+	// sent we return a probs.Malformed as we do not support them.
 	var newOrderRequest struct {
-		Identifiers         []identifier.ACMEIdentifier `json:"identifiers"`
-		NotBefore, NotAfter string
+		Identifiers []identifier.ACMEIdentifier `json:"identifiers"`
+		NotBefore   string
+		NotAfter    string
+		Replaces    string
 	}
 	err := json.Unmarshal(body, &newOrderRequest)
 	if err != nil {
@@ -2214,12 +2316,21 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	logEvent.DNSNames = names
 
+	replaces, limitsExempt, err := wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement and error occurred"), err)
+		return
+	}
+
 	// TODO(#5545): Spending and Refunding can be async until these rate limits
 	// are authoritative. This saves us from adding latency to each request.
 	// Goroutines spun out below will respect a context deadline set by the
 	// ratelimits package and cannot be prematurely canceled by the requester.
-	txns := wfe.newNewOrderLimitTransactions(acct.ID, names)
-	go wfe.checkNewOrderLimits(ctx, txns)
+	var txns []ratelimits.Transaction
+	if !limitsExempt {
+		txns = wfe.newNewOrderLimitTransactions(acct.ID, names)
+		go wfe.checkNewOrderLimits(ctx, txns)
+	}
 
 	var newOrderSuccessful bool
 	var errIsRateLimit bool
@@ -2235,6 +2346,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: acct.ID,
 		Names:          names,
+		ReplacesSerial: replaces,
+		LimitsExempt:   limitsExempt,
 	})
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
@@ -2547,15 +2660,15 @@ func (c certID) Serial() string {
 // certID struct with the keyIdentifier and serialNumber extracted and decoded.
 // For more details see:
 // https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-02#section-4.1.
-func parseCertID(path string, issuerCertificates map[issuance.NameID]*issuance.Certificate) (ariCertID, *probs.ProblemDetails, error) {
+func parseCertID(path string, issuerCertificates map[issuance.NameID]*issuance.Certificate) (ariCertID, error) {
 	parts := strings.Split(path, ".")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return certID{}, probs.Malformed("Invalid path"), nil
+		return certID{}, berrors.MalformedError("Invalid path")
 	}
 
 	akid, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return certID{}, probs.Malformed("Authority Key Identifier was not base64url-encoded or contained padding", err), err
+		return certID{}, berrors.MalformedError("Authority Key Identifier was not base64url-encoded or contained padding: %s", err)
 	}
 
 	var found bool
@@ -2566,18 +2679,18 @@ func parseCertID(path string, issuerCertificates map[issuance.NameID]*issuance.C
 		}
 	}
 	if !found {
-		return certID{}, probs.NotFound("Path contained an Authority Key Identifier that did not match a known issuer"), nil
+		return certID{}, berrors.NotFoundError("path contained an Authority Key Identifier that did not match a known issuer")
 	}
 
 	serialNumber, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return certID{}, probs.Malformed("Serial number was not base64url-encoded or contained padding", err), err
+		return certID{}, berrors.NotFoundError("serial number was not base64url-encoded or contained padding: %s", err)
 	}
 
 	return certID{
 		keyIdentifier: akid,
 		serialNumber:  new(big.Int).SetBytes(serialNumber),
-	}, nil, nil
+	}, nil
 }
 
 // RenewalInfo is used to get information about the suggested renewal window
@@ -2603,10 +2716,9 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	certID, err := parseDeprecatedCertID(request.URL.Path)
 	if err != nil {
 		// Try parsing certID param using the draft-ietf-acme-ari-02 format.
-		var prob *probs.ProblemDetails
-		certID, prob, err = parseCertID(request.URL.Path, wfe.issuerCertificates)
-		if prob != nil {
-			wfe.sendError(response, logEvent, prob, err)
+		certID, err = parseCertID(request.URL.Path, wfe.issuerCertificates)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While parsing ARI CertID an error occurred"), err)
 			return
 		}
 	}
@@ -2665,10 +2777,9 @@ func (wfe *WebFrontEndImpl) UpdateRenewal(ctx context.Context, logEvent *web.Req
 	certID, err := parseDeprecatedCertID(updateRenewalRequest.CertID)
 	if err != nil {
 		// Try parsing certID param using the draft-ietf-acme-ari-02 format.
-		var prob *probs.ProblemDetails
-		certID, prob, err = parseCertID(updateRenewalRequest.CertID, wfe.issuerCertificates)
-		if prob != nil {
-			wfe.sendError(response, logEvent, prob, err)
+		certID, err = parseCertID(updateRenewalRequest.CertID, wfe.issuerCertificates)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While parsing ARI CertID an error occurred"), err)
 			return
 		}
 	}

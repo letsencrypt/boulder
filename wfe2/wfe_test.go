@@ -3997,3 +3997,59 @@ func Test_sendError(t *testing.T) {
 	// Ensure the Link header isn't populatsed.
 	test.AssertEquals(t, testResponse.Header().Get("Link"), "")
 }
+
+type mockSA struct {
+	sapb.StorageAuthorityReadOnlyClient
+	cert *corepb.Certificate
+}
+
+// GetCertificate returns the inner certificate if it matches the given serial.
+func (sa *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	if req.Serial == sa.cert.Serial {
+		return sa.cert, nil
+	}
+	return nil, berrors.NotFoundError("certificate with serial %q not found", req.Serial)
+}
+
+func TestOrderMatchesReplacement(t *testing.T) {
+	wfe, _, _ := setupWFE(t)
+
+	expectExpiry := time.Now().AddDate(0, 0, 1)
+	expectSerial := big.NewInt(1337)
+	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
+	rawCert := x509.Certificate{
+		NotAfter:     expectExpiry,
+		DNSNames:     []string{"example.com", "example-a.com"},
+		SerialNumber: expectSerial,
+	}
+	mockDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
+	test.AssertNotError(t, err, "failed to create test certificate")
+
+	wfe.sa = &mockSA{
+		cert: &corepb.Certificate{
+			RegistrationID: 1,
+			Serial:         expectSerial.String(),
+			Der:            mockDer,
+		},
+	}
+
+	// Working with a single matching identifier.
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example.com"}, expectSerial.String())
+	test.AssertNotError(t, err, "failed to check order is replacement")
+
+	// Working with a different matching identifier.
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example-a.com"}, expectSerial.String())
+	test.AssertNotError(t, err, "failed to check order is replacement")
+
+	// No matching identifiers.
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example-b.com"}, expectSerial.String())
+	test.AssertErrorIs(t, err, berrors.Malformed)
+
+	// RegID for predecessor order does not match.
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 2}, []string{"example.com"}, expectSerial.String())
+	test.AssertErrorIs(t, err, berrors.Unauthorized)
+
+	// Predecessor certificate not found.
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example.com"}, "1")
+	test.AssertErrorIs(t, err, berrors.NotFound)
+}
