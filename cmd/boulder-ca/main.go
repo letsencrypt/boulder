@@ -232,17 +232,8 @@ func main() {
 		certProfiles = append(certProfiles, profile)
 	}
 
-	var defaultNameCheck []*issuance.Profile
-	defaultNameCheck = append(defaultNameCheck, deprecatedProfile)
-	defaultNameCheck = append(defaultNameCheck, certProfiles...)
-	var defaultProfileExists bool
-	for index := range defaultNameCheck {
-		if c.CA.Issuance.DefaultCertificateProfileName == defaultNameCheck[index].Name {
-			defaultProfileExists = true
-			break
-		}
-	}
-	if !defaultProfileExists {
+	ok := validateDefaultCertificateProfileName(deprecatedProfile, certProfiles, c.CA.Issuance.DefaultCertificateProfileName)
+	if !ok {
 		cmd.Fail(fmt.Sprintf("defaultCertificateProfileName %s was configured, but a matching profile object was not found", c.CA.Issuance.DefaultCertificateProfileName))
 	}
 
@@ -328,6 +319,22 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 
 	cmd.FailOnError(start(), "CA gRPC service failed")
+}
+
+// validateDefaultCertificateProfileName checks if the configured default
+// certificate profile name is found in the full list of configured certificate
+// profiles and returns a bool. Duplicate names are handled during CA
+// construction.
+func validateDefaultCertificateProfileName(deprecatedProfile *issuance.Profile, profiles []*issuance.Profile, defaultName string) bool {
+	var allProfiles []*issuance.Profile
+	allProfiles = append(allProfiles, deprecatedProfile)
+	allProfiles = append(allProfiles, profiles...)
+	for index := range allProfiles {
+		if allProfiles[index].Name == defaultName {
+			return true
+		}
+	}
+	return false
 }
 
 func init() {
