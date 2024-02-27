@@ -7,7 +7,7 @@ import (
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"gopkg.in/go-jose/go-jose.v2"
+	"github.com/go-jose/go-jose/v4"
 )
 
 // Service implements noncepb.NonceServiceClient for tests.

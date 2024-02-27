@@ -25,7 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test/load-generator/acme"
 	"golang.org/x/crypto/ocsp"
-	"gopkg.in/go-jose/go-jose.v2"
+	"github.com/go-jose/go-jose/v4"
 )
 
 var (

@@ -114,7 +114,7 @@ func (ctx *cbcAEAD) Open(dst, nonce, ciphertext, data []byte) ([]byte, error) {
 	cbc := cipher.NewCBCDecrypter(ctx.blockCipher, nonce)
 
 	// Make copy of ciphertext buffer, don't want to modify in place
-	buffer := append([]byte{}, []byte(ciphertext[:offset])...)
+	buffer := append([]byte{}, ciphertext[:offset]...)
 
 	if len(buffer)%ctx.blockCipher.BlockSize() > 0 {
 		return nil, errors.New("go-jose/go-jose: invalid ciphertext (invalid length)")
