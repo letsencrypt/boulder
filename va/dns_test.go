@@ -291,13 +291,13 @@ func TestDNSAccountWithMultiAccURLbothwrong(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 	//add another account prefix
 	va.accountURIPrefixes = []string{"test.invalid/acct/", accountURIPrefixes[0]}
-	_, prob := va.validateChallenge(ctx, dnsi("wrong-dns01.com"), dnsAccountChallenge(), testregid)
+	_, err := va.validateChallenge(ctx, dnsi("wrong-dns01.com"), dnsAccountChallenge(), testregid)
 
-	if prob == nil {
+	if err == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
 	}
 	//problem should prefer domain with some txt record than empty one
-	test.AssertEquals(t, prob.Error(), "unauthorized :: Incorrect TXT record \"a\" found at _acme-challenge_62oc7an6git3ml2v.wrong-dns01.com")
+	test.AssertEquals(t, err.Error(), "Incorrect TXT record \"a\" found at _acme-challenge_62oc7an6git3ml2v.wrong-dns01.com")
 }
 
 func TestDNSAccountValidationNotSane(t *testing.T) {
