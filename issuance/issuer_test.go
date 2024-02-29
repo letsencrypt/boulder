@@ -39,6 +39,7 @@ func defaultIssuerConfig() IssuerConfig {
 		UseForRSALeaves:   true,
 		IssuerURL:         "http://issuer-url.example.org",
 		OCSPURL:           "http://ocsp-url.example.org",
+		CRLURLBase:        "http://crl-url.example.org/",
 	}
 }
 

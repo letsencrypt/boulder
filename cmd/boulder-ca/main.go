@@ -34,8 +34,10 @@ type Config struct {
 
 		// Issuance contains all information necessary to load and initialize issuers.
 		Issuance struct {
-			Profile      issuance.ProfileConfig
-			Issuers      []issuance.IssuerConfig `validate:"min=1,dive"`
+			Profile issuance.ProfileConfig
+			// TODO(#7159): Make this required once all live configs are using it.
+			CRLProfile   issuance.CRLProfileConfig `validate:"-"`
+			Issuers      []issuance.IssuerConfig   `validate:"min=1,dive"`
 			IgnoredLints []string
 		}
 
@@ -62,7 +64,8 @@ type Config struct {
 		// LifespanCRL is how long CRLs are valid for. It should be longer than the
 		// `period` field of the CRL Updater. Per the BRs, Section 4.9.7, it MUST
 		// NOT be more than 10 days.
-		LifespanCRL config.Duration
+		// Deprecated: Use Config.CA.Issuance.CRLProfile.ValidityInterval instead.
+		LifespanCRL config.Duration `validate:"-"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -93,6 +96,7 @@ type Config struct {
 		// CRLDPBase is the piece of the CRL Distribution Point URI which is common
 		// across all issuers and shards. It must use the http:// scheme, and must
 		// not end with a slash. Example: "http://prod.c.lencr.org".
+		// TODO(#7296): Remove this fallback once all configs have issuer.CRLBaseURL
 		CRLDPBase string `validate:"required,url,startswith=http://,endsnotwith=/"`
 
 		// DisableCertService causes the CertificateAuthority gRPC service to not
@@ -143,6 +147,15 @@ func main() {
 
 	if c.CA.LifespanOCSP.Duration == 0 {
 		c.CA.LifespanOCSP.Duration = 96 * time.Hour
+	}
+
+	// TODO(#7159): Remove these fallbacks once all live configs are setting the
+	// CRL validity interval inside the Issuance.CRLProfile Config.
+	if c.CA.Issuance.CRLProfile.ValidityInterval.Duration == 0 && c.CA.LifespanCRL.Duration != 0 {
+		c.CA.Issuance.CRLProfile.ValidityInterval = c.CA.LifespanCRL
+	}
+	if c.CA.Issuance.CRLProfile.MaxBackdate.Duration == 0 && c.CA.Backdate.Duration != 0 {
+		c.CA.Issuance.CRLProfile.MaxBackdate = c.CA.Backdate
 	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)
@@ -238,8 +251,7 @@ func main() {
 	if !c.CA.DisableCRLService {
 		crli, err := ca.NewCRLImpl(
 			issuers,
-			profile.Lints,
-			c.CA.LifespanCRL.Duration,
+			c.CA.Issuance.CRLProfile,
 			c.CA.CRLDPBase,
 			c.CA.OCSPLogMaxLength,
 			logger,

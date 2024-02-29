@@ -1,3 +1,24 @@
+# v1.50.2 (2024-02-20)
+
+* **Bug Fix**: When sourcing values for a service's `EndpointParameters`, the lack of a configured region (i.e. `options.Region == ""`) will now translate to a `nil` value for `EndpointParameters.Region` instead of a pointer to the empty string `""`. This will result in a much more explicit error when calling an operation instead of an obscure hostname lookup failure.
+
+# v1.50.1 (2024-02-19)
+
+* **Bug Fix**: Prevent potential panic caused by invalid comparison of credentials.
+
+# v1.50.0 (2024-02-16)
+
+* **Feature**: Add new ClientOptions field to waiter config which allows you to extend the config for operation calls made by waiters.
+
+# v1.49.0 (2024-02-13)
+
+* **Feature**: Bump minimum Go version to 1.20 per our language support policy.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.48.1 (2024-01-24)
+
+* No change notes available for this release.
+
 # v1.48.0 (2024-01-05)
 
 * **Feature**: Support smithy sigv4a trait for codegen.

@@ -96,9 +96,10 @@ var (
 const arbitraryRegID int64 = 1001
 
 // Useful key and certificate files.
-const caKeyFile = "../test/test-ca.key"
-const caCertFile = "../test/test-ca.pem"
-const caCertFile2 = "../test/test-ca2.pem"
+const rsaIntKey = "../test/hierarchy/int-r3.key.pem"
+const rsaIntCert = "../test/hierarchy/int-r3.cert.pem"
+const ecdsaIntKey = "../test/hierarchy/int-e1.key.pem"
+const ecdsaIntCert = "../test/hierarchy/int-e1.cert.pem"
 
 func mustRead(path string) []byte {
 	return must.Do(os.ReadFile(path))
@@ -184,8 +185,8 @@ func setup(t *testing.T) *testCtx {
 		UseForECDSALeaves: true,
 		IssuerURL:         "http://not-example.com/issuer-url",
 		OCSPURL:           "http://not-example.com/ocsp",
-		CRLURL:            "http://not-example.com/crl",
-		Location:          issuance.IssuerLoc{File: caKeyFile, CertFile: caCertFile2},
+		CRLURLBase:        "http://not-example.com/crl/",
+		Location:          issuance.IssuerLoc{File: ecdsaIntKey, CertFile: ecdsaIntCert},
 	}, fc)
 	test.AssertNotError(t, err, "Couldn't load test issuer")
 
@@ -194,8 +195,8 @@ func setup(t *testing.T) *testCtx {
 		UseForECDSALeaves: true,
 		IssuerURL:         "http://not-example.com/issuer-url",
 		OCSPURL:           "http://not-example.com/ocsp",
-		CRLURL:            "http://not-example.com/crl",
-		Location:          issuance.IssuerLoc{File: caKeyFile, CertFile: caCertFile},
+		CRLURLBase:        "http://not-example.com/crl/",
+		Location:          issuance.IssuerLoc{File: rsaIntKey, CertFile: rsaIntCert},
 	}, fc)
 	test.AssertNotError(t, err, "Couldn't load test issuer")
 
@@ -233,8 +234,10 @@ func setup(t *testing.T) *testCtx {
 
 	crl, err := NewCRLImpl(
 		boulderIssuers,
-		boulderProfile.Lints,
-		time.Hour,
+		issuance.CRLProfileConfig{
+			ValidityInterval: config.Duration{Duration: 216 * time.Hour},
+			MaxBackdate:      config.Duration{Duration: time.Hour},
+		},
 		"http://c.boulder.test",
 		100,
 		blog.NewMock(),
@@ -692,8 +695,8 @@ func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIss
 	test.AssertMetricWithLabelsEquals(t, i.ca.signatureCount, prometheus.Labels{"purpose": "precertificate"}, 1)
 
 	// NOTE: The hard-coded value here will have to change over time as Boulder
-	// adds new (unrequested) extensions to certificates.
-	expectedExtensionCount := 10
+	// adds or removes (unrequested/default) extensions in certificates.
+	expectedExtensionCount := 9
 	test.AssertEquals(t, len(i.cert.Extensions), expectedExtensionCount)
 }
 
@@ -912,20 +915,9 @@ func TestGenerateSKID(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "Error generating key")
 
-	features.Set(features.Config{SHA256SubjectKeyIdentifier: true})
-	defer features.Reset()
-	// RFC 7093 section 2 method 1 allows us to use 160 of the leftmost bits for
-	// the Subject Key Identifier. This is the same amount of bits as the
-	// related SHA1 hash.
 	sha256skid, err := generateSKID(key.Public())
 	test.AssertNotError(t, err, "Error generating SKID")
 	test.AssertEquals(t, len(sha256skid), 20)
 	test.AssertEquals(t, cap(sha256skid), 20)
 	features.Reset()
-
-	features.Set(features.Config{SHA256SubjectKeyIdentifier: false})
-	sha1skid, err := generateSKID(key.Public())
-	test.AssertNotError(t, err, "Error generating SKID")
-	test.AssertEquals(t, len(sha1skid), 20)
-	test.AssertEquals(t, cap(sha1skid), 20)
 }

@@ -208,7 +208,7 @@ func (builder *TransactionBuilder) RegistrationsPerIPv6RangeTransaction(ip net.I
 	if err != nil {
 		return Transaction{}, err
 	}
-	limit, err := builder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
+	limit, err := builder.getLimit(NewRegistrationsPerIPv6Range, bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {
 			return newAllowOnlyTransaction()
@@ -225,7 +225,7 @@ func (builder *TransactionBuilder) OrdersPerAccountTransaction(regId int64) (Tra
 	if err != nil {
 		return Transaction{}, err
 	}
-	limit, err := builder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
+	limit, err := builder.getLimit(NewOrdersPerAccount, bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {
 			return newAllowOnlyTransaction()
@@ -243,7 +243,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerAccountCheckOnlyTransa
 	if err != nil {
 		return Transaction{}, err
 	}
-	limit, err := builder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
+	limit, err := builder.getLimit(FailedAuthorizationsPerAccount, bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {
 			return newAllowOnlyTransaction()
@@ -260,7 +260,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerAccountTransaction(reg
 	if err != nil {
 		return Transaction{}, err
 	}
-	limit, err := builder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
+	limit, err := builder.getLimit(FailedAuthorizationsPerAccount, bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {
 			return newAllowOnlyTransaction()
@@ -359,7 +359,7 @@ func (builder *TransactionBuilder) CertificatesPerFQDNSetTransaction(orderNames 
 	if err != nil {
 		return Transaction{}, err
 	}
-	limit, err := builder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
+	limit, err := builder.getLimit(CertificatesPerFQDNSet, bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {
 			return newAllowOnlyTransaction()

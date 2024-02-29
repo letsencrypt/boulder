@@ -296,38 +296,29 @@ func TestRequestValid(t *testing.T) {
 }
 
 func TestGenerateTemplate(t *testing.T) {
-	tests := []struct {
-		name             string
-		issuer           *Issuer
-		expectedTemplate *x509.Certificate
-	}{
-		{
-			name: "crl url",
-			issuer: &Issuer{
-				crlURL: "crl-url",
-				sigAlg: x509.SHA256WithRSA,
-			},
-			expectedTemplate: &x509.Certificate{
-				BasicConstraintsValid: true,
-				SignatureAlgorithm:    x509.SHA256WithRSA,
-				ExtKeyUsage: []x509.ExtKeyUsage{
-					x509.ExtKeyUsageServerAuth,
-					x509.ExtKeyUsageClientAuth,
-				},
-				IssuingCertificateURL: []string{""},
-				OCSPServer:            []string{""},
-				CRLDistributionPoints: []string{"crl-url"},
-				PolicyIdentifiers:     []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
-			},
-		},
+	issuer := &Issuer{
+		ocspURL:    "http://ocsp",
+		issuerURL:  "http://issuer",
+		crlURLBase: "http://crl/",
+		sigAlg:     x509.SHA256WithRSA,
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			template := tc.issuer.generateTemplate()
-			test.AssertDeepEquals(t, *template, *tc.expectedTemplate)
-		})
+	actual := issuer.generateTemplate()
+
+	expected := &x509.Certificate{
+		BasicConstraintsValid: true,
+		SignatureAlgorithm:    x509.SHA256WithRSA,
+		ExtKeyUsage: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageServerAuth,
+			x509.ExtKeyUsageClientAuth,
+		},
+		IssuingCertificateURL: []string{"http://issuer"},
+		OCSPServer:            []string{"http://ocsp"},
+		CRLDistributionPoints: nil,
+		PolicyIdentifiers:     []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
 	}
+
+	test.AssertDeepEquals(t, actual, expected)
 }
 
 func TestIssue(t *testing.T) {

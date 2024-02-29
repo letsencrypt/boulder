@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"strings"
 
 	"github.com/jmhodges/clock"
 	"golang.org/x/crypto/ocsp"
@@ -154,9 +155,9 @@ type IssuerConfig struct {
 	UseForRSALeaves   bool
 	UseForECDSALeaves bool
 
-	IssuerURL string `validate:"required,url"`
-	OCSPURL   string `validate:"required,url"`
-	CRLURL    string `validate:"omitempty,url"`
+	IssuerURL  string `validate:"required,url"`
+	OCSPURL    string `validate:"required,url"`
+	CRLURLBase string `validate:"omitempty,url,startswith=http://,endswith=/"`
 
 	Location IssuerLoc
 }
@@ -191,13 +192,17 @@ type Issuer struct {
 	useForRSALeaves   bool
 	useForECDSALeaves bool
 
+	// Used to set the Authority Information Access caIssuers URL in issued
+	// certificates.
 	issuerURL string
-	ocspURL   string
-	crlURL    string
+	// Used to set the Authority Information Access ocsp URL in issued
+	// certificates.
+	ocspURL string
+	// Used to set the Issuing Distribution Point extension in issued CRLs
+	// *and* (eventually) the CRL Distribution Point extension in issued certs.
+	crlURLBase string
 
-	// TODO(#7159): Make Clk private by giving ca_test.go a better way to build
-	// in-memory Issuers.
-	Clk clock.Clock
+	clk clock.Clock
 }
 
 // newIssuer constructs a new Issuer from the in-memory certificate and signer.
@@ -226,6 +231,14 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 	if config.OCSPURL == "" {
 		return nil, errors.New("OCSP URL is required")
 	}
+	if config.CRLURLBase != "" {
+		if !strings.HasPrefix(config.CRLURLBase, "http://") {
+			return nil, fmt.Errorf("crlURLBase must use HTTP scheme, got %q", config.CRLURLBase)
+		}
+		if !strings.HasSuffix(config.CRLURLBase, "/") {
+			return nil, fmt.Errorf("crlURLBase must end with exactly one forward slash, got %q", config.CRLURLBase)
+		}
+	}
 
 	// We require that all of our issuers be capable of both issuing certs and
 	// providing revocation information.
@@ -253,8 +266,8 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 		useForECDSALeaves: config.UseForECDSALeaves,
 		issuerURL:         config.IssuerURL,
 		ocspURL:           config.OCSPURL,
-		crlURL:            config.CRLURL,
-		Clk:               clk,
+		crlURLBase:        config.CRLURLBase,
+		clk:               clk,
 	}
 	return i, nil
 }

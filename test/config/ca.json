@@ -75,7 +75,7 @@
 					"issuerURL": "http://127.0.0.1:4001/aia/issuer/6605440498369741",
 					"ocspURL": "http://127.0.0.1:4002/",
 					"location": {
-						"configFile": "test/test-ca.key-pkcs11.json",
+						"configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
 						"certFile": "/hierarchy/intermediate-cert-rsa-a.pem",
 						"numSessions": 2
 					}
@@ -86,7 +86,7 @@
 					"issuerURL": "http://127.0.0.1:4001/aia/issuer/41127673797486028",
 					"ocspURL": "http://127.0.0.1:4002/",
 					"location": {
-						"configFile": "test/test-ca.key-pkcs11.json",
+						"configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
 						"certFile": "/hierarchy/intermediate-cert-rsa-b.pem",
 						"numSessions": 2
 					}

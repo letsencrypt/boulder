@@ -149,6 +149,13 @@ type ValidationRecord struct {
 	// lookup for AddressUsed. During recursive A and AAAA lookups, a record may
 	// instead look like A:host:port or AAAA:host:port
 	ResolverAddrs []string `json:"resolverAddrs,omitempty"`
+	// UsedRSAKEX is a *temporary* addition to the validation record, so we can
+	// see how many servers that we reach out to during HTTP-01 and TLS-ALPN-01
+	// validation are only willing to negotiate RSA key exchange mechanisms. The
+	// field is not included in the serialized json to avoid cluttering the
+	// database and log lines.
+	// TODO(#7321): Remove this when we have collected sufficient data.
+	UsedRSAKEX bool `json:"-"`
 }
 
 func looksLikeKeyAuthorization(str string) error {
@@ -492,6 +499,12 @@ type CertDER []byte
 type SuggestedWindow struct {
 	Start time.Time `json:"start"`
 	End   time.Time `json:"end"`
+}
+
+// IsWithin returns true if the given time is within the suggested window,
+// inclusive of the start time and exclusive of the end time.
+func (window SuggestedWindow) IsWithin(now time.Time) bool {
+	return !now.Before(window.Start) && now.Before(window.End)
 }
 
 // RenewalInfo is a type which is exposed to clients which query the renewalInfo

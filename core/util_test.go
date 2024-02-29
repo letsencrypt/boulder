@@ -276,13 +276,13 @@ func TestLoadCert(t *testing.T) {
 	test.AssertError(t, err, "Loading non-PEM file did not error")
 	test.AssertEquals(t, err.Error(), "no data in cert PEM file \"../test/test-ca.der\"")
 
-	_, err = LoadCert("../test/test-ca.key")
+	_, err = LoadCert("../test/hierarchy/int-e1.key.pem")
 	test.AssertError(t, err, "Loading non-cert file did not error")
 	test.AssertEquals(t, err.Error(), "x509: malformed tbs certificate")
 
-	cert, err := LoadCert("../test/test-ca.pem")
+	cert, err := LoadCert("../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "Failed to load cert file")
-	test.AssertEquals(t, cert.Subject.CommonName, "happy hacker fake CA")
+	test.AssertEquals(t, cert.Subject.CommonName, "(TEST) Radical Rhino R3")
 }
 
 func TestRetryBackoff(t *testing.T) {

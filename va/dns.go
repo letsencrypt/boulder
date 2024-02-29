@@ -65,10 +65,10 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 	return
 }
 
-func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.DNS {
 		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
-		return nil, probs.Malformed("Identifier type for DNS was not itself DNS")
+		return nil, berrors.MalformedError("Identifier type for DNS was not itself DNS")
 	}
 
 	// Compute the digest of the key authorization file
@@ -83,18 +83,18 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 }
 
 func (va *ValidationAuthorityImpl) validateDNSsingle(ctx context.Context, ident identifier.ACMEIdentifier,
-	authorizedKeysDigest string, challengeSubdomain string) ([]core.ValidationRecord, *probs.ProblemDetails) {
+	authorizedKeysDigest string, challengeSubdomain string) ([]core.ValidationRecord, error) {
 
 	txts, resolvers, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
-		return nil, probs.DNS(err.Error())
+		return nil, berrors.DNSError("%s", err)
 	}
 
 	// If there weren't any TXT records return a distinct error message to allow
 	// troubleshooters to differentiate between no TXT records and
 	// invalid/incorrect TXT records.
 	if len(txts) == 0 {
-		return nil, probs.Unauthorized(fmt.Sprintf("No TXT record found at %s", challengeSubdomain))
+		return nil, berrors.UnauthorizedError("No TXT record found at %s", challengeSubdomain)
 	}
 
 	for _, element := range txts {
@@ -112,11 +112,11 @@ func (va *ValidationAuthorityImpl) validateDNSsingle(ctx context.Context, ident 
 	if len(txts) > 1 {
 		andMore = fmt.Sprintf(" (and %d more)", len(txts)-1)
 	}
-	return nil, probs.Unauthorized(fmt.Sprintf("Incorrect TXT record %q%s found at %s",
-		invalidRecord, andMore, challengeSubdomain))
+	return nil, berrors.UnauthorizedError("Incorrect TXT record %q%s found at %s",
+		invalidRecord, andMore, challengeSubdomain)
 }
 
-func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge, regid int64) ([]core.ValidationRecord, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge, regid int64) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.DNS {
 		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
 		return nil, probs.Malformed("Identifier type for DNS was not itself DNS")
@@ -131,20 +131,20 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ide
 
 	//we don't know what accountURIPrefixes client used so we have to try all
 	challengeSubdomains := accountURLHostname(va.accountURIPrefixes, ident, regid)
-	var problems []*probs.ProblemDetails
+	var errs []error
 	// for all valid accounturl hostname we try hash of those
 	for _, csub := range challengeSubdomains {
 		res, err := va.validateDNSsingle(ctx, ident, authorizedKeysDigest, csub)
 		if err == nil {
 			return res, nil
 		} else {
-			problems = append(problems, err)
+			errs = append(errs, err)
 		}
 	} //now everything returned error, what accountURLprefix client used?
-	if len(problems) == 1 {
-		return nil, problems[0] //there was only one name on prefix return that
+	if len(errs) == 1 {
+		return nil, errs[0] //there was only one name on prefix return that
 	}
 	//return last one because it's v2 accounturl and what most account would have
 	//TODO:actually trace request account URL from WFE and use this, or prefer txt than nxdomain
-	return nil, problems[len(problems)-1]
+	return nil, errs[len(errs)-1]
 }
