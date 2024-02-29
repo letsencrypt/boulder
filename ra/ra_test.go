@@ -17,6 +17,7 @@ import (
 	"math/big"
 	mrand "math/rand"
 	"net"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -38,6 +39,7 @@ import (
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -56,6 +58,7 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/ratelimits"
+	bredis "github.com/letsencrypt/boulder/redis"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -365,9 +368,40 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		},
 	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
+	var limiter *ratelimits.Limiter
+	var txnBuilder *ratelimits.TransactionBuilder
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		rc := bredis.Config{
+			Username: "unittest-rw",
+			TLS: cmd.TLSConfig{
+				CACertFile: "../test/redis-tls/minica.pem",
+				CertFile:   "../test/redis-tls/boulder/cert.pem",
+				KeyFile:    "../test/redis-tls/boulder/key.pem",
+			},
+			Lookups: []cmd.ServiceDomain{
+				{
+					Service: "redisratelimits",
+					Domain:  "service.consul",
+				},
+			},
+			LookupDNSAuthority: "consul.service.consul",
+		}
+		rc.PasswordConfig = cmd.PasswordConfig{
+			PasswordFile: "../test/secrets/ratelimits_redis_password",
+		}
+		ring, err := bredis.NewRingFromConfig(rc, stats, log)
+		test.AssertNotError(t, err, "making redis ring client")
+		source := ratelimits.NewRedisSource(ring.Ring, fc, stats)
+		test.AssertNotNil(t, source, "source should not be nil")
+		limiter, err = ratelimits.NewLimiter(fc, source, stats)
+		test.AssertNotError(t, err, "making limiter")
+		txnBuilder, err = ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+		test.AssertNotError(t, err, "making transaction composer")
+	}
+
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
-		1, testKeyPolicy, 100,
+		1, testKeyPolicy, limiter, txnBuilder, 100,
 		300*24*time.Hour, 7*24*time.Hour,
 		nil, noopCAA{},
 		0, 5*time.Minute,
@@ -857,6 +891,19 @@ func TestPerformValidationSuccess(t *testing.T) {
 		Problems: nil,
 	}
 
+	var remainingFailedValidations int64
+	var rlTxns []ratelimits.Transaction
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// Gather a baseline for the rate limit.
+		var err error
+		rlTxns, err = ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(authzPB.RegistrationID, []string{Identifier}, 100)
+		test.AssertNotError(t, err, "FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions failed")
+
+		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
+		test.AssertNotError(t, err, "BatchSpend failed")
+		remainingFailedValidations = d.Remaining
+	}
+
 	now := fc.Now()
 	challIdx := dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
@@ -898,6 +945,13 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
+
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// The failed validations bucket should be identical to the baseline.
+		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
+		test.AssertNotError(t, err, "BatchSpend failed")
+		test.AssertEquals(t, d.Remaining, remainingFailedValidations)
+	}
 }
 
 func TestPerformValidationVAError(t *testing.T) {
@@ -905,6 +959,19 @@ func TestPerformValidationVAError(t *testing.T) {
 	defer cleanUp()
 
 	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
+
+	var remainingFailedValidations int64
+	var rlTxns []ratelimits.Transaction
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// Gather a baseline for the rate limit.
+		var err error
+		rlTxns, err = ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(authzPB.RegistrationID, []string{Identifier}, 100)
+		test.AssertNotError(t, err, "FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions failed")
+
+		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
+		test.AssertNotError(t, err, "BatchSpend failed")
+		remainingFailedValidations = d.Remaining
+	}
 
 	va.PerformValidationRequestResultError = fmt.Errorf("Something went wrong")
 
@@ -945,6 +1012,13 @@ func TestPerformValidationVAError(t *testing.T) {
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
+
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// The failed validations bucket should have been decremented by 1.
+		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
+		test.AssertNotError(t, err, "BatchSpend failed")
+		test.AssertEquals(t, d.Remaining, remainingFailedValidations-1)
+	}
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
