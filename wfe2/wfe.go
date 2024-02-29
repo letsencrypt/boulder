@@ -2064,19 +2064,19 @@ func (wfe *WebFrontEndImpl) newNewOrderLimitTransactions(regId int64, names []st
 	}
 	transactions = append(transactions, txn)
 
-	txn, err = wfe.txnBuilder.FailedAuthorizationsPerAccountCheckOnlyTransaction(regId)
+	failedAuthzTxns, err := wfe.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId, names, wfe.maxNames)
 	if err != nil {
-		logTxnErr(err, ratelimits.FailedAuthorizationsPerAccount)
+		logTxnErr(err, ratelimits.FailedAuthorizationsPerDomainPerAccount)
 		return nil
 	}
-	transactions = append(transactions, txn)
+	transactions = append(transactions, failedAuthzTxns...)
 
-	txns, err := wfe.txnBuilder.CertificatesPerDomainTransactions(regId, names, wfe.maxNames)
+	certsPerDomainTxns, err := wfe.txnBuilder.CertificatesPerDomainTransactions(regId, names, wfe.maxNames)
 	if err != nil {
 		logTxnErr(err, ratelimits.CertificatesPerDomain)
 		return nil
 	}
-	transactions = append(transactions, txns...)
+	transactions = append(transactions, certsPerDomainTxns...)
 
 	txn, err = wfe.txnBuilder.CertificatesPerFQDNSetTransaction(names)
 	if err != nil {
