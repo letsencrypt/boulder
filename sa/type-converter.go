@@ -5,8 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/letsencrypt/borp"
 	"github.com/go-jose/go-jose/v4"
+
+	"github.com/letsencrypt/borp"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
