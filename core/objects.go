@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/ocsp"
 	"github.com/go-jose/go-jose/v4"
+	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
