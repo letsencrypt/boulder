@@ -32,7 +32,7 @@ import (
 type ProfileConfig struct {
 	// A unique name identifying this ProfileConfig. A default name will be
 	// assigned if one is not provided.
-	Name            string
+	Name            string `validate:"omitempty,alphanum,min=1,max=32"`
 	AllowMustStaple bool
 	AllowCTPoison   bool
 	AllowSCTList    bool
