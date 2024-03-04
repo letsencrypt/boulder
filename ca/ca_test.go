@@ -491,23 +491,28 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to remake CA")
 
+	selectedProfile := issuance.DefaultCertProfileName
+	certProfileHash, err := ca.certificateProfileNameExists(selectedProfile)
+	hexHash := hex.EncodeToString(certProfileHash[:])
+	test.AssertNotError(t, err, "Certificate profile was expected to exist")
+
 	// Test that an RSA CSR gets issuance from the RSA issuer.
-	issuedCert, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID})
+	issuedCert, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, CertProfileName: selectedProfile})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err := x509.ParseCertificate(issuedCert.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	err = cert.CheckSignatureFrom(testCtx.boulderIssuers[1].Cert.Certificate)
 	test.AssertNotError(t, err, "Certificate failed signature validation")
-	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": selectedProfile, "hash": hexHash, "status": "success"}, 1)
 
 	// Test that an ECDSA CSR gets issuance from the ECDSA issuer.
-	issuedCert, err = ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID})
+	issuedCert, err = ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID, CertProfileName: selectedProfile})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err = x509.ParseCertificate(issuedCert.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	err = cert.CheckSignatureFrom(testCtx.boulderIssuers[0].Cert.Certificate)
 	test.AssertNotError(t, err, "Certificate failed signature validation")
-	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": issuance.DefaultCertProfileName, "hash": "4598ba97d7b278a8ecf37eaf2416635cf32eab1616c8b4a2d612e2c30378a44b", "status": "success"}, 2)
+	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": selectedProfile, "hash": hexHash, "status": "success"}, 2)
 }
 
 func TestProfiles(t *testing.T) {
@@ -1012,20 +1017,15 @@ func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *test
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	selectedProfile := "longerLived"
-	hash, err := ca.certificateProfileNameExists(selectedProfile)
-	hexHash := hex.EncodeToString(hash[:])
+	certProfileHash, err := ca.certificateProfileNameExists(selectedProfile)
+	hexHash := hex.EncodeToString(certProfileHash[:])
 	test.AssertNotError(t, err, "Certificate profile was expected to exist")
 
-	certProfile := &capb.CertificateProfile{
-		Name: selectedProfile,
-		Hash: hash[:],
-	}
-
 	issueReq := capb.IssueCertificateRequest{
-		Csr:            CNandSANCSR,
-		RegistrationID: arbitraryRegID,
-		OrderID:        0,
-		CertProfile:    certProfile,
+		Csr:             CNandSANCSR,
+		RegistrationID:  arbitraryRegID,
+		OrderID:         0,
+		CertProfileName: selectedProfile,
 	}
 	precert, err := ca.IssuePrecertificate(ctx, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue precert")
@@ -1047,11 +1047,11 @@ func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *test
 
 	test.AssertNotError(t, err, "Failed to marshal SCT")
 	cert, err := ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
-		DER:            precert.DER,
-		SCTs:           sctBytes,
-		RegistrationID: arbitraryRegID,
-		OrderID:        0,
-		CertProfile:    certProfile,
+		DER:             precert.DER,
+		SCTs:            sctBytes,
+		RegistrationID:  arbitraryRegID,
+		OrderID:         0,
+		CertProfileHash: certProfileHash[:],
 	})
 	test.AssertNotError(t, err, "Failed to issue cert from precert")
 	parsedCert, err := x509.ParseCertificate(cert.Der)
@@ -1143,25 +1143,20 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	}
 
 	selectedProfile := issuance.DefaultCertProfileName
-	hash, err := ca.certificateProfileNameExists(selectedProfile)
-	hexHash := hex.EncodeToString(hash[:])
+	certProfileHash, err := ca.certificateProfileNameExists(selectedProfile)
+	hexHash := hex.EncodeToString(certProfileHash[:])
 	test.AssertNotError(t, err, "Certificate profile was expected to exist")
-
-	certProfile := &capb.CertificateProfile{
-		Name: selectedProfile,
-		Hash: hash[:],
-	}
 
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
 	precert, err := ca.IssuePrecertificate(ctx, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue precert")
 	test.AssertMetricWithLabelsEquals(t, ca.certProfileCount, prometheus.Labels{"purpose": "precertificate", "profile": selectedProfile, "hash": hexHash, "status": "success"}, 1)
 	_, err = ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
-		DER:            precert.DER,
-		SCTs:           sctBytes,
-		RegistrationID: arbitraryRegID,
-		OrderID:        0,
-		CertProfile:    certProfile,
+		DER:             precert.DER,
+		SCTs:            sctBytes,
+		RegistrationID:  arbitraryRegID,
+		OrderID:         0,
+		CertProfileHash: certProfileHash[:],
 	})
 	if err == nil {
 		t.Error("Expected error issuing duplicate serial but got none.")
@@ -1196,11 +1191,11 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	_, err = errorca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
-		DER:            precert.DER,
-		SCTs:           sctBytes,
-		RegistrationID: arbitraryRegID,
-		OrderID:        0,
-		CertProfile:    certProfile,
+		DER:             precert.DER,
+		SCTs:            sctBytes,
+		RegistrationID:  arbitraryRegID,
+		OrderID:         0,
+		CertProfileHash: certProfileHash[:],
 	})
 	if err == nil {
 		t.Fatal("Expected error issuing duplicate serial but got none.")
