@@ -730,7 +730,7 @@ func initStats(stats prometheus.Registerer) mailerStats {
 	nagsAtCapacity := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "nags_at_capacity",
-			Help: "Count of nag groups at capcacity",
+			Help: "Count of nag groups at capacity",
 		},
 		[]string{"nag_group"})
 	stats.MustRegister(nagsAtCapacity)
