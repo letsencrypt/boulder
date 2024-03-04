@@ -12,20 +12,6 @@ service CertificateAuthority {
   rpc IssueCertificateForPrecertificate(IssueCertificateForPrecertificateRequest) returns (core.Certificate) {}
 }
 
-// CertificateProfile contains a human readable profile name and a byte hash of
-// the entire profile.
-message CertificateProfile {
-  // Next unused field number: 3
-
-  // The name is guaranteed to be non-empty because a default name will be
-  // assigned during *Profile construction if no name is provided.
-  string name = 1;
-
-  // The hash over the full contents of a certificate profile ensures that the
-  // profile remains unchanged after multiple roundtrips through the RA and CA.
-  bytes hash = 2;
-}
-
 message IssueCertificateRequest {
   // Next unused field number: 6
   bytes csr = 1;
@@ -33,22 +19,20 @@ message IssueCertificateRequest {
   int64 orderID = 3;
   int64 issuerNameID = 4;
 
-  // The receiving CA must ensure the `name` field is found within its internal
-  // map of certificate profiles or else a precertificate could be issued from
-  // an unintended profile. The hash field will be empty at this point because
-  // the RA is just routing the ACME client selected profile provided by the WFE
-  // and has no internal understanding of a *Profile. 
-  CertificateProfile certProfile = 5;
+  // certProfileName is a human readable name provided by the RA and used to
+  // determine if the CA can issue for that profile. A default name will be
+  // assigned during *Profile construction if no name is provided.
+  string certProfileName = 5;
 }
 
 message IssuePrecertificateResponse {
   // Next unused field number: 3
   bytes DER = 1;
-  // The CA will use the selected profile during issuance of the precertificate.
-  // It must return a fully populated CertificateProfile message to the RA along
-  // so that eventual issuance of the final certificate can be performed using
-  // the same profile.
-  CertificateProfile certProfile = 2;
+
+  // certProfileHash is a hash over the exported fields of a certificate profile
+  // to ensure that the profile remains unchanged after multiple roundtrips
+  // through the RA and CA.
+  bytes certProfileHash = 2;
 }
 
 message IssueCertificateForPrecertificateRequest {
@@ -58,12 +42,10 @@ message IssueCertificateForPrecertificateRequest {
   int64 registrationID = 3;
   int64 orderID = 4;
 
-  // The RA sends the fully populated CertificateProfile it previously received
-  // back to a (possibly different) CA. The receiving CA must ensure the value
-  // of the `hash` field is found within its internal map of certificate
-  // profiles or else a certificate could be issued from a different profile
-  // than the precertificate.
-  CertificateProfile certProfile = 5;
+  // certProfileHash is a hash over the exported fields of a certificate profile
+  // to ensure that the profile remains unchanged after multiple roundtrips
+  // through the RA and CA.
+  bytes certProfileHash = 5;
 }
 
 // OCSPGenerator generates OCSP. We separate this out from
