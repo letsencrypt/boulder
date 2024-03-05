@@ -1540,19 +1540,21 @@ func TestOrder(t *testing.T) {
 	expires := fc.Now().Add(2 * time.Hour)
 
 	inputOrder := &corepb.Order{
-		RegistrationID:   reg.Id,
-		Expires:          timestamppb.New(expires),
-		Names:            []string{"example.com"},
-		V2Authorizations: []int64{authzID},
+		RegistrationID:         reg.Id,
+		Expires:                timestamppb.New(expires),
+		Names:                  []string{"example.com"},
+		V2Authorizations:       []int64{authzID},
+		CertificateProfileName: "tbiapb",
 	}
 
 	// Create the order
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:   inputOrder.RegistrationID,
-			Expires:          inputOrder.Expires,
-			Names:            inputOrder.Names,
-			V2Authorizations: inputOrder.V2Authorizations,
+			RegistrationID:         inputOrder.RegistrationID,
+			Expires:                inputOrder.Expires,
+			Names:                  inputOrder.Names,
+			V2Authorizations:       inputOrder.V2Authorizations,
+			CertificateProfileName: inputOrder.CertificateProfileName,
 		},
 	})
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
@@ -1575,7 +1577,8 @@ func TestOrder(t *testing.T) {
 		// We should not be processing it
 		BeganProcessing: false,
 		// The created timestamp should have been set to the current time
-		Created: timestamppb.New(created),
+		Created:                timestamppb.New(created),
+		CertificateProfileName: "tbiapb",
 	}
 
 	// Fetch the order by its ID and make sure it matches the expected

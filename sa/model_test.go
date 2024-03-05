@@ -16,12 +16,13 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test/vars"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -255,6 +256,26 @@ func TestModelToOrderBadJSON(t *testing.T) {
 	var badJSONErr errBadJSON
 	test.AssertErrorWraps(t, err, &badJSONErr)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
+}
+
+func TestOrderModelThereAndBackAgain(t *testing.T) {
+	clk := clock.New()
+	now := clk.Now()
+	order := &corepb.Order{
+		Id:                     0,
+		RegistrationID:         2016,
+		Expires:                timestamppb.New(now.Add(24 * time.Hour)),
+		Created:                timestamppb.New(now),
+		Error:                  nil,
+		CertificateSerial:      "1",
+		BeganProcessing:        true,
+		CertificateProfileName: "phljny",
+	}
+	model, err := orderToModel(order)
+	test.AssertNotError(t, err, "orderToModel should not have errored")
+	returnOrder, err := modelToOrder(model)
+	test.AssertNotError(t, err, "modelToOrder should not have errored")
+	test.AssertDeepEquals(t, order, returnOrder)
 }
 
 // TestPopulateAttemptedFieldsBadJSON tests that populating a challenge from an
