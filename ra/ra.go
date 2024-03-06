@@ -1763,7 +1763,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 }
 
 func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, regId int64, name string) {
-	if ra.limiter == nil && ra.txnBuilder == nil {
+	if ra.limiter == nil || ra.txnBuilder == nil {
 		// Limiter is disabled.
 		return
 	}
