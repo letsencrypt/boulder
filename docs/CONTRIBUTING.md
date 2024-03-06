@@ -12,12 +12,12 @@ guidelines for Boulder contributions.
 
 # Review Requirements
 
-* All pull requests must receive at least one approval by a CODEOWNER other than the author. This is enforced by GitHub itself.
+* All pull requests must receive at least one approval by a [CODEOWNER](../CODEOWNERS) other than the author. This is enforced by GitHub itself.
 * All pull requests should receive at least two approvals by [Trusted Contributors](https://github.com/letsencrypt/cp-cps/blob/main/CP-CPS.md#161-definitions).
   This requirement may be waived when:
   * the change only modifies documentation;
   * the change only modifies tests;
-  * in exceptional circumstances.
+  * in exceptional circumstances, such as when no second reviewer is available at all.
 
   This requirement should not be waived when:
   * the change is not written by a Trusted Contributor, to ensure that at least two TCs have eyes on it.
