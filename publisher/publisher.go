@@ -123,6 +123,7 @@ func NewLog(uri, b64PK, userAgent string, logger blog.Logger) (*Log, error) {
 		// "unlimited," which would be bad.
 		Transport: &http.Transport{
 			MaxIdleConns:        http.DefaultTransport.(*http.Transport).MaxIdleConns,
+			MaxIdleConnsPerHost: http.DefaultTransport.(*http.Transport).MaxIdleConns,
 			IdleConnTimeout:     http.DefaultTransport.(*http.Transport).IdleConnTimeout,
 			TLSHandshakeTimeout: http.DefaultTransport.(*http.Transport).TLSHandshakeTimeout,
 			// In Boulder Issue 3821[0] we found that HTTP/2 support was causing hard

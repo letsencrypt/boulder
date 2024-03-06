@@ -265,7 +265,9 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckO
 		}
 
 		// Add a check-only transaction for each per domain per account bucket.
-		txn, err := newCheckOnlyTransaction(limit, perDomainPerAccountBucketKey, 1)
+		// The cost is 0, as we are only checking that the account and domain
+		// pair aren't already over the limit.
+		txn, err := newCheckOnlyTransaction(limit, perDomainPerAccountBucketKey, 0)
 		if err != nil {
 			return nil, err
 		}

@@ -278,6 +278,19 @@ func TestPerformValidationInvalid(t *testing.T) {
 	}, 1)
 }
 
+func TestInternalErrorLogged(t *testing.T) {
+	va, mockLog := setup(nil, 0, "", nil, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+	req := createValidationRequest("nonexistent.com", core.ChallengeTypeHTTP01)
+	_, err := va.PerformValidation(ctx, req)
+	test.AssertNotError(t, err, "failed validation should not be an error")
+	matchingLogs := mockLog.GetAllMatching(
+		`Validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: context deadline exceeded`)
+	test.AssertEquals(t, len(matchingLogs), 1)
+}
+
 func TestPerformValidationValid(t *testing.T) {
 	va, mockLog := setup(nil, 0, "", nil, nil)
 

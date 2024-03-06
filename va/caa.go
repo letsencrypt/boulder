@@ -73,6 +73,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	if err != nil {
 		prob = detailedError(err)
 		logEvent.Error = prob.Error()
+		logEvent.InternalError = err.Error()
 		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
 		checkResult = "failure"
 	} else if remoteCAAResults != nil {
@@ -97,6 +98,8 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			// If the remote result was a non-nil problem then fail the CAA check
 			if remoteProb != nil {
 				prob = remoteProb
+				// We only set .Error here, not InternalError, because the remote VA doesn't send
+				// us the internal error. But that's okay, because it got logged at the remote VA.
 				logEvent.Error = remoteProb.Error()
 				checkResult = "failure"
 				va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",

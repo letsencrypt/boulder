@@ -13,21 +13,39 @@ service CertificateAuthority {
 }
 
 message IssueCertificateRequest {
+  // Next unused field number: 6
   bytes csr = 1;
   int64 registrationID = 2;
   int64 orderID = 3;
   int64 issuerNameID = 4;
+
+  // certProfileName is a human readable name provided by the RA and used to
+  // determine if the CA can issue for that profile. A default name will be
+  // assigned during *Profile construction if no name is provided.
+  string certProfileName = 5;
 }
 
 message IssuePrecertificateResponse {
+  // Next unused field number: 3
   bytes DER = 1;
+
+  // certProfileHash is a hash over the exported fields of a certificate profile
+  // to ensure that the profile remains unchanged after multiple roundtrips
+  // through the RA and CA.
+  bytes certProfileHash = 2;
 }
 
 message IssueCertificateForPrecertificateRequest {
+  // Next unused field number: 6
   bytes DER = 1;
   repeated bytes SCTs = 2;
   int64 registrationID = 3;
   int64 orderID = 4;
+
+  // certProfileHash is a hash over the exported fields of a certificate profile
+  // to ensure that the profile remains unchanged after multiple roundtrips
+  // through the RA and CA.
+  bytes certProfileHash = 5;
 }
 
 // OCSPGenerator generates OCSP. We separate this out from
