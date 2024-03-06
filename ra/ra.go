@@ -1768,12 +1768,12 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 		return
 	}
 
-	txns, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransactions(regId, []string{name}, ra.maxNames)
+	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, name)
 	if err != nil {
 		ra.log.Errf("constructing rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
 
-	_, err = ra.limiter.BatchSpend(ctx, txns)
+	_, err = ra.limiter.Spend(ctx, txn)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
