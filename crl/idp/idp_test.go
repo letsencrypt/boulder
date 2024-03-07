@@ -33,7 +33,7 @@ func TestMakeUserCertsExt(t *testing.T) {
 			t.Parallel()
 			got, err := MakeUserCertsExt(tc.urls)
 			test.AssertNotError(t, err, "should never fail to marshal asn1 to bytes")
-			test.AssertDeepEquals(t, got.Id, asn1.ObjectIdentifier{2, 5, 29, 28})
+			test.AssertDeepEquals(t, got.Id, idOID)
 			test.AssertEquals(t, got.Critical, true)
 			test.AssertDeepEquals(t, got.Value, tc.want)
 		})
