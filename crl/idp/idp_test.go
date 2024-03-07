@@ -1,7 +1,6 @@
 package idp
 
 import (
-	"encoding/asn1"
 	"encoding/hex"
 	"testing"
 
