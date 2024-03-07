@@ -1317,10 +1317,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	}
 
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
-		DER:            precert.DER,
-		SCTs:           scts,
-		RegistrationID: int64(acctID),
-		OrderID:        int64(oID),
+		DER:             precert.DER,
+		SCTs:            scts,
+		RegistrationID:  int64(acctID),
+		OrderID:         int64(oID),
+		CertProfileHash: precert.CertProfileHash,
 	})
 	if err != nil {
 		return nil, wrapError(err, "issuing certificate for precertificate")
