@@ -1273,9 +1273,8 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 	if err != nil {
 		return fmt.Errorf("starting db query: %w", err)
 	}
-	defer rows.Close()
 
-	for rows.Next() {
+	return rows.ForEach(func(row *incidentSerialModel) error {
 		// Scan the row into the model. Note: the fields must be passed in the
 		// same order as the columns returned by the query above.
 		ism, err := rows.Get()
@@ -1296,17 +1295,8 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 			ispb.LastNoticeSent = timestamppb.New(*ism.LastNoticeSent)
 		}
 
-		err = stream.Send(ispb)
-		if err != nil {
-			return err
-		}
-	}
-
-	err = rows.Err()
-	if err != nil {
-		return err
-	}
-	return nil
+		return stream.Send(ispb)
+	})
 }
 
 func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentRequest, stream sapb.StorageAuthority_SerialsForIncidentServer) error {
@@ -1363,43 +1353,21 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(re
 		return fmt.Errorf("reading db: %w", err)
 	}
 
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			ssa.log.AuditErrf("closing row reader: %s", err)
-		}
-	}()
-
-	for rows.Next() {
-		row, err := rows.Get()
-		if err != nil {
-			return fmt.Errorf("reading row: %w", err)
-		}
-
+	return rows.ForEach(func(row *revokedCertModel) error {
 		// Double-check that the cert wasn't revoked between the time at which we're
 		// constructing this snapshot CRL and right now. If the cert was revoked
 		// at-or-after the "atTime", we'll just include it in the next generation
 		// of CRLs.
 		if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
-			continue
+			return nil
 		}
 
-		err = stream.Send(&corepb.CRLEntry{
+		return stream.Send(&corepb.CRLEntry{
 			Serial:    row.Serial,
 			Reason:    int32(row.RevokedReason),
 			RevokedAt: timestamppb.New(row.RevokedDate),
 		})
-		if err != nil {
-			return fmt.Errorf("sending crl entry: %w", err)
-		}
-	}
-
-	err = rows.Err()
-	if err != nil {
-		return fmt.Errorf("iterating over row reader: %w", err)
-	}
-
-	return nil
+	})
 }
 
 // getRevokedCertsFromCertificateStatusTable uses the new old certificateStatus
@@ -1429,43 +1397,21 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req 
 		return fmt.Errorf("reading db: %w", err)
 	}
 
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			ssa.log.AuditErrf("closing row reader: %s", err)
-		}
-	}()
-
-	for rows.Next() {
-		row, err := rows.Get()
-		if err != nil {
-			return fmt.Errorf("reading row: %w", err)
-		}
-
+	return rows.ForEach(func(row *crlEntryModel) error {
 		// Double-check that the cert wasn't revoked between the time at which we're
 		// constructing this snapshot CRL and right now. If the cert was revoked
 		// at-or-after the "atTime", we'll just include it in the next generation
 		// of CRLs.
 		if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
-			continue
+			return nil
 		}
 
-		err = stream.Send(&corepb.CRLEntry{
+		return stream.Send(&corepb.CRLEntry{
 			Serial:    row.Serial,
 			Reason:    int32(row.RevokedReason),
 			RevokedAt: timestamppb.New(row.RevokedDate),
 		})
-		if err != nil {
-			return fmt.Errorf("sending crl entry: %w", err)
-		}
-	}
-
-	err = rows.Err()
-	if err != nil {
-		return fmt.Errorf("iterating over row reader: %w", err)
-	}
-
-	return nil
+	})
 }
 
 // GetMaxExpiration returns the timestamp of the farthest-future notAfter date
@@ -1587,31 +1533,9 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByKey(req *sapb.SPKIHash, stream sap
 		return fmt.Errorf("reading db: %w", err)
 	}
 
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			ssa.log.AuditErrf("closing row reader: %s", err)
-		}
-	}()
-
-	for rows.Next() {
-		row, err := rows.Get()
-		if err != nil {
-			return fmt.Errorf("reading row: %w", err)
-		}
-
-		err = stream.Send(&sapb.Serial{Serial: row.CertSerial})
-		if err != nil {
-			return fmt.Errorf("sending serial: %w", err)
-		}
-	}
-
-	err = rows.Err()
-	if err != nil {
-		return fmt.Errorf("iterating over row reader: %w", err)
-	}
-
-	return nil
+	return rows.ForEach(func(row *keyHashModel) error {
+		return stream.Send(&sapb.Serial{Serial: row.CertSerial})
+	})
 }
 
 func (ssa *SQLStorageAuthority) GetSerialsByKey(req *sapb.SPKIHash, stream sapb.StorageAuthority_GetSerialsByKeyServer) error {
@@ -1639,31 +1563,9 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, 
 		return fmt.Errorf("reading db: %w", err)
 	}
 
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			ssa.log.AuditErrf("closing row reader: %s", err)
-		}
-	}()
-
-	for rows.Next() {
-		row, err := rows.Get()
-		if err != nil {
-			return fmt.Errorf("reading row: %w", err)
-		}
-
-		err = stream.Send(&sapb.Serial{Serial: row.Serial})
-		if err != nil {
-			return fmt.Errorf("sending serial: %w", err)
-		}
-	}
-
-	err = rows.Err()
-	if err != nil {
-		return fmt.Errorf("iterating over row reader: %w", err)
-	}
-
-	return nil
+	return rows.ForEach(func(row *recordedSerialModel) error {
+		return stream.Send(&sapb.Serial{Serial: row.Serial})
+	})
 }
 
 func (ssa *SQLStorageAuthority) GetSerialsByAccount(req *sapb.RegistrationID, stream sapb.StorageAuthority_GetSerialsByAccountServer) error {
