@@ -320,6 +320,7 @@ type verificationRequestEvent struct {
 	ValidationLatency float64
 	UsedRSAKEX        bool   `json:",omitempty"`
 	Error             string `json:",omitempty"`
+	InternalError     string `json:",omitempty"`
 }
 
 // ipError is an error type used to pass though the IP address of the remote
@@ -714,6 +715,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
+		logEvent.InternalError = err.Error()
 	} else if remoteResults != nil {
 		if !features.Get().EnforceMultiVA && features.Get().MultiVAFullResults {
 			go func() {
@@ -740,6 +742,9 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 				prob = remoteProb
 				challenge.Status = core.StatusInvalid
 				challenge.Error = remoteProb
+				// We only set .Error here, not .InternalError, because the
+				// remote VA doesn't send us the internal error. But that's ok,
+				// it got logged at the remote VA.
 				logEvent.Error = remoteProb.Error()
 				va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
