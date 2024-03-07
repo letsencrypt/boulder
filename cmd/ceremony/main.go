@@ -21,6 +21,9 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"gopkg.in/yaml.v3"
 
+	zlintx509 "github.com/zmap/zcrypto/x509"
+	"github.com/zmap/zlint/v3"
+
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
@@ -58,6 +61,38 @@ func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey
 	}
 
 	return lc, nil
+}
+
+// postIssuanceLinting performs post-issuance linting on the raw bytes of a
+// given certificate with the same set of lints as
+// issueLintCertAndPerformLinting. The public key is also checked by the GoodKey
+// package.
+func postIssuanceLinting(fc *x509.Certificate, skipLints []string) error {
+	if fc == nil {
+		return fmt.Errorf("certificate was not provided")
+	}
+	parsed, err := zlintx509.ParseCertificate(fc.Raw)
+	if err != nil {
+		// If zlintx509.ParseCertificate fails, the certificate is too broken to
+		// lint. This should be treated as ZLint rejecting the certificate
+		return fmt.Errorf("unable to parse certificate: %s", err)
+	}
+	registry, err := linter.NewRegistry(skipLints)
+	if err != nil {
+		return fmt.Errorf("unable to create zlint registry: %s", err)
+	}
+	lintRes := zlint.LintCertificateEx(parsed, registry)
+	err = linter.ProcessResultSet(lintRes)
+	if err != nil {
+		return err
+	}
+	err = kp.GoodKey(context.Background(), fc.PublicKey)
+	if err != nil {
+		return err
+	}
+	fmt.Print()
+
+	return nil
 }
 
 type keyGenConfig struct {
@@ -615,10 +650,15 @@ func rootCeremony(configBytes []byte) error {
 	if !bytes.Equal(lintCert.RawSubject, lintCert.RawIssuer) {
 		return fmt.Errorf("mismatch between self-signed lintCert RawSubject and RawIssuer DER bytes: \"%x\" != \"%x\"", lintCert.RawSubject, lintCert.RawIssuer)
 	}
-	_, err = signAndWriteCert(template, template, lintCert, keyInfo.key, signer, config.Outputs.CertificatePath)
+	finalCert, err := signAndWriteCert(template, template, lintCert, keyInfo.key, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
 	}
+	err = postIssuanceLinting(finalCert, config.SkipLints)
+	if err != nil {
+		return err
+	}
+	log.Printf("Post issuance linting completed for %s\n", config.Outputs.CertificatePath)
 
 	return nil
 }
@@ -673,6 +713,11 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	if !bytes.Equal(lintCert.RawTBSCertificate, finalCert.RawTBSCertificate) {
 		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, finalCert.RawTBSCertificate)
 	}
+	err = postIssuanceLinting(finalCert, config.SkipLints)
+	if err != nil {
+		return err
+	}
+	log.Printf("Post issuance linting completed for %s\n", config.Outputs.CertificatePath)
 
 	return nil
 }
@@ -761,6 +806,11 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	if !bytes.Equal(lintCert.RawTBSCertificate, finalCert.RawTBSCertificate) {
 		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, finalCert.RawTBSCertificate)
 	}
+	err = postIssuanceLinting(finalCert, config.SkipLints)
+	if err != nil {
+		return err
+	}
+	log.Printf("Post issuance linting completed for %s\n", config.Outputs.CertificatePath)
 
 	return nil
 }
