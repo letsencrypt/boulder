@@ -577,6 +577,26 @@ func (sa *StorageAuthorityReadOnly) GetAuthorization2(ctx context.Context, id *s
 	return nil, berrors.NotFoundError("no authorization found with id %q", id)
 }
 
+// GetSerialsByKey is a mock
+func (sa *StorageAuthorityReadOnly) GetSerialsByKey(ctx context.Context, _ *sapb.SPKIHash, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByKeyClient, error) {
+	return nil, nil
+}
+
+// GetSerialsByKey is a mock
+func (sa *StorageAuthority) GetSerialsByKey(ctx context.Context, _ *sapb.SPKIHash, _ ...grpc.CallOption) (sapb.StorageAuthority_GetSerialsByKeyClient, error) {
+	return nil, nil
+}
+
+// GetSerialsByAccount is a mock
+func (sa *StorageAuthorityReadOnly) GetSerialsByAccount(ctx context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByAccountClient, error) {
+	return nil, nil
+}
+
+// GetSerialsByAccount is a mock
+func (sa *StorageAuthority) GetSerialsByAccount(ctx context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (sapb.StorageAuthority_GetSerialsByAccountClient, error) {
+	return nil, nil
+}
+
 // RevokeCertificate is a mock
 func (sa *StorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, nil
@@ -593,7 +613,7 @@ func (sa *StorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.AddBloc
 }
 
 // KeyBlocked is a mock
-func (sa *StorageAuthorityReadOnly) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
+func (sa *StorageAuthorityReadOnly) KeyBlocked(ctx context.Context, req *sapb.SPKIHash, _ ...grpc.CallOption) (*sapb.Exists, error) {
 	return &sapb.Exists{Exists: false}, nil
 }
 

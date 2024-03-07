@@ -51,10 +51,12 @@ type StorageAuthorityReadOnlyClient interface {
 	GetValidAuthorizations2(ctx context.Context, in *GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	GetValidOrderAuthorizations2(ctx context.Context, in *GetValidOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error)
-	KeyBlocked(ctx context.Context, in *KeyBlockedRequest, opts ...grpc.CallOption) (*Exists, error)
+	KeyBlocked(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (*Exists, error)
 	PreviousCertificateExists(ctx context.Context, in *PreviousCertificateExistsRequest, opts ...grpc.CallOption) (*Exists, error)
 	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthorityReadOnly_SerialsForIncidentClient, error)
+	GetSerialsByKey(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (StorageAuthorityReadOnly_GetSerialsByKeyClient, error)
+	GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (StorageAuthorityReadOnly_GetSerialsByAccountClient, error)
 }
 
 type storageAuthorityReadOnlyClient struct {
@@ -322,7 +324,7 @@ func (c *storageAuthorityReadOnlyClient) IncidentsForSerial(ctx context.Context,
 	return out, nil
 }
 
-func (c *storageAuthorityReadOnlyClient) KeyBlocked(ctx context.Context, in *KeyBlockedRequest, opts ...grpc.CallOption) (*Exists, error) {
+func (c *storageAuthorityReadOnlyClient) KeyBlocked(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (*Exists, error) {
 	out := new(Exists)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthorityReadOnly/KeyBlocked", in, out, opts...)
 	if err != nil {
@@ -381,6 +383,70 @@ func (x *storageAuthorityReadOnlySerialsForIncidentClient) Recv() (*IncidentSeri
 	return m, nil
 }
 
+func (c *storageAuthorityReadOnlyClient) GetSerialsByKey(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (StorageAuthorityReadOnly_GetSerialsByKeyClient, error) {
+	stream, err := c.cc.NewStream(ctx, &StorageAuthorityReadOnly_ServiceDesc.Streams[2], "/sa.StorageAuthorityReadOnly/GetSerialsByKey", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &storageAuthorityReadOnlyGetSerialsByKeyClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type StorageAuthorityReadOnly_GetSerialsByKeyClient interface {
+	Recv() (*Serial, error)
+	grpc.ClientStream
+}
+
+type storageAuthorityReadOnlyGetSerialsByKeyClient struct {
+	grpc.ClientStream
+}
+
+func (x *storageAuthorityReadOnlyGetSerialsByKeyClient) Recv() (*Serial, error) {
+	m := new(Serial)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *storageAuthorityReadOnlyClient) GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (StorageAuthorityReadOnly_GetSerialsByAccountClient, error) {
+	stream, err := c.cc.NewStream(ctx, &StorageAuthorityReadOnly_ServiceDesc.Streams[3], "/sa.StorageAuthorityReadOnly/GetSerialsByAccount", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &storageAuthorityReadOnlyGetSerialsByAccountClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type StorageAuthorityReadOnly_GetSerialsByAccountClient interface {
+	Recv() (*Serial, error)
+	grpc.ClientStream
+}
+
+type storageAuthorityReadOnlyGetSerialsByAccountClient struct {
+	grpc.ClientStream
+}
+
+func (x *storageAuthorityReadOnlyGetSerialsByAccountClient) Recv() (*Serial, error) {
+	m := new(Serial)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // StorageAuthorityReadOnlyServer is the server API for StorageAuthorityReadOnly service.
 // All implementations must embed UnimplementedStorageAuthorityReadOnlyServer
 // for forward compatibility
@@ -411,10 +477,12 @@ type StorageAuthorityReadOnlyServer interface {
 	GetValidAuthorizations2(context.Context, *GetValidAuthorizationsRequest) (*Authorizations, error)
 	GetValidOrderAuthorizations2(context.Context, *GetValidOrderAuthorizationsRequest) (*Authorizations, error)
 	IncidentsForSerial(context.Context, *Serial) (*Incidents, error)
-	KeyBlocked(context.Context, *KeyBlockedRequest) (*Exists, error)
+	KeyBlocked(context.Context, *SPKIHash) (*Exists, error)
 	PreviousCertificateExists(context.Context, *PreviousCertificateExistsRequest) (*Exists, error)
 	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, StorageAuthorityReadOnly_SerialsForIncidentServer) error
+	GetSerialsByKey(*SPKIHash, StorageAuthorityReadOnly_GetSerialsByKeyServer) error
+	GetSerialsByAccount(*RegistrationID, StorageAuthorityReadOnly_GetSerialsByAccountServer) error
 	mustEmbedUnimplementedStorageAuthorityReadOnlyServer()
 }
 
@@ -500,7 +568,7 @@ func (UnimplementedStorageAuthorityReadOnlyServer) GetValidOrderAuthorizations2(
 func (UnimplementedStorageAuthorityReadOnlyServer) IncidentsForSerial(context.Context, *Serial) (*Incidents, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IncidentsForSerial not implemented")
 }
-func (UnimplementedStorageAuthorityReadOnlyServer) KeyBlocked(context.Context, *KeyBlockedRequest) (*Exists, error) {
+func (UnimplementedStorageAuthorityReadOnlyServer) KeyBlocked(context.Context, *SPKIHash) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method KeyBlocked not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) PreviousCertificateExists(context.Context, *PreviousCertificateExistsRequest) (*Exists, error) {
@@ -511,6 +579,12 @@ func (UnimplementedStorageAuthorityReadOnlyServer) ReplacementOrderExists(contex
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) SerialsForIncident(*SerialsForIncidentRequest, StorageAuthorityReadOnly_SerialsForIncidentServer) error {
 	return status.Errorf(codes.Unimplemented, "method SerialsForIncident not implemented")
+}
+func (UnimplementedStorageAuthorityReadOnlyServer) GetSerialsByKey(*SPKIHash, StorageAuthorityReadOnly_GetSerialsByKeyServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetSerialsByKey not implemented")
+}
+func (UnimplementedStorageAuthorityReadOnlyServer) GetSerialsByAccount(*RegistrationID, StorageAuthorityReadOnly_GetSerialsByAccountServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetSerialsByAccount not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) mustEmbedUnimplementedStorageAuthorityReadOnlyServer() {
 }
@@ -998,7 +1072,7 @@ func _StorageAuthorityReadOnly_IncidentsForSerial_Handler(srv interface{}, ctx c
 }
 
 func _StorageAuthorityReadOnly_KeyBlocked_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(KeyBlockedRequest)
+	in := new(SPKIHash)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -1010,7 +1084,7 @@ func _StorageAuthorityReadOnly_KeyBlocked_Handler(srv interface{}, ctx context.C
 		FullMethod: "/sa.StorageAuthorityReadOnly/KeyBlocked",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityReadOnlyServer).KeyBlocked(ctx, req.(*KeyBlockedRequest))
+		return srv.(StorageAuthorityReadOnlyServer).KeyBlocked(ctx, req.(*SPKIHash))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1069,6 +1143,48 @@ type storageAuthorityReadOnlySerialsForIncidentServer struct {
 }
 
 func (x *storageAuthorityReadOnlySerialsForIncidentServer) Send(m *IncidentSerial) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _StorageAuthorityReadOnly_GetSerialsByKey_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SPKIHash)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StorageAuthorityReadOnlyServer).GetSerialsByKey(m, &storageAuthorityReadOnlyGetSerialsByKeyServer{stream})
+}
+
+type StorageAuthorityReadOnly_GetSerialsByKeyServer interface {
+	Send(*Serial) error
+	grpc.ServerStream
+}
+
+type storageAuthorityReadOnlyGetSerialsByKeyServer struct {
+	grpc.ServerStream
+}
+
+func (x *storageAuthorityReadOnlyGetSerialsByKeyServer) Send(m *Serial) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _StorageAuthorityReadOnly_GetSerialsByAccount_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(RegistrationID)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StorageAuthorityReadOnlyServer).GetSerialsByAccount(m, &storageAuthorityReadOnlyGetSerialsByAccountServer{stream})
+}
+
+type StorageAuthorityReadOnly_GetSerialsByAccountServer interface {
+	Send(*Serial) error
+	grpc.ServerStream
+}
+
+type storageAuthorityReadOnlyGetSerialsByAccountServer struct {
+	grpc.ServerStream
+}
+
+func (x *storageAuthorityReadOnlyGetSerialsByAccountServer) Send(m *Serial) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -1203,6 +1319,16 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _StorageAuthorityReadOnly_SerialsForIncident_Handler,
 			ServerStreams: true,
 		},
+		{
+			StreamName:    "GetSerialsByKey",
+			Handler:       _StorageAuthorityReadOnly_GetSerialsByKey_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetSerialsByAccount",
+			Handler:       _StorageAuthorityReadOnly_GetSerialsByAccount_Handler,
+			ServerStreams: true,
+		},
 	},
 	Metadata: "sa.proto",
 }
@@ -1238,10 +1364,12 @@ type StorageAuthorityClient interface {
 	GetValidAuthorizations2(ctx context.Context, in *GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	GetValidOrderAuthorizations2(ctx context.Context, in *GetValidOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error)
-	KeyBlocked(ctx context.Context, in *KeyBlockedRequest, opts ...grpc.CallOption) (*Exists, error)
+	KeyBlocked(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (*Exists, error)
 	PreviousCertificateExists(ctx context.Context, in *PreviousCertificateExistsRequest, opts ...grpc.CallOption) (*Exists, error)
 	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthority_SerialsForIncidentClient, error)
+	GetSerialsByKey(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (StorageAuthority_GetSerialsByKeyClient, error)
+	GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (StorageAuthority_GetSerialsByAccountClient, error)
 	// Adders
 	AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddCertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -1528,7 +1656,7 @@ func (c *storageAuthorityClient) IncidentsForSerial(ctx context.Context, in *Ser
 	return out, nil
 }
 
-func (c *storageAuthorityClient) KeyBlocked(ctx context.Context, in *KeyBlockedRequest, opts ...grpc.CallOption) (*Exists, error) {
+func (c *storageAuthorityClient) KeyBlocked(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (*Exists, error) {
 	out := new(Exists)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/KeyBlocked", in, out, opts...)
 	if err != nil {
@@ -1581,6 +1709,70 @@ type storageAuthoritySerialsForIncidentClient struct {
 
 func (x *storageAuthoritySerialsForIncidentClient) Recv() (*IncidentSerial, error) {
 	m := new(IncidentSerial)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *storageAuthorityClient) GetSerialsByKey(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (StorageAuthority_GetSerialsByKeyClient, error) {
+	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[2], "/sa.StorageAuthority/GetSerialsByKey", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &storageAuthorityGetSerialsByKeyClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type StorageAuthority_GetSerialsByKeyClient interface {
+	Recv() (*Serial, error)
+	grpc.ClientStream
+}
+
+type storageAuthorityGetSerialsByKeyClient struct {
+	grpc.ClientStream
+}
+
+func (x *storageAuthorityGetSerialsByKeyClient) Recv() (*Serial, error) {
+	m := new(Serial)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (c *storageAuthorityClient) GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (StorageAuthority_GetSerialsByAccountClient, error) {
+	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[3], "/sa.StorageAuthority/GetSerialsByAccount", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &storageAuthorityGetSerialsByAccountClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type StorageAuthority_GetSerialsByAccountClient interface {
+	Recv() (*Serial, error)
+	grpc.ClientStream
+}
+
+type storageAuthorityGetSerialsByAccountClient struct {
+	grpc.ClientStream
+}
+
+func (x *storageAuthorityGetSerialsByAccountClient) Recv() (*Serial, error) {
+	m := new(Serial)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -1780,10 +1972,12 @@ type StorageAuthorityServer interface {
 	GetValidAuthorizations2(context.Context, *GetValidAuthorizationsRequest) (*Authorizations, error)
 	GetValidOrderAuthorizations2(context.Context, *GetValidOrderAuthorizationsRequest) (*Authorizations, error)
 	IncidentsForSerial(context.Context, *Serial) (*Incidents, error)
-	KeyBlocked(context.Context, *KeyBlockedRequest) (*Exists, error)
+	KeyBlocked(context.Context, *SPKIHash) (*Exists, error)
 	PreviousCertificateExists(context.Context, *PreviousCertificateExistsRequest) (*Exists, error)
 	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error
+	GetSerialsByKey(*SPKIHash, StorageAuthority_GetSerialsByKeyServer) error
+	GetSerialsByAccount(*RegistrationID, StorageAuthority_GetSerialsByAccountServer) error
 	// Adders
 	AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error)
 	AddCertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error)
@@ -1888,7 +2082,7 @@ func (UnimplementedStorageAuthorityServer) GetValidOrderAuthorizations2(context.
 func (UnimplementedStorageAuthorityServer) IncidentsForSerial(context.Context, *Serial) (*Incidents, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IncidentsForSerial not implemented")
 }
-func (UnimplementedStorageAuthorityServer) KeyBlocked(context.Context, *KeyBlockedRequest) (*Exists, error) {
+func (UnimplementedStorageAuthorityServer) KeyBlocked(context.Context, *SPKIHash) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method KeyBlocked not implemented")
 }
 func (UnimplementedStorageAuthorityServer) PreviousCertificateExists(context.Context, *PreviousCertificateExistsRequest) (*Exists, error) {
@@ -1899,6 +2093,12 @@ func (UnimplementedStorageAuthorityServer) ReplacementOrderExists(context.Contex
 }
 func (UnimplementedStorageAuthorityServer) SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error {
 	return status.Errorf(codes.Unimplemented, "method SerialsForIncident not implemented")
+}
+func (UnimplementedStorageAuthorityServer) GetSerialsByKey(*SPKIHash, StorageAuthority_GetSerialsByKeyServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetSerialsByKey not implemented")
+}
+func (UnimplementedStorageAuthorityServer) GetSerialsByAccount(*RegistrationID, StorageAuthority_GetSerialsByAccountServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetSerialsByAccount not implemented")
 }
 func (UnimplementedStorageAuthorityServer) AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddBlockedKey not implemented")
@@ -2439,7 +2639,7 @@ func _StorageAuthority_IncidentsForSerial_Handler(srv interface{}, ctx context.C
 }
 
 func _StorageAuthority_KeyBlocked_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(KeyBlockedRequest)
+	in := new(SPKIHash)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -2451,7 +2651,7 @@ func _StorageAuthority_KeyBlocked_Handler(srv interface{}, ctx context.Context, 
 		FullMethod: "/sa.StorageAuthority/KeyBlocked",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).KeyBlocked(ctx, req.(*KeyBlockedRequest))
+		return srv.(StorageAuthorityServer).KeyBlocked(ctx, req.(*SPKIHash))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2510,6 +2710,48 @@ type storageAuthoritySerialsForIncidentServer struct {
 }
 
 func (x *storageAuthoritySerialsForIncidentServer) Send(m *IncidentSerial) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _StorageAuthority_GetSerialsByKey_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SPKIHash)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StorageAuthorityServer).GetSerialsByKey(m, &storageAuthorityGetSerialsByKeyServer{stream})
+}
+
+type StorageAuthority_GetSerialsByKeyServer interface {
+	Send(*Serial) error
+	grpc.ServerStream
+}
+
+type storageAuthorityGetSerialsByKeyServer struct {
+	grpc.ServerStream
+}
+
+func (x *storageAuthorityGetSerialsByKeyServer) Send(m *Serial) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _StorageAuthority_GetSerialsByAccount_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(RegistrationID)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StorageAuthorityServer).GetSerialsByAccount(m, &storageAuthorityGetSerialsByAccountServer{stream})
+}
+
+type StorageAuthority_GetSerialsByAccountServer interface {
+	Send(*Serial) error
+	grpc.ServerStream
+}
+
+type storageAuthorityGetSerialsByAccountServer struct {
+	grpc.ServerStream
+}
+
+func (x *storageAuthorityGetSerialsByAccountServer) Send(m *Serial) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -3038,6 +3280,16 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "SerialsForIncident",
 			Handler:       _StorageAuthority_SerialsForIncident_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetSerialsByKey",
+			Handler:       _StorageAuthority_GetSerialsByKey_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetSerialsByAccount",
+			Handler:       _StorageAuthority_GetSerialsByAccount_Handler,
 			ServerStreams: true,
 		},
 	},
