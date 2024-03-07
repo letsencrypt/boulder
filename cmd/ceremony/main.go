@@ -90,7 +90,6 @@ func postIssuanceLinting(fc *x509.Certificate, skipLints []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Print()
 
 	return nil
 }
