@@ -33,6 +33,8 @@ service StorageAuthorityReadOnly {
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
   rpc GetRevokedCerts(GetRevokedCertsRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
+  rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
+  rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
   rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
   rpc GetValidOrderAuthorizations2(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
@@ -40,8 +42,6 @@ service StorageAuthorityReadOnly {
   rpc PreviousCertificateExists(PreviousCertificateExistsRequest) returns (Exists) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
-  rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
-  rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
 }
 
 // StorageAuthority provides full read/write access to the database.
@@ -70,6 +70,8 @@ service StorageAuthority {
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
   rpc GetRevokedCerts(GetRevokedCertsRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
+  rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
+  rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
   rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
   rpc GetValidOrderAuthorizations2(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
@@ -77,8 +79,6 @@ service StorageAuthority {
   rpc PreviousCertificateExists(PreviousCertificateExistsRequest) returns (Exists) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
-  rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
-  rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
   // Adders
   rpc AddBlockedKey(AddBlockedKeyRequest) returns (google.protobuf.Empty) {}
   rpc AddCertificate(AddCertificateRequest) returns (google.protobuf.Empty) {}
