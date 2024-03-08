@@ -19,11 +19,11 @@ for pattern in args.globs:
         j = json.loads(existing)
         new = json.dumps(j, indent="\t")
         new += "\n"
-        if args.write:
-            with open(cfg, "w") as fw:
-                fw.write(new)
-        else:
-            if new != existing:
+        if new != existing:
+            if args.write:
+                with open(cfg, "w") as fw:
+                    fw.write(new)
+            else:
                 needs_format.append(cfg)
 
 if len(needs_format) > 0:
