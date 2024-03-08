@@ -372,7 +372,6 @@ type precertificateModel struct {
 	Issued         time.Time
 	Expires        time.Time
 }
-
 type orderModel struct {
 	ID                     int64
 	RegistrationID         int64
@@ -381,6 +380,21 @@ type orderModel struct {
 	Error                  []byte
 	CertificateSerial      string
 	BeganProcessing        bool
+	CertificateProfileName string
+}
+
+type orderModelv1 struct {
+	ID                int64
+	RegistrationID    int64
+	Expires           time.Time
+	Created           time.Time
+	Error             []byte
+	CertificateSerial string
+	BeganProcessing   bool
+}
+
+type orderModelv2 struct {
+	orderModelv1
 	CertificateProfileName string
 }
 
@@ -396,6 +410,7 @@ type orderToAuthzModel struct {
 }
 
 func orderToModel(order *corepb.Order) (*orderModel, error) {
+	fmt.Printf("%+v\n", order)
 	om := &orderModel{
 		ID:                     order.Id,
 		RegistrationID:         order.RegistrationID,
@@ -420,6 +435,7 @@ func orderToModel(order *corepb.Order) (*orderModel, error) {
 }
 
 func modelToOrder(om *orderModel) (*corepb.Order, error) {
+	fmt.Printf("%+v\n", om)
 	order := &corepb.Order{
 		Id:                     om.ID,
 		RegistrationID:         om.RegistrationID,

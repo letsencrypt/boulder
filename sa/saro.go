@@ -21,6 +21,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -697,7 +698,13 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 	}
 
 	txn := func(tx db.Executor) (interface{}, error) {
-		omObj, err := tx.Get(ctx, orderModel{}, req.Id)
+		var omObj interface{}
+		var err error
+		if features.Get().MultipleCertificateProfiles {
+			omObj, err = tx.Get(ctx, orderModelv2{}, req.Id)
+		} else {
+			omObj, err = tx.Get(ctx, orderModelv1{}, req.Id)
+		}
 		if err != nil {
 			if db.IsNoRows(err) {
 				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
@@ -708,7 +715,33 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
 
-		order, err := modelToOrder(omObj.(*orderModel))
+		var order *corepb.Order
+		if features.Get().MultipleCertificateProfiles {
+			order, err = modelToOrder(
+				&orderModel{
+					ID:                     omObj.(*orderModelv2).ID,
+					RegistrationID:         omObj.(*orderModelv2).RegistrationID,
+					Expires:                omObj.(*orderModelv2).Expires,
+					Created:                omObj.(*orderModelv2).Created,
+					Error:                  omObj.(*orderModelv2).Error,
+					CertificateSerial:      omObj.(*orderModelv2).CertificateSerial,
+					BeganProcessing:        omObj.(*orderModelv2).BeganProcessing,
+					CertificateProfileName: omObj.(*orderModelv2).CertificateProfileName,
+				},
+			)
+		} else {
+			order, err = modelToOrder(
+				&orderModel{
+					ID:                omObj.(*orderModelv1).ID,
+					RegistrationID:    omObj.(*orderModelv1).RegistrationID,
+					Expires:           omObj.(*orderModelv1).Expires,
+					Created:           omObj.(*orderModelv1).Created,
+					Error:             omObj.(*orderModelv1).Error,
+					CertificateSerial: omObj.(*orderModelv1).CertificateSerial,
+					BeganProcessing:   omObj.(*orderModelv1).BeganProcessing,
+				},
+			)
+		}
 		if err != nil {
 			return nil, err
 		}

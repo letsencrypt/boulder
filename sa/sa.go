@@ -499,10 +499,12 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 
 		// Second, insert the new order.
 		order := &orderModel{
-			RegistrationID:         req.NewOrder.RegistrationID,
-			Expires:                req.NewOrder.Expires.AsTime(),
-			Created:                ssa.clk.Now(),
-			CertificateProfileName: req.NewOrder.CertificateProfileName,
+			RegistrationID: req.NewOrder.RegistrationID,
+			Expires:        req.NewOrder.Expires.AsTime(),
+			Created:        ssa.clk.Now(),
+		}
+		if features.Get().MultipleCertificateProfiles {
+			order.CertificateProfileName = req.NewOrder.CertificateProfileName
 		}
 		err := tx.Insert(ctx, order)
 		if err != nil {
@@ -566,10 +568,12 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			V2Authorizations: append(req.NewOrder.V2Authorizations, newAuthzIDs...),
 			// A new order is never processing because it can't be finalized yet.
 			BeganProcessing: false,
+		}
+		if features.Get().MultipleCertificateProfiles {
 			// An empty string is allowed. When the RA retrieves the order and
 			// transmits it to the CA, the empty string will take the value of
 			// DefaultCertProfileName from the //issuance package.
-			CertificateProfileName: req.NewOrder.CertificateProfileName,
+			res.CertificateProfileName = req.NewOrder.CertificateProfileName
 		}
 
 		if features.Get().TrackReplacementCertificatesARI && req.NewOrder.ReplacesSerial != "" {

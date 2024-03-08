@@ -261,6 +261,8 @@ func TestModelToOrderBadJSON(t *testing.T) {
 func TestOrderModelThereAndBackAgain(t *testing.T) {
 	clk := clock.New()
 	now := clk.Now()
+	features.Set(features.Config{MultipleCertificateProfiles: true})
+	defer features.Reset()
 	order := &corepb.Order{
 		Id:                     0,
 		RegistrationID:         2016,

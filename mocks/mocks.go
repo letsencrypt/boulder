@@ -374,9 +374,9 @@ func (sa *StorageAuthority) NewOrderAndAuthzs(_ context.Context, req *sapb.NewOr
 		Id:      rand.Int63(),
 		Created: timestamppb.Now(),
 		// A new order is never processing because it can't have been finalized yet.
-		BeganProcessing:        false,
-		Status:                 string(core.StatusPending),
-		CertificateProfileName: req.NewOrder.CertificateProfileName,
+		BeganProcessing: false,
+		Status:          string(core.StatusPending),
+		//CertificateProfileName: req.NewOrder.CertificateProfileName,
 	}
 	return response, nil
 }
