@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"strings"
 	"sync"
 
 	"golang.org/x/crypto/ocsp"
@@ -200,6 +201,13 @@ func (a *admin) serialsFromRegID(ctx context.Context, regID int64) ([]string, er
 	return serials, nil
 }
 
+func (a *admin) checkValidSerial(serial string) (string, error) {
+	if !(strings.Contains(serial, "z")) {
+		return "test nope", errors.New("test err")
+	}
+	return serial, nil
+}
+
 func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revocation.Reason, malformed bool, skipBlockKey bool, parallelism int) error {
 	u, err := user.Current()
 	if err != nil {
@@ -213,6 +221,10 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 		go func() {
 			defer wg.Done()
 			for serial := range work {
+				_, err1 := a.checkValidSerial(serial)
+				if err1 != nil {
+					a.log.Errf("test err HAHA: %s", serial)
+				}
 				_, err := a.rac.AdministrativelyRevokeCertificate(
 					ctx,
 					&rapb.AdministrativelyRevokeCertificateRequest{
