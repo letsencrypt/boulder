@@ -237,7 +237,7 @@ func TestRevokeSerials(t *testing.T) {
 	a.dryRun = false
 	err := a.revokeSerials(context.Background(), serials, 0, false, false, 1)
 	test.AssertNotError(t, err, "")
-	// test.AssertEquals(t, len(log.GetAll()), 0)
+	test.AssertEquals(t, len(log.GetAll()), 0)
 	test.AssertEquals(t, len(mra.revocationRequests), 3)
 	assertRequestsContain(mra.revocationRequests, 0, false, false)
 
