@@ -1,10 +1,18 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
 	"fmt"
 	"io/fs"
+	"math/big"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/test"
 )
@@ -1391,4 +1399,24 @@ func TestSignAndWriteNoLintCert(t *testing.T) {
 	_, err := signAndWriteCert(nil, nil, nil, nil, nil, "")
 	test.AssertError(t, err, "should have failed because no lintCert was provided")
 	test.AssertDeepEquals(t, err, fmt.Errorf("linting was not performed prior to issuance"))
+}
+
+func TestPostIssuanceLinting(t *testing.T) {
+	clk := clock.New()
+	err := postIssuanceLinting(nil, nil)
+	test.AssertError(t, err, "should have failed because no certificate was provided")
+
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "unable to generate ECDSA private key")
+	template := &x509.Certificate{
+		NotAfter:     clk.Now().Add(1 * time.Hour),
+		DNSNames:     []string{"example.com"},
+		SerialNumber: big.NewInt(1),
+	}
+	certDer, err := x509.CreateCertificate(rand.Reader, template, template, &testKey.PublicKey, testKey)
+	test.AssertNotError(t, err, "unable to create certificate")
+	parsedCert, err := x509.ParseCertificate(certDer)
+	test.AssertNotError(t, err, "unable to parse DER bytes")
+	err = postIssuanceLinting(parsedCert, nil)
+	test.AssertNotError(t, err, "should not have errored")
 }

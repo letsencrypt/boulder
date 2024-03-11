@@ -220,8 +220,7 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
     # Update .typos.toml if you find false positives
     run_and_expect_silence typos
     # Check test JSON configs are formatted consistently
-    ./test/format-configs.py 'test/config*/*.json'
-    run_and_expect_silence git diff --exit-code .
+    run_and_expect_silence ./test/format-configs.py 'test/config*/*.json'
   fi
 fi
 

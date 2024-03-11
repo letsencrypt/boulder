@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	blog "github.com/letsencrypt/boulder/log"
@@ -17,7 +18,11 @@ type dryRunRAC struct {
 }
 
 func (d dryRunRAC) AdministrativelyRevokeCertificate(_ context.Context, req *rapb.AdministrativelyRevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	d.log.Infof("dry-run: %#v", req)
+	b, err := prototext.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	d.log.Infof("dry-run: %#v", string(b))
 	return &emptypb.Empty{}, nil
 }
 
@@ -27,6 +32,10 @@ type dryRunSAC struct {
 }
 
 func (d dryRunSAC) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	d.log.Infof("dry-run: %#v", req)
+	b, err := prototext.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	d.log.Infof("dry-run: %#v", string(b))
 	return &emptypb.Empty{}, nil
 }
