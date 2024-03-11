@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"net"
 	"os"
@@ -51,6 +52,18 @@ type StorageAuthority struct {
 // with the given clock.
 func NewStorageAuthority(clk clock.Clock) *StorageAuthority {
 	return &StorageAuthority{StorageAuthorityReadOnly{clk}}
+}
+
+// serverStreamClient is a mock which satisfies the grpc.ClientStream interface,
+// allowing it to be returned by methods where the server returns a stream of
+// results. This simple mock will always return zero results.
+type serverStreamClient[T any] struct {
+	grpc.ClientStream
+}
+
+// Recv immediately returns the EOF error, indicating that the stream is done.
+func (c *serverStreamClient[T]) Recv() (*T, error) {
+	return nil, io.EOF
 }
 
 const (
@@ -270,22 +283,22 @@ func (sa *StorageAuthorityReadOnly) GetRevocationStatus(_ context.Context, req *
 
 // SerialsForIncident is a mock
 func (sa *StorageAuthorityReadOnly) SerialsForIncident(ctx context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_SerialsForIncidentClient, error) {
-	return nil, nil
+	return &serverStreamClient[sapb.IncidentSerial]{}, nil
 }
 
 // SerialsForIncident is a mock
 func (sa *StorageAuthority) SerialsForIncident(ctx context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
-	return nil, nil
+	return &serverStreamClient[sapb.IncidentSerial]{}, nil
 }
 
 // GetRevokedCerts is a mock
 func (sa *StorageAuthorityReadOnly) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetRevokedCertsClient, error) {
-	return nil, nil
+	return &serverStreamClient[corepb.CRLEntry]{}, nil
 }
 
 // GetRevokedCerts is a mock
 func (sa *StorageAuthority) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
-	return nil, nil
+	return &serverStreamClient[corepb.CRLEntry]{}, nil
 }
 
 // GetMaxExpiration is a mock
@@ -579,22 +592,22 @@ func (sa *StorageAuthorityReadOnly) GetAuthorization2(ctx context.Context, id *s
 
 // GetSerialsByKey is a mock
 func (sa *StorageAuthorityReadOnly) GetSerialsByKey(ctx context.Context, _ *sapb.SPKIHash, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByKeyClient, error) {
-	return nil, nil
+	return &serverStreamClient[sapb.Serial]{}, nil
 }
 
 // GetSerialsByKey is a mock
 func (sa *StorageAuthority) GetSerialsByKey(ctx context.Context, _ *sapb.SPKIHash, _ ...grpc.CallOption) (sapb.StorageAuthority_GetSerialsByKeyClient, error) {
-	return nil, nil
+	return &serverStreamClient[sapb.Serial]{}, nil
 }
 
 // GetSerialsByAccount is a mock
 func (sa *StorageAuthorityReadOnly) GetSerialsByAccount(ctx context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByAccountClient, error) {
-	return nil, nil
+	return &serverStreamClient[sapb.Serial]{}, nil
 }
 
 // GetSerialsByAccount is a mock
 func (sa *StorageAuthority) GetSerialsByAccount(ctx context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (sapb.StorageAuthority_GetSerialsByAccountClient, error) {
-	return nil, nil
+	return &serverStreamClient[sapb.Serial]{}, nil
 }
 
 // RevokeCertificate is a mock
