@@ -3,6 +3,7 @@ package sa
 import (
 	"context"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -498,15 +499,28 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Second, insert the new order.
-		order := &orderModel{
-			RegistrationID: req.NewOrder.RegistrationID,
-			Expires:        req.NewOrder.Expires.AsTime(),
-			Created:        ssa.clk.Now(),
-		}
+		var omv1 *orderModelv1
+		var omv2 *orderModelv2
 		if features.Get().MultipleCertificateProfiles {
-			order.CertificateProfileName = req.NewOrder.CertificateProfileName
+			omv2 = &orderModelv2{
+				RegistrationID:         req.NewOrder.RegistrationID,
+				Expires:                req.NewOrder.Expires.AsTime(),
+				Created:                ssa.clk.Now(),
+				CertificateProfileName: req.NewOrder.CertificateProfileName,
+			}
+		} else {
+			omv1 = &orderModelv1{
+				RegistrationID: req.NewOrder.RegistrationID,
+				Expires:        req.NewOrder.Expires.AsTime(),
+				Created:        ssa.clk.Now(),
+			}
 		}
-		err := tx.Insert(ctx, order)
+		var err error
+		if features.Get().MultipleCertificateProfiles {
+			err = tx.Insert(ctx, omv2)
+		} else {
+			err = tx.Insert(ctx, omv1)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -517,13 +531,21 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			return nil, err
 		}
 		for _, id := range req.NewOrder.V2Authorizations {
-			err = inserter.Add([]interface{}{order.ID, id})
+			if features.Get().MultipleCertificateProfiles {
+				err = inserter.Add([]interface{}{omv2.ID, id})
+			} else {
+				err = inserter.Add([]interface{}{omv1.ID, id})
+			}
 			if err != nil {
 				return nil, err
 			}
 		}
 		for _, id := range newAuthzIDs {
-			err = inserter.Add([]interface{}{order.ID, id})
+			if features.Get().MultipleCertificateProfiles {
+				err = inserter.Add([]interface{}{omv2.ID, id})
+			} else {
+				err = inserter.Add([]interface{}{omv1.ID, id})
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -539,7 +561,11 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			return nil, err
 		}
 		for _, name := range req.NewOrder.Names {
-			err = inserter.Add([]interface{}{order.ID, ReverseName(name)})
+			if features.Get().MultipleCertificateProfiles {
+				err = inserter.Add([]interface{}{omv2.ID, ReverseName(name)})
+			} else {
+				err = inserter.Add([]interface{}{omv1.ID, ReverseName(name)})
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -550,36 +576,60 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fifth, insert the FQDNSet entry for the order.
-		err = addOrderFQDNSet(ctx, tx, req.NewOrder.Names, order.ID, order.RegistrationID, order.Expires)
+		if features.Get().MultipleCertificateProfiles {
+			err = addOrderFQDNSet(ctx, tx, req.NewOrder.Names, omv2.ID, omv2.RegistrationID, omv2.Expires)
+		} else {
+			err = addOrderFQDNSet(ctx, tx, req.NewOrder.Names, omv1.ID, omv1.RegistrationID, omv1.Expires)
+		}
 		if err != nil {
 			return nil, err
 		}
 
 		// Finally, build the overall Order PB.
-		res := &corepb.Order{
-			// ID and Created were auto-populated on the order model when it was inserted.
-			Id:      order.ID,
-			Created: timestamppb.New(order.Created),
-			// These are carried over from the original request unchanged.
-			RegistrationID: req.NewOrder.RegistrationID,
-			Expires:        req.NewOrder.Expires,
-			Names:          req.NewOrder.Names,
-			// Have to combine the already-associated and newly-reacted authzs.
-			V2Authorizations: append(req.NewOrder.V2Authorizations, newAuthzIDs...),
-			// A new order is never processing because it can't be finalized yet.
-			BeganProcessing: false,
-		}
+		var res *corepb.Order
 		if features.Get().MultipleCertificateProfiles {
-			// An empty string is allowed. When the RA retrieves the order and
-			// transmits it to the CA, the empty string will take the value of
-			// DefaultCertProfileName from the //issuance package.
-			res.CertificateProfileName = req.NewOrder.CertificateProfileName
+			res = &corepb.Order{
+				// ID and Created were auto-populated on the order model when it was inserted.
+				Id:      omv2.ID,
+				Created: timestamppb.New(omv2.Created),
+				// These are carried over from the original request unchanged.
+				RegistrationID: req.NewOrder.RegistrationID,
+				Expires:        req.NewOrder.Expires,
+				Names:          req.NewOrder.Names,
+				// Have to combine the already-associated and newly-reacted authzs.
+				V2Authorizations: append(req.NewOrder.V2Authorizations, newAuthzIDs...),
+				// A new order is never processing because it can't be finalized yet.
+				BeganProcessing: false,
+				// An empty string is allowed. When the RA retrieves the order and
+				// transmits it to the CA, the empty string will take the value of
+				// DefaultCertProfileName from the //issuance package.
+				CertificateProfileName: req.NewOrder.CertificateProfileName,
+			}
+		} else {
+			res = &corepb.Order{
+				// ID and Created were auto-populated on the order model when it was inserted.
+				Id:      omv1.ID,
+				Created: timestamppb.New(omv1.Created),
+				// These are carried over from the original request unchanged.
+				RegistrationID: req.NewOrder.RegistrationID,
+				Expires:        req.NewOrder.Expires,
+				Names:          req.NewOrder.Names,
+				// Have to combine the already-associated and newly-reacted authzs.
+				V2Authorizations: append(req.NewOrder.V2Authorizations, newAuthzIDs...),
+				// A new order is never processing because it can't be finalized yet.
+				BeganProcessing: false,
+			}
 		}
 
 		if features.Get().TrackReplacementCertificatesARI && req.NewOrder.ReplacesSerial != "" {
 			// Update the replacementOrders table to indicate that this order
 			// replaces the provided certificate serial.
-			err := addReplacementOrder(ctx, tx, req.NewOrder.ReplacesSerial, order.ID, order.Expires)
+			var err error
+			if features.Get().MultipleCertificateProfiles {
+				err = addReplacementOrder(ctx, tx, req.NewOrder.ReplacesSerial, omv2.ID, omv2.Expires)
+			} else {
+				err = addReplacementOrder(ctx, tx, req.NewOrder.ReplacesSerial, omv1.ID, omv1.Expires)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -652,20 +702,40 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 		return nil, errIncompleteRequest
 	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		om, err := orderToModel(&corepb.Order{
-			Id:    req.Id,
-			Error: req.Error,
-		})
+		var omv1 *orderModelv1
+		var omv2 *orderModelv2
+		var err error
+		if features.Get().MultipleCertificateProfiles {
+			omv2, err = orderToModelv2(&corepb.Order{
+				Id:    req.Id,
+				Error: req.Error,
+			})
+		} else {
+			omv1, err = orderToModelv1(&corepb.Order{
+				Id:    req.Id,
+				Error: req.Error,
+			})
+		}
 		if err != nil {
 			return nil, err
 		}
 
-		result, err := tx.ExecContext(ctx, `
+		var result sql.Result
+		if features.Get().MultipleCertificateProfiles {
+			result, err = tx.ExecContext(ctx, `
 		UPDATE orders
 		SET error = ?
 		WHERE id = ?`,
-			om.Error,
-			om.ID)
+				omv2.Error,
+				omv2.ID)
+		} else {
+			result, err = tx.ExecContext(ctx, `
+		UPDATE orders
+		SET error = ?
+		WHERE id = ?`,
+				omv1.Error,
+				omv1.ID)
+		}
 		if err != nil {
 			return nil, berrors.InternalServerError("error updating order error field")
 		}
