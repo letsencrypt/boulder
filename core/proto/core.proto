@@ -101,7 +101,7 @@ message Authorization {
 }
 
 message Order {
-  // Next unused field number: 14
+  // Next unused field number: 15
   int64 id = 1;
   int64 registrationID = 2;
   reserved 3; // Previously expiresNS
@@ -115,6 +115,7 @@ message Order {
   reserved 10; // Previously createdNS
   google.protobuf.Timestamp created = 13;
   repeated int64 v2Authorizations = 11;
+  string certificateProfileName = 14;
 }
 
 message CRLEntry {
