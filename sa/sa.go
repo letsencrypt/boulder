@@ -499,17 +499,17 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Second, insert the new order.
-		var omv1 *orderModelv1
-		var omv2 *orderModelv2
+		var omv1 orderModelv1
+		var omv2 orderModelv2
 		if features.Get().MultipleCertificateProfiles {
-			omv2 = &orderModelv2{
+			omv2 = orderModelv2{
 				RegistrationID:         req.NewOrder.RegistrationID,
 				Expires:                req.NewOrder.Expires.AsTime(),
 				Created:                ssa.clk.Now(),
 				CertificateProfileName: req.NewOrder.CertificateProfileName,
 			}
 		} else {
-			omv1 = &orderModelv1{
+			omv1 = orderModelv1{
 				RegistrationID: req.NewOrder.RegistrationID,
 				Expires:        req.NewOrder.Expires.AsTime(),
 				Created:        ssa.clk.Now(),
@@ -517,11 +517,9 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 		var err error
 		if features.Get().MultipleCertificateProfiles {
-			type orderModel orderModelv2
-			err = tx.Insert(ctx, orderModel(*omv2))
+			err = tx.Insert(ctx, &omv2)
 		} else {
-			type orderModel orderModelv1
-			err = tx.Insert(ctx, orderModel(*omv1))
+			err = tx.Insert(ctx, &omv1)
 		}
 		if err != nil {
 			return nil, err
