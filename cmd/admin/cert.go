@@ -18,7 +18,6 @@ import (
 
 
 	core "github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
