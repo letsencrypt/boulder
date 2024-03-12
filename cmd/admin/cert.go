@@ -211,13 +211,13 @@ func (a *admin) checkValidSerial(serial string) (string, error) {
 		case unicode.IsNumber(r):
 			return r
 		}
-		return rune(0)
+		return rune(-1)
 	}
 	strippedSerial := strings.Map(serialStrip, serial)
-	if core.ValidSerial(strippedSerial) {
-		return strippedSerial, nil
+	if !core.ValidSerial(strippedSerial) {
+		return strippedSerial, errors.New("invalidFormat")
 	}
-	return serial, errors.New("invalidFormat")
+	return strippedSerial, nil
 }
 
 func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revocation.Reason, malformed bool, skipBlockKey bool, parallelism int) error {
@@ -235,8 +235,9 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 			for serial := range work {
 				serial, serialErr := a.checkValidSerial(serial)
 				if serialErr != nil {
-					return
-					//	a.log.Errf("invalid serial format: %s", serial)
+					a.log.Errf("invalid serial format: %s", serial)
+					fmt.Println("invalid format err")
+					continue
 				}
 				_, err := a.rac.AdministrativelyRevokeCertificate(
 					ctx,
@@ -250,8 +251,10 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 				)
 				if err != nil {
 					if errors.Is(err, berrors.AlreadyRevoked) {
+						fmt.Println("already revoked err")
 						a.log.Errf("not revoking %q: already revoked", serial)
 					} else {
+						fmt.Println("other err")
 						a.log.Errf("failed to revoke %q: %s", serial, err)
 					}
 				}
