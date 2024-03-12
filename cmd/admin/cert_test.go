@@ -215,7 +215,7 @@ func (mra *mockRARecordingRevocations) reset() {
 
 func TestRevokeSerials(t *testing.T) {
 	t.Parallel()
-	serials := []string{"foo", "bar", "baz"}
+	serials := []string{"2a:18:59:2b:7f:4b:f5:96:fb:1a:1d:f1:35:56:7a:cd:82:5a", "03:8c:3f:63:88:af:b7:69:5d:d4:d6:bb:e3:d2:64:f1:e4:e2", "048c3f6388afb7695dd4d6bbe3d264f1e5e5!"}
 
 	mra := mockRARecordingRevocations{}
 	log := blog.NewMock()
@@ -235,6 +235,7 @@ func TestRevokeSerials(t *testing.T) {
 	log.Clear()
 	a.dryRun = false
 	err := a.revokeSerials(context.Background(), serials, 0, false, false, 1)
+	test.AssertEquals(t, len(log.GetAllMatching("invalid serial format")), 0)
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(log.GetAll()), 0)
 	test.AssertEquals(t, len(mra.revocationRequests), 3)
@@ -243,7 +244,7 @@ func TestRevokeSerials(t *testing.T) {
 	// Revoking an already-revoked serial should result in one log line.
 	mra.reset()
 	log.Clear()
-	mra.alreadyRevoked = []string{"foo"}
+	mra.alreadyRevoked = []string{"048c3f6388afb7695dd4d6bbe3d264f1e5e5"}
 	err = a.revokeSerials(context.Background(), serials, 0, false, false, 1)
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(log.GetAllMatching("not revoking")), 1)
@@ -253,12 +254,20 @@ func TestRevokeSerials(t *testing.T) {
 	// Revoking a doomed-to-fail serial should also result in one log line.
 	mra.reset()
 	log.Clear()
-	mra.doomedToFail = []string{"bar"}
+	mra.doomedToFail = []string{"048c3f6388afb7695dd4d6bbe3d264f1e5e5"}
 	err = a.revokeSerials(context.Background(), serials, 0, false, false, 1)
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(log.GetAllMatching("failed to revoke")), 1)
 	test.AssertEquals(t, len(mra.revocationRequests), 3)
 	assertRequestsContain(mra.revocationRequests, 0, false, false)
+
+	// Revoking a correctly-formatted serial with extraneous characters should get carried through
+	mra.reset()
+	log.Clear()
+	err = a.revokeSerials(context.Background(), serials, 1, true, true, 3)
+	test.AssertNotError(t, err, "")
+	test.AssertEquals(t, len(mra.revocationRequests), 3)
+	assertRequestsContain(mra.revocationRequests, 1, true, true)
 
 	// Revoking with other parameters should get carried through.
 	mra.reset()

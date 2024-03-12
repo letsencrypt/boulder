@@ -9,11 +9,14 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"strings"
 	"sync"
+	"unicode"
 
 	"golang.org/x/crypto/ocsp"
 	"golang.org/x/exp/maps"
 
+	core "github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
@@ -221,6 +224,23 @@ func (a *admin) serialsFromRegID(ctx context.Context, regID int64) ([]string, er
 	return serials, nil
 }
 
+func (a *admin) checkValidSerial(serial string) (string, error) {
+	serialStrip := func(r rune) rune {
+		switch {
+		case unicode.IsLetter(r):
+			return r
+		case unicode.IsNumber(r):
+			return r
+		}
+		return rune(-1)
+	}
+	strippedSerial := strings.Map(serialStrip, serial)
+	if !core.ValidSerial(strippedSerial) {
+		return strippedSerial, errors.New("invalidFormat")
+	}
+	return strippedSerial, nil
+}
+
 func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revocation.Reason, malformed bool, skipBlockKey bool, parallelism int) error {
 	u, err := user.Current()
 	if err != nil {
@@ -234,6 +254,12 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 		go func() {
 			defer wg.Done()
 			for serial := range work {
+				serial, serialErr := a.checkValidSerial(serial)
+				if serialErr != nil {
+					a.log.Errf("invalid serial format: %s", serial)
+					fmt.Println("invalid format err")
+					continue
+				}
 				_, err := a.rac.AdministrativelyRevokeCertificate(
 					ctx,
 					&rapb.AdministrativelyRevokeCertificateRequest{
