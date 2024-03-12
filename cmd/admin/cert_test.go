@@ -27,10 +27,8 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
-	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/letsencrypt/boulder/test/vars"
 )
 
 // mockSAWithIncident is a mock which only implements the SerialsForIncident
@@ -90,6 +88,39 @@ func TestSerialsFromFile(t *testing.T) {
 	test.AssertDeepEquals(t, res, serials)
 }
 
+// mockSAWithKey is a mock which only implements the GetSerialsByKey
+// gRPC method. It can be initialized with a set of serials for that method
+// to return.
+type mockSAWithKey struct {
+	sapb.StorageAuthorityReadOnlyClient
+	keyHash []byte
+	serials []string
+}
+
+// GetSerialsByKey returns a fake gRPC stream client object which itself
+// will return the mockSAWithKey's serials in order.
+func (msa *mockSAWithKey) GetSerialsByKey(_ context.Context, req *sapb.SPKIHash, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByKeyClient, error) {
+	if !slices.Equal(req.KeyHash, msa.keyHash) {
+		return &mockSerialsClient{}, nil
+	}
+	return &mockSerialsClient{unsentSerials: msa.serials}, nil
+}
+
+type mockSerialsClient struct {
+	grpc.ClientStream
+	unsentSerials []string
+}
+
+// Recv returns the next serial from the pre-loaded list.
+func (c *mockSerialsClient) Recv() (*sapb.Serial, error) {
+	if len(c.unsentSerials) > 0 {
+		res := c.unsentSerials[0]
+		c.unsentSerials = c.unsentSerials[1:]
+		return &sapb.Serial{Serial: res}, nil
+	}
+	return nil, io.EOF
+}
+
 func TestSerialsFromPrivateKey(t *testing.T) {
 	serials := []string{"foo", "bar", "baz"}
 	fc := clock.NewFake()
@@ -108,73 +139,41 @@ func TestSerialsFromPrivateKey(t *testing.T) {
 	keyHash, err := core.KeyDigest(privKey.Public())
 	test.AssertNotError(t, err, "computing test SPKI hash")
 
-	dbMap, err := sa.DBMapForTest(vars.DBConnSA)
-	test.AssertNotError(t, err, "creating test dbMap")
-	defer test.ResetBoulderTestDatabase(t)
-
-	for _, serial := range serials {
-		_, err = dbMap.ExecContext(
-			context.Background(),
-			"INSERT INTO keyHashToSerial(keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
-			keyHash[:],
-			fc.Now().Add(24*time.Hour),
-			serial,
-		)
-		test.AssertNotError(t, err, "inserting fake serial into test db")
-	}
-
-	a := admin{dbMap: dbMap}
+	a := admin{saroc: &mockSAWithKey{keyHash: keyHash[:], serials: serials}}
 
 	res, err := a.serialsFromPrivateKey(context.Background(), keyFile)
 	test.AssertNotError(t, err, "getting serials from keyHashToSerial table")
 	test.AssertDeepEquals(t, res, serials)
 }
 
-// mockSAWithRegistration is a mock which only implements the GetRegistration
-// gRPC method. It can be initialized with a regID to recognize.
-type mockSAWithRegistration struct {
+// mockSAWithAccount is a mock which only implements the GetSerialsByAccount
+// gRPC method. It can be initialized with a set of serials for that method
+// to return.
+type mockSAWithAccount struct {
 	sapb.StorageAuthorityReadOnlyClient
-	regID int64
+	regID   int64
+	serials []string
 }
 
-// GetRegistration is a mock which only returns a valid registration object if
-// it recognizes the regID in the request.
-func (msa *mockSAWithRegistration) GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	if req.Id == msa.regID {
-		return &corepb.Registration{}, nil
+func (msa *mockSAWithAccount) GetRegistration(_ context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	if req.Id != msa.regID {
+		return nil, errors.New("no such reg")
 	}
-	return nil, errors.New("no such reg")
+	return &corepb.Registration{}, nil
+}
+
+// SerialsForIncident returns a fake gRPC stream client object which itself
+// will return the mockSAWithAccount's serials in order.
+func (msa *mockSAWithAccount) GetSerialsByAccount(_ context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByAccountClient, error) {
+	if req.Id != msa.regID {
+		return &mockSerialsClient{}, nil
+	}
+	return &mockSerialsClient{unsentSerials: msa.serials}, nil
 }
 
 func TestSerialsFromRegID(t *testing.T) {
 	serials := []string{"foo", "bar", "baz"}
-	fc := clock.NewFake()
-	fc.Set(time.Now())
-
-	dbMap, err := sa.DBMapForTest(vars.DBConnSA)
-	test.AssertNotError(t, err, "creating test dbMap")
-	defer test.ResetBoulderTestDatabase(t)
-
-	_, err = dbMap.ExecContext(
-		context.Background(),
-		"INSERT INTO registrations(id, jwk, jwk_sha256, contact, agreement, LockCol, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		123, "", "", "", "", 0, fc.Now().Add(-24*time.Hour),
-	)
-	test.AssertNotError(t, err, "inserting fake serial into test db")
-
-	for _, serial := range serials {
-		_, err = dbMap.ExecContext(
-			context.Background(),
-			"INSERT INTO serials(registrationID, serial, created, expires) VALUES (?, ?, ?, ?)",
-			123,
-			serial,
-			fc.Now().Add(-24*time.Hour),
-			fc.Now().Add(24*time.Hour),
-		)
-		test.AssertNotError(t, err, "inserting fake serial into test db")
-	}
-
-	a := admin{saroc: &mockSAWithRegistration{regID: 123}, dbMap: dbMap}
+	a := admin{saroc: &mockSAWithAccount{regID: 123, serials: serials}}
 
 	res, err := a.serialsFromRegID(context.Background(), 123)
 	test.AssertNotError(t, err, "getting serials from serials table")

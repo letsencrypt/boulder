@@ -96,6 +96,8 @@ type RegistrationAuthorityImpl struct {
 	pendingAuthorizationLifetime time.Duration
 	rlPolicies                   ratelimit.Limits
 	maxContactsPerReg            int
+	limiter                      *ratelimits.Limiter
+	txnBuilder                   *ratelimits.TransactionBuilder
 	maxNames                     int
 	orderLifetime                time.Duration
 	finalizeTimeout              time.Duration
@@ -127,6 +129,8 @@ func NewRegistrationAuthorityImpl(
 	stats prometheus.Registerer,
 	maxContactsPerReg int,
 	keyPolicy goodkey.KeyPolicy,
+	limiter *ratelimits.Limiter,
+	txnBuilder *ratelimits.TransactionBuilder,
 	maxNames int,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
@@ -246,6 +250,8 @@ func NewRegistrationAuthorityImpl(
 		rlPolicies:                   ratelimit.New(),
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
+		limiter:                      limiter,
+		txnBuilder:                   txnBuilder,
 		maxNames:                     maxNames,
 		publisher:                    pubc,
 		caa:                          caaClient,
@@ -1756,6 +1762,26 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	return err
 }
 
+func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, regId int64, name string) {
+	if ra.limiter == nil || ra.txnBuilder == nil {
+		// Limiter is disabled.
+		return
+	}
+
+	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, name)
+	if err != nil {
+		ra.log.Errf("constructing rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+	}
+
+	_, err = ra.limiter.Spend(ctx, txn)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		ra.log.Errf("checking the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+	}
+}
+
 // PerformValidation initiates validation for a specific challenge associated
 // with the given base authorization. The authorization and challenge are
 // updated based on the results.
@@ -1884,6 +1910,13 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		if prob != nil {
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
+
+			// TODO(#5545): Spending can be async until key-value rate limits
+			// are authoritative. This saves us from adding latency to each
+			// request. Goroutines spun out below will respect a context
+			// deadline set by the ratelimits package and cannot be prematurely
+			// canceled by the requester.
+			go ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier.Value)
 		} else {
 			challenge.Status = core.StatusValid
 		}

@@ -3082,19 +3082,19 @@ func TestBlockedKey(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "AddBlockedKey failed")
 
-	exists, err := sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
+	exists, err := sa.KeyBlocked(context.Background(), &sapb.SPKIHash{
 		KeyHash: hashA,
 	})
 	test.AssertNotError(t, err, "KeyBlocked failed")
 	test.Assert(t, exists != nil, "*sapb.Exists is nil")
 	test.Assert(t, exists.Exists, "KeyBlocked returned false for blocked key")
-	exists, err = sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
+	exists, err = sa.KeyBlocked(context.Background(), &sapb.SPKIHash{
 		KeyHash: hashB,
 	})
 	test.AssertNotError(t, err, "KeyBlocked failed")
 	test.Assert(t, exists != nil, "*sapb.Exists is nil")
 	test.Assert(t, exists.Exists, "KeyBlocked returned false for blocked key")
-	exists, err = sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
+	exists, err = sa.KeyBlocked(context.Background(), &sapb.SPKIHash{
 		KeyHash: []byte{5},
 	})
 	test.AssertNotError(t, err, "KeyBlocked failed")
