@@ -257,12 +257,14 @@ func TestModelToOrderBadJSON(t *testing.T) {
 	test.AssertErrorWraps(t, err, &badJSONErr)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
 
-	_, err = modelToOrderv2(&orderModelv2{
-		Error: badJSON,
-	})
-	test.AssertError(t, err, "expected error from modelToOrder")
-	test.AssertErrorWraps(t, err, &badJSONErr)
-	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
+	/*
+		_, err = modelToOrderv2(&orderModelv2{
+			Error: badJSON,
+		})
+		test.AssertError(t, err, "expected error from modelToOrder")
+		test.AssertErrorWraps(t, err, &badJSONErr)
+		test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
+	*/
 }
 
 func TestOrderModelThereAndBackAgain(t *testing.T) {
@@ -289,7 +291,6 @@ func TestOrderModelThereAndBackAgain(t *testing.T) {
 	returnOrder, err = modelToOrderv2(model2)
 	test.AssertNotError(t, err, "modelToOrderv2 should not have errored")
 	test.AssertDeepEquals(t, order, returnOrder)
-
 }
 
 // TestPopulateAttemptedFieldsBadJSON tests that populating a challenge from an

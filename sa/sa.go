@@ -517,9 +517,11 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 		var err error
 		if features.Get().MultipleCertificateProfiles {
-			err = tx.Insert(ctx, omv2)
+			type orderModel orderModelv2
+			err = tx.Insert(ctx, orderModel(*omv2))
 		} else {
-			err = tx.Insert(ctx, omv1)
+			type orderModel orderModelv1
+			err = tx.Insert(ctx, orderModel(*omv1))
 		}
 		if err != nil {
 			return nil, err

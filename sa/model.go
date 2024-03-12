@@ -408,7 +408,6 @@ type orderToAuthzModel struct {
 
 // TODO(#7324) orderToModelv1 is deprecated, use orderModelv2 moving forward.
 func orderToModelv1(order *corepb.Order) (*orderModelv1, error) {
-	fmt.Printf("order2modelv1 %#v\n", order)
 	om := &orderModelv1{
 		ID:                order.Id,
 		RegistrationID:    order.RegistrationID,
@@ -433,7 +432,6 @@ func orderToModelv1(order *corepb.Order) (*orderModelv1, error) {
 
 // TODO(#7324) modelToOrderv1 is deprecated, use orderModelv2 moving forward.
 func modelToOrderv1(om *orderModelv1) (*corepb.Order, error) {
-	fmt.Printf("model2orderv1 %#v\n", om)
 	order := &corepb.Order{
 		Id:                om.ID,
 		RegistrationID:    om.RegistrationID,
@@ -457,7 +455,6 @@ func modelToOrderv1(om *orderModelv1) (*corepb.Order, error) {
 }
 
 func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
-	fmt.Printf("order2modelv2 %#v\n", order)
 	om := &orderModelv2{
 		ID:                     order.Id,
 		RegistrationID:         order.RegistrationID,
@@ -482,7 +479,6 @@ func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
 }
 
 func modelToOrderv2(om *orderModelv2) (*corepb.Order, error) {
-	fmt.Printf("model2orderv2 %#v\n", om)
 	order := &corepb.Order{
 		Id:                     om.ID,
 		RegistrationID:         om.RegistrationID,
