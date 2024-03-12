@@ -2225,12 +2225,14 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 		return "", false, fmt.Errorf("while parsing ARI CertID an error occurred: %w", err)
 	}
 
-	exists, err := wfe.sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: certID.Serial()})
-	if err != nil {
-		return "", false, fmt.Errorf("checking replacement status of existing certificate: %w", err)
-	}
-	if exists.Exists {
-		return "", false, berrors.MalformedError("cannot indicate an order replaces a certificate which already has a replacement order")
+	if features.Get().TrackReplacementCertificatesARI {
+		exists, err := wfe.sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: certID.Serial()})
+		if err != nil {
+			return "", false, fmt.Errorf("checking replacement status of existing certificate: %w", err)
+		}
+		if exists.Exists {
+			return "", false, berrors.MalformedError("cannot indicate an order replaces a certificate which already has a replacement order")
+		}
 	}
 
 	err = wfe.orderMatchesReplacement(ctx, acct, names, certID.Serial())
@@ -2248,6 +2250,14 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 	renewalInfo, err := wfe.determineARIWindow(ctx, replaces)
 	if err != nil {
 		return "", false, err
+	}
+
+	limitsExempt := renewalInfo.SuggestedWindow.IsWithin(wfe.clk.Now())
+
+	if limitsExempt && !features.Get().TrackReplacementCertificatesARI {
+		// If the feature flag is not enabled, we don't want to exempt the
+		// order from rate limits.
+		limitsExempt = false
 	}
 
 	return replaces, renewalInfo.SuggestedWindow.IsWithin(wfe.clk.Now()), nil
