@@ -110,11 +110,11 @@ jobs:
           persist-credentials: false
 
       - name: Setup Go
-        uses: actions/setup-go@v4
-        # When Go produces a security release, we want govulncheck to run
-        # against the most recently released Go version.
-        check-latest: true
+        uses: actions/setup-go@v5
         with:
+          # When Go produces a security release, we want govulncheck to run
+          # against the most recently released Go version.
+          check-latest: true
           go-version: "latest"
 
       - name: Run govulncheck
