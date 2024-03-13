@@ -236,7 +236,7 @@ func cleanSerial(serial string) (string, error) {
 	}
 	strippedSerial := strings.Map(serialStrip, serial)
 	if !core.ValidSerial(strippedSerial) {
-		return "", errors.New(strippedSerial)
+		return "", fmt.Errorf("cleaned serial %q is not valid", strippedSerial)
 	}
 	return strippedSerial, nil
 }

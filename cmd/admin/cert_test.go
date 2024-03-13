@@ -264,13 +264,6 @@ func TestRevokeSerials(t *testing.T) {
 	test.AssertEquals(t, len(mra.revocationRequests), 3)
 	assertRequestsContain(mra.revocationRequests, 0, false, false)
 
-	// Revoking a correctly-formatted serial with extraneous characters should get carried through
-	mra.reset()
-	log.Clear()
-	err = a.revokeSerials(context.Background(), serials, 1, true, true, 3)
-	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, len(mra.revocationRequests), 3)
-	assertRequestsContain(mra.revocationRequests, 1, true, true)
 
 	// Revoking with other parameters should get carried through.
 	mra.reset()
