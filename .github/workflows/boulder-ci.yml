@@ -115,7 +115,7 @@ jobs:
           # When Go produces a security release, we want govulncheck to run
           # against the most recently released Go version.
           check-latest: true
-          go-version: "latest"
+          go-version: "stable"
 
       - name: Run govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
