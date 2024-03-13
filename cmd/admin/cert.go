@@ -229,7 +229,7 @@ func cleanSerial(serial string) (string, error) {
 		switch {
 		case unicode.IsLetter(r):
 			return r
-		case unicode.IsNumber(r):
+		case unicode.IsDigit(r):
 			return r
 		}
 		return rune(-1)
