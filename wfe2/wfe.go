@@ -2260,7 +2260,7 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 		limitsExempt = false
 	}
 
-	return replaces, renewalInfo.SuggestedWindow.IsWithin(wfe.clk.Now()), nil
+	return replaces, limitsExempt, nil
 }
 
 // NewOrder is used by clients to create a new order object and a set of
