@@ -2247,7 +2247,7 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 	// and the request must be made within the suggested renewal window.
 	renewalInfo, err := wfe.determineARIWindow(ctx, replaces)
 	if err != nil {
-		return "", false, err
+		return "", false, fmt.Errorf("while determining the current ARI renewal window: %w", err)
 	}
 
 	return replaces, renewalInfo.SuggestedWindow.IsWithin(wfe.clk.Now()), nil
@@ -2318,7 +2318,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	replaces, limitsExempt, err := wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
 	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement and error occurred"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
 		return
 	}
 
