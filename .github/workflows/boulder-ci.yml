@@ -99,12 +99,9 @@ jobs:
         run: ${{ matrix.tests }}
 
   govulncheck:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
-      # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
       fail-fast: false
-      matrix:
-        go-version: [ '1.21.8' ]
 
     steps:
       # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -112,10 +109,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Go ${{ matrix.go-version }}
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
+          # When Go produces a security release, we want govulncheck to run
+          # against the most recently released Go version.
+          check-latest: true
+          go-version: "stable"
 
       - name: Run govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
