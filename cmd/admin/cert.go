@@ -224,7 +224,7 @@ func (a *admin) serialsFromRegID(ctx context.Context, regID int64) ([]string, er
 	return serials, nil
 }
 
-func (a *admin) checkValidSerial(serial string) (string, error) {
+func cleanSerial(serial string) (string, error) {
 	serialStrip := func(r rune) rune {
 		switch {
 		case unicode.IsLetter(r):
@@ -236,7 +236,7 @@ func (a *admin) checkValidSerial(serial string) (string, error) {
 	}
 	strippedSerial := strings.Map(serialStrip, serial)
 	if !core.ValidSerial(strippedSerial) {
-		return strippedSerial, errors.New("invalidFormat")
+		return "", errors.New(strippedSerial)
 	}
 	return strippedSerial, nil
 }
@@ -254,16 +254,15 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 		go func() {
 			defer wg.Done()
 			for serial := range work {
-				serial, serialErr := a.checkValidSerial(serial)
-				if serialErr != nil {
-					a.log.Errf("invalid serial format: %s", serial)
-					fmt.Println("invalid format err")
+				cleanedSerial, err := cleanSerial(serial)
+				if err != nil {
+					a.log.Errf("skipping serial %q: %s", serial, err)
 					continue
 				}
-				_, err := a.rac.AdministrativelyRevokeCertificate(
+				_, err = a.rac.AdministrativelyRevokeCertificate(
 					ctx,
 					&rapb.AdministrativelyRevokeCertificateRequest{
-						Serial:       serial,
+						Serial:       cleanedSerial,
 						Code:         int64(reason),
 						AdminName:    u.Username,
 						SkipBlockKey: skipBlockKey,

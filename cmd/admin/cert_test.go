@@ -215,8 +215,11 @@ func (mra *mockRARecordingRevocations) reset() {
 
 func TestRevokeSerials(t *testing.T) {
 	t.Parallel()
-	serials := []string{"2a:18:59:2b:7f:4b:f5:96:fb:1a:1d:f1:35:56:7a:cd:82:5a", "03:8c:3f:63:88:af:b7:69:5d:d4:d6:bb:e3:d2:64:f1:e4:e2", "048c3f6388afb7695dd4d6bbe3d264f1e5e5!"}
-
+	serials := []string{
+		"2a:18:59:2b:7f:4b:f5:96:fb:1a:1d:f1:35:56:7a:cd:82:5a",
+		"03:8c:3f:63:88:af:b7:69:5d:d4:d6:bb:e3:d2:64:f1:e4:e2",
+		"048c3f6388afb7695dd4d6bbe3d264f1e5e5!",
+	}
 	mra := mockRARecordingRevocations{}
 	log := blog.NewMock()
 	a := admin{rac: &mra, log: log}
