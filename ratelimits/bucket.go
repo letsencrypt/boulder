@@ -276,43 +276,34 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckO
 	return txns, nil
 }
 
-// FailedAuthorizationsPerDomainPerAccountSpendOnlyTransactions returns a slice
-// of Transactions for the provided order domain names. An error is returned if
-// any of the order domain names are invalid. This method should be used for
-// spending capacity, as a result of a failed authorization.
-func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendOnlyTransactions(regId int64, orderDomains []string, maxNames int) ([]Transaction, error) {
-	if len(orderDomains) > maxNames {
-		return nil, fmt.Errorf("order contains more than %d DNS names", maxNames)
-	}
-
+// FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction returns a spend-
+// only Transaction for the provided order domain name. An error is returned if
+// the order domain name is invalid. This method should be used for spending
+// capacity, as a result of a failed authorization.
+func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId int64, orderDomain string) (Transaction, error) {
 	// FailedAuthorizationsPerDomainPerAccount limit uses the 'enum:regId'
 	// bucket key format for overrides.
 	perAccountBucketKey, err := newRegIdBucketKey(FailedAuthorizationsPerDomainPerAccount, regId)
 	if err != nil {
-		return nil, err
+		return Transaction{}, err
 	}
 	limit, err := builder.getLimit(FailedAuthorizationsPerDomainPerAccount, perAccountBucketKey)
 	if err != nil && !errors.Is(err, errLimitDisabled) {
-		return nil, err
+		return Transaction{}, err
 	}
 
-	var txns []Transaction
-	for _, name := range DomainsForRateLimiting(orderDomains) {
-		// FailedAuthorizationsPerDomainPerAccount limit uses the
-		// 'enum:regId:domain' bucket key format for transactions.
-		perDomainPerAccountBucketKey, err := newRegIdDomainBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, name)
-		if err != nil {
-			return nil, err
-		}
-
-		// Add an allow-only transaction for each per domain per account bucket.
-		txn, err := newSpendOnlyTransaction(limit, perDomainPerAccountBucketKey, 1)
-		if err != nil {
-			return nil, err
-		}
-		txns = append(txns, txn)
+	// FailedAuthorizationsPerDomainPerAccount limit uses the
+	// 'enum:regId:domain' bucket key format for transactions.
+	perDomainPerAccountBucketKey, err := newRegIdDomainBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, orderDomain)
+	if err != nil {
+		return Transaction{}, err
 	}
-	return txns, nil
+	txn, err := newSpendOnlyTransaction(limit, perDomainPerAccountBucketKey, 1)
+	if err != nil {
+		return Transaction{}, err
+	}
+
+	return txn, nil
 }
 
 // CertificatesPerDomainTransactions returns a slice of Transactions for the
