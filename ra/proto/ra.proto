@@ -68,10 +68,12 @@ message AdministrativelyRevokeCertificateRequest {
 }
 
 message NewOrderRequest {
+  // Next unused field number: 6
   int64 registrationID = 1;
   repeated string names = 2;
   string replacesSerial = 3;
   bool limitsExempt = 4;
+  string certificateProfileName = 5;
 }
 
 message FinalizeOrderRequest {
