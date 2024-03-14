@@ -19,35 +19,32 @@ type MockClient struct {
 
 // LookupTXT is a mock
 func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string, ResolverAddrs, error) {
-	if hostname == "_acme-challenge.servfail.com" {
+	switch hostname {
+	case "_acme-challenge.servfail.com":
 		return nil, ResolverAddrs{"MockClient"}, fmt.Errorf("SERVFAIL")
-	}
-	if hostname == "_acme-challenge.good-dns01.com" {
+	case "_acme-challenge.good-dns01.com":
 		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
 		// expected token + test account jwk thumbprint
 		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == "_acme-challenge.wrong-dns01.com" {
+	case "_acme-challenge.wrong-dns01.com",
+		"_rpmyw7okyyoycegj._acme-host-challenge.wrong-dns01.com":
 		return []string{"a"}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == "_acme-challenge.wrong-many-dns01.com" {
+	case "_acme-challenge.wrong-many-dns01.com":
 		return []string{"a", "b", "c", "d", "e"}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == "_acme-challenge.long-dns01.com" {
+	case "_acme-challenge.long-dns01.com":
 		return []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, ResolverAddrs{"MockClient"}, nil
-	}
-	if hostname == "_acme-challenge.no-authority-dns01.com" {
+	case "_acme-challenge.no-authority-dns01.com":
 		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
 		// expected token + test account jwk thumbprint
 		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
-	}
-	// empty-txts.com always returns zero TXT records
-	if hostname == "_acme-challenge.empty-txts.com" {
+	case "_acme-challenge.empty-txts.com",
+		"_6g727n6x5dk6qex5._acme-host-challenge.empty-txts.com":
 		return []string{}, ResolverAddrs{"MockClient"}, nil
+	default:
+		return []string{"hostname"}, ResolverAddrs{"MockClient"}, nil
 	}
-	return []string{"hostname"}, ResolverAddrs{"MockClient"}, nil
 }
 
 // makeTimeoutError returns a a net.OpError for which Timeout() returns true.

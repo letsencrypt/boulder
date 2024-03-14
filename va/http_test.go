@@ -1548,7 +1548,7 @@ func TestValidateHTTP(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall, core.AuthorizationScopeHost)
+	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall, core.AuthorizationScopeHost, 0)
 	test.Assert(t, prob == nil, "validation failed")
 }
 
@@ -1560,7 +1560,7 @@ func TestLimitedReader(t *testing.T) {
 	va, _ := setup(hs, 0, "", nil, nil)
 	defer hs.Close()
 
-	_, err := va.validateChallenge(ctx, dnsi("localhost"), chall, core.AuthorizationScopeHost)
+	_, err := va.validateChallenge(ctx, dnsi("localhost"), chall, core.AuthorizationScopeHost, 0)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
