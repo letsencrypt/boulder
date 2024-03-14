@@ -2,15 +2,17 @@ package mocks
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"time"
 
-	capb "github.com/letsencrypt/boulder/ca/proto"
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	capb "github.com/letsencrypt/boulder/ca/proto"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 )
 
 // MockCA is a mock of a CA that always returns the cert from PEM in response to
@@ -20,7 +22,7 @@ type MockCA struct {
 }
 
 // IssuePrecertificate is a mock
-func (ca *MockCA) IssuePrecertificate(ctx context.Context, _ *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
+func (ca *MockCA) IssuePrecertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
 	if ca.PEM == nil {
 		return nil, fmt.Errorf("MockCA's PEM field must be set before calling IssueCertificate")
 	}
@@ -29,8 +31,10 @@ func (ca *MockCA) IssuePrecertificate(ctx context.Context, _ *capb.IssueCertific
 	if err != nil {
 		return nil, err
 	}
+	profHash := sha256.Sum256([]byte(req.CertProfileName))
 	return &capb.IssuePrecertificateResponse{
-		DER: cert.Raw,
+		DER:             cert.Raw,
+		CertProfileHash: profHash[:8],
 	}, nil
 }
 
