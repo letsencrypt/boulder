@@ -16,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -119,10 +120,19 @@ func main() {
 		cmd.FailOnError(errors.New("no recognized subcommand name provided"), "")
 	}
 
+	if a.dryRun {
+		a.log.AuditInfof("admin tool executing a dry-run with the following arguments: %s", strings.Join(unparsedArgs, " "))
+	} else {
+		a.log.AuditInfof("admin tool executing with the following arguments: %s", strings.Join(unparsedArgs, " "))
+	}
+
 	err = subcommand.run(a, context.Background(), unparsedArgs[1:])
 	cmd.FailOnError(err, "executing subcommand")
 
 	if a.dryRun {
+		a.log.AuditInfof("admin tool has successfully completed executing a dry-run with the following arguments: %s", strings.Join(unparsedArgs, " "))
 		a.log.Info("Dry run complete. Pass -dry-run=false to mutate the database.")
+	} else {
+		a.log.AuditInfof("admin tool has successfully completed executing with the following arguments: %s", strings.Join(unparsedArgs, " "))
 	}
 }

@@ -5,13 +5,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/asn1"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
+	"slices"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -22,6 +21,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/crl"
+	"github.com/letsencrypt/boulder/crl/idp"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -186,14 +186,29 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 			return fmt.Errorf("parsing previous CRL for %s: %w", crlId, err)
 		}
 
-		idp := getIDPExt(crl.Extensions)
-		prevIdp := getIDPExt(prevCRL.Extensions)
-		if !bytes.Equal(idp, prevIdp) {
-			return fmt.Errorf("IDP does not match previous: %x != %x", idp, prevIdp)
-		}
-
 		if crl.Number.Cmp(prevCRL.Number) <= 0 {
 			return fmt.Errorf("crlNumber not strictly increasing: %d <= %d", crl.Number, prevCRL.Number)
+		}
+
+		idpURIs, err := idp.GetIDPURIs(crl.Extensions)
+		if err != nil {
+			return fmt.Errorf("getting IDP for %s: %w", crlId, err)
+		}
+
+		prevURIs, err := idp.GetIDPURIs(prevCRL.Extensions)
+		if err != nil {
+			return fmt.Errorf("getting previous IDP for %s: %w", crlId, err)
+		}
+
+		uriMatch := false
+		for _, uri := range idpURIs {
+			if slices.Contains(prevURIs, uri) {
+				uriMatch = true
+				break
+			}
+		}
+		if !uriMatch {
+			return fmt.Errorf("IDP does not match previous: %v !∩ %v", idpURIs, prevURIs)
 		}
 	}
 
@@ -229,14 +244,4 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 	)
 
 	return stream.SendAndClose(&emptypb.Empty{})
-}
-
-// getIDPExt returns the contents of the issuingDistributionPoint extension, if present.
-func getIDPExt(exts []pkix.Extension) []byte {
-	for _, ext := range exts {
-		if ext.Id.Equal(asn1.ObjectIdentifier{2, 5, 29, 28}) { // id-ce-issuingDistributionPoint
-			return ext.Value
-		}
-	}
-	return nil
 }

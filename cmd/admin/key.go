@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os/user"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -53,21 +54,32 @@ func (a *admin) spkiHashFromPrivateKey(keyFile string) ([]byte, error) {
 }
 
 func (a *admin) blockSPKIHash(ctx context.Context, spkiHash []byte, comment string) error {
-	var exists bool
-	err := a.dbMap.SelectOne(ctx, &exists, "SELECT EXISTS(SELECT 1 FROM blockedKeys WHERE keyHash = ? LIMIT 1)", spkiHash[:])
+	exists, err := a.saroc.KeyBlocked(ctx, &sapb.SPKIHash{KeyHash: spkiHash})
 	if err != nil {
 		return fmt.Errorf("checking if key is already blocked: %w", err)
 	}
-	if exists {
+	if exists.Exists {
 		return errors.New("the provided key already exists in the 'blockedKeys' table")
 	}
 
-	var count int
-	err = a.dbMap.SelectOne(ctx, &count, "SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ? AND certNotAfter > NOW()", spkiHash[:])
+	stream, err := a.saroc.GetSerialsByKey(ctx, &sapb.SPKIHash{KeyHash: spkiHash})
 	if err != nil {
-		return fmt.Errorf("counting affected certificates: %w", err)
+		return fmt.Errorf("setting up stream of serials from SA: %s", err)
 	}
-	a.log.Infof("Found %d certificates matching the provided key", count)
+
+	var count int
+	for {
+		_, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("streaming serials from SA: %s", err)
+		}
+		count++
+	}
+
+	a.log.Infof("Found %d unexpired certificates matching the provided key", count)
 
 	u, err := user.Current()
 	if err != nil {

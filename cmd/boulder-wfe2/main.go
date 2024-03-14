@@ -149,13 +149,16 @@ type Config struct {
 			// Defaults is a path to a YAML file containing default rate limits.
 			// See: ratelimits/README.md for details. This field is required to
 			// enable rate limiting. If any individual rate limit is not set,
-			// that limit will be disabled.
+			// that limit will be disabled. Failed Authorizations limits passed
+			// in this file must be identical to those in the RA.
 			Defaults string `validate:"required_with=Redis"`
 
 			// Overrides is a path to a YAML file containing overrides for the
 			// default rate limits. See: ratelimits/README.md for details. If
 			// this field is not set, all requesters will be subject to the
-			// default rate limits.
+			// default rate limits. Overrides for the Failed Authorizations
+			// overrides passed in this file must be identical to those in the
+			// RA.
 			Overrides string
 		}
 

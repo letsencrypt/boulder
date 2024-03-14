@@ -26,9 +26,13 @@ type Config struct {
 		// DNSTries is the number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
-		DNSTries                  int
-		DNSProvider               *cmd.DNSProvider `validate:"required"`
-		DNSTimeout                config.Duration  `validate:"required"`
+		DNSTries    int
+		DNSProvider *cmd.DNSProvider `validate:"required_without=DNSStaticResolvers"`
+		// DNSStaticResolvers is a list of DNS resolvers. Each entry must
+		// be a host or IP and port separated by a colon. IPv6 addresses
+		// must be enclosed in square brackets.
+		DNSStaticResolvers        []string        `validate:"required_without=DNSProvider,dive,hostname_port"`
+		DNSTimeout                config.Duration `validate:"required"`
 		DNSAllowLoopbackAddresses bool
 
 		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
@@ -79,17 +83,19 @@ func main() {
 	}
 	clk := cmd.Clock()
 
-	if c.VA.DNSProvider == nil {
-		cmd.Fail("Must specify dnsProvider")
-	}
-
 	var servers bdns.ServerProvider
 	proto := "udp"
 	if features.Get().DOH {
 		proto = "tcp"
 	}
-	servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, proto)
-	cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
+
+	if len(c.VA.DNSStaticResolvers) != 0 {
+		servers, err = bdns.NewStaticProvider(c.VA.DNSStaticResolvers)
+		cmd.FailOnError(err, "Couldn't start static DNS server resolver")
+	} else {
+		servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, proto)
+		cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
+	}
 	defer servers.Stop()
 
 	tlsConfig, err := c.VA.TLS.Load(scope)

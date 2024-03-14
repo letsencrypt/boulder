@@ -58,6 +58,8 @@ func (srv *s3TestSrv) handleUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *s3TestSrv) handleDownload(w http.ResponseWriter, r *http.Request) {
+	srv.RLock()
+	defer srv.RUnlock()
 	body, ok := srv.allShards[r.URL.Path]
 	if !ok {
 		w.WriteHeader(404)

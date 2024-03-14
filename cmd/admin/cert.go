@@ -9,12 +9,14 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"strings"
 	"sync"
+	"unicode"
 
 	"golang.org/x/crypto/ocsp"
 	"golang.org/x/exp/maps"
 
-	"github.com/letsencrypt/boulder/db"
+	core "github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
@@ -176,10 +178,21 @@ func (a *admin) serialsFromPrivateKey(ctx context.Context, privkeyFile string) (
 		return nil, err
 	}
 
+	stream, err := a.saroc.GetSerialsByKey(ctx, &sapb.SPKIHash{KeyHash: spkiHash})
+	if err != nil {
+		return nil, fmt.Errorf("setting up stream of serials from SA: %s", err)
+	}
+
 	var serials []string
-	_, err = a.dbMap.Select(ctx, &serials, "SELECT certSerial FROM keyHashToSerial WHERE keyHash = ? AND certNotAfter > NOW()", spkiHash[:])
-	if err != nil && !db.IsNoRows(err) {
-		return nil, fmt.Errorf("fetching serials from db: %w", err)
+	for {
+		serial, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, fmt.Errorf("streaming serials from SA: %s", err)
+		}
+		serials = append(serials, serial.Serial)
 	}
 
 	return serials, nil
@@ -191,13 +204,41 @@ func (a *admin) serialsFromRegID(ctx context.Context, regID int64) ([]string, er
 		return nil, fmt.Errorf("couldn't confirm regID exists: %w", err)
 	}
 
+	stream, err := a.saroc.GetSerialsByAccount(ctx, &sapb.RegistrationID{Id: regID})
+	if err != nil {
+		return nil, fmt.Errorf("setting up stream of serials from SA: %s", err)
+	}
+
 	var serials []string
-	_, err = a.dbMap.Select(ctx, &serials, "SELECT serial FROM serials WHERE registrationID = ? AND expires > NOW()", regID)
-	if err != nil && !db.IsNoRows(err) {
-		return nil, fmt.Errorf("fetching serials from db: %w", err)
+	for {
+		serial, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, fmt.Errorf("streaming serials from SA: %s", err)
+		}
+		serials = append(serials, serial.Serial)
 	}
 
 	return serials, nil
+}
+
+func cleanSerial(serial string) (string, error) {
+	serialStrip := func(r rune) rune {
+		switch {
+		case unicode.IsLetter(r):
+			return r
+		case unicode.IsDigit(r):
+			return r
+		}
+		return rune(-1)
+	}
+	strippedSerial := strings.Map(serialStrip, serial)
+	if !core.ValidSerial(strippedSerial) {
+		return "", fmt.Errorf("cleaned serial %q is not valid", strippedSerial)
+	}
+	return strippedSerial, nil
 }
 
 func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revocation.Reason, malformed bool, skipBlockKey bool, parallelism int) error {
@@ -213,10 +254,15 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 		go func() {
 			defer wg.Done()
 			for serial := range work {
-				_, err := a.rac.AdministrativelyRevokeCertificate(
+				cleanedSerial, err := cleanSerial(serial)
+				if err != nil {
+					a.log.Errf("skipping serial %q: %s", serial, err)
+					continue
+				}
+				_, err = a.rac.AdministrativelyRevokeCertificate(
 					ctx,
 					&rapb.AdministrativelyRevokeCertificateRequest{
-						Serial:       serial,
+						Serial:       cleanedSerial,
 						Code:         int64(reason),
 						AdminName:    u.Username,
 						SkipBlockKey: skipBlockKey,
