@@ -259,13 +259,14 @@ message OrderRequest {
 }
 
 message NewOrderRequest {
-  // Next unused field number: 7
+  // Next unused field number: 8
   int64 registrationID = 1;
   reserved 2; // Previously expiresNS
   google.protobuf.Timestamp expires = 5;
   repeated string names = 3;
   repeated int64 v2Authorizations = 4;
   string replacesSerial = 6;
+  string certificateProfileName = 7;
 }
 
 message NewOrderAndAuthzsRequest {
