@@ -23,7 +23,7 @@ import (
 	"errors"
 	"fmt"
 
-	"gopkg.in/go-jose/go-jose.v2/json"
+	"github.com/go-jose/go-jose/v4/json"
 )
 
 // KeyAlgorithm represents a key management algorithm.
@@ -133,8 +133,8 @@ const (
 type HeaderKey string
 
 const (
-	HeaderType        HeaderKey = "typ" // string
-	HeaderContentType           = "cty" // string
+	HeaderType        = "typ" // string
+	HeaderContentType = "cty" // string
 
 	// These are set by go-jose and shouldn't need to be set by consumers of the
 	// library.
@@ -183,8 +183,13 @@ type Header struct {
 	// Unverified certificate chain parsed from x5c header.
 	certificates []*x509.Certificate
 
-	// Any headers not recognised above get unmarshalled
-	// from JSON in a generic manner and placed in this map.
+	// At parse time, each header parameter with a name other than "kid",
+	// "jwk", "alg", "nonce", or "x5c"  will have its value passed to
+	// [json.Unmarshal] to unmarshal it into an interface value.
+	// The resulting value will be stored in this map, with the header
+	// parameter name as the key.
+	//
+	// [json.Unmarshal]: https://pkg.go.dev/encoding/json#Unmarshal
 	ExtraHeaders map[HeaderKey]interface{}
 }
 
@@ -452,8 +457,8 @@ func parseCertificateChain(chain []string) ([]*x509.Certificate, error) {
 	return out, nil
 }
 
-func (dst rawHeader) isSet(k HeaderKey) bool {
-	dvr := dst[k]
+func (parsed rawHeader) isSet(k HeaderKey) bool {
+	dvr := parsed[k]
 	if dvr == nil {
 		return false
 	}
@@ -472,17 +477,17 @@ func (dst rawHeader) isSet(k HeaderKey) bool {
 }
 
 // Merge headers from src into dst, giving precedence to headers from l.
-func (dst rawHeader) merge(src *rawHeader) {
+func (parsed rawHeader) merge(src *rawHeader) {
 	if src == nil {
 		return
 	}
 
 	for k, v := range *src {
-		if dst.isSet(k) {
+		if parsed.isSet(k) {
 			continue
 		}
 
-		dst[k] = v
+		parsed[k] = v
 	}
 }
 

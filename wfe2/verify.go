@@ -11,12 +11,14 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/exp/maps"
 	"google.golang.org/grpc/status"
-	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -54,11 +56,20 @@ func sigAlgorithmForKey(key *jose.JSONWebKey) (jose.SignatureAlgorithm, error) {
 	return "", errors.New("JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521)")
 }
 
-var supportedAlgs = map[string]bool{
-	string(jose.RS256): true,
-	string(jose.ES256): true,
-	string(jose.ES384): true,
-	string(jose.ES512): true,
+var supportedAlgs = map[jose.SignatureAlgorithm]bool{
+	jose.RS256: true,
+	jose.ES256: true,
+	jose.ES384: true,
+	jose.ES512: true,
+}
+
+// getSupportedAlgs returns a sorted slice of joseSignatureAlgorithm's from a
+// map of boulder allowed signature algorithms.
+func getSupportedAlgs() []jose.SignatureAlgorithm {
+	sigAlgs := maps.Keys(supportedAlgs)
+	slices.Sort(sigAlgs)
+
+	return sigAlgs
 }
 
 // Check that (1) there is a suitable algorithm for the provided key based on its
@@ -66,11 +77,11 @@ var supportedAlgs = map[string]bool{
 // that algorithm, and (3) the Algorithm field on the JWK is present and matches
 // that algorithm.
 func checkAlgorithm(key *jose.JSONWebKey, header jose.Header) error {
-	sigHeaderAlg := header.Algorithm
+	sigHeaderAlg := jose.SignatureAlgorithm(header.Algorithm)
 	if !supportedAlgs[sigHeaderAlg] {
 		return fmt.Errorf(
-			"JWS signature header contains unsupported algorithm %q, expected one of RS256, ES256, ES384 or ES512",
-			header.Algorithm,
+			"JWS signature header contains unsupported algorithm %q, expected one of %s",
+			header.Algorithm, getSupportedAlgs(),
 		)
 	}
 
@@ -78,7 +89,7 @@ func checkAlgorithm(key *jose.JSONWebKey, header jose.Header) error {
 	if err != nil {
 		return err
 	}
-	if sigHeaderAlg != string(expectedAlg) {
+	if sigHeaderAlg != expectedAlg {
 		return fmt.Errorf("JWS signature header algorithm %q does not match expected algorithm %q for JWK", sigHeaderAlg, string(expectedAlg))
 	}
 	if key.Algorithm != "" && key.Algorithm != string(expectedAlg) {
@@ -387,7 +398,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, *probs.Pr
 	// Parse the JWS using go-jose and enforce that the expected one non-empty
 	// signature is present in the parsed JWS.
 	bodyStr := string(body)
-	parsedJWS, err := jose.ParseSigned(bodyStr)
+	parsedJWS, err := jose.ParseSigned(bodyStr, getSupportedAlgs())
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSParseError"}).Inc()
 		return nil, probs.Malformed("Parse error reading JWS")
@@ -560,8 +571,6 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	jws *bJSONWebSignature,
 	jwk *jose.JSONWebKey,
 	request *http.Request) ([]byte, *probs.ProblemDetails) {
-
-	// Check that the public key and JWS algorithms match expected
 	err := checkAlgorithm(jwk, jws.Signatures[0].Header)
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSAlgorithmCheckFailed"}).Inc()
@@ -782,20 +791,20 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	oldKey *jose.JSONWebKey) (*rolloverOperation, *probs.ProblemDetails) {
 
 	// Extract the embedded JWK from the inner JWS' protected headers
-	jwk, prob := wfe.extractJWK(innerJWS.Signatures[0].Header)
+	innerJWK, prob := wfe.extractJWK(innerJWS.Signatures[0].Header)
 	if prob != nil {
 		return nil, prob
 	}
 
 	// If the key doesn't meet the GoodKey policy return a problem immediately
-	err := wfe.keyPolicy.GoodKey(ctx, jwk.Key)
+	err := wfe.keyPolicy.GoodKey(ctx, innerJWK.Key)
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWKRejectedByGoodKey"}).Inc()
 		return nil, probs.BadPublicKey(err.Error())
 	}
 
 	// Check that the public key and JWS algorithms match expected
-	err = checkAlgorithm(jwk, innerJWS.Signatures[0].Header)
+	err = checkAlgorithm(innerJWK, innerJWS.Signatures[0].Header)
 	if err != nil {
 		return nil, probs.Malformed(err.Error())
 	}
@@ -804,7 +813,7 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	// NOTE(@cpu): We do not use `wfe.validJWSForKey` here because the inner JWS
 	// of a key rollover operation is special (e.g. has no nonce, doesn't have an
 	// HTTP request to match the URL to)
-	innerPayload, err := innerJWS.Verify(jwk)
+	innerPayload, err := innerJWS.Verify(innerJWK)
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWSVerifyFailed"}).Inc()
 		return nil, probs.Malformed("Inner JWS does not verify with embedded JWK")
@@ -848,6 +857,6 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 			OldKey:  *oldKey,
 			Account: req.Account,
 		},
-		NewKey: *jwk,
+		NewKey: *innerJWK,
 	}, nil
 }

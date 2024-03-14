@@ -20,6 +20,7 @@ import (
 	"crypto"
 	"crypto/aes"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
@@ -28,9 +29,8 @@ import (
 	"fmt"
 	"math/big"
 
-	"golang.org/x/crypto/ed25519"
-	josecipher "gopkg.in/go-jose/go-jose.v2/cipher"
-	"gopkg.in/go-jose/go-jose.v2/json"
+	josecipher "github.com/go-jose/go-jose/v4/cipher"
+	"github.com/go-jose/go-jose/v4/json"
 )
 
 // A generic RSA-based encrypter/verifier
@@ -285,6 +285,9 @@ func (ctx rsaDecrypterSigner) signPayload(payload []byte, alg SignatureAlgorithm
 
 	switch alg {
 	case RS256, RS384, RS512:
+		// TODO(https://github.com/go-jose/go-jose/issues/40): As of go1.20, the
+		// random parameter is legacy and ignored, and it can be nil.
+		// https://cs.opensource.google/go/go/+/refs/tags/go1.20:src/crypto/rsa/pkcs1v15.go;l=263;bpv=0;bpt=1
 		out, err = rsa.SignPKCS1v15(RandReader, ctx.privateKey, hash, hashed)
 	case PS256, PS384, PS512:
 		out, err = rsa.SignPSS(RandReader, ctx.privateKey, hash, hashed, &rsa.PSSOptions{

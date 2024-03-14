@@ -20,12 +20,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test/load-generator/acme"
-	"golang.org/x/crypto/ocsp"
-	"gopkg.in/go-jose/go-jose.v2"
 )
 
 var (
