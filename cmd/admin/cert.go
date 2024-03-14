@@ -9,11 +9,14 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"strings"
 	"sync"
+	"unicode"
 
 	"golang.org/x/crypto/ocsp"
 	"golang.org/x/exp/maps"
 
+	core "github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
@@ -221,6 +224,23 @@ func (a *admin) serialsFromRegID(ctx context.Context, regID int64) ([]string, er
 	return serials, nil
 }
 
+func cleanSerial(serial string) (string, error) {
+	serialStrip := func(r rune) rune {
+		switch {
+		case unicode.IsLetter(r):
+			return r
+		case unicode.IsDigit(r):
+			return r
+		}
+		return rune(-1)
+	}
+	strippedSerial := strings.Map(serialStrip, serial)
+	if !core.ValidSerial(strippedSerial) {
+		return "", fmt.Errorf("cleaned serial %q is not valid", strippedSerial)
+	}
+	return strippedSerial, nil
+}
+
 func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revocation.Reason, malformed bool, skipBlockKey bool, parallelism int) error {
 	u, err := user.Current()
 	if err != nil {
@@ -234,10 +254,15 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 		go func() {
 			defer wg.Done()
 			for serial := range work {
-				_, err := a.rac.AdministrativelyRevokeCertificate(
+				cleanedSerial, err := cleanSerial(serial)
+				if err != nil {
+					a.log.Errf("skipping serial %q: %s", serial, err)
+					continue
+				}
+				_, err = a.rac.AdministrativelyRevokeCertificate(
 					ctx,
 					&rapb.AdministrativelyRevokeCertificateRequest{
-						Serial:       serial,
+						Serial:       cleanedSerial,
 						Code:         int64(reason),
 						AdminName:    u.Username,
 						SkipBlockKey: skipBlockKey,
