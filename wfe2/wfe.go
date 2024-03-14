@@ -2225,14 +2225,12 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 		return "", false, fmt.Errorf("while parsing ARI CertID an error occurred: %w", err)
 	}
 
-	if features.Get().TrackReplacementCertificatesARI {
-		exists, err := wfe.sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: certID.Serial()})
-		if err != nil {
-			return "", false, fmt.Errorf("checking replacement status of existing certificate: %w", err)
-		}
-		if exists.Exists {
-			return "", false, berrors.MalformedError("cannot indicate an order replaces a certificate which already has a replacement order")
-		}
+	exists, err := wfe.sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: certID.Serial()})
+	if err != nil {
+		return "", false, fmt.Errorf("checking replacement status of existing certificate: %w", err)
+	}
+	if exists.Exists {
+		return "", false, berrors.MalformedError("cannot indicate an order replaces a certificate which already has a replacement order")
 	}
 
 	err = wfe.orderMatchesReplacement(ctx, acct, names, certID.Serial())
@@ -2252,15 +2250,7 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 		return "", false, fmt.Errorf("while determining the current ARI renewal window: %w", err)
 	}
 
-	limitsExempt := renewalInfo.SuggestedWindow.IsWithin(wfe.clk.Now())
-
-	if limitsExempt && !features.Get().TrackReplacementCertificatesARI {
-		// If the feature flag is not enabled, we don't want to exempt the
-		// order from rate limits.
-		limitsExempt = false
-	}
-
-	return replaces, limitsExempt, nil
+	return replaces, renewalInfo.SuggestedWindow.IsWithin(wfe.clk.Now()), nil
 }
 
 // NewOrder is used by clients to create a new order object and a set of
@@ -2326,10 +2316,14 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	logEvent.DNSNames = names
 
-	replaces, limitsExempt, err := wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
-	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
-		return
+	var replaces string
+	var limitsExempt bool
+	if features.Get().TrackReplacementCertificatesARI {
+		replaces, limitsExempt, err = wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
+			return
+		}
 	}
 
 	// TODO(#5545): Spending and Refunding can be async until these rate limits
