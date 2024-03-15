@@ -460,7 +460,7 @@ func (va *ValidationAuthorityImpl) validate(
 	return validationRecords, nil
 }
 
-func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge, scope core.AuthorizationScope, accountID int64) ([]core.ValidationRecord, error) {
+func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge, scope core.AuthorizationScope, regid int64) ([]core.ValidationRecord, error) {
 	err := challenge.CheckConsistencyForValidation()
 	if err != nil {
 		return nil, berrors.MalformedError("Challenge failed consistency check: %s", err)
@@ -471,7 +471,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 	case core.ChallengeTypeDNS01:
 		return va.validateDNS01(ctx, identifier, challenge)
 	case core.ChallengeTypeDNSAccount01:
-		return va.validateDNSAccount01(ctx, identifier, challenge, scope, accountID)
+		return va.validateDNSAccount01(ctx, identifier, challenge, scope, regid)
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, identifier, challenge)
 	}

@@ -110,14 +110,11 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 
 // Compute the DNS-ACCOUNT-01 challenge subdomain per the
 // acme-scoped-dns-challenges specification
-func getDNSAccountChallengeSubdomain(accountURIPrefix string,
-	accountID int64,
+func getDNSAccountChallengeSubdomain(
+	accountResourceURL string,
 	scope core.AuthorizationScope,
 	domain string,
 ) string {
-	// Construct the account resource URL
-	accountResourceURL := fmt.Sprintf("%s%d", accountURIPrefix, accountID)
-
 	// "_" || base32(SHA-256(<ACCOUNT_RESOURCE_URL>)[0:10]) || "._acme-" || <SCOPE> || "-challenge"
 	acctHash := sha256.Sum256([]byte(accountResourceURL))
 	acctLabel := strings.ToLower(base32.StdEncoding.EncodeToString(acctHash[0:10]))
@@ -133,7 +130,7 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context,
 	ident identifier.ACMEIdentifier,
 	challenge core.Challenge,
 	scope core.AuthorizationScope,
-	accountID int64,
+	regid int64,
 ) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.DNS {
 		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
@@ -149,8 +146,11 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context,
 	// for the accountID and track any errors
 	var validationError error
 	for _, accountURIPrefix := range va.accountURIPrefixes {
-		// Compute the challenge subdomain for this accountURI
-		challengeSubdomain := getDNSAccountChallengeSubdomain(accountURIPrefix, accountID, scope, ident.Value)
+		// Construct the account resource URL
+		accountResourceURL := fmt.Sprintf("%s%d", accountURIPrefix, regid)
+
+		// Compute the challenge subdomain for this account
+		challengeSubdomain := getDNSAccountChallengeSubdomain(accountResourceURL, scope, ident.Value)
 
 		// Look for the required record in the DNS
 		validationRecords, err := va.validateTXT(ctx, ident, authorizedKeysDigest, challengeSubdomain)

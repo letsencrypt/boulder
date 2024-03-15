@@ -282,3 +282,13 @@ func TestAvailableAddresses(t *testing.T) {
 		}
 	}
 }
+
+func TestGetDNSAccountChallengeSubdomain(t *testing.T) {
+	// Test that the DNS account challenge subdomain is correctly generated
+	const accountResourceURL = "https://example.com/acme/acct/ExampleAccount"
+	const baseValidationDomain = "example.org"
+	const validationScope = core.AuthorizationScopeWildcard
+	const expectedSubdomain = "_ujmmovf2vn55tgye._acme-wildcard-challenge.example.org"
+	subdomain := getDNSAccountChallengeSubdomain(accountResourceURL, validationScope, baseValidationDomain)
+	test.AssertEquals(t, subdomain, expectedSubdomain)
+}
