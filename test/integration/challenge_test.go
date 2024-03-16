@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base32"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -16,6 +17,11 @@ import (
 
 func TestDNSAccountChallenge(t *testing.T) {
 	t.Parallel()
+
+	// Skip this test if not in the config-next directory.
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Skipping test in config")
+	}
 
 	// Create an account.
 	client, err := makeClient("mailto:example@letsencrypt.org")
