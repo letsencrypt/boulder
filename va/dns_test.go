@@ -111,6 +111,16 @@ func TestDNSValidationFailure(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
 }
 
+func TestDNSAccountValidationFailure(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+
+	_, err := va.validateDNSAccount01(ctx, dnsi("localhost"), dnsAccountChallenge(),
+		core.AuthorizationScopeHost, int64(12345))
+	prob := detailedError(err)
+
+	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
+}
+
 func TestDNSValidationInvalid(t *testing.T) {
 	var notDNS = identifier.ACMEIdentifier{
 		Type:  identifier.IdentifierType("iris"),
@@ -120,6 +130,31 @@ func TestDNSValidationInvalid(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
 	_, err := va.validateDNS01(ctx, notDNS, dnsChallenge())
+	prob := detailedError(err)
+
+	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+}
+
+func TestDNSAccountValidationInvalid(t *testing.T) {
+	var notDNS = identifier.ACMEIdentifier{
+		Type:  identifier.IdentifierType("iris"),
+		Value: "790DB180-A274-47A4-855F-31C428CB1072",
+	}
+
+	va, _ := setup(nil, 0, "", nil, nil)
+
+	_, err := va.validateDNS01(ctx, notDNS, dnsAccountChallenge())
+	prob := detailedError(err)
+
+	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+}
+
+func TestDNSAccountValidationUnsupportedScope(t *testing.T) {
+	var invalidScope = core.AuthorizationScope("invalid")
+
+	va, _ := setup(nil, 0, "", nil, nil)
+
+	_, err := va.validateDNSAccount01(ctx, dnsi("localhost"), dnsAccountChallenge(), invalidScope, 0)
 	prob := detailedError(err)
 
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
@@ -196,6 +231,14 @@ func TestDNSValidationOK(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
 	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsChallenge(), core.AuthorizationScopeHost, 0)
+
+	test.Assert(t, prob == nil, "Should be valid.")
+}
+
+func TestDNSAccountValidationOK(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsAccountChallenge(), core.AuthorizationScopeHost, 0)
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }
@@ -285,6 +328,8 @@ func TestAvailableAddresses(t *testing.T) {
 
 func TestGetDNSAccountChallengeSubdomain(t *testing.T) {
 	// Test that the DNS account challenge subdomain is correctly generated
+	// using example values from:
+	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-scoped-dns-challenges-00
 	const accountResourceURL = "https://example.com/acme/acct/ExampleAccount"
 	const baseValidationDomain = "example.org"
 	const validationScope = core.AuthorizationScopeWildcard
