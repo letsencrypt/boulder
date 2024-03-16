@@ -394,29 +394,43 @@ func TestChallengesForWildcard(t *testing.T) {
 		Value: "*.zombo.com",
 	}
 
-	// First try to get a challenge for the wildcard ident without the
-	// DNS-based challenge types enabled. This should produce an error
+	// Try to get a challenge for the wildcard ident without
+	// DNS challenges enabled. This should error.
 	var enabledChallenges = map[core.AcmeChallenge]bool{
-		core.ChallengeTypeHTTP01:       true,
-		core.ChallengeTypeDNS01:        false,
-		core.ChallengeTypeDNSAccount01: false,
+		core.ChallengeTypeHTTP01: true,
 	}
 	pa := must.Do(New(enabledChallenges, blog.NewMock()))
 	_, err := pa.ChallengesFor(wildcardIdent)
 	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
-		"when DNS-01 was disabled")
+		"when DNS challenge types were disabled")
 	test.AssertEquals(t, err.Error(), "Challenges requested for wildcard "+
 		"identifier but a DNS-01 or DNS-ACCOUNT-01 challenge type is not enabled")
 
-	// Try again with DNS-01 enabled. It should not error and
+	// Enable DNS-01 and HTTP-01. It should not error and
 	// should return only one DNS-01 type challenge
-	enabledChallenges[core.ChallengeTypeDNS01] = true
+	enabledChallenges = map[core.AcmeChallenge]bool{
+		core.ChallengeTypeHTTP01: true,
+		core.ChallengeTypeDNS01:  true,
+	}
 	pa = must.Do(New(enabledChallenges, blog.NewMock()))
 	challenges, err := pa.ChallengesFor(wildcardIdent)
 	test.AssertNotError(t, err, "ChallengesFor errored for a wildcard ident "+
-		"unexpectedly")
+		"unexpectedly with DNS-01 enabled")
 	test.AssertEquals(t, len(challenges), 1)
 	test.AssertEquals(t, challenges[0].Type, core.ChallengeTypeDNS01)
+
+	// Enable DNS-ACCOUNT-01 and HTTP-01. It should not error and
+	// should return only one DNS-ACCOUNT-01 type challenge
+	enabledChallenges = map[core.AcmeChallenge]bool{
+		core.ChallengeTypeHTTP01:       true,
+		core.ChallengeTypeDNSAccount01: true,
+	}
+	pa = must.Do(New(enabledChallenges, blog.NewMock()))
+	challenges, err = pa.ChallengesFor(wildcardIdent)
+	test.AssertNotError(t, err, "ChallengesFor errored for a wildcard ident "+
+		"unexpectedly with DNS-ACCOUNT-01 enabled")
+	test.AssertEquals(t, len(challenges), 1)
+	test.AssertEquals(t, challenges[0].Type, core.ChallengeTypeDNSAccount01)
 }
 
 // TestMalformedExactBlocklist tests that loading a YAML policy file with an
