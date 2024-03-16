@@ -36,6 +36,7 @@ func TestChallenges(t *testing.T) {
 
 	test.Assert(t, ChallengeTypeHTTP01.IsValid(), "Refused valid challenge")
 	test.Assert(t, ChallengeTypeDNS01.IsValid(), "Refused valid challenge")
+	test.Assert(t, ChallengeTypeDNSAccount01.IsValid(), "Refused valid challenge")
 	test.Assert(t, ChallengeTypeTLSALPN01.IsValid(), "Refused valid challenge")
 	test.Assert(t, !AcmeChallenge("nonsense-71").IsValid(), "Accepted invalid challenge")
 }
