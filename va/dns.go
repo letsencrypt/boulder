@@ -137,6 +137,12 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context,
 		return nil, berrors.MalformedError("Identifier type for DNS was not itself DNS")
 	}
 
+	// Reject unsupported scopes
+	if scope != core.AuthorizationScopeHost && scope != core.AuthorizationScopeWildcard {
+		va.log.Infof("Unsupported scope for DNS-ACCOUNT-01 challenge: %s", scope)
+		return nil, berrors.MalformedError("Unsupported scope for DNS-ACCOUNT-01 challenge")
+	}
+
 	// Compute the digest of the key authorization file
 	h := sha256.New()
 	h.Write([]byte(challenge.ProvidedKeyAuthorization))
