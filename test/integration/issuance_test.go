@@ -7,8 +7,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"fmt"
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -96,15 +94,6 @@ func TestCommonNameSANsTooLong(t *testing.T) {
 
 	// Issue a cert using a CSR with no CN set.
 	ir, err := authAndIssue(client, key, []string{san1, san2}, false)
-
-	// By default, the AllowNoCommonName flag is false, so issuance should have failed.
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		test.AssertError(t, err, "issuing cert with no CN")
-		return
-	}
-
-	// But in config-next, the AllowNoCommonName flag is true, so issuance should
-	// have succeeded.
 	test.AssertNotError(t, err, "failed to issue test cert")
 	cert := ir.certs[0]
 

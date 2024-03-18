@@ -8,3 +8,9 @@
     count: 50
     period: 2s
     ids: [2001:0db8:0000::/48]
+- FailedAuthorizationsPerDomainPerAccount:
+    burst: 60
+    count: 60
+    period: 3s
+    ids: [1234, 5678]
+

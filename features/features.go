@@ -17,9 +17,9 @@ import (
 type Config struct {
 	// Deprecated features. Safe for removal once all references to them have
 	// been removed from deployed configuration.
-	StoreLintingCertificateInsteadOfPrecertificate bool
-	LeaseCRLShards                                 bool
-	AllowUnrecognizedFeatures                      bool
+	CAAAfterValidation         bool
+	AllowNoCommonName          bool
+	SHA256SubjectKeyIdentifier bool
 
 	// EnforceMultiVA causes the VA to block on remote VA PerformValidation
 	// requests in order to make a valid/invalid decision with the results.
@@ -64,26 +64,6 @@ type Config struct {
 	// requires clients to properly implement polling the Order object to wait
 	// for the cert URL to appear.
 	AsyncFinalize bool
-
-	// AllowNoCommonName defaults to false, and causes the CA to fail to issue a
-	// certificate if we can't put a CommonName in it. When true, the
-	// CA will be willing to issue certificates with no CN if and only if there
-	// is no SAN short enough to be hoisted into the CN.
-	//
-	// According to the BRs Section 7.1.4.2.2(a), the commonName field is
-	// Deprecated, and its inclusion is discouraged but not (yet) prohibited.
-	AllowNoCommonName bool
-
-	// CAAAfterValidation causes the VA to only kick off CAA checks after the base
-	// domain control validation has completed and succeeded. This makes
-	// successful validations slower by serializing the DCV and CAA work, but
-	// makes unsuccessful validations easier by not doing CAA work at all.
-	CAAAfterValidation bool
-
-	// SHA256SubjectKeyIdentifier enables the generation and use of an RFC 7093
-	// compliant truncated SHA256 Subject Key Identifier in end-entity
-	// certificates.
-	SHA256SubjectKeyIdentifier bool
 
 	// DOH enables DNS-over-HTTPS queries for validation
 	DOH bool

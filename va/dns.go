@@ -12,7 +12,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
-	"github.com/letsencrypt/boulder/probs"
 )
 
 // getAddr will query for all A/AAAA records associated with hostname and return
@@ -49,10 +48,10 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 	return
 }
 
-func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.DNS {
 		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
-		return nil, probs.Malformed("Identifier type for DNS was not itself DNS")
+		return nil, berrors.MalformedError("Identifier type for DNS was not itself DNS")
 	}
 
 	// Compute the digest of the key authorization file
@@ -64,14 +63,14 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 	challengeSubdomain := fmt.Sprintf("%s.%s", core.DNSPrefix, ident.Value)
 	txts, resolvers, err := va.dnsClient.LookupTXT(ctx, challengeSubdomain)
 	if err != nil {
-		return nil, probs.DNS(err.Error())
+		return nil, berrors.DNSError("%s", err)
 	}
 
 	// If there weren't any TXT records return a distinct error message to allow
 	// troubleshooters to differentiate between no TXT records and
 	// invalid/incorrect TXT records.
 	if len(txts) == 0 {
-		return nil, probs.Unauthorized(fmt.Sprintf("No TXT record found at %s", challengeSubdomain))
+		return nil, berrors.UnauthorizedError("No TXT record found at %s", challengeSubdomain)
 	}
 
 	for _, element := range txts {
@@ -89,6 +88,6 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 	if len(txts) > 1 {
 		andMore = fmt.Sprintf(" (and %d more)", len(txts)-1)
 	}
-	return nil, probs.Unauthorized(fmt.Sprintf("Incorrect TXT record %q%s found at %s",
-		invalidRecord, andMore, challengeSubdomain))
+	return nil, berrors.UnauthorizedError("Incorrect TXT record %q%s found at %s",
+		invalidRecord, andMore, challengeSubdomain)
 }

@@ -40,11 +40,14 @@ const (
 	// NewOrdersPerAccount uses bucket key 'enum:regId'.
 	NewOrdersPerAccount
 
-	// FailedAuthorizationsPerAccount uses bucket key 'enum:regId', where regId
-	// is the ACME registration Id of the account. Cost MUST be consumed from
-	// this bucket only when the authorization is considered "failed". It SHOULD
-	// be checked before new authorizations are created.
-	FailedAuthorizationsPerAccount
+	// FailedAuthorizationsPerDomainPerAccount uses two different bucket keys
+	// depending on the context:
+	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
+	//    where regId is the ACME registration Id of the account.
+	//  - When referenced in a transaction: uses bucket key 'enum:regId:domain',
+	//    where regId is the ACME registration Id of the account and domain is a
+	//    domain name in the certificate.
+	FailedAuthorizationsPerDomainPerAccount
 
 	// CertificatesPerDomain uses bucket key 'enum:domain', where domain is a
 	// domain name in the certificate.
@@ -96,14 +99,14 @@ func (n Name) EnumString() string {
 
 // nameToString is a map of Name values to string names.
 var nameToString = map[Name]string{
-	Unknown:                         "Unknown",
-	NewRegistrationsPerIPAddress:    "NewRegistrationsPerIPAddress",
-	NewRegistrationsPerIPv6Range:    "NewRegistrationsPerIPv6Range",
-	NewOrdersPerAccount:             "NewOrdersPerAccount",
-	FailedAuthorizationsPerAccount:  "FailedAuthorizationsPerAccount",
-	CertificatesPerDomain:           "CertificatesPerDomain",
-	CertificatesPerDomainPerAccount: "CertificatesPerDomainPerAccount",
-	CertificatesPerFQDNSet:          "CertificatesPerFQDNSet",
+	Unknown:                                 "Unknown",
+	NewRegistrationsPerIPAddress:            "NewRegistrationsPerIPAddress",
+	NewRegistrationsPerIPv6Range:            "NewRegistrationsPerIPv6Range",
+	NewOrdersPerAccount:                     "NewOrdersPerAccount",
+	FailedAuthorizationsPerDomainPerAccount: "FailedAuthorizationsPerDomainPerAccount",
+	CertificatesPerDomain:                   "CertificatesPerDomain",
+	CertificatesPerDomainPerAccount:         "CertificatesPerDomainPerAccount",
+	CertificatesPerFQDNSet:                  "CertificatesPerFQDNSet",
 }
 
 // validIPAddress validates that the provided string is a valid IP address.
@@ -202,8 +205,17 @@ func validateIdForName(name Name, id string) error {
 		// 'enum:ipv6rangeCIDR'
 		return validIPv6RangeCIDR(id)
 
-	case NewOrdersPerAccount, FailedAuthorizationsPerAccount:
+	case NewOrdersPerAccount:
 		// 'enum:regId'
+		return validateRegId(id)
+
+	case FailedAuthorizationsPerDomainPerAccount:
+		// 'enum:regId:domain' for transaction
+		err := validateRegIdDomain(id)
+		if err == nil {
+			return nil
+		}
+		// 'enum:regId' for overrides
 		return validateRegId(id)
 
 	case CertificatesPerDomainPerAccount:

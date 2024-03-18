@@ -10,7 +10,7 @@ CertificatesPerDomain:
   count: 2
   burst: 2
   period: 2160h
-FailedAuthorizationsPerAccount:
+FailedAuthorizationsPerDomainPerAccount:
   count: 3
   burst: 3
   period: 5m

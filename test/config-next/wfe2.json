@@ -128,7 +128,7 @@
 		},
 		"features": {
 			"ServeRenewalInfo": true,
-			"AllowNoCommonName": true
+			"TrackReplacementCertificatesARI": true
 		}
 	},
 	"syslog": {

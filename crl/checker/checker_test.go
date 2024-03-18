@@ -60,9 +60,9 @@ func TestDiff(t *testing.T) {
 				File:     "../../test/hierarchy/int-e1.key.pem",
 				CertFile: "../../test/hierarchy/int-e1.cert.pem",
 			},
-			IssuerURL: "http://not-example.com/issuer-url",
-			OCSPURL:   "http://not-example.com/ocsp",
-			CRLURL:    "http://not-example.com/crl",
+			IssuerURL:  "http://not-example.com/issuer-url",
+			OCSPURL:    "http://not-example.com/ocsp",
+			CRLURLBase: "http://not-example.com/crl/",
 		}, clock.NewFake())
 	test.AssertNotError(t, err, "loading test issuer")
 

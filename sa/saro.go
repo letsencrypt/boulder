@@ -1184,7 +1184,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 }
 
 // KeyBlocked checks if a key, indicated by a hash, is present in the blockedKeys table
-func (ssa *SQLStorageAuthorityRO) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+func (ssa *SQLStorageAuthorityRO) KeyBlocked(ctx context.Context, req *sapb.SPKIHash) (*sapb.Exists, error) {
 	if req == nil || req.KeyHash == nil {
 		return nil, errIncompleteRequest
 	}
@@ -1201,7 +1201,7 @@ func (ssa *SQLStorageAuthorityRO) KeyBlocked(ctx context.Context, req *sapb.KeyB
 	return &sapb.Exists{Exists: true}, nil
 }
 
-func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.SPKIHash) (*sapb.Exists, error) {
 	return ssa.SQLStorageAuthorityRO.KeyBlocked(ctx, req)
 }
 
@@ -1564,4 +1564,108 @@ func (ssa *SQLStorageAuthorityRO) ReplacementOrderExists(ctx context.Context, re
 
 func (ssa *SQLStorageAuthority) ReplacementOrderExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
 	return ssa.SQLStorageAuthorityRO.ReplacementOrderExists(ctx, req)
+}
+
+// GetSerialsByKey returns a stream of serials for all unexpired certificates
+// whose public key matches the given SPKIHash. This is useful for revoking all
+// certificates affected by a key compromise.
+func (ssa *SQLStorageAuthorityRO) GetSerialsByKey(req *sapb.SPKIHash, stream sapb.StorageAuthorityReadOnly_GetSerialsByKeyServer) error {
+	clauses := `
+		WHERE keyHash = ?
+		AND certNotAfter > NOW()`
+	params := []interface{}{
+		req.KeyHash,
+	}
+
+	selector, err := db.NewMappedSelector[keyHashModel](ssa.dbReadOnlyMap)
+	if err != nil {
+		return fmt.Errorf("initializing db map: %w", err)
+	}
+
+	rows, err := selector.QueryContext(stream.Context(), clauses, params)
+	if err != nil {
+		return fmt.Errorf("reading db: %w", err)
+	}
+
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			ssa.log.AuditErrf("closing row reader: %s", err)
+		}
+	}()
+
+	for rows.Next() {
+		row, err := rows.Get()
+		if err != nil {
+			return fmt.Errorf("reading row: %w", err)
+		}
+
+		err = stream.Send(&sapb.Serial{Serial: row.CertSerial})
+		if err != nil {
+			return fmt.Errorf("sending serial: %w", err)
+		}
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return fmt.Errorf("iterating over row reader: %w", err)
+	}
+
+	return nil
+}
+
+func (ssa *SQLStorageAuthority) GetSerialsByKey(req *sapb.SPKIHash, stream sapb.StorageAuthority_GetSerialsByKeyServer) error {
+	return ssa.SQLStorageAuthorityRO.GetSerialsByKey(req, stream)
+}
+
+// GetSerialsByAccount returns a stream of all serials for all unexpired
+// certificates issued to the given RegID. This is useful for revoking all of
+// an account's certs upon their request.
+func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, stream sapb.StorageAuthorityReadOnly_GetSerialsByAccountServer) error {
+	clauses := `
+		WHERE registrationID = ?
+		AND expires > NOW()`
+	params := []interface{}{
+		req.Id,
+	}
+
+	selector, err := db.NewMappedSelector[recordedSerialModel](ssa.dbReadOnlyMap)
+	if err != nil {
+		return fmt.Errorf("initializing db map: %w", err)
+	}
+
+	rows, err := selector.QueryContext(stream.Context(), clauses, params)
+	if err != nil {
+		return fmt.Errorf("reading db: %w", err)
+	}
+
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			ssa.log.AuditErrf("closing row reader: %s", err)
+		}
+	}()
+
+	for rows.Next() {
+		row, err := rows.Get()
+		if err != nil {
+			return fmt.Errorf("reading row: %w", err)
+		}
+
+		err = stream.Send(&sapb.Serial{Serial: row.Serial})
+		if err != nil {
+			return fmt.Errorf("sending serial: %w", err)
+		}
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return fmt.Errorf("iterating over row reader: %w", err)
+	}
+
+	return nil
+}
+
+func (ssa *SQLStorageAuthority) GetSerialsByAccount(req *sapb.RegistrationID, stream sapb.StorageAuthority_GetSerialsByAccountServer) error {
+	return ssa.SQLStorageAuthorityRO.GetSerialsByAccount(req, stream)
 }

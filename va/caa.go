@@ -67,10 +67,13 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	}
 
 	checkResult := "success"
-	prob := va.checkCAA(ctx, acmeID, params)
+	err := va.checkCAA(ctx, acmeID, params)
 	localCheckLatency := time.Since(checkStartTime)
-	if prob != nil {
+	var prob *probs.ProblemDetails
+	if err != nil {
+		prob = detailedError(err)
 		logEvent.Error = prob.Error()
+		logEvent.InternalError = err.Error()
 		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
 		checkResult = "failure"
 	} else if remoteCAAResults != nil {
@@ -83,7 +86,6 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 					req.Domain,
 					req.AccountURIID,
 					string(validationMethod),
-					prob,
 					remoteCAAResults)
 			}()
 		} else if features.Get().EnforceMultiCAA {
@@ -91,12 +93,13 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 				req.Domain,
 				req.AccountURIID,
 				string(validationMethod),
-				prob,
 				remoteCAAResults)
 
 			// If the remote result was a non-nil problem then fail the CAA check
 			if remoteProb != nil {
 				prob = remoteProb
+				// We only set .Error here, not InternalError, because the remote VA doesn't send
+				// us the internal error. But that's okay, because it got logged at the remote VA.
 				logEvent.Error = remoteProb.Error()
 				checkResult = "failure"
 				va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
@@ -118,6 +121,10 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	va.log.AuditObject("CAA check result", logEvent)
 
 	if prob != nil {
+		// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
+		// It will also later be serialized in JSON, which defaults to UTF-8. Make
+		// sure it is UTF-8 clean now.
+		prob = filterProblemDetails(prob)
 		return &vapb.IsCAAValidResponse{Problem: &corepb.ProblemDetails{
 			ProblemType: string(prob.Type),
 			Detail:      replaceInvalidUTF8([]byte(prob.Detail)),
@@ -148,7 +155,6 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 	domain string,
 	acctID int64,
 	challengeType string,
-	primaryResult *probs.ProblemDetails,
 	remoteResultsChan <-chan *remoteVAResult) *probs.ProblemDetails {
 
 	state := "failure"
@@ -210,7 +216,6 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 		domain,
 		acctID,
 		challengeType,
-		primaryResult,
 		remoteResults)
 
 	// Based on the threshold of good/bad return nil or a problem.
@@ -220,12 +225,7 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 	} else if bad > va.maxRemoteFailures {
 		modifiedProblem := *firstProb
 		modifiedProblem.Detail = "During secondary CAA checking: " + firstProb.Detail
-		// If the primary result was OK and there were more failures than the allowed
-		// threshold increment a stat that indicates this overall validation will have
-		// failed.
-		if primaryResult == nil {
-			va.metrics.prospectiveRemoteCAACheckFailures.Inc()
-		}
+		va.metrics.prospectiveRemoteCAACheckFailures.Inc()
 		return &modifiedProblem
 	}
 
@@ -282,20 +282,20 @@ func (va *ValidationAuthorityImpl) performRemoteCAACheck(
 func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
 	identifier identifier.ACMEIdentifier,
-	params *caaParams) *probs.ProblemDetails {
+	params *caaParams) error {
 	if core.IsAnyNilOrZero(params, params.validationMethod, params.accountURIID) {
 		return probs.ServerInternal("expected validationMethod or accountURIID not provided to checkCAA")
 	}
 
 	foundAt, valid, response, err := va.checkCAARecords(ctx, identifier, params)
 	if err != nil {
-		return probs.DNS(err.Error())
+		return berrors.DNSError("%s", err)
 	}
 
 	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q] Response=%q",
 		identifier.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, response)
 	if !valid {
-		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", foundAt))
+		return berrors.CAAError("CAA record for %s prevents issuance", foundAt)
 	}
 	return nil
 }

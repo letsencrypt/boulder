@@ -2,11 +2,10 @@ package ca
 
 import (
 	"crypto/x509"
+	"fmt"
 	"io"
 	"testing"
-	"time"
 
-	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -73,13 +72,13 @@ func TestGenerateCRL(t *testing.T) {
 	go func() {
 		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
 	}()
-	// TODO(#7100) Change usage of time.Now() to fakeclock.Now()
-	now := time.Now()
+	now := testCtx.fc.Now()
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: 1,
 				ThisUpdate:   timestamppb.New(now),
+				ShardIdx:     1,
 			},
 		},
 	}
@@ -98,6 +97,7 @@ func TestGenerateCRL(t *testing.T) {
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].NameID()),
 				ThisUpdate:   timestamppb.New(now),
+				ShardIdx:     1,
 			},
 		},
 	}
@@ -106,11 +106,13 @@ func TestGenerateCRL(t *testing.T) {
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].NameID()),
 				ThisUpdate:   timestamppb.New(now),
+				ShardIdx:     1,
 			},
 		},
 	}
 	close(ins)
 	err = <-errs
+	fmt.Println("done waiting for error")
 	test.AssertError(t, err, "can't generate CRL with duplicate metadata")
 	test.AssertContains(t, err.Error(), "got more than one metadata message")
 
@@ -168,14 +170,12 @@ func TestGenerateCRL(t *testing.T) {
 		}
 		close(done)
 	}()
-	fc := clock.NewFake()
-	fc.Set(time.Date(2020, time.October, 10, 23, 17, 0, 0, time.UTC))
-	now = fc.Now()
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].NameID()),
 				ThisUpdate:   timestamppb.New(now),
+				ShardIdx:     1,
 			},
 		},
 	}
@@ -212,6 +212,7 @@ func TestGenerateCRL(t *testing.T) {
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].NameID()),
 				ThisUpdate:   timestamppb.New(now),
+				ShardIdx:     1,
 			},
 		},
 	}

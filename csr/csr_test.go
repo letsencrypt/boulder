@@ -153,7 +153,7 @@ func TestVerifyCSR(t *testing.T) {
 			100,
 			testingPolicy,
 			&mockPA{},
-			invalidAllSANTooLong,
+			nil,
 		},
 	}
 

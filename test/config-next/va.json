@@ -40,7 +40,6 @@
 		"features": {
 			"EnforceMultiVA": true,
 			"MultiVAFullResults": true,
-			"CAAAfterValidation": true,
 			"EnforceMultiCAA": true,
 			"MultiCAAFullResults": true,
 			"DOH": true

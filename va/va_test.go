@@ -18,6 +18,10 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
+	"gopkg.in/go-jose/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -28,9 +32,6 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc"
-	"gopkg.in/go-jose/go-jose.v2"
 )
 
 func TestImplementation(t *testing.T) {
@@ -257,8 +258,9 @@ func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest
 func TestValidateMalformedChallenge(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"))
+	_, err := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"))
 
+	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 }
 
@@ -274,6 +276,19 @@ func TestPerformValidationInvalid(t *testing.T) {
 		"result":       "invalid",
 		"problem_type": "unauthorized",
 	}, 1)
+}
+
+func TestInternalErrorLogged(t *testing.T) {
+	va, mockLog := setup(nil, 0, "", nil, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+	req := createValidationRequest("nonexistent.com", core.ChallengeTypeHTTP01)
+	_, err := va.PerformValidation(ctx, req)
+	test.AssertNotError(t, err, "failed validation should not be an error")
+	matchingLogs := mockLog.GetAllMatching(
+		`Validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: context deadline exceeded`)
+	test.AssertEquals(t, len(matchingLogs), 1)
 }
 
 func TestPerformValidationValid(t *testing.T) {
@@ -333,8 +348,8 @@ func TestPerformValidationWildcard(t *testing.T) {
 func TestDCVAndCAASequencing(t *testing.T) {
 	va, mockLog := setup(nil, 0, "", nil, nil)
 
-	// When performing validation without the CAAAfterValidation flag, CAA should
-	// be checked.
+	// When validation succeeds, CAA should be checked.
+	mockLog.Clear()
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 	res, err := va.PerformValidation(context.Background(), req)
 	test.AssertNotError(t, err, "performing validation")
@@ -342,21 +357,7 @@ func TestDCVAndCAASequencing(t *testing.T) {
 	caaLog := mockLog.GetAllMatching(`Checked CAA records for`)
 	test.AssertEquals(t, len(caaLog), 1)
 
-	features.Set(features.Config{CAAAfterValidation: true})
-	defer features.Reset()
-
-	// When performing successful validation with the CAAAfterValidation flag,
-	// CAA should be checked.
-	mockLog.Clear()
-	req = createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
-	res, err = va.PerformValidation(context.Background(), req)
-	test.AssertNotError(t, err, "performing validation")
-	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
-	caaLog = mockLog.GetAllMatching(`Checked CAA records for`)
-	test.AssertEquals(t, len(caaLog), 1)
-
-	// When performing failed validation with the CAAAfterValidation flag,
-	// CAA should be skipped
+	// When validation fails, CAA should be skipped.
 	mockLog.Clear()
 	req = createValidationRequest("bad-dns01.com", core.ChallengeTypeDNS01)
 	res, err = va.PerformValidation(context.Background(), req)
@@ -782,14 +783,12 @@ func TestLogRemoteDifferentials(t *testing.T) {
 	egProbB := probs.OrderNotReady("please take a number")
 
 	testCases := []struct {
-		name          string
-		primaryResult *probs.ProblemDetails
-		remoteProbs   []*remoteVAResult
-		expectedLog   string
+		name        string
+		remoteProbs []*remoteVAResult
+		expectedLog string
 	}{
 		{
-			name:          "remote and primary results equal (all nil)",
-			primaryResult: nil,
+			name: "all results equal (nil)",
 			remoteProbs: []*remoteVAResult{
 				{Problem: nil, VAHostname: "remoteA"},
 				{Problem: nil, VAHostname: "remoteB"},
@@ -797,33 +796,22 @@ func TestLogRemoteDifferentials(t *testing.T) {
 			},
 		},
 		{
-			name:          "remote and primary results equal (not nil)",
-			primaryResult: egProbA,
+			name: "all results equal (not nil)",
 			remoteProbs: []*remoteVAResult{
 				{Problem: egProbA, VAHostname: "remoteA"},
 				{Problem: egProbA, VAHostname: "remoteB"},
 				{Problem: egProbA, VAHostname: "remoteC"},
 			},
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteB","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteC","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}}]}`,
 		},
 		{
-			name:          "remote and primary differ (primary nil)",
-			primaryResult: nil,
-			remoteProbs: []*remoteVAResult{
-				{Problem: egProbA, VAHostname: "remoteA"},
-				{Problem: nil, VAHostname: "remoteB"},
-				{Problem: egProbB, VAHostname: "remoteC"},
-			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteC","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
-		},
-		{
-			name:          "remote and primary differ (primary not nil)",
-			primaryResult: egProbA,
+			name: "differing results, some non-nil",
 			remoteProbs: []*remoteVAResult{
 				{Problem: nil, VAHostname: "remoteA"},
 				{Problem: egProbB, VAHostname: "remoteB"},
 				{Problem: nil, VAHostname: "remoteC"},
 			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","PrimaryResult":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400},"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
 		},
 	}
 
@@ -832,7 +820,7 @@ func TestLogRemoteDifferentials(t *testing.T) {
 			mockLog.Clear()
 
 			localVA.logRemoteDifferentials(
-				"example.com", 1999, "blorpus-01", tc.primaryResult, tc.remoteProbs)
+				"example.com", 1999, "blorpus-01", tc.remoteProbs)
 
 			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
 			if tc.expectedLog != "" {

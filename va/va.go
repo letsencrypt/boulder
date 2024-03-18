@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
@@ -28,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -317,7 +318,9 @@ type verificationRequestEvent struct {
 	Hostname          string         `json:",omitempty"`
 	Challenge         core.Challenge `json:",omitempty"`
 	ValidationLatency float64
+	UsedRSAKEX        bool   `json:",omitempty"`
 	Error             string `json:",omitempty"`
+	InternalError     string `json:",omitempty"`
 }
 
 // ipError is an error type used to pass though the IP address of the remote
@@ -403,6 +406,12 @@ func detailedError(err error) *probs.ProblemDetails {
 	if errors.Is(err, berrors.DNS) {
 		return probs.DNS(err.Error())
 	}
+	if errors.Is(err, berrors.Malformed) {
+		return probs.Malformed(err.Error())
+	}
+	if errors.Is(err, berrors.CAA) {
+		return probs.CAA(err.Error())
+	}
 
 	if h2SettingsFrameErrRegex.MatchString(err.Error()) {
 		return probs.Connection("Server is speaking HTTP/2 over HTTP")
@@ -419,7 +428,7 @@ func (va *ValidationAuthorityImpl) validate(
 	identifier identifier.ACMEIdentifier,
 	regid int64,
 	challenge core.Challenge,
-) ([]core.ValidationRecord, *probs.ProblemDetails) {
+) ([]core.ValidationRecord, error) {
 
 	// If the identifier is a wildcard domain we need to validate the base
 	// domain by removing the "*." wildcard prefix. We create a separate
@@ -430,57 +439,26 @@ func (va *ValidationAuthorityImpl) validate(
 		baseIdentifier.Value = strings.TrimPrefix(identifier.Value, "*.")
 	}
 
-	// Create this channel outside of the feature-conditional block so that it is
-	// also in scope for the matching block below.
-	ch := make(chan *probs.ProblemDetails, 1)
-	if !features.Get().CAAAfterValidation {
-		// va.checkCAA accepts wildcard identifiers and handles them appropriately so
-		// we can dispatch `checkCAA` with the provided `identifier` instead of
-		// `baseIdentifier`
-		go func() {
-			params := &caaParams{
-				accountURIID:     regid,
-				validationMethod: challenge.Type,
-			}
-			ch <- va.checkCAA(ctx, identifier, params)
-		}()
+	validationRecords, err := va.validateChallenge(ctx, baseIdentifier, challenge)
+	if err != nil {
+		return validationRecords, err
 	}
 
-	// TODO(#1292): send into another goroutine
-	validationRecords, prob := va.validateChallenge(ctx, baseIdentifier, challenge)
-	if prob != nil {
-		// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
-		// It will also later be serialized in JSON, which defaults to UTF-8. Make
-		// sure it is UTF-8 clean now.
-		prob = filterProblemDetails(prob)
-
-		return validationRecords, prob
-	}
-
-	if !features.Get().CAAAfterValidation {
-		for i := 0; i < cap(ch); i++ {
-			if extraProblem := <-ch; extraProblem != nil {
-				return validationRecords, extraProblem
-			}
-		}
-	} else {
-		params := &caaParams{
-			accountURIID:     regid,
-			validationMethod: challenge.Type,
-		}
-		prob := va.checkCAA(ctx, identifier, params)
-		if prob != nil {
-			return validationRecords, prob
-		}
+	err = va.checkCAA(ctx, identifier, &caaParams{
+		accountURIID:     regid,
+		validationMethod: challenge.Type,
+	})
+	if err != nil {
+		return validationRecords, err
 	}
 
 	return validationRecords, nil
 }
 
-func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, error) {
 	err := challenge.CheckConsistencyForValidation()
 	if err != nil {
-		return nil, probs.Malformed("Challenge failed consistency check: %s", err)
+		return nil, berrors.MalformedError("Challenge failed consistency check: %s", err)
 	}
 	switch challenge.Type {
 	case core.ChallengeTypeHTTP01:
@@ -490,7 +468,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, identifier, challenge)
 	}
-	return nil, probs.Malformed("invalid challenge type %s", challenge.Type)
+	return nil, berrors.MalformedError("invalid challenge type %s", challenge.Type)
 }
 
 // performRemoteValidation calls `PerformValidation` for each of the configured
@@ -559,7 +537,6 @@ func (va *ValidationAuthorityImpl) processRemoteValidationResults(
 	domain string,
 	acctID int64,
 	challengeType string,
-	primaryResult *probs.ProblemDetails,
 	remoteResultsChan <-chan *remoteVAResult) *probs.ProblemDetails {
 
 	state := "failure"
@@ -620,7 +597,6 @@ func (va *ValidationAuthorityImpl) processRemoteValidationResults(
 		domain,
 		acctID,
 		challengeType,
-		primaryResult,
 		remoteResults)
 
 	// Based on the threshold of good/bad return nil or a problem.
@@ -630,12 +606,7 @@ func (va *ValidationAuthorityImpl) processRemoteValidationResults(
 	} else if bad > va.maxRemoteFailures {
 		modifiedProblem := *firstProb
 		modifiedProblem.Detail = "During secondary validation: " + firstProb.Detail
-		// If the primary result was OK and there were more failures than the allowed
-		// threshold increment a stat that indicates this overall validation will have
-		// failed.
-		if primaryResult == nil {
-			va.metrics.prospectiveRemoteValidationFailures.Inc()
-		}
+		va.metrics.prospectiveRemoteValidationFailures.Inc()
 		return &modifiedProblem
 	}
 
@@ -652,25 +623,19 @@ func (va *ValidationAuthorityImpl) logRemoteDifferentials(
 	domain string,
 	acctID int64,
 	challengeType string,
-	primaryResult *probs.ProblemDetails,
 	remoteResults []*remoteVAResult) {
 
 	var successes, failures []*remoteVAResult
 
-	allEqual := true
 	for _, result := range remoteResults {
-		if result.Problem != primaryResult {
-			allEqual = false
-		}
-		if result.Problem == nil {
-			successes = append(successes, result)
-		} else {
+		if result.Problem != nil {
 			failures = append(failures, result)
+		} else {
+			successes = append(successes, result)
 		}
 	}
-	if allEqual {
-		// There's no point logging a differential line if the primary VA and remote
-		// VAs all agree.
+	if len(failures) == 0 {
+		// There's no point logging a differential line if everything succeeded.
 		return
 	}
 
@@ -678,14 +643,12 @@ func (va *ValidationAuthorityImpl) logRemoteDifferentials(
 		Domain          string
 		AccountID       int64
 		ChallengeType   string
-		PrimaryResult   *probs.ProblemDetails
 		RemoteSuccesses int
 		RemoteFailures  []*remoteVAResult
 	}{
 		Domain:          domain,
 		AccountID:       acctID,
 		ChallengeType:   challengeType,
-		PrimaryResult:   primaryResult,
 		RemoteSuccesses: len(successes),
 		RemoteFailures:  failures,
 	}
@@ -732,35 +695,34 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 
 	challenge, err := bgrpc.PBToChallenge(req.Challenge)
 	if err != nil {
-		return nil, probs.ServerInternal("Challenge failed to deserialize")
+		return nil, errors.New("Challenge failed to deserialize")
 	}
 
-	records, prob := va.validate(ctx, identifier.DNSIdentifier(req.Domain), req.Authz.RegID, challenge)
+	records, err := va.validate(ctx, identifier.DNSIdentifier(req.Domain), req.Authz.RegID, challenge)
 	challenge.ValidationRecord = records
 	localValidationLatency := time.Since(vStart)
 
 	// Check for malformed ValidationRecords
-	if !challenge.RecordsSane() && prob == nil {
-		prob = probs.ServerInternal("Records for validation failed sanity check")
+	if !challenge.RecordsSane() && err == nil {
+		err = errors.New("Records for validation failed sanity check")
 	}
 
 	var problemType string
-	if prob != nil {
+	var prob *probs.ProblemDetails
+	if err != nil {
+		prob = detailedError(err)
 		problemType = string(prob.Type)
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
+		logEvent.InternalError = err.Error()
 	} else if remoteResults != nil {
 		if !features.Get().EnforceMultiVA && features.Get().MultiVAFullResults {
-			// If we're not going to enforce multi VA but we are logging the
-			// differentials then collect and log the remote results in a separate go
-			// routine to avoid blocking the primary VA.
 			go func() {
 				_ = va.processRemoteValidationResults(
 					req.Domain,
 					req.Authz.RegID,
 					string(challenge.Type),
-					prob,
 					remoteResults)
 			}()
 			// Since prob was nil and we're not enforcing the results from
@@ -773,7 +735,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 				req.Domain,
 				req.Authz.RegID,
 				string(challenge.Type),
-				prob,
 				remoteResults)
 
 			// If the remote result was a non-nil problem then fail the validation
@@ -781,6 +742,9 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 				prob = remoteProb
 				challenge.Status = core.StatusInvalid
 				challenge.Error = remoteProb
+				// We only set .Error here, not .InternalError, because the
+				// remote VA doesn't send us the internal error. But that's ok,
+				// it got logged at the remote VA.
 				logEvent.Error = remoteProb.Error()
 				va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
@@ -798,6 +762,15 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	validationLatency := time.Since(vStart)
 	logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
 
+	// Copy the "UsedRSAKEX" value from the last validationRecord into the log
+	// event. Only the last record should have this bool set, because we only
+	// record it if/when validation is finally successful, but we use the loop
+	// just in case that assumption changes.
+	// TODO(#7321): Remove this when we have collected enough data.
+	for _, record := range records {
+		logEvent.UsedRSAKEX = record.UsedRSAKEX || logEvent.UsedRSAKEX
+	}
+
 	va.metrics.localValidationTime.With(prometheus.Labels{
 		"type":   string(challenge.Type),
 		"result": string(challenge.Status),
@@ -810,5 +783,16 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 
 	va.log.AuditObject("Validation result", logEvent)
 
+	// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
+	// It will also later be serialized in JSON, which defaults to UTF-8. Make
+	// sure it is UTF-8 clean now.
+	prob = filterProblemDetails(prob)
 	return bgrpc.ValidationResultToPB(records, prob)
+}
+
+// usedRSAKEX returns true if the given cipher suite involves the use of an
+// RSA key exchange mechanism.
+// TODO(#7321): Remove this when we have collected enough data.
+func usedRSAKEX(cs uint16) bool {
+	return strings.HasPrefix(tls.CipherSuiteName(cs), "TLS_RSA_")
 }
