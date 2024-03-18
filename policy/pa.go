@@ -516,8 +516,16 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 func (pa *AuthorityImpl) challengeTypesFor(identifier identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
 	var challenges []core.AcmeChallenge
 
+	// Provide DNS-based challenges based on what is enabled.
+	if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
+		challenges = append(challenges, core.ChallengeTypeDNS01)
+	}
+	if pa.ChallengeTypeEnabled(core.ChallengeTypeDNSAccount01) {
+		challenges = append(challenges, core.ChallengeTypeDNSAccount01)
+	}
+
 	// If the identifier is for a DNS wildcard name we only
-	// provide a DNS-based challenge as a matter of CA policy.
+	// allow a DNS-based challenge as a matter of CA policy.
 	if strings.HasPrefix(identifier.Value, "*.") {
 		// We must have a DNS-based challenge type enabled to create challenges for
 		// a wildcard identifier per CA policy.
@@ -528,14 +536,6 @@ func (pa *AuthorityImpl) challengeTypesFor(identifier identifier.ACMEIdentifier)
 						"or DNS-ACCOUNT-01 challenge type is not enabled")
 			}
 		}
-		// Only provide DNS-based challenges based on what is enabled.
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
-			challenges = append(challenges, core.ChallengeTypeDNS01)
-		}
-
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNSAccount01) {
-			challenges = append(challenges, core.ChallengeTypeDNSAccount01)
-		}
 	} else {
 		// Otherwise we collect up challenges based on what is enabled.
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeHTTP01) {
@@ -544,14 +544,6 @@ func (pa *AuthorityImpl) challengeTypesFor(identifier identifier.ACMEIdentifier)
 
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSALPN01) {
 			challenges = append(challenges, core.ChallengeTypeTLSALPN01)
-		}
-
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
-			challenges = append(challenges, core.ChallengeTypeDNS01)
-		}
-
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNSAccount01) {
-			challenges = append(challenges, core.ChallengeTypeDNSAccount01)
 		}
 	}
 
