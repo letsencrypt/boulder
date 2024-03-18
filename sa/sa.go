@@ -586,7 +586,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			CertificateProfileName: req.NewOrder.CertificateProfileName,
 		}
 
-		if features.Get().TrackReplacementCertificatesARI && req.NewOrder.ReplacesSerial != "" {
+		if req.NewOrder.ReplacesSerial != "" {
 			// Update the replacementOrders table to indicate that this order
 			// replaces the provided certificate serial.
 			err := addReplacementOrder(ctx, tx, req.NewOrder.ReplacesSerial, orderID, req.NewOrder.Expires.AsTime())

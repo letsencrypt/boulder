@@ -1225,7 +1225,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 
 	// Step 3: Issue the Certificate
 	cert, err := ra.issueCertificateInner(
-		ctx, csr, accountID(order.RegistrationID), orderID(order.Id))
+		ctx, csr, order.CertificateProfileName, accountID(order.RegistrationID), orderID(order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
 	var result string
@@ -1282,6 +1282,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	csr *x509.CertificateRequest,
+	profileName string,
 	acctID accountID,
 	oID orderID) (*x509.Certificate, error) {
 	if features.Get().AsyncFinalize {
@@ -1303,9 +1304,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	}
 
 	issueReq := &capb.IssueCertificateRequest{
-		Csr:            csr.Raw,
-		RegistrationID: int64(acctID),
-		OrderID:        int64(oID),
+		Csr:             csr.Raw,
+		RegistrationID:  int64(acctID),
+		OrderID:         int64(oID),
+		CertProfileName: profileName,
 	}
 	precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
 	if err != nil {
@@ -1323,10 +1325,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	}
 
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
-		DER:            precert.DER,
-		SCTs:           scts,
-		RegistrationID: int64(acctID),
-		OrderID:        int64(oID),
+		DER:             precert.DER,
+		SCTs:            scts,
+		RegistrationID:  int64(acctID),
+		OrderID:         int64(oID),
+		CertProfileHash: precert.CertProfileHash,
 	})
 	if err != nil {
 		return nil, wrapError(err, "issuing certificate for precertificate")
