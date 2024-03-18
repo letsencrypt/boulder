@@ -22,6 +22,8 @@ import (
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	"github.com/letsencrypt/boulder/ra"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/ratelimits"
+	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
@@ -41,6 +43,33 @@ type Config struct {
 		OCSPService         *cmd.GRPCClientConfig
 		PublisherService    *cmd.GRPCClientConfig
 		AkamaiPurgerService *cmd.GRPCClientConfig
+
+		Limiter struct {
+			// Redis contains the configuration necessary to connect to Redis
+			// for rate limiting. This field is required to enable rate
+			// limiting.
+			Redis *bredis.Config `validate:"required_with=Defaults"`
+
+			// Defaults is a path to a YAML file containing default rate limits.
+			// See: ratelimits/README.md for details. This field is required to
+			// enable rate limiting. If any individual rate limit is not set,
+			// that limit will be disabled. Limits passed in this file must be
+			// identical to those in the WFE.
+			//
+			// Note: At this time, only the Failed Authorizations rate limit is
+			// necessary in the RA.
+			Defaults string `validate:"required_with=Redis"`
+
+			// Overrides is a path to a YAML file containing overrides for the
+			// default rate limits. See: ratelimits/README.md for details. If
+			// this field is not set, all requesters will be subject to the
+			// default rate limits. Overrides passed in this file must be
+			// identical to those in the WFE.
+			//
+			// Note: At this time, only the Failed Authorizations overrides are
+			// necessary in the RA.
+			Overrides string
+		}
 
 		// MaxNames is the maximum number of subjectAltNames in a single cert.
 		// The value supplied MUST be greater than 0 and no more than 100. These
@@ -232,12 +261,29 @@ func main() {
 		cmd.Fail("Error in RA config: MaxNames must not be 0")
 	}
 
+	var limiter *ratelimits.Limiter
+	var txnBuilder *ratelimits.TransactionBuilder
+	var limiterRedis *bredis.Ring
+	if c.RA.Limiter.Defaults != "" {
+		// Setup rate limiting.
+		limiterRedis, err = bredis.NewRingFromConfig(*c.RA.Limiter.Redis, scope, logger)
+		cmd.FailOnError(err, "Failed to create Redis ring")
+
+		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, scope)
+		limiter, err = ratelimits.NewLimiter(clk, source, scope)
+		cmd.FailOnError(err, "Failed to create rate limiter")
+		txnBuilder, err = ratelimits.NewTransactionBuilder(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides)
+		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
+	}
+
 	rai := ra.NewRegistrationAuthorityImpl(
 		clk,
 		logger,
 		scope,
 		c.RA.MaxContactsPerRegistration,
 		kp,
+		limiter,
+		txnBuilder,
 		c.RA.MaxNames,
 		authorizationLifetime,
 		pendingAuthorizationLifetime,

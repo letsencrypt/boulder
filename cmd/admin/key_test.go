@@ -18,10 +18,9 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/mocks"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/letsencrypt/boulder/test/vars"
 )
 
 func TestSPKIHashFromPrivateKey(t *testing.T) {
@@ -73,22 +72,7 @@ func TestBlockSPKIHash(t *testing.T) {
 	keyHash, err := core.KeyDigest(privKey.Public())
 	test.AssertNotError(t, err, "computing test SPKI hash")
 
-	dbMap, err := sa.DBMapForTest(vars.DBConnSA)
-	test.AssertNotError(t, err, "creating test dbMap")
-	defer test.ResetBoulderTestDatabase(t)
-
-	for _, serial := range []string{"foo", "bar", "baz"} {
-		_, err = dbMap.ExecContext(
-			context.Background(),
-			"INSERT INTO keyHashToSerial(keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
-			keyHash[:],
-			fc.Now().Add(24*time.Hour),
-			serial,
-		)
-		test.AssertNotError(t, err, "inserting fake serial into test db")
-	}
-
-	a := admin{sac: &msa, dbMap: dbMap, clk: fc, log: log}
+	a := admin{saroc: &mocks.StorageAuthorityReadOnly{}, sac: &msa, clk: fc, log: log}
 
 	// A full run should result in one request with the right fields.
 	msa.reset()
@@ -96,7 +80,7 @@ func TestBlockSPKIHash(t *testing.T) {
 	a.dryRun = false
 	err = a.blockSPKIHash(context.Background(), keyHash[:], "hello world")
 	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, len(log.GetAllMatching("Found 3 certificates")), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("Found 0 unexpired certificates")), 1)
 	test.AssertEquals(t, len(msa.blockRequests), 1)
 	test.AssertByteEquals(t, msa.blockRequests[0].KeyHash, keyHash[:])
 	test.AssertContains(t, msa.blockRequests[0].Comment, "hello world")
@@ -108,8 +92,7 @@ func TestBlockSPKIHash(t *testing.T) {
 	a.sac = dryRunSAC{log: log}
 	err = a.blockSPKIHash(context.Background(), keyHash[:], "")
 	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, len(log.GetAllMatching("Found 3 certificates")), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("Found 0 unexpired certificates")), 1)
 	test.AssertEquals(t, len(log.GetAllMatching("dry-run:")), 1)
 	test.AssertEquals(t, len(msa.blockRequests), 0)
-
 }

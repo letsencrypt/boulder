@@ -12,12 +12,18 @@ guidelines for Boulder contributions.
 
 # Review Requirements
 
-* All pull requests must receive at least one approval through the GitHub UI.
-* We indicate review approval through GitHub's code review facility.
+* All pull requests must receive at least one approval by a [CODEOWNER](../CODEOWNERS) other than the author. This is enforced by GitHub itself.
+* All pull requests should receive at least two approvals by [Trusted Contributors](https://github.com/letsencrypt/cp-cps/blob/main/CP-CPS.md#161-definitions).
+  This requirement may be waived when:
+  * the change only modifies documentation;
+  * the change only modifies tests;
+  * in exceptional circumstances, such as when no second reviewer is available at all.
+
+  This requirement should not be waived when:
+  * the change is not written by a Trusted Contributor, to ensure that at least two TCs have eyes on it.
 * New commits pushed to a branch invalidate previous reviews. In other words, a
   reviewer must give positive reviews of a branch after its most recent pushed
   commit.
-* You cannot review your own code.
 * If a branch contains commits from multiple authors, it needs a reviewer who
   is not an author of commits on that branch.
 * Review changes to or addition of tests just as rigorously as you review code

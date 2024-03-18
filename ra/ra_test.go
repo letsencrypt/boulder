@@ -17,6 +17,7 @@ import (
 	"math/big"
 	mrand "math/rand"
 	"net"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -38,6 +39,7 @@ import (
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -56,6 +58,7 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/ratelimits"
+	bredis "github.com/letsencrypt/boulder/redis"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -365,9 +368,40 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		},
 	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
+	var limiter *ratelimits.Limiter
+	var txnBuilder *ratelimits.TransactionBuilder
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		rc := bredis.Config{
+			Username: "unittest-rw",
+			TLS: cmd.TLSConfig{
+				CACertFile: "../test/redis-tls/minica.pem",
+				CertFile:   "../test/redis-tls/boulder/cert.pem",
+				KeyFile:    "../test/redis-tls/boulder/key.pem",
+			},
+			Lookups: []cmd.ServiceDomain{
+				{
+					Service: "redisratelimits",
+					Domain:  "service.consul",
+				},
+			},
+			LookupDNSAuthority: "consul.service.consul",
+		}
+		rc.PasswordConfig = cmd.PasswordConfig{
+			PasswordFile: "../test/secrets/ratelimits_redis_password",
+		}
+		ring, err := bredis.NewRingFromConfig(rc, stats, log)
+		test.AssertNotError(t, err, "making redis ring client")
+		source := ratelimits.NewRedisSource(ring.Ring, fc, stats)
+		test.AssertNotNil(t, source, "source should not be nil")
+		limiter, err = ratelimits.NewLimiter(fc, source, stats)
+		test.AssertNotError(t, err, "making limiter")
+		txnBuilder, err = ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+		test.AssertNotError(t, err, "making transaction composer")
+	}
+
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
-		1, testKeyPolicy, 100,
+		1, testKeyPolicy, limiter, txnBuilder, 100,
 		300*24*time.Hour, 7*24*time.Hour,
 		nil, noopCAA{},
 		0, 5*time.Minute,
@@ -857,6 +891,19 @@ func TestPerformValidationSuccess(t *testing.T) {
 		Problems: nil,
 	}
 
+	var remainingFailedValidations int64
+	var rlTxns []ratelimits.Transaction
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// Gather a baseline for the rate limit.
+		var err error
+		rlTxns, err = ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(authzPB.RegistrationID, []string{Identifier}, 100)
+		test.AssertNotError(t, err, "FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions failed")
+
+		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
+		test.AssertNotError(t, err, "BatchSpend failed")
+		remainingFailedValidations = d.Remaining
+	}
+
 	now := fc.Now()
 	challIdx := dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
@@ -898,6 +945,13 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
+
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// The failed validations bucket should be identical to the baseline.
+		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
+		test.AssertNotError(t, err, "BatchSpend failed")
+		test.AssertEquals(t, d.Remaining, remainingFailedValidations)
+	}
 }
 
 func TestPerformValidationVAError(t *testing.T) {
@@ -905,6 +959,19 @@ func TestPerformValidationVAError(t *testing.T) {
 	defer cleanUp()
 
 	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
+
+	var remainingFailedValidations int64
+	var rlTxns []ratelimits.Transaction
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// Gather a baseline for the rate limit.
+		var err error
+		rlTxns, err = ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(authzPB.RegistrationID, []string{Identifier}, 100)
+		test.AssertNotError(t, err, "FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions failed")
+
+		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
+		test.AssertNotError(t, err, "BatchSpend failed")
+		remainingFailedValidations = d.Remaining
+	}
 
 	va.PerformValidationRequestResultError = fmt.Errorf("Something went wrong")
 
@@ -945,6 +1012,13 @@ func TestPerformValidationVAError(t *testing.T) {
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
+
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// The failed validations bucket should have been decremented by 1.
+		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
+		test.AssertNotError(t, err, "BatchSpend failed")
+		test.AssertEquals(t, d.Remaining, remainingFailedValidations-1)
+	}
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
@@ -3559,7 +3633,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
 			// Attempt issuance
-			_, err = ra.issueCertificateInner(ctx, csrOb, accountID(Registration.Id), orderID(order.Id))
+			_, err = ra.issueCertificateInner(ctx, csrOb, order.CertificateProfileName, accountID(Registration.Id), orderID(order.Id))
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
 			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
 			// If there is an expected `error` then match the error message
@@ -3576,6 +3650,60 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			}
 		})
 	}
+}
+
+type MockCARecordingProfile struct {
+	inner       *mocks.MockCA
+	profileName string
+	profileHash []byte
+}
+
+func (ca *MockCARecordingProfile) IssuePrecertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
+	ca.profileName = req.CertProfileName
+	return ca.inner.IssuePrecertificate(ctx, req)
+}
+
+func (ca *MockCARecordingProfile) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	ca.profileHash = req.CertProfileHash
+	return ca.inner.IssueCertificateForPrecertificate(ctx, req)
+}
+
+func TestIssueCertificateInnerWithProfile(t *testing.T) {
+	_, _, ra, fc, cleanup := initAuthorities(t)
+	defer cleanup()
+
+	// Generate a reasonable-looking CSR and cert to pass the matchesCSR check.
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "generating test key")
+	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{DNSNames: []string{"example.com"}}, testKey)
+	test.AssertNotError(t, err, "creating test csr")
+	csr, err := x509.ParseCertificateRequest(csrDER)
+	test.AssertNotError(t, err, "parsing test csr")
+	certDER, err := x509.CreateCertificate(rand.Reader, &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		DNSNames:              []string{"example.com"},
+		NotBefore:             fc.Now(),
+		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}, &x509.Certificate{}, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "creating test cert")
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+
+	// Use a mock CA that will record the profile name and profile hash included
+	// in the RA's request messages. Populate it with the cert generated above.
+	mockCA := MockCARecordingProfile{inner: &mocks.MockCA{PEM: certPEM}}
+	ra.CA = &mockCA
+
+	// The basic mocks.StorageAuthority always succeeds on FinalizeOrder, which is
+	// the only SA call that issueCertificateInner makes.
+	ra.SA = &mocks.StorageAuthority{}
+
+	// Call issueCertificateInner with the CSR generated above and the profile
+	// name "default", which will cause the mockCA to return a specific hash.
+	_, err = ra.issueCertificateInner(context.Background(), csr, "default", 1, 1)
+	test.AssertNotError(t, err, "issuing cert with profile name")
+	test.AssertEquals(t, mockCA.profileName, "default")
+	test.AssertByteEquals(t, mockCA.profileHash, []byte{0x37, 0xa8, 0xee, 0xc1, 0xce, 0x19, 0x68, 0x7d})
 }
 
 func TestNewOrderMaxNames(t *testing.T) {
