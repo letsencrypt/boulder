@@ -431,6 +431,28 @@ func TestChallengesForWildcard(t *testing.T) {
 		"unexpectedly with DNS-ACCOUNT-01 enabled")
 	test.AssertEquals(t, len(challenges), 1)
 	test.AssertEquals(t, challenges[0].Type, core.ChallengeTypeDNSAccount01)
+
+	// Enable DNS-01, DNS-ACCOUNT-01 and HTTP-01. It should not error and
+	// should return one DNS-01 and one DNS-ACCOUNT-01 type challenge
+	enabledChallenges = map[core.AcmeChallenge]bool{
+		core.ChallengeTypeHTTP01:       true,
+		core.ChallengeTypeDNS01:        true,
+		core.ChallengeTypeDNSAccount01: true,
+	}
+	pa = must.Do(New(enabledChallenges, blog.NewMock()))
+	challenges, err = pa.ChallengesFor(wildcardIdent)
+	test.AssertNotError(t, err, "ChallengesFor errored for a wildcard ident "+
+		"unexpectedly with DNS-01 and DNS-ACCOUNT-01 enabled")
+	test.AssertEquals(t, len(challenges), 2)
+
+	challengeTypes := make(map[string]bool)
+	for _, challenge := range challenges {
+		challengeTypes[string(challenge.Type)] = true
+	}
+	test.Assert(t, challengeTypes[string(core.ChallengeTypeDNS01)],
+		"Expected challenge type DNS-01 not found")
+	test.Assert(t, challengeTypes[string(core.ChallengeTypeDNSAccount01)],
+		"Expected challenge type DNS-ACCOUNT-01 not found")
 }
 
 // TestMalformedExactBlocklist tests that loading a YAML policy file with an
