@@ -32,6 +32,7 @@ const (
 	UnauthorizedProblem          = ProblemType("unauthorized")
 	UnsupportedContactProblem    = ProblemType("unsupportedContact")
 	UnsupportedIdentifierProblem = ProblemType("unsupportedIdentifier")
+	ConflictProblem              = ProblemType("conflict")
 
 	ErrorNS = "urn:ietf:params:acme:error:"
 )
