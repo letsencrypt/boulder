@@ -249,22 +249,13 @@ func TestAuthzModel(t *testing.T) {
 // validation error JSON field to an Order produces the expected bad JSON error.
 func TestModelToOrderBadJSON(t *testing.T) {
 	badJSON := []byte(`{`)
-	_, err := modelToOrderv1(&orderModelv1{
+	_, err := modelToOrderv2(&orderModelv2{
 		Error: badJSON,
 	})
-	test.AssertError(t, err, "expected error from modelToOrder")
+	test.AssertError(t, err, "expected error from modelToOrderv2")
 	var badJSONErr errBadJSON
 	test.AssertErrorWraps(t, err, &badJSONErr)
 	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
-
-	/*
-		_, err = modelToOrderv2(&orderModelv2{
-			Error: badJSON,
-		})
-		test.AssertError(t, err, "expected error from modelToOrder")
-		test.AssertErrorWraps(t, err, &badJSONErr)
-		test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
-	*/
 }
 
 func TestOrderModelThereAndBackAgain(t *testing.T) {
@@ -285,12 +276,21 @@ func TestOrderModelThereAndBackAgain(t *testing.T) {
 	test.AssertNotError(t, err, "modelToOrderv1 should not have errored")
 	test.AssertDeepEquals(t, order, returnOrder)
 
-	order.CertificateProfileName = "phljny"
-	model2, err := orderToModelv2(order)
+	anotherOrder := &corepb.Order{
+		Id:                     1,
+		RegistrationID:         2024,
+		Expires:                timestamppb.New(now.Add(24 * time.Hour)),
+		Created:                timestamppb.New(now),
+		Error:                  nil,
+		CertificateSerial:      "2",
+		BeganProcessing:        true,
+		CertificateProfileName: "phljny",
+	}
+	model2, err := orderToModelv2(anotherOrder)
 	test.AssertNotError(t, err, "orderToModelv2 should not have errored")
 	returnOrder, err = modelToOrderv2(model2)
 	test.AssertNotError(t, err, "modelToOrderv2 should not have errored")
-	test.AssertDeepEquals(t, order, returnOrder)
+	test.AssertDeepEquals(t, anotherOrder, returnOrder)
 }
 
 // TestPopulateAttemptedFieldsBadJSON tests that populating a challenge from an
