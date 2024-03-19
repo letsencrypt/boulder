@@ -125,11 +125,10 @@ func getDNSAccountChallengeSubdomain(
 }
 
 // validateDNSAccount01 validates a DNS-ACCOUNT-01 challenge using the account's URI
-// (derived from the accountID) and the provided scope.
+// (derived from the accountID) and the authorization scope.
 func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context,
 	ident identifier.ACMEIdentifier,
 	challenge core.Challenge,
-	scope core.AuthorizationScope,
 	regid int64,
 ) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.DNS {
@@ -138,8 +137,8 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context,
 	}
 
 	// Reject unsupported scopes
-	if scope != core.AuthorizationScopeHost && scope != core.AuthorizationScopeWildcard {
-		va.log.Infof("Unsupported scope for DNS-ACCOUNT-01 challenge: %s", scope)
+	if challenge.Scope != core.AuthorizationScopeHost && challenge.Scope != core.AuthorizationScopeWildcard {
+		va.log.Infof("Unsupported scope for DNS-ACCOUNT-01 challenge: %s", challenge.Scope)
 		return nil, berrors.MalformedError("Unsupported scope for DNS-ACCOUNT-01 challenge")
 	}
 
@@ -156,7 +155,7 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context,
 		accountResourceURL := fmt.Sprintf("%s%d", accountURIPrefix, regid)
 
 		// Compute the challenge subdomain for this account
-		challengeSubdomain := getDNSAccountChallengeSubdomain(accountResourceURL, scope, ident.Value)
+		challengeSubdomain := getDNSAccountChallengeSubdomain(accountResourceURL, challenge.Scope, ident.Value)
 
 		// Look for the required record in the DNS
 		validationRecords, err := va.validateTXT(ctx, ident, authorizedKeysDigest, challengeSubdomain)

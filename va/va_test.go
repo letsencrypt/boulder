@@ -108,6 +108,7 @@ func createChallenge(challengeType core.AcmeChallenge) core.Challenge {
 		Token:                    expectedToken,
 		ValidationRecord:         []core.ValidationRecord{},
 		ProvidedKeyAuthorization: expectedKeyAuthorization,
+		Scope:                    core.AuthorizationScopeHost,
 	}
 }
 
@@ -258,7 +259,7 @@ func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest
 func TestValidateMalformedChallenge(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, err := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"), core.AuthorizationScopeHost, 0)
+	_, err := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"), 0)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)

@@ -205,6 +205,9 @@ type Challenge struct {
 	// Used by http-01, tls-sni-01, tls-alpn-01, dns-01 and dns-account-01 challenges
 	Token string `json:"token,omitempty"`
 
+	// The scope of the authorization. Used by dns-account-01 challenge.
+	Scope AuthorizationScope `json:"scope,omitempty"`
+
 	// The expected KeyAuthorization for validation of the challenge. Populated by
 	// the RA prior to passing the challenge to the VA. For legacy reasons this
 	// field is called "ProvidedKeyAuthorization" because it was initially set by

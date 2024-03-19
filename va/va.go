@@ -431,7 +431,7 @@ func (va *ValidationAuthorityImpl) validate(
 ) ([]core.ValidationRecord, error) {
 
 	// Set default scope for host-only.
-	scope := core.AuthorizationScopeHost
+	challenge.Scope = core.AuthorizationScopeHost
 
 	// If the identifier is a wildcard domain we need to validate the base
 	// domain by removing the "*." wildcard prefix. We create a separate
@@ -441,10 +441,10 @@ func (va *ValidationAuthorityImpl) validate(
 	if strings.HasPrefix(identifier.Value, "*.") {
 		baseIdentifier.Value = strings.TrimPrefix(identifier.Value, "*.")
 		// Set the authorization scope for wildcard.
-		scope = core.AuthorizationScopeWildcard
+		challenge.Scope = core.AuthorizationScopeWildcard
 	}
 
-	validationRecords, err := va.validateChallenge(ctx, baseIdentifier, challenge, scope, regid)
+	validationRecords, err := va.validateChallenge(ctx, baseIdentifier, challenge, regid)
 	if err != nil {
 		return validationRecords, err
 	}
@@ -460,7 +460,7 @@ func (va *ValidationAuthorityImpl) validate(
 	return validationRecords, nil
 }
 
-func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge, scope core.AuthorizationScope, regid int64) ([]core.ValidationRecord, error) {
+func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge, regid int64) ([]core.ValidationRecord, error) {
 	err := challenge.CheckConsistencyForValidation()
 	if err != nil {
 		return nil, berrors.MalformedError("Challenge failed consistency check: %s", err)
@@ -471,7 +471,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 	case core.ChallengeTypeDNS01:
 		return va.validateDNS01(ctx, identifier, challenge)
 	case core.ChallengeTypeDNSAccount01:
-		return va.validateDNSAccount01(ctx, identifier, challenge, scope, regid)
+		return va.validateDNSAccount01(ctx, identifier, challenge, regid)
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, identifier, challenge)
 	}
