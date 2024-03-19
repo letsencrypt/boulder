@@ -409,6 +409,7 @@ func main() {
 		limiter,
 		txnBuilder,
 		maxNames,
+		nil,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
 
