@@ -440,6 +440,8 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	return order, nil
 }
 
+// challTypeToUint maps challenge types to integers. These integers are used as inputs to a bitmap.
+// They provide shift distances on the bitmap and must be between 0 and 7 (inclusive).
 var challTypeToUint = map[string]uint8{
 	"http-01":        0,
 	"dns-01":         1,
@@ -447,6 +449,8 @@ var challTypeToUint = map[string]uint8{
 	"dns-account-01": 3,
 }
 
+// uintToChallType is the reverse mapping of challTypeToUint. It maps integers to challenge types.
+// The integers are used as inputs to a bitmap and must be between 0 and 7 (inclusive).
 var uintToChallType = map[uint8]string{
 	0: "http-01",
 	1: "dns-01",
