@@ -717,30 +717,9 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 
 		var order *corepb.Order
 		if features.Get().MultipleCertificateProfiles {
-			order, err = modelToOrderv2(
-				&orderModelv2{
-					ID:                     omObj.(*orderModelv2).ID,
-					RegistrationID:         omObj.(*orderModelv2).RegistrationID,
-					Expires:                omObj.(*orderModelv2).Expires,
-					Created:                omObj.(*orderModelv2).Created,
-					Error:                  omObj.(*orderModelv2).Error,
-					CertificateSerial:      omObj.(*orderModelv2).CertificateSerial,
-					BeganProcessing:        omObj.(*orderModelv2).BeganProcessing,
-					CertificateProfileName: omObj.(*orderModelv2).CertificateProfileName,
-				},
-			)
+			order, err = modelToOrderv2(omObj.(*orderModelv2))
 		} else {
-			order, err = modelToOrderv1(
-				&orderModelv1{
-					ID:                omObj.(*orderModelv1).ID,
-					RegistrationID:    omObj.(*orderModelv1).RegistrationID,
-					Expires:           omObj.(*orderModelv1).Expires,
-					Created:           omObj.(*orderModelv1).Created,
-					Error:             omObj.(*orderModelv1).Error,
-					CertificateSerial: omObj.(*orderModelv1).CertificateSerial,
-					BeganProcessing:   omObj.(*orderModelv1).BeganProcessing,
-				},
-			)
+			order, err = modelToOrderv1(omObj.(*orderModelv1))
 		}
 		if err != nil {
 			return nil, err
