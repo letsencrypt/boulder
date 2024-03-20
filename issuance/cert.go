@@ -6,11 +6,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"math/big"
@@ -30,9 +28,6 @@ import (
 
 // ProfileConfig describes the certificate issuance constraints for all issuers.
 type ProfileConfig struct {
-	// A unique name identifying this ProfileConfig. A default name will be
-	// assigned if one is not provided.
-	Name            string `validate:"omitempty,alphanum,min=1,max=32"`
 	AllowMustStaple bool
 	AllowCTPoison   bool
 	AllowSCTList    bool
@@ -52,7 +47,6 @@ type PolicyConfig struct {
 
 // Profile is the validated structure created by reading in ProfileConfigs and IssuerConfigs
 type Profile struct {
-	Name            string
 	allowMustStaple bool
 	allowCTPoison   bool
 	allowSCTList    bool
@@ -62,21 +56,6 @@ type Profile struct {
 	maxValidity time.Duration
 
 	lints lint.Registry
-
-	// hash is a hashed encoding of a ProfileConfig's exported fields that are
-	// baked directly into the resulting Profile.
-	hash [32]byte
-}
-
-// UnsafeSetHash sets a Profile's hash field. This only exists for testing
-// purposes and must not be used elsewhere.
-func (p *Profile) UnsafeSetHash(h [32]byte) {
-	p.hash = h
-}
-
-// GetHash retrieves the Profile's hash field.
-func (p *Profile) GetHash() [32]byte {
-	return p.hash
 }
 
 // DefaultCertProfileName will be assigned to any configured certificate profile
@@ -92,28 +71,7 @@ func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, erro
 		return nil, fmt.Errorf("creating lint registry: %w", err)
 	}
 
-	if profileConfig.Name == "" {
-		profileConfig.Name = DefaultCertProfileName
-	}
-
-	// We encode the provided ProfileConfig into a byte slice and hash those
-	// bytes to perform a sanity check that the core Profile contents have not
-	// changed. It's possible that in the duration between multiple roundtrips
-	// between the RA and CA that a CA could be restarted with a new Name (ok)
-	// or a different TLS extension or validity (not ok).
-	var encodedProfile bytes.Buffer
-	enc := gob.NewEncoder(&encodedProfile)
-	err = enc.Encode(profileConfig)
-	if err != nil {
-		return nil, err
-	}
-	if len(encodedProfile.Bytes()) <= 0 {
-		return nil, errors.New("non-existent certificate profile bytes")
-	}
-	hash := sha256.Sum256(encodedProfile.Bytes())
-
 	sp := &Profile{
-		Name:            profileConfig.Name,
 		allowMustStaple: profileConfig.AllowMustStaple,
 		allowCTPoison:   profileConfig.AllowCTPoison,
 		allowSCTList:    profileConfig.AllowSCTList,
@@ -121,7 +79,6 @@ func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, erro
 		maxBackdate:     profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:     profileConfig.MaxValidityPeriod.Duration,
 		lints:           reg,
-		hash:            hash,
 	}
 
 	return sp, nil

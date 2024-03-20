@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -36,18 +37,13 @@ type Config struct {
 		// Issuance contains all information necessary to load and initialize issuers.
 		Issuance struct {
 			// The name of the certificate profile to use if one wasn't provided
-			// by the RA during NewOrder and Finalize requests. The name must
-			// exist in either Profile.Name or Issuance.CertProfiles[].Name. A
-			// default name will be assigned if one is not provided.
+			// by the RA during NewOrder and Finalize requests.
 			DefaultCertificateProfileName string
 
-			// Deprecated: Use CertProfiles instead. This value will be combined
-			// with CertProfiles when creating a *certificateAuthorityImpl.
-			Profile issuance.ProfileConfig
-
-			// TODO(#6966): Make this field required once Profile has been
-			// removed from all live configs.
-			CertProfiles []issuance.ProfileConfig `validate:"min=0"`
+			// Deprecated: Use CertProfiles instead. Profile implictly takes a
+			// default name.
+			Profile      issuance.ProfileConfig            `validate:"required_without=CertProfiles"`
+			CertProfiles map[string]issuance.ProfileConfig `validate:"required_without=Profile,min=1,dive,keys,alphanum,min=1,max=32,endkeys"`
 
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile   issuance.CRLProfileConfig `validate:"-"`
@@ -222,17 +218,28 @@ func main() {
 	}
 	logger.Infof("Using default certificate profile name: %s", c.CA.Issuance.DefaultCertificateProfileName)
 
-	deprecatedProfile, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
-	cmd.FailOnError(err, "Couldn't load certificate profile")
+	//cmd.FailOnError(err, "Couldn't load certificate profile")
 
-	var certProfiles []*issuance.Profile
-	for _, profileConfig := range c.CA.Issuance.CertProfiles {
-		profile, err := issuance.NewProfile(profileConfig, c.CA.Issuance.IgnoredLints)
-		cmd.FailOnError(err, "Couldn't load certificate profile")
-		certProfiles = append(certProfiles, profile)
+	certProfilesMap := make(map[string]*issuance.Profile)
+	var deprecatedProfile *issuance.Profile
+	if !reflect.ValueOf(c.CA.Issuance.Profile).IsZero() {
+		deprecatedProfile, err = issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
+		certProfilesMap[c.CA.Issuance.DefaultCertificateProfileName] = deprecatedProfile
+	} else {
+		for name, config := range c.CA.Issuance.CertProfiles {
+			profile, err := issuance.NewProfile(config, c.CA.Issuance.IgnoredLints)
+			cmd.FailOnError(err, "Couldn't load certificate profile")
+			//certProfiles = append(certProfiles, profile)
+			certProfilesMap[name] = profile
+		}
 	}
 
-	ok := validateDefaultCertificateProfileName(deprecatedProfile, certProfiles, c.CA.Issuance.DefaultCertificateProfileName)
+	for _, x := range certProfilesMap {
+		fmt.Printf("PHIL: %+v\n", x)
+	}
+	os.Exit(1)
+
+	_, ok := certProfilesMap[c.CA.Issuance.DefaultCertificateProfileName]
 	if !ok {
 		cmd.Fail(fmt.Sprintf("defaultCertificateProfileName %s was configured, but a matching profile object was not found", c.CA.Issuance.DefaultCertificateProfileName))
 	}
@@ -297,8 +304,7 @@ func main() {
 			sa,
 			pa,
 			issuers,
-			deprecatedProfile,
-			certProfiles,
+			certProfilesMap,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,
 			c.CA.Backdate.Duration,
@@ -319,22 +325,6 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 
 	cmd.FailOnError(start(), "CA gRPC service failed")
-}
-
-// validateDefaultCertificateProfileName checks if the configured default
-// certificate profile name is found in the full list of configured certificate
-// profiles and returns a bool. Duplicate names are handled during CA
-// construction.
-func validateDefaultCertificateProfileName(deprecatedProfile *issuance.Profile, profiles []*issuance.Profile, defaultName string) bool {
-	var allProfiles []*issuance.Profile
-	allProfiles = append(allProfiles, deprecatedProfile)
-	allProfiles = append(allProfiles, profiles...)
-	for index := range allProfiles {
-		if allProfiles[index].Name == defaultName {
-			return true
-		}
-	}
-	return false
 }
 
 func init() {
