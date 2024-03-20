@@ -89,6 +89,14 @@ type Config struct {
 	//     a 'orderID' matching the finalized order to true. This will occur
 	//     inside of the finalize (order) transaction.
 	TrackReplacementCertificatesARI bool
+
+	// MultipleCertificateProfiles, when enabled, triggers the following
+	// behavior:
+	//   - SA.NewOrderAndAuthzs: upon receiving a NewOrderRequest with a
+	//     `certificateProfileName` value, will add that value to the database's
+	//     `orders.certificateProfileName` column. Values in this column are
+	//     allowed to be empty.
+	MultipleCertificateProfiles bool
 }
 
 var fMu = new(sync.RWMutex)
