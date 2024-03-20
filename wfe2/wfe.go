@@ -2351,6 +2351,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	err = wfe.validateCertificateProfileName(newOrderRequest.Profile)
 	if err != nil {
+		// TODO(#7392) Provide link to profile documentation.
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid certificate profile, %q: %s", newOrderRequest.Profile, err), err)
 		return
 	}
