@@ -129,7 +129,10 @@
 		"features": {
 			"ServeRenewalInfo": true,
 			"TrackReplacementCertificatesARI": true
-		}
+		},
+		"certificateProfileNames": [
+			"defaultBoulderCertificateProfile"
+		]
 	},
 	"syslog": {
 		"stdoutlevel": 4,

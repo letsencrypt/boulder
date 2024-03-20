@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -171,6 +172,11 @@ type WebFrontEndImpl struct {
 	limiter                      *ratelimits.Limiter
 	txnBuilder                   *ratelimits.TransactionBuilder
 	maxNames                     int
+
+	// certificateProfileNames is a list of profile names that are allowed to be
+	// passed to the newOrder endpoint. If a profile name is not in this list,
+	// the request will be rejected as malformed.
+	certificateProfileNames []string
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -195,6 +201,7 @@ func NewWebFrontEndImpl(
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,
 	maxNames int,
+	certificateProfileNames []string,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
@@ -234,6 +241,7 @@ func NewWebFrontEndImpl(
 		limiter:                      limiter,
 		txnBuilder:                   txnBuilder,
 		maxNames:                     maxNames,
+		certificateProfileNames:      certificateProfileNames,
 	}
 
 	return wfe, nil
@@ -2002,6 +2010,7 @@ type orderJSON struct {
 	Identifiers    []identifier.ACMEIdentifier `json:"identifiers"`
 	Authorizations []string                    `json:"authorizations"`
 	Finalize       string                      `json:"finalize"`
+	Profile        string                      `json:"profile,omitempty"`
 	Certificate    string                      `json:"certificate,omitempty"`
 	Error          *probs.ProblemDetails       `json:"error,omitempty"`
 }
@@ -2253,6 +2262,19 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 	return replaces, renewalInfo.SuggestedWindow.IsWithin(wfe.clk.Now()), nil
 }
 
+func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error {
+	if profile == "" {
+		// No profile name is specified.
+		return nil
+	}
+	if !slices.Contains(wfe.certificateProfileNames, profile) {
+		// The profile name is not in the list of configured profiles.
+		return errors.New("not a recognized profile name")
+	}
+
+	return nil
+}
+
 // NewOrder is used by clients to create a new order object and a set of
 // authorizations to fulfill for issuance.
 func (wfe *WebFrontEndImpl) NewOrder(
@@ -2276,6 +2298,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		NotBefore   string
 		NotAfter    string
 		Replaces    string
+		Profile     string
 	}
 	err := json.Unmarshal(body, &newOrderRequest)
 	if err != nil {
@@ -2326,6 +2349,13 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		}
 	}
 
+	err = wfe.validateCertificateProfileName(newOrderRequest.Profile)
+	if err != nil {
+		// TODO(#7392) Provide link to profile documentation.
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid certificate profile, %q: %s", newOrderRequest.Profile, err), err)
+		return
+	}
+
 	// TODO(#5545): Spending and Refunding can be async until these rate limits
 	// are authoritative. This saves us from adding latency to each request.
 	// Goroutines spun out below will respect a context deadline set by the
@@ -2348,10 +2378,11 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}()
 
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
-		RegistrationID: acct.ID,
-		Names:          names,
-		ReplacesSerial: replaces,
-		LimitsExempt:   limitsExempt,
+		RegistrationID:         acct.ID,
+		Names:                  names,
+		ReplacesSerial:         replaces,
+		LimitsExempt:           limitsExempt,
+		CertificateProfileName: newOrderRequest.Profile,
 	})
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
