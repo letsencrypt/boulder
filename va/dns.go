@@ -129,7 +129,6 @@ func getDNSAccountChallengeSubdomain(
 func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context,
 	ident identifier.ACMEIdentifier,
 	challenge core.Challenge,
-	regid int64,
 ) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.DNS {
 		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
@@ -147,27 +146,16 @@ func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context,
 	h.Write([]byte(challenge.ProvidedKeyAuthorization))
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
-	// Iterate over the account URIs to find the correct one
-	// for the accountID and track any errors
-	var validationError error
-	for _, accountURIPrefix := range va.accountURIPrefixes {
-		// Construct the account resource URL
-		accountResourceURL := fmt.Sprintf("%s%d", accountURIPrefix, regid)
+	// Compute the challenge subdomain for this account
+	challengeSubdomain := getDNSAccountChallengeSubdomain(challenge.AccountURL, challenge.Scope, ident.Value)
 
-		// Compute the challenge subdomain for this account
-		challengeSubdomain := getDNSAccountChallengeSubdomain(accountResourceURL, challenge.Scope, ident.Value)
-
-		// Look for the required record in the DNS
-		validationRecords, err := va.validateTXT(ctx, ident, authorizedKeysDigest, challengeSubdomain)
-		if err == nil {
-			// Successful challenge validation
-			return validationRecords, nil
-		}
-
-		// Track the latest error and continue
-		validationError = err
+	// Look for the required record in the DNS
+	validationRecords, err := va.validateTXT(ctx, ident, authorizedKeysDigest, challengeSubdomain)
+	if err == nil {
+		// Successful challenge validation
+		return validationRecords, nil
 	}
 
 	// Return error from last accountURIPrefix attempted
-	return nil, validationError
+	return nil, err
 }

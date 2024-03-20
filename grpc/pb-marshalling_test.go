@@ -60,6 +60,8 @@ func TestChallenge(t *testing.T) {
 		Token:                    "asd",
 		ProvidedKeyAuthorization: "keyauth",
 		Validated:                &validated,
+		Scope:                    core.AuthorizationScopeHost,
+		AccountURL:               "https://example.com/acme/acct/1",
 	}
 
 	pb, err := ChallengeToPB(chall)
@@ -261,6 +263,8 @@ func TestAuthz(t *testing.T) {
 		Status:         core.StatusPending,
 		Expires:        nil,
 		Challenges:     []core.Challenge{challA, challB},
+		Scope:          core.AuthorizationScopeHost,
+		AccountURL:     "https://example.com/acme/acct/1",
 	}
 	pbAuthz2, err := AuthzToPB(inAuthzNilExpires)
 	test.AssertNotError(t, err, "AuthzToPB failed")

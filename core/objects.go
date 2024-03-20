@@ -208,6 +208,9 @@ type Challenge struct {
 	// The scope of the authorization. Used by dns-account-01 challenge.
 	Scope AuthorizationScope `json:"scope,omitempty"`
 
+	// Account URL. Used by dns-account-01 challenge.
+	AccountURL string `json:"accountUrl,omitempty"`
+
 	// The expected KeyAuthorization for validation of the challenge. Populated by
 	// the RA prior to passing the challenge to the VA. For legacy reasons this
 	// field is called "ProvidedKeyAuthorization" because it was initially set by
@@ -385,6 +388,17 @@ type Authorization struct {
 	// as part of the authorization, the identifier we store in the database
 	// can contain an asterisk.
 	Wildcard bool `json:"wildcard,omitempty" db:"-"`
+
+	// The scope of the authorization. This is used internally for challenge
+	// validation (e.g. dns-account-01) but not stored in the database
+	// or represented externally.
+	Scope AuthorizationScope `json:"scope,omitempty" db:"-"`
+
+	// The Account URL of the account associated with this authorization.
+	// It matches the value of the JWS protected header `kid`.
+	// This is used internally for challenge validation (e.g. dns-account-01)
+	// but not stored in the database or represented externally.
+	AccountURL string `json:"accountURL,omitempty" db:"-"`
 }
 
 // FindChallengeByStringID will look for a challenge matching the given ID inside

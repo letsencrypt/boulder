@@ -1217,9 +1217,11 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	// Update the challenge URL to be relative to the HTTP request Host
 	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengePath, authz.ID, challenge.StringID()))
 
-	// Ensure the challenge URI isn't written by setting it to
-	// a value that the JSON omitempty tag considers empty
+	// Ensure the challenge URI, AccountURL and Scope aren't written by
+	// setting them to a value that the JSON omitempty tag considers empty
 	challenge.URI = ""
+	challenge.Scope = ""
+	challenge.AccountURL = ""
 
 	// ACMEv2 never sends the KeyAuthorization back in a challenge object.
 	challenge.ProvidedKeyAuthorization = ""
@@ -1247,6 +1249,8 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 	}
 	authz.ID = ""
 	authz.RegistrationID = 0
+	authz.Scope = ""
+	authz.AccountURL = ""
 
 	// The ACME spec forbids allowing "*" in authorization identifiers. Boulder
 	// allows this internally as a means of tracking when an authorization
@@ -1290,7 +1294,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	authz core.Authorization,
 	challengeIndex int,
 	logEvent *web.RequestEvent) {
-	body, _, currAcct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, jws, currAcct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors
@@ -1336,6 +1340,15 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
 			return
 		}
+
+		// We add the JWS `kid` to the Authorization before sending to the RA.
+		// This ensures an Account URL is available for challenge validation.
+		kid := jws.Signatures[0].Header.KeyID
+		if kid == "" {
+			wfe.sendError(response, logEvent, probs.Malformed("No JWS kid field"), nil)
+			return
+		}
+		authz.AccountURL = kid
 
 		authzPB, err := bgrpc.AuthzToPB(authz)
 		if err != nil {

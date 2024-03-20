@@ -19,17 +19,21 @@ type MockClient struct {
 
 // LookupTXT is a mock
 func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string, ResolverAddrs, error) {
+	// The hostname prefix of "_vrr7uudrklshxb6l._acme-host-challenge"
+	// corresponds to `host` Scope dns-account-01 validation with an
+	// Account URL of `https://example.com/acme/acct/1`.
+
 	switch hostname {
 	case "_acme-challenge.servfail.com":
 		return nil, ResolverAddrs{"MockClient"}, fmt.Errorf("SERVFAIL")
 	case "_acme-challenge.good-dns01.com",
-		"_djny7rmeuvxuhb2v._acme-host-challenge.good-dns01.com":
+		"_vrr7uudrklshxb6l._acme-host-challenge.good-dns01.com":
 		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
 		// expected token + test account jwk thumbprint
 		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
 	case "_acme-challenge.wrong-dns01.com",
-		"_rpmyw7okyyoycegj._acme-host-challenge.wrong-dns01.com":
+		"_vrr7uudrklshxb6l._acme-host-challenge.wrong-dns01.com":
 		return []string{"a"}, ResolverAddrs{"MockClient"}, nil
 	case "_acme-challenge.wrong-many-dns01.com":
 		return []string{"a", "b", "c", "d", "e"}, ResolverAddrs{"MockClient"}, nil
@@ -41,7 +45,7 @@ func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string,
 		// expected token + test account jwk thumbprint
 		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
 	case "_acme-challenge.empty-txts.com",
-		"_6g727n6x5dk6qex5._acme-host-challenge.empty-txts.com":
+		"_vrr7uudrklshxb6l._acme-host-challenge.empty-txts.com":
 		return []string{}, ResolverAddrs{"MockClient"}, nil
 	default:
 		return []string{"hostname"}, ResolverAddrs{"MockClient"}, nil
