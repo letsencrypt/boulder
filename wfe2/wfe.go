@@ -2239,7 +2239,10 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 		return "", false, fmt.Errorf("checking replacement status of existing certificate: %w", err)
 	}
 	if exists.Exists {
-		return "", false, berrors.MalformedError("cannot indicate an order replaces a certificate which already has a replacement order")
+		return "", false, berrors.ConflictError(
+			"cannot indicate an order replaces certificate with serial %q, which already has a replacement order",
+			certID.Serial(),
+		)
 	}
 
 	err = wfe.orderMatchesReplacement(ctx, acct, names, certID.Serial())

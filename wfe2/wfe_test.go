@@ -2849,7 +2849,7 @@ func TestKeyRollover(t *testing.T) {
 			Name:    "Valid key rollover request, key exists",
 			Payload: `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
-                          "type": "urn:ietf:params:acme:error:malformed",
+                          "type": "urn:ietf:params:acme:error:conflict",
                           "detail": "New key is already in use for a different account",
                           "status": 409
                         }`,
