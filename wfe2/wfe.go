@@ -2350,6 +2350,10 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
 			return
 		}
+		wfe.stats.ariReplacementOrders.With(prometheus.Labels{
+			"isReplacement": fmt.Sprintf("%t", replaces != ""),
+			"limitsExempt":  fmt.Sprintf("%t", limitsExempt),
+		}).Inc()
 	}
 
 	err = wfe.validateCertificateProfileName(newOrderRequest.Profile)

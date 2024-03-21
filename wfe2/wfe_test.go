@@ -4138,3 +4138,31 @@ func TestNewOrderWithProfile(t *testing.T) {
 	test.AssertEquals(t, errorResp2["type"], "urn:ietf:params:acme:error:malformed")
 	test.AssertEquals(t, errorResp2["detail"], "Invalid certificate profile, \"test-profile\": not a recognized profile name")
 }
+
+func TestNewOrderWithReplaces(t *testing.T) {
+	wfe, _, signer := setupWFE(t)
+	expectProfileName := "test-profile"
+	wfe.ra = &mockRA{expectProfileName: expectProfileName}
+	mux := wfe.Handler(metrics.NoopRegisterer)
+	wfe.certificateProfileNames = []string{expectProfileName}
+
+	// Test that the newOrder endpoint returns the proper error if an invalid
+	// profile is specified.
+	invalidOrderBody := `
+	{
+		"Identifiers": [
+		  {"type": "dns", "value": "example.com"}
+		],
+		"Profile": "bad-profile"
+	}`
+
+	responseWriter := httptest.NewRecorder()
+	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, invalidOrderBody)
+	mux.ServeHTTP(responseWriter, r)
+	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
+	var errorResp map[string]interface{}
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &errorResp)
+	test.AssertNotError(t, err, "Failed to unmarshal error response")
+	test.AssertEquals(t, errorResp["type"], "urn:ietf:params:acme:error:malformed")
+	test.AssertEquals(t, errorResp["detail"], "Invalid certificate profile, \"bad-profile\": not a recognized profile name")
+}
