@@ -59,6 +59,15 @@ services:
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /boulder
 
+  bpsql:
+    image: postgres:latest
+    networks:
+      bouldernet:
+        aliases:
+          - boulder-psql
+    environment:
+      POSTGRES_PASSWORD: "VV5PugWx0QQyVHHmdwvSu+RW60U"
+
   bmysql:
     image: mariadb:10.5
     networks:

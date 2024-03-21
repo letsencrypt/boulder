@@ -1,0 +1,5 @@
+CREATE ROLE incidents_sa;
+CREATE ROLE test_setup;
+
+grant all privileges on database boulder_sa_integration to test_setup;
+grant all privileges on database boulder_sa_integration to incidents_sa;
