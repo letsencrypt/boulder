@@ -1,0 +1,220 @@
+CREATE TABLE authz2 (
+    id BIGSERIAL PRIMARY KEY,
+    identifierType SMALLINT NOT NULL,
+    identifierValue VARCHAR(255) NOT NULL,
+    registrationID BIGINT NOT NULL,
+    status SMALLINT NOT NULL,
+    expires TIMESTAMP NOT NULL,
+    challenges SMALLINT NOT NULL,
+    attempted SMALLINT NULL,
+    attemptedAt TIMESTAMP NULL,
+    token BYTEA NOT NULL,
+    validationError TEXT NULL,
+    validationRecord TEXT NULL
+);
+
+CREATE INDEX regID_expires_idx ON authz2 (registrationID, status, expires);
+CREATE INDEX regID_identifier_status_expires_idx ON authz2 (registrationID, identifierType, identifierValue, status, expires);
+CREATE INDEX expires_idx ON authz2 (expires);
+
+CREATE TABLE blockedKeys (
+    id BIGSERIAL PRIMARY KEY,
+    keyHash BYTEA NOT NULL,
+    added TIMESTAMP NOT NULL,
+    source SMALLINT NOT NULL,
+    comment VARCHAR(255) NULL,
+    revokedBy BIGINT DEFAULT 0,
+    extantCertificatesChecked SMALLINT DEFAULT 0,
+    UNIQUE (keyHash),
+    CHECK (extantCertificatesChecked IN (0, 1))
+);
+
+CREATE INDEX extantCertificatesChecked_idx ON blockedKeys (extantCertificatesChecked);
+
+CREATE TABLE certificateStatus (
+    id BIGSERIAL PRIMARY KEY,
+    serial VARCHAR(255) NOT NULL,
+    subscriberApproved SMALLINT DEFAULT 0,
+    status VARCHAR(255) NOT NULL,
+    ocspLastUpdated TIMESTAMP NOT NULL,
+    revokedDate TIMESTAMP NOT NULL,
+    revokedReason INTEGER NOT NULL,
+    lastExpirationNagSent TIMESTAMP NOT NULL,
+    LockCol BIGINT DEFAULT 0,
+    ocspResponse BYTEA NULL,
+    notAfter TIMESTAMP NULL,
+    isExpired SMALLINT DEFAULT 0,
+    issuerID BIGINT NULL,
+    CHECK (subscriberApproved IN (0, 1)),
+    CHECK (isExpired IN (0, 1))
+);
+
+CREATE INDEX serial ON certificateStatus (serial);
+CREATE INDEX isExpired_ocspLastUpdated_idx ON certificateStatus (isExpired, ocspLastUpdated);
+CREATE INDEX notAfter_idx ON certificateStatus (notAfter);
+
+CREATE TABLE certificates (
+    id BIGSERIAL PRIMARY KEY,
+    registrationID BIGINT NOT NULL,
+    serial VARCHAR(255) NOT NULL,
+    digest VARCHAR(255) NOT NULL,
+    der BYTEA NOT NULL,
+    issued TIMESTAMP NOT NULL,
+    expires TIMESTAMP NOT NULL
+);
+
+CREATE INDEX ON certificates (serial);
+CREATE INDEX regId_certificates_idx ON certificates (registrationID);
+CREATE INDEX issued_idx ON certificates (issued);
+
+CREATE TABLE certificatesPerName (
+    id BIGSERIAL PRIMARY KEY,
+    eTLDPlusOne VARCHAR(255) NOT NULL,
+    time TIMESTAMP NOT NULL,
+    count INTEGER NOT NULL,
+    UNIQUE (eTLDPlusOne, time)
+);
+
+CREATE TABLE crlShards (
+    id BIGSERIAL PRIMARY KEY,
+    issuerID BIGINT NOT NULL,
+    idx INTEGER NOT NULL,
+    thisUpdate TIMESTAMP NULL,
+    nextUpdate TIMESTAMP NULL,
+    leasedUntil TIMESTAMP NOT NULL,
+    UNIQUE (issuerID, idx)
+);
+
+CREATE TABLE fqdnSets (
+    id BIGSERIAL PRIMARY KEY,
+    setHash BYTEA NOT NULL,
+    serial VARCHAR(255) NOT NULL,
+    issued TIMESTAMP NOT NULL,
+    expires TIMESTAMP NOT NULL
+);
+
+CREATE INDEX ON fqdnSets (serial);
+CREATE INDEX setHash_issued_idx ON fqdnSets (setHash, issued);
+
+CREATE TABLE gorp_migrations (
+    id VARCHAR(255) PRIMARY KEY,
+    applied_at TIMESTAMP NULL
+);
+
+CREATE TABLE incidents (
+    id BIGSERIAL PRIMARY KEY,
+    serialTable VARCHAR(128) NOT NULL,
+    url VARCHAR(1024) NOT NULL,
+    renewBy TIMESTAMP NOT NULL,
+    enabled SMALLINT DEFAULT 0,
+    CHECK (enabled IN (0, 1))
+);
+
+CREATE TABLE issuedNames (
+    id BIGSERIAL PRIMARY KEY,
+    reversedName VARCHAR(640) NOT NULL,
+    notBefore TIMESTAMP NOT NULL,
+    serial VARCHAR(255) NOT NULL,
+    renewal SMALLINT NOT NULL DEFAULT 0,
+    CHECK (renewal IN (0, 1))
+);
+
+CREATE INDEX reversedName_notBefore_Idx ON issuedNames (reversedName, notBefore);
+
+CREATE TABLE keyHashToSerial (
+    id BIGSERIAL PRIMARY KEY,
+    keyHash BYTEA NOT NULL,
+    certNotAfter TIMESTAMP NOT NULL,
+    certSerial VARCHAR(255) NOT NULL,
+    UNIQUE (keyHash, certSerial)
+);
+
+CREATE INDEX keyHash_certNotAfter ON keyHashToSerial (keyHash, certNotAfter);
+
+CREATE TABLE newOrdersRL (
+    id BIGSERIAL PRIMARY KEY,
+    regID BIGINT NOT NULL,
+    time TIMESTAMP NOT NULL,
+    count INTEGER NOT NULL,
+    UNIQUE (regID, time)
+);
+
+CREATE TABLE orderFqdnSets (
+    id BIGSERIAL PRIMARY KEY,
+    setHash BYTEA NOT NULL,
+    orderID BIGINT NOT NULL,
+    registrationID BIGINT NOT NULL,
+    expires TIMESTAMP NOT NULL
+);
+
+CREATE INDEX setHash_expires_idx ON orderFqdnSets (setHash, expires);
+CREATE INDEX orderID_idx ON orderFqdnSets (orderID);
+CREATE INDEX orderFqdnSets_registrationID_registrations ON orderFqdnSets (registrationID);
+
+CREATE TABLE orderToAuthz2 (
+    orderID BIGINT NOT NULL,
+    authzID BIGINT NOT NULL,
+    PRIMARY KEY (orderID, authzID)
+);
+
+CREATE INDEX ON orderToAuthz2 (authzID);
+
+CREATE TABLE orders (
+    id BIGSERIAL PRIMARY KEY,
+    registrationID BIGINT NOT NULL,
+    expires TIMESTAMP NOT NULL,
+    error TEXT NULL,
+    certificateSerial VARCHAR(255) NULL,
+    beganProcessing SMALLINT NOT NULL DEFAULT 0,
+    created TIMESTAMP NOT NULL,
+    CHECK (beganProcessing IN (0, 1))
+);
+
+CREATE INDEX reg_status_expires ON orders (registrationID, expires);
+CREATE INDEX regID_created_idx ON orders (registrationID, created);
+
+CREATE TABLE precertificates (
+    id BIGSERIAL PRIMARY KEY,
+    registrationID BIGINT NOT NULL,
+    serial VARCHAR(255) NOT NULL,
+    der BYTEA NOT NULL,
+    issued TIMESTAMP NOT NULL,
+    expires TIMESTAMP NOT NULL
+);
+
+CREATE INDEX ON precertificates (serial);
+CREATE INDEX regId_precertificates_idx ON precertificates (registrationID);
+CREATE INDEX issued_precertificates_idx ON precertificates (issued);
+
+CREATE TABLE registrations (
+    id BIGSERIAL PRIMARY KEY,
+    jwk BYTEA NOT NULL,
+    jwk_sha256 VARCHAR(255) NOT NULL UNIQUE,
+    contact VARCHAR(191) NOT NULL,
+    agreement VARCHAR(255) NOT NULL,
+    LockCol BIGINT NOT NULL,
+    initialIP INET NOT NULL DEFAULT '0.0.0.0',
+    createdAt TIMESTAMP NOT NULL,
+    status VARCHAR(255) NOT NULL DEFAULT 'valid'
+);
+
+CREATE INDEX initialIP_createdAt ON registrations (initialIP, createdAt);
+
+CREATE TABLE requestedNames (
+    id BIGSERIAL PRIMARY KEY,
+    orderID BIGINT NOT NULL,
+    reversedName VARCHAR(253) NOT NULL
+);
+
+CREATE INDEX orderID_idx ON requestedNames (orderID);
+CREATE INDEX reversedName_idx ON requestedNames (reversedName);
+
+CREATE TABLE serials (
+    id BIGSERIAL PRIMARY KEY,
+    registrationID BIGINT NOT NULL REFERENCES registrations (id),
+    serial VARCHAR(255) NOT NULL UNIQUE,
+    created TIMESTAMP NOT NULL,
+    expires TIMESTAMP NOT NULL
+);
+
+CREATE INDEX regId_serials_idx ON serials (registrationID);
