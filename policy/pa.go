@@ -511,7 +511,7 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 	return nil
 }
 
-// challengesTypesFor determines which challenge types are acceptable for the
+// challengeTypesFor determines which challenge types are acceptable for the
 // given identifier.
 func (pa *AuthorityImpl) challengeTypesFor(identifier identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
 	var challenges []core.AcmeChallenge
