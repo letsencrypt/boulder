@@ -1,3 +1,23 @@
+DROP TABLE IF EXISTS authz2;
+DROP TABLE IF EXISTS blockedKeys;
+DROP TABLE IF EXISTS certificateStatus;
+DROP TABLE IF EXISTS certificates;
+DROP TABLE IF EXISTS certificatesPerName;
+DROP TABLE IF EXISTS crlShards;
+DROP TABLE IF EXISTS fqdnSets;
+DROP TABLE IF EXISTS gorp_migrations;
+DROP TABLE IF EXISTS incidents;
+DROP TABLE IF EXISTS issuedNames;
+DROP TABLE IF EXISTS keyHashToSerial;
+DROP TABLE IF EXISTS newOrdersRL;
+DROP TABLE IF EXISTS orderFqdnSets;
+DROP TABLE IF EXISTS orderToAuthz2;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS precertificates;
+DROP TABLE IF EXISTS registrations;
+DROP TABLE IF EXISTS requestedNames;
+DROP TABLE IF EXISTS serials;
+
 CREATE TABLE authz2 (
     id BIGSERIAL PRIMARY KEY,
     identifierType SMALLINT NOT NULL,
@@ -148,7 +168,7 @@ CREATE TABLE orderFqdnSets (
 );
 
 CREATE INDEX setHash_expires_idx ON orderFqdnSets (setHash, expires);
-CREATE INDEX orderID_idx ON orderFqdnSets (orderID);
+CREATE INDEX fqdnsets_orderID_idx ON orderFqdnSets (orderID);
 CREATE INDEX orderFqdnSets_registrationID_registrations ON orderFqdnSets (registrationID);
 
 CREATE TABLE orderToAuthz2 (
@@ -206,12 +226,12 @@ CREATE TABLE requestedNames (
     reversedName VARCHAR(253) NOT NULL
 );
 
-CREATE INDEX orderID_idx ON requestedNames (orderID);
+CREATE INDEX requestedNames_orderID_idx ON requestedNames (orderID);
 CREATE INDEX reversedName_idx ON requestedNames (reversedName);
 
 CREATE TABLE serials (
     id BIGSERIAL PRIMARY KEY,
-    registrationID BIGINT NOT NULL REFERENCES registrations (id),
+    registrationID BIGINT NOT NULL,
     serial VARCHAR(255) NOT NULL UNIQUE,
     created TIMESTAMP NOT NULL,
     expires TIMESTAMP NOT NULL

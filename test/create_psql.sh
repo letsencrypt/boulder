@@ -61,18 +61,7 @@ for db in $DBS; do
       dbpath="./sa/db"
     fi
 
-    # sql-migrate will default to ./dbconfig.yml and treat all configured dirs
-    # as relative.
-    cd "${dbpath}"
-    r=`sql-migrate up -env="${dbname}" | xargs -0 echo`
-    if [[ "${r}" == "Migration failed"* ]]
-    then
-      echo "Migration failed - dropping and recreating"
-      create_empty_db "${dbname}" "${dbconn}"
-      sql-migrate up -env="${dbname}" || exit_err "Migration failed after dropping and recreating"
-    else
-      echo "${r}"
-    fi
+    ${dbconn} -d "${dbname}" < sa/db/boulder_sa/20240321_CombinedSchema.psql
 
     USERS_SQL="../db-users/${db}.psql"
     ${dbconn} -d "${dbname}" < $USERS_SQL || exit_err "Unable to add users from ${USERS_SQL}"

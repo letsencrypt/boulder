@@ -29,8 +29,6 @@ GRANT SELECT,INSERT ON blockedKeys TO sa;
 GRANT SELECT,INSERT,UPDATE ON newOrdersRL TO sa;
 GRANT SELECT ON incidents TO sa;
 GRANT SELECT,INSERT,UPDATE ON crlShards TO sa;
-GRANT SELECT,INSERT,UPDATE ON revokedCertificates TO sa;
-GRANT SELECT,INSERT,UPDATE ON replacementOrders TO sa;
 
 GRANT SELECT ON certificates TO sa_ro;
 GRANT SELECT ON certificateStatus TO sa_ro;
@@ -50,8 +48,6 @@ GRANT SELECT ON blockedKeys TO sa_ro;
 GRANT SELECT ON newOrdersRL TO sa_ro;
 GRANT SELECT ON incidents TO sa_ro;
 GRANT SELECT ON crlShards TO sa_ro;
-GRANT SELECT ON revokedCertificates TO sa_ro;
-GRANT SELECT ON replacementOrders TO sa_ro;
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO ocsp_resp;
@@ -79,9 +75,6 @@ GRANT SELECT ON keyHashToSerial TO badkeyrevoker;
 GRANT SELECT ON certificateStatus TO badkeyrevoker;
 GRANT SELECT ON precertificates TO badkeyrevoker;
 GRANT SELECT ON registrations TO badkeyrevoker;
-
--- ProxySQL --
-GRANT ALL PRIVILEGES ON monitor TO proxysql;
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON database boulder_sa_integration to test_setup;
