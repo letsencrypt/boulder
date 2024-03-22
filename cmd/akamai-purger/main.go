@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -193,6 +194,8 @@ func (ap *akamaiPurger) purgeBatch(batch [][]string) error {
 	return nil
 }
 
+// takeBatch returns a slice containing the next batch of entries from the purge stack.
+// It copies at most entriesPerBatch entries from the top of the stack into a new slice which is returned.
 func (ap *akamaiPurger) takeBatch() [][]string {
 	ap.Lock()
 	defer ap.Unlock()
@@ -211,7 +214,11 @@ func (ap *akamaiPurger) takeBatch() [][]string {
 	}
 
 	batchBegin := stackSize - batchSize
-	batch := ap.toPurge[batchBegin:]
+	batchEnd := stackSize
+	batch := make([][]string, batchSize)
+	for i, entry := range ap.toPurge[batchBegin:batchEnd] {
+		batch[i] = slices.Clone(entry)
+	}
 	ap.toPurge = ap.toPurge[:batchBegin]
 	return batch
 }
