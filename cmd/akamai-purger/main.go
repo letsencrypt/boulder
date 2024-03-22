@@ -179,9 +179,6 @@ func (ap *akamaiPurger) len() int {
 }
 
 func (ap *akamaiPurger) purgeBatch(batch [][]string) error {
-	ap.Lock()
-	defer ap.Unlock()
-
 	// Flatten the batch of stack entries into a single slice of URLs.
 	var urls []string
 	for _, url := range batch {
