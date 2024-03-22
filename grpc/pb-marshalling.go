@@ -88,7 +88,7 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		Validationrecords: recordAry,
 		Validated:         validated,
 		Scope:             string(challenge.Scope),
-		AccountURL:        string(challenge.AccountURL),
+		AccountURL:        challenge.AccountURL,
 	}, nil
 }
 
@@ -126,7 +126,7 @@ func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		ValidationRecord: recordAry,
 		Validated:        validated,
 		Scope:            core.AuthorizationScope(in.Scope),
-		AccountURL:       string(in.AccountURL),
+		AccountURL:       in.AccountURL,
 	}
 	if in.KeyAuthorization != "" {
 		ch.ProvidedKeyAuthorization = in.KeyAuthorization
