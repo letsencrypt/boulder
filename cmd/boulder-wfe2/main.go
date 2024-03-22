@@ -168,6 +168,12 @@ type Config struct {
 		// CP/CPS, under "DV-SSL Subscriber Certificate". The value must match
 		// the CA and RA configurations.
 		MaxNames int `validate:"min=0,max=100"`
+
+		// CertificateProfileNames is the list of acceptable certificate profile
+		// names for newOrder requests. Requests with a profile name not in this
+		// list will be rejected. This field is optional; if unset, no profile
+		// names are accepted.
+		CertificateProfileNames []string `validate:"omitempty,dive,alphanum,min=1,max=32"`
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -409,6 +415,7 @@ func main() {
 		limiter,
 		txnBuilder,
 		maxNames,
+		c.WFE.CertificateProfileNames,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
 
