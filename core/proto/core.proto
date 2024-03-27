@@ -90,7 +90,7 @@ message Registration {
 }
 
 message Authorization {
-  // Next unused field number: 12
+  // Next unused field number: 11
   string id = 1;
   string identifier = 2;
   int64 registrationID = 3;
@@ -101,7 +101,6 @@ message Authorization {
   reserved 7; // previously ACMEv1 combinations
   reserved 8; // previously v2
   string scope = 10;
-  string accountURL = 11;
 }
 
 message Order {

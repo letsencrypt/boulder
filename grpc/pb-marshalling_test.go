@@ -264,7 +264,6 @@ func TestAuthz(t *testing.T) {
 		Expires:        nil,
 		Challenges:     []core.Challenge{challA, challB},
 		Scope:          core.AuthorizationScopeHost,
-		AccountURL:     "https://example.com/acme/acct/1",
 	}
 	pbAuthz2, err := AuthzToPB(inAuthzNilExpires)
 	test.AssertNotError(t, err, "AuthzToPB failed")

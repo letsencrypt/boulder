@@ -1250,7 +1250,6 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 	authz.ID = ""
 	authz.RegistrationID = 0
 	authz.Scope = ""
-	authz.AccountURL = ""
 
 	// The ACME spec forbids allowing "*" in authorization identifiers. Boulder
 	// allows this internally as a means of tracking when an authorization
@@ -1341,14 +1340,14 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			return
 		}
 
-		// We add the JWS `kid` to the Authorization before sending to the RA.
-		// This ensures an Account URL is available for challenge validation.
+		// The JWS `kid` is needed for AccountURL-scoped Challenge validation.
 		kid := jws.Signatures[0].Header.KeyID
 		if kid == "" {
 			wfe.sendError(response, logEvent, probs.Malformed("No JWS kid field"), nil)
 			return
 		}
-		authz.AccountURL = kid
+		challenge := authz.Challenges[challengeIndex]
+		challenge.AccountURL = kid
 
 		authzPB, err := bgrpc.AuthzToPB(authz)
 		if err != nil {

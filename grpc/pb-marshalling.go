@@ -328,7 +328,6 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		Expires:        expires,
 		Challenges:     challs,
 		Scope:          string(authz.Scope),
-		AccountURL:     authz.AccountURL,
 	}, nil
 }
 
@@ -354,7 +353,6 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		Expires:        expires,
 		Challenges:     challs,
 		Scope:          core.AuthorizationScope(pb.Scope),
-		AccountURL:     pb.AccountURL,
 	}
 	return authz, nil
 }

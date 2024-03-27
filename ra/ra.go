@@ -1859,9 +1859,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// TODO(@cpu): Rename ProvidedKeyAuthorization to KeyAuthorization
 	ch.ProvidedKeyAuthorization = expectedKeyAuthorization
 
-	// Copy the Authorization Account URL to the challenge for the VA.
-	ch.AccountURL = authz.AccountURL
-
 	// Double check before sending to VA
 	if cErr := ch.CheckConsistencyForValidation(); cErr != nil {
 		return nil, berrors.MalformedError(cErr.Error())

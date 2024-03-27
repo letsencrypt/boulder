@@ -393,12 +393,6 @@ type Authorization struct {
 	// validation (e.g. dns-account-01) but not stored in the database
 	// or represented externally.
 	Scope AuthorizationScope `json:"scope,omitempty" db:"-"`
-
-	// The Account URL of the account associated with this authorization.
-	// It matches the value of the JWS protected header `kid`.
-	// This is used internally for challenge validation (e.g. dns-account-01)
-	// but not stored in the database or represented externally.
-	AccountURL string `json:"accountURL,omitempty" db:"-"`
 }
 
 // FindChallengeByStringID will look for a challenge matching the given ID inside
