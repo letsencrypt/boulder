@@ -1341,7 +1341,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		}
 
 		// The JWS `kid` is needed for AccountURL-scoped Challenge validation.
-		kid := jws.Signatures[0].Header.KeyID
+		kid := jws.Signatures[0].Protected.KeyID
 		if kid == "" {
 			wfe.sendError(response, logEvent, probs.Malformed("No JWS kid field"), nil)
 			return
