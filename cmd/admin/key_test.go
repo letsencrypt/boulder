@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"os"
+	"os/user"
 	"path"
 	"testing"
 	"time"
@@ -73,12 +74,13 @@ func TestBlockSPKIHash(t *testing.T) {
 	test.AssertNotError(t, err, "computing test SPKI hash")
 
 	a := admin{saroc: &mocks.StorageAuthorityReadOnly{}, sac: &msa, clk: fc, log: log}
+	u := &user.User{}
 
 	// A full run should result in one request with the right fields.
 	msa.reset()
 	log.Clear()
 	a.dryRun = false
-	err = a.blockSPKIHash(context.Background(), keyHash[:], "hello world")
+	err = a.blockSPKIHash(context.Background(), keyHash[:], u, "hello world")
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(log.GetAllMatching("Found 0 unexpired certificates")), 1)
 	test.AssertEquals(t, len(msa.blockRequests), 1)
@@ -90,7 +92,7 @@ func TestBlockSPKIHash(t *testing.T) {
 	log.Clear()
 	a.dryRun = true
 	a.sac = dryRunSAC{log: log}
-	err = a.blockSPKIHash(context.Background(), keyHash[:], "")
+	err = a.blockSPKIHash(context.Background(), keyHash[:], u, "")
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(log.GetAllMatching("Found 0 unexpired certificates")), 1)
 	test.AssertEquals(t, len(log.GetAllMatching("dry-run:")), 1)
