@@ -1,4 +1,4 @@
-acme>=2.0
+acme @ git+https://github.com/fastly/certbot.git@dns-account-01-support#subdirectory=acme
 cryptography>=0.7
 PyOpenSSL
 requests

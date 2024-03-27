@@ -439,7 +439,7 @@ func (va *ValidationAuthorityImpl) validate(
 		baseIdentifier.Value = strings.TrimPrefix(identifier.Value, "*.")
 	}
 
-	validationRecords, err := va.validateChallenge(ctx, baseIdentifier, challenge)
+	validationRecords, err := va.validateChallenge(ctx, baseIdentifier, challenge, regid)
 	if err != nil {
 		return validationRecords, err
 	}
@@ -455,7 +455,7 @@ func (va *ValidationAuthorityImpl) validate(
 	return validationRecords, nil
 }
 
-func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, error) {
+func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge, regid int64) ([]core.ValidationRecord, error) {
 	err := challenge.CheckConsistencyForValidation()
 	if err != nil {
 		return nil, berrors.MalformedError("Challenge failed consistency check: %s", err)
@@ -467,6 +467,9 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 		return va.validateDNS01(ctx, identifier, challenge)
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, identifier, challenge)
+	case core.ChallengeTypeDNSAccount01:
+		//we know regid is filled for normal caller and regid 0 is invalid
+		return va.validateDNSAccount01(ctx, identifier, challenge, regid)
 	}
 	return nil, berrors.MalformedError("invalid challenge type %s", challenge.Type)
 }

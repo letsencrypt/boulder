@@ -99,7 +99,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 
 	chall := dnsChallenge()
 	chall.Token = ""
-	_, err := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, err := va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
 	prob := detailedError(err)
 	if prob.Type != probs.MalformedProblem {
 		t.Errorf("Got wrong error type: expected %s, got %s",
@@ -110,7 +110,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 	}
 
 	chall.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
-	_, err = va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, err = va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
 	prob = detailedError(err)
 	if prob.Type != probs.MalformedProblem {
 		t.Errorf("Got wrong error type: expected %s, got %s",
@@ -121,7 +121,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 	}
 
 	chall.ProvidedKeyAuthorization = "a"
-	_, err = va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, err = va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
 	prob = detailedError(err)
 	if prob.Type != probs.MalformedProblem {
 		t.Errorf("Got wrong error type: expected %s, got %s",
@@ -136,7 +136,7 @@ func TestDNSValidationNotSane(t *testing.T) {
 func TestDNSValidationServFail(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, err := va.validateChallenge(ctx, dnsi("servfail.com"), dnsChallenge())
+	_, err := va.validateChallenge(ctx, dnsi("servfail.com"), dnsChallenge(), testregid)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
@@ -156,7 +156,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 		log,
 		nil)
 
-	_, err = va.validateChallenge(ctx, dnsi("localhost"), dnsChallenge())
+	_, err = va.validateChallenge(ctx, dnsi("localhost"), dnsChallenge(), testregid)
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
@@ -164,7 +164,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 func TestDNSValidationOK(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsChallenge())
+	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsChallenge(), testregid)
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }
@@ -172,7 +172,7 @@ func TestDNSValidationOK(t *testing.T) {
 func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("no-authority-dns01.com"), dnsChallenge())
+	_, prob := va.validateChallenge(ctx, dnsi("no-authority-dns01.com"), dnsChallenge(), testregid)
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }
@@ -250,4 +250,90 @@ func TestAvailableAddresses(t *testing.T) {
 				fmt.Sprintf("Wrong v6 result index %d: expected %q got %q", i, v6addr.String(), v6result[i].String()))
 		}
 	}
+}
+func TestAccounturlHosts(t *testing.T) {
+	//example from rfc draft
+	accurlprefix := []string{"http://boulder.service.consul:4000/acme/reg/", "test.invalid/acct/"}
+	urls := accountURLHostname(accurlprefix, identifier.DNSIdentifier("test.dns-account-01.com"), 314159265359)
+	test.AssertEquals(t, urls[0], "_acme-challenge_rwuuxhw32v7vsbt5.test.dns-account-01.com")
+}
+
+func dnsAccountChallenge() core.Challenge {
+	return createChallenge(core.ChallengeTypeDNSAccount01)
+}
+
+func TestDNSAccountValidationGood(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsAccountChallenge(), testregid)
+
+	test.Assert(t, prob == nil, "Should be valid.")
+}
+
+func TestDNSAccountValidationServerFail(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+
+	_, err := va.validateChallenge(ctx, dnsi("servfail.com"), dnsAccountChallenge(), testregid)
+	prob := detailedError(err)
+
+	test.AssertEquals(t, prob.Type, probs.DNSProblem)
+}
+
+func TestDNSAccountWithMultiAccURLGood(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+	//add another account prefix
+	va.accountURIPrefixes = []string{"test.invalid/acct/", accountURIPrefixes[0]}
+	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsAccountChallenge(), testregid)
+
+	test.Assert(t, prob == nil, "Should be valid.")
+}
+
+func TestDNSAccountWithMultiAccURLbothwrong(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+	//add another account prefix
+	va.accountURIPrefixes = []string{"test.invalid/acct/", accountURIPrefixes[0]}
+	_, err := va.validateChallenge(ctx, dnsi("wrong-dns01.com"), dnsAccountChallenge(), testregid)
+
+	if err == nil {
+		t.Fatalf("Successful DNS validation with wrong TXT record")
+	}
+	//problem should prefer domain with some txt record than empty one
+	test.AssertEquals(t, err.Error(), "Incorrect TXT record \"a\" found at _acme-challenge_62oc7an6git3ml2v.wrong-dns01.com")
+}
+
+func TestDNSAccountValidationNotSane(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+	chall := dnsAccountChallenge()
+	chall.Token = ""
+	_, err := va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
+	prob := detailedError(err)
+	if prob.Type != probs.MalformedProblem {
+		t.Errorf("Got wrong error type: expected %s, got %s",
+			prob.Type, probs.MalformedProblem)
+	}
+	if !strings.Contains(prob.Error(), "Challenge failed consistency check:") {
+		t.Errorf("Got wrong error: %s", prob.Error())
+	}
+
+	chall.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
+	_, err = va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
+	prob = detailedError(err)
+	if prob.Type != probs.MalformedProblem {
+		t.Errorf("Got wrong error type: expected %s, got %s",
+			prob.Type, probs.MalformedProblem)
+	}
+	if !strings.Contains(prob.Error(), "Challenge failed consistency check:") {
+		t.Errorf("Got wrong error: %s", prob.Error())
+	}
+
+	chall.ProvidedKeyAuthorization = "a"
+	_, err = va.validateChallenge(ctx, dnsi("localhost"), chall, testregid)
+	prob = detailedError(err)
+	if prob.Type != probs.MalformedProblem {
+		t.Errorf("Got wrong error type: expected %s, got %s",
+			prob.Type, probs.MalformedProblem)
+	}
+	if !strings.Contains(prob.Error(), "Challenge failed consistency check:") {
+		t.Errorf("Got wrong error: %s", prob.Error())
+	}
+
 }
