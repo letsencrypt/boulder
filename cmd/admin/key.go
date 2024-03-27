@@ -26,12 +26,12 @@ func (a *admin) subcommandBlockKey(ctx context.Context, args []string) error {
 	subflags := flag.NewFlagSet("block-key", flag.ExitOnError)
 
 	// General flags relevant to all key input methods.
-	parallelism := subflags.Uint("parallelism", 10, "Number of concurrent workers to use while revoking certs")
+	parallelism := subflags.Uint("parallelism", 10, "Number of concurrent workers to use while blocking keys")
 	comment := subflags.String("comment", "", "Additional context to add to database comment column")
 
 	// Flags specifying the input method for the keys to be blocked.
 	privKey := subflags.String("private-key", "", "Block issuance for the pubkey corresponding to this private key")
-	spkiFile := subflags.String("spki-file", "", "Block issuance for all keys whose hexadecimal SPKI hashes are in this file")
+	spkiFile := subflags.String("spki-file", "", "Block issuance for all keys listed in this file as SHA256 hashes of SPKI, hex encoded, one per line")
 
 	_ = subflags.Parse(args)
 
@@ -104,6 +104,11 @@ func (a *admin) spkiHashesFromFile(filePath string) ([][]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("decoding hex spki hash %q: %w", spkiHex, err)
 		}
+
+		if len(spkiHash) != 32 {
+			return nil, fmt.Errorf("got spki hash of unexpected length: %q (%d)", spkiHex, len(spkiHash))
+		}
+
 		spkiHashes = append(spkiHashes, spkiHash)
 	}
 
