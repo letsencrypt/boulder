@@ -1346,8 +1346,8 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			wfe.sendError(response, logEvent, probs.Malformed("No JWS kid field"), nil)
 			return
 		}
-		challenge := authz.Challenges[challengeIndex]
-		challenge.AccountURL = kid
+		ch := &authz.Challenges[challengeIndex]
+		ch.AccountURL = kid
 
 		authzPB, err := bgrpc.AuthzToPB(authz)
 		if err != nil {
