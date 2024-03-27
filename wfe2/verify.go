@@ -17,7 +17,6 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/exp/maps"
 	"google.golang.org/grpc/status"
 
 	"github.com/letsencrypt/boulder/core"
@@ -56,20 +55,16 @@ func sigAlgorithmForKey(key *jose.JSONWebKey) (jose.SignatureAlgorithm, error) {
 	return "", errors.New("JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521)")
 }
 
-var supportedAlgs = map[jose.SignatureAlgorithm]bool{
-	jose.RS256: true,
-	jose.ES256: true,
-	jose.ES384: true,
-	jose.ES512: true,
-}
-
 // getSupportedAlgs returns a sorted slice of joseSignatureAlgorithm's from a
-// map of boulder allowed signature algorithms.
+// map of boulder allowed signature algorithms. We use a function for this to
+// ensure that the source-of-truth slice can never be modified.
 func getSupportedAlgs() []jose.SignatureAlgorithm {
-	sigAlgs := maps.Keys(supportedAlgs)
-	slices.Sort(sigAlgs)
-
-	return sigAlgs
+	return []jose.SignatureAlgorithm{
+		jose.RS256,
+		jose.ES256,
+		jose.ES384,
+		jose.ES512,
+	}
 }
 
 // Check that (1) there is a suitable algorithm for the provided key based on its
@@ -78,7 +73,7 @@ func getSupportedAlgs() []jose.SignatureAlgorithm {
 // that algorithm.
 func checkAlgorithm(key *jose.JSONWebKey, header jose.Header) error {
 	sigHeaderAlg := jose.SignatureAlgorithm(header.Algorithm)
-	if !supportedAlgs[sigHeaderAlg] {
+	if !slices.Contains(getSupportedAlgs(), sigHeaderAlg) {
 		return fmt.Errorf(
 			"JWS signature header contains unsupported algorithm %q, expected one of %s",
 			header.Algorithm, getSupportedAlgs(),
