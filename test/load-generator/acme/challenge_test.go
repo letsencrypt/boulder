@@ -31,6 +31,11 @@ func TestNewChallengeStrategy(t *testing.T) {
 			ExpectedStratType: "*acme.preferredTypeChallengeStrategy",
 		},
 		{
+			Name:              "known name, DNS-ACCOUNT-01",
+			InputName:         "DNS-ACCOUNT-01",
+			ExpectedStratType: "*acme.preferredTypeChallengeStrategy",
+		},
+		{
 			Name:              "known name, TLS-ALPN-01",
 			InputName:         "TLS-ALPN-01",
 			ExpectedStratType: "*acme.preferredTypeChallengeStrategy",

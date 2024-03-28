@@ -83,6 +83,7 @@ func TestMain(m *testing.M) {
 }
 
 var accountURIPrefixes = []string{"http://boulder.service.consul:4000/acme/reg/"}
+var accountKeyID = string("https://example.com/acme/acct/1")
 
 func createValidationRequest(domain string, challengeType core.AcmeChallenge) *vapb.PerformValidationRequest {
 	return &vapb.PerformValidationRequest{
@@ -93,6 +94,7 @@ func createValidationRequest(domain string, challengeType core.AcmeChallenge) *v
 			Token:             expectedToken,
 			Validationrecords: nil,
 			KeyAuthorization:  expectedKeyAuthorization,
+			AccountURL:        accountKeyID,
 		},
 		Authz: &vapb.AuthzMeta{
 			Id:    "",
@@ -108,6 +110,8 @@ func createChallenge(challengeType core.AcmeChallenge) core.Challenge {
 		Token:                    expectedToken,
 		ValidationRecord:         []core.ValidationRecord{},
 		ProvidedKeyAuthorization: expectedKeyAuthorization,
+		Scope:                    core.AuthorizationScopeHost,
+		AccountURL:               accountKeyID,
 	}
 }
 

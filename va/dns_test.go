@@ -22,6 +22,10 @@ func dnsChallenge() core.Challenge {
 	return createChallenge(core.ChallengeTypeDNS01)
 }
 
+func dnsAccountChallenge() core.Challenge {
+	return createChallenge(core.ChallengeTypeDNSAccount01)
+}
+
 func TestDNSValidationEmpty(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
@@ -39,6 +43,23 @@ func TestDNSValidationEmpty(t *testing.T) {
 	}, 1)
 }
 
+func TestDNSAccountValidationEmpty(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+
+	// This test calls PerformValidation directly, because that is where the
+	// metrics checked below are incremented.
+	req := createValidationRequest("empty-txts.com", core.ChallengeTypeDNSAccount01)
+	res, _ := va.PerformValidation(context.Background(), req)
+	test.AssertEquals(t, res.Problems.ProblemType, "unauthorized")
+	test.AssertEquals(t, res.Problems.Detail, "No TXT record found at _vrr7uudrklshxb6l._acme-host-challenge.empty-txts.com")
+
+	test.AssertMetricWithLabelsEquals(t, va.metrics.validationTime, prometheus.Labels{
+		"type":         "dns-account-01",
+		"result":       "invalid",
+		"problem_type": "unauthorized",
+	}, 1)
+}
+
 func TestDNSValidationWrong(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 	_, err := va.validateDNS01(context.Background(), dnsi("wrong-dns01.com"), dnsChallenge())
@@ -47,6 +68,17 @@ func TestDNSValidationWrong(t *testing.T) {
 	}
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Error(), "unauthorized :: Incorrect TXT record \"a\" found at _acme-challenge.wrong-dns01.com")
+}
+
+func TestDNSAccountValidationWrong(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+
+	_, err := va.validateDNSAccount01(context.Background(), dnsi("wrong-dns01.com"), dnsAccountChallenge())
+	if err == nil {
+		t.Fatalf("Successful DNS validation with wrong TXT record")
+	}
+	prob := detailedError(err)
+	test.AssertEquals(t, prob.Error(), "unauthorized :: Incorrect TXT record \"a\" found at _vrr7uudrklshxb6l._acme-host-challenge.wrong-dns01.com")
 }
 
 func TestDNSValidationWrongMany(t *testing.T) {
@@ -80,6 +112,15 @@ func TestDNSValidationFailure(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
 }
 
+func TestDNSAccountValidationFailure(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+
+	_, err := va.validateDNSAccount01(ctx, dnsi("localhost"), dnsAccountChallenge())
+	prob := detailedError(err)
+
+	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
+}
+
 func TestDNSValidationInvalid(t *testing.T) {
 	var notDNS = identifier.ACMEIdentifier{
 		Type:  identifier.IdentifierType("iris"),
@@ -89,6 +130,32 @@ func TestDNSValidationInvalid(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
 	_, err := va.validateDNS01(ctx, notDNS, dnsChallenge())
+	prob := detailedError(err)
+
+	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+}
+
+func TestDNSAccountValidationInvalid(t *testing.T) {
+	var notDNS = identifier.ACMEIdentifier{
+		Type:  identifier.IdentifierType("iris"),
+		Value: "790DB180-A274-47A4-855F-31C428CB1072",
+	}
+
+	va, _ := setup(nil, 0, "", nil, nil)
+
+	_, err := va.validateDNS01(ctx, notDNS, dnsAccountChallenge())
+	prob := detailedError(err)
+
+	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+}
+
+func TestDNSAccountValidationUnsupportedScope(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+
+	chall := dnsAccountChallenge()
+	chall.Scope = core.AuthorizationScope("invalid")
+
+	_, err := va.validateDNSAccount01(ctx, dnsi("localhost"), chall)
 	prob := detailedError(err)
 
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
@@ -165,6 +232,14 @@ func TestDNSValidationOK(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
 	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsChallenge())
+
+	test.Assert(t, prob == nil, "Should be valid.")
+}
+
+func TestDNSAccountValidationOK(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil, nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("good-dns01.com"), dnsAccountChallenge())
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }
@@ -250,4 +325,16 @@ func TestAvailableAddresses(t *testing.T) {
 				fmt.Sprintf("Wrong v6 result index %d: expected %q got %q", i, v6addr.String(), v6result[i].String()))
 		}
 	}
+}
+
+func TestGetDNSAccountChallengeSubdomain(t *testing.T) {
+	// Test that the DNS account challenge subdomain is correctly generated
+	// using example values from:
+	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-scoped-dns-challenges-00
+	const accountResourceURL = "https://example.com/acme/acct/ExampleAccount"
+	const baseValidationDomain = "example.org"
+	const validationScope = core.AuthorizationScopeWildcard
+	const expectedSubdomain = "_ujmmovf2vn55tgye._acme-wildcard-challenge.example.org"
+	subdomain := getDNSAccountChallengeSubdomain(accountResourceURL, validationScope, baseValidationDomain)
+	test.AssertEquals(t, subdomain, expectedSubdomain)
 }

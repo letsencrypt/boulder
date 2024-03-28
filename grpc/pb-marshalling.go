@@ -87,6 +87,8 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		Error:             prob,
 		Validationrecords: recordAry,
 		Validated:         validated,
+		Scope:             string(challenge.Scope),
+		AccountURL:        challenge.AccountURL,
 	}, nil
 }
 
@@ -123,6 +125,8 @@ func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		Error:            prob,
 		ValidationRecord: recordAry,
 		Validated:        validated,
+		Scope:            core.AuthorizationScope(in.Scope),
+		AccountURL:       in.AccountURL,
 	}
 	if in.KeyAuthorization != "" {
 		ch.ProvidedKeyAuthorization = in.KeyAuthorization
@@ -323,6 +327,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		Status:         string(authz.Status),
 		Expires:        expires,
 		Challenges:     challs,
+		Scope:          string(authz.Scope),
 	}, nil
 }
 
@@ -347,6 +352,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		Status:         core.AcmeStatus(pb.Status),
 		Expires:        expires,
 		Challenges:     challs,
+		Scope:          core.AuthorizationScope(pb.Scope),
 	}
 	return authz, nil
 }

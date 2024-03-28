@@ -92,6 +92,11 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 			},
 			{
 				Token:  core.NewToken(),
+				Type:   core.ChallengeTypeDNSAccount01,
+				Status: core.StatusPending,
+			},
+			{
+				Token:  core.NewToken(),
 				Type:   core.ChallengeTypeTLSALPN01,
 				Status: core.StatusPending,
 			},

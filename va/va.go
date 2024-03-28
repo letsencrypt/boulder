@@ -430,6 +430,9 @@ func (va *ValidationAuthorityImpl) validate(
 	challenge core.Challenge,
 ) ([]core.ValidationRecord, error) {
 
+	// Set default scope for host-only.
+	challenge.Scope = core.AuthorizationScopeHost
+
 	// If the identifier is a wildcard domain we need to validate the base
 	// domain by removing the "*." wildcard prefix. We create a separate
 	// `baseIdentifier` here before starting the `va.checkCAA` goroutine with the
@@ -437,6 +440,8 @@ func (va *ValidationAuthorityImpl) validate(
 	baseIdentifier := identifier
 	if strings.HasPrefix(identifier.Value, "*.") {
 		baseIdentifier.Value = strings.TrimPrefix(identifier.Value, "*.")
+		// Set the authorization scope for wildcard.
+		challenge.Scope = core.AuthorizationScopeWildcard
 	}
 
 	validationRecords, err := va.validateChallenge(ctx, baseIdentifier, challenge)
@@ -465,6 +470,8 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 		return va.validateHTTP01(ctx, identifier, challenge)
 	case core.ChallengeTypeDNS01:
 		return va.validateDNS01(ctx, identifier, challenge)
+	case core.ChallengeTypeDNSAccount01:
+		return va.validateDNSAccount01(ctx, identifier, challenge)
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, identifier, challenge)
 	}
