@@ -36,6 +36,7 @@ func TestOCSP(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.profile,
+		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,

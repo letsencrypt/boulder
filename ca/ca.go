@@ -52,28 +52,36 @@ type issuerMaps struct {
 	byNameID map[issuance.NameID]*issuance.Issuer
 }
 
+// certProfilesMap allows looking up the human-readable name of a certificate
+// profile to retrieve the actual profile.
+type certProfilesMaps struct {
+	byHash map[[32]byte]*issuance.Profile
+	byName map[string]*issuance.Profile
+}
+
 // certificateAuthorityImpl represents a CA that signs certificates.
 // It can sign OCSP responses as well, but only via delegation to an ocspImpl.
 type certificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
-	sa      sapb.StorageAuthorityCertificateClient
-	pa      core.PolicyAuthority
-	issuers issuerMaps
-	profile *issuance.Profile
+	sa           sapb.StorageAuthorityCertificateClient
+	pa           core.PolicyAuthority
+	issuers      issuerMaps
+	certProfiles certProfilesMaps
 
 	// This is temporary, and will be used for testing and slow roll-out
 	// of ECDSA issuance, but will then be removed.
-	ecdsaAllowList *ECDSAAllowList
-	prefix         int // Prepended to the serial number
-	validityPeriod time.Duration
-	backdate       time.Duration
-	maxNames       int
-	keyPolicy      goodkey.KeyPolicy
-	clk            clock.Clock
-	log            blog.Logger
-	signatureCount *prometheus.CounterVec
-	signErrorCount *prometheus.CounterVec
-	lintErrorCount prometheus.Counter
+	ecdsaAllowList   *ECDSAAllowList
+	prefix           int // Prepended to the serial number
+	validityPeriod   time.Duration
+	backdate         time.Duration
+	maxNames         int
+	keyPolicy        goodkey.KeyPolicy
+	clk              clock.Clock
+	log              blog.Logger
+	signatureCount   *prometheus.CounterVec
+	signErrorCount   *prometheus.CounterVec
+	lintErrorCount   prometheus.Counter
+	certProfileCount *prometheus.CounterVec
 }
 
 // makeIssuerMaps processes a list of issuers into a set of maps, mapping
@@ -96,6 +104,41 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 	return issuerMaps{issuersByAlg, issuersByNameID}
 }
 
+// makeCertificateProfilesMap processes a list of certificate issuance profiles
+// into a set of maps, mapping a human-readable name to the profile and a unique
+// hash over the profile to the profile itself. It returns the maps or an error
+// if a duplicate name or hash is found.
+//
+// The unique hash is useful in the case of
+//   - RA instructs CA1 to issue a precertificate
+//   - CA1 returns the precertificate DER bytes to the RA
+//   - RA instructs CA2 to issue a final certificate, but CA2 does not contain a
+//     profile corresponding to that hash and an issuance is prevented.
+func makeCertificateProfilesMap(origProfile *issuance.Profile, certProfiles []*issuance.Profile) (certProfilesMaps, error) {
+	var allProfiles []*issuance.Profile
+	allProfiles = append(allProfiles, origProfile)
+	allProfiles = append(allProfiles, certProfiles...)
+
+	profilesByName := make(map[string]*issuance.Profile, len(allProfiles))
+	profilesByHash := make(map[[32]byte]*issuance.Profile, len(allProfiles))
+
+	for _, profile := range allProfiles {
+		if profilesByName[profile.Name] == nil {
+			profilesByName[profile.Name] = profile
+		} else {
+			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile name %+v", profile)
+		}
+
+		if profilesByHash[profile.GetHash()] == nil {
+			profilesByHash[profile.GetHash()] = profile
+		} else {
+			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile hash %+v", profile)
+		}
+	}
+
+	return certProfilesMaps{profilesByHash, profilesByName}, nil
+}
+
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
 // from any number of issuance.Issuers according to their profiles, and can sign
 // OCSP (via delegation to an ocspImpl and its issuers).
@@ -104,6 +147,7 @@ func NewCertificateAuthorityImpl(
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
 	certificateProfile *issuance.Profile,
+	certificateProfiles []*issuance.Profile,
 	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
 	certBackdate time.Duration,
@@ -139,6 +183,11 @@ func NewCertificateAuthorityImpl(
 		return nil, errors.New("must have at least one certificate profile")
 	}
 
+	certProfiles, err := makeCertificateProfilesMap(certificateProfile, certificateProfiles)
+	if err != nil {
+		return nil, err
+	}
+
 	issuers := makeIssuerMaps(boulderIssuers)
 
 	lintErrorCount := prometheus.NewCounter(
@@ -148,25 +197,60 @@ func NewCertificateAuthorityImpl(
 		})
 	stats.MustRegister(lintErrorCount)
 
+	certProfileCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "certificate_profile",
+			Help: "A counter of certificate profiles used for issuance labelled by profile name, hex representation of the profile hash, certificate purpose (precert/cert), and issuance status (success/failure)",
+		}, []string{"profile", "hash", "purpose", "status"})
+	stats.MustRegister(certProfileCount)
+
 	ca = &certificateAuthorityImpl{
-		sa:             sa,
-		pa:             pa,
-		issuers:        issuers,
-		profile:        certificateProfile,
-		validityPeriod: certExpiry,
-		backdate:       certBackdate,
-		prefix:         serialPrefix,
-		maxNames:       maxNames,
-		keyPolicy:      keyPolicy,
-		log:            logger,
-		signatureCount: signatureCount,
-		signErrorCount: signErrorCount,
-		lintErrorCount: lintErrorCount,
-		clk:            clk,
-		ecdsaAllowList: ecdsaAllowList,
+		sa:               sa,
+		pa:               pa,
+		issuers:          issuers,
+		certProfiles:     certProfiles,
+		validityPeriod:   certExpiry,
+		backdate:         certBackdate,
+		prefix:           serialPrefix,
+		maxNames:         maxNames,
+		keyPolicy:        keyPolicy,
+		log:              logger,
+		signatureCount:   signatureCount,
+		signErrorCount:   signErrorCount,
+		lintErrorCount:   lintErrorCount,
+		certProfileCount: certProfileCount,
+		clk:              clk,
+		ecdsaAllowList:   ecdsaAllowList,
 	}
 
 	return ca, nil
+}
+
+// certificateProfileNameExists checks if the given certificate profile name
+// exists in the CA's list of configured certificate profiles. It returns the
+// hash of the profile or an error. The name is guaranteed to be unique, but the
+// profile values may differ between CA nodes and should not be solely relied
+// upon.
+func (ca *certificateAuthorityImpl) certificateProfileNameExists(name string) ([32]byte, error) {
+	profile, ok := ca.certProfiles.byName[name]
+	if !ok {
+		return [32]byte{}, fmt.Errorf("the CA is not capable of using a profile named %s", name)
+	}
+
+	return profile.GetHash(), nil
+}
+
+// certificateProfileHashExists checks if the given certificate profile hash
+// exists in the CA's list of configured certificate profiles. It returns the
+// profile or an error. The hash over the whole profile is guaranteed to be
+// unique.
+func (ca *certificateAuthorityImpl) certificateProfileHashExists(hash [32]byte) (*issuance.Profile, error) {
+	profile, ok := ca.certProfiles.byHash[hash]
+	if !ok {
+		return nil, fmt.Errorf("the CA is not capable of using a profile with hash %d", hash)
+	}
+
+	return profile, nil
 }
 
 // noteSignError is called after operations that may cause a PKCS11 signing error.
@@ -187,6 +271,17 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	// issueReq.orderID may be zero, for ACMEv1 requests.
 	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID) {
 		return nil, berrors.InternalServerError("Incomplete issue certificate request")
+	}
+
+	// The CA must check if it is capable of issuing for the given
+	// certificate profile name. The name is checked here instead of the
+	// hash because the RA is unaware of what certificate profiles exist.
+	if issueReq.CertProfileName == "" {
+		issueReq.CertProfileName = issuance.DefaultCertProfileName
+	}
+	profileHashBytes, err := ca.certificateProfileNameExists(issueReq.CertProfileName)
+	if err != nil {
+		return nil, err
 	}
 
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
@@ -217,7 +312,8 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	}
 
 	return &capb.IssuePrecertificateResponse{
-		DER: precertDER,
+		DER:             precertDER,
+		CertProfileHash: profileHashBytes[:],
 	}, nil
 }
 
@@ -247,6 +343,25 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	// issueReq.orderID may be zero, for ACMEv1 requests.
 	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID) {
 		return nil, berrors.InternalServerError("Incomplete cert for precertificate request")
+	}
+
+	// TODO(#6966): Remove this section after the RA passes the certificate
+	// profile hash in.
+	if req.CertProfileHash == nil {
+		profileHashBytes, err := ca.certificateProfileNameExists(issuance.DefaultCertProfileName)
+		if err != nil {
+			return nil, err
+		}
+		req.CertProfileHash = profileHashBytes[:]
+	}
+
+	// The certificate profile hash is checked here instead of the name because
+	// the hash is over the entire contents of a *ProfileConfig which includes
+	// the name giving assurance that the certificate profile has remained
+	// unchanged during the roundtrip from a CA, to the RA, then back to a CA.
+	certProfile, err := ca.certificateProfileHashExists([32]byte(req.CertProfileHash))
+	if err != nil {
+		return nil, err
 	}
 
 	precert, err := x509.ParseCertificate(req.DER)
@@ -283,28 +398,32 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	}
 
 	names := strings.Join(issuanceReq.DNSNames, ", ")
+	certProfileCountLabels := prometheus.Labels{"purpose": string(certType), "profile": certProfile.Name, "hash": hex.EncodeToString(req.CertProfileHash)}
 
-	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] precert=[%s]",
-		serialHex, req.RegistrationID, names, hex.EncodeToString(precert.Raw))
+	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] precert=[%s]",
+		serialHex, req.RegistrationID, names, certProfile.Name, hex.EncodeToString(req.CertProfileHash), hex.EncodeToString(precert.Raw))
 
-	_, issuanceToken, err := issuer.Prepare(ca.profile, issuanceReq)
+	_, issuanceToken, err := issuer.Prepare(certProfile, issuanceReq)
 	if err != nil {
-		ca.log.AuditErrf("Preparing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
-			serialHex, req.RegistrationID, names, err)
+		ca.certProfileCount.MustCurryWith(certProfileCountLabels).With(prometheus.Labels{"status": "preparation failure"}).Inc()
+		ca.log.AuditErrf("Preparing cert failed: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] err=[%v]",
+			serialHex, req.RegistrationID, names, certProfile.Name, hex.EncodeToString(req.CertProfileHash), err)
 		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
 	}
 
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.noteSignError(err)
-		ca.log.AuditErrf("Signing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
-			serialHex, req.RegistrationID, names, err)
+		ca.certProfileCount.MustCurryWith(certProfileCountLabels).With(prometheus.Labels{"status": "signing failure"}).Inc()
+		ca.log.AuditErrf("Signing cert failed: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] err=[%v]",
+			serialHex, req.RegistrationID, names, certProfile.Name, hex.EncodeToString(req.CertProfileHash), err)
 		return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
 	}
 
+	ca.certProfileCount.MustCurryWith(certProfileCountLabels).With(prometheus.Labels{"status": "success"}).Inc()
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
-	ca.log.AuditInfof("Signing cert success: serial=[%s] regID=[%d] names=[%s] certificate=[%s]",
-		serialHex, req.RegistrationID, names, hex.EncodeToString(certDER))
+	ca.log.AuditInfof("Signing cert success: serial=[%s] regID=[%d] names=[%s] certificate=[%s] certProfileName=[%s] certProfileHash=[%s]",
+		serialHex, req.RegistrationID, names, hex.EncodeToString(certDER), certProfile.Name, hex.EncodeToString(req.CertProfileHash))
 
 	_, err = ca.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    certDER,
@@ -312,8 +431,8 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		Issued: timestamppb.New(ca.clk.Now()),
 	})
 	if err != nil {
-		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
-			serialHex, hex.EncodeToString(certDER), issuer.NameID(), req.RegistrationID, req.OrderID, err)
+		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s] cert=[%s] issuerID=[%d] regID=[%d] orderID=[%d] certProfileName=[%s] certProfileHash=[%s] err=[%v]",
+			serialHex, hex.EncodeToString(certDER), issuer.NameID(), req.RegistrationID, req.OrderID, certProfile.Name, hex.EncodeToString(req.CertProfileHash), err)
 		return nil, err
 	}
 
@@ -379,6 +498,17 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 }
 
 func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *issuance.Issuer, error) {
+	// The CA must check if it is capable of issuing for the given
+	// certificate profile name. The name is checked here instead of the
+	// hash because the RA is unaware of what certificate profiles exist.
+	if issueReq.CertProfileName == "" {
+		issueReq.CertProfileName = issuance.DefaultCertProfileName
+	}
+	profileHashBytes, err := ca.certificateProfileNameExists(issueReq.CertProfileName)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, nil, err
@@ -442,10 +572,16 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotAfter:          validity.NotAfter,
 	}
 
-	lintCertBytes, issuanceToken, err := issuer.Prepare(ca.profile, req)
+	// The certificate profile hash is checked here instead of the name because
+	// the hash is over the entire contents of a *ProfileConfig which includes
+	// the name giving more assurance that the certificate profile has remained
+	// unchanged during the roundtrip from a CA, to the RA, then back to a CA.
+	lintCertBytes, issuanceToken, err := issuer.Prepare(ca.certProfiles.byHash[profileHashBytes], req)
+	certProfileCountLabels := prometheus.Labels{"purpose": string(precertType), "profile": issueReq.CertProfileName, "hash": hex.EncodeToString(profileHashBytes[:])}
 	if err != nil {
-		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
-			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)
+		ca.certProfileCount.MustCurryWith(certProfileCountLabels).With(prometheus.Labels{"status": "preparation failure"}).Inc()
+		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] err=[%v]",
+			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), issueReq.CertProfileName, hex.EncodeToString(profileHashBytes[:]), err)
 		if errors.Is(err, linter.ErrLinting) {
 			ca.lintErrorCount.Inc()
 		}
@@ -466,14 +602,16 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.noteSignError(err)
-		ca.log.AuditErrf("Signing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
-			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)
+		ca.certProfileCount.MustCurryWith(certProfileCountLabels).With(prometheus.Labels{"status": "signing failure"}).Inc()
+		ca.log.AuditErrf("Signing precert failed: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] err=[%v]",
+			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), issueReq.CertProfileName, hex.EncodeToString(profileHashBytes[:]), err)
 		return nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
 	}
 
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
-	ca.log.AuditInfof("Signing precert success: serial=[%s] regID=[%d] names=[%s] precertificate=[%s]",
-		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(certDER))
+	ca.certProfileCount.MustCurryWith(certProfileCountLabels).With(prometheus.Labels{"status": "success"}).Inc()
+	ca.log.AuditInfof("Signing precert success: serial=[%s] regID=[%d] names=[%s] precertificate=[%s] certProfileName=[%s] certProfileHash=[%s]",
+		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(certDER), issueReq.CertProfileName, hex.EncodeToString(profileHashBytes[:]))
 
 	return certDER, issuer, nil
 }

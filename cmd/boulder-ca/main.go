@@ -3,6 +3,7 @@ package notmain
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -34,7 +35,20 @@ type Config struct {
 
 		// Issuance contains all information necessary to load and initialize issuers.
 		Issuance struct {
+			// The name of the certificate profile to use if one wasn't provided
+			// by the RA during NewOrder and Finalize requests. The name must
+			// exist in either Profile.Name or Issuance.CertProfiles[].Name. A
+			// default name will be assigned if one is not provided.
+			DefaultCertificateProfileName string
+
+			// Deprecated: Use CertProfiles instead. This value will be combined
+			// with CertProfiles when creating a *certificateAuthorityImpl.
 			Profile issuance.ProfileConfig
+
+			// TODO(#6966): Make this field required once Profile has been
+			// removed from all live configs.
+			CertProfiles []issuance.ProfileConfig `validate:"min=0"`
+
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile   issuance.CRLProfileConfig `validate:"-"`
 			Issuers      []issuance.IssuerConfig   `validate:"min=1,dive"`
@@ -203,8 +217,25 @@ func main() {
 		issuers = append(issuers, issuer)
 	}
 
-	profile, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
-	cmd.FailOnError(err, "Couldn't load issuance profile")
+	if c.CA.Issuance.DefaultCertificateProfileName == "" {
+		c.CA.Issuance.DefaultCertificateProfileName = issuance.DefaultCertProfileName
+	}
+	logger.Infof("Using default certificate profile name: %s", c.CA.Issuance.DefaultCertificateProfileName)
+
+	deprecatedProfile, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
+	cmd.FailOnError(err, "Couldn't load certificate profile")
+
+	var certProfiles []*issuance.Profile
+	for _, profileConfig := range c.CA.Issuance.CertProfiles {
+		profile, err := issuance.NewProfile(profileConfig, c.CA.Issuance.IgnoredLints)
+		cmd.FailOnError(err, "Couldn't load certificate profile")
+		certProfiles = append(certProfiles, profile)
+	}
+
+	ok := validateDefaultCertificateProfileName(deprecatedProfile, certProfiles, c.CA.Issuance.DefaultCertificateProfileName)
+	if !ok {
+		cmd.Fail(fmt.Sprintf("defaultCertificateProfileName %s was configured, but a matching profile object was not found", c.CA.Issuance.DefaultCertificateProfileName))
+	}
 
 	tlsConfig, err := c.CA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
@@ -266,7 +297,8 @@ func main() {
 			sa,
 			pa,
 			issuers,
-			profile,
+			deprecatedProfile,
+			certProfiles,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,
 			c.CA.Backdate.Duration,
@@ -287,6 +319,22 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 
 	cmd.FailOnError(start(), "CA gRPC service failed")
+}
+
+// validateDefaultCertificateProfileName checks if the configured default
+// certificate profile name is found in the full list of configured certificate
+// profiles and returns a bool. Duplicate names are handled during CA
+// construction.
+func validateDefaultCertificateProfileName(deprecatedProfile *issuance.Profile, profiles []*issuance.Profile, defaultName string) bool {
+	var allProfiles []*issuance.Profile
+	allProfiles = append(allProfiles, deprecatedProfile)
+	allProfiles = append(allProfiles, profiles...)
+	for index := range allProfiles {
+		if allProfiles[index].Name == defaultName {
+			return true
+		}
+	}
+	return false
 }
 
 func init() {
