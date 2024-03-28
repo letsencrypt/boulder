@@ -5,11 +5,15 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"os"
 	"os/user"
 	"path"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,6 +46,26 @@ func TestSPKIHashFromPrivateKey(t *testing.T) {
 	res, err := a.spkiHashFromPrivateKey(keyFile)
 	test.AssertNotError(t, err, "")
 	test.AssertByteEquals(t, res, keyHash[:])
+}
+
+func TestSPKIHashesFromFile(t *testing.T) {
+	var spkiHexes []string
+	for i := 0; i < 10; i++ {
+		h := sha256.Sum256([]byte(strconv.Itoa(i)))
+		spkiHexes = append(spkiHexes, hex.EncodeToString(h[:]))
+	}
+
+	spkiFile := path.Join(t.TempDir(), "spkis.txt")
+	err := os.WriteFile(spkiFile, []byte(strings.Join(spkiHexes, "\n")), os.ModeAppend)
+	test.AssertNotError(t, err, "writing test spki file")
+
+	a := admin{}
+
+	res, err := a.spkiHashesFromFile(spkiFile)
+	test.AssertNotError(t, err, "")
+	for i, spkiHash := range res {
+		test.AssertEquals(t, hex.EncodeToString(spkiHash), spkiHexes[i])
+	}
 }
 
 // mockSARecordingBlocks is a mock which only implements the AddBlockedKey gRPC
