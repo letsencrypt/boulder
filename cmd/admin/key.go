@@ -22,25 +22,36 @@ import (
 )
 
 // subcommandBlockKey encapsulates the "admin block-key" command.
-func (a *admin) subcommandBlockKey(ctx context.Context, args []string) error {
-	subflags := flag.NewFlagSet("block-key", flag.ExitOnError)
+type subcommandBlockKey struct {
+	parallelism uint
+	comment     string
+	privKey     string
+	spkiFile    string
+}
 
+var _ subcommand = (*subcommandBlockKey)(nil)
+
+func (s *subcommandBlockKey) Desc() string {
+	return "Block a keypair from any future issuance"
+}
+
+func (s *subcommandBlockKey) Flags(flag *flag.FlagSet) {
 	// General flags relevant to all key input methods.
-	parallelism := subflags.Uint("parallelism", 10, "Number of concurrent workers to use while blocking keys")
-	comment := subflags.String("comment", "", "Additional context to add to database comment column")
+	flag.UintVar(&s.parallelism, "parallelism", 10, "Number of concurrent workers to use while blocking keys")
+	flag.StringVar(&s.comment, "comment", "", "Additional context to add to database comment column")
 
 	// Flags specifying the input method for the keys to be blocked.
-	privKey := subflags.String("private-key", "", "Block issuance for the pubkey corresponding to this private key")
-	spkiFile := subflags.String("spki-file", "", "Block issuance for all keys listed in this file as SHA256 hashes of SPKI, hex encoded, one per line")
+	flag.StringVar(&s.privKey, "private-key", "", "Block issuance for the pubkey corresponding to this private key")
+	flag.StringVar(&s.spkiFile, "spki-file", "", "Block issuance for all keys listed in this file as SHA256 hashes of SPKI, hex encoded, one per line")
+}
 
-	_ = subflags.Parse(args)
-
+func (s *subcommandBlockKey) Run(ctx context.Context, a *admin) error {
 	// This is a map of all input-selection flags to whether or not they were set
 	// to a non-default value. We use this to ensure that exactly one input
 	// selection flag was given on the command line.
 	setInputs := map[string]bool{
-		"-private-key": *privKey != "",
-		"-spki-file":   *spkiFile != "",
+		"-private-key": s.privKey != "",
+		"-spki-file":   s.spkiFile != "",
 	}
 	maps.DeleteFunc(setInputs, func(_ string, v bool) bool { return !v })
 	if len(setInputs) == 0 {
@@ -54,18 +65,18 @@ func (a *admin) subcommandBlockKey(ctx context.Context, args []string) error {
 	switch maps.Keys(setInputs)[0] {
 	case "-private-key":
 		var spkiHash []byte
-		spkiHash, err = a.spkiHashFromPrivateKey(*privKey)
+		spkiHash, err = a.spkiHashFromPrivateKey(s.privKey)
 		spkiHashes = [][]byte{spkiHash}
 	case "-spki-file":
-		spkiHashes, err = a.spkiHashesFromFile(*spkiFile)
+		spkiHashes, err = a.spkiHashesFromFile(s.spkiFile)
 	default:
 		return errors.New("no recognized input method flag set (this shouldn't happen)")
 	}
 	if err != nil {
-		return fmt.Errorf("collecting serials to revoke: %w", err)
+		return fmt.Errorf("collecting spki hashes to block: %w", err)
 	}
 
-	err = a.blockSPKIHashes(ctx, spkiHashes, *comment, int(*parallelism))
+	err = a.blockSPKIHashes(ctx, spkiHashes, s.comment, s.parallelism)
 	if err != nil {
 		return err
 	}
@@ -115,7 +126,7 @@ func (a *admin) spkiHashesFromFile(filePath string) ([][]byte, error) {
 	return spkiHashes, nil
 }
 
-func (a *admin) blockSPKIHashes(ctx context.Context, spkiHashes [][]byte, comment string, parallelism int) error {
+func (a *admin) blockSPKIHashes(ctx context.Context, spkiHashes [][]byte, comment string, parallelism uint) error {
 	u, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("getting admin username: %w", err)
@@ -123,7 +134,7 @@ func (a *admin) blockSPKIHashes(ctx context.Context, spkiHashes [][]byte, commen
 
 	wg := new(sync.WaitGroup)
 	work := make(chan []byte, parallelism)
-	for i := 0; i < parallelism; i++ {
+	for i := uint(0); i < parallelism; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

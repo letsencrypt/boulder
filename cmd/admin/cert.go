@@ -33,50 +33,67 @@ import (
 // memory before beginning to revoke any of them. This trades local memory usage
 // for shorter database and gRPC query times, so that we don't need massive
 // timeouts when collecting serials to revoke.
-func (a *admin) subcommandRevokeCert(ctx context.Context, args []string) error {
-	subflags := flag.NewFlagSet("revoke-cert", flag.ExitOnError)
+type subcommandRevokeCert struct {
+	parallelism   uint
+	reasonStr     string
+	skipBlock     bool
+	malformed     bool
+	serial        string
+	incidentTable string
+	serialsFile   string
+	privKey       string
+	regID         uint
+}
 
+var _ subcommand = (*subcommandRevokeCert)(nil)
+
+func (s *subcommandRevokeCert) Desc() string {
+	return "Revoke one or more certificates"
+}
+
+func (s *subcommandRevokeCert) Flags(flag *flag.FlagSet) {
 	// General flags relevant to all certificate input methods.
-	parallelism := subflags.Uint("parallelism", 10, "Number of concurrent workers to use while revoking certs")
-	reasonStr := subflags.String("reason", "unspecified", "Revocation reason (unspecified, keyCompromise, superseded, cessationOfOperation, or privilegeWithdrawn)")
-	skipBlock := subflags.Bool("skip-block-key", false, "Skip blocking the key, if revoked for keyCompromise - use with extreme caution")
-	malformed := subflags.Bool("malformed", false, "Indicates that the cert cannot be parsed - use with caution")
+	flag.UintVar(&s.parallelism, "parallelism", 10, "Number of concurrent workers to use while revoking certs")
+	flag.StringVar(&s.reasonStr, "reason", "unspecified", "Revocation reason (unspecified, keyCompromise, superseded, cessationOfOperation, or privilegeWithdrawn)")
+	flag.BoolVar(&s.skipBlock, "skip-block-key", false, "Skip blocking the key, if revoked for keyCompromise - use with extreme caution")
+	flag.BoolVar(&s.malformed, "malformed", false, "Indicates that the cert cannot be parsed - use with caution")
 
 	// Flags specifying the input method for the certificates to be revoked.
-	serial := subflags.String("serial", "", "Revoke the certificate with this hex serial")
-	incidentTable := subflags.String("incident-table", "", "Revoke all certificates whose serials are in this table")
-	serialsFile := subflags.String("serials-file", "", "Revoke all certificates whose hex serials are in this file")
-	privKey := subflags.String("private-key", "", "Revoke all certificates whose pubkey matches this private key")
-	regID := subflags.Uint("reg-id", 0, "Revoke all certificates issued to this account")
+	flag.StringVar(&s.serial, "serial", "", "Revoke the certificate with this hex serial")
+	flag.StringVar(&s.incidentTable, "incident-table", "", "Revoke all certificates whose serials are in this table")
+	flag.StringVar(&s.serialsFile, "serials-file", "", "Revoke all certificates whose hex serials are in this file")
+	flag.StringVar(&s.privKey, "private-key", "", "Revoke all certificates whose pubkey matches this private key")
+	flag.UintVar(&s.regID, "reg-id", 0, "Revoke all certificates issued to this account")
+
 	// TODO: add these, because they would have been useful in the most recent revocation.
 	// certFile := subflags.String("cert-file", "", "Revoke all certificates whose PEM is in this file")
 	// pubKey := subflags.String("public-key", "", "Revoke all certificates whose pubkey matches this public key")
+}
 
-	_ = subflags.Parse(args)
-
-	if *parallelism == 0 {
+func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
+	if s.parallelism == 0 {
 		// Why did they override it to 0, instead of just leaving it the default?
-		return fmt.Errorf("got unacceptable parallelism %d", *parallelism)
+		return fmt.Errorf("got unacceptable parallelism %d", s.parallelism)
 	}
 
 	reasonCode := revocation.Reason(-1)
 	for code := range revocation.AdminAllowedReasons {
-		if *reasonStr == revocation.ReasonToString[code] {
+		if s.reasonStr == revocation.ReasonToString[code] {
 			reasonCode = code
 			break
 		}
 	}
 	if reasonCode == revocation.Reason(-1) {
-		return fmt.Errorf("got unacceptable revocation reason %q", *reasonStr)
+		return fmt.Errorf("got unacceptable revocation reason %q", s.reasonStr)
 	}
 
-	if *skipBlock && reasonCode == ocsp.KeyCompromise {
+	if s.skipBlock && reasonCode == ocsp.KeyCompromise {
 		// We would only add the SPKI hash of the pubkey to the blockedKeys table if
 		// the revocation reason is keyCompromise.
 		return errors.New("-skip-block-key only makes sense with -reason=1")
 	}
 
-	if *malformed && reasonCode == ocsp.KeyCompromise {
+	if s.malformed && reasonCode == ocsp.KeyCompromise {
 		// This is because we can't extract and block the pubkey if we can't
 		// parse the certificate.
 		return errors.New("cannot revoke malformed certs for reason keyCompromise")
@@ -86,11 +103,11 @@ func (a *admin) subcommandRevokeCert(ctx context.Context, args []string) error {
 	// to a non-default value. We use this to ensure that exactly one input
 	// selection flag was given on the command line.
 	setInputs := map[string]bool{
-		"-serial":         *serial != "",
-		"-incident-table": *incidentTable != "",
-		"-serials-file":   *serialsFile != "",
-		"-private-key":    *privKey != "",
-		"-reg-id":         *regID != 0,
+		"-serial":         s.serial != "",
+		"-incident-table": s.incidentTable != "",
+		"-serials-file":   s.serialsFile != "",
+		"-private-key":    s.privKey != "",
+		"-reg-id":         s.regID != 0,
 	}
 	maps.DeleteFunc(setInputs, func(_ string, v bool) bool { return !v })
 	if len(setInputs) == 0 {
@@ -103,15 +120,15 @@ func (a *admin) subcommandRevokeCert(ctx context.Context, args []string) error {
 	var err error
 	switch maps.Keys(setInputs)[0] {
 	case "-serial":
-		serials, err = []string{*serial}, nil
+		serials, err = []string{s.serial}, nil
 	case "-incident-table":
-		serials, err = a.serialsFromIncidentTable(ctx, *incidentTable)
+		serials, err = a.serialsFromIncidentTable(ctx, s.incidentTable)
 	case "-serials-file":
-		serials, err = a.serialsFromFile(ctx, *serialsFile)
+		serials, err = a.serialsFromFile(ctx, s.serialsFile)
 	case "-private-key":
-		serials, err = a.serialsFromPrivateKey(ctx, *privKey)
+		serials, err = a.serialsFromPrivateKey(ctx, s.privKey)
 	case "-reg-id":
-		serials, err = a.serialsFromRegID(ctx, int64(*regID))
+		serials, err = a.serialsFromRegID(ctx, int64(s.regID))
 	default:
 		return errors.New("no recognized input method flag set (this shouldn't happen)")
 	}
@@ -124,7 +141,7 @@ func (a *admin) subcommandRevokeCert(ctx context.Context, args []string) error {
 	}
 	a.log.Infof("Found %d certificates to revoke", len(serials))
 
-	err = a.revokeSerials(ctx, serials, reasonCode, *malformed, *skipBlock, int(*parallelism))
+	err = a.revokeSerials(ctx, serials, reasonCode, s.malformed, s.skipBlock, s.parallelism)
 	if err != nil {
 		return fmt.Errorf("revoking serials: %w", err)
 	}
@@ -241,7 +258,7 @@ func cleanSerial(serial string) (string, error) {
 	return strippedSerial, nil
 }
 
-func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revocation.Reason, malformed bool, skipBlockKey bool, parallelism int) error {
+func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revocation.Reason, malformed bool, skipBlockKey bool, parallelism uint) error {
 	u, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("getting admin username: %w", err)
@@ -249,7 +266,7 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 
 	wg := new(sync.WaitGroup)
 	work := make(chan string, parallelism)
-	for i := 0; i < parallelism; i++ {
+	for i := uint(0); i < parallelism; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
