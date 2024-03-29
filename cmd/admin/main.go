@@ -110,6 +110,10 @@ func main() {
 	subflags := flag.NewFlagSet(unparsedArgs[0], flag.ExitOnError)
 	subcommand.Flags(subflags)
 	flag.VisitAll(func(f *flag.Flag) {
+		// For each flag registered at the global/package level, also register it on
+		// the subflags FlagSet. The `f.Value` here is a pointer to the same var
+		// that the original global flag would populate, so the same variable can
+		// be set either way.
 		subflags.Var(f.Value, f.Name, f.Usage)
 	})
 	_ = subflags.Parse(unparsedArgs[1:])
