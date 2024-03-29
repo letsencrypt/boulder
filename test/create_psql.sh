@@ -63,7 +63,7 @@ for db in $DBS; do
 
     ${dbconn} -d "${dbname}" < sa/db/boulder_sa/20240321_CombinedSchema.psql
 
-    USERS_SQL="../db-users/${db}.psql"
+    USERS_SQL="sa/db-users/${db}.psql"
     ${dbconn} -d "${dbname}" < $USERS_SQL || exit_err "Unable to add users from ${USERS_SQL}"
     echo "Added users from ${USERS_SQL}"
 

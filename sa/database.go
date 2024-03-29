@@ -3,6 +3,7 @@ package sa
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -53,6 +54,25 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 	url, err := config.URL()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load DBConnect URL: %s", err)
+	}
+
+	if strings.HasPrefix(url, "postgres://") {
+		db, err := sqlOpen("pgx", url)
+		if err != nil {
+			return nil, err
+		}
+		if err = db.Ping(); err != nil {
+			return nil, err
+		}
+		dialect := borp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
+		dbmap := &borp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
+
+		if logger != nil {
+			dbmap.TraceOn("SQL: ", &SQLLogger{logger})
+		}
+
+		initTables(dbmap)
+		return boulderDB.NewWrappedMap(dbmap), nil
 	}
 
 	settings := DbSettings{
