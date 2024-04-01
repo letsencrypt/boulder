@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/user"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"unicode"
 
 	"golang.org/x/crypto/ocsp"
-	"golang.org/x/exp/maps"
 
 	core "github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
