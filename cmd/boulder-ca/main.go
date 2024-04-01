@@ -44,11 +44,11 @@ type Config struct {
 
 			// Deprecated: Use CertProfiles instead. Profile implictly takes the
 			// internal Boulder default value of ca.DefaultCertProfileName.
-			Profile issuance.ProfileConfig `validate:"omitempty"`
+			Profile issuance.ProfileConfig `validate:"required_without=CertProfiles,structonly"`
 
 			// One of the profile names must match the value of
 			// DefaultCertificateProfileName or boulder-ca will fail to start.
-			CertProfiles map[string]issuance.ProfileConfig `validate:"omitempty,dive,keys,alphanum,min=1,max=32,endkeys"`
+			CertProfiles map[string]issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
 
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile   issuance.CRLProfileConfig `validate:"-"`
@@ -210,7 +210,6 @@ func main() {
 		err = loglist.InitLintList(c.CA.CTLogListFile)
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
-	fmt.Println("Here 1")
 
 	issuers := make([]*issuance.Issuer, 0, len(c.CA.Issuance.Issuers))
 	for _, issuerConfig := range c.CA.Issuance.Issuers {
@@ -218,7 +217,6 @@ func main() {
 		cmd.FailOnError(err, "Loading issuer")
 		issuers = append(issuers, issuer)
 	}
-	fmt.Println("Here 2")
 
 	if c.CA.Issuance.DefaultCertificateProfileName == "" {
 		c.CA.Issuance.DefaultCertificateProfileName = ca.DefaultCertProfileName
@@ -229,7 +227,6 @@ func main() {
 	if !deprecatedProfileExists && len(c.CA.Issuance.CertProfiles) > 0 {
 		cmd.Fail("Only one of Issuance.Profile or Issuance.CertProfiles can be configured")
 	}
-	fmt.Println("Here 3")
 
 	certProfilesMap := make(map[[32]byte]map[string]*issuance.Profile, 0)
 	if !deprecatedProfileExists {
@@ -246,20 +243,14 @@ func main() {
 		}
 	}
 
-	fmt.Println("Here 4")
-	for x, i := range certProfilesMap {
-		fmt.Printf("x = %+v, i = %+v\n", x, i)
-	}
-	//os.Exit(1)
-
-	//_, ok := certProfilesMap[]
 	for _, hash := range maps.Keys(certProfilesMap) {
-		_, ok := certProfilesMap[hash]
-		if !ok {
-			cmd.Fail(fmt.Sprintf("defaultCertificateProfileName %s was configured, but a matching profile object was not found", c.CA.Issuance.DefaultCertificateProfileName))
+		for range certProfilesMap[hash] {
+			_, ok := certProfilesMap[hash][c.CA.Issuance.DefaultCertificateProfileName]
+			if !ok {
+				cmd.Fail(fmt.Sprintf("defaultCertificateProfileName:\"%s\" was configured, but a profile object was not found for that name", c.CA.Issuance.DefaultCertificateProfileName))
+			}
 		}
 	}
-	os.Exit(1)
 
 	tlsConfig, err := c.CA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")

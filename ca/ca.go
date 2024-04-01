@@ -56,6 +56,15 @@ type issuerMaps struct {
 // without a Name.
 const DefaultCertProfileName = "defaultBoulderCertificateProfile"
 
+type certProfileWithID struct {
+	// name is a human readable name used to refer to the certificate profile.
+	name string
+	// hash is SHA256 sum over every exported field of an issuance.ProfileConfig
+	// used to generate the embedded *issuance.Profile.
+	hash [32]byte
+	*issuance.Profile
+}
+
 // certProfilesMap allows looking up the human-readable name of a certificate
 // profile to retrieve the actual profile.
 type certProfilesMaps struct {
