@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -171,6 +172,11 @@ type WebFrontEndImpl struct {
 	limiter                      *ratelimits.Limiter
 	txnBuilder                   *ratelimits.TransactionBuilder
 	maxNames                     int
+
+	// certificateProfileNames is a list of profile names that are allowed to be
+	// passed to the newOrder endpoint. If a profile name is not in this list,
+	// the request will be rejected as malformed.
+	certificateProfileNames []string
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -195,6 +201,7 @@ func NewWebFrontEndImpl(
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,
 	maxNames int,
+	certificateProfileNames []string,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
@@ -234,6 +241,7 @@ func NewWebFrontEndImpl(
 		limiter:                      limiter,
 		txnBuilder:                   txnBuilder,
 		maxNames:                     maxNames,
+		certificateProfileNames:      certificateProfileNames,
 	}
 
 	return wfe, nil
@@ -2002,6 +2010,7 @@ type orderJSON struct {
 	Identifiers    []identifier.ACMEIdentifier `json:"identifiers"`
 	Authorizations []string                    `json:"authorizations"`
 	Finalize       string                      `json:"finalize"`
+	Profile        string                      `json:"profile,omitempty"`
 	Certificate    string                      `json:"certificate,omitempty"`
 	Error          *probs.ProblemDetails       `json:"error,omitempty"`
 }
@@ -2064,19 +2073,19 @@ func (wfe *WebFrontEndImpl) newNewOrderLimitTransactions(regId int64, names []st
 	}
 	transactions = append(transactions, txn)
 
-	txn, err = wfe.txnBuilder.FailedAuthorizationsPerAccountCheckOnlyTransaction(regId)
+	failedAuthzTxns, err := wfe.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId, names, wfe.maxNames)
 	if err != nil {
-		logTxnErr(err, ratelimits.FailedAuthorizationsPerAccount)
+		logTxnErr(err, ratelimits.FailedAuthorizationsPerDomainPerAccount)
 		return nil
 	}
-	transactions = append(transactions, txn)
+	transactions = append(transactions, failedAuthzTxns...)
 
-	txns, err := wfe.txnBuilder.CertificatesPerDomainTransactions(regId, names, wfe.maxNames)
+	certsPerDomainTxns, err := wfe.txnBuilder.CertificatesPerDomainTransactions(regId, names, wfe.maxNames)
 	if err != nil {
 		logTxnErr(err, ratelimits.CertificatesPerDomain)
 		return nil
 	}
-	transactions = append(transactions, txns...)
+	transactions = append(transactions, certsPerDomainTxns...)
 
 	txn, err = wfe.txnBuilder.CertificatesPerFQDNSetTransaction(names)
 	if err != nil {
@@ -2230,7 +2239,10 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 		return "", false, fmt.Errorf("checking replacement status of existing certificate: %w", err)
 	}
 	if exists.Exists {
-		return "", false, berrors.MalformedError("cannot indicate an order replaces a certificate which already has a replacement order")
+		return "", false, berrors.ConflictError(
+			"cannot indicate an order replaces certificate with serial %q, which already has a replacement order",
+			certID.Serial(),
+		)
 	}
 
 	err = wfe.orderMatchesReplacement(ctx, acct, names, certID.Serial())
@@ -2247,10 +2259,23 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 	// and the request must be made within the suggested renewal window.
 	renewalInfo, err := wfe.determineARIWindow(ctx, replaces)
 	if err != nil {
-		return "", false, err
+		return "", false, fmt.Errorf("while determining the current ARI renewal window: %w", err)
 	}
 
 	return replaces, renewalInfo.SuggestedWindow.IsWithin(wfe.clk.Now()), nil
+}
+
+func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error {
+	if profile == "" {
+		// No profile name is specified.
+		return nil
+	}
+	if !slices.Contains(wfe.certificateProfileNames, profile) {
+		// The profile name is not in the list of configured profiles.
+		return errors.New("not a recognized profile name")
+	}
+
+	return nil
 }
 
 // NewOrder is used by clients to create a new order object and a set of
@@ -2276,6 +2301,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		NotBefore   string
 		NotAfter    string
 		Replaces    string
+		Profile     string
 	}
 	err := json.Unmarshal(body, &newOrderRequest)
 	if err != nil {
@@ -2316,9 +2342,20 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	logEvent.DNSNames = names
 
-	replaces, limitsExempt, err := wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
+	var replaces string
+	var limitsExempt bool
+	if features.Get().TrackReplacementCertificatesARI {
+		replaces, limitsExempt, err = wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
+			return
+		}
+	}
+
+	err = wfe.validateCertificateProfileName(newOrderRequest.Profile)
 	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement and error occurred"), err)
+		// TODO(#7392) Provide link to profile documentation.
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid certificate profile, %q: %s", newOrderRequest.Profile, err), err)
 		return
 	}
 
@@ -2344,10 +2381,11 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}()
 
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
-		RegistrationID: acct.ID,
-		Names:          names,
-		ReplacesSerial: replaces,
-		LimitsExempt:   limitsExempt,
+		RegistrationID:         acct.ID,
+		Names:                  names,
+		ReplacesSerial:         replaces,
+		LimitsExempt:           limitsExempt,
+		CertificateProfileName: newOrderRequest.Profile,
 	})
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {

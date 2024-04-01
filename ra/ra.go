@@ -96,6 +96,8 @@ type RegistrationAuthorityImpl struct {
 	pendingAuthorizationLifetime time.Duration
 	rlPolicies                   ratelimit.Limits
 	maxContactsPerReg            int
+	limiter                      *ratelimits.Limiter
+	txnBuilder                   *ratelimits.TransactionBuilder
 	maxNames                     int
 	orderLifetime                time.Duration
 	finalizeTimeout              time.Duration
@@ -127,6 +129,8 @@ func NewRegistrationAuthorityImpl(
 	stats prometheus.Registerer,
 	maxContactsPerReg int,
 	keyPolicy goodkey.KeyPolicy,
+	limiter *ratelimits.Limiter,
+	txnBuilder *ratelimits.TransactionBuilder,
 	maxNames int,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
@@ -246,6 +250,8 @@ func NewRegistrationAuthorityImpl(
 		rlPolicies:                   ratelimit.New(),
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
+		limiter:                      limiter,
+		txnBuilder:                   txnBuilder,
 		maxNames:                     maxNames,
 		publisher:                    pubc,
 		caa:                          caaClient,
@@ -1219,7 +1225,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 
 	// Step 3: Issue the Certificate
 	cert, err := ra.issueCertificateInner(
-		ctx, csr, accountID(order.RegistrationID), orderID(order.Id))
+		ctx, csr, order.CertificateProfileName, accountID(order.RegistrationID), orderID(order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
 	var result string
@@ -1276,6 +1282,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	csr *x509.CertificateRequest,
+	profileName string,
 	acctID accountID,
 	oID orderID) (*x509.Certificate, error) {
 	if features.Get().AsyncFinalize {
@@ -1297,9 +1304,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	}
 
 	issueReq := &capb.IssueCertificateRequest{
-		Csr:            csr.Raw,
-		RegistrationID: int64(acctID),
-		OrderID:        int64(oID),
+		Csr:             csr.Raw,
+		RegistrationID:  int64(acctID),
+		OrderID:         int64(oID),
+		CertProfileName: profileName,
 	}
 	precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
 	if err != nil {
@@ -1317,10 +1325,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	}
 
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
-		DER:            precert.DER,
-		SCTs:           scts,
-		RegistrationID: int64(acctID),
-		OrderID:        int64(oID),
+		DER:             precert.DER,
+		SCTs:            scts,
+		RegistrationID:  int64(acctID),
+		OrderID:         int64(oID),
+		CertProfileHash: precert.CertProfileHash,
 	})
 	if err != nil {
 		return nil, wrapError(err, "issuing certificate for precertificate")
@@ -1756,6 +1765,26 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	return err
 }
 
+func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, regId int64, name string) {
+	if ra.limiter == nil || ra.txnBuilder == nil {
+		// Limiter is disabled.
+		return
+	}
+
+	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, name)
+	if err != nil {
+		ra.log.Errf("constructing rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+	}
+
+	_, err = ra.limiter.Spend(ctx, txn)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		ra.log.Errf("checking the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+	}
+}
+
 // PerformValidation initiates validation for a specific challenge associated
 // with the given base authorization. The authorization and challenge are
 // updated based on the results.
@@ -1884,6 +1913,13 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		if prob != nil {
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
+
+			// TODO(#5545): Spending can be async until key-value rate limits
+			// are authoritative. This saves us from adding latency to each
+			// request. Goroutines spun out below will respect a context
+			// deadline set by the ratelimits package and cannot be prematurely
+			// canceled by the requester.
+			go ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier.Value)
 		} else {
 			challenge.Status = core.StatusValid
 		}

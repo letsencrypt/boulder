@@ -5,10 +5,15 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"os"
+	"os/user"
 	"path"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,10 +23,9 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/mocks"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/letsencrypt/boulder/test/vars"
 )
 
 func TestSPKIHashFromPrivateKey(t *testing.T) {
@@ -42,6 +46,26 @@ func TestSPKIHashFromPrivateKey(t *testing.T) {
 	res, err := a.spkiHashFromPrivateKey(keyFile)
 	test.AssertNotError(t, err, "")
 	test.AssertByteEquals(t, res, keyHash[:])
+}
+
+func TestSPKIHashesFromFile(t *testing.T) {
+	var spkiHexes []string
+	for i := 0; i < 10; i++ {
+		h := sha256.Sum256([]byte(strconv.Itoa(i)))
+		spkiHexes = append(spkiHexes, hex.EncodeToString(h[:]))
+	}
+
+	spkiFile := path.Join(t.TempDir(), "spkis.txt")
+	err := os.WriteFile(spkiFile, []byte(strings.Join(spkiHexes, "\n")), os.ModeAppend)
+	test.AssertNotError(t, err, "writing test spki file")
+
+	a := admin{}
+
+	res, err := a.spkiHashesFromFile(spkiFile)
+	test.AssertNotError(t, err, "")
+	for i, spkiHash := range res {
+		test.AssertEquals(t, hex.EncodeToString(spkiHash), spkiHexes[i])
+	}
 }
 
 // mockSARecordingBlocks is a mock which only implements the AddBlockedKey gRPC
@@ -73,30 +97,16 @@ func TestBlockSPKIHash(t *testing.T) {
 	keyHash, err := core.KeyDigest(privKey.Public())
 	test.AssertNotError(t, err, "computing test SPKI hash")
 
-	dbMap, err := sa.DBMapForTest(vars.DBConnSA)
-	test.AssertNotError(t, err, "creating test dbMap")
-	defer test.ResetBoulderTestDatabase(t)
-
-	for _, serial := range []string{"foo", "bar", "baz"} {
-		_, err = dbMap.ExecContext(
-			context.Background(),
-			"INSERT INTO keyHashToSerial(keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
-			keyHash[:],
-			fc.Now().Add(24*time.Hour),
-			serial,
-		)
-		test.AssertNotError(t, err, "inserting fake serial into test db")
-	}
-
-	a := admin{sac: &msa, dbMap: dbMap, clk: fc, log: log}
+	a := admin{saroc: &mocks.StorageAuthorityReadOnly{}, sac: &msa, clk: fc, log: log}
+	u := &user.User{}
 
 	// A full run should result in one request with the right fields.
 	msa.reset()
 	log.Clear()
 	a.dryRun = false
-	err = a.blockSPKIHash(context.Background(), keyHash[:], "hello world")
+	err = a.blockSPKIHash(context.Background(), keyHash[:], u, "hello world")
 	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, len(log.GetAllMatching("Found 3 certificates")), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("Found 0 unexpired certificates")), 1)
 	test.AssertEquals(t, len(msa.blockRequests), 1)
 	test.AssertByteEquals(t, msa.blockRequests[0].KeyHash, keyHash[:])
 	test.AssertContains(t, msa.blockRequests[0].Comment, "hello world")
@@ -106,10 +116,9 @@ func TestBlockSPKIHash(t *testing.T) {
 	log.Clear()
 	a.dryRun = true
 	a.sac = dryRunSAC{log: log}
-	err = a.blockSPKIHash(context.Background(), keyHash[:], "")
+	err = a.blockSPKIHash(context.Background(), keyHash[:], u, "")
 	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, len(log.GetAllMatching("Found 3 certificates")), 1)
+	test.AssertEquals(t, len(log.GetAllMatching("Found 0 unexpired certificates")), 1)
 	test.AssertEquals(t, len(log.GetAllMatching("dry-run:")), 1)
 	test.AssertEquals(t, len(msa.blockRequests), 0)
-
 }

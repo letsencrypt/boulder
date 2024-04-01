@@ -149,13 +149,16 @@ type Config struct {
 			// Defaults is a path to a YAML file containing default rate limits.
 			// See: ratelimits/README.md for details. This field is required to
 			// enable rate limiting. If any individual rate limit is not set,
-			// that limit will be disabled.
+			// that limit will be disabled. Failed Authorizations limits passed
+			// in this file must be identical to those in the RA.
 			Defaults string `validate:"required_with=Redis"`
 
 			// Overrides is a path to a YAML file containing overrides for the
 			// default rate limits. See: ratelimits/README.md for details. If
 			// this field is not set, all requesters will be subject to the
-			// default rate limits.
+			// default rate limits. Overrides for the Failed Authorizations
+			// overrides passed in this file must be identical to those in the
+			// RA.
 			Overrides string
 		}
 
@@ -165,6 +168,12 @@ type Config struct {
 		// CP/CPS, under "DV-SSL Subscriber Certificate". The value must match
 		// the CA and RA configurations.
 		MaxNames int `validate:"min=0,max=100"`
+
+		// CertificateProfileNames is the list of acceptable certificate profile
+		// names for newOrder requests. Requests with a profile name not in this
+		// list will be rejected. This field is optional; if unset, no profile
+		// names are accepted.
+		CertificateProfileNames []string `validate:"omitempty,dive,alphanum,min=1,max=32"`
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -406,6 +415,7 @@ func main() {
 		limiter,
 		txnBuilder,
 		maxNames,
+		c.WFE.CertificateProfileNames,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
 

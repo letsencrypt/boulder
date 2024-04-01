@@ -21,6 +21,7 @@ import (
 	"compress/flate"
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math/big"
 	"strings"
@@ -85,7 +86,7 @@ func decompress(algorithm CompressionAlgorithm, input []byte) ([]byte, error) {
 	}
 }
 
-// Compress with DEFLATE
+// deflate compresses the input.
 func deflate(input []byte) ([]byte, error) {
 	output := new(bytes.Buffer)
 
@@ -97,14 +98,23 @@ func deflate(input []byte) ([]byte, error) {
 	return output.Bytes(), err
 }
 
-// Decompress with DEFLATE
+// inflate decompresses the input.
+//
+// Errors if the decompressed data would be >250kB or >10x the size of the
+// compressed data, whichever is larger.
 func inflate(input []byte) ([]byte, error) {
 	output := new(bytes.Buffer)
 	reader := flate.NewReader(bytes.NewBuffer(input))
 
-	_, err := io.Copy(output, reader)
-	if err != nil {
+	maxCompressedSize := max(250_000, 10*int64(len(input)))
+
+	limit := maxCompressedSize + 1
+	n, err := io.CopyN(output, reader, limit)
+	if err != nil && err != io.EOF {
 		return nil, err
+	}
+	if n == limit {
+		return nil, fmt.Errorf("uncompressed data would be too large (>%d bytes)", maxCompressedSize)
 	}
 
 	err = reader.Close()

@@ -95,6 +95,7 @@ type MappedSelector[T any] interface {
 // Rows is anything which lets you iterate over the result rows of a SELECT
 // query. It is similar to sql.Rows, but generic.
 type Rows[T any] interface {
+	ForEach(func(*T) error) error
 	Next() bool
 	Get() (*T, error)
 	Err() error

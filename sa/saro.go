@@ -21,6 +21,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -697,7 +698,13 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 	}
 
 	txn := func(tx db.Executor) (interface{}, error) {
-		omObj, err := tx.Get(ctx, orderModel{}, req.Id)
+		var omObj interface{}
+		var err error
+		if features.Get().MultipleCertificateProfiles {
+			omObj, err = tx.Get(ctx, orderModelv2{}, req.Id)
+		} else {
+			omObj, err = tx.Get(ctx, orderModelv1{}, req.Id)
+		}
 		if err != nil {
 			if db.IsNoRows(err) {
 				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
@@ -708,7 +715,12 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
 
-		order, err := modelToOrder(omObj.(*orderModel))
+		var order *corepb.Order
+		if features.Get().MultipleCertificateProfiles {
+			order, err = modelToOrderv2(omObj.(*orderModelv2))
+		} else {
+			order, err = modelToOrderv1(omObj.(*orderModelv1))
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -1184,7 +1196,7 @@ func (ssa *SQLStorageAuthority) GetValidAuthorizations2(ctx context.Context, req
 }
 
 // KeyBlocked checks if a key, indicated by a hash, is present in the blockedKeys table
-func (ssa *SQLStorageAuthorityRO) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+func (ssa *SQLStorageAuthorityRO) KeyBlocked(ctx context.Context, req *sapb.SPKIHash) (*sapb.Exists, error) {
 	if req == nil || req.KeyHash == nil {
 		return nil, errIncompleteRequest
 	}
@@ -1201,7 +1213,7 @@ func (ssa *SQLStorageAuthorityRO) KeyBlocked(ctx context.Context, req *sapb.KeyB
 	return &sapb.Exists{Exists: true}, nil
 }
 
-func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.SPKIHash) (*sapb.Exists, error) {
 	return ssa.SQLStorageAuthorityRO.KeyBlocked(ctx, req)
 }
 
@@ -1273,9 +1285,8 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 	if err != nil {
 		return fmt.Errorf("starting db query: %w", err)
 	}
-	defer rows.Close()
 
-	for rows.Next() {
+	return rows.ForEach(func(row *incidentSerialModel) error {
 		// Scan the row into the model. Note: the fields must be passed in the
 		// same order as the columns returned by the query above.
 		ism, err := rows.Get()
@@ -1296,17 +1307,8 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 			ispb.LastNoticeSent = timestamppb.New(*ism.LastNoticeSent)
 		}
 
-		err = stream.Send(ispb)
-		if err != nil {
-			return err
-		}
-	}
-
-	err = rows.Err()
-	if err != nil {
-		return err
-	}
-	return nil
+		return stream.Send(ispb)
+	})
 }
 
 func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentRequest, stream sapb.StorageAuthority_SerialsForIncidentServer) error {
@@ -1363,43 +1365,21 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(re
 		return fmt.Errorf("reading db: %w", err)
 	}
 
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			ssa.log.AuditErrf("closing row reader: %s", err)
-		}
-	}()
-
-	for rows.Next() {
-		row, err := rows.Get()
-		if err != nil {
-			return fmt.Errorf("reading row: %w", err)
-		}
-
+	return rows.ForEach(func(row *revokedCertModel) error {
 		// Double-check that the cert wasn't revoked between the time at which we're
 		// constructing this snapshot CRL and right now. If the cert was revoked
 		// at-or-after the "atTime", we'll just include it in the next generation
 		// of CRLs.
 		if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
-			continue
+			return nil
 		}
 
-		err = stream.Send(&corepb.CRLEntry{
+		return stream.Send(&corepb.CRLEntry{
 			Serial:    row.Serial,
 			Reason:    int32(row.RevokedReason),
 			RevokedAt: timestamppb.New(row.RevokedDate),
 		})
-		if err != nil {
-			return fmt.Errorf("sending crl entry: %w", err)
-		}
-	}
-
-	err = rows.Err()
-	if err != nil {
-		return fmt.Errorf("iterating over row reader: %w", err)
-	}
-
-	return nil
+	})
 }
 
 // getRevokedCertsFromCertificateStatusTable uses the new old certificateStatus
@@ -1429,43 +1409,21 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req 
 		return fmt.Errorf("reading db: %w", err)
 	}
 
-	defer func() {
-		err := rows.Close()
-		if err != nil {
-			ssa.log.AuditErrf("closing row reader: %s", err)
-		}
-	}()
-
-	for rows.Next() {
-		row, err := rows.Get()
-		if err != nil {
-			return fmt.Errorf("reading row: %w", err)
-		}
-
+	return rows.ForEach(func(row *crlEntryModel) error {
 		// Double-check that the cert wasn't revoked between the time at which we're
 		// constructing this snapshot CRL and right now. If the cert was revoked
 		// at-or-after the "atTime", we'll just include it in the next generation
 		// of CRLs.
 		if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
-			continue
+			return nil
 		}
 
-		err = stream.Send(&corepb.CRLEntry{
+		return stream.Send(&corepb.CRLEntry{
 			Serial:    row.Serial,
 			Reason:    int32(row.RevokedReason),
 			RevokedAt: timestamppb.New(row.RevokedDate),
 		})
-		if err != nil {
-			return fmt.Errorf("sending crl entry: %w", err)
-		}
-	}
-
-	err = rows.Err()
-	if err != nil {
-		return fmt.Errorf("iterating over row reader: %w", err)
-	}
-
-	return nil
+	})
 }
 
 // GetMaxExpiration returns the timestamp of the farthest-future notAfter date
@@ -1564,4 +1522,64 @@ func (ssa *SQLStorageAuthorityRO) ReplacementOrderExists(ctx context.Context, re
 
 func (ssa *SQLStorageAuthority) ReplacementOrderExists(ctx context.Context, req *sapb.Serial) (*sapb.Exists, error) {
 	return ssa.SQLStorageAuthorityRO.ReplacementOrderExists(ctx, req)
+}
+
+// GetSerialsByKey returns a stream of serials for all unexpired certificates
+// whose public key matches the given SPKIHash. This is useful for revoking all
+// certificates affected by a key compromise.
+func (ssa *SQLStorageAuthorityRO) GetSerialsByKey(req *sapb.SPKIHash, stream sapb.StorageAuthorityReadOnly_GetSerialsByKeyServer) error {
+	clauses := `
+		WHERE keyHash = ?
+		AND certNotAfter > NOW()`
+	params := []interface{}{
+		req.KeyHash,
+	}
+
+	selector, err := db.NewMappedSelector[keyHashModel](ssa.dbReadOnlyMap)
+	if err != nil {
+		return fmt.Errorf("initializing db map: %w", err)
+	}
+
+	rows, err := selector.QueryContext(stream.Context(), clauses, params)
+	if err != nil {
+		return fmt.Errorf("reading db: %w", err)
+	}
+
+	return rows.ForEach(func(row *keyHashModel) error {
+		return stream.Send(&sapb.Serial{Serial: row.CertSerial})
+	})
+}
+
+func (ssa *SQLStorageAuthority) GetSerialsByKey(req *sapb.SPKIHash, stream sapb.StorageAuthority_GetSerialsByKeyServer) error {
+	return ssa.SQLStorageAuthorityRO.GetSerialsByKey(req, stream)
+}
+
+// GetSerialsByAccount returns a stream of all serials for all unexpired
+// certificates issued to the given RegID. This is useful for revoking all of
+// an account's certs upon their request.
+func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, stream sapb.StorageAuthorityReadOnly_GetSerialsByAccountServer) error {
+	clauses := `
+		WHERE registrationID = ?
+		AND expires > NOW()`
+	params := []interface{}{
+		req.Id,
+	}
+
+	selector, err := db.NewMappedSelector[recordedSerialModel](ssa.dbReadOnlyMap)
+	if err != nil {
+		return fmt.Errorf("initializing db map: %w", err)
+	}
+
+	rows, err := selector.QueryContext(stream.Context(), clauses, params)
+	if err != nil {
+		return fmt.Errorf("reading db: %w", err)
+	}
+
+	return rows.ForEach(func(row *recordedSerialModel) error {
+		return stream.Send(&sapb.Serial{Serial: row.Serial})
+	})
+}
+
+func (ssa *SQLStorageAuthority) GetSerialsByAccount(req *sapb.RegistrationID, stream sapb.StorageAuthority_GetSerialsByAccountServer) error {
+	return ssa.SQLStorageAuthorityRO.GetSerialsByAccount(req, stream)
 }

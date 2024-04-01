@@ -1,3 +1,14 @@
+# v4.0.1
+
+## Fixed
+
+ - An attacker could send a JWE containing compressed data that used large
+   amounts of memory and CPU when decompressed by `Decrypt` or `DecryptMulti`.
+   Those functions now return an error if the decompressed data would exceed
+   250kB or 10x the compressed size (whichever is larger). Thanks to
+   Enze Wang@Alioth and Jianjun Chen@Zhongguancun Lab (@zer0yu and @chenjj)
+   for reporting.
+
 # v4.0.0
 
 This release makes some breaking changes in order to more thoroughly

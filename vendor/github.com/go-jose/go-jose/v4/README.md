@@ -1,9 +1,9 @@
 # Go JOSE
 
-[![godoc](https://pkg.go.dev/badge/github.com/go-jose/go-jose/v3.svg)](https://pkg.go.dev/github.com/go-jose/go-jose/v3)
-[![godoc](https://pkg.go.dev/badge/github.com/go-jose/go-jose/v3/jwt.svg)](https://pkg.go.dev/github.com/go-jose/go-jose/v3/jwt)
+[![godoc](https://pkg.go.dev/badge/github.com/go-jose/go-jose/v4.svg)](https://pkg.go.dev/github.com/go-jose/go-jose/v4)
+[![godoc](https://pkg.go.dev/badge/github.com/go-jose/go-jose/v4/jwt.svg)](https://pkg.go.dev/github.com/go-jose/go-jose/v4/jwt)
 [![license](https://img.shields.io/badge/license-apache_2.0-blue.svg?style=flat)](https://raw.githubusercontent.com/go-jose/go-jose/master/LICENSE)
-[![test](https://img.shields.io/github/checks-status/go-jose/go-jose/v3)](https://github.com/go-jose/go-jose/actions)
+[![test](https://img.shields.io/github/checks-status/go-jose/go-jose/v4)](https://github.com/go-jose/go-jose/actions)
 
 Package jose aims to provide an implementation of the Javascript Object Signing
 and Encryption set of standards. This includes support for JSON Web Encryption,
@@ -104,11 +104,11 @@ allows attaching a key id.
 
 ## Examples
 
-[![godoc](https://pkg.go.dev/badge/github.com/go-jose/go-jose/v3.svg)](https://pkg.go.dev/github.com/go-jose/go-jose/v3)
-[![godoc](https://pkg.go.dev/badge/github.com/go-jose/go-jose/v3/jwt.svg)](https://pkg.go.dev/github.com/go-jose/go-jose/v3/jwt)
+[![godoc](https://pkg.go.dev/badge/github.com/go-jose/go-jose/v4.svg)](https://pkg.go.dev/github.com/go-jose/go-jose/v4)
+[![godoc](https://pkg.go.dev/badge/github.com/go-jose/go-jose/v4/jwt.svg)](https://pkg.go.dev/github.com/go-jose/go-jose/v4/jwt)
 
 Examples can be found in the Godoc
 reference for this package. The
-[`jose-util`](https://github.com/go-jose/go-jose/tree/v3/jose-util)
+[`jose-util`](https://github.com/go-jose/go-jose/tree/v4/jose-util)
 subdirectory also contains a small command-line utility which might be useful
 as an example as well.

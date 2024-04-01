@@ -7,6 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"io"
 	"math/big"
@@ -20,6 +21,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/crl/idp"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -307,6 +309,9 @@ func TestUploadCRLSuccess(t *testing.T) {
 	storer, iss := setupTestUploadCRL(t)
 	errs := make(chan error, 1)
 
+	idpExt, err := idp.MakeUserCertsExt([]string{"http://c.ex.org"})
+	test.AssertNotError(t, err, "creating test IDP extension")
+
 	ins := make(chan *cspb.UploadCRLRequest)
 	go func() {
 		errs <- storer.UploadCRL(&fakeUploadCRLServerStream{input: ins})
@@ -329,6 +334,7 @@ func TestUploadCRLSuccess(t *testing.T) {
 			RevokedCertificateEntries: []x509.RevocationListEntry{
 				{SerialNumber: big.NewInt(123), RevocationTime: time.Now().Add(-time.Hour)},
 			},
+			ExtraExtensions: []pkix.Extension{idpExt},
 		},
 		iss.Cert.Certificate,
 		iss.Signer,
@@ -346,6 +352,7 @@ func TestUploadCRLSuccess(t *testing.T) {
 			RevokedCertificateEntries: []x509.RevocationListEntry{
 				{SerialNumber: big.NewInt(123), RevocationTime: time.Now().Add(-time.Hour)},
 			},
+			ExtraExtensions: []pkix.Extension{idpExt},
 		},
 		iss.Cert.Certificate,
 		iss.Signer,
