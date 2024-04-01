@@ -1,7 +1,6 @@
 package ca
 
 import (
-	"bytes"
 	"context"
 	"crypto"
 	"crypto/rand"
@@ -9,7 +8,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/gob"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -54,11 +52,18 @@ type issuerMaps struct {
 	byNameID map[issuance.NameID]*issuance.Issuer
 }
 
+// DefaultCertProfileName will be assigned to any configured certificate profile
+// without a Name.
+const DefaultCertProfileName = "defaultBoulderCertificateProfile"
+
 // certProfilesMap allows looking up the human-readable name of a certificate
 // profile to retrieve the actual profile.
 type certProfilesMaps struct {
-	byHash map[[32]byte]*issuance.Profile
-	byName map[string]*issuance.Profile
+	profileByHash map[[32]byte]*issuance.Profile
+	profileByName map[string]*issuance.Profile
+
+	nameByHash map[[32]byte]string
+	hashByName map[string][32]byte
 }
 
 // certificateAuthorityImpl represents a CA that signs certificates.
@@ -115,33 +120,42 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 //   - CA1 returns the precertificate DER bytes to the RA
 //   - RA instructs CA2 to issue a final certificate, but CA2 does not contain a
 //     profile corresponding to that hash and an issuance is prevented.
-func makeCertificateProfilesMap(profiles map[string]*issuance.Profile) (certProfilesMaps, error) {
-	profilesByName := make(map[string]*issuance.Profile, len(profiles))
-	profilesByHash := make(map[[32]byte]*issuance.Profile, len(profiles))
+func makeCertificateProfilesMap(profiles map[[32]byte]map[string]*issuance.Profile) (certProfilesMaps, error) {
+	profileByName := make(map[string]*issuance.Profile, len(profiles))
+	profileByHash := make(map[[32]byte]*issuance.Profile, len(profiles))
+	hashByName := make(map[string][32]byte, len(profiles))
+	nameByHash := make(map[[32]byte]string, len(profiles))
 
-	var encodedProfile bytes.Buffer
-	enc := gob.NewEncoder(&encodedProfile)
+	//	var encodedProfile bytes.Buffer
+	//	enc := gob.NewEncoder(&encodedProfile)
+	/*
+		for name, profile := range profiles {
+			if profileByName[name] == nil {
+				profileByName[name] = profile
+			} else {
+				return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile name %+v", profile)
+			}
 
-	for name, profile := range profiles {
-		profilesByName[name] = profile
+			//		err := enc.Encode(profile)
+			//		if err != nil {
+			//			return certProfilesMaps{}, err
+			//		}
 
-		err := enc.Encode(profile)
-		if err != nil {
-			return certProfilesMaps{}, err
+			//		if len(encodedProfile.Bytes()) <= 0 {
+			//			return certProfilesMaps{}, errors.New("non-existent certificate profile bytes")
+			//		}
+
+			//		hash := sha256.Sum256(encodedProfile.Bytes())
+			if profileByHash[hash] == nil {
+				profileByHash[hash] = profile
+				nameByHash[hash] = name
+				hashByName[name] = hash
+			} else {
+				return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile hash %+v", profile)
+			}
 		}
-		if len(encodedProfile.Bytes()) <= 0 {
-			return certProfilesMaps{}, errors.New("non-existent certificate profile bytes")
-		}
-		hash := sha256.Sum256(encodedProfile.Bytes())
-
-		if profilesByHash[hash] == nil {
-			profilesByHash[hash] = profile
-		} else {
-			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile hash %+v", profile)
-		}
-	}
-
-	return certProfilesMaps{profilesByHash, profilesByName}, nil
+	*/
+	return certProfilesMaps{profileByHash, profileByName, nameByHash, hashByName}, nil
 }
 
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
@@ -151,7 +165,7 @@ func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
-	certificateProfiles map[string]*issuance.Profile,
+	certificateProfiles map[[32]byte]map[string]*issuance.Profile,
 	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
 	certBackdate time.Duration,
@@ -222,26 +236,27 @@ func NewCertificateAuthorityImpl(
 	return ca, nil
 }
 
-// certificateProfileNameExists checks if the given certificate profile name
+// getCertificateProfileHashByName checks if the given certificate profile name
 // exists in the CA's list of configured certificate profiles. It returns the
-// hash of the profile or an error. The name is guaranteed to be unique, but the
-// profile values may differ between CA nodes and should not be solely relied
-// upon.
-func (ca *certificateAuthorityImpl) certificateProfileNameExists(name string) ([32]byte, error) {
-	profile, ok := ca.certProfiles.byName[name]
+// hash of the profile or an error. The name is guaranteed to be unique per CA
+// node, but the values of the issuance.Profile may differ between CA nodes. As
+// a result, the name should not be solely relied upon, instead opting for the
+// hash.
+func (ca *certificateAuthorityImpl) getCertificateProfileHashByName(name string) ([32]byte, error) {
+	_, ok := ca.certProfiles.profileByName[name]
 	if !ok {
 		return [32]byte{}, fmt.Errorf("the CA is not capable of using a profile named %s", name)
 	}
 
-	return profile.GetHash(), nil
+	return ca.certProfiles.hashByName[name], nil
 }
 
-// certificateProfileHashExists checks if the given certificate profile hash
+// getCertificateProfileByHash checks if the given certificate profile hash
 // exists in the CA's list of configured certificate profiles. It returns the
 // profile or an error. The hash over the whole profile is guaranteed to be
 // unique.
-func (ca *certificateAuthorityImpl) certificateProfileHashExists(hash [32]byte) (*issuance.Profile, error) {
-	profile, ok := ca.certProfiles.byHash[hash]
+func (ca *certificateAuthorityImpl) getCertificateProfileByHash(hash [32]byte) (*issuance.Profile, error) {
+	profile, ok := ca.certProfiles.profileByHash[hash]
 	if !ok {
 		return nil, fmt.Errorf("the CA is not capable of using a profile with hash %d", hash)
 	}
@@ -273,9 +288,9 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	// certificate profile name. The name is checked here instead of the
 	// hash because the RA is unaware of what certificate profiles exist.
 	if issueReq.CertProfileName == "" {
-		issueReq.CertProfileName = issuance.DefaultCertProfileName
+		issueReq.CertProfileName = DefaultCertProfileName
 	}
-	profileHashBytes, err := ca.certificateProfileNameExists(issueReq.CertProfileName)
+	profileHashBytes, err := ca.getCertificateProfileHashByName(issueReq.CertProfileName)
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +359,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	// TODO(#6966): Remove this section after the RA passes the certificate
 	// profile hash in.
 	if req.CertProfileHash == nil {
-		profileHashBytes, err := ca.certificateProfileNameExists(issuance.DefaultCertProfileName)
+		profileHashBytes, err := ca.getCertificateProfileHashByName(DefaultCertProfileName)
 		if err != nil {
 			return nil, err
 		}
@@ -355,7 +370,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	// the hash is over the entire contents of a *ProfileConfig which includes
 	// the name giving assurance that the certificate profile has remained
 	// unchanged during the roundtrip from a CA, to the RA, then back to a CA.
-	certProfile, err := ca.certificateProfileHashExists([32]byte(req.CertProfileHash))
+	certProfile, err := ca.getCertificateProfileByHash([32]byte(req.CertProfileHash))
 	if err != nil {
 		return nil, err
 	}
@@ -397,12 +412,12 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	//certProfileCountLabels := prometheus.Labels{"purpose": string(certType), "profile": certProfile.Name, "hash": hex.EncodeToString(req.CertProfileHash)}
 
 	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] precert=[%s]",
-		serialHex, req.RegistrationID, names, certProfile.Name, hex.EncodeToString(req.CertProfileHash), hex.EncodeToString(precert.Raw))
+		serialHex, req.RegistrationID, names, ca.certProfiles.nameByHash[[32]byte(req.CertProfileHash)], hex.EncodeToString(req.CertProfileHash), hex.EncodeToString(precert.Raw))
 
 	_, issuanceToken, err := issuer.Prepare(certProfile, issuanceReq)
 	if err != nil {
 		ca.log.AuditErrf("Preparing cert failed: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] err=[%v]",
-			serialHex, req.RegistrationID, names, certProfile.Name, hex.EncodeToString(req.CertProfileHash), err)
+			serialHex, req.RegistrationID, names, ca.certProfiles.nameByHash[[32]byte(req.CertProfileHash)], hex.EncodeToString(req.CertProfileHash), err)
 		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
 	}
 
@@ -410,13 +425,13 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	if err != nil {
 		ca.noteSignError(err)
 		ca.log.AuditErrf("Signing cert failed: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] err=[%v]",
-			serialHex, req.RegistrationID, names, certProfile.Name, hex.EncodeToString(req.CertProfileHash), err)
+			serialHex, req.RegistrationID, names, ca.certProfiles.nameByHash[[32]byte(req.CertProfileHash)], hex.EncodeToString(req.CertProfileHash), err)
 		return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
 	}
 
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing cert success: serial=[%s] regID=[%d] names=[%s] certificate=[%s] certProfileName=[%s] certProfileHash=[%s]",
-		serialHex, req.RegistrationID, names, hex.EncodeToString(certDER), certProfile.Name, hex.EncodeToString(req.CertProfileHash))
+		serialHex, req.RegistrationID, names, hex.EncodeToString(certDER), ca.certProfiles.nameByHash[[32]byte(req.CertProfileHash)], hex.EncodeToString(req.CertProfileHash))
 
 	_, err = ca.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    certDER,
@@ -425,7 +440,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	})
 	if err != nil {
 		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s] cert=[%s] issuerID=[%d] regID=[%d] orderID=[%d] certProfileName=[%s] certProfileHash=[%s] err=[%v]",
-			serialHex, hex.EncodeToString(certDER), issuer.NameID(), req.RegistrationID, req.OrderID, certProfile.Name, hex.EncodeToString(req.CertProfileHash), err)
+			serialHex, hex.EncodeToString(certDER), issuer.NameID(), req.RegistrationID, req.OrderID, ca.certProfiles.nameByHash[[32]byte(req.CertProfileHash)], hex.EncodeToString(req.CertProfileHash), err)
 		return nil, err
 	}
 
@@ -495,9 +510,9 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	// certificate profile name. The name is checked here instead of the
 	// hash because the RA is unaware of what certificate profiles exist.
 	if issueReq.CertProfileName == "" {
-		issueReq.CertProfileName = issuance.DefaultCertProfileName
+		issueReq.CertProfileName = DefaultCertProfileName
 	}
-	profileHashBytes, err := ca.certificateProfileNameExists(issueReq.CertProfileName)
+	profileHashBytes, err := ca.getCertificateProfileHashByName(issueReq.CertProfileName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -569,7 +584,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	// the hash is over the entire contents of a *ProfileConfig which includes
 	// the name giving more assurance that the certificate profile has remained
 	// unchanged during the roundtrip from a CA, to the RA, then back to a CA.
-	lintCertBytes, issuanceToken, err := issuer.Prepare(ca.certProfiles.byHash[profileHashBytes], req)
+	lintCertBytes, issuanceToken, err := issuer.Prepare(ca.certProfiles.profileByHash[profileHashBytes], req)
 	//certProfileCountLabels := prometheus.Labels{"purpose": string(precertType), "profile": issueReq.CertProfileName, "hash": hex.EncodeToString(profileHashBytes[:])}
 	if err != nil {
 		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] err=[%v]",

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/exp/maps"
 
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -37,13 +38,17 @@ type Config struct {
 		// Issuance contains all information necessary to load and initialize issuers.
 		Issuance struct {
 			// The name of the certificate profile to use if one wasn't provided
-			// by the RA during NewOrder and Finalize requests.
-			DefaultCertificateProfileName string
+			// by the RA during NewOrder and Finalize requests. Must match a
+			// configured certificate profile or boulder-ca will fail to start.
+			DefaultCertificateProfileName string `validate:"omitempty,alphanum,min=1,max=32"`
 
-			// Deprecated: Use CertProfiles instead. Profile implictly takes a
-			// default name.
-			Profile      issuance.ProfileConfig            `validate:"required_without=CertProfiles"`
-			CertProfiles map[string]issuance.ProfileConfig `validate:"required_without=Profile,min=1,dive,keys,alphanum,min=1,max=32,endkeys"`
+			// Deprecated: Use CertProfiles instead. Profile implictly takes the
+			// internal Boulder default value of ca.DefaultCertProfileName.
+			Profile issuance.ProfileConfig `validate:"omitempty"`
+
+			// One of the profile names must match the value of
+			// DefaultCertificateProfileName or boulder-ca will fail to start.
+			CertProfiles map[string]issuance.ProfileConfig `validate:"omitempty,dive,keys,alphanum,min=1,max=32,endkeys"`
 
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile   issuance.CRLProfileConfig `validate:"-"`
@@ -179,7 +184,7 @@ func main() {
 			Name: "signatures",
 			Help: "Number of signatures",
 		},
-		[]string{"purpose", "issuer"})
+		[]string{"purpose", "issuer", "profile", "hash"})
 	scope.MustRegister(signatureCount)
 
 	signErrorCount := prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -205,6 +210,7 @@ func main() {
 		err = loglist.InitLintList(c.CA.CTLogListFile)
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
+	fmt.Println("Here 1")
 
 	issuers := make([]*issuance.Issuer, 0, len(c.CA.Issuance.Issuers))
 	for _, issuerConfig := range c.CA.Issuance.Issuers {
@@ -212,37 +218,48 @@ func main() {
 		cmd.FailOnError(err, "Loading issuer")
 		issuers = append(issuers, issuer)
 	}
+	fmt.Println("Here 2")
 
 	if c.CA.Issuance.DefaultCertificateProfileName == "" {
-		c.CA.Issuance.DefaultCertificateProfileName = issuance.DefaultCertProfileName
+		c.CA.Issuance.DefaultCertificateProfileName = ca.DefaultCertProfileName
 	}
-	logger.Infof("Using default certificate profile name: %s", c.CA.Issuance.DefaultCertificateProfileName)
+	logger.Infof("Configured default certificate profile name set to: %s", c.CA.Issuance.DefaultCertificateProfileName)
 
-	//cmd.FailOnError(err, "Couldn't load certificate profile")
+	deprecatedProfileExists := reflect.ValueOf(c.CA.Issuance.Profile).IsZero()
+	if !deprecatedProfileExists && len(c.CA.Issuance.CertProfiles) > 0 {
+		cmd.Fail("Only one of Issuance.Profile or Issuance.CertProfiles can be configured")
+	}
+	fmt.Println("Here 3")
 
-	certProfilesMap := make(map[string]*issuance.Profile)
-	var deprecatedProfile *issuance.Profile
-	if !reflect.ValueOf(c.CA.Issuance.Profile).IsZero() {
-		deprecatedProfile, err = issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
-		certProfilesMap[c.CA.Issuance.DefaultCertificateProfileName] = deprecatedProfile
+	certProfilesMap := make(map[[32]byte]map[string]*issuance.Profile, 0)
+	if !deprecatedProfileExists {
+		profile, hash, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
+		cmd.FailOnError(err, "Couldn't load certificate profile")
+		certProfilesMap[hash] = make(map[string]*issuance.Profile, 0)
+		certProfilesMap[hash][c.CA.Issuance.DefaultCertificateProfileName] = profile
 	} else {
 		for name, config := range c.CA.Issuance.CertProfiles {
-			profile, err := issuance.NewProfile(config, c.CA.Issuance.IgnoredLints)
+			profile, hash, err := issuance.NewProfile(config, c.CA.Issuance.IgnoredLints)
 			cmd.FailOnError(err, "Couldn't load certificate profile")
-			//certProfiles = append(certProfiles, profile)
-			certProfilesMap[name] = profile
+			certProfilesMap[hash] = make(map[string]*issuance.Profile, 0)
+			certProfilesMap[hash][name] = profile
 		}
 	}
 
-	for _, x := range certProfilesMap {
-		fmt.Printf("PHIL: %+v\n", x)
+	fmt.Println("Here 4")
+	for x, i := range certProfilesMap {
+		fmt.Printf("x = %+v, i = %+v\n", x, i)
+	}
+	//os.Exit(1)
+
+	//_, ok := certProfilesMap[]
+	for _, hash := range maps.Keys(certProfilesMap) {
+		_, ok := certProfilesMap[hash]
+		if !ok {
+			cmd.Fail(fmt.Sprintf("defaultCertificateProfileName %s was configured, but a matching profile object was not found", c.CA.Issuance.DefaultCertificateProfileName))
+		}
 	}
 	os.Exit(1)
-
-	_, ok := certProfilesMap[c.CA.Issuance.DefaultCertificateProfileName]
-	if !ok {
-		cmd.Fail(fmt.Sprintf("defaultCertificateProfileName %s was configured, but a matching profile object was not found", c.CA.Issuance.DefaultCertificateProfileName))
-	}
 
 	tlsConfig, err := c.CA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")

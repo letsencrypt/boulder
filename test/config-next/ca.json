@@ -43,7 +43,7 @@
 		},
 		"issuance": {
 			"defaultCertificateProfileName": "defaultBoulderCertificateProfile",
-			"profiles": {
+			"certProfiles": {
 				"defaultBoulderCertificateProfile": {
 					"allowMustStaple": true,
 					"allowCTPoison": true,
