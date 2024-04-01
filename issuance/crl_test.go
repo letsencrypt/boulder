@@ -142,7 +142,7 @@ func TestIssueCRL(t *testing.T) {
 
 	idps, err := idp.GetIDPURIs(parsedRes.Extensions)
 	test.AssertNotError(t, err, "getting IDP URIs from test CRL")
-	test.AssertEquals(t, idps[0], "http://crl-url.example.org//100.crl")
+	test.AssertEquals(t, idps[0], "http://crl-url.example.org/100.crl")
 	test.AssertEquals(t, idps[1], "http://old.crl.url/0/100.crl")
 
 	req = defaultRequest
