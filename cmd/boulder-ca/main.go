@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/exp/maps"
 
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -228,28 +227,35 @@ func main() {
 		cmd.Fail("Only one of Issuance.Profile or Issuance.CertProfiles can be configured")
 	}
 
-	certProfilesMap := make(map[[32]byte]map[string]*issuance.Profile, 0)
+	certProfilesMap := make(map[string]ca.CertProfileWithID, 0)
 	if !deprecatedProfileExists {
 		profile, hash, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
 		cmd.FailOnError(err, "Couldn't load certificate profile")
-		certProfilesMap[hash] = make(map[string]*issuance.Profile, 0)
-		certProfilesMap[hash][c.CA.Issuance.DefaultCertificateProfileName] = profile
+		certProfilesMap[c.CA.Issuance.DefaultCertificateProfileName] = ca.CertProfileWithID{
+			Name:    c.CA.Issuance.DefaultCertificateProfileName,
+			Hash:    hash,
+			Profile: profile,
+		}
 	} else {
 		for name, config := range c.CA.Issuance.CertProfiles {
-			profile, hash, err := issuance.NewProfile(config, c.CA.Issuance.IgnoredLints)
-			cmd.FailOnError(err, "Couldn't load certificate profile")
-			certProfilesMap[hash] = make(map[string]*issuance.Profile, 0)
-			certProfilesMap[hash][name] = profile
+			_, ok := certProfilesMap[name]
+			if !ok {
+				profile, hash, err := issuance.NewProfile(config, c.CA.Issuance.IgnoredLints)
+				cmd.FailOnError(err, "Couldn't load certificate profile")
+				certProfilesMap[name] = ca.CertProfileWithID{
+					Name:    name,
+					Hash:    hash,
+					Profile: profile,
+				}
+			} else {
+				cmd.Fail(fmt.Sprintf("Duplicate certificate profile name \"%s\" configured", name))
+			}
 		}
 	}
 
-	for _, hash := range maps.Keys(certProfilesMap) {
-		for range certProfilesMap[hash] {
-			_, ok := certProfilesMap[hash][c.CA.Issuance.DefaultCertificateProfileName]
-			if !ok {
-				cmd.Fail(fmt.Sprintf("defaultCertificateProfileName:\"%s\" was configured, but a profile object was not found for that name", c.CA.Issuance.DefaultCertificateProfileName))
-			}
-		}
+	_, ok := certProfilesMap[c.CA.Issuance.DefaultCertificateProfileName]
+	if !ok {
+		cmd.Fail(fmt.Sprintf("defaultCertificateProfileName:\"%s\" was configured, but a profile object was not found for that name", c.CA.Issuance.DefaultCertificateProfileName))
 	}
 
 	tlsConfig, err := c.CA.TLS.Load(scope)

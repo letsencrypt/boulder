@@ -56,13 +56,13 @@ type issuerMaps struct {
 // without a Name.
 const DefaultCertProfileName = "defaultBoulderCertificateProfile"
 
-type certProfileWithID struct {
+type CertProfileWithID struct {
 	// name is a human readable name used to refer to the certificate profile.
-	name string
+	Name string
 	// hash is SHA256 sum over every exported field of an issuance.ProfileConfig
 	// used to generate the embedded *issuance.Profile.
-	hash [32]byte
-	*issuance.Profile
+	Hash    [32]byte
+	Profile *issuance.Profile
 }
 
 // certProfilesMap allows looking up the human-readable name of a certificate
@@ -70,9 +70,8 @@ type certProfileWithID struct {
 type certProfilesMaps struct {
 	profileByHash map[[32]byte]*issuance.Profile
 	profileByName map[string]*issuance.Profile
-
-	nameByHash map[[32]byte]string
-	hashByName map[string][32]byte
+	nameByHash    map[[32]byte]string
+	hashByName    map[string][32]byte
 }
 
 // certificateAuthorityImpl represents a CA that signs certificates.
@@ -129,41 +128,30 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 //   - CA1 returns the precertificate DER bytes to the RA
 //   - RA instructs CA2 to issue a final certificate, but CA2 does not contain a
 //     profile corresponding to that hash and an issuance is prevented.
-func makeCertificateProfilesMap(profiles map[[32]byte]map[string]*issuance.Profile) (certProfilesMaps, error) {
+func makeCertificateProfilesMap(profiles map[string]CertProfileWithID) (certProfilesMaps, error) {
 	profileByName := make(map[string]*issuance.Profile, len(profiles))
 	profileByHash := make(map[[32]byte]*issuance.Profile, len(profiles))
 	hashByName := make(map[string][32]byte, len(profiles))
 	nameByHash := make(map[[32]byte]string, len(profiles))
 
-	//	var encodedProfile bytes.Buffer
-	//	enc := gob.NewEncoder(&encodedProfile)
-	/*
-		for name, profile := range profiles {
-			if profileByName[name] == nil {
-				profileByName[name] = profile
-			} else {
-				return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile name %+v", profile)
-			}
-
-			//		err := enc.Encode(profile)
-			//		if err != nil {
-			//			return certProfilesMaps{}, err
-			//		}
-
-			//		if len(encodedProfile.Bytes()) <= 0 {
-			//			return certProfilesMaps{}, errors.New("non-existent certificate profile bytes")
-			//		}
-
-			//		hash := sha256.Sum256(encodedProfile.Bytes())
-			if profileByHash[hash] == nil {
-				profileByHash[hash] = profile
-				nameByHash[hash] = name
-				hashByName[name] = hash
-			} else {
-				return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile hash %+v", profile)
-			}
+	for _, p := range profiles {
+		_, ok := profileByName[p.Name]
+		if !ok {
+			profileByName[p.Name] = p.Profile
+			hashByName[p.Name] = p.Hash
+		} else {
+			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile name %s", p.Name)
 		}
-	*/
+
+		_, ok = profileByHash[p.Hash]
+		if !ok {
+			profileByHash[p.Hash] = p.Profile
+			nameByHash[p.Hash] = p.Name
+		} else {
+			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile hash %d", p.Hash[:])
+		}
+	}
+
 	return certProfilesMaps{profileByHash, profileByName, nameByHash, hashByName}, nil
 }
 
@@ -174,7 +162,7 @@ func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
-	certificateProfiles map[[32]byte]map[string]*issuance.Profile,
+	certificateProfiles map[string]CertProfileWithID,
 	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
 	certBackdate time.Duration,

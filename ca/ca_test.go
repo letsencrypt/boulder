@@ -110,7 +110,7 @@ type testCtx struct {
 	pa             core.PolicyAuthority
 	ocsp           *ocspImpl
 	crl            *crlImpl
-	certProfiles   map[[32]byte]map[string]*issuance.Profile
+	certProfiles   map[string]CertProfileWithID
 	certExpiry     time.Duration
 	certBackdate   time.Duration
 	serialPrefix   int
@@ -180,11 +180,12 @@ func setup(t *testing.T) *testCtx {
 		[]string{"w_subject_common_name_included"},
 	)
 	test.AssertNotError(t, err, "Couldn't create test profile")
-	fmt.Printf("profile = %+v, hash = %+v\n", profile, hash)
-	certProfiles := make(map[[32]byte]map[string]*issuance.Profile, 0)
-	//certProfiles[hash][DefaultCertProfileName] = profile
-	certProfiles[hash] = make(map[string]*issuance.Profile, 0)
-	certProfiles[hash][DefaultCertProfileName] = profile
+	certProfiles := make(map[string]CertProfileWithID, 0)
+	certProfiles[DefaultCertProfileName] = CertProfileWithID{
+		Name:    DefaultCertProfileName,
+		Hash:    hash,
+		Profile: profile,
+	}
 
 	longerLived, hash, err := issuance.NewProfile(
 		issuance.ProfileConfig{
@@ -201,9 +202,11 @@ func setup(t *testing.T) *testCtx {
 		[]string{"w_subject_common_name_included"},
 	)
 	test.AssertNotError(t, err, "Couldn't create test profile")
-	fmt.Printf("profile = %+v, hash = %+v\n", longerLived, hash)
-	certProfiles[hash] = make(map[string]*issuance.Profile, 0)
-	certProfiles[hash]["longerLived"] = longerLived
+	certProfiles["longerLived"] = CertProfileWithID{
+		Name:    "longerLived",
+		Hash:    hash,
+		Profile: longerLived,
+	}
 
 	ecdsaOnlyIssuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
 		UseForRSALeaves:   false,
@@ -490,8 +493,8 @@ func TestMultipleIssuers(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to remake CA")
 
 	selectedProfile := DefaultCertProfileName
-	certProfileHash := ca.certProfiles.hashByName[selectedProfile]
-	test.AssertNotNil(t, err, "Certificate profile was expected to exist")
+	certProfileHash, ok := ca.certProfiles.hashByName[selectedProfile]
+	test.Assert(t, ok, "Certificate profile was expected to exist")
 	hexHash := hex.EncodeToString(certProfileHash[:])
 
 	// Test that an RSA CSR gets issuance from the RSA issuer.
@@ -515,11 +518,11 @@ func TestMultipleIssuers(t *testing.T) {
 
 func TestProfiles(t *testing.T) {
 	ctx := setup(t)
-	test.AssertEquals(t, len(ctx.certProfiles), 1)
+	test.AssertEquals(t, len(ctx.certProfiles), 2)
 
 	sa := &mockSA{}
 
-	duplicateProfiles := make(map[[32]byte]map[string]*issuance.Profile, 0)
+	duplicateProfiles := make(map[string]CertProfileWithID, 0)
 	duplicateProfile, hash, err := issuance.NewProfile(
 		issuance.ProfileConfig{
 			AllowMustStaple: false,
@@ -535,11 +538,19 @@ func TestProfiles(t *testing.T) {
 		[]string{"w_subject_common_name_included"},
 	)
 	test.AssertNotError(t, err, "Couldn't create extra profile")
-	duplicateProfiles[hash][DefaultCertProfileName] = duplicateProfile
-	duplicateProfiles[hash][DefaultCertProfileName] = duplicateProfile
+	duplicateProfiles[DefaultCertProfileName] = CertProfileWithID{
+		Name:    DefaultCertProfileName,
+		Hash:    hash,
+		Profile: duplicateProfile,
+	}
+	duplicateProfiles[DefaultCertProfileName] = CertProfileWithID{
+		Name:    DefaultCertProfileName,
+		Hash:    hash,
+		Profile: duplicateProfile,
+	}
 	test.AssertEquals(t, len(duplicateProfiles), 1)
 
-	extraProfiles := make(map[[32]byte]map[string]*issuance.Profile, 0)
+	extraProfiles := make(map[string]CertProfileWithID, 0)
 	extraProfile, hash, err := issuance.NewProfile(
 		issuance.ProfileConfig{
 			AllowMustStaple: false,
@@ -555,7 +566,11 @@ func TestProfiles(t *testing.T) {
 		[]string{"w_subject_common_name_included"},
 	)
 	test.AssertNotError(t, err, "Couldn't create extra profile")
-	duplicateProfiles[hash]["Unique Profile Name"] = extraProfile
+	extraProfiles["Unique Profile Name"] = CertProfileWithID{
+		Name:    "Unique Profile Name",
+		Hash:    hash,
+		Profile: extraProfile,
+	}
 	test.AssertEquals(t, len(extraProfiles), 1)
 
 	type nameToHash struct {
@@ -565,7 +580,7 @@ func TestProfiles(t *testing.T) {
 
 	testCases := []struct {
 		name              string
-		certProfiles      map[[32]byte]map[string]*issuance.Profile
+		certProfiles      map[string]CertProfileWithID
 		expectedErrSubstr string
 		expectedProfiles  []nameToHash
 	}{
@@ -936,9 +951,9 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	selectedProfile := DefaultCertProfileName
-	hash, err := ca.getCertificateProfileHashByName(selectedProfile)
-	hexHash := hex.EncodeToString(hash[:])
-	test.AssertNotError(t, err, "Certificate profile was expected to exist")
+	certProfileHash, ok := ca.certProfiles.hashByName[selectedProfile]
+	test.Assert(t, ok, "Certificate profile was expected to exist")
+	hexHash := hex.EncodeToString(certProfileHash[:])
 
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
 	precert, err := ca.IssuePrecertificate(ctx, &issueReq)
@@ -1005,8 +1020,8 @@ func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *test
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	selectedProfile := "longerLived"
-	certProfileHash := ca.certProfiles.hashByName[selectedProfile]
-	test.AssertNotNil(t, err, "Certificate profile was expected to exist")
+	certProfileHash, ok := ca.certProfiles.hashByName[selectedProfile]
+	test.Assert(t, ok, "Certificate profile was expected to exist")
 	hexHash := hex.EncodeToString(certProfileHash[:])
 
 	issueReq := capb.IssueCertificateRequest{
@@ -1130,8 +1145,8 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	}
 
 	selectedProfile := DefaultCertProfileName
-	certProfileHash := ca.certProfiles.hashByName[selectedProfile]
-	test.AssertNotNil(t, err, "Certificate profile was expected to exist")
+	certProfileHash, ok := ca.certProfiles.hashByName[selectedProfile]
+	test.Assert(t, ok, "Certificate profile was expected to exist")
 	hexHash := hex.EncodeToString(certProfileHash[:])
 
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
