@@ -90,9 +90,6 @@ jobs:
       - name: docker compose pull
         run: docker compose pull
 
-      # Enable https://github.com/golang/go/wiki/LoopvarExperiment
-      - run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
-
       # Run the test matrix. This will run
       - name: "Run Test: ${{ matrix.tests }}"
         run: ${{ matrix.tests }}

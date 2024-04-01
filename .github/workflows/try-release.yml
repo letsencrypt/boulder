@@ -22,9 +22,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # Enable https://github.com/golang/go/wiki/LoopvarExperiment
-      - run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
-
       - name: Build .deb
         id: build
         env:
