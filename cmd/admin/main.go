@@ -12,7 +12,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -41,6 +40,24 @@ type Config struct {
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
+// subcommand specifies the set of methods that a struct must implement to be
+// usable as an admin subcommand.
+type subcommand interface {
+	// Desc should return a short (one-sentence) description of the subcommand for
+	// use in help/usage strings.
+	Desc() string
+	// Flags should register command line flags on the provided flagset. These
+	// should use the "TypeVar" methods on the provided flagset, targeting fields
+	// on the subcommand struct, so that the results of command line parsing can
+	// be used by other methods on the struct.
+	Flags(*flag.FlagSet)
+	// Run should do all of the subcommand's heavy lifting, with behavior gated on
+	// the subcommand struct's member fields which have been populated from the
+	// command line. The provided admin object can be used for access to external
+	// services like the RA, SA, and configured logger.
+	Run(context.Context, *admin) error
+}
+
 // main is the entry-point for the admin tool. We do not include admin in the
 // suite of tools which are subcommands of the "boulder" binary, since it
 // should be small and portable and standalone.
@@ -51,31 +68,11 @@ func main() {
 	// validation for free.
 	defer cmd.AuditPanic()
 
-	configFile := flag.String("config", "", "Path to the configuration file for this service (required)")
-	dryRun := flag.Bool("dry-run", true, "Print actions instead of mutating the database")
-
-	subcommands := map[string]struct {
-		desc string
-		run  func(*admin, context.Context, []string) error
-	}{
-		"revoke-cert": {
-			"Revoke one or more certificates",
-			func(a *admin, ctx context.Context, args []string) error {
-				return a.subcommandRevokeCert(ctx, args)
-			},
-		},
-		"block-key": {
-			"Block a keypair from any future issuance",
-			func(a *admin, ctx context.Context, args []string) error {
-				return a.subcommandBlockKey(ctx, args)
-			},
-		},
-		"update-email": {
-			"Change or remove an email address across all accounts",
-			func(a *admin, ctx context.Context, args []string) error {
-				return a.subcommandUpdateEmail(ctx, args)
-			},
-		},
+	// This is the registry of all subcommands that the admin tool can run.
+	subcommands := map[string]subcommand{
+		"revoke-cert":  &subcommandRevokeCert{},
+		"block-key":    &subcommandBlockKey{},
+		"update-email": &subcommandUpdateEmail{},
 	}
 
 	defaultUsage := flag.Usage
@@ -84,31 +81,18 @@ func main() {
 		fmt.Printf("\nSubcommands:\n")
 		for name, command := range subcommands {
 			fmt.Printf("  %s\n", name)
-			fmt.Printf("\t%s\n", command.desc)
+			fmt.Printf("\t%s\n", command.Desc())
 		}
-		fmt.Print("\nYou can run \"admin -config /path/to/cfg.json <subcommand> -help\" to get usage for that subcommand.\n")
+		fmt.Print("\nYou can run \"admin <subcommand> -help\" to get usage for that subcommand.\n")
 	}
 
+	// Start by parsing just the global flags before we get to the subcommand, if
+	// they're present.
+	configFile := flag.String("config", "", "Path to the configuration file for this service (required)")
+	dryRun := flag.Bool("dry-run", true, "Print actions instead of mutating the database")
 	flag.Parse()
 
-	if *configFile == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	var c Config
-	err := cmd.ReadConfigFile(*configFile, &c)
-	cmd.FailOnError(err, "parsing config file")
-
-	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Admin.DebugAddr)
-	defer oTelShutdown(context.Background())
-	logger.Info(cmd.VersionString())
-
-	features.Set(c.Admin.Features)
-
-	a, err := newAdmin(c, *dryRun, cmd.Clock(), logger, scope)
-	cmd.FailOnError(err, "constructing admin object")
-
+	// Figure out which subcommand they want us to run.
 	unparsedArgs := flag.Args()
 	if len(unparsedArgs) == 0 {
 		flag.Usage()
@@ -117,22 +101,47 @@ func main() {
 
 	subcommand, ok := subcommands[unparsedArgs[0]]
 	if !ok {
-		cmd.FailOnError(errors.New("no recognized subcommand name provided"), "")
+		flag.Usage()
+		os.Exit(1)
 	}
 
+	// Then parse the rest of the args according to the selected subcommand's
+	// flags, and allow the global flags to be placed after the subcommand name.
+	subflags := flag.NewFlagSet(unparsedArgs[0], flag.ExitOnError)
+	subcommand.Flags(subflags)
+	flag.VisitAll(func(f *flag.Flag) {
+		// For each flag registered at the global/package level, also register it on
+		// the subflags FlagSet. The `f.Value` here is a pointer to the same var
+		// that the original global flag would populate, so the same variable can
+		// be set either way.
+		subflags.Var(f.Value, f.Name, f.Usage)
+	})
+	_ = subflags.Parse(unparsedArgs[1:])
+
+	// With the flags all parsed, now we can parse our config and set up our admin
+	// object.
+	if *configFile == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	a, err := newAdmin(*configFile, *dryRun)
+	cmd.FailOnError(err, "creating admin object")
+
+	// Finally, run the selected subcommand.
 	if a.dryRun {
-		a.log.AuditInfof("admin tool executing a dry-run with the following arguments: %s", strings.Join(unparsedArgs, " "))
+		a.log.AuditInfof("admin tool executing a dry-run with the following arguments: %q", strings.Join(os.Args, " "))
 	} else {
-		a.log.AuditInfof("admin tool executing with the following arguments: %s", strings.Join(unparsedArgs, " "))
+		a.log.AuditInfof("admin tool executing with the following arguments: %q", strings.Join(os.Args, " "))
 	}
 
-	err = subcommand.run(a, context.Background(), unparsedArgs[1:])
+	err = subcommand.Run(context.Background(), a)
 	cmd.FailOnError(err, "executing subcommand")
 
 	if a.dryRun {
-		a.log.AuditInfof("admin tool has successfully completed executing a dry-run with the following arguments: %s", strings.Join(unparsedArgs, " "))
+		a.log.AuditInfof("admin tool has successfully completed executing a dry-run with the following arguments: %q", strings.Join(os.Args, " "))
 		a.log.Info("Dry run complete. Pass -dry-run=false to mutate the database.")
 	} else {
-		a.log.AuditInfof("admin tool has successfully completed executing with the following arguments: %s", strings.Join(unparsedArgs, " "))
+		a.log.AuditInfof("admin tool has successfully completed executing with the following arguments: %q", strings.Join(os.Args, " "))
 	}
 }

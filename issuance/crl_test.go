@@ -10,6 +10,7 @@ import (
 	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/crl/idp"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -138,6 +139,11 @@ func TestIssueCRL(t *testing.T) {
 	expectUpdate := req.ThisUpdate.Add(-time.Second).Add(defaultProfile.validityInterval).Truncate(time.Second).UTC()
 	test.AssertEquals(t, parsedRes.NextUpdate, expectUpdate)
 	test.AssertEquals(t, len(parsedRes.Extensions), 3)
+
+	idps, err := idp.GetIDPURIs(parsedRes.Extensions)
+	test.AssertNotError(t, err, "getting IDP URIs from test CRL")
+	test.AssertEquals(t, idps[0], "http://crl-url.example.org/100.crl")
+	test.AssertEquals(t, idps[1], "http://old.crl.url/0/100.crl")
 
 	req = defaultRequest
 	req.DeprecatedIDPBaseURL = ""

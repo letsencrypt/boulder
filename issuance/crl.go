@@ -84,7 +84,9 @@ func (i *Issuer) IssueCRL(prof *CRLProfile, req *CRLRequest) ([]byte, error) {
 
 	var idps []string
 	if i.crlURLBase != "" {
-		idps = append(idps, fmt.Sprintf("%s/%d.crl", i.crlURLBase, req.Shard))
+		// Concat the base with the shard directly, since we require that the base
+		// end with a single trailing slash.
+		idps = append(idps, fmt.Sprintf("%s%d.crl", i.crlURLBase, req.Shard))
 	}
 	if req.DeprecatedIDPBaseURL != "" {
 		// TODO(#7296): Remove this fallback once CCADB and all non-expired certs

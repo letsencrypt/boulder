@@ -51,7 +51,7 @@ func KeyWrap(block cipher.Block, cek []byte) ([]byte, error) {
 		binary.BigEndian.PutUint64(tBytes, uint64(t+1))
 
 		for i := 0; i < 8; i++ {
-			buffer[i] = buffer[i] ^ tBytes[i]
+			buffer[i] ^= tBytes[i]
 		}
 		copy(r[t%n], buffer[8:])
 	}
@@ -87,7 +87,7 @@ func KeyUnwrap(block cipher.Block, ciphertext []byte) ([]byte, error) {
 		binary.BigEndian.PutUint64(tBytes, uint64(t+1))
 
 		for i := 0; i < 8; i++ {
-			buffer[i] = buffer[i] ^ tBytes[i]
+			buffer[i] ^= tBytes[i]
 		}
 		copy(buffer[8:], r[t%n])
 

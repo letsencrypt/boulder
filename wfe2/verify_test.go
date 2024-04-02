@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -24,10 +26,9 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/web"
-	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/go-jose/go-jose/v4"
 	"google.golang.org/grpc"
-	"gopkg.in/go-jose/go-jose.v2"
 )
 
 // sigAlgForKey uses `signatureAlgorithmForKey` but fails immediately using the
@@ -125,7 +126,7 @@ func (rs requestSigner) embeddedJWK(
 	test.AssertNotError(rs.t, err, "Failed to sign req")
 
 	body := jws.FullSerialize()
-	parsedJWS, err := jose.ParseSigned(body)
+	parsedJWS, err := jose.ParseSigned(body, getSupportedAlgs())
 	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
 
 	return parsedJWS, parsedJWS.Signatures[0].Header.JSONWebKey, body
@@ -169,7 +170,7 @@ func (rs requestSigner) byKeyID(
 	test.AssertNotError(rs.t, err, "Failed to sign req")
 
 	body := jws.FullSerialize()
-	parsedJWS, err := jose.ParseSigned(body)
+	parsedJWS, err := jose.ParseSigned(body, getSupportedAlgs())
 	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
 
 	return parsedJWS, jwk, body
@@ -229,7 +230,7 @@ func (rs requestSigner) invalidNonce() *jose.JSONWebSignature {
 	test.AssertNotError(rs.t, err, "Failed to sign req")
 
 	body := jws.FullSerialize()
-	parsedJWS, err := jose.ParseSigned(body)
+	parsedJWS, err := jose.ParseSigned(body, getSupportedAlgs())
 	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
 
 	return parsedJWS
@@ -262,7 +263,7 @@ func (rs requestSigner) malformedNonce() *jose.JSONWebSignature {
 	test.AssertNotError(rs.t, err, "Failed to sign req")
 
 	body := jws.FullSerialize()
-	parsedJWS, err := jose.ParseSigned(body)
+	parsedJWS, err := jose.ParseSigned(body, getSupportedAlgs())
 	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
 
 	return parsedJWS
@@ -295,7 +296,7 @@ func (rs requestSigner) shortNonce() *jose.JSONWebSignature {
 	test.AssertNotError(rs.t, err, "Failed to sign req")
 
 	body := jws.FullSerialize()
-	parsedJWS, err := jose.ParseSigned(body)
+	parsedJWS, err := jose.ParseSigned(body, getSupportedAlgs())
 	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
 
 	return parsedJWS
@@ -316,19 +317,8 @@ func TestRejectsNone(t *testing.T) {
   		"signature": "ghTIjrhiRl2pQ09vAkUUBbF5KziJdhzOTB-okM9SPRzU8Hyj0W1H5JA1Zoc-A-LuJGNAtYYHWqMw1SeZbT0l9FHcbMPeWDaJNkHS9jz5_g_Oyol8vcrWur2GDtB2Jgw6APtZKrbuGATbrF7g41Wijk6Kk9GXDoCnlfOQOhHhsrFFcWlCPLG-03TtKD6EBBoVBhmlp8DRLs7YguWRZ6jWNaEX-1WiRntBmhLqoqQFtvZxCBw_PRuaRw_RZBd1x2_BNYqEdOmVNC43UHMSJg3y_3yrPo905ur09aUTscf-C_m4Sa4M0FuDKn3bQ_pFrtz-aCCq6rcTIyxYpDqNvHMT2Q"
 		}
 	`
-	noneJWS, err := jose.ParseSigned(noneJWSBody)
-	if err != nil {
-		t.Fatal("Unable to parse noneJWS")
-	}
-	noneJWK := noneJWS.Signatures[0].Header.JSONWebKey
-
-	err = checkAlgorithm(noneJWK, noneJWS.Signatures[0].Header)
-	if err == nil {
-		t.Fatalf("checkAlgorithm did not reject JWS with alg: 'none'")
-	}
-	if err.Error() != "JWS signature header contains unsupported algorithm \"none\", expected one of RS256, ES256, ES384 or ES512" {
-		t.Fatalf("checkAlgorithm rejected JWS with alg: 'none', but for wrong reason: %#v", err)
-	}
+	_, err := jose.ParseSigned(noneJWSBody, getSupportedAlgs())
+	test.AssertError(t, err, "Should not have been able to parse 'none' algorithm")
 }
 
 func TestRejectsHS256(t *testing.T) {
@@ -347,20 +337,9 @@ func TestRejectsHS256(t *testing.T) {
 		}
 	`
 
-	hs256JWS, err := jose.ParseSigned(hs256JWSBody)
-	if err != nil {
-		t.Fatal("Unable to parse hs256JWSBody")
-	}
-	hs256JWK := hs256JWS.Signatures[0].Header.JSONWebKey
-
-	err = checkAlgorithm(hs256JWK, hs256JWS.Signatures[0].Header)
-	if err == nil {
-		t.Fatalf("checkAlgorithm did not reject JWS with alg: 'HS256'")
-	}
-	expected := "JWS signature header contains unsupported algorithm \"HS256\", expected one of RS256, ES256, ES384 or ES512"
-	if err.Error() != expected {
-		t.Fatalf("checkAlgorithm rejected JWS with alg: 'none', but for wrong reason: got %q, wanted %q", err.Error(), expected)
-	}
+	_, err := jose.ParseSigned(hs256JWSBody, getSupportedAlgs())
+	fmt.Println(err)
+	test.AssertError(t, err, "Parsed hs256JWSBody, but should not have")
 }
 
 func TestCheckAlgorithm(t *testing.T) {
@@ -396,7 +375,7 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"JWS signature header contains unsupported algorithm \"HS256\", expected one of RS256, ES256, ES384 or ES512",
+			"JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512]",
 		},
 		{
 			jose.JSONWebKey{
@@ -622,7 +601,7 @@ func TestEnforceJWSAuthType(t *testing.T) {
 }
 `
 
-	conflictJWS, err := jose.ParseSigned(conflictJWSBody)
+	conflictJWS, err := jose.ParseSigned(conflictJWSBody, getSupportedAlgs())
 	if err != nil {
 		t.Fatal("Unable to parse conflict JWS")
 	}
@@ -868,7 +847,7 @@ func (rs requestSigner) signExtraHeaders(
 	test.AssertNotError(rs.t, err, "Failed to sign req")
 
 	body := jws.FullSerialize()
-	parsedJWS, err := jose.ParseSigned(body)
+	parsedJWS, err := jose.ParseSigned(body, getSupportedAlgs())
 	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
 
 	return parsedJWS, body
@@ -990,7 +969,7 @@ func (rs requestSigner) multiSigJWS() (*jose.JSONWebSignature, string) {
 	test.AssertNotError(rs.t, err, "Failed to sign req")
 
 	body := jws.FullSerialize()
-	parsedJWS, err := jose.ParseSigned(body)
+	parsedJWS, err := jose.ParseSigned(body, getSupportedAlgs())
 	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
 
 	return parsedJWS, body
@@ -1204,7 +1183,7 @@ func (rs requestSigner) specifyKeyID(keyID string) (*jose.JSONWebSignature, stri
 	test.AssertNotError(rs.t, err, "Failed to sign req")
 
 	body := jws.FullSerialize()
-	parsedJWS, err := jose.ParseSigned(body)
+	parsedJWS, err := jose.ParseSigned(body, getSupportedAlgs())
 	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
 
 	return parsedJWS, body
@@ -1356,7 +1335,7 @@ func TestValidJWSForKey(t *testing.T) {
 
 	// badSigJWSBody is a JWS that has had the payload changed by 1 byte to break the signature
 	badSigJWSBody := `{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoicW5BUkxyVDdYejRnUmNLeUxkeWRtQ3ItZXk5T3VQSW1YNFg0MHRoazNvbjI2RmtNem5SM2ZSanM2NmVMSzdtbVBjQlo2dU9Kc2VVUlU2d0FhWk5tZW1vWXgxZE12cXZXV0l5aVFsZUhTRDdROHZCcmhSNnVJb080akF6SlpSLUNoelp1U0R0N2lITi0zeFVWc3B1NVhHd1hVX01WSlpzaFR3cDRUYUZ4NWVsSElUX09iblR2VE9VM1hoaXNoMDdBYmdaS21Xc1ZiWGg1cy1DcklpY1U0T2V4SlBndW5XWl9ZSkp1ZU9LbVR2bkxsVFY0TXpLUjJvWmxCS1oyN1MwLVNmZFZfUUR4X3lkbGU1b01BeUtWdGxBVjM1Y3lQTUlzWU53Z1VHQkNkWV8yVXppNWVYMGxUYzdNUFJ3ejZxUjFraXAtaTU5VmNHY1VRZ3FIVjZGeXF3IiwiZSI6IkFRQUIifSwia2lkIjoiIiwibm9uY2UiOiJyNHpuenZQQUVwMDlDN1JwZUtYVHhvNkx3SGwxZVBVdmpGeXhOSE1hQnVvIiwidXJsIjoiaHR0cDovL2xvY2FsaG9zdC9hY21lL25ldy1yZWcifQ","signature":"jcTdxSygm_cvD7KbXqsxgnoPApCTSkV4jolToSOd2ciRkg5W7Yl0ZKEEKwOc-dYIbQiwGiDzisyPCicwWsOUA1WSqHylKvZ3nxSMc6KtwJCW2DaOqcf0EEjy5VjiZJUrOt2c-r6b07tbn8sfOJKwlF2lsOeGi4s-rtvvkeQpAU-AWauzl9G4bv2nDUeCviAZjHx_PoUC-f9GmZhYrbDzAvXZ859ktM6RmMeD0OqPN7bhAeju2j9Gl0lnryZMtq2m0J2m1ucenQBL1g4ZkP1JiJvzd2cAz5G7Ftl2YeJJyWhqNd3qq0GVOt1P11s8PTGNaSoM0iR9QfUxT9A6jxARtg"}`
-	badJWS, err := jose.ParseSigned(badSigJWSBody)
+	badJWS, err := jose.ParseSigned(badSigJWSBody, getSupportedAlgs())
 	test.AssertNotError(t, err, "error loading badSigJWS body")
 
 	// wrongAlgJWS is a JWS that has an invalid "HS256" algorithm in its header
@@ -1397,7 +1376,7 @@ func TestValidJWSForKey(t *testing.T) {
 			JWK:  goodJWK,
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.BadSignatureAlgorithmProblem,
-				Detail:     "JWS signature header contains unsupported algorithm \"HS256\", expected one of RS256, ES256, ES384 or ES512",
+				Detail:     "JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512]",
 				HTTPStatus: http.StatusBadRequest,
 			},
 			ErrorStatType: "JWSAlgorithmCheckFailed",

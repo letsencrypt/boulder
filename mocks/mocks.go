@@ -14,13 +14,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -387,8 +387,9 @@ func (sa *StorageAuthority) NewOrderAndAuthzs(_ context.Context, req *sapb.NewOr
 		Id:      rand.Int63(),
 		Created: timestamppb.Now(),
 		// A new order is never processing because it can't have been finalized yet.
-		BeganProcessing: false,
-		Status:          string(core.StatusPending),
+		BeganProcessing:        false,
+		Status:                 string(core.StatusPending),
+		CertificateProfileName: req.NewOrder.CertificateProfileName,
 	}
 	return response, nil
 }
@@ -420,15 +421,16 @@ func (sa *StorageAuthorityReadOnly) GetOrder(_ context.Context, req *sapb.OrderR
 	created := now.AddDate(-30, 0, 0)
 	exp := now.AddDate(30, 0, 0)
 	validOrder := &corepb.Order{
-		Id:                req.Id,
-		RegistrationID:    1,
-		Created:           timestamppb.New(created),
-		Expires:           timestamppb.New(exp),
-		Names:             []string{"example.com"},
-		Status:            string(core.StatusValid),
-		V2Authorizations:  []int64{1},
-		CertificateSerial: "serial",
-		Error:             nil,
+		Id:                     req.Id,
+		RegistrationID:         1,
+		Created:                timestamppb.New(created),
+		Expires:                timestamppb.New(exp),
+		Names:                  []string{"example.com"},
+		Status:                 string(core.StatusValid),
+		V2Authorizations:       []int64{1},
+		CertificateSerial:      "serial",
+		Error:                  nil,
+		CertificateProfileName: "defaultBoulderCertificateProfile",
 	}
 
 	// Order ID doesn't have a certificate serial yet

@@ -127,8 +127,12 @@
 			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml"
 		},
 		"features": {
-			"ServeRenewalInfo": true
-		}
+			"ServeRenewalInfo": true,
+			"TrackReplacementCertificatesARI": true
+		},
+		"certificateProfileNames": [
+			"defaultBoulderCertificateProfile"
+		]
 	},
 	"syslog": {
 		"stdoutlevel": 4,
