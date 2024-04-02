@@ -30,4 +30,4 @@ jobs:
 
       - name: Compute checksums
         id: checksums
-        run: for f in boulder*.deb boulder*.tar.gz; do echo "$(sha256sum ${f})" >> checksums.txt; done
+        run: sha256sum boulder*.deb boulder*.tar.gz >> checksums.txt
