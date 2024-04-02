@@ -34,7 +34,7 @@ jobs:
         id: checksums
         # The files listed on this line must be identical to the files uploaded
         # in the last step.
-        run: sha256sum boulder*.deb boulder*.tar.gz >> checksums.txt
+        run: sha256sum boulder*.deb boulder*.tar.gz >| checksums.txt
 
       - name: Create release
         env:
