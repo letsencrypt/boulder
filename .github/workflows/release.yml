@@ -30,6 +30,12 @@ jobs:
           GO_VERSION: ${{ matrix.GO_VERSION }}
         run: ./tools/make-assets.sh
 
+      - name: Compute checksums
+        id: checksums
+        # The files listed on this line must be identical to the files uploaded
+        # in the last step.
+        run: sha256sum boulder*.deb boulder*.tar.gz >| checksums.txt
+
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -41,4 +47,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # https://cli.github.com/manual/gh_release_upload
-        run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb boulder*.tar.gz
+        run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb boulder*.tar.gz checksums.txt

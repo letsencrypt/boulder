@@ -27,3 +27,9 @@ jobs:
         env:
           GO_VERSION: ${{ matrix.GO_VERSION }}
         run: ./tools/make-assets.sh
+
+      - name: Compute checksums
+        id: checksums
+        # The files listed on this line must be identical to the files uploaded
+        # in the last step of the real release action.
+        run: sha256sum boulder*.deb boulder*.tar.gz
