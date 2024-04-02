@@ -30,4 +30,6 @@ jobs:
 
       - name: Compute checksums
         id: checksums
-        run: sha256sum boulder*.deb boulder*.tar.gz >> checksums.txt
+        # The files listed on this line must be identical to the files uploaded
+        # in the last step of the real release action.
+        run: sha256sum boulder*.deb boulder*.tar.gz
