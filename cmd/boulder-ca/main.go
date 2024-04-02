@@ -183,7 +183,7 @@ func main() {
 			Name: "signatures",
 			Help: "Number of signatures",
 		},
-		[]string{"purpose", "issuer", "profile", "hash"})
+		[]string{"purpose", "issuer"})
 	scope.MustRegister(signatureCount)
 
 	signErrorCount := prometheus.NewCounterVec(prometheus.CounterOpts{

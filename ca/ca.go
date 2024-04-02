@@ -119,16 +119,21 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 }
 
 // makeCertificateProfilesMap processes a list of certificate issuance profiles
-// into a set of maps, mapping a human-readable name to the profile and a unique
-// hash over the profile to the profile itself. It returns the maps or an error
-// if a duplicate name or hash is found.
+// into a set of pre-computed convenience maps mapping a human-readable name to
+// the profile and a unique hash over the profile to the profile itself. A map
+// of the name to a hash and vice versa is also created to faciliate lookups. It
+// returns the maps or an error if a duplicate name or hash is found.
 //
-// The unique hash is useful in the case of
+// The unique hash is used in the case of
 //   - RA instructs CA1 to issue a precertificate
 //   - CA1 returns the precertificate DER bytes to the RA
 //   - RA instructs CA2 to issue a final certificate, but CA2 does not contain a
 //     profile corresponding to that hash and an issuance is prevented.
 func makeCertificateProfilesMap(profiles map[string]CertProfileWithID) (certProfilesMaps, error) {
+	if len(profiles) <= 0 {
+		return certProfilesMaps{}, fmt.Errorf("must have at least one certificate profile")
+	}
+
 	profileByName := make(map[string]*issuance.Profile, len(profiles))
 	profileByHash := make(map[[32]byte]*issuance.Profile, len(profiles))
 	hashByName := make(map[string][32]byte, len(profiles))
@@ -194,10 +199,6 @@ func NewCertificateAuthorityImpl(
 		return nil, errors.New("must have at least one issuer")
 	}
 
-	if certificateProfiles == nil {
-		return nil, errors.New("must have at least one certificate profile")
-	}
-
 	certProfiles, err := makeCertificateProfilesMap(certificateProfiles)
 	if err != nil {
 		return nil, err
@@ -233,34 +234,6 @@ func NewCertificateAuthorityImpl(
 	return ca, nil
 }
 
-// getCertificateProfileHashByName checks if the given certificate profile name
-// exists in the CA's list of configured certificate profiles. It returns the
-// hash of the profile or an error. The name is guaranteed to be unique per CA
-// node, but the values of the issuance.Profile may differ between CA nodes. As
-// a result, the name should not be solely relied upon, instead opting for the
-// hash.
-func (ca *certificateAuthorityImpl) getCertificateProfileHashByName(name string) ([32]byte, error) {
-	_, ok := ca.certProfiles.profileByName[name]
-	if !ok {
-		return [32]byte{}, fmt.Errorf("the CA is not capable of using a profile named %s", name)
-	}
-
-	return ca.certProfiles.hashByName[name], nil
-}
-
-// getCertificateProfileByHash checks if the given certificate profile hash
-// exists in the CA's list of configured certificate profiles. It returns the
-// profile or an error. The hash over the whole profile is guaranteed to be
-// unique.
-func (ca *certificateAuthorityImpl) getCertificateProfileByHash(hash [32]byte) (*issuance.Profile, error) {
-	profile, ok := ca.certProfiles.profileByHash[hash]
-	if !ok {
-		return nil, fmt.Errorf("the CA is not capable of using a profile with hash %d", hash)
-	}
-
-	return profile, nil
-}
-
 // noteSignError is called after operations that may cause a PKCS11 signing error.
 func (ca *certificateAuthorityImpl) noteSignError(err error) {
 	var pkcs11Error *pkcs11.Error
@@ -287,9 +260,9 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	if issueReq.CertProfileName == "" {
 		issueReq.CertProfileName = DefaultCertProfileName
 	}
-	profileHashBytes, err := ca.getCertificateProfileHashByName(issueReq.CertProfileName)
-	if err != nil {
-		return nil, err
+	profileHashBytes, ok := ca.certProfiles.hashByName[issueReq.CertProfileName]
+	if !ok {
+		return nil, fmt.Errorf("the CA is not capable of using a profile named %s", issueReq.CertProfileName)
 	}
 
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
@@ -356,9 +329,9 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	// TODO(#6966): Remove this section after the RA passes the certificate
 	// profile hash in.
 	if req.CertProfileHash == nil {
-		profileHashBytes, err := ca.getCertificateProfileHashByName(DefaultCertProfileName)
-		if err != nil {
-			return nil, err
+		profileHashBytes, ok := ca.certProfiles.hashByName[DefaultCertProfileName]
+		if !ok {
+			return nil, fmt.Errorf("the CA is not capable of using a profile named %s", DefaultCertProfileName)
 		}
 		req.CertProfileHash = profileHashBytes[:]
 	}
@@ -367,9 +340,9 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	// the hash is over the entire contents of a *ProfileConfig which includes
 	// the name giving assurance that the certificate profile has remained
 	// unchanged during the roundtrip from a CA, to the RA, then back to a CA.
-	certProfile, err := ca.getCertificateProfileByHash([32]byte(req.CertProfileHash))
-	if err != nil {
-		return nil, err
+	certProfile, ok := ca.certProfiles.profileByHash[[32]byte(req.CertProfileHash)]
+	if !ok {
+		return nil, fmt.Errorf("the CA is not capable of using a profile with hash %d", req.CertProfileHash)
 	}
 
 	precert, err := x509.ParseCertificate(req.DER)
@@ -509,9 +482,9 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	if issueReq.CertProfileName == "" {
 		issueReq.CertProfileName = DefaultCertProfileName
 	}
-	profileHashBytes, err := ca.getCertificateProfileHashByName(issueReq.CertProfileName)
-	if err != nil {
-		return nil, nil, err
+	profileHashBytes, ok := ca.certProfiles.hashByName[issueReq.CertProfileName]
+	if !ok {
+		return nil, nil, fmt.Errorf("the CA is not capable of using a profile named %s", issueReq.CertProfileName)
 	}
 
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
@@ -528,7 +501,6 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 
 	var issuer *issuance.Issuer
-	var ok bool
 	if issueReq.IssuerNameID == 0 {
 		// Use the issuer which corresponds to the algorithm of the public key
 		// contained in the CSR, unless we have an allowlist of registration IDs
