@@ -375,7 +375,7 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"JWS signature header contains unsupported algorithm \"HS256\", expected one of [ES256 ES384 ES512 RS256]",
+			"JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512]",
 		},
 		{
 			jose.JSONWebKey{
@@ -1376,7 +1376,7 @@ func TestValidJWSForKey(t *testing.T) {
 			JWK:  goodJWK,
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.BadSignatureAlgorithmProblem,
-				Detail:     "JWS signature header contains unsupported algorithm \"HS256\", expected one of [ES256 ES384 ES512 RS256]",
+				Detail:     "JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512]",
 				HTTPStatus: http.StatusBadRequest,
 			},
 			ErrorStatType: "JWSAlgorithmCheckFailed",
