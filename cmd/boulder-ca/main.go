@@ -227,26 +227,14 @@ func main() {
 		cmd.Fail("Only one of Issuance.Profile or Issuance.CertProfiles can be configured")
 	}
 
-	certProfilesMap := make(map[string]ca.CertProfileWithID, 0)
+	certProfilesMap := make(map[string]issuance.ProfileConfig, 0)
 	if !deprecatedProfileExists {
-		profile, hash, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
-		cmd.FailOnError(err, "Couldn't load certificate profile")
-		certProfilesMap[c.CA.Issuance.DefaultCertificateProfileName] = ca.CertProfileWithID{
-			Name:    c.CA.Issuance.DefaultCertificateProfileName,
-			Hash:    hash,
-			Profile: profile,
-		}
+		certProfilesMap[c.CA.Issuance.DefaultCertificateProfileName] = c.CA.Issuance.Profile
 	} else {
-		for name, config := range c.CA.Issuance.CertProfiles {
+		for name, profileConfig := range c.CA.Issuance.CertProfiles {
 			_, ok := certProfilesMap[name]
 			if !ok {
-				profile, hash, err := issuance.NewProfile(config, c.CA.Issuance.IgnoredLints)
-				cmd.FailOnError(err, "Couldn't load certificate profile")
-				certProfilesMap[name] = ca.CertProfileWithID{
-					Name:    name,
-					Hash:    hash,
-					Profile: profile,
-				}
+				certProfilesMap[name] = profileConfig
 			} else {
 				cmd.Fail(fmt.Sprintf("Duplicate certificate profile name \"%s\" configured", name))
 			}
@@ -319,6 +307,7 @@ func main() {
 			pa,
 			issuers,
 			c.CA.Issuance.DefaultCertificateProfileName,
+			c.CA.Issuance.IgnoredLints,
 			certProfilesMap,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,

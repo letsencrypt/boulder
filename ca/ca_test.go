@@ -106,22 +106,23 @@ func mustRead(path string) []byte {
 }
 
 type testCtx struct {
-	pa                     core.PolicyAuthority
-	ocsp                   *ocspImpl
-	crl                    *crlImpl
-	defaultCertProfileName string
-	certProfiles           map[string]CertProfileWithID
-	certExpiry             time.Duration
-	certBackdate           time.Duration
-	serialPrefix           int
-	maxNames               int
-	boulderIssuers         []*issuance.Issuer
-	keyPolicy              goodkey.KeyPolicy
-	fc                     clock.FakeClock
-	stats                  prometheus.Registerer
-	signatureCount         *prometheus.CounterVec
-	signErrorCount         *prometheus.CounterVec
-	logger                 *blog.Mock
+	pa                      core.PolicyAuthority
+	ocsp                    *ocspImpl
+	crl                     *crlImpl
+	defaultCertProfileName  string
+	ignoredCertProfileLints []string
+	certProfiles            map[string]issuance.ProfileConfig
+	certExpiry              time.Duration
+	certBackdate            time.Duration
+	serialPrefix            int
+	maxNames                int
+	boulderIssuers          []*issuance.Issuer
+	keyPolicy               goodkey.KeyPolicy
+	fc                      clock.FakeClock
+	stats                   prometheus.Registerer
+	signatureCount          *prometheus.CounterVec
+	signErrorCount          *prometheus.CounterVec
+	logger                  *blog.Mock
 }
 
 type mockSA struct {
@@ -165,49 +166,30 @@ func setup(t *testing.T) *testCtx {
 	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
-	profile, hash, err := issuance.NewProfile(
-		issuance.ProfileConfig{
-			AllowMustStaple: true,
-			AllowCTPoison:   true,
-			AllowSCTList:    true,
-			AllowCommonName: true,
-			Policies: []issuance.PolicyConfig{
-				{OID: "2.23.140.1.2.1"},
-			},
-			MaxValidityPeriod:   config.Duration{Duration: time.Hour * 8760},
-			MaxValidityBackdate: config.Duration{Duration: time.Hour},
+	certProfiles := make(map[string]issuance.ProfileConfig, 0)
+	certProfiles["defaultBoulderCertificateProfile"] = issuance.ProfileConfig{
+		AllowMustStaple: true,
+		AllowCTPoison:   true,
+		AllowSCTList:    true,
+		AllowCommonName: true,
+		Policies: []issuance.PolicyConfig{
+			{OID: "2.23.140.1.2.1"},
 		},
-		[]string{"w_subject_common_name_included"},
-	)
-	test.AssertNotError(t, err, "Couldn't create test profile")
-	certProfiles := make(map[string]CertProfileWithID, 0)
-	var defaultCertProfileName = "defaultBoulderCertificateProfile"
-	certProfiles[defaultCertProfileName] = CertProfileWithID{
-		Name:    defaultCertProfileName,
-		Hash:    hash,
-		Profile: profile,
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 8760},
+		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 	}
-
-	longerLived, hash, err := issuance.NewProfile(
-		issuance.ProfileConfig{
-			AllowMustStaple: true,
-			AllowCTPoison:   true,
-			AllowSCTList:    true,
-			AllowCommonName: true,
-			Policies: []issuance.PolicyConfig{
-				{OID: "2.23.140.1.2.1"},
-			},
-			MaxValidityPeriod:   config.Duration{Duration: time.Hour * 8761},
-			MaxValidityBackdate: config.Duration{Duration: time.Hour},
+	certProfiles["longerLived"] = issuance.ProfileConfig{
+		AllowMustStaple: true,
+		AllowCTPoison:   true,
+		AllowSCTList:    true,
+		AllowCommonName: true,
+		Policies: []issuance.PolicyConfig{
+			{OID: "2.23.140.1.2.1"},
 		},
-		[]string{"w_subject_common_name_included"},
-	)
-	test.AssertNotError(t, err, "Couldn't create test profile")
-	certProfiles["longerLived"] = CertProfileWithID{
-		Name:    "longerLived",
-		Hash:    hash,
-		Profile: longerLived,
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 8761},
+		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 	}
+	test.AssertEquals(t, len(certProfiles), 2)
 
 	ecdsaOnlyIssuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
 		UseForRSALeaves:   false,
@@ -274,22 +256,23 @@ func setup(t *testing.T) *testCtx {
 	test.AssertNotError(t, err, "Failed to create crl impl")
 
 	return &testCtx{
-		pa:                     pa,
-		ocsp:                   ocsp,
-		crl:                    crl,
-		defaultCertProfileName: defaultCertProfileName,
-		certProfiles:           certProfiles,
-		certExpiry:             8760 * time.Hour,
-		certBackdate:           time.Hour,
-		serialPrefix:           17,
-		maxNames:               2,
-		boulderIssuers:         boulderIssuers,
-		keyPolicy:              keyPolicy,
-		fc:                     fc,
-		stats:                  metrics.NoopRegisterer,
-		signatureCount:         signatureCount,
-		signErrorCount:         signErrorCount,
-		logger:                 blog.NewMock(),
+		pa:                      pa,
+		ocsp:                    ocsp,
+		crl:                     crl,
+		defaultCertProfileName:  "defaultBoulderCertificateProfile",
+		ignoredCertProfileLints: []string{"w_subject_common_name_included"},
+		certProfiles:            certProfiles,
+		certExpiry:              8760 * time.Hour,
+		certBackdate:            time.Hour,
+		serialPrefix:            17,
+		maxNames:                2,
+		boulderIssuers:          boulderIssuers,
+		keyPolicy:               keyPolicy,
+		fc:                      fc,
+		stats:                   metrics.NoopRegisterer,
+		signatureCount:          signatureCount,
+		signErrorCount:          signErrorCount,
+		logger:                  blog.NewMock(),
 	}
 }
 
@@ -301,6 +284,7 @@ func TestSerialPrefix(t *testing.T) {
 		nil,
 		nil,
 		"",
+		nil,
 		nil,
 		nil,
 		testCtx.certExpiry,
@@ -320,6 +304,7 @@ func TestSerialPrefix(t *testing.T) {
 		nil,
 		nil,
 		"",
+		nil,
 		nil,
 		nil,
 		testCtx.certExpiry,
@@ -412,6 +397,7 @@ func issueCertificateSubTestSetup(t *testing.T, e *ECDSAAllowList) (*certificate
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
+		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
 		e,
 		testCtx.certExpiry,
@@ -460,6 +446,7 @@ func TestNoIssuers(t *testing.T) {
 		testCtx.pa,
 		nil, // No issuers
 		testCtx.defaultCertProfileName,
+		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
@@ -485,6 +472,7 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
+		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
@@ -500,7 +488,7 @@ func TestMultipleIssuers(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to remake CA")
 
 	selectedProfile := ca.defaultCertProfileName
-	_, ok := ca.certProfiles.hashByName[selectedProfile]
+	_, ok := ca.certProfiles.profileByName[selectedProfile]
 	test.Assert(t, ok, "Certificate profile was expected to exist")
 
 	// Test that an RSA CSR gets issuance from the RSA issuer.
@@ -528,37 +516,34 @@ func TestProfiles(t *testing.T) {
 
 	sa := &mockSA{}
 
-	duplicateProfileMap := make(map[string]CertProfileWithID, 0)
-	duplicateProfile, hash, err := issuance.NewProfile(
-		issuance.ProfileConfig{
-			AllowMustStaple: false,
-			AllowCTPoison:   false,
-			AllowSCTList:    false,
-			AllowCommonName: false,
-			Policies: []issuance.PolicyConfig{
-				{OID: "2.23.140.1.2.1"},
-			},
-			MaxValidityPeriod:   config.Duration{Duration: time.Hour * 8760},
-			MaxValidityBackdate: config.Duration{Duration: time.Hour},
+	duplicateProfiles := make(map[string]issuance.ProfileConfig, 0)
+	// These profiles contain the same data which will produce an identical
+	// hash, even though the names are different.
+	duplicateProfiles["defaultBoulderCertificateProfile"] = issuance.ProfileConfig{
+		AllowMustStaple: false,
+		AllowCTPoison:   false,
+		AllowSCTList:    false,
+		AllowCommonName: false,
+		Policies: []issuance.PolicyConfig{
+			{OID: "2.23.140.1.2.1"},
 		},
-		[]string{"w_subject_common_name_included"},
-	)
-	test.AssertNotError(t, err, "Couldn't create extra profile")
-	duplicateProfileMap[ctx.defaultCertProfileName] = CertProfileWithID{
-		Name:    ctx.defaultCertProfileName,
-		Hash:    hash,
-		Profile: duplicateProfile,
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 8760},
+		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 	}
-	// boulder-ca prevents this from happening, but we'll test it here for
-	// posterity.
-	duplicateProfileMap["uhoh_ohno"] = CertProfileWithID{
-		Name:    ctx.defaultCertProfileName,
-		Hash:    hash,
-		Profile: duplicateProfile,
+	duplicateProfiles["uhoh_ohno"] = issuance.ProfileConfig{
+		AllowMustStaple: false,
+		AllowCTPoison:   false,
+		AllowSCTList:    false,
+		AllowCommonName: false,
+		Policies: []issuance.PolicyConfig{
+			{OID: "2.23.140.1.2.1"},
+		},
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 8760},
+		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 	}
-	test.AssertEquals(t, len(duplicateProfileMap), 2)
-	_, err = makeCertificateProfilesMap(duplicateProfileMap)
-	test.AssertError(t, err, "Should have detected a duplicate profile name")
+	test.AssertEquals(t, len(duplicateProfiles), 2)
+	duplicateProfileMap, err := makeCertificateProfilesMap(duplicateProfiles, []string{"w_subject_common_name_included"})
+	test.AssertError(t, err, "Should have detected a duplicate profile hash")
 
 	anotherProfileMap := make(map[string]CertProfileWithID, 0)
 	anotherProfile, hash, err := issuance.NewProfile(
@@ -647,6 +632,7 @@ func TestProfiles(t *testing.T) {
 				ctx.pa,
 				ctx.boulderIssuers,
 				ctx.defaultCertProfileName,
+				ctx.ignoredCertProfileLints,
 				tc.certProfiles,
 				nil,
 				ctx.certExpiry,
@@ -786,6 +772,7 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.pa,
 			testCtx.boulderIssuers,
 			testCtx.defaultCertProfileName,
+			testCtx.ignoredCertProfileLints,
 			testCtx.certProfiles,
 			nil,
 			testCtx.certExpiry,
@@ -824,6 +811,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
+		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
@@ -926,6 +914,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
+		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
@@ -940,8 +929,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
-	selectedProfile := ca.defaultCertProfileName
-	_, ok := ca.certProfiles.hashByName[selectedProfile]
+	_, ok := ca.certProfiles.profileByName[ca.defaultCertProfileName]
 	test.Assert(t, ok, "Certificate profile was expected to exist")
 
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
@@ -995,6 +983,7 @@ func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *test
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
+		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
@@ -1010,7 +999,7 @@ func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *test
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	selectedProfile := "longerLived"
-	certProfileHash, ok := ca.certProfiles.hashByName[selectedProfile]
+	certProfile, ok := ca.certProfiles.profileByName[selectedProfile]
 	test.Assert(t, ok, "Certificate profile was expected to exist")
 
 	issueReq := capb.IssueCertificateRequest{
@@ -1043,7 +1032,7 @@ func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *test
 		SCTs:            sctBytes,
 		RegistrationID:  arbitraryRegID,
 		OrderID:         0,
-		CertProfileHash: certProfileHash[:],
+		CertProfileHash: certProfile.hash[:],
 	})
 	test.AssertNotError(t, err, "Failed to issue cert from precert")
 	parsedCert, err := x509.ParseCertificate(cert.Der)
@@ -1115,6 +1104,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
+		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
@@ -1135,7 +1125,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	}
 
 	selectedProfile := ca.defaultCertProfileName
-	certProfileHash, ok := ca.certProfiles.hashByName[selectedProfile]
+	certProfile, ok := ca.certProfiles.profileByName[selectedProfile]
 	test.Assert(t, ok, "Certificate profile was expected to exist")
 
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
@@ -1147,7 +1137,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		SCTs:            sctBytes,
 		RegistrationID:  arbitraryRegID,
 		OrderID:         0,
-		CertProfileHash: certProfileHash[:],
+		CertProfileHash: certProfile.hash[:],
 	})
 	if err == nil {
 		t.Error("Expected error issuing duplicate serial but got none.")
@@ -1167,6 +1157,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
+		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
@@ -1186,7 +1177,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		SCTs:            sctBytes,
 		RegistrationID:  arbitraryRegID,
 		OrderID:         0,
-		CertProfileHash: certProfileHash[:],
+		CertProfileHash: certProfile.hash[:],
 	})
 	if err == nil {
 		t.Fatal("Expected error issuing duplicate serial but got none.")

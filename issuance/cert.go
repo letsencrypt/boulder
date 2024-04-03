@@ -6,11 +6,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"math/big"
@@ -62,19 +60,11 @@ type Profile struct {
 
 // NewProfile synthesizes the profile config and issuer config into a single
 // object, and checks various aspects for correctness.
-func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, [32]byte, error) {
+func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, error) {
 	reg, err := linter.NewRegistry(skipLints)
 	if err != nil {
-		return nil, [32]byte{}, fmt.Errorf("creating lint registry: %w", err)
+		return nil, fmt.Errorf("creating lint registry: %w", err)
 	}
-
-	var encodedProfile bytes.Buffer
-	enc := gob.NewEncoder(&encodedProfile)
-	err = enc.Encode(profileConfig)
-	if len(encodedProfile.Bytes()) <= 0 {
-		return nil, [32]byte{}, err
-	}
-	hash := sha256.Sum256(encodedProfile.Bytes())
 
 	sp := &Profile{
 		allowMustStaple: profileConfig.AllowMustStaple,
@@ -86,7 +76,7 @@ func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, [32]
 		lints:           reg,
 	}
 
-	return sp, hash, nil
+	return sp, nil
 }
 
 // requestValid verifies the passed IssuanceRequest against the profile. If the
