@@ -218,7 +218,7 @@ func main() {
 	}
 
 	if c.CA.Issuance.DefaultCertificateProfileName == "" {
-		c.CA.Issuance.DefaultCertificateProfileName = ca.DefaultCertProfileName
+		c.CA.Issuance.DefaultCertificateProfileName = "defaultBoulderCertificateProfile"
 	}
 	logger.Infof("Configured default certificate profile name set to: %s", c.CA.Issuance.DefaultCertificateProfileName)
 
@@ -318,6 +318,7 @@ func main() {
 			sa,
 			pa,
 			issuers,
+			c.CA.Issuance.DefaultCertificateProfileName,
 			certProfilesMap,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,

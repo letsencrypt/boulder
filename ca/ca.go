@@ -52,10 +52,6 @@ type issuerMaps struct {
 	byNameID map[issuance.NameID]*issuance.Issuer
 }
 
-// DefaultCertProfileName will be assigned to any configured certificate profile
-// without a Name.
-const DefaultCertProfileName = "defaultBoulderCertificateProfile"
-
 type CertProfileWithID struct {
 	// name is a human readable name used to refer to the certificate profile.
 	Name string
@@ -78,10 +74,13 @@ type certProfilesMaps struct {
 // It can sign OCSP responses as well, but only via delegation to an ocspImpl.
 type certificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
-	sa           sapb.StorageAuthorityCertificateClient
-	pa           core.PolicyAuthority
-	issuers      issuerMaps
-	certProfiles certProfilesMaps
+	sa      sapb.StorageAuthorityCertificateClient
+	pa      core.PolicyAuthority
+	issuers issuerMaps
+	// The name of the profile that will be selected if no explicit profile name
+	// is provided via gRPC.
+	defaultCertProfileName string
+	certProfiles           certProfilesMaps
 
 	// This is temporary, and will be used for testing and slow roll-out
 	// of ECDSA issuance, but will then be removed.
@@ -167,6 +166,7 @@ func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
+	defaultCertProfileName string,
 	certificateProfiles map[string]CertProfileWithID,
 	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
@@ -214,21 +214,22 @@ func NewCertificateAuthorityImpl(
 	stats.MustRegister(lintErrorCount)
 
 	ca = &certificateAuthorityImpl{
-		sa:             sa,
-		pa:             pa,
-		issuers:        issuers,
-		certProfiles:   certProfiles,
-		validityPeriod: certExpiry,
-		backdate:       certBackdate,
-		prefix:         serialPrefix,
-		maxNames:       maxNames,
-		keyPolicy:      keyPolicy,
-		log:            logger,
-		signatureCount: signatureCount,
-		signErrorCount: signErrorCount,
-		lintErrorCount: lintErrorCount,
-		clk:            clk,
-		ecdsaAllowList: ecdsaAllowList,
+		sa:                     sa,
+		pa:                     pa,
+		issuers:                issuers,
+		defaultCertProfileName: defaultCertProfileName,
+		certProfiles:           certProfiles,
+		validityPeriod:         certExpiry,
+		backdate:               certBackdate,
+		prefix:                 serialPrefix,
+		maxNames:               maxNames,
+		keyPolicy:              keyPolicy,
+		log:                    logger,
+		signatureCount:         signatureCount,
+		signErrorCount:         signErrorCount,
+		lintErrorCount:         lintErrorCount,
+		clk:                    clk,
+		ecdsaAllowList:         ecdsaAllowList,
 	}
 
 	return ca, nil
@@ -258,7 +259,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	// certificate profile name. The name is checked here instead of the
 	// hash because the RA is unaware of what certificate profiles exist.
 	if issueReq.CertProfileName == "" {
-		issueReq.CertProfileName = DefaultCertProfileName
+		issueReq.CertProfileName = ca.defaultCertProfileName
 	}
 	profileHashBytes, ok := ca.certProfiles.hashByName[issueReq.CertProfileName]
 	if !ok {
@@ -329,9 +330,9 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	// TODO(#6966): Remove this section after the RA passes the certificate
 	// profile hash in.
 	if req.CertProfileHash == nil {
-		profileHashBytes, ok := ca.certProfiles.hashByName[DefaultCertProfileName]
+		profileHashBytes, ok := ca.certProfiles.hashByName[ca.defaultCertProfileName]
 		if !ok {
-			return nil, fmt.Errorf("the CA is not capable of using a profile named %s", DefaultCertProfileName)
+			return nil, fmt.Errorf("the CA is not capable of using a profile named %s", ca.defaultCertProfileName)
 		}
 		req.CertProfileHash = profileHashBytes[:]
 	}
@@ -379,8 +380,6 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	}
 
 	names := strings.Join(issuanceReq.DNSNames, ", ")
-	//certProfileCountLabels := prometheus.Labels{"purpose": string(certType), "profile": certProfile.Name, "hash": hex.EncodeToString(req.CertProfileHash)}
-
 	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%s] precert=[%s]",
 		serialHex, req.RegistrationID, names, ca.certProfiles.nameByHash[[32]byte(req.CertProfileHash)], hex.EncodeToString(req.CertProfileHash), hex.EncodeToString(precert.Raw))
 
@@ -480,7 +479,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	// certificate profile name. The name is checked here instead of the
 	// hash because the RA is unaware of what certificate profiles exist.
 	if issueReq.CertProfileName == "" {
-		issueReq.CertProfileName = DefaultCertProfileName
+		issueReq.CertProfileName = ca.defaultCertProfileName
 	}
 	profileHashBytes, ok := ca.certProfiles.hashByName[issueReq.CertProfileName]
 	if !ok {

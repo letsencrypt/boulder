@@ -35,6 +35,7 @@ func TestOCSP(t *testing.T) {
 		&mockSA{},
 		testCtx.pa,
 		testCtx.boulderIssuers,
+		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		nil,
 		testCtx.certExpiry,
