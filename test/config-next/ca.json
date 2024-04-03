@@ -65,7 +65,7 @@
 					"useForECDSALeaves": true,
 					"issuerURL": "http://127.0.0.1:4001/aia/issuer/5214744660557630",
 					"ocspURL": "http://127.0.0.1:4002/",
-					"crlURLBase": "http://127.0.0.1:7890/e1/",
+					"crlURLBase": "http://127.0.0.1:4501/ecdsa-a/",
 					"location": {
 						"configFile": "/hierarchy/intermediate-signing-key-ecdsa.pkcs11.json",
 						"certFile": "/hierarchy/intermediate-cert-ecdsa-a.pem",
@@ -77,7 +77,7 @@
 					"useForECDSALeaves": true,
 					"issuerURL": "http://127.0.0.1:4001/aia/issuer/6605440498369741",
 					"ocspURL": "http://127.0.0.1:4002/",
-					"crlURLBase": "http://127.0.0.1:7890/r3/",
+					"crlURLBase": "http://127.0.0.1:4501/rsa-a/",
 					"location": {
 						"configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
 						"certFile": "/hierarchy/intermediate-cert-rsa-a.pem",
