@@ -9,11 +9,9 @@ ignore-hidden = false
 
 [default]
 extend-ignore-re = [
-    # PEM
-    "\\s*[+/0-9=A-Za-z]{64}\\s*",
-    ' := `\{"[0-9A-Z_a-z-]{36,}"\}`',
-    '"(csr|d|dp|n|protected|qi|signature|y)": ?"[0-9=A-Z_a-z-]{36,}"',
-    'bigIntFromB64\("[0-9=A-Z_a-z-]{36,}"\)',
+    # Anything base64 or base64url longer than 36 chars is probably encoded.
+    '\b[0-9A-Za-z+/]{36,}\b',
+    '\b[0-9A-Za-z_-]{36,}\b',
     "0002a4ba3cf408927759",
     "65CuDAA",
     '"sql_warnings", "TrUe"',
