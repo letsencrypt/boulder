@@ -17,7 +17,7 @@ message IssueCertificateRequest {
   bytes csr = 1;
   int64 registrationID = 2;
   int64 orderID = 3;
-  int64 issuerNameID = 4;
+  reserved 4; // Previously issuerNameID
 
   // certProfileName is a human readable name provided by the RA and used to
   // determine if the CA can issue for that profile. A default name will be
