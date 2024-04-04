@@ -402,7 +402,7 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, tim
 
 // GetCTBundleForChain takes a slice of *issuance.Certificate(s)
 // representing a certificate chain and returns a slice of
-// ct.ANS1Cert(s) in the same order
+// ct.ASN1Cert(s) in the same order
 func GetCTBundleForChain(chain []*issuance.Certificate) []ct.ASN1Cert {
 	var ctBundle []ct.ASN1Cert
 	for _, cert := range chain {
