@@ -114,6 +114,11 @@ func main() {
 
 		for _, inst := range []string{"a", "b", "c"} {
 			name := fmt.Sprintf("int %s %s", alg, inst)
+			// Note: The file names produced by this script (as a combination of this
+			// line, and the rest of the file name as specified in the various yaml
+			// template files) are meaningful and are consumed by aia-test-srv. If
+			// you change the structure of these file names, you will need to change
+			// aia-test-srv as well to recognize and consume the resulting files.
 			fileName := strings.Replace(name, " ", "-", -1)
 
 			// Create SoftHSM slot

@@ -28,7 +28,7 @@ func (srv *aiaTestSrv) handleIssuer(w http.ResponseWriter, r *http.Request) {
 
 	issuer, ok := srv.issuersByName[issuerName]
 	if !ok {
-		w.WriteHeader(http.StatusForbidden) // TODO make this StatusNotFound
+		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(fmt.Sprintf("issuer %q not found", issuerName)))
 		return
 	}
