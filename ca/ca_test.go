@@ -487,7 +487,7 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to remake CA")
 
-	selectedProfile := ca.defaultCertProfileName
+	selectedProfile := ca.certProfiles.defaultName
 	_, ok := ca.certProfiles.profileByName[selectedProfile]
 	test.Assert(t, ok, "Certificate profile was expected to exist")
 
@@ -913,7 +913,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
-	_, ok := ca.certProfiles.profileByName[ca.defaultCertProfileName]
+	_, ok := ca.certProfiles.profileByName[ca.certProfiles.defaultName]
 	test.Assert(t, ok, "Certificate profile was expected to exist")
 
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, OrderID: 0}
@@ -1109,7 +1109,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	selectedProfile := ca.defaultCertProfileName
+	selectedProfile := ca.certProfiles.defaultName
 	certProfile, ok := ca.certProfiles.profileByName[selectedProfile]
 	test.Assert(t, ok, "Certificate profile was expected to exist")
 
