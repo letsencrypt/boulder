@@ -118,9 +118,10 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 }
 
 // makeCertificateProfilesMap processes a list of certificate issuance profile
-// configs and an option slice of zlint lint names to ignore into a set of pre-computed maps. The maps are:
-// A human-readable name to the and a unique hash over the profile to the profile itself. It returns
-// the maps or an error if a duplicate name or hash is found.
+// configs and an option slice of zlint lint names to ignore into a set of
+// pre-computed maps: 1) a human-readable name to the profile and 2) a unique
+// hash over contents of the profile to the profile itself. It returns the maps
+// or an error if a duplicate name or hash is found.
 //
 // The unique hash is used in the case of
 //   - RA instructs CA1 to issue a precertificate
@@ -332,6 +333,8 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 // there could be race conditions where two goroutines are issuing for the same
 // serial number at the same time.
 func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
+	// TODO(#6966): IsAnyNilOrZero needs to be updated to require the
+	// req.CertProfileHash is not empty.
 	// issueReq.orderID may be zero, for ACMEv1 requests.
 	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID) {
 		return nil, berrors.InternalServerError("Incomplete cert for precertificate request")

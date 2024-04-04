@@ -23,12 +23,11 @@ import (
 )
 
 var (
-	goodSKID    = []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-	profileHash = [32]byte{183, 121, 210, 197, 106, 80, 2, 78, 94, 249, 106, 63, 76, 84, 17, 144, 90, 101, 37, 134, 33, 139, 90, 204, 244, 254, 196, 225, 141, 26, 104, 97}
+	goodSKID = []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 )
 
 func defaultProfile() *Profile {
-	p, _, _ := NewProfile(defaultProfileConfig(), []string{
+	p, _ := NewProfile(defaultProfileConfig(), []string{
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 	})
@@ -381,13 +380,12 @@ func TestIssueCommonName(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 
-	cnProfile, hash, err := NewProfile(defaultProfileConfig(), []string{
+	cnProfile, err := NewProfile(defaultProfileConfig(), []string{
 		"w_subject_common_name_included",
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 	})
 	test.AssertNotError(t, err, "NewProfile failed")
-	test.AssertEquals(t, hash, profileHash)
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -471,9 +469,8 @@ func TestIssueSCTList(t *testing.T) {
 	err := loglist.InitLintList("../test/ct-test-srv/log_list.json")
 	test.AssertNotError(t, err, "failed to load log list")
 
-	enforceSCTsProfile, hash, err := NewProfile(defaultProfileConfig(), []string{})
+	enforceSCTsProfile, err := NewProfile(defaultProfileConfig(), []string{})
 	test.AssertNotError(t, err, "NewProfile failed")
-	test.AssertEquals(t, hash, profileHash)
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -569,9 +566,8 @@ func TestIssueBadLint(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 
-	noSkipLintsProfile, hash, err := NewProfile(defaultProfileConfig(), []string{})
+	noSkipLintsProfile, err := NewProfile(defaultProfileConfig(), []string{})
 	test.AssertNotError(t, err, "NewProfile failed")
-	test.AssertEquals(t, hash, profileHash)
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -694,13 +690,12 @@ func TestMismatchedProfiles(t *testing.T) {
 	issuer1, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 
-	cnProfile, hash, err := NewProfile(defaultProfileConfig(), []string{
+	cnProfile, err := NewProfile(defaultProfileConfig(), []string{
 		"w_subject_common_name_included",
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 	})
 	test.AssertNotError(t, err, "NewProfile failed")
-	test.AssertEquals(t, hash, profileHash)
 
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
@@ -722,12 +717,11 @@ func TestMismatchedProfiles(t *testing.T) {
 	// Create a new profile that differs slightly (no common name)
 	profileConfig := defaultProfileConfig()
 	profileConfig.AllowCommonName = false
-	noCNProfile, hash, err := NewProfile(profileConfig, []string{
+	noCNProfile, err := NewProfile(profileConfig, []string{
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 	})
 	test.AssertNotError(t, err, "NewProfile failed")
-	test.AssertEquals(t, hash, [32]byte{81, 56, 129, 198, 93, 113, 246, 10, 18, 255, 247, 141, 91, 249, 177, 190, 87, 104, 29, 249, 28, 62, 162, 204, 219, 8, 48, 153, 182, 225, 62, 109})
 
 	issuer2, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")

@@ -41,6 +41,7 @@ type Config struct {
 			// configured certificate profile or boulder-ca will fail to start.
 			DefaultCertificateProfileName string `validate:"omitempty,alphanum,min=1,max=32"`
 
+			// TODO(#7414) Remove this deprecated field.
 			// Deprecated: Use CertProfiles instead. Profile implictly takes the
 			// internal Boulder default value of ca.DefaultCertProfileName.
 			Profile issuance.ProfileConfig `validate:"required_without=CertProfiles,structonly"`
