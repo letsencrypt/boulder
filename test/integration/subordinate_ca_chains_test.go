@@ -36,10 +36,10 @@ func TestSubordinateCAChainsServedByWFE(t *testing.T) {
 	seenECDSACrossSignedIntermediate := false
 	for _, certUrl := range chains.certs {
 		for _, cert := range certUrl {
-			if cert.Subject.String() == "CN=CA intermediate (ECDSA) A,O=good guys,C=US" && cert.Issuer.String() == "CN=CA root (ECDSA),O=good guys,C=US" {
+			if cert.Subject.String() == "CN=int ecdsa a,O=good guys,C=US" && cert.Issuer.String() == "CN=root ecdsa,O=good guys,C=US" {
 				seenECDSAIntermediate = true
 			}
-			if cert.Subject.String() == "CN=CA intermediate (ECDSA) A,O=good guys,C=US" && cert.Issuer.String() == "CN=CA root (RSA),O=good guys,C=US" {
+			if cert.Subject.String() == "CN=int ecdsa a,O=good guys,C=US" && cert.Issuer.String() == "CN=root rsa,O=good guys,C=US" {
 				seenECDSACrossSignedIntermediate = true
 			}
 		}

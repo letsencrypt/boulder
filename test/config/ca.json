@@ -64,8 +64,8 @@
 					"issuerURL": "http://127.0.0.1:4001/aia/issuer/5214744660557630",
 					"ocspURL": "http://127.0.0.1:4002/",
 					"location": {
-						"configFile": "/hierarchy/intermediate-signing-key-ecdsa.pkcs11.json",
-						"certFile": "/hierarchy/intermediate-cert-ecdsa-a.pem",
+						"configFile": "/hierarchy/int-ecdsa-a.pkcs11.json",
+						"certFile": "/hierarchy/int-ecdsa-a.cert.pem",
 						"numSessions": 2
 					}
 				},
@@ -75,8 +75,8 @@
 					"issuerURL": "http://127.0.0.1:4001/aia/issuer/6605440498369741",
 					"ocspURL": "http://127.0.0.1:4002/",
 					"location": {
-						"configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
-						"certFile": "/hierarchy/intermediate-cert-rsa-a.pem",
+						"configFile": "/hierarchy/int-rsa-a.pkcs11.json",
+						"certFile": "/hierarchy/int-rsa-a.cert.pem",
 						"numSessions": 2
 					}
 				},
@@ -86,8 +86,8 @@
 					"issuerURL": "http://127.0.0.1:4001/aia/issuer/41127673797486028",
 					"ocspURL": "http://127.0.0.1:4002/",
 					"location": {
-						"configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
-						"certFile": "/hierarchy/intermediate-cert-rsa-b.pem",
+						"configFile": "/hierarchy/int-rsa-b.pkcs11.json",
+						"certFile": "/hierarchy/int-rsa-b.cert.pem",
 						"numSessions": 2
 					}
 				}

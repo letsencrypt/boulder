@@ -14,9 +14,9 @@
 		"orderLifetime": "168h",
 		"finalizeTimeout": "30s",
 		"issuerCerts": [
-			"/hierarchy/intermediate-cert-rsa-a.pem",
-			"/hierarchy/intermediate-cert-rsa-b.pem",
-			"/hierarchy/intermediate-cert-ecdsa-a.pem"
+			"/hierarchy/int-rsa-a.cert.pem",
+			"/hierarchy/int-rsa-b.cert.pem",
+			"/hierarchy/int-ecdsa-a.cert.pem"
 		],
 		"tls": {
 			"caCertFile": "test/grpc-creds/minica.pem",
