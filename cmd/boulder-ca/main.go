@@ -3,7 +3,6 @@ package notmain
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"reflect"
 	"time"
@@ -233,12 +232,6 @@ func main() {
 	if len(c.CA.Issuance.CertProfiles) == 0 {
 		c.CA.Issuance.CertProfiles = make(map[string]issuance.ProfileConfig, 0)
 		c.CA.Issuance.CertProfiles[c.CA.Issuance.DefaultCertificateProfileName] = c.CA.Issuance.Profile
-	}
-
-	// Check that a profile exists with the configured default profile name.
-	_, ok := c.CA.Issuance.CertProfiles[c.CA.Issuance.DefaultCertificateProfileName]
-	if !ok {
-		cmd.Fail(fmt.Sprintf("defaultCertificateProfileName:\"%s\" was configured, but a profile object was not found for that name", c.CA.Issuance.DefaultCertificateProfileName))
 	}
 
 	tlsConfig, err := c.CA.TLS.Load(scope)

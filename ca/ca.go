@@ -64,8 +64,13 @@ type certProfileWithID struct {
 }
 
 // certProfilesMaps allows looking up the human-readable name of a certificate
-// profile to retrieve the actual profile.
+// profile to retrieve the actual profile. The default profile to be used is
+// stored alongside the maps.
 type certProfilesMaps struct {
+	// The name of the profile that will be selected if no explicit profile name
+	// is provided via gRPC.
+	defaultName string
+
 	profileByHash map[[32]byte]*certProfileWithID
 	profileByName map[string]*certProfileWithID
 }
@@ -74,13 +79,10 @@ type certProfilesMaps struct {
 // It can sign OCSP responses as well, but only via delegation to an ocspImpl.
 type certificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
-	sa      sapb.StorageAuthorityCertificateClient
-	pa      core.PolicyAuthority
-	issuers issuerMaps
-	// The name of the profile that will be selected if no explicit profile name
-	// is provided via gRPC.
-	defaultCertProfileName string
-	certProfiles           certProfilesMaps
+	sa           sapb.StorageAuthorityCertificateClient
+	pa           core.PolicyAuthority
+	issuers      issuerMaps
+	certProfiles certProfilesMaps
 
 	// This is temporary, and will be used for testing and slow roll-out
 	// of ECDSA issuance, but will then be removed.
@@ -128,9 +130,15 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 //   - CA1 returns the precertificate DER bytes and profile hash to the RA
 //   - RA instructs CA2 to issue a final certificate, but CA2 does not contain a
 //     profile corresponding to that hash and an issuance is prevented.
-func makeCertificateProfilesMap(profiles map[string]issuance.ProfileConfig, ignoredLints []string) (certProfilesMaps, error) {
+func makeCertificateProfilesMap(defaultName string, profiles map[string]issuance.ProfileConfig, ignoredLints []string) (certProfilesMaps, error) {
 	if len(profiles) <= 0 {
 		return certProfilesMaps{}, fmt.Errorf("must pass at least one certificate profile")
+	}
+
+	// Check that a profile exists with the configured default profile name.
+	_, ok := profiles[defaultName]
+	if !ok {
+		return certProfilesMaps{}, fmt.Errorf("defaultCertificateProfileName:\"%s\" was configured, but a profile object was not found for that name", defaultName)
 	}
 
 	profileByName := make(map[string]*certProfileWithID, len(profiles))
@@ -177,7 +185,7 @@ func makeCertificateProfilesMap(profiles map[string]issuance.ProfileConfig, igno
 		}
 	}
 
-	return certProfilesMaps{profileByHash, profileByName}, nil
+	return certProfilesMaps{defaultName, profileByHash, profileByName}, nil
 }
 
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
@@ -221,7 +229,7 @@ func NewCertificateAuthorityImpl(
 		return nil, errors.New("must have at least one issuer")
 	}
 
-	certProfiles, err := makeCertificateProfilesMap(certificateProfiles, ignoredCertProfileLints)
+	certProfiles, err := makeCertificateProfilesMap(defaultCertProfileName, certificateProfiles, ignoredCertProfileLints)
 	if err != nil {
 		return nil, err
 	}
@@ -236,22 +244,21 @@ func NewCertificateAuthorityImpl(
 	stats.MustRegister(lintErrorCount)
 
 	ca = &certificateAuthorityImpl{
-		sa:                     sa,
-		pa:                     pa,
-		issuers:                issuers,
-		defaultCertProfileName: defaultCertProfileName,
-		certProfiles:           certProfiles,
-		validityPeriod:         certExpiry,
-		backdate:               certBackdate,
-		prefix:                 serialPrefix,
-		maxNames:               maxNames,
-		keyPolicy:              keyPolicy,
-		log:                    logger,
-		signatureCount:         signatureCount,
-		signErrorCount:         signErrorCount,
-		lintErrorCount:         lintErrorCount,
-		clk:                    clk,
-		ecdsaAllowList:         ecdsaAllowList,
+		sa:             sa,
+		pa:             pa,
+		issuers:        issuers,
+		certProfiles:   certProfiles,
+		validityPeriod: certExpiry,
+		backdate:       certBackdate,
+		prefix:         serialPrefix,
+		maxNames:       maxNames,
+		keyPolicy:      keyPolicy,
+		log:            logger,
+		signatureCount: signatureCount,
+		signErrorCount: signErrorCount,
+		lintErrorCount: lintErrorCount,
+		clk:            clk,
+		ecdsaAllowList: ecdsaAllowList,
 	}
 
 	return ca, nil
@@ -481,10 +488,10 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	// The CA must check if it is capable of issuing for the given certificate
 	// profile name. The name is checked here instead of the hash because the RA
 	// is unaware of what certificate profiles exist. Pre-existing orders stored
-	// in the database may not have an associated certificate profile name, so
-	// we'll assign the configured default name.
+	// in the database may not have an associated certificate profile name and
+	// will take the default name stored alongside the map.
 	if issueReq.CertProfileName == "" {
-		issueReq.CertProfileName = ca.defaultCertProfileName
+		issueReq.CertProfileName = ca.certProfiles.defaultName
 	}
 	certProfile, ok := ca.certProfiles.profileByName[issueReq.CertProfileName]
 	if !ok {
