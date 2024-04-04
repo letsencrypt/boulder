@@ -392,25 +392,16 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
-	var issuer *issuance.Issuer
-	var ok bool
-	if issueReq.IssuerNameID == 0 {
-		// Use the issuer which corresponds to the algorithm of the public key
-		// contained in the CSR, unless we have an allowlist of registration IDs
-		// for ECDSA, in which case switch all not-allowed accounts to RSA issuance.
-		alg := csr.PublicKeyAlgorithm
-		if alg == x509.ECDSA && !features.Get().ECDSAForAll && ca.ecdsaAllowList != nil && !ca.ecdsaAllowList.permitted(issueReq.RegistrationID) {
-			alg = x509.RSA
-		}
-		issuer, ok = ca.issuers.byAlg[alg]
-		if !ok {
-			return nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
-		}
-	} else {
-		issuer, ok = ca.issuers.byNameID[issuance.NameID(issueReq.IssuerNameID)]
-		if !ok {
-			return nil, nil, berrors.InternalServerError("no issuer found for IssuerNameID %d", issueReq.IssuerNameID)
-		}
+	// Use the issuer which corresponds to the algorithm of the public key
+	// contained in the CSR, unless we have an allowlist of registration IDs
+	// for ECDSA, in which case switch all not-allowed accounts to RSA issuance.
+	alg := csr.PublicKeyAlgorithm
+	if alg == x509.ECDSA && !features.Get().ECDSAForAll && ca.ecdsaAllowList != nil && !ca.ecdsaAllowList.permitted(issueReq.RegistrationID) {
+		alg = x509.RSA
+	}
+	issuer, ok := ca.issuers.byAlg[alg]
+	if !ok {
+		return nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
 	}
 
 	if issuer.Cert.NotAfter.Before(validity.NotAfter) {
