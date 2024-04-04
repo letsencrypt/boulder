@@ -223,26 +223,19 @@ func main() {
 	}
 	logger.Infof("Configured default certificate profile name set to: %s", c.CA.Issuance.DefaultCertificateProfileName)
 
-	deprecatedProfileExists := reflect.ValueOf(c.CA.Issuance.Profile).IsZero()
-	if !deprecatedProfileExists && len(c.CA.Issuance.CertProfiles) > 0 {
+	// TODO(#7414) Remove this check.
+	if !reflect.ValueOf(c.CA.Issuance.Profile).IsZero() && len(c.CA.Issuance.CertProfiles) > 0 {
 		cmd.Fail("Only one of Issuance.Profile or Issuance.CertProfiles can be configured")
 	}
 
-	certProfilesMap := make(map[string]issuance.ProfileConfig, 0)
-	if !deprecatedProfileExists {
-		certProfilesMap[c.CA.Issuance.DefaultCertificateProfileName] = c.CA.Issuance.Profile
-	} else {
-		for name, profileConfig := range c.CA.Issuance.CertProfiles {
-			_, ok := certProfilesMap[name]
-			if !ok {
-				certProfilesMap[name] = profileConfig
-			} else {
-				cmd.Fail(fmt.Sprintf("Duplicate certificate profile name \"%s\" configured", name))
-			}
-		}
+	// TODO(#7414) Remove this check.
+	// Use the deprecated Profile as a CertProfiles
+	if len(c.CA.Issuance.CertProfiles) == 0 {
+		c.CA.Issuance.CertProfiles[c.CA.Issuance.DefaultCertificateProfileName] = c.CA.Issuance.Profile
 	}
 
-	_, ok := certProfilesMap[c.CA.Issuance.DefaultCertificateProfileName]
+	// Check that a profile exists with the configured default profile name.
+	_, ok := c.CA.Issuance.CertProfiles[c.CA.Issuance.DefaultCertificateProfileName]
 	if !ok {
 		cmd.Fail(fmt.Sprintf("defaultCertificateProfileName:\"%s\" was configured, but a profile object was not found for that name", c.CA.Issuance.DefaultCertificateProfileName))
 	}
@@ -309,7 +302,7 @@ func main() {
 			issuers,
 			c.CA.Issuance.DefaultCertificateProfileName,
 			c.CA.Issuance.IgnoredLints,
-			certProfilesMap,
+			c.CA.Issuance.CertProfiles,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,
 			c.CA.Backdate.Duration,

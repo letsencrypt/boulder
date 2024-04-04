@@ -633,7 +633,6 @@ func TestProfiles(t *testing.T) {
 				ctx.signErrorCount,
 				ctx.fc,
 			)
-			fmt.Println(err)
 			if tc.expectedProfiles != nil {
 				test.AssertEquals(t, len(tc.expectedProfiles), len(tCA.certProfiles.profileByName))
 			} else if tc.expectedErrSubstr != "" {
@@ -938,10 +937,11 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 
 	test.AssertNotError(t, err, "Failed to marshal SCT")
 	cert, err := ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
-		DER:            precert.DER,
-		SCTs:           sctBytes,
-		RegistrationID: arbitraryRegID,
-		OrderID:        0,
+		DER:             precert.DER,
+		SCTs:            sctBytes,
+		RegistrationID:  arbitraryRegID,
+		OrderID:         0,
+		CertProfileHash: precert.CertProfileHash,
 	})
 	test.AssertNotError(t, err, "Failed to issue cert from precert")
 	parsedCert, err := x509.ParseCertificate(cert.Der)

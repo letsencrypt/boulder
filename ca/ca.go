@@ -54,7 +54,7 @@ type issuerMaps struct {
 	byNameID map[issuance.NameID]*issuance.Issuer
 }
 
-type CertProfileWithID struct {
+type certProfileWithID struct {
 	// name is a human readable name used to refer to the certificate profile.
 	name string
 	// hash is SHA256 sum over every exported field of an issuance.ProfileConfig
@@ -63,11 +63,11 @@ type CertProfileWithID struct {
 	profile *issuance.Profile
 }
 
-// certProfilesMap allows looking up the human-readable name of a certificate
+// certProfilesMaps allows looking up the human-readable name of a certificate
 // profile to retrieve the actual profile.
 type certProfilesMaps struct {
-	profileByHash map[[32]byte]*CertProfileWithID
-	profileByName map[string]*CertProfileWithID
+	profileByHash map[[32]byte]*certProfileWithID
+	profileByName map[string]*certProfileWithID
 }
 
 // certificateAuthorityImpl represents a CA that signs certificates.
@@ -133,8 +133,8 @@ func makeCertificateProfilesMap(profiles map[string]issuance.ProfileConfig, igno
 		return certProfilesMaps{}, fmt.Errorf("must pass at least one certificate profile")
 	}
 
-	profileByName := make(map[string]*CertProfileWithID, len(profiles))
-	profileByHash := make(map[[32]byte]*CertProfileWithID, len(profiles))
+	profileByName := make(map[string]*certProfileWithID, len(profiles))
+	profileByHash := make(map[[32]byte]*certProfileWithID, len(profiles))
 
 	for name, profileConfig := range profiles {
 		profile, err := issuance.NewProfile(profileConfig, ignoredLints)
@@ -156,7 +156,7 @@ func makeCertificateProfilesMap(profiles map[string]issuance.ProfileConfig, igno
 
 		_, ok := profileByName[name]
 		if !ok {
-			profileByName[name] = &CertProfileWithID{
+			profileByName[name] = &certProfileWithID{
 				name:    name,
 				hash:    hash,
 				profile: profile,
@@ -167,7 +167,7 @@ func makeCertificateProfilesMap(profiles map[string]issuance.ProfileConfig, igno
 
 		_, ok = profileByHash[hash]
 		if !ok {
-			profileByHash[hash] = &CertProfileWithID{
+			profileByHash[hash] = &certProfileWithID{
 				name:    name,
 				hash:    hash,
 				profile: profile,
@@ -273,6 +273,8 @@ var ocspStatusToCode = map[string]int{
 
 func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
+	// issueReq.CertProfileName may be empty and will be populated in
+	// issuePrecertificateInner if so.
 	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID) {
 		return nil, berrors.InternalServerError("Incomplete issue certificate request")
 	}
@@ -333,27 +335,15 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 // there could be race conditions where two goroutines are issuing for the same
 // serial number at the same time.
 func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
-	// TODO(#6966): IsAnyNilOrZero needs to be updated to require the
-	// req.CertProfileHash is not empty.
 	// issueReq.orderID may be zero, for ACMEv1 requests.
-	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID) {
+	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID, req.CertProfileHash) {
 		return nil, berrors.InternalServerError("Incomplete cert for precertificate request")
 	}
 
-	// TODO(#6966): Remove this section after the RA passes the certificate
-	// profile hash in.
-	if req.CertProfileHash == nil {
-		profile, ok := ca.certProfiles.profileByName[ca.defaultCertProfileName]
-		if !ok {
-			return nil, fmt.Errorf("the CA is incapable of using a profile named %s", ca.defaultCertProfileName)
-		}
-		req.CertProfileHash = profile.hash[:]
-	}
-
 	// The certificate profile hash is checked here instead of the name because
-	// the hash is over the entire contents of a *ProfileConfig which includes
-	// the name giving assurance that the certificate profile has remained
-	// unchanged during the roundtrip from a CA, to the RA, then back to a CA.
+	// the hash is over the entire contents of a *ProfileConfig giving assurance
+	// that the certificate profile has remained unchanged during the roundtrip
+	// from a CA, to the RA, then back to a (potentially different) CA node.
 	certProfile, ok := ca.certProfiles.profileByHash[[32]byte(req.CertProfileHash)]
 	if !ok {
 		return nil, fmt.Errorf("the CA is incapable of using a profile with hash %d", req.CertProfileHash)
@@ -488,9 +478,11 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 }
 
 func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, []byte, error) {
-	// The CA must check if it is capable of issuing for the given
-	// certificate profile name. The name is checked here instead of the
-	// hash because the RA is unaware of what certificate profiles exist.
+	// The CA must check if it is capable of issuing for the given certificate
+	// profile name. The name is checked here instead of the hash because the RA
+	// is unaware of what certificate profiles exist. Pre-existing orders stored
+	// in the database may not have an associated certificate profile name, so
+	// we'll assign the configured default name.
 	if issueReq.CertProfileName == "" {
 		issueReq.CertProfileName = ca.defaultCertProfileName
 	}
