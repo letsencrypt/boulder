@@ -3737,7 +3737,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
-	// Asking for revoked certs from a different shard should return zero reults.
+	// Asking for revoked certs from a different shard should return zero results.
 	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
 	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{

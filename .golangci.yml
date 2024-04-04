@@ -57,3 +57,4 @@ linters-settings:
       - G404  # Use of weak random number generator (math/rand instead of crypto/rand)
       - G501  # Blacklisted import `crypto/md5`: weak cryptographic primitive
       - G505  # Blacklisted import `crypto/sha1`: weak cryptographic primitive
+      - G601  # Implicit memory aliasing in for loop (this is fixed by go1.22)
