@@ -43,7 +43,7 @@ func newIPv6RangeCIDRBucketKey(name Name, ip net.IP) (string, error) {
 	return joinWithColon(name.EnumString(), id), nil
 }
 
-// newRegIdBucketKey validates ands returns a bucketKey for limits that use the
+// newRegIdBucketKey validates and returns a bucketKey for limits that use the
 // 'enum:regId' bucket key format.
 func newRegIdBucketKey(name Name, regId int64) (string, error) {
 	id := strconv.FormatInt(regId, 10)
