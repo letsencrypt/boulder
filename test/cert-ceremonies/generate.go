@@ -139,7 +139,7 @@ func main() {
 				"CommonName": name,
 				"FileName":   fileName,
 			})
-			cmd.FailOnError(err, "failed to rewrite intermedate cert ceremony config")
+			cmd.FailOnError(err, "failed to rewrite intermediate cert ceremony config")
 
 			err = runCeremony(certConfig)
 			cmd.FailOnError(err, "failed to generate intermediate cert")
@@ -155,7 +155,7 @@ func main() {
 				"CommonName": name,
 				"FileName":   fileName,
 			})
-			cmd.FailOnError(err, "failed to rewrite intermedate cross-cert ceremony config")
+			cmd.FailOnError(err, "failed to rewrite intermediate cross-cert ceremony config")
 
 			err = runCeremony(crossConfig)
 			cmd.FailOnError(err, "failed to generate intermediate cross-cert")
