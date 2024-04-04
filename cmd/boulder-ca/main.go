@@ -231,6 +231,7 @@ func main() {
 	// TODO(#7414) Remove this check.
 	// Use the deprecated Profile as a CertProfiles
 	if len(c.CA.Issuance.CertProfiles) == 0 {
+		c.CA.Issuance.CertProfiles = make(map[string]issuance.ProfileConfig, 0)
 		c.CA.Issuance.CertProfiles[c.CA.Issuance.DefaultCertificateProfileName] = c.CA.Issuance.Profile
 	}
 
