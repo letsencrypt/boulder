@@ -17,6 +17,7 @@ import (
 	"math/big"
 	mrand "math/rand"
 	"net"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	ctasn1 "github.com/google/certificate-transparency-go/asn1"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	ctpkix "github.com/google/certificate-transparency-go/x509/pkix"
@@ -34,10 +36,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/go-jose/go-jose.v2"
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -56,6 +58,7 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/ratelimits"
+	bredis "github.com/letsencrypt/boulder/redis"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -157,14 +160,14 @@ func numAuthorizations(o *corepb.Order) int {
 }
 
 type DummyValidationAuthority struct {
-	request      chan *vapb.PerformValidationRequest
-	ResultError  error
-	ResultReturn *vapb.ValidationResult
+	performValidationRequest             chan *vapb.PerformValidationRequest
+	PerformValidationRequestResultError  error
+	PerformValidationRequestResultReturn *vapb.ValidationResult
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
-	dva.request <- req
-	return dva.ResultReturn, dva.ResultError
+	dva.performValidationRequest <- req
+	return dva.PerformValidationRequestResultReturn, dva.PerformValidationRequestResultError
 }
 
 var (
@@ -287,8 +290,9 @@ func parseAndMarshalIP(t *testing.T, ip string) []byte {
 }
 
 func newAcctKey(t *testing.T) []byte {
-	key := &jose.JSONWebKey{Key: testKey()}
-	acctKey, err := key.MarshalJSON()
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	jwk := &jose.JSONWebKey{Key: key.Public()}
+	acctKey, err := jwk.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	return acctKey
 }
@@ -323,7 +327,9 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 
 	saDBCleanUp := test.ResetBoulderTestDatabase(t)
 
-	va := &DummyValidationAuthority{request: make(chan *vapb.PerformValidationRequest, 1)}
+	va := &DummyValidationAuthority{
+		performValidationRequest: make(chan *vapb.PerformValidationRequest, 1),
+	}
 
 	pa, err := policy.New(map[core.AcmeChallenge]bool{
 		core.ChallengeTypeHTTP01: true,
@@ -362,9 +368,40 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		},
 	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
+	var limiter *ratelimits.Limiter
+	var txnBuilder *ratelimits.TransactionBuilder
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		rc := bredis.Config{
+			Username: "unittest-rw",
+			TLS: cmd.TLSConfig{
+				CACertFile: "../test/redis-tls/minica.pem",
+				CertFile:   "../test/redis-tls/boulder/cert.pem",
+				KeyFile:    "../test/redis-tls/boulder/key.pem",
+			},
+			Lookups: []cmd.ServiceDomain{
+				{
+					Service: "redisratelimits",
+					Domain:  "service.consul",
+				},
+			},
+			LookupDNSAuthority: "consul.service.consul",
+		}
+		rc.PasswordConfig = cmd.PasswordConfig{
+			PasswordFile: "../test/secrets/ratelimits_redis_password",
+		}
+		ring, err := bredis.NewRingFromConfig(rc, stats, log)
+		test.AssertNotError(t, err, "making redis ring client")
+		source := ratelimits.NewRedisSource(ring.Ring, fc, stats)
+		test.AssertNotNil(t, source, "source should not be nil")
+		limiter, err = ratelimits.NewLimiter(fc, source, stats)
+		test.AssertNotError(t, err, "making limiter")
+		txnBuilder, err = ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+		test.AssertNotError(t, err, "making transaction composer")
+	}
+
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
-		1, testKeyPolicy, 100,
+		1, testKeyPolicy, limiter, txnBuilder, 100,
 		300*24*time.Hour, 7*24*time.Hour,
 		nil, noopCAA{},
 		0, 5*time.Minute,
@@ -608,12 +645,6 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	test.AssertError(t, err, "Should have rejected authorization with short key")
 }
 
-// testKey returns a random 2048 bit RSA public key for test registrations
-func testKey() *rsa.PublicKey {
-	key, _ := rsa.GenerateKey(rand.Reader, 2048)
-	return &key.PublicKey
-}
-
 func TestNewRegistrationRateLimit(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -818,7 +849,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 	authzPB, err := bgrpc.AuthzToPB(authz)
 	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
 
-	va.ResultReturn = &vapb.ValidationResult{
+	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed: []byte("192.168.0.1"),
@@ -847,16 +878,30 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// We know this is OK because of TestNewAuthorization
 	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
 
-	va.ResultReturn = &vapb.ValidationResult{
+	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
-				AddressUsed: []byte("192.168.0.1"),
-				Hostname:    "example.com",
-				Port:        "8080",
-				Url:         "http://example.com/",
+				AddressUsed:   []byte("192.168.0.1"),
+				Hostname:      "example.com",
+				Port:          "8080",
+				Url:           "http://example.com/",
+				ResolverAddrs: []string{"rebound"},
 			},
 		},
 		Problems: nil,
+	}
+
+	var remainingFailedValidations int64
+	var rlTxns []ratelimits.Transaction
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// Gather a baseline for the rate limit.
+		var err error
+		rlTxns, err = ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(authzPB.RegistrationID, []string{Identifier}, 100)
+		test.AssertNotError(t, err, "FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions failed")
+
+		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
+		test.AssertNotError(t, err, "BatchSpend failed")
+		remainingFailedValidations = d.Remaining
 	}
 
 	now := fc.Now()
@@ -869,7 +914,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 	var vaRequest *vapb.PerformValidationRequest
 	select {
-	case r := <-va.request:
+	case r := <-va.performValidationRequest:
 		vaRequest = r
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
@@ -900,6 +945,13 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
+
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// The failed validations bucket should be identical to the baseline.
+		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
+		test.AssertNotError(t, err, "BatchSpend failed")
+		test.AssertEquals(t, d.Remaining, remainingFailedValidations)
+	}
 }
 
 func TestPerformValidationVAError(t *testing.T) {
@@ -908,7 +960,20 @@ func TestPerformValidationVAError(t *testing.T) {
 
 	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
 
-	va.ResultError = fmt.Errorf("Something went wrong")
+	var remainingFailedValidations int64
+	var rlTxns []ratelimits.Transaction
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// Gather a baseline for the rate limit.
+		var err error
+		rlTxns, err = ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(authzPB.RegistrationID, []string{Identifier}, 100)
+		test.AssertNotError(t, err, "FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions failed")
+
+		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
+		test.AssertNotError(t, err, "BatchSpend failed")
+		remainingFailedValidations = d.Remaining
+	}
+
+	va.PerformValidationRequestResultError = fmt.Errorf("Something went wrong")
 
 	challIdx := dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
@@ -920,7 +985,7 @@ func TestPerformValidationVAError(t *testing.T) {
 
 	var vaRequest *vapb.PerformValidationRequest
 	select {
-	case r := <-va.request:
+	case r := <-va.performValidationRequest:
 		vaRequest = r
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
@@ -947,6 +1012,13 @@ func TestPerformValidationVAError(t *testing.T) {
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
+
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// The failed validations bucket should have been decremented by 1.
+		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
+		test.AssertNotError(t, err, "BatchSpend failed")
+		test.AssertEquals(t, d.Remaining, remainingFailedValidations-1)
+	}
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
@@ -989,14 +1061,14 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 }
 
 func TestNewOrderRateLimiting(t *testing.T) {
-	_, _, ra, fc, cleanUp := initAuthorities(t)
+	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = 5 * 24 * time.Hour
 
-	rateLimitDuration := 5 * time.Minute
+	ra.orderLifetime = 5 * 24 * time.Hour
 
 	// Create a dummy rate limit config that sets a NewOrdersPerAccount rate
 	// limit with a very low threshold/short window
+	rateLimitDuration := 5 * time.Minute
 	ra.rlPolicies = &dummyRateLimitConfig{
 		NewOrdersPerAccountPolicy: ratelimit.RateLimitPolicy{
 			Threshold: 1,
@@ -1029,6 +1101,33 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	// new pending order is produced.
 	_, err = ra.NewOrder(ctx, orderOne)
 	test.AssertNotError(t, err, "Reuse of orderOne failed")
+
+	// Insert a specific certificate into the database, then create an order for
+	// the same set of names. This order should succeed because it's a renewal.
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "generating test key")
+	fakeCert := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		DNSNames:     []string{"renewing.example.com"},
+		NotBefore:    fc.Now().Add(-time.Hour),
+		NotAfter:     fc.Now().Add(time.Hour),
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, fakeCert, fakeCert, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "generating test certificate")
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          certDER,
+		RegID:        Registration.Id,
+		Issued:       timestamppb.New(fc.Now().Add(-time.Hour)),
+		IssuerNameID: 1,
+	})
+	test.AssertNotError(t, err, "Adding test certificate")
+
+	_, err = ra.NewOrder(ctx, &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"renewing.example.com"},
+	})
+	test.AssertNotError(t, err, "Renewal of orderRenewal failed")
 
 	// Advancing the clock by 2 * the rate limit duration should allow orderTwo to
 	// succeed
@@ -1570,7 +1669,7 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 	test.AssertNotError(t, err, "certificate per name rate limit not applied correctly")
 
 	// Trying to issue for "test3.dedyn.io" and "dynv6.net" should fail because
-	// "dynv6.net" is an exact public suffic match with 2 certificates issued for
+	// "dynv6.net" is an exact public suffix match with 2 certificates issued for
 	// it.
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dynv6.net"}, certsPerNamePolicy, 99)
 	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
@@ -3265,11 +3364,11 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 	test.AssertNotError(t, err, "failed to deserialize authz")
 
 	// Twiddle the authz to pretend its been validated by the VA
-	authz.Status = "valid"
 	authz.Challenges[0].Status = "valid"
 	err = ra.recordValidation(ctx, authz.ID, authz.Expires, &authz.Challenges[0])
 	test.AssertNotError(t, err, "ra.recordValidation failed")
 
+	// Try to record the same validation a second time.
 	err = ra.recordValidation(ctx, authz.ID, authz.Expires, &authz.Challenges[0])
 	test.AssertError(t, err, "ra.recordValidation didn't fail")
 	test.AssertErrorIs(t, err, berrors.NotFound)
@@ -3534,7 +3633,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
 			// Attempt issuance
-			_, err = ra.issueCertificateInner(ctx, csrOb, accountID(Registration.Id), orderID(order.Id))
+			_, err = ra.issueCertificateInner(ctx, csrOb, order.CertificateProfileName, accountID(Registration.Id), orderID(order.Id))
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
 			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
 			// If there is an expected `error` then match the error message
@@ -3551,6 +3650,60 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			}
 		})
 	}
+}
+
+type MockCARecordingProfile struct {
+	inner       *mocks.MockCA
+	profileName string
+	profileHash []byte
+}
+
+func (ca *MockCARecordingProfile) IssuePrecertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
+	ca.profileName = req.CertProfileName
+	return ca.inner.IssuePrecertificate(ctx, req)
+}
+
+func (ca *MockCARecordingProfile) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	ca.profileHash = req.CertProfileHash
+	return ca.inner.IssueCertificateForPrecertificate(ctx, req)
+}
+
+func TestIssueCertificateInnerWithProfile(t *testing.T) {
+	_, _, ra, fc, cleanup := initAuthorities(t)
+	defer cleanup()
+
+	// Generate a reasonable-looking CSR and cert to pass the matchesCSR check.
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "generating test key")
+	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{DNSNames: []string{"example.com"}}, testKey)
+	test.AssertNotError(t, err, "creating test csr")
+	csr, err := x509.ParseCertificateRequest(csrDER)
+	test.AssertNotError(t, err, "parsing test csr")
+	certDER, err := x509.CreateCertificate(rand.Reader, &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		DNSNames:              []string{"example.com"},
+		NotBefore:             fc.Now(),
+		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}, &x509.Certificate{}, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "creating test cert")
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+
+	// Use a mock CA that will record the profile name and profile hash included
+	// in the RA's request messages. Populate it with the cert generated above.
+	mockCA := MockCARecordingProfile{inner: &mocks.MockCA{PEM: certPEM}}
+	ra.CA = &mockCA
+
+	// The basic mocks.StorageAuthority always succeeds on FinalizeOrder, which is
+	// the only SA call that issueCertificateInner makes.
+	ra.SA = &mocks.StorageAuthority{}
+
+	// Call issueCertificateInner with the CSR generated above and the profile
+	// name "default", which will cause the mockCA to return a specific hash.
+	_, err = ra.issueCertificateInner(context.Background(), csr, "default", 1, 1)
+	test.AssertNotError(t, err, "issuing cert with profile name")
+	test.AssertEquals(t, mockCA.profileName, "default")
+	test.AssertByteEquals(t, mockCA.profileHash, []byte{0x37, 0xa8, 0xee, 0xc1, 0xce, 0x19, 0x68, 0x7d})
 }
 
 func TestNewOrderMaxNames(t *testing.T) {
@@ -3628,21 +3781,23 @@ rA==
 type mockSARevocation struct {
 	mocks.StorageAuthority
 
-	known   *corepb.CertificateStatus
+	known   map[string]*x509.Certificate
+	revoked map[string]*corepb.CertificateStatus
 	blocked []*sapb.AddBlockedKeyRequest
-	revoked map[string]int64
 }
 
 func newMockSARevocation(known *x509.Certificate, clk clock.Clock) *mockSARevocation {
 	return &mockSARevocation{
 		StorageAuthority: *mocks.NewStorageAuthority(clk),
-		known: &corepb.CertificateStatus{
-			Serial:   core.SerialToString(known.SerialNumber),
-			IssuerID: int64(issuance.GetIssuerNameID(known)),
-		},
-		blocked: make([]*sapb.AddBlockedKeyRequest, 0),
-		revoked: make(map[string]int64),
+		known:            map[string]*x509.Certificate{core.SerialToString(known.SerialNumber): known},
+		revoked:          make(map[string]*corepb.CertificateStatus),
+		blocked:          make([]*sapb.AddBlockedKeyRequest, 0),
 	}
+}
+
+func (msar *mockSARevocation) reset() {
+	msar.revoked = make(map[string]*corepb.CertificateStatus)
+	msar.blocked = make([]*sapb.AddBlockedKeyRequest, 0)
 }
 
 func (msar *mockSARevocation) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
@@ -3650,31 +3805,55 @@ func (msar *mockSARevocation) AddBlockedKey(_ context.Context, req *sapb.AddBloc
 	return &emptypb.Empty{}, nil
 }
 
-func (msar *mockSARevocation) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
-	if msar.known != nil && req.Serial == msar.known.Serial {
-		return msar.known, nil
+func (msar *mockSARevocation) GetLintPrecertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	if cert, present := msar.known[req.Serial]; present {
+		return &corepb.Certificate{Der: cert.Raw}, nil
 	}
-	return nil, fmt.Errorf("unknown certificate status")
+	return nil, berrors.UnknownSerialError()
+}
+
+func (msar *mockSARevocation) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
+	if status, present := msar.revoked[req.Serial]; present {
+		return status, nil
+	}
+	if cert, present := msar.known[req.Serial]; present {
+		return &corepb.CertificateStatus{
+			Serial:   core.SerialToString(cert.SerialNumber),
+			IssuerID: int64(issuance.IssuerNameID(cert)),
+		}, nil
+	}
+	return nil, berrors.UnknownSerialError()
 }
 
 func (msar *mockSARevocation) RevokeCertificate(_ context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	if _, present := msar.revoked[req.Serial]; present {
 		return nil, berrors.AlreadyRevokedError("already revoked")
 	}
-	msar.revoked[req.Serial] = req.Reason
-	msar.known.Status = string(core.OCSPStatusRevoked)
+	cert, present := msar.known[req.Serial]
+	if !present {
+		return nil, berrors.UnknownSerialError()
+	}
+	msar.revoked[req.Serial] = &corepb.CertificateStatus{
+		Serial:        req.Serial,
+		IssuerID:      int64(issuance.IssuerNameID(cert)),
+		Status:        string(core.OCSPStatusRevoked),
+		RevokedReason: req.Reason,
+	}
 	return &emptypb.Empty{}, nil
 }
 
 func (msar *mockSARevocation) UpdateRevokedCertificate(_ context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	reason, present := msar.revoked[req.Serial]
+	status, present := msar.revoked[req.Serial]
 	if !present {
 		return nil, errors.New("not already revoked")
 	}
-	if present && reason == ocsp.KeyCompromise {
+	if req.Reason != ocsp.KeyCompromise {
+		return nil, errors.New("cannot re-revoke except for keyCompromise")
+	}
+	if present && status.RevokedReason == ocsp.KeyCompromise {
 		return nil, berrors.AlreadyRevokedError("already revoked for keyCompromise")
 	}
-	msar.revoked[req.Serial] = req.Reason
+	msar.revoked[req.Serial].RevokedReason = req.Reason
 	return &emptypb.Empty{}, nil
 }
 
@@ -3799,14 +3978,13 @@ func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
+	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
+	cert.IsCA = true
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
-	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
 		ic.NameID(): ic,
-	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
 	}
 	ra.SA = newMockSARevocation(cert, clk)
 
@@ -3853,14 +4031,13 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
+	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
+	cert.IsCA = true
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
-	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
 		ic.NameID(): ic,
-	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
 	}
 	mockSA := newMockSARevocation(cert, clk)
 	ra.SA = mockSA
@@ -3882,7 +4059,7 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 		RegID: 5,
 	})
 	test.AssertNotError(t, err, "should have succeeded")
-	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)], int64(ocsp.CessationOfOperation))
+	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)].RevokedReason, int64(ocsp.CessationOfOperation))
 }
 
 func TestRevokeCertByKey(t *testing.T) {
@@ -3892,16 +4069,15 @@ func TestRevokeCertByKey(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
+	// Use the same self-signed cert as both issuer and issuee for revocation.
 	_, cert := test.ThrowAwayCert(t, clk)
 	digest, err := core.KeyDigest(cert.PublicKey)
 	test.AssertNotError(t, err, "core.KeyDigest failed")
+	cert.IsCA = true
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
-	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
 		ic.NameID(): ic,
-	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
 	}
 	mockSA := newMockSARevocation(cert, clk)
 	ra.SA = mockSA
@@ -3915,7 +4091,7 @@ func TestRevokeCertByKey(t *testing.T) {
 	test.Assert(t, bytes.Equal(digest[:], mockSA.blocked[0].KeyHash), "key hash mismatch")
 	test.AssertEquals(t, mockSA.blocked[0].Source, "API")
 	test.AssertEquals(t, len(mockSA.blocked[0].Comment), 0)
-	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)], int64(ocsp.KeyCompromise))
+	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)].RevokedReason, int64(ocsp.KeyCompromise))
 
 	// Re-revoking should fail, because it is already revoked for keyCompromise.
 	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
@@ -3925,7 +4101,7 @@ func TestRevokeCertByKey(t *testing.T) {
 
 	// Reset and have the Subscriber revoke for a different reason.
 	// Then re-revoking using the key should work.
-	mockSA.revoked = make(map[string]int64)
+	mockSA.revoked = make(map[string]*corepb.CertificateStatus)
 	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
 		Cert:  cert.Raw,
 		Code:  ocsp.Unspecified,
@@ -3945,16 +4121,15 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
+	// Use the same self-signed cert as both issuer and issuee for revocation.
 	serial, cert := test.ThrowAwayCert(t, clk)
 	digest, err := core.KeyDigest(cert.PublicKey)
 	test.AssertNotError(t, err, "core.KeyDigest failed")
+	cert.IsCA = true
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
-	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
 		ic.NameID(): ic,
-	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
 	}
 	mockSA := newMockSARevocation(cert, clk)
 	ra.SA = mockSA
@@ -3963,33 +4138,26 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{})
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed for nil request object")
 
-	// Revoking with neither a cert nor a serial should fail immediately.
+	// Revoking with no serial should fail immediately.
+	mockSA.reset()
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Code:      ocsp.Unspecified,
 		AdminName: "root",
 	})
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with no cert or serial")
 
-	// Revoking with a nil cert and no serial should fail immediately.
-	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
-		Cert:      []byte{},
-		Code:      ocsp.KeyCompromise,
-		AdminName: "",
-	})
-	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed for nil `Cert`")
-
 	// Revoking without an admin name should fail immediately.
+	mockSA.reset()
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
-		Cert:      cert.Raw,
 		Serial:    serial,
-		Code:      ocsp.KeyCompromise,
+		Code:      ocsp.Unspecified,
 		AdminName: "",
 	})
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with empty string for `AdminName`")
 
 	// Revoking for a forbidden reason should fail immediately.
+	mockSA.reset()
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
-		Cert:      cert.Raw,
 		Serial:    serial,
 		Code:      ocsp.CertificateHold,
 		AdminName: "root",
@@ -3997,8 +4165,8 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with forbidden revocation reason")
 
 	// Revoking a cert for an unspecified reason should work but not block the key.
+	mockSA.reset()
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
-		Cert:      cert.Raw,
 		Serial:    serial,
 		Code:      ocsp.Unspecified,
 		AdminName: "root",
@@ -4009,9 +4177,9 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 1)
 
 	// Revoking a serial for an unspecified reason should work but not block the key.
-	mockSA.revoked = make(map[string]int64)
+	mockSA.reset()
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
-		Serial:    core.SerialToString(cert.SerialNumber),
+		Serial:    serial,
 		Code:      ocsp.Unspecified,
 		AdminName: "root",
 	})
@@ -4021,11 +4189,27 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
 
 	// Duplicate administrative revocation of a serial for an unspecified reason
-	// should fail and not block the key
+	// should succeed because the akamai cache purge succeeds.
+	// Note that we *don't* call reset() here, so it recognizes the duplicate.
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
-		Serial:    core.SerialToString(cert.SerialNumber),
+		Serial:    serial,
 		Code:      ocsp.Unspecified,
 		AdminName: "root",
+	})
+	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
+	test.AssertEquals(t, len(mockSA.blocked), 0)
+	test.AssertMetricWithLabelsEquals(
+		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
+
+	// Duplicate administrative revocation of a serial for a *malformed* cert for
+	// an unspecified reason should fail because we can't attempt an akamai cache
+	// purge so the underlying AlreadyRevoked error gets propagated upwards.
+	// Note that we *don't* call reset() here, so it recognizes the duplicate.
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Serial:    serial,
+		Code:      ocsp.Unspecified,
+		AdminName: "root",
+		Malformed: true,
 	})
 	test.AssertError(t, err, "Should be revoked")
 	test.AssertContains(t, err.Error(), "already revoked")
@@ -4033,10 +4217,23 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
 
-	// Revoking a cert for key compromise should work and block the key.
-	mockSA.revoked = make(map[string]int64)
+	// Revoking a cert for key compromise with skipBlockKey set should work but
+	// not block the key.
+	mockSA.reset()
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
-		Cert:      cert.Raw,
+		Serial:       serial,
+		Code:         ocsp.KeyCompromise,
+		AdminName:    "root",
+		SkipBlockKey: true,
+	})
+	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
+	test.AssertEquals(t, len(mockSA.blocked), 0)
+	test.AssertMetricWithLabelsEquals(
+		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 1)
+
+	// Revoking a cert for key compromise should work and block the key.
+	mockSA.reset()
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Serial:    serial,
 		Code:      ocsp.KeyCompromise,
 		AdminName: "root",
@@ -4048,14 +4245,113 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertEquals(t, mockSA.blocked[0].Comment, "revoked by root")
 	test.AssertEquals(t, mockSA.blocked[0].Added.AsTime(), clk.Now())
 	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 1)
+		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 2)
 
-	// Revoking a serial for key compromise should fail because we don't have the pubkey to block.
-	mockSA.revoked = make(map[string]int64)
+	// Revoking a malformed cert for key compromise should fail because we don't
+	// have the pubkey to block.
+	mockSA.reset()
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Serial:    core.SerialToString(cert.SerialNumber),
 		Code:      ocsp.KeyCompromise,
 		AdminName: "root",
+		Malformed: true,
 	})
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with just serial for keyCompromise")
+}
+
+func TestNewOrderRateLimitingExempt(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.orderLifetime = 5 * 24 * time.Hour
+
+	// Set up a rate limit policy that allows 1 order every 5 minutes.
+	rateLimitDuration := 5 * time.Minute
+	ra.rlPolicies = &dummyRateLimitConfig{
+		NewOrdersPerAccountPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 1,
+			Window:    config.Duration{Duration: rateLimitDuration},
+		},
+	}
+
+	exampleOrderOne := &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"first.example.com", "second.example.com"},
+	}
+	exampleOrderTwo := &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"first.example.com", "third.example.com"},
+	}
+
+	// Create an order immediately.
+	_, err := ra.NewOrder(ctx, exampleOrderOne)
+	test.AssertNotError(t, err, "orderOne should have succeeded")
+
+	// Create another order immediately. This should fail.
+	_, err = ra.NewOrder(ctx, exampleOrderTwo)
+	test.AssertError(t, err, "orderTwo should have failed")
+
+	// Exempt orderTwo from rate limiting.
+	exampleOrderTwo.LimitsExempt = true
+	_, err = ra.NewOrder(ctx, exampleOrderTwo)
+	test.AssertNotError(t, err, "orderTwo should have succeeded")
+}
+
+func TestNewOrderFailedAuthzRateLimitingExempt(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	exampleOrder := &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"example.com"},
+	}
+
+	// Create an order, and thus a pending authz, for "example.com".
+	ctx := context.Background()
+	order, err := ra.NewOrder(ctx, exampleOrder)
+	test.AssertNotError(t, err, "adding an initial order for regA")
+	test.AssertNotNil(t, order.Id, "initial order had a nil ID")
+	test.AssertEquals(t, numAuthorizations(order), 1)
+
+	// Mock SA that fails all authorizations for "example.com".
+	ra.SA = &mockInvalidPlusValidAuthzAuthority{
+		mockInvalidAuthorizationsAuthority{
+			domainWithFailures: "example.com"},
+	}
+
+	// Set up a rate limit policy that allows 1 order every 24 hours.
+	ra.rlPolicies = &dummyRateLimitConfig{
+		InvalidAuthorizationsPerAccountPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 1,
+			Window:    config.Duration{Duration: 24 * time.Hour},
+		},
+	}
+
+	// Requesting a new order for "example.com" should fail due to too many
+	// failed authorizations.
+	_, err = ra.NewOrder(ctx, exampleOrder)
+	test.AssertError(t, err, "expected error for domain with too many failures")
+
+	// Exempt the order from rate limiting.
+	exampleOrder.LimitsExempt = true
+	_, err = ra.NewOrder(ctx, exampleOrder)
+	test.AssertNotError(t, err, "limit exempt order should have succeeded")
+}
+
+func TestNewOrderReplacesSerialCarriesThroughToSA(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	exampleOrder := &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"example.com"},
+		ReplacesSerial: "1234",
+	}
+
+	// Mock SA that returns an error from NewOrderAndAuthzs if the
+	// "ReplacesSerial" field of the request is empty.
+	ra.SA = &mockNewOrderMustBeReplacementAuthority{}
+
+	_, err := ra.NewOrder(ctx, exampleOrder)
+	test.AssertNotError(t, err, "order with ReplacesSerial should have succeeded")
 }

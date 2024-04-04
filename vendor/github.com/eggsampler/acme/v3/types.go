@@ -14,9 +14,10 @@ var ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA a
 // Different possible challenge types provided by an ACME server.
 // See https://tools.ietf.org/html/rfc8555#section-9.7.8
 const (
-	ChallengeTypeDNS01     = "dns-01"
-	ChallengeTypeHTTP01    = "http-01"
-	ChallengeTypeTLSALPN01 = "tls-alpn-01"
+	ChallengeTypeDNS01        = "dns-01"
+	ChallengeTypeDNSAccount01 = "dns-account-01"
+	ChallengeTypeHTTP01       = "http-01"
+	ChallengeTypeTLSALPN01    = "tls-alpn-01"
 
 	// ChallengeTypeTLSSNI01 is deprecated and should not be used.
 	// See: https://community.letsencrypt.org/t/important-what-you-need-to-know-about-tls-sni-validation-issues/50811

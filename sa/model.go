@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -15,8 +16,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -372,7 +373,8 @@ type precertificateModel struct {
 	Expires        time.Time
 }
 
-type orderModel struct {
+// TODO(#7324) orderModelv1 is deprecated, use orderModelv2 moving forward.
+type orderModelv1 struct {
 	ID                int64
 	RegistrationID    int64
 	Expires           time.Time
@@ -380,6 +382,17 @@ type orderModel struct {
 	Error             []byte
 	CertificateSerial string
 	BeganProcessing   bool
+}
+
+type orderModelv2 struct {
+	ID                     int64
+	RegistrationID         int64
+	Expires                time.Time
+	Created                time.Time
+	Error                  []byte
+	CertificateSerial      string
+	BeganProcessing        bool
+	CertificateProfileName string
 }
 
 type requestedNameModel struct {
@@ -393,8 +406,9 @@ type orderToAuthzModel struct {
 	AuthzID int64
 }
 
-func orderToModel(order *corepb.Order) (*orderModel, error) {
-	om := &orderModel{
+// TODO(#7324) orderToModelv1 is deprecated, use orderModelv2 moving forward.
+func orderToModelv1(order *corepb.Order) (*orderModelv1, error) {
+	om := &orderModelv1{
 		ID:                order.Id,
 		RegistrationID:    order.RegistrationID,
 		Expires:           order.Expires.AsTime(),
@@ -416,7 +430,8 @@ func orderToModel(order *corepb.Order) (*orderModel, error) {
 	return om, nil
 }
 
-func modelToOrder(om *orderModel) (*corepb.Order, error) {
+// TODO(#7324) modelToOrderv1 is deprecated, use orderModelv2 moving forward.
+func modelToOrderv1(om *orderModelv1) (*corepb.Order, error) {
 	order := &corepb.Order{
 		Id:                om.ID,
 		RegistrationID:    om.RegistrationID,
@@ -424,6 +439,54 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		Created:           timestamppb.New(om.Created),
 		CertificateSerial: om.CertificateSerial,
 		BeganProcessing:   om.BeganProcessing,
+	}
+	if len(om.Error) > 0 {
+		var problem corepb.ProblemDetails
+		err := json.Unmarshal(om.Error, &problem)
+		if err != nil {
+			return &corepb.Order{}, badJSONError(
+				"failed to unmarshal order model's error",
+				om.Error,
+				err)
+		}
+		order.Error = &problem
+	}
+	return order, nil
+}
+
+func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
+	om := &orderModelv2{
+		ID:                     order.Id,
+		RegistrationID:         order.RegistrationID,
+		Expires:                order.Expires.AsTime(),
+		Created:                order.Created.AsTime(),
+		BeganProcessing:        order.BeganProcessing,
+		CertificateSerial:      order.CertificateSerial,
+		CertificateProfileName: order.CertificateProfileName,
+	}
+
+	if order.Error != nil {
+		errJSON, err := json.Marshal(order.Error)
+		if err != nil {
+			return nil, err
+		}
+		if len(errJSON) > mediumBlobSize {
+			return nil, fmt.Errorf("Error object is too large to store in the database")
+		}
+		om.Error = errJSON
+	}
+	return om, nil
+}
+
+func modelToOrderv2(om *orderModelv2) (*corepb.Order, error) {
+	order := &corepb.Order{
+		Id:                     om.ID,
+		RegistrationID:         om.RegistrationID,
+		Expires:                timestamppb.New(om.Expires),
+		Created:                timestamppb.New(om.Created),
+		CertificateSerial:      om.CertificateSerial,
+		BeganProcessing:        om.BeganProcessing,
+		CertificateProfileName: om.CertificateProfileName,
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails
@@ -1187,4 +1250,84 @@ type revokedCertModel struct {
 	ShardIdx      int64             `db:"shardIdx"`
 	RevokedDate   time.Time         `db:"revokedDate"`
 	RevokedReason revocation.Reason `db:"revokedReason"`
+}
+
+// replacementOrderModel represents one row in the replacementOrders table. It
+// contains all of the information necessary to link a renewal order to the
+// certificate it replaces.
+type replacementOrderModel struct {
+	// ID is an auto-incrementing row ID.
+	ID int64 `db:"id"`
+	// Serial is the serial number of the replaced certificate.
+	Serial string `db:"serial"`
+	// OrderId is the ID of the replacement order
+	OrderID int64 `db:"orderID"`
+	// OrderExpiry is the expiry time of the new order. This is used to
+	// determine if we can accept a new replacement order for the same Serial.
+	OrderExpires time.Time `db:"orderExpires"`
+	// Replaced is a boolean indicating whether the certificate has been
+	// replaced, i.e. whether the new order has been finalized. Once this is
+	// true, no new replacement orders can be accepted for the same Serial.
+	Replaced bool `db:"replaced"`
+}
+
+// addReplacementOrder inserts or updates the replacementOrders row matching the
+// provided serial with the details provided. This function accepts a
+// transaction so that the insert or update takes place within the new order
+// transaction.
+func addReplacementOrder(ctx context.Context, db db.SelectExecer, serial string, orderID int64, orderExpires time.Time) error {
+	var existingID []int64
+	_, err := db.Select(ctx, &existingID, `
+		SELECT id
+		FROM replacementOrders
+		WHERE serial = ?
+		LIMIT 1`,
+		serial,
+	)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("checking for existing replacement order: %w", err)
+	}
+
+	if len(existingID) > 0 {
+		// Update existing replacementOrder row.
+		_, err = db.ExecContext(ctx, `
+			UPDATE replacementOrders
+			SET orderID = ?, orderExpires = ?
+			WHERE id = ?`,
+			orderID, orderExpires,
+			existingID[0],
+		)
+		if err != nil {
+			return fmt.Errorf("updating replacement order: %w", err)
+		}
+	} else {
+		// Insert new replacementOrder row.
+		_, err = db.ExecContext(ctx, `
+			INSERT INTO replacementOrders (serial, orderID, orderExpires)
+			VALUES (?, ?, ?)`,
+			serial, orderID, orderExpires,
+		)
+		if err != nil {
+			return fmt.Errorf("creating replacement order: %w", err)
+		}
+	}
+	return nil
+}
+
+// setReplacementOrderFinalized sets the replaced flag for the replacementOrder
+// row matching the provided orderID to true. This function accepts a
+// transaction so that the update can take place within the finalization
+// transaction.
+func setReplacementOrderFinalized(ctx context.Context, db db.Execer, orderID int64) error {
+	_, err := db.ExecContext(ctx, `
+		UPDATE replacementOrders
+		SET replaced = true
+		WHERE orderID = ?
+		LIMIT 1`,
+		orderID,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
 }

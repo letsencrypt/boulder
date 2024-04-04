@@ -24,7 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gopkg.in/go-jose/go-jose.v2"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/letsencrypt/boulder/test/load-generator/acme"
 	"github.com/letsencrypt/challtestsrv"
@@ -257,9 +257,6 @@ func (s *State) Restore(filename string) error {
 	}
 	for _, a := range snap.Accounts {
 		key, err := x509.ParseECPrivateKey(a.RawKey)
-		if err != nil {
-			continue
-		}
 		if err != nil {
 			continue
 		}

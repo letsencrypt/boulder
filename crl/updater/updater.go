@@ -25,7 +25,7 @@ import (
 )
 
 type crlUpdater struct {
-	issuers        map[issuance.IssuerNameID]*issuance.Certificate
+	issuers        map[issuance.NameID]*issuance.Certificate
 	numShards      int
 	shardWidth     time.Duration
 	lookbackPeriod time.Duration
@@ -61,7 +61,7 @@ func NewUpdater(
 	log blog.Logger,
 	clk clock.Clock,
 ) (*crlUpdater, error) {
-	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Certificate, len(issuers))
+	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate, len(issuers))
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
 	}
@@ -124,7 +124,7 @@ func NewUpdater(
 
 // updateShardWithRetry calls updateShard repeatedly (with exponential backoff
 // between attempts) until it succeeds or the max number of attempts is reached.
-func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) error {
+func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time, issuerNameID issuance.NameID, shardIdx int, chunks []chunk) error {
 	ctx, cancel := context.WithTimeout(ctx, cu.updateTimeout)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
@@ -187,7 +187,7 @@ func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time
 // the list of revoked certs in that shard from the SA, gets the CA to sign the
 // resulting CRL, and gets the crl-storer to upload it. It returns an error if
 // any of these operations fail.
-func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) (err error) {
+func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerNameID issuance.NameID, shardIdx int, chunks []chunk) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

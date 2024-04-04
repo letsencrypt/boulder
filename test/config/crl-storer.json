@@ -7,7 +7,7 @@
 			"keyFile": "test/grpc-creds/crl-storer.boulder/key.pem"
 		},
 		"grpc": {
-			"address": ":9109",
+			"address": ":9309",
 			"maxConnectionAge": "30s",
 			"services": {
 				"storer.CRLStorer": {

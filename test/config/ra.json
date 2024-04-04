@@ -24,33 +24,63 @@
 			"keyFile": "test/grpc-creds/ra.boulder/key.pem"
 		},
 		"vaService": {
-			"serverAddress": "va.service.consul:9092",
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "va",
+				"domain": "service.consul"
+			},
 			"timeout": "20s",
+			"noWaitForReady": true,
 			"hostOverride": "va.boulder"
 		},
 		"caService": {
-			"serverAddress": "ca.service.consul:9093",
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "ca",
+				"domain": "service.consul"
+			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "ca.boulder"
 		},
 		"ocspService": {
-			"serverAddress": "ca.service.consul:9093",
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "ca",
+				"domain": "service.consul"
+			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "ca.boulder"
 		},
 		"publisherService": {
-			"serverAddress": "publisher.service.consul:9091",
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "publisher",
+				"domain": "service.consul"
+			},
 			"timeout": "300s",
+			"noWaitForReady": true,
 			"hostOverride": "publisher.boulder"
 		},
 		"saService": {
-			"serverAddress": "sa.service.consul:9095",
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "sa",
+				"domain": "service.consul"
+			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
 		"akamaiPurgerService": {
-			"serverAddress": "akamai-purger.service.consul:9099",
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "akamai-purger",
+				"domain": "service.consul"
+			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "akamai-purger.boulder"
 		},
 		"grpc": {

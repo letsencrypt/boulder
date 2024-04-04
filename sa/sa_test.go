@@ -23,8 +23,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
@@ -38,13 +46,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/durationpb"
-	"google.golang.org/protobuf/types/known/emptypb"
-	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/go-jose/go-jose.v2"
 )
 
 var log = blog.UseMock()
@@ -1519,7 +1520,7 @@ func TestFinalizeOrder(t *testing.T) {
 	test.AssertEquals(t, updatedOrder.Status, string(core.StatusValid))
 }
 
-func TestOrder(t *testing.T) {
+func TestOrderWithOrderModelv1(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1581,6 +1582,151 @@ func TestOrder(t *testing.T) {
 	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "sa.GetOrder failed")
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
+}
+
+func TestOrderWithOrderModelv2(t *testing.T) {
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		t.Skip()
+	}
+
+	// The feature must be set before the SA is constructed because of a
+	// conditional on this feature in //sa/database.go.
+	features.Set(features.Config{MultipleCertificateProfiles: true})
+	defer features.Reset()
+
+	fc := clock.NewFake()
+	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
+
+	dbMap, err := DBMapForTest(vars.DBConnSA)
+	test.AssertNotError(t, err, "Couldn't create dbMap")
+
+	saro, err := NewSQLStorageAuthorityRO(dbMap, nil, metrics.NoopRegisterer, 1, 0, fc, log)
+	test.AssertNotError(t, err, "Couldn't create SARO")
+
+	sa, err := NewSQLStorageAuthorityWrapping(saro, dbMap, metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "Couldn't create SA")
+	defer test.ResetBoulderTestDatabase(t)
+
+	// Create a test registration to reference
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	authzExpires := fc.Now().Add(time.Hour)
+	authzID := createPendingAuthorization(t, sa, "example.com", authzExpires)
+
+	// Set the order to expire in two hours
+	expires := fc.Now().Add(2 * time.Hour)
+
+	inputOrder := &corepb.Order{
+		RegistrationID:         reg.Id,
+		Expires:                timestamppb.New(expires),
+		Names:                  []string{"example.com"},
+		V2Authorizations:       []int64{authzID},
+		CertificateProfileName: "tbiapb",
+	}
+
+	// Create the order
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:         inputOrder.RegistrationID,
+			Expires:                inputOrder.Expires,
+			Names:                  inputOrder.Names,
+			V2Authorizations:       inputOrder.V2Authorizations,
+			CertificateProfileName: inputOrder.CertificateProfileName,
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
+
+	// The Order from GetOrder should match the following expected order
+	created := sa.clk.Now()
+	expectedOrder := &corepb.Order{
+		// The registration ID, authorizations, expiry, and names should match the
+		// input to NewOrderAndAuthzs
+		RegistrationID:   inputOrder.RegistrationID,
+		V2Authorizations: inputOrder.V2Authorizations,
+		Names:            inputOrder.Names,
+		Expires:          inputOrder.Expires,
+		// The ID should have been set to 1 by the SA
+		Id: 1,
+		// The status should be pending
+		Status: string(core.StatusPending),
+		// The serial should be empty since this is a pending order
+		CertificateSerial: "",
+		// We should not be processing it
+		BeganProcessing: false,
+		// The created timestamp should have been set to the current time
+		Created:                timestamppb.New(created),
+		CertificateProfileName: "tbiapb",
+	}
+
+	// Fetch the order by its ID and make sure it matches the expected
+	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "sa.GetOrder failed")
+	test.AssertDeepEquals(t, storedOrder, expectedOrder)
+
+	//
+	// Test that an order without a certificate profile name, but with the
+	// MultipleCertificateProfiles feature flag enabled works as expected.
+	//
+
+	// Create a test registration to reference
+	key2, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 2}}.MarshalJSON()
+	initialIP2, _ := net.ParseIP("44.44.44.44").MarshalText()
+	reg2, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key2,
+		InitialIP: initialIP2,
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	inputOrderNoName := &corepb.Order{
+		RegistrationID:   reg2.Id,
+		Expires:          timestamppb.New(expires),
+		Names:            []string{"example.com"},
+		V2Authorizations: []int64{authzID},
+	}
+
+	// Create the order
+	orderNoName, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:         inputOrderNoName.RegistrationID,
+			Expires:                inputOrderNoName.Expires,
+			Names:                  inputOrderNoName.Names,
+			V2Authorizations:       inputOrderNoName.V2Authorizations,
+			CertificateProfileName: inputOrderNoName.CertificateProfileName,
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
+
+	// The Order from GetOrder should match the following expected order
+	created = sa.clk.Now()
+	expectedOrderNoName := &corepb.Order{
+		// The registration ID, authorizations, expiry, and names should match the
+		// input to NewOrderAndAuthzs
+		RegistrationID:   inputOrderNoName.RegistrationID,
+		V2Authorizations: inputOrderNoName.V2Authorizations,
+		Names:            inputOrderNoName.Names,
+		Expires:          inputOrderNoName.Expires,
+		// The ID should have been set to 2 by the SA
+		Id: 2,
+		// The status should be pending
+		Status: string(core.StatusPending),
+		// The serial should be empty since this is a pending order
+		CertificateSerial: "",
+		// We should not be processing it
+		BeganProcessing: false,
+		// The created timestamp should have been set to the current time
+		Created: timestamppb.New(created),
+	}
+
+	// Fetch the order by its ID and make sure it matches the expected
+	storedOrderNoName, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: orderNoName.Id})
+	test.AssertNotError(t, err, "sa.GetOrder failed")
+	test.AssertDeepEquals(t, storedOrderNoName, expectedOrderNoName)
 }
 
 // TestGetAuthorization2NoRows ensures that the GetAuthorization2 function returns
@@ -2595,10 +2741,11 @@ func TestFinalizeAuthorization2(t *testing.T) {
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
 			{
-				Hostname:    "example.com",
-				Port:        "80",
-				Url:         "http://example.com",
-				AddressUsed: ip,
+				Hostname:      "example.com",
+				Port:          "80",
+				Url:           "http://example.com",
+				AddressUsed:   ip,
+				ResolverAddrs: []string{"resolver:5353"},
 			},
 		},
 		Status:      string(core.StatusValid),
@@ -2616,6 +2763,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Hostname, "example.com")
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Port, "80")
+	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].ResolverAddrs[0], "resolver:5353")
 	test.AssertEquals(t, dbVer.Challenges[0].Validated.AsTime(), attemptedAt)
 
 	authzID = createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
@@ -2625,10 +2773,11 @@ func TestFinalizeAuthorization2(t *testing.T) {
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
 			{
-				Hostname:    "example.com",
-				Port:        "80",
-				Url:         "http://example.com",
-				AddressUsed: ip,
+				Hostname:      "example.com",
+				Port:          "80",
+				Url:           "http://example.com",
+				AddressUsed:   ip,
+				ResolverAddrs: []string{"resolver:5353"},
 			},
 		},
 		ValidationError: prob,
@@ -2645,6 +2794,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Hostname, "example.com")
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Port, "80")
+	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].ResolverAddrs[0], "resolver:5353")
 	test.AssertDeepEquals(t, dbVer.Challenges[0].Error, prob)
 }
 
@@ -3077,19 +3227,19 @@ func TestBlockedKey(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "AddBlockedKey failed")
 
-	exists, err := sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
+	exists, err := sa.KeyBlocked(context.Background(), &sapb.SPKIHash{
 		KeyHash: hashA,
 	})
 	test.AssertNotError(t, err, "KeyBlocked failed")
 	test.Assert(t, exists != nil, "*sapb.Exists is nil")
 	test.Assert(t, exists.Exists, "KeyBlocked returned false for blocked key")
-	exists, err = sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
+	exists, err = sa.KeyBlocked(context.Background(), &sapb.SPKIHash{
 		KeyHash: hashB,
 	})
 	test.AssertNotError(t, err, "KeyBlocked failed")
 	test.Assert(t, exists != nil, "*sapb.Exists is nil")
 	test.Assert(t, exists.Exists, "KeyBlocked returned false for blocked key")
-	exists, err = sa.KeyBlocked(context.Background(), &sapb.KeyBlockedRequest{
+	exists, err = sa.KeyBlocked(context.Background(), &sapb.SPKIHash{
 		KeyHash: []byte{5},
 	})
 	test.AssertNotError(t, err, "KeyBlocked failed")
@@ -3587,7 +3737,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
-	// Asking for revoked certs from a different shard should return zero reults.
+	// Asking for revoked certs from a different shard should return zero results.
 	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
 	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
@@ -3998,4 +4148,113 @@ func TestUpdateCRLShard(t *testing.T) {
 		},
 	)
 	test.AssertError(t, err, "updating an unknown shard")
+}
+
+func TestReplacementOrderExists(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires replacementOrders database table")
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	features.Set(features.Config{TrackReplacementCertificatesARI: true})
+	defer features.Reset()
+
+	oldCertSerial := "1234567890"
+
+	// Check that a non-existent replacement order does not exist.
+	exists, err := sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: oldCertSerial})
+	test.AssertNotError(t, err, "failed to check for replacement order")
+	test.Assert(t, !exists.Exists, "replacement for non-existent serial should not exist")
+
+	// Create a test registration to reference.
+	reg := createWorkingRegistration(t, sa)
+
+	// Add one valid authz.
+	expires := fc.Now().Add(time.Hour)
+	attemptedAt := fc.Now()
+	authzID := createFinalizedAuthorization(t, sa, "example.com", expires, "valid", attemptedAt)
+
+	// Add a new order in pending status with no certificate serial.
+	expires1Year := sa.clk.Now().Add(365 * 24 * time.Hour)
+	order, err := sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:   reg.Id,
+			Expires:          timestamppb.New(expires1Year),
+			Names:            []string{"example.com"},
+			V2Authorizations: []int64{authzID},
+		},
+	})
+	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
+
+	// Set the order to processing so it can be finalized
+	_, err = sa.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "SetOrderProcessing failed")
+
+	// Finalize the order with a certificate oldCertSerial.
+	order.CertificateSerial = oldCertSerial
+	_, err = sa.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{Id: order.Id, CertificateSerial: order.CertificateSerial})
+	test.AssertNotError(t, err, "FinalizeOrder failed")
+
+	// Create a replacement order.
+	order, err = sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:   reg.Id,
+			Expires:          timestamppb.New(expires1Year),
+			Names:            []string{"example.com"},
+			V2Authorizations: []int64{authzID},
+			ReplacesSerial:   oldCertSerial,
+		},
+	})
+	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
+
+	// Check that a pending replacement order exists.
+	exists, err = sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: oldCertSerial})
+	test.AssertNotError(t, err, "failed to check for replacement order")
+	test.Assert(t, exists.Exists, "replacement order should exist")
+
+	// Set the order to processing so it can be finalized.
+	_, err = sa.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "SetOrderProcessing failed")
+
+	// Check that a replacement order in processing still exists.
+	exists, err = sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: oldCertSerial})
+	test.AssertNotError(t, err, "failed to check for replacement order")
+	test.Assert(t, exists.Exists, "replacement order in processing should still exist")
+
+	order.CertificateSerial = "0123456789"
+	_, err = sa.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{Id: order.Id, CertificateSerial: order.CertificateSerial})
+	test.AssertNotError(t, err, "FinalizeOrder failed")
+
+	// Check that a finalized replacement order still exists.
+	exists, err = sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: oldCertSerial})
+	test.AssertNotError(t, err, "failed to check for replacement order")
+	test.Assert(t, exists.Exists, "replacement order in processing should still exist")
+
+	// Try updating the replacement order.
+
+	// Create a replacement order.
+	newReplacementOrder, err := sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:   reg.Id,
+			Expires:          timestamppb.New(expires1Year),
+			Names:            []string{"example.com"},
+			V2Authorizations: []int64{authzID},
+			ReplacesSerial:   oldCertSerial,
+		},
+	})
+	test.AssertNotError(t, err, "NewOrderAndAuthzs failed")
+
+	// Fetch the replacement order so we can ensure it was updated.
+	var replacementRow replacementOrderModel
+	err = sa.dbReadOnlyMap.SelectOne(
+		ctx,
+		&replacementRow,
+		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		oldCertSerial,
+	)
+	test.AssertNotError(t, err, "SELECT from replacementOrders failed")
+	test.AssertEquals(t, newReplacementOrder.Id, replacementRow.OrderID)
+	test.AssertEquals(t, newReplacementOrder.Expires.AsTime(), replacementRow.OrderExpires)
 }

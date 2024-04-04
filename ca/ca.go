@@ -2,8 +2,12 @@ package ca
 
 import (
 	"context"
+	"crypto"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -45,7 +49,7 @@ const (
 // issuer based on the issuer of a given (pre)certificate.
 type issuerMaps struct {
 	byAlg    map[x509.PublicKeyAlgorithm]*issuance.Issuer
-	byNameID map[issuance.IssuerNameID]*issuance.Issuer
+	byNameID map[issuance.NameID]*issuance.Issuer
 }
 
 // certificateAuthorityImpl represents a CA that signs certificates.
@@ -55,6 +59,7 @@ type certificateAuthorityImpl struct {
 	sa      sapb.StorageAuthorityCertificateClient
 	pa      core.PolicyAuthority
 	issuers issuerMaps
+	profile *issuance.Profile
 
 	// This is temporary, and will be used for testing and slow roll-out
 	// of ECDSA issuance, but will then be removed.
@@ -77,7 +82,7 @@ type certificateAuthorityImpl struct {
 // the input list "wins".
 func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 	issuersByAlg := make(map[x509.PublicKeyAlgorithm]*issuance.Issuer, 2)
-	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Issuer, len(issuers))
+	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
 		for _, alg := range issuer.Algs() {
 			// TODO(#5259): Enforce that there is only one issuer for each algorithm,
@@ -86,7 +91,7 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 				issuersByAlg[alg] = issuer
 			}
 		}
-		issuersByNameID[issuer.Cert.NameID()] = issuer
+		issuersByNameID[issuer.NameID()] = issuer
 	}
 	return issuerMaps{issuersByAlg, issuersByNameID}
 }
@@ -98,6 +103,7 @@ func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
+	certificateProfile *issuance.Profile,
 	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
 	certBackdate time.Duration,
@@ -129,6 +135,10 @@ func NewCertificateAuthorityImpl(
 		return nil, errors.New("must have at least one issuer")
 	}
 
+	if certificateProfile == nil {
+		return nil, errors.New("must have at least one certificate profile")
+	}
+
 	issuers := makeIssuerMaps(boulderIssuers)
 
 	lintErrorCount := prometheus.NewCounter(
@@ -142,6 +152,7 @@ func NewCertificateAuthorityImpl(
 		sa:             sa,
 		pa:             pa,
 		issuers:        issuers,
+		profile:        certificateProfile,
 		validityPeriod: certExpiry,
 		backdate:       certBackdate,
 		prefix:         serialPrefix,
@@ -261,7 +272,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		scts = append(scts, sct)
 	}
 
-	issuer, ok := ca.issuers.byNameID[issuance.GetIssuerNameID(precert)]
+	issuer, ok := ca.issuers.byNameID[issuance.IssuerNameID(precert)]
 	if !ok {
 		return nil, berrors.InternalServerError("no issuer found for Issuer Name %s", precert.Issuer)
 	}
@@ -276,7 +287,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] precert=[%s]",
 		serialHex, req.RegistrationID, names, hex.EncodeToString(precert.Raw))
 
-	_, issuanceToken, err := issuer.Prepare(issuanceReq)
+	_, issuanceToken, err := issuer.Prepare(ca.profile, issuanceReq)
 	if err != nil {
 		ca.log.AuditErrf("Preparing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, req.RegistrationID, names, err)
@@ -302,7 +313,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	})
 	if err != nil {
 		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
-			serialHex, hex.EncodeToString(certDER), int64(issuer.Cert.NameID()), req.RegistrationID, req.OrderID, err)
+			serialHex, hex.EncodeToString(certDER), issuer.NameID(), req.RegistrationID, req.OrderID, err)
 		return nil, err
 	}
 
@@ -344,6 +355,29 @@ func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
+// generateSKID computes the Subject Key Identifier using one of the methods in
+// RFC 7093 Section 2 Additional Methods for Generating Key Identifiers:
+// The keyIdentifier [may be] composed of the leftmost 160-bits of the
+// SHA-256 hash of the value of the BIT STRING subjectPublicKey
+// (excluding the tag, length, and number of unused bits).
+func generateSKID(pk crypto.PublicKey) ([]byte, error) {
+	pkBytes, err := x509.MarshalPKIXPublicKey(pk)
+	if err != nil {
+		return nil, err
+	}
+
+	var pkixPublicKey struct {
+		Algo      pkix.AlgorithmIdentifier
+		BitString asn1.BitString
+	}
+	if _, err := asn1.Unmarshal(pkBytes, &pkixPublicKey); err != nil {
+		return nil, err
+	}
+
+	skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
+	return skid[0:20:20], nil
+}
+
 func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *issuance.Issuer, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
@@ -373,7 +407,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 			return nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
 		}
 	} else {
-		issuer, ok = ca.issuers.byNameID[issuance.IssuerNameID(issueReq.IssuerNameID)]
+		issuer, ok = ca.issuers.byNameID[issuance.NameID(issueReq.IssuerNameID)]
 		if !ok {
 			return nil, nil, berrors.InternalServerError("no issuer found for IssuerNameID %d", issueReq.IssuerNameID)
 		}
@@ -385,6 +419,11 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
+	subjectKeyId, err := generateSKID(csr.PublicKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("computing subject key ID: %w", err)
+	}
+
 	serialHex := core.SerialToString(serialBigInt)
 
 	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
@@ -393,6 +432,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	names := csrlib.NamesFromCSR(csr)
 	req := &issuance.IssuanceRequest{
 		PublicKey:         csr.PublicKey,
+		SubjectKeyId:      subjectKeyId,
 		Serial:            serialBigInt.Bytes(),
 		DNSNames:          names.SANs,
 		CommonName:        names.CN,
@@ -402,7 +442,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotAfter:          validity.NotAfter,
 	}
 
-	lintCertBytes, issuanceToken, err := issuer.Prepare(req)
+	lintCertBytes, issuanceToken, err := issuer.Prepare(ca.profile, req)
 	if err != nil {
 		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)
@@ -416,7 +456,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		Der:          lintCertBytes,
 		RegID:        issueReq.RegistrationID,
 		Issued:       timestamppb.New(ca.clk.Now()),
-		IssuerNameID: int64(issuer.Cert.NameID()),
+		IssuerNameID: int64(issuer.NameID()),
 		OcspNotReady: true,
 	})
 	if err != nil {

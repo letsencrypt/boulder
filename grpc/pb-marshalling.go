@@ -10,9 +10,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -151,6 +151,7 @@ func ValidationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 		AddressUsed:       addrUsed,
 		Url:               record.URL,
 		AddressesTried:    addrsTried,
+		ResolverAddrs:     record.ResolverAddrs,
 	}, nil
 }
 
@@ -178,6 +179,7 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 		AddressUsed:       addrUsed,
 		URL:               in.Url,
 		AddressesTried:    addrsTried,
+		ResolverAddrs:     in.ResolverAddrs,
 	}, nil
 }
 

@@ -17,6 +17,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/miekg/dns"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -24,7 +26,6 @@ import (
 	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/miekg/dns"
 
 	"testing"
 )
@@ -60,7 +61,7 @@ func TestDialerMismatchError(t *testing.T) {
 // will timeout after the expected singleDialTimeout. This ensures timeouts at
 // the TCP level are handled correctly.
 func TestPreresolvedDialerTimeout(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 	// Timeouts below 50ms tend to be flaky.
 	va.singleDialTimeout = 50 * time.Millisecond
 
@@ -74,31 +75,33 @@ func TestPreresolvedDialerTimeout(t *testing.T) {
 	// is to connect to an unrouteable IP address. This usually generates
 	// a connection timeout, but will rarely return "Network unreachable" instead.
 	// If we get that, just retry until we get something other than "Network unreachable".
-	var prob *probs.ProblemDetails
+	var err error
 	var took time.Duration
 	for i := 0; i < 20; i++ {
 		started := time.Now()
-		_, _, prob = va.fetchHTTP(ctx, "unroutable.invalid", "/.well-known/acme-challenge/whatever")
+		_, _, err = va.fetchHTTP(ctx, "unroutable.invalid", "/.well-known/acme-challenge/whatever")
 		took = time.Since(started)
-		if prob != nil && strings.Contains(prob.Detail, "Network unreachable") {
+		if err != nil && strings.Contains(err.Error(), "Network unreachable") {
 			continue
 		} else {
 			break
 		}
 	}
-	if prob == nil {
+	if err == nil {
 		t.Fatalf("Connection should've timed out")
 	}
 
 	// Check that the HTTP connection doesn't return too fast, and times
 	// out after the expected time
 	if took < va.singleDialTimeout {
-		t.Fatalf("fetch returned before %s (took: %s) with %#v", va.singleDialTimeout, took, prob)
+		t.Fatalf("fetch returned before %s (took: %s) with %#v", va.singleDialTimeout, took, err)
 	}
 	if took > 2*va.singleDialTimeout {
 		t.Fatalf("fetch didn't timeout after %s (took: %s)", va.singleDialTimeout, took)
 	}
+	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
+
 	expectMatch := regexp.MustCompile(
 		"Fetching http://unroutable.invalid/.well-known/acme-challenge/.*: Timeout during connect")
 	if !expectMatch.MatchString(prob.Detail) {
@@ -160,7 +163,7 @@ func TestHTTPValidationTarget(t *testing.T) {
 		exampleQuery = "my-path=was&my=own"
 	)
 
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			target, err := va.newHTTPValidationTarget(
@@ -291,7 +294,7 @@ func TestExtractRequestTarget(t *testing.T) {
 		},
 	}
 
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			host, port, err := va.extractRequestTarget(tc.Req)
@@ -313,7 +316,7 @@ func TestExtractRequestTarget(t *testing.T) {
 // generates a DNS error, and checks that a log line with the detailed error is
 // generated.
 func TestHTTPValidationDNSError(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil)
+	va, mockLog := setup(nil, 0, "", nil, nil)
 
 	_, _, prob := va.fetchHTTP(ctx, "always.error", "/.well-known/acme-challenge/whatever")
 	test.AssertError(t, prob, "Expected validation fetch to fail")
@@ -329,7 +332,7 @@ func TestHTTPValidationDNSError(t *testing.T) {
 // the mock resolver results in valid query/response data being logged in
 // a format we can decode successfully.
 func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil)
+	va, mockLog := setup(nil, 0, "", nil, nil)
 
 	_, _, prob := va.fetchHTTP(ctx, "id.mismatch", "/.well-known/acme-challenge/whatever")
 	test.AssertError(t, prob, "Expected validation fetch to fail")
@@ -368,7 +371,7 @@ func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
 }
 
 func TestSetupHTTPValidation(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 
 	mustTarget := func(t *testing.T, host string, port int, path string) *httpValidationTarget {
 		target, err := va.newHTTPValidationTarget(
@@ -430,6 +433,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 				URL:               "http://ipv4.and.ipv6.localhost/yellow/brick/road",
 				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("::1"),
+				ResolverAddrs:     []string{"MockClient"},
 			},
 			ExpectedDialer: &preresolvedDialer{
 				ip:      net.ParseIP("::1"),
@@ -447,6 +451,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 				URL:               "https://ipv4.and.ipv6.localhost/yellow/brick/road",
 				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("::1"),
+				ResolverAddrs:     []string{"MockClient"},
 			},
 			ExpectedDialer: &preresolvedDialer{
 				ip:      net.ParseIP("::1"),
@@ -738,7 +743,7 @@ func TestFetchHTTP(t *testing.T) {
 
 	// Setup a VA. By providing the testSrv to setup the VA will use the testSrv's
 	// randomly assigned port as its HTTP port.
-	va, _ := setup(testSrv, 0, "", nil)
+	va, _ := setup(testSrv, 0, "", nil, nil)
 
 	// We need to know the randomly assigned HTTP port for testcases as well
 	httpPort := getPort(testSrv)
@@ -764,6 +769,7 @@ func TestFetchHTTP(t *testing.T) {
 				URL:               url,
 				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("127.0.0.1"),
+				ResolverAddrs:     []string{"MockClient"},
 			})
 	}
 
@@ -784,6 +790,7 @@ func TestFetchHTTP(t *testing.T) {
 				URL:               url,
 				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("127.0.0.1"),
+				ResolverAddrs:     []string{"MockClient"},
 			})
 	}
 
@@ -824,6 +831,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/timeout",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -841,6 +849,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/timeout",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -875,6 +884,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-bad-proto",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -892,6 +902,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-bad-port",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -909,6 +920,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-bad-host",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -925,6 +937,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-path-too-long",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -941,6 +954,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/bad-status-code",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -957,6 +971,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/303-see-other",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -974,6 +989,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/resp-too-big",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -990,6 +1006,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1")},
 					AddressUsed:       net.ParseIP("::1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -1005,7 +1022,8 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 					// The first validation record should have used the IPv6 addr
-					AddressUsed: net.ParseIP("::1"),
+					AddressUsed:   net.ParseIP("::1"),
+					ResolverAddrs: []string{"MockClient"},
 				},
 				{
 					Hostname:          "ipv4.and.ipv6.localhost",
@@ -1013,7 +1031,8 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 					// The second validation record should have used the IPv4 addr as a fallback
-					AddressUsed: net.ParseIP("127.0.0.1"),
+					AddressUsed:   net.ParseIP("127.0.0.1"),
+					ResolverAddrs: []string{"MockClient"},
 				},
 			},
 		},
@@ -1029,6 +1048,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/ok",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -1044,6 +1064,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/redir-uppercase-publicsuffix",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 				{
 					Hostname:          "example.com",
@@ -1051,6 +1072,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/ok",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -1071,6 +1093,7 @@ func TestFetchHTTP(t *testing.T) {
 					URL:               "http://example.com/printf-verbs",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
 				},
 			},
 		},
@@ -1080,12 +1103,13 @@ func TestFetchHTTP(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 			defer cancel()
-			body, records, prob := va.fetchHTTP(ctx, tc.Host, tc.Path)
-			if prob != nil && tc.ExpectedProblem == nil {
-				t.Errorf("expected nil prob, got %#v\n", prob)
-			} else if prob == nil && tc.ExpectedProblem != nil {
+			body, records, err := va.fetchHTTP(ctx, tc.Host, tc.Path)
+			if err != nil && tc.ExpectedProblem == nil {
+				t.Errorf("expected nil prob, got %#v\n", err)
+			} else if err == nil && tc.ExpectedProblem != nil {
 				t.Errorf("expected %#v prob, got nil", tc.ExpectedProblem)
-			} else if prob != nil && tc.ExpectedProblem != nil {
+			} else if err != nil && tc.ExpectedProblem != nil {
+				prob := detailedError(err)
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			} else {
 				test.AssertEquals(t, string(body), tc.ExpectedBody)
@@ -1190,7 +1214,7 @@ func TestHTTPBadPort(t *testing.T) {
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
 
-	va, _ := setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil, nil)
 
 	// Pick a random port between 40000 and 65000 - with great certainty we won't
 	// have an HTTP server listening on this port and the test will fail as
@@ -1198,10 +1222,11 @@ func TestHTTPBadPort(t *testing.T) {
 	badPort := 40000 + mrand.Intn(25000)
 	va.httpPort = badPort
 
-	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), httpChallenge())
-	if prob == nil {
+	_, err := va.validateHTTP01(ctx, dnsi("localhost"), httpChallenge())
+	if err == nil {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
+	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	if !strings.Contains(prob.Detail, "Connection refused") {
 		t.Errorf("Expected a connection refused error, got %q", prob.Detail)
@@ -1216,15 +1241,15 @@ func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
 	})
 	hs.Start()
 
-	va, _ := setup(hs, 0, "", nil)
-	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), httpChallenge())
+	va, _ := setup(hs, 0, "", nil, nil)
+	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), httpChallenge())
 
-	if prob == nil {
+	if err == nil {
 		t.Fatalf("Expected validation to fail when file mismatched.")
 	}
 	expected := `The key authorization file from the server did not match this challenge. Expected "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI" (got "\xef\xffAABBCC")`
-	if prob.Detail != expected {
-		t.Errorf("validation failed with %s, expected %s", prob.Detail, expected)
+	if err.Error() != expected {
+		t.Errorf("validation failed with %s, expected %s", err, expected)
 	}
 }
 
@@ -1239,40 +1264,41 @@ func TestHTTP(t *testing.T) {
 	// TODO(#1989): close hs
 	hs := httpSrv(t, expectedToken)
 
-	va, log := setup(hs, 0, "", nil)
+	va, log := setup(hs, 0, "", nil, nil)
 
 	chall := httpChallenge()
 	t.Logf("Trying to validate: %+v\n", chall)
-	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
-	if prob != nil {
-		t.Errorf("Unexpected failure in HTTP validation: %s", prob)
+	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if err != nil {
+		t.Errorf("Unexpected failure in HTTP validation: %s", err)
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, path404)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
-	if prob == nil {
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if err == nil {
 		t.Fatalf("Should have found a 404 for the challenge.")
 	}
-	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
+	test.AssertErrorIs(t, err, berrors.Unauthorized)
 	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathWrongToken)
 	// The "wrong token" will actually be the expectedToken.  It's wrong
 	// because it doesn't match pathWrongToken.
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
-	if prob == nil {
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if err == nil {
 		t.Fatalf("Should have found the wrong token value.")
 	}
+	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
 	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
 	setChallengeToken(&chall, pathMoved)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
-	if prob != nil {
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if err != nil {
 		t.Fatalf("Failed to follow http.StatusMovedPermanently redirect")
 	}
 	redirectValid := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
@@ -1281,8 +1307,8 @@ func TestHTTP(t *testing.T) {
 
 	log.Clear()
 	setChallengeToken(&chall, pathFound)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
-	if prob != nil {
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if err != nil {
 		t.Fatalf("Failed to follow http.StatusFound redirect")
 	}
 	redirectMoved := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
@@ -1291,16 +1317,17 @@ func TestHTTP(t *testing.T) {
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 
 	ipIdentifier := identifier.ACMEIdentifier{Type: identifier.IdentifierType("ip"), Value: "127.0.0.1"}
-	_, prob = va.validateHTTP01(ctx, ipIdentifier, chall)
-	if prob == nil {
+	_, err = va.validateHTTP01(ctx, ipIdentifier, chall)
+	if err == nil {
 		t.Fatalf("IdentifierType IP shouldn't have worked.")
 	}
-	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+	test.AssertErrorIs(t, err, berrors.Malformed)
 
-	_, prob = va.validateHTTP01(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: "always.invalid"}, chall)
-	if prob == nil {
+	_, err = va.validateHTTP01(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: "always.invalid"}, chall)
+	if err == nil {
 		t.Fatalf("Domain name is invalid.")
 	}
+	prob = detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
 
@@ -1308,7 +1335,7 @@ func TestHTTPTimeout(t *testing.T) {
 	hs := httpSrv(t, expectedToken)
 	// TODO(#1989): close hs
 
-	va, _ := setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil, nil)
 
 	chall := httpChallenge()
 	setChallengeToken(&chall, pathWaitLong)
@@ -1317,8 +1344,8 @@ func TestHTTPTimeout(t *testing.T) {
 	timeout := 250 * time.Millisecond
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
-	if prob == nil {
+	_, err := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	if err == nil {
 		t.Fatalf("Connection should've timed out")
 	}
 
@@ -1326,11 +1353,12 @@ func TestHTTPTimeout(t *testing.T) {
 	// Check that the HTTP connection doesn't return before a timeout, and times
 	// out after the expected time
 	if took < timeout-200*time.Millisecond {
-		t.Fatalf("HTTP timed out before %s: %s with %s", timeout, took, prob)
+		t.Fatalf("HTTP timed out before %s: %s with %s", timeout, took, err)
 	}
 	if took > 2*timeout {
 		t.Fatalf("HTTP connection didn't timeout after %s", timeout)
 	}
+	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	test.AssertEquals(t, prob.Detail, "127.0.0.1: Fetching http://localhost/.well-known/acme-challenge/wait-long: Timeout after connect (your server may be slow or overloaded)")
 }
@@ -1342,15 +1370,15 @@ type dnsMockReturnsUnroutable struct {
 	*bdns.MockClient
 }
 
-func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, error) {
-	return []net.IP{net.ParseIP("198.51.100.1")}, nil
+func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddrs, error) {
+	return []net.IP{net.ParseIP("198.51.100.1")}, bdns.ResolverAddrs{"dnsMockReturnsUnroutable"}, nil
 }
 
 // TestHTTPDialTimeout tests that we give the proper "Timeout during connect"
 // error when dial fails. We do this by using a mock DNS client that resolves
 // everything to an unroutable IP address.
 func TestHTTPDialTimeout(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 
 	started := time.Now()
 	timeout := 250 * time.Millisecond
@@ -1362,27 +1390,28 @@ func TestHTTPDialTimeout(t *testing.T) {
 	// connect to an unrouteable IP address. This usually generates a connection
 	// timeout, but will rarely return "Network unreachable" instead. If we get
 	// that, just retry until we get something other than "Network unreachable".
-	var prob *probs.ProblemDetails
+	var err error
 	for i := 0; i < 20; i++ {
-		_, prob = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), httpChallenge())
-		if prob != nil && strings.Contains(prob.Detail, "Network unreachable") {
+		_, err = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), httpChallenge())
+		if err != nil && strings.Contains(err.Error(), "Network unreachable") {
 			continue
 		} else {
 			break
 		}
 	}
-	if prob == nil {
+	if err == nil {
 		t.Fatalf("Connection should've timed out")
 	}
 	took := time.Since(started)
 	// Check that the HTTP connection doesn't return too fast, and times
 	// out after the expected time
 	if took < (timeout-200*time.Millisecond)/2 {
-		t.Fatalf("HTTP returned before %s (%s) with %#v", timeout, took, prob)
+		t.Fatalf("HTTP returned before %s (%s) with %#v", timeout, took, err)
 	}
 	if took > 2*timeout {
 		t.Fatalf("HTTP connection didn't timeout after %s seconds", timeout)
 	}
+	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	expectMatch := regexp.MustCompile(
 		"Fetching http://unroutable.invalid/.well-known/acme-challenge/.*: Timeout during connect")
@@ -1395,13 +1424,13 @@ func TestHTTPDialTimeout(t *testing.T) {
 func TestHTTPRedirectLookup(t *testing.T) {
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, log := setup(hs, 0, "", nil)
+	va, log := setup(hs, 0, "", nil, nil)
 
 	chall := httpChallenge()
 	setChallengeToken(&chall, pathMoved)
-	_, prob := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
-	if prob != nil {
-		t.Fatalf("Unexpected failure in redirect (%s): %s", pathMoved, prob)
+	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if err != nil {
+		t.Fatalf("Unexpected failure in redirect (%s): %s", pathMoved, err)
 	}
 	redirectValid := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
 	matchedValidRedirect := log.GetAllMatching(redirectValid)
@@ -1410,9 +1439,9 @@ func TestHTTPRedirectLookup(t *testing.T) {
 
 	log.Clear()
 	setChallengeToken(&chall, pathFound)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
-	if prob != nil {
-		t.Fatalf("Unexpected failure in redirect (%s): %s", pathFound, prob)
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if err != nil {
+		t.Fatalf("Unexpected failure in redirect (%s): %s", pathFound, err)
 	}
 	redirectMoved := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
 	matchedMovedRedirect := log.GetAllMatching(redirectMoved)
@@ -1421,16 +1450,17 @@ func TestHTTPRedirectLookup(t *testing.T) {
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookupInvalid)
-	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	test.AssertError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 1)
-	test.AssertDeepEquals(t, err, probs.Connection(`127.0.0.1: Fetching http://invalid.invalid/path: Invalid hostname in redirect target, must end in IANA registered TLD`))
+	prob := detailedError(err)
+	test.AssertDeepEquals(t, prob, probs.Connection(`127.0.0.1: Fetching http://invalid.invalid/path: Invalid hostname in redirect target, must end in IANA registered TLD`))
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookup)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
-	if prob != nil {
-		t.Fatalf("Unexpected error in redirect (%s): %s", pathReLookup, prob)
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	if err != nil {
+		t.Fatalf("Unexpected error in redirect (%s): %s", pathReLookup, err)
 	}
 	redirectPattern := `following redirect to host "" url "http://other.valid.com:\d+/path"`
 	test.AssertEquals(t, len(log.GetAllMatching(redirectPattern)), 1)
@@ -1439,8 +1469,9 @@ func TestHTTPRedirectLookup(t *testing.T) {
 
 	log.Clear()
 	setChallengeToken(&chall, pathRedirectInvalidPort)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
-	test.AssertNotNil(t, prob, "Problem details for pathRedirectInvalidPort should not be nil")
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	test.AssertNotNil(t, err, "error for pathRedirectInvalidPort should not be nil")
+	prob = detailedError(err)
 	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
 		"127.0.0.1: Fetching http://other.valid.com:8080/path: Invalid port in redirect target. "+
 			"Only ports %d and %d are supported, not 8080", va.httpPort, va.httpsPort))
@@ -1450,8 +1481,9 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	// is referencing the redirected to host, instead of the original host.
 	log.Clear()
 	setChallengeToken(&chall, pathRedirectToFailingURL)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
-	test.AssertNotNil(t, prob, "Problem Details should not be nil")
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	test.AssertNotNil(t, err, "err should not be nil")
+	prob = detailedError(err)
 	test.AssertDeepEquals(t, prob,
 		probs.Unauthorized(
 			fmt.Sprintf("127.0.0.1: Invalid response from http://other.valid.com:%d/500: 500",
@@ -1461,7 +1493,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 func TestHTTPRedirectLoop(t *testing.T) {
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, _ := setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil, nil)
 
 	chall := httpChallenge()
 	setChallengeToken(&chall, "looper")
@@ -1474,7 +1506,7 @@ func TestHTTPRedirectLoop(t *testing.T) {
 func TestHTTPRedirectUserAgent(t *testing.T) {
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
-	va, _ := setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil, nil)
 	va.userAgent = rejectUserAgent
 
 	chall := httpChallenge()
@@ -1514,7 +1546,7 @@ func TestValidateHTTP(t *testing.T) {
 	hs := httpSrv(t, chall.Token)
 	defer hs.Close()
 
-	va, _ := setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil, nil)
 
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
 	test.Assert(t, prob == nil, "validation failed")
@@ -1525,16 +1557,17 @@ func TestLimitedReader(t *testing.T) {
 	setChallengeToken(&chall, core.NewToken())
 
 	hs := httpSrv(t, "012345\xff67890123456789012345678901234567890123456789012345678901234567890123456789")
-	va, _ := setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil, nil)
 	defer hs.Close()
 
-	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, err := va.validateChallenge(ctx, dnsi("localhost"), chall)
 
+	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
 	test.Assert(t, strings.HasPrefix(prob.Detail, "127.0.0.1: Invalid response from "),
 		"Expected failure due to truncation")
 
-	if !utf8.ValidString(prob.Detail) {
+	if !utf8.ValidString(err.Error()) {
 		t.Errorf("Problem Detail contained an invalid UTF-8 string")
 	}
 }

@@ -1,3 +1,32 @@
+# Release (2024-02-13)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.20.0
+  * **Feature**: Add codegen definition for sigv4a trait.
+  * **Feature**: Bump minimum Go version to 1.20 per our language support policy.
+
+# Release (2023-12-07)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.19.0
+  * **Feature**: Support modeled request compression.
+
+# Release (2023-11-30)
+
+* No change notes available for this release.
+
+# Release (2023-11-29)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.18.0
+  * **Feature**: Expose Options() method on generated service clients.
+
+# Release (2023-11-15)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.17.0
+  * **Feature**: Support identity/auth components of client reference architecture.
+
 # Release (2023-10-31)
 
 ## Module Highlights

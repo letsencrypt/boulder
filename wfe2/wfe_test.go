@@ -28,13 +28,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/go-jose/go-jose.v2"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -312,8 +312,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	fc := clock.NewFake()
 	stats := metrics.NoopRegisterer
 
-	certChains := map[issuance.IssuerNameID][][]byte{}
-	issuerCertificates := map[issuance.IssuerNameID]*issuance.Certificate{}
+	certChains := map[issuance.NameID][][]byte{}
+	issuerCertificates := map[issuance.NameID]*issuance.Certificate{}
 	for _, files := range [][]string{
 		{
 			"../test/hierarchy/int-r3.cert.pem",
@@ -425,7 +425,10 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		rncKey,
 		mockSA,
 		limiter,
-		txnBuilder)
+		txnBuilder,
+		100,
+		[]string{""},
+	)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
@@ -2573,9 +2576,20 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NotBefore and NotAfter are not supported","status":400}`,
 		},
 		{
-			Name:         "POST, no potential CNs 64 bytes or smaller",
-			Request:      signAndPost(signer, targetPath, signedURL, tooLongCNBody),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"NewOrder request did not include a SAN short enough to fit in CN","status":400}`,
+			Name:    "POST, good payload, all names too long to fit in CN",
+			Request: signAndPost(signer, targetPath, signedURL, tooLongCNBody),
+			ExpectedBody: `
+			{
+				"status": "pending",
+				"expires": "2021-02-01T01:01:01Z",
+				"identifiers": [
+					{ "type": "dns", "value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"}
+				],
+				"authorizations": [
+					"http://localhost/acme/authz-v3/1"
+				],
+				"finalize": "http://localhost/acme/finalize/1/1"
+			}`,
 		},
 		{
 			Name:    "POST, good payload, one potential CNs less than 64 bytes and one longer",
@@ -2835,7 +2849,7 @@ func TestKeyRollover(t *testing.T) {
 			Name:    "Valid key rollover request, key exists",
 			Payload: `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
-                          "type": "urn:ietf:params:acme:error:malformed",
+                          "type": "urn:ietf:params:acme:error:conflict",
                           "detail": "New key is already in use for a different account",
                           "status": 409
                         }`,
@@ -3009,9 +3023,6 @@ func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
 		return nil, err
 	}
 	certBlock, _ := pem.Decode(certPemBytes)
-	if err != nil {
-		return nil, err
-	}
 	return makeRevokeRequestJSONForCert(certBlock.Bytes, reason)
 }
 
@@ -3713,7 +3724,7 @@ func TestIncidentARI(t *testing.T) {
 
 	// draft-ietf-acme-ari02
 	test.AssertNotError(t, err, "failed to load test certificate")
-	var issuer issuance.IssuerNameID
+	var issuer issuance.NameID
 	for k := range wfe.issuerCertificates {
 		// Grab the first known issuer.
 		issuer = k
@@ -3986,4 +3997,144 @@ func Test_sendError(t *testing.T) {
 	test.AssertEquals(t, testResponse.Header().Get("Retry-After"), "")
 	// Ensure the Link header isn't populatsed.
 	test.AssertEquals(t, testResponse.Header().Get("Link"), "")
+}
+
+type mockSA struct {
+	sapb.StorageAuthorityReadOnlyClient
+	cert *corepb.Certificate
+}
+
+// GetCertificate returns the inner certificate if it matches the given serial.
+func (sa *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	if req.Serial == sa.cert.Serial {
+		return sa.cert, nil
+	}
+	return nil, berrors.NotFoundError("certificate with serial %q not found", req.Serial)
+}
+
+func TestOrderMatchesReplacement(t *testing.T) {
+	wfe, _, _ := setupWFE(t)
+
+	expectExpiry := time.Now().AddDate(0, 0, 1)
+	expectSerial := big.NewInt(1337)
+	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
+	rawCert := x509.Certificate{
+		NotAfter:     expectExpiry,
+		DNSNames:     []string{"example.com", "example-a.com"},
+		SerialNumber: expectSerial,
+	}
+	mockDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
+	test.AssertNotError(t, err, "failed to create test certificate")
+
+	wfe.sa = &mockSA{
+		cert: &corepb.Certificate{
+			RegistrationID: 1,
+			Serial:         expectSerial.String(),
+			Der:            mockDer,
+		},
+	}
+
+	// Working with a single matching identifier.
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example.com"}, expectSerial.String())
+	test.AssertNotError(t, err, "failed to check order is replacement")
+
+	// Working with a different matching identifier.
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example-a.com"}, expectSerial.String())
+	test.AssertNotError(t, err, "failed to check order is replacement")
+
+	// No matching identifiers.
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example-b.com"}, expectSerial.String())
+	test.AssertErrorIs(t, err, berrors.Malformed)
+
+	// RegID for predecessor order does not match.
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 2}, []string{"example.com"}, expectSerial.String())
+	test.AssertErrorIs(t, err, berrors.Unauthorized)
+
+	// Predecessor certificate not found.
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example.com"}, "1")
+	test.AssertErrorIs(t, err, berrors.NotFound)
+}
+
+type mockRA struct {
+	rapb.RegistrationAuthorityClient
+	expectProfileName string
+}
+
+// NewOrder returns an error if the ""
+func (sa *mockRA) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, opts ...grpc.CallOption) (*corepb.Order, error) {
+	if in.CertificateProfileName != sa.expectProfileName {
+		return nil, errors.New("not expected profile name")
+	}
+	now := time.Now().UTC()
+	created := now.AddDate(-30, 0, 0)
+	exp := now.AddDate(30, 0, 0)
+	return &corepb.Order{
+		Id:                     123456789,
+		RegistrationID:         987654321,
+		Created:                timestamppb.New(created),
+		Expires:                timestamppb.New(exp),
+		Names:                  []string{"example.com"},
+		Status:                 string(core.StatusValid),
+		V2Authorizations:       []int64{1},
+		CertificateSerial:      "serial",
+		Error:                  nil,
+		CertificateProfileName: in.CertificateProfileName,
+	}, nil
+}
+
+func TestNewOrderWithProfile(t *testing.T) {
+	wfe, _, signer := setupWFE(t)
+	expectProfileName := "test-profile"
+	wfe.ra = &mockRA{expectProfileName: expectProfileName}
+	mux := wfe.Handler(metrics.NoopRegisterer)
+	wfe.certificateProfileNames = []string{expectProfileName}
+
+	// Test that the newOrder endpoint returns the proper error if an invalid
+	// profile is specified.
+	invalidOrderBody := `
+	{
+		"Identifiers": [
+		  {"type": "dns", "value": "example.com"}
+		],
+		"Profile": "bad-profile"
+	}`
+
+	responseWriter := httptest.NewRecorder()
+	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, invalidOrderBody)
+	mux.ServeHTTP(responseWriter, r)
+	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
+	var errorResp map[string]interface{}
+	err := json.Unmarshal(responseWriter.Body.Bytes(), &errorResp)
+	test.AssertNotError(t, err, "Failed to unmarshal error response")
+	test.AssertEquals(t, errorResp["type"], "urn:ietf:params:acme:error:malformed")
+	test.AssertEquals(t, errorResp["detail"], "Invalid certificate profile, \"bad-profile\": not a recognized profile name")
+
+	// Test that the newOrder endpoint returns no error if the valid profile is specified.
+	validOrderBody := `
+	{
+		"Identifiers": [
+		  {"type": "dns", "value": "example.com"}
+		],
+		"Profile": "test-profile"
+	}`
+	responseWriter = httptest.NewRecorder()
+	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, validOrderBody)
+	mux.ServeHTTP(responseWriter, r)
+	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
+	var errorResp1 map[string]interface{}
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &errorResp1)
+	test.AssertNotError(t, err, "Failed to unmarshal order response")
+	test.AssertEquals(t, errorResp1["status"], "valid")
+
+	// Set the acceptable profiles to an empty list, the WFE should no longer accept any profiles.
+	wfe.certificateProfileNames = []string{}
+	responseWriter = httptest.NewRecorder()
+	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, validOrderBody)
+	mux.ServeHTTP(responseWriter, r)
+	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
+	var errorResp2 map[string]interface{}
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &errorResp2)
+	test.AssertNotError(t, err, "Failed to unmarshal error response")
+	test.AssertEquals(t, errorResp2["type"], "urn:ietf:params:acme:error:malformed")
+	test.AssertEquals(t, errorResp2["detail"], "Invalid certificate profile, \"test-profile\": not a recognized profile name")
 }

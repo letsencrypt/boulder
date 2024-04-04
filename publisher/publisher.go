@@ -96,12 +96,15 @@ func NewLog(uri, b64PK, userAgent string, logger blog.Logger) (*Log, error) {
 	}
 	url.Path = strings.TrimSuffix(url.Path, "/")
 
-	pemPK := fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----",
-		b64PK)
+	derPK, err := base64.StdEncoding.DecodeString(b64PK)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := jsonclient.Options{
-		Logger:    logAdaptor{logger},
-		PublicKey: pemPK,
-		UserAgent: userAgent,
+		Logger:       logAdaptor{logger},
+		PublicKeyDER: derPK,
+		UserAgent:    userAgent,
 	}
 	httpClient := &http.Client{
 		// We set the HTTP client timeout to about half of what we expect
@@ -120,6 +123,7 @@ func NewLog(uri, b64PK, userAgent string, logger blog.Logger) (*Log, error) {
 		// "unlimited," which would be bad.
 		Transport: &http.Transport{
 			MaxIdleConns:        http.DefaultTransport.(*http.Transport).MaxIdleConns,
+			MaxIdleConnsPerHost: http.DefaultTransport.(*http.Transport).MaxIdleConns,
 			IdleConnTimeout:     http.DefaultTransport.(*http.Transport).IdleConnTimeout,
 			TLSHandshakeTimeout: http.DefaultTransport.(*http.Transport).TLSHandshakeTimeout,
 			// In Boulder Issue 3821[0] we found that HTTP/2 support was causing hard
@@ -196,7 +200,7 @@ type Impl struct {
 	pubpb.UnimplementedPublisherServer
 	log           blog.Logger
 	userAgent     string
-	issuerBundles map[issuance.IssuerNameID][]ct.ASN1Cert
+	issuerBundles map[issuance.NameID][]ct.ASN1Cert
 	ctLogsCache   logCache
 	metrics       *pubMetrics
 }
@@ -204,7 +208,7 @@ type Impl struct {
 // New creates a Publisher that will submit certificates
 // to requested CT logs
 func New(
-	bundles map[issuance.IssuerNameID][]ct.ASN1Cert,
+	bundles map[issuance.NameID][]ct.ASN1Cert,
 	userAgent string,
 	logger blog.Logger,
 	stats prometheus.Registerer,
@@ -235,7 +239,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 	}
 
 	chain := []ct.ASN1Cert{{Data: req.Der}}
-	id := issuance.GetIssuerNameID(cert)
+	id := issuance.IssuerNameID(cert)
 	issuerBundle, ok := pub.issuerBundles[id]
 	if !ok {
 		err := fmt.Errorf("No issuerBundle matching issuerNameID: %d", int64(id))
@@ -398,7 +402,7 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, tim
 
 // GetCTBundleForChain takes a slice of *issuance.Certificate(s)
 // representing a certificate chain and returns a slice of
-// ct.ANS1Cert(s) in the same order
+// ct.ASN1Cert(s) in the same order
 func GetCTBundleForChain(chain []*issuance.Certificate) []ct.ASN1Cert {
 	var ctBundle []ct.ASN1Cert
 	for _, cert := range chain {

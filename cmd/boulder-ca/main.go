@@ -18,7 +18,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
-	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -35,8 +34,10 @@ type Config struct {
 
 		// Issuance contains all information necessary to load and initialize issuers.
 		Issuance struct {
-			Profile      issuance.ProfileConfig
-			Issuers      []issuance.IssuerConfig `validate:"min=1,dive"`
+			Profile issuance.ProfileConfig
+			// TODO(#7159): Make this required once all live configs are using it.
+			CRLProfile   issuance.CRLProfileConfig `validate:"-"`
+			Issuers      []issuance.IssuerConfig   `validate:"min=1,dive"`
 			IgnoredLints []string
 		}
 
@@ -49,7 +50,11 @@ type Config struct {
 		// What digits we should prepend to serials after randomly generating them.
 		SerialPrefix int `validate:"required,min=1,max=127"`
 
-		// The maximum number of subjectAltNames in a single certificate
+		// MaxNames is the maximum number of subjectAltNames in a single cert.
+		// The value supplied MUST be greater than 0 and no more than 100. These
+		// limits are per section 7.1 of our combined CP/CPS, under "DV-SSL
+		// Subscriber Certificate". The value must match the RA and WFE
+		// configurations.
 		MaxNames int `validate:"required,min=1,max=100"`
 
 		// LifespanOCSP is how long OCSP responses are valid for. Per the BRs,
@@ -59,7 +64,8 @@ type Config struct {
 		// LifespanCRL is how long CRLs are valid for. It should be longer than the
 		// `period` field of the CRL Updater. Per the BRs, Section 4.9.7, it MUST
 		// NOT be more than 10 days.
-		LifespanCRL config.Duration
+		// Deprecated: Use Config.CA.Issuance.CRLProfile.ValidityInterval instead.
+		LifespanCRL config.Duration `validate:"-"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -90,6 +96,7 @@ type Config struct {
 		// CRLDPBase is the piece of the CRL Distribution Point URI which is common
 		// across all issuers and shards. It must use the http:// scheme, and must
 		// not end with a slash. Example: "http://prod.c.lencr.org".
+		// TODO(#7296): Remove this fallback once all configs have issuer.CRLBaseURL
 		CRLDPBase string `validate:"required,url,startswith=http://,endsnotwith=/"`
 
 		// DisableCertService causes the CertificateAuthority gRPC service to not
@@ -109,34 +116,6 @@ type Config struct {
 
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
-}
-
-func loadBoulderIssuers(profileConfig issuance.ProfileConfig, issuerConfigs []issuance.IssuerConfig, ignoredLints []string) ([]*issuance.Issuer, error) {
-	issuers := make([]*issuance.Issuer, 0, len(issuerConfigs))
-	for _, issuerConfig := range issuerConfigs {
-		profile, err := issuance.NewProfile(profileConfig, issuerConfig)
-		if err != nil {
-			return nil, err
-		}
-
-		cert, signer, err := issuance.LoadIssuer(issuerConfig.Location)
-		if err != nil {
-			return nil, err
-		}
-
-		linter, err := linter.New(cert.Certificate, signer, ignoredLints)
-		if err != nil {
-			return nil, err
-		}
-
-		issuer, err := issuance.NewIssuer(cert, signer, profile, linter, cmd.Clock())
-		if err != nil {
-			return nil, err
-		}
-
-		issuers = append(issuers, issuer)
-	}
-	return issuers, nil
 }
 
 func main() {
@@ -168,6 +147,15 @@ func main() {
 
 	if c.CA.LifespanOCSP.Duration == 0 {
 		c.CA.LifespanOCSP.Duration = 96 * time.Hour
+	}
+
+	// TODO(#7159): Remove these fallbacks once all live configs are setting the
+	// CRL validity interval inside the Issuance.CRLProfile Config.
+	if c.CA.Issuance.CRLProfile.ValidityInterval.Duration == 0 && c.CA.LifespanCRL.Duration != 0 {
+		c.CA.Issuance.CRLProfile.ValidityInterval = c.CA.LifespanCRL
+	}
+	if c.CA.Issuance.CRLProfile.MaxBackdate.Duration == 0 && c.CA.Backdate.Duration != 0 {
+		c.CA.Issuance.CRLProfile.MaxBackdate = c.CA.Backdate
 	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)
@@ -208,9 +196,15 @@ func main() {
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
 
-	var boulderIssuers []*issuance.Issuer
-	boulderIssuers, err = loadBoulderIssuers(c.CA.Issuance.Profile, c.CA.Issuance.Issuers, c.CA.Issuance.IgnoredLints)
-	cmd.FailOnError(err, "Couldn't load issuers")
+	issuers := make([]*issuance.Issuer, 0, len(c.CA.Issuance.Issuers))
+	for _, issuerConfig := range c.CA.Issuance.Issuers {
+		issuer, err := issuance.LoadIssuer(issuerConfig, cmd.Clock())
+		cmd.FailOnError(err, "Loading issuer")
+		issuers = append(issuers, issuer)
+	}
+
+	profile, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
+	cmd.FailOnError(err, "Couldn't load issuance profile")
 
 	tlsConfig, err := c.CA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
@@ -237,7 +231,7 @@ func main() {
 
 	if !c.CA.DisableOCSPService {
 		ocspi, err := ca.NewOCSPImpl(
-			boulderIssuers,
+			issuers,
 			c.CA.LifespanOCSP.Duration,
 			c.CA.OCSPLogMaxLength,
 			c.CA.OCSPLogPeriod.Duration,
@@ -256,8 +250,8 @@ func main() {
 
 	if !c.CA.DisableCRLService {
 		crli, err := ca.NewCRLImpl(
-			boulderIssuers,
-			c.CA.LifespanCRL.Duration,
+			issuers,
+			c.CA.Issuance.CRLProfile,
 			c.CA.CRLDPBase,
 			c.CA.OCSPLogMaxLength,
 			logger,
@@ -271,7 +265,8 @@ func main() {
 		cai, err := ca.NewCertificateAuthorityImpl(
 			sa,
 			pa,
-			boulderIssuers,
+			issuers,
+			profile,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,
 			c.CA.Backdate.Duration,

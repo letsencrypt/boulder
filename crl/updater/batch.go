@@ -16,7 +16,7 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 	atTime := cu.clk.Now()
 
 	type workItem struct {
-		issuerNameID issuance.IssuerNameID
+		issuerNameID issuance.NameID
 		shardIdx     int
 	}
 

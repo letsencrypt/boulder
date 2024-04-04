@@ -17,7 +17,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -28,9 +32,6 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc"
-	"gopkg.in/go-jose/go-jose.v2"
 )
 
 func TestImplementation(t *testing.T) {
@@ -117,7 +118,9 @@ func setChallengeToken(ch *core.Challenge, token string) {
 	ch.ProvidedKeyAuthorization = token + ".9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 }
 
-func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remoteVAs []RemoteVA) (*ValidationAuthorityImpl, *blog.Mock) {
+// setup returns an in-memory VA and a mock logger. The default resolver client
+// is MockClient{}, but can be overridden.
+func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remoteVAs []RemoteVA, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
 	features.Reset()
 	fc := clock.NewFake()
 
@@ -139,6 +142,10 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 		accountURIPrefixes,
 	)
 
+	if mockDNSClientOverride != nil {
+		va.dnsClient = mockDNSClientOverride
+	}
+
 	// Adjusting industry regulated ACME challenge port settings is fine during
 	// testing
 	if srv != nil {
@@ -156,9 +163,10 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 	return va, logger
 }
 
-func setupRemote(srv *httptest.Server, userAgent string) vapb.VAClient {
-	innerVA, _ := setup(srv, 0, userAgent, nil)
-	return &localRemoteVA{remote: *innerVA}
+func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride bdns.Client) RemoteClients {
+	rva, _ := setup(srv, 0, userAgent, nil, mockDNSClientOverride)
+
+	return RemoteClients{VAClient: &inMemVA{*rva}, CAAClient: &inMemVA{*rva}}
 }
 
 type multiSrv struct {
@@ -210,8 +218,12 @@ func (v cancelledVA) PerformValidation(_ context.Context, _ *vapb.PerformValidat
 	return nil, context.Canceled
 }
 
-// brokenRemoteVA is a mock for the vapb.VAClient interface mocked to
-// always return errors.
+func (v cancelledVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return nil, context.Canceled
+}
+
+// brokenRemoteVA is a mock for the VAClient and CAAClient interfaces that always return
+// errors.
 type brokenRemoteVA struct{}
 
 // errBrokenRemoteVA is the error returned by a brokenRemoteVA's
@@ -223,27 +235,37 @@ func (b brokenRemoteVA) PerformValidation(_ context.Context, _ *vapb.PerformVali
 	return nil, errBrokenRemoteVA
 }
 
-// localRemoteVA is a wrapper which fulfills the VAClient interface, but then
-// forwards requests directly to its inner ValidationAuthorityImpl rather than
-// over the network. This lets a local in-memory mock VA act like a remote VA.
-type localRemoteVA struct {
-	remote ValidationAuthorityImpl
+func (b brokenRemoteVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return nil, errBrokenRemoteVA
 }
 
-func (lrva localRemoteVA) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
-	return lrva.remote.PerformValidation(ctx, req)
+// inMemVA is a wrapper which fulfills the VAClient and CAAClient
+// interfaces, but then forwards requests directly to its inner
+// ValidationAuthorityImpl rather than over the network. This lets a local
+// in-memory mock VA act like a remote VA.
+type inMemVA struct {
+	rva ValidationAuthorityImpl
+}
+
+func (inmem inMemVA) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+	return inmem.rva.PerformValidation(ctx, req)
+}
+
+func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return inmem.rva.IsCAAValid(ctx, req)
 }
 
 func TestValidateMalformedChallenge(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"))
+	_, err := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"))
 
+	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 }
 
 func TestPerformValidationInvalid(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil)
+	va, _ := setup(nil, 0, "", nil, nil)
 
 	req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
@@ -256,8 +278,21 @@ func TestPerformValidationInvalid(t *testing.T) {
 	}, 1)
 }
 
+func TestInternalErrorLogged(t *testing.T) {
+	va, mockLog := setup(nil, 0, "", nil, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+	req := createValidationRequest("nonexistent.com", core.ChallengeTypeHTTP01)
+	_, err := va.PerformValidation(ctx, req)
+	test.AssertNotError(t, err, "failed validation should not be an error")
+	matchingLogs := mockLog.GetAllMatching(
+		`Validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: context deadline exceeded`)
+	test.AssertEquals(t, len(matchingLogs), 1)
+}
+
 func TestPerformValidationValid(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil)
+	va, mockLog := setup(nil, 0, "", nil, nil)
 
 	// create a challenge with well known token
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
@@ -281,7 +316,7 @@ func TestPerformValidationValid(t *testing.T) {
 // TestPerformValidationWildcard tests that the VA properly strips the `*.`
 // prefix from a wildcard name provided to the PerformValidation function.
 func TestPerformValidationWildcard(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil)
+	va, mockLog := setup(nil, 0, "", nil, nil)
 
 	// create a challenge with well known token
 	req := createValidationRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
@@ -311,10 +346,10 @@ func TestPerformValidationWildcard(t *testing.T) {
 }
 
 func TestDCVAndCAASequencing(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil)
+	va, mockLog := setup(nil, 0, "", nil, nil)
 
-	// When performing validation without the CAAAfterValidation flag, CAA should
-	// be checked.
+	// When validation succeeds, CAA should be checked.
+	mockLog.Clear()
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 	res, err := va.PerformValidation(context.Background(), req)
 	test.AssertNotError(t, err, "performing validation")
@@ -322,21 +357,7 @@ func TestDCVAndCAASequencing(t *testing.T) {
 	caaLog := mockLog.GetAllMatching(`Checked CAA records for`)
 	test.AssertEquals(t, len(caaLog), 1)
 
-	features.Set(features.Config{CAAAfterValidation: true})
-	defer features.Reset()
-
-	// When performing successful validation with the CAAAfterValidation flag,
-	// CAA should be checked.
-	mockLog.Clear()
-	req = createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
-	res, err = va.PerformValidation(context.Background(), req)
-	test.AssertNotError(t, err, "performing validation")
-	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
-	caaLog = mockLog.GetAllMatching(`Checked CAA records for`)
-	test.AssertEquals(t, len(caaLog), 1)
-
-	// When performing failed validation with the CAAAfterValidation flag,
-	// CAA should be skipped
+	// When validation fails, CAA should be skipped.
 	mockLog.Clear()
 	req = createValidationRequest("bad-dns01.com", core.ChallengeTypeDNS01)
 	res, err = va.PerformValidation(context.Background(), req)
@@ -365,14 +386,20 @@ func TestMultiVA(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2)
-
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil)
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil)
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
 		{remoteVA2, remoteUA2},
 	}
-
+	brokenVA := RemoteClients{
+		VAClient:  brokenRemoteVA{},
+		CAAClient: brokenRemoteVA{},
+	}
+	cancelledVA := RemoteClients{
+		VAClient:  cancelledVA{},
+		CAAClient: cancelledVA{},
+	}
 	enforceMultiVA := features.Config{
 		EnforceMultiVA: true,
 	}
@@ -391,11 +418,9 @@ func TestMultiVA(t *testing.T) {
 	unauthorized := probs.Unauthorized(fmt.Sprintf(
 		`The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
 		expectedKeyAuthorization))
-
 	expectedInternalErrLine := fmt.Sprintf(
 		`ERR: \[AUDIT\] Remote VA "broken".PerformValidation failed: %s`,
 		errBrokenRemoteVA.Error())
-
 	testCases := []struct {
 		Name         string
 		RemoteVAs    []RemoteVA
@@ -439,7 +464,7 @@ func TestMultiVA(t *testing.T) {
 			Name: "Local VA ok, remote VA internal err, enforce multi VA",
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
-				{&brokenRemoteVA{}, "broken"},
+				{brokenVA, "broken"},
 			},
 			AllowedUAs:   allowedUAs,
 			Features:     enforceMultiVA,
@@ -453,7 +478,7 @@ func TestMultiVA(t *testing.T) {
 			Name: "Local VA ok, remote VA internal err, no enforce multi VA",
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
-				{&brokenRemoteVA{}, "broken"},
+				{brokenVA, "broken"},
 			},
 			AllowedUAs: allowedUAs,
 			Features:   noEnforceMultiVA,
@@ -485,7 +510,7 @@ func TestMultiVA(t *testing.T) {
 			Name: "Local VA and one remote VA OK, one cancelled VA, enforce multi VA",
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
-				{cancelledVA{}, remoteUA2},
+				{cancelledVA, remoteUA2},
 			},
 			AllowedUAs:   allowedUAs,
 			Features:     enforceMultiVA,
@@ -495,8 +520,8 @@ func TestMultiVA(t *testing.T) {
 			// When enforcing multi-VA, any cancellations are a problem.
 			Name: "Local VA OK, two cancelled remote VAs, enforce multi VA",
 			RemoteVAs: []RemoteVA{
-				{cancelledVA{}, remoteUA1},
-				{cancelledVA{}, remoteUA2},
+				{cancelledVA, remoteUA1},
+				{cancelledVA, remoteUA2},
 			},
 			AllowedUAs:   allowedUAs,
 			Features:     enforceMultiVA,
@@ -530,7 +555,7 @@ func TestMultiVA(t *testing.T) {
 			ms.setAllowedUAs(tc.AllowedUAs)
 
 			// Configure a primary VA with testcase remote VAs.
-			localVA, mockLog := setup(ms.Server, 0, localUA, tc.RemoteVAs)
+			localVA, mockLog := setup(ms.Server, 0, localUA, tc.RemoteVAs, nil)
 
 			features.Set(tc.Features)
 			defer features.Reset()
@@ -572,8 +597,8 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2)
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil)
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -581,7 +606,7 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	}
 
 	// Create a local test VA with the two remote VAs
-	localVA, mockLog := setup(ms.Server, 0, localUA, remoteVAs)
+	localVA, mockLog := setup(ms.Server, 0, localUA, remoteVAs, nil)
 
 	testCases := []struct {
 		Name        string
@@ -660,8 +685,8 @@ func TestMultiVAPolicy(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2)
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil)
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -669,7 +694,7 @@ func TestMultiVAPolicy(t *testing.T) {
 	}
 
 	// Create a local test VA with the two remote VAs
-	localVA, _ := setup(ms.Server, 0, localUA, remoteVAs)
+	localVA, _ := setup(ms.Server, 0, localUA, remoteVAs, nil)
 
 	// Ensure multi VA enforcement is enabled, don't wait for full multi VA
 	// results.
@@ -740,11 +765,11 @@ func TestDetailedError(t *testing.T) {
 	}
 }
 
-func TestLogRemoteValidationDifferentials(t *testing.T) {
+func TestLogRemoteDifferentials(t *testing.T) {
 	// Create some remote VAs
-	remoteVA1 := setupRemote(nil, "remote 1")
-	remoteVA2 := setupRemote(nil, "remote 2")
-	remoteVA3 := setupRemote(nil, "remote 3")
+	remoteVA1 := setupRemote(nil, "remote 1", nil)
+	remoteVA2 := setupRemote(nil, "remote 2", nil)
+	remoteVA3 := setupRemote(nil, "remote 3", nil)
 	remoteVAs := []RemoteVA{
 		{remoteVA1, "remote 1"},
 		{remoteVA2, "remote 2"},
@@ -752,54 +777,41 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 	}
 
 	// Set up a local VA that allows a max of 2 remote failures.
-	localVA, mockLog := setup(nil, 2, "local 1", remoteVAs)
+	localVA, mockLog := setup(nil, 2, "local 1", remoteVAs, nil)
 
 	egProbA := probs.DNS("root DNS servers closed at 4:30pm")
 	egProbB := probs.OrderNotReady("please take a number")
 
 	testCases := []struct {
-		name          string
-		primaryResult *probs.ProblemDetails
-		remoteProbs   []*remoteValidationResult
-		expectedLog   string
+		name        string
+		remoteProbs []*remoteVAResult
+		expectedLog string
 	}{
 		{
-			name:          "remote and primary results equal (all nil)",
-			primaryResult: nil,
-			remoteProbs: []*remoteValidationResult{
+			name: "all results equal (nil)",
+			remoteProbs: []*remoteVAResult{
 				{Problem: nil, VAHostname: "remoteA"},
 				{Problem: nil, VAHostname: "remoteB"},
 				{Problem: nil, VAHostname: "remoteC"},
 			},
 		},
 		{
-			name:          "remote and primary results equal (not nil)",
-			primaryResult: egProbA,
-			remoteProbs: []*remoteValidationResult{
+			name: "all results equal (not nil)",
+			remoteProbs: []*remoteVAResult{
 				{Problem: egProbA, VAHostname: "remoteA"},
 				{Problem: egProbA, VAHostname: "remoteB"},
 				{Problem: egProbA, VAHostname: "remoteC"},
 			},
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteB","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteC","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}}]}`,
 		},
 		{
-			name:          "remote and primary differ (primary nil)",
-			primaryResult: nil,
-			remoteProbs: []*remoteValidationResult{
-				{Problem: egProbA, VAHostname: "remoteA"},
-				{Problem: nil, VAHostname: "remoteB"},
-				{Problem: egProbB, VAHostname: "remoteC"},
-			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","PrimaryResult":null,"RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteC","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
-		},
-		{
-			name:          "remote and primary differ (primary not nil)",
-			primaryResult: egProbA,
-			remoteProbs: []*remoteValidationResult{
+			name: "differing results, some non-nil",
+			remoteProbs: []*remoteVAResult{
 				{Problem: nil, VAHostname: "remoteA"},
 				{Problem: egProbB, VAHostname: "remoteB"},
 				{Problem: nil, VAHostname: "remoteC"},
 			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","PrimaryResult":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400},"RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
 		},
 	}
 
@@ -807,8 +819,8 @@ func TestLogRemoteValidationDifferentials(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mockLog.Clear()
 
-			localVA.logRemoteValidationDifferentials(
-				"example.com", 1999, "blorpus-01", tc.primaryResult, tc.remoteProbs)
+			localVA.logRemoteDifferentials(
+				"example.com", 1999, "blorpus-01", tc.remoteProbs)
 
 			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
 			if tc.expectedLog != "" {

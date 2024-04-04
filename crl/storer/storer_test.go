@@ -7,6 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"io"
 	"math/big"
@@ -20,6 +21,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/crl/idp"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -57,20 +59,26 @@ func setupTestUploadCRL(t *testing.T) (*crlStorer, *issuance.Issuer) {
 
 	r3, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "loading fake RSA issuer cert")
-	e1, e1Signer, err := issuance.LoadIssuer(issuance.IssuerLoc{
-		File:     "../../test/hierarchy/int-e1.key.pem",
-		CertFile: "../../test/hierarchy/int-e1.cert.pem",
-	})
+	issuerE1, err := issuance.LoadIssuer(
+		issuance.IssuerConfig{
+			Location: issuance.IssuerLoc{
+				File:     "../../test/hierarchy/int-e1.key.pem",
+				CertFile: "../../test/hierarchy/int-e1.cert.pem",
+			},
+			IssuerURL:  "http://not-example.com/issuer-url",
+			OCSPURL:    "http://not-example.com/ocsp",
+			CRLURLBase: "http://not-example.com/crl/",
+		}, clock.NewFake())
 	test.AssertNotError(t, err, "loading fake ECDSA issuer cert")
 
 	storer, err := New(
-		[]*issuance.Certificate{r3, e1},
+		[]*issuance.Certificate{r3, issuerE1.Cert},
 		nil, "le-crl.s3.us-west.amazonaws.com",
 		metrics.NoopRegisterer, blog.NewMock(), clock.NewFake(),
 	)
 	test.AssertNotError(t, err, "creating test crl-storer")
 
-	return storer, &issuance.Issuer{Cert: e1, Signer: e1Signer}
+	return storer, issuerE1
 }
 
 // Test that we get an error when no metadata is sent.
@@ -301,6 +309,9 @@ func TestUploadCRLSuccess(t *testing.T) {
 	storer, iss := setupTestUploadCRL(t)
 	errs := make(chan error, 1)
 
+	idpExt, err := idp.MakeUserCertsExt([]string{"http://c.ex.org"})
+	test.AssertNotError(t, err, "creating test IDP extension")
+
 	ins := make(chan *cspb.UploadCRLRequest)
 	go func() {
 		errs <- storer.UploadCRL(&fakeUploadCRLServerStream{input: ins})
@@ -323,6 +334,7 @@ func TestUploadCRLSuccess(t *testing.T) {
 			RevokedCertificateEntries: []x509.RevocationListEntry{
 				{SerialNumber: big.NewInt(123), RevocationTime: time.Now().Add(-time.Hour)},
 			},
+			ExtraExtensions: []pkix.Extension{idpExt},
 		},
 		iss.Cert.Certificate,
 		iss.Signer,
@@ -340,6 +352,7 @@ func TestUploadCRLSuccess(t *testing.T) {
 			RevokedCertificateEntries: []x509.RevocationListEntry{
 				{SerialNumber: big.NewInt(123), RevocationTime: time.Now().Add(-time.Hour)},
 			},
+			ExtraExtensions: []pkix.Extension{idpExt},
 		},
 		iss.Cert.Certificate,
 		iss.Signer,

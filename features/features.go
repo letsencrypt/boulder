@@ -17,9 +17,9 @@ import (
 type Config struct {
 	// Deprecated features. Safe for removal once all references to them have
 	// been removed from deployed configuration.
-	StoreLintingCertificateInsteadOfPrecertificate bool
-	LeaseCRLShards                                 bool
-	AllowUnrecognizedFeatures                      bool
+	CAAAfterValidation         bool
+	AllowNoCommonName          bool
+	SHA256SubjectKeyIdentifier bool
 
 	// EnforceMultiVA causes the VA to block on remote VA PerformValidation
 	// requests in order to make a valid/invalid decision with the results.
@@ -65,28 +65,38 @@ type Config struct {
 	// for the cert URL to appear.
 	AsyncFinalize bool
 
-	// AllowNoCommonName defaults to false, and causes the CA to fail to issue a
-	// certificate if we can't put a CommonName in it. When true, the
-	// CA will be willing to issue certificates with no CN if and only if there
-	// is no SAN short enough to be hoisted into the CN.
-	//
-	// According to the BRs Section 7.1.4.2.2(a), the commonName field is
-	// Deprecated, and its inclusion is discouraged but not (yet) prohibited.
-	AllowNoCommonName bool
-
-	// CAAAfterValidation causes the VA to only kick off CAA checks after the base
-	// domain control validation has completed and succeeded. This makes
-	// successful validations slower by serializing the DCV and CAA work, but
-	// makes unsuccessful validations easier by not doing CAA work at all.
-	CAAAfterValidation bool
-
-	// SHA256SubjectKeyIdentifier enables the generation and use of an RFC 7093
-	// compliant truncated SHA256 Subject Key Identifier in end-entity
-	// certificates.
-	SHA256SubjectKeyIdentifier bool
-
 	// DOH enables DNS-over-HTTPS queries for validation
 	DOH bool
+
+	// EnforceMultiCAA causes the VA to kick off remote CAA rechecks when true.
+	// When false, no remote CAA rechecks will be performed. The primary VA will
+	// make a valid/invalid decision with the results. The primary VA will
+	// return an early decision if MultiCAAFullResults is false.
+	EnforceMultiCAA bool
+
+	// MultiCAAFullResults will cause the main VA to block and wait for all of
+	// the remote VA CAA recheck results instead of returning early if the
+	// number of failures is greater than the configured
+	// maxRemoteValidationFailures. Only used when EnforceMultiCAA is true.
+	MultiCAAFullResults bool
+
+	// TrackReplacementCertificatesARI, when enabled, triggers the following
+	// behavior:
+	//   - SA.NewOrderAndAuthzs: upon receiving a NewOrderRequest with a
+	//     'replacesSerial' value, will create a new entry in the 'replacement
+	//     Orders' table. This will occur inside of the new order transaction.
+	//   - SA.FinalizeOrder will update the 'replaced' column of any row with
+	//     a 'orderID' matching the finalized order to true. This will occur
+	//     inside of the finalize (order) transaction.
+	TrackReplacementCertificatesARI bool
+
+	// MultipleCertificateProfiles, when enabled, triggers the following
+	// behavior:
+	//   - SA.NewOrderAndAuthzs: upon receiving a NewOrderRequest with a
+	//     `certificateProfileName` value, will add that value to the database's
+	//     `orders.certificateProfileName` column. Values in this column are
+	//     allowed to be empty.
+	MultipleCertificateProfiles bool
 }
 
 var fMu = new(sync.RWMutex)

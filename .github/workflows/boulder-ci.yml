@@ -36,8 +36,7 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.21.5_2023-12-11
-          - go1.22rc1_2023-12-20
+          - go1.22.2_2024-04-04
         # Tests command definitions. Use the entire "docker compose" command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
@@ -91,20 +90,14 @@ jobs:
       - name: docker compose pull
         run: docker compose pull
 
-      # Enable https://github.com/golang/go/wiki/LoopvarExperiment
-      - run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
-
       # Run the test matrix. This will run
       - name: "Run Test: ${{ matrix.tests }}"
         run: ${{ matrix.tests }}
 
   govulncheck:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
-      # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
       fail-fast: false
-      matrix:
-        go-version: [ '1.21.5' ]
 
     steps:
       # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -112,10 +105,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Go ${{ matrix.go-version }}
-        uses: actions/setup-go@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
+          # When Go produces a security release, we want govulncheck to run
+          # against the most recently released Go version.
+          check-latest: true
+          go-version: "stable"
 
       - name: Run govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
@@ -126,7 +122,7 @@ jobs:
       # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
       fail-fast: false
       matrix:
-        go-version: [ '1.21.5' ]
+        go-version: [ '1.22.2' ]
 
     steps:
       # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -135,7 +131,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Go ${{ matrix.go-version }}
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
 

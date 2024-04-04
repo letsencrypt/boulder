@@ -7,19 +7,20 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand"
 	"net"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -51,6 +52,18 @@ type StorageAuthority struct {
 // with the given clock.
 func NewStorageAuthority(clk clock.Clock) *StorageAuthority {
 	return &StorageAuthority{StorageAuthorityReadOnly{clk}}
+}
+
+// serverStreamClient is a mock which satisfies the grpc.ClientStream interface,
+// allowing it to be returned by methods where the server returns a stream of
+// results. This simple mock will always return zero results.
+type serverStreamClient[T any] struct {
+	grpc.ClientStream
+}
+
+// Recv immediately returns the EOF error, indicating that the stream is done.
+func (c *serverStreamClient[T]) Recv() (*T, error) {
+	return nil, io.EOF
 }
 
 const (
@@ -237,6 +250,11 @@ func (sa *StorageAuthorityReadOnly) GetCertificate(_ context.Context, req *sapb.
 	}
 }
 
+// GetLintPrecertificate is a mock
+func (sa *StorageAuthorityReadOnly) GetLintPrecertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, berrors.NotFoundError("No cert")
+}
+
 // GetCertificateStatus is a mock
 func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
 	// Serial ee == 238.crt
@@ -265,22 +283,22 @@ func (sa *StorageAuthorityReadOnly) GetRevocationStatus(_ context.Context, req *
 
 // SerialsForIncident is a mock
 func (sa *StorageAuthorityReadOnly) SerialsForIncident(ctx context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_SerialsForIncidentClient, error) {
-	return nil, nil
+	return &serverStreamClient[sapb.IncidentSerial]{}, nil
 }
 
 // SerialsForIncident is a mock
 func (sa *StorageAuthority) SerialsForIncident(ctx context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
-	return nil, nil
+	return &serverStreamClient[sapb.IncidentSerial]{}, nil
 }
 
 // GetRevokedCerts is a mock
 func (sa *StorageAuthorityReadOnly) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetRevokedCertsClient, error) {
-	return nil, nil
+	return &serverStreamClient[corepb.CRLEntry]{}, nil
 }
 
 // GetRevokedCerts is a mock
 func (sa *StorageAuthority) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
-	return nil, nil
+	return &serverStreamClient[corepb.CRLEntry]{}, nil
 }
 
 // GetMaxExpiration is a mock
@@ -369,8 +387,9 @@ func (sa *StorageAuthority) NewOrderAndAuthzs(_ context.Context, req *sapb.NewOr
 		Id:      rand.Int63(),
 		Created: timestamppb.Now(),
 		// A new order is never processing because it can't have been finalized yet.
-		BeganProcessing: false,
-		Status:          string(core.StatusPending),
+		BeganProcessing:        false,
+		Status:                 string(core.StatusPending),
+		CertificateProfileName: req.NewOrder.CertificateProfileName,
 	}
 	return response, nil
 }
@@ -402,15 +421,16 @@ func (sa *StorageAuthorityReadOnly) GetOrder(_ context.Context, req *sapb.OrderR
 	created := now.AddDate(-30, 0, 0)
 	exp := now.AddDate(30, 0, 0)
 	validOrder := &corepb.Order{
-		Id:                req.Id,
-		RegistrationID:    1,
-		Created:           timestamppb.New(created),
-		Expires:           timestamppb.New(exp),
-		Names:             []string{"example.com"},
-		Status:            string(core.StatusValid),
-		V2Authorizations:  []int64{1},
-		CertificateSerial: "serial",
-		Error:             nil,
+		Id:                     req.Id,
+		RegistrationID:         1,
+		Created:                timestamppb.New(created),
+		Expires:                timestamppb.New(exp),
+		Names:                  []string{"example.com"},
+		Status:                 string(core.StatusValid),
+		V2Authorizations:       []int64{1},
+		CertificateSerial:      "serial",
+		Error:                  nil,
+		CertificateProfileName: "defaultBoulderCertificateProfile",
 	}
 
 	// Order ID doesn't have a certificate serial yet
@@ -572,6 +592,26 @@ func (sa *StorageAuthorityReadOnly) GetAuthorization2(ctx context.Context, id *s
 	return nil, berrors.NotFoundError("no authorization found with id %q", id)
 }
 
+// GetSerialsByKey is a mock
+func (sa *StorageAuthorityReadOnly) GetSerialsByKey(ctx context.Context, _ *sapb.SPKIHash, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByKeyClient, error) {
+	return &serverStreamClient[sapb.Serial]{}, nil
+}
+
+// GetSerialsByKey is a mock
+func (sa *StorageAuthority) GetSerialsByKey(ctx context.Context, _ *sapb.SPKIHash, _ ...grpc.CallOption) (sapb.StorageAuthority_GetSerialsByKeyClient, error) {
+	return &serverStreamClient[sapb.Serial]{}, nil
+}
+
+// GetSerialsByAccount is a mock
+func (sa *StorageAuthorityReadOnly) GetSerialsByAccount(ctx context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByAccountClient, error) {
+	return &serverStreamClient[sapb.Serial]{}, nil
+}
+
+// GetSerialsByAccount is a mock
+func (sa *StorageAuthority) GetSerialsByAccount(ctx context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (sapb.StorageAuthority_GetSerialsByAccountClient, error) {
+	return &serverStreamClient[sapb.Serial]{}, nil
+}
+
 // RevokeCertificate is a mock
 func (sa *StorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, nil
@@ -588,7 +628,7 @@ func (sa *StorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.AddBloc
 }
 
 // KeyBlocked is a mock
-func (sa *StorageAuthorityReadOnly) KeyBlocked(ctx context.Context, req *sapb.KeyBlockedRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
+func (sa *StorageAuthorityReadOnly) KeyBlocked(ctx context.Context, req *sapb.SPKIHash, _ ...grpc.CallOption) (*sapb.Exists, error) {
 	return &sapb.Exists{Exists: false}, nil
 }
 
@@ -605,6 +645,11 @@ func (sa *StorageAuthority) LeaseCRLShard(ctx context.Context, req *sapb.LeaseCR
 // UpdateCRLShard is a mock.
 func (sa *StorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.UpdateCRLShardRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, errors.New("unimplemented")
+}
+
+// ReplacementOrderExists is a mock.
+func (sa *StorageAuthorityReadOnly) ReplacementOrderExists(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Exists, error) {
+	return nil, nil
 }
 
 // PublisherClient is a mock

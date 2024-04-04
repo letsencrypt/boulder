@@ -142,7 +142,7 @@ def test_tls_alpn_challenge_dns_err():
 def test_http_challenge_broken_redirect():
     """
     test_http_challenge_broken_redirect tests that a common webserver
-    mis-configuration receives the correct specialized error message when attempting
+    misconfiguration receives the correct specialized error message when attempting
     an HTTP-01 challenge.
     """
     client = chisel2.make_client()
@@ -598,7 +598,7 @@ def test_order_reuse_failed_authz():
     """
     Test that creating an order for a domain name, failing an authorization in
     that order, and submitting another new order request for the same name
-    doesn't reuse a failed authorizaton in the new order.
+    doesn't reuse a failed authorization in the new order.
     """
 
     client = chisel2.make_client(None)
@@ -1188,19 +1188,6 @@ def test_new_order_policy_errs():
     if not ok:
         raise(Exception("Expected problem, got no error"))
 
-def test_long_san_no_cn():
-    if CONFIG_NEXT:
-        return
-    try:
-        chisel2.auth_and_issue(["".join(random.choice(string.ascii_uppercase) for x in range(61)) + ".com"])
-        # if we get to this raise the auth_and_issue call didn't fail, so fail the test
-        raise(Exception("Issuance didn't fail when the only SAN in a certificate was longer than the max CN length"))
-    except messages.Error as e:
-        if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
-            raise(Exception("Expected malformed type problem, got {0}".format(e.typ)))
-        if e.detail != "NewOrder request did not include a SAN short enough to fit in CN":
-            raise(Exception("Problem detail did not match expected"))
-
 def test_delete_unused_challenges():
     order = chisel2.auth_and_issue([random_domain()], chall_type="dns-01")
     a = order.authorizations[0]
@@ -1351,7 +1338,7 @@ def test_blocked_key_account():
     if not CONFIG_NEXT:
         return
 
-    with open("test/test-ca.key", "rb") as key_file:
+    with open("test/hierarchy/int-r4.key.pem", "rb") as key_file:
         key = serialization.load_pem_private_key(key_file.read(), password=None, backend=default_backend())
 
     # Create a client with the JWK set to a blocked private key
@@ -1379,7 +1366,7 @@ def test_blocked_key_cert():
     if not CONFIG_NEXT:
         return
 
-    with open("test/test-ca.key", "r") as f:
+    with open("test/hierarchy/int-r4.key.pem", "r") as f:
         pemBytes = f.read()
 
     domains = [random_domain(), random_domain()]
@@ -1565,6 +1552,11 @@ def test_renewal_exemption():
     chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
         lambda: chisel2.auth_and_issue(["mail." + base_domain]))
 
+# TODO(#5545)
+#   - Phase 2: Once the new rate limits are authoritative in config-next, ensure
+#     that this test only runs in config.
+#   - Phase 3: Once the new rate limits are authoritative in config, remove this
+#     test entirely.
 def test_certificates_per_name():
     chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
         lambda: chisel2.auth_and_issue([random_domain() + ".lim.it"]))
@@ -1590,12 +1582,15 @@ def test_admin_revoker_cert():
 
     # Revoke certificate by serial
     reset_akamai_purges()
-    run(["./bin/boulder", "admin-revoker", "serial-revoke",
-        "--config", "%s/admin-revoker.json" % config_dir,
-        '%x' % parsed_cert.serial_number, '1'])
+    run(["./bin/admin", 
+        "-config", "%s/admin.json" % config_dir,
+        "-dry-run=false",
+        "revoke-cert",
+        "-serial", '%x' % parsed_cert.serial_number,
+        "-reason", "keyCompromise"])
 
     # Wait for OCSP response to indicate revocation took place
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
@@ -1611,12 +1606,16 @@ def test_admin_revoker_batched():
         serialFile.write("%x\n" % parse_cert(order).serial_number)
     serialFile.close()
 
-    run(["./bin/boulder", "admin-revoker", "batched-serial-revoke",
-        "--config", "%s/admin-revoker.json" % config_dir,
-        serialFile.name, '0', '2'])
+    run(["./bin/admin", 
+        "-config", "%s/admin.json" % config_dir,
+        "-dry-run=false",
+        "revoke-cert",
+        "-serials-file", serialFile.name,
+        "-reason", "unspecified",
+        "-parallelism", "2"])
 
     for cert_file in cert_files:
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "unspecified")
 
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])

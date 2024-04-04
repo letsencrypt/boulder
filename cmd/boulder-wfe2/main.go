@@ -73,7 +73,7 @@ type Config struct {
 		// this should contain all nonce-services from all DCs as we want to be
 		// able to redeem nonces generated at any DC.
 		//
-		// DEPRECATED: See RedeemNonceService, below.
+		// Deprecated: See RedeemNonceService, below.
 		// TODO (#6610) Remove this after all configs have migrated to
 		// `RedeemNonceService`.
 		RedeemNonceServices map[string]cmd.GRPCClientConfig `validate:"required_without=RedeemNonceService,omitempty,min=1,dive"`
@@ -149,15 +149,31 @@ type Config struct {
 			// Defaults is a path to a YAML file containing default rate limits.
 			// See: ratelimits/README.md for details. This field is required to
 			// enable rate limiting. If any individual rate limit is not set,
-			// that limit will be disabled.
+			// that limit will be disabled. Failed Authorizations limits passed
+			// in this file must be identical to those in the RA.
 			Defaults string `validate:"required_with=Redis"`
 
 			// Overrides is a path to a YAML file containing overrides for the
 			// default rate limits. See: ratelimits/README.md for details. If
 			// this field is not set, all requesters will be subject to the
-			// default rate limits.
+			// default rate limits. Overrides for the Failed Authorizations
+			// overrides passed in this file must be identical to those in the
+			// RA.
 			Overrides string
 		}
+
+		// MaxNames is the maximum number of subjectAltNames in a single cert.
+		// The value supplied SHOULD be greater than 0 and no more than 100,
+		// defaults to 100. These limits are per section 7.1 of our combined
+		// CP/CPS, under "DV-SSL Subscriber Certificate". The value must match
+		// the CA and RA configurations.
+		MaxNames int `validate:"min=0,max=100"`
+
+		// CertificateProfileNames is the list of acceptable certificate profile
+		// names for newOrder requests. Requests with a profile name not in this
+		// list will be rejected. This field is optional; if unset, no profile
+		// names are accepted.
+		CertificateProfileNames []string `validate:"omitempty,dive,alphanum,min=1,max=32"`
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -299,12 +315,14 @@ func main() {
 	if *debugAddr != "" {
 		c.WFE.DebugAddr = *debugAddr
 	}
-
-	certChains := map[issuance.IssuerNameID][][]byte{}
-	issuerCerts := map[issuance.IssuerNameID]*issuance.Certificate{}
-	if c.WFE.Chains == nil {
-		cmd.Fail("'chains' must be configured")
+	maxNames := c.WFE.MaxNames
+	if maxNames == 0 {
+		// Default to 100 names per cert.
+		maxNames = 100
 	}
+
+	certChains := map[issuance.NameID][][]byte{}
+	issuerCerts := map[issuance.NameID]*issuance.Certificate{}
 	for _, files := range c.WFE.Chains {
 		issuer, chain, err := loadChain(files)
 		cmd.FailOnError(err, "Failed to load chain")
@@ -396,6 +414,8 @@ func main() {
 		accountGetter,
 		limiter,
 		txnBuilder,
+		maxNames,
+		c.WFE.CertificateProfileNames,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
 

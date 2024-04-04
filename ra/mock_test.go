@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/mocks"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -61,5 +62,25 @@ func (sa *mockInvalidPlusValidAuthzAuthority) GetAuthorizations2(ctx context.Con
 				},
 			},
 		},
+	}, nil
+}
+
+// An authority that returns an error from NewOrderAndAuthzs if the
+// "ReplacesSerial" field of the request is empty.
+type mockNewOrderMustBeReplacementAuthority struct {
+	mocks.StorageAuthority
+}
+
+func (sa *mockNewOrderMustBeReplacementAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	if req.NewOrder.ReplacesSerial == "" {
+		return nil, status.Error(codes.InvalidArgument, "NewOrder is not a replacement")
+	}
+	return &corepb.Order{
+		Id:             1,
+		RegistrationID: req.NewOrder.RegistrationID,
+		Expires:        req.NewOrder.Expires,
+		Status:         string(core.StatusPending),
+		Created:        timestamppb.New(time.Now()),
+		Names:          req.NewOrder.Names,
 	}, nil
 }

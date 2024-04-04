@@ -2274,7 +2274,7 @@ func buildExtensions(template *Certificate, _ []byte) (ret []pkix.Extension, err
 			l = 2
 		}
 
-		ret[n].Value, err = asn1.Marshal(asn1.BitString{Bytes: a[0:l], BitLength: l * 8})
+		ret[n].Value, err = asn1.Marshal(asn1.BitString{Bytes: a[0:l], BitLength: asn1BitLength(a[0:l])})
 		if err != nil {
 			return
 		}

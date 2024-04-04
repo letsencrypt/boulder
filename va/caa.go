@@ -3,18 +3,26 @@ package va
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net/url"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/miekg/dns"
 )
 
 type caaParams struct {
@@ -22,10 +30,19 @@ type caaParams struct {
 	validationMethod core.AcmeChallenge
 }
 
+// IsCAAValid checks requested CAA records from a VA, and recursively any RVAs
+// configured in the VA. It returns a response or an error.
 func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	if req.Domain == "" || req.ValidationMethod == "" || req.AccountURIID == 0 {
+	if core.IsAnyNilOrZero(req.Domain, req.ValidationMethod, req.AccountURIID) {
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
+	logEvent := verificationRequestEvent{
+		// TODO(#7061) Plumb req.Authz.Id as "ID:" through from the RA to
+		// correlate which authz triggered this request.
+		Requester: req.AccountURIID,
+		Hostname:  req.Domain,
+	}
+	checkStartTime := va.clk.Now()
 
 	validationMethod := core.AcmeChallenge(req.ValidationMethod)
 	if !validationMethod.IsValid() {
@@ -40,16 +57,224 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		accountURIID:     req.AccountURIID,
 		validationMethod: validationMethod,
 	}
-	if prob := va.checkCAA(ctx, acmeID, params); prob != nil {
-		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
-		return &vapb.IsCAAValidResponse{
-			Problem: &corepb.ProblemDetails{
-				ProblemType: string(prob.Type),
-				Detail:      replaceInvalidUTF8([]byte(detail)),
-			},
-		}, nil
+
+	var remoteCAAResults chan *remoteVAResult
+	if features.Get().EnforceMultiCAA {
+		if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
+			remoteCAAResults = make(chan *remoteVAResult, remoteVACount)
+			go va.performRemoteCAACheck(ctx, req, remoteCAAResults)
+		}
 	}
-	return &vapb.IsCAAValidResponse{}, nil
+
+	checkResult := "success"
+	err := va.checkCAA(ctx, acmeID, params)
+	localCheckLatency := time.Since(checkStartTime)
+	var prob *probs.ProblemDetails
+	if err != nil {
+		prob = detailedError(err)
+		logEvent.Error = prob.Error()
+		logEvent.InternalError = err.Error()
+		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
+		checkResult = "failure"
+	} else if remoteCAAResults != nil {
+		if !features.Get().EnforceMultiCAA && features.Get().MultiCAAFullResults {
+			// If we're not going to enforce multi CAA but we are logging the
+			// differentials then collect and log the remote results in a separate go
+			// routine to avoid blocking the primary VA.
+			go func() {
+				_ = va.processRemoteCAAResults(
+					req.Domain,
+					req.AccountURIID,
+					string(validationMethod),
+					remoteCAAResults)
+			}()
+		} else if features.Get().EnforceMultiCAA {
+			remoteProb := va.processRemoteCAAResults(
+				req.Domain,
+				req.AccountURIID,
+				string(validationMethod),
+				remoteCAAResults)
+
+			// If the remote result was a non-nil problem then fail the CAA check
+			if remoteProb != nil {
+				prob = remoteProb
+				// We only set .Error here, not InternalError, because the remote VA doesn't send
+				// us the internal error. But that's okay, because it got logged at the remote VA.
+				logEvent.Error = remoteProb.Error()
+				checkResult = "failure"
+				va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
+					req.Domain, remoteProb)
+				va.metrics.remoteCAACheckFailures.Inc()
+			}
+		}
+	}
+	checkLatency := time.Since(checkStartTime)
+	logEvent.ValidationLatency = checkLatency.Round(time.Millisecond).Seconds()
+
+	va.metrics.localCAACheckTime.With(prometheus.Labels{
+		"result": checkResult,
+	}).Observe(localCheckLatency.Seconds())
+	va.metrics.caaCheckTime.With(prometheus.Labels{
+		"result": checkResult,
+	}).Observe(checkLatency.Seconds())
+
+	va.log.AuditObject("CAA check result", logEvent)
+
+	if prob != nil {
+		// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
+		// It will also later be serialized in JSON, which defaults to UTF-8. Make
+		// sure it is UTF-8 clean now.
+		prob = filterProblemDetails(prob)
+		return &vapb.IsCAAValidResponse{Problem: &corepb.ProblemDetails{
+			ProblemType: string(prob.Type),
+			Detail:      replaceInvalidUTF8([]byte(prob.Detail)),
+		}}, nil
+	} else {
+		return &vapb.IsCAAValidResponse{}, nil
+	}
+}
+
+// processRemoteCAAResults evaluates a primary VA result, and a channel of
+// remote VA problems to produce a single overall validation result based on
+// configured feature flags. The overall result is calculated based on the VA's
+// configured `maxRemoteFailures` value.
+//
+// If the `MultiCAAFullResults` feature is enabled then
+// `processRemoteCAAResults` will expect to read a result from the
+// `remoteResultsChan` channel for each VA and will not produce an overall
+// result until all remote VAs have responded. In this case
+// `logRemoteDifferentials` will also be called to describe the differential
+// between the primary and all of the remote VAs.
+//
+// If the `MultiCAAFullResults` feature flag is not enabled then
+// `processRemoteCAAResults` will potentially return before all remote VAs have
+// had a chance to respond. This happens if the success or failure threshold is
+// met. This doesn't allow for logging the differential between the primary and
+// remote VAs but is more performant.
+func (va *ValidationAuthorityImpl) processRemoteCAAResults(
+	domain string,
+	acctID int64,
+	challengeType string,
+	remoteResultsChan <-chan *remoteVAResult) *probs.ProblemDetails {
+
+	state := "failure"
+	start := va.clk.Now()
+
+	defer func() {
+		va.metrics.remoteCAACheckTime.With(prometheus.Labels{
+			"result": state,
+		}).Observe(va.clk.Since(start).Seconds())
+	}()
+
+	required := len(va.remoteVAs) - va.maxRemoteFailures
+	good := 0
+	bad := 0
+
+	var remoteResults []*remoteVAResult
+	var firstProb *probs.ProblemDetails
+	// Due to channel behavior this could block indefinitely and we rely on gRPC
+	// honoring the context deadline used in client calls to prevent that from
+	// happening.
+	for result := range remoteResultsChan {
+		// Add the result to the slice
+		remoteResults = append(remoteResults, result)
+		if result.Problem == nil {
+			good++
+		} else {
+			bad++
+			// Store the first non-nil problem to return later (if `MultiCAAFullResults`
+			// is enabled).
+			if firstProb == nil {
+				firstProb = result.Problem
+			}
+		}
+
+		// If MultiCAAFullResults isn't enabled then return early whenever the
+		// success or failure threshold is met.
+		if !features.Get().MultiCAAFullResults {
+			if good >= required {
+				state = "success"
+				return nil
+			} else if bad > va.maxRemoteFailures {
+				modifiedProblem := *result.Problem
+				modifiedProblem.Detail = "During secondary CAA checking: " + firstProb.Detail
+				return &modifiedProblem
+			}
+		}
+
+		// If we haven't returned early because of MultiCAAFullResults being
+		// enabled we need to break the loop once all of the VAs have returned a
+		// result.
+		if len(remoteResults) == len(va.remoteVAs) {
+			break
+		}
+	}
+	// If we are using `features.MultiCAAFullResults` then we haven't returned
+	// early and can now log the differential between what the primary VA saw and
+	// what all of the remote VAs saw.
+	va.logRemoteDifferentials(
+		domain,
+		acctID,
+		challengeType,
+		remoteResults)
+
+	// Based on the threshold of good/bad return nil or a problem.
+	if good >= required {
+		state = "success"
+		return nil
+	} else if bad > va.maxRemoteFailures {
+		modifiedProblem := *firstProb
+		modifiedProblem.Detail = "During secondary CAA checking: " + firstProb.Detail
+		va.metrics.prospectiveRemoteCAACheckFailures.Inc()
+		return &modifiedProblem
+	}
+
+	// This condition should not occur - it indicates the good/bad counts didn't
+	// meet either the required threshold or the maxRemoteFailures threshold.
+	return probs.ServerInternal("Too few remote IsCAAValid RPC results")
+}
+
+// performRemoteCAACheck calls `isCAAValid` for each of the configured remoteVAs
+// in a random order. The provided `results` chan should have an equal size to
+// the number of remote VAs. The CAA checks will be performed in separate
+// go-routines. If the result `error` from a remote `isCAAValid` RPC is nil or a
+// nil `ProblemDetails` instance it is written directly to the `results` chan.
+// If the err is a cancelled error it is treated as a nil error. Otherwise the
+// error/problem is written to the results channel as-is.
+func (va *ValidationAuthorityImpl) performRemoteCAACheck(
+	ctx context.Context,
+	req *vapb.IsCAAValidRequest,
+	results chan<- *remoteVAResult) {
+	for _, i := range rand.Perm(len(va.remoteVAs)) {
+		remoteVA := va.remoteVAs[i]
+		go func(rva RemoteVA) {
+			result := &remoteVAResult{
+				VAHostname: rva.Address,
+			}
+			res, err := rva.IsCAAValid(ctx, req)
+			if err != nil {
+				if canceled.Is(err) {
+					// Handle the cancellation error.
+					result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC cancelled")
+				} else {
+					// Handle validation error.
+					va.log.Errf("Remote VA %q.IsCAAValid failed: %s", rva.Address, err)
+					result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC failed")
+				}
+			} else if res.Problem != nil {
+				prob, err := bgrpc.PBToProblemDetails(res.Problem)
+				if err != nil {
+					va.log.Infof("Remote VA %q.IsCAAValid returned malformed problem: %s", rva.Address, err)
+					result.Problem = probs.ServerInternal(
+						fmt.Sprintf("Remote VA IsCAAValid RPC returned malformed result: %s", err))
+				} else {
+					va.log.Infof("Remote VA %q.IsCAAValid returned problem: %s", rva.Address, prob)
+					result.Problem = prob
+				}
+			}
+			results <- result
+		}(remoteVA)
+	}
 }
 
 // checkCAA performs a CAA lookup & validation for the provided identifier. If
@@ -57,20 +282,20 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
 	identifier identifier.ACMEIdentifier,
-	params *caaParams) *probs.ProblemDetails {
-	if params == nil || params.validationMethod == "" || params.accountURIID == 0 {
+	params *caaParams) error {
+	if core.IsAnyNilOrZero(params, params.validationMethod, params.accountURIID) {
 		return probs.ServerInternal("expected validationMethod or accountURIID not provided to checkCAA")
 	}
 
 	foundAt, valid, response, err := va.checkCAARecords(ctx, identifier, params)
 	if err != nil {
-		return probs.DNS(err.Error())
+		return berrors.DNSError("%s", err)
 	}
 
 	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q] Response=%q",
 		identifier.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, response)
 	if !valid {
-		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", foundAt))
+		return berrors.CAAError("CAA record for %s prevents issuance", foundAt)
 	}
 	return nil
 }
@@ -86,6 +311,7 @@ type caaResult struct {
 	issuewild       []*dns.CAA
 	criticalUnknown bool
 	dig             string
+	resolvers       bdns.ResolverAddrs
 	err             error
 }
 
@@ -108,6 +334,12 @@ func filterCAA(rrs []*dns.CAA) ([]*dns.CAA, []*dns.CAA, bool) {
 			// never choose to send notifications to the specified addresses. So we
 			// do not store the contents of the property tag, but also avoid setting
 			// the criticalUnknown bit if there are critical iodef tags.
+			continue
+		case "issuemail":
+			// We support the issuemail property tag insofar as we recognize it and
+			// therefore do not bail out if someone has a critical issuemail tag. But
+			// of course we do not do any further processing, as we do not issue
+			// S/MIME certificates.
 			continue
 		default:
 			// The critical flag is the bit with significance 128. However, many CAA
@@ -140,7 +372,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		go func(name string, r *caaResult) {
 			r.name = name
 			var records []*dns.CAA
-			records, r.dig, r.err = va.dnsClient.LookupCAA(ctx, name)
+			records, r.dig, r.resolvers, r.err = va.dnsClient.LookupCAA(ctx, name)
 			if len(records) > 0 {
 				r.present = true
 			}

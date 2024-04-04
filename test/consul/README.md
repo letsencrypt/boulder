@@ -6,7 +6,8 @@ in-memory server and client with persistence disabled for ease of use.
 
 - Open `./test/consul/config.hcl`
 - Add a `services` stanza for each IP address and (optional) port combination
-  you wish to have returned as an DNS record.
+  you wish to have returned as an DNS record. The following stanza will return
+  two records when resolving `foo-purger`.
   ([docs](https://www.consul.io/docs/discovery/services)).
   
   ```hcl
@@ -20,8 +21,26 @@ in-memory server and client with persistence disabled for ease of use.
   services {
     id      = "foo-purger-b"
     name    = "foo-purger"
-    address = "10.88.88.88"
+    address = "10.77.77.77"
+    port    = 1438
+  }
+  ```
+- To target individual `foo-purger`'s, add these additional `service` sections
+  which allow resolving `foo-purger-1` and `foo-purger-2` respectively.
+
+  ```hcl
+  services {
+    id      = "foo-purger-1"
+    name    = "foo-purger-1"
+    address = "10.77.77.77"
     port    = 1338
+  }
+
+  services {
+    id      = "foo-purger-2"
+    name    = "foo-purger-2"
+    address = "10.77.77.77"
+    port    = 1438
   }
   ```
 - For RFC 2782 (SRV RR) lookups to work ensure you that you add a tag for the

@@ -14,11 +14,11 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
-	"github.com/letsencrypt/boulder/probs"
 )
 
 const (
@@ -177,6 +177,8 @@ type httpValidationTarget struct {
 	next []net.IP
 	// the current IP address being used for validation (if any)
 	cur net.IP
+	// the DNS resolver(s) that will attempt to fulfill the validation request
+	resolvers bdns.ResolverAddrs
 }
 
 // nextIP changes the cur IP by removing the first entry from the next slice and
@@ -212,7 +214,7 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	path string,
 	query string) (*httpValidationTarget, error) {
 	// Resolve IP addresses for the hostname
-	addrs, err := va.getAddrs(ctx, host)
+	addrs, resolvers, err := va.getAddrs(ctx, host)
 	if err != nil {
 		return nil, err
 	}
@@ -223,6 +225,7 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 		path:      path,
 		query:     query,
 		available: addrs,
+		resolvers: resolvers,
 	}
 
 	// Separate the addresses into the available v4 and v6 addresses
@@ -362,6 +365,7 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 		Port:              strconv.Itoa(target.port),
 		AddressesResolved: target.available,
 		URL:               reqURL,
+		ResolverAddrs:     target.resolvers,
 	}
 
 	// Get the target IP to build a preresolved dialer with
@@ -390,11 +394,10 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 func (va *ValidationAuthorityImpl) fetchHTTP(
 	ctx context.Context,
 	host string,
-	path string) ([]byte, []core.ValidationRecord, *probs.ProblemDetails) {
+	path string) ([]byte, []core.ValidationRecord, error) {
 	body, records, err := va.processHTTPValidation(ctx, host, path)
 	if err != nil {
-		// Use detailedError to convert the error into a problem
-		return body, records, detailedError(err)
+		return body, records, err
 	}
 	return body, records, nil
 }
@@ -402,7 +405,7 @@ func (va *ValidationAuthorityImpl) fetchHTTP(
 // fallbackErr returns true only for net.OpError instances where the op is equal
 // to "dial", or url.Error instances wrapping such an error. fallbackErr returns
 // false for all other errors. By policy, only dial errors (not read or write
-// errors) are eligble for fallback from an IPv6 to an IPv4 address.
+// errors) are eligible for fallback from an IPv6 to an IPv4 address.
 func fallbackErr(err error) bool {
 	// Err shouldn't ever be nil if we're considering it for fallback
 	if err == nil {
@@ -504,6 +507,13 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		}
 		numRedirects++
 		va.metrics.http01Redirects.Inc()
+
+		// If TLS was used, record the negotiated key exchange mechanism in the most
+		// recent validationRecord.
+		// TODO(#7321): Remove this when we have collected enough data.
+		if req.Response.TLS != nil {
+			records[len(records)-1].UsedRSAKEX = usedRSAKEX(req.Response.TLS.CipherSuite)
+		}
 
 		if req.Response.TLS != nil && req.Response.TLS.Version < tls.VersionTLS12 {
 			return berrors.ConnectionFailureError(
@@ -645,28 +655,35 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %q",
 			records[len(records)-1].URL, body))
 	}
+
+	// We were successful, so record the negotiated key exchange mechanism in the
+	// last validationRecord.
+	// TODO(#7321): Remove this when we have collected enough data.
+	if httpResponse.TLS != nil {
+		records[len(records)-1].UsedRSAKEX = usedRSAKEX(httpResponse.TLS.CipherSuite)
+	}
+
 	return body, records, nil
 }
 
-func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.DNS {
 		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", ident)
-		return nil, probs.Malformed("Identifier type for HTTP validation was not DNS")
+		return nil, berrors.MalformedError("Identifier type for HTTP validation was not DNS")
 	}
 
 	// Perform the fetch
 	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
-	body, validationRecords, prob := va.fetchHTTP(ctx, ident.Value, "/"+path)
-	if prob != nil {
-		return validationRecords, prob
+	body, validationRecords, err := va.fetchHTTP(ctx, ident.Value, "/"+path)
+	if err != nil {
+		return validationRecords, err
 	}
-
 	payload := strings.TrimRightFunc(string(body), unicode.IsSpace)
 
 	if payload != challenge.ProvidedKeyAuthorization {
-		problem := probs.Unauthorized(fmt.Sprintf("The key authorization file from the server did not match this challenge. Expected %q (got %q)",
-			challenge.ProvidedKeyAuthorization, payload))
-		va.log.Infof("%s for %s", problem.Detail, ident)
+		problem := berrors.UnauthorizedError("The key authorization file from the server did not match this challenge. Expected %q (got %q)",
+			challenge.ProvidedKeyAuthorization, payload)
+		va.log.Infof("%s for %s", problem, ident)
 		return validationRecords, problem
 	}
 

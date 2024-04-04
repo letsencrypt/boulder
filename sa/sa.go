@@ -19,6 +19,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
@@ -497,12 +498,27 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Second, insert the new order.
-		order := &orderModel{
-			RegistrationID: req.NewOrder.RegistrationID,
-			Expires:        req.NewOrder.Expires.AsTime(),
-			Created:        ssa.clk.Now(),
+		var orderID int64
+		var err error
+		created := ssa.clk.Now()
+		if features.Get().MultipleCertificateProfiles {
+			omv2 := orderModelv2{
+				RegistrationID:         req.NewOrder.RegistrationID,
+				Expires:                req.NewOrder.Expires.AsTime(),
+				Created:                created,
+				CertificateProfileName: req.NewOrder.CertificateProfileName,
+			}
+			err = tx.Insert(ctx, &omv2)
+			orderID = omv2.ID
+		} else {
+			omv1 := orderModelv1{
+				RegistrationID: req.NewOrder.RegistrationID,
+				Expires:        req.NewOrder.Expires.AsTime(),
+				Created:        created,
+			}
+			err = tx.Insert(ctx, &omv1)
+			orderID = omv1.ID
 		}
-		err := tx.Insert(ctx, order)
 		if err != nil {
 			return nil, err
 		}
@@ -513,13 +529,13 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			return nil, err
 		}
 		for _, id := range req.NewOrder.V2Authorizations {
-			err = inserter.Add([]interface{}{order.ID, id})
+			err := inserter.Add([]interface{}{orderID, id})
 			if err != nil {
 				return nil, err
 			}
 		}
 		for _, id := range newAuthzIDs {
-			err = inserter.Add([]interface{}{order.ID, id})
+			err := inserter.Add([]interface{}{orderID, id})
 			if err != nil {
 				return nil, err
 			}
@@ -535,7 +551,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			return nil, err
 		}
 		for _, name := range req.NewOrder.Names {
-			err = inserter.Add([]interface{}{order.ID, ReverseName(name)})
+			err := inserter.Add([]interface{}{orderID, ReverseName(name)})
 			if err != nil {
 				return nil, err
 			}
@@ -546,7 +562,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fifth, insert the FQDNSet entry for the order.
-		err = addOrderFQDNSet(ctx, tx, req.NewOrder.Names, order.ID, order.RegistrationID, order.Expires)
+		err = addOrderFQDNSet(ctx, tx, req.NewOrder.Names, orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {
 			return nil, err
 		}
@@ -554,8 +570,8 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// Finally, build the overall Order PB.
 		res := &corepb.Order{
 			// ID and Created were auto-populated on the order model when it was inserted.
-			Id:      order.ID,
-			Created: timestamppb.New(order.Created),
+			Id:      orderID,
+			Created: timestamppb.New(created),
 			// These are carried over from the original request unchanged.
 			RegistrationID: req.NewOrder.RegistrationID,
 			Expires:        req.NewOrder.Expires,
@@ -564,6 +580,19 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			V2Authorizations: append(req.NewOrder.V2Authorizations, newAuthzIDs...),
 			// A new order is never processing because it can't be finalized yet.
 			BeganProcessing: false,
+			// An empty string is allowed. When the RA retrieves the order and
+			// transmits it to the CA, the empty string will take the value of
+			// DefaultCertProfileName from the //issuance package.
+			CertificateProfileName: req.NewOrder.CertificateProfileName,
+		}
+
+		if req.NewOrder.ReplacesSerial != "" {
+			// Update the replacementOrders table to indicate that this order
+			// replaces the provided certificate serial.
+			err := addReplacementOrder(ctx, tx, req.NewOrder.ReplacesSerial, orderID, req.NewOrder.Expires.AsTime())
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		// Calculate the order status before returning it. Since it may have reused
@@ -633,7 +662,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 		return nil, errIncompleteRequest
 	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		om, err := orderToModel(&corepb.Order{
+		om, err := orderToModelv2(&corepb.Order{
 			Id:    req.Id,
 			Error: req.Error,
 		})
@@ -694,6 +723,13 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 		err = deleteOrderFQDNSet(ctx, tx, req.Id)
 		if err != nil {
 			return nil, err
+		}
+
+		if features.Get().TrackReplacementCertificatesARI {
+			err = setReplacementOrderFinalized(ctx, tx, req.Id)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		return nil, nil
