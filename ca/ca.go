@@ -157,8 +157,11 @@ func makeCertificateProfilesMap(defaultName string, profiles map[string]issuance
 		var encodedProfile bytes.Buffer
 		enc := gob.NewEncoder(&encodedProfile)
 		err = enc.Encode(profileConfig)
-		if len(encodedProfile.Bytes()) <= 0 {
+		if err != nil {
 			return certProfilesMaps{}, err
+		}
+		if len(encodedProfile.Bytes()) <= 0 {
+			return certProfilesMaps{}, fmt.Errorf("certificate profile encoding returned 0 bytes")
 		}
 		hash := sha256.Sum256(encodedProfile.Bytes())
 
@@ -552,12 +555,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotAfter:          validity.NotAfter,
 	}
 
-	// The certificate profile hash is checked here instead of the name because
-	// the hash is over the entire contents of a *ProfileConfig which includes
-	// the name giving more assurance that the certificate profile has remained
-	// unchanged during the roundtrip from a CA, to the RA, then back to a CA.
 	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, req)
-	//certProfileCountLabels := prometheus.Labels{"purpose": string(precertType), "profile": issueReq.CertProfileName, "hash": hex.EncodeToString(profileHashBytes[:])}
 	if err != nil {
 		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), certProfile.name, certProfile.hash, err)
