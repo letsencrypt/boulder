@@ -68,7 +68,7 @@ func rewriteConfig(path string, rewrites map[string]string) (string, error) {
 	return tmp.Name(), nil
 }
 
-// runCeremony is used to run a cert runCeremony with a given config.
+// runCeremony is used to run a ceremony with a given config.
 func runCeremony(path string) error {
 	output, err := exec.Command("bin/ceremony", "-config", path).CombinedOutput()
 	if err != nil {
@@ -97,7 +97,7 @@ func main() {
 	rsaRootKeySlot, err := createSlot("Root RSA")
 	cmd.FailOnError(err, "failed creating softhsm2 slot for RSA root key")
 	ecdsaRootKeySlot, err := createSlot("Root ECDSA")
-	cmd.FailOnError(err, "failed creating softhsm2 slot for root key")
+	cmd.FailOnError(err, "failed creating softhsm2 slot for ECDSA root key")
 
 	// Generate the root signing keys and certificates
 	err = genKey("test/cert-ceremonies/root-ceremony-rsa.yaml", rsaRootKeySlot)
