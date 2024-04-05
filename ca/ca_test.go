@@ -566,6 +566,7 @@ func TestProfiles(t *testing.T) {
 	testCases := []struct {
 		name              string
 		profileConfigs    map[string]issuance.ProfileConfig
+		defaultName       string
 		expectedErrSubstr string
 		expectedProfiles  []nameToHash
 	}{
@@ -599,8 +600,14 @@ func TestProfiles(t *testing.T) {
 			},
 		},
 		{
+			name:              "no profile matching default name",
+			profileConfigs:    jackedProfiles,
+			expectedErrSubstr: "profile object was not found for that name",
+		},
+		{
 			name:           "certificate profile hash changed mid-issuance",
 			profileConfigs: jackedProfiles,
+			defaultName:    "ruhroh",
 			expectedProfiles: []nameToHash{
 				{
 					// We'll change the mapped hash key under the hood during
@@ -613,12 +620,16 @@ func TestProfiles(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		// This is handled by boulder-ca, not the CA package.
+		if tc.defaultName == "" {
+			tc.defaultName = ctx.defaultCertProfileName
+		}
 		t.Run(tc.name, func(t *testing.T) {
 			tCA, err := NewCertificateAuthorityImpl(
 				sa,
 				ctx.pa,
 				ctx.boulderIssuers,
-				ctx.defaultCertProfileName,
+				tc.defaultName,
 				ctx.ignoredCertProfileLints,
 				tc.profileConfigs,
 				nil,
@@ -633,13 +644,16 @@ func TestProfiles(t *testing.T) {
 				ctx.signErrorCount,
 				ctx.fc,
 			)
-			if tc.expectedProfiles != nil {
-				test.AssertEquals(t, len(tc.expectedProfiles), len(tCA.certProfiles.profileByName))
-			} else if tc.expectedErrSubstr != "" {
+
+			if tc.expectedErrSubstr != "" {
 				test.AssertContains(t, err.Error(), tc.expectedErrSubstr)
 				test.AssertError(t, err, "No profile found during CA construction.")
 			} else {
 				test.AssertNotError(t, err, "Profiles should exist, but were not found")
+			}
+
+			if tc.expectedProfiles != nil {
+				test.AssertEquals(t, len(tc.expectedProfiles), len(tCA.certProfiles.profileByName))
 			}
 
 			for _, expected := range tc.expectedProfiles {
