@@ -151,6 +151,9 @@ func GetIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("got http status code %d from AIA issuer url %q", resp.StatusCode, resp.Request.URL)
+	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -164,11 +167,12 @@ func GetIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
 		issuer, err = parse(body)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("from %s: %s", issuerURL, err)
+		return nil, fmt.Errorf("from %s: %w", issuerURL, err)
 	}
 	return issuer, nil
 }
 
+// parse tries to parse the bytes as a PEM or DER-encoded certificate.
 func parse(body []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(body)
 	var der []byte
@@ -251,7 +255,7 @@ func Req(cert *x509.Certificate, config Config) (*ocsp.Response, error) {
 	if config.issuerFile == "" {
 		issuer, err = GetIssuer(cert)
 		if err != nil {
-			return nil, fmt.Errorf("problem getting issuer (try --issuer-file flag instead): ")
+			return nil, fmt.Errorf("problem getting issuer (try --issuer-file flag instead): %w", err)
 		}
 	} else {
 		issuer, err = GetIssuerFile(config.issuerFile)

@@ -3,16 +3,16 @@ pkcs11:
     module: /usr/lib/softhsm/libsofthsm2.so
     pin: 1234
     store-key-in-slot: {{ .SlotID }}
-    store-key-with-label: root signing key (rsa)
+    store-key-with-label: root rsa
 key:
     type: rsa
     rsa-mod-length: 4096
 outputs:
-    public-key-path: /hierarchy/root-signing-pub-rsa.pem
-    certificate-path: /hierarchy/root-cert-rsa.pem
+    public-key-path: /hierarchy/root-rsa.pubkey.pem
+    certificate-path: /hierarchy/root-rsa.cert.pem
 certificate-profile:
     signature-algorithm: SHA256WithRSA
-    common-name: CA root (RSA)
+    common-name: root rsa
     organization: good guys
     country: US
     not-before: 2020-01-01 12:00:00
