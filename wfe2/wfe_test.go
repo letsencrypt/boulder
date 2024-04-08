@@ -4012,6 +4012,22 @@ func (sa *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grp
 	return nil, berrors.NotFoundError("certificate with serial %q not found", req.Serial)
 }
 
+func (sa *mockSA) ReplacementOrderExists(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*sapb.Exists, error) {
+	if in.Serial == sa.cert.Serial {
+		return &sapb.Exists{Exists: false}, nil
+
+	}
+	return &sapb.Exists{Exists: true}, nil
+}
+
+func (sa *mockSA) IncidentsForSerial(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*sapb.Incidents, error) {
+	return &sapb.Incidents{}, nil
+}
+
+func (sa *mockSA) GetCertificateStatus(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*corepb.CertificateStatus, error) {
+	return &corepb.CertificateStatus{Serial: in.Serial, Status: string(core.OCSPStatusGood)}, nil
+}
+
 func TestOrderMatchesReplacement(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
@@ -4137,4 +4153,82 @@ func TestNewOrderWithProfile(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to unmarshal error response")
 	test.AssertEquals(t, errorResp2["type"], "urn:ietf:params:acme:error:malformed")
 	test.AssertEquals(t, errorResp2["detail"], "Invalid certificate profile, \"test-profile\": not a recognized profile name")
+}
+
+func makeARICertID(leaf *x509.Certificate) (string, error) {
+	if leaf == nil {
+		return "", errors.New("leaf certificate is nil")
+	}
+
+	// Marshal the Serial Number into DER.
+	der, err := asn1.Marshal(leaf.SerialNumber)
+	if err != nil {
+		return "", err
+	}
+
+	// Check if the DER encoded bytes are sufficient (at least 3 bytes: tag,
+	// length, and value).
+	if len(der) < 3 {
+		return "", errors.New("invalid DER encoding of serial number")
+	}
+
+	// Extract only the integer bytes from the DER encoded Serial Number
+	// Skipping the first 2 bytes (tag and length). The result is base64url
+	// encoded without padding.
+	serial := base64.RawURLEncoding.EncodeToString(der[2:])
+
+	// Convert the Authority Key Identifier to base64url encoding without
+	// padding.
+	aki := base64.RawURLEncoding.EncodeToString(leaf.AuthorityKeyId)
+
+	// Construct the final identifier by concatenating AKI and Serial Number.
+	return fmt.Sprintf("%s.%s", aki, serial), nil
+}
+
+func TestCountNewOrderWithReplaces(t *testing.T) {
+	wfe, _, signer := setupWFE(t)
+	features.Set(features.Config{TrackReplacementCertificatesARI: true})
+
+	expectExpiry := time.Now().AddDate(0, 0, 1)
+	var expectAKID []byte
+	for _, v := range wfe.issuerCertificates {
+		expectAKID = v.SubjectKeyId
+		break
+	}
+	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
+	expectSerial := big.NewInt(1337)
+	expectCert := &x509.Certificate{
+		NotAfter:       expectExpiry,
+		DNSNames:       []string{"example.com"},
+		SerialNumber:   expectSerial,
+		AuthorityKeyId: expectAKID,
+	}
+	expectCertId, err := makeARICertID(expectCert)
+	test.AssertNotError(t, err, "failed to create test cert id")
+	expectDer, err := x509.CreateCertificate(rand.Reader, expectCert, expectCert, &testKey.PublicKey, testKey)
+	test.AssertNotError(t, err, "failed to create test certificate")
+
+	// MockSA that returns the certificate with the expected serial.
+	wfe.sa = &mockSA{
+		cert: &corepb.Certificate{
+			RegistrationID: 1,
+			Serial:         core.SerialToString(expectSerial),
+			Der:            expectDer,
+		},
+	}
+	mux := wfe.Handler(metrics.NoopRegisterer)
+	responseWriter := httptest.NewRecorder()
+
+	body := fmt.Sprintf(`
+	{
+		"Identifiers": [
+		  {"type": "dns", "value": "example.com"}
+		],
+		"Replaces": %q
+	}`, expectCertId)
+
+	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
+	mux.ServeHTTP(responseWriter, r)
+	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
+	test.AssertMetricWithLabelsEquals(t, wfe.stats.ariReplacementOrders, prometheus.Labels{"isReplacement": "true", "limitsExempt": "true"}, 1)
 }
