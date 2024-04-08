@@ -2372,6 +2372,13 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	var newOrderSuccessful bool
 	var errIsRateLimit bool
 	defer func() {
+		if features.Get().TrackReplacementCertificatesARI {
+			wfe.stats.ariReplacementOrders.With(prometheus.Labels{
+				"isReplacement": fmt.Sprintf("%t", replaces != ""),
+				"limitsExempt":  fmt.Sprintf("%t", limitsExempt),
+			}).Inc()
+		}
+
 		if !newOrderSuccessful && !errIsRateLimit {
 			// This can be a little racy, but we're not going to worry about it
 			// for now. If the check hasn't completed yet, we can pretty safely
