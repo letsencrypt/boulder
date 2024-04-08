@@ -722,6 +722,7 @@ func TestMismatchedProfiles(t *testing.T) {
 		"e_scts_from_same_operator",
 	})
 	test.AssertNotError(t, err, "NewProfile failed")
+
 	issuer2, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 

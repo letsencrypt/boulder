@@ -42,18 +42,21 @@
 			"hostOverride": "sa.boulder"
 		},
 		"issuance": {
-			"profile": {
-				"allowMustStaple": true,
-				"allowCTPoison": true,
-				"allowSCTList": true,
-				"allowCommonName": true,
-				"policies": [
-					{
-						"oid": "2.23.140.1.2.1"
-					}
-				],
-				"maxValidityPeriod": "7776000s",
-				"maxValidityBackdate": "1h5m"
+			"defaultCertificateProfileName": "defaultBoulderCertificateProfile",
+			"certProfiles": {
+				"defaultBoulderCertificateProfile": {
+					"allowMustStaple": true,
+					"allowCTPoison": true,
+					"allowSCTList": true,
+					"allowCommonName": true,
+					"policies": [
+						{
+							"oid": "2.23.140.1.2.1"
+						}
+					],
+					"maxValidityPeriod": "7776000s",
+					"maxValidityBackdate": "1h5m"
+				}
 			},
 			"crlProfile": {
 				"validityInterval": "216h",
