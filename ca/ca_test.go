@@ -95,12 +95,6 @@ var (
 
 const arbitraryRegID int64 = 1001
 
-// Useful key and certificate files.
-const rsaIntKey = "../test/hierarchy/int-r3.key.pem"
-const rsaIntCert = "../test/hierarchy/int-r3.cert.pem"
-const ecdsaIntKey = "../test/hierarchy/int-e1.key.pem"
-const ecdsaIntCert = "../test/hierarchy/int-e1.cert.pem"
-
 func mustRead(path string) []byte {
 	return must.Do(os.ReadFile(path))
 }
@@ -191,28 +185,20 @@ func setup(t *testing.T) *testCtx {
 	}
 	test.AssertEquals(t, len(certProfiles), 2)
 
-	ecdsaOnlyIssuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
-		UseForRSALeaves:   false,
-		UseForECDSALeaves: true,
-		IssuerURL:         "http://not-example.com/issuer-url",
-		OCSPURL:           "http://not-example.com/ocsp",
-		CRLURLBase:        "http://not-example.com/crl/",
-		Location:          issuance.IssuerLoc{File: ecdsaIntKey, CertFile: ecdsaIntCert},
-	}, fc)
-	test.AssertNotError(t, err, "Couldn't load test issuer")
-
-	ecdsaAndRSAIssuer, err := issuance.LoadIssuer(issuance.IssuerConfig{
-		UseForRSALeaves:   true,
-		UseForECDSALeaves: true,
-		IssuerURL:         "http://not-example.com/issuer-url",
-		OCSPURL:           "http://not-example.com/ocsp",
-		CRLURLBase:        "http://not-example.com/crl/",
-		Location:          issuance.IssuerLoc{File: rsaIntKey, CertFile: rsaIntCert},
-	}, fc)
-	test.AssertNotError(t, err, "Couldn't load test issuer")
-
-	// Must list ECDSA-only issuer first, so it is the default for ECDSA.
-	boulderIssuers := []*issuance.Issuer{ecdsaOnlyIssuer, ecdsaAndRSAIssuer}
+	boulderIssuers := make([]*issuance.Issuer, 4)
+	for i, name := range []string{"int-r3", "int-r4", "int-e1", "int-e2"} {
+		boulderIssuers[i], err = issuance.LoadIssuer(issuance.IssuerConfig{
+			Active:     true,
+			IssuerURL:  fmt.Sprintf("http://not-example.com/i/%s", name),
+			OCSPURL:    "http://not-example.com/o",
+			CRLURLBase: fmt.Sprintf("http://not-example.com/c/%s/", name),
+			Location: issuance.IssuerLoc{
+				File:     fmt.Sprintf("../test/hierarchy/%s.key.pem", name),
+				CertFile: fmt.Sprintf("../test/hierarchy/%s.cert.pem", name),
+			},
+		}, fc)
+		test.AssertNotError(t, err, "Couldn't load test issuer")
+	}
 
 	keyPolicy := goodkey.KeyPolicy{
 		AllowRSA:           true,
@@ -491,22 +477,36 @@ func TestMultipleIssuers(t *testing.T) {
 	_, ok := ca.certProfiles.profileByName[selectedProfile]
 	test.Assert(t, ok, "Certificate profile was expected to exist")
 
-	// Test that an RSA CSR gets issuance from the RSA issuer.
+	// Test that an RSA CSR gets issuance from an RSA issuer.
 	issuedCert, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, CertProfileName: selectedProfile})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err := x509.ParseCertificate(issuedCert.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
-	err = cert.CheckSignatureFrom(testCtx.boulderIssuers[1].Cert.Certificate)
-	test.AssertNotError(t, err, "Certificate failed signature validation")
+	validated := false
+	for _, issuer := range ca.issuers.byAlg[x509.RSA] {
+		err = cert.CheckSignatureFrom(issuer.Cert.Certificate)
+		if err == nil {
+			validated = true
+			break
+		}
+	}
+	test.Assert(t, validated, "Certificate failed signature validation")
 	test.AssertMetricWithLabelsEquals(t, ca.signatureCount, prometheus.Labels{"purpose": "precertificate", "status": "success"}, 1)
 
-	// Test that an ECDSA CSR gets issuance from the ECDSA issuer.
+	// Test that an ECDSA CSR gets issuance from an ECDSA issuer.
 	issuedCert, err = ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID, CertProfileName: selectedProfile})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err = x509.ParseCertificate(issuedCert.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
-	err = cert.CheckSignatureFrom(testCtx.boulderIssuers[0].Cert.Certificate)
-	test.AssertNotError(t, err, "Certificate failed signature validation")
+	validated = false
+	for _, issuer := range ca.issuers.byAlg[x509.ECDSA] {
+		err = cert.CheckSignatureFrom(issuer.Cert.Certificate)
+		if err == nil {
+			validated = true
+			break
+		}
+	}
+	test.Assert(t, validated, "Certificate failed signature validation")
 	test.AssertMetricWithLabelsEquals(t, ca.signatureCount, prometheus.Labels{"purpose": "precertificate", "status": "success"}, 2)
 }
 
@@ -688,7 +688,7 @@ func TestECDSAAllowList(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err := x509.ParseCertificate(result.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
-	test.AssertByteEquals(t, cert.RawIssuer, ca.issuers.byAlg[x509.ECDSA].Cert.RawSubject)
+	test.AssertEquals(t, cert.SignatureAlgorithm, x509.ECDSAWithSHA384)
 
 	// With allowlist not containing arbitraryRegID, issuance should fall back to RSA issuer.
 	regIDMap = makeRegIDsMap([]int64{2002})
@@ -697,7 +697,7 @@ func TestECDSAAllowList(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err = x509.ParseCertificate(result.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
-	test.AssertByteEquals(t, cert.RawIssuer, ca.issuers.byAlg[x509.RSA].Cert.RawSubject)
+	test.AssertEquals(t, cert.SignatureAlgorithm, x509.SHA256WithRSA)
 
 	// With empty allowlist but ECDSAForAll enabled, issuance should come from ECDSA issuer.
 	ca, _ = issueCertificateSubTestSetup(t, nil)
@@ -707,7 +707,7 @@ func TestECDSAAllowList(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err = x509.ParseCertificate(result.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
-	test.AssertByteEquals(t, cert.RawIssuer, ca.issuers.byAlg[x509.ECDSA].Cert.RawSubject)
+	test.AssertEquals(t, cert.SignatureAlgorithm, x509.ECDSAWithSHA384)
 }
 
 func TestInvalidCSRs(t *testing.T) {
