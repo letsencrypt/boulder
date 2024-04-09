@@ -83,8 +83,7 @@ func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, erro
 // request doesn't match the signing profile an error is returned.
 func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceRequest) error {
 	switch req.PublicKey.(type) {
-	case *rsa.PublicKey:
-	case *ecdsa.PublicKey:
+	case *rsa.PublicKey, *ecdsa.PublicKey:
 	default:
 		return errors.New("unsupported public key type")
 	}

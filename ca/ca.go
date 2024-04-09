@@ -100,20 +100,23 @@ type certificateAuthorityImpl struct {
 	lintErrorCount prometheus.Counter
 }
 
-// makeIssuerMaps processes a list of issuers into a set of maps, mapping
-// nearly-unique identifiers of those issuers to the issuers themselves. Note
-// that, if two issuers have the same nearly-unique ID, the *latter* one in
-// the input list "wins".
-func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
+// makeIssuerMaps processes a list of issuers into a set of maps for easy
+// lookup either by key algorithm (useful for picking an issuer for a precert)
+// or by unique ID (useful for final certs, OCSP, and CRLs). If two issuers with
+// the same unique ID are encountered, an error is returned.
+func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 	issuersByAlg := make(map[x509.PublicKeyAlgorithm][]*issuance.Issuer, 2)
 	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
+		if _, found := issuersByNameID[issuer.NameID()]; found {
+			return issuerMaps{}, fmt.Errorf("two issuers with same NameID %d (%s) configured", issuer.NameID(), issuer.Name())
+		}
+		issuersByNameID[issuer.NameID()] = issuer
 		if issuer.IsActive() {
 			issuersByAlg[issuer.KeyType()] = append(issuersByAlg[issuer.KeyType()], issuer)
 		}
-		issuersByNameID[issuer.NameID()] = issuer
 	}
-	return issuerMaps{issuersByAlg, issuersByNameID}
+	return issuerMaps{issuersByAlg, issuersByNameID}, nil
 }
 
 // makeCertificateProfilesMap processes a list of certificate issuance profile
@@ -234,7 +237,10 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
-	issuers := makeIssuerMaps(boulderIssuers)
+	issuers, err := makeIssuerMaps(boulderIssuers)
+	if err != nil {
+		return nil, err
+	}
 
 	lintErrorCount := prometheus.NewCounter(
 		prometheus.CounterOpts{
@@ -520,7 +526,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 
 	// Select a random issuer from among the active issuers of this key type.
 	issuerPool, ok := ca.issuers.byAlg[alg]
-	if !ok {
+	if !ok || len(issuerPool) == 0 {
 		return nil, nil, berrors.InternalServerError("no issuers found for public key algorithm %s", csr.PublicKeyAlgorithm)
 	}
 	issuer := issuerPool[mrand.Intn(len(issuerPool))]
