@@ -2,7 +2,7 @@ name: Check PR for configuration and SQL changes
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [ready_for_review, review_requested]
     paths:
     - 'test/config-next/*.json'
     - 'test/config-next/*.yaml'
