@@ -346,8 +346,20 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 // serial number at the same time.
 func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
-	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID, req.CertProfileHash) {
+	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID) {
 		return nil, berrors.InternalServerError("Incomplete cert for precertificate request")
+	}
+
+	// The RA already provides the CertProfileHash to all
+	// IssueCertificateForPrecertificate calls... but it can only do that if the
+	// CA itself provided the hash in the IssuePrecertificate response. Therefore
+	// there can be a short period during the deploy where updated CAs which
+	// expect a profile hash aren't being provided with one.
+	if len(req.CertProfileHash) == 0 {
+		// This lookup will succeed because makeCertificateProfilesMap guarantees
+		// that the default name has a corresponding profile.
+		profile := ca.certProfiles.profileByName[ca.certProfiles.defaultName]
+		req.CertProfileHash = profile.hash[:]
 	}
 
 	// The certificate profile hash is checked here instead of the name because
