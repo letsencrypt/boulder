@@ -47,15 +47,6 @@ func NewCRLImpl(
 		return nil, fmt.Errorf("loading CRL profile: %w", err)
 	}
 
-	// TODO(#7094): Remove this once all CRLs have IDPs built from their
-	// issuer.crlURLBase instead.
-	if !strings.HasPrefix(idpBase, "http://") {
-		return nil, fmt.Errorf("issuingDistributionPoint base URI must use http:// scheme, got %q", idpBase)
-	}
-	if strings.HasSuffix(idpBase, "/") {
-		return nil, fmt.Errorf("issuingDistributionPoint base URI must not end with a slash, got %q", idpBase)
-	}
-
 	return &crlImpl{
 		issuers:   issuersByNameID,
 		profile:   profile,
