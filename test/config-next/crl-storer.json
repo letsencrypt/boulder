@@ -21,11 +21,11 @@
 			}
 		},
 		"issuerCerts": [
-			"/hierarchy/intermediate-cert-rsa-a.pem",
-			"/hierarchy/intermediate-cert-rsa-b.pem",
-			"/hierarchy/intermediate-cert-ecdsa-a.pem"
+			"/hierarchy/int-rsa-a.cert.pem",
+			"/hierarchy/int-rsa-b.cert.pem",
+			"/hierarchy/int-ecdsa-a.cert.pem"
 		],
-		"s3Endpoint": "http://localhost:7890",
+		"s3Endpoint": "http://localhost:4501",
 		"s3Bucket": "lets-encrypt-crls",
 		"awsConfigFile": "test/config-next/crl-storer.ini",
 		"awsCredsFile": "test/secrets/aws_creds.ini"

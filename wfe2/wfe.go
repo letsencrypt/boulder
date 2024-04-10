@@ -76,9 +76,6 @@ const (
 
 	// Draft or likely-to-change paths
 	renewalInfoPath = "/draft-ietf-acme-ari-02/renewalInfo/"
-
-	// Non-ACME paths
-	aiaIssuerPath = "/aia/issuer/"
 )
 
 const (
@@ -450,9 +447,6 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	if features.Get().ServeRenewalInfo {
 		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET", "POST")
 	}
-
-	// Non-ACME endpoints
-	wfe.HandleFunc(m, aiaIssuerPath, wfe.Issuer, "GET")
 
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
@@ -2372,6 +2366,13 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	var newOrderSuccessful bool
 	var errIsRateLimit bool
 	defer func() {
+		if features.Get().TrackReplacementCertificatesARI {
+			wfe.stats.ariReplacementOrders.With(prometheus.Labels{
+				"isReplacement": fmt.Sprintf("%t", replaces != ""),
+				"limitsExempt":  fmt.Sprintf("%t", limitsExempt),
+			}).Inc()
+		}
+
 		if !newOrderSuccessful && !errIsRateLimit {
 			// This can be a little racy, but we're not going to worry about it
 			// for now. If the check hasn't completed yet, we can pretty safely
