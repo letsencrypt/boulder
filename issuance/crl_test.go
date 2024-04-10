@@ -142,6 +142,9 @@ func TestIssueCRL(t *testing.T) {
 	expectUpdate := req.ThisUpdate.Add(-time.Second).Add(defaultProfile.validityInterval).Truncate(time.Second).UTC()
 	test.AssertEquals(t, parsedRes.NextUpdate, expectUpdate)
 	test.AssertEquals(t, len(parsedRes.Extensions), 3)
+	found, err := checkRevocationListEntriesFieldExists(res)
+	test.AssertNotError(t, err, "Should have been able to parse CRL")
+	test.Assert(t, found, "Expected the revokedCertificates field to exist")
 
 	idps, err := idp.GetIDPURIs(parsedRes.Extensions)
 	test.AssertNotError(t, err, "getting IDP URIs from test CRL")
@@ -169,51 +172,43 @@ func TestIssueCRL(t *testing.T) {
 	test.AssertNotError(t, err, "parsing test crl")
 	test.AssertEquals(t, parsedRes.Issuer.CommonName, issuer.Cert.Subject.CommonName)
 	test.AssertDeepEquals(t, parsedRes.Number, big.NewInt(123))
-	err = checkRevocationListEntries(res)
-	test.AssertNotError(t, err, "parsing test crl with my code")
-
-	nilEntries := CRLRequest{
-		Number:               big.NewInt(123),
-		Shard:                100,
-		ThisUpdate:           clk.Now().Add(-time.Second),
-		Entries:              nil,
-		DeprecatedIDPBaseURL: "http://old.crl.url",
-	}
-
-	res, err = issuer.IssueCRL(&defaultProfile, &nilEntries)
-	test.AssertNotError(t, err, "parsing crl with no entries")
-	parsedRes, err = x509.ParseRevocationList(res)
-	test.AssertNotError(t, err, "parsing test crl")
-	test.AssertEquals(t, parsedRes.Issuer.CommonName, issuer.Cert.Subject.CommonName)
-	test.AssertDeepEquals(t, parsedRes.Number, big.NewInt(123))
+	found, err = checkRevocationListEntriesFieldExists(res)
+	test.AssertNotError(t, err, "Should have been able to parse CRL")
+	test.Assert(t, !found, "Violation of RFC 5280 Section 5.1.2.6")
 }
 
-// checkRevocationListEntries is a hacked up version of x509.ParseRevocationList
-// that only cares about the ASN1 TBS.CertList.revokedCertificates field.
-func checkRevocationListEntries(der []byte) error {
-	rl := &x509.RevocationList{}
-
+// checkRevocationListEntries is a modified version of x509.ParseRevocationList
+// that takes a given sequence of bytes representing a CRL and parses away
+// layers until the `revokedCertificates` field of a TBSCertList is found. It
+// returns a boolean indicating whether the field was found or an error if
+// there was an issue processing a CRL.
+//
+// https://datatracker.ietf.org/doc/html/rfc5280#section-5.1.2.6
+//
+//	When there are no revoked certificates, the revoked certificates list
+//	MUST be absent.
+//
+// https://datatracker.ietf.org/doc/html/rfc5280#appendix-A.1 page 118
+//
+//	TBSCertList  ::=  SEQUENCE  {
+//	   ..
+//		revokedCertificates     SEQUENCE OF SEQUENCE  {
+//	   ..
+func checkRevocationListEntriesFieldExists(der []byte) (bool, error) {
 	input := cryptobyte.String(der)
-	// we read the SEQUENCE including length and tag bytes so that
-	// we can populate RevocationList.Raw, before unwrapping the
-	// SEQUENCE so it can be operated on
 	if !input.ReadASN1Element(&input, cryptobyte_asn1.SEQUENCE) {
-		return errors.New("x509: malformed crl")
+		return false, errors.New("x509: malformed crl")
 	}
-	rl.Raw = input
 	if !input.ReadASN1(&input, cryptobyte_asn1.SEQUENCE) {
-		return errors.New("x509: malformed crl")
+		return false, errors.New("x509: malformed crl")
 	}
 
 	var tbs cryptobyte.String
-	// do the same trick again as above to extract the raw
-	// bytes for Certificate.RawTBSCertificate
 	if !input.ReadASN1Element(&tbs, cryptobyte_asn1.SEQUENCE) {
-		return errors.New("x509: malformed tbs crl")
+		return false, errors.New("x509: malformed tbs crl")
 	}
-	rl.RawTBSRevocationList = tbs
 	if !tbs.ReadASN1(&tbs, cryptobyte_asn1.SEQUENCE) {
-		return errors.New("x509: malformed tbs crl")
+		return false, errors.New("x509: malformed tbs crl")
 	}
 
 	// Skip optional version
@@ -228,7 +223,7 @@ func checkRevocationListEntries(der []byte) error {
 	// SkipOptionalASN1 is identical to SkipASN1 except that it also does a
 	// peek. We'll handle the non-optional thisUpdate with these double peeks
 	// because there's no harm doing so.
-	skipTime := func(s cryptobyte.String) {
+	skipTime := func(s *cryptobyte.String) {
 		switch {
 		case s.PeekASN1Tag(cryptobyte_asn1.UTCTime):
 			s.SkipOptionalASN1(cryptobyte_asn1.UTCTime)
@@ -238,10 +233,18 @@ func checkRevocationListEntries(der []byte) error {
 	}
 
 	// Skip thisUpdate
-	skipTime(tbs)
+	skipTime(&tbs)
 
 	// Skip optional nextUpdate
-	skipTime(tbs)
+	skipTime(&tbs)
 
-	return nil
+	// Finally, the field which we care about: revokedCertificates
+	if tbs.PeekASN1Tag(cryptobyte_asn1.SEQUENCE) {
+		var revokedSeq cryptobyte.String
+		if tbs.ReadASN1(&revokedSeq, cryptobyte_asn1.SEQUENCE) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
