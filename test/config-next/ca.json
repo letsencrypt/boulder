@@ -110,7 +110,6 @@
 		"serialPrefix": 127,
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
-		"crldpBase": "http://c.boulder.test",
 		"goodkey": {
 			"weakKeyFile": "test/example-weak-keys.json",
 			"blockedKeyFile": "test/example-blocked-keys.yaml",
