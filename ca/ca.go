@@ -116,6 +116,12 @@ func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 			issuersByAlg[issuer.KeyType()] = append(issuersByAlg[issuer.KeyType()], issuer)
 		}
 	}
+	if i, ok := issuersByAlg[x509.ECDSA]; !ok || len(i) == 0 {
+		return issuerMaps{}, errors.New("no ECDSA issuers configured")
+	}
+	if i, ok := issuersByAlg[x509.RSA]; !ok || len(i) == 0 {
+		return issuerMaps{}, errors.New("no RSA issuers configured")
+	}
 	return issuerMaps{issuersByAlg, issuersByNameID}, nil
 }
 
