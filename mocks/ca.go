@@ -35,6 +35,7 @@ func (ca *MockCA) IssuePrecertificate(ctx context.Context, req *capb.IssueCertif
 	return &capb.IssuePrecertificateResponse{
 		DER:             cert.Raw,
 		CertProfileHash: profHash[:8],
+		CertProfileName: req.CertProfileName,
 	}, nil
 }
 

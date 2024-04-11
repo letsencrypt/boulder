@@ -306,7 +306,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, certProfileHash, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
+	precertDER, certProfileName, certProfileHash, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
 	if err != nil {
 		return nil, err
 	}
@@ -318,6 +318,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 
 	return &capb.IssuePrecertificateResponse{
 		DER:             precertDER,
+		CertProfileName: certProfileName,
 		CertProfileHash: certProfileHash,
 	}, nil
 }
@@ -499,7 +500,7 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 	return skid[0:20:20], nil
 }
 
-func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, []byte, error) {
+func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, string, []byte, error) {
 	// The CA must check if it is capable of issuing for the given certificate
 	// profile name. The name is checked here instead of the hash because the RA
 	// is unaware of what certificate profiles exist. Pre-existing orders stored
@@ -510,12 +511,12 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 	certProfile, ok := ca.certProfiles.profileByName[issueReq.CertProfileName]
 	if !ok {
-		return nil, nil, fmt.Errorf("the CA is incapable of using a profile named %s", issueReq.CertProfileName)
+		return nil, "", nil, fmt.Errorf("the CA is incapable of using a profile named %s", issueReq.CertProfileName)
 	}
 
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 
 	err = csrlib.VerifyCSR(ctx, csr, ca.maxNames, &ca.keyPolicy, ca.pa)
@@ -523,7 +524,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		ca.log.AuditErr(err.Error())
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 
 	// Use the issuer which corresponds to the algorithm of the public key
@@ -535,18 +536,18 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 	issuer, ok := ca.issuers.byAlg[alg]
 	if !ok {
-		return nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
+		return nil, "", nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
 	}
 
 	if issuer.Cert.NotAfter.Before(validity.NotAfter) {
 		err = berrors.InternalServerError("cannot issue a certificate that expires after the issuer certificate")
 		ca.log.AuditErr(err.Error())
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 
 	subjectKeyId, err := generateSKID(csr.PublicKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("computing subject key ID: %w", err)
+		return nil, "", nil, fmt.Errorf("computing subject key ID: %w", err)
 	}
 
 	serialHex := core.SerialToString(serialBigInt)
@@ -574,7 +575,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		if errors.Is(err, linter.ErrLinting) {
 			ca.lintErrorCount.Inc()
 		}
-		return nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
+		return nil, "", nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
 	}
 
 	_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
@@ -585,7 +586,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		OcspNotReady: true,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, "", nil, err
 	}
 
 	certDER, err := issuer.Issue(issuanceToken)
@@ -593,12 +594,12 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		ca.noteSignError(err)
 		ca.log.AuditErrf("Signing precert failed: serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), certProfile.name, certProfile.hash, err)
-		return nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
+		return nil, "", nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
 	}
 
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing precert success: serial=[%s] regID=[%d] names=[%s] precertificate=[%s] certProfileName=[%s] certProfileHash=[%x]",
 		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(certDER), certProfile.name, certProfile.hash)
 
-	return certDER, certProfile.hash[:], nil
+	return certDER, certProfile.name, certProfile.hash[:], nil
 }
