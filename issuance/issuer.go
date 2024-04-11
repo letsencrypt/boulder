@@ -155,15 +155,25 @@ type IssuerConfig struct {
 	// Active determines if the issuer can be used to sign precertificates. All
 	// issuers, regardless of this field, can be used to sign final certificates
 	// (for which an issuance token is presented), OCSP responses, and CRLs.
+	// All Active issuers of a given key type (RSA or ECDSA) are part of a pool
+	// and each precertificate will be issued randomly from a selected pool.
+	// The selection of which pool depends on the precertificate's key algorithm,
+	// the ECDSAForAll feature flag, and the ECDSAAllowListFilename config field.
 	Active bool
 
-	// Deprecated: use Active instead. All Active issuers with RSA keys can be
-	// used for RSA leaves. No issuers with ECDSA keys can be used for RSA leaves.
+	// UseForRSALeaves is a synonym for Active. Note that, despite the name,
+	// setting this field to true cannot add an issuer to a pool different than
+	// its key type. An active issuer will always be part of a pool based on its
+	// key type.
+	//
+	// Deprecated: use Active instead.
 	UseForRSALeaves bool
-	// Deprecated: use Active instead. If features.ECDSAForAll is false, all
-	// Active issuers with RSA or ECDSA keys can be used for ECDSA leaves (and
-	// which is used will depend on the ECDSA Allow List). If features.ECDSAForAll
-	// is true, all Active issuers with ECDSA keys can be used for ECDSA leaves.
+	// UseForECDSALeaves is a synonym for Active. Note that, despite the name,
+	// setting this field to true cannot add an issuer to a pool different than
+	// its key type. An active issuer will always be part of a pool based on its
+	// key type.
+	//
+	// Deprecated: use Active instead.
 	UseForECDSALeaves bool
 
 	IssuerURL  string `validate:"required,url"`
