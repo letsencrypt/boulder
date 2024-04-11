@@ -113,7 +113,7 @@ func selectRegistration(ctx context.Context, s db.OneSelector, whereCol string, 
 	err := s.SelectOne(
 		ctx,
 		&model,
-		"SELECT "+regFields+" FROM registrations WHERE "+whereCol+" = ? LIMIT 1",
+		"SELECT "+regFields+" FROM registrations WHERE "+whereCol+" = $1 LIMIT 1",
 		args...,
 	)
 	return &model, err
@@ -129,7 +129,7 @@ func SelectCertificate(ctx context.Context, s db.OneSelector, serial string) (co
 	err := s.SelectOne(
 		ctx,
 		&model,
-		"SELECT "+certFields+" FROM certificates WHERE serial = ? LIMIT 1",
+		"SELECT "+certFields+" FROM certificates WHERE serial = $1 LIMIT 1",
 		serial,
 	)
 	return model, err
@@ -144,7 +144,7 @@ func SelectPrecertificate(ctx context.Context, s db.OneSelector, serial string) 
 	err := s.SelectOne(
 		ctx,
 		&model,
-		"SELECT "+precertFields+" FROM precertificates WHERE serial = ? LIMIT 1",
+		"SELECT "+precertFields+" FROM precertificates WHERE serial = $1 LIMIT 1",
 		serial)
 	return core.Certificate{
 		RegistrationID: model.RegistrationID,
@@ -202,7 +202,7 @@ func SelectCertificateStatus(ctx context.Context, s db.OneSelector, serial strin
 	err := s.SelectOne(
 		ctx,
 		&model,
-		"SELECT "+certStatusFields+" FROM certificateStatus WHERE serial = ? LIMIT 1",
+		"SELECT "+certStatusFields+" FROM certificateStatus WHERE serial = $1 LIMIT 1",
 		serial,
 	)
 	return model, err
@@ -224,7 +224,7 @@ func SelectRevocationStatus(ctx context.Context, s db.OneSelector, serial string
 	err := s.SelectOne(
 		ctx,
 		&model,
-		"SELECT status, revokedDate, revokedReason FROM certificateStatus WHERE serial = ? LIMIT 1",
+		"SELECT status, revokedDate, revokedReason FROM certificateStatus WHERE serial = $1 LIMIT 1",
 		serial,
 	)
 	if err != nil {
@@ -571,14 +571,14 @@ func SelectAuthzsMatchingIssuance(
 	dnsNames []string,
 ) ([]*corepb.Authorization, error) {
 	query := fmt.Sprintf(`SELECT %s FROM authz2 WHERE
-			registrationID = ? AND
+			registrationID = $1 AND
 			status IN (?, ?) AND
-			expires >= ? AND
-			attemptedAt <= ? AND
-			identifierType = ? AND
+			expires >= $2 AND
+			attemptedAt <= $3 AND
+			identifierType = $4 AND
 			identifierValue IN (%s)`,
 		authzFields,
-		db.QuestionMarks(len(dnsNames)))
+		db.QuestionMarks(4, len(dnsNames)))
 	var args []any
 	args = append(args,
 		regID,
@@ -1120,7 +1120,7 @@ func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) (
 		ctx,
 		&validityInfo,
 		fmt.Sprintf("SELECT status, expires FROM authz2 WHERE id IN (%s)",
-			db.QuestionMarks(len(ids))),
+			db.QuestionMarks(0, len(ids))),
 		params...,
 	)
 	if err != nil {

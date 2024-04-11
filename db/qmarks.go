@@ -1,10 +1,13 @@
 package db
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
-// QuestionMarks returns a string consisting of N question marks, joined by
-// commas. If n is <= 0, panics.
-func QuestionMarks(n int) string {
+// QuestionMarks returns a string consisting of N Postgres placeholders ($1, $2, $3, etc),
+// separated by commas. If n is <= 0, panics. The first placeholder's number is `starting` + 1.
+func QuestionMarks(starting, n int) string {
 	if n <= 0 {
 		panic("db.QuestionMarks called with n <=0")
 	}
@@ -12,9 +15,9 @@ func QuestionMarks(n int) string {
 	qmarks.Grow(2 * n)
 	for i := 0; i < n; i++ {
 		if i == 0 {
-			qmarks.WriteString("?")
+			fmt.Fprintf(&qmarks, "$%d", starting+i+1)
 		} else {
-			qmarks.WriteString(",?")
+			fmt.Fprintf(&qmarks, ",$%d", starting+i+1)
 		}
 	}
 	return qmarks.String()

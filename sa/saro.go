@@ -621,7 +621,7 @@ func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(ctx context.Context, select
 	err := selector(
 		ctx,
 		&exists,
-		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? LIMIT 1)`,
+		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = $1 LIMIT 1)`,
 		namehash,
 	)
 	return exists, err
@@ -918,13 +918,13 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 	query := fmt.Sprintf(
 		`SELECT %s FROM authz2
 			USE INDEX (regID_identifier_status_expires_idx)
-			WHERE registrationID = ? AND
+			WHERE registrationID = $1 AND
 			status IN (?,?) AND
-			expires > ? AND
-			identifierType = ? AND
+			expires > $2 AND
+			identifierType = $3 AND
 			identifierValue IN (%s)`,
 		authzFields,
-		db.QuestionMarks(len(req.Domains)),
+		db.QuestionMarks(3, len(req.Domains)),
 	)
 
 	_, err := ssa.dbReadOnlyMap.Select(
@@ -1133,13 +1133,13 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 
 	query := fmt.Sprintf(
 		`SELECT %s FROM authz2 WHERE
-			registrationID = ? AND
-			status = ? AND
-			expires > ? AND
-			identifierType = ? AND
+			registrationID = $1 AND
+			status = $2 AND
+			expires > $3 AND
+			identifierType = $4 AND
 			identifierValue IN (%s)`,
 		authzFields,
-		db.QuestionMarks(len(req.Domains)),
+		db.QuestionMarks(4, len(req.Domains)),
 	)
 
 	params := []interface{}{
@@ -1515,7 +1515,7 @@ func (ssa *SQLStorageAuthorityRO) ReplacementOrderExists(ctx context.Context, re
 	err := ssa.dbReadOnlyMap.SelectOne(
 		ctx,
 		&replacement,
-		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		"SELECT * FROM replacementOrders WHERE serial = $1 LIMIT 1",
 		req.Serial,
 	)
 	if err != nil {

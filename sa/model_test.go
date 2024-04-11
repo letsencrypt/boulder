@@ -441,7 +441,7 @@ func TestAddReplacementOrder(t *testing.T) {
 	err = sa.dbReadOnlyMap.SelectOne(
 		ctx,
 		&replacementRow,
-		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		"SELECT * FROM replacementOrders WHERE serial = $1 LIMIT 1",
 		oldCertSerial,
 	)
 	test.AssertNotError(t, err, "SELECT from replacementOrders failed")
@@ -460,7 +460,7 @@ func TestAddReplacementOrder(t *testing.T) {
 	err = sa.dbReadOnlyMap.SelectOne(
 		ctx,
 		&replacementRow,
-		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		"SELECT * FROM replacementOrders WHERE serial = $1 LIMIT 1",
 		oldCertSerial,
 	)
 	test.AssertNotError(t, err, "SELECT from replacementOrders failed")
@@ -493,7 +493,7 @@ func TestSetReplacementOrderFinalized(t *testing.T) {
 	err = sa.dbReadOnlyMap.SelectOne(
 		ctx,
 		&replacementRow,
-		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		"SELECT * FROM replacementOrders WHERE serial = $1 LIMIT 1",
 		oldCertSerial,
 	)
 	test.AssertErrorIs(t, err, sql.ErrNoRows)
@@ -510,7 +510,7 @@ func TestSetReplacementOrderFinalized(t *testing.T) {
 	err = sa.dbReadOnlyMap.SelectOne(
 		ctx,
 		&replacementRow,
-		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		"SELECT * FROM replacementOrders WHERE serial = $1 LIMIT 1",
 		oldCertSerial,
 	)
 	test.AssertNotError(t, err, "SELECT from replacementOrders failed")

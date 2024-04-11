@@ -181,7 +181,7 @@ func (ssa *SQLStorageAuthority) SetCertificateStatusReady(ctx context.Context, r
 	res, err := ssa.dbMap.ExecContext(ctx,
 		`UPDATE certificateStatus
 		 SET status = ?
-		 WHERE status = ? AND
+		 WHERE status = $1 AND
 		       serial = ?`,
 		string(core.OCSPStatusGood),
 		string(core.OCSPStatusNotReady),
@@ -415,7 +415,7 @@ func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req 
 		return nil, errIncompleteRequest
 	}
 	_, err := ssa.dbMap.ExecContext(ctx,
-		"UPDATE registrations SET status = ? WHERE status = ? AND id = ?",
+		"UPDATE registrations SET status = $1 WHERE status = $2 AND id = ?",
 		string(core.StatusDeactivated),
 		string(core.StatusValid),
 		req.Id,
@@ -686,7 +686,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 		result, err := tx.ExecContext(ctx, `
 		UPDATE orders
 		SET certificateSerial = ?
-		WHERE id = ? AND
+		WHERE id = $1 AND
 		beganProcessing = true`,
 			req.CertificateSerial,
 			req.Id)
@@ -862,7 +862,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 				revokedReason = ?,
 				revokedDate = ?,
 				ocspLastUpdated = ?
-			WHERE serial = ? AND status != ?`,
+			WHERE serial = $1 AND status != ?`,
 			string(core.OCSPStatusRevoked),
 			revocation.Reason(req.Reason),
 			revokedDate,
@@ -918,7 +918,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 			`UPDATE certificateStatus SET
 					revokedReason = ?,
 					ocspLastUpdated = ?
-				WHERE serial = ? AND status = ? AND revokedReason != ? AND revokedDate = ?`,
+				WHERE serial = $1 AND status = $1 AND revokedReason != $2 AND revokedDate = ?`,
 			revocation.Reason(ocsp.KeyCompromise),
 			thisUpdate,
 			req.Serial,
@@ -1064,7 +1064,7 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 			`SELECT id, issuerID, idx, thisUpdate, nextUpdate, leasedUntil
 				FROM crlShards
 				WHERE issuerID = ?
-				AND idx BETWEEN ? AND ?`,
+				AND idx BETWEEN $1 AND ?`,
 			req.IssuerNameID, req.MinShardIdx, req.MaxShardIdx,
 		)
 		if err != nil {

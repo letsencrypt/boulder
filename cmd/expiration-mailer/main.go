@@ -301,8 +301,8 @@ func (m *mailer) updateLastNagTimestampsChunk(ctx context.Context, certs []*x509
 	}
 
 	query := fmt.Sprintf(
-		"UPDATE certificateStatus SET lastExpirationNagSent = ? WHERE serial IN (%s)",
-		db.QuestionMarks(len(certs)),
+		"UPDATE certificateStatus SET lastExpirationNagSent = $1 WHERE serial IN (%s)",
+		db.QuestionMarks(1, len(certs)),
 	)
 	params[0] = m.clk.Now()
 

@@ -3,7 +3,9 @@ package notmain
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -98,7 +100,14 @@ func main() {
 		tls, scope, clk)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
 
-	cmd.FailOnError(start(), "SA gRPC service failed")
+	go func() {
+		cmd.FailOnError(start(), "SA gRPC service failed")
+	}()
+	time.Sleep(1 * time.Second)
+	_, err = saroi.GetCertificate(context.Background(), &sapb.Serial{Serial: "033d96db24392726470182c5ead3181a1478"})
+	if err != nil {
+		fmt.Println("Error: ", err)
+	}
 }
 
 func init() {

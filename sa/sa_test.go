@@ -3702,7 +3702,7 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 	err = sa.dbMap.SelectOne(
 		ctx,
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = $1 AND idx = $2 LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3726,7 +3726,7 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 	err = sa.dbMap.SelectOne(
 		ctx,
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = $1 AND idx = $1 LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3752,7 +3752,7 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 	err = sa.dbMap.SelectOne(
 		ctx,
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = $1 AND idx = $2 LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3809,7 +3809,7 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 	err = sa.dbMap.SelectOne(
 		ctx,
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = $1 AND idx = $2 LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3833,7 +3833,7 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 	err = sa.dbMap.SelectOne(
 		ctx,
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = $1 AND idx = $2 LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3856,7 +3856,7 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 	err = sa.dbMap.SelectOne(
 		ctx,
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = $1 AND idx = $2 LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -4106,7 +4106,7 @@ func TestReplacementOrderExists(t *testing.T) {
 	err = sa.dbReadOnlyMap.SelectOne(
 		ctx,
 		&replacementRow,
-		"SELECT * FROM replacementOrders WHERE serial = ? LIMIT 1",
+		"SELECT * FROM replacementOrders WHERE serial = $1 LIMIT 1",
 		oldCertSerial,
 	)
 	test.AssertNotError(t, err, "SELECT from replacementOrders failed")

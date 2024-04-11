@@ -74,12 +74,14 @@ func (mi *MultiInserter) Add(row []interface{}) error {
 func (mi *MultiInserter) query() (string, []interface{}) {
 	var questionsBuf strings.Builder
 	var queryArgs []interface{}
+	var starting int
 	for _, row := range mi.values {
 		// Safety: We are interpolating a string that will be used in a SQL
 		// query, but we constructed that string in this function and know it
 		// consists only of question marks joined with commas.
-		fmt.Fprintf(&questionsBuf, "(%s),", QuestionMarks(len(mi.fields)))
+		fmt.Fprintf(&questionsBuf, "(%s),", QuestionMarks(starting, len(mi.fields)))
 		queryArgs = append(queryArgs, row...)
+		starting += len(mi.fields)
 	}
 
 	questions := strings.TrimRight(questionsBuf.String(), ",")
