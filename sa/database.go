@@ -14,6 +14,8 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	boulderDB "github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
+
+	_ "github.com/lib/pq"
 )
 
 // DbSettings contains settings for the database/sql driver. The zero
@@ -57,7 +59,7 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 	}
 
 	if strings.HasPrefix(url, "postgres://") {
-		db, err := sqlOpen("pgx", url)
+		db, err := sqlOpen("postgres", url)
 		if err != nil {
 			return nil, err
 		}

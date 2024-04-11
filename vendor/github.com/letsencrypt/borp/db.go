@@ -102,6 +102,9 @@ func (m *DbMap) createIndexImpl(ctx context.Context, dialect reflect.Type,
 	}
 	s.WriteString(" index")
 	s.WriteString(fmt.Sprintf(" %s on %s", index.IndexName, table.TableName))
+	if dname := dialect.Name(); dname == "PostgresDialect" && index.IndexType != "" {
+		s.WriteString(fmt.Sprintf(" %s %s", m.Dialect.CreateIndexSuffix(), index.IndexType))
+	}
 	s.WriteString(" (")
 	for x, col := range index.columns {
 		if x > 0 {
