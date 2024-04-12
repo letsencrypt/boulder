@@ -142,7 +142,7 @@ func TestIssueCRL(t *testing.T) {
 	expectUpdate := req.ThisUpdate.Add(-time.Second).Add(defaultProfile.validityInterval).Truncate(time.Second).UTC()
 	test.AssertEquals(t, parsedRes.NextUpdate, expectUpdate)
 	test.AssertEquals(t, len(parsedRes.Extensions), 3)
-	found, err := checkRevocationListEntriesFieldExists(res)
+	found, err := revokedCertificatesFieldExists(res)
 	test.AssertNotError(t, err, "Should have been able to parse CRL")
 	test.Assert(t, found, "Expected the revokedCertificates field to exist")
 
@@ -158,30 +158,25 @@ func TestIssueCRL(t *testing.T) {
 	test.AssertError(t, err, "crl issuance with no IDP should fail")
 	test.AssertContains(t, err.Error(), "must contain an issuingDistributionPoint")
 
-	emptyEntries := CRLRequest{
-		Number:               big.NewInt(123),
-		Shard:                100,
-		ThisUpdate:           clk.Now().Add(-time.Second),
-		Entries:              []x509.RevocationListEntry{},
-		DeprecatedIDPBaseURL: "http://old.crl.url",
-	}
-
-	res, err = issuer.IssueCRL(&defaultProfile, &emptyEntries)
+	// A CRL with no entries must not have the revokedCertificates field
+	req = defaultRequest
+	req.Entries = []x509.RevocationListEntry{}
+	res, err = issuer.IssueCRL(&defaultProfile, &req)
 	test.AssertNotError(t, err, "parsing crl with no entries")
 	parsedRes, err = x509.ParseRevocationList(res)
 	test.AssertNotError(t, err, "parsing test crl")
 	test.AssertEquals(t, parsedRes.Issuer.CommonName, issuer.Cert.Subject.CommonName)
 	test.AssertDeepEquals(t, parsedRes.Number, big.NewInt(123))
-	found, err = checkRevocationListEntriesFieldExists(res)
+	found, err = revokedCertificatesFieldExists(res)
 	test.AssertNotError(t, err, "Should have been able to parse CRL")
 	test.Assert(t, !found, "Violation of RFC 5280 Section 5.1.2.6")
 }
 
-// checkRevocationListEntries is a modified version of x509.ParseRevocationList
-// that takes a given sequence of bytes representing a CRL and parses away
-// layers until the `revokedCertificates` field of a TBSCertList is found. It
-// returns a boolean indicating whether the field was found or an error if
-// there was an issue processing a CRL.
+// revokedCertificatesFieldExists is a modified version of
+// x509.ParseRevocationList that takes a given sequence of bytes representing a
+// CRL and parses away layers until the optional `revokedCertificates` field of
+// a TBSCertList is found. It returns a boolean indicating whether the field was
+// found or an error if there was an issue processing a CRL.
 //
 // https://datatracker.ietf.org/doc/html/rfc5280#section-5.1.2.6
 //
@@ -190,11 +185,13 @@ func TestIssueCRL(t *testing.T) {
 //
 // https://datatracker.ietf.org/doc/html/rfc5280#appendix-A.1 page 118
 //
-//	TBSCertList  ::=  SEQUENCE  {
-//	   ..
-//		revokedCertificates     SEQUENCE OF SEQUENCE  {
-//	   ..
-func checkRevocationListEntriesFieldExists(der []byte) (bool, error) {
+//		TBSCertList  ::=  SEQUENCE  {
+//			   ..
+//				revokedCertificates     SEQUENCE OF SEQUENCE  {
+//			   ..
+//		    } OPTIONAL,
+//	     }
+func revokedCertificatesFieldExists(der []byte) (bool, error) {
 	input := cryptobyte.String(der)
 	if !input.ReadASN1Element(&input, cryptobyte_asn1.SEQUENCE) {
 		return false, errors.New("x509: malformed crl")
@@ -238,12 +235,12 @@ func checkRevocationListEntriesFieldExists(der []byte) (bool, error) {
 	// Skip optional nextUpdate
 	skipTime(&tbs)
 
-	// Finally, the field which we care about: revokedCertificates
+	// Finally, the field which we care about: revokedCertificates. This will
+	// not trigger on the next field `crlExtensions` because that has
+	// context-specific tag [0] and EXPLICIT encoding, not `SEQUENCE` and is
+	// therefore a safe place to end this venture.
 	if tbs.PeekASN1Tag(cryptobyte_asn1.SEQUENCE) {
-		var revokedSeq cryptobyte.String
-		if tbs.ReadASN1(&revokedSeq, cryptobyte_asn1.SEQUENCE) {
-			return true, nil
-		}
+		return true, nil
 	}
 
 	return false, nil
