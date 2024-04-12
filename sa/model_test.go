@@ -373,7 +373,7 @@ func TestIncidentSerialModel(t *testing.T) {
 
 	// Inserting and retrieving a row with only the serial populated should work.
 	_, err = testIncidentsDbMap.ExecContext(ctx,
-		"INSERT INTO incident_foo (serial) VALUES (?)",
+		"INSERT INTO incident_foo (serial) VALUES ($1)",
 		"1337",
 	)
 	test.AssertNotError(t, err, "inserting row with only serial")
@@ -382,7 +382,7 @@ func TestIncidentSerialModel(t *testing.T) {
 	err = testIncidentsDbMap.SelectOne(
 		ctx,
 		&res1,
-		"SELECT * FROM incident_foo WHERE serial = ?",
+		"SELECT * FROM incident_foo WHERE serial = $1",
 		"1337",
 	)
 	test.AssertNotError(t, err, "selecting row with only serial")
@@ -394,7 +394,7 @@ func TestIncidentSerialModel(t *testing.T) {
 
 	// Inserting and retrieving a row with all columns populated should work.
 	_, err = testIncidentsDbMap.ExecContext(ctx,
-		"INSERT INTO incident_foo (serial, registrationID, orderID, lastNoticeSent) VALUES (?, ?, ?, ?)",
+		"INSERT INTO incident_foo (serial, registrationID, orderID, lastNoticeSent) VALUES ($1, $2, $3, $4)",
 		"1338",
 		1,
 		2,
@@ -406,7 +406,7 @@ func TestIncidentSerialModel(t *testing.T) {
 	err = testIncidentsDbMap.SelectOne(
 		ctx,
 		&res2,
-		"SELECT * FROM incident_foo WHERE serial = ?",
+		"SELECT * FROM incident_foo WHERE serial = $1",
 		"1338",
 	)
 	test.AssertNotError(t, err, "selecting row with only serial")

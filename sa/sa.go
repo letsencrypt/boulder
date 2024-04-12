@@ -180,9 +180,9 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 func (ssa *SQLStorageAuthority) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial) (*emptypb.Empty, error) {
 	res, err := ssa.dbMap.ExecContext(ctx,
 		`UPDATE certificateStatus
-		 SET status = ?
-		 WHERE status = $1 AND
-		       serial = ?`,
+		 SET status = $1
+		 WHERE status = $2 AND
+		       serial = $3`,
 		string(core.OCSPStatusGood),
 		string(core.OCSPStatusNotReady),
 		req.Serial,
@@ -229,7 +229,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		var row struct {
 			Count int64
 		}
-		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM precertificates WHERE serial=?", serialHex)
+		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM precertificates WHERE serial=$1", serialHex)
 		if err != nil {
 			return nil, err
 		}
@@ -323,7 +323,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		var row struct {
 			Count int64
 		}
-		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM certificates WHERE serial=?", serial)
+		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM certificates WHERE serial=$1", serial)
 		if err != nil {
 			return nil, err
 		}
@@ -415,7 +415,7 @@ func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req 
 		return nil, errIncompleteRequest
 	}
 	_, err := ssa.dbMap.ExecContext(ctx,
-		"UPDATE registrations SET status = $1 WHERE status = $2 AND id = ?",
+		"UPDATE registrations SET status = $1 WHERE status = $2 AND id = $3",
 		string(core.StatusDeactivated),
 		string(core.StatusValid),
 		req.Id,
@@ -614,9 +614,9 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sap
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		result, err := tx.ExecContext(ctx, `
 		UPDATE orders
-		SET beganProcessing = ?
-		WHERE id = ?
-		AND beganProcessing = ?`,
+		SET beganProcessing = $1
+		WHERE id = $2
+		AND beganProcessing = $3`,
 			true,
 			req.Id,
 			false)
@@ -653,8 +653,8 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 
 		result, err := tx.ExecContext(ctx, `
 		UPDATE orders
-		SET error = ?
-		WHERE id = ?`,
+		SET error = $1
+		WHERE id = $2`,
 			om.Error,
 			om.ID)
 		if err != nil {
@@ -685,8 +685,8 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		result, err := tx.ExecContext(ctx, `
 		UPDATE orders
-		SET certificateSerial = ?
-		WHERE id = $1 AND
+		SET certificateSerial = $1
+		WHERE id = $2 AND
 		beganProcessing = true`,
 			req.CertificateSerial,
 			req.Id)
@@ -823,7 +823,7 @@ func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.Revoke
 		Expires time.Time
 	}
 	err := tx.SelectOne(
-		ctx, &serial, `SELECT expires FROM serials WHERE serial = ?`, req.Serial)
+		ctx, &serial, `SELECT expires FROM serials WHERE serial = $1`, req.Serial)
 	if err != nil {
 		return fmt.Errorf("retrieving revoked certificate expiration: %w", err)
 	}
@@ -858,11 +858,11 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 
 		res, err := tx.ExecContext(ctx,
 			`UPDATE certificateStatus SET
-				status = ?,
-				revokedReason = ?,
-				revokedDate = ?,
-				ocspLastUpdated = ?
-			WHERE serial = $1 AND status != ?`,
+				status = $1,
+				revokedReason = $2,
+				revokedDate = $3,
+				ocspLastUpdated = $4
+			WHERE serial = $5 AND status != $6`,
 			string(core.OCSPStatusRevoked),
 			revocation.Reason(req.Reason),
 			revokedDate,
@@ -916,9 +916,9 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 
 		res, err := tx.ExecContext(ctx,
 			`UPDATE certificateStatus SET
-					revokedReason = ?,
-					ocspLastUpdated = ?
-				WHERE serial = $1 AND status = $1 AND revokedReason != $2 AND revokedDate = ?`,
+					revokedReason = $1,
+					ocspLastUpdated = $2
+				WHERE serial = $3 AND status = $4 AND revokedReason != $5 AND revokedDate = $6`,
 			revocation.Reason(ocsp.KeyCompromise),
 			thisUpdate,
 			req.Serial,
@@ -950,7 +950,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 			// currently relying on the query above to exit early if the certificate
 			// does not have an appropriate status.
 			err = tx.SelectOne(
-				ctx, &rcm, `SELECT * FROM revokedCertificates WHERE serial = ?`, req.Serial)
+				ctx, &rcm, `SELECT * FROM revokedCertificates WHERE serial = $1`, req.Serial)
 			if db.IsNoRows(err) {
 				// TODO: Remove this fallback codepath once we know that all unexpired
 				// certs marked as revoked in the certificateStatus table have
@@ -991,7 +991,7 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 	if !ok {
 		return nil, errors.New("unknown source")
 	}
-	cols, qs := blockedKeysColumns, "?, ?, ?, ?"
+	cols, qs := blockedKeysColumns, "$1, $2, $3, $4"
 	vals := []interface{}{
 		req.KeyHash,
 		req.Added.AsTime(),
@@ -1000,7 +1000,7 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 	}
 	if req.RevokedBy != 0 {
 		cols += ", revokedBy"
-		qs += ", ?"
+		qs += ", $5"
 		vals = append(vals, req.RevokedBy)
 	}
 	_, err := ssa.dbMap.ExecContext(ctx,
@@ -1063,8 +1063,8 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 			&shards,
 			`SELECT id, issuerID, idx, thisUpdate, nextUpdate, leasedUntil
 				FROM crlShards
-				WHERE issuerID = ?
-				AND idx BETWEEN $1 AND ?`,
+				WHERE issuerID = $1
+				AND idx BETWEEN $2 AND $3`,
 			req.IssuerNameID, req.MinShardIdx, req.MaxShardIdx,
 		)
 		if err != nil {
@@ -1113,7 +1113,7 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 		if needToInsert {
 			_, err = tx.ExecContext(ctx,
 				`INSERT INTO crlShards (issuerID, idx, leasedUntil)
-					VALUES (?, ?, ?)`,
+					VALUES ($1, $2, $3)`,
 				req.IssuerNameID,
 				shardIdx,
 				req.Until.AsTime(),
@@ -1124,9 +1124,9 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 		} else {
 			_, err = tx.ExecContext(ctx,
 				`UPDATE crlShards
-					SET leasedUntil = ?
-					WHERE issuerID = ?
-					AND idx = ?
+					SET leasedUntil = $1
+					WHERE issuerID = $2
+					AND idx = $3
 					LIMIT 1`,
 				req.Until.AsTime(),
 				req.IssuerNameID,
@@ -1164,8 +1164,8 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 			&shardModel,
 			`SELECT leasedUntil
 			  FROM crlShards
-				WHERE issuerID = ?
-				AND idx = ?
+				WHERE issuerID = $1
+				AND idx = $2
 				LIMIT 1`,
 			req.IssuerNameID,
 			req.MinShardIdx,
@@ -1181,7 +1181,7 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 		if needToInsert {
 			_, err = tx.ExecContext(ctx,
 				`INSERT INTO crlShards (issuerID, idx, leasedUntil)
-					VALUES (?, ?, ?)`,
+					VALUES ($1, $2, $3)`,
 				req.IssuerNameID,
 				req.MinShardIdx,
 				req.Until.AsTime(),
@@ -1192,9 +1192,9 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 		} else {
 			_, err = tx.ExecContext(ctx,
 				`UPDATE crlShards
-					SET leasedUntil = ?
-					WHERE issuerID = ?
-					AND idx = ?
+					SET leasedUntil = $1
+					WHERE issuerID = $2
+					AND idx = $3
 					LIMIT 1`,
 				req.Until.AsTime(),
 				req.IssuerNameID,
@@ -1241,10 +1241,10 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		res, err := tx.ExecContext(ctx,
 			`UPDATE crlShards
-				SET thisUpdate = ?, nextUpdate = ?, leasedUntil = ?
-				WHERE issuerID = ?
-				AND idx = ?
-				AND (thisUpdate is NULL OR thisUpdate < ?)
+				SET thisUpdate = $1, nextUpdate = $2, leasedUntil = $3
+				WHERE issuerID = $4
+				AND idx = $5
+				AND (thisUpdate is NULL OR thisUpdate < $6)
 				LIMIT 1`,
 			req.ThisUpdate.AsTime(),
 			nextUpdate,

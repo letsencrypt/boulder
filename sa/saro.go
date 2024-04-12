@@ -394,7 +394,7 @@ func (ssa *SQLStorageAuthorityRO) GetSerialMetadata(ctx context.Context, req *sa
 	err := ssa.dbReadOnlyMap.SelectOne(
 		ctx,
 		&recordedSerial,
-		"SELECT * FROM serials WHERE serial = ?",
+		"SELECT * FROM serials WHERE serial = $1",
 		req.Serial,
 	)
 	if err != nil {
@@ -544,8 +544,8 @@ func (ssa *SQLStorageAuthorityRO) CountFQDNSets(ctx context.Context, req *sapb.C
 		ctx,
 		&count,
 		`SELECT COUNT(*) FROM fqdnSets
-		WHERE setHash = ?
-		AND issued > ?`,
+		WHERE setHash = $1
+		AND issued > $2`,
 		core.HashNames(req.Domains),
 		ssa.clk.Now().Add(-req.Window.AsDuration()),
 	)
@@ -571,8 +571,8 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 		ctx,
 		&rows,
 		`SELECT issued FROM fqdnSets 
-		WHERE setHash = ?
-		AND issued > ?
+		WHERE setHash = $1
+		AND issued > $2
 		ORDER BY issued DESC`,
 		core.HashNames(req.Domains),
 		ssa.clk.Now().Add(-req.Window.AsDuration()),
@@ -648,7 +648,7 @@ func (ssa *SQLStorageAuthorityRO) PreviousCertificateExists(ctx context.Context,
 		ctx,
 		&serial,
 		`SELECT serial FROM issuedNames
-		WHERE reversedName = ?
+		WHERE reversedName = $1
 		ORDER BY notBefore DESC
 		LIMIT 1`,
 		ReverseName(req.Domain),
@@ -666,8 +666,8 @@ func (ssa *SQLStorageAuthorityRO) PreviousCertificateExists(ctx context.Context,
 		ctx,
 		&count,
 		`SELECT COUNT(*) FROM certificates
-		WHERE serial = ?
-		AND registrationID = ?`,
+		WHERE serial = $1
+		AND registrationID = $2`,
 		serial,
 		req.RegID,
 	)
@@ -812,8 +812,8 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 	err = ssa.dbReadOnlyMap.SelectOne(ctx, &result, `
 					SELECT orderID, registrationID
 					FROM orderFqdnSets
-					WHERE setHash = ?
-					AND expires > ?
+					WHERE setHash = $1
+					AND expires > $2
 					ORDER BY expires ASC
 					LIMIT 1`,
 		fqdnHash, ssa.clk.Now())
@@ -919,7 +919,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		`SELECT %s FROM authz2
 			USE INDEX (regID_identifier_status_expires_idx)
 			WHERE registrationID = $1 AND
-			status IN (?,?) AND
+			status IN ($1,$2) AND
 			expires > $2 AND
 			identifierType = $3 AND
 			identifierValue IN (%s)`,
@@ -1190,7 +1190,7 @@ func (ssa *SQLStorageAuthorityRO) KeyBlocked(ctx context.Context, req *sapb.SPKI
 	}
 
 	var id int64
-	err := ssa.dbReadOnlyMap.SelectOne(ctx, &id, `SELECT ID FROM blockedKeys WHERE keyHash = ?`, req.KeyHash)
+	err := ssa.dbReadOnlyMap.SelectOne(ctx, &id, `SELECT ID FROM blockedKeys WHERE keyHash = $1`, req.KeyHash)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return &sapb.Exists{Exists: false}, nil
@@ -1224,7 +1224,7 @@ func (ssa *SQLStorageAuthorityRO) IncidentsForSerial(ctx context.Context, req *s
 	var incidentsForSerial []*sapb.Incident
 	for _, i := range activeIncidents {
 		var count int
-		err := ssa.dbIncidentsMap.SelectOne(ctx, &count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = ?",
+		err := ssa.dbIncidentsMap.SelectOne(ctx, &count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = $1",
 			i.SerialTable), req.Serial)
 		if err != nil {
 			if db.IsNoRows(err) {
@@ -1342,9 +1342,9 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(re
 	atTime := req.RevokedBefore.AsTime()
 
 	clauses := `
-		WHERE issuerID = ?
-		AND shardIdx = ?
-		AND notAfterHour >= ?`
+		WHERE issuerID = $1
+		AND shardIdx = $2
+		AND notAfterHour >= $3`
 	params := []interface{}{
 		req.IssuerNameID,
 		req.ShardIdx,
@@ -1408,10 +1408,10 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req 
 	atTime := req.RevokedBefore.AsTime()
 
 	clauses := `
-		WHERE notAfter >= ?
-		AND notAfter < ?
-		AND issuerID = ?
-		AND status = ?`
+		WHERE notAfter >= $1
+		AND notAfter < $2
+		AND issuerID = $3
+		AND status = $4`
 	params := []interface{}{
 		req.ExpiresAfter.AsTime(),
 		req.ExpiresBefore.AsTime(),
@@ -1571,7 +1571,7 @@ func (ssa *SQLStorageAuthority) ReplacementOrderExists(ctx context.Context, req 
 // certificates affected by a key compromise.
 func (ssa *SQLStorageAuthorityRO) GetSerialsByKey(req *sapb.SPKIHash, stream sapb.StorageAuthorityReadOnly_GetSerialsByKeyServer) error {
 	clauses := `
-		WHERE keyHash = ?
+		WHERE keyHash = $1
 		AND certNotAfter > NOW()`
 	params := []interface{}{
 		req.KeyHash,
@@ -1623,7 +1623,7 @@ func (ssa *SQLStorageAuthority) GetSerialsByKey(req *sapb.SPKIHash, stream sapb.
 // an account's certs upon their request.
 func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, stream sapb.StorageAuthorityReadOnly_GetSerialsByAccountServer) error {
 	clauses := `
-		WHERE registrationID = ?
+		WHERE registrationID = $1
 		AND expires > NOW()`
 	params := []interface{}{
 		req.Id,

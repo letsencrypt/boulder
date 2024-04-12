@@ -1066,7 +1066,8 @@ func TestAddIssuedNames(t *testing.T) {
 	serial := big.NewInt(1)
 	expectedSerial := "000000000000000000000000000000000001"
 	notBefore := time.Date(2018, 2, 14, 12, 0, 0, 0, time.UTC)
-	placeholdersPerName := "(?,?,?,?)"
+	// TODO: needs updating for positional placeholders
+	placeholdersPerName := "($n,$n,$n,$n)"
 	baseQuery := "INSERT INTO issuedNames (reversedName,serial,notBefore,renewal) VALUES"
 
 	testCases := []struct {
@@ -3649,13 +3650,13 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 	// currently leased, three are available, and one of those failed to update.
 	_, err := sa.dbMap.ExecContext(ctx,
 		`INSERT INTO crlShards (issuerID, idx, thisUpdate, nextUpdate, leasedUntil) VALUES
-		(1, 0, ?, ?, ?),
-		(1, 1, ?, ?, ?),
-		(1, 2, ?, ?, ?),
+		(1, 0, $1, $1, ?),
+		(1, 1, $1, $1, ?),
+		(1, 2, $1, $1, ?),
 		(1, 3, NULL, NULL, ?),
-		(2, 0, ?, ?, ?),
-		(2, 1, ?, ?, ?),
-		(2, 2, ?, ?, ?),
+		(2, 0, $1, $1, ?),
+		(2, 1, $1, $1, ?),
+		(2, 2, $1, $1, ?),
 		(2, 3, NULL, NULL, ?);`,
 		clk.Now().Add(-7*24*time.Hour), clk.Now().Add(3*24*time.Hour), clk.Now().Add(time.Hour),
 		clk.Now().Add(-6*24*time.Hour), clk.Now().Add(4*24*time.Hour), clk.Now().Add(-6*24*time.Hour),
@@ -3768,13 +3769,13 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 	// currently leased, three are available, and one of those failed to update.
 	_, err := sa.dbMap.ExecContext(ctx,
 		`INSERT INTO crlShards (issuerID, idx, thisUpdate, nextUpdate, leasedUntil) VALUES
-		(1, 0, ?, ?, ?),
-		(1, 1, ?, ?, ?),
-		(1, 2, ?, ?, ?),
+		(1, 0, $1, $1, ?),
+		(1, 1, $1, $1, ?),
+		(1, 2, $1, $1, ?),
 		(1, 3, NULL, NULL, ?),
-		(2, 0, ?, ?, ?),
-		(2, 1, ?, ?, ?),
-		(2, 2, ?, ?, ?),
+		(2, 0, $1, $1, ?),
+		(2, 1, $1, $1, ?),
+		(2, 2, $1, $1, ?),
 		(2, 3, NULL, NULL, ?);`,
 		clk.Now().Add(-7*24*time.Hour), clk.Now().Add(3*24*time.Hour), clk.Now().Add(time.Hour),
 		clk.Now().Add(-6*24*time.Hour), clk.Now().Add(4*24*time.Hour), clk.Now().Add(-6*24*time.Hour),
@@ -3896,13 +3897,13 @@ func TestUpdateCRLShard(t *testing.T) {
 	// currently leased, three are available, and one of those failed to update.
 	_, err := sa.dbMap.ExecContext(ctx,
 		`INSERT INTO crlShards (issuerID, idx, thisUpdate, nextUpdate, leasedUntil) VALUES
-		(1, 0, ?, ?, ?),
-		(1, 1, ?, ?, ?),
-		(1, 2, ?, ?, ?),
+		(1, 0, $1, $1, ?),
+		(1, 1, $1, $1, ?),
+		(1, 2, $1, $1, ?),
 		(1, 3, NULL, NULL, ?),
-		(2, 0, ?, ?, ?),
-		(2, 1, ?, ?, ?),
-		(2, 2, ?, ?, ?),
+		(2, 0, $1, $1, ?),
+		(2, 1, $1, $1, ?),
+		(2, 2, $1, $1, ?),
 		(2, 3, NULL, NULL, ?);`,
 		clk.Now().Add(-7*24*time.Hour), clk.Now().Add(3*24*time.Hour), clk.Now().Add(time.Hour),
 		clk.Now().Add(-6*24*time.Hour), clk.Now().Add(4*24*time.Hour), clk.Now().Add(-6*24*time.Hour),

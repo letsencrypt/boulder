@@ -2,6 +2,7 @@ package sa
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -36,12 +37,14 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(ctx context.Context, db d
 	baseDomainsMap := make(map[string]bool)
 	var qmarks []string
 	var values []interface{}
+	var starting int
 	for _, name := range names {
 		base := baseDomain(name)
 		if !baseDomainsMap[base] {
 			baseDomainsMap[base] = true
 			values = append(values, base, timeToTheHour, 1)
-			qmarks = append(qmarks, "(?, ?, ?)")
+			qmarks = append(qmarks, fmt.Sprintf("($%d, $%d, $%d)", starting+1, starting+2, starting+3))
+			starting += 3
 		}
 	}
 
@@ -104,7 +107,7 @@ func (ssa *SQLStorageAuthorityRO) countCertificates(ctx context.Context, dbMap d
 func addNewOrdersRateLimit(ctx context.Context, dbMap db.SelectExecer, regID int64, timeToTheMinute time.Time) error {
 	_, err := dbMap.ExecContext(ctx, `INSERT INTO newOrdersRL
 		(regID, time, count)
-		VALUES (?, ?, 1)
+		VALUES ($1, $2, 1)
 		ON DUPLICATE KEY UPDATE count=count+1;`,
 		regID,
 		timeToTheMinute,

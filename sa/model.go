@@ -572,10 +572,10 @@ func SelectAuthzsMatchingIssuance(
 ) ([]*corepb.Authorization, error) {
 	query := fmt.Sprintf(`SELECT %s FROM authz2 WHERE
 			registrationID = $1 AND
-			status IN (?, ?) AND
-			expires >= $2 AND
-			attemptedAt <= $3 AND
-			identifierType = $4 AND
+			status IN ($2, $3) AND
+			expires >= $4 AND
+			attemptedAt <= $5 AND
+			identifierType = $6 AND
 			identifierValue IN (%s)`,
 		authzFields,
 		db.QuestionMarks(4, len(dnsNames)))
@@ -921,7 +921,7 @@ func deleteOrderFQDNSet(
 
 	result, err := db.ExecContext(ctx, `
 	  DELETE FROM orderFqdnSets
-		WHERE orderID = ?`,
+		WHERE orderID = $1`,
 		orderID)
 	if err != nil {
 		return err
@@ -1143,7 +1143,7 @@ func authzForOrder(ctx context.Context, s db.Selector, orderID int64) ([]int64, 
 	_, err := s.Select(
 		ctx,
 		&v2IDs,
-		"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
+		"SELECT authzID FROM orderToAuthz2 WHERE orderID = $1",
 		orderID,
 	)
 	return v2IDs, err
@@ -1158,7 +1158,7 @@ func namesForOrder(ctx context.Context, s db.Selector, orderID int64) ([]string,
 		&reversedNames,
 		`SELECT reversedName
 	   FROM requestedNames
-	   WHERE orderID = ?`,
+	   WHERE orderID = $1`,
 		orderID)
 	if err != nil {
 		return nil, err
@@ -1218,7 +1218,7 @@ func addReplacementOrder(ctx context.Context, db db.SelectExecer, serial string,
 	_, err := db.Select(ctx, &existingID, `
 		SELECT id
 		FROM replacementOrders
-		WHERE serial = ?
+		WHERE serial = $1
 		LIMIT 1`,
 		serial,
 	)
@@ -1230,8 +1230,8 @@ func addReplacementOrder(ctx context.Context, db db.SelectExecer, serial string,
 		// Update existing replacementOrder row.
 		_, err = db.ExecContext(ctx, `
 			UPDATE replacementOrders
-			SET orderID = ?, orderExpires = ?
-			WHERE id = ?`,
+			SET orderID = $1, orderExpires = $2
+			WHERE id = $3`,
 			orderID, orderExpires,
 			existingID[0],
 		)
@@ -1242,7 +1242,7 @@ func addReplacementOrder(ctx context.Context, db db.SelectExecer, serial string,
 		// Insert new replacementOrder row.
 		_, err = db.ExecContext(ctx, `
 			INSERT INTO replacementOrders (serial, orderID, orderExpires)
-			VALUES (?, ?, ?)`,
+			VALUES ($1, $2, $3)`,
 			serial, orderID, orderExpires,
 		)
 		if err != nil {
@@ -1260,7 +1260,7 @@ func setReplacementOrderFinalized(ctx context.Context, db db.Execer, orderID int
 	_, err := db.ExecContext(ctx, `
 		UPDATE replacementOrders
 		SET replaced = true
-		WHERE orderID = ?
+		WHERE orderID = $1
 		LIMIT 1`,
 		orderID,
 	)
