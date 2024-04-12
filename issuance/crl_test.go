@@ -162,11 +162,12 @@ func TestIssueCRL(t *testing.T) {
 	req = defaultRequest
 	req.Entries = []x509.RevocationListEntry{}
 	res, err = issuer.IssueCRL(&defaultProfile, &req)
-	test.AssertNotError(t, err, "parsing crl with no entries")
+	test.AssertNotError(t, err, "issuing crl with no entries")
 	parsedRes, err = x509.ParseRevocationList(res)
 	test.AssertNotError(t, err, "parsing test crl")
 	test.AssertEquals(t, parsedRes.Issuer.CommonName, issuer.Cert.Subject.CommonName)
 	test.AssertDeepEquals(t, parsedRes.Number, big.NewInt(123))
+	test.AssertEquals(t, len(parsedRes.RevokedCertificateEntries), 0)
 	found, err = revokedCertificatesFieldExists(res)
 	test.AssertNotError(t, err, "Should have been able to parse CRL")
 	test.Assert(t, !found, "Violation of RFC 5280 Section 5.1.2.6")
