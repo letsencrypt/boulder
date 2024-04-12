@@ -92,6 +92,7 @@
 					"useForECDSALeaves": false,
 					"issuerURL": "http://127.0.0.1:4502/int rsa b",
 					"ocspURL": "http://127.0.0.1:4002/",
+					"crlURLBase": "http://127.0.0.1:4501/rsa-b/",
 					"location": {
 						"configFile": "/hierarchy/int-rsa-b.pkcs11.json",
 						"certFile": "/hierarchy/int-rsa-b.cert.pem",
@@ -110,7 +111,6 @@
 		"serialPrefix": 127,
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
-		"crldpBase": "http://c.boulder.test",
 		"goodkey": {
 			"weakKeyFile": "test/example-weak-keys.json",
 			"blockedKeyFile": "test/example-blocked-keys.yaml",
