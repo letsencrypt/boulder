@@ -30,6 +30,24 @@ GRANT SELECT,INSERT,UPDATE ON newOrdersRL TO sa;
 GRANT SELECT ON incidents TO sa;
 GRANT SELECT,INSERT,UPDATE ON crlShards TO sa;
 
+GRANT USAGE, SELECT ON SEQUENCE authz2_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE blockedKeys_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE certificateStatus_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE certificates_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE certificatesPerName_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE crlShards_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE fqdnSets_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE incidents_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE issuedNames_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE keyHashToSerial_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE newOrdersRL_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE orderFqdnSets_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE orders_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE precertificates_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE registrations_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE requestedNames_id_seq TO sa;
+GRANT USAGE, SELECT ON SEQUENCE serials_id_seq TO sa;
+
 GRANT SELECT ON certificates TO sa_ro;
 GRANT SELECT ON certificateStatus TO sa_ro;
 GRANT SELECT ON issuedNames TO sa_ro;
