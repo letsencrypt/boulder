@@ -917,14 +917,13 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 
 	query := fmt.Sprintf(
 		`SELECT %s FROM authz2
-			USE INDEX (regID_identifier_status_expires_idx)
 			WHERE registrationID = $1 AND
-			status IN ($1,$2) AND
-			expires > $2 AND
-			identifierType = $3 AND
+			status IN ($2,$3) AND
+			expires > $4 AND
+			identifierType = $5 AND
 			identifierValue IN (%s)`,
 		authzFields,
-		db.QuestionMarks(3, len(req.Domains)),
+		db.QuestionMarks(5, len(req.Domains)),
 	)
 
 	_, err := ssa.dbReadOnlyMap.Select(

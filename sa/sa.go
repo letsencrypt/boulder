@@ -461,7 +461,9 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// First, insert all of the new authorizations and record their IDs.
 		newAuthzIDs := make([]int64, 0)
 		if len(req.NewAuthzs) != 0 {
-			inserter, err := db.NewMultiInserter("authz2", strings.Split(authzFields, ", "), "id")
+			authzFieldsSlice := strings.Split(authzFields, ", ")
+			authzFieldsSlice = authzFieldsSlice[1:] // Skip the "id" field for insertions
+			inserter, err := db.NewMultiInserter("authz2", authzFieldsSlice, "id")
 			if err != nil {
 				return nil, err
 			}
@@ -474,7 +476,6 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 					return nil, err
 				}
 				err = inserter.Add([]interface{}{
-					am.ID,
 					am.IdentifierType,
 					am.IdentifierValue,
 					am.RegistrationID,

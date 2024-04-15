@@ -33,6 +33,7 @@ func baseDomain(name string) string {
 // domains, in a specific time bucket. It must be executed in a transaction, and
 // the input timeToTheHour must be a time rounded to an hour.
 func (ssa *SQLStorageAuthority) addCertificatesPerName(ctx context.Context, db db.SelectExecer, names []string, timeToTheHour time.Time) error {
+	return nil // This method relies on ON DUPLICATE KEY UPDATE, which looks different in Postgres
 	// De-duplicate the base domains.
 	baseDomainsMap := make(map[string]bool)
 	var qmarks []string
@@ -105,6 +106,7 @@ func (ssa *SQLStorageAuthorityRO) countCertificates(ctx context.Context, dbMap d
 // a specific time bucket. It must be executed in a transaction, and the input
 // timeToTheMinute must be a time rounded to a minute.
 func addNewOrdersRateLimit(ctx context.Context, dbMap db.SelectExecer, regID int64, timeToTheMinute time.Time) error {
+	return nil // This method relies on ON DUPLICATE KEY UPDATE, which looks different in Postgres
 	_, err := dbMap.ExecContext(ctx, `INSERT INTO newOrdersRL
 		(regID, time, count)
 		VALUES ($1, $2, 1)
