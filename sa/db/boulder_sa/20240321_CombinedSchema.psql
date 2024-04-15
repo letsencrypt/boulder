@@ -53,7 +53,7 @@ CREATE INDEX extantCertificatesChecked_idx ON blockedKeys (extantCertificatesChe
 CREATE TABLE certificateStatus (
     id BIGSERIAL PRIMARY KEY,
     serial VARCHAR(255) NOT NULL,
-    subscriberApproved SMALLINT DEFAULT 0,
+    subscriberApproved BOOLEAN DEFAULT FALSE,
     status VARCHAR(255) NOT NULL,
     ocspLastUpdated TIMESTAMP NOT NULL,
     revokedDate TIMESTAMP NOT NULL,
@@ -62,10 +62,8 @@ CREATE TABLE certificateStatus (
     LockCol BIGINT DEFAULT 0,
     ocspResponse BYTEA NULL,
     notAfter TIMESTAMP NULL,
-    isExpired SMALLINT DEFAULT 0,
-    issuerID BIGINT NULL,
-    CHECK (subscriberApproved IN (0, 1)),
-    CHECK (isExpired IN (0, 1))
+    isExpired BOOLEAN DEFAULT FALSE,
+    issuerID BIGINT NULL
 );
 
 CREATE INDEX serial ON certificateStatus (serial);
@@ -125,8 +123,7 @@ CREATE TABLE incidents (
     serialTable VARCHAR(128) NOT NULL,
     url VARCHAR(1024) NOT NULL,
     renewBy TIMESTAMP NOT NULL,
-    enabled SMALLINT DEFAULT 0,
-    CHECK (enabled IN (0, 1))
+    enabled BOOLEAN DEFAULT FALSE
 );
 
 CREATE TABLE issuedNames (
@@ -134,8 +131,7 @@ CREATE TABLE issuedNames (
     reversedName VARCHAR(640) NOT NULL,
     notBefore TIMESTAMP NOT NULL,
     serial VARCHAR(255) NOT NULL,
-    renewal SMALLINT NOT NULL DEFAULT 0,
-    CHECK (renewal IN (0, 1))
+    renewal BOOLEAN DEFAULT FALSE
 );
 
 CREATE INDEX reversedName_notBefore_Idx ON issuedNames (reversedName, notBefore);
@@ -184,9 +180,8 @@ CREATE TABLE orders (
     expires TIMESTAMP NOT NULL,
     error TEXT NULL,
     certificateSerial VARCHAR(255) NULL,
-    beganProcessing SMALLINT NOT NULL DEFAULT 0,
-    created TIMESTAMP NOT NULL,
-    CHECK (beganProcessing IN (0, 1))
+    beganProcessing BOOLEAN DEFAULT FALSE,
+    created TIMESTAMP NOT NULL
 );
 
 CREATE INDEX reg_status_expires ON orders (registrationID, expires);
