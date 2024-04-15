@@ -90,7 +90,7 @@ func (bkr *badKeyRevoker) countUncheckedKeys(ctx context.Context) (int, error) {
 		`SELECT COUNT(*)
 		FROM (SELECT 1 FROM blockedKeys
 		WHERE extantCertificatesChecked = false
-		LIMIT ?) AS a`,
+		LIMIT $1) AS a`,
 		blockedKeysGaugeLimit,
 	)
 	return count, err
@@ -138,7 +138,7 @@ func (bkr *badKeyRevoker) findUnrevoked(ctx context.Context, unchecked unchecked
 		_, err := bkr.dbMap.Select(
 			ctx,
 			&batch,
-			"SELECT id, certSerial FROM keyHashToSerial WHERE keyHash = ? AND id > ? AND certNotAfter > ? ORDER BY id LIMIT ?",
+			"SELECT id, certSerial FROM keyHashToSerial WHERE keyHash = $1 AND id > $2 AND certNotAfter > $3 ORDER BY id LIMIT $4",
 			unchecked.KeyHash,
 			initialID,
 			bkr.clk.Now(),
@@ -164,7 +164,7 @@ func (bkr *badKeyRevoker) findUnrevoked(ctx context.Context, unchecked unchecked
 				FROM certificateStatus AS cs
 				JOIN precertificates AS c
 				ON cs.serial = c.serial
-				WHERE cs.serial = ?
+				WHERE cs.serial = $1
 				LIMIT 1`,
 				serial.CertSerial,
 			)
@@ -186,7 +186,7 @@ func (bkr *badKeyRevoker) findUnrevoked(ctx context.Context, unchecked unchecked
 // markRowChecked updates a row in the blockedKeys table to mark a keyHash
 // as having been checked for extant unrevoked certificates.
 func (bkr *badKeyRevoker) markRowChecked(ctx context.Context, unchecked uncheckedBlockedKey) error {
-	_, err := bkr.dbMap.ExecContext(ctx, "UPDATE blockedKeys SET extantCertificatesChecked = true WHERE keyHash = ?", unchecked.KeyHash)
+	_, err := bkr.dbMap.ExecContext(ctx, "UPDATE blockedKeys SET extantCertificatesChecked = true WHERE keyHash = $1", unchecked.KeyHash)
 	return err
 }
 
@@ -197,7 +197,7 @@ func (bkr *badKeyRevoker) resolveContacts(ctx context.Context, ids []int64) (map
 		var emails struct {
 			Contact []string
 		}
-		err := bkr.dbMap.SelectOne(ctx, &emails, "SELECT contact FROM registrations WHERE id = ?", id)
+		err := bkr.dbMap.SelectOne(ctx, &emails, "SELECT contact FROM registrations WHERE id = $1", id)
 		if err != nil {
 			// ErrNoRows is not acceptable here since there should always be a
 			// row for the registration, even if there are no contacts

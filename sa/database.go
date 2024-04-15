@@ -66,7 +66,7 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 		if err = db.Ping(); err != nil {
 			return nil, err
 		}
-		dialect := borp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
+		dialect := borp.PostgresDialect{LowercaseFields: true}
 		dbmap := &borp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
 
 		if logger != nil {

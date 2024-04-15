@@ -44,9 +44,8 @@ CREATE TABLE blockedKeys (
     source SMALLINT NOT NULL,
     comment VARCHAR(255) NULL,
     revokedBy BIGINT DEFAULT 0,
-    extantCertificatesChecked SMALLINT DEFAULT 0,
-    UNIQUE (keyHash),
-    CHECK (extantCertificatesChecked IN (0, 1))
+    extantCertificatesChecked BOOLEAN DEFAULT FALSE,
+    UNIQUE (keyHash)
 );
 
 CREATE INDEX extantCertificatesChecked_idx ON blockedKeys (extantCertificatesChecked);
@@ -213,7 +212,7 @@ CREATE TABLE registrations (
     contact VARCHAR(191) NOT NULL,
     agreement VARCHAR(255) NOT NULL,
     LockCol BIGINT NOT NULL,
-    initialIP INET NOT NULL DEFAULT '0.0.0.0',
+    initialIP BYTEA NOT NULL,
     createdAt TIMESTAMP NOT NULL,
     status VARCHAR(255) NOT NULL DEFAULT 'valid'
 );
