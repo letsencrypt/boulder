@@ -249,7 +249,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		cs := &core.CertificateStatus{
 			Serial:                serialHex,
 			Status:                status,
-			OCSPLastUpdated:       ssa.clk.Now(),
+			OCSPLastUpdated:       ssa.clk.Now().Truncate(time.Second),
 			RevokedDate:           time.Time{},
 			RevokedReason:         0,
 			LastExpirationNagSent: time.Time{},
@@ -833,7 +833,7 @@ func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.Revoke
 		IssuerID:      req.IssuerID,
 		Serial:        req.Serial,
 		ShardIdx:      req.ShardIdx,
-		RevokedDate:   revokedDate,
+		RevokedDate:   revokedDate.Truncate(time.Second),
 		RevokedReason: revocation.Reason(req.Reason),
 		// Round the notAfter up to the next hour, to reduce index size while still
 		// ensuring we correctly serve revocation info past the actual expiration.
@@ -855,7 +855,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 	}
 
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		revokedDate := req.Date.AsTime()
+		revokedDate := req.Date.AsTime().Truncate(time.Second)
 
 		res, err := tx.ExecContext(ctx,
 			`UPDATE certificateStatus SET
@@ -921,7 +921,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 					ocspLastUpdated = $2
 				WHERE serial = $3 AND status = $4 AND revokedReason != $5 AND revokedDate = $6`,
 			revocation.Reason(ocsp.KeyCompromise),
-			thisUpdate,
+			thisUpdate.Truncate(time.Second),
 			req.Serial,
 			string(core.OCSPStatusRevoked),
 			revocation.Reason(ocsp.KeyCompromise),
