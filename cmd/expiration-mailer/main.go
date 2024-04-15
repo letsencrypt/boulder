@@ -551,7 +551,7 @@ func (m *mailer) getCertsWithJoin(ctx context.Context, left, right time.Time, ex
 				ON cs.serial = cert.serial
 				AND cs.notAfter > :cutoffA
 				AND cs.notAfter <= :cutoffB
-				AND cs.status != "revoked"
+				AND cs.status != 'revoked'
 				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cs.notAfter) > :nagCutoff, 1)
 				ORDER BY cs.notAfter ASC
 				LIMIT :certificatesPerTick`,
@@ -584,7 +584,7 @@ func (m *mailer) getCerts(ctx context.Context, left, right time.Time, expiresIn 
 				FROM certificateStatus AS cs
 				WHERE cs.notAfter > :cutoffA
 				AND cs.notAfter <= :cutoffB
-				AND cs.status != "revoked"
+				AND cs.status != 'revoked'
 				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cs.notAfter) > :nagCutoff, 1)
 				ORDER BY cs.notAfter ASC
 				LIMIT :certificatesPerTick`,
