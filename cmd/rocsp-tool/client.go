@@ -92,7 +92,7 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed, startFr
 
 	results := make(chan processResult, speed.ParallelSigns)
 	var runningSigners int32
-	for i := 0; i < speed.ParallelSigns; i++ {
+	for range speed.ParallelSigns {
 		atomic.AddInt32(&runningSigners, 1)
 		go cl.signAndStoreResponses(ctx, statusesToSign, results, &runningSigners)
 	}

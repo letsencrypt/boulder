@@ -276,7 +276,7 @@ func AssertImplementsGRPCServer(t *testing.T, impl any, unimpl any) {
 	// methods which "fall through" to the embedded "unimplemented" type. Ideally,
 	// this loop executes zero times. If there are any methods at all on the
 	// non-pointer receiver, something has gone wrong.
-	for i := 0; i < implType.NumMethod(); i++ {
+	for i := range implType.NumMethod() {
 		method := implType.Method(i)
 		_, ok := unimplType.MethodByName(method.Name)
 		if ok {

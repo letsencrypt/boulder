@@ -1153,7 +1153,7 @@ func TestAddIssuedNames(t *testing.T) {
 				tc.Renewal)
 			test.AssertNotError(t, err, "addIssuedNames failed")
 			expectedPlaceholders := placeholdersPerName
-			for i := 0; i < len(tc.IssuedNames)-1; i++ {
+			for range len(tc.IssuedNames) - 1 {
 				expectedPlaceholders = fmt.Sprintf("%s,%s", expectedPlaceholders, placeholdersPerName)
 			}
 			expectedQuery := fmt.Sprintf("%s %s", baseQuery, expectedPlaceholders)

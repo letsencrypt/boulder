@@ -117,7 +117,7 @@ func LoadChain(certFiles []string) ([]*Certificate, error) {
 	// Pre-load all the certificates to make validation easier.
 	certs := make([]*Certificate, len(certFiles))
 	var err error
-	for i := 0; i < len(certFiles); i++ {
+	for i := range len(certFiles) {
 		certs[i], err = LoadCertificate(certFiles[i])
 		if err != nil {
 			return nil, fmt.Errorf("failed to load certificate %q: %w", certFiles[i], err)
@@ -127,7 +127,7 @@ func LoadChain(certFiles []string) ([]*Certificate, error) {
 	// Iterate over all certs except for the last, checking that their signature
 	// comes from the next cert in the list.
 	chain := make([]*Certificate, len(certFiles)-1)
-	for i := 0; i < len(certs)-1; i++ {
+	for i := range len(certs) - 1 {
 		err = certs[i].CheckSignatureFrom(certs[i+1].Certificate)
 		if err != nil {
 			return nil, fmt.Errorf("failed to verify signature from %q to %q (%q to %q): %w",

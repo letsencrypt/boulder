@@ -482,7 +482,7 @@ func TestValidateContacts(t *testing.T) {
 	// encoded JSON. The correct size to hit our maximum DB field length.
 	var longStringBuf strings.Builder
 	longStringBuf.WriteString("mailto:")
-	for i := 0; i < 175; i++ {
+	for range 175 {
 		longStringBuf.WriteRune('a')
 	}
 	longStringBuf.WriteString("@a.com")

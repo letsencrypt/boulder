@@ -31,7 +31,7 @@ func TestNewToken(t *testing.T) {
 	// Test for very blatant RNG failures:
 	// Try 2^20 birthdays in a 2^72 search space...
 	// our naive collision probability here is  2^-32...
-	for i := 0; i < 1000000; i++ {
+	for range 1000000 {
 		token = NewToken()[:12] // just sample a portion
 		test.Assert(t, !collider[token], "Token collision!")
 		collider[token] = true
@@ -237,7 +237,7 @@ func BenchmarkIsAnyNilOrZero(b *testing.B) {
 
 	for _, v := range table {
 		b.Run(fmt.Sprintf("input_%T_%v", v.input, v.input), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				_ = IsAnyNilOrZero(v.input)
 			}
 		})

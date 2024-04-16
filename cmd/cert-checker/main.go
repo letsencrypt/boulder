@@ -617,7 +617,7 @@ func main() {
 
 	fmt.Fprintf(os.Stderr, "# Processing certificates using %d workers\n", config.CertChecker.Workers)
 	wg := new(sync.WaitGroup)
-	for i := 0; i < config.CertChecker.Workers; i++ {
+	for range config.CertChecker.Workers {
 		wg.Add(1)
 		go func() {
 			s := checker.clock.Now()

@@ -77,7 +77,7 @@ func TestPreresolvedDialerTimeout(t *testing.T) {
 	// If we get that, just retry until we get something other than "Network unreachable".
 	var err error
 	var took time.Duration
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		started := time.Now()
 		_, _, err = va.fetchHTTP(ctx, "unroutable.invalid", "/.well-known/acme-challenge/whatever")
 		took = time.Since(started)
@@ -518,9 +518,7 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 	// A path that sequentially redirects, creating an incrementing redirect
 	// that will terminate when the redirect limit is reached and ensures each
 	// URL is different than the last.
-	for i := 0; i <= maxRedirect+1; i++ {
-		// Need to re-scope i so it iterates properly in the function
-		i := i
+	for i := range maxRedirect + 2 {
 		mux.HandleFunc(fmt.Sprintf("/max-redirect/%d", i),
 			func(resp http.ResponseWriter, req *http.Request) {
 				http.Redirect(
@@ -579,7 +577,7 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 	})
 
 	tooLargeBuf := bytes.NewBuffer([]byte{})
-	for i := 0; i < maxResponseSize+10; i++ {
+	for range maxResponseSize + 10 {
 		tooLargeBuf.WriteByte(byte(97))
 	}
 	mux.HandleFunc("/resp-too-big", func(resp http.ResponseWriter, req *http.Request) {
@@ -756,7 +754,7 @@ func TestFetchHTTP(t *testing.T) {
 	// redirect to the url with a port definition and on i=1 it will encounter
 	// the second redirect to the url with the port and get an expected error.
 	expectedLoopRecords := []core.ValidationRecord{}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		// The first request will not have a port # in the URL.
 		url := "http://example.com/loop"
 		if i != 0 {
@@ -777,7 +775,7 @@ func TestFetchHTTP(t *testing.T) {
 	// redirect up to maxRedirect (inclusive). There is also +1 record for the
 	// base lookup, giving a termination criteria of > maxRedirect+1
 	expectedTooManyRedirRecords := []core.ValidationRecord{}
-	for i := 0; i <= maxRedirect+1; i++ {
+	for i := range maxRedirect + 2 {
 		// The first request will not have a port # in the URL.
 		url := "http://example.com/max-redirect/0"
 		if i != 0 {
@@ -795,7 +793,7 @@ func TestFetchHTTP(t *testing.T) {
 	}
 
 	expectedTruncatedResp := bytes.NewBuffer([]byte{})
-	for i := 0; i < maxResponseSize; i++ {
+	for range maxResponseSize {
 		expectedTruncatedResp.WriteByte(byte(97))
 	}
 
@@ -1391,7 +1389,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 	// timeout, but will rarely return "Network unreachable" instead. If we get
 	// that, just retry until we get something other than "Network unreachable".
 	var err error
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		_, err = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), httpChallenge())
 		if err != nil && strings.Contains(err.Error(), "Network unreachable") {
 			continue

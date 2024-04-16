@@ -621,7 +621,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimits(ctx context
 	// We don't have to wait for all of the goroutines to finish because there's
 	// enough capacity in the chan for them all to write their result even if
 	// nothing is reading off the chan anymore.
-	for i := 0; i < len(hostnames); i++ {
+	for range len(hostnames) {
 		err := <-results
 		if err != nil {
 			return err
@@ -952,7 +952,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 	}
 	var subErrors []berrors.SubBoulderError
 	// Read a recheckResult for each authz from the results channel
-	for i := 0; i < len(authzs); i++ {
+	for range len(authzs) {
 		recheckResult := <-ch
 		// If the result had a CAA boulder error, construct a suberror with the
 		// identifier from the authorization that was checked.
@@ -1667,7 +1667,7 @@ func contactsEqual(a []string, b []string) bool {
 	// comparison
 	sort.Strings(a)
 	sort.Strings(b)
-	for i := 0; i < len(b); i++ {
+	for i := range len(b) {
 		// If the contact's string representation differs at any index they aren't
 		// equal
 		if a[i] != b[i] {
@@ -1719,7 +1719,7 @@ func mergeUpdate(base *corepb.Registration, update *corepb.Registration) (*corep
 			res.Key = update.Key
 			changed = true
 		} else {
-			for i := 0; i < len(base.Key); i++ {
+			for i := range len(base.Key) {
 				if update.Key[i] != base.Key[i] {
 					res.Key = update.Key
 					changed = true

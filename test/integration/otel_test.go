@@ -251,7 +251,7 @@ func TestTraces(t *testing.T) {
 	var trace Trace
 	found := false
 	const retries = 10
-	for try := 0; try < retries; try++ {
+	for range retries {
 		trace := getTraceFromJaeger(t, traceID)
 		if findSpans(trace, "", expectedSpans) {
 			found = true

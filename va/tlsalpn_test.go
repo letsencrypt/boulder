@@ -20,12 +20,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 func tlsalpnChallenge() core.Challenge {
@@ -221,7 +222,7 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 	// timeout, but will rarely return "Network unreachable" instead. If we get
 	// that, just retry until we get something other than "Network unreachable".
 	var err error
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		_, err = va.validateTLSALPN01(ctx, dnsi("unroutable.invalid"), chall)
 		if err != nil && strings.Contains(err.Error(), "Network unreachable") {
 			continue

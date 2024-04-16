@@ -8,6 +8,10 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -17,9 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"github.com/redis/go-redis/v9"
-	"golang.org/x/crypto/ocsp"
-	"google.golang.org/grpc"
 )
 
 func makeClient() (*rocsp.RWClient, clock.Clock) {
@@ -129,7 +130,7 @@ func TestLoadFromDB(t *testing.T) {
 
 	defer test.ResetBoulderTestDatabase(t)
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		err = dbMap.Insert(context.Background(), &core.CertificateStatus{
 			Serial:          fmt.Sprintf("%036x", i),
 			NotAfter:        clk.Now().Add(200 * time.Hour),

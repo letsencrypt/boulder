@@ -316,7 +316,7 @@ func (ssa *SQLStorageAuthorityRO) CountCertificatesByNames(ctx context.Context, 
 	// We may perform up to 100 queries, depending on what's in the certificate
 	// request. Parallelize them so we don't hit our timeout, but limit the
 	// parallelism so we don't consume too many threads on the database.
-	for i := 0; i < ssa.parallelismPerRPC; i++ {
+	for range ssa.parallelismPerRPC {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

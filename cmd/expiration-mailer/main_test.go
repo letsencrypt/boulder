@@ -16,6 +16,10 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	io_prometheus_client "github.com/prometheus/client_model/go"
+	"google.golang.org/grpc"
+
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
@@ -30,9 +34,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	isa "github.com/letsencrypt/boulder/test/inmem/sa"
 	"github.com/letsencrypt/boulder/test/vars"
-	"github.com/prometheus/client_golang/prometheus"
-	io_prometheus_client "github.com/prometheus/client_model/go"
-	"google.golang.org/grpc"
 )
 
 type fakeRegStore struct {
@@ -100,7 +101,7 @@ func TestSendNagsManyCerts(t *testing.T) {
 	}
 
 	var certs []*x509.Certificate
-	for i := 0; i < 101; i++ {
+	for i := range 101 {
 		certs = append(certs, &x509.Certificate{
 			SerialNumber: big.NewInt(0x0304),
 			NotAfter:     fc.Now().AddDate(0, 0, 2),
