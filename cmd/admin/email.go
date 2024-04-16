@@ -41,7 +41,8 @@ func (a *admin) clearEmail(ctx context.Context, address string) error {
 	// to subsequently parse the JSON list of addresses and look for exact matches.
 	// Because this does not use an index, it is very slow.
 	var regIDs []int64
-	_, err := a.dbMap.Select(ctx, &regIDs, "SELECT id FROM registrations WHERE contact LIKE CONCAT('%\"mailto:', ?, '\"%')", address)
+	// XXX: This is Postgres syntax
+	_, err := a.dbMap.Select(ctx, &regIDs, "SELECT id FROM registrations WHERE contact LIKE '%' || $1 || '%'", address)
 	if err != nil {
 		return fmt.Errorf("identifying matching accounts: %w", err)
 	}
