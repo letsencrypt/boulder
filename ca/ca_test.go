@@ -568,7 +568,7 @@ func TestUnpredictableIssuance(t *testing.T) {
 	req := &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID}
 	seenE2 := false
 	seenR3 := false
-	for range 20 {
+	for i := 0; i < 20; i++ {
 		result, err := ca.IssuePrecertificate(ctx, req)
 		test.AssertNotError(t, err, "Failed to issue test certificate")
 		cert, err := x509.ParseCertificate(result.DER)
