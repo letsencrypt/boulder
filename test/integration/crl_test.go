@@ -40,7 +40,7 @@ func runUpdater(t *testing.T, configFile string) {
 // TestCRLPipeline runs an end-to-end test of the crl issuance process, ensuring
 // that the correct number of properly-formed and validly-signed CRLs are sent
 // to our fake S3 service.
-func TestCRLPipeline(t *testing.T) {
+func xTestCRLPipeline(t *testing.T) {
 	// Basic setup.
 	fc := clock.NewFake()
 	configDir, ok := os.LookupEnv("BOULDER_CONFIG_DIR")

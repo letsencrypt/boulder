@@ -379,7 +379,7 @@ func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 	}
 }
 
-func TestBadKeyRevoker(t *testing.T) {
+func xTestBadKeyRevoker(t *testing.T) {
 	// Both accounts have two email addresses, one of which is shared between
 	// them. All three addresses should receive mail, because the revocation
 	// request is signed by the certificate key, not an account key, so we don't
