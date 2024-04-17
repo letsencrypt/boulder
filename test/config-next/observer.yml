@@ -2,7 +2,7 @@
 buckets: [.001, .002, .005, .01, .02, .05, .1, .2, .5, 1, 2, 5, 10]
 syslog:
   stdoutlevel: 6
-  sysloglevel: 6
+  sysloglevel: -1
 monitors:
   -
     period: 5s

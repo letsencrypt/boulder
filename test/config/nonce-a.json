@@ -6,8 +6,8 @@
 			"passwordFile": "test/secrets/nonce_prefix_key"
 		},
 		"syslog": {
-			"stdoutLevel": 6,
-			"syslogLevel": 6
+			"stdoutlevel": 6,
+			"sysloglevel": -1
 		},
 		"debugAddr": ":8111",
 		"grpc": {
