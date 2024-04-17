@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/metrics"
@@ -52,48 +50,100 @@ func TestPasswordConfig(t *testing.T) {
 func TestTLSConfigLoad(t *testing.T) {
 	null := "/dev/null"
 	nonExistent := "[nonexistent]"
-	cert := "testdata/cert.pem"
-	key := "testdata/key.pem"
-	caCert := "testdata/minica.pem"
+	cert := "../test/hierarchy/int-e2.cert.pem"
+	key := "../test/hierarchy/int-e2.key.pem"
+	caCertA := "../test/hierarchy/root-x1.cert.pem"
+	caCertB := "../test/hierarchy/root-x2.cert.pem"
+
+	/*
+		TLSConfig{cert, key, null, nil}, "parsing CA certs"
+		TLSConfig{cert, key, "", []string{caCertA}}, "parsing single CACertFiles"
+		TLSConfig{cert, key, "", []string{caCertA, caCertB}}, "parsing multiple CACertFiles"
+	*/
 
 	testCases := []struct {
-		TLSConfig
-		want string
+		name                string
+		expectedErrSubstr   string
+		expectedCACertFiles int
+		testConf            TLSConfig
 	}{
-		{TLSConfig{"", null, null}, "nil CertFile in TLSConfig"},
-		{TLSConfig{null, "", null}, "nil KeyFile in TLSConfig"},
-		{TLSConfig{null, null, ""}, "nil CACertFile in TLSConfig"},
-		{TLSConfig{nonExistent, key, caCert}, "loading key pair.*no such file or directory"},
-		{TLSConfig{cert, nonExistent, caCert}, "loading key pair.*no such file or directory"},
-		{TLSConfig{cert, key, nonExistent}, "reading CA cert from.*no such file or directory"},
-		{TLSConfig{null, key, caCert}, "loading key pair.*failed to find any PEM data"},
-		{TLSConfig{cert, null, caCert}, "loading key pair.*failed to find any PEM data"},
-		{TLSConfig{cert, key, null}, "parsing CA certs"},
+		{
+			name:              "Empty cert",
+			expectedErrSubstr: "nil CertFile in TLSConfig",
+			testConf:          TLSConfig{"", null, null, nil},
+		},
+		{
+			name:              "Empty key",
+			expectedErrSubstr: "nil KeyFile in TLSConfig",
+			testConf:          TLSConfig{null, "", null, nil},
+		},
+		{
+			name:              "Could not parse cert",
+			expectedErrSubstr: "failed to find any PEM data",
+			testConf:          TLSConfig{null, key, caCertA, nil},
+		},
+		{
+			name:              "Could not parse key",
+			expectedErrSubstr: "failed to find any PEM data",
+			testConf:          TLSConfig{cert, null, caCertA, nil},
+		},
+		{
+			name:              "Invalid cert location",
+			expectedErrSubstr: "no such file or directory",
+			testConf:          TLSConfig{nonExistent, key, caCertA, nil},
+		},
+		{
+			name:              "Invalid key location",
+			expectedErrSubstr: "no such file or directory",
+			testConf:          TLSConfig{cert, nonExistent, caCertA, nil},
+		},
+		{
+			name:              "CACertFile exists, but nil CACertFiles",
+			expectedErrSubstr: "parsing CA certs",
+			testConf:          TLSConfig{cert, key, null, nil},
+		},
+		{
+			name:              "CACertFile exists, but empty CACertFiles",
+			expectedErrSubstr: "only one of CACertFile or CACertFiles allowed",
+			testConf:          TLSConfig{cert, key, null, []string{}},
+		},
+		{
+			name:              "No CACertFile and nil CACertFiles",
+			expectedErrSubstr: "need at least one of CACertFile or CACertFiles",
+			testConf:          TLSConfig{null, null, "", nil},
+		},
+		{
+			name:                "Deprecated CACertFile entry, no CACertFiles",
+			testConf:            TLSConfig{cert, key, caCertA, nil},
+			expectedCACertFiles: 1,
+		},
+		{
+			name:              "Deprecated CACertFile entry with CACertFiles",
+			testConf:          TLSConfig{cert, key, caCertA, []string{caCertB}},
+			expectedErrSubstr: "only one of CACertFile or CACertFiles allowed",
+		},
+		{
+			name:                "Single CACertFiles entry",
+			testConf:            TLSConfig{cert, key, "", []string{caCertA}},
+			expectedCACertFiles: 1,
+		},
+		{
+			name:                "Multiple CACertFiles entries",
+			testConf:            TLSConfig{cert, key, "", []string{caCertA, caCertB}},
+			expectedCACertFiles: 2,
+		},
 	}
 	for _, tc := range testCases {
-		var title [3]string
-		if tc.CertFile == "" {
-			title[0] = "nil"
-		} else {
-			title[0] = tc.CertFile
-		}
-		if tc.KeyFile == "" {
-			title[1] = "nil"
-		} else {
-			title[1] = tc.KeyFile
-		}
-		if tc.CACertFile == "" {
-			title[2] = "nil"
-		} else {
-			title[2] = tc.CACertFile
-		}
-		t.Run(strings.Join(title[:], "_"), func(t *testing.T) {
-			_, err := tc.TLSConfig.Load(metrics.NoopRegisterer)
-			if err == nil {
-				t.Errorf("got no error")
-			}
-			if matched, _ := regexp.MatchString(tc.want, err.Error()); !matched {
-				t.Errorf("got error %q, wanted %q", err, tc.want)
+		t.Run(tc.name, func(t *testing.T) {
+			conf, err := tc.testConf.Load(metrics.NoopRegisterer)
+			if tc.expectedErrSubstr == "" {
+				test.AssertNotError(t, err, "Should not have errored, but did")
+				// We are not using SystemCertPool, we are manually defining our
+				// own.
+				test.AssertEquals(t, len(conf.RootCAs.Subjects()), tc.expectedCACertFiles)
+			} else {
+				test.AssertError(t, err, "Expected an error but received none")
+				test.AssertContains(t, err.Error(), tc.expectedErrSubstr)
 			}
 		})
 	}

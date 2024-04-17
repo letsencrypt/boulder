@@ -132,8 +132,10 @@ type TLSConfig struct {
 }
 
 // Load reads and parses the certificates and key listed in the TLSConfig, and
-// returns a *tls.Config suitable for either client or server use. Prometheus
-// metrics for various certificate fields will be exported.
+// returns a *tls.Config suitable for either client or server use. All
+// configured CA certs will be deduplicated internally before being stored in
+// the root certificate pool. Prometheus metrics for various certificate fields
+// will be exported.
 func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	if t == nil {
 		return nil, fmt.Errorf("nil TLS section in config")
@@ -144,12 +146,19 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	if t.KeyFile == "" {
 		return nil, fmt.Errorf("nil KeyFile in TLSConfig")
 	}
-	if t.CACertFiles == nil {
+	if t.CACertFiles != nil && t.CACertFile != "" {
+		return nil, fmt.Errorf("only one of CACertFile or CACertFiles allowed")
+	}
+
+	// Store the deprecated CACertFile as a CACertFiles so we can just operate
+	// over a CACertFiles slice below.
+	if t.CACertFiles == nil && t.CACertFile != "" {
 		t.CACertFiles = append(t.CACertFiles, t.CACertFile)
 	}
 	if len(t.CACertFiles) <= 0 {
 		return nil, fmt.Errorf("need at least one of CACertFile or CACertFiles in TLSConfig")
 	}
+
 	rootCAs := x509.NewCertPool()
 	for _, caCert := range t.CACertFiles {
 		caCertBytes, err := os.ReadFile(caCert)
