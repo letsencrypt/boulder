@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1258,7 +1259,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		ra.newCertCounter.With(
 			prometheus.Labels{
 				"profileName": profileName,
-				"profileHash": fmt.Sprintf("%x", profileHash),
+				"profileHash": hex.EncodeToString(profileHash),
 			}).Inc()
 
 		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
@@ -1267,7 +1268,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		logEvent.NotBefore = cert.NotBefore
 		logEvent.NotAfter = cert.NotAfter
 		logEvent.CertProfileName = profileName
-		logEvent.CertProfileHash = fmt.Sprintf("%x", profileHash)
+		logEvent.CertProfileHash = hex.EncodeToString(profileHash)
 
 		result = "successful"
 	}
