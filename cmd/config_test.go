@@ -8,6 +8,7 @@ import (
 )
 
 func TestDBConfigURL(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		conf     DBConfig
 		expected string
@@ -32,6 +33,7 @@ func TestDBConfigURL(t *testing.T) {
 }
 
 func TestPasswordConfig(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		pc       PasswordConfig
 		expected string
@@ -48,6 +50,7 @@ func TestPasswordConfig(t *testing.T) {
 }
 
 func TestTLSConfigLoad(t *testing.T) {
+	t.Parallel()
 	null := "/dev/null"
 	nonExistent := "[nonexistent]"
 	cert := "../test/hierarchy/int-e2.cert.pem"
@@ -128,7 +131,9 @@ func TestTLSConfigLoad(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			conf, err := tc.testConf.Load(metrics.NoopRegisterer)
 			if tc.expectedErrSubstr == "" {
 				test.AssertNotError(t, err, "Should not have errored, but did")
