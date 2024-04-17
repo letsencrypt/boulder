@@ -17,6 +17,7 @@ import (
 )
 
 func TestImplementationOCSP(t *testing.T) {
+	t.Parallel()
 	test.AssertImplementsGRPCServer(t, &ocspImpl{}, capb.UnimplementedOCSPGeneratorServer{})
 }
 
@@ -30,6 +31,7 @@ func serial(t *testing.T) []byte {
 }
 
 func TestOCSP(t *testing.T) {
+	t.Parallel()
 	testCtx := setup(t)
 	ca, err := NewCertificateAuthorityImpl(
 		&mockSA{},
