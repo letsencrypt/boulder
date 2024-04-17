@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
@@ -254,7 +255,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
+	log := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7, SyslogLevel: -1})
 	log.Info(cmd.VersionString())
 
 	// Load configuration file.

@@ -158,7 +158,7 @@ func main() {
 	writeToFile := flag.Bool("to-file", false, "Write the audit results to a file.")
 	flag.Parse()
 
-	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
+	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7, SyslogLevel: -1})
 	logger.Info(cmd.VersionString())
 
 	if *configFile == "" {

@@ -92,45 +92,37 @@ func newStdoutWriter(level int) *stdoutWriter {
 	}
 }
 
-// initialize is used in unit tests and called by `Get` before the logger
-// is fully set up.
-func initialize() {
-	const defaultPriority = syslog.LOG_INFO | syslog.LOG_LOCAL0
-	syslogger, err := syslog.Dial("", "", defaultPriority, "test")
-	if err != nil {
-		panic(err)
-	}
-	logger, err := New(syslogger, int(syslog.LOG_DEBUG), int(syslog.LOG_DEBUG))
-	if err != nil {
-		panic(err)
-	}
-
-	_ = Set(logger)
-}
-
-// Set configures the singleton Logger. This method
-// must only be called once, and before calling Get the
-// first time.
-func Set(logger Logger) (err error) {
+// Set configures the singleton Logger. This method must only be called once,
+// and before calling Get the first time.
+func Set(logger Logger) error {
 	if _Singleton.log != nil {
-		err = errors.New("You may not call Set after it has already been implicitly or explicitly set")
+		// Even though the use of once.Do below prevents a later call from
+		// overriding an already-set logger, we still do this check so that we can
+		// return a useful error message.
+		err := errors.New("You may not call Set after it has already been implicitly or explicitly set")
 		_Singleton.log.Warning(err.Error())
-	} else {
-		_Singleton.log = logger
+		return err
 	}
-	return
+
+	_Singleton.once.Do(func() {
+		_Singleton.log = logger
+	})
+	return nil
 }
 
 // Get obtains the singleton Logger. If Set has not been called first, this
-// method initializes with basic defaults.  The basic defaults cannot error, and
-// subsequent access to an already-set Logger also cannot error, so this method is
-// error-safe.
+// method initializes with basic defaults, logging to stdout only. The call to
+// Set *should* never fail, so we panic instead of returning an error so that
+// calls to .Get() can be easily chained.
 func Get() Logger {
-	_Singleton.once.Do(func() {
-		if _Singleton.log == nil {
-			initialize()
+	if _Singleton.log == nil {
+		logger := StdoutLogger(int(syslog.LOG_DEBUG))
+
+		err := Set(logger)
+		if err != nil {
+			panic(err)
 		}
-	})
+	}
 
 	return _Singleton.log
 }
