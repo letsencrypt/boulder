@@ -59,7 +59,7 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 				close(inputs)
 				wg.Wait()
 				return ctx.Err()
-			case inputs <- workItem{issuerNameID: issuer.NameID(), shardIdx: i + i}:
+			case inputs <- workItem{issuerNameID: issuer.NameID(), shardIdx: i + 1}:
 			}
 		}
 	}
