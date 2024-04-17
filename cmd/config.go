@@ -124,9 +124,11 @@ type HostnamePolicyConfig struct {
 
 // TLSConfig represents certificates and a key for authenticated TLS.
 type TLSConfig struct {
-	CertFile   string `validate:"required"`
-	KeyFile    string `validate:"required"`
-	CACertFile string `validate:"required"`
+	CertFile string `validate:"required"`
+	KeyFile  string `validate:"required"`
+	// Deprecated: Use CACertFiles instead.
+	CACertFile  string   `validate:"required_without=CACertFiles"`
+	CACertFiles []string `validate:"required_without=CACertFile"`
 }
 
 // Load reads and parses the certificates and key listed in the TLSConfig, and
@@ -142,17 +144,23 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	if t.KeyFile == "" {
 		return nil, fmt.Errorf("nil KeyFile in TLSConfig")
 	}
-	if t.CACertFile == "" {
-		return nil, fmt.Errorf("nil CACertFile in TLSConfig")
+	if t.CACertFiles == nil {
+		t.CACertFiles = append(t.CACertFiles, t.CACertFile)
 	}
-	caCertBytes, err := os.ReadFile(t.CACertFile)
-	if err != nil {
-		return nil, fmt.Errorf("reading CA cert from %q: %s", t.CACertFile, err)
+	if len(t.CACertFiles) <= 0 {
+		return nil, fmt.Errorf("need at least one of CACertFile or CACertFiles in TLSConfig")
 	}
 	rootCAs := x509.NewCertPool()
-	if ok := rootCAs.AppendCertsFromPEM(caCertBytes); !ok {
-		return nil, fmt.Errorf("parsing CA certs from %s failed", t.CACertFile)
+	for _, caCert := range t.CACertFiles {
+		caCertBytes, err := os.ReadFile(caCert)
+		if err != nil {
+			return nil, fmt.Errorf("reading CA cert from %q: %s", caCert, err)
+		}
+		if ok := rootCAs.AppendCertsFromPEM(caCertBytes); !ok {
+			return nil, fmt.Errorf("parsing CA certs from %s failed", caCert)
+		}
 	}
+
 	cert, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
 	if err != nil {
 		return nil, fmt.Errorf("loading key pair from %q and %q: %s",

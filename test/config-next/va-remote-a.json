@@ -1,5 +1,5 @@
 {
-	"va": {
+	"rva": {
 		"userAgent": "boulder-remote-a",
 		"dnsTries": 3,
 		"dnsStaticResolvers": [
@@ -10,7 +10,7 @@
 		"dnsAllowLoopbackAddresses": true,
 		"issuerDomain": "happy-hacker-ca.invalid",
 		"tls": {
-			"caCertfile": "test/grpc-creds/minica.pem",
+			"caCertfiles": ["test/grpc-creds/minica.pem"],
 			"certFile": "test/grpc-creds/rva.boulder/cert.pem",
 			"keyFile": "test/grpc-creds/rva.boulder/key.pem"
 		},

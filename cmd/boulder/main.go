@@ -12,6 +12,7 @@ import (
 	_ "github.com/letsencrypt/boulder/cmd/boulder-observer"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-publisher"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-ra"
+	_ "github.com/letsencrypt/boulder/cmd/boulder-remoteva"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-sa"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-va"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-wfe2"

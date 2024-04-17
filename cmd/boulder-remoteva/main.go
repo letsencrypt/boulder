@@ -16,7 +16,7 @@ import (
 )
 
 type Config struct {
-	VA struct {
+	RVA struct {
 		cmd.ServiceConfig
 
 		UserAgent string
@@ -35,8 +35,7 @@ type Config struct {
 		DNSTimeout                config.Duration `validate:"required"`
 		DNSAllowLoopbackAddresses bool
 
-		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
-		MaxRemoteValidationFailures int                    `validate:"omitempty,min=0,required_with=RemoteVAs"`
+		MaxRemoteValidationFailures int `validate:"omitempty,min=0,required_with=RemoteVAs"`
 
 		Features features.Config
 
@@ -61,23 +60,23 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
-	features.Set(c.VA.Features)
+	features.Set(c.RVA.Features)
 
 	if *grpcAddr != "" {
-		c.VA.GRPC.Address = *grpcAddr
+		c.RVA.GRPC.Address = *grpcAddr
 	}
 	if *debugAddr != "" {
-		c.VA.DebugAddr = *debugAddr
+		c.RVA.DebugAddr = *debugAddr
 	}
 
-	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.VA.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.RVA.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
-	if c.VA.DNSTimeout.Duration == 0 {
+	if c.RVA.DNSTimeout.Duration == 0 {
 		cmd.Fail("'dnsTimeout' is required")
 	}
-	dnsTries := c.VA.DNSTries
+	dnsTries := c.RVA.DNSTries
 	if dnsTries < 1 {
 		dnsTries = 1
 	}
@@ -89,22 +88,22 @@ func main() {
 		proto = "tcp"
 	}
 
-	if len(c.VA.DNSStaticResolvers) != 0 {
-		servers, err = bdns.NewStaticProvider(c.VA.DNSStaticResolvers)
+	if len(c.RVA.DNSStaticResolvers) != 0 {
+		servers, err = bdns.NewStaticProvider(c.RVA.DNSStaticResolvers)
 		cmd.FailOnError(err, "Couldn't start static DNS server resolver")
 	} else {
-		servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, proto)
+		servers, err = bdns.StartDynamicProvider(c.RVA.DNSProvider, 60*time.Second, proto)
 		cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
 	}
 	defer servers.Stop()
 
-	tlsConfig, err := c.VA.TLS.Load(scope)
+	tlsConfig, err := c.RVA.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
 
 	var resolver bdns.Client
-	if !c.VA.DNSAllowLoopbackAddresses {
+	if !c.RVA.DNSAllowLoopbackAddresses {
 		resolver = bdns.New(
-			c.VA.DNSTimeout.Duration,
+			c.RVA.DNSTimeout.Duration,
 			servers,
 			scope,
 			clk,
@@ -113,7 +112,7 @@ func main() {
 			tlsConfig)
 	} else {
 		resolver = bdns.NewTest(
-			c.VA.DNSTimeout.Duration,
+			c.RVA.DNSTimeout.Duration,
 			servers,
 			scope,
 			clk,
@@ -122,45 +121,26 @@ func main() {
 			tlsConfig)
 	}
 
-	var remotes []va.RemoteVA
-	if len(c.VA.RemoteVAs) > 0 {
-		for _, rva := range c.VA.RemoteVAs {
-			rva := rva
-			vaConn, err := bgrpc.ClientSetup(&rva, tlsConfig, scope, clk)
-			cmd.FailOnError(err, "Unable to create remote VA client")
-			remotes = append(
-				remotes,
-				va.RemoteVA{
-					RemoteClients: va.RemoteClients{
-						VAClient:  vapb.NewVAClient(vaConn),
-						CAAClient: vapb.NewCAAClient(vaConn),
-					},
-					Address: rva.ServerAddress,
-				},
-			)
-		}
-	}
-
 	vai, err := va.NewValidationAuthorityImpl(
 		resolver,
-		remotes,
-		c.VA.MaxRemoteValidationFailures,
-		c.VA.UserAgent,
-		c.VA.IssuerDomain,
+		nil, // A remote VA itself must not have downstream remotes.
+		c.RVA.MaxRemoteValidationFailures,
+		c.RVA.UserAgent,
+		c.RVA.IssuerDomain,
 		scope,
 		clk,
 		logger,
-		c.VA.AccountURIPrefixes)
-	cmd.FailOnError(err, "Unable to create VA server")
+		c.RVA.AccountURIPrefixes)
+	cmd.FailOnError(err, "Unable to create remote VA server")
 
-	start, err := bgrpc.NewServer(c.VA.GRPC, logger).Add(
+	start, err := bgrpc.NewServer(c.RVA.GRPC, logger).Add(
 		&vapb.VA_ServiceDesc, vai).Add(
 		&vapb.CAA_ServiceDesc, vai).Build(tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Unable to setup VA gRPC server")
+	cmd.FailOnError(err, "Unable to setup remote VA gRPC server")
 
-	cmd.FailOnError(start(), "VA gRPC service failed")
+	cmd.FailOnError(start(), "remote VA gRPC service failed")
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-va", main, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("boulder-remoteva", main, &cmd.ConfigValidator{Config: &Config{}})
 }
