@@ -1,5 +1,5 @@
 {
-	"va": {
+	"rva": {
 		"userAgent": "boulder-remote-a",
 		"debugAddr": ":8011",
 		"dnsTries": 3,
