@@ -21,7 +21,7 @@ const (
 
 func TestObsConf_makeMonitors(t *testing.T) {
 	var errDBZ = errors.New(errDBZMsg)
-	var cfgSyslog = cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: 6}
+	var cfgSyslog = cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: -1}
 	var cfgDur = config.Duration{Duration: time.Second * 5}
 	var cfgBuckets = []float64{.001}
 	var validMonConf = &MonConf{
@@ -122,9 +122,9 @@ func TestObsConf_validateSyslog(t *testing.T) {
 		{"both too high", fields{cmd.SyslogConfig{StdoutLevel: 9, SyslogLevel: 9}}, true},
 		{"stdout too high", fields{cmd.SyslogConfig{StdoutLevel: 9, SyslogLevel: 6}}, true},
 		{"syslog too high", fields{cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: 9}}, true},
-		{"both too low", fields{cmd.SyslogConfig{StdoutLevel: -1, SyslogLevel: -1}}, true},
-		{"stdout too low", fields{cmd.SyslogConfig{StdoutLevel: -1, SyslogLevel: 6}}, true},
-		{"syslog too low", fields{cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: -1}}, true},
+		{"both too low", fields{cmd.SyslogConfig{StdoutLevel: -2, SyslogLevel: -1}}, true},
+		{"stdout too low", fields{cmd.SyslogConfig{StdoutLevel: -2, SyslogLevel: 6}}, true},
+		{"syslog too low", fields{cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: -2}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

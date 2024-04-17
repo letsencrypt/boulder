@@ -36,9 +36,9 @@ type ObsConf struct {
 // contains valid log levels.
 func (c *ObsConf) validateSyslog() error {
 	syslog, stdout := c.Syslog.SyslogLevel, c.Syslog.StdoutLevel
-	if stdout < 0 || stdout > 7 || syslog < 0 || syslog > 7 {
+	if stdout < -1 || stdout > 7 || syslog < -1 || syslog > 7 {
 		return fmt.Errorf(
-			"invalid 'syslog', '%+v', valid log levels are 0-7", c.Syslog)
+			"invalid 'syslog', '%+v', valid log levels are 0-7, or -1 to disable", c.Syslog)
 	}
 	return nil
 }
