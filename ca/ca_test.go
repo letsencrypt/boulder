@@ -40,6 +40,7 @@ import (
 )
 
 func TestImplementation(t *testing.T) {
+	t.Parallel()
 	test.AssertImplementsGRPCServer(t, &certificateAuthorityImpl{}, capb.UnimplementedCertificateAuthorityServer{})
 }
 
@@ -277,6 +278,7 @@ func setup(t *testing.T) *testCtx {
 }
 
 func TestSerialPrefix(t *testing.T) {
+	t.Parallel()
 	testCtx := setup(t)
 
 	_, err := NewCertificateAuthorityImpl(
@@ -329,6 +331,7 @@ type TestCertificateIssuance struct {
 }
 
 func TestIssuePrecertificate(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name    string
 		csr     []byte
@@ -439,6 +442,7 @@ func issueCertificateSubTestValidityUsesCAClock(t *testing.T, i *TestCertificate
 
 // Test failure mode when no issuers are present.
 func TestNoIssuers(t *testing.T) {
+	t.Parallel()
 	testCtx := setup(t)
 	sa := &mockSA{}
 	_, err := NewCertificateAuthorityImpl(
@@ -465,6 +469,7 @@ func TestNoIssuers(t *testing.T) {
 
 // Test issuing when multiple issuers are present.
 func TestMultipleIssuers(t *testing.T) {
+	t.Parallel()
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
@@ -511,6 +516,7 @@ func TestMultipleIssuers(t *testing.T) {
 }
 
 func TestProfiles(t *testing.T) {
+	t.Parallel()
 	ctx := setup(t)
 	test.AssertEquals(t, len(ctx.certProfiles), 2)
 
@@ -679,6 +685,7 @@ func TestProfiles(t *testing.T) {
 }
 
 func TestECDSAAllowList(t *testing.T) {
+	t.Parallel()
 	req := &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID}
 
 	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
@@ -711,6 +718,7 @@ func TestECDSAAllowList(t *testing.T) {
 }
 
 func TestInvalidCSRs(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name         string
 		csrPath      string
@@ -802,6 +810,7 @@ func TestInvalidCSRs(t *testing.T) {
 }
 
 func TestRejectValidityTooLong(t *testing.T) {
+	t.Parallel()
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
@@ -905,6 +914,7 @@ func makeSCTs() ([][]byte, error) {
 }
 
 func TestIssueCertificateForPrecertificate(t *testing.T) {
+	t.Parallel()
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
@@ -975,6 +985,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 }
 
 func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *testing.T) {
+	t.Parallel()
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
@@ -1096,6 +1107,7 @@ func (m *getCertErrorSA) GetCertificate(ctx context.Context, req *sapb.Serial, _
 }
 
 func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
+	t.Parallel()
 	testCtx := setup(t)
 	sa := &dupeSA{}
 	ca, err := NewCertificateAuthorityImpl(
@@ -1190,6 +1202,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 }
 
 func TestGenerateSKID(t *testing.T) {
+	t.Parallel()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "Error generating key")
 
