@@ -54,7 +54,6 @@ type StorageAuthorityReadOnlyClient interface {
 	GetValidOrderAuthorizations2(ctx context.Context, in *GetValidOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error)
 	KeyBlocked(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (*Exists, error)
-	PreviousCertificateExists(ctx context.Context, in *PreviousCertificateExistsRequest, opts ...grpc.CallOption) (*Exists, error)
 	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthorityReadOnly_SerialsForIncidentClient, error)
 }
@@ -397,15 +396,6 @@ func (c *storageAuthorityReadOnlyClient) KeyBlocked(ctx context.Context, in *SPK
 	return out, nil
 }
 
-func (c *storageAuthorityReadOnlyClient) PreviousCertificateExists(ctx context.Context, in *PreviousCertificateExistsRequest, opts ...grpc.CallOption) (*Exists, error) {
-	out := new(Exists)
-	err := c.cc.Invoke(ctx, "/sa.StorageAuthorityReadOnly/PreviousCertificateExists", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *storageAuthorityReadOnlyClient) ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error) {
 	out := new(Exists)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthorityReadOnly/ReplacementOrderExists", in, out, opts...)
@@ -480,7 +470,6 @@ type StorageAuthorityReadOnlyServer interface {
 	GetValidOrderAuthorizations2(context.Context, *GetValidOrderAuthorizationsRequest) (*Authorizations, error)
 	IncidentsForSerial(context.Context, *Serial) (*Incidents, error)
 	KeyBlocked(context.Context, *SPKIHash) (*Exists, error)
-	PreviousCertificateExists(context.Context, *PreviousCertificateExistsRequest) (*Exists, error)
 	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, StorageAuthorityReadOnly_SerialsForIncidentServer) error
 	mustEmbedUnimplementedStorageAuthorityReadOnlyServer()
@@ -576,9 +565,6 @@ func (UnimplementedStorageAuthorityReadOnlyServer) IncidentsForSerial(context.Co
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) KeyBlocked(context.Context, *SPKIHash) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method KeyBlocked not implemented")
-}
-func (UnimplementedStorageAuthorityReadOnlyServer) PreviousCertificateExists(context.Context, *PreviousCertificateExistsRequest) (*Exists, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method PreviousCertificateExists not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) ReplacementOrderExists(context.Context, *Serial) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplacementOrderExists not implemented")
@@ -1131,24 +1117,6 @@ func _StorageAuthorityReadOnly_KeyBlocked_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StorageAuthorityReadOnly_PreviousCertificateExists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PreviousCertificateExistsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityReadOnlyServer).PreviousCertificateExists(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/sa.StorageAuthorityReadOnly/PreviousCertificateExists",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityReadOnlyServer).PreviousCertificateExists(ctx, req.(*PreviousCertificateExistsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _StorageAuthorityReadOnly_ReplacementOrderExists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Serial)
 	if err := dec(in); err != nil {
@@ -1300,10 +1268,6 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthorityReadOnly_KeyBlocked_Handler,
 		},
 		{
-			MethodName: "PreviousCertificateExists",
-			Handler:    _StorageAuthorityReadOnly_PreviousCertificateExists_Handler,
-		},
-		{
 			MethodName: "ReplacementOrderExists",
 			Handler:    _StorageAuthorityReadOnly_ReplacementOrderExists_Handler,
 		},
@@ -1367,7 +1331,6 @@ type StorageAuthorityClient interface {
 	GetValidOrderAuthorizations2(ctx context.Context, in *GetValidOrderAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error)
 	KeyBlocked(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (*Exists, error)
-	PreviousCertificateExists(ctx context.Context, in *PreviousCertificateExistsRequest, opts ...grpc.CallOption) (*Exists, error)
 	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthority_SerialsForIncidentClient, error)
 	// Adders
@@ -1729,15 +1692,6 @@ func (c *storageAuthorityClient) KeyBlocked(ctx context.Context, in *SPKIHash, o
 	return out, nil
 }
 
-func (c *storageAuthorityClient) PreviousCertificateExists(ctx context.Context, in *PreviousCertificateExistsRequest, opts ...grpc.CallOption) (*Exists, error) {
-	out := new(Exists)
-	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/PreviousCertificateExists", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *storageAuthorityClient) ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error) {
 	out := new(Exists)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/ReplacementOrderExists", in, out, opts...)
@@ -1975,7 +1929,6 @@ type StorageAuthorityServer interface {
 	GetValidOrderAuthorizations2(context.Context, *GetValidOrderAuthorizationsRequest) (*Authorizations, error)
 	IncidentsForSerial(context.Context, *Serial) (*Incidents, error)
 	KeyBlocked(context.Context, *SPKIHash) (*Exists, error)
-	PreviousCertificateExists(context.Context, *PreviousCertificateExistsRequest) (*Exists, error)
 	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error
 	// Adders
@@ -2090,9 +2043,6 @@ func (UnimplementedStorageAuthorityServer) IncidentsForSerial(context.Context, *
 }
 func (UnimplementedStorageAuthorityServer) KeyBlocked(context.Context, *SPKIHash) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method KeyBlocked not implemented")
-}
-func (UnimplementedStorageAuthorityServer) PreviousCertificateExists(context.Context, *PreviousCertificateExistsRequest) (*Exists, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method PreviousCertificateExists not implemented")
 }
 func (UnimplementedStorageAuthorityServer) ReplacementOrderExists(context.Context, *Serial) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReplacementOrderExists not implemented")
@@ -2698,24 +2648,6 @@ func _StorageAuthority_KeyBlocked_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StorageAuthority_PreviousCertificateExists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PreviousCertificateExistsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityServer).PreviousCertificateExists(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/sa.StorageAuthority/PreviousCertificateExists",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).PreviousCertificateExists(ctx, req.(*PreviousCertificateExistsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _StorageAuthority_ReplacementOrderExists_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Serial)
 	if err := dec(in); err != nil {
@@ -3189,10 +3121,6 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "KeyBlocked",
 			Handler:    _StorageAuthority_KeyBlocked_Handler,
-		},
-		{
-			MethodName: "PreviousCertificateExists",
-			Handler:    _StorageAuthority_PreviousCertificateExists_Handler,
 		},
 		{
 			MethodName: "ReplacementOrderExists",
