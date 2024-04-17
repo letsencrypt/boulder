@@ -54,13 +54,12 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 
 	for _, issuer := range cu.issuers {
 		for i := range cu.numShards {
-			i = i + 1 // Because we index shards starting at 1.
 			select {
 			case <-ctx.Done():
 				close(inputs)
 				wg.Wait()
 				return ctx.Err()
-			case inputs <- workItem{issuerNameID: issuer.NameID(), shardIdx: i}:
+			case inputs <- workItem{issuerNameID: issuer.NameID(), shardIdx: i + i}:
 			}
 		}
 	}
