@@ -55,12 +55,6 @@ func TestTLSConfigLoad(t *testing.T) {
 	caCertA := "../test/hierarchy/root-x1.cert.pem"
 	caCertB := "../test/hierarchy/root-x2.cert.pem"
 
-	/*
-		TLSConfig{cert, key, null, nil}, "parsing CA certs"
-		TLSConfig{cert, key, "", []string{caCertA}}, "parsing single CACertFiles"
-		TLSConfig{cert, key, "", []string{caCertA, caCertB}}, "parsing multiple CACertFiles"
-	*/
-
 	testCases := []struct {
 		name                string
 		expectedErrSubstr   string
