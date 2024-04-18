@@ -130,6 +130,7 @@
 					}
 				}
 			],
+			"lintConfig": "test/config-next/zlint.toml",
 			"ignoredLints": [
 				"n_subject_common_name_included",
 				"w_subject_common_name_included",
