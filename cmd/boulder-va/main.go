@@ -163,4 +163,9 @@ func main() {
 
 func init() {
 	cmd.RegisterCommand("boulder-va", main, &cmd.ConfigValidator{Config: &Config{}})
+	// TODO(#5294) After we have separate RVA and VA binaries deployed,
+	// de-register this boulder-remoteva.
+	// We register under two different names, because it's convenient for the
+	// remote VAs to show up under a different program name when looking at logs.
+	cmd.RegisterCommand("boulder-remoteva", main, &cmd.ConfigValidator{Config: &Config{}})
 }

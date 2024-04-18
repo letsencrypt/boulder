@@ -55,79 +55,75 @@ func TestTLSConfigLoad(t *testing.T) {
 	nonExistent := "[nonexistent]"
 	cert := "../test/hierarchy/int-e2.cert.pem"
 	key := "../test/hierarchy/int-e2.key.pem"
-	caCertA := "../test/hierarchy/root-x1.cert.pem"
-	caCertB := "../test/hierarchy/root-x2.cert.pem"
+	caCertOne := "../test/hierarchy/root-x1.cert.pem"
+	caCertMultiple := "../test/hierarchy/multiple-roots.cert.pem"
+	caCertDuplicate := "../test/hierarchy/duplicate-roots.cert.pem"
 
 	testCases := []struct {
-		name                string
-		expectedErrSubstr   string
-		expectedCACertFiles int
-		testConf            TLSConfig
+		name                  string
+		expectedErrSubstr     string
+		expectedRootStoreSize int
+		testConf              TLSConfig
 	}{
 		{
 			name:              "Empty cert",
 			expectedErrSubstr: "nil CertFile in TLSConfig",
-			testConf:          TLSConfig{"", null, null, nil},
+			testConf:          TLSConfig{"", null, null},
 		},
 		{
 			name:              "Empty key",
 			expectedErrSubstr: "nil KeyFile in TLSConfig",
-			testConf:          TLSConfig{null, "", null, nil},
+			testConf:          TLSConfig{null, "", null},
+		},
+		{
+			name:              "Empty root",
+			expectedErrSubstr: "nil CACertFile",
+			testConf:          TLSConfig{null, null, ""},
 		},
 		{
 			name:              "Could not parse cert",
 			expectedErrSubstr: "failed to find any PEM data",
-			testConf:          TLSConfig{null, key, caCertA, nil},
+			testConf:          TLSConfig{null, key, caCertOne},
 		},
 		{
 			name:              "Could not parse key",
 			expectedErrSubstr: "failed to find any PEM data",
-			testConf:          TLSConfig{cert, null, caCertA, nil},
+			testConf:          TLSConfig{cert, null, caCertOne},
+		},
+		{
+			name:              "Could not parse root",
+			expectedErrSubstr: "parsing CA certs",
+			testConf:          TLSConfig{cert, key, null},
 		},
 		{
 			name:              "Invalid cert location",
 			expectedErrSubstr: "no such file or directory",
-			testConf:          TLSConfig{nonExistent, key, caCertA, nil},
+			testConf:          TLSConfig{nonExistent, key, caCertOne},
 		},
 		{
 			name:              "Invalid key location",
 			expectedErrSubstr: "no such file or directory",
-			testConf:          TLSConfig{cert, nonExistent, caCertA, nil},
+			testConf:          TLSConfig{cert, nonExistent, caCertOne},
 		},
 		{
-			name:              "CACertFile exists, but nil CACertFiles",
-			expectedErrSubstr: "parsing CA certs",
-			testConf:          TLSConfig{cert, key, null, nil},
+			name:              "Invalid root location",
+			expectedErrSubstr: "no such file or directory",
+			testConf:          TLSConfig{cert, key, nonExistent},
 		},
 		{
-			name:              "CACertFile exists, but empty CACertFiles",
-			expectedErrSubstr: "only one of CACertFile or CACertFiles allowed",
-			testConf:          TLSConfig{cert, key, null, []string{}},
+			name:                  "Valid config with one root",
+			testConf:              TLSConfig{cert, key, caCertOne},
+			expectedRootStoreSize: 1,
 		},
 		{
-			name:              "No CACertFile and nil CACertFiles",
-			expectedErrSubstr: "need at least one of CACertFile or CACertFiles",
-			testConf:          TLSConfig{null, null, "", nil},
+			name:                  "Valid config with two roots",
+			testConf:              TLSConfig{cert, key, caCertMultiple},
+			expectedRootStoreSize: 2,
 		},
 		{
-			name:                "Deprecated CACertFile entry, no CACertFiles",
-			testConf:            TLSConfig{cert, key, caCertA, nil},
-			expectedCACertFiles: 1,
-		},
-		{
-			name:              "Deprecated CACertFile entry with CACertFiles",
-			testConf:          TLSConfig{cert, key, caCertA, []string{caCertB}},
-			expectedErrSubstr: "only one of CACertFile or CACertFiles allowed",
-		},
-		{
-			name:                "Single CACertFiles entry",
-			testConf:            TLSConfig{cert, key, "", []string{caCertA}},
-			expectedCACertFiles: 1,
-		},
-		{
-			name:                "Multiple CACertFiles entries",
-			testConf:            TLSConfig{cert, key, "", []string{caCertA, caCertB}},
-			expectedCACertFiles: 2,
+			name:                  "Valid config with duplicate roots",
+			testConf:              TLSConfig{cert, key, caCertDuplicate},
+			expectedRootStoreSize: 1,
 		},
 	}
 	for _, tc := range testCases {
@@ -139,7 +135,8 @@ func TestTLSConfigLoad(t *testing.T) {
 				test.AssertNotError(t, err, "Should not have errored, but did")
 				// We are not using SystemCertPool, we are manually defining our
 				// own.
-				test.AssertEquals(t, len(conf.RootCAs.Subjects()), tc.expectedCACertFiles)
+				test.AssertEquals(t, len(conf.RootCAs.Subjects()), tc.expectedRootStoreSize)
+				test.AssertEquals(t, len(conf.ClientCAs.Subjects()), tc.expectedRootStoreSize)
 			} else {
 				test.AssertError(t, err, "Expected an error but received none")
 				test.AssertContains(t, err.Error(), tc.expectedErrSubstr)

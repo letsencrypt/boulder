@@ -25,3 +25,7 @@ ee, _ := CA.IssuePrecertificate(...)
 cert, _ := issuance.LoadCertificate("test/hierarchy/int-e1.cert.pem")
 test.AssertEqual(t, issuance.GetIssuerNameID(ee), issuer.NameID())
 ```
+
+## Files
+* `multiple-roots.cert.pem` is a concatenation of `root-x1.cert.pem` and `root-x2.cert.pem`
+* `duplicate-roots.cert.pem` is `root-x2.cert.pem` concatenated twice

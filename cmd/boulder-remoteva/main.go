@@ -123,7 +123,7 @@ func main() {
 
 	vai, err := va.NewValidationAuthorityImpl(
 		resolver,
-		nil, // A remote VA itself must not have downstream remotes.
+		nil, // A remote VA itself will not have remote VAs.
 		c.RVA.MaxRemoteValidationFailures,
 		c.RVA.UserAgent,
 		c.RVA.IssuerDomain,
@@ -142,5 +142,7 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-remoteva", main, &cmd.ConfigValidator{Config: &Config{}})
+	// TODO(#5294) After we have separate RVA and VA binaries deployed,
+	// re-register boulder-remoteva2 as boulder-remoteva.
+	cmd.RegisterCommand("boulder-remoteva2", main, &cmd.ConfigValidator{Config: &Config{}})
 }

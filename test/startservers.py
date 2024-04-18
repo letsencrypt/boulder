@@ -16,6 +16,8 @@ Service = collections.namedtuple('Service', ('name', 'debug_port', 'grpc_port', 
 
 # Keep these ports in sync with consul/config.hcl
 SERVICES = (
+    # TODO(#5294) After we have separate RVA and VA binaries deployed, remove
+	# the old boulder-remoteva-a/b and rename boulder-remoteva2-a/b.
     Service('boulder-remoteva-a',
         8011, 9397, 'rva.boulder',
         ('./bin/boulder', 'boulder-remoteva', '--config', os.path.join(config_dir, 'va-remote-a.json'), '--addr', ':9397', '--debug-addr', ':8011'),
@@ -23,6 +25,15 @@ SERVICES = (
     Service('boulder-remoteva-b',
         8012, 9498, 'rva.boulder',
         ('./bin/boulder', 'boulder-remoteva', '--config', os.path.join(config_dir, 'va-remote-b.json'), '--addr', ':9498', '--debug-addr', ':8012'),
+        None),
+    # TODO(#5294) Rename boulder-remoteva2-a/b back to boulder-remoteva-a/b.
+    Service('boulder-remoteva2-a',
+        8211, 9897, 'rva.boulder',
+        ('./bin/boulder', 'boulder-remoteva2', '--config', os.path.join(config_dir, 'remoteva2-a.json'), '--addr', ':9897', '--debug-addr', ':8211'),
+        None),
+    Service('boulder-remoteva2-b',
+        8212, 9998, 'rva.boulder',
+        ('./bin/boulder', 'boulder-remoteva2', '--config', os.path.join(config_dir, 'remoteva2-b.json'), '--addr', ':9998', '--debug-addr', ':8212'),
         None),
     Service('boulder-sa-1',
         8003, 9395, 'sa.boulder',
@@ -54,14 +65,16 @@ SERVICES = (
         8005, None, None,
         ('./bin/boulder', 'ocsp-responder', '--config', os.path.join(config_dir, 'ocsp-responder.json'), '--addr', ':4002', '--debug-addr', ':8005'),
         ('boulder-ra-1', 'boulder-ra-2')),
+    # TODO(#5294) After we have separate RVA and VA binaries deployed, remove
+	# the old boulder-remoteva-a/b and rename boulder-remoteva2-a/b.
     Service('boulder-va-1',
         8004, 9392, 'va.boulder',
         ('./bin/boulder', 'boulder-va', '--config', os.path.join(config_dir, 'va.json'), '--addr', ':9392', '--debug-addr', ':8004'),
-        ('boulder-remoteva-a', 'boulder-remoteva-b')),
+        ('boulder-remoteva-a', 'boulder-remoteva-b', 'boulder-remoteva2-a', 'boulder-remoteva2-b')),
     Service('boulder-va-2',
         8104, 9492, 'va.boulder',
         ('./bin/boulder', 'boulder-va', '--config', os.path.join(config_dir, 'va.json'), '--addr', ':9492', '--debug-addr', ':8104'),
-        ('boulder-remoteva-a', 'boulder-remoteva-b')),
+        ('boulder-remoteva-a', 'boulder-remoteva-b', 'boulder-remoteva2-a', 'boulder-remoteva2-b')),
     Service('boulder-ca-1',
         8001, 9393, 'ca.boulder',
         ('./bin/boulder', 'boulder-ca', '--config', os.path.join(config_dir, 'ca.json'), '--addr', ':9393', '--debug-addr', ':8001'),
