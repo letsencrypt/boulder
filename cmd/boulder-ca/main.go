@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -19,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
+	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -52,6 +54,7 @@ type Config struct {
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile   issuance.CRLProfileConfig `validate:"-"`
 			Issuers      []issuance.IssuerConfig   `validate:"min=1,dive"`
+			LintConfig   string
 			IgnoredLints []string
 		}
 
@@ -234,6 +237,14 @@ func main() {
 		c.CA.Issuance.CertProfiles[c.CA.Issuance.DefaultCertificateProfileName] = c.CA.Issuance.Profile
 	}
 
+	lints, err := linter.NewRegistry(c.CA.Issuance.IgnoredLints)
+	cmd.FailOnError(err, "Failed to create zlint registry")
+	if c.CA.Issuance.LintConfig != "" {
+		lintconfig, err := lint.NewConfigFromFile(c.CA.Issuance.LintConfig)
+		cmd.FailOnError(err, "Failed to load zlint config file")
+		lints.SetConfiguration(lintconfig)
+	}
+
 	tlsConfig, err := c.CA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
@@ -295,8 +306,8 @@ func main() {
 			pa,
 			issuers,
 			c.CA.Issuance.DefaultCertificateProfileName,
-			c.CA.Issuance.IgnoredLints,
 			c.CA.Issuance.CertProfiles,
+			lints,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,
 			c.CA.Backdate.Duration,
