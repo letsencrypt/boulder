@@ -11,6 +11,7 @@ import (
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
@@ -54,41 +55,43 @@ func TestOCSP(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ocspi := testCtx.ocsp
 
-	// Issue a certificate from the RSA issuer, then check OCSP comes from that same issuer.
-	rsaIssuerID := ca.issuers.byAlg[x509.RSA].NameID()
+	// Issue a certificate from an RSA issuer, request OCSP from the same issuer,
+	// and make sure it works.
 	rsaCertPB, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	rsaCert, err := x509.ParseCertificate(rsaCertPB.DER)
 	test.AssertNotError(t, err, "Failed to parse rsaCert")
+	rsaIssuerID := issuance.IssuerNameID(rsaCert)
 	rsaOCSPPB, err := ocspi.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:   core.SerialToString(rsaCert.SerialNumber),
 		IssuerID: int64(rsaIssuerID),
 		Status:   string(core.OCSPStatusGood),
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
-	rsaOCSP, err := ocsp.ParseResponse(rsaOCSPPB.Response, testCtx.boulderIssuers[1].Cert.Certificate)
+	rsaOCSP, err := ocsp.ParseResponse(rsaOCSPPB.Response, ca.issuers.byNameID[rsaIssuerID].Cert.Certificate)
 	test.AssertNotError(t, err, "Failed to parse / validate OCSP for rsaCert")
 	test.AssertEquals(t, rsaOCSP.Status, 0)
 	test.AssertEquals(t, rsaOCSP.RevocationReason, 0)
 	test.AssertEquals(t, rsaOCSP.SerialNumber.Cmp(rsaCert.SerialNumber), 0)
 
 	// Check that a different issuer cannot validate the OCSP response
-	_, err = ocsp.ParseResponse(rsaOCSPPB.Response, testCtx.boulderIssuers[0].Cert.Certificate)
+	_, err = ocsp.ParseResponse(rsaOCSPPB.Response, ca.issuers.byAlg[x509.ECDSA][0].Cert.Certificate)
 	test.AssertError(t, err, "Parsed / validated OCSP for rsaCert, but should not have")
 
-	// Issue a certificate from an ECDSA issuer, then check OCSP comes from that same issuer.
-	ecdsaIssuerID := ca.issuers.byAlg[x509.ECDSA].NameID()
+	// Issue a certificate from an ECDSA issuer, request OCSP from the same issuer,
+	// and make sure it works.
 	ecdsaCertPB, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	ecdsaCert, err := x509.ParseCertificate(ecdsaCertPB.DER)
 	test.AssertNotError(t, err, "Failed to parse ecdsaCert")
+	ecdsaIssuerID := issuance.IssuerNameID(ecdsaCert)
 	ecdsaOCSPPB, err := ocspi.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:   core.SerialToString(ecdsaCert.SerialNumber),
 		IssuerID: int64(ecdsaIssuerID),
 		Status:   string(core.OCSPStatusGood),
 	})
 	test.AssertNotError(t, err, "Failed to generate OCSP")
-	ecdsaOCSP, err := ocsp.ParseResponse(ecdsaOCSPPB.Response, testCtx.boulderIssuers[0].Cert.Certificate)
+	ecdsaOCSP, err := ocsp.ParseResponse(ecdsaOCSPPB.Response, ca.issuers.byNameID[ecdsaIssuerID].Cert.Certificate)
 	test.AssertNotError(t, err, "Failed to parse / validate OCSP for ecdsaCert")
 	test.AssertEquals(t, ecdsaOCSP.Status, 0)
 	test.AssertEquals(t, ecdsaOCSP.RevocationReason, 0)

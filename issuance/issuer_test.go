@@ -35,11 +35,10 @@ func defaultProfileConfig() ProfileConfig {
 
 func defaultIssuerConfig() IssuerConfig {
 	return IssuerConfig{
-		UseForECDSALeaves: true,
-		UseForRSALeaves:   true,
-		IssuerURL:         "http://issuer-url.example.org",
-		OCSPURL:           "http://ocsp-url.example.org",
-		CRLURLBase:        "http://crl-url.example.org/",
+		Active:     true,
+		IssuerURL:  "http://issuer-url.example.org",
+		OCSPURL:    "http://ocsp-url.example.org",
+		CRLURLBase: "http://crl-url.example.org/",
 	}
 }
 
