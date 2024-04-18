@@ -8,38 +8,16 @@ import (
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/va"
+	vacfg "github.com/letsencrypt/boulder/va/config"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 type Config struct {
 	RVA struct {
-		cmd.ServiceConfig
-
-		UserAgent string
-
-		IssuerDomain string
-
-		// DNSTries is the number of times to try a DNS query (that has a temporary error)
-		// before giving up. May be short-circuited by deadlines. A zero value
-		// will be turned into 1.
-		DNSTries    int
-		DNSProvider *cmd.DNSProvider `validate:"required_without=DNSStaticResolvers"`
-		// DNSStaticResolvers is a list of DNS resolvers. Each entry must
-		// be a host or IP and port separated by a colon. IPv6 addresses
-		// must be enclosed in square brackets.
-		DNSStaticResolvers        []string        `validate:"required_without=DNSProvider,dive,hostname_port"`
-		DNSTimeout                config.Duration `validate:"required"`
-		DNSAllowLoopbackAddresses bool
-
-		MaxRemoteValidationFailures int `validate:"omitempty,min=0,required_with=RemoteVAs"`
-
-		Features features.Config
-
-		AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
+		vacfg.Shared
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -124,7 +102,7 @@ func main() {
 	vai, err := va.NewValidationAuthorityImpl(
 		resolver,
 		nil, // A remote VA itself will not have remote VAs.
-		c.RVA.MaxRemoteValidationFailures,
+		0,   // MaxRemoteValidationFailures is intended for the primary VA only
 		c.RVA.UserAgent,
 		c.RVA.IssuerDomain,
 		scope,
