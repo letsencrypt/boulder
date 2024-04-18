@@ -600,7 +600,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		authzValidityInfo, err := getAuthorizationStatuses(ctx, tx, res.V2Authorizations)
 		// If there was an error getting the authorizations, return it immediately
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
 		// Calculate the order status before returning it. Since it may have reused

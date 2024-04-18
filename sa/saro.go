@@ -740,7 +740,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		authzValidityInfo, err := getAuthorizationStatuses(ctx, tx, order.V2Authorizations)
 		// If there was an error getting the authorizations, return it immediately
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
 		names := make([]string, 0, len(authzValidityInfo))
