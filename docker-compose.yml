@@ -56,6 +56,7 @@ services:
       - bredis_4
       - bconsul
       - bjaeger
+      - bpkilint
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /boulder
 
@@ -143,6 +144,13 @@ services:
     networks:
       bouldernet:
         ipv4_address: 10.77.77.17
+
+  bpkilint:
+    image: ghcr.io/digicert/pkilint
+    networks:
+      bouldernet:
+        ipv4_address: 10.77.77.9
+    command: "gunicorn -w 8 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:80 pkilint.rest:app"
 
 networks:
   # This network is primarily used for boulder services. It is also used by
