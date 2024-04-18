@@ -673,21 +673,21 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		}
 		order.V2Authorizations = v2AuthzIDs
 
-		names, err := namesForOrder(ctx, tx, order.Id)
+		// Get the partial Authorization objects for the order
+		authzValidityInfo, err := getAuthorizationStatuses(ctx, tx, order.V2Authorizations)
+		// If there was an error getting the authorizations, return it immediately
 		if err != nil {
 			return nil, err
 		}
-		// The requested names are stored reversed to improve indexing performance. We
-		// need to reverse the reversed names here before giving them back to the
-		// caller.
-		reversedNames := make([]string, len(names))
-		for i, n := range names {
-			reversedNames[i] = ReverseName(n)
+
+		names := make([]string, 0, len(authzValidityInfo))
+		for _, a := range authzValidityInfo {
+			names = append(names, a.IdentifierValue)
 		}
-		order.Names = reversedNames
+		order.Names = names
 
 		// Calculate the status for the order
-		status, err := statusForOrder(ctx, tx, order, ssa.clk.Now())
+		status, err := statusForOrder(order, authzValidityInfo, ssa.clk.Now())
 		if err != nil {
 			return nil, err
 		}

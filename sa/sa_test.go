@@ -1272,11 +1272,6 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
 	test.AssertEquals(t, len(authzIDs), 4)
 	test.AssertDeepEquals(t, authzIDs, []int64{1, 2, 3, 4})
-
-	names, err := namesForOrder(ctx, sa.dbReadOnlyMap, order.Id)
-	test.AssertNotError(t, err, "namesForOrder errored")
-	test.AssertEquals(t, len(names), 4)
-	test.AssertDeepEquals(t, names, []string{"com.a", "com.b", "com.c", "com.d"})
 }
 
 // TestNewOrderAndAuthzs_NonNilInnerOrder verifies that a nil
