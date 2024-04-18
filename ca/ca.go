@@ -306,7 +306,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, certProfileWithID, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
+	precertDER, cpwid, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
 	if err != nil {
 		return nil, err
 	}
@@ -318,8 +318,8 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 
 	return &capb.IssuePrecertificateResponse{
 		DER:             precertDER,
-		CertProfileName: certProfileWithID.name,
-		CertProfileHash: certProfileWithID.hash[:],
+		CertProfileName: cpwid.name,
+		CertProfileHash: cpwid.hash[:],
 	}, nil
 }
 
