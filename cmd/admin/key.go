@@ -44,7 +44,7 @@ func (s *subcommandBlockKey) Flags(flag *flag.FlagSet) {
 	// Flags specifying the input method for the keys to be blocked.
 	flag.StringVar(&s.privKey, "private-key", "", "Block issuance for the pubkey corresponding to this private key")
 	flag.StringVar(&s.spkiFile, "spki-file", "", "Block issuance for all keys listed in this file as SHA256 hashes of SPKI, hex encoded, one per line")
-	flag.StringVar(&s.certFile, "cert-file", "", "Block issuance for the public key of the PEM-formatted certificate in this file")
+	flag.StringVar(&s.certFile, "cert-file", "", "Block issuance for the public key of the single PEM-formatted certificate in this file")
 }
 
 func (s *subcommandBlockKey) Run(ctx context.Context, a *admin) error {

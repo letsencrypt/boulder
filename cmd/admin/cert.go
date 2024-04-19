@@ -65,7 +65,7 @@ func (s *subcommandRevokeCert) Flags(flag *flag.FlagSet) {
 	flag.StringVar(&s.serialsFile, "serials-file", "", "Revoke all certificates whose hex serials are in this file")
 	flag.StringVar(&s.privKey, "private-key", "", "Revoke all certificates whose pubkey matches this private key")
 	flag.UintVar(&s.regID, "reg-id", 0, "Revoke all certificates issued to this account")
-	flag.StringVar(&s.certFile, "cert-file", "", "Revoke the PEM-formatted certificate in this file")
+	flag.StringVar(&s.certFile, "cert-file", "", "Revoke the single PEM-formatted certificate in this file")
 }
 
 func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
