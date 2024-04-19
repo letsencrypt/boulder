@@ -1286,8 +1286,10 @@ type certProfileID struct {
 	hash []byte
 }
 
-// issueCertificateInner handles the heavy lifting aspects of certificate
-// issuance.
+// issueCertificateInner is part of the [issuance cycle].
+//
+// It gets a precertificate from the CA, submits it to CT logs to get SCTs,
+// then sends the precertificate and the SCTs to the CA to get a final certificate.
 //
 // This function is responsible for ensuring that we never try to issue a final
 // certificate twice for the same precertificate, because that has the potential
@@ -1299,6 +1301,8 @@ type certProfileID struct {
 // never have final certificates issued for them (because there is a possibility
 // that the certificate was actually issued but there was an error returning
 // it).
+//
+// [issuance cycle]: https://github.com/letsencrypt/boulder/blob/main/docs/ISSUANCE-CYCLE.md
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	csr *x509.CertificateRequest,
@@ -1329,6 +1333,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		OrderID:         int64(oID),
 		CertProfileName: profileName,
 	}
+	// Once we get a precert from IssuePrecertificate, we must attempt issuing
+	// a final certificate at most once. We achieve that by bailing on any error
+	// between here and IssueCertificateForPrecertificate.
 	precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
 	if err != nil {
 		return nil, nil, wrapError(err, "issuing precertificate")

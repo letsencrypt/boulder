@@ -291,6 +291,16 @@ var ocspStatusToCode = map[string]int{
 	"unknown": ocsp.Unknown,
 }
 
+// IssuePrecertificate is the first step in the [issuance cycle]. It allocates and stores a serial number,
+// selects a certificate profile, generates and stores a linting certificate, sets the serial's status to
+// "wait", signs and stores a precertificate, updates the serial's status to "good", then returns the
+// precertificate.
+//
+// Subsequent final issuance based on this precertificate must happen at most once, and must use the same
+// certificate profile. The certificate profile is identified by a hash to ensure an exact match even if
+// the configuration for a specific profile _name_ changes.
+//
+// [issuance cycle]: https://github.com/letsencrypt/boulder/blob/main/docs/ISSUANCE-CYCLE.md
 func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
 	// issueReq.CertProfileName may be empty and will be populated in
@@ -333,13 +343,13 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	}, nil
 }
 
-// IssueCertificateForPrecertificate takes a precertificate and a set
-// of SCTs for that precertificate and uses the signer to create and
-// sign a certificate from them. The poison extension is removed and a
+// IssueCertificateForPrecertificate final step in the [issuance cycle].
+//
+// Given a precertificate and a set of SCTs for that precertificate, it generates
+// a linting final certificate, then signs a final certificate using a real issuer.
+// The poison extension is removed from the precertificate and a
 // SCT list extension is inserted in its place. Except for this and the
-// signature the certificate exactly matches the precertificate. After
-// the certificate is signed a OCSP response is generated and the
-// response and certificate are stored in the database.
+// signature the final certificate exactly matches the precertificate.
 //
 // It's critical not to sign two different final certificates for the same
 // precertificate. This can happen, for instance, if the caller provides a
@@ -355,6 +365,8 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 // final certificate, but this is just a belt-and-suspenders measure, since
 // there could be race conditions where two goroutines are issuing for the same
 // serial number at the same time.
+//
+// [issuance cycle]: https://github.com/letsencrypt/boulder/blob/main/docs/ISSUANCE-CYCLE.md
 func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
 	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID, req.CertProfileHash) {
