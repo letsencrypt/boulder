@@ -16,8 +16,8 @@ Service = collections.namedtuple('Service', ('name', 'debug_port', 'grpc_port', 
 
 # Keep these ports in sync with consul/config.hcl
 SERVICES = (
-    # TODO(#5294) After we have separate RVA and VA binaries deployed, remove
-	# the old boulder-remoteva-a/b and rename boulder-remoteva2-a/b.
+    # TODO(#5294) After we have separate RVA and VA binaries deployed, remove the
+    # old boulder-remoteva-a/b and rename boulder-remoteva2-a/b.
     Service('boulder-remoteva-a',
         8011, 9397, 'rva.boulder',
         ('./bin/boulder', 'boulder-remoteva', '--config', os.path.join(config_dir, 'va-remote-a.json'), '--addr', ':9397', '--debug-addr', ':8011'),
@@ -66,7 +66,7 @@ SERVICES = (
         ('./bin/boulder', 'ocsp-responder', '--config', os.path.join(config_dir, 'ocsp-responder.json'), '--addr', ':4002', '--debug-addr', ':8005'),
         ('boulder-ra-1', 'boulder-ra-2')),
     # TODO(#5294) After we have separate RVA and VA binaries deployed, remove
-	# the old boulder-remoteva-a/b and rename boulder-remoteva2-a/b.
+    # the old boulder-remoteva-a/b and rename boulder-remoteva2-a/b.
     Service('boulder-va-1',
         8004, 9392, 'va.boulder',
         ('./bin/boulder', 'boulder-va', '--config', os.path.join(config_dir, 'va.json'), '--addr', ':9392', '--debug-addr', ':8004'),
