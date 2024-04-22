@@ -3633,7 +3633,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
 			// Attempt issuance
-			_, _, _, err = ra.issueCertificateInner(ctx, csrOb, order.CertificateProfileName, accountID(Registration.Id), orderID(order.Id))
+			_, _, err = ra.issueCertificateInner(ctx, csrOb, order.CertificateProfileName, accountID(Registration.Id), orderID(order.Id))
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
 			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
 			// If there is an expected `error` then match the error message
@@ -3700,10 +3700,10 @@ func TestIssueCertificateInnerWithProfile(t *testing.T) {
 
 	// Call issueCertificateInner with the CSR generated above and the profile
 	// name "default", which will cause the mockCA to return a specific hash.
-	_, profileName, profileHash, err := ra.issueCertificateInner(context.Background(), csr, "default", 1, 1)
+	_, cpId, err := ra.issueCertificateInner(context.Background(), csr, "default", 1, 1)
 	test.AssertNotError(t, err, "issuing cert with profile name")
-	test.AssertEquals(t, mockCA.profileName, profileName)
-	test.AssertByteEquals(t, mockCA.profileHash, profileHash)
+	test.AssertEquals(t, mockCA.profileName, cpId.name)
+	test.AssertByteEquals(t, mockCA.profileHash, cpId.hash)
 }
 
 func TestIssueCertificateOuter(t *testing.T) {
