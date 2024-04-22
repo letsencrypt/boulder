@@ -36,8 +36,8 @@ message IssuePrecertificateResponse {
   bytes certProfileHash = 2;
 
   // certProfileName is a human readable name returned back to the RA for later
-  // use. If the reciprocal field in IssueCertificateRequest was an empty
-  // string, the CAs default profile name will be assigned.
+  // use. If IssueCertificateRequest.certProfileName was an empty string, the
+  // CAs default profile name will be assigned.
   string certProfileName = 3;
 }
 

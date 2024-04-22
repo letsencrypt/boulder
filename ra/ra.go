@@ -1291,7 +1291,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 // generated in IssuePrecertificate, so serials with errors are dropped and
 // never have final certificates issued for them (because there is a possibility
 // that the certificate was actually issued but there was an error returning
-// it).
+// it). It returns the signed certificate, the certificate profile name used by
+// the CA, the hash of the certificate profile from the CA, or an error.
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	csr *x509.CertificateRequest,

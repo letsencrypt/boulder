@@ -110,8 +110,8 @@ type IssuePrecertificateResponse struct {
 	// through the RA and CA.
 	CertProfileHash []byte `protobuf:"bytes,2,opt,name=certProfileHash,proto3" json:"certProfileHash,omitempty"`
 	// certProfileName is a human readable name returned back to the RA for later
-	// use. If the reciprocal field in IssueCertificateRequest was an empty
-	// string, the CAs default profile name will be assigned.
+	// use. If IssueCertificateRequest.certProfileName was an empty string, the
+	// CAs default profile name will be assigned.
 	CertProfileName string `protobuf:"bytes,3,opt,name=certProfileName,proto3" json:"certProfileName,omitempty"`
 }
 
