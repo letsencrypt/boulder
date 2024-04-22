@@ -1,17 +1,17 @@
-import base64
-import os
-import urllib
-import time
-import re
-import random
-import json
-import requests
-import socket
-import tempfile
-import shutil
 import atexit
+import base64
 import errno
+import glob
+import os
+import random
+import re
+import requests
+import shutil
+import socket
 import subprocess
+import tempfile
+import time
+import urllib
 
 import challtestsrv
 
@@ -96,7 +96,21 @@ def ocsp_verify(cert_file, issuer_file, ocsp_response):
         raise(Exception("OCSP verify failure"))
     return output
 
-def verify_ocsp(cert_file, issuer_file, url, status="revoked", reason=None):
+def verify_ocsp(cert_file, issuer_glob, url, status="revoked", reason=None):
+    # Try to verify the OCSP response using every issuer identified by the glob.
+    # If one works, great. If none work, re-raise the exception produced by the
+    # last attempt
+    lastException = None
+    for issuer_file in glob.glob(issuer_glob):
+        try:
+            output = try_verify_ocsp(cert_file, issuer_file, url, status, reason)
+            return output
+        except Exception as e:
+            lastException = e
+            continue
+    raise(lastException)
+
+def try_verify_ocsp(cert_file, issuer_file, url, status="revoked", reason=None):
     ocsp_request = make_ocsp_req(cert_file, issuer_file)
     responses = fetch_ocsp(ocsp_request, url)
 

@@ -83,16 +83,13 @@ func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, erro
 // request doesn't match the signing profile an error is returned.
 func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceRequest) error {
 	switch req.PublicKey.(type) {
-	case *rsa.PublicKey:
-		if !i.useForRSALeaves {
-			return errors.New("cannot sign RSA public keys")
-		}
-	case *ecdsa.PublicKey:
-		if !i.useForECDSALeaves {
-			return errors.New("cannot sign ECDSA public keys")
-		}
+	case *rsa.PublicKey, *ecdsa.PublicKey:
 	default:
 		return errors.New("unsupported public key type")
+	}
+
+	if len(req.precertDER) == 0 && !i.active {
+		return errors.New("inactive issuer cannot issue precert")
 	}
 
 	if len(req.SubjectKeyId) != 20 {

@@ -4,15 +4,16 @@ import (
 	"context"
 	"time"
 
-	"github.com/letsencrypt/boulder/core"
-	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/mocks"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/mocks"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 type mockInvalidAuthorizationsAuthority struct {
@@ -27,12 +28,6 @@ func (*mockInvalidAuthorizationsAuthority) SetCertificateStatusReady(ctx context
 
 func (sa *mockInvalidAuthorizationsAuthority) CountOrders(_ context.Context, _ *sapb.CountOrdersRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
 	return &sapb.Count{}, nil
-}
-
-func (sa *mockInvalidAuthorizationsAuthority) PreviousCertificateExists(_ context.Context, _ *sapb.PreviousCertificateExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
-	return &sapb.Exists{
-		Exists: false,
-	}, nil
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {

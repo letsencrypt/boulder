@@ -1165,55 +1165,6 @@ func TestAddIssuedNames(t *testing.T) {
 	}
 }
 
-func TestPreviousCertificateExists(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
-
-	reg := createWorkingRegistration(t, sa)
-
-	_, testCert := test.ThrowAwayCert(t, clk)
-
-	issued := sa.clk.Now()
-	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          testCert.Raw,
-		Issued:       timestamppb.New(issued),
-		RegID:        reg.Id,
-		IssuerNameID: 1,
-	})
-	test.AssertNotError(t, err, "Failed to add precertificate")
-	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    testCert.Raw,
-		RegID:  reg.Id,
-		Issued: timestamppb.New(issued),
-	})
-	test.AssertNotError(t, err, "calling AddCertificate")
-
-	cases := []struct {
-		name     string
-		domain   string
-		regID    int64
-		expected bool
-	}{
-		{"matches", testCert.DNSNames[0], reg.Id, true},
-		{"wrongDomain", "example.org", reg.Id, false},
-		{"wrongAccount", testCert.DNSNames[0], 3333, false},
-	}
-
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			exists, err := sa.PreviousCertificateExists(context.Background(),
-				&sapb.PreviousCertificateExistsRequest{
-					Domain: testCase.domain,
-					RegID:  testCase.regID,
-				})
-			test.AssertNotError(t, err, "calling PreviousCertificateExists")
-			if exists.Exists != testCase.expected {
-				t.Errorf("wanted %v got %v", testCase.expected, exists.Exists)
-			}
-		})
-	}
-}
-
 func TestDeactivateAuthorization2(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
@@ -1321,11 +1272,6 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
 	test.AssertEquals(t, len(authzIDs), 4)
 	test.AssertDeepEquals(t, authzIDs, []int64{1, 2, 3, 4})
-
-	names, err := namesForOrder(ctx, sa.dbReadOnlyMap, order.Id)
-	test.AssertNotError(t, err, "namesForOrder errored")
-	test.AssertEquals(t, len(names), 4)
-	test.AssertDeepEquals(t, names, []string{"com.a", "com.b", "com.c", "com.d"})
 }
 
 // TestNewOrderAndAuthzs_NonNilInnerOrder verifies that a nil

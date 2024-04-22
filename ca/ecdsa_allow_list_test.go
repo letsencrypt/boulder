@@ -5,6 +5,7 @@ import (
 )
 
 func TestNewECDSAAllowListFromFile(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		filename string
 	}
@@ -46,9 +47,13 @@ func TestNewECDSAAllowListFromFile(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		// TODO(Remove this >= go1.22.3) This shouldn't be necessary due to
+		// go1.22 changing loopvars.
+		// https://github.com/golang/go/issues/65612#issuecomment-1943342030
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			allowList, gotEntries, err := NewECDSAAllowListFromFile(tt.args.filename)
-
 			if (err != nil) != tt.wantErrBool {
 				t.Errorf("NewECDSAAllowListFromFile() error = %v, wantErr %v", err, tt.wantErrBool)
 				t.Error(allowList, gotEntries, err)
