@@ -15,6 +15,7 @@ import (
 )
 
 func TestImplementationCRL(t *testing.T) {
+	t.Parallel()
 	test.AssertImplementsGRPCServer(t, &crlImpl{}, capb.UnimplementedCRLGeneratorServer{})
 }
 
@@ -38,6 +39,7 @@ func (s mockGenerateCRLBidiStream) Send(entry *capb.GenerateCRLResponse) error {
 }
 
 func TestGenerateCRL(t *testing.T) {
+	t.Parallel()
 	testCtx := setup(t)
 	crli := testCtx.crl
 	errs := make(chan error, 1)

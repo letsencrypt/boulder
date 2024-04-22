@@ -16,7 +16,10 @@
 		"issuerCerts": [
 			"/hierarchy/int-rsa-a.cert.pem",
 			"/hierarchy/int-rsa-b.cert.pem",
-			"/hierarchy/int-ecdsa-a.cert.pem"
+			"/hierarchy/int-rsa-c.cert.pem",
+			"/hierarchy/int-ecdsa-a.cert.pem",
+			"/hierarchy/int-ecdsa-b.cert.pem",
+			"/hierarchy/int-ecdsa-c.cert.pem"
 		],
 		"tls": {
 			"caCertFile": "test/grpc-creds/minica.pem",

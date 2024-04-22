@@ -87,7 +87,7 @@ func TestAkamaiPurgerQueue(t *testing.T) {
 	}
 
 	// Add 250 entries to fill the stack.
-	for i := 0; i < 250; i++ {
+	for i := range 250 {
 		req := akamaipb.PurgeRequest{Urls: []string{fmt.Sprintf("http://test.com/%d", i)}}
 		_, err := ap.Purge(context.Background(), &req)
 		test.AssertNotError(t, err, fmt.Sprintf("Purge failed for entry %d.", i))

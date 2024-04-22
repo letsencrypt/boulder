@@ -37,7 +37,7 @@ func (e *testErrorfer) Errorf(format string, args ...interface{}) {
 
 func TestCheck(t *testing.T) {
 	const leakCount = 3
-	for i := 0; i < leakCount; i++ {
+	for range leakCount {
 		go func() { time.Sleep(2 * time.Second) }()
 	}
 	if ig := interestingGoroutines(); len(ig) == 0 {
@@ -59,7 +59,7 @@ func ignoredTestingLeak(d time.Duration) {
 func TestCheckRegisterIgnore(t *testing.T) {
 	RegisterIgnoreGoroutine("ignoredTestingLeak")
 	const leakCount = 3
-	for i := 0; i < leakCount; i++ {
+	for range leakCount {
 		go func() { time.Sleep(2 * time.Second) }()
 	}
 	go func() { ignoredTestingLeak(3 * time.Second) }()

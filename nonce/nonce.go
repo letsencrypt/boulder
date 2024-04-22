@@ -191,7 +191,7 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 func (ns *NonceService) encrypt(counter int64) (string, error) {
 	// Generate a nonce with upper 4 bytes zero
 	nonce := make([]byte, 12)
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		nonce[i] = 0
 	}
 	_, err := rand.Read(nonce[4:])
@@ -236,7 +236,7 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 	}
 
 	n := make([]byte, 12)
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		n[i] = 0
 	}
 	copy(n[4:], decoded[:8])

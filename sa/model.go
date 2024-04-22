@@ -1054,7 +1054,7 @@ var blockedKeysColumns = "keyHash, added, source, comment"
 //     processing, then the order is status ready.
 //
 // An error is returned for any other case.
-func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now time.Time) (string, error) {
+func statusForOrder(order *corepb.Order, authzValidityInfo []authzValidity, now time.Time) (string, error) {
 	// Without any further work we know an order with an error is invalid
 	if order.Error != nil {
 		return string(core.StatusInvalid), nil
@@ -1069,13 +1069,6 @@ func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now
 	// return fewer authz objects than expected, triggering a 500 error response.
 	if order.Expires.AsTime().Before(now) {
 		return string(core.StatusInvalid), nil
-	}
-
-	// Get the full Authorization objects for the order
-	authzValidityInfo, err := getAuthorizationStatuses(ctx, s, order.V2Authorizations)
-	// If there was an error getting the authorizations, return it immediately
-	if err != nil {
-		return "", err
 	}
 
 	// If getAuthorizationStatuses returned a different number of authorization
@@ -1096,7 +1089,7 @@ func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now
 
 	// Loop over each of the order's authorization objects to examine the authz status
 	for _, info := range authzValidityInfo {
-		switch core.AcmeStatus(info.Status) {
+		switch uintToStatus[info.Status] {
 		case core.StatusPending:
 			pendingAuthzs++
 		case core.StatusValid:
@@ -1109,7 +1102,7 @@ func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now
 			otherAuthzs++
 		default:
 			return "", berrors.InternalServerError(
-				"Order is in an invalid state. Authz has invalid status %s",
+				"Order is in an invalid state. Authz has invalid status %d",
 				info.Status)
 		}
 		if info.Expires.Before(now) {
@@ -1162,9 +1155,12 @@ func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now
 			"authorizations", order.Id)
 }
 
+// authzValidity is a subset of authzModel
 type authzValidity struct {
-	Status  string
-	Expires time.Time
+	IdentifierType  uint8     `db:"identifierType"`
+	IdentifierValue string    `db:"identifierValue"`
+	Status          uint8     `db:"status"`
+	Expires         time.Time `db:"expires"`
 }
 
 // getAuthorizationStatuses takes a sequence of authz IDs, and returns the
@@ -1174,14 +1170,11 @@ func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) (
 	for _, id := range ids {
 		params = append(params, id)
 	}
-	var validityInfo []struct {
-		Status  uint8
-		Expires time.Time
-	}
+	var validities []authzValidity
 	_, err := s.Select(
 		ctx,
-		&validityInfo,
-		fmt.Sprintf("SELECT status, expires FROM authz2 WHERE id IN (%s)",
+		&validities,
+		fmt.Sprintf("SELECT identifierType, identifierValue, status, expires FROM authz2 WHERE id IN (%s)",
 			db.QuestionMarks(len(ids))),
 		params...,
 	)
@@ -1189,14 +1182,7 @@ func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) (
 		return nil, err
 	}
 
-	allAuthzValidity := make([]authzValidity, len(validityInfo))
-	for i, info := range validityInfo {
-		allAuthzValidity[i] = authzValidity{
-			Status:  string(uintToStatus[info.Status]),
-			Expires: info.Expires,
-		}
-	}
-	return allAuthzValidity, nil
+	return validities, nil
 }
 
 // authzForOrder retrieves the authorization IDs for an order.
@@ -1209,23 +1195,6 @@ func authzForOrder(ctx context.Context, s db.Selector, orderID int64) ([]int64, 
 		orderID,
 	)
 	return v2IDs, err
-}
-
-// namesForOrder finds all of the requested names associated with an order. The
-// names are returned in their reversed form (see `sa.ReverseName`).
-func namesForOrder(ctx context.Context, s db.Selector, orderID int64) ([]string, error) {
-	var reversedNames []string
-	_, err := s.Select(
-		ctx,
-		&reversedNames,
-		`SELECT reversedName
-	   FROM requestedNames
-	   WHERE orderID = ?`,
-		orderID)
-	if err != nil {
-		return nil, err
-	}
-	return reversedNames, nil
 }
 
 // crlShardModel represents one row in the crlShards table. The ThisUpdate and

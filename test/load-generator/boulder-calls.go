@@ -168,7 +168,7 @@ func newOrder(s *State, c *acmeCache) error {
 	// Generate that many random domain names. There may be some duplicates, we
 	// don't care. The ACME server will collapse those down for us, how handy!
 	dnsNames := []identifier.ACMEIdentifier{}
-	for i := 0; i <= orderSize; i++ {
+	for range orderSize {
 		dnsNames = append(dnsNames, identifier.ACMEIdentifier{
 			Type:  identifier.DNS,
 			Value: randDomain(s.domainBase),
@@ -354,7 +354,7 @@ func completeAuthorization(authz *core.Authorization, s *State, c *acmeCache) er
 // then the authorization is valid and ready.
 func pollAuthorization(authz *core.Authorization, s *State, c *acmeCache) error {
 	authzURL := authz.ID
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		// Fetch the authz by its URL
 		authz, err := getAuthorization(s, c, authzURL)
 		if err != nil {
@@ -442,7 +442,7 @@ func getOrder(s *State, c *acmeCache, url string) (*OrderJSON, error) {
 // made to check the order status, sleeping 3s between each. If these attempts
 // expire without the status becoming valid an error is returned.
 func pollOrderForCert(order *OrderJSON, s *State, c *acmeCache) (*OrderJSON, error) {
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		// Fetch the order by its URL
 		order, err := getOrder(s, c, order.URL)
 		if err != nil {

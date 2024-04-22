@@ -366,7 +366,7 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 	results := make([]caaResult, len(labels))
 	var wg sync.WaitGroup
 
-	for i := 0; i < len(labels); i++ {
+	for i := range len(labels) {
 		// Start the concurrent DNS lookup.
 		wg.Add(1)
 		go func(name string, r *caaResult) {

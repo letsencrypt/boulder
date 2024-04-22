@@ -39,7 +39,6 @@ service StorageAuthorityReadOnly {
   rpc GetValidOrderAuthorizations2(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
-  rpc PreviousCertificateExists(PreviousCertificateExistsRequest) returns (Exists) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
 }
@@ -76,7 +75,6 @@ service StorageAuthority {
   rpc GetValidOrderAuthorizations2(GetValidOrderAuthorizationsRequest) returns (Authorizations) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
-  rpc PreviousCertificateExists(PreviousCertificateExistsRequest) returns (Exists) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
   // Adders
@@ -206,11 +204,6 @@ message CountFQDNSetsRequest {
 
 message FQDNSetExistsRequest {
   repeated string domains = 1;
-}
-
-message PreviousCertificateExistsRequest {
-  string domain = 1;
-  int64 regID = 2;
 }
 
 message Exists {

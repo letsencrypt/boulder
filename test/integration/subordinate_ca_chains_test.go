@@ -7,6 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -36,10 +37,10 @@ func TestSubordinateCAChainsServedByWFE(t *testing.T) {
 	seenECDSACrossSignedIntermediate := false
 	for _, certUrl := range chains.certs {
 		for _, cert := range certUrl {
-			if cert.Subject.String() == "CN=int ecdsa a,O=good guys,C=US" && cert.Issuer.String() == "CN=root ecdsa,O=good guys,C=US" {
+			if strings.Contains(cert.Subject.CommonName, "int ecdsa") && cert.Issuer.CommonName == "root ecdsa" {
 				seenECDSAIntermediate = true
 			}
-			if cert.Subject.String() == "CN=int ecdsa a,O=good guys,C=US" && cert.Issuer.String() == "CN=root rsa,O=good guys,C=US" {
+			if strings.Contains(cert.Subject.CommonName, "int ecdsa") && cert.Issuer.CommonName == "root rsa" {
 				seenECDSACrossSignedIntermediate = true
 			}
 		}

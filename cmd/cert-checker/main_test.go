@@ -88,7 +88,7 @@ func BenchmarkCheckCert(b *testing.B) {
 		Expires: expiry,
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		checker.checkCert(context.Background(), cert, nil)
 	}
 }
@@ -355,7 +355,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	}
 	reg := satest.CreateWorkingRegistration(t, isa.SA{Impl: sa})
 	test.AssertNotError(t, err, "Couldn't create registration")
-	for i := int64(0); i < 5; i++ {
+	for range 5 {
 		rawCert.SerialNumber = big.NewInt(mrand.Int63())
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")

@@ -316,7 +316,7 @@ func (ssa *SQLStorageAuthorityRO) CountCertificatesByNames(ctx context.Context, 
 	// We may perform up to 100 queries, depending on what's in the certificate
 	// request. Parallelize them so we don't hit our timeout, but limit the
 	// parallelism so we don't consume too many threads on the database.
-	for i := 0; i < ssa.parallelismPerRPC; i++ {
+	for range ssa.parallelismPerRPC {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -628,69 +628,6 @@ func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(ctx context.Context, select
 	return exists, err
 }
 
-// PreviousCertificateExists returns true iff there was at least one certificate
-// issued with the provided domain name, and the most recent such certificate
-// was issued by the provided registration ID. This method is currently only
-// used to determine if a certificate has previously been issued for a given
-// domain name in order to determine if validations should be allowed during
-// the v1 API shutoff.
-// TODO(#5816): Consider removing this method, as it has no callers.
-func (ssa *SQLStorageAuthorityRO) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
-	if req.Domain == "" || req.RegID == 0 {
-		return nil, errIncompleteRequest
-	}
-
-	exists := &sapb.Exists{Exists: true}
-	notExists := &sapb.Exists{Exists: false}
-
-	// Find the most recently issued certificate containing this domain name.
-	var serial string
-	err := ssa.dbReadOnlyMap.SelectOne(
-		ctx,
-		&serial,
-		`SELECT serial FROM issuedNames
-		WHERE reversedName = ?
-		ORDER BY notBefore DESC
-		LIMIT 1`,
-		ReverseName(req.Domain),
-	)
-	if err != nil {
-		if db.IsNoRows(err) {
-			return notExists, nil
-		}
-		return nil, err
-	}
-
-	// Check whether that certificate was issued to the specified account.
-	var count int
-	err = ssa.dbReadOnlyMap.SelectOne(
-		ctx,
-		&count,
-		`SELECT COUNT(*) FROM certificates
-		WHERE serial = ?
-		AND registrationID = ?`,
-		serial,
-		req.RegID,
-	)
-	if err != nil {
-		// If no rows found, that means the certificate we found in issuedNames wasn't
-		// issued by the registration ID we are checking right now, but is not an
-		// error.
-		if db.IsNoRows(err) {
-			return notExists, nil
-		}
-		return nil, err
-	}
-	if count > 0 {
-		return exists, nil
-	}
-	return notExists, nil
-}
-
-func (ssa *SQLStorageAuthority) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
-	return ssa.SQLStorageAuthorityRO.PreviousCertificateExists(ctx, req)
-}
-
 // GetOrder is used to retrieve an already existing order object
 func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
 	if req == nil || req.Id == 0 {
@@ -736,21 +673,21 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		}
 		order.V2Authorizations = v2AuthzIDs
 
-		names, err := namesForOrder(ctx, tx, order.Id)
+		// Get the partial Authorization objects for the order
+		authzValidityInfo, err := getAuthorizationStatuses(ctx, tx, order.V2Authorizations)
+		// If there was an error getting the authorizations, return it immediately
 		if err != nil {
 			return nil, err
 		}
-		// The requested names are stored reversed to improve indexing performance. We
-		// need to reverse the reversed names here before giving them back to the
-		// caller.
-		reversedNames := make([]string, len(names))
-		for i, n := range names {
-			reversedNames[i] = ReverseName(n)
+
+		names := make([]string, 0, len(authzValidityInfo))
+		for _, a := range authzValidityInfo {
+			names = append(names, a.IdentifierValue)
 		}
-		order.Names = reversedNames
+		order.Names = names
 
 		// Calculate the status for the order
-		status, err := statusForOrder(ctx, tx, order, ssa.clk.Now())
+		status, err := statusForOrder(order, authzValidityInfo, ssa.clk.Now())
 		if err != nil {
 			return nil, err
 		}

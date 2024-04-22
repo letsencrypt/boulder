@@ -195,7 +195,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "revoking second certificate")
 
-	for i := 0; i < 300; i++ {
+	for range 300 {
 		_, err = ocsp_helper.Req(successfulCert,
 			ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise))
 		if err == nil {

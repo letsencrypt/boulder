@@ -64,8 +64,7 @@
 			},
 			"issuers": [
 				{
-					"useForRSALeaves": false,
-					"useForECDSALeaves": true,
+					"active": true,
 					"issuerURL": "http://127.0.0.1:4502/int ecdsa a",
 					"ocspURL": "http://127.0.0.1:4002/",
 					"crlURLBase": "http://127.0.0.1:4501/ecdsa-a/",
@@ -76,8 +75,29 @@
 					}
 				},
 				{
-					"useForRSALeaves": true,
-					"useForECDSALeaves": true,
+					"active": true,
+					"issuerURL": "http://127.0.0.1:4502/int ecdsa b",
+					"ocspURL": "http://127.0.0.1:4002/",
+					"crlURLBase": "http://127.0.0.1:4501/ecdsa-b/",
+					"location": {
+						"configFile": "/hierarchy/int-ecdsa-b.pkcs11.json",
+						"certFile": "/hierarchy/int-ecdsa-b.cert.pem",
+						"numSessions": 2
+					}
+				},
+				{
+					"active": false,
+					"issuerURL": "http://127.0.0.1:4502/int ecdsa c",
+					"ocspURL": "http://127.0.0.1:4002/",
+					"crlURLBase": "http://127.0.0.1:4501/ecdsa-c/",
+					"location": {
+						"configFile": "/hierarchy/int-ecdsa-c.pkcs11.json",
+						"certFile": "/hierarchy/int-ecdsa-c.cert.pem",
+						"numSessions": 2
+					}
+				},
+				{
+					"active": true,
 					"issuerURL": "http://127.0.0.1:4502/int rsa a",
 					"ocspURL": "http://127.0.0.1:4002/",
 					"crlURLBase": "http://127.0.0.1:4501/rsa-a/",
@@ -88,14 +108,24 @@
 					}
 				},
 				{
-					"useForRSALeaves": false,
-					"useForECDSALeaves": false,
+					"active": true,
 					"issuerURL": "http://127.0.0.1:4502/int rsa b",
 					"ocspURL": "http://127.0.0.1:4002/",
 					"crlURLBase": "http://127.0.0.1:4501/rsa-b/",
 					"location": {
 						"configFile": "/hierarchy/int-rsa-b.pkcs11.json",
 						"certFile": "/hierarchy/int-rsa-b.cert.pem",
+						"numSessions": 2
+					}
+				},
+				{
+					"active": false,
+					"issuerURL": "http://127.0.0.1:4502/int rsa c",
+					"ocspURL": "http://127.0.0.1:4002/",
+					"crlURLBase": "http://127.0.0.1:4501/rsa-c/",
+					"location": {
+						"configFile": "/hierarchy/int-rsa-c.pkcs11.json",
+						"certFile": "/hierarchy/int-rsa-c.cert.pem",
 						"numSessions": 2
 					}
 				}

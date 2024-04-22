@@ -12,14 +12,15 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/balancer/roundrobin"
+	"google.golang.org/grpc/connectivity"
+
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/balancer/roundrobin"
-	"google.golang.org/grpc/connectivity"
 )
 
 func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
@@ -55,7 +56,7 @@ func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
 		sigterm()
 		return nil, nil, nil, err
 	}
-	for i := 0; ; i++ {
+	for i := range 42 {
 		if conn.GetState() == connectivity.Ready {
 			break
 		}
@@ -78,7 +79,7 @@ func TestAkamaiPurgerDrainQueueFails(t *testing.T) {
 	// We know that the purger is configured to only process two items per batch,
 	// so submitting 10 items should give it enough of a backlog to guarantee
 	// that our SIGTERM reaches the process before it's fully cleared the queue.
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		_, err = purgerClient.Purge(context.Background(), &akamaipb.PurgeRequest{
 			Urls: []string{fmt.Sprintf("http://example%d.com/", i)},
 		})
@@ -106,7 +107,7 @@ func TestAkamaiPurgerDrainQueueSucceeds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, err := purgerClient.Purge(context.Background(), &akamaipb.PurgeRequest{
 			Urls: []string{"http://example.com/"},
 		})
