@@ -146,7 +146,7 @@ func TestOcspFlushOnLength(t *testing.T) {
 	stats := metrics.NoopRegisterer
 	queue := newOCSPLogQueue(100, 100*time.Millisecond, stats, log)
 	go queue.loop()
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		queue.enqueue(serial(t), time.Now(), ocsp.Good, ocsp.Unspecified)
 	}
 	queue.stop()

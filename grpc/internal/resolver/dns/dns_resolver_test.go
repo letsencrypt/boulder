@@ -30,11 +30,12 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/balancer"
+	"google.golang.org/grpc/resolver"
+
 	"github.com/letsencrypt/boulder/grpc/internal/leakcheck"
 	"github.com/letsencrypt/boulder/grpc/internal/testutils"
 	"github.com/letsencrypt/boulder/test"
-	"google.golang.org/grpc/balancer"
-	"google.golang.org/grpc/resolver"
 )
 
 func TestMain(m *testing.M) {
@@ -231,7 +232,7 @@ func testDNSResolver(t *testing.T) {
 		}
 		var state resolver.State
 		var cnt int
-		for i := 0; i < 2000; i++ {
+		for range 2000 {
 			state, cnt = cc.getState()
 			if cnt > 0 {
 				break
@@ -277,7 +278,7 @@ func TestDNSResolverExponentialBackoff(t *testing.T) {
 	defer r.Close()
 	var state resolver.State
 	var cnt int
-	for i := 0; i < 2000; i++ {
+	for range 2000 {
 		state, cnt = cc.getState()
 		if cnt > 0 {
 			break
@@ -293,7 +294,7 @@ func TestDNSResolverExponentialBackoff(t *testing.T) {
 	ctx, ctxCancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 	defer ctxCancel()
 	// Cause timer to go off 10 times, and see if it calls updateState() correctly.
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		timer, err := timerChan.Receive(ctx)
 		if err != nil {
 			t.Fatalf("Error receiving timer from mock NewTimer call: %v", err)
@@ -404,7 +405,7 @@ func testDNSResolveNow(t *testing.T) {
 		defer r.Close()
 		var state resolver.State
 		var cnt int
-		for i := 0; i < 2000; i++ {
+		for range 2000 {
 			state, cnt = cc.getState()
 			if cnt > 0 {
 				break
@@ -420,7 +421,7 @@ func testDNSResolveNow(t *testing.T) {
 
 		revertTbl := mutateTbl(strings.TrimPrefix(a.target, "foo."))
 		r.ResolveNow(resolver.ResolveNowOptions{})
-		for i := 0; i < 2000; i++ {
+		for range 2000 {
 			state, cnt = cc.getState()
 			if cnt == 2 {
 				break
@@ -454,7 +455,7 @@ func TestDNSResolverRetry(t *testing.T) {
 	}
 	defer r.Close()
 	var state resolver.State
-	for i := 0; i < 2000; i++ {
+	for range 2000 {
 		state, _ = cc.getState()
 		if len(state.Addresses) == 1 {
 			break
@@ -472,7 +473,7 @@ func TestDNSResolverRetry(t *testing.T) {
 	revertTbl := mutateTbl(strings.TrimPrefix(target, "foo."))
 	// trigger a resolve that will get empty address list
 	r.ResolveNow(resolver.ResolveNowOptions{})
-	for i := 0; i < 2000; i++ {
+	for range 2000 {
 		state, _ = cc.getState()
 		if len(state.Addresses) == 0 {
 			break
@@ -485,7 +486,7 @@ func TestDNSResolverRetry(t *testing.T) {
 	revertTbl()
 	// wait for the retry to happen in two seconds.
 	r.ResolveNow(resolver.ResolveNowOptions{})
-	for i := 0; i < 2000; i++ {
+	for range 2000 {
 		state, _ = cc.getState()
 		if len(state.Addresses) == 1 {
 			break
@@ -674,7 +675,7 @@ func TestRateLimitedResolve(t *testing.T) {
 
 	// Call Resolve Now 100 times, shouldn't continue onto next iteration of
 	// watcher, thus shouldn't lookup again.
-	for i := 0; i <= 100; i++ {
+	for range 100 {
 		r.ResolveNow(resolver.ResolveNowOptions{})
 	}
 
@@ -703,7 +704,7 @@ func TestRateLimitedResolve(t *testing.T) {
 
 	// Resolve Now 1000 more times, shouldn't lookup again as DNS Min Res Rate
 	// timer has not gone off.
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		r.ResolveNow(resolver.ResolveNowOptions{})
 	}
 
@@ -777,7 +778,7 @@ func TestReportError(t *testing.T) {
 	defer r.Close()
 
 	// Cause timer to go off 10 times, and see if it matches DNS Resolver updating Error.
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		// Should call ReportError().
 		err = <-cc.errChan
 		if !strings.Contains(err.Error(), "srvLookup error") {

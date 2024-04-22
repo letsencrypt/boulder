@@ -47,19 +47,19 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 
 	inputs := make(chan workItem)
 
-	for i := 0; i < cu.maxParallelism; i++ {
+	for range cu.maxParallelism {
 		wg.Add(1)
 		go shardWorker(inputs)
 	}
 
 	for _, issuer := range cu.issuers {
-		for i := 1; i <= cu.numShards; i++ {
+		for i := range cu.numShards {
 			select {
 			case <-ctx.Done():
 				close(inputs)
 				wg.Wait()
 				return ctx.Err()
-			case inputs <- workItem{issuerNameID: issuer.NameID(), shardIdx: i}:
+			case inputs <- workItem{issuerNameID: issuer.NameID(), shardIdx: i + 1}:
 			}
 		}
 	}

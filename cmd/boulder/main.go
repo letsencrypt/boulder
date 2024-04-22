@@ -57,7 +57,7 @@ func readAndValidateConfigFile(name, filename string) error {
 // getConfigPath returns the path to the config file if it was provided as a
 // command line flag. If the flag was not provided, it returns an empty string.
 func getConfigPath() string {
-	for i := 0; i < len(os.Args); i++ {
+	for i := range len(os.Args) {
 		arg := os.Args[i]
 		if arg == "--config" || arg == "-config" {
 			if i+1 < len(os.Args) {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
@@ -247,7 +248,7 @@ func TestBigBatchPurge(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
 
 	var urls []string
-	for i := 0; i < 250; i++ {
+	for i := range 250 {
 		urls = append(urls, fmt.Sprintf("http://test.com/%d", i))
 	}
 

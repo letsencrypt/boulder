@@ -151,7 +151,7 @@ func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time
 
 	crlID := crl.Id(issuerNameID, shardIdx, crl.Number(atTime))
 
-	for i := 0; i < cu.maxAttempts; i++ {
+	for i := range cu.maxAttempts {
 		// core.RetryBackoff always returns 0 when its first argument is zero.
 		sleepTime := core.RetryBackoff(i, time.Second, time.Minute, 2)
 		if i != 0 {
