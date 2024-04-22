@@ -6,8 +6,8 @@ import (
 	"github.com/letsencrypt/boulder/features"
 )
 
-// Shared contains all of the shared fields for a VA and a Remote VA (RVA).
-type Shared struct {
+// Common contains all of the shared fields for a VA and a Remote VA (RVA).
+type Common struct {
 	cmd.ServiceConfig
 	UserAgent string
 

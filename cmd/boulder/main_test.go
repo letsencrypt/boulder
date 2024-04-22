@@ -37,22 +37,19 @@ func TestConfigValidation(t *testing.T) {
 			fileNames = []string{"publisher.json"}
 		case "boulder-ra":
 			fileNames = []string{"ra.json"}
-		// TODO(#5294) After we have separate RVA and VA binaries deployed,
-		// rename boulder-remoteva2 to boulder-remoteva.
-		case "boulder-remoteva":
-			fileNames = []string{
-				"va-remote-a.json",
-				"va-remote-b.json",
-			}
-		case "boulder-remoteva2":
-			fileNames = []string{
-				"remoteva2-a.json",
-				"remoteva2-b.json",
-			}
 		case "boulder-sa":
 			fileNames = []string{"sa.json"}
 		case "boulder-va":
-			fileNames = []string{"va.json"}
+			fileNames = []string{
+				"va.json",
+				"va-remote-a.json",
+				"va-remote-b.json",
+			}
+		case "boulder-rva":
+			fileNames = []string{
+				"rva-a.json",
+				"rva-b.json",
+			}
 		case "boulder-wfe2":
 			fileNames = []string{"wfe2.json"}
 		case "nonce-service":

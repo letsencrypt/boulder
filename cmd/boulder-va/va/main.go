@@ -4,10 +4,9 @@ import (
 	"context"
 	"flag"
 	"os"
-	"time"
 
-	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
+	vaCommon "github.com/letsencrypt/boulder/cmd/boulder-va"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/va"
@@ -17,7 +16,7 @@ import (
 
 type Config struct {
 	VA struct {
-		vacfg.Shared
+		vacfg.Common
 		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
 		MaxRemoteValidationFailures int                    `validate:"omitempty,min=0,required_with=RemoteVAs"`
 	}
@@ -53,53 +52,20 @@ func main() {
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
-	if c.VA.DNSTimeout.Duration == 0 {
-		cmd.Fail("'dnsTimeout' is required")
-	}
-	dnsTries := c.VA.DNSTries
-	if dnsTries < 1 {
-		dnsTries = 1
-	}
-	clk := cmd.Clock()
-
-	var servers bdns.ServerProvider
-	proto := "udp"
-	if features.Get().DOH {
-		proto = "tcp"
-	}
-
-	if len(c.VA.DNSStaticResolvers) != 0 {
-		servers, err = bdns.NewStaticProvider(c.VA.DNSStaticResolvers)
-		cmd.FailOnError(err, "Couldn't start static DNS server resolver")
-	} else {
-		servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second, proto)
-		cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
+	servers, err := vaCommon.SetupServerResolvers(c.VA.DNSStaticResolvers, c.VA.DNSProvider)
+	if err != nil {
+		cmd.FailOnError(err, "")
 	}
 	defer servers.Stop()
 
 	tlsConfig, err := c.VA.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
 
-	var resolver bdns.Client
-	if !c.VA.DNSAllowLoopbackAddresses {
-		resolver = bdns.New(
-			c.VA.DNSTimeout.Duration,
-			servers,
-			scope,
-			clk,
-			dnsTries,
-			logger,
-			tlsConfig)
-	} else {
-		resolver = bdns.NewTest(
-			c.VA.DNSTimeout.Duration,
-			servers,
-			scope,
-			clk,
-			dnsTries,
-			logger,
-			tlsConfig)
+	if c.VA.DNSTimeout.Duration == 0 {
+		cmd.Fail("'dnsTimeout' is required")
 	}
+	clk := cmd.Clock()
+	resolver := vaCommon.SetupClientResolver(c.VA.DNSTimeout.Duration, servers, scope, clk, c.VA.DNSTries, logger, tlsConfig, c.VA.DNSAllowLoopbackAddresses)
 
 	var remotes []va.RemoteVA
 	if len(c.VA.RemoteVAs) > 0 {
@@ -119,32 +85,13 @@ func main() {
 			)
 		}
 	}
-
-	vai, err := va.NewValidationAuthorityImpl(
-		resolver,
-		remotes,
-		c.VA.MaxRemoteValidationFailures,
-		c.VA.UserAgent,
-		c.VA.IssuerDomain,
-		scope,
-		clk,
-		logger,
-		c.VA.AccountURIPrefixes)
-	cmd.FailOnError(err, "Unable to create VA server")
-
-	start, err := bgrpc.NewServer(c.VA.GRPC, logger).Add(
-		&vapb.VA_ServiceDesc, vai).Add(
-		&vapb.CAA_ServiceDesc, vai).Build(tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Unable to setup VA gRPC server")
-
+	start, err := vaCommon.SetupNewVAImplAndStartServer(resolver, remotes, c.VA.MaxRemoteValidationFailures, c.VA.UserAgent, c.VA.IssuerDomain, scope, clk, logger, c.VA.AccountURIPrefixes, c.VA.GRPC, tlsConfig)
+	if err != nil {
+		cmd.FailOnError(err, "")
+	}
 	cmd.FailOnError(start(), "VA gRPC service failed")
 }
 
 func init() {
 	cmd.RegisterCommand("boulder-va", main, &cmd.ConfigValidator{Config: &Config{}})
-	// TODO(#5294) After we have separate RVA and VA binaries deployed,
-	// de-register this boulder-remoteva.
-	// We register under two different names, because it's convenient for the
-	// remote VAs to show up under a different program name when looking at logs.
-	cmd.RegisterCommand("boulder-remoteva", main, &cmd.ConfigValidator{Config: &Config{}})
 }

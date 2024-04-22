@@ -124,8 +124,10 @@ type HostnamePolicyConfig struct {
 
 // TLSConfig represents certificates and a key for authenticated TLS.
 type TLSConfig struct {
-	CertFile   string `validate:"required"`
-	KeyFile    string `validate:"required"`
+	CertFile string `validate:"required"`
+	KeyFile  string `validate:"required"`
+	// The CACertFile file may contain any number of root certificates and will
+	// be deduplicated internally.
 	CACertFile string `validate:"required"`
 }
 
