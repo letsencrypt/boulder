@@ -215,7 +215,7 @@ def test_http_challenge_loop_redirect():
         challengePath,
         "http://{0}{1}".format(d, challengePath))
 
-    # Issuing for the the name should fail because of the challenge domains's
+    # Issuing for the name should fail because of the challenge domains's
     # redirect loop.
     chisel2.expect_problem("urn:ietf:params:acme:error:connection",
         lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))

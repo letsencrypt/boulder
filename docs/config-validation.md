@@ -106,7 +106,7 @@ strings.
 The
 [docs](https://pkg.go.dev/github.com/go-playground/validator/v10#hdr-HostPort)
 for this tag are scant with detail, but it validates that the value is a valid
-RFC 1123 hostname and port. It is used to validate many of the the
+RFC 1123 hostname and port. It is used to validate many of the
 `ListenAddress` and `DebugAddr` fields of our components.
 
 #### Future Work

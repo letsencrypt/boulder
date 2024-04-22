@@ -310,7 +310,7 @@ type recipient struct {
 
 	// Data is a mapping of column name to value parsed from a single record in
 	// the provided recipient list file. It's exported so the contents can be
-	// accessed by the the template package. Please inform SRE if you make any
+	// accessed by the template package. Please inform SRE if you make any
 	// changes to this field.
 	Data map[string]string
 }
