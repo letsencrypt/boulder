@@ -151,7 +151,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 		logID, len(crlBytes), hash,
 	)
 
-	for i := range len(crlBytes) {
+	for i := 0; i < len(crlBytes); i += 1000 {
 		j := i + 1000
 		if j > len(crlBytes) {
 			j = len(crlBytes)
