@@ -665,7 +665,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 // specified threshold of new orders within the specified time window.
 func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.Context, acctID int64, names []string, limit ratelimit.RateLimitPolicy) error {
 	// Check if there is already an existing certificate for the exact name set we
-	// are issuing for. If so bypass the the newOrders limit.
+	// are issuing for. If so bypass the newOrders limit.
 	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
 	if err != nil {
 		return fmt.Errorf("checking renewal exemption for %q: %s", names, err)

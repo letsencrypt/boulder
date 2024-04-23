@@ -110,7 +110,7 @@ func NamesFromCSR(csr *x509.CertificateRequest) names {
 	}
 
 	// If there's no CN already, but we want to set one, promote the first SAN
-	// which is shorter than the the maximum acceptable CN length (if any).
+	// which is shorter than the maximum acceptable CN length (if any).
 	for _, name := range sans {
 		if len(name) <= maxCNLength {
 			return names{SANs: core.UniqueLowerNames(sans), CN: strings.ToLower(name)}
