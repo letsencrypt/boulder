@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -115,7 +116,7 @@ type RegistrationAuthorityImpl struct {
 	rlOverrideUsageGauge        *prometheus.GaugeVec
 	newRegCounter               prometheus.Counter
 	recheckCAACounter           prometheus.Counter
-	newCertCounter              prometheus.Counter
+	newCertCounter              *prometheus.CounterVec
 	recheckCAAUsedAuthzLifetime prometheus.Counter
 	authzAges                   *prometheus.HistogramVec
 	orderAges                   *prometheus.HistogramVec
@@ -195,10 +196,10 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(recheckCAAUsedAuthzLifetime)
 
-	newCertCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	newCertCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "new_certificates",
-		Help: "A counter of new certificates",
-	})
+		Help: "A counter of new certificates including the certificate profile name and hexadecimal certificate profile hash",
+	}, []string{"profileName", "profileHash"})
 	stats.MustRegister(newCertCounter)
 
 	revocationReasonCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -330,6 +331,12 @@ type certificateRequestEvent struct {
 	// objects. It can be used to understand how the names in a certificate
 	// request were authorized.
 	Authorizations map[string]certificateRequestAuthz
+	// CertProfileName is a human readable name used to refer to the certificate
+	// profile.
+	CertProfileName string `json:",omitempty"`
+	// CertProfileHash is SHA256 sum over every exported field of an
+	// issuance.ProfileConfig, represented here as a hexadecimal string.
+	CertProfileHash string `json:",omitempty"`
 }
 
 // certificateRevocationEvent is a struct for holding information that is logged
@@ -1224,7 +1231,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	defer ra.inflightFinalizes.Dec()
 
 	// Step 3: Issue the Certificate
-	cert, err := ra.issueCertificateInner(
+	cert, cpId, err := ra.issueCertificateInner(
 		ctx, csr, order.CertificateProfileName, accountID(order.RegistrationID), orderID(order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
@@ -1249,13 +1256,19 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 			prometheus.Labels{"type": "issued"},
 		).Observe(float64(len(order.Names)))
 
-		ra.newCertCounter.Inc()
+		ra.newCertCounter.With(
+			prometheus.Labels{
+				"profileName": cpId.name,
+				"profileHash": hex.EncodeToString(cpId.hash),
+			}).Inc()
 
 		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
 		logEvent.CommonName = cert.Subject.CommonName
 		logEvent.Names = cert.DNSNames
 		logEvent.NotBefore = cert.NotBefore
 		logEvent.NotAfter = cert.NotAfter
+		logEvent.CertProfileName = cpId.name
+		logEvent.CertProfileHash = hex.EncodeToString(cpId.hash)
 
 		result = "successful"
 	}
@@ -1264,6 +1277,13 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
 
 	return order, err
+}
+
+// certProfileID contains the name and hash of a certificate profile returned by
+// a CA.
+type certProfileID struct {
+	name string
+	hash []byte
 }
 
 // issueCertificateInner handles the heavy lifting aspects of certificate
@@ -1284,7 +1304,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	csr *x509.CertificateRequest,
 	profileName string,
 	acctID accountID,
-	oID orderID) (*x509.Certificate, error) {
+	oID orderID) (*x509.Certificate, *certProfileID, error) {
 	if features.Get().AsyncFinalize {
 		// If we're in async mode, use a context with a much longer timeout.
 		var cancel func()
@@ -1311,17 +1331,17 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	}
 	precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
 	if err != nil {
-		return nil, wrapError(err, "issuing precertificate")
+		return nil, nil, wrapError(err, "issuing precertificate")
 	}
 
 	parsedPrecert, err := x509.ParseCertificate(precert.DER)
 	if err != nil {
-		return nil, wrapError(err, "parsing precertificate")
+		return nil, nil, wrapError(err, "parsing precertificate")
 	}
 
 	scts, err := ra.getSCTs(ctx, precert.DER, parsedPrecert.NotAfter)
 	if err != nil {
-		return nil, wrapError(err, "getting SCTs")
+		return nil, nil, wrapError(err, "getting SCTs")
 	}
 
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
@@ -1332,12 +1352,12 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		CertProfileHash: precert.CertProfileHash,
 	})
 	if err != nil {
-		return nil, wrapError(err, "issuing certificate for precertificate")
+		return nil, nil, wrapError(err, "issuing certificate for precertificate")
 	}
 
 	parsedCertificate, err := x509.ParseCertificate(cert.Der)
 	if err != nil {
-		return nil, wrapError(err, "parsing final certificate")
+		return nil, nil, wrapError(err, "parsing final certificate")
 	}
 
 	// Asynchronously submit the final certificate to any configured logs
@@ -1346,7 +1366,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	// TODO(#6587): Make this error case Very Alarming
 	err = ra.matchesCSR(parsedCertificate, csr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	_, err = ra.SA.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{
@@ -1354,10 +1374,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		CertificateSerial: core.SerialToString(parsedCertificate.SerialNumber),
 	})
 	if err != nil {
-		return nil, wrapError(err, "persisting finalized order")
+		return nil, nil, wrapError(err, "persisting finalized order")
 	}
 
-	return parsedCertificate, nil
+	return parsedCertificate, &certProfileID{name: precert.CertProfileName, hash: precert.CertProfileHash}, nil
 }
 
 func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, expiration time.Time) (core.SCTDERs, error) {

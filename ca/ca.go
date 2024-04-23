@@ -315,7 +315,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, certProfileHash, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
+	precertDER, cpwid, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
 	if err != nil {
 		return nil, err
 	}
@@ -327,7 +327,8 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 
 	return &capb.IssuePrecertificateResponse{
 		DER:             precertDER,
-		CertProfileHash: certProfileHash,
+		CertProfileName: cpwid.name,
+		CertProfileHash: cpwid.hash[:],
 	}, nil
 }
 
@@ -496,7 +497,7 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 	return skid[0:20:20], nil
 }
 
-func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, []byte, error) {
+func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *certProfileWithID, error) {
 	// The CA must check if it is capable of issuing for the given certificate
 	// profile name. The name is checked here instead of the hash because the RA
 	// is unaware of what certificate profiles exist. Pre-existing orders stored
@@ -599,5 +600,5 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	ca.log.AuditInfof("Signing precert success: issuer=[%s] serial=[%s] regID=[%d] names=[%s] precertificate=[%s] certProfileName=[%s] certProfileHash=[%x]",
 		issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(certDER), certProfile.name, certProfile.hash)
 
-	return certDER, certProfile.hash[:], nil
+	return certDER, &certProfileWithID{certProfile.name, certProfile.hash, nil}, nil
 }

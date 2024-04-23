@@ -3633,7 +3633,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
 			// Attempt issuance
-			_, err = ra.issueCertificateInner(ctx, csrOb, order.CertificateProfileName, accountID(Registration.Id), orderID(order.Id))
+			_, _, err = ra.issueCertificateInner(ctx, csrOb, order.CertificateProfileName, accountID(Registration.Id), orderID(order.Id))
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
 			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
 			// If there is an expected `error` then match the error message
@@ -3700,10 +3700,66 @@ func TestIssueCertificateInnerWithProfile(t *testing.T) {
 
 	// Call issueCertificateInner with the CSR generated above and the profile
 	// name "default", which will cause the mockCA to return a specific hash.
-	_, err = ra.issueCertificateInner(context.Background(), csr, "default", 1, 1)
+	_, cpId, err := ra.issueCertificateInner(context.Background(), csr, "default", 1, 1)
 	test.AssertNotError(t, err, "issuing cert with profile name")
-	test.AssertEquals(t, mockCA.profileName, "default")
-	test.AssertByteEquals(t, mockCA.profileHash, []byte{0x37, 0xa8, 0xee, 0xc1, 0xce, 0x19, 0x68, 0x7d})
+	test.AssertEquals(t, mockCA.profileName, cpId.name)
+	test.AssertByteEquals(t, mockCA.profileHash, cpId.hash)
+}
+
+func TestIssueCertificateOuter(t *testing.T) {
+	_, sa, ra, fc, cleanup := initAuthorities(t)
+	defer cleanup()
+
+	ra.orderLifetime = 24 * time.Hour
+	exp := ra.clk.Now().Add(24 * time.Hour)
+
+	// Make some valid authorizations for some names
+	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
+	var authzIDs []int64
+	for _, name := range names {
+		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, ra.clk.Now()))
+	}
+
+	// Create a pending order for all of the names
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:         Registration.Id,
+			Expires:                timestamppb.New(exp),
+			Names:                  names,
+			V2Authorizations:       authzIDs,
+			CertificateProfileName: "philsProfile",
+		},
+	})
+	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
+
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "generating test key")
+	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{DNSNames: []string{"example.com"}}, testKey)
+	test.AssertNotError(t, err, "creating test csr")
+	csr, err := x509.ParseCertificateRequest(csrDER)
+	test.AssertNotError(t, err, "parsing test csr")
+	certDER, err := x509.CreateCertificate(rand.Reader, &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		DNSNames:              []string{"example.com"},
+		NotBefore:             fc.Now(),
+		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}, &x509.Certificate{}, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "creating test cert")
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+
+	// Use a mock CA that will record the profile name and profile hash included
+	// in the RA's request messages. Populate it with the cert generated above.
+	mockCA := MockCARecordingProfile{inner: &mocks.MockCA{PEM: certPEM}}
+	ra.CA = &mockCA
+
+	// The basic mocks.StorageAuthority always succeeds on FinalizeOrder, which is
+	// the only SA call that issueCertificateInner makes.
+	ra.SA = &mocks.StorageAuthority{}
+
+	_, err = ra.issueCertificateOuter(context.Background(), order, csr, certificateRequestEvent{})
+	test.AssertNotError(t, err, "Could not issue certificate")
+	test.AssertMetricWithLabelsEquals(t, ra.newCertCounter, prometheus.Labels{"profileName": mockCA.profileName, "profileHash": fmt.Sprintf("%x", mockCA.profileHash)}, 1)
 }
 
 func TestNewOrderMaxNames(t *testing.T) {
