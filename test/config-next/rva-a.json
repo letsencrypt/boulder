@@ -1,6 +1,6 @@
 {
 	"rva": {
-		"userAgent": "boulder-remoteva2-a",
+		"userAgent": "boulder-rva-a",
 		"dnsTries": 3,
 		"dnsStaticResolvers": [
 			"10.77.77.77:8343",
@@ -10,6 +10,11 @@
 		"dnsAllowLoopbackAddresses": true,
 		"issuerDomain": "happy-hacker-ca.invalid",
 		"tls": {
+			"caCertfile": "test/grpc-creds/minica.pem",
+			"certFile": "test/grpc-creds/rva.boulder/cert.pem",
+			"keyFile": "test/grpc-creds/rva.boulder/key.pem"
+		},
+		"tlsclient": {
 			"caCertfile": "test/grpc-creds/minica.pem",
 			"certFile": "test/grpc-creds/rva.boulder/cert.pem",
 			"keyFile": "test/grpc-creds/rva.boulder/key.pem"

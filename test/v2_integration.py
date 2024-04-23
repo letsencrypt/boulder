@@ -1005,9 +1005,7 @@ def test_http_multiva_threshold_pass():
 
     # Configure a guestlist that will pass the multiVA threshold test by
     # allowing the primary VA at one remote.
-    # TODO(#5294) When replacing the original boulder-remoteva with
-    # boulder-remoteva2, alter the guestlist accordingly.
-    guestlist = {"boulder": 1, "boulder-remoteva-a": 1, "boulder-remoteva-b": 1, "boulder-remoteva2-a": 1}
+    guestlist = {"boulder": 1, "boulder-remoteva-a": 1, "boulder-remoteva-b": 1, "boulder-rva-a": 1}
 
     hostname, cleanup = multiva_setup(client, guestlist)
 
@@ -1023,9 +1021,7 @@ def test_http_multiva_primary_fail_remote_pass():
 
     # Configure a guestlist that will fail the primary VA check but allow the
     # remote VAs
-    # TODO(#5294) When replacing the original boulder-remoteva with
-    # boulder-remoteva2, alter the guestlist accordingly.
-    guestlist = {"boulder": 0, "boulder-remoteva-a": 1, "boulder-remoteva-b": 1, "boulder-remoteva2-a": 1, "boulder-remoteva2-b": 1}
+    guestlist = {"boulder": 0, "boulder-remoteva-a": 1, "boulder-remoteva-b": 1, "boulder-rva-a": 1, "boulder-rva-b": 1}
 
     hostname, cleanup = multiva_setup(client, guestlist)
 

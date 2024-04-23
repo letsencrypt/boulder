@@ -75,7 +75,7 @@ func SetupClientResolver(dnsTimeout time.Duration, servers bdns.ServerProvider, 
 }
 
 // SetupNewVAImplAndStartServer creates a new VA implementation and a gRPC
-// server. It returns a function to be used to start said gRPC server or an
+// server. It returns a function to be used to start the gRPC server or an
 // error.
 func SetupNewVAImplAndStartServer(resolver bdns.Client, remotes []va.RemoteVA, maxValidationFailures int, userAgent string, issuerDomain string, scope prometheus.Registerer, clk clock.Clock, logger blog.Logger, accountURIPrefixes []string, grpcSrvConfig *cmd.GRPCServerConfig, tlsConfig *tls.Config) (func() error, error) {
 	vai, err := va.NewValidationAuthorityImpl(

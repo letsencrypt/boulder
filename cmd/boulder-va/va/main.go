@@ -54,7 +54,7 @@ func main() {
 
 	servers, err := vaCommon.SetupServerResolvers(c.VA.DNSStaticResolvers, c.VA.DNSProvider)
 	if err != nil {
-		cmd.FailOnError(err, "")
+		cmd.Fail(err.Error())
 	}
 	defer servers.Stop()
 
@@ -85,9 +85,10 @@ func main() {
 			)
 		}
 	}
+
 	start, err := vaCommon.SetupNewVAImplAndStartServer(resolver, remotes, c.VA.MaxRemoteValidationFailures, c.VA.UserAgent, c.VA.IssuerDomain, scope, clk, logger, c.VA.AccountURIPrefixes, c.VA.GRPC, tlsConfig)
 	if err != nil {
-		cmd.FailOnError(err, "")
+		cmd.Fail(err.Error())
 	}
 	cmd.FailOnError(start(), "VA gRPC service failed")
 }
