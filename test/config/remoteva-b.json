@@ -1,7 +1,7 @@
 {
 	"rva": {
-		"userAgent": "boulder-rva-a",
-		"debugAddr": ":8211",
+		"userAgent": "boulder-remoteva-b",
+		"debugAddr": ":8212",
 		"dnsTries": 3,
 		"dnsProvider": {
 			"dnsAuthority": "consul.service.consul",
@@ -25,7 +25,7 @@
 		},
 		"grpc": {
 			"maxConnectionAge": "30s",
-			"address": ":9897",
+			"address": ":9998",
 			"services": {
 				"va.VA": {
 					"clientNames": [

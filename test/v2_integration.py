@@ -1004,8 +1004,8 @@ def test_http_multiva_threshold_pass():
     client = chisel2.make_client()
 
     # Configure a guestlist that will pass the multiVA threshold test by
-    # allowing the primary VA at one remote.
-    guestlist = {"boulder": 1, "boulder-remoteva-a": 1, "boulder-remoteva-b": 1, "boulder-rva-a": 1}
+    # allowing the primary VA at some, but not all, remotes.
+    guestlist = {"boulder": 1, "boulder-remoteva-old-a": 1, "boulder-remoteva-old-b": 1, "boulder-remoteva-a": 1}
 
     hostname, cleanup = multiva_setup(client, guestlist)
 
@@ -1019,9 +1019,9 @@ def test_http_multiva_threshold_pass():
 def test_http_multiva_primary_fail_remote_pass():
     client = chisel2.make_client()
 
-    # Configure a guestlist that will fail the primary VA check but allow the
-    # remote VAs
-    guestlist = {"boulder": 0, "boulder-remoteva-a": 1, "boulder-remoteva-b": 1, "boulder-rva-a": 1, "boulder-rva-b": 1}
+    # Configure a guestlist that will fail the primary VA check but allow all of
+    # the remote VAs.
+    guestlist = {"boulder": 0, "boulder-remoteva-old-a": 1, "boulder-remoteva-old-b": 1, "boulder-remoteva-a": 1, "boulder-remoteva-b": 1}
 
     hostname, cleanup = multiva_setup(client, guestlist)
 

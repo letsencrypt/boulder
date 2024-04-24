@@ -1,15 +1,11 @@
 {
 	"rva": {
-		"userAgent": "boulder-rva-b",
-		"debugAddr": ":8212",
+		"userAgent": "boulder-remoteva-a",
 		"dnsTries": 3,
-		"dnsProvider": {
-			"dnsAuthority": "consul.service.consul",
-			"srvLookup": {
-				"service": "dns",
-				"domain": "service.consul"
-			}
-		},
+		"dnsStaticResolvers": [
+			"10.77.77.77:8343",
+			"10.77.77.77:8443"
+		],
 		"dnsTimeout": "1s",
 		"dnsAllowLoopbackAddresses": true,
 		"issuerDomain": "happy-hacker-ca.invalid",
@@ -25,7 +21,6 @@
 		},
 		"grpc": {
 			"maxConnectionAge": "30s",
-			"address": ":9998",
 			"services": {
 				"va.VA": {
 					"clientNames": [
@@ -39,7 +34,9 @@
 				}
 			}
 		},
-		"features": {},
+		"features": {
+			"DOH": true
+		},
 		"accountURIPrefixes": [
 			"http://boulder.service.consul:4000/acme/reg/",
 			"http://boulder.service.consul:4001/acme/acct/"
@@ -47,6 +44,10 @@
 	},
 	"syslog": {
 		"stdoutlevel": 4,
-		"sysloglevel": 4
+		"sysloglevel": -1
+	},
+	"openTelemetry": {
+		"endpoint": "bjaeger:4317",
+		"sampleratio": 1
 	}
 }
