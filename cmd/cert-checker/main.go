@@ -531,7 +531,7 @@ func main() {
 
 	features.Set(config.CertChecker.Features)
 
-	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: -1})
+	logger := cmd.NewLogger(config.Syslog)
 	logger.Info(cmd.VersionString())
 
 	acceptableValidityDurations := make(map[time.Duration]bool)
