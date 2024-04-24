@@ -126,11 +126,11 @@ func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 	return issuerMaps{issuersByAlg, issuersByNameID}, nil
 }
 
-// makeCertificateProfilesMap processes a list of certificate issuance profile
-// configs and an option slice of zlint lint names to ignore into a set of
-// pre-computed maps: 1) a human-readable name to the profile and 2) a unique
-// hash over contents of the profile to the profile itself. It returns the maps
-// or an error if a duplicate name or hash is found.
+// makeCertificateProfilesMap processes a set of named certificate issuance
+// profile configs into a two pre-computed maps: 1) a human-readable name to the
+// profile and 2) a unique hash over contents of the profile to the profile
+// itself. It returns the maps or an error if a duplicate name or hash is found.
+// It also associates the given lint registry with each profile.
 //
 // The unique hash is used in the case of
 //   - RA instructs CA1 to issue a precertificate

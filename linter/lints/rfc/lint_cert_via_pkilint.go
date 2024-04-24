@@ -139,9 +139,10 @@ func (l *certViaPKILint) Execute(c *x509.Certificate) *lint.LintResult {
 			findings = append(findings, desc)
 		}
 	}
-	slices.Sort(findings)
 
 	if len(findings) != 0 {
+		// Group the findings by severity, for human readers.
+		slices.Sort(findings)
 		return &lint.LintResult{
 			Status:  lint.Error,
 			Details: fmt.Sprintf("got %d lint findings from pkilint API: %s", len(findings), strings.Join(findings, ";")),
