@@ -43,6 +43,7 @@ type subcommandRevokeCert struct {
 	serialsFile   string
 	privKey       string
 	regID         uint
+	certFile      string
 }
 
 var _ subcommand = (*subcommandRevokeCert)(nil)
@@ -64,10 +65,7 @@ func (s *subcommandRevokeCert) Flags(flag *flag.FlagSet) {
 	flag.StringVar(&s.serialsFile, "serials-file", "", "Revoke all certificates whose hex serials are in this file")
 	flag.StringVar(&s.privKey, "private-key", "", "Revoke all certificates whose pubkey matches this private key")
 	flag.UintVar(&s.regID, "reg-id", 0, "Revoke all certificates issued to this account")
-
-	// TODO: add these, because they would have been useful in the most recent revocation.
-	// certFile := subflags.String("cert-file", "", "Revoke all certificates whose PEM is in this file")
-	// pubKey := subflags.String("public-key", "", "Revoke all certificates whose pubkey matches this public key")
+	flag.StringVar(&s.certFile, "cert-file", "", "Revoke the single PEM-formatted certificate in this file")
 }
 
 func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
@@ -108,6 +106,7 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 		"-serials-file":   s.serialsFile != "",
 		"-private-key":    s.privKey != "",
 		"-reg-id":         s.regID != 0,
+		"-cert-file":      s.certFile != "",
 	}
 	maps.DeleteFunc(setInputs, func(_ string, v bool) bool { return !v })
 	if len(setInputs) == 0 {
@@ -129,6 +128,8 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 		serials, err = a.serialsFromPrivateKey(ctx, s.privKey)
 	case "-reg-id":
 		serials, err = a.serialsFromRegID(ctx, int64(s.regID))
+	case "-cert-file":
+		serials, err = a.serialsFromCertPEM(ctx, s.certFile)
 	default:
 		return errors.New("no recognized input method flag set (this shouldn't happen)")
 	}
@@ -239,6 +240,15 @@ func (a *admin) serialsFromRegID(ctx context.Context, regID int64) ([]string, er
 	}
 
 	return serials, nil
+}
+
+func (a *admin) serialsFromCertPEM(_ context.Context, filename string) ([]string, error) {
+	cert, err := core.LoadCert(filename)
+	if err != nil {
+		return nil, fmt.Errorf("loading certificate pem: %w", err)
+	}
+
+	return []string{core.SerialToString(cert.SerialNumber)}, nil
 }
 
 func cleanSerial(serial string) (string, error) {

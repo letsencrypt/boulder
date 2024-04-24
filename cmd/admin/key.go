@@ -27,6 +27,7 @@ type subcommandBlockKey struct {
 	comment     string
 	privKey     string
 	spkiFile    string
+	certFile    string
 }
 
 var _ subcommand = (*subcommandBlockKey)(nil)
@@ -43,6 +44,7 @@ func (s *subcommandBlockKey) Flags(flag *flag.FlagSet) {
 	// Flags specifying the input method for the keys to be blocked.
 	flag.StringVar(&s.privKey, "private-key", "", "Block issuance for the pubkey corresponding to this private key")
 	flag.StringVar(&s.spkiFile, "spki-file", "", "Block issuance for all keys listed in this file as SHA256 hashes of SPKI, hex encoded, one per line")
+	flag.StringVar(&s.certFile, "cert-file", "", "Block issuance for the public key of the single PEM-formatted certificate in this file")
 }
 
 func (s *subcommandBlockKey) Run(ctx context.Context, a *admin) error {
@@ -52,6 +54,7 @@ func (s *subcommandBlockKey) Run(ctx context.Context, a *admin) error {
 	setInputs := map[string]bool{
 		"-private-key": s.privKey != "",
 		"-spki-file":   s.spkiFile != "",
+		"-cert-file":   s.certFile != "",
 	}
 	maps.DeleteFunc(setInputs, func(_ string, v bool) bool { return !v })
 	if len(setInputs) == 0 {
@@ -69,6 +72,8 @@ func (s *subcommandBlockKey) Run(ctx context.Context, a *admin) error {
 		spkiHashes = [][]byte{spkiHash}
 	case "-spki-file":
 		spkiHashes, err = a.spkiHashesFromFile(s.spkiFile)
+	case "-cert-file":
+		spkiHashes, err = a.spkiHashesFromCertPEM(s.certFile)
 	default:
 		return errors.New("no recognized input method flag set (this shouldn't happen)")
 	}
@@ -124,6 +129,20 @@ func (a *admin) spkiHashesFromFile(filePath string) ([][]byte, error) {
 	}
 
 	return spkiHashes, nil
+}
+
+func (a *admin) spkiHashesFromCertPEM(filename string) ([][]byte, error) {
+	cert, err := core.LoadCert(filename)
+	if err != nil {
+		return nil, fmt.Errorf("loading certificate pem: %w", err)
+	}
+
+	spkiHash, err := core.KeyDigest(cert.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("computing SPKI hash: %w", err)
+	}
+
+	return [][]byte{spkiHash[:]}, nil
 }
 
 func (a *admin) blockSPKIHashes(ctx context.Context, spkiHashes [][]byte, comment string, parallelism uint) error {
