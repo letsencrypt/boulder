@@ -334,11 +334,13 @@ func TestIssuePrecertificate(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
+		// TODO(#7454) Remove this rebinding
+		testCase := testCase
+
 		// The loop through the issuance modes must be inside the loop through
 		// |testCases| because the "certificate-for-precertificate" tests use
 		// the precertificates previously generated from the preceding
 		// "precertificate" test.
-		testCase := testCase
 		for _, mode := range []string{"precertificate", "certificate-for-precertificate"} {
 			ca, sa := issueCertificateSubTestSetup(t, nil)
 			t.Run(fmt.Sprintf("%s - %s", mode, testCase.name), func(t *testing.T) {
@@ -703,6 +705,7 @@ func TestProfiles(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		// TODO(#7454) Remove this rebinding
 		tc := tc
 		// This is handled by boulder-ca, not the CA package.
 		if tc.defaultName == "" {
@@ -850,6 +853,8 @@ func TestInvalidCSRs(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
+		// TODO(#7454) Remove this rebinding
+		testCase := testCase
 		testCtx := setup(t)
 		sa := &mockSA{}
 		ca, err := NewCertificateAuthorityImpl(
@@ -871,7 +876,7 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.signErrorCount,
 			testCtx.fc)
 		test.AssertNotError(t, err, "Failed to create CA")
-		testCase := testCase
+
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 			serializedCSR := mustRead(testCase.csrPath)
