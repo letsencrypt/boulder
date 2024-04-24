@@ -1,4 +1,3 @@
-version: '3'
 services:
   boulder:
     # The `letsencrypt/boulder-tools:latest` tag is automatically built in local
@@ -18,8 +17,6 @@ services:
       BOULDER_CONFIG_DIR: test/config
       GOCACHE: /boulder/.gocache/go-build
       GOFLAGS: -mod=vendor
-      # Forward the parent env's GOEXPERIMENT value into the container.
-      GOEXPERIMENT: ${GOEXPERIMENT}
     volumes:
       - .:/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
