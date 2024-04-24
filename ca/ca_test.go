@@ -338,9 +338,11 @@ func TestIssuePrecertificate(t *testing.T) {
 		// |testCases| because the "certificate-for-precertificate" tests use
 		// the precertificates previously generated from the preceding
 		// "precertificate" test.
+		testCase := testCase
 		for _, mode := range []string{"precertificate", "certificate-for-precertificate"} {
 			ca, sa := issueCertificateSubTestSetup(t, nil)
 			t.Run(fmt.Sprintf("%s - %s", mode, testCase.name), func(t *testing.T) {
+				t.Parallel()
 				req, err := x509.ParseCertificateRequest(testCase.csr)
 				test.AssertNotError(t, err, "Certificate request failed to parse")
 				issueReq := &capb.IssueCertificateRequest{Csr: testCase.csr, RegistrationID: arbitraryRegID}
@@ -701,11 +703,13 @@ func TestProfiles(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		tc := tc
 		// This is handled by boulder-ca, not the CA package.
 		if tc.defaultName == "" {
 			tc.defaultName = ctx.defaultCertProfileName
 		}
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			tCA, err := NewCertificateAuthorityImpl(
 				sa,
 				ctx.pa,
@@ -867,8 +871,9 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.signErrorCount,
 			testCtx.fc)
 		test.AssertNotError(t, err, "Failed to create CA")
-
+		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
 			serializedCSR := mustRead(testCase.csrPath)
 			issueReq := &capb.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: arbitraryRegID}
 			_, err = ca.IssuePrecertificate(ctx, issueReq)
