@@ -12,12 +12,20 @@
 		"tls": {
 			"caCertfile": "test/grpc-creds/minica.pem",
 			"certFile": "test/grpc-creds/rva.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/rva.boulder/key.pem"
+			"keyFile": "test/grpc-creds/rva.boulder/key.pem",
+			"clientAuth": "RequireAndVerifyClientCert",
+			"cipherSuites": [
+				"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256"
+			]
 		},
 		"tlsclient": {
 			"caCertfile": "test/grpc-creds/minica.pem",
 			"certFile": "test/grpc-creds/rva.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/rva.boulder/key.pem"
+			"keyFile": "test/grpc-creds/rva.boulder/key.pem",
+			"clientAuth": "RequireAndVerifyClientCert",
+			"cipherSuites": [
+				"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256"
+			]
 		},
 		"grpc": {
 			"maxConnectionAge": "30s",
