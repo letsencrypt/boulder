@@ -1,6 +1,6 @@
 {
 	"rva": {
-		"userAgent": "boulder-remoteva-b",
+		"userAgent": "remoteva-b",
 		"debugAddr": ":8212",
 		"dnsTries": 3,
 		"dnsProvider": {

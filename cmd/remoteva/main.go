@@ -126,5 +126,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-remoteva", main, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("remoteva", main, &cmd.ConfigValidator{Config: &Config{}})
 }
