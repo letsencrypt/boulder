@@ -23,5 +23,8 @@ done
 
 minica -ip-addresses 10.77.77.77,10.88.88.88
 
+# grpc/creds/creds.go:
+minica -domains "creds-test" -ip-addresses "127.0.0.1"
+
 # minica sets restrictive directory permissions, but we don't want that
 chmod -R go+rX .

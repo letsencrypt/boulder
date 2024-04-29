@@ -52,9 +52,9 @@ func TestPasswordConfig(t *testing.T) {
 func TestTLSConfigLoad(t *testing.T) {
 	null := "/dev/null"
 	nonExistent := "[nonexistent]"
-	cert := "testdata/cert.pem"
-	key := "testdata/key.pem"
-	caCert := "testdata/minica.pem"
+	cert := "../test/grpc-creds/creds-test/cert.pem"
+	key := "../test/grpc-creds/creds-test/key.pem"
+	caCert := "../test/grpc-creds/minica.pem"
 
 	testCases := []struct {
 		TLSConfig
