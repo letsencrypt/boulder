@@ -71,8 +71,7 @@ func (l *certViaPKILint) Execute(c *x509.Certificate) *lint.LintResult {
 		timeout = 100 * time.Millisecond
 	}
 
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	reqJSON, err := json.Marshal(struct {
@@ -81,7 +80,10 @@ func (l *certViaPKILint) Execute(c *x509.Certificate) *lint.LintResult {
 		B64: base64.StdEncoding.EncodeToString(c.Raw),
 	})
 	if err != nil {
-		return &lint.LintResult{Status: lint.Error, Details: fmt.Errorf("marshalling pkilint request: %w", err).Error()}
+		return &lint.LintResult{
+			Status:  lint.Error,
+			Details: fmt.Sprintf("marshalling pkilint request: %s", err),
+		}
 	}
 
 	url := fmt.Sprintf("%s/certificate/cabf-serverauth", l.PKILintAddr)
@@ -89,7 +91,7 @@ func (l *certViaPKILint) Execute(c *x509.Certificate) *lint.LintResult {
 	if err != nil {
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: fmt.Errorf("creating pkilint request: %w", err).Error(),
+			Details: fmt.Sprintf("creating pkilint request: %s", err),
 		}
 	}
 
@@ -97,9 +99,10 @@ func (l *certViaPKILint) Execute(c *x509.Certificate) *lint.LintResult {
 	if err != nil {
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: fmt.Errorf("making POST request to pkilint API: %w", err).Error(),
+			Details: fmt.Sprintf("making POST request to pkilint API: %s", err),
 		}
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return &lint.LintResult{
@@ -112,7 +115,7 @@ func (l *certViaPKILint) Execute(c *x509.Certificate) *lint.LintResult {
 	if err != nil {
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: fmt.Errorf("reading response from pkilint API: %w", err).Error(),
+			Details: fmt.Sprintf("reading response from pkilint API: %s", err),
 		}
 	}
 
@@ -121,7 +124,7 @@ func (l *certViaPKILint) Execute(c *x509.Certificate) *lint.LintResult {
 	if err != nil {
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: fmt.Errorf("parsing response from pkilint API: %w", err).Error(),
+			Details: fmt.Sprintf("parsing response from pkilint API: %s", err),
 		}
 	}
 
@@ -145,7 +148,7 @@ func (l *certViaPKILint) Execute(c *x509.Certificate) *lint.LintResult {
 		slices.Sort(findings)
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: fmt.Sprintf("got %d lint findings from pkilint API: %s", len(findings), strings.Join(findings, ";")),
+			Details: fmt.Sprintf("got %d lint findings from pkilint API: %s", len(findings), strings.Join(findings, "; ")),
 		}
 	}
 
