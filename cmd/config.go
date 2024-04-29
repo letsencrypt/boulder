@@ -48,6 +48,18 @@ type ServiceConfig struct {
 	HealthCheckInterval config.Duration `validate:"-"`
 }
 
+// Validate will set the listening gRPC and debug addresses to the values
+// specified by the applicable flag, otherwise implicitly taking the value from
+// the configuration file.
+func (s *ServiceConfig) Validate(grpcAddr, debugAddr *string) {
+	if *grpcAddr != "" {
+		s.GRPC.Address = *grpcAddr
+	}
+	if *debugAddr != "" {
+		s.DebugAddr = *debugAddr
+	}
+}
+
 // DBConfig defines how to connect to a database. The connect string is
 // stored in a file separate from the config, because it can contain a password,
 // which we want to keep out of configs.

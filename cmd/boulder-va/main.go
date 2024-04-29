@@ -11,15 +11,16 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/va"
-	vacfg "github.com/letsencrypt/boulder/va/config"
+	vaConfig "github.com/letsencrypt/boulder/va/config"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 type Config struct {
 	VA struct {
-		vacfg.Common
+		vaConfig.Common
 		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
 		MaxRemoteValidationFailures int                    `validate:"omitempty,min=0,required_with=RemoteVAs"`
+		Features                    features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -39,27 +40,20 @@ func main() {
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-
+	c.VA.Validate(grpcAddr, debugAddr)
 	features.Set(c.VA.Features)
-
-	if *grpcAddr != "" {
-		c.VA.GRPC.Address = *grpcAddr
-	}
-	if *debugAddr != "" {
-		c.VA.DebugAddr = *debugAddr
-	}
-
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.VA.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
-	if c.VA.DNSTimeout.Duration == 0 {
+	if c.VA.DNSTimeout.Duration <= 0 {
 		cmd.Fail("'dnsTimeout' is required")
 	}
 	dnsTries := c.VA.DNSTries
 	if dnsTries < 1 {
 		dnsTries = 1
 	}
+	clk := cmd.Clock()
 
 	var servers bdns.ServerProvider
 	proto := "udp"
@@ -78,12 +72,6 @@ func main() {
 
 	tlsConfig, err := c.VA.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
-
-	if c.VA.DNSTimeout.Duration == 0 {
-		cmd.Fail("'dnsTimeout' is required")
-	}
-
-	clk := cmd.Clock()
 
 	var resolver bdns.Client
 	if !c.VA.DNSAllowLoopbackAddresses {

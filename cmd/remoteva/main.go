@@ -11,14 +11,15 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/va"
-	vacfg "github.com/letsencrypt/boulder/va/config"
+	vaConfig "github.com/letsencrypt/boulder/va/config"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 type Config struct {
 	RVA struct {
-		vacfg.Common
+		vaConfig.Common
 		TLSClient cmd.TLSConfig
+		Features  features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -38,27 +39,21 @@ func main() {
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-
+	c.RVA.Validate(grpcAddr, debugAddr)
 	features.Set(c.RVA.Features)
-
-	if *grpcAddr != "" {
-		c.RVA.GRPC.Address = *grpcAddr
-	}
-	if *debugAddr != "" {
-		c.RVA.DebugAddr = *debugAddr
-	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.RVA.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
-	if c.RVA.DNSTimeout.Duration == 0 {
+	if c.RVA.DNSTimeout.Duration <= 0 {
 		cmd.Fail("'dnsTimeout' is required")
 	}
 	dnsTries := c.RVA.DNSTries
 	if dnsTries < 1 {
 		dnsTries = 1
 	}
+	clk := cmd.Clock()
 
 	var servers bdns.ServerProvider
 	proto := "udp"
@@ -79,11 +74,6 @@ func main() {
 	cmd.FailOnError(err, "tlsConfig config")
 	tlsClientConfig, err := c.RVA.TLSClient.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
-
-	if c.RVA.DNSTimeout.Duration == 0 {
-		cmd.Fail("'dnsTimeout' is required")
-	}
-	clk := cmd.Clock()
 
 	var resolver bdns.Client
 	if !c.RVA.DNSAllowLoopbackAddresses {

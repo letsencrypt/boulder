@@ -3,7 +3,6 @@ package vacfg
 import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
-	"github.com/letsencrypt/boulder/features"
 )
 
 // Common contains all of the shared fields for a VA and a Remote VA (RVA).
@@ -24,8 +23,6 @@ type Common struct {
 	DNSStaticResolvers        []string        `validate:"required_without=DNSProvider,dive,hostname_port"`
 	DNSTimeout                config.Duration `validate:"required"`
 	DNSAllowLoopbackAddresses bool
-
-	Features features.Config
 
 	AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
 }
