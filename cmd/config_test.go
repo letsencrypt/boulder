@@ -54,11 +54,11 @@ func TestTLSConfigLoad(t *testing.T) {
 	t.Parallel()
 	null := "/dev/null"
 	nonExistent := "[nonexistent]"
-	cert := "../test/hierarchy/int-e2.cert.pem"
-	key := "../test/hierarchy/int-e2.key.pem"
-	caCertOne := "../test/hierarchy/root-x1.cert.pem"
-	caCertMultiple := "../test/hierarchy/multiple-roots.cert.pem"
-	caCertDuplicate := "../test/hierarchy/duplicate-roots.cert.pem"
+	cert := "../test/grpc-creds/rva.boulder/cert.pem"
+	key := "../test/grpc-creds/rva.boulder/key.pem"
+	caCertOne := "../test/grpc-creds/minica.pem"
+	caCertMultiple := "../test/grpc-creds/multiple-roots.pem"
+	caCertDuplicate := "../test/grpc-creds/duplicate-roots.pem"
 
 	testCases := []struct {
 		name                  string

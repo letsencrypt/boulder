@@ -11,17 +11,41 @@ command -v minica >/dev/null 2>&1 || {
   exit 1;
 }
 
-for SERVICE in admin-revoker expiration-mailer ocsp-responder consul \
-  wfe akamai-purger bad-key-revoker crl-updater crl-storer \
-  health-checker; do
+SERVICE_WITH_SINGLE_SAN=(
+  "admin-revoker"
+  "expiration-mailer"
+  "ocsp-responder"
+  "consul"
+  "wfe"
+  "akamai-purger"
+  "bad-key-revoker"
+  "crl-updater"
+  "crl-storer"
+  "health-checker"
+)
+for SERVICE in ${SERVICE_WITH_SINGLE_SAN[@]}; do
   minica -domains "${SERVICE}.boulder"
 done
 
-for SERVICE in publisher nonce ra ca sa va rva ; do
+SERVICE_WITH_MULTIPLE_SANS=(
+  "publisher"
+  "nonce"
+  "ra"
+  "ca"
+  "sa"
+  "va"
+  "rva"
+)
+for SERVICE in ${SERVICE_WITH_MULTIPLE_SANS[@]}; do
   minica -domains "${SERVICE}.boulder,${SERVICE}1.boulder,${SERVICE}2.boulder"
 done
 
 minica -ip-addresses 10.77.77.77,10.88.88.88
+
+# These files are used by the TestTLSConfigLoad unit test
+minica -ca-cert externalCA.pem -ca-key externalCA-key.pem -domains applicationloadbalancer.example.com
+cat externalCA.pem externalCA.pem > duplicate-roots.pem
+cat minica.pem externalCA.pem > multiple-roots.pem
 
 # minica sets restrictive directory permissions, but we don't want that
 chmod -R go+rX .
