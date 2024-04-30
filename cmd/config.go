@@ -129,83 +129,6 @@ type TLSConfig struct {
 	// The CACertFile file may contain any number of root certificates and will
 	// be deduplicated internally.
 	CACertFile string `validate:"required"`
-	// Valid ClientAuth values can be found at
-	// https://pkg.go.dev/crypto/tls#ClientAuthType. Boulder will select its own
-	// default value, rather than the default value from //crypto/tls, if no
-	// client auth is configured
-	ClientAuth string `validate:"omitempty"`
-	// Each CipherSuites value must be supported by //crypto/tls. Boulder will
-	// select its own default value, rather than the default value from
-	// //crypto/tls, if no cipher suite(s) is configured. Cipher suites will be
-	// ignored by tls.Config for TLS v1.3. Valid cipher suites can be found at
-	// https://cs.opensource.google/go/go/+/refs/tags/go1.22.2:src/crypto/tls/cipher_suites.go;l=59-68
-	CipherSuites []string `validate:"omitempty"`
-}
-
-// makeCipherSuitesFromConfig takes a slice of human-readable TLS cipher suite
-// names declared in a config file and constructs a new slice of cipher suites
-// usable by a tls.Config or returns an error.
-func (t *TLSConfig) makeCipherSuitesFromConfig() ([]uint16, error) {
-	// We'll set a sane default, rather than use the default from //crypto/tls.
-	if len(t.CipherSuites) == 0 {
-		return []uint16{tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256}, nil
-	}
-
-	// Construct a reverse lookup to validate the operator provided name(s) is
-	// usable. The "legacy names" are unfortunately not included.
-	cipherSuiteNameToId := make(map[string]uint16, len(tls.CipherSuites()))
-	for _, id := range tls.CipherSuites() {
-		cipherSuiteNameToId[id.Name] = id.ID
-	}
-
-	var configuredCipherSuiteIds []uint16
-	for _, cs := range t.CipherSuites {
-		id, ok := cipherSuiteNameToId[cs]
-		if !ok {
-			return nil, fmt.Errorf("unsupported TLS cipher suite: %s", cs)
-		}
-		configuredCipherSuiteIds = append(configuredCipherSuiteIds, id)
-	}
-
-	return configuredCipherSuiteIds, nil
-}
-
-// makeClientAuthFromConfig converts the value of clientAuth from config file
-// and returns the equivalent tls.ClientAuthType value or an error.
-func (t *TLSConfig) makeClientAuthFromConfig() (tls.ClientAuthType, error) {
-	// Construct some lookup tables to map the configured ClientAuthType to the
-	// appropriate //crypto/tls const integer.
-	clientAuthTypeNameToId := make(map[string]int)
-	clientAuthTypeIdToName := make(map[int]string)
-
-	for i := 0; ; i++ {
-		name := tls.ClientAuthType(i).String()
-		if strings.Contains(name, "ClientAuthType") {
-			// A const block using iota doesn't have length so to speak.
-			// Non-existent values will return the name of the underlying type
-			// (not the concrete type!). We can use that to bail out early as
-			// soon as our maps contain only the values used inside
-			// //crypto/tls.
-			break
-		}
-		clientAuthTypeNameToId[name] = i
-		clientAuthTypeIdToName[i] = name
-	}
-
-	// We'll set a sane default, rather than use the default from //crypto/tls
-	// which is "NoClientCert".
-	var defaultId int
-	if t.ClientAuth == "" {
-		defaultId = clientAuthTypeNameToId["RequireAndVerifyClientCert"]
-		t.ClientAuth = clientAuthTypeIdToName[defaultId]
-	}
-
-	id, ok := clientAuthTypeNameToId[t.ClientAuth]
-	if !ok {
-		return -1, fmt.Errorf("unsupported TLS client auth value: %s", t.ClientAuth)
-	}
-
-	return tls.ClientAuthType(id), nil
 }
 
 // Load reads and parses the certificates and key listed in the TLSConfig, and
@@ -238,14 +161,6 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading key pair from %q and %q: %s",
 			t.CertFile, t.KeyFile, err)
-	}
-	cipherSuites, err := t.makeCipherSuitesFromConfig()
-	if err != nil {
-		return nil, err
-	}
-	clientAuth, err := t.makeClientAuthFromConfig()
-	if err != nil {
-		return nil, err
 	}
 
 	tlsNotBefore := prometheus.NewGaugeVec(
@@ -292,13 +207,13 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	return &tls.Config{
 		RootCAs:      rootCAs,
 		ClientCAs:    rootCAs,
-		ClientAuth:   clientAuth,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
 		Certificates: []tls.Certificate{cert},
 		// Set the only acceptable TLS to v1.2 and v1.3.
 		MinVersion: tls.VersionTLS12,
 		MaxVersion: tls.VersionTLS13,
 		// CipherSuites will be ignored for TLS v1.3.
-		CipherSuites: cipherSuites,
+		CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305},
 	}, nil
 }
 
