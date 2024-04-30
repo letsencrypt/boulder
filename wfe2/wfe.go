@@ -1233,8 +1233,8 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	}
 
 	// This field is not useful for the client, only internal debugging,
-	for _, vr := range challenge.ValidationRecord {
-		vr.ResolverAddrs = nil
+	for idx := range challenge.ValidationRecord {
+		challenge.ValidationRecord[idx].ResolverAddrs = nil
 	}
 }
 
