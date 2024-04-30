@@ -18,10 +18,8 @@ import (
 
 type crlImpl struct {
 	capb.UnimplementedCRLGeneratorServer
-	issuers map[issuance.NameID]*issuance.Issuer
-	profile *issuance.CRLProfile
-	// TODO(#7094): Remove this once all CRLs have IDPs built from issuer.crlURLBase.
-	idpBase   string
+	issuers   map[issuance.NameID]*issuance.Issuer
+	profile   *issuance.CRLProfile
 	maxLogLen int
 	log       blog.Logger
 }
@@ -29,12 +27,10 @@ type crlImpl struct {
 // NewCRLImpl returns a new object which fulfils the ca.proto CRLGenerator
 // interface. It uses the list of issuers to determine what issuers it can
 // issue CRLs from. lifetime sets the validity period (inclusive) of the
-// resulting CRLs. idpBase is the base URL from which IssuingDistributionPoint
-// URIs will constructed; it must use the http:// scheme.
+// resulting CRLs.
 func NewCRLImpl(
 	issuers []*issuance.Issuer,
 	profileConfig issuance.CRLProfileConfig,
-	idpBase string,
 	maxLogLen int,
 	logger blog.Logger) (*crlImpl, error) {
 	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
@@ -50,7 +46,6 @@ func NewCRLImpl(
 	return &crlImpl{
 		issuers:   issuersByNameID,
 		profile:   profile,
-		idpBase:   idpBase,
 		maxLogLen: maxLogLen,
 		log:       logger,
 	}, nil
@@ -102,13 +97,6 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 
 	if req == nil {
 		return errors.New("no crl metadata received")
-	}
-
-	// Add the Issuing Distribution Point extension.
-	// TODO(#7296): Remove this fallback once all configs have issuer.CRLBaseURL
-	// set and our CRL URLs disclosed in CCADB have been updated.
-	if ci.idpBase != "" {
-		req.DeprecatedIDPBaseURL = ci.idpBase
 	}
 
 	// Compute a unique ID for this issuer-number-shard combo, to tie together all

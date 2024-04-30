@@ -47,10 +47,9 @@ func TestCrlHasIDP(t *testing.T) {
 			wantSubStr: "IssuingDistributionPoint FullName URI MUST be present",
 		},
 		{
-			// TODO(#7296): When we're back to only including one GeneralName within
-			// the distributionPoint's FullName, change this to expect a lint.Notice.
-			name: "idp_two_uris",
-			want: lint.Pass,
+			name:       "idp_two_uris",
+			want:       lint.Notice,
+			wantSubStr: "IssuingDistributionPoint unexpectedly has more than one FullName",
 		},
 		{
 			name:       "idp_https",
