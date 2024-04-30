@@ -274,6 +274,7 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 		return fmt.Errorf("getting admin username: %w", err)
 	}
 
+	anyErr := false
 	wg := new(sync.WaitGroup)
 	work := make(chan string, parallelism)
 	for i := uint(0); i < parallelism; i++ {
@@ -297,6 +298,7 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 					},
 				)
 				if err != nil {
+					anyErr = true
 					if errors.Is(err, berrors.AlreadyRevoked) {
 						a.log.Errf("not revoking %q: already revoked", serial)
 					} else {
@@ -312,6 +314,10 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 	}
 	close(work)
 	wg.Wait()
+
+	if anyErr {
+		return errors.New("one or more errors encountered while revoking certs; see logs above for details")
+	}
 
 	return nil
 }
