@@ -1477,7 +1477,7 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByKey(req *sapb.SPKIHash, stream sap
 		return fmt.Errorf("initializing db map: %w", err)
 	}
 
-	rows, err := selector.QueryContext(stream.Context(), clauses, params)
+	rows, err := selector.QueryContext(stream.Context(), clauses, params...)
 	if err != nil {
 		return fmt.Errorf("reading db: %w", err)
 	}
@@ -1507,7 +1507,7 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, 
 		return fmt.Errorf("initializing db map: %w", err)
 	}
 
-	rows, err := selector.QueryContext(stream.Context(), clauses, params)
+	rows, err := selector.QueryContext(stream.Context(), clauses, params...)
 	if err != nil {
 		return fmt.Errorf("reading db: %w", err)
 	}
