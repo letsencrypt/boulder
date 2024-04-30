@@ -61,8 +61,8 @@
 				{
 					"useForRSALeaves": false,
 					"useForECDSALeaves": true,
-					"issuerURL": "http://127.0.0.1:4502/int ecdsa a",
-					"ocspURL": "http://127.0.0.1:4002/",
+					"issuerURL": "http://ca.example.org:4502/int-ecdsa-a",
+					"ocspURL": "http://ca.example.org:4002/",
 					"location": {
 						"configFile": "/hierarchy/int-ecdsa-a.pkcs11.json",
 						"certFile": "/hierarchy/int-ecdsa-a.cert.pem",
@@ -72,8 +72,8 @@
 				{
 					"useForRSALeaves": true,
 					"useForECDSALeaves": true,
-					"issuerURL": "http://127.0.0.1:4502/int rsa a",
-					"ocspURL": "http://127.0.0.1:4002/",
+					"issuerURL": "http://ca.example.org:4502/int-rsa-a",
+					"ocspURL": "http://ca.example.org:4002/",
 					"location": {
 						"configFile": "/hierarchy/int-rsa-a.pkcs11.json",
 						"certFile": "/hierarchy/int-rsa-a.cert.pem",
@@ -83,8 +83,8 @@
 				{
 					"useForRSALeaves": false,
 					"useForECDSALeaves": false,
-					"issuerURL": "http://127.0.0.1:4502/int rsa b",
-					"ocspURL": "http://127.0.0.1:4002/",
+					"issuerURL": "http://ca.example.org:4502/int-rsa-b",
+					"ocspURL": "http://ca.example.org:4003/",
 					"location": {
 						"configFile": "/hierarchy/int-rsa-b.pkcs11.json",
 						"certFile": "/hierarchy/int-rsa-b.cert.pem",

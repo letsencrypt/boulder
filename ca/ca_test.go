@@ -20,6 +20,7 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/zmap/zlint/v3/lint"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/issuance"
+	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/must"
@@ -101,23 +103,23 @@ func mustRead(path string) []byte {
 }
 
 type testCtx struct {
-	pa                      core.PolicyAuthority
-	ocsp                    *ocspImpl
-	crl                     *crlImpl
-	defaultCertProfileName  string
-	ignoredCertProfileLints []string
-	certProfiles            map[string]issuance.ProfileConfig
-	certExpiry              time.Duration
-	certBackdate            time.Duration
-	serialPrefix            int
-	maxNames                int
-	boulderIssuers          []*issuance.Issuer
-	keyPolicy               goodkey.KeyPolicy
-	fc                      clock.FakeClock
-	stats                   prometheus.Registerer
-	signatureCount          *prometheus.CounterVec
-	signErrorCount          *prometheus.CounterVec
-	logger                  *blog.Mock
+	pa                     core.PolicyAuthority
+	ocsp                   *ocspImpl
+	crl                    *crlImpl
+	defaultCertProfileName string
+	lints                  lint.Registry
+	certProfiles           map[string]issuance.ProfileConfig
+	certExpiry             time.Duration
+	certBackdate           time.Duration
+	serialPrefix           int
+	maxNames               int
+	boulderIssuers         []*issuance.Issuer
+	keyPolicy              goodkey.KeyPolicy
+	fc                     clock.FakeClock
+	stats                  prometheus.Registerer
+	signatureCount         *prometheus.CounterVec
+	signErrorCount         *prometheus.CounterVec
+	logger                 *blog.Mock
 }
 
 type mockSA struct {
@@ -217,6 +219,9 @@ func setup(t *testing.T) *testCtx {
 		Help: "A counter of signature errors labelled by error type",
 	}, []string{"type"})
 
+	lints, err := linter.NewRegistry([]string{"w_subject_common_name_included"})
+	test.AssertNotError(t, err, "Failed to create zlint registry")
+
 	ocsp, err := NewOCSPImpl(
 		boulderIssuers,
 		24*time.Hour,
@@ -243,23 +248,23 @@ func setup(t *testing.T) *testCtx {
 	test.AssertNotError(t, err, "Failed to create crl impl")
 
 	return &testCtx{
-		pa:                      pa,
-		ocsp:                    ocsp,
-		crl:                     crl,
-		defaultCertProfileName:  "defaultBoulderCertificateProfile",
-		ignoredCertProfileLints: []string{"w_subject_common_name_included"},
-		certProfiles:            certProfiles,
-		certExpiry:              8760 * time.Hour,
-		certBackdate:            time.Hour,
-		serialPrefix:            17,
-		maxNames:                2,
-		boulderIssuers:          boulderIssuers,
-		keyPolicy:               keyPolicy,
-		fc:                      fc,
-		stats:                   metrics.NoopRegisterer,
-		signatureCount:          signatureCount,
-		signErrorCount:          signErrorCount,
-		logger:                  blog.NewMock(),
+		pa:                     pa,
+		ocsp:                   ocsp,
+		crl:                    crl,
+		defaultCertProfileName: "defaultBoulderCertificateProfile",
+		lints:                  lints,
+		certProfiles:           certProfiles,
+		certExpiry:             8760 * time.Hour,
+		certBackdate:           time.Hour,
+		serialPrefix:           17,
+		maxNames:               2,
+		boulderIssuers:         boulderIssuers,
+		keyPolicy:              keyPolicy,
+		fc:                     fc,
+		stats:                  metrics.NoopRegisterer,
+		signatureCount:         signatureCount,
+		signErrorCount:         signErrorCount,
+		logger:                 blog.NewMock(),
 	}
 }
 
@@ -390,8 +395,8 @@ func issueCertificateSubTestSetup(t *testing.T, e *ECDSAAllowList) (*certificate
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
-		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
+		testCtx.lints,
 		e,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -440,8 +445,8 @@ func TestNoIssuers(t *testing.T) {
 		testCtx.pa,
 		nil, // No issuers
 		testCtx.defaultCertProfileName,
-		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
+		testCtx.lints,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -467,8 +472,8 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
-		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
+		testCtx.lints,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -547,8 +552,8 @@ func TestUnpredictableIssuance(t *testing.T) {
 		testCtx.pa,
 		boulderIssuers,
 		testCtx.defaultCertProfileName,
-		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
+		testCtx.lints,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -596,8 +601,8 @@ func TestUnpredictableIssuance(t *testing.T) {
 
 func TestProfiles(t *testing.T) {
 	t.Parallel()
-	ctx := setup(t)
-	test.AssertEquals(t, len(ctx.certProfiles), 2)
+	testCtx := setup(t)
+	test.AssertEquals(t, len(testCtx.certProfiles), 2)
 
 	sa := &mockSA{}
 
@@ -672,10 +677,10 @@ func TestProfiles(t *testing.T) {
 		},
 		{
 			name:           "default profiles from setup func",
-			profileConfigs: ctx.certProfiles,
+			profileConfigs: testCtx.certProfiles,
 			expectedProfiles: []nameToHash{
 				{
-					name: ctx.defaultCertProfileName,
+					name: testCtx.defaultCertProfileName,
 					hash: [32]byte{205, 182, 88, 236, 32, 18, 154, 120, 148, 194, 42, 215, 117, 140, 13, 169, 127, 196, 219, 67, 82, 36, 147, 67, 254, 117, 65, 112, 202, 60, 185, 9},
 				},
 				{
@@ -709,28 +714,28 @@ func TestProfiles(t *testing.T) {
 		tc := tc
 		// This is handled by boulder-ca, not the CA package.
 		if tc.defaultName == "" {
-			tc.defaultName = ctx.defaultCertProfileName
+			tc.defaultName = testCtx.defaultCertProfileName
 		}
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			tCA, err := NewCertificateAuthorityImpl(
 				sa,
-				ctx.pa,
-				ctx.boulderIssuers,
+				testCtx.pa,
+				testCtx.boulderIssuers,
 				tc.defaultName,
-				ctx.ignoredCertProfileLints,
 				tc.profileConfigs,
+				testCtx.lints,
 				nil,
-				ctx.certExpiry,
-				ctx.certBackdate,
-				ctx.serialPrefix,
-				ctx.maxNames,
-				ctx.keyPolicy,
-				ctx.logger,
-				ctx.stats,
-				ctx.signatureCount,
-				ctx.signErrorCount,
-				ctx.fc,
+				testCtx.certExpiry,
+				testCtx.certBackdate,
+				testCtx.serialPrefix,
+				testCtx.maxNames,
+				testCtx.keyPolicy,
+				testCtx.logger,
+				testCtx.stats,
+				testCtx.signatureCount,
+				testCtx.signErrorCount,
+				testCtx.fc,
 			)
 
 			if tc.expectedErrSubstr != "" {
@@ -862,8 +867,8 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.pa,
 			testCtx.boulderIssuers,
 			testCtx.defaultCertProfileName,
-			testCtx.ignoredCertProfileLints,
 			testCtx.certProfiles,
+			testCtx.lints,
 			nil,
 			testCtx.certExpiry,
 			testCtx.certBackdate,
@@ -903,8 +908,8 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
-		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
+		testCtx.lints,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -1007,8 +1012,8 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
-		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
+		testCtx.lints,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -1078,8 +1083,8 @@ func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *test
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
-		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
+		testCtx.lints,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -1200,8 +1205,8 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
-		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
+		testCtx.lints,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
@@ -1253,8 +1258,8 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
-		testCtx.ignoredCertProfileLints,
 		testCtx.certProfiles,
+		testCtx.lints,
 		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,

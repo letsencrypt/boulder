@@ -65,9 +65,9 @@
 			"issuers": [
 				{
 					"active": true,
-					"issuerURL": "http://127.0.0.1:4502/int ecdsa a",
-					"ocspURL": "http://127.0.0.1:4002/",
-					"crlURLBase": "http://127.0.0.1:4501/ecdsa-a/",
+					"issuerURL": "http://ca.example.org:4502/int-ecdsa-a",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/ecdsa-a/",
 					"location": {
 						"configFile": "/hierarchy/int-ecdsa-a.pkcs11.json",
 						"certFile": "/hierarchy/int-ecdsa-a.cert.pem",
@@ -76,9 +76,9 @@
 				},
 				{
 					"active": true,
-					"issuerURL": "http://127.0.0.1:4502/int ecdsa b",
-					"ocspURL": "http://127.0.0.1:4002/",
-					"crlURLBase": "http://127.0.0.1:4501/ecdsa-b/",
+					"issuerURL": "http://ca.example.org:4502/int-ecdsa-b",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/ecdsa-b/",
 					"location": {
 						"configFile": "/hierarchy/int-ecdsa-b.pkcs11.json",
 						"certFile": "/hierarchy/int-ecdsa-b.cert.pem",
@@ -87,9 +87,9 @@
 				},
 				{
 					"active": false,
-					"issuerURL": "http://127.0.0.1:4502/int ecdsa c",
-					"ocspURL": "http://127.0.0.1:4002/",
-					"crlURLBase": "http://127.0.0.1:4501/ecdsa-c/",
+					"issuerURL": "http://ca.example.org:4502/int-ecdsa-c",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/ecdsa-c/",
 					"location": {
 						"configFile": "/hierarchy/int-ecdsa-c.pkcs11.json",
 						"certFile": "/hierarchy/int-ecdsa-c.cert.pem",
@@ -98,9 +98,9 @@
 				},
 				{
 					"active": true,
-					"issuerURL": "http://127.0.0.1:4502/int rsa a",
-					"ocspURL": "http://127.0.0.1:4002/",
-					"crlURLBase": "http://127.0.0.1:4501/rsa-a/",
+					"issuerURL": "http://ca.example.org:4502/int-rsa-a",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/rsa-a/",
 					"location": {
 						"configFile": "/hierarchy/int-rsa-a.pkcs11.json",
 						"certFile": "/hierarchy/int-rsa-a.cert.pem",
@@ -109,9 +109,9 @@
 				},
 				{
 					"active": true,
-					"issuerURL": "http://127.0.0.1:4502/int rsa b",
-					"ocspURL": "http://127.0.0.1:4002/",
-					"crlURLBase": "http://127.0.0.1:4501/rsa-b/",
+					"issuerURL": "http://ca.example.org:4502/int-rsa-b",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/rsa-b/",
 					"location": {
 						"configFile": "/hierarchy/int-rsa-b.pkcs11.json",
 						"certFile": "/hierarchy/int-rsa-b.cert.pem",
@@ -120,9 +120,9 @@
 				},
 				{
 					"active": false,
-					"issuerURL": "http://127.0.0.1:4502/int rsa c",
-					"ocspURL": "http://127.0.0.1:4002/",
-					"crlURLBase": "http://127.0.0.1:4501/rsa-c/",
+					"issuerURL": "http://ca.example.org:4502/int-rsa-c",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/rsa-c/",
 					"location": {
 						"configFile": "/hierarchy/int-rsa-c.pkcs11.json",
 						"certFile": "/hierarchy/int-rsa-c.cert.pem",
@@ -130,6 +130,7 @@
 					}
 				}
 			],
+			"lintConfig": "test/config-next/zlint.toml",
 			"ignoredLints": [
 				"w_subject_common_name_included",
 				"w_sub_cert_aia_contains_internal_names"
