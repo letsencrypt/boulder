@@ -205,11 +205,8 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 		ClientCAs:    rootCAs,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		Certificates: []tls.Certificate{cert},
-		// Set the only acceptable TLS to v1.2 and v1.3.
-		MinVersion: tls.VersionTLS12,
-		MaxVersion: tls.VersionTLS13,
-		// CipherSuites will be ignored for TLS v1.3.
-		CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305},
+		// Set the only acceptable TLS to v1.3.
+		MinVersion: tls.VersionTLS13,
 	}, nil
 }
 
