@@ -1,6 +1,8 @@
 package vacfg
 
 import (
+	"fmt"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 )
@@ -25,4 +27,26 @@ type Common struct {
 	DNSAllowLoopbackAddresses bool
 
 	AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
+}
+
+// SetDefaultsAndValidate performs some basic sanity checks on fields stored in
+// the Common struct, defaulting them to a sane value when necessary. This
+// method does mutate the Common struct.
+func (c *Common) SetDefaultsAndValidate(grpcAddr, debugAddr *string) error {
+	if *grpcAddr != "" {
+		c.GRPC.Address = *grpcAddr
+	}
+	if *debugAddr != "" {
+		c.DebugAddr = *debugAddr
+	}
+
+	if c.DNSTimeout.Duration <= 0 {
+		return fmt.Errorf("'dnsTimeout' is required")
+	}
+
+	if c.DNSTries < 1 {
+		c.DNSTries = 1
+	}
+
+	return nil
 }

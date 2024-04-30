@@ -39,20 +39,12 @@ func main() {
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-	c.RVA.Validate(grpcAddr, debugAddr)
+	c.RVA.SetDefaultsAndValidate(grpcAddr, debugAddr)
 	features.Set(c.RVA.Features)
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.RVA.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
-
-	if c.RVA.DNSTimeout.Duration <= 0 {
-		cmd.Fail("'dnsTimeout' is required")
-	}
-	dnsTries := c.RVA.DNSTries
-	if dnsTries < 1 {
-		dnsTries = 1
-	}
 	clk := cmd.Clock()
 
 	var servers bdns.ServerProvider
@@ -82,7 +74,7 @@ func main() {
 			servers,
 			scope,
 			clk,
-			dnsTries,
+			c.RVA.DNSTries,
 			logger,
 			tlsClientConfig)
 	} else {
@@ -91,7 +83,7 @@ func main() {
 			servers,
 			scope,
 			clk,
-			dnsTries,
+			c.RVA.DNSTries,
 			logger,
 			tlsClientConfig)
 	}
