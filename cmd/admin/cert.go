@@ -11,6 +11,7 @@ import (
 	"os/user"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode"
 
 	"golang.org/x/crypto/ocsp"
@@ -274,7 +275,7 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 		return fmt.Errorf("getting admin username: %w", err)
 	}
 
-	anyErr := false
+	var errCount atomic.Uint64
 	wg := new(sync.WaitGroup)
 	work := make(chan string, parallelism)
 	for i := uint(0); i < parallelism; i++ {
@@ -298,7 +299,7 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 					},
 				)
 				if err != nil {
-					anyErr = true
+					errCount.Add(1)
 					if errors.Is(err, berrors.AlreadyRevoked) {
 						a.log.Errf("not revoking %q: already revoked", serial)
 					} else {
@@ -315,8 +316,8 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 	close(work)
 	wg.Wait()
 
-	if anyErr {
-		return errors.New("one or more errors encountered while revoking certs; see logs above for details")
+	if errCount.Load() > 0 {
+		return fmt.Errorf("encountered %d errors while revoking certs; see logs above for details", errCount.Load())
 	}
 
 	return nil
