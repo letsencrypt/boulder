@@ -1467,9 +1467,10 @@ func (ssa *SQLStorageAuthority) ReplacementOrderExists(ctx context.Context, req 
 func (ssa *SQLStorageAuthorityRO) GetSerialsByKey(req *sapb.SPKIHash, stream sapb.StorageAuthorityReadOnly_GetSerialsByKeyServer) error {
 	clauses := `
 		WHERE keyHash = ?
-		AND certNotAfter > NOW()`
+		AND certNotAfter > ?`
 	params := []interface{}{
 		req.KeyHash,
+		ssa.clk.Now(),
 	}
 
 	selector, err := db.NewMappedSelector[keyHashModel](ssa.dbReadOnlyMap)
@@ -1477,7 +1478,7 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByKey(req *sapb.SPKIHash, stream sap
 		return fmt.Errorf("initializing db map: %w", err)
 	}
 
-	rows, err := selector.QueryContext(stream.Context(), clauses, params)
+	rows, err := selector.QueryContext(stream.Context(), clauses, params...)
 	if err != nil {
 		return fmt.Errorf("reading db: %w", err)
 	}
@@ -1497,9 +1498,10 @@ func (ssa *SQLStorageAuthority) GetSerialsByKey(req *sapb.SPKIHash, stream sapb.
 func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, stream sapb.StorageAuthorityReadOnly_GetSerialsByAccountServer) error {
 	clauses := `
 		WHERE registrationID = ?
-		AND expires > NOW()`
+		AND expires > ?`
 	params := []interface{}{
 		req.Id,
+		ssa.clk.Now(),
 	}
 
 	selector, err := db.NewMappedSelector[recordedSerialModel](ssa.dbReadOnlyMap)
@@ -1507,7 +1509,7 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, 
 		return fmt.Errorf("initializing db map: %w", err)
 	}
 
-	rows, err := selector.QueryContext(stream.Context(), clauses, params)
+	rows, err := selector.QueryContext(stream.Context(), clauses, params...)
 	if err != nil {
 		return fmt.Errorf("reading db: %w", err)
 	}
