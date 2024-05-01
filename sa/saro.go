@@ -1467,9 +1467,10 @@ func (ssa *SQLStorageAuthority) ReplacementOrderExists(ctx context.Context, req 
 func (ssa *SQLStorageAuthorityRO) GetSerialsByKey(req *sapb.SPKIHash, stream sapb.StorageAuthorityReadOnly_GetSerialsByKeyServer) error {
 	clauses := `
 		WHERE keyHash = ?
-		AND certNotAfter > NOW()`
+		AND certNotAfter > ?`
 	params := []interface{}{
 		req.KeyHash,
+		ssa.clk.Now(),
 	}
 
 	selector, err := db.NewMappedSelector[keyHashModel](ssa.dbReadOnlyMap)
@@ -1497,9 +1498,10 @@ func (ssa *SQLStorageAuthority) GetSerialsByKey(req *sapb.SPKIHash, stream sapb.
 func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, stream sapb.StorageAuthorityReadOnly_GetSerialsByAccountServer) error {
 	clauses := `
 		WHERE registrationID = ?
-		AND expires > NOW()`
+		AND expires > ?`
 	params := []interface{}{
 		req.Id,
+		ssa.clk.Now(),
 	}
 
 	selector, err := db.NewMappedSelector[recordedSerialModel](ssa.dbReadOnlyMap)

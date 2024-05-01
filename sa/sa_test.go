@@ -4239,14 +4239,15 @@ func TestGetSerialsByKey(t *testing.T) {
 	var seen []string
 	for serial := range res {
 		if !slices.Contains([]string{"1", "2"}, serial.Serial) {
-			t.Fatalf("Received unexpected serial %q", serial.Serial)
+			t.Errorf("Received unexpected serial %q", serial.Serial)
 		}
 		if slices.Contains(seen, serial.Serial) {
-			t.Fatalf("Received serial %q more than once", serial.Serial)
+			t.Errorf("Received serial %q more than once", serial.Serial)
 		}
 		seen = append(seen, serial.Serial)
 	}
 	test.AssertNotError(t, err, "calling GetSerialsByKey")
+	test.AssertEquals(t, len(seen), 2)
 }
 
 func TestGetSerialsByAccount(t *testing.T) {
@@ -4297,13 +4298,13 @@ func TestGetSerialsByAccount(t *testing.T) {
 	var seen []string
 	for serial := range res {
 		if !slices.Contains([]string{"1", "2"}, serial.Serial) {
-			t.Fatalf("Received unexpected serial %q", serial.Serial)
+			t.Errorf("Received unexpected serial %q", serial.Serial)
 		}
 		if slices.Contains(seen, serial.Serial) {
-			t.Fatalf("Received serial %q more than once", serial.Serial)
+			t.Errorf("Received serial %q more than once", serial.Serial)
 		}
 		seen = append(seen, serial.Serial)
 	}
 	test.AssertNotError(t, err, "calling GetSerialsByAccount")
-
+	test.AssertEquals(t, len(seen), 2)
 }
