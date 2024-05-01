@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/user"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -151,6 +152,7 @@ func (a *admin) blockSPKIHashes(ctx context.Context, spkiHashes [][]byte, commen
 		return fmt.Errorf("getting admin username: %w", err)
 	}
 
+	var errCount atomic.Uint64
 	wg := new(sync.WaitGroup)
 	work := make(chan []byte, parallelism)
 	for i := uint(0); i < parallelism; i++ {
@@ -160,6 +162,7 @@ func (a *admin) blockSPKIHashes(ctx context.Context, spkiHashes [][]byte, commen
 			for spkiHash := range work {
 				err = a.blockSPKIHash(ctx, spkiHash, u, comment)
 				if err != nil {
+					errCount.Add(1)
 					if errors.Is(err, berrors.AlreadyRevoked) {
 						a.log.Errf("not blocking %x: already blocked", spkiHash)
 					} else {
@@ -175,6 +178,10 @@ func (a *admin) blockSPKIHashes(ctx context.Context, spkiHashes [][]byte, commen
 	}
 	close(work)
 	wg.Wait()
+
+	if errCount.Load() > 0 {
+		return fmt.Errorf("encountered %d errors while revoking certs; see logs above for details", errCount.Load())
+	}
 
 	return nil
 }

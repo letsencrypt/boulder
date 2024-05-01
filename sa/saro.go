@@ -464,7 +464,7 @@ func (ssa *SQLStorageAuthorityRO) GetLintPrecertificate(ctx context.Context, req
 }
 
 func (ssa *SQLStorageAuthority) GetLintPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
-	return ssa.SQLStorageAuthorityRO.GetCertificate(ctx, req)
+	return ssa.SQLStorageAuthorityRO.GetLintPrecertificate(ctx, req)
 }
 
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
