@@ -4199,24 +4199,28 @@ func TestGetSerialsByKey(t *testing.T) {
 	// Insert four rows into keyHashToSerial: two that should match the query,
 	// one that should not match due to keyHash mismatch, and one that should not
 	// match due to being already expired.
+	expectedHash := make([]byte, 32)
+	expectedHash[0] = 1
+	differentHash := make([]byte, 32)
+	differentHash[0] = 2
 	inserts := []keyHashModel{
 		{
-			KeyHash:      []byte("TestGetSerialsByAccountExpected"),
+			KeyHash:      expectedHash,
 			CertSerial:   "1",
 			CertNotAfter: fc.Now().Add(time.Hour),
 		},
 		{
-			KeyHash:      []byte("TestGetSerialsByAccountExpected"),
+			KeyHash:      expectedHash,
 			CertSerial:   "2",
 			CertNotAfter: fc.Now().Add(2 * time.Hour),
 		},
 		{
-			KeyHash:      []byte("TestGetSerialsByAccountExpected"),
+			KeyHash:      expectedHash,
 			CertSerial:   "3",
 			CertNotAfter: fc.Now().Add(-1 * time.Hour),
 		},
 		{
-			KeyHash:      []byte("TestGetSerialsByAccountDifferent"),
+			KeyHash:      differentHash,
 			CertSerial:   "4",
 			CertNotAfter: fc.Now().Add(time.Hour),
 		},
@@ -4232,7 +4236,7 @@ func TestGetSerialsByKey(t *testing.T) {
 	stream := &fakeServerStream[sapb.Serial]{output: res}
 	var err error
 	go func() {
-		err = sa.GetSerialsByKey(&sapb.SPKIHash{KeyHash: []byte("TestGetSerialsByAccountExpected")}, stream)
+		err = sa.GetSerialsByKey(&sapb.SPKIHash{KeyHash: expectedHash}, stream)
 		close(res) // Let our main test thread continue.
 	}()
 
