@@ -43,12 +43,14 @@ const (
 // Directory object as returned from the client's directory url upon creation of client.
 // See https://tools.ietf.org/html/rfc8555#section-7.1.1
 type Directory struct {
-	NewNonce    string `json:"newNonce"`    // url to new nonce endpoint
-	NewAccount  string `json:"newAccount"`  // url to new account endpoint
-	NewOrder    string `json:"newOrder"`    // url to new order endpoint
-	NewAuthz    string `json:"newAuthz"`    // url to new authz endpoint
-	RevokeCert  string `json:"revokeCert"`  // url to revoke cert endpoint
-	KeyChange   string `json:"keyChange"`   // url to key change endpoint
+	NewNonce   string `json:"newNonce"`   // url to new nonce endpoint
+	NewAccount string `json:"newAccount"` // url to new account endpoint
+	NewOrder   string `json:"newOrder"`   // url to new order endpoint
+	NewAuthz   string `json:"newAuthz"`   // url to new authz endpoint
+	RevokeCert string `json:"revokeCert"` // url to revoke cert endpoint
+	KeyChange  string `json:"keyChange"`  // url to key change endpoint
+
+	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03
 	RenewalInfo string `json:"renewalInfo"` // url to renewal info endpoint
 
 	// meta object containing directory metadata
@@ -154,6 +156,11 @@ type Order struct {
 
 	// RetryAfter is the http Retry-After header from the order response
 	RetryAfter time.Time `json:"-"`
+
+	// Replaces (optional, string): A string uniquely identifying a
+	// previously-issued certificate which this order is intended to replace.
+	// See https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03#section-5
+	Replaces string `json:"replaces,omitempty"`
 }
 
 // Authorization object returned when fetching an authorization in an order.

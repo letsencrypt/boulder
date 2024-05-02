@@ -98,3 +98,5 @@ exclude github.com/go-sql-driver/mysql v1.6.0
 
 // This version is required by borp
 exclude github.com/go-sql-driver/mysql v1.7.1
+
+replace github.com/eggsampler/acme/v3 v3.5.0 => /home/phil/work/eggsampler-acme-client
