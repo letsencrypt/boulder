@@ -89,7 +89,7 @@ func delHTTP01Response(token string) error {
 	return nil
 }
 
-func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*client, *acme.Order, error) {
+func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool, certToReplace *x509.Certificate) (*client, *acme.Order, error) {
 	var err error
 	if c == nil {
 		c, err = makeClient()
@@ -102,7 +102,12 @@ func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, c
 	for _, domain := range domains {
 		ids = append(ids, acme.Identifier{Type: "dns", Value: domain})
 	}
-	order, err := c.Client.NewOrder(c.Account, ids)
+	var order *acme.Order
+	if certToReplace != nil {
+		order, err = c.Client.NewOrderRenewal(c.Account, certToReplace, domains...)
+	} else {
+		order, err = c.Client.NewOrder(c.Account, ids)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -140,7 +145,7 @@ func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, c
 		return nil, nil, fmt.Errorf("finalizing order: %s", err)
 	}
 
-	return c, &order, nil
+	return c, order, nil
 }
 
 type issuanceResult struct {
@@ -151,7 +156,27 @@ type issuanceResult struct {
 func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*issuanceResult, error) {
 	var err error
 
-	c, order, err := makeClientAndOrder(c, csrKey, domains, cn)
+	c, order, err := makeClientAndOrder(c, csrKey, domains, cn, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	certs, err := c.Client.FetchCertificates(c.Account, order.Certificate)
+	if err != nil {
+		return nil, fmt.Errorf("fetching certificates: %s", err)
+	}
+	return &issuanceResult{*order, certs}, nil
+}
+
+// authAndIssueReplacement takes an existing certificate and attempts to use
+// ACME Renewal Info (ARI) to replace it.
+func authAndIssueReplacement(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool, oldCert *x509.Certificate) (*issuanceResult, error) {
+	if oldCert == nil {
+		return nil, fmt.Errorf("old certificate was not provided")
+	}
+	var err error
+
+	c, order, err := makeClientAndOrder(c, csrKey, domains, cn, oldCert)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +194,7 @@ type issuanceResultAllChains struct {
 }
 
 func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*issuanceResultAllChains, error) {
-	c, order, err := makeClientAndOrder(c, csrKey, domains, cn)
+	c, order, err := makeClientAndOrder(c, csrKey, domains, cn, nil)
 	if err != nil {
 		return nil, err
 	}
