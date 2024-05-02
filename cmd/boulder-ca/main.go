@@ -110,12 +110,6 @@ type Config struct {
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 		CTLogListFile string
 
-		// CRLDPBase is the piece of the CRL Distribution Point URI which is common
-		// across all issuers and shards. It must use the http:// scheme, and must
-		// not end with a slash. Example: "http://prod.c.lencr.org".
-		// TODO(#7296): Remove this fallback once all configs have issuer.CRLBaseURL
-		CRLDPBase string `validate:"omitempty,url,startswith=http://,endsnotwith=/"`
-
 		// DisableCertService causes the CertificateAuthority gRPC service to not
 		// start, preventing any certificates or precertificates from being issued.
 		DisableCertService bool
@@ -291,7 +285,6 @@ func main() {
 		crli, err := ca.NewCRLImpl(
 			issuers,
 			c.CA.Issuance.CRLProfile,
-			c.CA.CRLDPBase,
 			c.CA.OCSPLogMaxLength,
 			logger,
 		)

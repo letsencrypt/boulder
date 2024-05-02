@@ -241,7 +241,6 @@ func setup(t *testing.T) *testCtx {
 			ValidityInterval: config.Duration{Duration: 216 * time.Hour},
 			MaxBackdate:      config.Duration{Duration: time.Hour},
 		},
-		"http://c.boulder.test",
 		100,
 		blog.NewMock(),
 	)

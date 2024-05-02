@@ -107,7 +107,6 @@ func TestIssueCRL(t *testing.T) {
 				ReasonCode:     1,
 			},
 		},
-		DeprecatedIDPBaseURL: "http://old.crl.url",
 	}
 
 	req := defaultRequest
@@ -148,15 +147,16 @@ func TestIssueCRL(t *testing.T) {
 
 	idps, err := idp.GetIDPURIs(parsedRes.Extensions)
 	test.AssertNotError(t, err, "getting IDP URIs from test CRL")
+	test.AssertEquals(t, len(idps), 1)
 	test.AssertEquals(t, idps[0], "http://crl-url.example.org/100.crl")
-	test.AssertEquals(t, idps[1], "http://old.crl.url/0/100.crl")
 
 	req = defaultRequest
-	req.DeprecatedIDPBaseURL = ""
+	crlURLBase := issuer.crlURLBase
 	issuer.crlURLBase = ""
 	_, err = issuer.IssueCRL(&defaultProfile, &req)
 	test.AssertError(t, err, "crl issuance with no IDP should fail")
 	test.AssertContains(t, err.Error(), "must contain an issuingDistributionPoint")
+	issuer.crlURLBase = crlURLBase
 
 	// A CRL with no entries must not have the revokedCertificates field
 	req = defaultRequest
