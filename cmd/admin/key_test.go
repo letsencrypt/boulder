@@ -50,7 +50,7 @@ func TestSPKIHashFromPrivateKey(t *testing.T) {
 
 func TestSPKIHashesFromFile(t *testing.T) {
 	var spkiHexes []string
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		h := sha256.Sum256([]byte(strconv.Itoa(i)))
 		spkiHexes = append(spkiHexes, hex.EncodeToString(h[:]))
 	}

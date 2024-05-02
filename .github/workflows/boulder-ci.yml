@@ -41,7 +41,7 @@ jobs:
         tests:
           # Run ./test.sh --help for a description of each of the flags.
           - "./t.sh --lints --generate"
-          - "./t.sh --integration && ./test/test-caa-log-checker.sh"
+          - "./t.sh --integration"
           # Testing Config Changes:
           # Config changes that have landed in main but not yet been applied to
           # production can be made in `test/config-next/<component>.json`.

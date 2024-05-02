@@ -421,7 +421,7 @@ func TestBadKeyRevoker(t *testing.T) {
 	test.AssertNotError(t, err, "ReqDER failed")
 
 	for _, cert := range certs {
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			t.Logf("TestBadKeyRevoker: Requesting OCSP for cert with serial %x (attempt %d)", cert.SerialNumber, i)
 			_, err := ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			if err != nil {
@@ -500,7 +500,7 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 
 	ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
 	for _, cert := range certs {
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			t.Logf("TestBadKeyRevoker: Requesting OCSP for cert with serial %x (attempt %d)", cert.SerialNumber, i)
 			_, err := ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			if err != nil {

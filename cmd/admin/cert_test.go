@@ -249,7 +249,7 @@ func TestRevokeSerials(t *testing.T) {
 	log.Clear()
 	mra.alreadyRevoked = []string{"048c3f6388afb7695dd4d6bbe3d264f1e5e5"}
 	err = a.revokeSerials(context.Background(), serials, 0, false, false, 1)
-	test.AssertNotError(t, err, "")
+	test.AssertError(t, err, "already-revoked should result in error")
 	test.AssertEquals(t, len(log.GetAllMatching("not revoking")), 1)
 	test.AssertEquals(t, len(mra.revocationRequests), 3)
 	assertRequestsContain(mra.revocationRequests, 0, false, false)
@@ -259,7 +259,7 @@ func TestRevokeSerials(t *testing.T) {
 	log.Clear()
 	mra.doomedToFail = []string{"048c3f6388afb7695dd4d6bbe3d264f1e5e5"}
 	err = a.revokeSerials(context.Background(), serials, 0, false, false, 1)
-	test.AssertNotError(t, err, "")
+	test.AssertError(t, err, "gRPC error should result in error")
 	test.AssertEquals(t, len(log.GetAllMatching("failed to revoke")), 1)
 	test.AssertEquals(t, len(mra.revocationRequests), 3)
 	assertRequestsContain(mra.revocationRequests, 0, false, false)

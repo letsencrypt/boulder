@@ -4,9 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/letsencrypt/boulder/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 type mockPoolStatGetter struct{}
@@ -37,7 +38,7 @@ func TestMetrics(t *testing.T) {
 	mets.Collect(outChan)
 
 	results := make(map[string]bool)
-	for i := 0; i < expectedMetrics; i++ {
+	for range expectedMetrics {
 		metric := <-outChan
 		results[metric.Desc().String()] = true
 	}

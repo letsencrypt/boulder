@@ -21,18 +21,24 @@ message IssueCertificateRequest {
 
   // certProfileName is a human readable name provided by the RA and used to
   // determine if the CA can issue for that profile. A default name will be
-  // assigned during *Profile construction if no name is provided.
+  // assigned inside the CA during *Profile construction if no name is provided.
+  // The value of this field should not be relied upon inside the RA.
   string certProfileName = 5;
 }
 
 message IssuePrecertificateResponse {
-  // Next unused field number: 3
+  // Next unused field number: 4
   bytes DER = 1;
 
   // certProfileHash is a hash over the exported fields of a certificate profile
   // to ensure that the profile remains unchanged after multiple roundtrips
   // through the RA and CA.
   bytes certProfileHash = 2;
+
+  // certProfileName is a human readable name returned back to the RA for later
+  // use. If IssueCertificateRequest.certProfileName was an empty string, the
+  // CAs default profile name will be assigned.
+  string certProfileName = 3;
 }
 
 message IssueCertificateForPrecertificateRequest {

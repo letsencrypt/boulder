@@ -121,7 +121,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 
 	if len(rcs) > 0 {
 		builder := strings.Builder{}
-		for i := 0; i < len(rcs); i += 1 {
+		for i := range len(rcs) {
 			if builder.Len() == 0 {
 				fmt.Fprintf(&builder, "Signing CRL: logID=[%s] entries=[", logID)
 			}

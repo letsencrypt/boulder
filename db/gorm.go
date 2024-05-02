@@ -55,7 +55,7 @@ func NewMappedSelector[T any](executor MappedExecutor) (MappedSelector[T], error
 	// check should be performed at the time the mapping is declared.
 	columns := make([]string, 0)
 	seen := make(map[string]struct{})
-	for i := 0; i < t.NumField(); i++ {
+	for i := range t.NumField() {
 		field := t.Field(i)
 		if field.Anonymous {
 			return nil, fmt.Errorf("struct contains anonymous embedded struct %q", field.Name)

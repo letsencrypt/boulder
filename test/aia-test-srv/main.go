@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -25,6 +26,7 @@ func (srv *aiaTestSrv) handleIssuer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	issuerName = strings.ReplaceAll(issuerName, "-", " ")
 
 	issuer, ok := srv.issuersByName[issuerName]
 	if !ok {

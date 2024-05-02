@@ -45,7 +45,7 @@ in-memory server and client with persistence disabled for ease of use.
   ```
 - For RFC 2782 (SRV RR) lookups to work ensure you that you add a tag for the
   supported protocol (usually `"tcp"` and or `"udp"`) to the `tags` field.
-  Consul implemented the the `Proto` field as a tag filter for SRV RR lookups.
+  Consul implemented the `Proto` field as a tag filter for SRV RR lookups.
   For more information see the
   [docs](https://www.consul.io/docs/discovery/dns#rfc-2782-lookup).
   

@@ -40,7 +40,7 @@ corresponding to the `Name` enum of the limit, and the value is a set of
 overridden parameters. These parameters are applicable to a specific list of IDs
 included in each entry. It's important that the formatting of these IDs matches
 the ID format associated with their respective limit's `Name`. For more details on
-the relationship of ID format to limit `Name`s, please refer to the the documentation
+the relationship of ID format to limit `Name`s, please refer to the documentation
 of each `Name` in the `//ratelimits/names.go` file or the [ratelimits package
 documentation](https://pkg.go.dev/github.com/letsencrypt/boulder/ratelimits#Name).
 

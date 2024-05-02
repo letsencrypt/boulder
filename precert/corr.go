@@ -44,7 +44,7 @@ func Correspond(precertDER, finalDER []byte) error {
 	//      					 -- If present, version MUST be v2 or v3
 	//      extensions      [3]  Extensions OPTIONAL
 	//      					 -- If present, version MUST be v3 --  }
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		if err := readIdenticalElement(&preTBS, &finalTBS); err != nil {
 			return fmt.Errorf("checking for identical field %d: %w", i, err)
 		}

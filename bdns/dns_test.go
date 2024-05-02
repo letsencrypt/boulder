@@ -827,7 +827,7 @@ func TestRotateServerOnErr(t *testing.T) {
 	// in the list. Since we configured maxTries to be larger than the number of
 	// servers *all* queries should eventually succeed by being retried against
 	// server "[2606:4700:4700::1111]:53".
-	for i := 0; i < maxTries*2; i++ {
+	for range maxTries * 2 {
 		_, resolvers, err := client.LookupTXT(context.Background(), "example.com")
 		test.AssertEquals(t, len(resolvers), 1)
 		test.AssertEquals(t, resolvers[0], "[2606:4700:4700::1111]:53")

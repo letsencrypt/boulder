@@ -76,6 +76,7 @@ GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 -- Cert checker
 GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
 GRANT SELECT ON authz2 TO 'cert_checker'@'localhost';
+GRANT SELECT ON precertificates TO 'cert_checker'@'localhost';
 
 -- Bad Key Revoker
 GRANT SELECT,UPDATE ON blockedKeys TO 'badkeyrevoker'@'localhost';

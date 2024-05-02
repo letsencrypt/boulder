@@ -18,7 +18,7 @@ func TestTooBigOrderError(t *testing.T) {
 	t.Parallel()
 
 	var domains []string
-	for i := 0; i < 101; i++ {
+	for i := range 101 {
 		domains = append(domains, fmt.Sprintf("%d.example.com", i))
 	}
 
@@ -42,7 +42,7 @@ func TestAccountEmailError(t *testing.T) {
 	// encoded JSON. The correct size to hit our maximum DB field length.
 	var longStringBuf strings.Builder
 	longStringBuf.WriteString("mailto:")
-	for i := 0; i < 175; i++ {
+	for range 175 {
 		longStringBuf.WriteRune('a')
 	}
 	longStringBuf.WriteString("@a.com")
@@ -124,11 +124,12 @@ func TestAccountEmailError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// First try registering a new account and ensuring the expected problem occurs
 			var prob acme.Problem
-			if _, err := makeClient(tc.contacts...); err != nil {
+			_, err := makeClient(tc.contacts...)
+			if err != nil {
 				test.AssertErrorWraps(t, err, &prob)
 				test.AssertEquals(t, prob.Type, tc.expectedProbType)
 				test.AssertEquals(t, prob.Detail, createErrorPrefix+tc.expectedProbDetail)
-			} else if err == nil {
+			} else {
 				t.Errorf("expected %s type problem for %q, got nil",
 					tc.expectedProbType, strings.Join(tc.contacts, ","))
 			}
@@ -137,11 +138,12 @@ func TestAccountEmailError(t *testing.T) {
 			// case contact info. The same problem should occur.
 			c, err := makeClient("mailto:valid@valid.com")
 			test.AssertNotError(t, err, "failed to create account with valid contact")
-			if _, err := c.UpdateAccount(c.Account, tc.contacts...); err != nil {
+			_, err = c.UpdateAccount(c.Account, tc.contacts...)
+			if err != nil {
 				test.AssertErrorWraps(t, err, &prob)
 				test.AssertEquals(t, prob.Type, tc.expectedProbType)
 				test.AssertEquals(t, prob.Detail, updateErrorPrefix+tc.expectedProbDetail)
-			} else if err == nil {
+			} else {
 				t.Errorf("expected %s type problem after updating account to %q, got nil",
 					tc.expectedProbType, strings.Join(tc.contacts, ","))
 			}
