@@ -1206,7 +1206,8 @@ func prepAccountForDisplay(acct *core.Registration) {
 }
 
 // prepChallengeForDisplay takes a core.Challenge and prepares it for display to
-// the client by filling in its URL field and clearing its ID and URI fields.
+// the client by filling in its URL field and clearing several unnecessary
+// fields.
 func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
 	// Update the challenge URL to be relative to the HTTP request Host
 	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengePath, authz.ID, challenge.StringID()))
@@ -1229,6 +1230,11 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	// to be invalid as well.
 	if authz.Status == core.StatusInvalid {
 		challenge.Status = authz.Status
+	}
+
+	// This field is not useful for the client, only internal debugging,
+	for idx := range challenge.ValidationRecord {
+		challenge.ValidationRecord[idx].ResolverAddrs = nil
 	}
 }
 
