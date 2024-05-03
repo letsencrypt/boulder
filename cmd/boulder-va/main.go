@@ -40,7 +40,8 @@ func main() {
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-	c.VA.SetDefaultsAndValidate(grpcAddr, debugAddr)
+	err = c.VA.SetDefaultsAndValidate(grpcAddr, debugAddr)
+	cmd.FailOnError(err, "Setting and validating default config values")
 
 	features.Set(c.VA.Features)
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.VA.DebugAddr)
