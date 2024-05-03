@@ -395,12 +395,6 @@ type orderModelv2 struct {
 	CertificateProfileName string
 }
 
-type requestedNameModel struct {
-	ID           int64
-	OrderID      int64
-	ReversedName string
-}
-
 type orderToAuthzModel struct {
 	OrderID int64
 	AuthzID int64
