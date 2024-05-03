@@ -94,7 +94,7 @@ func TestPreresolvedDialerTimeout(t *testing.T) {
 	// Check that the HTTP connection doesn't return too fast, and times
 	// out after the expected time
 	if took < va.singleDialTimeout {
-		t.Fatalf("fetch returned before %s (took: %s) with %#v", va.singleDialTimeout, took, err)
+		t.Fatalf("fetch returned before %s (took: %s) with %q", va.singleDialTimeout, took, err.Error())
 	}
 	if took > 2*va.singleDialTimeout {
 		t.Fatalf("fetch didn't timeout after %s (took: %s)", va.singleDialTimeout, took)
@@ -184,7 +184,7 @@ func TestHTTPValidationTarget(t *testing.T) {
 				// Calling ip() on the target should give the expected IPs in the right
 				// order.
 				for i, expectedIP := range tc.ExpectedIPs {
-					gotIP := target.ip()
+					gotIP := target.cur
 					if gotIP == nil {
 						t.Errorf("Expected IP %d to be %s got nil", i, expectedIP)
 					} else {
@@ -1404,7 +1404,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 	// Check that the HTTP connection doesn't return too fast, and times
 	// out after the expected time
 	if took < (timeout-200*time.Millisecond)/2 {
-		t.Fatalf("HTTP returned before %s (%s) with %#v", timeout, took, err)
+		t.Fatalf("HTTP returned before %s (%s) with %q", timeout, took, err.Error())
 	}
 	if took > 2*timeout {
 		t.Fatalf("HTTP connection didn't timeout after %s seconds", timeout)

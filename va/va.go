@@ -330,6 +330,12 @@ type ipError struct {
 	err error
 }
 
+// newIPError wraps an error and the IP of the remote host in an ipError so we
+// can display the IP in the problem details returned to the client.
+func newIPError(ip net.IP, err error) error {
+	return ipError{ip: ip, err: err}
+}
+
 // Unwrap returns the underlying error.
 func (i ipError) Unwrap() error {
 	return i.err
