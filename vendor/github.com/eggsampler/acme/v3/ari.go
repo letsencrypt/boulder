@@ -41,7 +41,7 @@ func (c Client) GetRenewalInfo(cert *x509.Certificate) (RenewalInfo, error) {
 		return RenewalInfo{}, ErrRenewalInfoNotSupported
 	}
 
-	certID, err := generateARICertID(cert)
+	certID, err := GenerateARICertID(cert)
 	if err != nil {
 		return RenewalInfo{}, fmt.Errorf("acme: error generating certificate id: %v", err)
 	}
@@ -62,16 +62,16 @@ func (c Client) GetRenewalInfo(cert *x509.Certificate) (RenewalInfo, error) {
 	return ri, err
 }
 
-// generateARICertID constructs a certificate identifier as described in
+// GenerateARICertID constructs a certificate identifier as described in
 // draft-ietf-acme-ari-03, section 4.1.
-func generateARICertID(cert *x509.Certificate) (string, error) {
+func GenerateARICertID(cert *x509.Certificate) (string, error) {
 	if cert == nil {
 		return "", fmt.Errorf("certificate not found")
 	}
 
 	derBytes, err := asn1.Marshal(cert.SerialNumber)
 	if err != nil {
-		return "", nil
+		return "", err
 	}
 
 	if len(derBytes) < 3 {

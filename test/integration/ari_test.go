@@ -53,12 +53,15 @@ func TestARI(t *testing.T) {
 	// TODO(@pgporada): Clean this up when 'test/config/{sa,wfe2}.json' sets
 	// TrackReplacementCertificatesARI=true.
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		ir, err = authAndIssueReplacement(client, key, []string{name}, true, cert)
+		_, order, err := makeClientAndOrder(client, key, []string{name}, true, cert)
 		test.AssertNotError(t, err, "failed to issue test cert")
-		test.AssertNotEquals(t, ir.Replaces, "")
+		replaceID, err := acme.GenerateARICertID(cert)
+		test.AssertNotError(t, err, "failed to generate ARI certID")
+		test.AssertEquals(t, order.Replaces, replaceID)
+		test.AssertNotEquals(t, order.Replaces, "")
 
 		// Try it again and verify it fails
-		_, err = authAndIssueReplacement(client, key, []string{name}, true, cert)
+		_, order, err = makeClientAndOrder(client, key, []string{name}, true, cert)
 		test.AssertError(t, err, "subsequent ARI replacements for a replaced cert should fail, but didn't")
 	} else {
 		// ARI is disabled so we only use the client to POST the replacement

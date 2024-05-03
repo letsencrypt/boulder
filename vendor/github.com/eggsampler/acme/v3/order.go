@@ -52,7 +52,7 @@ func (c Client) NewOrderRenewal(account Account, oldCert *x509.Certificate, doma
 		return nil, fmt.Errorf("certificate not found")
 	}
 
-	certID, err := generateARICertID(oldCert)
+	certID, err := GenerateARICertID(oldCert)
 	if err != nil {
 		return nil, fmt.Errorf("acme: error generating certificate id: %v", err)
 	}

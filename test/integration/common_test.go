@@ -168,26 +168,6 @@ func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool
 	return &issuanceResult{*order, certs}, nil
 }
 
-// authAndIssueReplacement takes an existing certificate and attempts to use
-// ACME Renewal Info (ARI) to replace it.
-func authAndIssueReplacement(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool, oldCert *x509.Certificate) (*issuanceResult, error) {
-	if oldCert == nil {
-		return nil, fmt.Errorf("old certificate was not provided")
-	}
-	var err error
-
-	c, order, err := makeClientAndOrder(c, csrKey, domains, cn, oldCert)
-	if err != nil {
-		return nil, err
-	}
-
-	certs, err := c.Client.FetchCertificates(c.Account, order.Certificate)
-	if err != nil {
-		return nil, fmt.Errorf("fetching certificates: %s", err)
-	}
-	return &issuanceResult{*order, certs}, nil
-}
-
 type issuanceResultAllChains struct {
 	acme.Order
 	certs map[string][]*x509.Certificate
