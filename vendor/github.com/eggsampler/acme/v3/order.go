@@ -23,10 +23,13 @@ func (c Client) NewOrderDomains(account Account, domains ...string) (Order, erro
 	return c.ReplacementOrder(account, nil, identifiers)
 }
 
-// ReplacementOrder takes an existing *x509.Certificate and initiates a new order for a new certificate, but with the
-// order being marked as a replacement. Replacement orders are exempt from Let's Encrypt NewOrder rate limits.
-// At least one identifier must match the list of identifiers from the parent order to be considered as a valid
-// replacement order.
+// ReplacementOrder takes an existing *x509.Certificate and initiates a new
+// order for a new certificate, but with the order being marked as a
+// replacement. Replacement orders which are valid replacements are (currently)
+// exempt from Let's Encrypt NewOrder rate limits, but may not be exempt from
+// other ACME CAs ACME Renewal Info implementations. At least one identifier
+// must match the list of identifiers from the parent order to be considered as
+// a valid replacement order.
 // See https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03#section-5
 func (c Client) ReplacementOrder(account Account, oldCert *x509.Certificate, identifiers []Identifier) (Order, error) {
 	// If an old cert being replaced is present and the acme directory doesn't list a RenewalInfo endpoint,

@@ -228,7 +228,7 @@ type RenewalInfo struct {
 		Start time.Time `json:"start"`
 		End   time.Time `json:"end"`
 	} `json:"suggestedWindow"`
-	ExplanationURL string `json:"explanationURL"`
+	ExplanationURL string `json:"explanationURL,omitempty"`
 
 	RetryAfter time.Time `json:"-"`
 }
