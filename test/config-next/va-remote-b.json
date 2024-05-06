@@ -1,6 +1,6 @@
 {
 	"va": {
-		"userAgent": "boulder-remote-b",
+		"userAgent": "boulder-remoteva-b",
 		"dnsTries": 3,
 		"dnsStaticResolvers": [
 			"10.77.77.77:8343",
