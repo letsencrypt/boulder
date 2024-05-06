@@ -8,8 +8,15 @@ import (
 	"time"
 )
 
-// ErrUnsupportedKey is returned when an unsupported key type is encountered.
-var ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA are supported")
+var (
+	// ErrUnsupportedKey is returned when an unsupported key type is encountered.
+	ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA are supported")
+
+	// ErrRenewalInfoNotSupported is returned by Client.GetRenewalInfo if the
+	// renewal info entry isn't present on the acme directory (ie, it's not
+	// supported by the acme server)
+	ErrRenewalInfoNotSupported = errors.New("renewal information endpoint not supported")
+)
 
 // Different possible challenge types provided by an ACME server.
 // See https://tools.ietf.org/html/rfc8555#section-9.7.8
@@ -122,7 +129,7 @@ type Account struct {
 //   - "HS384" for HashFunc: crypto.SHA384
 //   - "HS512" for HashFunc: crypto.SHA512
 //
-// However this is dependant on the acme server in question and is provided here to give more options for future compatibility.
+// However this is dependent on the acme server in question and is provided here to give more options for future compatibility.
 type ExternalAccountBinding struct {
 	KeyIdentifier string      `json:"-"`
 	MacKey        string      `json:"-"`
@@ -212,4 +219,16 @@ type NewAccountRequest struct {
 	TermsOfServiceAgreed   bool            `json:"termsOfServiceAgreed"`
 	Contact                []string        `json:"contact,omitempty"`
 	ExternalAccountBinding json.RawMessage `json:"externalAccountBinding"`
+}
+
+// RenewalInfo stores the server-provided suggestions on when to renew
+// certificates.
+type RenewalInfo struct {
+	SuggestedWindow struct {
+		Start time.Time `json:"start"`
+		End   time.Time `json:"end"`
+	} `json:"suggestedWindow"`
+	ExplanationURL string `json:"explanationURL"`
+
+	RetryAfter time.Time `json:"-"`
 }

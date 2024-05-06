@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -15,23 +14,6 @@ import (
 	"strings"
 	"time"
 )
-
-// RenewalInfo stores the server-provided suggestions on when to renew
-// certificates.
-type RenewalInfo struct {
-	SuggestedWindow struct {
-		Start time.Time `json:"start"`
-		End   time.Time `json:"end"`
-	} `json:"suggestedWindow"`
-	ExplanationURL string `json:"explanationURL"`
-
-	RetryAfter time.Time `json:"-"`
-}
-
-// ErrRenewalInfoNotSupported is returned by Client.GetRenewalInfo if the
-// renewal info entry isn't present on the acme directory (ie, it's not
-// supported by the acme server)
-var ErrRenewalInfoNotSupported = errors.New("renewal information endpoint not")
 
 // GetRenewalInfo returns the renewal information (if present and supported by
 // the ACME server), and a Retry-After time if indicated in the http response

@@ -3,7 +3,7 @@
 
 # some variables for path injection, if already set will not override
 GOPATH ?= $(HOME)/go
-BOULDER_PATH ?= /home/phil/work/boulder
+BOULDER_PATH ?= $(GOPATH)/src/github.com/letsencrypt/boulder
 PEBBLE_PATH ?= $(GOPATH)/src/github.com/letsencrypt/pebble
 TEST_PATH ?= github.com/eggsampler/acme/v3
 CLIENT ?= unknown
@@ -63,7 +63,7 @@ boulder_setup:
 
 # runs an instance of boulder
 boulder_start:
-	docker compose -f $(BOULDER_PATH)/docker-compose.yml -f $(BOULDER_PATH)/docker-compose.next.yml -f docker-compose.boulder-temp.yml up -d
+	docker-compose -f $(BOULDER_PATH)/docker-compose.yml -f $(BOULDER_PATH)/docker-compose.next.yml -f docker-compose.boulder-temp.yml up -d
 
 # waits until boulder responds
 boulder_wait:
@@ -71,4 +71,4 @@ boulder_wait:
 
 # stops the running docker instance
 boulder_stop:
-	docker compose -f $(BOULDER_PATH)/docker-compose.yml -f $(BOULDER_PATH)/docker-compose.next.yml -f docker-compose.boulder-temp.yml down
+	docker-compose -f $(BOULDER_PATH)/docker-compose.yml -f $(BOULDER_PATH)/docker-compose.next.yml -f docker-compose.boulder-temp.yml down

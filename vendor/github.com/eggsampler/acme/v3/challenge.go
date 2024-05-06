@@ -15,7 +15,7 @@ func EncodeDNS01KeyAuthorization(keyAuth string) string {
 	return base64.RawURLEncoding.EncodeToString(h[:])
 }
 
-// Helper function to determine whether a challenge is "finished" by it's status.
+// Helper function to determine whether a challenge is "finished" by its status.
 func checkUpdatedChallengeStatus(challenge Challenge) (bool, error) {
 	switch challenge.Status {
 	case "pending":
