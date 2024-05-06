@@ -18,11 +18,6 @@
 			"certFile": "test/grpc-creds/rva.boulder/cert.pem",
 			"keyFile": "test/grpc-creds/rva.boulder/key.pem"
 		},
-		"tlsclient": {
-			"caCertfile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/rva.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/rva.boulder/key.pem"
-		},
 		"grpc": {
 			"maxConnectionAge": "30s",
 			"address": ":9897",

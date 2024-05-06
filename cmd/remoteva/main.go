@@ -18,8 +18,7 @@ import (
 type Config struct {
 	RVA struct {
 		vaConfig.Common
-		TLSClient cmd.TLSConfig
-		Features  features.Config
+		Features features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -63,9 +62,7 @@ func main() {
 	}
 	defer servers.Stop()
 
-	tlsServerConfig, err := c.RVA.TLS.Load(scope)
-	cmd.FailOnError(err, "tlsConfig config")
-	tlsClientConfig, err := c.RVA.TLSClient.Load(scope)
+	tlsConfig, err := c.RVA.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
 
 	var resolver bdns.Client
@@ -77,7 +74,7 @@ func main() {
 			clk,
 			c.RVA.DNSTries,
 			logger,
-			tlsClientConfig)
+			tlsConfig)
 	} else {
 		resolver = bdns.NewTest(
 			c.RVA.DNSTimeout.Duration,
@@ -86,7 +83,7 @@ func main() {
 			clk,
 			c.RVA.DNSTries,
 			logger,
-			tlsClientConfig)
+			tlsConfig)
 	}
 
 	vai, err := va.NewValidationAuthorityImpl(
@@ -103,7 +100,7 @@ func main() {
 
 	start, err := bgrpc.NewServer(c.RVA.GRPC, logger).Add(
 		&vapb.VA_ServiceDesc, vai).Add(
-		&vapb.CAA_ServiceDesc, vai).Build(tlsServerConfig, scope, clk)
+		&vapb.CAA_ServiceDesc, vai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup Remote-VA gRPC server")
 	cmd.FailOnError(start(), "Remote-VA gRPC service failed")
 }
