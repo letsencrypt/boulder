@@ -545,24 +545,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			return nil, err
 		}
 
-		// Fourth, insert all of the requestedNames.
-		// TODO(#7432): Remove this
-		inserter, err = db.NewMultiInserter("requestedNames", []string{"orderID", "reversedName"}, "")
-		if err != nil {
-			return nil, err
-		}
-		for _, name := range req.NewOrder.Names {
-			err := inserter.Add([]interface{}{orderID, ReverseName(name)})
-			if err != nil {
-				return nil, err
-			}
-		}
-		_, err = inserter.Insert(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
-
-		// Fifth, insert the FQDNSet entry for the order.
+		// Fourth, insert the FQDNSet entry for the order.
 		err = addOrderFQDNSet(ctx, tx, req.NewOrder.Names, orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {
 			return nil, err
