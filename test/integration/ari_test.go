@@ -53,6 +53,7 @@ func TestARI(t *testing.T) {
 	// TODO(@pgporada): Clean this up when 'test/config/{sa,wfe2}.json' sets
 	// TrackReplacementCertificatesARI=true.
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		// Make a new order which indicates that it replaces the cert issued above.
 		_, order, err := makeClientAndOrder(client, key, []string{name}, true, cert)
 		test.AssertNotError(t, err, "failed to issue test cert")
 		replaceID, err := acme.GenerateARICertID(cert)
