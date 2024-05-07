@@ -1,13 +1,18 @@
 #!/bin/bash
 set -e
-set -o xtrace
 
 cd "$(realpath -- $(dirname -- "$0"))"
+
+# Don't do anything if it looks like we've already run this script
+if [ -f minica.pem ]; then
+  echo "grpc-creds already generated, doing no work"
+  exit
+fi
 
 # Check that `minica` is installed
 command -v minica >/dev/null 2>&1 || {
   echo >&2 "No 'minica' command available.";
-  echo >&2 "Check your GOPATH and run: 'go get github.com/jsha/minica'.";
+  echo >&2 "Check your GOPATH and run: 'go install github.com/jsha/minica@latest'.";
   exit 1;
 }
 
