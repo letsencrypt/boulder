@@ -47,6 +47,8 @@ func (c Client) ReplacementOrder(account Account, oldCert *x509.Certificate, ide
 		Identifiers: identifiers,
 	}
 
+	newOrderResp := Order{}
+
 	// If present, add the ari cert ID from the original/old certificate
 	if oldCert != nil {
 		replacesCertID, err := GenerateARICertID(oldCert)
@@ -55,10 +57,10 @@ func (c Client) ReplacementOrder(account Account, oldCert *x509.Certificate, ide
 		}
 
 		newOrderReq.Replaces = replacesCertID
+		newOrderResp.Replaces = replacesCertID // server does not appear to set this currently?
 	}
 
 	// Submit the order
-	newOrderResp := Order{}
 	resp, err := c.post(c.dir.NewOrder, account.URL, account.PrivateKey, newOrderReq, &newOrderResp, http.StatusCreated)
 	if err != nil {
 		return newOrderResp, err
