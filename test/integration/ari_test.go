@@ -66,12 +66,14 @@ func TestARI(t *testing.T) {
 	} else {
 		// ARI is disabled so we only use the client to POST the replacement
 		// order, but we never finalize it.
-		replacementOrder, err := client.NewOrderRenewal(client.Account, cert, name)
+		replacementOrder, err := client.ReplacementOrder(client.Account, cert, []acme.Identifier{{Type: "dns", Value: name}})
 		test.AssertNotError(t, err, "ARI replacement request should have succeeded")
 		test.AssertNotEquals(t, replacementOrder.Replaces, "")
 	}
 
-	// Revoke the cert, re-request ARI, and the window should now be in the past.
+	// Revoke the cert and re-request ARI. The renewal window should now be in
+	// the past indicating to the client that a renewal should happen
+	// immediately.
 	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 0)
 	test.AssertNotError(t, err, "failed to revoke cert")
 

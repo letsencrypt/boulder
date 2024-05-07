@@ -102,9 +102,9 @@ func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, c
 	for _, domain := range domains {
 		ids = append(ids, acme.Identifier{Type: "dns", Value: domain})
 	}
-	var order *acme.Order
+	var order acme.Order
 	if certToReplace != nil {
-		order, err = c.Client.NewOrderRenewal(c.Account, certToReplace, domains...)
+		order, err = c.Client.ReplacementOrder(c.Account, certToReplace, ids)
 	} else {
 		order, err = c.Client.NewOrder(c.Account, ids)
 	}
@@ -145,7 +145,7 @@ func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, c
 		return nil, nil, fmt.Errorf("finalizing order: %s", err)
 	}
 
-	return c, order, nil
+	return c, &order, nil
 }
 
 type issuanceResult struct {
