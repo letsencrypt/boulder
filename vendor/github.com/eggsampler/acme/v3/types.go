@@ -8,8 +8,15 @@ import (
 	"time"
 )
 
-// ErrUnsupportedKey is returned when an unsupported key type is encountered.
-var ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA are supported")
+var (
+	// ErrUnsupportedKey is returned when an unsupported key type is encountered.
+	ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA are supported")
+
+	// ErrRenewalInfoNotSupported is returned by Client.GetRenewalInfo if the
+	// renewal info entry isn't present on the acme directory (ie, it's not
+	// supported by the acme server)
+	ErrRenewalInfoNotSupported = errors.New("renewal information endpoint not supported")
+)
 
 // Different possible challenge types provided by an ACME server.
 // See https://tools.ietf.org/html/rfc8555#section-9.7.8
@@ -43,12 +50,14 @@ const (
 // Directory object as returned from the client's directory url upon creation of client.
 // See https://tools.ietf.org/html/rfc8555#section-7.1.1
 type Directory struct {
-	NewNonce    string `json:"newNonce"`    // url to new nonce endpoint
-	NewAccount  string `json:"newAccount"`  // url to new account endpoint
-	NewOrder    string `json:"newOrder"`    // url to new order endpoint
-	NewAuthz    string `json:"newAuthz"`    // url to new authz endpoint
-	RevokeCert  string `json:"revokeCert"`  // url to revoke cert endpoint
-	KeyChange   string `json:"keyChange"`   // url to key change endpoint
+	NewNonce   string `json:"newNonce"`   // url to new nonce endpoint
+	NewAccount string `json:"newAccount"` // url to new account endpoint
+	NewOrder   string `json:"newOrder"`   // url to new order endpoint
+	NewAuthz   string `json:"newAuthz"`   // url to new authz endpoint
+	RevokeCert string `json:"revokeCert"` // url to revoke cert endpoint
+	KeyChange  string `json:"keyChange"`  // url to key change endpoint
+
+	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03
 	RenewalInfo string `json:"renewalInfo"` // url to renewal info endpoint
 
 	// meta object containing directory metadata
@@ -120,7 +129,7 @@ type Account struct {
 //   - "HS384" for HashFunc: crypto.SHA384
 //   - "HS512" for HashFunc: crypto.SHA512
 //
-// However this is dependant on the acme server in question and is provided here to give more options for future compatibility.
+// However this is dependent on the acme server in question and is provided here to give more options for future compatibility.
 type ExternalAccountBinding struct {
 	KeyIdentifier string      `json:"-"`
 	MacKey        string      `json:"-"`
@@ -154,6 +163,11 @@ type Order struct {
 
 	// RetryAfter is the http Retry-After header from the order response
 	RetryAfter time.Time `json:"-"`
+
+	// Replaces (optional, string): A string uniquely identifying a
+	// previously-issued certificate which this order is intended to replace.
+	// See https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03#section-5
+	Replaces string `json:"replaces,omitempty"`
 }
 
 // Authorization object returned when fetching an authorization in an order.
@@ -205,4 +219,16 @@ type NewAccountRequest struct {
 	TermsOfServiceAgreed   bool            `json:"termsOfServiceAgreed"`
 	Contact                []string        `json:"contact,omitempty"`
 	ExternalAccountBinding json.RawMessage `json:"externalAccountBinding"`
+}
+
+// RenewalInfo stores the server-provided suggestions on when to renew
+// certificates.
+type RenewalInfo struct {
+	SuggestedWindow struct {
+		Start time.Time `json:"start"`
+		End   time.Time `json:"end"`
+	} `json:"suggestedWindow"`
+	ExplanationURL string `json:"explanationURL,omitempty"`
+
+	RetryAfter time.Time `json:"-"`
 }
