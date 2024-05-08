@@ -1,4 +1,0 @@
-CertificatesPerDomain:example.com:
-  burst: 40
-  count: 40
-  period: 1s

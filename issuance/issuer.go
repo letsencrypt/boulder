@@ -255,13 +255,14 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 	if config.OCSPURL == "" {
 		return nil, errors.New("OCSP URL is required")
 	}
-	if config.CRLURLBase != "" {
-		if !strings.HasPrefix(config.CRLURLBase, "http://") {
-			return nil, fmt.Errorf("crlURLBase must use HTTP scheme, got %q", config.CRLURLBase)
-		}
-		if !strings.HasSuffix(config.CRLURLBase, "/") {
-			return nil, fmt.Errorf("crlURLBase must end with exactly one forward slash, got %q", config.CRLURLBase)
-		}
+	if config.CRLURLBase == "" {
+		return nil, errors.New("CRL URL base is required")
+	}
+	if !strings.HasPrefix(config.CRLURLBase, "http://") {
+		return nil, fmt.Errorf("crlURLBase must use HTTP scheme, got %q", config.CRLURLBase)
+	}
+	if !strings.HasSuffix(config.CRLURLBase, "/") {
+		return nil, fmt.Errorf("crlURLBase must end with exactly one forward slash, got %q", config.CRLURLBase)
 	}
 
 	// We require that all of our issuers be capable of both issuing certs and

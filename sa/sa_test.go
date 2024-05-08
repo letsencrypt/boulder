@@ -18,6 +18,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -58,6 +59,20 @@ var (
     "e": "AQAB"
 }`
 )
+
+type fakeServerStream[T any] struct {
+	grpc.ServerStream
+	output chan<- *T
+}
+
+func (s *fakeServerStream[T]) Send(msg *T) error {
+	s.output <- msg
+	return nil
+}
+
+func (s *fakeServerStream[T]) Context() context.Context {
+	return context.Background()
+}
 
 func TestImplementation(t *testing.T) {
 	test.AssertImplementsGRPCServer(t, &SQLStorageAuthority{}, sapb.UnimplementedStorageAuthorityServer{})
@@ -3312,20 +3327,6 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertEquals(t, len(result.Incidents), 1)
 }
 
-type mockSerialsForIncidentServerStream struct {
-	grpc.ServerStream
-	output chan<- *sapb.IncidentSerial
-}
-
-func (s mockSerialsForIncidentServerStream) Send(serial *sapb.IncidentSerial) error {
-	s.output <- serial
-	return nil
-}
-
-func (s mockSerialsForIncidentServerStream) Context() context.Context {
-	return context.Background()
-}
-
 func TestSerialsForIncident(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
@@ -3335,7 +3336,7 @@ func TestSerialsForIncident(t *testing.T) {
 	defer test.ResetIncidentsTestDatabase(t)
 
 	// Request serials from a malformed incident table name.
-	mockServerStream := mockSerialsForIncidentServerStream{}
+	mockServerStream := &fakeServerStream[sapb.IncidentSerial]{}
 	err = sa.SerialsForIncident(
 		&sapb.SerialsForIncidentRequest{
 			IncidentTable: "incidesnt_Baz",
@@ -3346,7 +3347,7 @@ func TestSerialsForIncident(t *testing.T) {
 	test.AssertContains(t, err.Error(), "malformed table name \"incidesnt_Baz\"")
 
 	// Request serials from another malformed incident table name.
-	mockServerStream = mockSerialsForIncidentServerStream{}
+	mockServerStream = &fakeServerStream[sapb.IncidentSerial]{}
 	longTableName := "incident_l" + strings.Repeat("o", 1000) + "ng"
 	err = sa.SerialsForIncident(
 		&sapb.SerialsForIncidentRequest{
@@ -3358,7 +3359,7 @@ func TestSerialsForIncident(t *testing.T) {
 	test.AssertContains(t, err.Error(), fmt.Sprintf("malformed table name %q", longTableName))
 
 	// Request serials for an incident table which doesn't exists.
-	mockServerStream = mockSerialsForIncidentServerStream{}
+	mockServerStream = &fakeServerStream[sapb.IncidentSerial]{}
 	err = sa.SerialsForIncident(
 		&sapb.SerialsForIncidentRequest{
 			IncidentTable: "incident_baz",
@@ -3380,7 +3381,7 @@ func TestSerialsForIncident(t *testing.T) {
 	// Request serials from table 'incident_foo', which we expect to exist but
 	// be empty.
 	stream := make(chan *sapb.IncidentSerial)
-	mockServerStream = mockSerialsForIncidentServerStream{output: stream}
+	mockServerStream = &fakeServerStream[sapb.IncidentSerial]{output: stream}
 	go func() {
 		err = sa.SerialsForIncident(
 			&sapb.SerialsForIncidentRequest{
@@ -3415,7 +3416,7 @@ func TestSerialsForIncident(t *testing.T) {
 
 	// Request all 4 serials from the incident table we just added entries to.
 	stream = make(chan *sapb.IncidentSerial)
-	mockServerStream = mockSerialsForIncidentServerStream{output: stream}
+	mockServerStream = &fakeServerStream[sapb.IncidentSerial]{output: stream}
 	go func() {
 		err = sa.SerialsForIncident(
 			&sapb.SerialsForIncidentRequest{
@@ -3439,20 +3440,6 @@ func TestSerialsForIncident(t *testing.T) {
 		"1335": true, "1336": true, "1337": true, "1338": true,
 	})
 	test.AssertNotError(t, err, "Error getting serials for incident")
-}
-
-type mockGetRevokedCertsServerStream struct {
-	grpc.ServerStream
-	output chan<- *corepb.CRLEntry
-}
-
-func (s mockGetRevokedCertsServerStream) Send(entry *corepb.CRLEntry) error {
-	s.output <- entry
-	return nil
-}
-
-func (s mockGetRevokedCertsServerStream) Context() context.Context {
-	return context.Background()
 }
 
 func TestGetRevokedCerts(t *testing.T) {
@@ -3490,7 +3477,7 @@ func TestGetRevokedCerts(t *testing.T) {
 	// how many results it returned.
 	countRevokedCerts := func(req *sapb.GetRevokedCertsRequest) (int, error) {
 		stream := make(chan *corepb.CRLEntry)
-		mockServerStream := mockGetRevokedCertsServerStream{output: stream}
+		mockServerStream := &fakeServerStream[corepb.CRLEntry]{output: stream}
 		var err error
 		go func() {
 			err = sa.GetRevokedCerts(req, mockServerStream)
@@ -3614,7 +3601,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	// how many results it returned.
 	countRevokedCerts := func(req *sapb.GetRevokedCertsRequest) (int, error) {
 		stream := make(chan *corepb.CRLEntry)
-		mockServerStream := mockGetRevokedCertsServerStream{output: stream}
+		mockServerStream := &fakeServerStream[corepb.CRLEntry]{output: stream}
 		var err error
 		go func() {
 			err = sa.GetRevokedCerts(req, mockServerStream)
@@ -4203,4 +4190,125 @@ func TestReplacementOrderExists(t *testing.T) {
 	test.AssertNotError(t, err, "SELECT from replacementOrders failed")
 	test.AssertEquals(t, newReplacementOrder.Id, replacementRow.OrderID)
 	test.AssertEquals(t, newReplacementOrder.Expires.AsTime(), replacementRow.OrderExpires)
+}
+
+func TestGetSerialsByKey(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Insert four rows into keyHashToSerial: two that should match the query,
+	// one that should not match due to keyHash mismatch, and one that should not
+	// match due to being already expired.
+	expectedHash := make([]byte, 32)
+	expectedHash[0] = 1
+	differentHash := make([]byte, 32)
+	differentHash[0] = 2
+	inserts := []keyHashModel{
+		{
+			KeyHash:      expectedHash,
+			CertSerial:   "1",
+			CertNotAfter: fc.Now().Add(time.Hour),
+		},
+		{
+			KeyHash:      expectedHash,
+			CertSerial:   "2",
+			CertNotAfter: fc.Now().Add(2 * time.Hour),
+		},
+		{
+			KeyHash:      expectedHash,
+			CertSerial:   "3",
+			CertNotAfter: fc.Now().Add(-1 * time.Hour),
+		},
+		{
+			KeyHash:      differentHash,
+			CertSerial:   "4",
+			CertNotAfter: fc.Now().Add(time.Hour),
+		},
+	}
+
+	for _, row := range inserts {
+		err := sa.dbMap.Insert(context.Background(), &row)
+		test.AssertNotError(t, err, "inserting test keyHash")
+	}
+
+	// Expect the result res to have two entries.
+	res := make(chan *sapb.Serial)
+	stream := &fakeServerStream[sapb.Serial]{output: res}
+	var err error
+	go func() {
+		err = sa.GetSerialsByKey(&sapb.SPKIHash{KeyHash: expectedHash}, stream)
+		close(res) // Let our main test thread continue.
+	}()
+
+	var seen []string
+	for serial := range res {
+		if !slices.Contains([]string{"1", "2"}, serial.Serial) {
+			t.Errorf("Received unexpected serial %q", serial.Serial)
+		}
+		if slices.Contains(seen, serial.Serial) {
+			t.Errorf("Received serial %q more than once", serial.Serial)
+		}
+		seen = append(seen, serial.Serial)
+	}
+	test.AssertNotError(t, err, "calling GetSerialsByKey")
+	test.AssertEquals(t, len(seen), 2)
+}
+
+func TestGetSerialsByAccount(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	expectedReg := createWorkingRegistration(t, sa)
+
+	// Insert three rows into the serials table: two that should match the query,
+	// and one that should not match due to being already expired. We do not here
+	// test filtering on the regID itself, because our test setup makes it very
+	// hard to insert two fake registrations rows with different IDs.
+	inserts := []recordedSerialModel{
+		{
+			Serial:         "1",
+			RegistrationID: expectedReg.Id,
+			Created:        fc.Now().Add(-23 * time.Hour),
+			Expires:        fc.Now().Add(time.Hour),
+		},
+		{
+			Serial:         "2",
+			RegistrationID: expectedReg.Id,
+			Created:        fc.Now().Add(-22 * time.Hour),
+			Expires:        fc.Now().Add(2 * time.Hour),
+		},
+		{
+			Serial:         "3",
+			RegistrationID: expectedReg.Id,
+			Created:        fc.Now().Add(-23 * time.Hour),
+			Expires:        fc.Now().Add(-1 * time.Hour),
+		},
+	}
+
+	for _, row := range inserts {
+		err := sa.dbMap.Insert(context.Background(), &row)
+		test.AssertNotError(t, err, "inserting test serial")
+	}
+
+	// Expect the result stream to have two entries.
+	res := make(chan *sapb.Serial)
+	stream := &fakeServerStream[sapb.Serial]{output: res}
+	var err error
+	go func() {
+		err = sa.GetSerialsByAccount(&sapb.RegistrationID{Id: expectedReg.Id}, stream)
+		close(res) // Let our main test thread continue.
+	}()
+
+	var seen []string
+	for serial := range res {
+		if !slices.Contains([]string{"1", "2"}, serial.Serial) {
+			t.Errorf("Received unexpected serial %q", serial.Serial)
+		}
+		if slices.Contains(seen, serial.Serial) {
+			t.Errorf("Received serial %q more than once", serial.Serial)
+		}
+		seen = append(seen, serial.Serial)
+	}
+	test.AssertNotError(t, err, "calling GetSerialsByAccount")
+	test.AssertEquals(t, len(seen), 2)
 }

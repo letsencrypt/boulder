@@ -166,10 +166,6 @@ func TestTableFromQuery(t *testing.T) {
 			expectedTable: "`orderToAuthz2`",
 		},
 		{
-			query:         "insert into `requestedNames` (`ID`,`OrderID`,`ReversedName`) values (?,?,?);",
-			expectedTable: "`requestedNames`",
-		},
-		{
 			query:         "UPDATE authz2 SET status = :status, attempted = :attempted, validationRecord = :validationRecord, validationError = :validationError, expires = :expires WHERE id = :id AND status = :pending",
 			expectedTable: "authz2",
 		},

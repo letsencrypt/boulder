@@ -61,8 +61,9 @@
 				{
 					"useForRSALeaves": false,
 					"useForECDSALeaves": true,
-					"issuerURL": "http://127.0.0.1:4502/int ecdsa a",
-					"ocspURL": "http://127.0.0.1:4002/",
+					"issuerURL": "http://ca.example.org:4502/int-ecdsa-a",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/ecdsa-a/",
 					"location": {
 						"configFile": "/hierarchy/int-ecdsa-a.pkcs11.json",
 						"certFile": "/hierarchy/int-ecdsa-a.cert.pem",
@@ -72,8 +73,9 @@
 				{
 					"useForRSALeaves": true,
 					"useForECDSALeaves": true,
-					"issuerURL": "http://127.0.0.1:4502/int rsa a",
-					"ocspURL": "http://127.0.0.1:4002/",
+					"issuerURL": "http://ca.example.org:4502/int-rsa-a",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/rsa-a/",
 					"location": {
 						"configFile": "/hierarchy/int-rsa-a.pkcs11.json",
 						"certFile": "/hierarchy/int-rsa-a.cert.pem",
@@ -83,8 +85,9 @@
 				{
 					"useForRSALeaves": false,
 					"useForECDSALeaves": false,
-					"issuerURL": "http://127.0.0.1:4502/int rsa b",
-					"ocspURL": "http://127.0.0.1:4002/",
+					"issuerURL": "http://ca.example.org:4502/int-rsa-b",
+					"ocspURL": "http://ca.example.org:4003/",
+					"crlURLBase": "http://ca.example.org:4501/rsa-b/",
 					"location": {
 						"configFile": "/hierarchy/int-rsa-b.pkcs11.json",
 						"certFile": "/hierarchy/int-rsa-b.cert.pem",
@@ -93,7 +96,6 @@
 				}
 			],
 			"ignoredLints": [
-				"n_subject_common_name_included",
 				"w_subject_common_name_included",
 				"w_sub_cert_aia_contains_internal_names"
 			]
@@ -104,7 +106,6 @@
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
 		"lifespanCRL": "216h",
-		"crldpBase": "http://c.boulder.test",
 		"goodkey": {
 			"weakKeyFile": "test/example-weak-keys.json",
 			"blockedKeyFile": "test/example-blocked-keys.yaml",

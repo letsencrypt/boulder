@@ -27,10 +27,11 @@ var (
 )
 
 func defaultProfile() *Profile {
-	p, _ := NewProfile(defaultProfileConfig(), []string{
+	lints, _ := linter.NewRegistry([]string{
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 	})
+	p, _ := NewProfile(defaultProfileConfig(), lints)
 	return p
 }
 
@@ -380,11 +381,13 @@ func TestIssueCommonName(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 
-	cnProfile, err := NewProfile(defaultProfileConfig(), []string{
+	lints, err := linter.NewRegistry([]string{
 		"w_subject_common_name_included",
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 	})
+	test.AssertNotError(t, err, "building test lint registry")
+	cnProfile, err := NewProfile(defaultProfileConfig(), lints)
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
@@ -469,7 +472,9 @@ func TestIssueSCTList(t *testing.T) {
 	err := loglist.InitLintList("../test/ct-test-srv/log_list.json")
 	test.AssertNotError(t, err, "failed to load log list")
 
-	enforceSCTsProfile, err := NewProfile(defaultProfileConfig(), []string{})
+	lints, err := linter.NewRegistry([]string{})
+	test.AssertNotError(t, err, "building test lint registry")
+	enforceSCTsProfile, err := NewProfile(defaultProfileConfig(), lints)
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
@@ -566,7 +571,9 @@ func TestIssueBadLint(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 
-	noSkipLintsProfile, err := NewProfile(defaultProfileConfig(), []string{})
+	lints, err := linter.NewRegistry([]string{})
+	test.AssertNotError(t, err, "building test lint registry")
+	noSkipLintsProfile, err := NewProfile(defaultProfileConfig(), lints)
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
@@ -690,11 +697,13 @@ func TestMismatchedProfiles(t *testing.T) {
 	issuer1, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 
-	cnProfile, err := NewProfile(defaultProfileConfig(), []string{
+	lints, err := linter.NewRegistry([]string{
 		"w_subject_common_name_included",
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 	})
+	test.AssertNotError(t, err, "building test lint registry")
+	cnProfile, err := NewProfile(defaultProfileConfig(), lints)
 	test.AssertNotError(t, err, "NewProfile failed")
 
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -717,10 +726,12 @@ func TestMismatchedProfiles(t *testing.T) {
 	// Create a new profile that differs slightly (no common name)
 	profileConfig := defaultProfileConfig()
 	profileConfig.AllowCommonName = false
-	noCNProfile, err := NewProfile(profileConfig, []string{
+	lints, err = linter.NewRegistry([]string{
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 	})
+	test.AssertNotError(t, err, "building test lint registry")
+	noCNProfile, err := NewProfile(profileConfig, lints)
 	test.AssertNotError(t, err, "NewProfile failed")
 
 	issuer2, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)

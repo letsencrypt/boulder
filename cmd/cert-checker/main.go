@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log/syslog"
 	"os"
 	"regexp"
 	"slices"
@@ -532,19 +531,7 @@ func main() {
 
 	features.Set(config.CertChecker.Features)
 
-	syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
-	cmd.FailOnError(err, "Failed to dial syslog")
-
-	syslogLevel := int(syslog.LOG_INFO)
-	if config.Syslog.SyslogLevel != 0 {
-		syslogLevel = config.Syslog.SyslogLevel
-	}
-	logger, err := blog.New(syslogger, config.Syslog.StdoutLevel, syslogLevel)
-	cmd.FailOnError(err, "Could not connect to Syslog")
-
-	err = blog.Set(logger)
-	cmd.FailOnError(err, "Failed to set audit logger")
-
+	logger := cmd.NewLogger(config.Syslog)
 	logger.Info(cmd.VersionString())
 
 	acceptableValidityDurations := make(map[time.Duration]bool)

@@ -9,37 +9,64 @@ import (
 	"time"
 )
 
-// NewOrder initiates a new order for a new certificate.
+// NewOrder initiates a new order for a new certificate. This method does not use ACME Renewal Info.
 func (c Client) NewOrder(account Account, identifiers []Identifier) (Order, error) {
+	return c.ReplacementOrder(account, nil, identifiers)
+}
+
+// NewOrderDomains takes a list of domain dns identifiers for a new certificate. Essentially a helper function.
+func (c Client) NewOrderDomains(account Account, domains ...string) (Order, error) {
+	var identifiers []Identifier
+	for _, d := range domains {
+		identifiers = append(identifiers, Identifier{Type: "dns", Value: d})
+	}
+	return c.ReplacementOrder(account, nil, identifiers)
+}
+
+// ReplacementOrder takes an existing *x509.Certificate and initiates a new
+// order for a new certificate, but with the order being marked as a
+// replacement. Replacement orders which are valid replacements are (currently)
+// exempt from Let's Encrypt NewOrder rate limits, but may not be exempt from
+// other ACME CAs ACME Renewal Info implementations. At least one identifier
+// must match the list of identifiers from the parent order to be considered as
+// a valid replacement order.
+// See https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03#section-5
+func (c Client) ReplacementOrder(account Account, oldCert *x509.Certificate, identifiers []Identifier) (Order, error) {
+	// If an old cert being replaced is present and the acme directory doesn't list a RenewalInfo endpoint,
+	// throw an error. This endpoint being present indicates support for ARI.
+	if oldCert != nil && c.dir.RenewalInfo == "" {
+		return Order{}, ErrRenewalInfoNotSupported
+	}
+
+	// 'replaces' is specifically listed as 'omitempty' so the json encoder doesn't include this key
+	// if the ari oldCert is nil
 	newOrderReq := struct {
 		Identifiers []Identifier `json:"identifiers"`
+		Replaces    string       `json:"replaces,omitempty"`
 	}{
 		Identifiers: identifiers,
 	}
+
 	newOrderResp := Order{}
+
+	// If present, add the ari cert ID from the original/old certificate
+	if oldCert != nil {
+		replacesCertID, err := GenerateARICertID(oldCert)
+		if err != nil {
+			return Order{}, fmt.Errorf("acme: error generating replacement certificate id: %v", err)
+		}
+
+		newOrderReq.Replaces = replacesCertID
+		newOrderResp.Replaces = replacesCertID // server does not appear to set this currently?
+	}
+
+	// Submit the order
 	resp, err := c.post(c.dir.NewOrder, account.URL, account.PrivateKey, newOrderReq, &newOrderResp, http.StatusCreated)
 	if err != nil {
 		return newOrderResp, err
 	}
-
 	newOrderResp.URL = resp.Header.Get("Location")
-
 	return newOrderResp, nil
-}
-
-// NewOrderDomains is a wrapper for NewOrder(AcmeAccount, []AcmeIdentifiers)
-// Creates a dns identifier for each provided domain
-func (c Client) NewOrderDomains(account Account, domains ...string) (Order, error) {
-	if len(domains) == 0 {
-		return Order{}, errors.New("acme: no domains provided")
-	}
-
-	var ids []Identifier
-	for _, d := range domains {
-		ids = append(ids, Identifier{Type: "dns", Value: d})
-	}
-
-	return c.NewOrder(account, ids)
 }
 
 // FetchOrder fetches an existing order given an order url.
@@ -52,7 +79,7 @@ func (c Client) FetchOrder(account Account, orderURL string) (Order, error) {
 	return orderResp, err
 }
 
-// Helper function to determine whether an order is "finished" by it's status.
+// Helper function to determine whether an order is "finished" by its status.
 func checkFinalizedOrderStatus(order Order) (bool, error) {
 	switch order.Status {
 	case "invalid":

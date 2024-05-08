@@ -53,8 +53,10 @@ const (
 	// domain name in the certificate.
 	CertificatesPerDomain
 
-	// CertificatesPerDomainPerAccount uses two different bucket keys depending
-	// on the context:
+	// CertificatesPerDomainPerAccount is only used for per-account overrides to
+	// the CertificatesPerDomain rate limit. If this limit is referenced in the
+	// default limits file, it will be ignored. It uses two different bucket
+	// keys depending on the context:
 	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
 	//    where regId is the ACME registration Id of the account.
 	//  - When referenced in a transaction: uses bucket key 'enum:regId:domain',
