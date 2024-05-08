@@ -304,7 +304,7 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 
 	var createdAt time.Time
 	if !core.IsAnyNilOrZero(reg.CreatedAt) {
-		createdAt = reg.CreatedAt.AsTime()
+		createdAt = reg.CreatedAt.AsTime().Truncate(time.Second)
 	}
 
 	return &regModel{
@@ -405,8 +405,8 @@ func orderToModelv1(order *corepb.Order) (*orderModelv1, error) {
 	om := &orderModelv1{
 		ID:                order.Id,
 		RegistrationID:    order.RegistrationID,
-		Expires:           order.Expires.AsTime(),
-		Created:           order.Created.AsTime(),
+		Expires:           order.Expires.AsTime().Truncate(time.Second),
+		Created:           order.Created.AsTime().Truncate(time.Second),
 		BeganProcessing:   order.BeganProcessing,
 		CertificateSerial: order.CertificateSerial,
 	}
@@ -452,8 +452,8 @@ func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
 	om := &orderModelv2{
 		ID:                     order.Id,
 		RegistrationID:         order.RegistrationID,
-		Expires:                order.Expires.AsTime(),
-		Created:                order.Created.AsTime(),
+		Expires:                order.Expires.AsTime().Truncate(time.Second),
+		Created:                order.Created.AsTime().Truncate(time.Second),
 		BeganProcessing:        order.BeganProcessing,
 		CertificateSerial:      order.CertificateSerial,
 		CertificateProfileName: order.CertificateProfileName,
@@ -689,7 +689,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 		IdentifierValue: authz.Identifier,
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.AcmeStatus(authz.Status)],
-		Expires:         authz.Expires.AsTime(),
+		Expires:         authz.Expires.AsTime().Truncate(time.Second),
 	}
 	if authz.Id != "" {
 		// The v1 internal authorization objects use a string for the ID, the v2
@@ -728,7 +728,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 			// If validated Unix timestamp is zero then keep the core.Challenge Validated object nil.
 			var validated *time.Time
 			if !core.IsAnyNilOrZero(chall.Validated) {
-				val := chall.Validated.AsTime()
+				val := chall.Validated.AsTime().Truncate(time.Second)
 				validated = &val
 			}
 			am.AttemptedAt = validated

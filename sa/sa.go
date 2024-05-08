@@ -108,7 +108,7 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb
 		return nil, err
 	}
 
-	reg.CreatedAt = ssa.clk.Now()
+	reg.CreatedAt = ssa.clk.Now().Truncate(time.Second)
 
 	err = ssa.dbMap.Insert(ctx, reg)
 	if err != nil {
@@ -169,8 +169,8 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 	err := ssa.dbMap.Insert(ctx, &recordedSerialModel{
 		Serial:         req.Serial,
 		RegistrationID: req.RegID,
-		Created:        req.Created.AsTime(),
-		Expires:        req.Expires.AsTime(),
+		Created:        req.Created.AsTime().Truncate(time.Second),
+		Expires:        req.Expires.AsTime().Truncate(time.Second),
 	})
 	if err != nil {
 		return nil, err
@@ -223,7 +223,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		Serial:         serialHex,
 		RegistrationID: req.RegID,
 		DER:            req.Der,
-		Issued:         req.Issued.AsTime(),
+		Issued:         req.Issued.AsTime().Truncate(time.Second),
 		Expires:        parsed.NotAfter,
 	}
 
@@ -252,13 +252,15 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		cs := &core.CertificateStatus{
 			Serial:                serialHex,
 			Status:                status,
-			OCSPLastUpdated:       ssa.clk.Now(),
+			OCSPLastUpdated:       ssa.clk.Now().Truncate(time.Second),
 			RevokedDate:           time.Time{},
 			RevokedReason:         0,
 			LastExpirationNagSent: time.Time{},
-			NotAfter:              parsed.NotAfter,
-			IsExpired:             false,
-			IssuerNameID:          req.IssuerNameID,
+			// No need to truncate because it's already truncated to encode
+			// per https://datatracker.ietf.org/doc/html/rfc5280#section-4.1.2.5.1
+			NotAfter:     parsed.NotAfter,
+			IsExpired:    false,
+			IssuerNameID: req.IssuerNameID,
 		}
 		err = ssa.dbMap.Insert(ctx, cs)
 		if err != nil {
@@ -317,7 +319,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		Serial:         serial,
 		Digest:         digest,
 		DER:            req.Der,
-		Issued:         req.Issued.AsTime(),
+		Issued:         req.Issued.AsTime().Truncate(time.Second),
 		Expires:        parsedCertificate.NotAfter,
 	}
 
@@ -503,11 +505,11 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// Second, insert the new order.
 		var orderID int64
 		var err error
-		created := ssa.clk.Now()
+		created := ssa.clk.Now().Truncate(time.Second)
 		if features.Get().MultipleCertificateProfiles {
 			omv2 := orderModelv2{
 				RegistrationID:         req.NewOrder.RegistrationID,
-				Expires:                req.NewOrder.Expires.AsTime(),
+				Expires:                req.NewOrder.Expires.AsTime().Truncate(time.Second),
 				Created:                created,
 				CertificateProfileName: req.NewOrder.CertificateProfileName,
 			}
@@ -516,7 +518,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		} else {
 			omv1 := orderModelv1{
 				RegistrationID: req.NewOrder.RegistrationID,
-				Expires:        req.NewOrder.Expires.AsTime(),
+				Expires:        req.NewOrder.Expires.AsTime().Truncate(time.Second),
 				Created:        created,
 			}
 			err = tx.Insert(ctx, &omv1)
@@ -549,7 +551,13 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fourth, insert the FQDNSet entry for the order.
-		err = addOrderFQDNSet(ctx, tx, req.NewOrder.Names, orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
+		err = addOrderFQDNSet(ctx,
+			tx,
+			req.NewOrder.Names,
+			orderID,
+			req.NewOrder.RegistrationID,
+			req.NewOrder.Expires.AsTime().Truncate(time.Second),
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -576,7 +584,12 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		if req.NewOrder.ReplacesSerial != "" {
 			// Update the replacementOrders table to indicate that this order
 			// replaces the provided certificate serial.
-			err := addReplacementOrder(ctx, tx, req.NewOrder.ReplacesSerial, orderID, req.NewOrder.Expires.AsTime())
+			err := addReplacementOrder(ctx,
+				tx,
+				req.NewOrder.ReplacesSerial,
+				orderID,
+				req.NewOrder.Expires.AsTime().Truncate(time.Second),
+			)
 			if err != nil {
 				return nil, err
 			}
@@ -789,7 +802,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 	// database attemptedAt field Null instead of 1970-01-01 00:00:00.
 	var attemptedTime *time.Time
 	if !core.IsAnyNilOrZero(req.AttemptedAt) {
-		val := req.AttemptedAt.AsTime()
+		val := req.AttemptedAt.AsTime().Truncate(time.Second)
 		attemptedTime = &val
 	}
 	params := map[string]interface{}{
@@ -799,7 +812,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		"validationRecord": vrJSON,
 		"id":               req.Id,
 		"pending":          statusUint(core.StatusPending),
-		"expires":          req.Expires.AsTime(),
+		"expires":          req.Expires.AsTime().Truncate(time.Second),
 		// if req.ValidationError is nil veJSON should also be nil
 		// which should result in a NULL field
 		"validationError": veJSON,
@@ -867,7 +880,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 	}
 
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		revokedDate := req.Date.AsTime()
+		revokedDate := req.Date.AsTime().Truncate(time.Second)
 
 		res, err := tx.ExecContext(ctx,
 			`UPDATE certificateStatus SET
@@ -924,8 +937,8 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 	}
 
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		thisUpdate := req.Date.AsTime()
-		revokedDate := req.Backdate.AsTime()
+		thisUpdate := req.Date.AsTime().Truncate(time.Second)
+		revokedDate := req.Backdate.AsTime().Truncate(time.Second)
 
 		res, err := tx.ExecContext(ctx,
 			`UPDATE certificateStatus SET
@@ -1007,7 +1020,7 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 	cols, qs := blockedKeysColumns, "?, ?, ?, ?"
 	vals := []interface{}{
 		req.KeyHash,
-		req.Added.AsTime(),
+		req.Added.AsTime().Truncate(time.Second),
 		sourceInt,
 		req.Comment,
 	}
@@ -1129,7 +1142,7 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 					VALUES (?, ?, ?)`,
 				req.IssuerNameID,
 				shardIdx,
-				req.Until.AsTime(),
+				req.Until.AsTime().Truncate(time.Second),
 			)
 			if err != nil {
 				return -1, fmt.Errorf("inserting selected shard: %w", err)
@@ -1141,7 +1154,7 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 					WHERE issuerID = ?
 					AND idx = ?
 					LIMIT 1`,
-				req.Until.AsTime(),
+				req.Until.AsTime().Truncate(time.Second),
 				req.IssuerNameID,
 				shardIdx,
 			)
@@ -1197,7 +1210,7 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 					VALUES (?, ?, ?)`,
 				req.IssuerNameID,
 				req.MinShardIdx,
-				req.Until.AsTime(),
+				req.Until.AsTime().Truncate(time.Second),
 			)
 			if err != nil {
 				return nil, fmt.Errorf("inserting selected shard: %w", err)
@@ -1209,7 +1222,7 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 					WHERE issuerID = ?
 					AND idx = ?
 					LIMIT 1`,
-				req.Until.AsTime(),
+				req.Until.AsTime().Truncate(time.Second),
 				req.IssuerNameID,
 				req.MinShardIdx,
 			)
@@ -1247,11 +1260,12 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 	// Only set the nextUpdate if it's actually present in the request message.
 	var nextUpdate *time.Time
 	if req.NextUpdate != nil {
-		nut := req.NextUpdate.AsTime()
+		nut := req.NextUpdate.AsTime().Truncate(time.Second)
 		nextUpdate = &nut
 	}
 
 	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		thisUpdate := req.ThisUpdate.AsTime().Truncate(time.Second)
 		res, err := tx.ExecContext(ctx,
 			`UPDATE crlShards
 				SET thisUpdate = ?, nextUpdate = ?, leasedUntil = ?
@@ -1259,12 +1273,12 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 				AND idx = ?
 				AND (thisUpdate is NULL OR thisUpdate < ?)
 				LIMIT 1`,
-			req.ThisUpdate.AsTime(),
+			thisUpdate,
 			nextUpdate,
-			req.ThisUpdate.AsTime(),
+			thisUpdate,
 			req.IssuerNameID,
 			req.ShardIdx,
-			req.ThisUpdate.AsTime(),
+			thisUpdate,
 		)
 		if err != nil {
 			return nil, err
