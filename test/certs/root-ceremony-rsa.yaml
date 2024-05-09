@@ -8,8 +8,8 @@ key:
     type: rsa
     rsa-mod-length: 4096
 outputs:
-    public-key-path: /hierarchy/root-rsa.pubkey.pem
-    certificate-path: /hierarchy/root-rsa.cert.pem
+    public-key-path: test/certs/webpki/root-rsa.pubkey.pem
+    certificate-path: test/certs/webpki/root-rsa.cert.pem
 certificate-profile:
     signature-algorithm: SHA256WithRSA
     common-name: root rsa

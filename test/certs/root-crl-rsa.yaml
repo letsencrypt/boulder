@@ -5,9 +5,9 @@ pkcs11:
     signing-key-slot: {{ .SlotID }}
     signing-key-label: root rsa
 inputs:
-    issuer-certificate-path: /hierarchy/root-rsa.cert.pem
+    issuer-certificate-path: test/certs/webpki/root-rsa.cert.pem
 outputs:
-    crl-path: /hierarchy/root-rsa.crl.pem
+    crl-path: test/certs/webpki/root-rsa.crl.pem
 crl-profile:
     this-update: 2023-01-01 12:00:00
     next-update: 2023-12-15 12:00:00

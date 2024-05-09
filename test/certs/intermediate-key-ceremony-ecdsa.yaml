@@ -8,5 +8,5 @@ key:
     type: ecdsa
     ecdsa-curve: P-384
 outputs:
-    public-key-path: /hierarchy/{{ .FileName }}.pubkey.pem
-    pkcs11-config-path: /hierarchy/{{ .FileName }}.pkcs11.json
+    public-key-path: test/certs/webpki/{{ .FileName }}.pubkey.pem
+    pkcs11-config-path: test/certs/webpki/{{ .FileName }}.pkcs11.json

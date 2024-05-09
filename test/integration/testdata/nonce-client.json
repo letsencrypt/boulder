@@ -1,9 +1,9 @@
 {
 	"notwfe": {
 		"tls": {
-			"caCertFile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/wfe.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/wfe.boulder/key.pem"
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/wfe.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/wfe.boulder/key.pem"
 		},
 		"getNonceService": {
 			"dnsAuthority": "consul.service.consul",

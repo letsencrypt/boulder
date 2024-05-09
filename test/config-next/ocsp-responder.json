@@ -17,9 +17,9 @@
 			}
 		},
 		"tls": {
-			"caCertFile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/ocsp-responder.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/ocsp-responder.boulder/key.pem"
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/ocsp-responder.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/ocsp-responder.boulder/key.pem"
 		},
 		"raService": {
 			"dnsAuthority": "consul.service.consul",
@@ -44,12 +44,12 @@
 		"logSampleRate": 1,
 		"path": "/",
 		"issuerCerts": [
-			"/hierarchy/int-rsa-a.cert.pem",
-			"/hierarchy/int-rsa-b.cert.pem",
-			"/hierarchy/int-rsa-c.cert.pem",
-			"/hierarchy/int-ecdsa-a.cert.pem",
-			"/hierarchy/int-ecdsa-b.cert.pem",
-			"/hierarchy/int-ecdsa-c.cert.pem"
+			"test/certs/webpki/int-rsa-a.cert.pem",
+			"test/certs/webpki/int-rsa-b.cert.pem",
+			"test/certs/webpki/int-rsa-c.cert.pem",
+			"test/certs/webpki/int-ecdsa-a.cert.pem",
+			"test/certs/webpki/int-ecdsa-b.cert.pem",
+			"test/certs/webpki/int-ecdsa-c.cert.pem"
 		],
 		"liveSigningPeriod": "60h",
 		"timeout": "4.9s",

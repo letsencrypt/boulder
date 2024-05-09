@@ -14,17 +14,17 @@
 		"orderLifetime": "168h",
 		"finalizeTimeout": "30s",
 		"issuerCerts": [
-			"/hierarchy/int-rsa-a.cert.pem",
-			"/hierarchy/int-rsa-b.cert.pem",
-			"/hierarchy/int-rsa-c.cert.pem",
-			"/hierarchy/int-ecdsa-a.cert.pem",
-			"/hierarchy/int-ecdsa-b.cert.pem",
-			"/hierarchy/int-ecdsa-c.cert.pem"
+			"test/certs/webpki/int-rsa-a.cert.pem",
+			"test/certs/webpki/int-rsa-b.cert.pem",
+			"test/certs/webpki/int-rsa-c.cert.pem",
+			"test/certs/webpki/int-ecdsa-a.cert.pem",
+			"test/certs/webpki/int-ecdsa-b.cert.pem",
+			"test/certs/webpki/int-ecdsa-c.cert.pem"
 		],
 		"tls": {
-			"caCertFile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/ra.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/ra.boulder/key.pem"
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/ra.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/ra.boulder/key.pem"
 		},
 		"vaService": {
 			"dnsAuthority": "consul.service.consul",

@@ -2,9 +2,9 @@
 	"ca": {
 		"debugAddr": ":8001",
 		"tls": {
-			"caCertFile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/ca.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/ca.boulder/key.pem"
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/ca.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/ca.boulder/key.pem"
 		},
 		"hostnamePolicyFile": "test/hostname-policy.yaml",
 		"grpcCA": {
@@ -65,8 +65,8 @@
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/ecdsa-a/",
 					"location": {
-						"configFile": "/hierarchy/int-ecdsa-a.pkcs11.json",
-						"certFile": "/hierarchy/int-ecdsa-a.cert.pem",
+						"configFile": "test/certs/webpki/int-ecdsa-a.pkcs11.json",
+						"certFile": "test/certs/webpki/int-ecdsa-a.cert.pem",
 						"numSessions": 2
 					}
 				},
@@ -77,8 +77,8 @@
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/rsa-a/",
 					"location": {
-						"configFile": "/hierarchy/int-rsa-a.pkcs11.json",
-						"certFile": "/hierarchy/int-rsa-a.cert.pem",
+						"configFile": "test/certs/webpki/int-rsa-a.pkcs11.json",
+						"certFile": "test/certs/webpki/int-rsa-a.cert.pem",
 						"numSessions": 2
 					}
 				},
@@ -89,8 +89,8 @@
 					"ocspURL": "http://ca.example.org:4003/",
 					"crlURLBase": "http://ca.example.org:4501/rsa-b/",
 					"location": {
-						"configFile": "/hierarchy/int-rsa-b.pkcs11.json",
-						"certFile": "/hierarchy/int-rsa-b.cert.pem",
+						"configFile": "test/certs/webpki/int-rsa-b.pkcs11.json",
+						"certFile": "test/certs/webpki/int-rsa-b.cert.pem",
 						"numSessions": 2
 					}
 				}

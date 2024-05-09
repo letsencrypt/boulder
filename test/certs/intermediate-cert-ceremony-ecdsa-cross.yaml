@@ -5,11 +5,11 @@ pkcs11:
     signing-key-slot: {{ .SlotID }}
     signing-key-label: root rsa
 inputs:
-    public-key-path: /hierarchy/{{ .FileName }}.pubkey.pem
-    issuer-certificate-path: /hierarchy/root-rsa.cert.pem
-    certificate-to-cross-sign-path: /hierarchy/{{ .FileName }}.cert.pem
+    public-key-path: test/certs/webpki/{{ .FileName }}.pubkey.pem
+    issuer-certificate-path: test/certs/webpki/root-rsa.cert.pem
+    certificate-to-cross-sign-path: test/certs/webpki/{{ .FileName }}.cert.pem
 outputs:
-    certificate-path: /hierarchy/{{ .FileName }}-cross.cert.pem
+    certificate-path: test/certs/webpki/{{ .FileName }}-cross.cert.pem
 certificate-profile:
     signature-algorithm: SHA256WithRSA
     common-name: {{ .CommonName }}

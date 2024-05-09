@@ -8,8 +8,8 @@ key:
     type: ecdsa
     ecdsa-curve: P-384
 outputs:
-    public-key-path: /hierarchy/root-ecdsa.pubkey.pem
-    certificate-path: /hierarchy/root-ecdsa.cert.pem
+    public-key-path: test/certs/webpki/root-ecdsa.pubkey.pem
+    certificate-path: test/certs/webpki/root-ecdsa.cert.pem
 certificate-profile:
     signature-algorithm: ECDSAWithSHA384
     common-name: root ecdsa

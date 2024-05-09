@@ -5,9 +5,9 @@
 			"maxOpenConns": 1
 		},
 		"tls": {
-			"caCertFile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/admin-revoker.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/admin-revoker.boulder/key.pem"
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/admin-revoker.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/admin-revoker.boulder/key.pem"
 		},
 		"raService": {
 			"dnsAuthority": "consul.service.consul",
