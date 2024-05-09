@@ -7,8 +7,10 @@ if type realpath >/dev/null 2>&1 ; then
   cd "$(realpath -- $(dirname -- "$0"))"
 fi
 
+# Generate the test keys and certs necessary for the integration tests.
+docker compose up bsetup
+
 # Use a predictable name for the container so we can grab the logs later
 # for use when testing logs analysis tools.
 docker rm boulder_tests
-docker compose up bsetup
 exec docker compose run --name boulder_tests boulder ./test.sh "$@"

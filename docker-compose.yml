@@ -72,7 +72,7 @@ services:
     profiles:
       # Adding a profile to this container means that it won't be started by a
       # normal "docker compose up/run boulder", only when specifically invoked
-      # with a "docker compose up bpreflight".
+      # with a "docker compose up bsetup".
       - setup
 
   bmysql:

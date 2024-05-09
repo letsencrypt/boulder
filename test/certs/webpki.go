@@ -38,7 +38,7 @@ func genKey(path string, inSlot string) error {
 	if err != nil {
 		return err
 	}
-	output, err := exec.Command("go", "run", "./cmd/ceremony", "-config", tmpPath).CombinedOutput()
+	output, err := exec.Command("./bin/ceremony", "-config", tmpPath).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error running ceremony for %s: %s:\n%s", tmpPath, err, string(output))
 	}
@@ -70,7 +70,7 @@ func rewriteConfig(path string, rewrites map[string]string) (string, error) {
 
 // runCeremony is used to run a ceremony with a given config.
 func runCeremony(path string) error {
-	output, err := exec.Command("go", "run", "./cmd/ceremony", "-config", path).CombinedOutput()
+	output, err := exec.Command("./bin/ceremony", "-config", path).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error running ceremony for %s: %s:\n%s", path, err, string(output))
 	}
@@ -80,6 +80,10 @@ func runCeremony(path string) error {
 func main() {
 	_ = blog.Set(blog.StdoutLogger(6))
 	defer cmd.AuditPanic()
+
+	// Compile the ceremony binary for easy re-use.
+	_, err := exec.Command("make", "build").CombinedOutput()
+	cmd.FailOnError(err, "compiling ceremony tool")
 
 	// Create SoftHSM slots for the root signing keys
 	rsaRootKeySlot, err := createSlot("Root RSA")
