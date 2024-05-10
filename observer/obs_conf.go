@@ -32,7 +32,7 @@ type ObsConf struct {
 	MonConfs      []*MonConf `yaml:"monitors" validate:"min=1,dive"`
 }
 
-// validateSyslog ensures the the `Syslog` field received by `ObsConf`
+// validateSyslog ensures the `Syslog` field received by `ObsConf`
 // contains valid log levels.
 func (c *ObsConf) validateSyslog() error {
 	syslog, stdout := c.Syslog.SyslogLevel, c.Syslog.StdoutLevel

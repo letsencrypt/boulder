@@ -23,7 +23,7 @@ import (
 )
 
 // ClientSetup creates a gRPC TransportCredentials that presents
-// a client certificate and validates the the server certificate based
+// a client certificate and validates the server certificate based
 // on the provided *tls.Config.
 // It dials the remote service and returns a grpc.ClientConn if successful.
 func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (*grpc.ClientConn, error) {

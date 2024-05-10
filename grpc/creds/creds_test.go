@@ -18,9 +18,9 @@ import (
 
 func TestServerTransportCredentials(t *testing.T) {
 	acceptedSANs := map[string]struct{}{
-		"boulder-client": {},
+		"creds-test": {},
 	}
-	certFile := "testdata/boulder-client/cert.pem"
+	certFile := "../../test/grpc-creds/creds-test/cert.pem"
 	badCertFile := "testdata/example.com/cert.pem"
 	goodCert, err := core.LoadCert(certFile)
 	test.AssertNotError(t, err, "core.LoadCert failed on "+certFile)

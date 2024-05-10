@@ -6,12 +6,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -169,7 +170,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	// goroutine is guaranteed to write one result to the channel.
 	scts := make(core.SCTDERs, 0)
 	errs := make([]string, 0)
-	for i := 0; i < len(ctp.sctLogs); i++ {
+	for range len(ctp.sctLogs) {
 		res := <-results
 		if res.err != nil {
 			errs = append(errs, res.err.Error())

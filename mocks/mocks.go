@@ -346,10 +346,6 @@ func (sa *StorageAuthorityReadOnly) FQDNSetExists(_ context.Context, _ *sapb.FQD
 	return &sapb.Exists{Exists: false}, nil
 }
 
-func (sa *StorageAuthorityReadOnly) PreviousCertificateExists(_ context.Context, _ *sapb.PreviousCertificateExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
-	return &sapb.Exists{Exists: false}, nil
-}
-
 // CountCertificatesByNames is a mock
 func (sa *StorageAuthorityReadOnly) CountCertificatesByNames(_ context.Context, _ *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
 	return &sapb.CountByNames{}, nil

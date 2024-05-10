@@ -224,6 +224,7 @@ func (c Client) post(requestURL, keyID string, privateKey crypto.Signer, payload
 
 	if _, b := os.LookupEnv("ACME_DEBUG_POST"); b {
 		fmt.Println()
+		fmt.Println("========= " + requestURL)
 		fmt.Println(string(body))
 		fmt.Println()
 	}

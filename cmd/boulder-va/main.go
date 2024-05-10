@@ -8,39 +8,19 @@ import (
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/va"
+	vaConfig "github.com/letsencrypt/boulder/va/config"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 type Config struct {
 	VA struct {
-		cmd.ServiceConfig
-
-		UserAgent string
-
-		IssuerDomain string
-
-		// DNSTries is the number of times to try a DNS query (that has a temporary error)
-		// before giving up. May be short-circuited by deadlines. A zero value
-		// will be turned into 1.
-		DNSTries    int
-		DNSProvider *cmd.DNSProvider `validate:"required_without=DNSStaticResolvers"`
-		// DNSStaticResolvers is a list of DNS resolvers. Each entry must
-		// be a host or IP and port separated by a colon. IPv6 addresses
-		// must be enclosed in square brackets.
-		DNSStaticResolvers        []string        `validate:"required_without=DNSProvider,dive,hostname_port"`
-		DNSTimeout                config.Duration `validate:"required"`
-		DNSAllowLoopbackAddresses bool
-
+		vaConfig.Common
 		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
 		MaxRemoteValidationFailures int                    `validate:"omitempty,min=0,required_with=RemoteVAs"`
-
-		Features features.Config
-
-		AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
+		Features                    features.Config
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -60,27 +40,13 @@ func main() {
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+	err = c.VA.SetDefaultsAndValidate(grpcAddr, debugAddr)
+	cmd.FailOnError(err, "Setting and validating default config values")
 
 	features.Set(c.VA.Features)
-
-	if *grpcAddr != "" {
-		c.VA.GRPC.Address = *grpcAddr
-	}
-	if *debugAddr != "" {
-		c.VA.DebugAddr = *debugAddr
-	}
-
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.VA.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
-
-	if c.VA.DNSTimeout.Duration == 0 {
-		cmd.Fail("'dnsTimeout' is required")
-	}
-	dnsTries := c.VA.DNSTries
-	if dnsTries < 1 {
-		dnsTries = 1
-	}
 	clk := cmd.Clock()
 
 	var servers bdns.ServerProvider
@@ -108,7 +74,7 @@ func main() {
 			servers,
 			scope,
 			clk,
-			dnsTries,
+			c.VA.DNSTries,
 			logger,
 			tlsConfig)
 	} else {
@@ -117,11 +83,10 @@ func main() {
 			servers,
 			scope,
 			clk,
-			dnsTries,
+			c.VA.DNSTries,
 			logger,
 			tlsConfig)
 	}
-
 	var remotes []va.RemoteVA
 	if len(c.VA.RemoteVAs) > 0 {
 		for _, rva := range c.VA.RemoteVAs {
@@ -157,13 +122,9 @@ func main() {
 		&vapb.VA_ServiceDesc, vai).Add(
 		&vapb.CAA_ServiceDesc, vai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup VA gRPC server")
-
 	cmd.FailOnError(start(), "VA gRPC service failed")
 }
 
 func init() {
 	cmd.RegisterCommand("boulder-va", main, &cmd.ConfigValidator{Config: &Config{}})
-	// We register under two different names, because it's convenient for the
-	// remote VAs to show up under a different program name when looking at logs.
-	cmd.RegisterCommand("boulder-remoteva", main, &cmd.ConfigValidator{Config: &Config{}})
 }

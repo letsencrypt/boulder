@@ -4,9 +4,11 @@ import (
 	"context"
 	"flag"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -18,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
+	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -34,10 +37,24 @@ type Config struct {
 
 		// Issuance contains all information necessary to load and initialize issuers.
 		Issuance struct {
-			Profile issuance.ProfileConfig
+			// The name of the certificate profile to use if one wasn't provided
+			// by the RA during NewOrder and Finalize requests. Must match a
+			// configured certificate profile or boulder-ca will fail to start.
+			DefaultCertificateProfileName string `validate:"omitempty,alphanum,min=1,max=32"`
+
+			// TODO(#7414) Remove this deprecated field.
+			// Deprecated: Use CertProfiles instead. Profile implicitly takes
+			// the internal Boulder default value of ca.DefaultCertProfileName.
+			Profile issuance.ProfileConfig `validate:"required_without=CertProfiles,structonly"`
+
+			// One of the profile names must match the value of
+			// DefaultCertificateProfileName or boulder-ca will fail to start.
+			CertProfiles map[string]issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
+
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile   issuance.CRLProfileConfig `validate:"-"`
 			Issuers      []issuance.IssuerConfig   `validate:"min=1,dive"`
+			LintConfig   string
 			IgnoredLints []string
 		}
 
@@ -92,12 +109,6 @@ type Config struct {
 		// all logs trusted by Chrome. The file must match the v3 log list schema:
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 		CTLogListFile string
-
-		// CRLDPBase is the piece of the CRL Distribution Point URI which is common
-		// across all issuers and shards. It must use the http:// scheme, and must
-		// not end with a slash. Example: "http://prod.c.lencr.org".
-		// TODO(#7296): Remove this fallback once all configs have issuer.CRLBaseURL
-		CRLDPBase string `validate:"required,url,startswith=http://,endsnotwith=/"`
 
 		// DisableCertService causes the CertificateAuthority gRPC service to not
 		// start, preventing any certificates or precertificates from being issued.
@@ -203,8 +214,30 @@ func main() {
 		issuers = append(issuers, issuer)
 	}
 
-	profile, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
-	cmd.FailOnError(err, "Couldn't load issuance profile")
+	if c.CA.Issuance.DefaultCertificateProfileName == "" {
+		c.CA.Issuance.DefaultCertificateProfileName = "defaultBoulderCertificateProfile"
+	}
+	logger.Infof("Configured default certificate profile name set to: %s", c.CA.Issuance.DefaultCertificateProfileName)
+
+	// TODO(#7414) Remove this check.
+	if !reflect.ValueOf(c.CA.Issuance.Profile).IsZero() && len(c.CA.Issuance.CertProfiles) > 0 {
+		cmd.Fail("Only one of Issuance.Profile or Issuance.CertProfiles can be configured")
+	}
+
+	// TODO(#7414) Remove this check.
+	// Use the deprecated Profile as a CertProfiles
+	if len(c.CA.Issuance.CertProfiles) == 0 {
+		c.CA.Issuance.CertProfiles = make(map[string]issuance.ProfileConfig, 0)
+		c.CA.Issuance.CertProfiles[c.CA.Issuance.DefaultCertificateProfileName] = c.CA.Issuance.Profile
+	}
+
+	lints, err := linter.NewRegistry(c.CA.Issuance.IgnoredLints)
+	cmd.FailOnError(err, "Failed to create zlint registry")
+	if c.CA.Issuance.LintConfig != "" {
+		lintconfig, err := lint.NewConfigFromFile(c.CA.Issuance.LintConfig)
+		cmd.FailOnError(err, "Failed to load zlint config file")
+		lints.SetConfiguration(lintconfig)
+	}
 
 	tlsConfig, err := c.CA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
@@ -252,7 +285,6 @@ func main() {
 		crli, err := ca.NewCRLImpl(
 			issuers,
 			c.CA.Issuance.CRLProfile,
-			c.CA.CRLDPBase,
 			c.CA.OCSPLogMaxLength,
 			logger,
 		)
@@ -266,7 +298,9 @@ func main() {
 			sa,
 			pa,
 			issuers,
-			profile,
+			c.CA.Issuance.DefaultCertificateProfileName,
+			c.CA.Issuance.CertProfiles,
+			lints,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,
 			c.CA.Backdate.Duration,

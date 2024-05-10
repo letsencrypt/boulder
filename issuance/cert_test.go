@@ -27,10 +27,11 @@ var (
 )
 
 func defaultProfile() *Profile {
-	p, _ := NewProfile(defaultProfileConfig(), []string{
+	lints, _ := linter.NewRegistry([]string{
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 	})
+	p, _ := NewProfile(defaultProfileConfig(), lints)
 	return p
 }
 
@@ -53,23 +54,23 @@ func TestRequestValid(t *testing.T) {
 			expectedError: "unsupported public key type",
 		},
 		{
-			name:          "cannot sign rsa",
+			name:          "inactive (rsa)",
 			issuer:        &Issuer{},
 			profile:       &Profile{},
 			request:       &IssuanceRequest{PublicKey: &rsa.PublicKey{}},
-			expectedError: "cannot sign RSA public keys",
+			expectedError: "inactive issuer cannot issue precert",
 		},
 		{
-			name:          "cannot sign ecdsa",
+			name:          "inactive (ecdsa)",
 			issuer:        &Issuer{},
 			profile:       &Profile{},
 			request:       &IssuanceRequest{PublicKey: &ecdsa.PublicKey{}},
-			expectedError: "cannot sign ECDSA public keys",
+			expectedError: "inactive issuer cannot issue precert",
 		},
 		{
 			name: "skid too short",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{},
 			request: &IssuanceRequest{
@@ -81,7 +82,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "must staple not allowed",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{},
 			request: &IssuanceRequest{
@@ -94,7 +95,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "ct poison not allowed",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{},
 			request: &IssuanceRequest{
@@ -107,7 +108,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "sct list not allowed",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{},
 			request: &IssuanceRequest{
@@ -120,7 +121,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "sct list and ct poison not allowed",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{
 				allowCTPoison: true,
@@ -137,7 +138,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "common name not allowed",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{},
 			request: &IssuanceRequest{
@@ -150,7 +151,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "negative validity",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{},
 			request: &IssuanceRequest{
@@ -164,7 +165,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "validity larger than max",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{
 				maxValidity: time.Minute,
@@ -180,7 +181,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "validity larger than max due to inclusivity",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{
 				maxValidity: time.Hour,
@@ -196,7 +197,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "validity backdated more than max",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{
 				maxValidity: time.Hour * 2,
@@ -213,7 +214,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "validity is forward dated",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{
 				maxValidity: time.Hour * 2,
@@ -230,7 +231,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "serial too short",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{
 				maxValidity: time.Hour * 2,
@@ -247,7 +248,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "serial too long",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{
 				maxValidity: time.Hour * 2,
@@ -264,7 +265,7 @@ func TestRequestValid(t *testing.T) {
 		{
 			name: "good",
 			issuer: &Issuer{
-				useForECDSALeaves: true,
+				active: true,
 			},
 			profile: &Profile{
 				maxValidity: time.Hour * 2,
@@ -380,11 +381,13 @@ func TestIssueCommonName(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 
-	cnProfile, err := NewProfile(defaultProfileConfig(), []string{
+	lints, err := linter.NewRegistry([]string{
 		"w_subject_common_name_included",
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 	})
+	test.AssertNotError(t, err, "building test lint registry")
+	cnProfile, err := NewProfile(defaultProfileConfig(), lints)
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
@@ -469,7 +472,9 @@ func TestIssueSCTList(t *testing.T) {
 	err := loglist.InitLintList("../test/ct-test-srv/log_list.json")
 	test.AssertNotError(t, err, "failed to load log list")
 
-	enforceSCTsProfile, err := NewProfile(defaultProfileConfig(), []string{})
+	lints, err := linter.NewRegistry([]string{})
+	test.AssertNotError(t, err, "building test lint registry")
+	enforceSCTsProfile, err := NewProfile(defaultProfileConfig(), lints)
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
@@ -566,7 +571,9 @@ func TestIssueBadLint(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 
-	noSkipLintsProfile, err := NewProfile(defaultProfileConfig(), []string{})
+	lints, err := linter.NewRegistry([]string{})
+	test.AssertNotError(t, err, "building test lint registry")
+	noSkipLintsProfile, err := NewProfile(defaultProfileConfig(), lints)
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
@@ -690,11 +697,13 @@ func TestMismatchedProfiles(t *testing.T) {
 	issuer1, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 
-	cnProfile, err := NewProfile(defaultProfileConfig(), []string{
+	lints, err := linter.NewRegistry([]string{
 		"w_subject_common_name_included",
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 	})
+	test.AssertNotError(t, err, "building test lint registry")
+	cnProfile, err := NewProfile(defaultProfileConfig(), lints)
 	test.AssertNotError(t, err, "NewProfile failed")
 
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -717,11 +726,14 @@ func TestMismatchedProfiles(t *testing.T) {
 	// Create a new profile that differs slightly (no common name)
 	profileConfig := defaultProfileConfig()
 	profileConfig.AllowCommonName = false
-	noCNProfile, err := NewProfile(profileConfig, []string{
+	lints, err = linter.NewRegistry([]string{
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
 	})
+	test.AssertNotError(t, err, "building test lint registry")
+	noCNProfile, err := NewProfile(profileConfig, lints)
 	test.AssertNotError(t, err, "NewProfile failed")
+
 	issuer2, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 

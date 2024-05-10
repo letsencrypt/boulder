@@ -3,16 +3,16 @@ pkcs11:
     module: /usr/lib/softhsm/libsofthsm2.so
     pin: 1234
     store-key-in-slot: {{ .SlotID }}
-    store-key-with-label: root signing key (ecdsa)
+    store-key-with-label: root ecdsa
 key:
     type: ecdsa
     ecdsa-curve: P-384
 outputs:
-    public-key-path: /hierarchy/root-signing-pub-ecdsa.pem
-    certificate-path: /hierarchy/root-cert-ecdsa.pem
+    public-key-path: /hierarchy/root-ecdsa.pubkey.pem
+    certificate-path: /hierarchy/root-ecdsa.cert.pem
 certificate-profile:
     signature-algorithm: ECDSAWithSHA384
-    common-name: CA root (ECDSA)
+    common-name: root ecdsa
     organization: good guys
     country: US
     not-before: 2020-01-01 12:00:00

@@ -94,7 +94,7 @@ func (srv *s3TestSrv) handleQuery(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	listenAddr := flag.String("listen", "0.0.0.0:7890", "Address to listen on")
+	listenAddr := flag.String("listen", "0.0.0.0:4501", "Address to listen on")
 	flag.Parse()
 
 	srv := s3TestSrv{

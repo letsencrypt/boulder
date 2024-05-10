@@ -77,28 +77,28 @@
 		},
 		"chains": [
 			[
-				"/hierarchy/intermediate-cert-rsa-a.pem",
-				"/hierarchy/root-cert-rsa.pem"
+				"/hierarchy/int-rsa-a.cert.pem",
+				"/hierarchy/root-rsa.cert.pem"
 			],
 			[
-				"/hierarchy/intermediate-cert-rsa-b.pem",
-				"/hierarchy/root-cert-rsa.pem"
+				"/hierarchy/int-rsa-b.cert.pem",
+				"/hierarchy/root-rsa.cert.pem"
 			],
 			[
-				"/hierarchy/intermediate-cert-ecdsa-a.pem",
-				"/hierarchy/root-cert-ecdsa.pem"
+				"/hierarchy/int-ecdsa-a.cert.pem",
+				"/hierarchy/root-ecdsa.cert.pem"
 			],
 			[
-				"/hierarchy/intermediate-cert-ecdsa-b.pem",
-				"/hierarchy/root-cert-ecdsa.pem"
+				"/hierarchy/int-ecdsa-b.cert.pem",
+				"/hierarchy/root-ecdsa.cert.pem"
 			],
 			[
-				"/hierarchy/intermediate-cross-cert-ecdsa-a.pem",
-				"/hierarchy/root-cert-rsa.pem"
+				"/hierarchy/int-ecdsa-a-cross.cert.pem",
+				"/hierarchy/root-rsa.cert.pem"
 			],
 			[
-				"/hierarchy/intermediate-cross-cert-ecdsa-b.pem",
-				"/hierarchy/root-cert-rsa.pem"
+				"/hierarchy/int-ecdsa-b-cross.cert.pem",
+				"/hierarchy/root-rsa.cert.pem"
 			]
 		],
 		"staleTimeout": "5m",

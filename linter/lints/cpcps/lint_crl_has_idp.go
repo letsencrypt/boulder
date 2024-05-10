@@ -192,9 +192,12 @@ func parseDistributionPointName(distributionPointName *cryptobyte.String, idp *l
 			Status:  lint.Error,
 			Details: "IssuingDistributionPoint FullName URI MUST be present",
 		}
+	} else if len(idp.DistributionPointURIs) > 1 {
+		return &lint.LintResult{
+			Status:  lint.Notice,
+			Details: "IssuingDistributionPoint unexpectedly has more than one FullName",
+		}
 	}
-	// TODO(#7296): When we're back to only including one GeneralName within the
-	// distributionPoint's FullName, re-add a check that len(uris) == 1.
 
 	return nil
 }

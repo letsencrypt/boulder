@@ -136,7 +136,7 @@ github.com/cespare/xxhash/v2
 # github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f
 ## explicit
 github.com/dgryski/go-rendezvous
-# github.com/eggsampler/acme/v3 v3.5.0
+# github.com/eggsampler/acme/v3 v3.6.0
 ## explicit; go 1.11
 github.com/eggsampler/acme/v3
 # github.com/felixge/httpsnoop v1.0.4
@@ -264,7 +264,7 @@ github.com/redis/go-redis/v9/internal/util
 # github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 ## explicit
 github.com/titanous/rocacheck
-# github.com/weppos/publicsuffix-go v0.30.2-0.20240219083929-48f3a5ae027a
+# github.com/weppos/publicsuffix-go v0.30.3-0.20240411085455-21202160c2ed
 ## explicit; go 1.16
 github.com/weppos/publicsuffix-go/publicsuffix
 # github.com/zmap/zcrypto v0.0.0-20231219022726-a1f61fb1661c
@@ -347,7 +347,7 @@ go.opentelemetry.io/proto/otlp/collector/trace/v1
 go.opentelemetry.io/proto/otlp/common/v1
 go.opentelemetry.io/proto/otlp/resource/v1
 go.opentelemetry.io/proto/otlp/trace/v1
-# golang.org/x/crypto v0.19.0
+# golang.org/x/crypto v0.22.0
 ## explicit; go 1.18
 golang.org/x/crypto/cryptobyte
 golang.org/x/crypto/cryptobyte/asn1
@@ -360,7 +360,7 @@ golang.org/x/exp/maps
 # golang.org/x/mod v0.14.0
 ## explicit; go 1.18
 golang.org/x/mod/semver
-# golang.org/x/net v0.20.0
+# golang.org/x/net v0.24.0
 ## explicit; go 1.18
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -375,17 +375,17 @@ golang.org/x/net/internal/timeseries
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 golang.org/x/net/trace
-# golang.org/x/sync v0.6.0
+# golang.org/x/sync v0.7.0
 ## explicit; go 1.18
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.17.0
+# golang.org/x/sys v0.19.0
 ## explicit; go 1.18
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/term v0.17.0
+# golang.org/x/term v0.19.0
 ## explicit; go 1.18
 golang.org/x/term
 # golang.org/x/text v0.14.0

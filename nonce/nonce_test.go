@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"testing"
 
+	"google.golang.org/grpc"
+
 	"github.com/letsencrypt/boulder/metrics"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/test"
-	"google.golang.org/grpc"
 )
 
 func TestImplementation(t *testing.T) {
@@ -76,7 +77,7 @@ func TestRejectTooEarly(t *testing.T) {
 	n0, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
 
-	for i := 0; i < ns.maxUsed; i++ {
+	for range ns.maxUsed {
 		n, err := ns.Nonce()
 		test.AssertNotError(t, err, "Could not create nonce")
 		if !ns.Valid(n) {
@@ -103,7 +104,7 @@ func BenchmarkNonces(b *testing.B) {
 		b.Fatal("creating nonce service", err)
 	}
 
-	for i := 0; i < ns.maxUsed; i++ {
+	for range ns.maxUsed {
 		n, err := ns.Nonce()
 		if err != nil {
 			b.Fatal("noncing", err)

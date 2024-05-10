@@ -22,7 +22,6 @@ GRANT SELECT,INSERT,UPDATE ON certificatesPerName TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON registrations TO 'sa'@'localhost';
 GRANT SELECT,INSERT on fqdnSets TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON orders TO 'sa'@'localhost';
-GRANT SELECT,INSERT ON requestedNames TO 'sa'@'localhost';
 GRANT SELECT,INSERT,DELETE ON orderFqdnSets TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON authz2 TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON orderToAuthz2 TO 'sa'@'localhost';
@@ -43,7 +42,6 @@ GRANT SELECT ON certificatesPerName TO 'sa_ro'@'localhost';
 GRANT SELECT ON registrations TO 'sa_ro'@'localhost';
 GRANT SELECT on fqdnSets TO 'sa_ro'@'localhost';
 GRANT SELECT ON orders TO 'sa_ro'@'localhost';
-GRANT SELECT ON requestedNames TO 'sa_ro'@'localhost';
 GRANT SELECT ON orderFqdnSets TO 'sa_ro'@'localhost';
 GRANT SELECT ON authz2 TO 'sa_ro'@'localhost';
 GRANT SELECT ON orderToAuthz2 TO 'sa_ro'@'localhost';
@@ -76,6 +74,7 @@ GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 -- Cert checker
 GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
 GRANT SELECT ON authz2 TO 'cert_checker'@'localhost';
+GRANT SELECT ON precertificates TO 'cert_checker'@'localhost';
 
 -- Bad Key Revoker
 GRANT SELECT,UPDATE ON blockedKeys TO 'badkeyrevoker'@'localhost';

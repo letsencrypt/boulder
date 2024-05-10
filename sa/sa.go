@@ -545,23 +545,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			return nil, err
 		}
 
-		// Fourth, insert all of the requestedNames.
-		inserter, err = db.NewMultiInserter("requestedNames", []string{"orderID", "reversedName"}, "")
-		if err != nil {
-			return nil, err
-		}
-		for _, name := range req.NewOrder.Names {
-			err := inserter.Add([]interface{}{orderID, ReverseName(name)})
-			if err != nil {
-				return nil, err
-			}
-		}
-		_, err = inserter.Insert(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
-
-		// Fifth, insert the FQDNSet entry for the order.
+		// Fourth, insert the FQDNSet entry for the order.
 		err = addOrderFQDNSet(ctx, tx, req.NewOrder.Names, orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {
 			return nil, err
@@ -595,9 +579,16 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			}
 		}
 
+		// Get the partial Authorization objects for the order
+		authzValidityInfo, err := getAuthorizationStatuses(ctx, tx, res.V2Authorizations)
+		// If there was an error getting the authorizations, return it immediately
+		if err != nil {
+			return nil, err
+		}
+
 		// Calculate the order status before returning it. Since it may have reused
 		// all valid authorizations the order may be "born" in a ready status.
-		status, err := statusForOrder(ctx, tx, res, ssa.clk.Now())
+		status, err := statusForOrder(res, authzValidityInfo, ssa.clk.Now())
 		if err != nil {
 			return nil, err
 		}

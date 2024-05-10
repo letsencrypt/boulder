@@ -369,6 +369,8 @@ func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64
 			}
 			txns = append(txns, txn)
 		} else {
+			// Use the per domain bucket key when no per account per domain override
+			// is configured.
 			perDomainLimit, err := builder.getLimit(CertificatesPerDomain, perDomainBucketKey)
 			if errors.Is(err, errLimitDisabled) {
 				// Skip disabled limit.

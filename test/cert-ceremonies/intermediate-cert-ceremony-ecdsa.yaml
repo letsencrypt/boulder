@@ -2,22 +2,22 @@ ceremony-type: intermediate
 pkcs11:
     module: /usr/lib/softhsm/libsofthsm2.so
     pin: 1234
-    signing-key-slot: {{ .SlotID}}
-    signing-key-label: root signing key (rsa)
+    signing-key-slot: {{ .SlotID }}
+    signing-key-label: root ecdsa
 inputs:
-    public-key-path: /hierarchy/intermediate-signing-pub-rsa.pem
-    issuer-certificate-path: /hierarchy/root-cert-rsa.pem
+    public-key-path: /hierarchy/{{ .FileName }}.pubkey.pem
+    issuer-certificate-path: /hierarchy/root-ecdsa.cert.pem
 outputs:
-    certificate-path: {{ .CertPath }}
+    certificate-path: /hierarchy/{{ .FileName }}.cert.pem
 certificate-profile:
-    signature-algorithm: SHA256WithRSA
+    signature-algorithm: ECDSAWithSHA384
     common-name: {{ .CommonName }}
     organization: good guys
     country: US
     not-before: 2020-01-01 12:00:00
     not-after: 2040-01-01 12:00:00
-    crl-url:  http://rsa.example.com/crl
-    issuer-url:  http://rsa.example.com/cert
+    crl-url:  http://ecdsa.example.com/crl
+    issuer-url:  http://ecdsa.example.com/cert
     policies:
         - oid: 2.23.140.1.2.1
     key-usages:

@@ -400,7 +400,7 @@ func checkPrimeFactorsTooClose(n *big.Int, rounds int) error {
 	b2 := new(big.Int)
 	b2.Mul(a, a).Sub(b2, n)
 
-	for i := 0; i < rounds; i++ {
+	for range rounds {
 		// To see if b2 is a perfect square, we take its square root, square that,
 		// and check to see if we got the same result back.
 		bb.Sqrt(b2).Mul(bb, bb)

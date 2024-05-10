@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestCertsPerNameRateLimitTable(t *testing.T) {
@@ -39,7 +40,7 @@ func TestCertsPerNameRateLimitTable(t *testing.T) {
 	// For each hour in a week, add an entry for a certificate that has
 	// progressively more names.
 	var manyNames []string
-	for i := 0; i < 7*24; i++ {
+	for i := range 7 * 24 {
 		manyNames = append(manyNames, fmt.Sprintf("%d.manynames.example.net", i))
 		inputs = append(inputs, inputCase{aprilFirst.Add(time.Duration(i) * time.Hour), manyNames})
 	}
