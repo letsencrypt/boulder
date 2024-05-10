@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -75,7 +73,7 @@ const (
 	getCertPath      = getAPIPrefix + "cert/"
 
 	// Draft or likely-to-change paths
-	renewalInfoPath = "/draft-ietf-acme-ari-02/renewalInfo/"
+	renewalInfoPath = "/draft-ietf-acme-ari-03/renewalInfo/"
 )
 
 const (
@@ -2206,7 +2204,7 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 	return core.RenewalInfoSimple(cert.Issued.AsTime(), cert.Expires.AsTime()), nil
 }
 
-// validateReplacementOrder implements draft-ietf-acme-ari-02. For a new order
+// validateReplacementOrder implements draft-ietf-acme-ari-03. For a new order
 // to be considered a replacement for an existing certificate, the existing
 // certificate:
 //  1. MUST NOT have been replaced by another finalized order,
@@ -2229,23 +2227,23 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 		return "", false, nil
 	}
 
-	certID, err := parseCertID(replaces, wfe.issuerCertificates)
+	decodedSerial, err := parseARICertID(replaces, wfe.issuerCertificates)
 	if err != nil {
 		return "", false, fmt.Errorf("while parsing ARI CertID an error occurred: %w", err)
 	}
 
-	exists, err := wfe.sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: certID.Serial()})
+	exists, err := wfe.sa.ReplacementOrderExists(ctx, &sapb.Serial{Serial: decodedSerial})
 	if err != nil {
 		return "", false, fmt.Errorf("checking replacement status of existing certificate: %w", err)
 	}
 	if exists.Exists {
 		return "", false, berrors.ConflictError(
 			"cannot indicate an order replaces certificate with serial %q, which already has a replacement order",
-			certID.Serial(),
+			decodedSerial,
 		)
 	}
 
-	err = wfe.orderMatchesReplacement(ctx, acct, names, certID.Serial())
+	err = wfe.orderMatchesReplacement(ctx, acct, names, decodedSerial)
 	if err != nil {
 		// The provided replacement field value failed to meet the required
 		// criteria. We're going to return the error to the caller instead
@@ -2253,7 +2251,7 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 		return "", false, fmt.Errorf("while checking that this order is a replacement: %w", err)
 	}
 	// This order is a replacement for an existing certificate.
-	replaces = certID.Serial()
+	replaces = decodedSerial
 
 	// For an order to be exempt from rate limits, it must be a replacement
 	// and the request must be made within the suggested renewal window.
@@ -2634,86 +2632,21 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 }
 
-// ariCertID is an interface that represents a unique identifier for a
-// certificate. It is implemented by both the deprecatedCertID and certID
-// structs.
-//
-// TODO(#7183): Remove this.
-type ariCertID interface {
-	Serial() string
-}
-
-// deprecatedCertID matches the ASN.1 structure of the CertID sequence defined
-// by RFC6960. Its fields are exported so that they can be unmarshaled using the
-// asn1 package.
-//
-// TODO(#7183): Remove this.
-type deprecatedCertID struct {
-	HashAlgorithm  pkix.AlgorithmIdentifier
-	IssuerNameHash []byte
-	IssuerKeyHash  []byte
-	SerialNumber   *big.Int
-}
-
-func (c deprecatedCertID) Serial() string {
-	return core.SerialToString(c.SerialNumber)
-}
-
-// parseDeprecatedCertID parses a unique identifier (certID) for a certificate
-// as per the ACME protocol's "renewalInfo" resource, as specified in
-// draft-ietf- acme-ari-02. For more details see:
-// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-01#section-4.1.
-//
-// TODO(#7183): Remove this.
-func parseDeprecatedCertID(path string) (ariCertID, error) {
-	der, err := base64.RawURLEncoding.DecodeString(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var id deprecatedCertID
-	rest, err := asn1.Unmarshal(der, &id)
-	if err != nil || len(rest) != 0 {
-		return deprecatedCertID{}, err
-	}
-
-	// Verify that the hash algorithm is SHA-256, so people don't use SHA-1 here.
-	if !id.HashAlgorithm.Algorithm.Equal(asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}) {
-		return deprecatedCertID{}, errors.New("Request used hash algorithm other than SHA-256")
-	}
-	return id, nil
-}
-
-// certID represents a unique identifier (certID) for a certificate as per the
-// ACME protocol's "renewalInfo" resource, as specified in draft-ietf-acme-ari-
-// 02. The certID is a composite string derived from the base64url-encoded
-// keyIdentifier of the certificate's Authority Key Identifier (AKI) and the
-// base64url-encoded serial number of the certificate, separated by a period.
-// For more details see:
-// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-02#section-4.1.
-type certID struct {
-	keyIdentifier []byte
-	serialNumber  *big.Int
-}
-
-func (c certID) Serial() string {
-	return core.SerialToString(c.serialNumber)
-}
-
-// parseCertID parses a unique identifier (certID) as specified in
-// draft-ietf-acme-ari-02. It takes the composite string as input returns a
-// certID struct with the keyIdentifier and serialNumber extracted and decoded.
-// For more details see:
-// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-02#section-4.1.
-func parseCertID(path string, issuerCertificates map[issuance.NameID]*issuance.Certificate) (ariCertID, error) {
+// parseARICertID parses the "certID", a unique identifier specified in
+// draft-ietf-acme-ari-03. It takes the composite string as input returns a
+// extracted and decoded certificate serial. If the decoded AKID does not match
+// any known issuer or the serial number is not valid, an error is returned. For
+// more details see:
+// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03#section-4.1.
+func parseARICertID(path string, issuerCertificates map[issuance.NameID]*issuance.Certificate) (string, error) {
 	parts := strings.Split(path, ".")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return certID{}, berrors.MalformedError("Invalid path")
+		return "", berrors.MalformedError("Invalid path")
 	}
 
 	akid, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return certID{}, berrors.MalformedError("Authority Key Identifier was not base64url-encoded or contained padding: %s", err)
+		return "", berrors.MalformedError("Authority Key Identifier was not base64url-encoded or contained padding: %s", err)
 	}
 
 	var found bool
@@ -2724,18 +2657,15 @@ func parseCertID(path string, issuerCertificates map[issuance.NameID]*issuance.C
 		}
 	}
 	if !found {
-		return certID{}, berrors.NotFoundError("path contained an Authority Key Identifier that did not match a known issuer")
+		return "", berrors.NotFoundError("path contained an Authority Key Identifier that did not match a known issuer")
 	}
 
 	serialNumber, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return certID{}, berrors.NotFoundError("serial number was not base64url-encoded or contained padding: %s", err)
+		return "", berrors.NotFoundError("serial number was not base64url-encoded or contained padding: %s", err)
 	}
 
-	return certID{
-		keyIdentifier: akid,
-		serialNumber:  new(big.Int).SetBytes(serialNumber),
-	}, nil
+	return core.SerialToString(new(big.Int).SetBytes(serialNumber)), nil
 }
 
 // RenewalInfo is used to get information about the suggested renewal window
@@ -2756,23 +2686,17 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	// Try parsing certID param using the draft-ietf-acme-ari-01 format.
-	// TODO(#7183): Remove this.
-	certID, err := parseDeprecatedCertID(request.URL.Path)
+	decodedSerial, err := parseARICertID(request.URL.Path, wfe.issuerCertificates)
 	if err != nil {
-		// Try parsing certID param using the draft-ietf-acme-ari-02 format.
-		certID, err = parseCertID(request.URL.Path, wfe.issuerCertificates)
-		if err != nil {
-			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While parsing ARI CertID an error occurred"), err)
-			return
-		}
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While parsing ARI CertID an error occurred"), err)
+		return
 	}
+
 	// We can do all of our processing based just on the serial, because Boulder
 	// does not re-use the same serial across multiple issuers.
-	serial := certID.Serial()
-	logEvent.Extra["RequestedSerial"] = serial
+	logEvent.Extra["RequestedSerial"] = decodedSerial
 
-	renewalInfo, err := wfe.determineARIWindow(ctx, serial)
+	renewalInfo, err := wfe.determineARIWindow(ctx, decodedSerial)
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate replaced by this order was not found"), nil)
@@ -2817,23 +2741,17 @@ func (wfe *WebFrontEndImpl) UpdateRenewal(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	// Try parsing certID param using the draft-ietf-acme-ari-01 format.
-	// TODO(#7183): Remove this.
-	certID, err := parseDeprecatedCertID(updateRenewalRequest.CertID)
+	decodedSerial, err := parseARICertID(updateRenewalRequest.CertID, wfe.issuerCertificates)
 	if err != nil {
-		// Try parsing certID param using the draft-ietf-acme-ari-02 format.
-		certID, err = parseCertID(updateRenewalRequest.CertID, wfe.issuerCertificates)
-		if err != nil {
-			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While parsing ARI CertID an error occurred"), err)
-			return
-		}
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While parsing ARI CertID an error occurred"), err)
+		return
 	}
+
 	// We can do all of our processing based just on the serial, because Boulder
 	// does not re-use the same serial across multiple issuers.
-	serial := certID.Serial()
-	logEvent.Extra["RequestedSerial"] = serial
+	logEvent.Extra["RequestedSerial"] = decodedSerial
 
-	metadata, err := wfe.sa.GetSerialMetadata(ctx, &sapb.Serial{Serial: serial})
+	metadata, err := wfe.sa.GetSerialMetadata(ctx, &sapb.Serial{Serial: decodedSerial})
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), err)
 		return
