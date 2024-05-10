@@ -73,7 +73,8 @@ const (
 	getCertPath      = getAPIPrefix + "cert/"
 
 	// Draft or likely-to-change paths
-	renewalInfoPath = "/draft-ietf-acme-ari-03/renewalInfo/"
+	// ARI-capable clients are expected to add the trailing slash per the draft.
+	renewalInfoPath = "/draft-ietf-acme-ari-03/renewalInfo"
 )
 
 const (
