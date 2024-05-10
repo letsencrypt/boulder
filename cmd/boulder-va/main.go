@@ -2,6 +2,7 @@ package notmain
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"os"
 	"time"
@@ -18,6 +19,17 @@ import (
 type Config struct {
 	VA struct {
 		vaConfig.Common
+
+		// RVATLSClient is a distinct and separate cmd.TLSConfig used by the
+		// boulder-va client for communication with a remoteva server. Typically
+		// this block should be configured identically to the "tls"
+		// cmd.TLSConfig or not at all which will cause the boulder-va client to
+		// use the "tls" configuration. It should typically be used in
+		// conjunction with the remoteva "UseAlternateClientAuthPolicy" boolean
+		// which may also need to be adjusted depending on infrastructure
+		// characteristics of a remoteva deployment.
+		RVATLSClient cmd.TLSConfig `validate:"structonly"`
+
 		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
 		MaxRemoteValidationFailures int                    `validate:"omitempty,min=0,required_with=RemoteVAs"`
 		Features                    features.Config
@@ -67,6 +79,13 @@ func main() {
 	tlsConfig, err := c.VA.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
 
+	var emptyTLSConfig cmd.TLSConfig
+	var rvaTLSConfig *tls.Config
+	if c.VA.RVATLSClient != emptyTLSConfig {
+		rvaTLSConfig, err = c.VA.RVATLSClient.Load(scope)
+		cmd.FailOnError(err, "rvaTLSConfig config")
+	}
+
 	var resolver bdns.Client
 	if !c.VA.DNSAllowLoopbackAddresses {
 		resolver = bdns.New(
@@ -91,6 +110,9 @@ func main() {
 	if len(c.VA.RemoteVAs) > 0 {
 		for _, rva := range c.VA.RemoteVAs {
 			rva := rva
+			if rvaTLSConfig != nil {
+				tlsConfig = rvaTLSConfig
+			}
 			vaConn, err := bgrpc.ClientSetup(&rva, tlsConfig, scope, clk)
 			cmd.FailOnError(err, "Unable to create remote VA client")
 			remotes = append(
