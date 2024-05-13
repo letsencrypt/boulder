@@ -2,6 +2,7 @@ package notmain
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"os"
 	"time"
@@ -18,6 +19,24 @@ import (
 type Config struct {
 	RVA struct {
 		vaConfig.Common
+
+		// SkipGRPCClientCertVerification, when disabled as it should typically
+		// be, will cause the remoteva server (which receives gRPCs from a
+		// boulder-va client) to use our default RequireAndVerifyClientCert
+		// policy. When enabled, the remoteva server will instead use the less
+		// secure VerifyClientCertIfGiven policy. It should typically be used in
+		// conjunction with the boulder-va "RVATLSClient" configuration object.
+		//
+		// An operator may choose to enable this if the remoteva server is
+		// logically behind an OSI layer-7 loadbalancer/reverse proxy which
+		// decrypts traffic and does not/cannot re-encrypt it's own client
+		// connection to the remoteva server.
+		//
+		// Use with caution.
+		//
+		// For more information, see: https://pkg.go.dev/crypto/tls#ClientAuthType
+		SkipGRPCClientCertVerification bool
+
 		Features features.Config
 	}
 
@@ -64,6 +83,10 @@ func main() {
 
 	tlsConfig, err := c.RVA.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
+
+	if c.RVA.SkipGRPCClientCertVerification {
+		tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
+	}
 
 	var resolver bdns.Client
 	if !c.RVA.DNSAllowLoopbackAddresses {
