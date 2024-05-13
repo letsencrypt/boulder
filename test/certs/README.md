@@ -35,7 +35,7 @@ integration tests.
 
 ### ipki
 
-The "ipki" PKI emulates our internal PKI that the various Boulder services use to authenticate each other when establishing gRPC connections. It includes one certificate for each service which participates in our gRPC cluster. Some of these certificates (for the services that we run mulitple copies of) have multiple names, so the same certificate can be loaded by each copy of that service.
+The "ipki" PKI emulates our internal PKI that the various Boulder services use to authenticate each other when establishing gRPC connections. It includes one certificate for each service which participates in our gRPC cluster. Some of these certificates (for the services that we run multiple copies of) have multiple names, so the same certificate can be loaded by each copy of that service.
 
 This PKI is loaded by virtually every Boulder component.
 
@@ -43,7 +43,7 @@ This PKI is loaded by virtually every Boulder component.
 
 A variety of other PKIs (collections of keys and certificates) exist in this repository for the sake of unit and integration testing. We list them here as a TODO-list of PKIs to remove and clean up:
 
-- challtestsrv DoH: Our fake DNS challenge test server (which fulfills DNS-01 challenges during integration tests) can negoatiate DoH handshakes. The key and cert is uses for this are currently generated as part of the ipki directory, but are fundamentally different from that PKI and should be moved.
+- challtestsrv DoH: Our fake DNS challenge test server (which fulfills DNS-01 challenges during integration tests) can negotiate DoH handshakes. The key and cert is uses for this are currently generated as part of the ipki directory, but are fundamentally different from that PKI and should be moved.
 - wfe-tls: The //test/wfe-tls/ directory holds the key and certificate which the WFE uses to negotiate TLS handshakes with API clients.
 - redis: The //test/redis-tls/ directory holds the key and certificate used by our test redis cluster. This should probably be moved into the ipki directory.
 - unit tests: the //test/hierarchy/ directory holds a variety of certificates used by unit tests. These should be replaced by certs which the unit tests dynamically generate in-memory, rather than loading from disk.
