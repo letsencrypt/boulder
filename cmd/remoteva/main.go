@@ -20,12 +20,12 @@ type Config struct {
 	RVA struct {
 		vaConfig.Common
 
-		// VerifyGRPCClientCertIfGiven, when disabled, will cause the remoteva
-		// server (which receives gRPCs from a boulder-va client) to use our
-		// default RequireAndVerifyClientCert policy. When enabled, the remoteva
-		// server will instead use the less secure VerifyClientCertIfGiven
-		// policy. It should typically be used in conjunction with the
-		// boulder-va "RVATLSClient" configuration object.
+		// SkipGRPCClientCertVerification, when disabled as it should typically
+		// be, will cause the remoteva server (which receives gRPCs from a
+		// boulder-va client) to use our default RequireAndVerifyClientCert
+		// policy. When enabled, the remoteva server will instead use the less
+		// secure VerifyClientCertIfGiven policy. It should typically be used in
+		// conjunction with the boulder-va "RVATLSClient" configuration object.
 
 		// An operator may choose to enable this if the remoteva server is
 		// logically behind an OSI layer-7 loadbalancer/reverse proxy which
@@ -35,7 +35,7 @@ type Config struct {
 		// Use with caution.
 		//
 		// For more information, see: https://pkg.go.dev/crypto/tls#ClientAuthType
-		VerifyGRPCClientCertIfGiven bool
+		SkipGRPCClientCertVerification bool
 
 		Features features.Config
 	}
@@ -84,7 +84,7 @@ func main() {
 	tlsConfig, err := c.RVA.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
 
-	if c.RVA.VerifyGRPCClientCertIfGiven {
+	if c.RVA.SkipGRPCClientCertVerification {
 		tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
 	}
 
