@@ -26,7 +26,7 @@ type Config struct {
 		// policy. When enabled, the remoteva server will instead use the less
 		// secure VerifyClientCertIfGiven policy. It should typically be used in
 		// conjunction with the boulder-va "RVATLSClient" configuration object.
-
+		//
 		// An operator may choose to enable this if the remoteva server is
 		// logically behind an OSI layer-7 loadbalancer/reverse proxy which
 		// decrypts traffic and does not/cannot re-encrypt it's own client
