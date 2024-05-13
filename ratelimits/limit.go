@@ -87,7 +87,12 @@ func loadDefaults(path string) (limits, error) {
 type overrideYAML struct {
 	limit `yaml:",inline"`
 	// Ids is a list of ids that this override applies to.
-	Ids []string
+	Ids []struct {
+		Id string `yaml:"id"`
+		// Comment is an optional field that can be used to provide additional
+		// context for the override.
+		Comment string `yaml:"comment,omitempty"`
+	} `yaml:"ids"`
 }
 
 type overridesYAML []map[string]overrideYAML
@@ -153,7 +158,8 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 			}
 			v.limit.name = name
 			v.limit.isOverride = true
-			for _, id := range v.Ids {
+			for _, entry := range v.Ids {
+				id := entry.Id
 				err = validateIdForName(name, id)
 				if err != nil {
 					return nil, fmt.Errorf(
