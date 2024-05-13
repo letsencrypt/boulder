@@ -38,9 +38,9 @@ func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
 	}
 
 	tlsConfig, err := (&cmd.TLSConfig{
-		CACertFile: "test/grpc-creds/minica.pem",
-		CertFile:   "test/grpc-creds/ra.boulder/cert.pem",
-		KeyFile:    "test/grpc-creds/ra.boulder/key.pem",
+		CACertFile: "test/certs/ipki/minica.pem",
+		CertFile:   "test/certs/ipki/ra.boulder/cert.pem",
+		KeyFile:    "test/certs/ipki/ra.boulder/key.pem",
 	}).Load(metrics.NoopRegisterer)
 	if err != nil {
 		sigterm()
