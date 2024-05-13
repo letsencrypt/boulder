@@ -441,7 +441,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	wfe.HandleFunc(m, getChallengePath, wfe.Challenge, "GET")
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
 
-	// Endpoint for draft-aaron-ari
+	// Endpoint for draft-ietf-acme-ari
 	if features.Get().ServeRenewalInfo {
 		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET", "POST")
 	}
@@ -519,7 +519,11 @@ func (wfe *WebFrontEndImpl) Directory(
 	}
 
 	if features.Get().ServeRenewalInfo {
-		directoryEndpoints["renewalInfo"] = renewalInfoPath
+		// ARI-capable clients are expected to add the trailing slash per the
+		// draft. We explicitly strip the trailing slash here so that clients
+		// don't need to add trailing slash handling in their own code, saving
+		// them minimal amounts of complexity.
+		directoryEndpoints["renewalInfo"] = strings.TrimRight(renewalInfoPath, "/")
 	}
 
 	if request.Method == http.MethodPost {
