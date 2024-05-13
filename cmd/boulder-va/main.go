@@ -25,7 +25,7 @@ type Config struct {
 		// this block should be configured identically to the "tls"
 		// cmd.TLSConfig or not at all which will cause the boulder-va client to
 		// use the "tls" configuration. It should typically be used in
-		// conjunction with the remoteva "UseAlternateClientAuthPolicy" boolean
+		// conjunction with the remoteva "VerifyGRPCClientCertIfGiven" boolean
 		// which may also need to be adjusted depending on infrastructure
 		// characteristics of a remoteva deployment.
 		RVATLSClient cmd.TLSConfig `validate:"structonly"`

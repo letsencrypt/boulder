@@ -14,7 +14,7 @@
 			"certFile": "test/grpc-creds/rva.boulder/cert.pem",
 			"keyFile": "test/grpc-creds/rva.boulder/key.pem"
 		},
-		"serverUseAlternateClientAuthPolicy": true,
+		"verifyGRPCClientCertIfGiven": true,
 		"grpc": {
 			"maxConnectionAge": "30s",
 			"services": {
