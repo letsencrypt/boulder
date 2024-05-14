@@ -62,9 +62,10 @@ func TestPasswordConfig(t *testing.T) {
 func TestTLSConfigLoad(t *testing.T) {
 	null := "/dev/null"
 	nonExistent := "[nonexistent]"
-	cert := path.Join(os.TempDir(), "TestTLSConfigLoad.cert.pem")
-	key := path.Join(os.TempDir(), "TestTLSConfigLoad.key.pem")
-	caCert := path.Join(os.TempDir(), "TestTLSConfigLoad.cacert.pem")
+	tmp := t.TempDir()
+	cert := path.Join(tmp, "TestTLSConfigLoad.cert.pem")
+	key := path.Join(tmp, "TestTLSConfigLoad.key.pem")
+	caCert := path.Join(tmp, "TestTLSConfigLoad.cacert.pem")
 
 	rootKey, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
 	test.AssertNotError(t, err, "creating test root key")

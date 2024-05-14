@@ -17,19 +17,23 @@ ipki() (
   mkdir ipki
   cd ipki
 
+  # Used by challtestsrv to negotiate DoH handshakes.
+  # TODO: Move this out of the ipki directory.
+  # This also creates the issuer key, so the loops below can run in the
+  # background without competing over who gets to create it.
+  minica -ip-addresses 10.77.77.77,10.88.88.88
+
   for SERVICE in admin-revoker expiration-mailer ocsp-responder consul \
     wfe akamai-purger bad-key-revoker crl-updater crl-storer \
     health-checker; do
-    minica -domains "${SERVICE}.boulder"
+    minica -domains "${SERVICE}.boulder" &
   done
 
   for SERVICE in publisher nonce ra ca sa va rva ; do
-    minica -domains "${SERVICE}.boulder,${SERVICE}1.boulder,${SERVICE}2.boulder"
+    minica -domains "${SERVICE}.boulder,${SERVICE}1.boulder,${SERVICE}2.boulder" &
   done
 
-  # Used by challtestsrv to negotiate DoH handshakes.
-  # TODO: Move this out of the ipki directory.
-  minica -ip-addresses 10.77.77.77,10.88.88.88
+  wait
 
   # minica sets restrictive directory permissions, but we don't want that
   chmod -R go+rX .

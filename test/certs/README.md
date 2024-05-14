@@ -31,7 +31,7 @@ new subdirectory to this directory's `.gitignore` file.
 
 The "webpki" PKI emulates our publicly-trusted hierarchy. It consists of RSA and
 ECDSA roots, several intermediates and cross-signed intermediates, and CRLs.
-These certificates and their keys are generated using the `ceremony`. The
+These certificates and their keys are generated using the `ceremony` tool. The
 private keys are stored in SoftHSM in the `.softhsm-tokens` subdirectory.
 
 This PKI is loaded by the CA, RA, and other components. It is used as the
