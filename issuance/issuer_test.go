@@ -214,12 +214,12 @@ func TestNewIssuerKeyUsage(t *testing.T) {
 
 func TestLoadChain_Valid(t *testing.T) {
 	chain, err := LoadChain([]string{
-		"../test/test-ca-cross.pem",
-		"../test/test-root2.pem",
+		"../test/hierarchy/int-e1.cert.pem",
+		"../test/hierarchy/root-x2.cert.pem",
 	})
 	test.AssertNotError(t, err, "Should load valid chain")
 
-	expectedIssuer, err := core.LoadCert("../test/test-ca-cross.pem")
+	expectedIssuer, err := core.LoadCert("../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "Failed to load test issuer")
 
 	chainIssuer := chain[0]
@@ -236,12 +236,12 @@ func TestLoadChain_TooShort(t *testing.T) {
 func TestLoadChain_Unloadable(t *testing.T) {
 	_, err := LoadChain([]string{
 		"does-not-exist.pem",
-		"../test/test-root2.pem",
+		"../test/hierarchy/root-x2.cert.pem",
 	})
 	test.AssertError(t, err, "Should reject unloadable chain")
 
 	_, err = LoadChain([]string{
-		"../test/test-ca-cross.pem",
+		"../test/hierarchy/int-e1.cert.pem",
 		"does-not-exist.pem",
 	})
 	test.AssertError(t, err, "Should reject unloadable chain")
@@ -251,19 +251,19 @@ func TestLoadChain_Unloadable(t *testing.T) {
 	test.AssertNotError(t, err, "Error writing invalid PEM tmp file")
 	_, err = LoadChain([]string{
 		invalidPEMFile.Name(),
-		"../test/test-root2.pem",
+		"../test/hierarchy/root-x2.cert.pem",
 	})
 	test.AssertError(t, err, "Should reject unloadable chain")
 }
 
 func TestLoadChain_InvalidSig(t *testing.T) {
 	_, err := LoadChain([]string{
-		"../test/test-root2.pem",
-		"../test/test-ca-cross.pem",
+		"../test/hierarchy/int-e1.cert.pem",
+		"../test/hierarchy/root-x1.cert.pem",
 	})
 	test.AssertError(t, err, "Should reject invalid signature")
-	test.Assert(t, strings.Contains(err.Error(), "test-ca-cross.pem"),
+	test.Assert(t, strings.Contains(err.Error(), "root-x1.cert.pem"),
 		fmt.Sprintf("Expected error to mention filename, got: %s", err))
-	test.Assert(t, strings.Contains(err.Error(), "signature from \"CN=happy hacker fake CA\""),
+	test.Assert(t, strings.Contains(err.Error(), "signature from \"CN=(TEST) Ineffable Ice X1"),
 		fmt.Sprintf("Expected error to mention subject, got: %s", err))
 }
