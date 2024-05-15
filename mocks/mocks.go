@@ -235,14 +235,6 @@ func (sa *StorageAuthorityReadOnly) GetCertificate(_ context.Context, req *sapb.
 			Der:            certBlock.Bytes,
 			Issued:         timestamppb.New(issuedTime),
 		}, nil
-	} else if req.Serial == "0000000000000000000000000000000000b2" {
-		certPemBytes, _ := os.ReadFile("test/178.crt")
-		certBlock, _ := pem.Decode(certPemBytes)
-		return &corepb.Certificate{
-			RegistrationID: 1,
-			Der:            certBlock.Bytes,
-			Issued:         timestamppb.New(issuedTime),
-		}, nil
 	} else if req.Serial == "000000000000000000000000000000626164" {
 		return nil, errors.New("bad")
 	} else {
@@ -261,10 +253,6 @@ func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req 
 	if req.Serial == "0000000000000000000000000000000000ee" {
 		return &corepb.CertificateStatus{
 			Status: string(core.OCSPStatusGood),
-		}, nil
-	} else if req.Serial == "0000000000000000000000000000000000b2" {
-		return &corepb.CertificateStatus{
-			Status: string(core.OCSPStatusRevoked),
 		}, nil
 	} else {
 		return nil, errors.New("no cert status")
