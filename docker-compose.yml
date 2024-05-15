@@ -3,7 +3,7 @@ services:
     # The `letsencrypt/boulder-tools:latest` tag is automatically built in local
     # dev environments. In CI a specific BOULDER_TOOLS_TAG is passed, and it is
     # pulled with `docker compose pull`.
-    image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-latest}
+    image: &boulder_tools_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-latest}
     build:
       context: test/boulder-tools/
       # Should match one of the GO_CI_VERSIONS in test/boulder-tools/tag_and_upload.sh.
@@ -20,8 +20,7 @@ services:
     volumes:
       - .:/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
-      - ./.hierarchy:/hierarchy/:cached
-      - ./.softhsm-tokens/:/var/lib/softhsm/tokens/:cached
+      - ./test/certs/.softhsm-tokens/:/var/lib/softhsm/tokens/:cached
     networks:
       bouldernet:
         ipv4_address: 10.77.77.77
@@ -61,6 +60,20 @@ services:
       - bpkilint
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /boulder
+
+  bsetup:
+    image: *boulder_tools_image
+    volumes:
+      - .:/boulder:cached
+      - ./.gocache:/root/.cache/go-build:cached
+      - ./test/certs/.softhsm-tokens/:/var/lib/softhsm/tokens/:cached
+    entrypoint: test/certs/generate.sh
+    working_dir: *boulder_working_dir
+    profiles:
+      # Adding a profile to this container means that it won't be started by a
+      # normal "docker compose up/run boulder", only when specifically invoked
+      # with a "docker compose up bsetup".
+      - setup
 
   bmysql:
     image: mariadb:10.5

@@ -3,8 +3,8 @@
 		"timeout": "1s"
 	},
 	"tls": {
-		"caCertFile": "test/grpc-creds/minica.pem",
-		"certFile": "test/grpc-creds/health-checker.boulder/cert.pem",
-		"keyFile": "test/grpc-creds/health-checker.boulder/key.pem"
+		"caCertFile": "test/certs/ipki/minica.pem",
+		"certFile": "test/certs/ipki/health-checker.boulder/cert.pem",
+		"keyFile": "test/certs/ipki/health-checker.boulder/key.pem"
 	}
 }

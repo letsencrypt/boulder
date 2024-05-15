@@ -10,10 +10,10 @@ log_level   = "ERROR"
 enable_agent_tls_for_checks = true
 tls {
   defaults {
-    ca_file         = "test/grpc-creds/minica.pem"
-    ca_path         = "test/grpc-creds/minica-key.pem"
-    cert_file       = "test/grpc-creds/consul.boulder/cert.pem"
-    key_file        = "test/grpc-creds/consul.boulder/key.pem"
+    ca_file         = "test/certs/ipki/minica.pem"
+    ca_path         = "test/certs/ipki/minica-key.pem"
+    cert_file       = "test/certs/ipki/consul.boulder/cert.pem"
+    key_file        = "test/certs/ipki/consul.boulder/key.pem"
     verify_incoming = false
   }
 }

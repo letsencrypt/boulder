@@ -42,7 +42,7 @@ SERVICES = (
         None),
     Service('aia-test-srv',
         4502, None, None,
-        ('./bin/aia-test-srv', '--addr', ':4502', '--hierarchy', '/hierarchy'), None),
+        ('./bin/aia-test-srv', '--addr', ':4502', '--hierarchy', 'test/certs/webpki/'), None),
     Service('ct-test-srv',
         4600, None, None,
         ('./bin/ct-test-srv', '--config', 'test/ct-test-srv/ct-test-srv.json'), None),
@@ -168,17 +168,6 @@ processes = []
 # to run the load-generator).
 challSrvProcess = None
 
-def setupHierarchy():
-    """Set up the issuance hierarchy. Must have called install() before this."""
-    e = os.environ.copy()
-    e.setdefault("GOBIN", "%s/bin" % os.getcwd())
-    try:
-        subprocess.check_output(["go", "run", "test/cert-ceremonies/generate.go"], env=e)
-    except subprocess.CalledProcessError as e:
-        print(e.output)
-        raise
-
-
 def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
     # build cache with new BUILD_TIMEs, or invalidating it on merges with a new
@@ -282,8 +271,8 @@ def startChallSrv():
         '-defaultIPv6', '',
         '--dns01', ':8053,:8054',
         '--doh', ':8343,:8443',
-        '--doh-cert', 'test/grpc-creds/10.77.77.77/cert.pem',
-        '--doh-cert-key', 'test/grpc-creds/10.77.77.77/key.pem',
+        '--doh-cert', 'test/certs/ipki/10.77.77.77/cert.pem',
+        '--doh-cert-key', 'test/certs/ipki/10.77.77.77/key.pem',
         '--management', ':8055',
         '--http01', '10.77.77.77:80',
         '-https01', '10.77.77.77:443',

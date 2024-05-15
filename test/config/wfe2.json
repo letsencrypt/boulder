@@ -17,9 +17,9 @@
 			"blockedKeyFile": "test/example-blocked-keys.yaml"
 		},
 		"tls": {
-			"caCertFile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/wfe.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/wfe.boulder/key.pem"
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/wfe.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/wfe.boulder/key.pem"
 		},
 		"raService": {
 			"dnsAuthority": "consul.service.consul",
@@ -77,28 +77,28 @@
 		},
 		"chains": [
 			[
-				"/hierarchy/int-rsa-a.cert.pem",
-				"/hierarchy/root-rsa.cert.pem"
+				"test/certs/webpki/int-rsa-a.cert.pem",
+				"test/certs/webpki/root-rsa.cert.pem"
 			],
 			[
-				"/hierarchy/int-rsa-b.cert.pem",
-				"/hierarchy/root-rsa.cert.pem"
+				"test/certs/webpki/int-rsa-b.cert.pem",
+				"test/certs/webpki/root-rsa.cert.pem"
 			],
 			[
-				"/hierarchy/int-ecdsa-a.cert.pem",
-				"/hierarchy/root-ecdsa.cert.pem"
+				"test/certs/webpki/int-ecdsa-a.cert.pem",
+				"test/certs/webpki/root-ecdsa.cert.pem"
 			],
 			[
-				"/hierarchy/int-ecdsa-b.cert.pem",
-				"/hierarchy/root-ecdsa.cert.pem"
+				"test/certs/webpki/int-ecdsa-b.cert.pem",
+				"test/certs/webpki/root-ecdsa.cert.pem"
 			],
 			[
-				"/hierarchy/int-ecdsa-a-cross.cert.pem",
-				"/hierarchy/root-rsa.cert.pem"
+				"test/certs/webpki/int-ecdsa-a-cross.cert.pem",
+				"test/certs/webpki/root-rsa.cert.pem"
 			],
 			[
-				"/hierarchy/int-ecdsa-b-cross.cert.pem",
-				"/hierarchy/root-rsa.cert.pem"
+				"test/certs/webpki/int-ecdsa-b-cross.cert.pem",
+				"test/certs/webpki/root-rsa.cert.pem"
 			]
 		],
 		"staleTimeout": "5m",
