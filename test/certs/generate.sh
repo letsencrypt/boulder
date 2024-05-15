@@ -17,10 +17,15 @@ ipki() (
   mkdir ipki
   cd ipki
 
-  # Used by challtestsrv to negotiate DoH handshakes.
-  # TODO: Move this out of the ipki directory.
+  # Create a generic cert which can be used by our test-only services (like
+  # mail-test-srv) that aren't sophisticated enough to present a different name.
   # This also creates the issuer key, so the loops below can run in the
   # background without competing over who gets to create it.
+  minica -domains localhost
+
+  # Used by challtestsrv to negotiate DoH handshakes.
+  # TODO: Move this out of the ipki directory, since it's actually part of the
+  # external/public PKI.
   minica -ip-addresses 10.77.77.77,10.88.88.88
 
   for SERVICE in admin-revoker expiration-mailer ocsp-responder consul \
