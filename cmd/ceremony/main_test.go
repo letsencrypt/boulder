@@ -18,7 +18,7 @@ import (
 )
 
 func TestLoadPubKey(t *testing.T) {
-	_, _, err := loadPubKey("../../test/test-root.pubkey.pem")
+	_, _, err := loadPubKey("../../test/test-ca.pubkey.pem")
 	test.AssertNotError(t, err, "should not have errored")
 
 	_, _, err = loadPubKey("../../test/hierarchy/int-e1.key.pem")
