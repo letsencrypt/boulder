@@ -3,14 +3,14 @@ set -e
 
 cd "$(realpath -- $(dirname -- "$0"))"
 
-ipki() (
-  # Check that `minica` is installed
-  command -v minica >/dev/null 2>&1 || {
-    echo >&2 "No 'minica' command available.";
-    echo >&2 "Check your GOPATH and run: 'go install github.com/jsha/minica@latest'.";
-    exit 1;
-  }
+# Check that `minica` is installed
+command -v minica >/dev/null 2>&1 || {
+  echo >&2 "No 'minica' command available.";
+  echo >&2 "Check your GOPATH and run: 'go install github.com/jsha/minica@latest'.";
+  exit 1;
+}
 
+ipki() (
   # Minica generates everything in-place, so we need to cd into the subdirectory.
   # This function executes in a subshell, so this cd does not affect the parent
   # script.
@@ -19,21 +19,30 @@ ipki() (
 
   # Create a generic cert which can be used by our test-only services (like
   # mail-test-srv) that aren't sophisticated enough to present a different name.
-  # This also creates the issuer key, so the loops below can run in the
-  # background without competing over who gets to create it.
+  # This first invocation also creates the issuer key, so the loops below can
+  # run in the background without racing to create it.
   minica -domains localhost
 
-  # Used by challtestsrv to negotiate DoH handshakes.
-  # TODO: Move this out of the ipki directory, since it's actually part of the
-  # external/public PKI.
+  # Used by challtestsrv to negotiate DoH handshakes. Even though we think of
+  # challtestsrv as being external to our infrastructure (because it hosts the
+  # DNS records that the tests validate), it *also* takes the place of our
+  # recursive resolvers, so the DoH certificate that it presents to the VAs is
+  # part of our internal PKI.
   minica -ip-addresses 10.77.77.77,10.88.88.88
 
+  # Presented by the WFE's TLS server, when configured. Normally the WFE lives
+  # behind another TLS-terminating server like nginx or apache, so the cert that
+  # it presents to that layer is also part of the internal PKI.
+  minica -domains "boulder"
+
+  # Used by Boulder gRPC services as both server and client mTLS certificates.
   for SERVICE in admin-revoker expiration-mailer ocsp-responder consul \
     wfe akamai-purger bad-key-revoker crl-updater crl-storer \
     health-checker; do
     minica -domains "${SERVICE}.boulder" &
   done
 
+  # Same as above, for services that we run multiple copies of.
   for SERVICE in publisher nonce ra ca sa va rva ; do
     minica -domains "${SERVICE}.boulder,${SERVICE}1.boulder,${SERVICE}2.boulder" &
   done
