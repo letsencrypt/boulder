@@ -643,8 +643,33 @@ func (sa *StorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Update
 	return nil, errors.New("unimplemented")
 }
 
+// PausePair is a mock.
+func (sa *StorageAuthority) PausePair(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, nil
+}
+
+// RepausePair is a mock.
+func (sa *StorageAuthority) RepausePair(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, nil
+}
+
+// UnpausePair is a mock.
+func (sa *StorageAuthority) UnpausePair(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, nil
+}
+
 // ReplacementOrderExists is a mock.
 func (sa *StorageAuthorityReadOnly) ReplacementOrderExists(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Exists, error) {
+	return nil, nil
+}
+
+// CheckPairPaused is a mock.
+func (sa *StorageAuthorityReadOnly) CheckPairPaused(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PairPausedResponse, error) {
+	return nil, nil
+}
+
+// CheckPairsPaused is a mock.
+func (sa *StorageAuthorityReadOnly) CheckPairsPaused(ctx context.Context, req *sapb.PairsPausedRequest, _ ...grpc.CallOption) (*sapb.Hostnames, error) {
 	return nil, nil
 }
 

@@ -1522,3 +1522,62 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, 
 func (ssa *SQLStorageAuthority) GetSerialsByAccount(req *sapb.RegistrationID, stream sapb.StorageAuthority_GetSerialsByAccountServer) error {
 	return ssa.SQLStorageAuthorityRO.GetSerialsByAccount(req, stream)
 }
+
+// CheckPairPaused checks if the given (account, hostname) pair has been
+// paused. The first return value is true if the pair is currently paused, and
+// the second return value is true if the pair was previously paused but is no
+// longer paused.
+func (ssa *SQLStorageAuthorityRO) CheckPairPaused(ctx context.Context, req *sapb.PauseRequest) (*sapb.PairPausedResponse, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.IdentifierValue) {
+		return nil, errIncompleteRequest
+	}
+
+	// Marshal the identifierType to a uint now that we've crossed the RPC boundary.
+	identifierType, ok := identifierTypeToUint[req.IdentifierType]
+	if !ok {
+		// This should never happen.
+		return nil, fmt.Errorf("unknown identifier type: %s", req.IdentifierType)
+	}
+
+	paused, wasPaused, err := checkPairPaused(ctx, ssa.dbReadOnlyMap, req.RegistrationID, identifierType, req.IdentifierValue)
+	if err != nil {
+		return nil, err
+	}
+
+	return &sapb.PairPausedResponse{
+		IsPaused:  paused,
+		WasPaused: wasPaused,
+	}, nil
+}
+
+func (ssa *SQLStorageAuthority) CheckPairPaused(ctx context.Context, req *sapb.PauseRequest) (*sapb.PairPausedResponse, error) {
+	return ssa.SQLStorageAuthorityRO.CheckPairPaused(ctx, req)
+}
+
+// CheckPairsPaused checks if the given (account, hostname) pairs are paused. If
+// any of the pairs are paused, the response will contain the first 15 matching
+// pairs that are paused. If none of the pairs are paused, the response will be
+// empty.
+func (ssa *SQLStorageAuthorityRO) CheckPairsPaused(ctx context.Context, req *sapb.PairsPausedRequest) (*sapb.Hostnames, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID) {
+		return nil, errIncompleteRequest
+	}
+
+	// Marshal the identifierType to a uint now that we've crossed the RPC boundary.
+	identifierType, ok := identifierTypeToUint[req.IdentifierType]
+	if !ok {
+		// This should never happen.
+		return nil, fmt.Errorf("unknown identifier type: %s", req.IdentifierType)
+	}
+
+	pausedPairs, err := checkPairsPaused(ctx, ssa.dbReadOnlyMap, req.RegistrationID, identifierType, req.IdentifierValues)
+	if err != nil {
+		return nil, err
+	}
+
+	return &sapb.Hostnames{Hostnames: pausedPairs}, nil
+}
+
+func (ssa *SQLStorageAuthority) CheckPairsPaused(ctx context.Context, req *sapb.PairsPausedRequest) (*sapb.Hostnames, error) {
+	return ssa.SQLStorageAuthorityRO.CheckPairsPaused(ctx, req)
+}

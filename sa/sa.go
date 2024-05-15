@@ -1285,3 +1285,71 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 
 	return &emptypb.Empty{}, nil
 }
+
+// PausePair must only be used to pause a pair that is NOT currently or
+// previously paused. If the pair is currently paused, ErrAlreadyOrPreviouslyPaused
+// is returned.
+func (ssa *SQLStorageAuthority) PausePair(ctx context.Context, req *sapb.PauseRequest) (*emptypb.Empty, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.IdentifierValue) {
+		return nil, errIncompleteRequest
+	}
+
+	// Marshal the identifierType to a uint now that we've crossed the RPC boundary.
+	identifierType, ok := identifierTypeToUint[req.IdentifierType]
+	if !ok {
+		// This should never happen.
+		return nil, fmt.Errorf("unknown identifier type: %s", req.IdentifierType)
+	}
+
+	err := pausePair(ctx, ssa.dbMap, req.RegistrationID, identifierType, req.IdentifierValue, ssa.clk.Now())
+	if err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+// RepausePair must only be used to repause a pair that is NOT currently paused
+// but WAS previously paused. If the pair was not previously paused or is
+// already paused, ErrAlreadyOrNotPreviouslyPaused is returned.
+func (ssa *SQLStorageAuthority) RepausePair(ctx context.Context, req *sapb.PauseRequest) (*emptypb.Empty, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.IdentifierValue) {
+		return nil, errIncompleteRequest
+	}
+
+	// Marshal the identifierType to a uint now that we've crossed the RPC boundary.
+	identifierType, ok := identifierTypeToUint[req.IdentifierType]
+	if !ok {
+		// This should never happen.
+		return nil, fmt.Errorf("unknown identifier type: %s", req.IdentifierType)
+	}
+
+	err := repausePair(ctx, ssa.dbMap, req.RegistrationID, identifierType, req.IdentifierValue, ssa.clk.Now())
+	if err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+// UnpausePair must only be used to unpause a pair that is currently paused. If
+// the pair is not currently paused, ErrNotCurrentlyPaused is returned.
+func (ssa *SQLStorageAuthority) UnpausePair(ctx context.Context, req *sapb.PauseRequest) (*emptypb.Empty, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.IdentifierValue) {
+		return nil, errIncompleteRequest
+	}
+
+	// Marshal the identifierType to a uint now that we've crossed the RPC boundary.
+	identifierType, ok := identifierTypeToUint[req.IdentifierType]
+	if !ok {
+		// This should never happen.
+		return nil, fmt.Errorf("unknown identifier type: %s", req.IdentifierType)
+	}
+
+	err := unpausePair(ctx, ssa.dbMap, req.RegistrationID, identifierType, req.IdentifierValue, ssa.clk.Now())
+	if err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
+}

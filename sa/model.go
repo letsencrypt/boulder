@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+	"github.com/go-sql-driver/mysql"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/core"
@@ -1292,5 +1293,207 @@ func setReplacementOrderFinalized(ctx context.Context, db db.Execer, orderID int
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+type pausedModel struct {
+	RegistrationID  int64      `db:"registrationID"`
+	IdentifierType  uint8      `db:"identifierType"`
+	IdentifierValue string     `db:"identifierValue"`
+	PausedAt        *time.Time `db:"pausedAt"`
+	UnpausedAt      *time.Time `db:"unpausedAt"`
+}
+
+// checkPairsPaused returns a list of identifierValues that are currently paused
+// for the given (account, hostname) pairs. The list will contain at most 15
+// values. If no pairs are currently paused, an empty list is returned.
+func checkPairsPaused(ctx context.Context, dbs db.Selector, regID int64, identifierType uint8, identifierValues []string) ([]string, error) {
+	if len(identifierValues) == 0 {
+		// No identifier values to check.
+		return []string{}, nil
+	}
+
+	query := fmt.Sprintf(`
+        SELECT identifierValue
+        FROM paused
+        WHERE 
+            registrationID = ? AND
+            identifierType = ? AND
+            identifierValue IN (%s) AND
+            unpausedAt IS NULL
+        LIMIT 15`,
+		db.QuestionMarks(len(identifierValues)),
+	)
+
+	// Set up the query arguments.
+	args := []interface{}{
+		// registrationID = ? AND
+		regID,
+		// registrationID = ? AND
+		identifierType,
+	}
+
+	for _, value := range identifierValues {
+		// identifierValue IN (...) AND
+		args = append(args, value)
+	}
+
+	var pausedValues []string
+	_, err := dbs.Select(ctx, &pausedValues, query, args...)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		// Error querying the database.
+		return nil, err
+	}
+
+	return pausedValues, nil
+}
+
+// checkPairPaused checks if the given (account, hostname) pair has been paused.
+// The first return value is true if the pair is currently paused, and the
+// second return value is true if the pair was previously paused but is no
+// longer paused.
+func checkPairPaused(ctx context.Context, db db.OneSelector, regID int64, identifierType uint8, identifierValue string) (bool, bool, error) {
+	var pm pausedModel
+	err := db.SelectOne(ctx, &pm, `
+		SELECT pausedAt, unpausedAt
+		FROM paused
+		WHERE 
+			registrationID = ? AND 
+			identifierType = ? AND 
+			identifierValue = ?`,
+		regID,
+		identifierType,
+		identifierValue,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// Not currently paused, not previously paused.
+			return false, false, nil
+		}
+		// Error querying the database.
+		return false, false, err
+	}
+
+	return (pm.PausedAt != nil && pm.UnpausedAt == nil), (pm.UnpausedAt != nil), nil
+}
+
+// ErrAlreadyOrPreviouslyPaused is returned when attempting to pause a pair
+// that:
+//  1. is currently paused, or
+//  2. was previously paused.
+//
+// Callers receiving this error should check the pause status of the pair using
+// sa.CheckPairPaused().
+var ErrAlreadyOrPreviouslyPaused = errors.New("pair is already paused or was previously unpaused")
+
+// pausePair must only be used to pause a pair that is NOT currently or
+// previously paused. If the pair is currently paused, ErrAlreadyOrPreviouslyPaused
+// is returned. It inserts a new row into the paused table for the given
+// (account, hostname) pair with the given pausedAt time.
+func pausePair(ctx context.Context, db db.Execer, regID int64, identifierType uint8, identifierValue string, pausedAt time.Time) error {
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO paused (
+			registrationID, 
+			identifierType, 
+			identifierValue, 
+			pausedAt
+		) VALUES (?, ?, ?, ?)`,
+		regID,
+		identifierType,
+		identifierValue,
+		pausedAt,
+	)
+	if err != nil {
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+			// Duplicate entry, this pair is already paused.
+			return ErrAlreadyOrPreviouslyPaused
+		}
+		return err
+	}
+	return nil
+}
+
+// ErrAlreadyOrNotPreviouslyPaused is returned when attempting to repause a pair
+// that:
+//  1. is currently already paused, or
+//  2. was not previously paused.
+//
+// Callers receiving this error should check the pause status of the pair using
+// the CheckPairPaused method.
+var ErrAlreadyOrNotPreviouslyPaused = errors.New("pair cannot be repaused because it was not previously paused or is currently paused")
+
+// repausePair must only be used to repause a pair that is NOT currently paused
+// but WAS previously paused. If the pair was not previously paused or is
+// already paused, ErrAlreadyOrNotPreviouslyPaused is returned. It updates the
+// pausedAt time for the given (account, hostname) pair from NULL to the
+// provided pausedAt time and sets the unpausedAt time to NULL.
+func repausePair(ctx context.Context, db db.Execer, regID int64, identifierType uint8, identifierValue string, pausedAt time.Time) error {
+	result, err := db.ExecContext(ctx, `
+		UPDATE paused
+		SET pausedAt = ?,
+			unpausedAt = NULL
+		WHERE 
+			registrationID = ? AND 
+			identifierType = ? AND 
+			identifierValue = ? AND
+            pausedAt IS NULL AND 
+            unpausedAt IS NOT NULL`,
+		pausedAt,
+		regID,
+		identifierType,
+		identifierValue,
+	)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected <= 0 {
+		return ErrAlreadyOrNotPreviouslyPaused
+	}
+
+	return nil
+}
+
+// ErrNotCurrentlyPaused is returned when attempting to unpause a pair that is
+// not currently paused. Callers receiving this error should check the pause
+// status of the pair using the CheckPairPaused method.
+var ErrNotCurrentlyPaused = errors.New("pair is not currently paused")
+
+// unpausePair must only be used to unpause a pair that is currently paused. If
+// the pair is not currently paused, ErrNotCurrentlyPaused is returned. It
+// updates the unpausedAt time for the given (account, hostname) pair to the
+// provided unpausedAt time and sets the pausedAt time to NULL.
+func unpausePair(ctx context.Context, db db.Execer, regID int64, identifierType uint8, identifierValue string, unpausedAt time.Time) error {
+	result, err := db.ExecContext(ctx, `
+		UPDATE paused
+		SET unpausedAt = ?,
+			pausedAt = NULL
+		WHERE 
+			registrationID = ? AND 
+			identifierType = ? AND 
+			identifierValue = ? AND
+			unpausedAt IS NULL`,
+		unpausedAt,
+		regID,
+		identifierType,
+		identifierValue,
+	)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected <= 0 {
+		return ErrNotCurrentlyPaused
+	}
+
 	return nil
 }

@@ -77,6 +77,8 @@ service StorageAuthority {
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
+  rpc CheckPairPaused (PauseRequest) returns (PairPausedResponse) {}
+  rpc CheckPairsPaused (PairsPausedRequest) returns (Hostnames) {}
   // Adders
   rpc AddBlockedKey(AddBlockedKeyRequest) returns (google.protobuf.Empty) {}
   rpc AddCertificate(AddCertificateRequest) returns (google.protobuf.Empty) {}
@@ -96,6 +98,9 @@ service StorageAuthority {
   rpc UpdateRevokedCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc LeaseCRLShard(LeaseCRLShardRequest) returns (LeaseCRLShardResponse) {}
   rpc UpdateCRLShard(UpdateCRLShardRequest) returns (google.protobuf.Empty) {}
+  rpc PausePair(PauseRequest) returns (google.protobuf.Empty) {}
+  rpc RepausePair(PauseRequest) returns (google.protobuf.Empty) {}
+  rpc UnpausePair(PauseRequest) returns (google.protobuf.Empty) {}
 }
 
 message RegistrationID {
@@ -413,4 +418,25 @@ message UpdateCRLShardRequest {
   int64 shardIdx = 2;
   google.protobuf.Timestamp thisUpdate = 3;
   google.protobuf.Timestamp nextUpdate = 4;
+}
+
+message PairsPausedRequest {
+  int64 registrationID = 1;
+  string identifierType = 2;
+  repeated string identifierValues = 3;
+}
+
+message PairPausedResponse {
+  bool isPaused = 1;
+  bool wasPaused = 2;
+}
+
+message Hostnames {
+  repeated string hostnames = 1;
+}
+
+message PauseRequest {
+  int64 registrationID = 1;
+  string identifierType = 2;
+  string identifierValue = 3;
 }
