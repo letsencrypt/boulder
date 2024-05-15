@@ -272,16 +272,16 @@ func TestLoadCert(t *testing.T) {
 	test.AssertError(t, err, "Loading nonexistent path did not error")
 	test.AssertErrorWraps(t, err, &osPathErr)
 
-	_, err = LoadCert("../test/test-ca.der")
+	_, err = LoadCert("../test/hierarchy/README.md")
 	test.AssertError(t, err, "Loading non-PEM file did not error")
-	test.AssertEquals(t, err.Error(), "no data in cert PEM file \"../test/test-ca.der\"")
+	test.AssertContains(t, err.Error(), "no data in cert PEM file")
 
 	_, err = LoadCert("../test/hierarchy/int-e1.key.pem")
-	test.AssertError(t, err, "Loading non-cert file did not error")
-	test.AssertEquals(t, err.Error(), "x509: malformed tbs certificate")
+	test.AssertError(t, err, "Loading non-cert PEM file did not error")
+	test.AssertContains(t, err.Error(), "x509: malformed tbs certificate")
 
 	cert, err := LoadCert("../test/hierarchy/int-r3.cert.pem")
-	test.AssertNotError(t, err, "Failed to load cert file")
+	test.AssertNotError(t, err, "Failed to load cert PEM file")
 	test.AssertEquals(t, cert.Subject.CommonName, "(TEST) Radical Rhino R3")
 }
 
