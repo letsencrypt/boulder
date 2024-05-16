@@ -229,7 +229,7 @@ the following URLs:
 
 To access the HTTPS versions of the endpoints you will need to configure your
 ACME client software to use a CA truststore that contains the
-`test/certs/misc/minica.pem` CA certificate. See
+`test/certs/ipki/minica.pem` CA certificate. See
 [`test/certs/README.md`](https://github.com/letsencrypt/boulder/blob/main/test/certs/README.md)
 for more information.
 
