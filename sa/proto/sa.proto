@@ -101,6 +101,7 @@ service StorageAuthority {
   rpc PausePair(PauseRequest) returns (google.protobuf.Empty) {}
   rpc RepausePair(PauseRequest) returns (google.protobuf.Empty) {}
   rpc UnpausePair(PauseRequest) returns (google.protobuf.Empty) {}
+  rpc UnpauseAccount(PauseRequest) returns (google.protobuf.Empty) {}
 }
 
 message RegistrationID {

@@ -1357,6 +1357,7 @@ type StorageAuthorityClient interface {
 	PausePair(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RepausePair(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	UnpausePair(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	UnpauseAccount(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type storageAuthorityClient struct {
@@ -1945,6 +1946,15 @@ func (c *storageAuthorityClient) UnpausePair(ctx context.Context, in *PauseReque
 	return out, nil
 }
 
+func (c *storageAuthorityClient) UnpauseAccount(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/UnpauseAccount", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StorageAuthorityServer is the server API for StorageAuthority service.
 // All implementations must embed UnimplementedStorageAuthorityServer
 // for forward compatibility
@@ -2005,6 +2015,7 @@ type StorageAuthorityServer interface {
 	PausePair(context.Context, *PauseRequest) (*emptypb.Empty, error)
 	RepausePair(context.Context, *PauseRequest) (*emptypb.Empty, error)
 	UnpausePair(context.Context, *PauseRequest) (*emptypb.Empty, error)
+	UnpauseAccount(context.Context, *PauseRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedStorageAuthorityServer()
 }
 
@@ -2173,6 +2184,9 @@ func (UnimplementedStorageAuthorityServer) RepausePair(context.Context, *PauseRe
 }
 func (UnimplementedStorageAuthorityServer) UnpausePair(context.Context, *PauseRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UnpausePair not implemented")
+}
+func (UnimplementedStorageAuthorityServer) UnpauseAccount(context.Context, *PauseRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UnpauseAccount not implemented")
 }
 func (UnimplementedStorageAuthorityServer) mustEmbedUnimplementedStorageAuthorityServer() {}
 
@@ -3171,6 +3185,24 @@ func _StorageAuthority_UnpausePair_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageAuthority_UnpauseAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PauseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).UnpauseAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sa.StorageAuthority/UnpauseAccount",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).UnpauseAccount(ctx, req.(*PauseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StorageAuthority_ServiceDesc is the grpc.ServiceDesc for StorageAuthority service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -3377,6 +3409,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UnpausePair",
 			Handler:    _StorageAuthority_UnpausePair_Handler,
+		},
+		{
+			MethodName: "UnpauseAccount",
+			Handler:    _StorageAuthority_UnpauseAccount_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

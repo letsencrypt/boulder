@@ -658,6 +658,11 @@ func (sa *StorageAuthority) UnpausePair(ctx context.Context, req *sapb.PauseRequ
 	return nil, nil
 }
 
+// UnpauseAccount is a mock.
+func (sa *StorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, nil
+}
+
 // ReplacementOrderExists is a mock.
 func (sa *StorageAuthorityReadOnly) ReplacementOrderExists(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Exists, error) {
 	return nil, nil

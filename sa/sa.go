@@ -1353,3 +1353,18 @@ func (ssa *SQLStorageAuthority) UnpausePair(ctx context.Context, req *sapb.Pause
 
 	return &emptypb.Empty{}, nil
 }
+
+// UnpauseAccount will unpause all paused pairs for the given registration ID.
+// If the account is not currently paused, ErrAccountNotPaused is returned.
+func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.PauseRequest) (*emptypb.Empty, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID) {
+		return nil, errIncompleteRequest
+	}
+
+	err := unpauseAccount(ctx, ssa.dbMap, req.RegistrationID, ssa.clk.Now())
+	if err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
+}

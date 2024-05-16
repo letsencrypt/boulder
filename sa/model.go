@@ -1497,3 +1497,37 @@ func unpausePair(ctx context.Context, db db.Execer, regID int64, identifierType 
 
 	return nil
 }
+
+// ErrAccountNotPaused is returned when attempting to unpause an account that is
+// not currently paused.
+var ErrAccountNotPaused = errors.New("account is not currently paused")
+
+// unpauseAccount will unpause all paused pairs for the given registration ID.
+// It updates the unpausedAt time to the provided unpausedAt time and sets the
+// pausedAt time to NULL. If the account is not currently paused, ErrAccountNotPaused
+// is returned.
+func unpauseAccount(ctx context.Context, db db.Execer, regID int64, unpausedAt time.Time) error {
+	result, err := db.ExecContext(ctx, `
+		UPDATE paused
+		SET unpausedAt = ?,
+			pausedAt = NULL
+		WHERE 
+			registrationID = ? AND
+			unpausedAt IS NULL`,
+		unpausedAt,
+		regID,
+	)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected <= 0 {
+		return ErrAccountNotPaused
+	}
+
+	return nil
+}

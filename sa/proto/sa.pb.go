@@ -3592,7 +3592,7 @@ var file_sa_proto_rawDesc = []byte{
 	0x72, 0x69, 0x61, 0x6c, 0x73, 0x46, 0x6f, 0x72, 0x49, 0x6e, 0x63, 0x69, 0x64, 0x65, 0x6e, 0x74,
 	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x12, 0x2e, 0x73, 0x61, 0x2e, 0x49, 0x6e, 0x63,
 	0x69, 0x64, 0x65, 0x6e, 0x74, 0x53, 0x65, 0x72, 0x69, 0x61, 0x6c, 0x22, 0x00, 0x30, 0x01, 0x32,
-	0x9e, 0x1c, 0x0a, 0x10, 0x53, 0x74, 0x6f, 0x72, 0x61, 0x67, 0x65, 0x41, 0x75, 0x74, 0x68, 0x6f,
+	0xdc, 0x1c, 0x0a, 0x10, 0x53, 0x74, 0x6f, 0x72, 0x61, 0x67, 0x65, 0x41, 0x75, 0x74, 0x68, 0x6f,
 	0x72, 0x69, 0x74, 0x79, 0x12, 0x53, 0x0a, 0x18, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x43, 0x65, 0x72,
 	0x74, 0x69, 0x66, 0x69, 0x63, 0x61, 0x74, 0x65, 0x73, 0x42, 0x79, 0x4e, 0x61, 0x6d, 0x65, 0x73,
 	0x12, 0x23, 0x2e, 0x73, 0x61, 0x2e, 0x43, 0x6f, 0x75, 0x6e, 0x74, 0x43, 0x65, 0x72, 0x74, 0x69,
@@ -3818,10 +3818,14 @@ var file_sa_proto_rawDesc = []byte{
 	0x50, 0x61, 0x69, 0x72, 0x12, 0x10, 0x2e, 0x73, 0x61, 0x2e, 0x50, 0x61, 0x75, 0x73, 0x65, 0x52,
 	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e,
 	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00,
-	0x42, 0x29, 0x5a, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c,
-	0x65, 0x74, 0x73, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x2f, 0x62, 0x6f, 0x75, 0x6c, 0x64,
-	0x65, 0x72, 0x2f, 0x73, 0x61, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x06, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x33,
+	0x12, 0x3c, 0x0a, 0x0e, 0x55, 0x6e, 0x70, 0x61, 0x75, 0x73, 0x65, 0x41, 0x63, 0x63, 0x6f, 0x75,
+	0x6e, 0x74, 0x12, 0x10, 0x2e, 0x73, 0x61, 0x2e, 0x50, 0x61, 0x75, 0x73, 0x65, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72,
+	0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x42, 0x29,
+	0x5a, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x65, 0x74,
+	0x73, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x2f, 0x62, 0x6f, 0x75, 0x6c, 0x64, 0x65, 0x72,
+	0x2f, 0x73, 0x61, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x33,
 }
 
 var (
@@ -4031,93 +4035,95 @@ var file_sa_proto_depIdxs = []int32{
 	48,  // 125: sa.StorageAuthority.PausePair:input_type -> sa.PauseRequest
 	48,  // 126: sa.StorageAuthority.RepausePair:input_type -> sa.PauseRequest
 	48,  // 127: sa.StorageAuthority.UnpausePair:input_type -> sa.PauseRequest
-	12,  // 128: sa.StorageAuthorityReadOnly.CountCertificatesByNames:output_type -> sa.CountByNames
-	9,   // 129: sa.StorageAuthorityReadOnly.CountFQDNSets:output_type -> sa.Count
-	9,   // 130: sa.StorageAuthorityReadOnly.CountInvalidAuthorizations2:output_type -> sa.Count
-	9,   // 131: sa.StorageAuthorityReadOnly.CountOrders:output_type -> sa.Count
-	9,   // 132: sa.StorageAuthorityReadOnly.CountPendingAuthorizations2:output_type -> sa.Count
-	9,   // 133: sa.StorageAuthorityReadOnly.CountRegistrationsByIP:output_type -> sa.Count
-	9,   // 134: sa.StorageAuthorityReadOnly.CountRegistrationsByIPRange:output_type -> sa.Count
-	18,  // 135: sa.StorageAuthorityReadOnly.FQDNSetExists:output_type -> sa.Exists
-	10,  // 136: sa.StorageAuthorityReadOnly.FQDNSetTimestampsForWindow:output_type -> sa.Timestamps
-	54,  // 137: sa.StorageAuthorityReadOnly.GetAuthorization2:output_type -> core.Authorization
-	29,  // 138: sa.StorageAuthorityReadOnly.GetAuthorizations2:output_type -> sa.Authorizations
-	59,  // 139: sa.StorageAuthorityReadOnly.GetCertificate:output_type -> core.Certificate
-	59,  // 140: sa.StorageAuthorityReadOnly.GetLintPrecertificate:output_type -> core.Certificate
-	60,  // 141: sa.StorageAuthorityReadOnly.GetCertificateStatus:output_type -> core.CertificateStatus
-	52,  // 142: sa.StorageAuthorityReadOnly.GetMaxExpiration:output_type -> google.protobuf.Timestamp
-	61,  // 143: sa.StorageAuthorityReadOnly.GetOrder:output_type -> core.Order
-	61,  // 144: sa.StorageAuthorityReadOnly.GetOrderForNames:output_type -> core.Order
-	54,  // 145: sa.StorageAuthorityReadOnly.GetPendingAuthorization2:output_type -> core.Authorization
-	58,  // 146: sa.StorageAuthorityReadOnly.GetRegistration:output_type -> core.Registration
-	58,  // 147: sa.StorageAuthorityReadOnly.GetRegistrationByKey:output_type -> core.Registration
-	41,  // 148: sa.StorageAuthorityReadOnly.GetRevocationStatus:output_type -> sa.RevocationStatus
-	62,  // 149: sa.StorageAuthorityReadOnly.GetRevokedCerts:output_type -> core.CRLEntry
-	7,   // 150: sa.StorageAuthorityReadOnly.GetSerialMetadata:output_type -> sa.SerialMetadata
-	6,   // 151: sa.StorageAuthorityReadOnly.GetSerialsByAccount:output_type -> sa.Serial
-	6,   // 152: sa.StorageAuthorityReadOnly.GetSerialsByKey:output_type -> sa.Serial
-	29,  // 153: sa.StorageAuthorityReadOnly.GetValidAuthorizations2:output_type -> sa.Authorizations
-	29,  // 154: sa.StorageAuthorityReadOnly.GetValidOrderAuthorizations2:output_type -> sa.Authorizations
-	37,  // 155: sa.StorageAuthorityReadOnly.IncidentsForSerial:output_type -> sa.Incidents
-	18,  // 156: sa.StorageAuthorityReadOnly.KeyBlocked:output_type -> sa.Exists
-	18,  // 157: sa.StorageAuthorityReadOnly.ReplacementOrderExists:output_type -> sa.Exists
-	39,  // 158: sa.StorageAuthorityReadOnly.SerialsForIncident:output_type -> sa.IncidentSerial
-	12,  // 159: sa.StorageAuthority.CountCertificatesByNames:output_type -> sa.CountByNames
-	9,   // 160: sa.StorageAuthority.CountFQDNSets:output_type -> sa.Count
-	9,   // 161: sa.StorageAuthority.CountInvalidAuthorizations2:output_type -> sa.Count
-	9,   // 162: sa.StorageAuthority.CountOrders:output_type -> sa.Count
-	9,   // 163: sa.StorageAuthority.CountPendingAuthorizations2:output_type -> sa.Count
-	9,   // 164: sa.StorageAuthority.CountRegistrationsByIP:output_type -> sa.Count
-	9,   // 165: sa.StorageAuthority.CountRegistrationsByIPRange:output_type -> sa.Count
-	18,  // 166: sa.StorageAuthority.FQDNSetExists:output_type -> sa.Exists
-	10,  // 167: sa.StorageAuthority.FQDNSetTimestampsForWindow:output_type -> sa.Timestamps
-	54,  // 168: sa.StorageAuthority.GetAuthorization2:output_type -> core.Authorization
-	29,  // 169: sa.StorageAuthority.GetAuthorizations2:output_type -> sa.Authorizations
-	59,  // 170: sa.StorageAuthority.GetCertificate:output_type -> core.Certificate
-	59,  // 171: sa.StorageAuthority.GetLintPrecertificate:output_type -> core.Certificate
-	60,  // 172: sa.StorageAuthority.GetCertificateStatus:output_type -> core.CertificateStatus
-	52,  // 173: sa.StorageAuthority.GetMaxExpiration:output_type -> google.protobuf.Timestamp
-	61,  // 174: sa.StorageAuthority.GetOrder:output_type -> core.Order
-	61,  // 175: sa.StorageAuthority.GetOrderForNames:output_type -> core.Order
-	54,  // 176: sa.StorageAuthority.GetPendingAuthorization2:output_type -> core.Authorization
-	58,  // 177: sa.StorageAuthority.GetRegistration:output_type -> core.Registration
-	58,  // 178: sa.StorageAuthority.GetRegistrationByKey:output_type -> core.Registration
-	41,  // 179: sa.StorageAuthority.GetRevocationStatus:output_type -> sa.RevocationStatus
-	62,  // 180: sa.StorageAuthority.GetRevokedCerts:output_type -> core.CRLEntry
-	7,   // 181: sa.StorageAuthority.GetSerialMetadata:output_type -> sa.SerialMetadata
-	6,   // 182: sa.StorageAuthority.GetSerialsByAccount:output_type -> sa.Serial
-	6,   // 183: sa.StorageAuthority.GetSerialsByKey:output_type -> sa.Serial
-	29,  // 184: sa.StorageAuthority.GetValidAuthorizations2:output_type -> sa.Authorizations
-	29,  // 185: sa.StorageAuthority.GetValidOrderAuthorizations2:output_type -> sa.Authorizations
-	37,  // 186: sa.StorageAuthority.IncidentsForSerial:output_type -> sa.Incidents
-	18,  // 187: sa.StorageAuthority.KeyBlocked:output_type -> sa.Exists
-	18,  // 188: sa.StorageAuthority.ReplacementOrderExists:output_type -> sa.Exists
-	39,  // 189: sa.StorageAuthority.SerialsForIncident:output_type -> sa.IncidentSerial
-	46,  // 190: sa.StorageAuthority.CheckPairPaused:output_type -> sa.PairPausedResponse
-	47,  // 191: sa.StorageAuthority.CheckPairsPaused:output_type -> sa.Hostnames
-	57,  // 192: sa.StorageAuthority.AddBlockedKey:output_type -> google.protobuf.Empty
-	57,  // 193: sa.StorageAuthority.AddCertificate:output_type -> google.protobuf.Empty
-	57,  // 194: sa.StorageAuthority.AddPrecertificate:output_type -> google.protobuf.Empty
-	57,  // 195: sa.StorageAuthority.SetCertificateStatusReady:output_type -> google.protobuf.Empty
-	57,  // 196: sa.StorageAuthority.AddSerial:output_type -> google.protobuf.Empty
-	57,  // 197: sa.StorageAuthority.DeactivateAuthorization2:output_type -> google.protobuf.Empty
-	57,  // 198: sa.StorageAuthority.DeactivateRegistration:output_type -> google.protobuf.Empty
-	57,  // 199: sa.StorageAuthority.FinalizeAuthorization2:output_type -> google.protobuf.Empty
-	57,  // 200: sa.StorageAuthority.FinalizeOrder:output_type -> google.protobuf.Empty
-	61,  // 201: sa.StorageAuthority.NewOrderAndAuthzs:output_type -> core.Order
-	58,  // 202: sa.StorageAuthority.NewRegistration:output_type -> core.Registration
-	57,  // 203: sa.StorageAuthority.RevokeCertificate:output_type -> google.protobuf.Empty
-	57,  // 204: sa.StorageAuthority.SetOrderError:output_type -> google.protobuf.Empty
-	57,  // 205: sa.StorageAuthority.SetOrderProcessing:output_type -> google.protobuf.Empty
-	57,  // 206: sa.StorageAuthority.UpdateRegistration:output_type -> google.protobuf.Empty
-	57,  // 207: sa.StorageAuthority.UpdateRevokedCertificate:output_type -> google.protobuf.Empty
-	43,  // 208: sa.StorageAuthority.LeaseCRLShard:output_type -> sa.LeaseCRLShardResponse
-	57,  // 209: sa.StorageAuthority.UpdateCRLShard:output_type -> google.protobuf.Empty
-	57,  // 210: sa.StorageAuthority.PausePair:output_type -> google.protobuf.Empty
-	57,  // 211: sa.StorageAuthority.RepausePair:output_type -> google.protobuf.Empty
-	57,  // 212: sa.StorageAuthority.UnpausePair:output_type -> google.protobuf.Empty
-	128, // [128:213] is the sub-list for method output_type
-	43,  // [43:128] is the sub-list for method input_type
+	48,  // 128: sa.StorageAuthority.UnpauseAccount:input_type -> sa.PauseRequest
+	12,  // 129: sa.StorageAuthorityReadOnly.CountCertificatesByNames:output_type -> sa.CountByNames
+	9,   // 130: sa.StorageAuthorityReadOnly.CountFQDNSets:output_type -> sa.Count
+	9,   // 131: sa.StorageAuthorityReadOnly.CountInvalidAuthorizations2:output_type -> sa.Count
+	9,   // 132: sa.StorageAuthorityReadOnly.CountOrders:output_type -> sa.Count
+	9,   // 133: sa.StorageAuthorityReadOnly.CountPendingAuthorizations2:output_type -> sa.Count
+	9,   // 134: sa.StorageAuthorityReadOnly.CountRegistrationsByIP:output_type -> sa.Count
+	9,   // 135: sa.StorageAuthorityReadOnly.CountRegistrationsByIPRange:output_type -> sa.Count
+	18,  // 136: sa.StorageAuthorityReadOnly.FQDNSetExists:output_type -> sa.Exists
+	10,  // 137: sa.StorageAuthorityReadOnly.FQDNSetTimestampsForWindow:output_type -> sa.Timestamps
+	54,  // 138: sa.StorageAuthorityReadOnly.GetAuthorization2:output_type -> core.Authorization
+	29,  // 139: sa.StorageAuthorityReadOnly.GetAuthorizations2:output_type -> sa.Authorizations
+	59,  // 140: sa.StorageAuthorityReadOnly.GetCertificate:output_type -> core.Certificate
+	59,  // 141: sa.StorageAuthorityReadOnly.GetLintPrecertificate:output_type -> core.Certificate
+	60,  // 142: sa.StorageAuthorityReadOnly.GetCertificateStatus:output_type -> core.CertificateStatus
+	52,  // 143: sa.StorageAuthorityReadOnly.GetMaxExpiration:output_type -> google.protobuf.Timestamp
+	61,  // 144: sa.StorageAuthorityReadOnly.GetOrder:output_type -> core.Order
+	61,  // 145: sa.StorageAuthorityReadOnly.GetOrderForNames:output_type -> core.Order
+	54,  // 146: sa.StorageAuthorityReadOnly.GetPendingAuthorization2:output_type -> core.Authorization
+	58,  // 147: sa.StorageAuthorityReadOnly.GetRegistration:output_type -> core.Registration
+	58,  // 148: sa.StorageAuthorityReadOnly.GetRegistrationByKey:output_type -> core.Registration
+	41,  // 149: sa.StorageAuthorityReadOnly.GetRevocationStatus:output_type -> sa.RevocationStatus
+	62,  // 150: sa.StorageAuthorityReadOnly.GetRevokedCerts:output_type -> core.CRLEntry
+	7,   // 151: sa.StorageAuthorityReadOnly.GetSerialMetadata:output_type -> sa.SerialMetadata
+	6,   // 152: sa.StorageAuthorityReadOnly.GetSerialsByAccount:output_type -> sa.Serial
+	6,   // 153: sa.StorageAuthorityReadOnly.GetSerialsByKey:output_type -> sa.Serial
+	29,  // 154: sa.StorageAuthorityReadOnly.GetValidAuthorizations2:output_type -> sa.Authorizations
+	29,  // 155: sa.StorageAuthorityReadOnly.GetValidOrderAuthorizations2:output_type -> sa.Authorizations
+	37,  // 156: sa.StorageAuthorityReadOnly.IncidentsForSerial:output_type -> sa.Incidents
+	18,  // 157: sa.StorageAuthorityReadOnly.KeyBlocked:output_type -> sa.Exists
+	18,  // 158: sa.StorageAuthorityReadOnly.ReplacementOrderExists:output_type -> sa.Exists
+	39,  // 159: sa.StorageAuthorityReadOnly.SerialsForIncident:output_type -> sa.IncidentSerial
+	12,  // 160: sa.StorageAuthority.CountCertificatesByNames:output_type -> sa.CountByNames
+	9,   // 161: sa.StorageAuthority.CountFQDNSets:output_type -> sa.Count
+	9,   // 162: sa.StorageAuthority.CountInvalidAuthorizations2:output_type -> sa.Count
+	9,   // 163: sa.StorageAuthority.CountOrders:output_type -> sa.Count
+	9,   // 164: sa.StorageAuthority.CountPendingAuthorizations2:output_type -> sa.Count
+	9,   // 165: sa.StorageAuthority.CountRegistrationsByIP:output_type -> sa.Count
+	9,   // 166: sa.StorageAuthority.CountRegistrationsByIPRange:output_type -> sa.Count
+	18,  // 167: sa.StorageAuthority.FQDNSetExists:output_type -> sa.Exists
+	10,  // 168: sa.StorageAuthority.FQDNSetTimestampsForWindow:output_type -> sa.Timestamps
+	54,  // 169: sa.StorageAuthority.GetAuthorization2:output_type -> core.Authorization
+	29,  // 170: sa.StorageAuthority.GetAuthorizations2:output_type -> sa.Authorizations
+	59,  // 171: sa.StorageAuthority.GetCertificate:output_type -> core.Certificate
+	59,  // 172: sa.StorageAuthority.GetLintPrecertificate:output_type -> core.Certificate
+	60,  // 173: sa.StorageAuthority.GetCertificateStatus:output_type -> core.CertificateStatus
+	52,  // 174: sa.StorageAuthority.GetMaxExpiration:output_type -> google.protobuf.Timestamp
+	61,  // 175: sa.StorageAuthority.GetOrder:output_type -> core.Order
+	61,  // 176: sa.StorageAuthority.GetOrderForNames:output_type -> core.Order
+	54,  // 177: sa.StorageAuthority.GetPendingAuthorization2:output_type -> core.Authorization
+	58,  // 178: sa.StorageAuthority.GetRegistration:output_type -> core.Registration
+	58,  // 179: sa.StorageAuthority.GetRegistrationByKey:output_type -> core.Registration
+	41,  // 180: sa.StorageAuthority.GetRevocationStatus:output_type -> sa.RevocationStatus
+	62,  // 181: sa.StorageAuthority.GetRevokedCerts:output_type -> core.CRLEntry
+	7,   // 182: sa.StorageAuthority.GetSerialMetadata:output_type -> sa.SerialMetadata
+	6,   // 183: sa.StorageAuthority.GetSerialsByAccount:output_type -> sa.Serial
+	6,   // 184: sa.StorageAuthority.GetSerialsByKey:output_type -> sa.Serial
+	29,  // 185: sa.StorageAuthority.GetValidAuthorizations2:output_type -> sa.Authorizations
+	29,  // 186: sa.StorageAuthority.GetValidOrderAuthorizations2:output_type -> sa.Authorizations
+	37,  // 187: sa.StorageAuthority.IncidentsForSerial:output_type -> sa.Incidents
+	18,  // 188: sa.StorageAuthority.KeyBlocked:output_type -> sa.Exists
+	18,  // 189: sa.StorageAuthority.ReplacementOrderExists:output_type -> sa.Exists
+	39,  // 190: sa.StorageAuthority.SerialsForIncident:output_type -> sa.IncidentSerial
+	46,  // 191: sa.StorageAuthority.CheckPairPaused:output_type -> sa.PairPausedResponse
+	47,  // 192: sa.StorageAuthority.CheckPairsPaused:output_type -> sa.Hostnames
+	57,  // 193: sa.StorageAuthority.AddBlockedKey:output_type -> google.protobuf.Empty
+	57,  // 194: sa.StorageAuthority.AddCertificate:output_type -> google.protobuf.Empty
+	57,  // 195: sa.StorageAuthority.AddPrecertificate:output_type -> google.protobuf.Empty
+	57,  // 196: sa.StorageAuthority.SetCertificateStatusReady:output_type -> google.protobuf.Empty
+	57,  // 197: sa.StorageAuthority.AddSerial:output_type -> google.protobuf.Empty
+	57,  // 198: sa.StorageAuthority.DeactivateAuthorization2:output_type -> google.protobuf.Empty
+	57,  // 199: sa.StorageAuthority.DeactivateRegistration:output_type -> google.protobuf.Empty
+	57,  // 200: sa.StorageAuthority.FinalizeAuthorization2:output_type -> google.protobuf.Empty
+	57,  // 201: sa.StorageAuthority.FinalizeOrder:output_type -> google.protobuf.Empty
+	61,  // 202: sa.StorageAuthority.NewOrderAndAuthzs:output_type -> core.Order
+	58,  // 203: sa.StorageAuthority.NewRegistration:output_type -> core.Registration
+	57,  // 204: sa.StorageAuthority.RevokeCertificate:output_type -> google.protobuf.Empty
+	57,  // 205: sa.StorageAuthority.SetOrderError:output_type -> google.protobuf.Empty
+	57,  // 206: sa.StorageAuthority.SetOrderProcessing:output_type -> google.protobuf.Empty
+	57,  // 207: sa.StorageAuthority.UpdateRegistration:output_type -> google.protobuf.Empty
+	57,  // 208: sa.StorageAuthority.UpdateRevokedCertificate:output_type -> google.protobuf.Empty
+	43,  // 209: sa.StorageAuthority.LeaseCRLShard:output_type -> sa.LeaseCRLShardResponse
+	57,  // 210: sa.StorageAuthority.UpdateCRLShard:output_type -> google.protobuf.Empty
+	57,  // 211: sa.StorageAuthority.PausePair:output_type -> google.protobuf.Empty
+	57,  // 212: sa.StorageAuthority.RepausePair:output_type -> google.protobuf.Empty
+	57,  // 213: sa.StorageAuthority.UnpausePair:output_type -> google.protobuf.Empty
+	57,  // 214: sa.StorageAuthority.UnpauseAccount:output_type -> google.protobuf.Empty
+	129, // [129:215] is the sub-list for method output_type
+	43,  // [43:129] is the sub-list for method input_type
 	43,  // [43:43] is the sub-list for extension type_name
 	43,  // [43:43] is the sub-list for extension extendee
 	0,   // [0:43] is the sub-list for field type_name
