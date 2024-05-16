@@ -66,6 +66,3 @@ TODO-list of PKIs to remove and clean up:
 - unit tests: the //test/hierarchy/ directory holds a variety of certificates
   used by unit tests. These should be replaced by certs which the unit tests
   dynamically generate in-memory, rather than loading from disk.
-- misc: the top-level //test/ directory contains a variety of keys and
-  certificates which are used largely at random throughout the tests. These
-  should be removed and replaced with one of the existing PKIs.

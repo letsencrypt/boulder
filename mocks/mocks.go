@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -224,26 +223,7 @@ func (sa *StorageAuthorityReadOnly) GetSerialMetadata(ctx context.Context, req *
 
 // GetCertificate is a mock
 func (sa *StorageAuthorityReadOnly) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	issuedTime := sa.clk.Now().Add(-1 * time.Hour)
-
-	// Serial ee == 238.crt
-	if req.Serial == "0000000000000000000000000000000000ee" {
-		certPemBytes, _ := os.ReadFile("test/238.crt")
-		certBlock, _ := pem.Decode(certPemBytes)
-		return &corepb.Certificate{
-			RegistrationID: 1,
-			Der:            certBlock.Bytes,
-			Issued:         timestamppb.New(issuedTime),
-		}, nil
-	} else if req.Serial == "0000000000000000000000000000000000b2" {
-		certPemBytes, _ := os.ReadFile("test/178.crt")
-		certBlock, _ := pem.Decode(certPemBytes)
-		return &corepb.Certificate{
-			RegistrationID: 1,
-			Der:            certBlock.Bytes,
-			Issued:         timestamppb.New(issuedTime),
-		}, nil
-	} else if req.Serial == "000000000000000000000000000000626164" {
+	if req.Serial == "000000000000000000000000000000626164" {
 		return nil, errors.New("bad")
 	} else {
 		return nil, berrors.NotFoundError("No cert")
@@ -257,18 +237,7 @@ func (sa *StorageAuthorityReadOnly) GetLintPrecertificate(_ context.Context, req
 
 // GetCertificateStatus is a mock
 func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
-	// Serial ee == 238.crt
-	if req.Serial == "0000000000000000000000000000000000ee" {
-		return &corepb.CertificateStatus{
-			Status: string(core.OCSPStatusGood),
-		}, nil
-	} else if req.Serial == "0000000000000000000000000000000000b2" {
-		return &corepb.CertificateStatus{
-			Status: string(core.OCSPStatusRevoked),
-		}, nil
-	} else {
-		return nil, errors.New("no cert status")
-	}
+	return nil, errors.New("no cert status")
 }
 
 func (sa *StorageAuthorityReadOnly) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
