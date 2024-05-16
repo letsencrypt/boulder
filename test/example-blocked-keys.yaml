@@ -10,10 +10,6 @@
 #       large scale blocks are required.
 #
 blocked:
-  # test/test-ca2.pem
-  - F4j7m0doxdWXdKOzeYjL6onsVYLLU2jb7xr994zlFFg=
-  # test/test-ca.pem
-  - F4j7m0doxdWXdKOzeYjL6onsVYLLU2jb7xr994zlFFg=
   # test/block-a-key/test/test.ecdsa.cert.pem
   - cuwGhNNI6nfob5aqY90e7BleU6l7rfxku4X3UTJ3Z7M=
   # test/block-a-key/test/test.rsa.cert.pem
