@@ -4,19 +4,20 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"golang.org/x/net/context"
 
 	"github.com/jmhodges/clock"
 	"github.com/redis/go-redis/v9"
 )
 
 func newTestRedisSource(clk clock.FakeClock, addrs map[string]string) *RedisSource {
-	CACertFile := "../test/redis-tls/minica.pem"
-	CertFile := "../test/redis-tls/boulder/cert.pem"
-	KeyFile := "../test/redis-tls/boulder/key.pem"
+	CACertFile := "../test/certs/ipki/minica.pem"
+	CertFile := "../test/certs/ipki/localhost/cert.pem"
+	KeyFile := "../test/certs/ipki/localhost/key.pem"
 	tlsConfig := cmd.TLSConfig{
 		CACertFile: CACertFile,
 		CertFile:   CertFile,

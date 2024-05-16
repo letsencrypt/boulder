@@ -41,9 +41,9 @@ Redis protocol. Here's the command to do that (run from the Boulder root):
 
 ```shell
 openssl s_client -connect 10.33.33.2:4218 \
-  -CAfile test/redis-tls/minica.pem \
-  -cert test/redis-tls/boulder/cert.pem \
-  -key test/redis-tls/boulder/key.pem
+  -CAfile test/certs/ipki/minica.pem \
+  -cert test/certs/ipki/localhost/cert.pem \
+  -key test/certs/ipki/localhost/key.pem
 ```
 
 Then, first thing when you connect, run `AUTH <user> <password>`. You can get a

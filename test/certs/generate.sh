@@ -35,10 +35,14 @@ ipki() (
   # it presents to that layer is also part of the internal PKI.
   minica -domains "boulder"
 
+  # Presented by the test redis cluster. Contains IP addresses because Boulder
+  # components find individual redis servers via SRV records.
+  minica -domains redis -ip-addresses 10.33.33.2,10.33.33.3,10.33.33.4,10.33.33.5,10.33.33.6,10.33.33.7,10.33.33.8,10.33.33.9
+
   # Used by Boulder gRPC services as both server and client mTLS certificates.
   for SERVICE in admin-revoker expiration-mailer ocsp-responder consul \
     wfe akamai-purger bad-key-revoker crl-updater crl-storer \
-    health-checker; do
+    health-checker rocsp-tool; do
     minica -domains "${SERVICE}.boulder" &
   done
 
