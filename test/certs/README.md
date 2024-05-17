@@ -47,7 +47,24 @@ these certificates (for the services that we run multiple copies of) have
 multiple names, so the same certificate can be loaded by each copy of that
 service.
 
+It also contains some non-gRPC certificates which are nonetheless serving the
+role of internal authentication between Let's Encrypt components:
+
+- The IP-address certificate used by challtestsrv (which acts as the integration
+  test environment's recursive resolver) for DoH handshakes.
+- The certificate presented by mail-test-srv's SMTP endpoint.
+- The certificate presented by the test redis cluster.
+- The certificate presented by the WFE's API TLS handler (which is usually
+  behind some other load-balancer like nginx).
+
 This PKI is loaded by virtually every Boulder component.
+
+**Note:** the minica issuer certificate and the "localhost" end-entity
+certificate are also used by several rocsp and ratelimit unit tests. The tests
+use these certificates to authenticate to the docker-compose redis cluster, and
+therefore cannot succeed outside of the docker environment anyway, so a
+dependency on the ipki hierarchy having been generated does not break them
+further.
 
 ## Other Test PKIs
 
@@ -55,14 +72,12 @@ A variety of other PKIs (collections of keys and certificates) exist in this
 repository for the sake of unit and integration testing. We list them here as a
 TODO-list of PKIs to remove and clean up:
 
-- challtestsrv DoH: Our fake DNS challenge test server (which fulfills DNS-01
-  challenges during integration tests) can negotiate DoH handshakes. The key and
-  cert is uses for this are currently generated as part of the ipki directory,
-  but are fundamentally different from that PKI and should be moved.
-- wfe-tls: The //test/wfe-tls/ directory holds the key and certificate which the
-  WFE uses to negotiate TLS handshakes with API clients.
-- redis: The //test/redis-tls/ directory holds the key and certificate used by
-  our test redis cluster. This should probably be moved into the ipki directory.
-- unit tests: the //test/hierarchy/ directory holds a variety of certificates
-  used by unit tests. These should be replaced by certs which the unit tests
-  dynamically generate in-memory, rather than loading from disk.
+- unit test hierarchy: the //test/hierarchy/ directory holds a collection of
+  certificates used by unit tests which want access to realistic issuer certs
+  but don't want to rely on the //test/certs/webpki directory being generated.
+  These should be replaced by certs which the unit tests dynamically generate
+  in-memory, rather than loading from disk.
+- unit test mocks: //test/test-key-5.der and //wfe2/wfe_test.go contain keys and
+  certificates which are used to elicit specific behavior from //mocks/mocks.go.
+  These should be replaced with dynamically-generated keys and more flexible
+  mocks.

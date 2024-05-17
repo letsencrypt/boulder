@@ -11,9 +11,9 @@
 			"poolSize": 100,
 			"routeRandomly": true,
 			"tls": {
-				"caCertFile": "test/redis-tls/minica.pem",
-				"certFile": "test/redis-tls/boulder/cert.pem",
-				"keyFile": "test/redis-tls/boulder/key.pem"
+				"caCertFile": "test/certs/ipki/minica.pem",
+				"certFile": "test/certs/ipki/ocsp-responder.boulder/cert.pem",
+				"keyFile": "test/certs/ipki/ocsp-responder.boulder/key.pem"
 			}
 		},
 		"tls": {

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -35,9 +36,9 @@ func TestDuplicateFQDNRateLimit(t *testing.T) {
 		rc := bredis.Config{
 			Username: "unittest-rw",
 			TLS: cmd.TLSConfig{
-				CACertFile: "test/redis-tls/minica.pem",
-				CertFile:   "test/redis-tls/boulder/cert.pem",
-				KeyFile:    "test/redis-tls/boulder/key.pem",
+				CACertFile: "test/certs/ipki/minica.pem",
+				CertFile:   "test/certs/ipki/localhost/cert.pem",
+				KeyFile:    "test/certs/ipki/localhost/key.pem",
 			},
 			Lookups: []cmd.ServiceDomain{
 				{

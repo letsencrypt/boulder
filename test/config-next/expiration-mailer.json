@@ -33,7 +33,7 @@
 			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
-		"SMTPTrustedRootFile": "test/mail-test-srv/minica.pem",
+		"SMTPTrustedRootFile": "test/certs/ipki/minica.pem",
 		"frequency": "1h",
 		"features": {
 			"ExpirationMailerUsesJoin": true

@@ -2,8 +2,8 @@
 	"wfe": {
 		"listenAddress": "0.0.0.0:4001",
 		"TLSListenAddress": "0.0.0.0:4431",
-		"serverCertificatePath": "test/wfe-tls/boulder/cert.pem",
-		"serverKeyPath": "test/wfe-tls/boulder/key.pem",
+		"serverCertificatePath": "test/certs/ipki/boulder/cert.pem",
+		"serverKeyPath": "test/certs/ipki/boulder/key.pem",
 		"allowOrigins": [
 			"*"
 		],

@@ -370,9 +370,9 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		rc := bredis.Config{
 			Username: "unittest-rw",
 			TLS: cmd.TLSConfig{
-				CACertFile: "../test/redis-tls/minica.pem",
-				CertFile:   "../test/redis-tls/boulder/cert.pem",
-				KeyFile:    "../test/redis-tls/boulder/key.pem",
+				CACertFile: "../test/certs/ipki/minica.pem",
+				CertFile:   "../test/certs/ipki/localhost/cert.pem",
+				KeyFile:    "../test/certs/ipki/localhost/key.pem",
 			},
 			Lookups: []cmd.ServiceDomain{
 				{

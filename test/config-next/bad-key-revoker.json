@@ -25,7 +25,7 @@
 			"username": "cert-manager@example.com",
 			"from": "bad key revoker <bad-key-revoker@test.org>",
 			"passwordFile": "test/secrets/smtp_password",
-			"SMTPTrustedRootFile": "test/mail-test-srv/minica.pem",
+			"SMTPTrustedRootFile": "test/certs/ipki/minica.pem",
 			"emailSubject": "Certificates you've issued have been revoked due to key compromise",
 			"emailTemplate": "test/example-bad-key-revoker-template"
 		},
