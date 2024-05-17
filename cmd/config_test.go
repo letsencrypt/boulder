@@ -1,9 +1,19 @@
 package cmd
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
+	"os"
+	"path"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
@@ -52,9 +62,43 @@ func TestPasswordConfig(t *testing.T) {
 func TestTLSConfigLoad(t *testing.T) {
 	null := "/dev/null"
 	nonExistent := "[nonexistent]"
-	cert := "../test/grpc-creds/creds-test/cert.pem"
-	key := "../test/grpc-creds/creds-test/key.pem"
-	caCert := "../test/grpc-creds/minica.pem"
+	tmp := t.TempDir()
+	cert := path.Join(tmp, "TestTLSConfigLoad.cert.pem")
+	key := path.Join(tmp, "TestTLSConfigLoad.key.pem")
+	caCert := path.Join(tmp, "TestTLSConfigLoad.cacert.pem")
+
+	rootKey, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+	test.AssertNotError(t, err, "creating test root key")
+	rootTemplate := &x509.Certificate{
+		Subject:      pkix.Name{CommonName: "test root"},
+		SerialNumber: big.NewInt(12345),
+		NotBefore:    time.Now().Add(-24 * time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		IsCA:         true,
+	}
+	rootCert, err := x509.CreateCertificate(rand.Reader, rootTemplate, rootTemplate, rootKey.Public(), rootKey)
+	test.AssertNotError(t, err, "creating test root cert")
+	err = os.WriteFile(caCert, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rootCert}), os.ModeAppend)
+	test.AssertNotError(t, err, "writing test root cert to disk")
+
+	intKey, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+	test.AssertNotError(t, err, "creating test intermediate key")
+	intKeyBytes, err := x509.MarshalECPrivateKey(intKey)
+	test.AssertNotError(t, err, "marshalling test intermediate key")
+	err = os.WriteFile(key, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: intKeyBytes}), os.ModeAppend)
+	test.AssertNotError(t, err, "writing test intermediate key cert to disk")
+
+	intTemplate := &x509.Certificate{
+		Subject:      pkix.Name{CommonName: "test intermediate"},
+		SerialNumber: big.NewInt(67890),
+		NotBefore:    time.Now().Add(-12 * time.Hour),
+		NotAfter:     time.Now().Add(12 * time.Hour),
+		IsCA:         true,
+	}
+	intCert, err := x509.CreateCertificate(rand.Reader, intTemplate, rootTemplate, intKey.Public(), rootKey)
+	test.AssertNotError(t, err, "creating test intermediate cert")
+	err = os.WriteFile(cert, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: intCert}), os.ModeAppend)
+	test.AssertNotError(t, err, "writing test intermediate cert to disk")
 
 	testCases := []struct {
 		TLSConfig
@@ -69,26 +113,20 @@ func TestTLSConfigLoad(t *testing.T) {
 		{TLSConfig{null, key, caCert}, "loading key pair.*failed to find any PEM data"},
 		{TLSConfig{cert, null, caCert}, "loading key pair.*failed to find any PEM data"},
 		{TLSConfig{cert, key, null}, "parsing CA certs"},
+		{TLSConfig{cert, key, caCert}, ""},
 	}
 	for _, tc := range testCases {
-		var title [3]string
-		if tc.CertFile == "" {
-			title[0] = "nil"
-		} else {
-			title[0] = tc.CertFile
-		}
-		if tc.KeyFile == "" {
-			title[1] = "nil"
-		} else {
-			title[1] = tc.KeyFile
-		}
-		if tc.CACertFile == "" {
-			title[2] = "nil"
-		} else {
-			title[2] = tc.CACertFile
+		title := [3]string{tc.CertFile, tc.KeyFile, tc.CACertFile}
+		for i := range title {
+			if title[i] == "" {
+				title[i] = "nil"
+			}
 		}
 		t.Run(strings.Join(title[:], "_"), func(t *testing.T) {
 			_, err := tc.TLSConfig.Load(metrics.NoopRegisterer)
+			if err == nil && tc.want == "" {
+				return
+			}
 			if err == nil {
 				t.Errorf("got no error")
 			}

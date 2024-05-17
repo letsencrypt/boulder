@@ -68,9 +68,6 @@ def main():
     if not startservers.install(race_detection=race_detection):
         raise(Exception("failed to build"))
 
-    # Setup issuance hierarchy
-    startservers.setupHierarchy()
-
     if not args.test_case_filter:
         now = datetime.datetime.utcnow()
 

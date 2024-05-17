@@ -679,7 +679,7 @@ def test_revoke_by_account_unspecified():
     reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
 
-    verify_ocsp(cert_file.name, "/hierarchy/int-rsa-*.cert.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_revoke_by_account_with_reason():
@@ -693,7 +693,7 @@ def test_revoke_by_account_with_reason():
     # Requesting revocation for keyCompromise should work, but not block the
     # key.
     client.revoke(josepy.ComparableX509(cert), 1)
-    verify_ocsp(cert_file.name, "/hierarchy/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
+    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
 
     verify_akamai_purge()
 
@@ -712,7 +712,7 @@ def test_revoke_by_authz():
     # Even though we requested reason 1 ("keyCompromise"), the result should be
     # 5 ("cessationOfOperation") due to the authorization method.
     client.revoke(josepy.ComparableX509(cert), 1)
-    verify_ocsp(cert_file.name, "/hierarchy/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "cessationOfOperation")
+    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "cessationOfOperation")
 
     verify_akamai_purge()
 
@@ -755,7 +755,7 @@ def test_revoke_by_privkey():
     # Even though we requested reason 0 ("unspecified"), the result should be
     # 1 ("keyCompromise") due to the authorization method.
     revoke_client.revoke(josepy.ComparableX509(cert), 0)
-    verify_ocsp(cert_file.name, "/hierarchy/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
+    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
 
     verify_akamai_purge()
 
@@ -797,7 +797,7 @@ def test_double_revocation():
 
     # First revoke for any reason.
     sub_client.revoke(josepy.ComparableX509(cert), 0)
-    verify_ocsp(cert_file.name, "/hierarchy/int-rsa-*.cert.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
     # Re-revocation for anything other than keyCompromise should fail.
@@ -812,7 +812,7 @@ def test_double_revocation():
     # via the cert key to demonstrate said compromise.
     reset_akamai_purges()
     cert_client.revoke(josepy.ComparableX509(cert), 1)
-    verify_ocsp(cert_file.name, "/hierarchy/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
+    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
     verify_akamai_purge()
 
     # A subsequent attempt should fail, because the cert is already revoked
@@ -1229,7 +1229,7 @@ def test_auth_deactivation_v2():
 def test_ocsp():
     cert_file = temppath('test_ocsp.pem')
     chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
-    verify_ocsp(cert_file.name, "/hierarchy/int-rsa-*.cert.pem", "http://localhost:4002", "good")
+    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "good")
 
 def test_ct_submission():
     hostname = random_domain()
@@ -1307,7 +1307,7 @@ def ocsp_exp_unauth_setup():
     # isn't, we'll get an expired OCSP response. Just check that it exists;
     # don't do the full verification (which would fail).
     lastException = None
-    for issuer_file in glob.glob("/hierarchy/int-rsa-*.cert.pem"):
+    for issuer_file in glob.glob("test/certs/webpki/int-rsa-*.cert.pem"):
         try:
             check_ocsp_basic_oid(cert_file.name, issuer_file, "http://localhost:4002")
             global ocsp_exp_unauth_setup_data
@@ -1326,7 +1326,7 @@ def test_ocsp_exp_unauth():
     last_error = ""
     while tries < 5:
         try:
-            verify_ocsp(cert_file, "/hierarchy/int-rsa-*.cert.pem", "http://localhost:4002", "XXX")
+            verify_ocsp(cert_file, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "XXX")
             raise(Exception("Unexpected return from verify_ocsp"))
         except subprocess.CalledProcessError as cpe:
             last_error = cpe.output
@@ -1597,7 +1597,7 @@ def test_admin_revoker_cert():
         "-reason", "keyCompromise"])
 
     # Wait for OCSP response to indicate revocation took place
-    verify_ocsp(cert_file.name, "/hierarchy/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
+    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
@@ -1622,7 +1622,7 @@ def test_admin_revoker_batched():
         "-parallelism", "2"])
 
     for cert_file in cert_files:
-        verify_ocsp(cert_file.name, "/hierarchy/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "unspecified")
+        verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "unspecified")
 
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])
@@ -1694,7 +1694,7 @@ def ocsp_resigning_setup():
     client.revoke(josepy.ComparableX509(cert), 5)
 
     ocsp_response, reason = get_ocsp_response_and_reason(
-        cert_file.name, "/hierarchy/int-rsa-*.cert.pem", "http://localhost:4002")
+        cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002")
     global ocsp_resigning_setup_data
     ocsp_resigning_setup_data = {
         'cert_file': cert_file.name,
@@ -1710,7 +1710,7 @@ def test_ocsp_resigning():
     tries = 0
     while tries < 5:
         resp, reason = get_ocsp_response_and_reason(
-            ocsp_resigning_setup_data['cert_file'], "/hierarchy/int-rsa-*.cert.pem", "http://localhost:4002")
+            ocsp_resigning_setup_data['cert_file'], "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002")
         if resp != ocsp_resigning_setup_data['response']:
             break
         tries += 1

@@ -10,9 +10,9 @@
 		"dnsAllowLoopbackAddresses": true,
 		"issuerDomain": "happy-hacker-ca.invalid",
 		"tls": {
-			"caCertfile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/rva.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/rva.boulder/key.pem"
+			"caCertfile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/rva.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/rva.boulder/key.pem"
 		},
 		"skipGRPCClientCertVerification": true,
 		"grpc": {

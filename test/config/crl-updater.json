@@ -1,9 +1,9 @@
 {
 	"crlUpdater": {
 		"tls": {
-			"caCertFile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/crl-updater.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/crl-updater.boulder/key.pem"
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/crl-updater.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/crl-updater.boulder/key.pem"
 		},
 		"saService": {
 			"dnsAuthority": "consul.service.consul",
@@ -36,9 +36,9 @@
 			"hostOverride": "crl-storer.boulder"
 		},
 		"issuerCerts": [
-			"/hierarchy/int-rsa-a.cert.pem",
-			"/hierarchy/int-rsa-b.cert.pem",
-			"/hierarchy/int-ecdsa-a.cert.pem"
+			"test/certs/webpki/int-rsa-a.cert.pem",
+			"test/certs/webpki/int-rsa-b.cert.pem",
+			"test/certs/webpki/int-ecdsa-a.cert.pem"
 		],
 		"numShards": 10,
 		"shardWidth": "240h",
