@@ -1,12 +1,8 @@
 package nonce
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"testing"
-
-	"google.golang.org/grpc"
 
 	"github.com/letsencrypt/boulder/metrics"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
@@ -129,7 +125,7 @@ func BenchmarkNonces(b *testing.B) {
 }
 
 func TestNoncePrefixing(t *testing.T) {
-	ns, err := NewNonceService(metrics.NoopRegisterer, 0, "zinc")
+	ns, err := NewNonceService(metrics.NoopRegisterer, 0, "aluminum")
 	test.AssertNotError(t, err, "Could not create nonce service")
 
 	n, err := ns.Nonce()
@@ -146,66 +142,12 @@ func TestNoncePrefixing(t *testing.T) {
 	test.Assert(t, !ns.Valid(n[6:]), "Valid nonce without prefix accepted")
 }
 
-type validRedeemer struct{}
-
-func (vr *validRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage, _ ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-	return &noncepb.ValidMessage{Valid: true}, nil
-}
-
-type invalidRedeemer struct{}
-
-func (ivr *invalidRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage, _ ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-	return &noncepb.ValidMessage{Valid: false}, nil
-}
-
-type brokenRedeemer struct{}
-
-func (br *brokenRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage, _ ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-	return nil, errors.New("broken redeemer!")
-}
-
-func TestRemoteRedeem(t *testing.T) {
-	valid, err := RemoteRedeem(context.Background(), nil, "q")
-	test.AssertNotError(t, err, "RemoteRedeem failed")
-	test.Assert(t, !valid, "RemoteRedeem accepted an invalid nonce")
-	valid, err = RemoteRedeem(context.Background(), nil, "")
-	test.AssertNotError(t, err, "RemoteRedeem failed")
-	test.Assert(t, !valid, "RemoteRedeem accepted an empty nonce")
-
-	prefixMap := map[string]Redeemer{
-		"abcd": &brokenRedeemer{},
-		"wxyz": &invalidRedeemer{},
-	}
-	// Attempt to redeem a nonce with a prefix not in the prefix map, expect return false, nil
-	valid, err = RemoteRedeem(context.Background(), prefixMap, "asddCQEC")
-	test.AssertNotError(t, err, "RemoteRedeem failed")
-	test.Assert(t, !valid, "RemoteRedeem accepted nonce not in prefix map")
-
-	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns error
-	// expect false, err
-	_, err = RemoteRedeem(context.Background(), prefixMap, "abcdbeef")
-	test.AssertError(t, err, "RemoteRedeem didn't return error when remote did")
-
-	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns invalid
-	// expect false, nil
-	valid, err = RemoteRedeem(context.Background(), prefixMap, "wxyzdead")
-	test.AssertNotError(t, err, "RemoteRedeem failed")
-	test.Assert(t, !valid, "RemoteRedeem didn't honor remote result")
-
-	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns valid
-	// expect true, nil
-	prefixMap["wxyz"] = &validRedeemer{}
-	valid, err = RemoteRedeem(context.Background(), prefixMap, "wxyzdead")
-	test.AssertNotError(t, err, "RemoteRedeem failed")
-	test.Assert(t, valid, "RemoteRedeem didn't honor remote result")
-}
-
 func TestNoncePrefixValidation(t *testing.T) {
-	_, err := NewNonceService(metrics.NoopRegisterer, 0, "hey")
+	_, err := NewNonceService(metrics.NoopRegisterer, 0, "whatsup")
 	test.AssertError(t, err, "NewNonceService didn't fail with short prefix")
-	_, err = NewNonceService(metrics.NoopRegisterer, 0, "hey!")
+	_, err = NewNonceService(metrics.NoopRegisterer, 0, "whatsup!")
 	test.AssertError(t, err, "NewNonceService didn't fail with invalid base64")
-	_, err = NewNonceService(metrics.NoopRegisterer, 0, "heyy")
+	_, err = NewNonceService(metrics.NoopRegisterer, 0, "whatsupp")
 	test.AssertNotError(t, err, "NewNonceService failed with valid nonce prefix")
 }
 

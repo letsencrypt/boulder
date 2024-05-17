@@ -349,61 +349,42 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 
 	log := blog.NewMock()
 
-	var gnc nonce.Getter
-	var noncePrefixMap map[string]nonce.Redeemer
-	var rnc nonce.Redeemer
-	var rncKey string
-	var inmemNonceService *inmemnonce.Service
-	var limiter *ratelimits.Limiter
-	var txnBuilder *ratelimits.TransactionBuilder
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		// Use derived nonces.
-		noncePrefix := nonce.DerivePrefix("192.168.1.1:8080", "b8c758dd85e113ea340ce0b3a99f389d40a308548af94d1730a7692c1874f1f")
-		nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
-		test.AssertNotError(t, err, "making nonceService")
+	// Use derived nonces.
+	noncePrefix := nonce.DerivePrefix("192.168.1.1:8080", "b8c758dd85e113ea340ce0b3a99f389d40a308548af94d1730a7692c1874f1f")
+	nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
+	test.AssertNotError(t, err, "making nonceService")
 
-		inmemNonceService = &inmemnonce.Service{NonceService: nonceService}
-		gnc = inmemNonceService
-		rnc = inmemNonceService
+	inmemNonceService := &inmemnonce.Service{NonceService: nonceService}
+	gnc := inmemNonceService
+	rnc := inmemNonceService
 
-		// Setup rate limiting.
-		rc := bredis.Config{
-			Username: "unittest-rw",
-			TLS: cmd.TLSConfig{
-				CACertFile: "../test/certs/ipki/minica.pem",
-				CertFile:   "../test/certs/ipki/localhost/cert.pem",
-				KeyFile:    "../test/certs/ipki/localhost/key.pem",
+	// Setup rate limiting.
+	rc := bredis.Config{
+		Username: "unittest-rw",
+		TLS: cmd.TLSConfig{
+			CACertFile: "../test/certs/ipki/minica.pem",
+			CertFile:   "../test/certs/ipki/localhost/cert.pem",
+			KeyFile:    "../test/certs/ipki/localhost/key.pem",
+		},
+		Lookups: []cmd.ServiceDomain{
+			{
+				Service: "redisratelimits",
+				Domain:  "service.consul",
 			},
-			Lookups: []cmd.ServiceDomain{
-				{
-					Service: "redisratelimits",
-					Domain:  "service.consul",
-				},
-			},
-			LookupDNSAuthority: "consul.service.consul",
-		}
-		rc.PasswordConfig = cmd.PasswordConfig{
-			PasswordFile: "../test/secrets/ratelimits_redis_password",
-		}
-		ring, err := bredis.NewRingFromConfig(rc, stats, log)
-		test.AssertNotError(t, err, "making redis ring client")
-		source := ratelimits.NewRedisSource(ring.Ring, fc, stats)
-		test.AssertNotNil(t, source, "source should not be nil")
-		limiter, err = ratelimits.NewLimiter(fc, source, stats)
-		test.AssertNotError(t, err, "making limiter")
-		txnBuilder, err = ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
-		test.AssertNotError(t, err, "making transaction composer")
-	} else {
-		// TODO(#6610): Remove this once we've moved to derived to prefixes.
-		noncePrefix := "mlem"
-		nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
-		test.AssertNotError(t, err, "making nonceService")
-
-		inmemNonceService = &inmemnonce.Service{NonceService: nonceService}
-		gnc = inmemNonceService
-		noncePrefixMap = map[string]nonce.Redeemer{noncePrefix: inmemNonceService}
-		rnc = inmemNonceService
+		},
+		LookupDNSAuthority: "consul.service.consul",
 	}
+	rc.PasswordConfig = cmd.PasswordConfig{
+		PasswordFile: "../test/secrets/ratelimits_redis_password",
+	}
+	ring, err := bredis.NewRingFromConfig(rc, stats, log)
+	test.AssertNotError(t, err, "making redis ring client")
+	source := ratelimits.NewRedisSource(ring.Ring, fc, stats)
+	test.AssertNotNil(t, source, "source should not be nil")
+	limiter, err := ratelimits.NewLimiter(fc, source, stats)
+	test.AssertNotError(t, err, "making limiter")
+	txnBuilder, err := ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	test.AssertNotError(t, err, "making transaction composer")
 
 	wfe, err := NewWebFrontEndImpl(
 		stats,
@@ -419,9 +400,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		&MockRegistrationAuthority{},
 		mockSA,
 		gnc,
-		noncePrefixMap,
 		rnc,
-		rncKey,
+		"rncKey",
 		mockSA,
 		limiter,
 		txnBuilder,

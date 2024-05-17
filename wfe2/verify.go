@@ -224,53 +224,35 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMissingNonce"}).Inc()
 		return probs.BadNonce("JWS has no anti-replay nonce")
 	}
-	var valid bool
-	var err error
-	if wfe.noncePrefixMap == nil {
-		// Dispatch nonce redemption RPCs dynamically.
-		prob := nonceWellFormed(header.Nonce, nonce.PrefixLen)
-		if prob != nil {
-			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMalformedNonce"}).Inc()
-			return prob
-		}
 
-		// Populate the context with the nonce prefix and HMAC key. These are
-		// used by a custom gRPC balancer, known as "noncebalancer", to route
-		// redemption RPCs to the backend that originally issued the nonce.
-		ctx = context.WithValue(ctx, nonce.PrefixCtxKey{}, header.Nonce[:nonce.PrefixLen])
-		ctx = context.WithValue(ctx, nonce.HMACKeyCtxKey{}, wfe.rncKey)
+	prob := nonceWellFormed(header.Nonce, nonce.PrefixLen)
+	if prob != nil {
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMalformedNonce"}).Inc()
+		return prob
+	}
 
-		resp, err := wfe.rnc.Redeem(ctx, &noncepb.NonceMessage{Nonce: header.Nonce})
-		if err != nil {
-			rpcStatus, ok := status.FromError(err)
-			if !ok || rpcStatus != nb.ErrNoBackendsMatchPrefix {
-				return web.ProblemDetailsForError(err, "failed to redeem nonce")
-			}
+	// Populate the context with the nonce prefix and HMAC key. These are
+	// used by a custom gRPC balancer, known as "noncebalancer", to route
+	// redemption RPCs to the backend that originally issued the nonce.
+	ctx = context.WithValue(ctx, nonce.PrefixCtxKey{}, header.Nonce[:nonce.PrefixLen])
+	ctx = context.WithValue(ctx, nonce.HMACKeyCtxKey{}, wfe.rncKey)
 
-			// ErrNoBackendsMatchPrefix suggests that the nonce backend, which
-			// issued this nonce, is presently unreachable or unrecognized by
-			// this WFE. As this is a transient failure, the client should retry
-			// their request with a fresh nonce.
-			resp = &noncepb.ValidMessage{Valid: false}
-			wfe.stats.nonceNoMatchingBackendCount.Inc()
-		}
-		valid = resp.Valid
-	} else {
-		// Dispatch nonce redpemption RPCs using a static mapping.
-		//
-		// TODO(#6610) Remove code below and the `npm` mapping.
-		prob := nonceWellFormed(header.Nonce, nonce.DeprecatedPrefixLen)
-		if prob != nil {
-			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMalformedNonce"}).Inc()
-			return prob
-		}
-
-		valid, err = nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, header.Nonce)
-		if err != nil {
+	resp, err := wfe.rnc.Redeem(ctx, &noncepb.NonceMessage{Nonce: header.Nonce})
+	if err != nil {
+		rpcStatus, ok := status.FromError(err)
+		if !ok || rpcStatus != nb.ErrNoBackendsMatchPrefix {
 			return web.ProblemDetailsForError(err, "failed to redeem nonce")
 		}
+
+		// ErrNoBackendsMatchPrefix suggests that the nonce backend, which
+		// issued this nonce, is presently unreachable or unrecognized by
+		// this WFE. As this is a transient failure, the client should retry
+		// their request with a fresh nonce.
+		resp = &noncepb.ValidMessage{Valid: false}
+		wfe.stats.nonceNoMatchingBackendCount.Inc()
 	}
-	if !valid {
+
+	if !resp.Valid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
 		return probs.BadNonce(fmt.Sprintf("JWS has an invalid anti-replay nonce: %q", header.Nonce))
 	}
