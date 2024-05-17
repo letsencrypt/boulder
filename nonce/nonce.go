@@ -105,7 +105,7 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	if prefix != "" {
 		if len(prefix) != PrefixLen {
 			return nil, fmt.Errorf(
-				"'noncePrefix' must be %d characters, not %d",
+				"nonce prefix must be %d characters, not %d",
 				PrefixLen,
 				len(prefix),
 			)

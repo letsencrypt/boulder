@@ -32,7 +32,7 @@ type Config struct {
 		// suitable as an HMAC-SHA256 key (e.g. the output of `openssl rand -hex
 		// 32`). In a multi-DC deployment this value should be the same across
 		// all boulder-wfe and nonce-service instances.
-		NoncePrefixKey cmd.PasswordConfig `validate:"excluded_with=NoncePrefix,structonly"`
+		NoncePrefixKey cmd.PasswordConfig `validate:"structonly"`
 
 		Syslog        cmd.SyslogConfig
 		OpenTelemetry cmd.OpenTelemetryConfig
