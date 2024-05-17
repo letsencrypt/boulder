@@ -34,6 +34,8 @@ import (
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -583,7 +585,7 @@ func TestNewRegistrationContactsPresent(t *testing.T) {
 }
 
 type mockSAFailsNewRegistration struct {
-	mocks.StorageAuthority
+	sapb.StorageAuthorityClient
 }
 
 func (sa *mockSAFailsNewRegistration) NewRegistration(_ context.Context, _ *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
@@ -769,7 +771,7 @@ func TestRegistrationsPerIPOverrideUsage(t *testing.T) {
 }
 
 type NoUpdateSA struct {
-	mocks.StorageAuthority
+	sapb.StorageAuthorityClient
 }
 
 func (sa NoUpdateSA) UpdateRegistration(_ context.Context, _ *corepb.Registration, _ ...grpc.CallOption) (*emptypb.Empty, error) {
@@ -1185,6 +1187,21 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 	test.AssertEquals(t, bErr.Error(), expected)
 }
 
+// mockInvalidAuthorizationsAuthority is a mock which claims that the given
+// domain has one invalid authorization.
+type mockInvalidAuthorizationsAuthority struct {
+	sapb.StorageAuthorityClient
+	domainWithFailures string
+}
+
+func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
+	if req.Hostname == sa.domainWithFailures {
+		return &sapb.Count{Count: 1}, nil
+	} else {
+		return &sapb.Count{}, nil
+	}
+}
+
 func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -1196,26 +1213,22 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 		},
 	}
 
-	testcase := func() {
-		limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
-		ra.SA = &mockInvalidAuthorizationsAuthority{domainWithFailures: "all.i.do.is.lose.com"}
-		err := ra.checkInvalidAuthorizationLimits(ctx, Registration.Id,
-			[]string{"charlie.brown.com", "all.i.do.is.lose.com"}, limit)
-		test.AssertError(t, err, "checkInvalidAuthorizationLimits did not encounter expected rate limit error")
-		test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/failed-validation-limit/")
-	}
-
-	testcase()
+	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
+	ra.SA = &mockInvalidAuthorizationsAuthority{domainWithFailures: "all.i.do.is.lose.com"}
+	err := ra.checkInvalidAuthorizationLimits(ctx, Registration.Id,
+		[]string{"charlie.brown.com", "all.i.do.is.lose.com"}, limit)
+	test.AssertError(t, err, "checkInvalidAuthorizationLimits did not encounter expected rate limit error")
+	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/failed-validation-limit/")
 }
 
 type mockSAWithNameCounts struct {
-	mocks.StorageAuthority
+	sapb.StorageAuthorityClient
 	nameCounts *sapb.CountByNames
 	t          *testing.T
 	clk        clock.FakeClock
 }
 
-func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
+func (m *mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
 	expectedLatest := m.clk.Now()
 	if req.Range.Latest.AsTime() != expectedLatest {
 		m.t.Errorf("incorrect latest: got '%v', expected '%v'", req.Range.Latest.AsTime(), expectedLatest)
@@ -1231,6 +1244,12 @@ func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, req 
 		}
 	}
 	return &sapb.CountByNames{Counts: counts}, nil
+}
+
+// FQDNSetExists is a mock which always returns false, so the test requests
+// aren't considered to be renewals.
+func (m *mockSAWithNameCounts) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
+	return &sapb.Exists{Exists: false}, nil
 }
 
 func TestCheckCertificatesPerNameLimit(t *testing.T) {
@@ -1514,7 +1533,7 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 // CountCertificatesByName as well as FQDNSetExists. This allows testing
 // checkCertificatesPerNameRateLimit's FQDN exemption logic.
 type mockSAWithFQDNSet struct {
-	mocks.StorageAuthority
+	sapb.StorageAuthorityClient
 	fqdnSet            map[string]bool
 	issuanceTimestamps map[string]*sapb.Timestamps
 
@@ -2248,7 +2267,7 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 // mockSACountPendingFails has a CountPendingAuthorizations2 implementation
 // that always returns error
 type mockSACountPendingFails struct {
-	mocks.StorageAuthority
+	sapb.StorageAuthorityClient
 }
 
 func (mock *mockSACountPendingFails) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
@@ -2278,9 +2297,24 @@ func TestPendingAuthorizationsUnlimited(t *testing.T) {
 	test.AssertNotError(t, err, "checking pending authorization limit")
 }
 
+// An authority that returns nonzero failures for CountInvalidAuthorizations2,
+// and also returns existing authzs for the same domain from GetAuthorizations2
+type mockInvalidPlusValidAuthzAuthority struct {
+	mockSAWithAuthzs
+	domainWithFailures string
+}
+
+func (sa *mockInvalidPlusValidAuthzAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
+	if req.Hostname == sa.domainWithFailures {
+		return &sapb.Count{Count: 1}, nil
+	} else {
+		return &sapb.Count{}, nil
+	}
+}
+
 // Test that the failed authorizations limit is checked before authz reuse.
 func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// Create an order (and thus a pending authz) for example.com
@@ -2293,8 +2327,29 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 	test.AssertNotNil(t, order.Id, "initial order had a nil ID")
 	test.AssertEquals(t, numAuthorizations(order), 1)
 
-	// Now treat example.com as if it had a recent failure.
-	ra.SA = &mockInvalidPlusValidAuthzAuthority{mockInvalidAuthorizationsAuthority{domainWithFailures: "example.com"}}
+	// Now treat example.com as if it had a recent failure, but also a valid authz.
+	expires := clk.Now().Add(24 * time.Hour)
+	ra.SA = &mockInvalidPlusValidAuthzAuthority{
+		mockSAWithAuthzs: mockSAWithAuthzs{
+			authzs: map[string]*core.Authorization{
+				"example.com": {
+					ID:             "1",
+					Identifier:     identifier.DNSIdentifier("example.com"),
+					RegistrationID: Registration.Id,
+					Expires:        &expires,
+					Status:         "valid",
+					Challenges: []core.Challenge{
+						{
+							Type:   core.ChallengeTypeHTTP01,
+							Status: core.StatusValid,
+						},
+					},
+				},
+			},
+		},
+		domainWithFailures: "example.com",
+	}
+
 	// Set a very restrictive police for invalid authorizations - one failure
 	// and you're done for a day.
 	ra.rlPolicies = &dummyRateLimitConfig{
@@ -2315,15 +2370,28 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/failed-validation-limit/")
 }
 
-// mockSAUnsafeAuthzReuse has a GetAuthorizations implementation that returns
-// an HTTP-01 validated wildcard authz.
-type mockSAUnsafeAuthzReuse struct {
-	mocks.StorageAuthority
+// mockSAWithAuthzs has a GetAuthorizations2 method that returns the protobuf
+// version of its authzs struct member. It also has a fake GetOrderForNames
+// which always fails, and a fake NewOrderAndAuthzs which always succeeds, to
+// facilitate the full execution of RA.NewOrder.
+type mockSAWithAuthzs struct {
+	sapb.StorageAuthorityClient
+	authzs map[string]*core.Authorization
 }
 
-func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error) {
+// GetOrderForNames is a mock which always returns NotFound so that NewOrder
+// proceeds to attempt authz reuse instead of wholesale order reuse.
+func (msa *mockSAWithAuthzs) GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	return nil, berrors.NotFoundError("no such order")
+}
+
+// GetAuthorizations2 returns a _bizarre_ authorization for "*.zombo.com" that
+// was validated by HTTP-01. This should never happen in real life since the
+// name is a wildcard. We use this mock to test that we reject this bizarre
+// situation correctly.
+func (msa *mockSAWithAuthzs) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	resp := &sapb.Authorizations{}
-	for k, v := range m {
+	for k, v := range msa.authzs {
 		authzPB, err := bgrpc.AuthzToPB(*v)
 		if err != nil {
 			return nil, err
@@ -2333,65 +2401,27 @@ func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 	return resp, nil
 }
 
-// GetAuthorizations2 returns a _bizarre_ authorization for "*.zombo.com" that
-// was validated by HTTP-01. This should never happen in real life since the
-// name is a wildcard. We use this mock to test that we reject this bizarre
-// situation correctly.
-func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
-	expires := time.Now()
-	authzs := map[string]*core.Authorization{
-		"*.zombo.com": {
-			// A static fake ID we can check for in a unit test
-			ID:             "1",
-			Identifier:     identifier.DNSIdentifier("*.zombo.com"),
-			RegistrationID: req.RegistrationID,
-			// Authz is valid
-			Status:  "valid",
-			Expires: &expires,
-			Challenges: []core.Challenge{
-				// HTTP-01 challenge is valid
-				{
-					Type:   core.ChallengeTypeHTTP01, // The dreaded HTTP-01! X__X
-					Status: core.StatusValid,
-				},
-				// DNS-01 challenge is pending
-				{
-					Type:   core.ChallengeTypeDNS01,
-					Status: core.StatusPending,
-				},
-			},
-		},
-		"zombo.com": {
-			// A static fake ID we can check for in a unit test
-			ID:             "2",
-			Identifier:     identifier.DNSIdentifier("zombo.com"),
-			RegistrationID: req.RegistrationID,
-			// Authz is valid
-			Status:  "valid",
-			Expires: &expires,
-			Challenges: []core.Challenge{
-				// HTTP-01 challenge is valid
-				{
-					Type:   core.ChallengeTypeHTTP01,
-					Status: core.StatusValid,
-				},
-				// DNS-01 challenge is pending
-				{
-					Type:   core.ChallengeTypeDNS01,
-					Status: core.StatusPending,
-				},
-			},
-		},
-	}
-	return authzMapToPB(authzs)
-
-}
-
-func (msa *mockSAUnsafeAuthzReuse) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+// NewOrderAndAuthzs is a mock which just reflects the incoming request back,
+// pretending to have created new db rows for the requested newAuthzs.
+func (msa *mockSAWithAuthzs) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	authzIDs := req.NewOrder.V2Authorizations
 	for range req.NewAuthzs {
-		req.NewOrder.V2Authorizations = append(req.NewOrder.V2Authorizations, mrand.Int63())
+		authzIDs = append(authzIDs, mrand.Int63())
 	}
-	return msa.StorageAuthority.NewOrderAndAuthzs(ctx, req)
+	return &corepb.Order{
+		// Fields from the input new order request.
+		RegistrationID:         req.NewOrder.RegistrationID,
+		Expires:                req.NewOrder.Expires,
+		Names:                  req.NewOrder.Names,
+		V2Authorizations:       authzIDs,
+		CertificateProfileName: req.NewOrder.CertificateProfileName,
+		// Mock new fields generated by the database transaction.
+		Id:      mrand.Int63(),
+		Created: timestamppb.Now(),
+		// A new order is never processing because it can't have been finalized yet.
+		BeganProcessing: false,
+		Status:          string(core.StatusPending),
+	}, nil
 }
 
 // TestNewOrderAuthzReuseSafety checks that the RA's safety check for reusing an
@@ -2409,7 +2439,53 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 
 	// Use a mock SA that always returns a valid HTTP-01 authz for the name
 	// "zombo.com"
-	ra.SA = &mockSAUnsafeAuthzReuse{}
+	expires := time.Now()
+	ra.SA = &mockSAWithAuthzs{
+		authzs: map[string]*core.Authorization{
+			"*.zombo.com": {
+				// A static fake ID we can check for in a unit test
+				ID:             "1",
+				Identifier:     identifier.DNSIdentifier("*.zombo.com"),
+				RegistrationID: Registration.Id,
+				// Authz is valid
+				Status:  "valid",
+				Expires: &expires,
+				Challenges: []core.Challenge{
+					// HTTP-01 challenge is valid
+					{
+						Type:   core.ChallengeTypeHTTP01, // The dreaded HTTP-01! X__X
+						Status: core.StatusValid,
+					},
+					// DNS-01 challenge is pending
+					{
+						Type:   core.ChallengeTypeDNS01,
+						Status: core.StatusPending,
+					},
+				},
+			},
+			"zombo.com": {
+				// A static fake ID we can check for in a unit test
+				ID:             "2",
+				Identifier:     identifier.DNSIdentifier("zombo.com"),
+				RegistrationID: Registration.Id,
+				// Authz is valid
+				Status:  "valid",
+				Expires: &expires,
+				Challenges: []core.Challenge{
+					// HTTP-01 challenge is valid
+					{
+						Type:   core.ChallengeTypeHTTP01,
+						Status: core.StatusValid,
+					},
+					// DNS-01 challenge is pending
+					{
+						Type:   core.ChallengeTypeDNS01,
+						Status: core.StatusPending,
+					},
+				},
+			},
+		},
+	}
 
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
@@ -2591,35 +2667,6 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertEquals(t, dupeOrder.V2Authorizations[0], order.V2Authorizations[0])
 }
 
-// mockSANearExpiredAuthz is a mock SA that always returns an authz near expiry
-// to test orders expiry calculations
-type mockSANearExpiredAuthz struct {
-	mocks.StorageAuthority
-	expiry time.Time
-}
-
-// GetAuthorizations2 is a mock that always returns a valid authorization for
-// "zombo.com" very near to expiry
-func (msa *mockSANearExpiredAuthz) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
-	authzs := map[string]*core.Authorization{
-		"zombo.com": {
-			// A static fake ID we can check for in a unit test
-			ID:             "1",
-			Identifier:     identifier.DNSIdentifier("zombo.com"),
-			RegistrationID: req.RegistrationID,
-			Expires:        &msa.expiry,
-			Status:         "valid",
-			Challenges: []core.Challenge{
-				{
-					Type:   core.ChallengeTypeHTTP01,
-					Status: core.StatusValid,
-				},
-			},
-		},
-	}
-	return authzMapToPB(authzs)
-}
-
 func TestNewOrderExpiry(t *testing.T) {
 	_, _, ra, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -2636,7 +2683,24 @@ func TestNewOrderExpiry(t *testing.T) {
 
 	// Use a mock SA that always returns a soon-to-be-expired valid authz for
 	// "zombo.com".
-	ra.SA = &mockSANearExpiredAuthz{expiry: fakeAuthzExpires}
+	ra.SA = &mockSAWithAuthzs{
+		authzs: map[string]*core.Authorization{
+			"zombo.com": {
+				// A static fake ID we can check for in a unit test
+				ID:             "1",
+				Identifier:     identifier.DNSIdentifier("zombo.com"),
+				RegistrationID: Registration.Id,
+				Expires:        &fakeAuthzExpires,
+				Status:         "valid",
+				Challenges: []core.Challenge{
+					{
+						Type:   core.ChallengeTypeHTTP01,
+						Status: core.StatusValid,
+					},
+				},
+			},
+		},
+	}
 
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
@@ -3668,6 +3732,14 @@ func (ca *MockCARecordingProfile) IssueCertificateForPrecertificate(ctx context.
 	return ca.inner.IssueCertificateForPrecertificate(ctx, req)
 }
 
+type mockSAWithFinalize struct {
+	sapb.StorageAuthorityClient
+}
+
+func (sa *mockSAWithFinalize) FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
 func TestIssueCertificateInnerWithProfile(t *testing.T) {
 	_, _, ra, fc, cleanup := initAuthorities(t)
 	defer cleanup()
@@ -3694,9 +3766,7 @@ func TestIssueCertificateInnerWithProfile(t *testing.T) {
 	mockCA := MockCARecordingProfile{inner: &mocks.MockCA{PEM: certPEM}}
 	ra.CA = &mockCA
 
-	// The basic mocks.StorageAuthority always succeeds on FinalizeOrder, which is
-	// the only SA call that issueCertificateInner makes.
-	ra.SA = &mocks.StorageAuthority{}
+	ra.SA = &mockSAWithFinalize{}
 
 	// Call issueCertificateInner with the CSR generated above and the profile
 	// name "default", which will cause the mockCA to return a specific hash.
@@ -3753,9 +3823,7 @@ func TestIssueCertificateOuter(t *testing.T) {
 	mockCA := MockCARecordingProfile{inner: &mocks.MockCA{PEM: certPEM}}
 	ra.CA = &mockCA
 
-	// The basic mocks.StorageAuthority always succeeds on FinalizeOrder, which is
-	// the only SA call that issueCertificateInner makes.
-	ra.SA = &mocks.StorageAuthority{}
+	ra.SA = &mockSAWithFinalize{}
 
 	_, err = ra.issueCertificateOuter(context.Background(), order, csr, certificateRequestEvent{})
 	test.AssertNotError(t, err, "Could not issue certificate")
@@ -3834,20 +3902,24 @@ rA==
 -----END CERTIFICATE-----
 `)
 
+// mockSARevocation is a fake which includes all of the SA methods called in the
+// course of a revocation. Its behavior can be customized by providing sets of
+// issued (known) certs, already-revoked certs, and already-blocked keys. It
+// also updates the sets of revoked certs and blocked keys when certain methods
+// are called, to allow for more complex test logic.
 type mockSARevocation struct {
-	mocks.StorageAuthority
+	sapb.StorageAuthorityClient
 
 	known   map[string]*x509.Certificate
 	revoked map[string]*corepb.CertificateStatus
 	blocked []*sapb.AddBlockedKeyRequest
 }
 
-func newMockSARevocation(known *x509.Certificate, clk clock.Clock) *mockSARevocation {
+func newMockSARevocation(known *x509.Certificate) *mockSARevocation {
 	return &mockSARevocation{
-		StorageAuthority: *mocks.NewStorageAuthority(clk),
-		known:            map[string]*x509.Certificate{core.SerialToString(known.SerialNumber): known},
-		revoked:          make(map[string]*corepb.CertificateStatus),
-		blocked:          make([]*sapb.AddBlockedKeyRequest, 0),
+		known:   map[string]*x509.Certificate{core.SerialToString(known.SerialNumber): known},
+		revoked: make(map[string]*corepb.CertificateStatus),
+		blocked: make([]*sapb.AddBlockedKeyRequest, 0),
 	}
 }
 
@@ -3859,6 +3931,18 @@ func (msar *mockSARevocation) reset() {
 func (msar *mockSARevocation) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	msar.blocked = append(msar.blocked, req)
 	return &emptypb.Empty{}, nil
+}
+
+func (msar *mockSARevocation) GetSerialMetadata(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
+	if cert, present := msar.known[req.Serial]; present {
+		return &sapb.SerialMetadata{
+			Serial:         req.Serial,
+			RegistrationID: 1,
+			Created:        timestamppb.New(cert.NotBefore),
+			Expires:        timestamppb.New(cert.NotAfter),
+		}, nil
+	}
+	return nil, berrors.UnknownSerialError()
 }
 
 func (msar *mockSARevocation) GetLintPrecertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
@@ -3929,7 +4013,7 @@ func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.Cal
 
 // mockSAGenerateOCSP is a mock SA that always returns a good OCSP response, with a constant NotAfter.
 type mockSAGenerateOCSP struct {
-	mocks.StorageAuthority
+	sapb.StorageAuthorityClient
 	expiration time.Time
 }
 
@@ -3968,7 +4052,7 @@ func TestGenerateOCSP(t *testing.T) {
 // removed from the certificateStatus table), but returns success to GetSerialMetadata (simulating
 // a serial number staying in the `serials` table indefinitely).
 type mockSALongExpiredSerial struct {
-	mocks.StorageAuthority
+	sapb.StorageAuthorityClient
 }
 
 func (msgo *mockSALongExpiredSerial) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
@@ -4042,7 +4126,7 @@ func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
 		ic.NameID(): ic,
 	}
-	ra.SA = newMockSARevocation(cert, clk)
+	ra.SA = newMockSARevocation(cert)
 
 	// Revoking without a regID should fail.
 	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
@@ -4080,6 +4164,33 @@ func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	test.AssertContains(t, err.Error(), "already revoked")
 }
 
+// mockSARevocationWithAuthzs embeds a mockSARevocation and so inherits all its
+// methods, but also adds GetValidAuthorizations2 so that it can pretend to
+// either be authorized or not for all of the names in the to-be-revoked cert.
+type mockSARevocationWithAuthzs struct {
+	*mockSARevocation
+	authorized bool
+}
+
+func (msa *mockSARevocationWithAuthzs) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
+	authzs := &sapb.Authorizations{}
+
+	if !msa.authorized {
+		return authzs, nil
+	}
+
+	for _, name := range req.Domains {
+		authzs.Authz = append(authzs.Authz, &sapb.Authorizations_MapElement{
+			Domain: name,
+			Authz: &corepb.Authorization{
+				Identifier: name,
+			},
+		})
+	}
+
+	return authzs, nil
+}
+
 func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	_, _, ra, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -4095,10 +4206,12 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
 		ic.NameID(): ic,
 	}
-	mockSA := newMockSARevocation(cert, clk)
-	ra.SA = mockSA
+	mockSA := newMockSARevocation(cert)
 
-	// Revoking with the wrong regID should fail.
+	// Revoking when the account doesn't have valid authzs for the name should fail.
+	// We use RegID 2 here and below because the mockSARevocation believes regID 1
+	// is the original issuer.
+	ra.SA = &mockSARevocationWithAuthzs{mockSA, false}
 	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
 		Cert:  cert.Raw,
 		Code:  ocsp.Unspecified,
@@ -4107,12 +4220,13 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	test.AssertError(t, err, "should have failed with wrong RegID")
 	test.AssertContains(t, err.Error(), "requester does not control all names")
 
-	// Revoking with a different RegID that has valid authorizations should succeed,
+	// Revoking when the account does have valid authzs for the name should succeed,
 	// but override the revocation reason to cessationOfOperation.
+	ra.SA = &mockSARevocationWithAuthzs{mockSA, true}
 	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
 		Cert:  cert.Raw,
 		Code:  ocsp.Unspecified,
-		RegID: 5,
+		RegID: 2,
 	})
 	test.AssertNotError(t, err, "should have succeeded")
 	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)].RevokedReason, int64(ocsp.CessationOfOperation))
@@ -4135,7 +4249,7 @@ func TestRevokeCertByKey(t *testing.T) {
 	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
 		ic.NameID(): ic,
 	}
-	mockSA := newMockSARevocation(cert, clk)
+	mockSA := newMockSARevocation(cert)
 	ra.SA = mockSA
 
 	// Revoking should work, but override the requested reason and block the key.
@@ -4187,7 +4301,7 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	ra.issuersByNameID = map[issuance.NameID]*issuance.Certificate{
 		ic.NameID(): ic,
 	}
-	mockSA := newMockSARevocation(cert, clk)
+	mockSA := newMockSARevocation(cert)
 	ra.SA = mockSA
 
 	// Revoking with an empty request should fail immediately.
@@ -4369,10 +4483,10 @@ func TestNewOrderFailedAuthzRateLimitingExempt(t *testing.T) {
 	test.AssertNotNil(t, order.Id, "initial order had a nil ID")
 	test.AssertEquals(t, numAuthorizations(order), 1)
 
-	// Mock SA that fails all authorizations for "example.com".
+	// Mock SA that has a failed authorization for "example.com".
 	ra.SA = &mockInvalidPlusValidAuthzAuthority{
-		mockInvalidAuthorizationsAuthority{
-			domainWithFailures: "example.com"},
+		mockSAWithAuthzs{authzs: map[string]*core.Authorization{}},
+		"example.com",
 	}
 
 	// Set up a rate limit policy that allows 1 order every 24 hours.
@@ -4394,6 +4508,26 @@ func TestNewOrderFailedAuthzRateLimitingExempt(t *testing.T) {
 	test.AssertNotError(t, err, "limit exempt order should have succeeded")
 }
 
+// An authority that returns an error from NewOrderAndAuthzs if the
+// "ReplacesSerial" field of the request is empty.
+type mockNewOrderMustBeReplacementAuthority struct {
+	mockSAWithAuthzs
+}
+
+func (sa *mockNewOrderMustBeReplacementAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	if req.NewOrder.ReplacesSerial == "" {
+		return nil, status.Error(codes.InvalidArgument, "NewOrder is not a replacement")
+	}
+	return &corepb.Order{
+		Id:             1,
+		RegistrationID: req.NewOrder.RegistrationID,
+		Expires:        req.NewOrder.Expires,
+		Status:         string(core.StatusPending),
+		Created:        timestamppb.New(time.Now()),
+		Names:          req.NewOrder.Names,
+	}, nil
+}
+
 func TestNewOrderReplacesSerialCarriesThroughToSA(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -4406,7 +4540,7 @@ func TestNewOrderReplacesSerialCarriesThroughToSA(t *testing.T) {
 
 	// Mock SA that returns an error from NewOrderAndAuthzs if the
 	// "ReplacesSerial" field of the request is empty.
-	ra.SA = &mockNewOrderMustBeReplacementAuthority{}
+	ra.SA = &mockNewOrderMustBeReplacementAuthority{mockSAWithAuthzs{}}
 
 	_, err := ra.NewOrder(ctx, exampleOrder)
 	test.AssertNotError(t, err, "order with ReplacesSerial should have succeeded")
