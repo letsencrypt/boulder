@@ -86,6 +86,18 @@ func (msa *mockSARecordingBlocks) reset() {
 	msa.blockRequests = nil
 }
 
+type mockSARO struct {
+	sapb.StorageAuthorityReadOnlyClient
+}
+
+func (sa *mockSARO) GetSerialsByKey(ctx context.Context, _ *sapb.SPKIHash, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByKeyClient, error) {
+	return &mocks.ServerStreamClient[sapb.Serial]{}, nil
+}
+
+func (sa *mockSARO) KeyBlocked(ctx context.Context, req *sapb.SPKIHash, _ ...grpc.CallOption) (*sapb.Exists, error) {
+	return &sapb.Exists{Exists: false}, nil
+}
+
 func TestBlockSPKIHash(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
@@ -97,7 +109,7 @@ func TestBlockSPKIHash(t *testing.T) {
 	keyHash, err := core.KeyDigest(privKey.Public())
 	test.AssertNotError(t, err, "computing test SPKI hash")
 
-	a := admin{saroc: &mocks.StorageAuthorityReadOnly{}, sac: &msa, clk: fc, log: log}
+	a := admin{saroc: &mockSARO{}, sac: &msa, clk: fc, log: log}
 	u := &user.User{}
 
 	// A full run should result in one request with the right fields.

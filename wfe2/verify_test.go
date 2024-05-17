@@ -20,7 +20,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
-	"github.com/letsencrypt/boulder/mocks"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -1633,8 +1632,8 @@ func (sa mockSADifferentStoredKey) GetRegistration(_ context.Context, _ *sapb.Re
 }
 
 func TestValidPOSTForAccountSwappedKey(t *testing.T) {
-	wfe, fc, signer := setupWFE(t)
-	wfe.sa = &mockSADifferentStoredKey{mocks.NewStorageAuthorityReadOnly(fc)}
+	wfe, _, signer := setupWFE(t)
+	wfe.sa = &mockSADifferentStoredKey{}
 	wfe.accountGetter = wfe.sa
 	event := newRequestEvent()
 

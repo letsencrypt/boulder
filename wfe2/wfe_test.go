@@ -1673,7 +1673,7 @@ func TestAuthorization500(t *testing.T) {
 // a `GetAuthorization` implementation that can return authorizations with
 // failed challenges.
 type SAWithFailedChallenges struct {
-	mocks.StorageAuthorityReadOnly
+	sapb.StorageAuthorityReadOnlyClient
 	Clk clock.FakeClock
 }
 
