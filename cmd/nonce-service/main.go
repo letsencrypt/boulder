@@ -81,6 +81,10 @@ func main() {
 		c.NonceService.DebugAddr = *debugAddr
 	}
 
+	if c.NonceService.NoncePrefixKey.PasswordFile == "" {
+		cmd.Fail("NoncePrefixKey PasswordFile must be set")
+	}
+
 	key, err := c.NonceService.NoncePrefixKey.Pass()
 	cmd.FailOnError(err, "Failed to load 'noncePrefixKey' file.")
 	noncePrefix, err := derivePrefix(key, c.NonceService.GRPC.Address)
