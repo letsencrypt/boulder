@@ -23,6 +23,7 @@ type Config struct {
 		// from the gRPC listening address. If this is false, the nonce prefix
 		// will be the value of the NoncePrefix field. If this is true, the
 		// NoncePrefixKey field is required.
+		// TODO(#6610): Remove this.
 		//
 		// Deprecated: this value is ignored, and treated as though it is always true.
 		UseDerivablePrefix bool `validate:"-"`
