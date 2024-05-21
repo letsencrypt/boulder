@@ -12,16 +12,16 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/mocks"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // fakeGRCC is a fake sapb.StorageAuthority_GetRevokedCertsClient which can be
@@ -50,7 +50,7 @@ func (f *fakeGRCC) Recv() (*corepb.CRLEntry, error) {
 // fakeGRCC to be used as the return value for calls to GetRevokedCerts, and a
 // fake timestamp to serve as the database's maximum notAfter value.
 type fakeSAC struct {
-	mocks.StorageAuthority
+	sapb.StorageAuthorityClient
 	grcc        fakeGRCC
 	maxNotAfter time.Time
 	leaseError  error

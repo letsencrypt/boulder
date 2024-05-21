@@ -2670,8 +2670,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if err != nil {
 		return nil, err
 	}
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if storedOrder.Id == 0 || storedOrder.Status == "" || storedOrder.RegistrationID == 0 || len(storedOrder.Names) == 0 || core.IsAnyNilOrZero(storedOrder.Created, storedOrder.Expires) {
+
+	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, storedOrder.Names, storedOrder.Created, storedOrder.Expires) {
 		return nil, errIncompleteGRPCResponse
 	}
 	ra.orderAges.WithLabelValues("NewOrder").Observe(0)

@@ -6,11 +6,9 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"net"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -26,8 +24,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
-	"github.com/letsencrypt/boulder/mail"
-	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -51,18 +47,6 @@ type StorageAuthority struct {
 // with the given clock.
 func NewStorageAuthority(clk clock.Clock) *StorageAuthority {
 	return &StorageAuthority{StorageAuthorityReadOnly{clk}}
-}
-
-// serverStreamClient is a mock which satisfies the grpc.ClientStream interface,
-// allowing it to be returned by methods where the server returns a stream of
-// results. This simple mock will always return zero results.
-type serverStreamClient[T any] struct {
-	grpc.ClientStream
-}
-
-// Recv immediately returns the EOF error, indicating that the stream is done.
-func (c *serverStreamClient[T]) Recv() (*T, error) {
-	return nil, io.EOF
 }
 
 const (
@@ -252,22 +236,22 @@ func (sa *StorageAuthorityReadOnly) GetRevocationStatus(_ context.Context, req *
 
 // SerialsForIncident is a mock
 func (sa *StorageAuthorityReadOnly) SerialsForIncident(ctx context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_SerialsForIncidentClient, error) {
-	return &serverStreamClient[sapb.IncidentSerial]{}, nil
+	return &ServerStreamClient[sapb.IncidentSerial]{}, nil
 }
 
 // SerialsForIncident is a mock
 func (sa *StorageAuthority) SerialsForIncident(ctx context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
-	return &serverStreamClient[sapb.IncidentSerial]{}, nil
+	return &ServerStreamClient[sapb.IncidentSerial]{}, nil
 }
 
 // GetRevokedCerts is a mock
 func (sa *StorageAuthorityReadOnly) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetRevokedCertsClient, error) {
-	return &serverStreamClient[corepb.CRLEntry]{}, nil
+	return &ServerStreamClient[corepb.CRLEntry]{}, nil
 }
 
 // GetRevokedCerts is a mock
 func (sa *StorageAuthority) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
-	return &serverStreamClient[corepb.CRLEntry]{}, nil
+	return &ServerStreamClient[corepb.CRLEntry]{}, nil
 }
 
 // GetMaxExpiration is a mock
@@ -559,22 +543,22 @@ func (sa *StorageAuthorityReadOnly) GetAuthorization2(ctx context.Context, id *s
 
 // GetSerialsByKey is a mock
 func (sa *StorageAuthorityReadOnly) GetSerialsByKey(ctx context.Context, _ *sapb.SPKIHash, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByKeyClient, error) {
-	return &serverStreamClient[sapb.Serial]{}, nil
+	return &ServerStreamClient[sapb.Serial]{}, nil
 }
 
 // GetSerialsByKey is a mock
 func (sa *StorageAuthority) GetSerialsByKey(ctx context.Context, _ *sapb.SPKIHash, _ ...grpc.CallOption) (sapb.StorageAuthority_GetSerialsByKeyClient, error) {
-	return &serverStreamClient[sapb.Serial]{}, nil
+	return &ServerStreamClient[sapb.Serial]{}, nil
 }
 
 // GetSerialsByAccount is a mock
 func (sa *StorageAuthorityReadOnly) GetSerialsByAccount(ctx context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByAccountClient, error) {
-	return &serverStreamClient[sapb.Serial]{}, nil
+	return &ServerStreamClient[sapb.Serial]{}, nil
 }
 
 // GetSerialsByAccount is a mock
 func (sa *StorageAuthority) GetSerialsByAccount(ctx context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (sapb.StorageAuthority_GetSerialsByAccountClient, error) {
-	return &serverStreamClient[sapb.Serial]{}, nil
+	return &ServerStreamClient[sapb.Serial]{}, nil
 }
 
 // RevokeCertificate is a mock
@@ -615,67 +599,4 @@ func (sa *StorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Update
 // ReplacementOrderExists is a mock.
 func (sa *StorageAuthorityReadOnly) ReplacementOrderExists(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Exists, error) {
 	return nil, nil
-}
-
-// PublisherClient is a mock
-type PublisherClient struct {
-	// empty
-}
-
-// SubmitToSingleCTWithResult is a mock
-func (*PublisherClient) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
-	return &pubpb.Result{}, nil
-}
-
-// Mailer is a mock
-type Mailer struct {
-	sync.Mutex
-	Messages []MailerMessage
-}
-
-var _ mail.Mailer = &Mailer{}
-
-// mockMailerConn is a mock that satisfies the mail.Conn interface
-type mockMailerConn struct {
-	parent *Mailer
-}
-
-var _ mail.Conn = &mockMailerConn{}
-
-// MailerMessage holds the captured emails from SendMail()
-type MailerMessage struct {
-	To      string
-	Subject string
-	Body    string
-}
-
-// Clear removes any previously recorded messages
-func (m *Mailer) Clear() {
-	m.Lock()
-	defer m.Unlock()
-	m.Messages = nil
-}
-
-// SendMail is a mock
-func (m *mockMailerConn) SendMail(to []string, subject, msg string) error {
-	m.parent.Lock()
-	defer m.parent.Unlock()
-	for _, rcpt := range to {
-		m.parent.Messages = append(m.parent.Messages, MailerMessage{
-			To:      rcpt,
-			Subject: subject,
-			Body:    msg,
-		})
-	}
-	return nil
-}
-
-// Close is a mock
-func (m *mockMailerConn) Close() error {
-	return nil
-}
-
-// Connect is a mock
-func (m *Mailer) Connect() (mail.Conn, error) {
-	return &mockMailerConn{parent: m}, nil
 }
