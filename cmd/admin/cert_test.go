@@ -43,8 +43,8 @@ type mockSAWithIncident struct {
 // will return the mockSAWithIncident's serials in order.
 func (msa *mockSAWithIncident) SerialsForIncident(_ context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.IncidentSerial], error) {
 	fakeResults := make([]*sapb.IncidentSerial, len(msa.incidentSerials))
-	for i, ser := range msa.incidentSerials {
-		fakeResults[i] = &sapb.IncidentSerial{Serial: ser}
+	for i, serial := range msa.incidentSerials {
+		fakeResults[i] = &sapb.IncidentSerial{Serial: serial}
 	}
 	return &mocks.ServerStreamClient[sapb.IncidentSerial]{Results: fakeResults}, nil
 }
@@ -93,8 +93,8 @@ func (msa *mockSAWithKey) GetSerialsByKey(_ context.Context, req *sapb.SPKIHash,
 		return &mocks.ServerStreamClient[sapb.Serial]{}, nil
 	}
 	fakeResults := make([]*sapb.Serial, len(msa.serials))
-	for i, ser := range msa.serials {
-		fakeResults[i] = &sapb.Serial{Serial: ser}
+	for i, serial := range msa.serials {
+		fakeResults[i] = &sapb.Serial{Serial: serial}
 	}
 	return &mocks.ServerStreamClient[sapb.Serial]{Results: fakeResults}, nil
 }
@@ -147,8 +147,8 @@ func (msa *mockSAWithAccount) GetSerialsByAccount(_ context.Context, req *sapb.R
 		return &mocks.ServerStreamClient[sapb.Serial]{}, nil
 	}
 	fakeResults := make([]*sapb.Serial, len(msa.serials))
-	for i, ser := range msa.serials {
-		fakeResults[i] = &sapb.Serial{Serial: ser}
+	for i, serial := range msa.serials {
+		fakeResults[i] = &sapb.Serial{Serial: serial}
 	}
 	return &mocks.ServerStreamClient[sapb.Serial]{Results: fakeResults}, nil
 }
