@@ -75,8 +75,12 @@ func (s *fakeServerStream[T]) Context() context.Context {
 }
 
 func TestImplementation(t *testing.T) {
-	test.AssertImplementsGRPCServer(t, &SQLStorageAuthority{}, sapb.UnimplementedStorageAuthorityServer{})
 	test.AssertImplementsGRPCServer(t, &SQLStorageAuthorityRO{}, sapb.UnimplementedStorageAuthorityReadOnlyServer{})
+	// We do not run AssertImplementsGRPCServer for SQLStorageAuthority and
+	// sapb.UnimplementedStorageAuthorityServer, but this is okay: because
+	// SQLStorageAuthority does not embed sapb.UnimplementedStorageauthorityServer
+	// (choosing instead to embed sapb.UnsafeStorageAuthorityServer), we would get
+	// a compile time failure if it did not implement all of those methods.
 }
 
 // initSA constructs a SQLStorageAuthority and a clean up function that should
