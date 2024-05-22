@@ -1,0 +1,80 @@
+* {
+    font-family: "Nunito", Arial, sans-serif;
+}
+
+body {
+    max-width: 40em;
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 2em;
+    padding: 0 1rem;
+}
+
+a {
+    color: #3771c8;
+}
+
+a:hover {
+    color: #274f8c;
+}
+
+.buttonWrapper {
+    display: flex;
+}
+
+.tab-button {
+    padding: 0.5rem 1rem;
+    border-width: 1px 1px 0px 1px;
+    border-color: #c0c0c0;
+    border-style: solid;
+    margin-right: 1rem;
+    background-color: #c0c0c0;
+    border-radius: 0.25rem 0.25rem 0 0;
+}
+
+.tab-button.active {
+    border-bottom: 1px solid #c2e9e9;
+    margin-bottom: -1px;
+    background-color: #c2e9e9;
+    border-color: #c2e9e9;
+}
+
+.content {
+    border-width: 1px;
+    border-color: #c2e9e9;;
+    border-style: solid;
+    background-color: #c2e9e9;
+    padding: 1.5rem;
+    display: none;
+    border-radius: 0 0.25rem 0.25rem 0.25rem;
+}
+
+.content.active {
+    display: block;
+}
+
+textarea {
+    box-sizing: border-box;
+    width:100%;
+    margin: 1rem 0;
+    border: 1px solid white;
+    font-size: 1rem;
+}
+
+button {
+    font-size: 1rem;
+}
+
+button.primary {
+    color: #fff;
+    border-color: #3771c8;
+    background-color: #3771c8;
+    border: 0;
+    font-size: .875rem;
+    line-height: 1.5;
+    padding: 0.625rem 1.6rem;
+    font-weight: 600;
+    border-radius: 0.25rem;
+}
+
+/* jep 2024 */

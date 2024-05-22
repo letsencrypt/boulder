@@ -1,0 +1,58 @@
+<!doctype html>
+<html dir="ltr" lang="en-US">
+    <header>
+        <title>Unpause - Self-Service Frontend</title>
+        {{ template "meta" }}
+    </header>
+    <body>
+    <div>
+    <h1>Action Required to Unpause Your ACME Account</h1>
+
+    <p>
+        You have been directed to this page because your account (Registration
+        ID: &lt;registrationID&gt;) is temporarily restricted from requesting
+        new certificates for certain hostnames, following a significant number
+        of failed validation attempts without any recent successes.
+    </p>
+    
+    <h2>Why Did This Happen?</h2> 
+    <p>
+        This often happens when domain names expire, point to new hosts, or if
+        there are issues with the DNS configuration or web server settings.
+        These problems prevent your ACME client from successfully validating
+        control over the domain, which is necessary for issuing TLS
+        certificates.
+    </p>
+    
+    <h2>What Can You Do?</h2>
+    <p>
+        Please check the DNS configuration and web server settings for the
+        affected hostnames. Ensure they are properly set up to respond to ACME
+        challenges. This might involve updating DNS records, renewing domain
+        registrations, or adjusting web server configurations. If you use a
+        hosting provider or third-party service for domain management, you may
+        need to coordinate with them.
+    </p>
+    
+    <h2>Ready to Unpause?</h2>
+    <p>
+        Once you have addressed these issues, click the button below to remove
+        the pause on your account. This action will allow you to resume
+        requesting certificates for all affected hostnames associated with your
+        account.
+    </p>
+        <div>
+            <form action="{{ .UnpausePath }}?jwt={{ .JWT }}" method="POST">
+              <button class="primary" id="submit">Please Unpause My Account</button>
+            </form>
+        </div>
+    <p>
+        <strong>Note:</strong> This link is active for &lt;X&gt; more days. If
+        you face difficulties or need more guidance, our <a
+        href="https://community.letsencrypt.org">support forum</a> is a great
+        resource for troubleshooting and advice.
+    </p>
+    </div>
+</body>
+
+{{template "footer"}}

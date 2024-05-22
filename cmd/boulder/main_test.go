@@ -52,6 +52,8 @@ func TestConfigValidation(t *testing.T) {
 			}
 		case "boulder-wfe2":
 			fileNames = []string{"wfe2.json"}
+		case "sfe":
+			fileNames = []string{"sfe.json"}
 		case "nonce-service":
 			fileNames = []string{
 				"nonce-a.json",
