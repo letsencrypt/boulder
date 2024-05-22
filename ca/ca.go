@@ -419,11 +419,16 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing cert: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] precert=[%s]",
 		issuer.Name(), serialHex, req.RegistrationID, names, certProfile.name, certProfile.hash, hex.EncodeToString(precert.Raw))
 
-	_, issuanceToken, err := issuer.Prepare(certProfile.profile, issuanceReq)
+	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, issuanceReq)
 	if err != nil {
 		ca.log.AuditErrf("Preparing cert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			issuer.Name(), serialHex, req.RegistrationID, names, certProfile.name, certProfile.hash, err)
 		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
+	}
+
+	lintCert, err := x509.ParseCertificate(lintCertBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse lint certificate bytes: %s", err)
 	}
 
 	certDER, err := issuer.Issue(issuanceToken)
@@ -432,6 +437,16 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		ca.log.AuditErrf("Signing cert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			issuer.Name(), serialHex, req.RegistrationID, names, certProfile.name, certProfile.hash, err)
 		return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
+	}
+
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse certificate bytes: %s", err)
+	}
+
+	err = verifyTBSCertificateDeterminism(lintCert, cert)
+	if err != nil {
+		return nil, err
 	}
 
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
@@ -590,6 +605,11 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
 	}
 
+	lintCert, err := x509.ParseCertificate(lintCertBytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse lint precertificate bytes: %s", err)
+	}
+
 	_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 		Der:          lintCertBytes,
 		RegID:        issueReq.RegistrationID,
@@ -609,9 +629,34 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
 	}
 
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse precertificate bytes: %s", err)
+	}
+
+	err = verifyTBSCertificateDeterminism(lintCert, cert)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing precert success: issuer=[%s] serial=[%s] regID=[%d] names=[%s] precertificate=[%s] certProfileName=[%s] certProfileHash=[%x]",
 		issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(certDER), certProfile.name, certProfile.hash)
 
 	return certDER, &certProfileWithID{certProfile.name, certProfile.hash, nil}, nil
+}
+
+// verifyTBSCertificateDeterminism verifies that x509.CreateCertificate signing
+// operation is deterministic and produced identical DER bytes between the given
+// lintCert and leafCert. If this fails it's mississuance, but it's better to
+// know about the problem sooner than later.
+func verifyTBSCertificateDeterminism(lintCert *x509.Certificate, leafCert *x509.Certificate) error {
+	if core.IsAnyNilOrZero(lintCert, leafCert) {
+		return fmt.Errorf("lintCertBytes and certBytes were nil")
+	}
+	if !bytes.Equal(lintCert.RawTBSCertificate, leafCert.RawTBSCertificate) {
+		return fmt.Errorf("mismatch between lintCert and leafCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, leafCert.RawTBSCertificate)
+	}
+
+	return nil
 }

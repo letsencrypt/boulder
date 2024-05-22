@@ -10,6 +10,7 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"strings"
 	"testing"
@@ -1299,4 +1300,79 @@ func TestGenerateSKID(t *testing.T) {
 	test.AssertEquals(t, len(sha256skid), 20)
 	test.AssertEquals(t, cap(sha256skid), 20)
 	features.Reset()
+}
+
+func TestVerifyTBSCertificateDeterminism(t *testing.T) {
+	t.Parallel()
+
+	// Create first keypair and cert
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "unable to generate ECDSA private key")
+	template := &x509.Certificate{
+		NotAfter:     time.Now().Add(1 * time.Hour),
+		DNSNames:     []string{"example.com"},
+		SerialNumber: big.NewInt(1),
+	}
+	certDer1, err := x509.CreateCertificate(rand.Reader, template, template, &testKey.PublicKey, testKey)
+	test.AssertNotError(t, err, "unable to create certificate")
+	parsedCert1, err := x509.ParseCertificate(certDer1)
+	test.AssertNotError(t, err, "unable to parse DER bytes")
+
+	// Create second keypair and cert
+	testKey2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "unable to generate ECDSA private key")
+	template2 := &x509.Certificate{
+		NotAfter:     time.Now().Add(2 * time.Hour),
+		DNSNames:     []string{"example.net"},
+		SerialNumber: big.NewInt(2),
+	}
+	certDer2, err := x509.CreateCertificate(rand.Reader, template2, template2, &testKey2.PublicKey, testKey2)
+	test.AssertNotError(t, err, "unable to create certificate")
+	parsedCert2, err := x509.ParseCertificate(certDer2)
+	test.AssertNotError(t, err, "unable to parse DER bytes")
+
+	testCases := []struct {
+		name          string
+		leafCert      *x509.Certificate
+		lintCert      *x509.Certificate
+		errorExpected bool
+	}{
+		{
+			name:          "Both nil",
+			leafCert:      nil,
+			lintCert:      nil,
+			errorExpected: true,
+		},
+		{
+			name:          "Missing a value",
+			leafCert:      parsedCert1,
+			lintCert:      nil,
+			errorExpected: true,
+		},
+		{
+			name:          "Mismatch",
+			leafCert:      parsedCert1,
+			lintCert:      parsedCert2,
+			errorExpected: true,
+		},
+		{
+			name:     "Valid",
+			leafCert: parsedCert1,
+			lintCert: parsedCert1,
+		},
+	}
+
+	for _, testCase := range testCases {
+		// TODO(#7454) Remove this rebinding
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			err := verifyTBSCertificateDeterminism(testCase.lintCert, testCase.leafCert)
+			if testCase.errorExpected {
+				test.AssertError(t, err, "your lack of errors is disturbing")
+			} else {
+				test.AssertNotError(t, err, "unexpected error")
+			}
+		})
+	}
 }

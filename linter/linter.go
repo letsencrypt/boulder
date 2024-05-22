@@ -1,6 +1,7 @@
 package linter
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -239,6 +240,16 @@ func makeLintCert(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, issuer 
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse lint certificate: %w", err)
 	}
+	// RFC 5280, Sections 4.1.2.6 and 8
+	//
+	// When the subject of the certificate is a CA, the subject
+	// field MUST be encoded in the same way as it is encoded in the
+	// issuer field (Section 4.1.2.4) in all certificates issued by
+	// the subject CA.
+	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
+		return nil, nil, fmt.Errorf("mismatch between lint issuer RawSubject and lintCert.RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
+	}
+
 	return lintCertBytes, lintCert, nil
 }
 
