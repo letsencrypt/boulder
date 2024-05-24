@@ -40,6 +40,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -4317,113 +4318,60 @@ func TestPausing(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		t.Skip("Test requires paused database table")
 	}
-
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
-	dnsIdType := uintToIdentifierType[0]
 
-	exampleCom1 := &sapb.PauseRequest{
-		RegistrationID:  1,
-		IdentifierType:  dnsIdType,
-		IdentifierValue: "example.com",
+	checkExampleCom1 := &sapb.CheckIdentifiersPausedRequest{
+		RegistrationID: 1,
+		Identifiers: []*sapb.Identifier{
+			{
+				Type:  string(identifier.DNS),
+				Value: "example.com",
+			},
+		},
 	}
 
-	// Pause example.com for RegID 1.
-	_, err := sa.PausePair(ctx, exampleCom1)
-	test.AssertNotError(t, err, "failed to pause example.com for RegistrationID 1")
-
-	// Pausing example.com for RegID 1 again should fail.
-	_, err = sa.PausePair(ctx, exampleCom1)
-	test.AssertError(t, err, "failed to pause example.com for RegistrationID 1")
-	test.AssertErrorIs(t, err, ErrAlreadyOrPreviouslyPaused)
-
-	// Check the pause status of example.com for RegID 1.
-	pair, err := sa.CheckPairPaused(ctx, exampleCom1)
-	test.AssertNotError(t, err, "failed to check pair status of example.com for RegistrationID 1")
-	test.Assert(t, pair.IsPaused, "example.com for RegistrationID 1 should be paused")
-	test.Assert(t, !pair.WasPaused, "example.com for RegistrationID 1 should not have been previously paused")
-
-	// Check the pause status of example.com for RegID 2.
-	example2 := &sapb.PauseRequest{
-		RegistrationID:  2,
-		IdentifierType:  dnsIdType,
-		IdentifierValue: "example.com",
-	}
-	pair, err = sa.CheckPairPaused(ctx, example2)
-	test.AssertNotError(t, err, "failed to check pair status of example.com for RegistrationID 2")
-	test.Assert(t, !pair.IsPaused, "example.com for RegistrationID 2 should not be paused")
-	test.Assert(t, !pair.WasPaused, "example.com for RegistrationID 2 should not have been previously paused")
-
-	exampleComOrg1 := &sapb.PairsPausedRequest{
-		RegistrationID:   1,
-		IdentifierType:   dnsIdType,
-		IdentifierValues: []string{"example.com", "example.org"},
+	pauseExampleCom1 := &sapb.PauseIdentifierRequest{
+		RegistrationID: 1,
+		Identifier: &sapb.Identifier{
+			Type:  string(identifier.DNS),
+			Value: "example.com",
+		},
 	}
 
-	// Check the pause status of example.com and example.org for RegID 1.
-	paused, err := sa.CheckPairsPaused(ctx, exampleComOrg1)
-	test.AssertNotError(t, err, "failed to check pair status of example.com and example.org for RegistrationID 1")
-	test.AssertEquals(t, len(paused.Hostnames), 1)
+	// Ensure that the identifier is not paused.
+	matches, err := sa.CheckIdentifiersPaused(ctx, checkExampleCom1)
+	test.AssertNotError(t, err, "CheckIdentifiersPaused failed")
+	test.AssertEquals(t, len(matches.Hostnames), 0)
 
-	exampleOrg1 := &sapb.PauseRequest{
-		RegistrationID:  1,
-		IdentifierType:  dnsIdType,
-		IdentifierValue: "example.org",
-	}
+	// Pause the identifier.
+	repaused, err := sa.PauseIdentifier(ctx, pauseExampleCom1)
+	test.AssertNotError(t, err, "PauseIdentifier failed")
+	test.Assert(t, !repaused.Repaused, "repaused should be false, as this is the first pause")
 
-	// Pause example.org for RegistrationID 1.
-	_, err = sa.PausePair(ctx, exampleOrg1)
-	test.AssertNotError(t, err, "failed to pause example.org for RegistrationID 1")
+	// Ensure that the identifier is paused.
+	matches, err = sa.CheckIdentifiersPaused(ctx, checkExampleCom1)
+	test.AssertNotError(t, err, "CheckIdentifiersPaused failed")
+	test.AssertEquals(t, len(matches.Hostnames), 1)
+	test.AssertEquals(t, matches.Hostnames[0], "example.com")
 
-	// Check the pause status of example.com and example.org for RegID 1. Both
-	// should now be paused.
-	paused, err = sa.CheckPairsPaused(ctx, exampleComOrg1)
-	test.AssertNotError(t, err, "failed to check pair status of example.com and example.org for RegistrationID 1")
-	test.AssertEquals(t, len(paused.Hostnames), 2)
+	// Attempt to pause the already paused identifier, this should be a no-op.
+	repaused, err = sa.PauseIdentifier(ctx, pauseExampleCom1)
+	test.AssertNotError(t, err, "PauseIdentifier failed")
+	test.Assert(t, !repaused.Repaused, "repaused should be false, as the identifier is already paused")
 
-	// Unpause example.com for RegID 1.
-	_, err = sa.UnpausePair(ctx, exampleCom1)
-	test.AssertNotError(t, err, "failed to unpause example.com for RegistrationID 1")
+	// Get the paused identifiers.
+	pausedIdentifiers, err := sa.GetPausedIdentifiersForAccount(ctx, &sapb.RegistrationID{Id: 1})
+	test.AssertNotError(t, err, "GetPausedIdentifiersForAccount failed")
+	test.AssertEquals(t, len(pausedIdentifiers.Hostnames), 1)
+	test.AssertEquals(t, pausedIdentifiers.Hostnames[0], "example.com")
 
-	// Unpausing example.com for RegID 1 again should fail.
-	_, err = sa.UnpausePair(ctx, exampleCom1)
-	test.AssertError(t, err, "failed to unpause example.com for RegistrationID 1")
-	test.AssertErrorIs(t, err, ErrNotCurrentlyPaused)
+	// Unpause all identifiers for the account.
+	_, err = sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	test.AssertNotError(t, err, "UnpauseAccount failed")
 
-	// Check the pause status of example.com for RegID 1.
-	pair, err = sa.CheckPairPaused(ctx, exampleCom1)
-	test.AssertNotError(t, err, "failed to check pair status of example.com for RegistrationID 1")
-	test.Assert(t, !pair.IsPaused, "example.com for RegistrationID 1 should not be paused")
-	test.Assert(t, pair.WasPaused, "example.com for RegistrationID 1 was previously paused")
-
-	// Repause example.com for RegID 1 using sa.PausePair should fail.
-	_, err = sa.PausePair(ctx, exampleCom1)
-	test.AssertError(t, err, "failed to repause example.com for RegistrationID 1")
-	test.AssertErrorIs(t, err, ErrAlreadyOrPreviouslyPaused)
-
-	// Repause example.com for RegID 1 using sa.RepausePair should succeed.
-	_, err = sa.RepausePair(ctx, exampleCom1)
-	test.AssertNotError(t, err, "failed to repause example.com for RegistrationID 1")
-
-	// Pausing example.com for RegID 1 again using sa.RepausePair should fail.
-	_, err = sa.RepausePair(ctx, exampleCom1)
-	test.AssertError(t, err, "failed to repause example.com for RegistrationID 1")
-	test.AssertErrorIs(t, err, ErrAlreadyOrNotPreviouslyPaused)
-
-	// Check the pause status of example.com for RegID 1.
-	pair, err = sa.CheckPairPaused(ctx, exampleCom1)
-	test.AssertNotError(t, err, "failed to check pair status of example.com for RegistrationID 1")
-	test.Assert(t, pair.IsPaused, "example.com for RegistrationID 1 should be paused")
-	test.Assert(t, !pair.WasPaused, "example.com for RegistrationID 1 should not have been previously paused")
-
-	// Both example.com and example.org should still be paused for RegID 1.
-	// Attempt to unpause them both at once.
-	_, err = sa.UnpauseAccount(ctx, &sapb.PauseRequest{RegistrationID: 1})
-	test.AssertNotError(t, err, "failed to unpause example.com and example.org for RegistrationID 1")
-
-	// Check the pause status of example.com and example.org for RegID 1. Both
-	// should now be unpaused.
-	paused, err = sa.CheckPairsPaused(ctx, exampleComOrg1)
-	test.AssertNotError(t, err, "failed to check pair status of example.com and example.org for RegistrationID 1")
-	test.AssertEquals(t, len(paused.Hostnames), 0)
+	// Pause the identifier again. This time, repaused should be true.
+	repaused, err = sa.PauseIdentifier(ctx, pauseExampleCom1)
+	test.AssertNotError(t, err, "PauseIdentifier failed")
+	test.Assert(t, repaused.Repaused, "repaused should be true, as the identifier was unpaused and then paused again")
 }

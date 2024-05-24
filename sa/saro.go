@@ -1523,61 +1523,46 @@ func (ssa *SQLStorageAuthority) GetSerialsByAccount(req *sapb.RegistrationID, st
 	return ssa.SQLStorageAuthorityRO.GetSerialsByAccount(req, stream)
 }
 
-// CheckPairPaused checks if the given (account, hostname) pair has been
-// paused. The first return value is true if the pair is currently paused, and
-// the second return value is true if the pair was previously paused but is no
-// longer paused.
-func (ssa *SQLStorageAuthorityRO) CheckPairPaused(ctx context.Context, req *sapb.PauseRequest) (*sapb.PairPausedResponse, error) {
-	if core.IsAnyNilOrZero(req.RegistrationID, req.IdentifierValue) {
+// CheckIdentifiersPaused takes a slice of identifiers of type "dns" and returns
+// a slice of the first 15 identifier values which are currently paused for the
+// provided account. If no matches are found, an empty slice is returned. If a
+// non-DNS identifier is provided, an error is returned.
+func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, req *sapb.CheckIdentifiersPausedRequest) (*sapb.Hostnames, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifiers) {
 		return nil, errIncompleteRequest
 	}
 
-	// Marshal the identifierType to a uint now that we've crossed the RPC boundary.
-	identifierType, ok := identifierTypeToUint[req.IdentifierType]
-	if !ok {
-		// This should never happen.
-		return nil, fmt.Errorf("unknown identifier type: %s", req.IdentifierType)
-	}
+	// Marshal the idenfifiers now that we've crossed the RPC boundary.
+	ids := newIdentifiersFromPB(req.Identifiers)
 
-	paused, wasPaused, err := checkPairPaused(ctx, ssa.dbReadOnlyMap, req.RegistrationID, identifierType, req.IdentifierValue)
+	matches, err := checkIdentifiersPaused(ctx, ssa.dbReadOnlyMap, req.RegistrationID, ids)
 	if err != nil {
 		return nil, err
 	}
 
-	return &sapb.PairPausedResponse{
-		IsPaused:  paused,
-		WasPaused: wasPaused,
-	}, nil
+	return &sapb.Hostnames{Hostnames: matches}, nil
 }
 
-func (ssa *SQLStorageAuthority) CheckPairPaused(ctx context.Context, req *sapb.PauseRequest) (*sapb.PairPausedResponse, error) {
-	return ssa.SQLStorageAuthorityRO.CheckPairPaused(ctx, req)
+func (ssa *SQLStorageAuthority) CheckIdentifiersPaused(ctx context.Context, req *sapb.CheckIdentifiersPausedRequest) (*sapb.Hostnames, error) {
+	return ssa.SQLStorageAuthorityRO.CheckIdentifiersPaused(ctx, req)
 }
 
-// CheckPairsPaused checks if the given (account, hostname) pairs are paused. If
-// any of the pairs are paused, the response will contain the first 15 matching
-// pairs that are paused. If none of the pairs are paused, the response will be
-// empty.
-func (ssa *SQLStorageAuthorityRO) CheckPairsPaused(ctx context.Context, req *sapb.PairsPausedRequest) (*sapb.Hostnames, error) {
-	if core.IsAnyNilOrZero(req.RegistrationID) {
+// GetPausedIdentifiersForAccount returns a slice of paused identifiers for the
+// provided account. If no paused identifiers are found, an empty slice is
+// returned. The results are limited to the first 15 paused identifiers.
+func (ssa *SQLStorageAuthorityRO) GetPausedIdentifiersForAccount(ctx context.Context, req *sapb.RegistrationID) (*sapb.Hostnames, error) {
+	if core.IsAnyNilOrZero(req.Id) {
 		return nil, errIncompleteRequest
 	}
 
-	// Marshal the identifierType to a uint now that we've crossed the RPC boundary.
-	identifierType, ok := identifierTypeToUint[req.IdentifierType]
-	if !ok {
-		// This should never happen.
-		return nil, fmt.Errorf("unknown identifier type: %s", req.IdentifierType)
-	}
-
-	pausedPairs, err := checkPairsPaused(ctx, ssa.dbReadOnlyMap, req.RegistrationID, identifierType, req.IdentifierValues)
+	matches, err := getPausedIdentifiersForAccount(ctx, ssa.dbReadOnlyMap, req.Id)
 	if err != nil {
 		return nil, err
 	}
 
-	return &sapb.Hostnames{Hostnames: pausedPairs}, nil
+	return &sapb.Hostnames{Hostnames: matches}, nil
 }
 
-func (ssa *SQLStorageAuthority) CheckPairsPaused(ctx context.Context, req *sapb.PairsPausedRequest) (*sapb.Hostnames, error) {
-	return ssa.SQLStorageAuthorityRO.CheckPairsPaused(ctx, req)
+func (ssa *SQLStorageAuthority) GetPausedIdentifiersForAccount(ctx context.Context, req *sapb.RegistrationID) (*sapb.Hostnames, error) {
+	return ssa.SQLStorageAuthorityRO.GetPausedIdentifiersForAccount(ctx, req)
 }

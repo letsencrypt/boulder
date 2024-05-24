@@ -1286,82 +1286,42 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 	return &emptypb.Empty{}, nil
 }
 
-// PausePair must only be used to pause a pair that is NOT currently or
-// previously paused. If the pair is currently paused, ErrAlreadyOrPreviouslyPaused
-// is returned.
-func (ssa *SQLStorageAuthority) PausePair(ctx context.Context, req *sapb.PauseRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req.RegistrationID, req.IdentifierValue) {
+// PauseIdentifier pauses a given identifier for a provided account. If the
+// identifier is currently paused, this is a no-op. If the identifier was
+// previously paused and unpaused, it will be repaused. All work is accomplished
+// in a transaction to limit possible race conditions.
+func (ssa *SQLStorageAuthority) PauseIdentifier(ctx context.Context, req *sapb.PauseIdentifierRequest) (*sapb.PauseIdentifierResponse, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifier) {
 		return nil, errIncompleteRequest
 	}
 
-	// Marshal the identifierType to a uint now that we've crossed the RPC boundary.
-	identifierType, ok := identifierTypeToUint[req.IdentifierType]
-	if !ok {
-		// This should never happen.
-		return nil, fmt.Errorf("unknown identifier type: %s", req.IdentifierType)
-	}
+	// Marshal the identifier now that we've crossed the RPC boundary.
+	identifier := newIdentifierFromPB(req.Identifier)
 
-	err := pausePair(ctx, ssa.dbMap, req.RegistrationID, identifierType, req.IdentifierValue, ssa.clk.Now())
+	var repaused bool
+	var pauseErr error
+	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		repaused, pauseErr = pauseIdentifier(ctx, tx, req.RegistrationID, identifier, ssa.clk.Now())
+		if pauseErr != nil {
+			return nil, pauseErr
+		}
+		return nil, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &emptypb.Empty{}, nil
+	return &sapb.PauseIdentifierResponse{Repaused: repaused}, nil
 }
 
-// RepausePair must only be used to repause a pair that is NOT currently paused
-// but WAS previously paused. If the pair was not previously paused or is
-// already paused, ErrAlreadyOrNotPreviouslyPaused is returned.
-func (ssa *SQLStorageAuthority) RepausePair(ctx context.Context, req *sapb.PauseRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req.RegistrationID, req.IdentifierValue) {
+// UnpauseAccount will unpause all paused identifiers for the provided account.
+// If no identifiers are currently paused, this is a no-op.
+func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error) {
+	if core.IsAnyNilOrZero(req.Id) {
 		return nil, errIncompleteRequest
 	}
 
-	// Marshal the identifierType to a uint now that we've crossed the RPC boundary.
-	identifierType, ok := identifierTypeToUint[req.IdentifierType]
-	if !ok {
-		// This should never happen.
-		return nil, fmt.Errorf("unknown identifier type: %s", req.IdentifierType)
-	}
-
-	err := repausePair(ctx, ssa.dbMap, req.RegistrationID, identifierType, req.IdentifierValue, ssa.clk.Now())
-	if err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
-}
-
-// UnpausePair must only be used to unpause a pair that is currently paused. If
-// the pair is not currently paused, ErrNotCurrentlyPaused is returned.
-func (ssa *SQLStorageAuthority) UnpausePair(ctx context.Context, req *sapb.PauseRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req.RegistrationID, req.IdentifierValue) {
-		return nil, errIncompleteRequest
-	}
-
-	// Marshal the identifierType to a uint now that we've crossed the RPC boundary.
-	identifierType, ok := identifierTypeToUint[req.IdentifierType]
-	if !ok {
-		// This should never happen.
-		return nil, fmt.Errorf("unknown identifier type: %s", req.IdentifierType)
-	}
-
-	err := unpausePair(ctx, ssa.dbMap, req.RegistrationID, identifierType, req.IdentifierValue, ssa.clk.Now())
-	if err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
-}
-
-// UnpauseAccount will unpause all paused pairs for the given registration ID.
-// If the account is not currently paused, ErrAccountNotPaused is returned.
-func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.PauseRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req.RegistrationID) {
-		return nil, errIncompleteRequest
-	}
-
-	err := unpauseAccount(ctx, ssa.dbMap, req.RegistrationID, ssa.clk.Now())
+	err := unpauseAccount(ctx, ssa.dbMap, req.Id, ssa.clk.Now())
 	if err != nil {
 		return nil, err
 	}

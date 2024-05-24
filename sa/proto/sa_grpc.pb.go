@@ -1333,8 +1333,8 @@ type StorageAuthorityClient interface {
 	KeyBlocked(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (*Exists, error)
 	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthority_SerialsForIncidentClient, error)
-	CheckPairPaused(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*PairPausedResponse, error)
-	CheckPairsPaused(ctx context.Context, in *PairsPausedRequest, opts ...grpc.CallOption) (*Hostnames, error)
+	CheckIdentifiersPaused(ctx context.Context, in *CheckIdentifiersPausedRequest, opts ...grpc.CallOption) (*Hostnames, error)
+	GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Hostnames, error)
 	// Adders
 	AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddCertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -1354,10 +1354,8 @@ type StorageAuthorityClient interface {
 	UpdateRevokedCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	LeaseCRLShard(ctx context.Context, in *LeaseCRLShardRequest, opts ...grpc.CallOption) (*LeaseCRLShardResponse, error)
 	UpdateCRLShard(ctx context.Context, in *UpdateCRLShardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	PausePair(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	RepausePair(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	UnpausePair(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	UnpauseAccount(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	PauseIdentifier(ctx context.Context, in *PauseIdentifierRequest, opts ...grpc.CallOption) (*PauseIdentifierResponse, error)
+	UnpauseAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type storageAuthorityClient struct {
@@ -1739,18 +1737,18 @@ func (x *storageAuthoritySerialsForIncidentClient) Recv() (*IncidentSerial, erro
 	return m, nil
 }
 
-func (c *storageAuthorityClient) CheckPairPaused(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*PairPausedResponse, error) {
-	out := new(PairPausedResponse)
-	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/CheckPairPaused", in, out, opts...)
+func (c *storageAuthorityClient) CheckIdentifiersPaused(ctx context.Context, in *CheckIdentifiersPausedRequest, opts ...grpc.CallOption) (*Hostnames, error) {
+	out := new(Hostnames)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/CheckIdentifiersPaused", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *storageAuthorityClient) CheckPairsPaused(ctx context.Context, in *PairsPausedRequest, opts ...grpc.CallOption) (*Hostnames, error) {
+func (c *storageAuthorityClient) GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Hostnames, error) {
 	out := new(Hostnames)
-	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/CheckPairsPaused", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/GetPausedIdentifiersForAccount", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1919,34 +1917,16 @@ func (c *storageAuthorityClient) UpdateCRLShard(ctx context.Context, in *UpdateC
 	return out, nil
 }
 
-func (c *storageAuthorityClient) PausePair(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/PausePair", in, out, opts...)
+func (c *storageAuthorityClient) PauseIdentifier(ctx context.Context, in *PauseIdentifierRequest, opts ...grpc.CallOption) (*PauseIdentifierResponse, error) {
+	out := new(PauseIdentifierResponse)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/PauseIdentifier", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *storageAuthorityClient) RepausePair(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/RepausePair", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityClient) UnpausePair(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/UnpausePair", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityClient) UnpauseAccount(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *storageAuthorityClient) UnpauseAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/UnpauseAccount", in, out, opts...)
 	if err != nil {
@@ -1991,8 +1971,8 @@ type StorageAuthorityServer interface {
 	KeyBlocked(context.Context, *SPKIHash) (*Exists, error)
 	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error
-	CheckPairPaused(context.Context, *PauseRequest) (*PairPausedResponse, error)
-	CheckPairsPaused(context.Context, *PairsPausedRequest) (*Hostnames, error)
+	CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Hostnames, error)
+	GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Hostnames, error)
 	// Adders
 	AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error)
 	AddCertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error)
@@ -2012,10 +1992,8 @@ type StorageAuthorityServer interface {
 	UpdateRevokedCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error)
 	LeaseCRLShard(context.Context, *LeaseCRLShardRequest) (*LeaseCRLShardResponse, error)
 	UpdateCRLShard(context.Context, *UpdateCRLShardRequest) (*emptypb.Empty, error)
-	PausePair(context.Context, *PauseRequest) (*emptypb.Empty, error)
-	RepausePair(context.Context, *PauseRequest) (*emptypb.Empty, error)
-	UnpausePair(context.Context, *PauseRequest) (*emptypb.Empty, error)
-	UnpauseAccount(context.Context, *PauseRequest) (*emptypb.Empty, error)
+	PauseIdentifier(context.Context, *PauseIdentifierRequest) (*PauseIdentifierResponse, error)
+	UnpauseAccount(context.Context, *RegistrationID) (*emptypb.Empty, error)
 	mustEmbedUnimplementedStorageAuthorityServer()
 }
 
@@ -2116,11 +2094,11 @@ func (UnimplementedStorageAuthorityServer) ReplacementOrderExists(context.Contex
 func (UnimplementedStorageAuthorityServer) SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error {
 	return status.Errorf(codes.Unimplemented, "method SerialsForIncident not implemented")
 }
-func (UnimplementedStorageAuthorityServer) CheckPairPaused(context.Context, *PauseRequest) (*PairPausedResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CheckPairPaused not implemented")
+func (UnimplementedStorageAuthorityServer) CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Hostnames, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CheckIdentifiersPaused not implemented")
 }
-func (UnimplementedStorageAuthorityServer) CheckPairsPaused(context.Context, *PairsPausedRequest) (*Hostnames, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CheckPairsPaused not implemented")
+func (UnimplementedStorageAuthorityServer) GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Hostnames, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPausedIdentifiersForAccount not implemented")
 }
 func (UnimplementedStorageAuthorityServer) AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddBlockedKey not implemented")
@@ -2176,16 +2154,10 @@ func (UnimplementedStorageAuthorityServer) LeaseCRLShard(context.Context, *Lease
 func (UnimplementedStorageAuthorityServer) UpdateCRLShard(context.Context, *UpdateCRLShardRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateCRLShard not implemented")
 }
-func (UnimplementedStorageAuthorityServer) PausePair(context.Context, *PauseRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method PausePair not implemented")
+func (UnimplementedStorageAuthorityServer) PauseIdentifier(context.Context, *PauseIdentifierRequest) (*PauseIdentifierResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PauseIdentifier not implemented")
 }
-func (UnimplementedStorageAuthorityServer) RepausePair(context.Context, *PauseRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RepausePair not implemented")
-}
-func (UnimplementedStorageAuthorityServer) UnpausePair(context.Context, *PauseRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UnpausePair not implemented")
-}
-func (UnimplementedStorageAuthorityServer) UnpauseAccount(context.Context, *PauseRequest) (*emptypb.Empty, error) {
+func (UnimplementedStorageAuthorityServer) UnpauseAccount(context.Context, *RegistrationID) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UnpauseAccount not implemented")
 }
 func (UnimplementedStorageAuthorityServer) mustEmbedUnimplementedStorageAuthorityServer() {}
@@ -2771,38 +2743,38 @@ func (x *storageAuthoritySerialsForIncidentServer) Send(m *IncidentSerial) error
 	return x.ServerStream.SendMsg(m)
 }
 
-func _StorageAuthority_CheckPairPaused_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PauseRequest)
+func _StorageAuthority_CheckIdentifiersPaused_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CheckIdentifiersPausedRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(StorageAuthorityServer).CheckPairPaused(ctx, in)
+		return srv.(StorageAuthorityServer).CheckIdentifiersPaused(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.StorageAuthority/CheckPairPaused",
+		FullMethod: "/sa.StorageAuthority/CheckIdentifiersPaused",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).CheckPairPaused(ctx, req.(*PauseRequest))
+		return srv.(StorageAuthorityServer).CheckIdentifiersPaused(ctx, req.(*CheckIdentifiersPausedRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StorageAuthority_CheckPairsPaused_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PairsPausedRequest)
+func _StorageAuthority_GetPausedIdentifiersForAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegistrationID)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(StorageAuthorityServer).CheckPairsPaused(ctx, in)
+		return srv.(StorageAuthorityServer).GetPausedIdentifiersForAccount(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.StorageAuthority/CheckPairsPaused",
+		FullMethod: "/sa.StorageAuthority/GetPausedIdentifiersForAccount",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).CheckPairsPaused(ctx, req.(*PairsPausedRequest))
+		return srv.(StorageAuthorityServer).GetPausedIdentifiersForAccount(ctx, req.(*RegistrationID))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3131,62 +3103,26 @@ func _StorageAuthority_UpdateCRLShard_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StorageAuthority_PausePair_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PauseRequest)
+func _StorageAuthority_PauseIdentifier_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PauseIdentifierRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(StorageAuthorityServer).PausePair(ctx, in)
+		return srv.(StorageAuthorityServer).PauseIdentifier(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.StorageAuthority/PausePair",
+		FullMethod: "/sa.StorageAuthority/PauseIdentifier",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).PausePair(ctx, req.(*PauseRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageAuthority_RepausePair_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PauseRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityServer).RepausePair(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/sa.StorageAuthority/RepausePair",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).RepausePair(ctx, req.(*PauseRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageAuthority_UnpausePair_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PauseRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityServer).UnpausePair(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/sa.StorageAuthority/UnpausePair",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).UnpausePair(ctx, req.(*PauseRequest))
+		return srv.(StorageAuthorityServer).PauseIdentifier(ctx, req.(*PauseIdentifierRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _StorageAuthority_UnpauseAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PauseRequest)
+	in := new(RegistrationID)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -3198,7 +3134,7 @@ func _StorageAuthority_UnpauseAccount_Handler(srv interface{}, ctx context.Conte
 		FullMethod: "/sa.StorageAuthority/UnpauseAccount",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).UnpauseAccount(ctx, req.(*PauseRequest))
+		return srv.(StorageAuthorityServer).UnpauseAccount(ctx, req.(*RegistrationID))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3319,12 +3255,12 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthority_ReplacementOrderExists_Handler,
 		},
 		{
-			MethodName: "CheckPairPaused",
-			Handler:    _StorageAuthority_CheckPairPaused_Handler,
+			MethodName: "CheckIdentifiersPaused",
+			Handler:    _StorageAuthority_CheckIdentifiersPaused_Handler,
 		},
 		{
-			MethodName: "CheckPairsPaused",
-			Handler:    _StorageAuthority_CheckPairsPaused_Handler,
+			MethodName: "GetPausedIdentifiersForAccount",
+			Handler:    _StorageAuthority_GetPausedIdentifiersForAccount_Handler,
 		},
 		{
 			MethodName: "AddBlockedKey",
@@ -3399,16 +3335,8 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthority_UpdateCRLShard_Handler,
 		},
 		{
-			MethodName: "PausePair",
-			Handler:    _StorageAuthority_PausePair_Handler,
-		},
-		{
-			MethodName: "RepausePair",
-			Handler:    _StorageAuthority_RepausePair_Handler,
-		},
-		{
-			MethodName: "UnpausePair",
-			Handler:    _StorageAuthority_UnpausePair_Handler,
+			MethodName: "PauseIdentifier",
+			Handler:    _StorageAuthority_PauseIdentifier_Handler,
 		},
 		{
 			MethodName: "UnpauseAccount",

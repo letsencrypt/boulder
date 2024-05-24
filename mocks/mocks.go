@@ -643,23 +643,13 @@ func (sa *StorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Update
 	return nil, errors.New("unimplemented")
 }
 
-// PausePair is a mock.
-func (sa *StorageAuthority) PausePair(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return nil, nil
-}
-
-// RepausePair is a mock.
-func (sa *StorageAuthority) RepausePair(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return nil, nil
-}
-
-// UnpausePair is a mock.
-func (sa *StorageAuthority) UnpausePair(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+// PauseIdentifier is a mock.
+func (sa *StorageAuthority) PauseIdentifier(ctx context.Context, req *sapb.PauseIdentifierRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifierResponse, error) {
 	return nil, nil
 }
 
 // UnpauseAccount is a mock.
-func (sa *StorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+func (sa *StorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, nil
 }
 
@@ -668,13 +658,13 @@ func (sa *StorageAuthorityReadOnly) ReplacementOrderExists(ctx context.Context, 
 	return nil, nil
 }
 
-// CheckPairPaused is a mock.
-func (sa *StorageAuthorityReadOnly) CheckPairPaused(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PairPausedResponse, error) {
+// CheckIdentifiersPaused is a mock.
+func (sa *StorageAuthorityReadOnly) CheckIdentifiersPaused(ctx context.Context, req *sapb.CheckIdentifiersPausedRequest, _ ...grpc.CallOption) (*sapb.Hostnames, error) {
 	return nil, nil
 }
 
-// CheckPairsPaused is a mock.
-func (sa *StorageAuthorityReadOnly) CheckPairsPaused(ctx context.Context, req *sapb.PairsPausedRequest, _ ...grpc.CallOption) (*sapb.Hostnames, error) {
+// GetPausedIdentifiersForAccount is a mock.
+func (sa *StorageAuthorityReadOnly) GetPausedIdentifiersForAccount(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Hostnames, error) {
 	return nil, nil
 }
 
