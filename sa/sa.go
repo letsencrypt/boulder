@@ -1302,11 +1302,14 @@ func (ssa *SQLStorageAuthority) PauseIdentifier(ctx context.Context, req *sapb.P
 	}
 
 	// Marshal the identifier now that we've crossed the RPC boundary.
-	identifier := newIdentifierFromPB(req.Identifier)
+	identifier, err := newIdentifierFromPB(req.Identifier)
+	if err != nil {
+		return nil, err
+	}
 
 	var repaused bool
 	var pauseErr error
-	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	_, err = db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		repaused, pauseErr = pauseIdentifier(ctx, tx, req.RegistrationID, identifier, ssa.clk.Now())
 		if pauseErr != nil {
 			return nil, pauseErr

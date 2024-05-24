@@ -1300,26 +1300,35 @@ type pauseId struct {
 	IdentifierValue string `db:"identifierValue"`
 }
 
-func newIdentifierFromPB(pb *sapb.Identifier) pauseId {
-	return pauseId{
-		IdentifierType:  identifierTypeToUint[pb.Type],
-		IdentifierValue: pb.Value,
+func newIdentifierFromPB(pb *sapb.Identifier) (pauseId, error) {
+	idType, ok := identifierTypeToUint[pb.Type]
+	if !ok {
+		return pauseId{}, fmt.Errorf("unsupported identifier type %q", pb.Type)
 	}
+
+	return pauseId{
+		IdentifierType:  idType,
+		IdentifierValue: pb.Value,
+	}, nil
 }
 
 type pauseIds []pauseId
 
-func newIdentifiersFromPB(pb []*sapb.Identifier) pauseIds {
+func newIdentifiersFromPB(pb []*sapb.Identifier) (pauseIds, error) {
 	var ids pauseIds
 	for _, p := range pb {
-		ids = append(ids, newIdentifierFromPB(p))
+		id, err := newIdentifierFromPB(p)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
 	}
-	return ids
+	return ids, nil
 }
 
-// identiferValuesForType returns a list of identifier values for the given
+// identifierValuesForType returns a list of identifier values for the given
 // identifier type. If no values are found, an empty list is returned.
-func (id pauseIds) identiferValuesForType(identifierType uint8) []string {
+func (id pauseIds) identifierValuesForType(identifierType uint8) []string {
 	var values []string
 	for _, i := range id {
 		if i.IdentifierType == identifierType {
@@ -1361,7 +1370,7 @@ func checkIdentifiersPaused(ctx context.Context, dbs db.Selector, regID int64, i
 			)
 		}
 	}
-	dnsValues := ids.identiferValuesForType(dnsType)
+	dnsValues := ids.identifierValuesForType(dnsType)
 
 	// Prepare question marks for the "IN" clause. If we add more identifier
 	// types, we should consider joining a bunch of "OR" clauses together for

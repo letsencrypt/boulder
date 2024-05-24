@@ -1413,8 +1413,11 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 		return nil, errIncompleteRequest
 	}
 
-	// Marshal the idenfifiers now that we've crossed the RPC boundary.
-	ids := newIdentifiersFromPB(req.Identifiers)
+	// Marshal the identifiers now that we've crossed the RPC boundary.
+	ids, err := newIdentifiersFromPB(req.Identifiers)
+	if err != nil {
+		return nil, err
+	}
 
 	matches, err := checkIdentifiersPaused(ctx, ssa.dbReadOnlyMap, req.RegistrationID, ids)
 	if err != nil {
