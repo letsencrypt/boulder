@@ -1402,7 +1402,7 @@ func checkIdentifiersPaused(ctx context.Context, dbs db.Selector, regID int64, i
 
 	var matches []string
 	_, err := dbs.Select(ctx, &matches, query, args...)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !db.IsNoRows(err) {
 		// Error querying the database.
 		return nil, err
 	}
@@ -1413,9 +1413,9 @@ func checkIdentifiersPaused(ctx context.Context, dbs db.Selector, regID int64, i
 // getPausedIdentifiersForAccount returns a slice of paused identifiers for the
 // provided account. If no paused identifiers are found, an empty slice is
 // returned. The results are limited to the first 15 paused identifiers.
-func getPausedIdentifiersForAccount(ctx context.Context, db db.Selector, regID int64) ([]string, error) {
+func getPausedIdentifiersForAccount(ctx context.Context, dbs db.Selector, regID int64) ([]string, error) {
 	var paused []string
-	_, err := db.Select(ctx, &paused, `
+	_, err := dbs.Select(ctx, &paused, `
 		SELECT identifierValue 
 		FROM paused
 		WHERE 
@@ -1424,7 +1424,7 @@ func getPausedIdentifiersForAccount(ctx context.Context, db db.Selector, regID i
 		LIMIT 15`,
 		regID,
 	)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if err != nil && !db.IsNoRows(err) {
 		return nil, err
 	}
 	return paused, nil
