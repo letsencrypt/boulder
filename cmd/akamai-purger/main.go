@@ -70,7 +70,7 @@ type Throughput struct {
 	// 'defaultQueueEntriesPerBatch'.
 	//
 	// Deprecated: Only set TotalInstances and let it compute the defaults.
-	QueueEntriesPerBatch int
+	QueueEntriesPerBatch int `validate:"min=0"`
 
 	// PurgeBatchInterval is the duration waited between dispatching an Akamai
 	// purge request containing 'QueueEntriesPerBatch' * 3 URLs. If this value
@@ -81,14 +81,17 @@ type Throughput struct {
 
 	// TotalInstances is the number of akamai-purger instances running at the same
 	// time, across all data centers.
-	TotalInstances int
+	TotalInstances int `validate:"min=0"`
 }
 
+// optimizeAndValidate updates a Throughput struct in-place, replacing any unset
+// fields with sane defaults and ensuring that the resulting configuration will
+// not cause us to exceed Akamai's rate limits.
 func (t *Throughput) optimizeAndValidate() error {
 	// Ideally, this is the only variable actually configured, and we derive
 	// everything else from here. But if it isn't set, assume only 1 is running.
 	if t.TotalInstances < 0 {
-		return errors.New("`totalInstances' must be positive or 0 (for the default)")
+		return errors.New("'totalInstances' must be positive or 0 (for the default)")
 	} else if t.TotalInstances == 0 {
 		t.TotalInstances = 1
 	}
