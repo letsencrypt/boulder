@@ -186,7 +186,7 @@ type cachePurgeClient interface {
 // to Akamai's Fast Purge API at regular intervals.
 type akamaiPurger struct {
 	sync.Mutex
-	akamaipb.UnimplementedAkamaiPurgerServer
+	akamaipb.UnsafeAkamaiPurgerServer
 
 	// toPurge functions as a stack where each entry contains the three OCSP
 	// response URLs associated with a given certificate.

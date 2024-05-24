@@ -19,7 +19,7 @@ import (
 )
 
 type crlImpl struct {
-	capb.UnimplementedCRLGeneratorServer
+	capb.UnsafeCRLGeneratorServer
 	issuers   map[issuance.NameID]*issuance.Issuer
 	profile   *issuance.CRLProfile
 	maxLogLen int

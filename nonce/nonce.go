@@ -297,7 +297,7 @@ func NewServer(inner *NonceService) *Server {
 
 // Server implements the gRPC nonce service.
 type Server struct {
-	noncepb.UnimplementedNonceServiceServer
+	noncepb.UnsafeNonceServiceServer
 	inner *NonceService
 }
 

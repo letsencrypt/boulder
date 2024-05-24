@@ -251,8 +251,8 @@ func newDefaultPortConfig() *portConfig {
 
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
-	vapb.UnimplementedVAServer
-	vapb.UnimplementedCAAServer
+	vapb.UnsafeVAServer
+	vapb.UnsafeCAAServer
 	log                blog.Logger
 	dnsClient          bdns.Client
 	issuerDomain       string

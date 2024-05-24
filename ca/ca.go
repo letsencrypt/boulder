@@ -80,7 +80,7 @@ type certProfilesMaps struct {
 // certificateAuthorityImpl represents a CA that signs certificates.
 // It can sign OCSP responses as well, but only via delegation to an ocspImpl.
 type certificateAuthorityImpl struct {
-	capb.UnimplementedCertificateAuthorityServer
+	capb.UnsafeCertificateAuthorityServer
 	sa           sapb.StorageAuthorityCertificateClient
 	pa           core.PolicyAuthority
 	issuers      issuerMaps
