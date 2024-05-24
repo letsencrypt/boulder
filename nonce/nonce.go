@@ -39,12 +39,6 @@ const (
 	// PrefixLen is the character length of a nonce prefix.
 	PrefixLen = 8
 
-	// DeprecatedPrefixLen is the character length of a nonce prefix.
-	//
-	// Deprecated: Use PrefixLen instead.
-	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
-	DeprecatedPrefixLen = 4
-
 	// NonceLen is the character length of a nonce, excluding the prefix.
 	NonceLen       = 32
 	defaultMaxUsed = 65536
@@ -81,9 +75,6 @@ type NonceService struct {
 	nonceEarliest    prometheus.Gauge
 	nonceRedeems     *prometheus.CounterVec
 	nonceHeapLatency prometheus.Histogram
-	// TODO(#6610): Remove this field once we've moved to derivable prefixes by
-	// default.
-	prefixLen int
 }
 
 type int64Heap []int64
@@ -106,23 +97,16 @@ func (h *int64Heap) Pop() interface{} {
 
 // NewNonceService constructs a NonceService with defaults
 func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*NonceService, error) {
-	// If a prefix is provided it must be four characters and valid base64. The
+	// If a prefix is provided it must be eight characters and valid base64. The
 	// prefix is required to be base64url as RFC8555 section 6.5.1 requires that
-	// nonces use that encoding. As base64 operates on three byte binary
-	// segments we require the prefix to be three or six bytes (four or eight
-	// characters) so that the bytes preceding the prefix wouldn't impact the
-	// encoding.
-	//
-	// TODO(#6610): Update this comment once we've moved to eight character
-	// prefixes by default.
+	// nonces use that encoding. As base64 operates on three byte binary segments
+	// we require the prefix to be six bytes (eight characters) so that the bytes
+	// preceding the prefix wouldn't impact the encoding.
 	if prefix != "" {
-		// TODO(#6610): Refactor once we've moved to derivable prefixes by
-		// default.
-		if len(prefix) != PrefixLen && len(prefix) != DeprecatedPrefixLen {
+		if len(prefix) != PrefixLen {
 			return nil, fmt.Errorf(
-				"'noncePrefix' must be %d or %d characters, not %d",
+				"nonce prefix must be %d characters, not %d",
 				PrefixLen,
-				DeprecatedPrefixLen,
 				len(prefix),
 			)
 		}
@@ -182,9 +166,6 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		nonceEarliest:    nonceEarliest,
 		nonceRedeems:     nonceRedeems,
 		nonceHeapLatency: nonceHeapLatency,
-		// TODO(#6610): Remove this field once we've moved to derivable prefixes
-		// by default.
-		prefixLen: len(prefix),
 	}, nil
 }
 
@@ -303,43 +284,10 @@ func (ns *NonceService) Valid(nonce string) bool {
 
 // splitNonce splits a nonce into a prefix and a body.
 func (ns *NonceService) splitNonce(nonce string) (string, string, error) {
-	if len(nonce) < ns.prefixLen {
+	if len(nonce) < PrefixLen {
 		return "", "", errInvalidNonceLength
 	}
-	return nonce[:ns.prefixLen], nonce[ns.prefixLen:], nil
-}
-
-// splitDeprecatedNonce splits a nonce into a prefix and a body.
-//
-// Deprecated: Use NonceService.splitDeprecatedNonce instead.
-// TODO(#6610): Remove this function once we've moved to derivable prefixes by
-// default.
-func splitDeprecatedNonce(nonce string) (string, string, error) {
-	if len(nonce) < DeprecatedPrefixLen {
-		return "", "", errInvalidNonceLength
-	}
-	return nonce[:DeprecatedPrefixLen], nonce[DeprecatedPrefixLen:], nil
-}
-
-// RemoteRedeem checks the nonce prefix and routes the Redeem RPC
-// to the associated remote nonce service.
-//
-// TODO(#6610): Remove this function once we've moved to derivable prefixes by
-// default.
-func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]Redeemer, nonce string) (bool, error) {
-	prefix, _, err := splitDeprecatedNonce(nonce)
-	if err != nil {
-		return false, nil
-	}
-	nonceService, present := noncePrefixMap[prefix]
-	if !present {
-		return false, nil
-	}
-	resp, err := nonceService.Redeem(ctx, &noncepb.NonceMessage{Nonce: nonce})
-	if err != nil {
-		return false, err
-	}
-	return resp.Valid, nil
+	return nonce[:PrefixLen], nonce[PrefixLen:], nil
 }
 
 // NewServer returns a new Server, wrapping a NonceService.

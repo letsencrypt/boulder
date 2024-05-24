@@ -9,9 +9,9 @@
 			},
 			"timeout": "5s",
 			"tls": {
-				"caCertFile": "test/redis-tls/minica.pem",
-				"certFile": "test/redis-tls/boulder/cert.pem",
-				"keyFile": "test/redis-tls/boulder/key.pem"
+				"caCertFile": "test/certs/ipki/minica.pem",
+				"certFile": "test/certs/ipki/rocsp-tool.boulder/cert.pem",
+				"keyFile": "test/certs/ipki/rocsp-tool.boulder/key.pem"
 			}
 		}
 	},

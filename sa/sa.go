@@ -36,7 +36,13 @@ var (
 // read-only methods provided by the SQLStorageAuthorityRO, those wrapper
 // implementations are in saro.go, next to the real implementations.
 type SQLStorageAuthority struct {
-	sapb.UnimplementedStorageAuthorityServer
+	// Here we consciously opt out of "forward compatibility", by embedding this
+	// type instead of sapb.UnimplementedStorageAuthorityServer. We make this
+	// trade-off to avoid Go's compile-time "ambiguous selector" error, which it
+	// raises because sapb.UnimplementedStorageAuthorityServer and the embedded
+	// *SQLStorageAuthorityRO both provide methods with the same signatures.
+	sapb.UnsafeStorageAuthorityServer
+
 	*SQLStorageAuthorityRO
 
 	dbMap *db.WrappedMap

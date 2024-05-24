@@ -68,33 +68,43 @@ type Throughput struct {
 	// purge request. One cached OCSP response is composed of 3 URLs totaling <
 	// 400 bytes. If this value isn't provided it will default to
 	// 'defaultQueueEntriesPerBatch'.
-	QueueEntriesPerBatch int
+	//
+	// Deprecated: Only set TotalInstances and let it compute the defaults.
+	QueueEntriesPerBatch int `validate:"min=0"`
 
 	// PurgeBatchInterval is the duration waited between dispatching an Akamai
 	// purge request containing 'QueueEntriesPerBatch' * 3 URLs. If this value
 	// isn't provided it will default to 'defaultPurgeBatchInterval'.
+	//
+	// Deprecated: Only set TotalInstances and let it compute the defaults.
 	PurgeBatchInterval config.Duration `validate:"-"`
+
+	// TotalInstances is the number of akamai-purger instances running at the same
+	// time, across all data centers.
+	TotalInstances int `validate:"min=0"`
 }
 
-func (t *Throughput) useOptimizedDefaults() {
-	if t.QueueEntriesPerBatch == 0 {
+// optimizeAndValidate updates a Throughput struct in-place, replacing any unset
+// fields with sane defaults and ensuring that the resulting configuration will
+// not cause us to exceed Akamai's rate limits.
+func (t *Throughput) optimizeAndValidate() error {
+	// Ideally, this is the only variable actually configured, and we derive
+	// everything else from here. But if it isn't set, assume only 1 is running.
+	if t.TotalInstances < 0 {
+		return errors.New("'totalInstances' must be positive or 0 (for the default)")
+	} else if t.TotalInstances == 0 {
+		t.TotalInstances = 1
+	}
+
+	// For the sake of finding a valid throughput solution, we hold the number of
+	// queue entries sent per purge batch constant. We set 2 entries (6 urls) as
+	// the default, and historically we have never had a reason to configure a
+	// different amount. This default ensures we stay well below the maximum
+	// request size of 50,000 bytes per request.
+	if t.QueueEntriesPerBatch < 0 {
+		return errors.New("'queueEntriesPerBatch' must be positive or 0 (for the default)")
+	} else if t.QueueEntriesPerBatch == 0 {
 		t.QueueEntriesPerBatch = defaultEntriesPerBatch
-	}
-	if t.PurgeBatchInterval.Duration == 0 {
-		t.PurgeBatchInterval.Duration = defaultPurgeBatchInterval
-	}
-}
-
-// validate ensures that the provided throughput configuration will not violate
-// the Akamai Fast-Purge API limits. For more information see the official
-// documentation:
-// https://techdocs.akamai.com/purge-cache/reference/rate-limiting
-func (t *Throughput) validate() error {
-	if t.PurgeBatchInterval.Duration == 0 {
-		return errors.New("'purgeBatchInterval' must be > 0")
-	}
-	if t.QueueEntriesPerBatch <= 0 {
-		return errors.New("'queueEntriesPerBatch' must be > 0")
 	}
 
 	// Send no more than the 50,000 bytes of objects we’re allotted per request.
@@ -104,8 +114,21 @@ func (t *Throughput) validate() error {
 			akamaiBytesPerReqLimit, bytesPerRequest-akamaiBytesPerReqLimit)
 	}
 
+	// Now the purge interval must be set such that we exceed neither the 50 API
+	// requests per second limit nor the 200 URLs per second limit across all
+	// concurrent purger instances. We calculated that a value of one request
+	// every 32ms satisfies both constraints with a bit of breathing room (as long
+	// as the number of entries per batch is also at its default). By default we
+	// set this purger's interval to a multiple of 32ms, depending on how many
+	// other purger instances are running.
+	if t.PurgeBatchInterval.Duration < 0 {
+		return errors.New("'purgeBatchInterval' must be positive or 0 (for the default)")
+	} else if t.PurgeBatchInterval.Duration == 0 {
+		t.PurgeBatchInterval.Duration = defaultPurgeBatchInterval * time.Duration(t.TotalInstances)
+	}
+
 	// Send no more than the 50 API requests we’re allotted each second.
-	requestsPerSecond := int(math.Ceil(float64(time.Second) / float64(t.PurgeBatchInterval.Duration)))
+	requestsPerSecond := int(math.Ceil(float64(time.Second)/float64(t.PurgeBatchInterval.Duration))) * t.TotalInstances
 	if requestsPerSecond > akamaiAPIReqPerSecondLimit {
 		return fmt.Errorf("config exceeds Akamai's requests per second limit (%d requests) by %d",
 			akamaiAPIReqPerSecondLimit, requestsPerSecond-akamaiAPIReqPerSecondLimit)
@@ -117,6 +140,7 @@ func (t *Throughput) validate() error {
 		return fmt.Errorf("config exceeds Akamai's URLs per second limit (%d URLs) by %d",
 			akamaiURLsPerSecondLimit, urlsPurgedPerSecond-akamaiURLsPerSecondLimit)
 	}
+
 	return nil
 }
 
@@ -304,11 +328,9 @@ func main() {
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
-	// Unless otherwise specified, use optimized throughput settings.
-	if (apc.Throughput == Throughput{}) {
-		apc.Throughput.useOptimizedDefaults()
-	}
-	cmd.FailOnError(apc.Throughput.validate(), "")
+	// Use optimized throughput settings for any that are left unspecified.
+	err = apc.Throughput.optimizeAndValidate()
+	cmd.FailOnError(err, "Failed to find valid throughput solution")
 
 	if apc.MaxQueueSize == 0 {
 		apc.MaxQueueSize = defaultQueueSize

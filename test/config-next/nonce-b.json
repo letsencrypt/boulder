@@ -1,7 +1,6 @@
 {
 	"NonceService": {
 		"maxUsed": 131072,
-		"useDerivablePrefix": true,
 		"noncePrefixKey": {
 			"passwordFile": "test/secrets/nonce_prefix_key"
 		},

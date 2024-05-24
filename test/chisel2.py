@@ -39,7 +39,7 @@ DIRECTORY_V2 = os.getenv('DIRECTORY_V2', 'http://boulder.service.consul:4001/dir
 ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"https://boulder.service.consul:4431/terms/v7")
 PORT = os.getenv('PORT', '80')
 
-os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
+os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/certs/ipki/minica.pem')
 
 import challtestsrv
 challSrv = challtestsrv.ChallTestServer()

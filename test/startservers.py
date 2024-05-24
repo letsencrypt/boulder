@@ -56,7 +56,7 @@ SERVICES = (
         None),
     Service('mail-test-srv',
         9380, None, None,
-        ('./bin/mail-test-srv', '--closeFirst', '5', '--cert', 'test/mail-test-srv/localhost/cert.pem', '--key', 'test/mail-test-srv/localhost/key.pem'),
+        ('./bin/mail-test-srv', '--closeFirst', '5', '--cert', 'test/certs/ipki/localhost/cert.pem', '--key', 'test/certs/ipki/localhost/key.pem'),
         None),
     Service('ocsp-responder',
         8005, None, None,

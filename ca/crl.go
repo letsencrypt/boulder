@@ -8,6 +8,8 @@ import (
 	"io"
 	"strings"
 
+	"google.golang.org/grpc"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -51,7 +53,7 @@ func NewCRLImpl(
 	}, nil
 }
 
-func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error {
+func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLRequest, capb.GenerateCRLResponse]) error {
 	var issuer *issuance.Issuer
 	var req *issuance.CRLRequest
 	rcs := make([]x509.RevocationListEntry, 0)

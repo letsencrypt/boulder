@@ -2,6 +2,9 @@ package mail
 
 import (
 	"bufio"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -9,7 +12,6 @@ import (
 	"net"
 	"net/mail"
 	"net/textproto"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +22,42 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
+
+var (
+	// These variables are populated by init(), and then referenced by setup() and
+	// listenForever(). smtpCert is the TLS certificate which will be served by
+	// the fake SMTP server, and smtpRoot is the issuer of that certificate which
+	// will be trusted by the SMTP client under test.
+	smtpRoot *x509.CertPool
+	smtpCert *tls.Certificate
+)
+
+func init() {
+	// Populate the global smtpRoot and smtpCert variables. We use a single self
+	// signed cert for both, for ease of generation. It has to assert the name
+	// localhost to appease the mailer, which is connecting to localhost.
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	fmt.Println(err)
+	template := x509.Certificate{
+		DNSNames:     []string{"localhost"},
+		SerialNumber: big.NewInt(123),
+		NotBefore:    time.Now().Add(-24 * time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, key.Public(), key)
+	fmt.Println(err)
+	cert, err := x509.ParseCertificate(certDER)
+	fmt.Println(err)
+
+	smtpRoot = x509.NewCertPool()
+	smtpRoot.AddCert(cert)
+
+	smtpCert = &tls.Certificate{
+		Certificate: [][]byte{certDER},
+		PrivateKey:  key,
+		Leaf:        cert,
+	}
+}
 
 type fakeSource struct{}
 
@@ -76,13 +114,8 @@ func expect(t *testing.T, buf *bufio.Reader, expected string) error {
 type connHandler func(int, *testing.T, net.Conn, *net.TCPConn)
 
 func listenForever(l *net.TCPListener, t *testing.T, handler connHandler) {
-	keyPair, err := tls.LoadX509KeyPair("../test/mail-test-srv/localhost/cert.pem", "../test/mail-test-srv/localhost/key.pem")
-	if err != nil {
-		t.Errorf("loading keypair: %s", err)
-
-	}
 	tlsConf := &tls.Config{
-		Certificates: []tls.Certificate{keyPair},
+		Certificates: []tls.Certificate{*smtpCert},
 	}
 	connID := 0
 	for {
@@ -285,16 +318,6 @@ func setup(t *testing.T) (*mailerImpl, *net.TCPListener, func()) {
 		}
 	}
 
-	pem, err := os.ReadFile("../test/mail-test-srv/minica.pem")
-	if err != nil {
-		t.Fatalf("loading smtp root: %s", err)
-	}
-	smtpRoots := x509.NewCertPool()
-	ok := smtpRoots.AppendCertsFromPEM(pem)
-	if !ok {
-		t.Fatal("failed parsing SMTP root")
-	}
-
 	// We can look at the listener Addr() to figure out which free port was
 	// assigned by the operating system
 
@@ -308,7 +331,7 @@ func setup(t *testing.T) (*mailerImpl, *net.TCPListener, func()) {
 		port,
 		"user@example.com",
 		"passwd",
-		smtpRoots,
+		smtpRoot,
 		*fromAddress,
 		log,
 		metrics.NoopRegisterer,

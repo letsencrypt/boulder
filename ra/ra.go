@@ -121,6 +121,7 @@ type RegistrationAuthorityImpl struct {
 	authzAges                   *prometheus.HistogramVec
 	orderAges                   *prometheus.HistogramVec
 	inflightFinalizes           prometheus.Gauge
+	certCSRMismatch             prometheus.Counter
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -238,6 +239,12 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(inflightFinalizes)
 
+	certCSRMismatch := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cert_csr_mismatch",
+		Help: "Number of issued certificates that have failed ra.matchesCSR for any reason. This is _real bad_ and should be alerted upon.",
+	})
+	stats.MustRegister(certCSRMismatch)
+
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
@@ -273,6 +280,7 @@ func NewRegistrationAuthorityImpl(
 		authzAges:                    authzAges,
 		orderAges:                    orderAges,
 		inflightFinalizes:            inflightFinalizes,
+		certCSRMismatch:              certCSRMismatch,
 	}
 	return ra
 }
@@ -1370,9 +1378,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	// Asynchronously submit the final certificate to any configured logs
 	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
 
-	// TODO(#6587): Make this error case Very Alarming
 	err = ra.matchesCSR(parsedCertificate, csr)
 	if err != nil {
+		ra.certCSRMismatch.Inc()
 		return nil, nil, err
 	}
 
@@ -2662,8 +2670,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if err != nil {
 		return nil, err
 	}
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if storedOrder.Id == 0 || storedOrder.Status == "" || storedOrder.RegistrationID == 0 || len(storedOrder.Names) == 0 || core.IsAnyNilOrZero(storedOrder.Created, storedOrder.Expires) {
+
+	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, storedOrder.Names, storedOrder.Created, storedOrder.Expires) {
 		return nil, errIncompleteGRPCResponse
 	}
 	ra.orderAges.WithLabelValues("NewOrder").Observe(0)

@@ -64,6 +64,6 @@ func (ca *MockOCSPGenerator) GenerateOCSP(ctx context.Context, req *capb.Generat
 type MockCRLGenerator struct{}
 
 // GenerateCRL is a mock
-func (ca *MockCRLGenerator) GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (capb.CRLGenerator_GenerateCRLClient, error) {
+func (ca *MockCRLGenerator) GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[capb.GenerateCRLRequest, capb.GenerateCRLResponse], error) {
 	return nil, nil
 }

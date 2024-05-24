@@ -5,9 +5,12 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io/fs"
 	"math/big"
+	"os"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -18,18 +21,25 @@ import (
 )
 
 func TestLoadPubKey(t *testing.T) {
-	_, _, err := loadPubKey("../../test/test-ca.pubkey.pem")
-	test.AssertNotError(t, err, "should not have errored")
+	tmp := t.TempDir()
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
-	_, _, err = loadPubKey("../../test/hierarchy/int-e1.key.pem")
-	test.AssertError(t, err, "should have failed trying to parse a private key")
-
-	_, _, err = loadPubKey("/path/that/will/not/ever/exist/ever")
-	test.AssertError(t, err, "should have failed opening public key at non-existent path")
+	_, _, err := loadPubKey(path.Join(tmp, "does", "not", "exist"))
+	test.AssertError(t, err, "should fail on non-existent file")
 	test.AssertErrorIs(t, err, fs.ErrNotExist)
 
-	_, _, err = loadPubKey("../../test/hierarchy/int-e1.cert.pem")
-	test.AssertError(t, err, "should have failed when trying to parse a certificate")
+	_, _, err = loadPubKey("../../test/hierarchy/README.md")
+	test.AssertError(t, err, "should fail on non-PEM file")
+
+	priv, _ := x509.MarshalPKCS8PrivateKey(key)
+	_ = os.WriteFile(path.Join(tmp, "priv.pem"), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: priv}), 0644)
+	_, _, err = loadPubKey(path.Join(tmp, "priv.pem"))
+	test.AssertError(t, err, "should fail on non-pubkey PEM")
+
+	pub, _ := x509.MarshalPKIXPublicKey(key.Public())
+	_ = os.WriteFile(path.Join(tmp, "pub.pem"), pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pub}), 0644)
+	_, _, err = loadPubKey(path.Join(tmp, "pub.pem"))
+	test.AssertNotError(t, err, "should not have errored")
 }
 
 func TestCheckOutputFileSucceeds(t *testing.T) {

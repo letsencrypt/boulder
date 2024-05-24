@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package otelgrpc // import "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
@@ -18,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"go.opentelemetry.io/otel/trace"
@@ -89,6 +79,9 @@ func newConfig(opts []Option, role string) *config {
 		metric.WithUnit("ms"))
 	if err != nil {
 		otel.Handle(err)
+		if c.rpcDuration == nil {
+			c.rpcDuration = noop.Float64Histogram{}
+		}
 	}
 
 	c.rpcRequestSize, err = c.meter.Int64Histogram("rpc."+role+".request.size",
@@ -96,6 +89,9 @@ func newConfig(opts []Option, role string) *config {
 		metric.WithUnit("By"))
 	if err != nil {
 		otel.Handle(err)
+		if c.rpcRequestSize == nil {
+			c.rpcRequestSize = noop.Int64Histogram{}
+		}
 	}
 
 	c.rpcResponseSize, err = c.meter.Int64Histogram("rpc."+role+".response.size",
@@ -103,6 +99,9 @@ func newConfig(opts []Option, role string) *config {
 		metric.WithUnit("By"))
 	if err != nil {
 		otel.Handle(err)
+		if c.rpcResponseSize == nil {
+			c.rpcResponseSize = noop.Int64Histogram{}
+		}
 	}
 
 	c.rpcRequestsPerRPC, err = c.meter.Int64Histogram("rpc."+role+".requests_per_rpc",
@@ -110,6 +109,9 @@ func newConfig(opts []Option, role string) *config {
 		metric.WithUnit("{count}"))
 	if err != nil {
 		otel.Handle(err)
+		if c.rpcRequestsPerRPC == nil {
+			c.rpcRequestsPerRPC = noop.Int64Histogram{}
+		}
 	}
 
 	c.rpcResponsesPerRPC, err = c.meter.Int64Histogram("rpc."+role+".responses_per_rpc",
@@ -117,6 +119,9 @@ func newConfig(opts []Option, role string) *config {
 		metric.WithUnit("{count}"))
 	if err != nil {
 		otel.Handle(err)
+		if c.rpcResponsesPerRPC == nil {
+			c.rpcResponsesPerRPC = noop.Int64Histogram{}
+		}
 	}
 
 	return c

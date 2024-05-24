@@ -18,29 +18,22 @@ type Config struct {
 		cmd.ServiceConfig
 
 		MaxUsed int
-		// TODO(#6610): Remove once we've moved to derivable prefixes by
-		// default.
-		NoncePrefix string `validate:"excluded_with=UseDerivablePrefix,omitempty,len=4"`
 
 		// UseDerivablePrefix indicates whether to use a nonce prefix derived
 		// from the gRPC listening address. If this is false, the nonce prefix
 		// will be the value of the NoncePrefix field. If this is true, the
 		// NoncePrefixKey field is required.
+		// TODO(#6610): Remove this.
 		//
-		// TODO(#6610): Remove once we've moved to derivable prefixes by
-		// default.
-		UseDerivablePrefix bool `validate:"excluded_with=NoncePrefix"`
+		// Deprecated: this value is ignored, and treated as though it is always true.
+		UseDerivablePrefix bool `validate:"-"`
 
 		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
 		// instance. It should contain 256 bits (32 bytes) of random data to be
 		// suitable as an HMAC-SHA256 key (e.g. the output of `openssl rand -hex
 		// 32`). In a multi-DC deployment this value should be the same across
-		// all boulder-wfe and nonce-service instances. This is only used if
-		// UseDerivablePrefix is true.
-		//
-		// TODO(#6610): Edit this comment once we've moved to derivable prefixes
-		// by default.
-		NoncePrefixKey cmd.PasswordConfig `validate:"excluded_with=NoncePrefix,structonly"`
+		// all boulder-wfe and nonce-service instances.
+		NoncePrefixKey cmd.PasswordConfig `validate:"required"`
 
 		Syslog        cmd.SyslogConfig
 		OpenTelemetry cmd.OpenTelemetryConfig
@@ -89,28 +82,20 @@ func main() {
 		c.NonceService.DebugAddr = *debugAddr
 	}
 
-	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
-	if c.NonceService.NoncePrefix != "" && c.NonceService.UseDerivablePrefix {
-		cmd.Fail("Cannot set both 'noncePrefix' and 'useDerivablePrefix'")
+	if c.NonceService.NoncePrefixKey.PasswordFile == "" {
+		cmd.Fail("NoncePrefixKey PasswordFile must be set")
 	}
 
-	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
-	if c.NonceService.UseDerivablePrefix && c.NonceService.NoncePrefixKey.PasswordFile == "" {
-		cmd.Fail("Cannot set 'noncePrefixKey' without 'useDerivablePrefix'")
-	}
-
-	if c.NonceService.UseDerivablePrefix && c.NonceService.NoncePrefixKey.PasswordFile != "" {
-		key, err := c.NonceService.NoncePrefixKey.Pass()
-		cmd.FailOnError(err, "Failed to load 'noncePrefixKey' file.")
-		c.NonceService.NoncePrefix, err = derivePrefix(key, c.NonceService.GRPC.Address)
-		cmd.FailOnError(err, "Failed to derive nonce prefix")
-	}
+	key, err := c.NonceService.NoncePrefixKey.Pass()
+	cmd.FailOnError(err, "Failed to load 'noncePrefixKey' file.")
+	noncePrefix, err := derivePrefix(key, c.NonceService.GRPC.Address)
+	cmd.FailOnError(err, "Failed to derive nonce prefix")
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.OpenTelemetry, c.NonceService.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
-	ns, err := nonce.NewNonceService(scope, c.NonceService.MaxUsed, c.NonceService.NoncePrefix)
+	ns, err := nonce.NewNonceService(scope, c.NonceService.MaxUsed, noncePrefix)
 	cmd.FailOnError(err, "Failed to initialize nonce service")
 
 	tlsConfig, err := c.NonceService.TLS.Load(scope)

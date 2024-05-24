@@ -97,10 +97,6 @@ type WebFrontEndImpl struct {
 	// nonces. It's configured to route requests to backends colocated with the
 	// WFE.
 	gnc nonce.Getter
-	// Register of anti-replay nonces
-	//
-	// Deprecated: See `rnc`, above.
-	noncePrefixMap map[string]nonce.Redeemer
 	// rnc is a nonce-service client used exclusively for the redemption of
 	// nonces. It uses a custom RPC load balancer which is configured to route
 	// requests to backends based on the prefix and HMAC key passed as in the
@@ -189,7 +185,6 @@ func NewWebFrontEndImpl(
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
 	gnc nonce.Getter,
-	noncePrefixMap map[string]nonce.Redeemer,
 	rnc nonce.Redeemer,
 	rncKey string,
 	accountGetter AccountGetter,
@@ -210,8 +205,7 @@ func NewWebFrontEndImpl(
 		return WebFrontEndImpl{}, errors.New("must provide a service for nonce issuance")
 	}
 
-	// TODO(#6610): Remove the check for the map.
-	if noncePrefixMap == nil && rnc == nil {
+	if rnc == nil {
 		return WebFrontEndImpl{}, errors.New("must provide a service for nonce redemption")
 	}
 
@@ -229,7 +223,6 @@ func NewWebFrontEndImpl(
 		ra:                           rac,
 		sa:                           sac,
 		gnc:                          gnc,
-		noncePrefixMap:               noncePrefixMap,
 		rnc:                          rnc,
 		rncKey:                       rncKey,
 		accountGetter:                accountGetter,
