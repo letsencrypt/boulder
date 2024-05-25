@@ -269,6 +269,9 @@ type ValidationAuthorityImpl struct {
 	metrics *vaMetrics
 }
 
+var _ vapb.VAServer = (*ValidationAuthorityImpl)(nil)
+var _ vapb.CAAServer = (*ValidationAuthorityImpl)(nil)
+
 // NewValidationAuthorityImpl constructs a new VA
 func NewValidationAuthorityImpl(
 	resolver bdns.Client,

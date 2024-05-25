@@ -205,6 +205,8 @@ type Impl struct {
 	metrics       *pubMetrics
 }
 
+var _ pubpb.PublisherServer = (*Impl)(nil)
+
 // New creates a Publisher that will submit certificates
 // to requested CT logs
 func New(

@@ -50,6 +50,8 @@ type SQLStorageAuthority struct {
 	rateLimitWriteErrors prometheus.Counter
 }
 
+var _ sapb.StorageAuthorityServer = (*SQLStorageAuthority)(nil)
+
 // NewSQLStorageAuthorityWrapping provides persistence using a SQL backend for
 // Boulder. It takes a read-only storage authority to wrap, which is useful if
 // you are constructing both types of implementations and want to share

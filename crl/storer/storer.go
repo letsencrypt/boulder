@@ -47,6 +47,8 @@ type crlStorer struct {
 	clk              clock.Clock
 }
 
+var _ cspb.CRLStorerServer = (*crlStorer)(nil)
+
 func New(
 	issuers []*issuance.Certificate,
 	s3Client simpleS3,

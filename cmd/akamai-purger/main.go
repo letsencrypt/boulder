@@ -197,6 +197,8 @@ type akamaiPurger struct {
 	log             blog.Logger
 }
 
+var _ akamaipb.AkamaiPurgerServer = (*akamaiPurger)(nil)
+
 func (ap *akamaiPurger) len() int {
 	ap.Lock()
 	defer ap.Unlock()

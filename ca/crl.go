@@ -26,6 +26,8 @@ type crlImpl struct {
 	log       blog.Logger
 }
 
+var _ capb.CRLGeneratorServer = (*crlImpl)(nil)
+
 // NewCRLImpl returns a new object which fulfils the ca.proto CRLGenerator
 // interface. It uses the list of issuers to determine what issuers it can
 // issue CRLs from. lifetime sets the validity period (inclusive) of the

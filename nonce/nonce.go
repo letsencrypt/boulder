@@ -301,6 +301,8 @@ type Server struct {
 	inner *NonceService
 }
 
+var _ noncepb.NonceServiceServer = (*Server)(nil)
+
 // Redeem accepts a nonce from a gRPC client and redeems it using the inner nonce service.
 func (ns *Server) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
 	return &noncepb.ValidMessage{Valid: ns.inner.Valid(msg.Nonce)}, nil

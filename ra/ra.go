@@ -124,6 +124,8 @@ type RegistrationAuthorityImpl struct {
 	certCSRMismatch             prometheus.Counter
 }
 
+var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
+
 // NewRegistrationAuthorityImpl constructs a new RA object.
 func NewRegistrationAuthorityImpl(
 	clk clock.Clock,

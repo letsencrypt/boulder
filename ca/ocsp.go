@@ -32,6 +32,8 @@ type ocspImpl struct {
 	clk            clock.Clock
 }
 
+var _ capb.OCSPGeneratorServer = (*ocspImpl)(nil)
+
 func NewOCSPImpl(
 	issuers []*issuance.Issuer,
 	ocspLifetime time.Duration,

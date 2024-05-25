@@ -101,6 +101,8 @@ type certificateAuthorityImpl struct {
 	lintErrorCount prometheus.Counter
 }
 
+var _ capb.CertificateAuthorityServer = (*certificateAuthorityImpl)(nil)
+
 // makeIssuerMaps processes a list of issuers into a set of maps for easy
 // lookup either by key algorithm (useful for picking an issuer for a precert)
 // or by unique ID (useful for final certs, OCSP, and CRLs). If two issuers with

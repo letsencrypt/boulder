@@ -71,6 +71,8 @@ type SQLStorageAuthorityRO struct {
 	lagFactorCounter *prometheus.CounterVec
 }
 
+var _ sapb.StorageAuthorityReadOnlyServer = (*SQLStorageAuthorityRO)(nil)
+
 // NewSQLStorageAuthorityRO provides persistence using a SQL backend for
 // Boulder. It will modify the given borp.DbMap by adding relevant tables.
 func NewSQLStorageAuthorityRO(
