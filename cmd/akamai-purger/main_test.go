@@ -13,10 +13,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestImplementation(t *testing.T) {
-	test.AssertImplementsGRPCServer(t, &akamaiPurger{}, akamaipb.UnimplementedAkamaiPurgerServer{})
-}
-
 func TestThroughput_optimizeAndValidate(t *testing.T) {
 	dur := func(in time.Duration) config.Duration { return config.Duration{Duration: in} }
 
