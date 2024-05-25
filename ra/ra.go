@@ -2570,7 +2570,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// that doesn't meet this criteria from SA.GetAuthorizations but we verify
 		// again to be safe.
 		if strings.HasPrefix(name, "*.") &&
-			len(authz.Challenges) == 1 && core.AcmeChallenge(authz.Challenges[0].Type) == core.ChallengeTypeDNS01 {
+			len(authz.Challenges) == 1 &&
+			(core.AcmeChallenge(authz.Challenges[0].Type) == core.ChallengeTypeDNS01 ||
+				core.AcmeChallenge(authz.Challenges[0].Type) == core.ChallengeTypeDNSAccount01) {
 			authzID, err := strconv.ParseInt(authz.Id, 10, 64)
 			if err != nil {
 				return nil, err

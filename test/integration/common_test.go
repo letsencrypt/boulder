@@ -7,9 +7,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -55,6 +57,41 @@ func makeClient(contacts ...string) (*client, error) {
 		return nil, err
 	}
 	return &client{account, c}, nil
+}
+
+func addDNSResponse(host, keyAuthorization string) error {
+	// Encode the key authorization for the DNS TXT record.
+	h := sha256.Sum256([]byte(keyAuthorization))
+	txt := base64.RawURLEncoding.EncodeToString(h[:])
+	resp, err := http.Post("http://boulder.service.consul:8055/set-txt", "",
+		bytes.NewBufferString(fmt.Sprintf(`{
+		"host": "%s",
+		"value": "%s"
+	}`, host, txt)))
+	if err != nil {
+		return fmt.Errorf("adding dns response: %s", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("adding dns response: status %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	return nil
+}
+
+func delDNSResponse(host string) error {
+	resp, err := http.Post("http://boulder.service.consul:8055/clear-txt", "",
+		bytes.NewBufferString(fmt.Sprintf(`{
+		"host": "%s"
+	}`, host)))
+	if err != nil {
+		return fmt.Errorf("deleting dns response: %s", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("deleting dns response: status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func addHTTP01Response(token, keyAuthorization string) error {

@@ -34,7 +34,7 @@ type Config struct {
 	Results           string   // path to save metrics to
 	MaxRegs           int      // maximum number of registrations to create
 	MaxNamesPerCert   int      // maximum number of names on one certificate/order
-	ChallengeStrategy string   // challenge selection strategy ("random", "http-01", "dns-01", "tls-alpn-01")
+	ChallengeStrategy string   // challenge selection strategy ("random", "http-01", "dns-01", "dns-account-01", "tls-alpn-01")
 	RevokeChance      float32  // chance of revoking certificate after issuance, between 0.0 and 1.0
 }
 
