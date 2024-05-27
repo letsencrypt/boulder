@@ -3636,24 +3636,6 @@ func TestIncidentARI(t *testing.T) {
 	test.AssertEquals(t, ri.SuggestedWindow.End.Before(wfe.clk.Now()), true)
 }
 
-type mockSAWithSerialMetadata struct {
-	sapb.StorageAuthorityReadOnlyClient
-	serial string
-	regID  int64
-}
-
-// GetSerialMetadata returns fake metadata if it recognizes the given serial.
-func (sa *mockSAWithSerialMetadata) GetSerialMetadata(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
-	if req.Serial != sa.serial {
-		return nil, berrors.NotFoundError("metadata for certificate with serial %q not found", req.Serial)
-	}
-
-	return &sapb.SerialMetadata{
-		Serial:         sa.serial,
-		RegistrationID: sa.regID,
-	}, nil
-}
-
 func TestOldTLSInbound(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 	req := &http.Request{
