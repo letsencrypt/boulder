@@ -37,7 +37,7 @@ type certCountFunc func(ctx context.Context, db db.Selector, domain string, time
 
 // SQLStorageAuthorityRO defines a read-only subset of a Storage Authority
 type SQLStorageAuthorityRO struct {
-	sapb.UnimplementedStorageAuthorityReadOnlyServer
+	sapb.UnsafeStorageAuthorityReadOnlyServer
 
 	dbReadOnlyMap  *db.WrappedMap
 	dbIncidentsMap *db.WrappedMap
@@ -70,6 +70,8 @@ type SQLStorageAuthorityRO struct {
 	// other error was encountered.
 	lagFactorCounter *prometheus.CounterVec
 }
+
+var _ sapb.StorageAuthorityReadOnlyServer = (*SQLStorageAuthorityRO)(nil)
 
 // NewSQLStorageAuthorityRO provides persistence using a SQL backend for
 // Boulder. It will modify the given borp.DbMap by adding relevant tables.

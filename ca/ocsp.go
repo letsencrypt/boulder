@@ -22,7 +22,7 @@ import (
 
 // ocspImpl provides a backing implementation for the OCSP gRPC service.
 type ocspImpl struct {
-	capb.UnimplementedOCSPGeneratorServer
+	capb.UnsafeOCSPGeneratorServer
 	issuers        map[issuance.NameID]*issuance.Issuer
 	ocspLifetime   time.Duration
 	ocspLogQueue   *ocspLogQueue
@@ -31,6 +31,8 @@ type ocspImpl struct {
 	signErrorCount *prometheus.CounterVec
 	clk            clock.Clock
 }
+
+var _ capb.OCSPGeneratorServer = (*ocspImpl)(nil)
 
 func NewOCSPImpl(
 	issuers []*issuance.Issuer,

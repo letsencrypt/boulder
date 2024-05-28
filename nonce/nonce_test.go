@@ -5,13 +5,8 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/metrics"
-	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/test"
 )
-
-func TestImplementation(t *testing.T) {
-	test.AssertImplementsGRPCServer(t, &Server{}, noncepb.UnimplementedNonceServiceServer{})
-}
 
 func TestValidNonce(t *testing.T) {
 	ns, err := NewNonceService(metrics.NoopRegisterer, 0, "")

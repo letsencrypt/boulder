@@ -36,7 +36,7 @@ type simpleS3 interface {
 }
 
 type crlStorer struct {
-	cspb.UnimplementedCRLStorerServer
+	cspb.UnsafeCRLStorerServer
 	s3Client         simpleS3
 	s3Bucket         string
 	issuers          map[issuance.NameID]*issuance.Certificate
@@ -46,6 +46,8 @@ type crlStorer struct {
 	log              blog.Logger
 	clk              clock.Clock
 }
+
+var _ cspb.CRLStorerServer = (*crlStorer)(nil)
 
 func New(
 	issuers []*issuance.Certificate,

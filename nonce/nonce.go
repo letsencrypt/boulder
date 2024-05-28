@@ -297,9 +297,11 @@ func NewServer(inner *NonceService) *Server {
 
 // Server implements the gRPC nonce service.
 type Server struct {
-	noncepb.UnimplementedNonceServiceServer
+	noncepb.UnsafeNonceServiceServer
 	inner *NonceService
 }
+
+var _ noncepb.NonceServiceServer = (*Server)(nil)
 
 // Redeem accepts a nonce from a gRPC client and redeems it using the inner nonce service.
 func (ns *Server) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {

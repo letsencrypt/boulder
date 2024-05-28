@@ -80,7 +80,7 @@ type certProfilesMaps struct {
 // certificateAuthorityImpl represents a CA that signs certificates.
 // It can sign OCSP responses as well, but only via delegation to an ocspImpl.
 type certificateAuthorityImpl struct {
-	capb.UnimplementedCertificateAuthorityServer
+	capb.UnsafeCertificateAuthorityServer
 	sa           sapb.StorageAuthorityCertificateClient
 	pa           core.PolicyAuthority
 	issuers      issuerMaps
@@ -100,6 +100,8 @@ type certificateAuthorityImpl struct {
 	signErrorCount *prometheus.CounterVec
 	lintErrorCount prometheus.Counter
 }
+
+var _ capb.CertificateAuthorityServer = (*certificateAuthorityImpl)(nil)
 
 // makeIssuerMaps processes a list of issuers into a set of maps for easy
 // lookup either by key algorithm (useful for picking an issuer for a precert)

@@ -19,12 +19,14 @@ import (
 )
 
 type crlImpl struct {
-	capb.UnimplementedCRLGeneratorServer
+	capb.UnsafeCRLGeneratorServer
 	issuers   map[issuance.NameID]*issuance.Issuer
 	profile   *issuance.CRLProfile
 	maxLogLen int
 	log       blog.Logger
 }
+
+var _ capb.CRLGeneratorServer = (*crlImpl)(nil)
 
 // NewCRLImpl returns a new object which fulfils the ca.proto CRLGenerator
 // interface. It uses the list of issuers to determine what issuers it can

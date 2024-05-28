@@ -36,11 +36,6 @@ var (
 // read-only methods provided by the SQLStorageAuthorityRO, those wrapper
 // implementations are in saro.go, next to the real implementations.
 type SQLStorageAuthority struct {
-	// Here we consciously opt out of "forward compatibility", by embedding this
-	// type instead of sapb.UnimplementedStorageAuthorityServer. We make this
-	// trade-off to avoid Go's compile-time "ambiguous selector" error, which it
-	// raises because sapb.UnimplementedStorageAuthorityServer and the embedded
-	// *SQLStorageAuthorityRO both provide methods with the same signatures.
 	sapb.UnsafeStorageAuthorityServer
 
 	*SQLStorageAuthorityRO
@@ -54,6 +49,8 @@ type SQLStorageAuthority struct {
 	// this occurs.
 	rateLimitWriteErrors prometheus.Counter
 }
+
+var _ sapb.StorageAuthorityServer = (*SQLStorageAuthority)(nil)
 
 // NewSQLStorageAuthorityWrapping provides persistence using a SQL backend for
 // Boulder. It takes a read-only storage authority to wrap, which is useful if
