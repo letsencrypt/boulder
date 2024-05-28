@@ -41,6 +41,8 @@ service StorageAuthorityReadOnly {
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
+  rpc CheckIdentifiersPaused (CheckIdentifiersPausedRequest) returns (Hostnames) {}
+  rpc GetPausedIdentifiersForAccount (RegistrationID) returns (Hostnames) {}
 }
 
 // StorageAuthority provides full read/write access to the database.
