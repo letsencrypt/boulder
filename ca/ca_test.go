@@ -1331,35 +1331,36 @@ func TestVerifyTBSCertIsDeterministic(t *testing.T) {
 		name          string
 		lintCertBytes []byte
 		leafCertBytes []byte
-		errorExpected bool
 		errorSubstr   string
 	}{
 		{
 			name:          "Both nil",
 			lintCertBytes: nil,
 			leafCertBytes: nil,
-			errorExpected: true,
 			errorSubstr:   "were nil",
 		},
 		{
 			name:          "Missing a value, invalid input",
 			lintCertBytes: nil,
 			leafCertBytes: []byte{0x6, 0x6, 0x6},
-			errorExpected: true,
 			errorSubstr:   "were nil",
 		},
 		{
 			name:          "Missing a value, valid input",
 			lintCertBytes: nil,
 			leafCertBytes: certDer1,
-			errorExpected: true,
 			errorSubstr:   "were nil",
 		},
 		{
 			name:          "Mismatched bytes, invalid input",
 			lintCertBytes: []byte{0x6, 0x6, 0x6},
 			leafCertBytes: []byte{0x1, 0x2, 0x3},
-			errorExpected: true,
+			errorSubstr:   "malformed certificate",
+		},
+		{
+			name:          "Mismatched bytes, invalider input",
+			lintCertBytes: certDer1,
+			leafCertBytes: []byte{0x1, 0x2, 0x3},
 			errorSubstr:   "malformed certificate",
 		},
 		{
@@ -1369,7 +1370,6 @@ func TestVerifyTBSCertIsDeterministic(t *testing.T) {
 			name:          "Mismatched bytes, valid input",
 			lintCertBytes: certDer1,
 			leafCertBytes: certDer2,
-			errorExpected: true,
 			errorSubstr:   "mismatch between",
 		},
 		{
@@ -1391,11 +1391,9 @@ func TestVerifyTBSCertIsDeterministic(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 			err := tbsCertIsDeterministic(testCase.lintCertBytes, testCase.leafCertBytes)
-			if testCase.errorExpected {
+			if testCase.errorSubstr != "" {
+				test.AssertContains(t, fmt.Sprint(err), testCase.errorSubstr)
 				test.AssertError(t, err, "your lack of errors is disturbing")
-				if testCase.errorSubstr != "" {
-					test.AssertContains(t, fmt.Sprint(err), testCase.errorSubstr)
-				}
 			} else {
 				test.AssertNotError(t, err, "unexpected error")
 			}

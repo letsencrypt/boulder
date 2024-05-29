@@ -639,35 +639,32 @@ func tbsCertIsDeterministic(lintCertBytes []byte, leafCertBytes []byte) error {
 		return fmt.Errorf("lintCertBytes of leafCertBytes were nil")
 	}
 
-	// parseTBSCert is a partial copy of //crypto/x509/parser.go to extract the
-	// RawTBSCertificate field from given DER bytes. It the RawTBSCertificate
-	// field bytes or an error if the given bytes cannot be parsed. This is far
-	// more performant than parsing the entire *Certificate structure with
-	// x509.ParseCertificate().
-	parseTBSCert := func(inputDERBytes *[]byte) ([]byte, error) {
-		if inputDERBytes == nil {
-			return nil, errors.New("inputDERBytes was nil")
-		}
-
+	// extractTBSCertBytes is a partial copy of //crypto/x509/parser.go to
+	// extract the RawTBSCertificate field from given DER bytes. It the
+	// RawTBSCertificate field bytes or an error if the given bytes cannot be
+	// parsed. This is far more performant than parsing the entire *Certificate
+	// structure with x509.ParseCertificate().
+	//
+	// RFC 5280, Section 4.1
+	//    Certificate  ::=  SEQUENCE  {
+	//      tbsCertificate       TBSCertificate,
+	//      signatureAlgorithm   AlgorithmIdentifier,
+	//      signatureValue       BIT STRING  }
+	//
+	//    TBSCertificate  ::=  SEQUENCE  {
+	//      ..
+	extractTBSCertBytes := func(inputDERBytes *[]byte) ([]byte, error) {
 		input := cryptobyte.String(*inputDERBytes)
-		// we read the SEQUENCE including length and tag bytes so that
-		// we can populate Certificate.Raw, before unwrapping the
-		// SEQUENCE so it can be operated on
+
+		// Get the Certificate bytes
 		if !input.ReadASN1Element(&input, cryptobyte_asn1.SEQUENCE) {
-			return nil, errors.New("x509: malformed certificate")
-		}
-		if !input.ReadASN1(&input, cryptobyte_asn1.SEQUENCE) {
-			return nil, errors.New("x509: malformed certificate")
+			return nil, errors.New("malformed certificate")
 		}
 
 		var tbs cryptobyte.String
-		// do the same trick again as above to extract the raw
-		// bytes for Certificate.RawTBSCertificate
+		// Get the TBSCertificate bytes from the Certificate bytes
 		if !input.ReadASN1Element(&tbs, cryptobyte_asn1.SEQUENCE) {
-			return nil, errors.New("x509: malformed tbs certificate")
-		}
-		if !tbs.ReadASN1(&tbs, cryptobyte_asn1.SEQUENCE) {
-			return nil, errors.New("x509: malformed tbs certificate")
+			return nil, errors.New("malformed tbs certificate")
 		}
 
 		if tbs.Empty() {
@@ -677,18 +674,18 @@ func tbsCertIsDeterministic(lintCertBytes []byte, leafCertBytes []byte) error {
 		return tbs, nil
 	}
 
-	lintRawTBSCert, err := parseTBSCert(&lintCertBytes)
+	lintRawTBSCert, err := extractTBSCertBytes(&lintCertBytes)
 	if err != nil {
-		return err
+		return fmt.Errorf("while extracting lint TBS cert: %w", err)
 	}
 
-	leafRawTBSCert, err := parseTBSCert(&leafCertBytes)
+	leafRawTBSCert, err := extractTBSCertBytes(&leafCertBytes)
 	if err != nil {
-		return err
+		return fmt.Errorf("while extracting leaf TBS cert: %w", err)
 	}
 
 	if lintRawTBSCert == nil || leafRawTBSCert == nil {
-		return errors.New("lintRawTBSCert or leafRawTBSCert nil bytes")
+		return fmt.Errorf("while extracting TBS cert: %w", err)
 	}
 
 	if !bytes.Equal(lintRawTBSCert, leafRawTBSCert) {
