@@ -1392,8 +1392,8 @@ func TestVerifyTBSCertIsDeterministic(t *testing.T) {
 			t.Parallel()
 			err := tbsCertIsDeterministic(testCase.lintCertBytes, testCase.leafCertBytes)
 			if testCase.errorSubstr != "" {
-				test.AssertContains(t, fmt.Sprint(err), testCase.errorSubstr)
 				test.AssertError(t, err, "your lack of errors is disturbing")
+				test.AssertContains(t, err.Error(), testCase.errorSubstr)
 			} else {
 				test.AssertNotError(t, err, "unexpected error")
 			}

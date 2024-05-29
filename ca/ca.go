@@ -684,10 +684,6 @@ func tbsCertIsDeterministic(lintCertBytes []byte, leafCertBytes []byte) error {
 		return fmt.Errorf("while extracting leaf TBS cert: %w", err)
 	}
 
-	if lintRawTBSCert == nil || leafRawTBSCert == nil {
-		return fmt.Errorf("while extracting TBS cert: %w", err)
-	}
-
 	if !bytes.Equal(lintRawTBSCert, leafRawTBSCert) {
 		return fmt.Errorf("mismatch between lintCert and leafCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintRawTBSCert, leafRawTBSCert)
 	}
