@@ -304,7 +304,7 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 
 	var createdAt time.Time
 	if !core.IsAnyNilOrZero(reg.CreatedAt) {
-		createdAt = reg.CreatedAt.AsTime().Truncate(time.Second)
+		createdAt = reg.CreatedAt.AsTime()
 	}
 
 	return &regModel{
@@ -405,8 +405,8 @@ func orderToModelv1(order *corepb.Order) (*orderModelv1, error) {
 	om := &orderModelv1{
 		ID:                order.Id,
 		RegistrationID:    order.RegistrationID,
-		Expires:           order.Expires.AsTime().Truncate(time.Second),
-		Created:           order.Created.AsTime().Truncate(time.Second),
+		Expires:           order.Expires.AsTime(),
+		Created:           order.Created.AsTime(),
 		BeganProcessing:   order.BeganProcessing,
 		CertificateSerial: order.CertificateSerial,
 	}
@@ -452,8 +452,8 @@ func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
 	om := &orderModelv2{
 		ID:                     order.Id,
 		RegistrationID:         order.RegistrationID,
-		Expires:                order.Expires.AsTime().Truncate(time.Second),
-		Created:                order.Created.AsTime().Truncate(time.Second),
+		Expires:                order.Expires.AsTime(),
+		Created:                order.Created.AsTime(),
 		BeganProcessing:        order.BeganProcessing,
 		CertificateSerial:      order.CertificateSerial,
 		CertificateProfileName: order.CertificateProfileName,

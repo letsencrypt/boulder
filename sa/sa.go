@@ -141,6 +141,10 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 		return nil, err
 	}
 
+	// The CreatedAt field shouldn't change from the original, so we copy it straight through.
+	// This also ensures that it's already truncated to second (which happened on creation).
+	update.CreatedAt = curr.CreatedAt
+
 	// Copy the existing registration model's LockCol to the new updated
 	// registration model's LockCol
 	update.LockCol = curr.LockCol
