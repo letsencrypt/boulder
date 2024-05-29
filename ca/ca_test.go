@@ -1302,7 +1302,7 @@ func TestGenerateSKID(t *testing.T) {
 	features.Reset()
 }
 
-func TestVerifyTBSCertificateDeterminism(t *testing.T) {
+func TestVerifyTBSCertIsDeterministic(t *testing.T) {
 	t.Parallel()
 
 	// Create first keypair and cert
@@ -1315,8 +1315,6 @@ func TestVerifyTBSCertificateDeterminism(t *testing.T) {
 	}
 	certDer1, err := x509.CreateCertificate(rand.Reader, template, template, &testKey.PublicKey, testKey)
 	test.AssertNotError(t, err, "unable to create certificate")
-	parsedCert1, err := x509.ParseCertificate(certDer1)
-	test.AssertNotError(t, err, "unable to parse DER bytes")
 
 	// Create second keypair and cert
 	testKey2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -1328,37 +1326,62 @@ func TestVerifyTBSCertificateDeterminism(t *testing.T) {
 	}
 	certDer2, err := x509.CreateCertificate(rand.Reader, template2, template2, &testKey2.PublicKey, testKey2)
 	test.AssertNotError(t, err, "unable to create certificate")
-	parsedCert2, err := x509.ParseCertificate(certDer2)
-	test.AssertNotError(t, err, "unable to parse DER bytes")
 
 	testCases := []struct {
 		name          string
-		leafCert      *x509.Certificate
-		lintCert      *x509.Certificate
+		lintCertBytes []byte
+		leafCertBytes []byte
 		errorExpected bool
+		errorSubstr   string
 	}{
 		{
 			name:          "Both nil",
-			leafCert:      nil,
-			lintCert:      nil,
+			lintCertBytes: nil,
+			leafCertBytes: nil,
 			errorExpected: true,
+			errorSubstr:   "were nil",
 		},
 		{
-			name:          "Missing a value",
-			leafCert:      parsedCert1,
-			lintCert:      nil,
+			name:          "Missing a value, invalid input",
+			lintCertBytes: nil,
+			leafCertBytes: []byte{0x6, 0x6, 0x6},
 			errorExpected: true,
+			errorSubstr:   "were nil",
 		},
 		{
-			name:          "Mismatch",
-			leafCert:      parsedCert1,
-			lintCert:      parsedCert2,
+			name:          "Missing a value, valid input",
+			lintCertBytes: nil,
+			leafCertBytes: certDer1,
 			errorExpected: true,
+			errorSubstr:   "were nil",
 		},
 		{
-			name:     "Valid",
-			leafCert: parsedCert1,
-			lintCert: parsedCert1,
+			name:          "Mismatched bytes, invalid input",
+			lintCertBytes: []byte{0x6, 0x6, 0x6},
+			leafCertBytes: []byte{0x1, 0x2, 0x3},
+			errorExpected: true,
+			errorSubstr:   "malformed certificate",
+		},
+		{
+			// This case is an example of when a linting cert's DER bytes are
+			// mismatched compared to then precert or final cert created from
+			// that linting cert's DER bytes.
+			name:          "Mismatched bytes, valid input",
+			lintCertBytes: certDer1,
+			leafCertBytes: certDer2,
+			errorExpected: true,
+			errorSubstr:   "mismatch between",
+		},
+		{
+			// Take this with a grain of salt since this test is not actually
+			// creating a linting certificate and performing two
+			// x509.CreateCertificate() calls like
+			// ca.IssueCertificateForPrecertificate and
+			// ca.issuePrecertificateInner do. However, we're still going to
+			// verify the equality.
+			name:          "Valid",
+			lintCertBytes: certDer1,
+			leafCertBytes: certDer1,
 		},
 	}
 
@@ -1367,9 +1390,12 @@ func TestVerifyTBSCertificateDeterminism(t *testing.T) {
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
-			err := verifyTBSCertificateDeterminism(testCase.lintCert, testCase.leafCert)
+			err := tbsCertIsDeterministic(testCase.lintCertBytes, testCase.leafCertBytes)
 			if testCase.errorExpected {
 				test.AssertError(t, err, "your lack of errors is disturbing")
+				if testCase.errorSubstr != "" {
+					test.AssertContains(t, fmt.Sprint(err), testCase.errorSubstr)
+				}
 			} else {
 				test.AssertNotError(t, err, "unexpected error")
 			}

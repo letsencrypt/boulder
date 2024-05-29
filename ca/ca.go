@@ -24,6 +24,8 @@ import (
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/zmap/zlint/v3/lint"
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -426,11 +428,6 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
 	}
 
-	lintCert, err := x509.ParseCertificate(lintCertBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse lint certificate bytes: %s", err)
-	}
-
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.noteSignError(err)
@@ -439,12 +436,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
 	}
 
-	cert, err := x509.ParseCertificate(certDER)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse certificate bytes: %s", err)
-	}
-
-	err = verifyTBSCertificateDeterminism(lintCert, cert)
+	err = tbsCertIsDeterministic(lintCertBytes, certDER)
 	if err != nil {
 		return nil, err
 	}
@@ -605,11 +597,6 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
 	}
 
-	lintCert, err := x509.ParseCertificate(lintCertBytes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse lint precertificate bytes: %s", err)
-	}
-
 	_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 		Der:          lintCertBytes,
 		RegID:        issueReq.RegistrationID,
@@ -629,12 +616,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
 	}
 
-	cert, err := x509.ParseCertificate(certDER)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse precertificate bytes: %s", err)
-	}
-
-	err = verifyTBSCertificateDeterminism(lintCert, cert)
+	err = tbsCertIsDeterministic(lintCertBytes, certDER)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -646,16 +628,71 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	return certDER, &certProfileWithID{certProfile.name, certProfile.hash, nil}, nil
 }
 
-// verifyTBSCertificateDeterminism verifies that x509.CreateCertificate signing
+// verifyTBSCertIsDeterministic verifies that x509.CreateCertificate signing
 // operation is deterministic and produced identical DER bytes between the given
-// lintCert and leafCert. If this fails it's mississuance, but it's better to
-// know about the problem sooner than later.
-func verifyTBSCertificateDeterminism(lintCert *x509.Certificate, leafCert *x509.Certificate) error {
-	if core.IsAnyNilOrZero(lintCert, leafCert) {
-		return fmt.Errorf("lintCertBytes and certBytes were nil")
+// lint certificate and leaf certificate. If the DER byte equality check fails
+// it's mississuance, but it's better to know about the problem sooner than
+// later. The caller is responsible for passing the appropriate valid
+// certificate bytes in the correct position.
+func tbsCertIsDeterministic(lintCertBytes []byte, leafCertBytes []byte) error {
+	if core.IsAnyNilOrZero(lintCertBytes, leafCertBytes) {
+		return fmt.Errorf("lintCertBytes of leafCertBytes were nil")
 	}
-	if !bytes.Equal(lintCert.RawTBSCertificate, leafCert.RawTBSCertificate) {
-		return fmt.Errorf("mismatch between lintCert and leafCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, leafCert.RawTBSCertificate)
+
+	// parseTBSCert is a partial copy of //crypto/x509/parser.go to extract the
+	// RawTBSCertificate field from given DER bytes. It the RawTBSCertficate field
+	// bytes or an error if the given bytes cannot be parsed. This is far more
+	// performant than parsing the entire *Certificate structure with
+	// x509.ParseCertificate().
+	parseTBSCert := func(inputDERBytes *[]byte) ([]byte, error) {
+		if inputDERBytes == nil {
+			return nil, errors.New("inputDERBytes was nil")
+		}
+
+		input := cryptobyte.String(*inputDERBytes)
+		// we read the SEQUENCE including length and tag bytes so that
+		// we can populate Certificate.Raw, before unwrapping the
+		// SEQUENCE so it can be operated on
+		if !input.ReadASN1Element(&input, cryptobyte_asn1.SEQUENCE) {
+			return nil, errors.New("x509: malformed certificate")
+		}
+		if !input.ReadASN1(&input, cryptobyte_asn1.SEQUENCE) {
+			return nil, errors.New("x509: malformed certificate")
+		}
+
+		var tbs cryptobyte.String
+		// do the same trick again as above to extract the raw
+		// bytes for Certificate.RawTBSCertificate
+		if !input.ReadASN1Element(&tbs, cryptobyte_asn1.SEQUENCE) {
+			return nil, errors.New("x509: malformed tbs certificate")
+		}
+		if !tbs.ReadASN1(&tbs, cryptobyte_asn1.SEQUENCE) {
+			return nil, errors.New("x509: malformed tbs certificate")
+		}
+
+		if tbs.Empty() {
+			return nil, errors.New("parsed RawTBSCertificate field was empty")
+		}
+
+		return tbs, nil
+	}
+
+	lintRawTBSCert, err := parseTBSCert(&lintCertBytes)
+	if err != nil {
+		return err
+	}
+
+	leafRawTBSCert, err := parseTBSCert(&leafCertBytes)
+	if err != nil {
+		return err
+	}
+
+	if lintRawTBSCert == nil || leafRawTBSCert == nil {
+		return errors.New("lintRawTBSCert or leafRawTBSCert nil bytes")
+	}
+
+	if !bytes.Equal(lintRawTBSCert, leafRawTBSCert) {
+		return fmt.Errorf("mismatch between lintCert and leafCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintRawTBSCert, leafRawTBSCert)
 	}
 
 	return nil
