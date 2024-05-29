@@ -656,14 +656,14 @@ func tbsCertIsDeterministic(lintCertBytes []byte, leafCertBytes []byte) error {
 	extractTBSCertBytes := func(inputDERBytes *[]byte) ([]byte, error) {
 		input := cryptobyte.String(*inputDERBytes)
 
-		// Get the Certificate bytes
-		if !input.ReadASN1Element(&input, cryptobyte_asn1.SEQUENCE) {
+		// Extract the Certificate bytes
+		if !input.ReadASN1(&input, cryptobyte_asn1.SEQUENCE) {
 			return nil, errors.New("malformed certificate")
 		}
 
 		var tbs cryptobyte.String
-		// Get the TBSCertificate bytes from the Certificate bytes
-		if !input.ReadASN1Element(&tbs, cryptobyte_asn1.SEQUENCE) {
+		// Extract the TBSCertificate bytes from the Certificate bytes
+		if !input.ReadASN1(&tbs, cryptobyte_asn1.SEQUENCE) {
 			return nil, errors.New("malformed tbs certificate")
 		}
 
