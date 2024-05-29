@@ -478,13 +478,15 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 				if err != nil {
 					return nil, err
 				}
+				// These parameters correspond to the fields listed in `authzFields`, as used in the
+				// `db.NewMultiInserter` call above, and occur in the same order.
 				err = inserter.Add([]interface{}{
 					am.ID,
 					am.IdentifierType,
 					am.IdentifierValue,
 					am.RegistrationID,
 					statusToUint[core.StatusPending],
-					am.Expires,
+					am.Expires.Truncate(time.Second),
 					am.Challenges,
 					nil,
 					nil,
@@ -506,10 +508,11 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		var orderID int64
 		var err error
 		created := ssa.clk.Now().Truncate(time.Second)
+		expires := req.NewOrder.Expires.AsTime().Truncate(time.Second)
 		if features.Get().MultipleCertificateProfiles {
 			omv2 := orderModelv2{
 				RegistrationID:         req.NewOrder.RegistrationID,
-				Expires:                req.NewOrder.Expires.AsTime().Truncate(time.Second),
+				Expires:                expires,
 				Created:                created,
 				CertificateProfileName: req.NewOrder.CertificateProfileName,
 			}
@@ -518,7 +521,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		} else {
 			omv1 := orderModelv1{
 				RegistrationID: req.NewOrder.RegistrationID,
-				Expires:        req.NewOrder.Expires.AsTime().Truncate(time.Second),
+				Expires:        expires,
 				Created:        created,
 			}
 			err = tx.Insert(ctx, &omv1)
@@ -556,20 +559,20 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			req.NewOrder.Names,
 			orderID,
 			req.NewOrder.RegistrationID,
-			req.NewOrder.Expires.AsTime().Truncate(time.Second),
+			expires,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		// Finally, build the overall Order PB.
+		// Finally, build the overall Order PB to return.
 		res := &corepb.Order{
 			// ID and Created were auto-populated on the order model when it was inserted.
 			Id:      orderID,
 			Created: timestamppb.New(created),
 			// These are carried over from the original request unchanged.
 			RegistrationID: req.NewOrder.RegistrationID,
-			Expires:        req.NewOrder.Expires,
+			Expires:        timestamppb.New(expires),
 			Names:          req.NewOrder.Names,
 			// Have to combine the already-associated and newly-reacted authzs.
 			V2Authorizations: append(req.NewOrder.V2Authorizations, newAuthzIDs...),

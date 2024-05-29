@@ -689,7 +689,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 		IdentifierValue: authz.Identifier,
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.AcmeStatus(authz.Status)],
-		Expires:         authz.Expires.AsTime().Truncate(time.Second),
+		Expires:         authz.Expires.AsTime(),
 	}
 	if authz.Id != "" {
 		// The v1 internal authorization objects use a string for the ID, the v2
@@ -728,7 +728,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 			// If validated Unix timestamp is zero then keep the core.Challenge Validated object nil.
 			var validated *time.Time
 			if !core.IsAnyNilOrZero(chall.Validated) {
-				val := chall.Validated.AsTime().Truncate(time.Second)
+				val := chall.Validated.AsTime()
 				validated = &val
 			}
 			am.AttemptedAt = validated

@@ -709,7 +709,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 					ORDER BY expires ASC
 					LIMIT 1`,
 		fqdnHash,
-    ssa.clk.Now().Truncate(time.Second))
+		ssa.clk.Now().Truncate(time.Second))
 
 	if db.IsNoRows(err) {
 		return nil, berrors.NotFoundError("no order matching request found")
