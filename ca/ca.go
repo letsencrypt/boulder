@@ -640,9 +640,9 @@ func tbsCertIsDeterministic(lintCertBytes []byte, leafCertBytes []byte) error {
 	}
 
 	// parseTBSCert is a partial copy of //crypto/x509/parser.go to extract the
-	// RawTBSCertificate field from given DER bytes. It the RawTBSCertficate field
-	// bytes or an error if the given bytes cannot be parsed. This is far more
-	// performant than parsing the entire *Certificate structure with
+	// RawTBSCertificate field from given DER bytes. It the RawTBSCertificate
+	// field bytes or an error if the given bytes cannot be parsed. This is far
+	// more performant than parsing the entire *Certificate structure with
 	// x509.ParseCertificate().
 	parseTBSCert := func(inputDERBytes *[]byte) ([]byte, error) {
 		if inputDERBytes == nil {
