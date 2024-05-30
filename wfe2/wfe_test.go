@@ -3323,7 +3323,6 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 	chal := authz.Challenges[0]
 	test.AssertEquals(t, chal.URL, "http://localhost/acme/chall-v3/12345/po1V2w")
-	test.AssertEquals(t, chal.URI, "")
 	test.AssertEquals(t, chal.ProvidedKeyAuthorization, "")
 }
 
