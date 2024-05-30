@@ -35,7 +35,12 @@ import (
 )
 
 var expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
-var expectedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
+var expectedThumbprint = "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
+var expectedKeyAuthorization = ka(expectedToken)
+
+func ka(token string) string {
+	return token + "." + expectedThumbprint
+}
 
 func bigIntFromB64(b64 string) *big.Int {
 	bytes, _ := base64.URLEncoding.DecodeString(b64)
@@ -104,13 +109,6 @@ func createChallenge(challengeType core.AcmeChallenge) core.Challenge {
 		ValidationRecord:         []core.ValidationRecord{},
 		ProvidedKeyAuthorization: expectedKeyAuthorization,
 	}
-}
-
-// setChallengeToken sets the token value, and sets the ProvidedKeyAuthorization
-// to match.
-func setChallengeToken(ch *core.Challenge, token string) {
-	ch.Token = token
-	ch.ProvidedKeyAuthorization = token + ".9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 }
 
 // setup returns an in-memory VA and a mock logger. The default resolver client
@@ -253,7 +251,7 @@ func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest
 func TestValidateMalformedChallenge(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, err := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"))
+	_, err := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"), expectedKeyAuthorization)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)

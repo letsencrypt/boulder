@@ -157,20 +157,6 @@ type ValidationRecord struct {
 	UsedRSAKEX bool `json:"-"`
 }
 
-func looksLikeKeyAuthorization(str string) error {
-	parts := strings.Split(str, ".")
-	if len(parts) != 2 {
-		return fmt.Errorf("Invalid key authorization: does not look like a key authorization")
-	} else if !LooksLikeAToken(parts[0]) {
-		return fmt.Errorf("Invalid key authorization: malformed token")
-	} else if !LooksLikeAToken(parts[1]) {
-		// Thumbprints have the same syntax as tokens in boulder
-		// Both are base64-encoded and 32 octets
-		return fmt.Errorf("Invalid key authorization: malformed key thumbprint")
-	}
-	return nil
-}
-
 // Challenge is an aggregate of all data needed for any challenges.
 //
 // Rather than define individual types for different types of
@@ -273,43 +259,18 @@ func (ch Challenge) RecordsSane() bool {
 	return true
 }
 
-// CheckConsistencyForClientOffer checks the fields of a challenge object before it is
-// given to the client.
-func (ch Challenge) CheckConsistencyForClientOffer() error {
-	err := ch.checkConsistency()
-	if err != nil {
-		return err
-	}
-
-	// Before completion, the key authorization field should be empty
-	if ch.ProvidedKeyAuthorization != "" {
-		return fmt.Errorf("A response to this challenge was already submitted.")
-	}
-	return nil
-}
-
-// CheckConsistencyForValidation checks the fields of a challenge object before it is
-// given to the VA.
-func (ch Challenge) CheckConsistencyForValidation() error {
-	err := ch.checkConsistency()
-	if err != nil {
-		return err
-	}
-
-	// If the challenge is completed, then there should be a key authorization
-	return looksLikeKeyAuthorization(ch.ProvidedKeyAuthorization)
-}
-
-// checkConsistency checks the sanity of a challenge object before issued to the client.
-func (ch Challenge) checkConsistency() error {
+// CheckPending ensures that a challenge object is pending and has a token.
+// This is used before offering the challenge to the client, and before actually
+// validating a challenge.
+func (ch Challenge) CheckPending() error {
 	if ch.Status != StatusPending {
-		return fmt.Errorf("The challenge is not pending.")
+		return fmt.Errorf("challenge is not pending")
 	}
 
-	// There always needs to be a token
-	if !LooksLikeAToken(ch.Token) {
-		return fmt.Errorf("The token is missing.")
+	if !looksLikeAToken(ch.Token) {
+		return fmt.Errorf("token is missing or malformed")
 	}
+
 	return nil
 }
 

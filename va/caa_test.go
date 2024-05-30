@@ -965,13 +965,13 @@ func TestCAAFailure(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, caaMockDNS{})
 
-	_, err := va.validate(ctx, dnsi("reserved.com"), 1, chall)
+	_, err := va.validate(ctx, dnsi("reserved.com"), 1, chall, expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Expected CAA rejection for reserved.com, got success")
 	}
 	test.AssertErrorIs(t, err, berrors.CAA)
 
-	_, err = va.validate(ctx, dnsi("example.gonetld"), 1, chall)
+	_, err = va.validate(ctx, dnsi("example.gonetld"), 1, chall, expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Expected CAA rejection for gonetld, got success")
 	}

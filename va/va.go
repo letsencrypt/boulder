@@ -437,6 +437,7 @@ func (va *ValidationAuthorityImpl) validate(
 	identifier identifier.ACMEIdentifier,
 	regid int64,
 	challenge core.Challenge,
+	keyAuthorization string,
 ) ([]core.ValidationRecord, error) {
 
 	// If the identifier is a wildcard domain we need to validate the base
@@ -448,7 +449,7 @@ func (va *ValidationAuthorityImpl) validate(
 		baseIdentifier.Value = strings.TrimPrefix(identifier.Value, "*.")
 	}
 
-	validationRecords, err := va.validateChallenge(ctx, baseIdentifier, challenge)
+	validationRecords, err := va.validateChallenge(ctx, baseIdentifier, challenge, keyAuthorization)
 	if err != nil {
 		return validationRecords, err
 	}
@@ -464,18 +465,23 @@ func (va *ValidationAuthorityImpl) validate(
 	return validationRecords, nil
 }
 
-func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, error) {
-	err := challenge.CheckConsistencyForValidation()
+func (va *ValidationAuthorityImpl) validateChallenge(
+	ctx context.Context,
+	identifier identifier.ACMEIdentifier,
+	challenge core.Challenge,
+	keyAuthorization string,
+) ([]core.ValidationRecord, error) {
+	err := challenge.CheckPending()
 	if err != nil {
 		return nil, berrors.MalformedError("Challenge failed consistency check: %s", err)
 	}
 	switch challenge.Type {
 	case core.ChallengeTypeHTTP01:
-		return va.validateHTTP01(ctx, identifier, challenge)
+		return va.validateHTTP01(ctx, identifier, challenge.Token, keyAuthorization)
 	case core.ChallengeTypeDNS01:
-		return va.validateDNS01(ctx, identifier, challenge)
+		return va.validateDNS01(ctx, identifier, keyAuthorization)
 	case core.ChallengeTypeTLSALPN01:
-		return va.validateTLSALPN01(ctx, identifier, challenge)
+		return va.validateTLSALPN01(ctx, identifier, keyAuthorization)
 	}
 	return nil, berrors.MalformedError("invalid challenge type %s", challenge.Type)
 }
@@ -686,6 +692,7 @@ type remoteVAResult struct {
 // The returned result will always contain a list of validation records, even
 // when it also contains a problem.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
+	// TODO(#7514): Add req.ExpectedKeyAuthorization to this check
 	if core.IsAnyNilOrZero(req, req.Domain, req.Challenge, req.Authz) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
@@ -707,7 +714,12 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		return nil, errors.New("Challenge failed to deserialize")
 	}
 
-	records, err := va.validate(ctx, identifier.DNSIdentifier(req.Domain), req.Authz.RegID, challenge)
+	keyAuthorization := req.ExpectedKeyAuthorization
+	if len(keyAuthorization) == 0 {
+		keyAuthorization = req.Challenge.KeyAuthorization
+	}
+
+	records, err := va.validate(ctx, identifier.DNSIdentifier(req.Domain), req.Authz.RegID, challenge, keyAuthorization)
 	challenge.ValidationRecord = records
 	localValidationLatency := time.Since(vStart)
 

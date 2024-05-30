@@ -29,6 +29,7 @@ message PerformValidationRequest {
   string domain = 1;
   core.Challenge challenge = 2;
   AuthzMeta authz = 3;
+  string expectedKeyAuthorization = 4;
 }
 
 message AuthzMeta {
