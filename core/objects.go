@@ -177,38 +177,38 @@ func looksLikeKeyAuthorization(str string) error {
 // challenge, we just throw all the elements into one bucket,
 // together with the common metadata elements.
 type Challenge struct {
-	// The type of challenge
+	// Type is the type of challenge encoded in this object.
 	Type AcmeChallenge `json:"type"`
 
-	// The status of this challenge
-	Status AcmeStatus `json:"status,omitempty"`
-
-	// Contains the error that occurred during challenge validation, if any
-	Error *probs.ProblemDetails `json:"error,omitempty"`
-
-	// A URI to which a response can be POSTed
-	URI string `json:"uri,omitempty"`
-
-	// For the V2 API the "URI" field is deprecated in favour of URL.
+	// URL is the URL to which a response can be posted. Required for all types.
 	URL string `json:"url,omitempty"`
 
-	// Used by http-01, tls-sni-01, tls-alpn-01 and dns-01 challenges
+	// Status is the status of this challenge. Required for all types.
+	Status AcmeStatus `json:"status,omitempty"`
+
+	// Validated is the time at which the server validated the challenge. Required
+	// if status is valid.
+	Validated *time.Time `json:"validated,omitempty"`
+
+	// Error contains the error that occurred during challenge validation, if any.
+	// If set, the Status must be "invalid".
+	Error *probs.ProblemDetails `json:"error,omitempty"`
+
+	// Token is a random value that uniquely identifies the challenge. It is used
+	// by all current challenges (http-01, tls-alpn-01, and dns-01).
 	Token string `json:"token,omitempty"`
 
-	// The expected KeyAuthorization for validation of the challenge. Populated by
-	// the RA prior to passing the challenge to the VA. For legacy reasons this
-	// field is called "ProvidedKeyAuthorization" because it was initially set by
-	// the content of the challenge update POST from the client. It is no longer
-	// set that way and should be renamed to "KeyAuthorization".
-	// TODO(@cpu): Rename `ProvidedKeyAuthorization` to `KeyAuthorization`.
+	// ProvidedKeyAuthorization used to carry the expected key authorization from
+	// the RA to the VA. However, since this field is never presented to the user
+	// via the ACME API, it should not be on this type.
+	//
+	// Deprecated: use vapb.PerformValidationRequest.ExpectedKeyAuthorization instead.
+	// TODO(#7514): Remove this.
 	ProvidedKeyAuthorization string `json:"keyAuthorization,omitempty"`
 
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
 	ValidationRecord []ValidationRecord `json:"validationRecord,omitempty"`
-	// The time at which the server validated the challenge. Required by
-	// RFC8555 if status is valid.
-	Validated *time.Time `json:"validated,omitempty"`
 }
 
 // ExpectedKeyAuthorization computes the expected KeyAuthorization value for
