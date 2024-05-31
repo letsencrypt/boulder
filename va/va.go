@@ -419,62 +419,27 @@ func detailedError(err error) *probs.ProblemDetails {
 	return probs.Connection("Error getting validation data")
 }
 
-// validate performs a challenge validation and, in parallel,
-// checks CAA and GSB for the identifier. If any of those steps fails, it
-// returns a ProblemDetails plus the validation records created during the
-// validation attempt.
-func (va *ValidationAuthorityImpl) validate(
-	ctx context.Context,
-	identifier identifier.ACMEIdentifier,
-	regid int64,
-	challenge core.Challenge,
-	keyAuthorization string,
-) ([]core.ValidationRecord, error) {
-
-	// If the identifier is a wildcard domain we need to validate the base
-	// domain by removing the "*." wildcard prefix. We create a separate
-	// `baseIdentifier` here before starting the `va.checkCAA` goroutine with the
-	// `identifier` to avoid a data race.
-	baseIdentifier := identifier
-	if strings.HasPrefix(identifier.Value, "*.") {
-		baseIdentifier.Value = strings.TrimPrefix(identifier.Value, "*.")
-	}
-
-	validationRecords, err := va.validateChallenge(ctx, baseIdentifier, challenge, keyAuthorization)
-	if err != nil {
-		return validationRecords, err
-	}
-
-	err = va.checkCAA(ctx, identifier, &caaParams{
-		accountURIID:     regid,
-		validationMethod: challenge.Type,
-	})
-	if err != nil {
-		return validationRecords, err
-	}
-
-	return validationRecords, nil
-}
-
+// validateChallenge simply passes through to the appropriate validation method
+// depending on the challenge type.
 func (va *ValidationAuthorityImpl) validateChallenge(
 	ctx context.Context,
-	identifier identifier.ACMEIdentifier,
-	challenge core.Challenge,
+	ident identifier.ACMEIdentifier,
+	kind core.AcmeChallenge,
+	token string,
 	keyAuthorization string,
 ) ([]core.ValidationRecord, error) {
-	err := challenge.CheckPending()
-	if err != nil {
-		return nil, berrors.MalformedError("Challenge failed consistency check: %s", err)
-	}
-	switch challenge.Type {
+	// Strip a (potential) leading wildcard token from the identifier.
+	ident.Value = strings.TrimPrefix(ident.Value, "*.")
+
+	switch kind {
 	case core.ChallengeTypeHTTP01:
-		return va.validateHTTP01(ctx, identifier, challenge.Token, keyAuthorization)
+		return va.validateHTTP01(ctx, ident, token, keyAuthorization)
 	case core.ChallengeTypeDNS01:
-		return va.validateDNS01(ctx, identifier, keyAuthorization)
+		return va.validateDNS01(ctx, ident, keyAuthorization)
 	case core.ChallengeTypeTLSALPN01:
-		return va.validateTLSALPN01(ctx, identifier, keyAuthorization)
+		return va.validateTLSALPN01(ctx, ident, keyAuthorization)
 	}
-	return nil, berrors.MalformedError("invalid challenge type %s", challenge.Type)
+	return nil, berrors.MalformedError("invalid challenge type %s", kind)
 }
 
 // performRemoteValidation calls `PerformValidation` for each of the configured
@@ -639,6 +604,39 @@ func (va *ValidationAuthorityImpl) logRemoteResults(
 type remoteVAResult struct {
 	VAHostname string
 	Problem    *probs.ProblemDetails
+}
+
+// performLocalValidation performs primary domain control validation and then
+// checks CAA. If either step fails, it immediately returns a bare error so
+// that our audit logging can include the underlying error.
+func (va *ValidationAuthorityImpl) performLocalValidation(
+	ctx context.Context,
+	ident identifier.ACMEIdentifier,
+	regid int64,
+	kind core.AcmeChallenge,
+	token string,
+	keyAuthorization string,
+) (recs []core.ValidationRecord, err error) {
+	// Do primary domain control validation. Any kind of error returned by this
+	// counts as a validation error, and will be converted into an appropriate
+	// ACME Problem by the calling function.
+	records, err := va.validateChallenge(ctx, ident, kind, token, keyAuthorization)
+	if err != nil {
+		return records, err
+	}
+
+	// Do primary CAA checks. Any kind of error returned by this counts as a
+	// not receiving permission to issue, and will be converted into an
+	// appropriate ACME Problem by the calling function.
+	err = va.checkCAA(ctx, ident, &caaParams{
+		accountURIID:     regid,
+		validationMethod: kind,
+	})
+	if err != nil {
+		return records, err
+	}
+
+	return records, nil
 }
 
 // PerformValidation validates the challenge for the domain in the request.
