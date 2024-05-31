@@ -20,13 +20,8 @@ type Config struct {
 	CAAAfterValidation         bool
 	AllowNoCommonName          bool
 	SHA256SubjectKeyIdentifier bool
-
-	// EnforceMultiVA causes the VA to block on remote VA PerformValidation
-	// requests in order to make a valid/invalid decision with the results.
-	EnforceMultiVA bool
-	// MultiVAFullResults will cause the main VA to wait for all of the remote VA
-	// results, not just the threshold required to make a decision.
-	MultiVAFullResults bool
+	EnforceMultiVA             bool
+	MultiVAFullResults         bool
 
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
