@@ -14,5 +14,5 @@ docker compose run bsetup
 
 # Use a predictable name for the container so we can grab the logs later
 # for use when testing logs analysis tools.
-docker rm boulder_tests
+docker rm boulder_tests || true
 exec docker compose -f docker-compose.yml -f docker-compose.next.yml run boulder ./test.sh "$@"
