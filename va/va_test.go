@@ -101,16 +101,6 @@ func createValidationRequest(domain string, challengeType core.AcmeChallenge) *v
 	}
 }
 
-func createChallenge(challengeType core.AcmeChallenge) core.Challenge {
-	return core.Challenge{
-		Type:                     challengeType,
-		Status:                   core.StatusPending,
-		Token:                    expectedToken,
-		ValidationRecord:         []core.ValidationRecord{},
-		ProvidedKeyAuthorization: expectedKeyAuthorization,
-	}
-}
-
 // setup returns an in-memory VA and a mock logger. The default resolver client
 // is MockClient{}, but can be overridden.
 func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remoteVAs []RemoteVA, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
@@ -251,7 +241,7 @@ func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest
 func TestValidateMalformedChallenge(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 
-	_, err := va.validateChallenge(ctx, dnsi("example.com"), createChallenge("fake-type-01"), expectedKeyAuthorization)
+	_, err := va.validateChallenge(ctx, dnsi("example.com"), "fake-type-01", expectedToken, expectedKeyAuthorization)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)

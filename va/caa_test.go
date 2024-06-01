@@ -959,19 +959,18 @@ func TestMultiCAARechecking(t *testing.T) {
 }
 
 func TestCAAFailure(t *testing.T) {
-	chall := createChallenge(core.ChallengeTypeHTTP01)
-	hs := httpSrv(t, chall.Token)
+	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
 
 	va, _ := setup(hs, 0, "", nil, caaMockDNS{})
 
-	_, err := va.validate(ctx, dnsi("reserved.com"), 1, chall, expectedKeyAuthorization)
+	err := va.checkCAA(ctx, dnsi("reserved.com"), &caaParams{1, core.ChallengeTypeHTTP01})
 	if err == nil {
 		t.Fatalf("Expected CAA rejection for reserved.com, got success")
 	}
 	test.AssertErrorIs(t, err, berrors.CAA)
 
-	_, err = va.validate(ctx, dnsi("example.gonetld"), 1, chall, expectedKeyAuthorization)
+	err = va.checkCAA(ctx, dnsi("example.gonetld"), &caaParams{1, core.ChallengeTypeHTTP01})
 	if err == nil {
 		t.Fatalf("Expected CAA rejection for gonetld, got success")
 	}

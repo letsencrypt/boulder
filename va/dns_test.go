@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strings"
 	"testing"
 	"time"
 
@@ -89,44 +88,6 @@ func TestDNSValidationInvalid(t *testing.T) {
 	prob := detailedError(err)
 
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
-}
-
-func TestDNSValidationNotSane(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
-
-	chall := createChallenge(core.ChallengeTypeDNS01)
-	chall.Token = ""
-	_, err := va.validateChallenge(ctx, dnsi("localhost"), chall, expectedKeyAuthorization)
-	prob := detailedError(err)
-	if prob.Type != probs.MalformedProblem {
-		t.Errorf("Got wrong error type: expected %s, got %s",
-			prob.Type, probs.MalformedProblem)
-	}
-	if !strings.Contains(prob.Error(), "Challenge failed consistency check:") {
-		t.Errorf("Got wrong error: %s", prob.Error())
-	}
-
-	chall.Token = "yfCBb-bRTLz8Wd1C0lTUQK3qlKj3-t2tYGwx5Hj7r_"
-	_, err = va.validateChallenge(ctx, dnsi("localhost"), chall, expectedKeyAuthorization)
-	prob = detailedError(err)
-	if prob.Type != probs.MalformedProblem {
-		t.Errorf("Got wrong error type: expected %s, got %s",
-			prob.Type, probs.MalformedProblem)
-	}
-	if !strings.Contains(prob.Error(), "Challenge failed consistency check:") {
-		t.Errorf("Got wrong error: %s", prob.Error())
-	}
-
-	_, err = va.validateChallenge(ctx, dnsi("localhost"), chall, "a")
-	prob = detailedError(err)
-	if prob.Type != probs.MalformedProblem {
-		t.Errorf("Got wrong error type: expected %s, got %s",
-			prob.Type, probs.MalformedProblem)
-	}
-	if !strings.Contains(prob.Error(), "Challenge failed consistency check:") {
-		t.Errorf("Got wrong error: %s", prob.Error())
-	}
-
 }
 
 func TestDNSValidationServFail(t *testing.T) {
