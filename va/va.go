@@ -643,22 +643,15 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	if core.IsAnyNilOrZero(req, req.Domain, req.Challenge, req.Authz) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
-	logEvent := verificationRequestEvent{
-		ID:        req.Authz.Id,
-		Requester: req.Authz.RegID,
-		Hostname:  req.Domain,
-	}
-	vStart := va.clk.Now()
-
-	var remoteResults chan *remoteVAResult
-	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
-		remoteResults = make(chan *remoteVAResult, remoteVACount)
-		go va.performRemoteValidation(ctx, req, remoteResults)
-	}
 
 	challenge, err := bgrpc.PBToChallenge(req.Challenge)
 	if err != nil {
-		return nil, errors.New("Challenge failed to deserialize")
+		return nil, errors.New("challenge failed to deserialize")
+	}
+
+	err = challenge.CheckPending()
+	if err != nil {
+		return nil, berrors.MalformedError("challenge failed consistency check: %s", err)
 	}
 
 	// TODO(#7514): Remove this fallback and belt-and-suspenders check.
@@ -670,52 +663,61 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		return nil, errors.New("no expected keyAuthorization provided")
 	}
 
-	records, err := va.validate(ctx, identifier.DNSIdentifier(req.Domain), req.Authz.RegID, challenge, keyAuthorization)
-	challenge.ValidationRecord = records
-	localValidationLatency := time.Since(vStart)
+	// Set up variables and a deferred closure to report validation latency
+	// metrics. Below here, do not use := to redeclare `prob`, or this will fail.
+	var prob *probs.ProblemDetails
+	var localLatency time.Duration
+	vStart := va.clk.Now()
+	logEvent := verificationRequestEvent{
+		ID:        req.Authz.Id,
+		Requester: req.Authz.RegID,
+		Hostname:  req.Domain,
+		Challenge: challenge,
+	}
+	defer func() {
+		problemType := ""
+		if prob != nil {
+			problemType = string(prob.Type)
+			logEvent.Error = prob.Error()
+			logEvent.Challenge.Error = prob
+			logEvent.Challenge.Status = core.StatusInvalid
+		} else {
+			logEvent.Challenge.Status = core.StatusValid
+		}
+
+		va.metrics.localValidationTime.With(prometheus.Labels{
+			"type":   string(logEvent.Challenge.Type),
+			"result": string(logEvent.Challenge.Status),
+		}).Observe(localLatency.Seconds())
+
+		va.metrics.validationTime.With(prometheus.Labels{
+			"type":         string(logEvent.Challenge.Type),
+			"result":       string(logEvent.Challenge.Status),
+			"problem_type": problemType,
+		}).Observe(time.Since(vStart).Seconds())
+
+		logEvent.ValidationLatency = time.Since(vStart).Round(time.Millisecond).Seconds()
+		va.log.AuditObject("Validation result", logEvent)
+	}()
+
+	// Do local validation. Note that we process the result in a couple ways
+	// *before* checking whether it returned an error. These few checks are
+	// carefully written to ensure that they work whether the local validation
+	// was successful or not, and cannot themselves fail.
+	records, err := va.performLocalValidation(
+		ctx,
+		identifier.DNSIdentifier(req.Domain),
+		req.Authz.RegID,
+		challenge.Type,
+		challenge.Token,
+		keyAuthorization)
+	localLatency = time.Since(vStart)
 
 	// Check for malformed ValidationRecords
-	if !challenge.RecordsSane() && err == nil {
-		err = errors.New("Records for validation failed sanity check")
+	logEvent.Challenge.ValidationRecord = records
+	if err == nil && !logEvent.Challenge.RecordsSane() {
+		err = errors.New("records from local validation failed sanity check")
 	}
-
-	var problemType string
-	var prob *probs.ProblemDetails
-	if err != nil {
-		prob = detailedError(err)
-		problemType = string(prob.Type)
-		challenge.Status = core.StatusInvalid
-		challenge.Error = prob
-		logEvent.Error = prob.Error()
-		logEvent.InternalError = err.Error()
-	} else if remoteResults != nil {
-		remoteProb := va.processRemoteValidationResults(
-			string(challenge.Type),
-			remoteResults)
-
-		// If the remote result was a non-nil problem then fail the validation
-		if remoteProb != nil {
-			prob = remoteProb
-			challenge.Status = core.StatusInvalid
-			challenge.Error = remoteProb
-			// We only set .Error here, not .InternalError, because the
-			// remote VA doesn't send us the internal error. But that's ok,
-			// it got logged at the remote VA.
-			logEvent.Error = remoteProb.Error()
-			va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
-				req.Domain, remoteProb)
-			va.metrics.remoteValidationFailures.Inc()
-		} else {
-			challenge.Status = core.StatusValid
-		}
-	} else {
-		challenge.Status = core.StatusValid
-	}
-
-	logEvent.Challenge = challenge
-
-	validationLatency := time.Since(vStart)
-	logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
 
 	// Copy the "UsedRSAKEX" value from the last validationRecord into the log
 	// event. Only the last record should have this bool set, because we only
@@ -726,23 +728,25 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		logEvent.UsedRSAKEX = record.UsedRSAKEX || logEvent.UsedRSAKEX
 	}
 
-	va.metrics.localValidationTime.With(prometheus.Labels{
-		"type":   string(challenge.Type),
-		"result": string(challenge.Status),
-	}).Observe(localValidationLatency.Seconds())
-	va.metrics.validationTime.With(prometheus.Labels{
-		"type":         string(challenge.Type),
-		"result":       string(challenge.Status),
-		"problem_type": problemType,
-	}).Observe(validationLatency.Seconds())
+	if err != nil {
+		logEvent.InternalError = err.Error()
+		prob = detailedError(err)
+		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
+	}
 
-	va.log.AuditObject("Validation result", logEvent)
+	// Do remote validation. We do this after local validation is complete, to
+	// avoid wasting work when validation will fail anyway. This only returns a
+	// singular problem, because the remote VAs have already audit-logged their
+	// own validation records, and it's not helpful to present multiple large
+	// errors to the end user.
+	prob = va.performRemoteValidation(ctx, req)
+	if prob != nil {
+		va.metrics.remoteValidationFailures.Inc()
+		prob.Detail = fmt.Sprintf("During secondary validation: %s", prob.Detail)
+		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
+	}
 
-	// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
-	// It will also later be serialized in JSON, which defaults to UTF-8. Make
-	// sure it is UTF-8 clean now.
-	prob = filterProblemDetails(prob)
-	return bgrpc.ValidationResultToPB(records, prob)
+	return bgrpc.ValidationResultToPB(records, nil)
 }
 
 // usedRSAKEX returns true if the given cipher suite involves the use of an
