@@ -442,110 +442,106 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	return nil, berrors.MalformedError("invalid challenge type %s", kind)
 }
 
-// performRemoteValidation calls `PerformValidation` for each of the configured
-// remoteVAs in a random order. The provided `results` chan should have an equal
-// size to the number of remote VAs. The validations will be performed in
-// separate go-routines. If the result `error` from a remote
-// `PerformValidation` RPC is nil or a nil `ProblemDetails` instance it is
-// written directly to the `results` chan. If the err is a cancelled error it is
-// treated as a nil error. Otherwise the error/problem is written to the results
-// channel as-is.
+// performRemoteValidation coordinates the whole process of kicking off and
+// collecting results from calls to remote VAs' PerformValidation function. It
+// returns either a problem (if too many of the RVAs observed validation
+// failures), or an error (if too many of the remote validation requests
+// encountered non-validation errors), or neither if the number of successful
+// remote validations surpassed our corroboration threshold.
 func (va *ValidationAuthorityImpl) performRemoteValidation(
 	ctx context.Context,
 	req *vapb.PerformValidationRequest,
-	results chan<- *remoteVAResult) {
-	for _, i := range rand.Perm(len(va.remoteVAs)) {
-		remoteVA := va.remoteVAs[i]
-		go func(rva RemoteVA) {
-			result := &remoteVAResult{
-				VAHostname: rva.Address,
-			}
-			res, err := rva.PerformValidation(ctx, req)
-			if err != nil && canceled.Is(err) {
-				// If the non-nil err was a canceled error, ignore it. That's fine: it
-				// just means we cancelled the remote VA request before it was
-				// finished because we didn't care about its result. Don't log to avoid
-				// spamming the logs.
-				result.Problem = probs.ServerInternal("Remote PerformValidation RPC canceled")
-			} else if err != nil {
-				// This is a real error, not just a problem with the validation.
-				va.log.Errf("Remote VA %q.PerformValidation failed: %s", rva.Address, err)
-				result.Problem = probs.ServerInternal("Remote PerformValidation RPC failed")
-			} else if res.Problems != nil {
-				prob, err := bgrpc.PBToProblemDetails(res.Problems)
-				if err != nil {
-					va.log.Infof("Remote VA %q.PerformValidation returned malformed problem: %s", rva.Address, err)
-					result.Problem = probs.ServerInternal(
-						fmt.Sprintf("Remote PerformValidation RPC returned malformed result: %s", err))
-				} else {
-					va.log.Infof("Remote VA %q.PerformValidation returned problem: %s", rva.Address, prob)
-					result.Problem = prob
-				}
-			}
-			results <- result
-		}(remoteVA)
+) (prob *probs.ProblemDetails) {
+	if len(va.remoteVAs) == 0 {
+		return nil
 	}
-}
 
-// processRemoteValidationResults evaluates a primary VA result, and a channel
-// of remote VA problems to produce a single overall validation result based on
-// configured feature flags. The overall result is calculated based on the VA's
-// configured `maxRemoteFailures` value, and the function returns as soon as
-// that threshold has been exceeded or cannot possibly be exceeded.
-func (va *ValidationAuthorityImpl) processRemoteValidationResults(
-	challengeType string,
-	remoteResultsChan <-chan *remoteVAResult) *probs.ProblemDetails {
-
-	state := "failure"
+	// Defer a closure to increment a metric. Note that this function uses named
+	// return values so that this closure can reference them.
 	start := va.clk.Now()
-
 	defer func() {
+		state := "failure"
+		if prob == nil {
+			state = "success"
+		}
+
 		va.metrics.remoteValidationTime.With(prometheus.Labels{
-			"type":   challengeType,
+			"type":   req.Challenge.Type,
 			"result": state,
 		}).Observe(va.clk.Since(start).Seconds())
 	}()
 
+	type rvaResult struct {
+		hostname string
+		response *vapb.ValidationResult
+		err      error
+	}
+
+	results := make(chan *rvaResult)
+
+	for _, i := range rand.Perm(len(va.remoteVAs)) {
+		remoteVA := va.remoteVAs[i]
+		go func(rva RemoteVA, out chan<- *rvaResult) {
+			res, err := rva.PerformValidation(ctx, req)
+			out <- &rvaResult{
+				hostname: rva.Address,
+				response: res,
+				err:      err,
+			}
+		}(remoteVA, results)
+	}
+
 	required := len(va.remoteVAs) - va.maxRemoteFailures
 	good := 0
 	bad := 0
-
-	var remoteResults []*remoteVAResult
 	var firstProb *probs.ProblemDetails
-	// Due to channel behavior this could block indefinitely and we rely on gRPC
-	// honoring the context deadline used in client calls to prevent that from
-	// happening.
-	for result := range remoteResultsChan {
-		// Add the result to the slice
-		remoteResults = append(remoteResults, result)
-		if result.Problem == nil {
-			good++
-		} else {
+
+	for res := range results {
+		var currProb *probs.ProblemDetails
+
+		if res.err != nil {
 			bad++
+
+			if canceled.Is(res.err) {
+				currProb = probs.ServerInternal("Remote PerformValidation RPC canceled")
+			} else {
+				va.log.Errf("Remote VA %q.PerformValidation failed: %s", res.hostname, res.err)
+				currProb = probs.ServerInternal("Remote PerformValidation RPC failed")
+			}
+		} else if res.response.Problems != nil {
+			bad++
+
+			var err error
+			currProb, err = bgrpc.PBToProblemDetails(res.response.Problems)
+			if err != nil {
+				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", res.hostname, err)
+				currProb = probs.ServerInternal("Remote PerformValidation RPC returned malformed result")
+			}
+		} else {
+			good++
 		}
-		// Store the first non-nil problem to return later.
-		if firstProb == nil && result.Problem != nil {
-			firstProb = result.Problem
+
+		if firstProb == nil && currProb != nil {
+			firstProb = currProb
 		}
+
 		// Return as soon as we have enough successes or failures for a definitive result.
 		if good >= required {
-			state = "success"
 			return nil
-		} else if bad > va.maxRemoteFailures {
-			modifiedProblem := *result.Problem
-			modifiedProblem.Detail = "During secondary validation: " + firstProb.Detail
-			return &modifiedProblem
+		}
+		if bad > va.maxRemoteFailures {
+			return firstProb
 		}
 
 		// If we somehow haven't returned early, we need to break the loop once all
 		// of the VAs have returned a result.
-		if len(remoteResults) == len(va.remoteVAs) {
+		if good+bad >= len(va.remoteVAs) {
 			break
 		}
 	}
 
-	// This condition should not occur - it indicates the good/bad counts didn't
-	// meet either the required threshold or the maxRemoteFailures threshold.
+	// This condition should not occur - it indicates the good/bad counts neither
+	// met the required threshold nor the maxRemoteFailures threshold.
 	return probs.ServerInternal("Too few remote PerformValidation RPC results")
 }
 
