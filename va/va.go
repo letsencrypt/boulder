@@ -714,9 +714,13 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		return nil, errors.New("Challenge failed to deserialize")
 	}
 
+	// TODO(#7514): Remove this fallback and belt-and-suspenders check.
 	keyAuthorization := req.ExpectedKeyAuthorization
 	if len(keyAuthorization) == 0 {
 		keyAuthorization = req.Challenge.KeyAuthorization
+	}
+	if len(keyAuthorization) == 0 {
+		return nil, errors.New("no expected keyAuthorization provided")
 	}
 
 	records, err := va.validate(ctx, identifier.DNSIdentifier(req.Domain), req.Authz.RegID, challenge, keyAuthorization)
