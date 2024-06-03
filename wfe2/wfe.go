@@ -2057,7 +2057,7 @@ func (wfe *WebFrontEndImpl) newNewOrderLimitTransactions(regId int64, names []st
 	logTxnErr := func(err error, limit ratelimits.Name) {
 		// TODO(#5545): Once key-value rate limits are authoritative this log
 		// line should be removed in favor of returning the error.
-		wfe.log.Errf("constructing rate limit transaction for %s rate limit: %s", limit, err)
+		wfe.log.Infof("error constructing rate limit transaction for %s rate limit: %s", limit, err)
 	}
 
 	var transactions []ratelimits.Transaction
