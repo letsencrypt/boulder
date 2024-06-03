@@ -645,10 +645,6 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return err
 	}
-	// Verify that the lintCert is self-signed.
-	if !bytes.Equal(lintCert.RawSubject, lintCert.RawIssuer) {
-		return fmt.Errorf("mismatch between self-signed lintCert RawSubject and RawIssuer DER bytes: \"%x\" != \"%x\"", lintCert.RawSubject, lintCert.RawIssuer)
-	}
 	finalCert, err := signAndWriteCert(template, template, lintCert, keyInfo.key, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
@@ -696,10 +692,6 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, config.SkipLints)
 	if err != nil {
 		return err
-	}
-	// Verify that the lintCert (and therefore the eventual finalCert) corresponds to the specified issuer certificate.
-	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
-		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
 	finalCert, err := signAndWriteCert(template, issuer, lintCert, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {
@@ -779,9 +771,6 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	// notBefore date of the existing CA Certificate(s).
 	if lintCert.NotBefore.Before(toBeCrossSigned.NotBefore) {
 		return fmt.Errorf("cross-signed subordinate CA's NotBefore predates the existing CA's NotBefore")
-	}
-	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
-		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
 	// BR 7.1.2.2.3 Cross-Certified Subordinate CA Extensions
 	if !slices.Equal(lintCert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {

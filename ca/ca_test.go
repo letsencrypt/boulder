@@ -10,6 +10,7 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"strings"
 	"testing"
@@ -1294,4 +1295,103 @@ func TestGenerateSKID(t *testing.T) {
 	test.AssertEquals(t, len(sha256skid), 20)
 	test.AssertEquals(t, cap(sha256skid), 20)
 	features.Reset()
+}
+
+func TestVerifyTBSCertIsDeterministic(t *testing.T) {
+	t.Parallel()
+
+	// Create first keypair and cert
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "unable to generate ECDSA private key")
+	template := &x509.Certificate{
+		NotAfter:     time.Now().Add(1 * time.Hour),
+		DNSNames:     []string{"example.com"},
+		SerialNumber: big.NewInt(1),
+	}
+	certDer1, err := x509.CreateCertificate(rand.Reader, template, template, &testKey.PublicKey, testKey)
+	test.AssertNotError(t, err, "unable to create certificate")
+
+	// Create second keypair and cert
+	testKey2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "unable to generate ECDSA private key")
+	template2 := &x509.Certificate{
+		NotAfter:     time.Now().Add(2 * time.Hour),
+		DNSNames:     []string{"example.net"},
+		SerialNumber: big.NewInt(2),
+	}
+	certDer2, err := x509.CreateCertificate(rand.Reader, template2, template2, &testKey2.PublicKey, testKey2)
+	test.AssertNotError(t, err, "unable to create certificate")
+
+	testCases := []struct {
+		name          string
+		lintCertBytes []byte
+		leafCertBytes []byte
+		errorSubstr   string
+	}{
+		{
+			name:          "Both nil",
+			lintCertBytes: nil,
+			leafCertBytes: nil,
+			errorSubstr:   "were nil",
+		},
+		{
+			name:          "Missing a value, invalid input",
+			lintCertBytes: nil,
+			leafCertBytes: []byte{0x6, 0x6, 0x6},
+			errorSubstr:   "were nil",
+		},
+		{
+			name:          "Missing a value, valid input",
+			lintCertBytes: nil,
+			leafCertBytes: certDer1,
+			errorSubstr:   "were nil",
+		},
+		{
+			name:          "Mismatched bytes, invalid input",
+			lintCertBytes: []byte{0x6, 0x6, 0x6},
+			leafCertBytes: []byte{0x1, 0x2, 0x3},
+			errorSubstr:   "malformed certificate",
+		},
+		{
+			name:          "Mismatched bytes, invalider input",
+			lintCertBytes: certDer1,
+			leafCertBytes: []byte{0x1, 0x2, 0x3},
+			errorSubstr:   "malformed certificate",
+		},
+		{
+			// This case is an example of when a linting cert's DER bytes are
+			// mismatched compared to then precert or final cert created from
+			// that linting cert's DER bytes.
+			name:          "Mismatched bytes, valid input",
+			lintCertBytes: certDer1,
+			leafCertBytes: certDer2,
+			errorSubstr:   "mismatch between",
+		},
+		{
+			// Take this with a grain of salt since this test is not actually
+			// creating a linting certificate and performing two
+			// x509.CreateCertificate() calls like
+			// ca.IssueCertificateForPrecertificate and
+			// ca.issuePrecertificateInner do. However, we're still going to
+			// verify the equality.
+			name:          "Valid",
+			lintCertBytes: certDer1,
+			leafCertBytes: certDer1,
+		},
+	}
+
+	for _, testCase := range testCases {
+		// TODO(#7454) Remove this rebinding
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			err := tbsCertIsDeterministic(testCase.lintCertBytes, testCase.leafCertBytes)
+			if testCase.errorSubstr != "" {
+				test.AssertError(t, err, "your lack of errors is disturbing")
+				test.AssertContains(t, err.Error(), testCase.errorSubstr)
+			} else {
+				test.AssertNotError(t, err, "unexpected error")
+			}
+		})
+	}
 }
