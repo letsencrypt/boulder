@@ -331,7 +331,6 @@ func TestWillingToIssue_Wildcard(t *testing.T) {
 	for _, err := range berr.SubErrors {
 		fmt.Println(err)
 	}
-	fmt.Println(berr)
 	test.AssertEquals(t, len(berr.SubErrors), 2)
 	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. Refer to sub-problems for more information.)")
 
