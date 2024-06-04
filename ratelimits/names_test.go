@@ -107,6 +107,62 @@ func TestValidateIdForName(t *testing.T) {
 			err:   "must be an ACME registration Id",
 		},
 		{
+			limit: FailedAuthorizationsPerDomainPerAccount,
+			desc:  "transaction: valid regId and domain",
+			id:    "12345:example.com",
+		},
+		{
+			limit: FailedAuthorizationsPerDomainPerAccount,
+			desc:  "transaction: invalid regId",
+			id:    "12ea5:example.com",
+			err:   "invalid regId",
+		},
+		{
+			limit: FailedAuthorizationsPerDomainPerAccount,
+			desc:  "transaction: invalid domain",
+			id:    "12345:examplecom",
+			err:   "name needs at least one dot",
+		},
+		{
+			limit: FailedAuthorizationsPerDomainPerAccount,
+			desc:  "override: valid regId",
+			id:    "12345",
+		},
+		{
+			limit: FailedAuthorizationsPerDomainPerAccount,
+			desc:  "override: invalid regId",
+			id:    "12ea5",
+			err:   "invalid regId",
+		},
+		{
+			limit: CertificatesPerDomainPerAccount,
+			desc:  "transaction: valid regId and domain",
+			id:    "12345:example.com",
+		},
+		{
+			limit: CertificatesPerDomainPerAccount,
+			desc:  "transaction: invalid regId",
+			id:    "12ea5:example.com",
+			err:   "invalid regId",
+		},
+		{
+			limit: CertificatesPerDomainPerAccount,
+			desc:  "transaction: invalid domain",
+			id:    "12345:examplecom",
+			err:   "name needs at least one dot",
+		},
+		{
+			limit: CertificatesPerDomainPerAccount,
+			desc:  "override: valid regId",
+			id:    "12345",
+		},
+		{
+			limit: CertificatesPerDomainPerAccount,
+			desc:  "override: invalid regId",
+			id:    "12ea5",
+			err:   "invalid regId",
+		},
+		{
 			limit: CertificatesPerDomain,
 			desc:  "valid domain",
 			id:    "example.com",
