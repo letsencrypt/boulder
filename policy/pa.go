@@ -412,13 +412,14 @@ func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
 				subErrors = append(subErrors, subError(domain, err))
 				continue
 			}
-		} else {
-			// Require no match against hostname block lists
-			err := pa.checkHostLists(domain)
-			if err != nil {
-				subErrors = append(subErrors, subError(domain, err))
-				continue
-			}
+		}
+
+		// For both wildcard and non-wildcard domains, check whether any parent domain
+		// name is on the regular blocklist.
+		err := pa.checkHostLists(domain)
+		if err != nil {
+			subErrors = append(subErrors, subError(domain, err))
+			continue
 		}
 	}
 	return combineSubErrors(subErrors)
