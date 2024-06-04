@@ -1,6 +1,7 @@
 package ratelimits
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -24,6 +25,127 @@ func TestNameIsValid(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := tt.args.name.isValid()
 			test.AssertEquals(t, tt.want, got)
+		})
+	}
+}
+
+func TestValidateIdForName(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		limit Name
+		desc  string
+		id    string
+		err   string
+	}{
+		{
+			limit: NewRegistrationsPerIPAddress,
+			desc:  "valid IPv4 address",
+			id:    "10.0.0.1",
+		},
+		{
+			limit: NewRegistrationsPerIPAddress,
+			desc:  "valid IPv6 address",
+			id:    "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+		},
+		{
+			limit: NewRegistrationsPerIPAddress,
+			desc:  "empty string",
+			id:    "",
+			err:   "must be an IP address",
+		},
+		{
+			limit: NewRegistrationsPerIPAddress,
+			desc:  "one space",
+			id:    " ",
+			err:   "must be an IP address",
+		},
+		{
+			limit: NewRegistrationsPerIPAddress,
+			desc:  "invalid IPv4 address",
+			id:    "10.0.0.9000",
+			err:   "must be an IP address",
+		},
+		{
+			limit: NewRegistrationsPerIPAddress,
+			desc:  "invalid IPv6 address",
+			id:    "2001:0db8:85a3:0000:0000:8a2e:0370:7334:9000",
+			err:   "must be an IP address",
+		},
+		{
+			limit: NewRegistrationsPerIPv6Range,
+			desc:  "valid IPv6 address range",
+			id:    "2001:0db8:0000::/48",
+		},
+		{
+			limit: NewRegistrationsPerIPv6Range,
+			desc:  "invalid IPv6 CIDR range",
+			id:    "2001:0db8:0000::/128",
+			err:   "must be /48",
+		},
+		{
+			limit: NewRegistrationsPerIPv6Range,
+			desc:  "invalid IPv6 CIDR",
+			id:    "2001:0db8:0000::/48/48",
+			err:   "must be an IPv6 CIDR range",
+		},
+		{
+			limit: NewRegistrationsPerIPv6Range,
+			desc:  "IPv4 CIDR when we expect IPv6 CIDR range",
+			id:    "10.0.0.0/16",
+			err:   "must be /48",
+		},
+		{
+			limit: NewOrdersPerAccount,
+			desc:  "valid regId",
+			id:    "1234567890",
+		},
+		{
+			limit: NewOrdersPerAccount,
+			desc:  "invalid regId",
+			id:    "lol",
+			err:   "must be an ACME registration Id",
+		},
+		{
+			limit: CertificatesPerDomain,
+			desc:  "valid domain",
+			id:    "example.com",
+		},
+		{
+			limit: CertificatesPerDomain,
+			desc:  "malformed domain",
+			id:    "example:.com",
+			err:   "name contains an invalid character",
+		},
+		{
+			limit: CertificatesPerDomain,
+			desc:  "empty domain",
+			id:    "",
+			err:   "name is empty",
+		},
+		{
+			limit: CertificatesPerFQDNSet,
+			desc:  "valid fqdnSet containing a single domain",
+			id:    "example.com",
+		},
+		{
+			limit: CertificatesPerFQDNSet,
+			desc:  "valid fqdnSet containing multiple domains",
+			id:    "example.com,example.org",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(fmt.Sprintf("%s/%s", tc.limit, tc.desc), func(t *testing.T) {
+			t.Parallel()
+			err := validateIdForName(tc.limit, tc.id)
+			if tc.err != "" {
+				test.AssertError(t, err, "should have failed")
+				test.AssertContains(t, err.Error(), tc.err)
+			} else {
+				test.AssertNotError(t, err, "should have succeeded")
+			}
 		})
 	}
 }
