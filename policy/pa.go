@@ -395,7 +395,7 @@ func subError(name string, err error) berrors.SubBoulderError {
 //
 // Precondition: all input domain names must be in lowercase.
 func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
-	err := WellFormed(domains)
+	err := WellFormedDomainNames(domains)
 	if err != nil {
 		return err
 	}
@@ -424,7 +424,7 @@ func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
 	return combineSubErrors(subErrors)
 }
 
-// WellFormed returns an error if any of the provided domains do not meet these criteria:
+// WellFormedDomainNames returns an error if any of the provided domains do not meet these criteria:
 //
 //   - MUST contains only lowercase characters, numbers, hyphens, and dots
 //   - MUST NOT have more than maxLabels labels
@@ -446,7 +446,7 @@ func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
 //
 // If multiple domains are invalid, the error will contain suberrors specific to
 // each domain.
-func WellFormed(domains []string) error {
+func WellFormedDomainNames(domains []string) error {
 	var subErrors []berrors.SubBoulderError
 	for _, domain := range domains {
 		if strings.Count(domain, "*") > 0 {

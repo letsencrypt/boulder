@@ -187,14 +187,7 @@ func validateFQDNSet(id string) error {
 		return fmt.Errorf(
 			"invalid fqdnSet, %q must be formatted 'fqdnSet'", id)
 	}
-	for _, domain := range domains {
-		err := policy.ValidDomain(domain)
-		if err != nil {
-			return fmt.Errorf(
-				"invalid domain, %q must be formatted 'fqdnSet': %w", id, err)
-		}
-	}
-	return nil
+	return policy.WellFormedDomainNames(domains)
 }
 
 func validateIdForName(name Name, id string) error {
