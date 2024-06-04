@@ -300,6 +300,7 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 func TestWillingToIssue_Wildcard(t *testing.T) {
 	banned := []string{
 		"letsdecrypt.org",
+		"example.com",
 	}
 	pa := paImpl(t)
 
@@ -316,10 +317,10 @@ func TestWillingToIssue_Wildcard(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
 
 	domains := []string{
-		"perfectly-fine.com",             // fine
-		"letsdecrypt.org",                // banned
-		"ok.*.this.is.a.*.weird.one.com", // malformed
-		"also-perfectly-fine.com",        // fine
+		"perfectly-fine.com",      // fine
+		"letsdecrypt.org",         // banned
+		"example.com",             // banned
+		"also-perfectly-fine.com", // fine
 	}
 
 	err = pa.WillingToIssue(domains)
@@ -330,6 +331,7 @@ func TestWillingToIssue_Wildcard(t *testing.T) {
 	for _, err := range berr.SubErrors {
 		fmt.Println(err)
 	}
+	fmt.Println(berr)
 	test.AssertEquals(t, len(berr.SubErrors), 2)
 	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. Refer to sub-problems for more information.)")
 
@@ -340,12 +342,12 @@ func TestWillingToIssue_Wildcard(t *testing.T) {
 	}
 
 	subErrA, foundA := subErrMap["letsdecrypt.org"]
-	subErrB, foundB := subErrMap["ok.*.this.is.a.*.weird.one.com"]
+	subErrB, foundB := subErrMap["example.com"]
 	test.AssertEquals(t, foundA, true)
 	test.AssertEquals(t, foundB, true)
 
 	test.AssertEquals(t, subErrA.Type, berrors.RejectedIdentifier)
-	test.AssertEquals(t, subErrB.Type, berrors.Malformed)
+	test.AssertEquals(t, subErrB.Type, berrors.RejectedIdentifier)
 
 	// Test willing to issue with only *one* bad identifier.
 	err = pa.WillingToIssue([]string{"letsdecrypt.org"})
