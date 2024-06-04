@@ -383,11 +383,12 @@ func (m *mailer) processCerts(
 			defer wg.Done()
 			for w := range ch {
 				err := m.sendToOneRegID(ctx, conn, w.regID, w.certDERs, expiresIn)
-				if err != nil {
-					// Don't audit log when there is no email address on file.
-					if !errors.Is(err, errNoValidEmail) {
-						m.log.AuditErr(err.Error())
-					}
+				// Don't audit log when there is no email address on file
+				// because it's a waste of space. This decision should be
+				// revisited if we ever decide to output the accountID in the
+				// log line.
+				if err != nil && !errors.Is(err, errNoValidEmail) {
+					m.log.AuditErr(err.Error())
 				}
 			}
 			conn.Close()
