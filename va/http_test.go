@@ -30,10 +30,6 @@ import (
 	"testing"
 )
 
-func httpChallenge() core.Challenge {
-	return createChallenge(core.ChallengeTypeHTTP01)
-}
-
 // TestDialerMismatchError tests that using a preresolvedDialer for one host for
 // a dial to another host produces the expected dialerMismatchError.
 func TestDialerMismatchError(t *testing.T) {
@@ -1220,7 +1216,7 @@ func TestHTTPBadPort(t *testing.T) {
 	badPort := 40000 + mrand.Intn(25000)
 	va.httpPort = badPort
 
-	_, err := va.validateHTTP01(ctx, dnsi("localhost"), httpChallenge())
+	_, err := va.validateHTTP01(ctx, dnsi("localhost"), expectedToken, expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
@@ -1240,7 +1236,7 @@ func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
 	hs.Start()
 
 	va, _ := setup(hs, 0, "", nil, nil)
-	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), httpChallenge())
+	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), expectedToken, expectedKeyAuthorization)
 
 	if err == nil {
 		t.Fatalf("Expected validation to fail when file mismatched.")
@@ -1264,17 +1260,14 @@ func TestHTTP(t *testing.T) {
 
 	va, log := setup(hs, 0, "", nil, nil)
 
-	chall := httpChallenge()
-	t.Logf("Trying to validate: %+v\n", chall)
-	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), expectedToken, expectedKeyAuthorization)
 	if err != nil {
 		t.Errorf("Unexpected failure in HTTP validation: %s", err)
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
-	setChallengeToken(&chall, path404)
-	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), path404, ka(path404))
 	if err == nil {
 		t.Fatalf("Should have found a 404 for the challenge.")
 	}
@@ -1282,10 +1275,9 @@ func TestHTTP(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
-	setChallengeToken(&chall, pathWrongToken)
 	// The "wrong token" will actually be the expectedToken.  It's wrong
 	// because it doesn't match pathWrongToken.
-	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), pathWrongToken, ka(pathWrongToken))
 	if err == nil {
 		t.Fatalf("Should have found the wrong token value.")
 	}
@@ -1294,8 +1286,7 @@ func TestHTTP(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
 	log.Clear()
-	setChallengeToken(&chall, pathMoved)
-	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), pathMoved, ka(pathMoved))
 	if err != nil {
 		t.Fatalf("Failed to follow http.StatusMovedPermanently redirect")
 	}
@@ -1304,8 +1295,7 @@ func TestHTTP(t *testing.T) {
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 
 	log.Clear()
-	setChallengeToken(&chall, pathFound)
-	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), pathFound, ka(pathFound))
 	if err != nil {
 		t.Fatalf("Failed to follow http.StatusFound redirect")
 	}
@@ -1315,13 +1305,13 @@ func TestHTTP(t *testing.T) {
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 
 	ipIdentifier := identifier.ACMEIdentifier{Type: identifier.IdentifierType("ip"), Value: "127.0.0.1"}
-	_, err = va.validateHTTP01(ctx, ipIdentifier, chall)
+	_, err = va.validateHTTP01(ctx, ipIdentifier, pathFound, ka(pathFound))
 	if err == nil {
 		t.Fatalf("IdentifierType IP shouldn't have worked.")
 	}
 	test.AssertErrorIs(t, err, berrors.Malformed)
 
-	_, err = va.validateHTTP01(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: "always.invalid"}, chall)
+	_, err = va.validateHTTP01(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: "always.invalid"}, pathFound, ka(pathFound))
 	if err == nil {
 		t.Fatalf("Domain name is invalid.")
 	}
@@ -1335,14 +1325,11 @@ func TestHTTPTimeout(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	chall := httpChallenge()
-	setChallengeToken(&chall, pathWaitLong)
-
 	started := time.Now()
 	timeout := 250 * time.Millisecond
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	_, err := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, err := va.validateHTTP01(ctx, dnsi("localhost"), pathWaitLong, ka(pathWaitLong))
 	if err == nil {
 		t.Fatalf("Connection should've timed out")
 	}
@@ -1390,7 +1377,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 	// that, just retry until we get something other than "Network unreachable".
 	var err error
 	for range 20 {
-		_, err = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), httpChallenge())
+		_, err = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), expectedToken, expectedKeyAuthorization)
 		if err != nil && strings.Contains(err.Error(), "Network unreachable") {
 			continue
 		} else {
@@ -1424,9 +1411,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	defer hs.Close()
 	va, log := setup(hs, 0, "", nil, nil)
 
-	chall := httpChallenge()
-	setChallengeToken(&chall, pathMoved)
-	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), pathMoved, ka(pathMoved))
 	if err != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathMoved, err)
 	}
@@ -1436,8 +1421,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 2)
 
 	log.Clear()
-	setChallengeToken(&chall, pathFound)
-	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), pathFound, ka(pathFound))
 	if err != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathFound, err)
 	}
@@ -1447,16 +1431,14 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 3)
 
 	log.Clear()
-	setChallengeToken(&chall, pathReLookupInvalid)
-	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
-	test.AssertError(t, err, chall.Token)
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), pathReLookupInvalid, ka(pathReLookupInvalid))
+	test.AssertError(t, err, "error for pathReLookupInvalid should not be nil")
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 1)
 	prob := detailedError(err)
 	test.AssertDeepEquals(t, prob, probs.Connection(`127.0.0.1: Fetching http://invalid.invalid/path: Invalid hostname in redirect target, must end in IANA registered TLD`))
 
 	log.Clear()
-	setChallengeToken(&chall, pathReLookup)
-	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), pathReLookup, ka(pathReLookup))
 	if err != nil {
 		t.Fatalf("Unexpected error in redirect (%s): %s", pathReLookup, err)
 	}
@@ -1466,8 +1448,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for other.valid.com: \[127.0.0.1\]`)), 1)
 
 	log.Clear()
-	setChallengeToken(&chall, pathRedirectInvalidPort)
-	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), pathRedirectInvalidPort, ka(pathRedirectInvalidPort))
 	test.AssertNotNil(t, err, "error for pathRedirectInvalidPort should not be nil")
 	prob = detailedError(err)
 	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
@@ -1478,8 +1459,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	// HTTP 500 errors. The test case is ensuring that the connection error
 	// is referencing the redirected to host, instead of the original host.
 	log.Clear()
-	setChallengeToken(&chall, pathRedirectToFailingURL)
-	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
+	_, err = va.validateHTTP01(ctx, dnsi("localhost.com"), pathRedirectToFailingURL, ka(pathRedirectToFailingURL))
 	test.AssertNotNil(t, err, "err should not be nil")
 	prob = detailedError(err)
 	test.AssertDeepEquals(t, prob,
@@ -1493,11 +1473,9 @@ func TestHTTPRedirectLoop(t *testing.T) {
 	defer hs.Close()
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	chall := httpChallenge()
-	setChallengeToken(&chall, "looper")
-	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), "looper", ka("looper"))
 	if prob == nil {
-		t.Fatalf("Challenge should have failed for %s", chall.Token)
+		t.Fatalf("Challenge should have failed for looper")
 	}
 }
 
@@ -1507,15 +1485,12 @@ func TestHTTPRedirectUserAgent(t *testing.T) {
 	va, _ := setup(hs, 0, "", nil, nil)
 	va.userAgent = rejectUserAgent
 
-	chall := httpChallenge()
-	setChallengeToken(&chall, pathMoved)
-	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), pathMoved, ka(pathMoved))
 	if prob == nil {
 		t.Fatalf("Challenge with rejectUserAgent should have failed (%s).", pathMoved)
 	}
 
-	setChallengeToken(&chall, pathFound)
-	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), pathFound, ka(pathFound))
 	if prob == nil {
 		t.Fatalf("Challenge with rejectUserAgent should have failed (%s).", pathFound)
 	}
@@ -1538,27 +1513,25 @@ func getPort(hs *httptest.Server) int {
 }
 
 func TestValidateHTTP(t *testing.T) {
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, core.NewToken())
+	token := core.NewToken()
 
-	hs := httpSrv(t, chall.Token)
+	hs := httpSrv(t, token)
 	defer hs.Close()
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), token, ka(token))
 	test.Assert(t, prob == nil, "validation failed")
 }
 
 func TestLimitedReader(t *testing.T) {
-	chall := core.HTTPChallenge01("")
-	setChallengeToken(&chall, core.NewToken())
+	token := core.NewToken()
 
 	hs := httpSrv(t, "012345\xff67890123456789012345678901234567890123456789012345678901234567890123456789")
 	va, _ := setup(hs, 0, "", nil, nil)
 	defer hs.Close()
 
-	_, err := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, err := va.validateHTTP01(ctx, dnsi("localhost"), token, ka(token))
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)

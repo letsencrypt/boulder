@@ -653,23 +653,23 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	return body, records, nil
 }
 
-func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, error) {
+func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, token string, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.DNS {
 		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", ident)
 		return nil, berrors.MalformedError("Identifier type for HTTP validation was not DNS")
 	}
 
 	// Perform the fetch
-	path := fmt.Sprintf(".well-known/acme-challenge/%s", challenge.Token)
+	path := fmt.Sprintf(".well-known/acme-challenge/%s", token)
 	body, validationRecords, err := va.fetchHTTP(ctx, ident.Value, "/"+path)
 	if err != nil {
 		return validationRecords, err
 	}
 	payload := strings.TrimRightFunc(string(body), unicode.IsSpace)
 
-	if payload != challenge.ProvidedKeyAuthorization {
+	if payload != keyAuthorization {
 		problem := berrors.UnauthorizedError("The key authorization file from the server did not match this challenge. Expected %q (got %q)",
-			challenge.ProvidedKeyAuthorization, payload)
+			keyAuthorization, payload)
 		va.log.Infof("%s for %s", problem, ident)
 		return validationRecords, problem
 	}
