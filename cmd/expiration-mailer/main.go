@@ -384,7 +384,10 @@ func (m *mailer) processCerts(
 			for w := range ch {
 				err := m.sendToOneRegID(ctx, conn, w.regID, w.certDERs, expiresIn)
 				if err != nil {
-					m.log.AuditErr(err.Error())
+					// Don't audit log when there is no email address on file.
+					if !errors.Is(err, errNoValidEmail) {
+						m.log.AuditErr(err.Error())
+					}
 				}
 			}
 			conn.Close()
