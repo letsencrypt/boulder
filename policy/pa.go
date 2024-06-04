@@ -190,7 +190,7 @@ var (
 	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
 )
 
-// ValidNonWildcardDomain checks that a domain isn't:
+// validNonWildcardDomain checks that a domain isn't:
 //   - empty
 //   - prefixed with the wildcard label `*.`
 //   - made of invalid DNS characters
@@ -203,7 +203,7 @@ var (
 //   - exactly equal to an IANA registered TLD
 //
 // It does NOT ensure that the domain is absent from any PA blocked lists.
-func ValidNonWildcardDomain(domain string) error {
+func validNonWildcardDomain(domain string) error {
 	if domain == "" {
 		return errEmptyName
 	}
@@ -296,7 +296,7 @@ func ValidNonWildcardDomain(domain string) error {
 // from any PA blocked lists.
 func ValidDomain(domain string) error {
 	if strings.Count(domain, "*") <= 0 {
-		return ValidNonWildcardDomain(domain)
+		return validNonWildcardDomain(domain)
 	}
 
 	// Names containing more than one wildcard are invalid.
@@ -323,7 +323,7 @@ func ValidDomain(domain string) error {
 	if baseDomain == icannTLD {
 		return errICANNTLDWildcard
 	}
-	return ValidNonWildcardDomain(baseDomain)
+	return validNonWildcardDomain(baseDomain)
 }
 
 // forbiddenMailDomains is a map of domain names we do not allow after the
@@ -351,7 +351,7 @@ func ValidEmail(address string) error {
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	err = ValidNonWildcardDomain(domain)
+	err = validNonWildcardDomain(domain)
 	if err != nil {
 		return berrors.InvalidEmailError(
 			"contact email %q has invalid domain : %s",
@@ -449,20 +449,9 @@ func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
 func WellFormedDomainNames(domains []string) error {
 	var subErrors []berrors.SubBoulderError
 	for _, domain := range domains {
-		if strings.Count(domain, "*") > 0 {
-			// Domain contains a wildcard, check that it is valid.
-			err := ValidDomain(domain)
-			if err != nil {
-				subErrors = append(subErrors, subError(domain, err))
-				continue
-			}
-		} else {
-			// Validate that the domain is well-formed.
-			err := ValidNonWildcardDomain(domain)
-			if err != nil {
-				subErrors = append(subErrors, subError(domain, err))
-				continue
-			}
+		err := ValidDomain(domain)
+		if err != nil {
+			subErrors = append(subErrors, subError(domain, err))
 		}
 	}
 	return combineSubErrors(subErrors)
@@ -501,7 +490,7 @@ func (pa *AuthorityImpl) checkWildcardHostList(domain string) error {
 	pa.blocklistMu.RLock()
 	defer pa.blocklistMu.RUnlock()
 
-	if pa.blocklist == nil {
+	if pa.wildcardExactBlocklist == nil {
 		return fmt.Errorf("Hostname policy not yet loaded.")
 	}
 

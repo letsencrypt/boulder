@@ -28,7 +28,7 @@ func paImpl(t *testing.T) *AuthorityImpl {
 	return pa
 }
 
-func TestWillingToIssue(t *testing.T) {
+func TestWellFormedDomainNames(t *testing.T) {
 	testCases := []struct {
 		domain string
 		err    error
@@ -102,13 +102,25 @@ func TestWillingToIssue(t *testing.T) {
 		{`bq---abwhky3f6fxq.jakacomo.com`, errInvalidRLDH},
 		// Three hyphens starting at second char of first label.
 		{`h---test.hk2yz.org`, errInvalidRLDH},
+		{`co.uk`, errICANNTLD},
+		{`foo.bd`, errICANNTLD},
 	}
 
-	shouldBeTLDError := []string{
-		`co.uk`,
-		`foo.bd`,
+	// Test syntax errors
+	for _, tc := range testCases {
+		err := WellFormedDomainNames([]string{tc.domain})
+		if tc.err == nil {
+			test.AssertNil(t, err, fmt.Sprintf("Unexpected error for domain %q, got %s", tc.domain, err))
+		} else {
+			test.AssertError(t, err, fmt.Sprintf("Expected error for domain %q, but got none", tc.domain))
+			var berr *berrors.BoulderError
+			test.AssertErrorWraps(t, err, &berr)
+			test.AssertContains(t, berr.Error(), tc.err.Error())
+		}
 	}
+}
 
+func TestWillingToIssue(t *testing.T) {
 	shouldBeBlocked := []string{
 		`highvalue.website1.org`,
 		`website2.co.uk`,
@@ -162,19 +174,6 @@ func TestWillingToIssue(t *testing.T) {
 	err = pa.LoadHostnamePolicyFile(yamlPolicyFile.Name())
 	test.AssertNotError(t, err, "Couldn't load rules")
 
-	// Test syntax errors
-	for _, tc := range testCases {
-		err := pa.WillingToIssue([]string{tc.domain})
-		if tc.err == nil {
-			test.AssertNil(t, err, fmt.Sprintf("Unexpected error for domain %q, got %s", tc.domain, err))
-		} else {
-			test.AssertError(t, err, fmt.Sprintf("Expected error for domain %q, but got none", tc.domain))
-			var berr *berrors.BoulderError
-			test.AssertErrorWraps(t, err, &berr)
-			test.AssertContains(t, berr.Error(), tc.err.Error())
-		}
-	}
-
 	// Invalid encoding
 	err = pa.WillingToIssue([]string{"www.xn--m.com"})
 	test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
@@ -185,15 +184,6 @@ func TestWillingToIssue(t *testing.T) {
 	err = pa.WillingToIssue([]string{"xn--example--3bhk5a.xn--p1ai"})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
 	features.Reset()
-
-	// Test domains that are equal to public suffixes
-	for _, domain := range shouldBeTLDError {
-		err := pa.WillingToIssue([]string{domain})
-		test.AssertError(t, err, "domain was not correctly forbidden")
-		var berr *berrors.BoulderError
-		test.AssertErrorWraps(t, err, &berr)
-		test.AssertContains(t, berr.Detail, errICANNTLD.Error())
-	}
 
 	// Test expected blocked domains
 	for _, domain := range shouldBeBlocked {
@@ -305,7 +295,7 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 	}
 }
 
-// TestWillingToIssueWildcards tests that more than one rejected identifier
+// TestWillingToIssue_Wildcard tests that more than one rejected identifier
 // results in an error with suberrors.
 func TestWillingToIssue_Wildcard(t *testing.T) {
 	banned := []string{
