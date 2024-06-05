@@ -212,22 +212,22 @@ func validateIdForName(name Name, id string) error {
 		return validateRegId(id)
 
 	case FailedAuthorizationsPerDomainPerAccount:
-		// 'enum:regId:domain' for transaction
-		err := validateRegIdDomain(id)
-		if err == nil {
-			return nil
+		if strings.Contains(id, ":") {
+			// 'enum:regId:domain' for transaction
+			return validateRegIdDomain(id)
+		} else {
+			// 'enum:regId' for overrides
+			return validateRegId(id)
 		}
-		// 'enum:regId' for overrides
-		return validateRegId(id)
 
 	case CertificatesPerDomainPerAccount:
-		// 'enum:regId:domain' for transaction
-		err := validateRegIdDomain(id)
-		if err == nil {
-			return nil
+		if strings.Contains(id, ":") {
+			// 'enum:regId:domain' for transaction
+			return validateRegIdDomain(id)
+		} else {
+			// 'enum:regId' for overrides
+			return validateRegId(id)
 		}
-		// 'enum:regId' for overrides
-		return validateRegId(id)
 
 	case CertificatesPerDomain:
 		// 'enum:domain'
