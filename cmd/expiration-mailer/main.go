@@ -456,9 +456,8 @@ func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int6
 		var badAddrErr *bmail.BadAddressSMTPError
 		if errors.Is(err, errNoValidEmail) || errors.As(err, &badAddrErr) {
 			m.updateLastNagTimestamps(ctx, parsedCerts)
-			// Though these are technically an error, we don't consider them
-			// failures to send because these (lack of) addresses were not even
-			// attempted to be sent to.
+			// Some accounts have no email; some accounts have a nonexistent
+			// email. Treat those as non-error cases.
 			return nil
 		}
 
