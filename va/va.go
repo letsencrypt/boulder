@@ -444,10 +444,9 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 
 // performRemoteValidation coordinates the whole process of kicking off and
 // collecting results from calls to remote VAs' PerformValidation function. It
-// returns either a problem (if too many of the RVAs observed validation
-// failures), or an error (if too many of the remote validation requests
-// encountered non-validation errors), or neither if the number of successful
-// remote validations surpassed our corroboration threshold.
+// returns a problem if too many remote perspectives failed to corroborate
+// domain control, or nil if enough succeeded to surpass our corroboration
+// threshold.
 func (va *ValidationAuthorityImpl) performRemoteValidation(
 	ctx context.Context,
 	req *vapb.PerformValidationRequest,
@@ -621,9 +620,9 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 		return records, err
 	}
 
-	// Do primary CAA checks. Any kind of error returned by this counts as a
-	// not receiving permission to issue, and will be converted into an
-	// appropriate ACME Problem by the calling function.
+	// Do primary CAA checks. Any kind of error returned by this counts as not
+	// receiving permission to issue, and will be converted into an appropriate
+	// ACME Problem by the calling function.
 	err = va.checkCAA(ctx, ident, &caaParams{
 		accountURIID:     regid,
 		validationMethod: kind,
