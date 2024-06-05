@@ -383,11 +383,7 @@ func (m *mailer) processCerts(
 			defer wg.Done()
 			for w := range ch {
 				err := m.sendToOneRegID(ctx, conn, w.regID, w.certDERs, expiresIn)
-				// Don't audit log when there is no email address on file
-				// because it's a waste of space. This decision should be
-				// revisited if we ever decide to output the accountID in the
-				// log line.
-				if err != nil && !errors.Is(err, errNoValidEmail) {
+				if err != nil {
 					m.log.AuditErr(err.Error())
 				}
 			}
@@ -460,6 +456,10 @@ func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int6
 		var badAddrErr *bmail.BadAddressSMTPError
 		if errors.Is(err, errNoValidEmail) || errors.As(err, &badAddrErr) {
 			m.updateLastNagTimestamps(ctx, parsedCerts)
+			// Though these are technically an error, we don't consider them
+			// failures to send because these (lack of) addresses were not even
+			// attempted to be sent to.
+			return nil
 		}
 
 		m.stats.errorCount.With(prometheus.Labels{"type": "SendNags"}).Inc()
