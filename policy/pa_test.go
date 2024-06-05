@@ -316,47 +316,74 @@ func TestWillingToIssue_Wildcard(t *testing.T) {
 	err = pa.LoadHostnamePolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
 
-	domains := []string{
+	// Test multiple malformed domains and one banned domain; only the malformed ones will generate errors
+	err = pa.WillingToIssue([]string{
+		"perfectly-fine.com",      // fine
+		"letsdecrypt_org",         // malformed
+		"example.comm",            // malformed
+		"letsdecrypt.org",         // banned
+		"also-perfectly-fine.com", // fine
+	})
+	test.AssertDeepEquals(t, err,
+		&berrors.BoulderError{
+			Type:   berrors.RejectedIdentifier,
+			Detail: "Cannot issue for \"letsdecrypt_org\": Domain name contains an invalid character (and 1 more problems. Refer to sub-problems for more information.)",
+			SubErrors: []berrors.SubBoulderError{
+				{
+					BoulderError: &berrors.BoulderError{
+						Type:   berrors.Malformed,
+						Detail: "Domain name contains an invalid character",
+					},
+					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "letsdecrypt_org"},
+				},
+				{
+					BoulderError: &berrors.BoulderError{
+						Type:   berrors.Malformed,
+						Detail: "Domain name does not end with a valid public suffix (TLD)",
+					},
+					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.comm"},
+				},
+			},
+		})
+
+	// Test multiple banned domains.
+	err = pa.WillingToIssue([]string{
 		"perfectly-fine.com",      // fine
 		"letsdecrypt.org",         // banned
 		"example.com",             // banned
 		"also-perfectly-fine.com", // fine
-	}
-
-	err = pa.WillingToIssue(domains)
+	})
 	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
 
-	var berr *berrors.BoulderError
-	test.AssertErrorWraps(t, err, &berr)
-	for _, err := range berr.SubErrors {
-		fmt.Println(err)
-	}
-	test.AssertEquals(t, len(berr.SubErrors), 2)
-	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. Refer to sub-problems for more information.)")
-
-	subErrMap := make(map[string]berrors.SubBoulderError, len(berr.SubErrors))
-
-	for _, subErr := range berr.SubErrors {
-		subErrMap[subErr.Identifier.Value] = subErr
-	}
-
-	subErrA, foundA := subErrMap["letsdecrypt.org"]
-	subErrB, foundB := subErrMap["example.com"]
-	test.AssertEquals(t, foundA, true)
-	test.AssertEquals(t, foundB, true)
-
-	test.AssertEquals(t, subErrA.Type, berrors.RejectedIdentifier)
-	test.AssertEquals(t, subErrB.Type, berrors.RejectedIdentifier)
+	test.AssertDeepEquals(t, err,
+		&berrors.BoulderError{
+			Type:   berrors.RejectedIdentifier,
+			Detail: "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. Refer to sub-problems for more information.)",
+			SubErrors: []berrors.SubBoulderError{
+				{
+					BoulderError: &berrors.BoulderError{
+						Type:   berrors.RejectedIdentifier,
+						Detail: "The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
+					},
+					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "letsdecrypt.org"},
+				},
+				{
+					BoulderError: &berrors.BoulderError{
+						Type:   berrors.RejectedIdentifier,
+						Detail: "The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
+					},
+					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
+				},
+			},
+		})
 
 	// Test willing to issue with only *one* bad identifier.
 	err = pa.WillingToIssue([]string{"letsdecrypt.org"})
-	// It should error
-	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
-
-	test.AssertErrorWraps(t, err, &berr)
-	// There should be *no* suberrors because there was only one error overall.
-	test.AssertEquals(t, len(berr.SubErrors), 0)
-	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy")
+	test.AssertDeepEquals(t, err,
+		&berrors.BoulderError{
+			Type:   berrors.RejectedIdentifier,
+			Detail: "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
+		})
 }
 
 func TestChallengesFor(t *testing.T) {
