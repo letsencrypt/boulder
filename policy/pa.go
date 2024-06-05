@@ -387,8 +387,8 @@ func subError(name string, err error) berrors.SubBoulderError {
 // WillingToIssue determines whether the CA is willing to issue for the provided
 // domain names.
 //
-// It checks the criteria checked by `WellFormed`, and additionally checks whether
-// any domain is on a blocklist.
+// It checks the criteria checked by `WellFormedDomainNames`, and additionally checks
+// whether any domain is on a blocklist.
 //
 // If multiple domains are invalid, the error will contain suberrors specific to
 // each domain.
