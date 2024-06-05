@@ -59,8 +59,7 @@
 			},
 			"issuers": [
 				{
-					"useForRSALeaves": false,
-					"useForECDSALeaves": true,
+					"active": true,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-a",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/ecdsa-a/",
@@ -71,8 +70,29 @@
 					}
 				},
 				{
-					"useForRSALeaves": true,
-					"useForECDSALeaves": true,
+					"active": true,
+					"issuerURL": "http://ca.example.org:4502/int-ecdsa-b",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/ecdsa-b/",
+					"location": {
+						"configFile": "test/certs/webpki/int-ecdsa-b.pkcs11.json",
+						"certFile": "test/certs/webpki/int-ecdsa-b.cert.pem",
+						"numSessions": 2
+					}
+				},
+				{
+					"active": false,
+					"issuerURL": "http://ca.example.org:4502/int-ecdsa-c",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/ecdsa-c/",
+					"location": {
+						"configFile": "test/certs/webpki/int-ecdsa-c.pkcs11.json",
+						"certFile": "test/certs/webpki/int-ecdsa-c.cert.pem",
+						"numSessions": 2
+					}
+				},
+				{
+					"active": true,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-a",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/rsa-a/",
@@ -83,14 +103,24 @@
 					}
 				},
 				{
-					"useForRSALeaves": false,
-					"useForECDSALeaves": false,
+					"active": true,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-b",
-					"ocspURL": "http://ca.example.org:4003/",
+					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/rsa-b/",
 					"location": {
 						"configFile": "test/certs/webpki/int-rsa-b.pkcs11.json",
 						"certFile": "test/certs/webpki/int-rsa-b.cert.pem",
+						"numSessions": 2
+					}
+				},
+				{
+					"active": false,
+					"issuerURL": "http://ca.example.org:4502/int-rsa-c",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/rsa-c/",
+					"location": {
+						"configFile": "test/certs/webpki/int-rsa-c.pkcs11.json",
+						"certFile": "test/certs/webpki/int-rsa-c.cert.pem",
 						"numSessions": 2
 					}
 				}
