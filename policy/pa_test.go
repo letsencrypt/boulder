@@ -295,9 +295,9 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 	}
 }
 
-// TestWillingToIssue_Wildcard tests that more than one rejected identifier
+// TestWillingToIssue_SubErrors tests that more than one rejected identifier
 // results in an error with suberrors.
-func TestWillingToIssue_Wildcard(t *testing.T) {
+func TestWillingToIssue_SubErrors(t *testing.T) {
 	banned := []string{
 		"letsdecrypt.org",
 		"example.com",
