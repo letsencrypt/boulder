@@ -456,6 +456,9 @@ func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int6
 		var badAddrErr *bmail.BadAddressSMTPError
 		if errors.Is(err, errNoValidEmail) || errors.As(err, &badAddrErr) {
 			m.updateLastNagTimestamps(ctx, parsedCerts)
+			// Some accounts have no email; some accounts have an invalid email.
+			// Treat those as non-error cases.
+			return nil
 		}
 
 		m.stats.errorCount.With(prometheus.Labels{"type": "SendNags"}).Inc()
