@@ -239,6 +239,8 @@ func setup(t *testing.T) *testCtx {
 		},
 		100,
 		blog.NewMock(),
+		signatureCount,
+		signErrorCount,
 	)
 	test.AssertNotError(t, err, "Failed to create crl impl")
 
