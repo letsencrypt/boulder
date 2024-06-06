@@ -287,6 +287,8 @@ func main() {
 			c.CA.Issuance.CRLProfile,
 			c.CA.OCSPLogMaxLength,
 			logger,
+			signatureCount,
+			signErrorCount,
 		)
 		cmd.FailOnError(err, "Failed to create CRL impl")
 

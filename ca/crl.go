@@ -10,6 +10,9 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/miekg/pkcs11"
+	"github.com/prometheus/client_golang/prometheus"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -20,10 +23,12 @@ import (
 
 type crlImpl struct {
 	capb.UnsafeCRLGeneratorServer
-	issuers   map[issuance.NameID]*issuance.Issuer
-	profile   *issuance.CRLProfile
-	maxLogLen int
-	log       blog.Logger
+	issuers        map[issuance.NameID]*issuance.Issuer
+	profile        *issuance.CRLProfile
+	maxLogLen      int
+	log            blog.Logger
+	signatureCount *prometheus.CounterVec
+	signErrorCount *prometheus.CounterVec
 }
 
 var _ capb.CRLGeneratorServer = (*crlImpl)(nil)
@@ -36,7 +41,10 @@ func NewCRLImpl(
 	issuers []*issuance.Issuer,
 	profileConfig issuance.CRLProfileConfig,
 	maxLogLen int,
-	logger blog.Logger) (*crlImpl, error) {
+	logger blog.Logger,
+	signatureCount *prometheus.CounterVec,
+	signErrorCount *prometheus.CounterVec,
+) (*crlImpl, error) {
 	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
@@ -48,10 +56,12 @@ func NewCRLImpl(
 	}
 
 	return &crlImpl{
-		issuers:   issuersByNameID,
-		profile:   profile,
-		maxLogLen: maxLogLen,
-		log:       logger,
+		issuers:        issuersByNameID,
+		profile:        profile,
+		maxLogLen:      maxLogLen,
+		log:            logger,
+		signatureCount: signatureCount,
+		signErrorCount: signErrorCount,
 	}, nil
 }
 
@@ -134,8 +144,13 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 
 	crlBytes, err := issuer.IssueCRL(ci.profile, req)
 	if err != nil {
+		var pkcs11Error *pkcs11.Error
+		if errors.As(err, &pkcs11Error) {
+			ci.signErrorCount.WithLabelValues("HSM").Inc()
+		}
 		return fmt.Errorf("signing crl: %w", err)
 	}
+	ci.signatureCount.With(prometheus.Labels{"purpose": "crl", "issuer": issuer.Name()}).Inc()
 
 	hash := sha256.Sum256(crlBytes)
 	ci.log.AuditInfof(
