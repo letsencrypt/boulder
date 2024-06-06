@@ -120,7 +120,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 			Help:    "Time taken to remotely validate a challenge",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"type", "result"})
+		[]string{"type"})
 	stats.MustRegister(remoteValidationTime)
 	remoteValidationFailures := prometheus.NewCounter(
 		prometheus.CounterOpts{
@@ -450,23 +450,15 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 func (va *ValidationAuthorityImpl) performRemoteValidation(
 	ctx context.Context,
 	req *vapb.PerformValidationRequest,
-) (prob *probs.ProblemDetails) {
+) *probs.ProblemDetails {
 	if len(va.remoteVAs) == 0 {
 		return nil
 	}
 
-	// Defer a closure to increment a metric. Note that this function uses named
-	// return values so that this closure can reference them.
 	start := va.clk.Now()
 	defer func() {
-		state := "failure"
-		if prob == nil {
-			state = "success"
-		}
-
 		va.metrics.remoteValidationTime.With(prometheus.Labels{
-			"type":   req.Challenge.Type,
-			"result": state,
+			"type": req.Challenge.Type,
 		}).Observe(va.clk.Since(start).Seconds())
 	}()
 
@@ -529,6 +521,8 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			return nil
 		}
 		if bad > va.maxRemoteFailures {
+			va.metrics.remoteValidationFailures.Inc()
+			firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
 			return firstProb
 		}
 
@@ -611,10 +605,10 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 	kind core.AcmeChallenge,
 	token string,
 	keyAuthorization string,
-) (recs []core.ValidationRecord, err error) {
+) ([]core.ValidationRecord, error) {
 	// Do primary domain control validation. Any kind of error returned by this
 	// counts as a validation error, and will be converted into an appropriate
-	// ACME Problem by the calling function.
+	// probs.ProblemDetails by the calling function.
 	records, err := va.validateChallenge(ctx, ident, kind, token, keyAuthorization)
 	if err != nil {
 		return records, err
@@ -622,7 +616,7 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 
 	// Do primary CAA checks. Any kind of error returned by this counts as not
 	// receiving permission to issue, and will be converted into an appropriate
-	// ACME Problem by the calling function.
+	// probs.ProblemDetails by the calling function.
 	err = va.checkCAA(ctx, ident, &caaParams{
 		accountURIID:     regid,
 		validationMethod: kind,
@@ -663,7 +657,8 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	}
 
 	// Set up variables and a deferred closure to report validation latency
-	// metrics. Below here, do not use := to redeclare `prob`, or this will fail.
+	// metrics and log validation errors. Below here, do not use := to redeclare
+	// `prob`, or this will fail.
 	var prob *probs.ProblemDetails
 	var localLatency time.Duration
 	vStart := va.clk.Now()
@@ -733,19 +728,13 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
 	}
 
-	// Do remote validation. We do this after local validation is complete, to
+	// Do remote validation. We do this after local validation is complete to
 	// avoid wasting work when validation will fail anyway. This only returns a
 	// singular problem, because the remote VAs have already audit-logged their
 	// own validation records, and it's not helpful to present multiple large
 	// errors to the end user.
 	prob = va.performRemoteValidation(ctx, req)
-	if prob != nil {
-		va.metrics.remoteValidationFailures.Inc()
-		prob.Detail = fmt.Sprintf("During secondary validation: %s", prob.Detail)
-		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
-	}
-
-	return bgrpc.ValidationResultToPB(records, nil)
+	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
 }
 
 // usedRSAKEX returns true if the given cipher suite involves the use of an
