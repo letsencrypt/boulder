@@ -283,7 +283,7 @@ func NewCertificateAuthorityImpl(
 
 // noteSignError is called after operations that may cause a PKCS11 signing error.
 func (ca *certificateAuthorityImpl) noteSignError(err error) {
-	var pkcs11Error *pkcs11.Error
+	var pkcs11Error pkcs11.Error
 	if errors.As(err, &pkcs11Error) {
 		ca.signErrorCount.WithLabelValues("HSM").Inc()
 	}

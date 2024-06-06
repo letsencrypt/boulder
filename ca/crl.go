@@ -144,7 +144,7 @@ func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLR
 
 	crlBytes, err := issuer.IssueCRL(ci.profile, req)
 	if err != nil {
-		var pkcs11Error *pkcs11.Error
+		var pkcs11Error pkcs11.Error
 		if errors.As(err, &pkcs11Error) {
 			ci.signErrorCount.WithLabelValues("HSM").Inc()
 		}

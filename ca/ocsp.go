@@ -127,7 +127,7 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 	if err == nil {
 		oi.signatureCount.With(prometheus.Labels{"purpose": "ocsp", "issuer": issuer.Name()}).Inc()
 	} else {
-		var pkcs11Error *pkcs11.Error
+		var pkcs11Error pkcs11.Error
 		if errors.As(err, &pkcs11Error) {
 			oi.signErrorCount.WithLabelValues("HSM").Inc()
 		}
