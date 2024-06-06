@@ -20,6 +20,7 @@ import (
 	cttls "github.com/google/certificate-transparency-go/tls"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
+	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/zmap/zlint/v3/lint"
 	"google.golang.org/grpc"
@@ -308,6 +309,24 @@ func TestSerialPrefix(t *testing.T) {
 		nil,
 		testCtx.fc)
 	test.AssertError(t, err, "CA should have failed with too-large SerialPrefix")
+}
+
+func TestNoteSignError(t *testing.T) {
+	testCtx := setup(t)
+	ca := certificateAuthorityImpl{
+		sa: nil, pa: nil, issuers: issuerMaps{}, certProfiles: certProfilesMaps{},
+		ecdsaAllowList: nil, prefix: 0, validityPeriod: 0, backdate: 0, maxNames: 0,
+		keyPolicy: goodkey.KeyPolicy{}, clk: nil, log: nil, signatureCount: nil,
+		signErrorCount: testCtx.signErrorCount, lintErrorCount: nil,
+	}
+
+	err := fmt.Errorf("wrapped non-signing error: %w", errors.New("oops"))
+	ca.noteSignError(err)
+	test.AssertMetricWithLabelsEquals(t, testCtx.signErrorCount, prometheus.Labels{"type": "HSM"}, 0)
+
+	err = fmt.Errorf("wrapped signing error: %w", pkcs11.Error(5))
+	ca.noteSignError(err)
+	test.AssertMetricWithLabelsEquals(t, testCtx.signErrorCount, prometheus.Labels{"type": "HSM"}, 1)
 }
 
 type TestCertificateIssuance struct {
