@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/ca"
@@ -173,21 +172,7 @@ func main() {
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
-	// These two metrics are created and registered here so they can be shared
-	// between NewCertificateAuthorityImpl and NewOCSPImpl.
-	signatureCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "signatures",
-			Help: "Number of signatures",
-		},
-		[]string{"purpose", "issuer"})
-	scope.MustRegister(signatureCount)
-
-	signErrorCount := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "signature_errors",
-		Help: "A counter of signature errors labelled by error type",
-	}, []string{"type"})
-	scope.MustRegister(signErrorCount)
+	metrics := ca.NewCAMetrics(scope)
 
 	cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 
@@ -270,8 +255,7 @@ func main() {
 			c.CA.OCSPLogPeriod.Duration,
 			logger,
 			scope,
-			signatureCount,
-			signErrorCount,
+			metrics,
 			clk,
 		)
 		cmd.FailOnError(err, "Failed to create OCSP impl")
@@ -287,8 +271,7 @@ func main() {
 			c.CA.Issuance.CRLProfile,
 			c.CA.OCSPLogMaxLength,
 			logger,
-			signatureCount,
-			signErrorCount,
+			metrics,
 		)
 		cmd.FailOnError(err, "Failed to create CRL impl")
 
@@ -310,9 +293,7 @@ func main() {
 			c.CA.MaxNames,
 			kp,
 			logger,
-			scope,
-			signatureCount,
-			signErrorCount,
+			metrics,
 			clk)
 		cmd.FailOnError(err, "Failed to create CA impl")
 

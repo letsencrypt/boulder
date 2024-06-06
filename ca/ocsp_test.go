@@ -43,9 +43,7 @@ func TestOCSP(t *testing.T) {
 		testCtx.maxNames,
 		testCtx.keyPolicy,
 		testCtx.logger,
-		testCtx.stats,
-		testCtx.signatureCount,
-		testCtx.signErrorCount,
+		testCtx.metrics,
 		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ocspi := testCtx.ocsp
