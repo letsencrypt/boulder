@@ -2,14 +2,12 @@ package ca
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 
@@ -23,13 +21,12 @@ import (
 // ocspImpl provides a backing implementation for the OCSP gRPC service.
 type ocspImpl struct {
 	capb.UnsafeOCSPGeneratorServer
-	issuers        map[issuance.NameID]*issuance.Issuer
-	ocspLifetime   time.Duration
-	ocspLogQueue   *ocspLogQueue
-	log            blog.Logger
-	signatureCount *prometheus.CounterVec
-	signErrorCount *prometheus.CounterVec
-	clk            clock.Clock
+	issuers      map[issuance.NameID]*issuance.Issuer
+	ocspLifetime time.Duration
+	ocspLogQueue *ocspLogQueue
+	log          blog.Logger
+	metrics      *caMetrics
+	clk          clock.Clock
 }
 
 var _ capb.OCSPGeneratorServer = (*ocspImpl)(nil)
@@ -41,8 +38,7 @@ func NewOCSPImpl(
 	ocspLogPeriod time.Duration,
 	logger blog.Logger,
 	stats prometheus.Registerer,
-	signatureCount *prometheus.CounterVec,
-	signErrorCount *prometheus.CounterVec,
+	metrics *caMetrics,
 	clk clock.Clock,
 ) (*ocspImpl, error) {
 	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
@@ -60,13 +56,12 @@ func NewOCSPImpl(
 	}
 
 	oi := &ocspImpl{
-		issuers:        issuersByNameID,
-		ocspLifetime:   ocspLifetime,
-		ocspLogQueue:   ocspLogQueue,
-		log:            logger,
-		signatureCount: signatureCount,
-		signErrorCount: signErrorCount,
-		clk:            clk,
+		issuers:      issuersByNameID,
+		ocspLifetime: ocspLifetime,
+		ocspLogQueue: ocspLogQueue,
+		log:          logger,
+		metrics:      metrics,
+		clk:          clk,
 	}
 	return oi, nil
 }
@@ -125,12 +120,9 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 
 	ocspResponse, err := ocsp.CreateResponse(issuer.Cert.Certificate, issuer.Cert.Certificate, tbsResponse, issuer.Signer)
 	if err == nil {
-		oi.signatureCount.With(prometheus.Labels{"purpose": "ocsp", "issuer": issuer.Name()}).Inc()
+		oi.metrics.signatureCount.With(prometheus.Labels{"purpose": "ocsp", "issuer": issuer.Name()}).Inc()
 	} else {
-		var pkcs11Error *pkcs11.Error
-		if errors.As(err, &pkcs11Error) {
-			oi.signErrorCount.WithLabelValues("HSM").Inc()
-		}
+		oi.metrics.noteSignError(err)
 	}
 	return &capb.OCSPResponse{Response: ocspResponse}, err
 }

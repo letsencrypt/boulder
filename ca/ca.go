@@ -79,6 +79,46 @@ type certProfilesMaps struct {
 	profileByName map[string]*certProfileWithID
 }
 
+// caMetrics holds various metrics which are shared between caImpl, ocspImpl,
+// and crlImpl.
+type caMetrics struct {
+	signatureCount *prometheus.CounterVec
+	signErrorCount *prometheus.CounterVec
+	lintErrorCount prometheus.Counter
+}
+
+func NewCAMetrics(stats prometheus.Registerer) *caMetrics {
+	signatureCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "signatures",
+			Help: "Number of signatures",
+		},
+		[]string{"purpose", "issuer"})
+	stats.MustRegister(signatureCount)
+
+	signErrorCount := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "signature_errors",
+		Help: "A counter of signature errors labelled by error type",
+	}, []string{"type"})
+	stats.MustRegister(signErrorCount)
+
+	lintErrorCount := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "lint_errors",
+			Help: "Number of issuances that were halted by linting errors",
+		})
+	stats.MustRegister(lintErrorCount)
+
+	return &caMetrics{signatureCount, signErrorCount, lintErrorCount}
+}
+
+func (m *caMetrics) noteSignError(err error) {
+	var pkcs11Error pkcs11.Error
+	if errors.As(err, &pkcs11Error) {
+		m.signErrorCount.WithLabelValues("HSM").Inc()
+	}
+}
+
 // certificateAuthorityImpl represents a CA that signs certificates.
 // It can sign OCSP responses as well, but only via delegation to an ocspImpl.
 type certificateAuthorityImpl struct {
@@ -98,9 +138,7 @@ type certificateAuthorityImpl struct {
 	keyPolicy      goodkey.KeyPolicy
 	clk            clock.Clock
 	log            blog.Logger
-	signatureCount *prometheus.CounterVec
-	signErrorCount *prometheus.CounterVec
-	lintErrorCount prometheus.Counter
+	metrics        *caMetrics
 }
 
 var _ capb.CertificateAuthorityServer = (*certificateAuthorityImpl)(nil)
@@ -219,9 +257,7 @@ func NewCertificateAuthorityImpl(
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
-	stats prometheus.Registerer,
-	signatureCount *prometheus.CounterVec,
-	signErrorCount *prometheus.CounterVec,
+	metrics *caMetrics,
 	clk clock.Clock,
 ) (*certificateAuthorityImpl, error) {
 	var ca *certificateAuthorityImpl
@@ -253,13 +289,6 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
-	lintErrorCount := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "lint_errors",
-			Help: "Number of issuances that were halted by linting errors",
-		})
-	stats.MustRegister(lintErrorCount)
-
 	ca = &certificateAuthorityImpl{
 		sa:             sa,
 		pa:             pa,
@@ -271,22 +300,12 @@ func NewCertificateAuthorityImpl(
 		maxNames:       maxNames,
 		keyPolicy:      keyPolicy,
 		log:            logger,
-		signatureCount: signatureCount,
-		signErrorCount: signErrorCount,
-		lintErrorCount: lintErrorCount,
+		metrics:        metrics,
 		clk:            clk,
 		ecdsaAllowList: ecdsaAllowList,
 	}
 
 	return ca, nil
-}
-
-// noteSignError is called after operations that may cause a PKCS11 signing error.
-func (ca *certificateAuthorityImpl) noteSignError(err error) {
-	var pkcs11Error *pkcs11.Error
-	if errors.As(err, &pkcs11Error) {
-		ca.signErrorCount.WithLabelValues("HSM").Inc()
-	}
 }
 
 var ocspStatusToCode = map[string]int{
@@ -432,7 +451,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
-		ca.noteSignError(err)
+		ca.metrics.noteSignError(err)
 		ca.log.AuditErrf("Signing cert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			issuer.Name(), serialHex, req.RegistrationID, names, certProfile.name, certProfile.hash, err)
 		return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
@@ -443,7 +462,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return nil, err
 	}
 
-	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
+	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing cert success: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certificate=[%s] certProfileName=[%s] certProfileHash=[%x]",
 		issuer.Name(), serialHex, req.RegistrationID, names, hex.EncodeToString(certDER), certProfile.name, certProfile.hash)
 
@@ -594,7 +613,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		ca.log.AuditErrf("Preparing precert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), certProfile.name, certProfile.hash, err)
 		if errors.Is(err, linter.ErrLinting) {
-			ca.lintErrorCount.Inc()
+			ca.metrics.lintErrorCount.Inc()
 		}
 		return nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
 	}
@@ -612,7 +631,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
-		ca.noteSignError(err)
+		ca.metrics.noteSignError(err)
 		ca.log.AuditErrf("Signing precert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), certProfile.name, certProfile.hash, err)
 		return nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
@@ -623,7 +642,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
-	ca.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
+	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing precert success: issuer=[%s] serial=[%s] regID=[%d] names=[%s] precertificate=[%s] certProfileName=[%s] certProfileHash=[%x]",
 		issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(certDER), certProfile.name, certProfile.hash)
 
