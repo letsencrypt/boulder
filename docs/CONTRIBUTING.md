@@ -329,7 +329,7 @@ must check that timestamps are non-zero before accepting them.
 All times that we write to the database are truncated to one second's worth of
 precision. This reduces the size of indexes that include timestamps, and makes
 querying them more efficient. The Storage Authority (SA) is responsible for this
-truncation, and performs it for SELECTs as well as INSERTs and UPDATEs.
+truncation, and performs it for SELECT queries as well as INSERT and UPDATE.
 
 # Release Process
 
