@@ -1275,7 +1275,7 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 	}
 
 	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		thisUpdate := req.ThisUpdate.AsTime().Truncate(time.Second).Add(time.Second)
+		thisUpdate := req.ThisUpdate.AsTime().Truncate(time.Second)
 		res, err := tx.ExecContext(ctx,
 			`UPDATE crlShards
 				SET thisUpdate = ?, nextUpdate = ?, leasedUntil = ?
