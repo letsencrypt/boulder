@@ -78,6 +78,9 @@ func TestCRLPipeline(t *testing.T) {
 	_, err = db.Exec(`UPDATE crlShards SET leasedUntil = ?`, fc.Now().Add(-time.Minute))
 	test.AssertNotError(t, err, "resetting leasedUntil column")
 
+	// The CRL Updater will refuse to overwrite
+	// time.Sleep(time.Second)
+
 	// Confirm that the cert now *does* show up in the CRLs.
 	runUpdater(t, configFile)
 	resp, err = http.Get("http://localhost:4501/query?serial=" + serial)
