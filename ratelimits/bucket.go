@@ -239,6 +239,9 @@ func (builder *TransactionBuilder) OrdersPerAccountTransaction(regId int64) (Tra
 // of Transactions for the provided order domain names. An error is returned if
 // any of the order domain names are invalid. This method should be used for
 // checking capacity, before allowing more authorizations to be created.
+//
+// Precondition: orderDomains must all pass policy.WellFormedDomainNames.
+// Precondition: len(orderDomains) < maxNames.
 func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId int64, orderDomains []string, maxNames int) ([]Transaction, error) {
 	if len(orderDomains) > maxNames {
 		return nil, fmt.Errorf("order contains more than %d DNS names", maxNames)
@@ -318,6 +321,9 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendO
 //
 // When a CertificatesPerDomainPerAccount override is not configured, a check-
 // and-spend Transaction is returned for each per domain bucket.
+//
+// Precondition: orderDomains must all pass policy.WellFormedDomainNames.
+// Precondition: len(orderDomains) < maxNames.
 func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64, orderDomains []string, maxNames int) ([]Transaction, error) {
 	if len(orderDomains) > maxNames {
 		return nil, fmt.Errorf("order contains more than %d DNS names", maxNames)

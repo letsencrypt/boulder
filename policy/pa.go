@@ -190,7 +190,7 @@ var (
 	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
 )
 
-// ValidNonWildcardDomain checks that a domain isn't:
+// validNonWildcardDomain checks that a domain isn't:
 //   - empty
 //   - prefixed with the wildcard label `*.`
 //   - made of invalid DNS characters
@@ -203,7 +203,7 @@ var (
 //   - exactly equal to an IANA registered TLD
 //
 // It does NOT ensure that the domain is absent from any PA blocked lists.
-func ValidNonWildcardDomain(domain string) error {
+func validNonWildcardDomain(domain string) error {
 	if domain == "" {
 		return errEmptyName
 	}
@@ -296,7 +296,7 @@ func ValidNonWildcardDomain(domain string) error {
 // from any PA blocked lists.
 func ValidDomain(domain string) error {
 	if strings.Count(domain, "*") <= 0 {
-		return ValidNonWildcardDomain(domain)
+		return validNonWildcardDomain(domain)
 	}
 
 	// Names containing more than one wildcard are invalid.
@@ -323,7 +323,7 @@ func ValidDomain(domain string) error {
 	if baseDomain == icannTLD {
 		return errICANNTLDWildcard
 	}
-	return ValidNonWildcardDomain(baseDomain)
+	return validNonWildcardDomain(baseDomain)
 }
 
 // forbiddenMailDomains is a map of domain names we do not allow after the
@@ -351,7 +351,7 @@ func ValidEmail(address string) error {
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	err = ValidNonWildcardDomain(domain)
+	err = validNonWildcardDomain(domain)
 	if err != nil {
 		return berrors.InvalidEmailError(
 			"contact email %q has invalid domain : %s",
@@ -365,12 +365,69 @@ func ValidEmail(address string) error {
 	return nil
 }
 
+// subError returns an appropriately typed error based on the input error
+func subError(name string, err error) berrors.SubBoulderError {
+	var bErr *berrors.BoulderError
+	if errors.As(err, &bErr) {
+		return berrors.SubBoulderError{
+			Identifier:   identifier.DNSIdentifier(name),
+			BoulderError: bErr,
+		}
+	} else {
+		return berrors.SubBoulderError{
+			Identifier: identifier.DNSIdentifier(name),
+			BoulderError: &berrors.BoulderError{
+				Type:   berrors.RejectedIdentifier,
+				Detail: err.Error(),
+			},
+		}
+	}
+}
+
 // WillingToIssue determines whether the CA is willing to issue for the provided
-// domains. It expects each domain to be lowercase to prevent mismatched cases
-// breaking queries.
+// domain names.
 //
-// We place several criteria on domains we are willing to issue for:
-//   - MUST contain only bytes in the DNS hostname character set
+// It checks the criteria checked by `WellFormedDomainNames`, and additionally checks
+// whether any domain is on a blocklist.
+//
+// If multiple domains are invalid, the error will contain suberrors specific to
+// each domain.
+//
+// Precondition: all input domain names must be in lowercase.
+func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
+	err := WellFormedDomainNames(domains)
+	if err != nil {
+		return err
+	}
+
+	var subErrors []berrors.SubBoulderError
+	for _, domain := range domains {
+		if strings.Count(domain, "*") > 0 {
+			// The base domain is the wildcard request with the `*.` prefix removed
+			baseDomain := strings.TrimPrefix(domain, "*.")
+
+			// The base domain can't be in the wildcard exact blocklist
+			err = pa.checkWildcardHostList(baseDomain)
+			if err != nil {
+				subErrors = append(subErrors, subError(domain, err))
+				continue
+			}
+		}
+
+		// For both wildcard and non-wildcard domains, check whether any parent domain
+		// name is on the regular blocklist.
+		err := pa.checkHostLists(domain)
+		if err != nil {
+			subErrors = append(subErrors, subError(domain, err))
+			continue
+		}
+	}
+	return combineSubErrors(subErrors)
+}
+
+// WellFormedDomainNames returns an error if any of the provided domains do not meet these criteria:
+//
+//   - MUST contains only lowercase characters, numbers, hyphens, and dots
 //   - MUST NOT have more than maxLabels labels
 //   - MUST follow the DNS hostname syntax rules in RFC 1035 and RFC 2181
 //
@@ -387,65 +444,21 @@ func ValidEmail(address string) error {
 //   - That the wildcard character is the leftmost label
 //   - That the wildcard label is not immediately adjacent to a top level ICANN
 //     TLD
-//   - That the wildcard wouldn't cover an exact blocklist entry (e.g. an exact
-//     blocklist entry for "foo.example.com" should prevent issuance for
-//     "*.example.com")
 //
-// If any of the domains are not valid then an error with suberrors specific to
-// the rejected domains will be returned.
-func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
+// If multiple domains are invalid, the error will contain suberrors specific to
+// each domain.
+func WellFormedDomainNames(domains []string) error {
 	var subErrors []berrors.SubBoulderError
-	appendSubError := func(name string, err error) {
-		var bErr *berrors.BoulderError
-		if errors.As(err, &bErr) {
-			subErrors = append(subErrors, berrors.SubBoulderError{
-				Identifier:   identifier.DNSIdentifier(name),
-				BoulderError: bErr,
-			})
-		} else {
-			subErrors = append(subErrors, berrors.SubBoulderError{
-				Identifier: identifier.DNSIdentifier(name),
-				BoulderError: &berrors.BoulderError{
-					Type:   berrors.RejectedIdentifier,
-					Detail: err.Error(),
-				},
-			})
-		}
-	}
-
 	for _, domain := range domains {
-		if strings.Count(domain, "*") > 0 {
-			// Domain contains a wildcard, check that it is valid.
-			err := ValidDomain(domain)
-			if err != nil {
-				appendSubError(domain, err)
-				continue
-			}
-
-			// The base domain is the wildcard request with the `*.` prefix removed
-			baseDomain := strings.TrimPrefix(domain, "*.")
-
-			// The base domain can't be in the wildcard exact blocklist
-			err = pa.checkWildcardHostList(baseDomain)
-			if err != nil {
-				appendSubError(domain, err)
-				continue
-			}
-		} else {
-			// Validate that the domain is well-formed.
-			err := ValidNonWildcardDomain(domain)
-			if err != nil {
-				appendSubError(domain, err)
-				continue
-			}
-		}
-		// Require no match against hostname block lists
-		err := pa.checkHostLists(domain)
+		err := ValidDomain(domain)
 		if err != nil {
-			appendSubError(domain, err)
-			continue
+			subErrors = append(subErrors, subError(domain, err))
 		}
 	}
+	return combineSubErrors(subErrors)
+}
+
+func combineSubErrors(subErrors []berrors.SubBoulderError) error {
 	if len(subErrors) > 0 {
 		// If there was only one error, then use it as the top level error that is
 		// returned.
@@ -478,7 +491,7 @@ func (pa *AuthorityImpl) checkWildcardHostList(domain string) error {
 	pa.blocklistMu.RLock()
 	defer pa.blocklistMu.RUnlock()
 
-	if pa.blocklist == nil {
+	if pa.wildcardExactBlocklist == nil {
 		return fmt.Errorf("Hostname policy not yet loaded.")
 	}
 

@@ -28,7 +28,7 @@ func paImpl(t *testing.T) *AuthorityImpl {
 	return pa
 }
 
-func TestWillingToIssue(t *testing.T) {
+func TestWellFormedDomainNames(t *testing.T) {
 	testCases := []struct {
 		domain string
 		err    error
@@ -102,13 +102,25 @@ func TestWillingToIssue(t *testing.T) {
 		{`bq---abwhky3f6fxq.jakacomo.com`, errInvalidRLDH},
 		// Three hyphens starting at second char of first label.
 		{`h---test.hk2yz.org`, errInvalidRLDH},
+		{`co.uk`, errICANNTLD},
+		{`foo.bd`, errICANNTLD},
 	}
 
-	shouldBeTLDError := []string{
-		`co.uk`,
-		`foo.bd`,
+	// Test syntax errors
+	for _, tc := range testCases {
+		err := WellFormedDomainNames([]string{tc.domain})
+		if tc.err == nil {
+			test.AssertNil(t, err, fmt.Sprintf("Unexpected error for domain %q, got %s", tc.domain, err))
+		} else {
+			test.AssertError(t, err, fmt.Sprintf("Expected error for domain %q, but got none", tc.domain))
+			var berr *berrors.BoulderError
+			test.AssertErrorWraps(t, err, &berr)
+			test.AssertContains(t, berr.Error(), tc.err.Error())
+		}
 	}
+}
 
+func TestWillingToIssue(t *testing.T) {
 	shouldBeBlocked := []string{
 		`highvalue.website1.org`,
 		`website2.co.uk`,
@@ -162,19 +174,6 @@ func TestWillingToIssue(t *testing.T) {
 	err = pa.LoadHostnamePolicyFile(yamlPolicyFile.Name())
 	test.AssertNotError(t, err, "Couldn't load rules")
 
-	// Test syntax errors
-	for _, tc := range testCases {
-		err := pa.WillingToIssue([]string{tc.domain})
-		if tc.err == nil {
-			test.AssertNil(t, err, fmt.Sprintf("Unexpected error for domain %q, got %s", tc.domain, err))
-		} else {
-			test.AssertError(t, err, fmt.Sprintf("Expected error for domain %q, but got none", tc.domain))
-			var berr *berrors.BoulderError
-			test.AssertErrorWraps(t, err, &berr)
-			test.AssertContains(t, berr.Error(), tc.err.Error())
-		}
-	}
-
 	// Invalid encoding
 	err = pa.WillingToIssue([]string{"www.xn--m.com"})
 	test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
@@ -185,15 +184,6 @@ func TestWillingToIssue(t *testing.T) {
 	err = pa.WillingToIssue([]string{"xn--example--3bhk5a.xn--p1ai"})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
 	features.Reset()
-
-	// Test domains that are equal to public suffixes
-	for _, domain := range shouldBeTLDError {
-		err := pa.WillingToIssue([]string{domain})
-		test.AssertError(t, err, "domain was not correctly forbidden")
-		var berr *berrors.BoulderError
-		test.AssertErrorWraps(t, err, &berr)
-		test.AssertContains(t, berr.Detail, errICANNTLD.Error())
-	}
 
 	// Test expected blocked domains
 	for _, domain := range shouldBeBlocked {
@@ -305,11 +295,12 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 	}
 }
 
-// TestWillingToIssueWildcards tests that more than one rejected identifier
+// TestWillingToIssue_SubErrors tests that more than one rejected identifier
 // results in an error with suberrors.
-func TestWillingToIssue_Wildcard(t *testing.T) {
+func TestWillingToIssue_SubErrors(t *testing.T) {
 	banned := []string{
 		"letsdecrypt.org",
+		"example.com",
 	}
 	pa := paImpl(t)
 
@@ -325,47 +316,74 @@ func TestWillingToIssue_Wildcard(t *testing.T) {
 	err = pa.LoadHostnamePolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
 
-	domains := []string{
-		"perfectly-fine.com",             // fine
-		"letsdecrypt.org",                // banned
-		"ok.*.this.is.a.*.weird.one.com", // malformed
-		"also-perfectly-fine.com",        // fine
-	}
+	// Test multiple malformed domains and one banned domain; only the malformed ones will generate errors
+	err = pa.WillingToIssue([]string{
+		"perfectly-fine.com",      // fine
+		"letsdecrypt_org",         // malformed
+		"example.comm",            // malformed
+		"letsdecrypt.org",         // banned
+		"also-perfectly-fine.com", // fine
+	})
+	test.AssertDeepEquals(t, err,
+		&berrors.BoulderError{
+			Type:   berrors.RejectedIdentifier,
+			Detail: "Cannot issue for \"letsdecrypt_org\": Domain name contains an invalid character (and 1 more problems. Refer to sub-problems for more information.)",
+			SubErrors: []berrors.SubBoulderError{
+				{
+					BoulderError: &berrors.BoulderError{
+						Type:   berrors.Malformed,
+						Detail: "Domain name contains an invalid character",
+					},
+					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "letsdecrypt_org"},
+				},
+				{
+					BoulderError: &berrors.BoulderError{
+						Type:   berrors.Malformed,
+						Detail: "Domain name does not end with a valid public suffix (TLD)",
+					},
+					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.comm"},
+				},
+			},
+		})
 
-	err = pa.WillingToIssue(domains)
+	// Test multiple banned domains.
+	err = pa.WillingToIssue([]string{
+		"perfectly-fine.com",      // fine
+		"letsdecrypt.org",         // banned
+		"example.com",             // banned
+		"also-perfectly-fine.com", // fine
+	})
 	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
 
-	var berr *berrors.BoulderError
-	test.AssertErrorWraps(t, err, &berr)
-	for _, err := range berr.SubErrors {
-		fmt.Println(err)
-	}
-	test.AssertEquals(t, len(berr.SubErrors), 2)
-	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. Refer to sub-problems for more information.)")
-
-	subErrMap := make(map[string]berrors.SubBoulderError, len(berr.SubErrors))
-
-	for _, subErr := range berr.SubErrors {
-		subErrMap[subErr.Identifier.Value] = subErr
-	}
-
-	subErrA, foundA := subErrMap["letsdecrypt.org"]
-	subErrB, foundB := subErrMap["ok.*.this.is.a.*.weird.one.com"]
-	test.AssertEquals(t, foundA, true)
-	test.AssertEquals(t, foundB, true)
-
-	test.AssertEquals(t, subErrA.Type, berrors.RejectedIdentifier)
-	test.AssertEquals(t, subErrB.Type, berrors.Malformed)
+	test.AssertDeepEquals(t, err,
+		&berrors.BoulderError{
+			Type:   berrors.RejectedIdentifier,
+			Detail: "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. Refer to sub-problems for more information.)",
+			SubErrors: []berrors.SubBoulderError{
+				{
+					BoulderError: &berrors.BoulderError{
+						Type:   berrors.RejectedIdentifier,
+						Detail: "The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
+					},
+					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "letsdecrypt.org"},
+				},
+				{
+					BoulderError: &berrors.BoulderError{
+						Type:   berrors.RejectedIdentifier,
+						Detail: "The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
+					},
+					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
+				},
+			},
+		})
 
 	// Test willing to issue with only *one* bad identifier.
 	err = pa.WillingToIssue([]string{"letsdecrypt.org"})
-	// It should error
-	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
-
-	test.AssertErrorWraps(t, err, &berr)
-	// There should be *no* suberrors because there was only one error overall.
-	test.AssertEquals(t, len(berr.SubErrors), 0)
-	test.AssertEquals(t, berr.Error(), "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy")
+	test.AssertDeepEquals(t, err,
+		&berrors.BoulderError{
+			Type:   berrors.RejectedIdentifier,
+			Detail: "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
+		})
 }
 
 func TestChallengesFor(t *testing.T) {
