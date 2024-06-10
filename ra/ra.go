@@ -2759,10 +2759,10 @@ func (ra *RegistrationAuthorityImpl) DrainFinalize() {
 // UnpauseAccount receives a validated account unpause request from the SFE and
 // instructs the SA to unpause that account. If the account cannot be unpaused,
 // an error is returned.
-func (ra *RegistrationAuthorityImpl) UnpauseAccount(ctx context.Context, request *rapb.UnpauseAccountRequest) error {
+func (ra *RegistrationAuthorityImpl) UnpauseAccount(ctx context.Context, request *rapb.UnpauseAccountRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(request.RegistrationID) {
-		return errIncompleteGRPCResponse
+		return nil, errIncompleteGRPCResponse
 	}
 
-	return errors.New("unimplemented")
+	return nil, errors.New("unimplemented")
 }
