@@ -53,6 +53,7 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
+
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -2753,4 +2754,15 @@ func validateContactsPresent(contacts []string, contactsPresent bool) error {
 
 func (ra *RegistrationAuthorityImpl) DrainFinalize() {
 	ra.finalizeWG.Wait()
+}
+
+// UnpauseAccount receives a validated account unpause request from the SFE and
+// instructs the SA to unpause that account. If the account cannot be unpaused,
+// an error is returned.
+func (ra *RegistrationAuthorityImpl) UnpauseAccount(ctx context.Context, request *rapb.UnpauseAccountRequest) error {
+	if core.IsAnyNilOrZero(request.RegistrationID) {
+		return errIncompleteGRPCResponse
+	}
+
+	return errors.New("unimplemented")
 }
