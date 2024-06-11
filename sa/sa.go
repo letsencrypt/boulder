@@ -1350,7 +1350,7 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 					req.RegistrationID,
 					identifier.Type,
 					identifier.Value,
-					ssa.clk.Now(),
+					ssa.clk.Now().Truncate(time.Second),
 				)
 				if err != nil && !db.IsDuplicate(err) {
 					return nil, pauseError("pausing", err)
@@ -1373,7 +1373,7 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 					identifierValue = ? AND
 					pausedAt IS NULL AND 
 					unpausedAt IS NOT NULL`,
-					ssa.clk.Now(),
+					ssa.clk.Now().Truncate(time.Second),
 					req.RegistrationID,
 					identifier.Type,
 					identifier.Value,
@@ -1416,7 +1416,7 @@ func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.Re
 	WHERE 
 		registrationID = ? AND
 		unpausedAt IS NULL`,
-		ssa.clk.Now(),
+		ssa.clk.Now().Truncate(time.Second),
 		req.Id,
 	)
 	if err != nil {
