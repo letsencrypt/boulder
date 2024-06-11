@@ -24,6 +24,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -2761,8 +2763,8 @@ func (ra *RegistrationAuthorityImpl) DrainFinalize() {
 // an error is returned.
 func (ra *RegistrationAuthorityImpl) UnpauseAccount(ctx context.Context, request *rapb.UnpauseAccountRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(request.RegistrationID) {
-		return nil, errIncompleteGRPCResponse
+		return nil, errIncompleteGRPCRequest
 	}
 
-	return nil, errors.New("unimplemented")
+	return nil, status.Errorf(codes.Unimplemented, "method UnpauseAccount not implemented")
 }

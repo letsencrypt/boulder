@@ -6,7 +6,6 @@ option go_package = "github.com/letsencrypt/boulder/ra/proto";
 import "core/proto/core.proto";
 import "ca/proto/ca.proto";
 import "google/protobuf/empty.proto";
-import "google/protobuf/timestamp.proto";
 
 service RegistrationAuthority {
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
@@ -84,12 +83,8 @@ message FinalizeOrderRequest {
 }
 
 message UnpauseAccountRequest {
-  // Next unused field number: 3
+  // Next unused field number: 2
 
   // The registrationID to be unpaused so issuance can be resumed.
   int64 registrationID = 1;
-
-  // Time at which the WFE generated the JWT. Used by a metric to calculate JWT
-  // lifetime i.e. the time delta between JWT issuance and account unpausing.
-  google.protobuf.Timestamp issuedAt = 2;
 }
