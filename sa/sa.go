@@ -3,6 +3,7 @@ package sa
 import (
 	"context"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1302,19 +1303,100 @@ func (ssa *SQLStorageAuthority) PauseIdentifier(ctx context.Context, req *sapb.P
 	}
 
 	// Marshal the identifier now that we've crossed the RPC boundary.
-	identifier, err := newIdentifierFromPB(req.Identifier)
+	identifier, err := newIdentifierModelFromPB(req.Identifier)
 	if err != nil {
 		return nil, err
 	}
 
 	var repaused bool
-	var pauseErr error
 	_, err = db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		repaused, pauseErr = pauseIdentifier(ctx, tx, req.RegistrationID, identifier, ssa.clk.Now())
-		if pauseErr != nil {
-			return nil, pauseErr
+		pauseError := func(op string, err error) error {
+			return fmt.Errorf("while %s identifier %s for registration ID %d: %w",
+				op, identifier.Value, req.RegistrationID, err,
+			)
 		}
-		return nil, nil
+
+		var entry pausedModel
+		err := tx.SelectOne(ctx, &entry, `
+			SELECT pausedAt, unpausedAt
+			FROM paused
+			WHERE 
+				registrationID = ? AND 
+				identifierType = ? AND 
+				identifierValue = ?`,
+			req.RegistrationID,
+			identifier.Type,
+			identifier.Value,
+		)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			repaused = false
+			return nil, pauseError("querying pause status for", err)
+		}
+
+		if entry.PausedAt != nil && entry.UnpausedAt == nil {
+			// Identifier is already paused, return early.
+			repaused = false
+			return nil, nil
+		}
+
+		if errors.Is(err, sql.ErrNoRows) {
+			// Not currently or previously paused, insert a new pause record.
+			_, err = tx.ExecContext(ctx, `
+			INSERT INTO paused (
+				registrationID,
+				identifierType,
+				identifierValue,
+				pausedAt
+			) VALUES (?, ?, ?, ?)`,
+				req.RegistrationID,
+				identifier.Type,
+				identifier.Value,
+				ssa.clk.Now(),
+			)
+			if err != nil && !db.IsDuplicate(err) {
+				repaused = false
+				return nil, pauseError("pausing", err)
+			}
+
+			// Identifier successfully paused, return early.
+			repaused = false
+			return nil, nil
+		}
+
+		if entry.PausedAt == nil && entry.UnpausedAt != nil {
+			// Previously paused (and unpaused), repause the identifier.
+			_, err := tx.ExecContext(ctx, `
+				UPDATE paused
+				SET pausedAt = ?,
+					unpausedAt = NULL
+				WHERE 
+					registrationID = ? AND 
+					identifierType = ? AND 
+					identifierValue = ? AND
+					pausedAt IS NULL AND 
+					unpausedAt IS NOT NULL`,
+				ssa.clk.Now(),
+				req.RegistrationID,
+				identifier.Type,
+				identifier.Value,
+			)
+			if err != nil {
+				repaused = false
+				return nil, pauseError("repausing", err)
+			}
+
+			// Identifier successfully repaused.
+			repaused = true
+			return nil, nil
+		} else {
+
+			// Identifier entry is in an unexpected state.
+			repaused = false
+			return nil, fmt.Errorf("identifier %s for registration ID %d is in an unexpected state",
+				identifier.Value,
+				req.RegistrationID,
+			)
+		}
 	})
 	if err != nil {
 		return nil, err
@@ -1330,10 +1412,19 @@ func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.Re
 		return nil, errIncompleteRequest
 	}
 
-	err := unpauseAccount(ctx, ssa.dbMap, req.Id, ssa.clk.Now())
+	_, err := ssa.dbMap.ExecContext(ctx, `
+	UPDATE paused
+	SET unpausedAt = ?,
+		pausedAt = NULL
+	WHERE 
+		registrationID = ? AND
+		unpausedAt IS NULL`,
+		ssa.clk.Now(),
+		req.Id,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	return &emptypb.Empty{}, nil
+	return nil, nil
 }

@@ -245,22 +245,22 @@ func (sa *StorageAuthority) SerialsForIncident(ctx context.Context, _ *sapb.Seri
 }
 
 // CheckIdentifiersPaused is a mock
-func (sa *StorageAuthorityReadOnly) CheckIdentifiersPaused(_ context.Context, _ *sapb.CheckIdentifiersPausedRequest, _ ...grpc.CallOption) (*sapb.Hostnames, error) {
+func (sa *StorageAuthorityReadOnly) CheckIdentifiersPaused(_ context.Context, _ *sapb.CheckIdentifiersPausedRequest, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
 	return nil, nil
 }
 
 // CheckIdentifiersPaused is a mock
-func (sa *StorageAuthority) CheckIdentifiersPaused(_ context.Context, _ *sapb.CheckIdentifiersPausedRequest, _ ...grpc.CallOption) (*sapb.Hostnames, error) {
+func (sa *StorageAuthority) CheckIdentifiersPaused(_ context.Context, _ *sapb.CheckIdentifiersPausedRequest, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
 	return nil, nil
 }
 
 // GetPausedIdentifiersForAccount is a mock
-func (sa *StorageAuthorityReadOnly) GetPausedIdentifiersForAccount(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Hostnames, error) {
+func (sa *StorageAuthorityReadOnly) GetPausedIdentifiersForAccount(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
 	return nil, nil
 }
 
 // GetPausedIdentifiersForAccount is a mock
-func (sa *StorageAuthority) GetPausedIdentifiersForAccount(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Hostnames, error) {
+func (sa *StorageAuthority) GetPausedIdentifiersForAccount(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
 	return nil, nil
 }
 
@@ -477,7 +477,7 @@ func (sa *StorageAuthorityReadOnly) GetValidAuthorizations2(ctx context.Context,
 			RegistrationID: req.RegistrationID,
 			Expires:        &exp,
 			Identifier: identifier.ACMEIdentifier{
-				Type:  "dns",
+				Type:  identifier.DNS,
 				Value: name,
 			},
 			Challenges: []core.Challenge{

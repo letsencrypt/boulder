@@ -4346,7 +4346,7 @@ func TestPausing(t *testing.T) {
 	// Ensure that the identifier is not paused.
 	matches, err := sa.CheckIdentifiersPaused(ctx, checkExampleCom1)
 	test.AssertNotError(t, err, "CheckIdentifiersPaused failed")
-	test.AssertEquals(t, len(matches.Hostnames), 0)
+	test.AssertEquals(t, len(matches.Identifiers), 0)
 
 	// Pause the identifier.
 	repaused, err := sa.PauseIdentifier(ctx, pauseExampleCom1)
@@ -4356,8 +4356,8 @@ func TestPausing(t *testing.T) {
 	// Ensure that the identifier is paused.
 	matches, err = sa.CheckIdentifiersPaused(ctx, checkExampleCom1)
 	test.AssertNotError(t, err, "CheckIdentifiersPaused failed")
-	test.AssertEquals(t, len(matches.Hostnames), 1)
-	test.AssertEquals(t, matches.Hostnames[0], "example.com")
+	test.AssertEquals(t, len(matches.Identifiers), 1)
+	test.AssertEquals(t, matches.Identifiers[0].Value, "example.com")
 
 	// Attempt to pause the already paused identifier, this should be a no-op.
 	repaused, err = sa.PauseIdentifier(ctx, pauseExampleCom1)
@@ -4367,8 +4367,8 @@ func TestPausing(t *testing.T) {
 	// Get the paused identifiers.
 	pausedIdentifiers, err := sa.GetPausedIdentifiersForAccount(ctx, &sapb.RegistrationID{Id: 1})
 	test.AssertNotError(t, err, "GetPausedIdentifiersForAccount failed")
-	test.AssertEquals(t, len(pausedIdentifiers.Hostnames), 1)
-	test.AssertEquals(t, pausedIdentifiers.Hostnames[0], "example.com")
+	test.AssertEquals(t, len(pausedIdentifiers.Identifiers), 1)
+	test.AssertEquals(t, pausedIdentifiers.Identifiers[0].Value, "example.com")
 
 	// Unpause all identifiers for the account.
 	_, err = sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})

@@ -92,8 +92,8 @@ type StorageAuthorityReadOnlyClient interface {
 	KeyBlocked(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (*Exists, error)
 	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IncidentSerial], error)
-	CheckIdentifiersPaused(ctx context.Context, in *CheckIdentifiersPausedRequest, opts ...grpc.CallOption) (*Hostnames, error)
-	GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Hostnames, error)
+	CheckIdentifiersPaused(ctx context.Context, in *CheckIdentifiersPausedRequest, opts ...grpc.CallOption) (*Identifiers, error)
+	GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error)
 }
 
 type storageAuthorityReadOnlyClient struct {
@@ -450,9 +450,9 @@ func (c *storageAuthorityReadOnlyClient) SerialsForIncident(ctx context.Context,
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StorageAuthorityReadOnly_SerialsForIncidentClient = grpc.ServerStreamingClient[IncidentSerial]
 
-func (c *storageAuthorityReadOnlyClient) CheckIdentifiersPaused(ctx context.Context, in *CheckIdentifiersPausedRequest, opts ...grpc.CallOption) (*Hostnames, error) {
+func (c *storageAuthorityReadOnlyClient) CheckIdentifiersPaused(ctx context.Context, in *CheckIdentifiersPausedRequest, opts ...grpc.CallOption) (*Identifiers, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Hostnames)
+	out := new(Identifiers)
 	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_CheckIdentifiersPaused_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -460,9 +460,9 @@ func (c *storageAuthorityReadOnlyClient) CheckIdentifiersPaused(ctx context.Cont
 	return out, nil
 }
 
-func (c *storageAuthorityReadOnlyClient) GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Hostnames, error) {
+func (c *storageAuthorityReadOnlyClient) GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Hostnames)
+	out := new(Identifiers)
 	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetPausedIdentifiersForAccount_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -505,8 +505,8 @@ type StorageAuthorityReadOnlyServer interface {
 	KeyBlocked(context.Context, *SPKIHash) (*Exists, error)
 	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, grpc.ServerStreamingServer[IncidentSerial]) error
-	CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Hostnames, error)
-	GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Hostnames, error)
+	CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Identifiers, error)
+	GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Identifiers, error)
 	mustEmbedUnimplementedStorageAuthorityReadOnlyServer()
 }
 
@@ -607,10 +607,10 @@ func (UnimplementedStorageAuthorityReadOnlyServer) ReplacementOrderExists(contex
 func (UnimplementedStorageAuthorityReadOnlyServer) SerialsForIncident(*SerialsForIncidentRequest, grpc.ServerStreamingServer[IncidentSerial]) error {
 	return status.Errorf(codes.Unimplemented, "method SerialsForIncident not implemented")
 }
-func (UnimplementedStorageAuthorityReadOnlyServer) CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Hostnames, error) {
+func (UnimplementedStorageAuthorityReadOnlyServer) CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Identifiers, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CheckIdentifiersPaused not implemented")
 }
-func (UnimplementedStorageAuthorityReadOnlyServer) GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Hostnames, error) {
+func (UnimplementedStorageAuthorityReadOnlyServer) GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Identifiers, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPausedIdentifiersForAccount not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) mustEmbedUnimplementedStorageAuthorityReadOnlyServer() {
@@ -1434,8 +1434,8 @@ type StorageAuthorityClient interface {
 	KeyBlocked(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (*Exists, error)
 	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IncidentSerial], error)
-	CheckIdentifiersPaused(ctx context.Context, in *CheckIdentifiersPausedRequest, opts ...grpc.CallOption) (*Hostnames, error)
-	GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Hostnames, error)
+	CheckIdentifiersPaused(ctx context.Context, in *CheckIdentifiersPausedRequest, opts ...grpc.CallOption) (*Identifiers, error)
+	GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error)
 	// Adders
 	AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddCertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -1813,9 +1813,9 @@ func (c *storageAuthorityClient) SerialsForIncident(ctx context.Context, in *Ser
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StorageAuthority_SerialsForIncidentClient = grpc.ServerStreamingClient[IncidentSerial]
 
-func (c *storageAuthorityClient) CheckIdentifiersPaused(ctx context.Context, in *CheckIdentifiersPausedRequest, opts ...grpc.CallOption) (*Hostnames, error) {
+func (c *storageAuthorityClient) CheckIdentifiersPaused(ctx context.Context, in *CheckIdentifiersPausedRequest, opts ...grpc.CallOption) (*Identifiers, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Hostnames)
+	out := new(Identifiers)
 	err := c.cc.Invoke(ctx, StorageAuthority_CheckIdentifiersPaused_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -1823,9 +1823,9 @@ func (c *storageAuthorityClient) CheckIdentifiersPaused(ctx context.Context, in 
 	return out, nil
 }
 
-func (c *storageAuthorityClient) GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Hostnames, error) {
+func (c *storageAuthorityClient) GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Hostnames)
+	out := new(Identifiers)
 	err := c.cc.Invoke(ctx, StorageAuthority_GetPausedIdentifiersForAccount_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -2069,8 +2069,8 @@ type StorageAuthorityServer interface {
 	KeyBlocked(context.Context, *SPKIHash) (*Exists, error)
 	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, grpc.ServerStreamingServer[IncidentSerial]) error
-	CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Hostnames, error)
-	GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Hostnames, error)
+	CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Identifiers, error)
+	GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Identifiers, error)
 	// Adders
 	AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error)
 	AddCertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error)
@@ -2192,10 +2192,10 @@ func (UnimplementedStorageAuthorityServer) ReplacementOrderExists(context.Contex
 func (UnimplementedStorageAuthorityServer) SerialsForIncident(*SerialsForIncidentRequest, grpc.ServerStreamingServer[IncidentSerial]) error {
 	return status.Errorf(codes.Unimplemented, "method SerialsForIncident not implemented")
 }
-func (UnimplementedStorageAuthorityServer) CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Hostnames, error) {
+func (UnimplementedStorageAuthorityServer) CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Identifiers, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CheckIdentifiersPaused not implemented")
 }
-func (UnimplementedStorageAuthorityServer) GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Hostnames, error) {
+func (UnimplementedStorageAuthorityServer) GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Identifiers, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPausedIdentifiersForAccount not implemented")
 }
 func (UnimplementedStorageAuthorityServer) AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error) {

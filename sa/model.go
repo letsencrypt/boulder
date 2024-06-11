@@ -1295,29 +1295,41 @@ func setReplacementOrderFinalized(ctx context.Context, db db.Execer, orderID int
 	return nil
 }
 
-type pauseId struct {
-	IdentifierType  uint8  `db:"identifierType"`
-	IdentifierValue string `db:"identifierValue"`
+type identifierModel struct {
+	Type  uint8  `db:"identifierType"`
+	Value string `db:"identifierValue"`
 }
 
-func newIdentifierFromPB(pb *sapb.Identifier) (pauseId, error) {
+func newIdentifierModelFromPB(pb *sapb.Identifier) (identifierModel, error) {
 	idType, ok := identifierTypeToUint[pb.Type]
 	if !ok {
-		return pauseId{}, fmt.Errorf("unsupported identifier type %q", pb.Type)
+		return identifierModel{}, fmt.Errorf("unsupported identifier type %q", pb.Type)
 	}
 
-	return pauseId{
-		IdentifierType:  idType,
-		IdentifierValue: pb.Value,
+	return identifierModel{
+		Type:  idType,
+		Value: pb.Value,
 	}, nil
 }
 
-type pauseIds []pauseId
+func newPBFromIdentifierModel(id identifierModel) (*sapb.Identifier, error) {
+	idType, ok := uintToIdentifierType[id.Type]
+	if !ok {
+		return nil, fmt.Errorf("unsupported identifier type %d", id.Type)
+	}
 
-func newIdentifiersFromPB(pb []*sapb.Identifier) (pauseIds, error) {
-	var ids pauseIds
+	return &sapb.Identifier{
+		Type:  idType,
+		Value: id.Value,
+	}, nil
+}
+
+type identifierModels []identifierModel
+
+func newIdentifiersFromPB(pb []*sapb.Identifier) (identifierModels, error) {
+	var ids identifierModels
 	for _, p := range pb {
-		id, err := newIdentifierFromPB(p)
+		id, err := newIdentifierModelFromPB(p)
 		if err != nil {
 			return nil, err
 		}
@@ -1326,13 +1338,25 @@ func newIdentifiersFromPB(pb []*sapb.Identifier) (pauseIds, error) {
 	return ids, nil
 }
 
+func newPBFromIdentifierModels(ids identifierModels) (*sapb.Identifiers, error) {
+	var pb []*sapb.Identifier
+	for _, id := range ids {
+		p, err := newPBFromIdentifierModel(id)
+		if err != nil {
+			return nil, err
+		}
+		pb = append(pb, p)
+	}
+	return &sapb.Identifiers{Identifiers: pb}, nil
+}
+
 // identifierValuesForType returns a list of identifier values for the given
 // identifier type. If no values are found, an empty list is returned.
-func (id pauseIds) identifierValuesForType(identifierType uint8) []string {
+func (id identifierModels) identifierValuesForType(identifierType uint8) []string {
 	var values []string
 	for _, i := range id {
-		if i.IdentifierType == identifierType {
-			values = append(values, i.IdentifierValue)
+		if i.Type == identifierType {
+			values = append(values, i.Value)
 		}
 	}
 	return values
@@ -1342,197 +1366,10 @@ func (id pauseIds) identifierValuesForType(identifierType uint8) []string {
 // fields are pointers because they are NULL-able columns. At no point should
 // both pausedAt and unpausedAt be non-NULL. Valid states are:
 //   - identifier paused: pausedAt is non-NULL, unpausedAt is NULL
-//   - identifier unpaused: pausedAt is non-NULL, unpausedAt is non-NULL
+//   - identifier unpaused: pausedAt is NULL, unpausedAt is non-NULL
 type pausedModel struct {
-	pauseId
+	identifierModel
 	RegistrationID int64      `db:"registrationID"`
 	PausedAt       *time.Time `db:"pausedAt"`
 	UnpausedAt     *time.Time `db:"unpausedAt"`
-}
-
-// checkIdentifiersPaused takes a slice of identifiers of type "dns" and returns
-// a slice of the first 15 identifier values which are currently paused for the
-// provided account. If no matches are found, an empty slice is returned. If a
-// non-DNS identifier is provided, an error is returned.
-func checkIdentifiersPaused(ctx context.Context, dbs db.Selector, regID int64, ids pauseIds) ([]string, error) {
-	if len(ids) == 0 {
-		// No identifier values to check.
-		return []string{}, nil
-	}
-
-	dnsType := identifierTypeToUint[string(identifier.DNS)]
-	for _, id := range ids {
-		if id.IdentifierType != identifierTypeToUint[string(identifier.DNS)] {
-			// This method only supports DNS identifiers.
-			return nil, fmt.Errorf("unsupported identifier type %d for identifier %q",
-				id.IdentifierType,
-				id.IdentifierValue,
-			)
-		}
-	}
-	dnsValues := ids.identifierValuesForType(dnsType)
-
-	// Prepare question marks for the "IN" clause. If we add more identifier
-	// types, we should consider joining a bunch of "OR" clauses together for
-	// each identifier type. For now, we only have DNS.
-	query := fmt.Sprintf(`
-	    SELECT identifierValue
-	    FROM paused
-	    WHERE 
-	    	registrationID = ? AND
-	    	identifierType = ? AND
-	    	identifierValue IN (%s) AND
-	    	unpausedAt IS NULL
-	    LIMIT 15`,
-		db.QuestionMarks(len(dnsValues)),
-	)
-
-	// Prepare arguments for the query.
-	args := []interface{}{
-		// registrationID = ? AND
-		regID,
-		// identifierType = ? AND
-		dnsType,
-	}
-
-	for _, value := range dnsValues {
-		// identifierValue IN (...) AND
-		args = append(args, value)
-	}
-
-	var matches []string
-	_, err := dbs.Select(ctx, &matches, query, args...)
-	if err != nil && !db.IsNoRows(err) {
-		// Error querying the database.
-		return nil, err
-	}
-
-	return matches, nil
-}
-
-// getPausedIdentifiersForAccount returns a slice of paused identifiers for the
-// provided account. If no paused identifiers are found, an empty slice is
-// returned. The results are limited to the first 15 paused identifiers.
-func getPausedIdentifiersForAccount(ctx context.Context, dbs db.Selector, regID int64) ([]string, error) {
-	var paused []string
-	_, err := dbs.Select(ctx, &paused, `
-		SELECT identifierValue 
-		FROM paused
-		WHERE 
-			registrationID = ? AND
-			unpausedAt IS NULL
-		LIMIT 15`,
-		regID,
-	)
-	if err != nil && !db.IsNoRows(err) {
-		return nil, err
-	}
-	return paused, nil
-}
-
-// pauseIdentifier pauses a given identifier for a provided account. If the
-// identifier is currently paused, this is a no-op. If the identifier was
-// previously paused and unpaused, it will be repaused. This function expects
-// the caller to be within a transaction. A boolean is returned indicating if
-// the identifier was repaused.
-func pauseIdentifier(ctx context.Context, tx db.Executor, regID int64, id pauseId, pausedAt time.Time) (bool, error) {
-	pauseError := func(op string, err error) error {
-		return fmt.Errorf("while %s identifier %s for registration ID %d: %w",
-			op, id.IdentifierValue, regID, err,
-		)
-	}
-
-	var entry pausedModel
-	err := tx.SelectOne(ctx, &entry, `
-		SELECT pausedAt, unpausedAt
-		FROM paused
-		WHERE 
-			registrationID = ? AND 
-			identifierType = ? AND 
-			identifierValue = ?`,
-		regID,
-		id.IdentifierType,
-		id.IdentifierValue,
-	)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return false, pauseError("querying pause status for", err)
-	}
-
-	if entry.PausedAt != nil && entry.UnpausedAt == nil {
-		// Identifier is already paused, return early.
-		return false, nil
-	}
-
-	if errors.Is(err, sql.ErrNoRows) {
-		// Not currently or previously paused, insert a new pause record.
-		_, err = tx.ExecContext(ctx, `
-		INSERT INTO paused (
-			registrationID,
-			identifierType,
-			identifierValue,
-			pausedAt
-		) VALUES (?, ?, ?, ?)`,
-			regID,
-			id.IdentifierType,
-			id.IdentifierValue,
-			pausedAt,
-		)
-		if err != nil && !db.IsDuplicate(err) {
-			return false, pauseError("pausing", err)
-		}
-
-		// Identifier successfully paused, return early.
-		return false, nil
-	}
-
-	if entry.PausedAt == nil && entry.UnpausedAt != nil {
-		// Previously paused (and unpaused), repause the identifier.
-		_, err := tx.ExecContext(ctx, `
-			UPDATE paused
-			SET pausedAt = ?,
-				unpausedAt = NULL
-			WHERE 
-				registrationID = ? AND 
-				identifierType = ? AND 
-				identifierValue = ? AND
-        	    pausedAt IS NULL AND 
-        	    unpausedAt IS NOT NULL`,
-			pausedAt,
-			regID,
-			id.IdentifierType,
-			id.IdentifierValue,
-		)
-		if err != nil {
-			return false, pauseError("repausing", err)
-		}
-
-		// Identifier successfully repaused.
-		return true, nil
-	} else {
-
-		// Identifier entry is in an unexpected state.
-		return false, fmt.Errorf("identifier %s for registration ID %d is in an unexpected state",
-			id.IdentifierValue, regID,
-		)
-	}
-}
-
-// unpauseAccount will unpause all paused identifiers for the provided account.
-// If no identifiers are currently paused, this is a no-op.
-func unpauseAccount(ctx context.Context, db db.Execer, regID int64, unpausedAt time.Time) error {
-	_, err := db.ExecContext(ctx, `
-		UPDATE paused
-		SET unpausedAt = ?,
-			pausedAt = NULL
-		WHERE 
-			registrationID = ? AND
-			unpausedAt IS NULL`,
-		unpausedAt,
-		regID,
-	)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
