@@ -34,7 +34,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
@@ -568,7 +567,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	// Select which pool of issuers to use, based on the to-be-issued cert's key
 	// type and whether we're using the ECDSA Allow List.
 	alg := csr.PublicKeyAlgorithm
-	if alg == x509.ECDSA && !features.Get().ECDSAForAll && ca.ecdsaAllowList != nil && !ca.ecdsaAllowList.permitted(issueReq.RegistrationID) {
+	if alg == x509.ECDSA && ca.ecdsaAllowList != nil && !ca.ecdsaAllowList.permitted(issueReq.RegistrationID) {
 		alg = x509.RSA
 	}
 

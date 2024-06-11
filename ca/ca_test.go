@@ -790,10 +790,8 @@ func TestECDSAAllowList(t *testing.T) {
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	test.AssertEquals(t, cert.SignatureAlgorithm, x509.SHA256WithRSA)
 
-	// With empty allowlist but ECDSAForAll enabled, issuance should come from ECDSA issuer.
+	// With empty allowlist, issuance should come from ECDSA issuer.
 	ca, _ = issueCertificateSubTestSetup(t, nil)
-	features.Set(features.Config{ECDSAForAll: true})
-	defer features.Reset()
 	result, err = ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err = x509.ParseCertificate(result.DER)
