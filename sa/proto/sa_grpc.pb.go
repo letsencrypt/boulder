@@ -1394,7 +1394,7 @@ const (
 	StorageAuthority_UpdateRevokedCertificate_FullMethodName       = "/sa.StorageAuthority/UpdateRevokedCertificate"
 	StorageAuthority_LeaseCRLShard_FullMethodName                  = "/sa.StorageAuthority/LeaseCRLShard"
 	StorageAuthority_UpdateCRLShard_FullMethodName                 = "/sa.StorageAuthority/UpdateCRLShard"
-	StorageAuthority_PauseIdentifier_FullMethodName                = "/sa.StorageAuthority/PauseIdentifier"
+	StorageAuthority_PauseIdentifiers_FullMethodName               = "/sa.StorageAuthority/PauseIdentifiers"
 	StorageAuthority_UnpauseAccount_FullMethodName                 = "/sa.StorageAuthority/UnpauseAccount"
 )
 
@@ -1455,7 +1455,7 @@ type StorageAuthorityClient interface {
 	UpdateRevokedCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	LeaseCRLShard(ctx context.Context, in *LeaseCRLShardRequest, opts ...grpc.CallOption) (*LeaseCRLShardResponse, error)
 	UpdateCRLShard(ctx context.Context, in *UpdateCRLShardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	PauseIdentifier(ctx context.Context, in *PauseIdentifierRequest, opts ...grpc.CallOption) (*PauseIdentifierResponse, error)
+	PauseIdentifiers(ctx context.Context, in *PauseIdentifiersRequest, opts ...grpc.CallOption) (*PauseIdentifiersResponse, error)
 	UnpauseAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
@@ -2013,10 +2013,10 @@ func (c *storageAuthorityClient) UpdateCRLShard(ctx context.Context, in *UpdateC
 	return out, nil
 }
 
-func (c *storageAuthorityClient) PauseIdentifier(ctx context.Context, in *PauseIdentifierRequest, opts ...grpc.CallOption) (*PauseIdentifierResponse, error) {
+func (c *storageAuthorityClient) PauseIdentifiers(ctx context.Context, in *PauseIdentifiersRequest, opts ...grpc.CallOption) (*PauseIdentifiersResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(PauseIdentifierResponse)
-	err := c.cc.Invoke(ctx, StorageAuthority_PauseIdentifier_FullMethodName, in, out, cOpts...)
+	out := new(PauseIdentifiersResponse)
+	err := c.cc.Invoke(ctx, StorageAuthority_PauseIdentifiers_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2090,7 +2090,7 @@ type StorageAuthorityServer interface {
 	UpdateRevokedCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error)
 	LeaseCRLShard(context.Context, *LeaseCRLShardRequest) (*LeaseCRLShardResponse, error)
 	UpdateCRLShard(context.Context, *UpdateCRLShardRequest) (*emptypb.Empty, error)
-	PauseIdentifier(context.Context, *PauseIdentifierRequest) (*PauseIdentifierResponse, error)
+	PauseIdentifiers(context.Context, *PauseIdentifiersRequest) (*PauseIdentifiersResponse, error)
 	UnpauseAccount(context.Context, *RegistrationID) (*emptypb.Empty, error)
 	mustEmbedUnimplementedStorageAuthorityServer()
 }
@@ -2252,8 +2252,8 @@ func (UnimplementedStorageAuthorityServer) LeaseCRLShard(context.Context, *Lease
 func (UnimplementedStorageAuthorityServer) UpdateCRLShard(context.Context, *UpdateCRLShardRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateCRLShard not implemented")
 }
-func (UnimplementedStorageAuthorityServer) PauseIdentifier(context.Context, *PauseIdentifierRequest) (*PauseIdentifierResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method PauseIdentifier not implemented")
+func (UnimplementedStorageAuthorityServer) PauseIdentifiers(context.Context, *PauseIdentifiersRequest) (*PauseIdentifiersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PauseIdentifiers not implemented")
 }
 func (UnimplementedStorageAuthorityServer) UnpauseAccount(context.Context, *RegistrationID) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UnpauseAccount not implemented")
@@ -3161,20 +3161,20 @@ func _StorageAuthority_UpdateCRLShard_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StorageAuthority_PauseIdentifier_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PauseIdentifierRequest)
+func _StorageAuthority_PauseIdentifiers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PauseIdentifiersRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(StorageAuthorityServer).PauseIdentifier(ctx, in)
+		return srv.(StorageAuthorityServer).PauseIdentifiers(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: StorageAuthority_PauseIdentifier_FullMethodName,
+		FullMethod: StorageAuthority_PauseIdentifiers_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).PauseIdentifier(ctx, req.(*PauseIdentifierRequest))
+		return srv.(StorageAuthorityServer).PauseIdentifiers(ctx, req.(*PauseIdentifiersRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3393,8 +3393,8 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthority_UpdateCRLShard_Handler,
 		},
 		{
-			MethodName: "PauseIdentifier",
-			Handler:    _StorageAuthority_PauseIdentifier_Handler,
+			MethodName: "PauseIdentifiers",
+			Handler:    _StorageAuthority_PauseIdentifiers_Handler,
 		},
 		{
 			MethodName: "UnpauseAccount",

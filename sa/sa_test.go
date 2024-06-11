@@ -4325,7 +4325,7 @@ func TestPausing(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	checkExampleCom1 := &sapb.CheckIdentifiersPausedRequest{
+	checkExampleCom := &sapb.CheckIdentifiersPausedRequest{
 		RegistrationID: 1,
 		Identifiers: []*sapb.Identifier{
 			{
@@ -4335,34 +4335,37 @@ func TestPausing(t *testing.T) {
 		},
 	}
 
-	pauseExampleCom1 := &sapb.PauseIdentifierRequest{
+	pauseExampleCom1 := &sapb.PauseIdentifiersRequest{
 		RegistrationID: 1,
-		Identifier: &sapb.Identifier{
-			Type:  string(identifier.DNS),
-			Value: "example.com",
+		Identifiers: []*sapb.Identifier{
+			{
+				Type:  string(identifier.DNS),
+				Value: "example.com",
+			},
 		},
 	}
 
 	// Ensure that the identifier is not paused.
-	matches, err := sa.CheckIdentifiersPaused(ctx, checkExampleCom1)
+	matches, err := sa.CheckIdentifiersPaused(ctx, checkExampleCom)
 	test.AssertNotError(t, err, "CheckIdentifiersPaused failed")
 	test.AssertEquals(t, len(matches.Identifiers), 0)
 
 	// Pause the identifier.
-	repaused, err := sa.PauseIdentifier(ctx, pauseExampleCom1)
-	test.AssertNotError(t, err, "PauseIdentifier failed")
-	test.Assert(t, !repaused.Repaused, "repaused should be false, as this is the first pause")
+	response, err := sa.PauseIdentifiers(ctx, pauseExampleCom1)
+	test.AssertNotError(t, err, "PauseIdentifiers failed")
+	test.AssertEquals(t, response.Paused, int64(1))
 
 	// Ensure that the identifier is paused.
-	matches, err = sa.CheckIdentifiersPaused(ctx, checkExampleCom1)
+	matches, err = sa.CheckIdentifiersPaused(ctx, checkExampleCom)
 	test.AssertNotError(t, err, "CheckIdentifiersPaused failed")
 	test.AssertEquals(t, len(matches.Identifiers), 1)
 	test.AssertEquals(t, matches.Identifiers[0].Value, "example.com")
 
 	// Attempt to pause the already paused identifier, this should be a no-op.
-	repaused, err = sa.PauseIdentifier(ctx, pauseExampleCom1)
-	test.AssertNotError(t, err, "PauseIdentifier failed")
-	test.Assert(t, !repaused.Repaused, "repaused should be false, as the identifier is already paused")
+	response, err = sa.PauseIdentifiers(ctx, pauseExampleCom1)
+	test.AssertNotError(t, err, "PauseIdentifiers failed")
+	test.AssertEquals(t, response.Paused, int64(0))
+	test.AssertEquals(t, response.Repaused, int64(0))
 
 	// Get the paused identifiers.
 	pausedIdentifiers, err := sa.GetPausedIdentifiersForAccount(ctx, &sapb.RegistrationID{Id: 1})
@@ -4375,7 +4378,42 @@ func TestPausing(t *testing.T) {
 	test.AssertNotError(t, err, "UnpauseAccount failed")
 
 	// Pause the identifier again. This time, repaused should be true.
-	repaused, err = sa.PauseIdentifier(ctx, pauseExampleCom1)
-	test.AssertNotError(t, err, "PauseIdentifier failed")
-	test.Assert(t, repaused.Repaused, "repaused should be true, as the identifier was unpaused and then paused again")
+	response, err = sa.PauseIdentifiers(ctx, pauseExampleCom1)
+	test.AssertNotError(t, err, "PauseIdentifiers failed")
+	test.AssertEquals(t, response.Paused, int64(0))
+	test.AssertEquals(t, response.Repaused, int64(1))
+
+	// Attempt pause several identifiers including the one that is already paused.
+	pauseExampleComNetOrg := &sapb.PauseIdentifiersRequest{
+		RegistrationID: 1,
+		Identifiers: []*sapb.Identifier{
+			{
+				Type:  string(identifier.DNS),
+				Value: "example.com",
+			},
+			{
+				Type:  string(identifier.DNS),
+				Value: "example.net",
+			},
+			{
+				Type:  string(identifier.DNS),
+				Value: "example.org",
+			},
+		},
+	}
+
+	response, err = sa.PauseIdentifiers(ctx, pauseExampleComNetOrg)
+	test.AssertNotError(t, err, "PauseIdentifiers failed")
+	test.AssertEquals(t, response.Paused, int64(2))
+	test.AssertEquals(t, response.Repaused, int64(0))
+
+	// Unpause all identifiers for the account.
+	_, err = sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	test.AssertNotError(t, err, "UnpauseAccount failed")
+
+	// Pause all the identifiers again, this time they should all be repaused.
+	response, err = sa.PauseIdentifiers(ctx, pauseExampleComNetOrg)
+	test.AssertNotError(t, err, "PauseIdentifiers failed")
+	test.AssertEquals(t, response.Paused, int64(0))
+	test.AssertEquals(t, response.Repaused, int64(3))
 }

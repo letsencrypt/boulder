@@ -1326,7 +1326,7 @@ func newPBFromIdentifierModel(id identifierModel) (*sapb.Identifier, error) {
 
 type identifierModels []identifierModel
 
-func newIdentifiersFromPB(pb []*sapb.Identifier) (identifierModels, error) {
+func newIdentifierModelsFromPB(pb []*sapb.Identifier) (identifierModels, error) {
 	var ids identifierModels
 	for _, p := range pb {
 		id, err := newIdentifierModelFromPB(p)

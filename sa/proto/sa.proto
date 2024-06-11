@@ -100,7 +100,7 @@ service StorageAuthority {
   rpc UpdateRevokedCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc LeaseCRLShard(LeaseCRLShardRequest) returns (LeaseCRLShardResponse) {}
   rpc UpdateCRLShard(UpdateCRLShardRequest) returns (google.protobuf.Empty) {}
-  rpc PauseIdentifier(PauseIdentifierRequest) returns (PauseIdentifierResponse) {}
+  rpc PauseIdentifiers(PauseIdentifiersRequest) returns (PauseIdentifiersResponse) {}
   rpc UnpauseAccount(RegistrationID) returns (google.protobuf.Empty) {}
 }
 
@@ -435,11 +435,12 @@ message Identifiers {
   repeated Identifier identifiers = 1;
 }
 
-message PauseIdentifierRequest {
+message PauseIdentifiersRequest {
   int64 registrationID = 1;
-  Identifier identifier = 2;
+  repeated Identifier identifiers = 2;
 }
 
-message PauseIdentifierResponse {
-  bool repaused = 1;
+message PauseIdentifiersResponse {
+  int64 paused = 1;
+  int64 repaused = 2;
 }
