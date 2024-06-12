@@ -1378,7 +1378,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 	var err error
 	for range 20 {
 		_, err = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), expectedToken, expectedKeyAuthorization)
-		if err != nil && strings.Contains(err.Error(), "Network unreachable") {
+		if err != nil && strings.Contains(err.Error(), "network is unreachable") {
 			continue
 		} else {
 			break
