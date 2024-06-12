@@ -34,7 +34,7 @@ GRANT SELECT ON incidents TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON crlShards TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON revokedCertificates TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON replacementOrders TO 'sa'@'localhost';
-GRANT SELECT,INSERT,UPDATE ON paused TO 'sa'@'localhost';
+GRANT SELECT,INSERT,UPDATE,DROP ON paused TO 'sa'@'localhost';
 
 GRANT SELECT ON certificates TO 'sa_ro'@'localhost';
 GRANT SELECT ON certificateStatus TO 'sa_ro'@'localhost';
