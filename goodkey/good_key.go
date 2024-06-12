@@ -54,6 +54,23 @@ type Config struct {
 	FermatRounds int
 }
 
+type AllowedKeys struct {
+	// Baseline Requirements, Section 6.1.5 requires key size >= 2048 and a multiple
+	// of 8 bits: https://github.com/cabforum/servercert/blob/main/docs/BR.md#615-key-sizes
+	// Baseline Requirements, Section 6.1.1.3 requires that we reject any keys which
+	// have a known method to easily compute their private key, such as Debian Weak
+	// Keys. Our enforcement mechanism relies on enumerating all Debian Weak Keys at
+	// common key sizes, so we restrict all issuance to those common key sizes.
+	RSA2048 bool
+	RSA3072 bool
+	RSA4096 bool
+	// Baseline Requirements, Section 6.1.5 requires that ECDSA keys be valid
+	// points on the NIST P-256, P-384, or P-521 elliptic curves.
+	ECDSAP256 bool
+	ECDSAP384 bool
+	ECDSAP521 bool
+}
+
 // ErrBadKey represents an error with a key. It is distinct from the various
 // ways in which an ACME request can have an erroneous key (BadPublicKeyError,
 // BadCSRError) because this library is used to check both JWS signing keys and
@@ -74,29 +91,43 @@ type BlockedKeyCheckFunc func(ctx context.Context, keyHash []byte) (bool, error)
 // KeyPolicy determines which types of key may be used with various boulder
 // operations.
 type KeyPolicy struct {
-	AllowRSA           bool // Whether RSA keys should be allowed.
-	AllowECDSANISTP256 bool // Whether ECDSA NISTP256 keys should be allowed.
-	AllowECDSANISTP384 bool // Whether ECDSA NISTP384 keys should be allowed.
-	AllowECDSANISTP521 bool // Whether ECDSA NISTP521 keys should be allowed.
-	weakRSAList        *WeakRSAKeys
-	blockedList        *blockedKeys
-	fermatRounds       int
-	blockedCheck       BlockedKeyCheckFunc
+	allowedKeys  AllowedKeys
+	weakRSAList  *WeakRSAKeys
+	blockedList  *blockedKeys
+	fermatRounds int
+	blockedCheck BlockedKeyCheckFunc
 }
 
-// NewKeyPolicy returns a KeyPolicy that allows RSA, ECDSA256 and ECDSA384.
-// weakKeyFile contains the path to a JSON file containing truncated modulus
-// hashes of known weak RSA keys. If this argument is empty RSA modulus hash
-// checking will be disabled. blockedKeyFile contains the path to a YAML file
-// containing Base64 encoded SHA256 hashes of pkix subject public keys that
+// NewDefaultKeyPolicy returns a KeyPolicy that allows RSA2048, RSA3076,
+// RSA4096, ECDSA256 and ECDSA384. The config and bkc arguments are handled
+// as per NewCustomKeyPolicy.
+func NewDefaultKeyPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
+	return NewCustomKeyPolicy(
+		// Do not allow ECDSAP521 by default, per the Let's Encrypt CP/CPS DV-SSL
+		// Subscriber Certificate Profile:
+		// https://github.com/letsencrypt/cp-cps/blob/main/CP-CPS.md#dv-ssl-subscriber-certificate
+		// If this is ever change, the CP/CPS MUST be changed first.
+		AllowedKeys{
+			RSA2048:   true,
+			RSA3072:   true,
+			RSA4096:   true,
+			ECDSAP256: true,
+			ECDSAP384: true,
+		}, config, bkc,
+	)
+}
+
+// NewCustomKeyPolicy returns a key policy which accepts the specified key
+// types. weakKeyFile contains the path to a JSON file containing truncated
+// modulus hashes of known weak RSA keys. If this argument is empty RSA modulus
+// hash checking will be disabled. blockedKeyFile contains the path to a YAML
+// file containing Base64 encoded SHA256 hashes of pkix subject public keys that
 // should be blocked. If this argument is empty then no blocked key checking is
 // performed.
-func NewKeyPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
+func NewCustomKeyPolicy(keyTypes AllowedKeys, config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 	kp := KeyPolicy{
-		AllowRSA:           true,
-		AllowECDSANISTP256: true,
-		AllowECDSANISTP384: true,
-		blockedCheck:       bkc,
+		allowedKeys:  keyTypes,
+		blockedCheck: bkc,
 	}
 	if config.WeakKeyFile != "" {
 		keyList, err := LoadWeakRSASuffixes(config.WeakKeyFile)
@@ -265,44 +296,28 @@ func (policy *KeyPolicy) goodCurve(c elliptic.Curve) (err error) {
 	// Simply use a whitelist for now.
 	params := c.Params()
 	switch {
-	case policy.AllowECDSANISTP256 && params == elliptic.P256().Params():
+	case policy.allowedKeys.ECDSAP256 && params == elliptic.P256().Params():
 		return nil
-	case policy.AllowECDSANISTP384 && params == elliptic.P384().Params():
+	case policy.allowedKeys.ECDSAP384 && params == elliptic.P384().Params():
 		return nil
-	case policy.AllowECDSANISTP521 && params == elliptic.P521().Params():
+	case policy.allowedKeys.ECDSAP521 && params == elliptic.P521().Params():
 		return nil
 	default:
 		return badKey("ECDSA curve %v not allowed", params.Name)
 	}
 }
 
-// Baseline Requirements, Section 6.1.5 requires key size >= 2048 and a multiple
-// of 8 bits: https://github.com/cabforum/servercert/blob/main/docs/BR.md#615-key-sizes
-// Baseline Requirements, Section 6.1.1.3 requires that we reject any keys which
-// have a known method to easily compute their private key, such as Debian Weak
-// Keys. Our enforcement mechanism relies on enumerating all Debian Weak Keys at
-// common key sizes, so we restrict all issuance to those common key sizes.
-var acceptableRSAKeySizes = map[int]bool{
-	2048: true,
-	3072: true,
-	4096: true,
-}
-
 // GoodKeyRSA determines if a RSA pubkey meets our requirements
-func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) (err error) {
-	if !policy.AllowRSA {
-		return badKey("RSA keys are not allowed")
-	}
-	if policy.weakRSAList != nil && policy.weakRSAList.Known(key) {
-		return badKey("key is on a known weak RSA key list")
-	}
-
+func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) error {
 	modulus := key.N
 
-	// See comment on acceptableRSAKeySizes above.
-	modulusBitLen := modulus.BitLen()
-	if !acceptableRSAKeySizes[modulusBitLen] {
-		return badKey("key size not supported: %d", modulusBitLen)
+	err := policy.goodRSABitLen(key)
+	if err != nil {
+		return err
+	}
+
+	if policy.weakRSAList != nil && policy.weakRSAList.Known(key) {
+		return badKey("key is on a known weak RSA key list")
 	}
 
 	// Rather than support arbitrary exponents, which significantly increases
@@ -342,6 +357,21 @@ func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) (err error) {
 	}
 
 	return nil
+}
+
+func (policy *KeyPolicy) goodRSABitLen(key *rsa.PublicKey) error {
+	// See comment on AllowedKeys above.
+	modulusBitLen := key.N.BitLen()
+	switch {
+	case modulusBitLen == 2048 && policy.allowedKeys.RSA2048:
+		return nil
+	case modulusBitLen == 3072 && policy.allowedKeys.RSA3072:
+		return nil
+	case modulusBitLen == 4096 && policy.allowedKeys.RSA4096:
+		return nil
+	default:
+		return badKey("key size not supported: %d", modulusBitLen)
+	}
 }
 
 // Returns true iff integer i is divisible by any of the primes in smallPrimes.

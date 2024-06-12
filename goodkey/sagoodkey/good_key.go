@@ -28,5 +28,5 @@ func NewKeyPolicy(config *goodkey.Config, bkc BlockedKeyCheckFunc) (goodkey.KeyP
 		}
 	}
 
-	return goodkey.NewKeyPolicy(config, genericCheck)
+	return goodkey.NewDefaultKeyPolicy(config, genericCheck)
 }
