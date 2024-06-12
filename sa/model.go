@@ -1363,10 +1363,9 @@ func (id identifierModels) valuesOfType(identifierType uint8) []string {
 }
 
 // pausedModel represents a row in the paused table. The pausedAt and unpausedAt
-// fields are pointers because they are NULL-able columns. At no point should
-// both pausedAt and unpausedAt be non-NULL. Valid states are:
-//   - identifier paused: pausedAt is non-NULL, unpausedAt is NULL
-//   - identifier unpaused: pausedAt is NULL, unpausedAt is non-NULL
+// fields are pointers because they are NULL-able columns. Valid states are:
+//   - Identifier paused: pausedAt is non-NULL, unpausedAt is NULL
+//   - Identifier unpaused: pausedAt is non-NULL, unpausedAt is non-NULL
 type pausedModel struct {
 	identifierModel
 	RegistrationID int64      `db:"registrationID"`

@@ -1358,7 +1358,7 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				continue
 			}
 
-			if entry.PausedAt == nil && entry.UnpausedAt != nil {
+			if entry.UnpausedAt != nil {
 				// Previously paused (and unpaused), repause the identifier.
 				_, err := tx.ExecContext(ctx, `
 				UPDATE paused
@@ -1368,7 +1368,6 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 					registrationID = ? AND 
 					identifierType = ? AND 
 					identifierValue = ? AND
-					pausedAt IS NULL AND 
 					unpausedAt IS NOT NULL`,
 					ssa.clk.Now().Truncate(time.Second),
 					req.RegistrationID,
@@ -1382,12 +1381,6 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				// Identifier successfully repaused.
 				response.Repaused++
 				continue
-			} else {
-				// Paused table entry is in an invalid state.
-				return nil, fmt.Errorf("identifier %s for registration ID %d is in an unexpected state",
-					identifier.Value,
-					req.RegistrationID,
-				)
 			}
 		}
 		return nil, nil
@@ -1408,8 +1401,7 @@ func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.Re
 
 	_, err := ssa.dbMap.ExecContext(ctx, `
 	UPDATE paused
-	SET unpausedAt = ?,
-		pausedAt = NULL
+	SET unpausedAt = ?
 	WHERE 
 		registrationID = ? AND
 		unpausedAt IS NULL`,
