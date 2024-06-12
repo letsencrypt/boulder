@@ -1472,10 +1472,10 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 	return newPBFromIdentifierModels(matches)
 }
 
-// GetPausedIdentifiersForAccount returns a slice of paused identifiers for the
-// provided account. If no paused identifiers are found, an empty slice is
-// returned. The results are limited to the first 15 paused identifiers.
-func (ssa *SQLStorageAuthorityRO) GetPausedIdentifiersForAccount(ctx context.Context, req *sapb.RegistrationID) (*sapb.Identifiers, error) {
+// GetPausedIdentifiers returns a slice of paused identifiers for the provided
+// account. If no paused identifiers are found, an empty slice is returned. The
+// results are limited to the first 15 paused identifiers.
+func (ssa *SQLStorageAuthorityRO) GetPausedIdentifiers(ctx context.Context, req *sapb.RegistrationID) (*sapb.Identifiers, error) {
 	if core.IsAnyNilOrZero(req.Id) {
 		return nil, errIncompleteRequest
 	}

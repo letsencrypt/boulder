@@ -22,39 +22,39 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	StorageAuthorityReadOnly_CountCertificatesByNames_FullMethodName       = "/sa.StorageAuthorityReadOnly/CountCertificatesByNames"
-	StorageAuthorityReadOnly_CountFQDNSets_FullMethodName                  = "/sa.StorageAuthorityReadOnly/CountFQDNSets"
-	StorageAuthorityReadOnly_CountInvalidAuthorizations2_FullMethodName    = "/sa.StorageAuthorityReadOnly/CountInvalidAuthorizations2"
-	StorageAuthorityReadOnly_CountOrders_FullMethodName                    = "/sa.StorageAuthorityReadOnly/CountOrders"
-	StorageAuthorityReadOnly_CountPendingAuthorizations2_FullMethodName    = "/sa.StorageAuthorityReadOnly/CountPendingAuthorizations2"
-	StorageAuthorityReadOnly_CountRegistrationsByIP_FullMethodName         = "/sa.StorageAuthorityReadOnly/CountRegistrationsByIP"
-	StorageAuthorityReadOnly_CountRegistrationsByIPRange_FullMethodName    = "/sa.StorageAuthorityReadOnly/CountRegistrationsByIPRange"
-	StorageAuthorityReadOnly_FQDNSetExists_FullMethodName                  = "/sa.StorageAuthorityReadOnly/FQDNSetExists"
-	StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_FullMethodName     = "/sa.StorageAuthorityReadOnly/FQDNSetTimestampsForWindow"
-	StorageAuthorityReadOnly_GetAuthorization2_FullMethodName              = "/sa.StorageAuthorityReadOnly/GetAuthorization2"
-	StorageAuthorityReadOnly_GetAuthorizations2_FullMethodName             = "/sa.StorageAuthorityReadOnly/GetAuthorizations2"
-	StorageAuthorityReadOnly_GetCertificate_FullMethodName                 = "/sa.StorageAuthorityReadOnly/GetCertificate"
-	StorageAuthorityReadOnly_GetLintPrecertificate_FullMethodName          = "/sa.StorageAuthorityReadOnly/GetLintPrecertificate"
-	StorageAuthorityReadOnly_GetCertificateStatus_FullMethodName           = "/sa.StorageAuthorityReadOnly/GetCertificateStatus"
-	StorageAuthorityReadOnly_GetMaxExpiration_FullMethodName               = "/sa.StorageAuthorityReadOnly/GetMaxExpiration"
-	StorageAuthorityReadOnly_GetOrder_FullMethodName                       = "/sa.StorageAuthorityReadOnly/GetOrder"
-	StorageAuthorityReadOnly_GetOrderForNames_FullMethodName               = "/sa.StorageAuthorityReadOnly/GetOrderForNames"
-	StorageAuthorityReadOnly_GetPendingAuthorization2_FullMethodName       = "/sa.StorageAuthorityReadOnly/GetPendingAuthorization2"
-	StorageAuthorityReadOnly_GetRegistration_FullMethodName                = "/sa.StorageAuthorityReadOnly/GetRegistration"
-	StorageAuthorityReadOnly_GetRegistrationByKey_FullMethodName           = "/sa.StorageAuthorityReadOnly/GetRegistrationByKey"
-	StorageAuthorityReadOnly_GetRevocationStatus_FullMethodName            = "/sa.StorageAuthorityReadOnly/GetRevocationStatus"
-	StorageAuthorityReadOnly_GetRevokedCerts_FullMethodName                = "/sa.StorageAuthorityReadOnly/GetRevokedCerts"
-	StorageAuthorityReadOnly_GetSerialMetadata_FullMethodName              = "/sa.StorageAuthorityReadOnly/GetSerialMetadata"
-	StorageAuthorityReadOnly_GetSerialsByAccount_FullMethodName            = "/sa.StorageAuthorityReadOnly/GetSerialsByAccount"
-	StorageAuthorityReadOnly_GetSerialsByKey_FullMethodName                = "/sa.StorageAuthorityReadOnly/GetSerialsByKey"
-	StorageAuthorityReadOnly_GetValidAuthorizations2_FullMethodName        = "/sa.StorageAuthorityReadOnly/GetValidAuthorizations2"
-	StorageAuthorityReadOnly_GetValidOrderAuthorizations2_FullMethodName   = "/sa.StorageAuthorityReadOnly/GetValidOrderAuthorizations2"
-	StorageAuthorityReadOnly_IncidentsForSerial_FullMethodName             = "/sa.StorageAuthorityReadOnly/IncidentsForSerial"
-	StorageAuthorityReadOnly_KeyBlocked_FullMethodName                     = "/sa.StorageAuthorityReadOnly/KeyBlocked"
-	StorageAuthorityReadOnly_ReplacementOrderExists_FullMethodName         = "/sa.StorageAuthorityReadOnly/ReplacementOrderExists"
-	StorageAuthorityReadOnly_SerialsForIncident_FullMethodName             = "/sa.StorageAuthorityReadOnly/SerialsForIncident"
-	StorageAuthorityReadOnly_CheckIdentifiersPaused_FullMethodName         = "/sa.StorageAuthorityReadOnly/CheckIdentifiersPaused"
-	StorageAuthorityReadOnly_GetPausedIdentifiersForAccount_FullMethodName = "/sa.StorageAuthorityReadOnly/GetPausedIdentifiersForAccount"
+	StorageAuthorityReadOnly_CountCertificatesByNames_FullMethodName     = "/sa.StorageAuthorityReadOnly/CountCertificatesByNames"
+	StorageAuthorityReadOnly_CountFQDNSets_FullMethodName                = "/sa.StorageAuthorityReadOnly/CountFQDNSets"
+	StorageAuthorityReadOnly_CountInvalidAuthorizations2_FullMethodName  = "/sa.StorageAuthorityReadOnly/CountInvalidAuthorizations2"
+	StorageAuthorityReadOnly_CountOrders_FullMethodName                  = "/sa.StorageAuthorityReadOnly/CountOrders"
+	StorageAuthorityReadOnly_CountPendingAuthorizations2_FullMethodName  = "/sa.StorageAuthorityReadOnly/CountPendingAuthorizations2"
+	StorageAuthorityReadOnly_CountRegistrationsByIP_FullMethodName       = "/sa.StorageAuthorityReadOnly/CountRegistrationsByIP"
+	StorageAuthorityReadOnly_CountRegistrationsByIPRange_FullMethodName  = "/sa.StorageAuthorityReadOnly/CountRegistrationsByIPRange"
+	StorageAuthorityReadOnly_FQDNSetExists_FullMethodName                = "/sa.StorageAuthorityReadOnly/FQDNSetExists"
+	StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_FullMethodName   = "/sa.StorageAuthorityReadOnly/FQDNSetTimestampsForWindow"
+	StorageAuthorityReadOnly_GetAuthorization2_FullMethodName            = "/sa.StorageAuthorityReadOnly/GetAuthorization2"
+	StorageAuthorityReadOnly_GetAuthorizations2_FullMethodName           = "/sa.StorageAuthorityReadOnly/GetAuthorizations2"
+	StorageAuthorityReadOnly_GetCertificate_FullMethodName               = "/sa.StorageAuthorityReadOnly/GetCertificate"
+	StorageAuthorityReadOnly_GetLintPrecertificate_FullMethodName        = "/sa.StorageAuthorityReadOnly/GetLintPrecertificate"
+	StorageAuthorityReadOnly_GetCertificateStatus_FullMethodName         = "/sa.StorageAuthorityReadOnly/GetCertificateStatus"
+	StorageAuthorityReadOnly_GetMaxExpiration_FullMethodName             = "/sa.StorageAuthorityReadOnly/GetMaxExpiration"
+	StorageAuthorityReadOnly_GetOrder_FullMethodName                     = "/sa.StorageAuthorityReadOnly/GetOrder"
+	StorageAuthorityReadOnly_GetOrderForNames_FullMethodName             = "/sa.StorageAuthorityReadOnly/GetOrderForNames"
+	StorageAuthorityReadOnly_GetPendingAuthorization2_FullMethodName     = "/sa.StorageAuthorityReadOnly/GetPendingAuthorization2"
+	StorageAuthorityReadOnly_GetRegistration_FullMethodName              = "/sa.StorageAuthorityReadOnly/GetRegistration"
+	StorageAuthorityReadOnly_GetRegistrationByKey_FullMethodName         = "/sa.StorageAuthorityReadOnly/GetRegistrationByKey"
+	StorageAuthorityReadOnly_GetRevocationStatus_FullMethodName          = "/sa.StorageAuthorityReadOnly/GetRevocationStatus"
+	StorageAuthorityReadOnly_GetRevokedCerts_FullMethodName              = "/sa.StorageAuthorityReadOnly/GetRevokedCerts"
+	StorageAuthorityReadOnly_GetSerialMetadata_FullMethodName            = "/sa.StorageAuthorityReadOnly/GetSerialMetadata"
+	StorageAuthorityReadOnly_GetSerialsByAccount_FullMethodName          = "/sa.StorageAuthorityReadOnly/GetSerialsByAccount"
+	StorageAuthorityReadOnly_GetSerialsByKey_FullMethodName              = "/sa.StorageAuthorityReadOnly/GetSerialsByKey"
+	StorageAuthorityReadOnly_GetValidAuthorizations2_FullMethodName      = "/sa.StorageAuthorityReadOnly/GetValidAuthorizations2"
+	StorageAuthorityReadOnly_GetValidOrderAuthorizations2_FullMethodName = "/sa.StorageAuthorityReadOnly/GetValidOrderAuthorizations2"
+	StorageAuthorityReadOnly_IncidentsForSerial_FullMethodName           = "/sa.StorageAuthorityReadOnly/IncidentsForSerial"
+	StorageAuthorityReadOnly_KeyBlocked_FullMethodName                   = "/sa.StorageAuthorityReadOnly/KeyBlocked"
+	StorageAuthorityReadOnly_ReplacementOrderExists_FullMethodName       = "/sa.StorageAuthorityReadOnly/ReplacementOrderExists"
+	StorageAuthorityReadOnly_SerialsForIncident_FullMethodName           = "/sa.StorageAuthorityReadOnly/SerialsForIncident"
+	StorageAuthorityReadOnly_CheckIdentifiersPaused_FullMethodName       = "/sa.StorageAuthorityReadOnly/CheckIdentifiersPaused"
+	StorageAuthorityReadOnly_GetPausedIdentifiers_FullMethodName         = "/sa.StorageAuthorityReadOnly/GetPausedIdentifiers"
 )
 
 // StorageAuthorityReadOnlyClient is the client API for StorageAuthorityReadOnly service.
@@ -93,7 +93,7 @@ type StorageAuthorityReadOnlyClient interface {
 	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IncidentSerial], error)
 	CheckIdentifiersPaused(ctx context.Context, in *CheckIdentifiersPausedRequest, opts ...grpc.CallOption) (*Identifiers, error)
-	GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error)
+	GetPausedIdentifiers(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error)
 }
 
 type storageAuthorityReadOnlyClient struct {
@@ -460,10 +460,10 @@ func (c *storageAuthorityReadOnlyClient) CheckIdentifiersPaused(ctx context.Cont
 	return out, nil
 }
 
-func (c *storageAuthorityReadOnlyClient) GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error) {
+func (c *storageAuthorityReadOnlyClient) GetPausedIdentifiers(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Identifiers)
-	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetPausedIdentifiersForAccount_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetPausedIdentifiers_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -506,7 +506,7 @@ type StorageAuthorityReadOnlyServer interface {
 	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, grpc.ServerStreamingServer[IncidentSerial]) error
 	CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Identifiers, error)
-	GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Identifiers, error)
+	GetPausedIdentifiers(context.Context, *RegistrationID) (*Identifiers, error)
 	mustEmbedUnimplementedStorageAuthorityReadOnlyServer()
 }
 
@@ -610,8 +610,8 @@ func (UnimplementedStorageAuthorityReadOnlyServer) SerialsForIncident(*SerialsFo
 func (UnimplementedStorageAuthorityReadOnlyServer) CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Identifiers, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CheckIdentifiersPaused not implemented")
 }
-func (UnimplementedStorageAuthorityReadOnlyServer) GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Identifiers, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetPausedIdentifiersForAccount not implemented")
+func (UnimplementedStorageAuthorityReadOnlyServer) GetPausedIdentifiers(context.Context, *RegistrationID) (*Identifiers, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPausedIdentifiers not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) mustEmbedUnimplementedStorageAuthorityReadOnlyServer() {
 }
@@ -1175,20 +1175,20 @@ func _StorageAuthorityReadOnly_CheckIdentifiersPaused_Handler(srv interface{}, c
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StorageAuthorityReadOnly_GetPausedIdentifiersForAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthorityReadOnly_GetPausedIdentifiers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegistrationID)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(StorageAuthorityReadOnlyServer).GetPausedIdentifiersForAccount(ctx, in)
+		return srv.(StorageAuthorityReadOnlyServer).GetPausedIdentifiers(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: StorageAuthorityReadOnly_GetPausedIdentifiersForAccount_FullMethodName,
+		FullMethod: StorageAuthorityReadOnly_GetPausedIdentifiers_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityReadOnlyServer).GetPausedIdentifiersForAccount(ctx, req.(*RegistrationID))
+		return srv.(StorageAuthorityReadOnlyServer).GetPausedIdentifiers(ctx, req.(*RegistrationID))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1313,8 +1313,8 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthorityReadOnly_CheckIdentifiersPaused_Handler,
 		},
 		{
-			MethodName: "GetPausedIdentifiersForAccount",
-			Handler:    _StorageAuthorityReadOnly_GetPausedIdentifiersForAccount_Handler,
+			MethodName: "GetPausedIdentifiers",
+			Handler:    _StorageAuthorityReadOnly_GetPausedIdentifiers_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
@@ -1343,59 +1343,59 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	StorageAuthority_CountCertificatesByNames_FullMethodName       = "/sa.StorageAuthority/CountCertificatesByNames"
-	StorageAuthority_CountFQDNSets_FullMethodName                  = "/sa.StorageAuthority/CountFQDNSets"
-	StorageAuthority_CountInvalidAuthorizations2_FullMethodName    = "/sa.StorageAuthority/CountInvalidAuthorizations2"
-	StorageAuthority_CountOrders_FullMethodName                    = "/sa.StorageAuthority/CountOrders"
-	StorageAuthority_CountPendingAuthorizations2_FullMethodName    = "/sa.StorageAuthority/CountPendingAuthorizations2"
-	StorageAuthority_CountRegistrationsByIP_FullMethodName         = "/sa.StorageAuthority/CountRegistrationsByIP"
-	StorageAuthority_CountRegistrationsByIPRange_FullMethodName    = "/sa.StorageAuthority/CountRegistrationsByIPRange"
-	StorageAuthority_FQDNSetExists_FullMethodName                  = "/sa.StorageAuthority/FQDNSetExists"
-	StorageAuthority_FQDNSetTimestampsForWindow_FullMethodName     = "/sa.StorageAuthority/FQDNSetTimestampsForWindow"
-	StorageAuthority_GetAuthorization2_FullMethodName              = "/sa.StorageAuthority/GetAuthorization2"
-	StorageAuthority_GetAuthorizations2_FullMethodName             = "/sa.StorageAuthority/GetAuthorizations2"
-	StorageAuthority_GetCertificate_FullMethodName                 = "/sa.StorageAuthority/GetCertificate"
-	StorageAuthority_GetLintPrecertificate_FullMethodName          = "/sa.StorageAuthority/GetLintPrecertificate"
-	StorageAuthority_GetCertificateStatus_FullMethodName           = "/sa.StorageAuthority/GetCertificateStatus"
-	StorageAuthority_GetMaxExpiration_FullMethodName               = "/sa.StorageAuthority/GetMaxExpiration"
-	StorageAuthority_GetOrder_FullMethodName                       = "/sa.StorageAuthority/GetOrder"
-	StorageAuthority_GetOrderForNames_FullMethodName               = "/sa.StorageAuthority/GetOrderForNames"
-	StorageAuthority_GetPendingAuthorization2_FullMethodName       = "/sa.StorageAuthority/GetPendingAuthorization2"
-	StorageAuthority_GetRegistration_FullMethodName                = "/sa.StorageAuthority/GetRegistration"
-	StorageAuthority_GetRegistrationByKey_FullMethodName           = "/sa.StorageAuthority/GetRegistrationByKey"
-	StorageAuthority_GetRevocationStatus_FullMethodName            = "/sa.StorageAuthority/GetRevocationStatus"
-	StorageAuthority_GetRevokedCerts_FullMethodName                = "/sa.StorageAuthority/GetRevokedCerts"
-	StorageAuthority_GetSerialMetadata_FullMethodName              = "/sa.StorageAuthority/GetSerialMetadata"
-	StorageAuthority_GetSerialsByAccount_FullMethodName            = "/sa.StorageAuthority/GetSerialsByAccount"
-	StorageAuthority_GetSerialsByKey_FullMethodName                = "/sa.StorageAuthority/GetSerialsByKey"
-	StorageAuthority_GetValidAuthorizations2_FullMethodName        = "/sa.StorageAuthority/GetValidAuthorizations2"
-	StorageAuthority_GetValidOrderAuthorizations2_FullMethodName   = "/sa.StorageAuthority/GetValidOrderAuthorizations2"
-	StorageAuthority_IncidentsForSerial_FullMethodName             = "/sa.StorageAuthority/IncidentsForSerial"
-	StorageAuthority_KeyBlocked_FullMethodName                     = "/sa.StorageAuthority/KeyBlocked"
-	StorageAuthority_ReplacementOrderExists_FullMethodName         = "/sa.StorageAuthority/ReplacementOrderExists"
-	StorageAuthority_SerialsForIncident_FullMethodName             = "/sa.StorageAuthority/SerialsForIncident"
-	StorageAuthority_CheckIdentifiersPaused_FullMethodName         = "/sa.StorageAuthority/CheckIdentifiersPaused"
-	StorageAuthority_GetPausedIdentifiersForAccount_FullMethodName = "/sa.StorageAuthority/GetPausedIdentifiersForAccount"
-	StorageAuthority_AddBlockedKey_FullMethodName                  = "/sa.StorageAuthority/AddBlockedKey"
-	StorageAuthority_AddCertificate_FullMethodName                 = "/sa.StorageAuthority/AddCertificate"
-	StorageAuthority_AddPrecertificate_FullMethodName              = "/sa.StorageAuthority/AddPrecertificate"
-	StorageAuthority_SetCertificateStatusReady_FullMethodName      = "/sa.StorageAuthority/SetCertificateStatusReady"
-	StorageAuthority_AddSerial_FullMethodName                      = "/sa.StorageAuthority/AddSerial"
-	StorageAuthority_DeactivateAuthorization2_FullMethodName       = "/sa.StorageAuthority/DeactivateAuthorization2"
-	StorageAuthority_DeactivateRegistration_FullMethodName         = "/sa.StorageAuthority/DeactivateRegistration"
-	StorageAuthority_FinalizeAuthorization2_FullMethodName         = "/sa.StorageAuthority/FinalizeAuthorization2"
-	StorageAuthority_FinalizeOrder_FullMethodName                  = "/sa.StorageAuthority/FinalizeOrder"
-	StorageAuthority_NewOrderAndAuthzs_FullMethodName              = "/sa.StorageAuthority/NewOrderAndAuthzs"
-	StorageAuthority_NewRegistration_FullMethodName                = "/sa.StorageAuthority/NewRegistration"
-	StorageAuthority_RevokeCertificate_FullMethodName              = "/sa.StorageAuthority/RevokeCertificate"
-	StorageAuthority_SetOrderError_FullMethodName                  = "/sa.StorageAuthority/SetOrderError"
-	StorageAuthority_SetOrderProcessing_FullMethodName             = "/sa.StorageAuthority/SetOrderProcessing"
-	StorageAuthority_UpdateRegistration_FullMethodName             = "/sa.StorageAuthority/UpdateRegistration"
-	StorageAuthority_UpdateRevokedCertificate_FullMethodName       = "/sa.StorageAuthority/UpdateRevokedCertificate"
-	StorageAuthority_LeaseCRLShard_FullMethodName                  = "/sa.StorageAuthority/LeaseCRLShard"
-	StorageAuthority_UpdateCRLShard_FullMethodName                 = "/sa.StorageAuthority/UpdateCRLShard"
-	StorageAuthority_PauseIdentifiers_FullMethodName               = "/sa.StorageAuthority/PauseIdentifiers"
-	StorageAuthority_UnpauseAccount_FullMethodName                 = "/sa.StorageAuthority/UnpauseAccount"
+	StorageAuthority_CountCertificatesByNames_FullMethodName     = "/sa.StorageAuthority/CountCertificatesByNames"
+	StorageAuthority_CountFQDNSets_FullMethodName                = "/sa.StorageAuthority/CountFQDNSets"
+	StorageAuthority_CountInvalidAuthorizations2_FullMethodName  = "/sa.StorageAuthority/CountInvalidAuthorizations2"
+	StorageAuthority_CountOrders_FullMethodName                  = "/sa.StorageAuthority/CountOrders"
+	StorageAuthority_CountPendingAuthorizations2_FullMethodName  = "/sa.StorageAuthority/CountPendingAuthorizations2"
+	StorageAuthority_CountRegistrationsByIP_FullMethodName       = "/sa.StorageAuthority/CountRegistrationsByIP"
+	StorageAuthority_CountRegistrationsByIPRange_FullMethodName  = "/sa.StorageAuthority/CountRegistrationsByIPRange"
+	StorageAuthority_FQDNSetExists_FullMethodName                = "/sa.StorageAuthority/FQDNSetExists"
+	StorageAuthority_FQDNSetTimestampsForWindow_FullMethodName   = "/sa.StorageAuthority/FQDNSetTimestampsForWindow"
+	StorageAuthority_GetAuthorization2_FullMethodName            = "/sa.StorageAuthority/GetAuthorization2"
+	StorageAuthority_GetAuthorizations2_FullMethodName           = "/sa.StorageAuthority/GetAuthorizations2"
+	StorageAuthority_GetCertificate_FullMethodName               = "/sa.StorageAuthority/GetCertificate"
+	StorageAuthority_GetLintPrecertificate_FullMethodName        = "/sa.StorageAuthority/GetLintPrecertificate"
+	StorageAuthority_GetCertificateStatus_FullMethodName         = "/sa.StorageAuthority/GetCertificateStatus"
+	StorageAuthority_GetMaxExpiration_FullMethodName             = "/sa.StorageAuthority/GetMaxExpiration"
+	StorageAuthority_GetOrder_FullMethodName                     = "/sa.StorageAuthority/GetOrder"
+	StorageAuthority_GetOrderForNames_FullMethodName             = "/sa.StorageAuthority/GetOrderForNames"
+	StorageAuthority_GetPendingAuthorization2_FullMethodName     = "/sa.StorageAuthority/GetPendingAuthorization2"
+	StorageAuthority_GetRegistration_FullMethodName              = "/sa.StorageAuthority/GetRegistration"
+	StorageAuthority_GetRegistrationByKey_FullMethodName         = "/sa.StorageAuthority/GetRegistrationByKey"
+	StorageAuthority_GetRevocationStatus_FullMethodName          = "/sa.StorageAuthority/GetRevocationStatus"
+	StorageAuthority_GetRevokedCerts_FullMethodName              = "/sa.StorageAuthority/GetRevokedCerts"
+	StorageAuthority_GetSerialMetadata_FullMethodName            = "/sa.StorageAuthority/GetSerialMetadata"
+	StorageAuthority_GetSerialsByAccount_FullMethodName          = "/sa.StorageAuthority/GetSerialsByAccount"
+	StorageAuthority_GetSerialsByKey_FullMethodName              = "/sa.StorageAuthority/GetSerialsByKey"
+	StorageAuthority_GetValidAuthorizations2_FullMethodName      = "/sa.StorageAuthority/GetValidAuthorizations2"
+	StorageAuthority_GetValidOrderAuthorizations2_FullMethodName = "/sa.StorageAuthority/GetValidOrderAuthorizations2"
+	StorageAuthority_IncidentsForSerial_FullMethodName           = "/sa.StorageAuthority/IncidentsForSerial"
+	StorageAuthority_KeyBlocked_FullMethodName                   = "/sa.StorageAuthority/KeyBlocked"
+	StorageAuthority_ReplacementOrderExists_FullMethodName       = "/sa.StorageAuthority/ReplacementOrderExists"
+	StorageAuthority_SerialsForIncident_FullMethodName           = "/sa.StorageAuthority/SerialsForIncident"
+	StorageAuthority_CheckIdentifiersPaused_FullMethodName       = "/sa.StorageAuthority/CheckIdentifiersPaused"
+	StorageAuthority_GetPausedIdentifiers_FullMethodName         = "/sa.StorageAuthority/GetPausedIdentifiers"
+	StorageAuthority_AddBlockedKey_FullMethodName                = "/sa.StorageAuthority/AddBlockedKey"
+	StorageAuthority_AddCertificate_FullMethodName               = "/sa.StorageAuthority/AddCertificate"
+	StorageAuthority_AddPrecertificate_FullMethodName            = "/sa.StorageAuthority/AddPrecertificate"
+	StorageAuthority_SetCertificateStatusReady_FullMethodName    = "/sa.StorageAuthority/SetCertificateStatusReady"
+	StorageAuthority_AddSerial_FullMethodName                    = "/sa.StorageAuthority/AddSerial"
+	StorageAuthority_DeactivateAuthorization2_FullMethodName     = "/sa.StorageAuthority/DeactivateAuthorization2"
+	StorageAuthority_DeactivateRegistration_FullMethodName       = "/sa.StorageAuthority/DeactivateRegistration"
+	StorageAuthority_FinalizeAuthorization2_FullMethodName       = "/sa.StorageAuthority/FinalizeAuthorization2"
+	StorageAuthority_FinalizeOrder_FullMethodName                = "/sa.StorageAuthority/FinalizeOrder"
+	StorageAuthority_NewOrderAndAuthzs_FullMethodName            = "/sa.StorageAuthority/NewOrderAndAuthzs"
+	StorageAuthority_NewRegistration_FullMethodName              = "/sa.StorageAuthority/NewRegistration"
+	StorageAuthority_RevokeCertificate_FullMethodName            = "/sa.StorageAuthority/RevokeCertificate"
+	StorageAuthority_SetOrderError_FullMethodName                = "/sa.StorageAuthority/SetOrderError"
+	StorageAuthority_SetOrderProcessing_FullMethodName           = "/sa.StorageAuthority/SetOrderProcessing"
+	StorageAuthority_UpdateRegistration_FullMethodName           = "/sa.StorageAuthority/UpdateRegistration"
+	StorageAuthority_UpdateRevokedCertificate_FullMethodName     = "/sa.StorageAuthority/UpdateRevokedCertificate"
+	StorageAuthority_LeaseCRLShard_FullMethodName                = "/sa.StorageAuthority/LeaseCRLShard"
+	StorageAuthority_UpdateCRLShard_FullMethodName               = "/sa.StorageAuthority/UpdateCRLShard"
+	StorageAuthority_PauseIdentifiers_FullMethodName             = "/sa.StorageAuthority/PauseIdentifiers"
+	StorageAuthority_UnpauseAccount_FullMethodName               = "/sa.StorageAuthority/UnpauseAccount"
 )
 
 // StorageAuthorityClient is the client API for StorageAuthority service.
@@ -1435,7 +1435,7 @@ type StorageAuthorityClient interface {
 	ReplacementOrderExists(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IncidentSerial], error)
 	CheckIdentifiersPaused(ctx context.Context, in *CheckIdentifiersPausedRequest, opts ...grpc.CallOption) (*Identifiers, error)
-	GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error)
+	GetPausedIdentifiers(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error)
 	// Adders
 	AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddCertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -1823,10 +1823,10 @@ func (c *storageAuthorityClient) CheckIdentifiersPaused(ctx context.Context, in 
 	return out, nil
 }
 
-func (c *storageAuthorityClient) GetPausedIdentifiersForAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error) {
+func (c *storageAuthorityClient) GetPausedIdentifiers(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Identifiers)
-	err := c.cc.Invoke(ctx, StorageAuthority_GetPausedIdentifiersForAccount_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, StorageAuthority_GetPausedIdentifiers_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2070,7 +2070,7 @@ type StorageAuthorityServer interface {
 	ReplacementOrderExists(context.Context, *Serial) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, grpc.ServerStreamingServer[IncidentSerial]) error
 	CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Identifiers, error)
-	GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Identifiers, error)
+	GetPausedIdentifiers(context.Context, *RegistrationID) (*Identifiers, error)
 	// Adders
 	AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error)
 	AddCertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error)
@@ -2195,8 +2195,8 @@ func (UnimplementedStorageAuthorityServer) SerialsForIncident(*SerialsForInciden
 func (UnimplementedStorageAuthorityServer) CheckIdentifiersPaused(context.Context, *CheckIdentifiersPausedRequest) (*Identifiers, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CheckIdentifiersPaused not implemented")
 }
-func (UnimplementedStorageAuthorityServer) GetPausedIdentifiersForAccount(context.Context, *RegistrationID) (*Identifiers, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetPausedIdentifiersForAccount not implemented")
+func (UnimplementedStorageAuthorityServer) GetPausedIdentifiers(context.Context, *RegistrationID) (*Identifiers, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPausedIdentifiers not implemented")
 }
 func (UnimplementedStorageAuthorityServer) AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddBlockedKey not implemented")
@@ -2819,20 +2819,20 @@ func _StorageAuthority_CheckIdentifiersPaused_Handler(srv interface{}, ctx conte
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StorageAuthority_GetPausedIdentifiersForAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_GetPausedIdentifiers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegistrationID)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(StorageAuthorityServer).GetPausedIdentifiersForAccount(ctx, in)
+		return srv.(StorageAuthorityServer).GetPausedIdentifiers(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: StorageAuthority_GetPausedIdentifiersForAccount_FullMethodName,
+		FullMethod: StorageAuthority_GetPausedIdentifiers_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).GetPausedIdentifiersForAccount(ctx, req.(*RegistrationID))
+		return srv.(StorageAuthorityServer).GetPausedIdentifiers(ctx, req.(*RegistrationID))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3317,8 +3317,8 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthority_CheckIdentifiersPaused_Handler,
 		},
 		{
-			MethodName: "GetPausedIdentifiersForAccount",
-			Handler:    _StorageAuthority_GetPausedIdentifiersForAccount_Handler,
+			MethodName: "GetPausedIdentifiers",
+			Handler:    _StorageAuthority_GetPausedIdentifiers_Handler,
 		},
 		{
 			MethodName: "AddBlockedKey",

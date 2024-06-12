@@ -42,7 +42,7 @@ service StorageAuthorityReadOnly {
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
   rpc CheckIdentifiersPaused (CheckIdentifiersPausedRequest) returns (Identifiers) {}
-  rpc GetPausedIdentifiersForAccount (RegistrationID) returns (Identifiers) {}
+  rpc GetPausedIdentifiers (RegistrationID) returns (Identifiers) {}
 }
 
 // StorageAuthority provides full read/write access to the database.
@@ -80,7 +80,7 @@ service StorageAuthority {
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
   rpc CheckIdentifiersPaused (CheckIdentifiersPausedRequest) returns (Identifiers) {}
-  rpc GetPausedIdentifiersForAccount (RegistrationID) returns (Identifiers) {}
+  rpc GetPausedIdentifiers (RegistrationID) returns (Identifiers) {}
   // Adders
   rpc AddBlockedKey(AddBlockedKeyRequest) returns (google.protobuf.Empty) {}
   rpc AddCertificate(AddCertificateRequest) returns (google.protobuf.Empty) {}

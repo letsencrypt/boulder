@@ -254,13 +254,13 @@ func (sa *StorageAuthority) CheckIdentifiersPaused(_ context.Context, _ *sapb.Ch
 	return nil, nil
 }
 
-// GetPausedIdentifiersForAccount is a mock
-func (sa *StorageAuthorityReadOnly) GetPausedIdentifiersForAccount(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
+// GetPausedIdentifiers is a mock
+func (sa *StorageAuthorityReadOnly) GetPausedIdentifiers(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
 	return nil, nil
 }
 
-// GetPausedIdentifiersForAccount is a mock
-func (sa *StorageAuthority) GetPausedIdentifiersForAccount(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
+// GetPausedIdentifiers is a mock
+func (sa *StorageAuthority) GetPausedIdentifiers(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
 	return nil, nil
 }
 

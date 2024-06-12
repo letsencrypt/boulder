@@ -4727,7 +4727,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 	}
 }
 
-func TestGetPausedIdentifiersForAccount(t *testing.T) {
+func TestGetPausedIdentifiers(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		t.Skip("Test requires paused database table")
 	}
@@ -4835,7 +4835,7 @@ func TestGetPausedIdentifiersForAccount(t *testing.T) {
 				test.AssertNotError(t, err, "inserting test identifier")
 			}
 
-			got, err := sa.GetPausedIdentifiersForAccount(ctx, tt.args.req)
+			got, err := sa.GetPausedIdentifiers(ctx, tt.args.req)
 			test.AssertNotError(t, err, "Unexpected error for PauseIdentifiers()")
 			test.AssertDeepEquals(t, got.Identifiers, tt.want.Identifiers)
 
