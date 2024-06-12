@@ -1340,18 +1340,15 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 
 			if errors.Is(err, sql.ErrNoRows) {
 				// Not currently or previously paused, insert a new pause record.
-				_, err = tx.ExecContext(ctx, `
-			INSERT INTO paused (
-				registrationID,
-				identifierType,
-				identifierValue,
-				pausedAt
-			) VALUES (?, ?, ?, ?)`,
-					req.RegistrationID,
-					identifier.Type,
-					identifier.Value,
-					ssa.clk.Now().Truncate(time.Second),
-				)
+				pausedAt := ssa.clk.Now().Truncate(time.Second)
+				err = tx.Insert(ctx, &pausedModel{
+					RegistrationID: req.RegistrationID,
+					PausedAt:       &pausedAt,
+					identifierModel: identifierModel{
+						Type:  identifier.Type,
+						Value: identifier.Value,
+					},
+				})
 				if err != nil && !db.IsDuplicate(err) {
 					return nil, pauseError("pausing", err)
 				}

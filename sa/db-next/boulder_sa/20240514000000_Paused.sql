@@ -1,6 +1,10 @@
 -- +migrate Up
 -- SQL in section 'Up' is executed when this migration is applied
 
+-- This table has no auto-incrementing primary key because we don't plan to
+-- partition it. This table expected to be < 800K rows initially and grow at a
+-- rate of ~18% per year.
+
 CREATE TABLE `paused` (
   `registrationID` bigint(20) NOT NULL,
   `identifierType` tinyint(4) NOT NULL,

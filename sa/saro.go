@@ -1432,7 +1432,7 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 			)
 		}
 	}
-	dnsValues := identifiers.identifierValuesForType(dnsType)
+	dnsValues := identifiers.valuesOfType(dnsType)
 
 	// Prepare question marks for the "IN" clause. If we add more identifier
 	// types, we should consider joining a bunch of "OR" clauses together for
@@ -1472,10 +1472,6 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 	return newPBFromIdentifierModels(matches)
 }
 
-func (ssa *SQLStorageAuthority) CheckIdentifiersPaused(ctx context.Context, req *sapb.CheckIdentifiersPausedRequest) (*sapb.Identifiers, error) {
-	return ssa.SQLStorageAuthorityRO.CheckIdentifiersPaused(ctx, req)
-}
-
 // GetPausedIdentifiersForAccount returns a slice of paused identifiers for the
 // provided account. If no paused identifiers are found, an empty slice is
 // returned. The results are limited to the first 15 paused identifiers.
@@ -1499,8 +1495,4 @@ func (ssa *SQLStorageAuthorityRO) GetPausedIdentifiersForAccount(ctx context.Con
 	}
 
 	return newPBFromIdentifierModels(matches)
-}
-
-func (ssa *SQLStorageAuthority) GetPausedIdentifiersForAccount(ctx context.Context, req *sapb.RegistrationID) (*sapb.Identifiers, error) {
-	return ssa.SQLStorageAuthorityRO.GetPausedIdentifiersForAccount(ctx, req)
 }

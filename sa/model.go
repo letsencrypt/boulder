@@ -1350,9 +1350,9 @@ func newPBFromIdentifierModels(ids identifierModels) (*sapb.Identifiers, error) 
 	return &sapb.Identifiers{Identifiers: pb}, nil
 }
 
-// identifierValuesForType returns a list of identifier values for the given
-// identifier type. If no values are found, an empty list is returned.
-func (id identifierModels) identifierValuesForType(identifierType uint8) []string {
+// valuesOfType returns a list of identifier values for the given identifier
+// type. If no values are found, an empty list is returned.
+func (id identifierModels) valuesOfType(identifierType uint8) []string {
 	var values []string
 	for _, i := range id {
 		if i.Type == identifierType {
