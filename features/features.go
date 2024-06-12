@@ -15,8 +15,12 @@ import (
 // then call features.Set(parsedConfig) to load the parsed struct into this
 // package's global Config.
 type Config struct {
-	// Deprecated features. Safe for removal once all references to them have
-	// been removed from deployed configuration.
+	// Deprecated features. These features have no effect. Removing them from
+	// configuration is safe.
+	//
+	// Once all references to them have been removed from deployed configuration,
+	// they can be deleted from this struct, after which Boulder will fail to
+	// start if they are present in configuration.
 	CAAAfterValidation                bool
 	AllowNoCommonName                 bool
 	SHA256SubjectKeyIdentifier        bool
