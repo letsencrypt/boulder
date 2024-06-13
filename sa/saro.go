@@ -1405,16 +1405,12 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, 
 
 // CheckIdentifiersPaused takes a slice of identifiers of type "dns" and returns
 // a slice of the first 15 identifier values which are currently paused for the
-// provided account. If no matches are found, an empty slice is returned. Rather
-// than taking on the complexity of querying for multiple identifier types, this
-// method supports the only identifier type currently in use: "dns". If a
-// non-DNS identifier is provided, an error is returned.
+// provided account. If no matches are found, an empty slice is returned.
 func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, req *sapb.PauseRequest) (*sapb.Identifiers, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifiers) {
 		return nil, errIncompleteRequest
 	}
 
-	// Marshal the identifiers now that we've crossed the RPC boundary.
 	identifiers, err := newIdentifierModelsFromPB(req.Identifiers)
 	if err != nil {
 		return nil, err
@@ -1425,50 +1421,33 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 		return nil, nil
 	}
 
-	dnsType := identifierTypeToUint[string(identifier.DNS)]
+	identifiersByType := map[uint8][]string{}
 	for _, id := range identifiers {
-		if id.Type != identifierTypeToUint[string(identifier.DNS)] {
-			// This method only supports DNS identifiers.
-			return nil, fmt.Errorf("unsupported identifier type %d for identifier %q",
-				id.Type,
-				id.Value,
-			)
+		identifiersByType[id.Type] = append(identifiersByType[id.Type], id.Value)
+	}
+
+	var conditions []string
+	args := []interface{}{req.RegistrationID}
+	for idType, values := range identifiersByType {
+		questionMarks := db.QuestionMarks(len(values))
+		condition := fmt.Sprintf("identifierType = ? AND identifierValue IN (%s)", questionMarks)
+		conditions = append(conditions, condition)
+		args = append(args, idType)
+		for _, value := range values {
+			args = append(args, value) // Correctly append each value
 		}
 	}
-	dnsValues := identifiers.valuesOfType(dnsType)
 
-	// Prepare question marks for the "IN" clause. If we add more identifier
-	// types, we should consider joining a bunch of "OR" clauses together for
-	// each identifier type. For now, we only have DNS.
 	query := fmt.Sprintf(`
-	    SELECT identifierType, identifierValue
-	    FROM paused
-	    WHERE 
-	    	registrationID = ? AND
-	    	identifierType = ? AND
-	    	identifierValue IN (%s) AND
-	    	unpausedAt IS NULL
-	    LIMIT 15`,
-		db.QuestionMarks(len(dnsValues)),
-	)
-
-	// Prepare arguments for the query.
-	args := []interface{}{
-		// registrationID = ? AND
-		req.RegistrationID,
-		// identifierType = ? AND
-		dnsType,
-	}
-
-	for _, value := range dnsValues {
-		// identifierValue IN (...) AND
-		args = append(args, value)
-	}
+        SELECT identifierType, identifierValue
+        FROM paused
+        WHERE registrationID = ? AND unpausedAt IS NULL AND (%s) LIMIT 15`,
+		strings.Join(conditions, " OR "))
 
 	var matches []identifierModel
 	_, err = ssa.dbReadOnlyMap.Select(ctx, &matches, query, args...)
 	if err != nil && !db.IsNoRows(err) {
-		// Error querying the database.
+		// Error querying the database
 		return nil, err
 	}
 

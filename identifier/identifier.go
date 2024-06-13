@@ -8,6 +8,8 @@ type IdentifierType string
 const (
 	// DNS is specified in RFC 8555 for DNS type identifiers.
 	DNS = IdentifierType("dns")
+	// IP is specified in RFC 8738 for IP type identifiers.
+	IP = IdentifierType("ip")
 )
 
 // ACMEIdentifier is a struct encoding an identifier that can be validated. The

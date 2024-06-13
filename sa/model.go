@@ -510,10 +510,12 @@ var uintToChallType = map[uint8]string{
 
 var identifierTypeToUint = map[string]uint8{
 	"dns": 0,
+	"ip":  1,
 }
 
 var uintToIdentifierType = map[uint8]string{
 	0: "dns",
+	1: "ip",
 }
 
 var statusToUint = map[core.AcmeStatus]uint8{
@@ -1348,18 +1350,6 @@ func newPBFromIdentifierModels(ids identifierModels) (*sapb.Identifiers, error) 
 		pb = append(pb, p)
 	}
 	return &sapb.Identifiers{Identifiers: pb}, nil
-}
-
-// valuesOfType returns a list of identifier values for the given identifier
-// type. If no values are found, an empty list is returned.
-func (id identifierModels) valuesOfType(identifierType uint8) []string {
-	var values []string
-	for _, i := range id {
-		if i.Type == identifierType {
-			values = append(values, i.Value)
-		}
-	}
-	return values
 }
 
 // pausedModel represents a row in the paused table. The pausedAt and unpausedAt
