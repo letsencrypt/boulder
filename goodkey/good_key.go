@@ -77,6 +77,7 @@ type KeyPolicy struct {
 	AllowRSA           bool // Whether RSA keys should be allowed.
 	AllowECDSANISTP256 bool // Whether ECDSA NISTP256 keys should be allowed.
 	AllowECDSANISTP384 bool // Whether ECDSA NISTP384 keys should be allowed.
+	AllowECDSANISTP521 bool // Whether ECDSA NISTP521 keys should be allowed.
 	weakRSAList        *WeakRSAKeys
 	blockedList        *blockedKeys
 	fermatRounds       int
@@ -267,6 +268,8 @@ func (policy *KeyPolicy) goodCurve(c elliptic.Curve) (err error) {
 	case policy.AllowECDSANISTP256 && params == elliptic.P256().Params():
 		return nil
 	case policy.AllowECDSANISTP384 && params == elliptic.P384().Params():
+		return nil
+	case policy.AllowECDSANISTP521 && params == elliptic.P521().Params():
 		return nil
 	default:
 		return badKey("ECDSA curve %v not allowed", params.Name)
