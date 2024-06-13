@@ -290,9 +290,9 @@ func TestDBBlocklistReject(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "public key is forbidden")
 }
 
-func TestDefaultECDSAKeys(t *testing.T) {
+func TestDefaultAllowedKeys(t *testing.T) {
 	policy, err := NewDefaultKeyPolicy(&Config{}, nil)
-	test.AssertNotError(t, err, "NewKeyPolicy failed")
+	test.AssertNotError(t, err, "NewDefaultKeyPolicy failed")
 	test.Assert(t, policy.allowedKeys.RSA2048, "RSA 2048 should be allowed")
 	test.Assert(t, policy.allowedKeys.RSA3072, "RSA 3072 should be allowed")
 	test.Assert(t, policy.allowedKeys.RSA4096, "RSA 4096 should be allowed")
