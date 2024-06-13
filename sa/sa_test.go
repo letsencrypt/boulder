@@ -74,15 +74,6 @@ func (s *fakeServerStream[T]) Context() context.Context {
 	return context.Background()
 }
 
-func TestImplementation(t *testing.T) {
-	test.AssertImplementsGRPCServer(t, &SQLStorageAuthorityRO{}, sapb.UnimplementedStorageAuthorityReadOnlyServer{})
-	// We do not run AssertImplementsGRPCServer for SQLStorageAuthority and
-	// sapb.UnimplementedStorageAuthorityServer, but this is okay: because
-	// SQLStorageAuthority does not embed sapb.UnimplementedStorageauthorityServer
-	// (choosing instead to embed sapb.UnsafeStorageAuthorityServer), we would get
-	// a compile time failure if it did not implement all of those methods.
-}
-
 // initSA constructs a SQLStorageAuthority and a clean up function that should
 // be defer'ed to the end of the test.
 func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
@@ -4021,7 +4012,7 @@ func TestUpdateCRLShard(t *testing.T) {
 		`SELECT thisUpdate FROM crlShards WHERE issuerID = 1 AND idx = 0 LIMIT 1`,
 	)
 	test.AssertNotError(t, err, "getting updated thisUpdate timestamp")
-	test.Assert(t, crlModel.ThisUpdate.Equal(thisUpdate), "checking updated thisUpdate timestamp")
+	test.AssertEquals(t, *crlModel.ThisUpdate, thisUpdate)
 
 	// Updating an unleased shard should work.
 	_, err = sa.UpdateCRLShard(

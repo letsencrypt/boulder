@@ -161,21 +161,6 @@ type IssuerConfig struct {
 	// the ECDSAForAll feature flag, and the ECDSAAllowListFilename config field.
 	Active bool
 
-	// UseForRSALeaves is a synonym for Active. Note that, despite the name,
-	// setting this field to true cannot add an issuer to a pool different than
-	// its key type. An active issuer will always be part of a pool based on its
-	// key type.
-	//
-	// Deprecated: use Active instead.
-	UseForRSALeaves bool
-	// UseForECDSALeaves is a synonym for Active. Note that, despite the name,
-	// setting this field to true cannot add an issuer to a pool different than
-	// its key type. An active issuer will always be part of a pool based on its
-	// key type.
-	//
-	// Deprecated: use Active instead.
-	UseForECDSALeaves bool
-
 	IssuerURL  string `validate:"required,url"`
 	OCSPURL    string `validate:"required,url"`
 	CRLURLBase string `validate:"omitempty,url,startswith=http://,endswith=/"`
@@ -288,7 +273,7 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 		Linter:     lintSigner,
 		keyAlg:     keyAlg,
 		sigAlg:     sigAlg,
-		active:     config.Active || config.UseForRSALeaves || config.UseForECDSALeaves,
+		active:     config.Active,
 		issuerURL:  config.IssuerURL,
 		ocspURL:    config.OCSPURL,
 		crlURLBase: config.CRLURLBase,

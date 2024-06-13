@@ -324,6 +324,13 @@ value. The `core.IsAnyNilOrZero` function can check these cases.
 Senders must check that timestamps are non-zero before sending them. Receivers
 must check that timestamps are non-zero before accepting them.
 
+# Rounding time in DB
+
+All times that we write to the database are truncated to one second's worth of
+precision. This reduces the size of indexes that include timestamps, and makes
+querying them more efficient. The Storage Authority (SA) is responsible for this
+truncation, and performs it for SELECT queries as well as INSERT and UPDATE.
+
 # Release Process
 
 The current Boulder release process is described in

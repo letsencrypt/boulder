@@ -65,24 +65,14 @@ func TestChallengeSanityCheck(t *testing.T) {
 			Type:   challengeType,
 			Status: StatusInvalid,
 		}
-		test.AssertError(t, chall.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer didn't return an error")
+		test.AssertError(t, chall.CheckPending(), "CheckConsistencyForClientOffer didn't return an error")
 
 		chall.Status = StatusPending
-		test.AssertError(t, chall.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer didn't return an error")
+		test.AssertError(t, chall.CheckPending(), "CheckConsistencyForClientOffer didn't return an error")
 
 		chall.Token = "KQqLsiS5j0CONR_eUXTUSUDNVaHODtc-0pD6ACif7U4"
-		test.AssertNotError(t, chall.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer returned an error")
-
-		chall.ProvidedKeyAuthorization = chall.Token + ".AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-		test.AssertNotError(t, chall.CheckConsistencyForValidation(), "CheckConsistencyForValidation returned an error")
-
-		chall.ProvidedKeyAuthorization = "aaaa.aaaa"
-		test.AssertError(t, chall.CheckConsistencyForValidation(), "CheckConsistencyForValidation didn't return an error")
+		test.AssertNotError(t, chall.CheckPending(), "CheckConsistencyForClientOffer returned an error")
 	}
-
-	chall := Challenge{Type: "bogus", Status: StatusPending}
-	test.AssertError(t, chall.CheckConsistencyForClientOffer(), "CheckConsistencyForClientOffer didn't return an error")
-	test.AssertError(t, chall.CheckConsistencyForValidation(), "CheckConsistencyForValidation didn't return an error")
 }
 
 func TestJSONBufferUnmarshal(t *testing.T) {

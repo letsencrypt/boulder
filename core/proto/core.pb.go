@@ -27,11 +27,12 @@ type Challenge struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Next unused field number: 13
-	Id                int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Type              string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
-	Status            string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
-	Uri               string                 `protobuf:"bytes,9,opt,name=uri,proto3" json:"uri,omitempty"`
-	Token             string                 `protobuf:"bytes,3,opt,name=token,proto3" json:"token,omitempty"`
+	Id     int64  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Type   string `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	Status string `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	Uri    string `protobuf:"bytes,9,opt,name=uri,proto3" json:"uri,omitempty"`
+	Token  string `protobuf:"bytes,3,opt,name=token,proto3" json:"token,omitempty"`
+	// TODO(#7514): Remove this.
 	KeyAuthorization  string                 `protobuf:"bytes,5,opt,name=keyAuthorization,proto3" json:"keyAuthorization,omitempty"`
 	Validationrecords []*ValidationRecord    `protobuf:"bytes,10,rep,name=validationrecords,proto3" json:"validationrecords,omitempty"`
 	Error             *ProblemDetails        `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`

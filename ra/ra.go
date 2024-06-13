@@ -80,7 +80,7 @@ type caaChecker interface {
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
-	rapb.UnimplementedRegistrationAuthorityServer
+	rapb.UnsafeRegistrationAuthorityServer
 	CA        capb.CertificateAuthorityClient
 	OCSP      capb.OCSPGeneratorClient
 	VA        vapb.VAClient
@@ -123,6 +123,8 @@ type RegistrationAuthorityImpl struct {
 	inflightFinalizes           prometheus.Gauge
 	certCSRMismatch             prometheus.Counter
 }
+
+var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
 func NewRegistrationAuthorityImpl(
@@ -1886,16 +1888,10 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.InternalServerError("could not compute expected key authorization value")
 	}
 
-	// Populate the ProvidedKeyAuthorization such that the VA can confirm the
-	// expected vs actual without needing the registration key. Historically this
-	// was done with the value from the challenge response and so the field name
-	// is called "ProvidedKeyAuthorization", in reality this is just
-	// "KeyAuthorization".
-	// TODO(@cpu): Rename ProvidedKeyAuthorization to KeyAuthorization
 	ch.ProvidedKeyAuthorization = expectedKeyAuthorization
 
 	// Double check before sending to VA
-	if cErr := ch.CheckConsistencyForValidation(); cErr != nil {
+	if cErr := ch.CheckPending(); cErr != nil {
 		return nil, berrors.MalformedError(cErr.Error())
 	}
 
@@ -1916,6 +1912,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				Id:    authz.ID,
 				RegID: authz.RegistrationID,
 			},
+			ExpectedKeyAuthorization: expectedKeyAuthorization,
 		}
 		res, err := ra.VA.PerformValidation(vaCtx, &req)
 		challenge := &authz.Challenges[challIndex]
@@ -2703,7 +2700,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier id
 	}
 	// Check each challenge for sanity.
 	for _, challenge := range challenges {
-		err := challenge.CheckConsistencyForClientOffer()
+		err := challenge.CheckPending()
 		if err != nil {
 			// berrors.InternalServerError because we generated these challenges, they should
 			// be OK.

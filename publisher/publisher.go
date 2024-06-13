@@ -197,13 +197,15 @@ func initMetrics(stats prometheus.Registerer) *pubMetrics {
 
 // Impl defines a Publisher
 type Impl struct {
-	pubpb.UnimplementedPublisherServer
+	pubpb.UnsafePublisherServer
 	log           blog.Logger
 	userAgent     string
 	issuerBundles map[issuance.NameID][]ct.ASN1Cert
 	ctLogsCache   logCache
 	metrics       *pubMetrics
 }
+
+var _ pubpb.PublisherServer = (*Impl)(nil)
 
 // New creates a Publisher that will submit certificates
 // to requested CT logs

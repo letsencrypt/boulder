@@ -17,11 +17,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestImplementationOCSP(t *testing.T) {
-	t.Parallel()
-	test.AssertImplementsGRPCServer(t, &ocspImpl{}, capb.UnimplementedOCSPGeneratorServer{})
-}
-
 func serial(t *testing.T) []byte {
 	serial, err := hex.DecodeString("aabbccddeeffaabbccddeeff000102030405")
 	if err != nil {
@@ -48,9 +43,7 @@ func TestOCSP(t *testing.T) {
 		testCtx.maxNames,
 		testCtx.keyPolicy,
 		testCtx.logger,
-		testCtx.stats,
-		testCtx.signatureCount,
-		testCtx.signErrorCount,
+		testCtx.metrics,
 		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 	ocspi := testCtx.ocsp

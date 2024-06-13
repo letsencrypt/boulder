@@ -38,10 +38,7 @@
 				}
 			}
 		},
-		"features": {
-			"EnforceMultiVA": true,
-			"MultiVAFullResults": true
-		},
+		"features": {},
 		"remoteVAs": [
 			{
 				"serverAddress": "rva1.service.consul:9397",
