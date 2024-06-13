@@ -1426,10 +1426,10 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 		identifiersByType[id.Type] = append(identifiersByType[id.Type], id.Value)
 	}
 
-	// Build an SQL query to retrieve up to 15 paused identifiers for types,
-	// using OR clauses for conditions specific to each type. This approach
-	// handles mixed identifier types in a single query. The resulting SQL query
-	// assuming 3 DNS identifiers and 1 IP identifier would look like:
+	// Build a query to retrieve up to 15 paused identifiers using OR clauses
+	// for conditions specific to each type. This approach handles mixed
+	// identifier types in a single query. Assuming 3 DNS identifiers and 1 IP
+	// identifier, the resulting query would look like:
 	//
 	// SELECT identifierType, identifierValue
 	// FROM paused WHERE registrationID = ? AND
