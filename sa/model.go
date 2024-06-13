@@ -510,12 +510,10 @@ var uintToChallType = map[uint8]string{
 
 var identifierTypeToUint = map[string]uint8{
 	"dns": 0,
-	"ip":  1,
 }
 
 var uintToIdentifierType = map[uint8]string{
 	0: "dns",
-	1: "ip",
 }
 
 var statusToUint = map[core.AcmeStatus]uint8{

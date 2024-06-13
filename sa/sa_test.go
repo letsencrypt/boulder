@@ -4638,7 +4638,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 			},
 		},
 		{
-			name: "Three paused identifiers, one is an IP, one identifier was unpaused",
+			name: "Two paused identifiers, one unpaused",
 			args: args{
 				state: []pausedModel{
 					{
@@ -4666,15 +4666,6 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 						PausedAt:   ptrTime(sa.clk.Now().Add(-time.Hour)),
 						UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
 					},
-					// IP
-					{
-						RegistrationID: 1,
-						identifierModel: identifierModel{
-							Type:  identifierTypeToUint[string(identifier.IP)],
-							Value: "1.2.3.4",
-						},
-						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
-					},
 				},
 				req: &sapb.PauseRequest{
 					RegistrationID: 1,
@@ -4691,10 +4682,6 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 							Type:  string(identifier.DNS),
 							Value: "example.org",
 						},
-						{
-							Type:  string(identifier.IP),
-							Value: "1.2.3.4",
-						},
 					},
 				},
 			},
@@ -4707,10 +4694,6 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 					{
 						Type:  string(identifier.DNS),
 						Value: "example.net",
-					},
-					{
-						Type:  string(identifier.IP),
-						Value: "1.2.3.4",
 					},
 				},
 			},

@@ -1426,15 +1426,32 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 		identifiersByType[id.Type] = append(identifiersByType[id.Type], id.Value)
 	}
 
+	// Build an SQL query to retrieve up to 15 paused identifiers for types,
+	// using OR clauses for conditions specific to each type. This approach
+	// handles mixed identifier types in a single query. The resulting SQL query
+	// assuming 3 DNS identifiers and 1 IP identifier would look like:
+	//
+	// SELECT identifierType, identifierValue
+	// FROM paused WHERE registrationID = ? AND
+	// unpausedAt IS NULL AND
+	//     ((identifierType = ? AND identifierValue IN (?, ?, ?)) OR
+	//      (identifierType = ? AND identifierValue IN (?)))
+	// LIMIT 15
+	//
+	// Corresponding args array for placeholders: [<regID>, 0, "example.com",
+	// "example.net", "example.org", 1, "1.2.3.4"]
+
 	var conditions []string
 	args := []interface{}{req.RegistrationID}
 	for idType, values := range identifiersByType {
-		questionMarks := db.QuestionMarks(len(values))
-		condition := fmt.Sprintf("identifierType = ? AND identifierValue IN (%s)", questionMarks)
-		conditions = append(conditions, condition)
+		conditions = append(conditions,
+			fmt.Sprintf("identifierType = ? AND identifierValue IN (%s)",
+				db.QuestionMarks(len(values)),
+			),
+		)
 		args = append(args, idType)
 		for _, value := range values {
-			args = append(args, value) // Correctly append each value
+			args = append(args, value)
 		}
 	}
 
@@ -1447,7 +1464,7 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 	var matches []identifierModel
 	_, err = ssa.dbReadOnlyMap.Select(ctx, &matches, query, args...)
 	if err != nil && !db.IsNoRows(err) {
-		// Error querying the database
+		// Error querying the database.
 		return nil, err
 	}
 
