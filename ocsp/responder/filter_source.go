@@ -21,16 +21,18 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// responderID contains the SHA1 hashes of an issuer certificate's name and key,
+// exactly as the issuerNameHash and issuerKeyHash fields of an OCSP request
+// should be computed by OCSP clients that are compliant with RFC 5019, the
+// Lightweight OCSP Profile for High-Volume Environments. It also contains the
+// Subject Common Name of the issuer certificate, for our own observability.
 type responderID struct {
 	nameHash   []byte
 	keyHash    []byte
 	commonName string
 }
 
-// computeLightweightResponderID computes the SHA1 hashes of the certificate's
-// name and key, exactly as the issuerNameHash and issuerKeyHash fields should
-// be computed by OCSP clients that are compliant with RFC 5019, Lightweight
-// OCSP Profile for High-Volume Environments.
+// computeLightweightResponderID builds a responderID from an issuer certificate.
 func computeLightweightResponderID(ic *issuance.Certificate) (responderID, error) {
 	// nameHash is the SHA1 hash over the DER encoding of the issuer certificate's
 	// Subject Distinguished Name.
