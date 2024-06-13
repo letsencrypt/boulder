@@ -1324,10 +1324,8 @@ func newPBFromIdentifierModel(id identifierModel) (*sapb.Identifier, error) {
 	}, nil
 }
 
-type identifierModels []identifierModel
-
-func newIdentifierModelsFromPB(pb []*sapb.Identifier) (identifierModels, error) {
-	var ids identifierModels
+func newIdentifierModelsFromPB(pb []*sapb.Identifier) ([]identifierModel, error) {
+	var ids []identifierModel
 	for _, p := range pb {
 		id, err := newIdentifierModelFromPB(p)
 		if err != nil {
@@ -1338,7 +1336,7 @@ func newIdentifierModelsFromPB(pb []*sapb.Identifier) (identifierModels, error) 
 	return ids, nil
 }
 
-func newPBFromIdentifierModels(ids identifierModels) (*sapb.Identifiers, error) {
+func newPBFromIdentifierModels(ids []identifierModel) (*sapb.Identifiers, error) {
 	var pb []*sapb.Identifier
 	for _, id := range ids {
 		p, err := newPBFromIdentifierModel(id)
