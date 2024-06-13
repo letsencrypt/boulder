@@ -4012,7 +4012,7 @@ func TestUpdateCRLShard(t *testing.T) {
 		`SELECT thisUpdate FROM crlShards WHERE issuerID = 1 AND idx = 0 LIMIT 1`,
 	)
 	test.AssertNotError(t, err, "getting updated thisUpdate timestamp")
-	test.Assert(t, crlModel.ThisUpdate.Equal(thisUpdate), "checking updated thisUpdate timestamp")
+	test.AssertEquals(t, *crlModel.ThisUpdate, thisUpdate)
 
 	// Updating an unleased shard should work.
 	_, err = sa.UpdateCRLShard(
