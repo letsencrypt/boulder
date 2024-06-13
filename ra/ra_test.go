@@ -391,7 +391,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		test.AssertNotError(t, err, "making transaction composer")
 	}
 
-	testKeyPolicy, err := goodkey.NewDefaultKeyPolicy(&goodkey.Config{}, nil)
+	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "making keypolicy")
 
 	ra := NewRegistrationAuthorityImpl(

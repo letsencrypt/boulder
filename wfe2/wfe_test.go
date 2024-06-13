@@ -305,7 +305,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	fc := clock.NewFake()
 	stats := metrics.NoopRegisterer
 
-	testKeyPolicy, err := goodkey.NewDefaultKeyPolicy(&goodkey.Config{}, nil)
+	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "creating test keypolicy")
 
 	certChains := map[issuance.NameID][][]byte{}

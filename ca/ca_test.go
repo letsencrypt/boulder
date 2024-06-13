@@ -198,7 +198,7 @@ func setup(t *testing.T) *testCtx {
 		test.AssertNotError(t, err, "Couldn't load test issuer")
 	}
 
-	keyPolicy, err := goodkey.NewDefaultKeyPolicy(&goodkey.Config{}, nil)
+	keyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "Failed to create test keypolicy")
 
 	signatureCount := prometheus.NewCounterVec(

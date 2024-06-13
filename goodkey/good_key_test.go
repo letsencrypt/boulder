@@ -264,7 +264,7 @@ func TestDBBlocklistAccept(t *testing.T) {
 			return false, nil
 		},
 	} {
-		policy, err := NewDefaultKeyPolicy(&Config{}, testCheck)
+		policy, err := NewPolicy(nil, testCheck)
 		test.AssertNotError(t, err, "NewKeyPolicy failed")
 
 		k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -279,7 +279,7 @@ func TestDBBlocklistReject(t *testing.T) {
 		return true, nil
 	}
 
-	policy, err := NewDefaultKeyPolicy(&Config{}, testCheck)
+	policy, err := NewPolicy(nil, testCheck)
 	test.AssertNotError(t, err, "NewKeyPolicy failed")
 
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -291,8 +291,17 @@ func TestDBBlocklistReject(t *testing.T) {
 }
 
 func TestDefaultAllowedKeys(t *testing.T) {
-	policy, err := NewDefaultKeyPolicy(&Config{}, nil)
-	test.AssertNotError(t, err, "NewDefaultKeyPolicy failed")
+	policy, err := NewPolicy(nil, nil)
+	test.AssertNotError(t, err, "NewPolicy with nil config failed")
+	test.Assert(t, policy.allowedKeys.RSA2048, "RSA 2048 should be allowed")
+	test.Assert(t, policy.allowedKeys.RSA3072, "RSA 3072 should be allowed")
+	test.Assert(t, policy.allowedKeys.RSA4096, "RSA 4096 should be allowed")
+	test.Assert(t, policy.allowedKeys.ECDSAP256, "NIST P256 should be allowed")
+	test.Assert(t, policy.allowedKeys.ECDSAP384, "NIST P384 should be allowed")
+	test.Assert(t, !policy.allowedKeys.ECDSAP521, "NIST P521 should not be allowed")
+
+	policy, err = NewPolicy(&Config{FermatRounds: 100}, nil)
+	test.AssertNotError(t, err, "NewPolicy with nil config.AllowedKeys failed")
 	test.Assert(t, policy.allowedKeys.RSA2048, "RSA 2048 should be allowed")
 	test.Assert(t, policy.allowedKeys.RSA3072, "RSA 3072 should be allowed")
 	test.Assert(t, policy.allowedKeys.RSA4096, "RSA 4096 should be allowed")

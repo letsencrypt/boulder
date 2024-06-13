@@ -72,7 +72,7 @@ func TestVerifyCSR(t *testing.T) {
 	*signedReqWithAllLongSANs = *signedReq
 	signedReqWithAllLongSANs.DNSNames = []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com"}
 
-	keyPolicy, err := goodkey.NewDefaultKeyPolicy(&goodkey.Config{}, nil)
+	keyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "creating test keypolicy")
 
 	cases := []struct {
@@ -225,7 +225,7 @@ func TestNamesFromCSR(t *testing.T) {
 func TestSHA1Deprecation(t *testing.T) {
 	features.Reset()
 
-	keyPolicy, err := goodkey.NewDefaultKeyPolicy(&goodkey.Config{}, nil)
+	keyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "creating test keypolicy")
 
 	private, err := rsa.GenerateKey(rand.Reader, 2048)

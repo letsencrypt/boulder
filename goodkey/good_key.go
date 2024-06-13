@@ -39,6 +39,9 @@ var (
 )
 
 type Config struct {
+	// AllowedKeys enables or disables specific key algorithms and sizes. If
+	// nil, defaults to just those keys allowed by the Let's Encrypt CPS.
+	AllowedKeys *AllowedKeys
 	// WeakKeyFile is the path to a JSON file containing truncated modulus hashes
 	// of known weak RSA keys. If this config value is empty, then RSA modulus
 	// hash checking will be disabled.
@@ -54,6 +57,8 @@ type Config struct {
 	FermatRounds int
 }
 
+// AllowedKeys is a map of six specific key algorithm and size combinations to
+// booleans indicating whether keys of that type are considered good.
 type AllowedKeys struct {
 	// Baseline Requirements, Section 6.1.5 requires key size >= 2048 and a multiple
 	// of 8 bits: https://github.com/cabforum/servercert/blob/main/docs/BR.md#615-key-sizes
@@ -69,6 +74,21 @@ type AllowedKeys struct {
 	ECDSAP256 bool
 	ECDSAP384 bool
 	ECDSAP521 bool
+}
+
+// LetsEncryptCPS encodes the five key algorithms and sizes allowed by the Let's
+// Encrypt CPS CV-SSL Subscriber Certificate Profile: RSA 2048, RSA 3076, RSA
+// 4096, ECDSA 256 and ECDSA P384.
+// https://github.com/letsencrypt/cp-cps/blob/main/CP-CPS.md#dv-ssl-subscriber-certificate
+// If this is ever changed, the CP/CPS MUST be changed first.
+func LetsEncryptCPS() AllowedKeys {
+	return AllowedKeys{
+		RSA2048:   true,
+		RSA3072:   true,
+		RSA4096:   true,
+		ECDSAP256: true,
+		ECDSAP384: true,
+	}
 }
 
 // ErrBadKey represents an error with a key. It is distinct from the various
@@ -98,36 +118,22 @@ type KeyPolicy struct {
 	blockedCheck BlockedKeyCheckFunc
 }
 
-// NewDefaultKeyPolicy returns a KeyPolicy that allows RSA2048, RSA3076,
-// RSA4096, ECDSA256 and ECDSA384. The config and bkc arguments are handled
-// as per NewCustomKeyPolicy.
-func NewDefaultKeyPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
-	return NewCustomKeyPolicy(
-		// Do not allow ECDSAP521 by default, per the Let's Encrypt CP/CPS DV-SSL
-		// Subscriber Certificate Profile:
-		// https://github.com/letsencrypt/cp-cps/blob/main/CP-CPS.md#dv-ssl-subscriber-certificate
-		// If this is ever change, the CP/CPS MUST be changed first.
-		AllowedKeys{
-			RSA2048:   true,
-			RSA3072:   true,
-			RSA4096:   true,
-			ECDSAP256: true,
-			ECDSAP384: true,
-		}, config, bkc,
-	)
-}
-
-// NewCustomKeyPolicy returns a key policy which accepts the specified key
-// types. weakKeyFile contains the path to a JSON file containing truncated
-// modulus hashes of known weak RSA keys. If this argument is empty RSA modulus
-// hash checking will be disabled. blockedKeyFile contains the path to a YAML
-// file containing Base64 encoded SHA256 hashes of pkix subject public keys that
-// should be blocked. If this argument is empty then no blocked key checking is
-// performed.
-func NewCustomKeyPolicy(keyTypes AllowedKeys, config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
+// NewPolicy returns a key policy based on the given configuration, with sane
+// defaults. If the config's AllowedKeys is nil, the LetsEncryptCPS AllowedKeys
+// is used. If the config's WeakKeyFile or BlockedKeyFile paths are empty, those
+// checks are disabled. If the config's FermatRounds is 0, Fermat Factorization
+// is disabled.
+func NewPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
+	if config == nil {
+		config = &Config{}
+	}
 	kp := KeyPolicy{
-		allowedKeys:  keyTypes,
 		blockedCheck: bkc,
+	}
+	if config.AllowedKeys == nil {
+		kp.allowedKeys = LetsEncryptCPS()
+	} else {
+		kp.allowedKeys = *config.AllowedKeys
 	}
 	if config.WeakKeyFile != "" {
 		keyList, err := LoadWeakRSASuffixes(config.WeakKeyFile)
