@@ -86,13 +86,13 @@ func main() {
 	cmd.FailOnError(err, "TLS config")
 
 	saroi, err := sa.NewSQLStorageAuthorityRO(
-		dbReadOnlyMap, dbIncidentsMap, scope, parallel, c.SA.LagFactor.Duration, clk, logger)
+		dbReadOnlyMap, dbIncidentsMap, scope, parallel, c.SA.LagFactor.GetDuration(), clk, logger)
 	cmd.FailOnError(err, "Failed to create read-only SA impl")
 
 	sai, err := sa.NewSQLStorageAuthorityWrapping(saroi, dbMap, scope)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
-	start, err := bgrpc.NewServer(c.SA.GRPC, logger).WithCheckInterval(c.SA.HealthCheckInterval.Duration).Add(
+	start, err := bgrpc.NewServer(c.SA.GRPC, logger).WithCheckInterval(c.SA.HealthCheckInterval.GetDuration()).Add(
 		&sapb.StorageAuthorityReadOnly_ServiceDesc, saroi).Add(
 		&sapb.StorageAuthority_ServiceDesc, sai).Build(
 		tls, scope, clk)

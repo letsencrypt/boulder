@@ -64,8 +64,8 @@ func NewProfile(profileConfig ProfileConfig, lints lint.Registry) (*Profile, err
 		allowCTPoison:   profileConfig.AllowCTPoison,
 		allowSCTList:    profileConfig.AllowSCTList,
 		allowCommonName: profileConfig.AllowCommonName,
-		maxBackdate:     profileConfig.MaxValidityBackdate.Duration,
-		maxValidity:     profileConfig.MaxValidityPeriod.Duration,
+		maxBackdate:     profileConfig.MaxValidityBackdate.GetDuration(),
+		maxValidity:     profileConfig.MaxValidityPeriod.GetDuration(),
 		lints:           lints,
 	}
 

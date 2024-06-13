@@ -45,7 +45,7 @@ type ServiceConfig struct {
 
 	// HealthCheckInterval is the duration between deep health checks of the
 	// service. Defaults to 5 seconds.
-	HealthCheckInterval config.Duration `validate:"-"`
+	HealthCheckInterval config.Duration `validate:"required,gte=14s"`
 }
 
 // DBConfig defines how to connect to a database. The connect string is

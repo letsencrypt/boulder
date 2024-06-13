@@ -7,19 +7,21 @@ import (
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/cmd"
-	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+
+	"github.com/letsencrypt/boulder/cmd"
+	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 
 	// 'grpc/health' is imported for its init function, which causes clients to
 	// rely on the Health Service for load-balancing.
 	// 'grpc/internal/resolver/dns' is imported for its init function, which
 	// registers the SRV resolver.
-	_ "github.com/letsencrypt/boulder/grpc/internal/resolver/dns"
 	"google.golang.org/grpc/balancer/roundrobin"
 	_ "google.golang.org/grpc/health"
+
+	_ "github.com/letsencrypt/boulder/grpc/internal/resolver/dns"
 )
 
 // ClientSetup creates a gRPC TransportCredentials that presents
@@ -39,7 +41,7 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry p
 		return nil, err
 	}
 
-	cmi := clientMetadataInterceptor{c.Timeout.Duration, metrics, clk, !c.NoWaitForReady}
+	cmi := clientMetadataInterceptor{c.Timeout.GetDuration(), metrics, clk, !c.NoWaitForReady}
 
 	unaryInterceptors := []grpc.UnaryClientInterceptor{
 		cmi.Unary,

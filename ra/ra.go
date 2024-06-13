@@ -649,7 +649,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimits(ctx context
 
 func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64, hostname string, limit ratelimit.RateLimitPolicy) error {
 	latest := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
-	earliest := latest.Add(-limit.Window.Duration)
+	earliest := latest.Add(-limit.Window.GetDuration())
 	req := &sapb.CountInvalidAuthorizationsRequest{
 		RegistrationID: regID,
 		Hostname:       hostname,
@@ -695,7 +695,7 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	count, err := ra.SA.CountOrders(ctx, &sapb.CountOrdersRequest{
 		AccountID: acctID,
 		Range: &sapb.Range{
-			Earliest: timestamppb.New(now.Add(-limit.Window.Duration)),
+			Earliest: timestamppb.New(now.Add(-limit.Window.GetDuration())),
 			Latest:   timestamppb.New(now),
 		},
 	})
@@ -1498,8 +1498,8 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	if len(namesOutOfLimit) > 0 {
 		// Determine the amount of time until the earliest event would fall out
 		// of the window.
-		retryAfter := earliest.Add(limit.Window.Duration).Sub(ra.clk.Now())
-		retryString := earliest.Add(limit.Window.Duration).Format(time.RFC3339)
+		retryAfter := earliest.Add(limit.Window.GetDuration()).Sub(ra.clk.Now())
+		retryString := earliest.Add(limit.Window.GetDuration()).Format(time.RFC3339)
 
 		ra.log.Infof("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, strings.Join(namesOutOfLimit, ", "))
 		if len(namesOutOfLimit) > 1 {
@@ -1528,7 +1528,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 
 	prevIssuances, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
 		Domains: names,
-		Window:  durationpb.New(limit.Window.Duration),
+		Window:  durationpb.New(limit.Window.GetDuration()),
 	})
 	if err != nil {
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
@@ -1553,7 +1553,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		// limit.Window/threshold from the time of each issuance timestamp. The
 		// timestamps start from the most recent issuance and go back in time.
 		now := ra.clk.Now()
-		nsPerToken := limit.Window.Nanoseconds() / threshold
+		nsPerToken := limit.Window.GetDuration().Nanoseconds() / threshold
 		for i, timestamp := range prevIssuances.Timestamps {
 			tokensGeneratedSince := now.Add(-time.Duration(int64(i+1) * nsPerToken))
 			if timestamp.AsTime().Before(tokensGeneratedSince) {
@@ -1572,7 +1572,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		return berrors.DuplicateCertificateError(
 			retryAfter,
 			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s, retry after %s",
-			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","), retryTime.Format(time.RFC3339),
+			threshold, limit.Window.GetDuration().Hours(), strings.Join(names, ","), retryTime.Format(time.RFC3339),
 		)
 	}
 }

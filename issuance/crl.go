@@ -27,14 +27,14 @@ type CRLProfile struct {
 }
 
 func NewCRLProfile(config CRLProfileConfig) (*CRLProfile, error) {
-	lifetime := config.ValidityInterval.Duration
+	lifetime := config.ValidityInterval.GetDuration()
 	if lifetime >= 10*24*time.Hour {
 		return nil, fmt.Errorf("crl lifetime cannot be more than 10 days, got %q", lifetime)
 	} else if lifetime <= 0*time.Hour {
 		return nil, fmt.Errorf("crl lifetime must be positive, got %q", lifetime)
 	}
 
-	if config.MaxBackdate.Duration < 0 {
+	if config.MaxBackdate.GetDuration() < 0 {
 		return nil, fmt.Errorf("crl max backdate must be non-negative, got %q", config.MaxBackdate)
 	}
 
@@ -44,8 +44,8 @@ func NewCRLProfile(config CRLProfileConfig) (*CRLProfile, error) {
 	}
 
 	return &CRLProfile{
-		validityInterval: config.ValidityInterval.Duration,
-		maxBackdate:      config.MaxBackdate.Duration,
+		validityInterval: config.ValidityInterval.GetDuration(),
+		maxBackdate:      config.MaxBackdate.GetDuration(),
 		lints:            reg,
 	}, nil
 }

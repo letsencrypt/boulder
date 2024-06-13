@@ -537,7 +537,7 @@ func main() {
 	acceptableValidityDurations := make(map[time.Duration]bool)
 	if len(config.CertChecker.AcceptableValidityDurations) > 0 {
 		for _, entry := range config.CertChecker.AcceptableValidityDurations {
-			acceptableValidityDurations[entry.Duration] = true
+			acceptableValidityDurations[entry.GetDuration()] = true
 		}
 	} else {
 		// For backwards compatibility, assume only a single valid validity
@@ -583,7 +583,7 @@ func main() {
 		cmd.Clock(),
 		pa,
 		kp,
-		config.CertChecker.CheckPeriod.Duration,
+		config.CertChecker.CheckPeriod.GetDuration(),
 		acceptableValidityDurations,
 		logger,
 	)

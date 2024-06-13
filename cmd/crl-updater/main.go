@@ -145,14 +145,14 @@ func main() {
 		issuers = append(issuers, cert)
 	}
 
-	if c.CRLUpdater.ShardWidth.Duration == 0 {
-		c.CRLUpdater.ShardWidth.Duration = 16 * time.Hour
+	if c.CRLUpdater.ShardWidth.GetDuration() == 0 {
+		c.CRLUpdater.ShardWidth.SetDuration(16 * time.Hour)
 	}
-	if c.CRLUpdater.LookbackPeriod.Duration == 0 {
-		c.CRLUpdater.LookbackPeriod.Duration = 24 * time.Hour
+	if c.CRLUpdater.LookbackPeriod.GetDuration() == 0 {
+		c.CRLUpdater.LookbackPeriod.SetDuration(24 * time.Hour)
 	}
-	if c.CRLUpdater.UpdateTimeout.Duration == 0 {
-		c.CRLUpdater.UpdateTimeout.Duration = 10 * time.Minute
+	if c.CRLUpdater.UpdateTimeout.GetDuration() == 0 {
+		c.CRLUpdater.UpdateTimeout.SetDuration(10 * time.Minute)
 	}
 
 	saConn, err := bgrpc.ClientSetup(c.CRLUpdater.SAService, tlsConfig, scope, clk)
@@ -170,10 +170,10 @@ func main() {
 	u, err := updater.NewUpdater(
 		issuers,
 		c.CRLUpdater.NumShards,
-		c.CRLUpdater.ShardWidth.Duration,
-		c.CRLUpdater.LookbackPeriod.Duration,
-		c.CRLUpdater.UpdatePeriod.Duration,
-		c.CRLUpdater.UpdateTimeout.Duration,
+		c.CRLUpdater.ShardWidth.GetDuration(),
+		c.CRLUpdater.LookbackPeriod.GetDuration(),
+		c.CRLUpdater.UpdatePeriod.GetDuration(),
+		c.CRLUpdater.UpdateTimeout.GetDuration(),
 		c.CRLUpdater.MaxParallelism,
 		c.CRLUpdater.MaxAttempts,
 		sac,

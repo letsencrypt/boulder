@@ -121,14 +121,14 @@ func (t *Throughput) optimizeAndValidate() error {
 	// as the number of entries per batch is also at its default). By default we
 	// set this purger's interval to a multiple of 32ms, depending on how many
 	// other purger instances are running.
-	if t.PurgeBatchInterval.Duration < 0 {
+	if t.PurgeBatchInterval.GetDuration() < 0 {
 		return errors.New("'purgeBatchInterval' must be positive or 0 (for the default)")
-	} else if t.PurgeBatchInterval.Duration == 0 {
-		t.PurgeBatchInterval.Duration = defaultPurgeBatchInterval * time.Duration(t.TotalInstances)
+	} else if t.PurgeBatchInterval.GetDuration() == 0 {
+		t.PurgeBatchInterval.SetDuration(defaultPurgeBatchInterval * time.Duration(t.TotalInstances))
 	}
 
 	// Send no more than the 50 API requests we’re allotted each second.
-	requestsPerSecond := int(math.Ceil(float64(time.Second)/float64(t.PurgeBatchInterval.Duration))) * t.TotalInstances
+	requestsPerSecond := int(math.Ceil(float64(time.Second)/float64(t.PurgeBatchInterval.GetDuration()))) * t.TotalInstances
 	if requestsPerSecond > akamaiAPIReqPerSecondLimit {
 		return fmt.Errorf("config exceeds Akamai's requests per second limit (%d requests) by %d",
 			akamaiAPIReqPerSecondLimit, requestsPerSecond-akamaiAPIReqPerSecondLimit)
@@ -345,7 +345,7 @@ func main() {
 		apc.AccessToken,
 		apc.V3Network,
 		apc.PurgeRetries,
-		apc.PurgeRetryBackoff.Duration,
+		apc.PurgeRetryBackoff.GetDuration(),
 		logger,
 		scope,
 	)
@@ -400,7 +400,7 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 	cmd.FailOnError(err, "tlsConfig config")
 
 	stop, stopped := make(chan bool, 1), make(chan bool, 1)
-	ticker := time.NewTicker(c.AkamaiPurger.Throughput.PurgeBatchInterval.Duration)
+	ticker := time.NewTicker(c.AkamaiPurger.Throughput.PurgeBatchInterval.GetDuration())
 	go func() {
 	loop:
 		for {

@@ -230,7 +230,9 @@ func asInt(param string) int64 {
 }
 
 // asIntFromTimeDuration parses param as time.Duration and returns it as int64
-// or panics on error.
+// or panics on error. The caller should ensure that the param comes from either
+// a time.Duration type or an application specific registered custom
+// time.Duration. See v.RegisterDurationType for more details.
 func asIntFromTimeDuration(param string) int64 {
 	d, err := time.ParseDuration(param)
 	if err != nil {
@@ -240,15 +242,21 @@ func asIntFromTimeDuration(param string) int64 {
 	return int64(d)
 }
 
+// GlobalTimeDurationTypes holds specific application registered custom
+// time.Duration types so their values can be properly parsed as time.Duration.
+var GlobalTimeDurationTypes = []reflect.Type{timeDurationType}
+
 // asIntFromType calls the proper function to parse param as int64,
 // given a field's Type t.
 func asIntFromType(t reflect.Type, param string) int64 {
-	switch t {
-	case timeDurationType:
+	for _, customDurationType := range GlobalTimeDurationTypes {
+		if t != customDurationType {
+			continue
+		}
 		return asIntFromTimeDuration(param)
-	default:
-		return asInt(param)
 	}
+
+	return asInt(param)
 }
 
 // asUint returns the parameter as a uint64

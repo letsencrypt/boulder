@@ -190,14 +190,14 @@ func (v *Validate) ValidateMap(data map[string]interface{}, rules map[string]int
 //
 // eg. to use the names which have been specified for JSON representations of structs, rather than normal Go field names:
 //
-//    validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
-//        name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
-//        // skip if tag key says it should be ignored
-//        if name == "-" {
-//            return ""
-//        }
-//        return name
-//    })
+//	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+//	    name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
+//	    // skip if tag key says it should be ignored
+//	    if name == "-" {
+//	        return ""
+//	    }
+//	    return name
+//	})
 func (v *Validate) RegisterTagNameFunc(fn TagNameFunc) {
 	v.tagNameFunc = fn
 	v.hasTagNameFunc = true
@@ -220,6 +220,17 @@ func (v *Validate) RegisterValidationCtx(tag string, fn FuncCtx, callValidationE
 		nilCheckable = callValidationEvenIfNull[0]
 	}
 	return v.registerValidation(tag, fn, false, nilCheckable)
+}
+
+// RegisterDurationType is used to register a custom time.Duration type in your
+// application such as the following example. Reasons for implementing a custom
+// time.Duration would be for application specific methods. Note that the
+// validator will handle an aliased time.Duration without the use of this
+// method.
+//
+// Example: type MyDuration time.Duration
+func (v *Validate) RegisterDurationType(t any) {
+	GlobalTimeDurationTypes = append(GlobalTimeDurationTypes, reflect.TypeOf(t))
 }
 
 func (v *Validate) registerValidation(tag string, fn FuncCtx, bakedIn bool, nilCheckable bool) error {

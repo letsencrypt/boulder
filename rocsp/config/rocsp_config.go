@@ -119,19 +119,19 @@ func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (*
 		TLSConfig: tlsConfig,
 
 		MaxRetries:      c.MaxRetries,
-		MinRetryBackoff: c.MinRetryBackoff.Duration,
-		MaxRetryBackoff: c.MaxRetryBackoff.Duration,
-		DialTimeout:     c.DialTimeout.Duration,
-		ReadTimeout:     c.ReadTimeout.Duration,
-		WriteTimeout:    c.WriteTimeout.Duration,
+		MinRetryBackoff: c.MinRetryBackoff.GetDuration(),
+		MaxRetryBackoff: c.MaxRetryBackoff.GetDuration(),
+		DialTimeout:     c.DialTimeout.GetDuration(),
+		ReadTimeout:     c.ReadTimeout.GetDuration(),
+		WriteTimeout:    c.WriteTimeout.GetDuration(),
 
 		PoolSize:        c.PoolSize,
 		MinIdleConns:    c.MinIdleConns,
-		ConnMaxLifetime: c.MaxConnAge.Duration,
-		PoolTimeout:     c.PoolTimeout.Duration,
-		ConnMaxIdleTime: c.IdleTimeout.Duration,
+		ConnMaxLifetime: c.MaxConnAge.GetDuration(),
+		PoolTimeout:     c.PoolTimeout.GetDuration(),
+		ConnMaxIdleTime: c.IdleTimeout.GetDuration(),
 	})
-	return rocsp.NewWritingClient(rdb, c.Timeout.Duration, clk, stats), nil
+	return rocsp.NewWritingClient(rdb, c.Timeout.GetDuration(), clk, stats), nil
 }
 
 // MakeReadClient produces a read-only ROCSP client from a config.
@@ -159,19 +159,19 @@ func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer
 		PoolFIFO: c.PoolFIFO,
 
 		MaxRetries:      c.MaxRetries,
-		MinRetryBackoff: c.MinRetryBackoff.Duration,
-		MaxRetryBackoff: c.MaxRetryBackoff.Duration,
-		DialTimeout:     c.DialTimeout.Duration,
-		ReadTimeout:     c.ReadTimeout.Duration,
+		MinRetryBackoff: c.MinRetryBackoff.GetDuration(),
+		MaxRetryBackoff: c.MaxRetryBackoff.GetDuration(),
+		DialTimeout:     c.DialTimeout.GetDuration(),
+		ReadTimeout:     c.ReadTimeout.GetDuration(),
 
 		PoolSize:        c.PoolSize,
 		MinIdleConns:    c.MinIdleConns,
-		ConnMaxLifetime: c.MaxConnAge.Duration,
-		PoolTimeout:     c.PoolTimeout.Duration,
-		ConnMaxIdleTime: c.IdleTimeout.Duration,
+		ConnMaxLifetime: c.MaxConnAge.GetDuration(),
+		PoolTimeout:     c.PoolTimeout.GetDuration(),
+		ConnMaxIdleTime: c.IdleTimeout.GetDuration(),
 	})
 	bredis.MustRegisterClientMetricsCollector(rdb, stats, rdb.Options().Addrs, rdb.Options().Username)
-	return rocsp.NewReadingClient(rdb, c.Timeout.Duration, clk, stats), nil
+	return rocsp.NewReadingClient(rdb, c.Timeout.GetDuration(), clk, stats), nil
 }
 
 // A ShortIDIssuer combines an issuance.Certificate with some fields necessary

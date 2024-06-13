@@ -201,7 +201,7 @@ github.com/letsencrypt/challtestsrv
 # github.com/letsencrypt/pkcs11key/v4 v4.0.0
 ## explicit; go 1.12
 github.com/letsencrypt/pkcs11key/v4
-# github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158
+# github.com/letsencrypt/validator/v10 v10.0.0-20240613205917-601764933ff4
 ## explicit; go 1.18
 github.com/letsencrypt/validator/v10
 # github.com/matttproud/golang_protobuf_extensions v1.0.4

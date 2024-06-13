@@ -3,11 +3,12 @@ package redis
 import (
 	"fmt"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/redis/go-redis/v9"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/redis/go-redis/v9"
 )
 
 // Config contains the configuration needed to act as a Redis client.
@@ -137,17 +138,17 @@ func NewRingFromConfig(c Config, stats prometheus.Registerer, log blog.Logger) (
 		TLSConfig: tlsConfig,
 
 		MaxRetries:      c.MaxRetries,
-		MinRetryBackoff: c.MinRetryBackoff.Duration,
-		MaxRetryBackoff: c.MaxRetryBackoff.Duration,
-		DialTimeout:     c.DialTimeout.Duration,
-		ReadTimeout:     c.ReadTimeout.Duration,
-		WriteTimeout:    c.WriteTimeout.Duration,
+		MinRetryBackoff: c.MinRetryBackoff.GetDuration(),
+		MaxRetryBackoff: c.MaxRetryBackoff.GetDuration(),
+		DialTimeout:     c.DialTimeout.GetDuration(),
+		ReadTimeout:     c.ReadTimeout.GetDuration(),
+		WriteTimeout:    c.WriteTimeout.GetDuration(),
 
 		PoolSize:        c.PoolSize,
 		MinIdleConns:    c.MinIdleConns,
-		ConnMaxLifetime: c.MaxConnAge.Duration,
-		PoolTimeout:     c.PoolTimeout.Duration,
-		ConnMaxIdleTime: c.IdleTimeout.Duration,
+		ConnMaxLifetime: c.MaxConnAge.GetDuration(),
+		PoolTimeout:     c.PoolTimeout.GetDuration(),
+		ConnMaxIdleTime: c.IdleTimeout.GetDuration(),
 	})
 	if len(c.ShardAddrs) > 0 {
 		// Client was statically configured with a list of shards.
@@ -156,7 +157,7 @@ func NewRingFromConfig(c Config, stats prometheus.Registerer, log blog.Logger) (
 
 	var lookup *lookup
 	if len(c.Lookups) != 0 {
-		lookup, err = newLookup(c.Lookups, c.LookupDNSAuthority, c.LookupFrequency.Duration, inner, log, stats)
+		lookup, err = newLookup(c.Lookups, c.LookupDNSAuthority, c.LookupFrequency.GetDuration(), inner, log, stats)
 		if err != nil {
 			return nil, err
 		}

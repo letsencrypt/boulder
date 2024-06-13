@@ -233,5 +233,5 @@ func (rlp *RateLimitPolicy) GetThreshold(key string, regID int64) (int64, string
 // WindowBegin returns the time that a RateLimitPolicy's window begins, given a
 // particular end time (typically the current time).
 func (rlp *RateLimitPolicy) WindowBegin(windowEnd time.Time) time.Time {
-	return windowEnd.Add(-1 * rlp.Window.Duration)
+	return windowEnd.Add(-1 * rlp.Window.GetDuration())
 }

@@ -158,6 +158,8 @@ github.com/letsencrypt/pkcs11key/v4 v4.0.0 h1:qLc/OznH7xMr5ARJgkZCCWk+EomQkiNTOo
 github.com/letsencrypt/pkcs11key/v4 v4.0.0/go.mod h1:EFUvBDay26dErnNb70Nd0/VW3tJiIbETBPTl9ATXQag=
 github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158 h1:HGFsIltYMUiB5eoFSowFzSoXkocM2k9ctmJ57QMGjys=
 github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158/go.mod h1:ZFNBS3H6OEsprCRjscty6GCBe5ZiX44x6qY4s7+bDX0=
+github.com/letsencrypt/validator/v10 v10.0.0-20240613205917-601764933ff4 h1:J8rK82Rvub/FEpG2BOjcP8hzL2VU4442ImLFxc8Nr6M=
+github.com/letsencrypt/validator/v10 v10.0.0-20240613205917-601764933ff4/go.mod h1:ZFNBS3H6OEsprCRjscty6GCBe5ZiX44x6qY4s7+bDX0=
 github.com/magiconair/properties v1.8.0/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
 github.com/mattn/go-colorable v0.1.4/go.mod h1:U0ppj6V5qS13XJ6of8GYAs25YV2eR4EVcfRqFIhoBtE=
 github.com/mattn/go-isatty v0.0.8/go.mod h1:Iq45c/XA43vh69/j3iqttzPXn0bhXyGjM0Hdxcsrc5s=

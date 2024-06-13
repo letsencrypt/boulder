@@ -8,8 +8,14 @@ import (
 
 // Duration is just an alias for time.Duration that allows
 // serialization to YAML as well as JSON.
-type Duration struct {
-	time.Duration `validate:"required"`
+type Duration time.Duration
+
+func (d *Duration) GetDuration() time.Duration {
+	return time.Duration(*d)
+}
+
+func (d *Duration) SetDuration(td time.Duration) {
+	*d = Duration(td)
 }
 
 // ErrDurationMustBeString is returned when a non-string value is
@@ -29,14 +35,16 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 		}
 		return err
 	}
-	dd, err := time.ParseDuration(s)
-	d.Duration = dd
+	dur, err := time.ParseDuration(s)
+	d.SetDuration(dur)
+
 	return err
 }
 
 // MarshalJSON returns the string form of the duration, as a byte array.
 func (d Duration) MarshalJSON() ([]byte, error) {
-	return []byte(d.Duration.String()), nil
+	td := time.Duration(d)
+	return []byte(td.String()), nil
 }
 
 // UnmarshalYAML uses the same format as JSON, but is called by the YAML
@@ -51,7 +59,7 @@ func (d *Duration) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err != nil {
 		return err
 	}
+	d.SetDuration(dur)
 
-	d.Duration = dur
 	return nil
 }
