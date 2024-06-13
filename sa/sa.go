@@ -1318,7 +1318,7 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 // identifier is currently paused, this is a no-op. If an identifier was
 // previously paused and unpaused, it will be repaused. All work is accomplished
 // in a transaction to limit possible race conditions.
-func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.PauseIdentifiersRequest) (*sapb.PauseIdentifiersResponse, error) {
+func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.PauseRequest) (*sapb.PauseIdentifiersResponse, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifiers) {
 		return nil, errIncompleteRequest
 	}

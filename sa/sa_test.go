@@ -4417,7 +4417,7 @@ func TestPauseIdentifiers(t *testing.T) {
 
 	type args struct {
 		state []pausedModel
-		req   *sapb.PauseIdentifiersRequest
+		req   *sapb.PauseRequest
 	}
 	tests := []struct {
 		name string
@@ -4428,7 +4428,7 @@ func TestPauseIdentifiers(t *testing.T) {
 			name: "An identifier which is not now or previously paused",
 			args: args{
 				state: nil,
-				req: &sapb.PauseIdentifiersRequest{
+				req: &sapb.PauseRequest{
 					RegistrationID: 1,
 					Identifiers: []*sapb.Identifier{
 						{
@@ -4457,7 +4457,7 @@ func TestPauseIdentifiers(t *testing.T) {
 						UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
 					},
 				},
-				req: &sapb.PauseIdentifiersRequest{
+				req: &sapb.PauseRequest{
 					RegistrationID: 1,
 					Identifiers: []*sapb.Identifier{
 						{
@@ -4485,7 +4485,7 @@ func TestPauseIdentifiers(t *testing.T) {
 						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
 					},
 				},
-				req: &sapb.PauseIdentifiersRequest{
+				req: &sapb.PauseRequest{
 					RegistrationID: 1,
 					Identifiers: []*sapb.Identifier{
 						{
@@ -4523,7 +4523,7 @@ func TestPauseIdentifiers(t *testing.T) {
 						UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
 					},
 				},
-				req: &sapb.PauseIdentifiersRequest{
+				req: &sapb.PauseRequest{
 					RegistrationID: 1,
 					Identifiers: []*sapb.Identifier{
 						{
@@ -4580,7 +4580,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 
 	type args struct {
 		state []pausedModel
-		req   *sapb.CheckIdentifiersPausedRequest
+		req   *sapb.PauseRequest
 	}
 	tests := []struct {
 		name string
@@ -4591,7 +4591,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 			name: "No paused identifiers",
 			args: args{
 				state: nil,
-				req: &sapb.CheckIdentifiersPausedRequest{
+				req: &sapb.PauseRequest{
 					RegistrationID: 1,
 					Identifiers: []*sapb.Identifier{
 						{
@@ -4618,7 +4618,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
 					},
 				},
-				req: &sapb.CheckIdentifiersPausedRequest{
+				req: &sapb.PauseRequest{
 					RegistrationID: 1,
 					Identifiers: []*sapb.Identifier{
 						{
@@ -4667,7 +4667,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 						UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
 					},
 				},
-				req: &sapb.CheckIdentifiersPausedRequest{
+				req: &sapb.PauseRequest{
 					RegistrationID: 1,
 					Identifiers: []*sapb.Identifier{
 						{

@@ -245,12 +245,12 @@ func (sa *StorageAuthority) SerialsForIncident(ctx context.Context, _ *sapb.Seri
 }
 
 // CheckIdentifiersPaused is a mock
-func (sa *StorageAuthorityReadOnly) CheckIdentifiersPaused(_ context.Context, _ *sapb.CheckIdentifiersPausedRequest, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
+func (sa *StorageAuthorityReadOnly) CheckIdentifiersPaused(_ context.Context, _ *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
 	return nil, nil
 }
 
 // CheckIdentifiersPaused is a mock
-func (sa *StorageAuthority) CheckIdentifiersPaused(_ context.Context, _ *sapb.CheckIdentifiersPausedRequest, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
+func (sa *StorageAuthority) CheckIdentifiersPaused(_ context.Context, _ *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
 	return nil, nil
 }
 

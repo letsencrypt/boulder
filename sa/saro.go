@@ -1409,7 +1409,7 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, 
 // than taking on the complexity of querying for multiple identifier types, this
 // method supports the only identifier type currently in use: "dns". If a
 // non-DNS identifier is provided, an error is returned.
-func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, req *sapb.CheckIdentifiersPausedRequest) (*sapb.Identifiers, error) {
+func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, req *sapb.PauseRequest) (*sapb.Identifiers, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifiers) {
 		return nil, errIncompleteRequest
 	}
