@@ -44,15 +44,19 @@ type limit struct {
 	// precomputed to avoid doing the same calculation on every request.
 	burstOffset int64
 
-	// isOverride is true if this limit is an override limit, false if it is a
-	// default limit.
-	isOverride bool
+	// overrideKey is the key used to look up this limit in the overrides map.
+	overrideKey string
 }
 
-func precomputeLimit(l limit) limit {
+// isOverride returns true if the limit is an override.
+func (l *limit) isOverride() bool {
+	return l.overrideKey != ""
+}
+
+// precompute calculates the emissionInterval and burstOffset for the limit.
+func (l *limit) precompute() {
 	l.emissionInterval = l.Period.Nanoseconds() / l.Count
 	l.burstOffset = l.emissionInterval * l.Burst
-	return l
 }
 
 func validateLimit(l limit) error {
@@ -157,21 +161,24 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 				return nil, fmt.Errorf("unrecognized name %q in override limit, must be one of %v", k, limitNames)
 			}
 			v.limit.name = name
-			v.limit.isOverride = true
+
 			for _, entry := range v.Ids {
+				limit := v.limit
 				id := entry.Id
 				err = validateIdForName(name, id)
 				if err != nil {
 					return nil, fmt.Errorf(
 						"validating name %s and id %q for override limit %q: %w", name, id, k, err)
 				}
+				limit.overrideKey = joinWithColon(name.EnumString(), id)
 				if name == CertificatesPerFQDNSet {
 					// FQDNSet hashes are not a nice thing to ask for in a
 					// config file, so we allow the user to specify a
 					// comma-separated list of FQDNs and compute the hash here.
 					id = fmt.Sprintf("%x", core.HashNames(strings.Split(id, ",")))
 				}
-				parsed[joinWithColon(name.EnumString(), id)] = precomputeLimit(v.limit)
+				limit.precompute()
+				parsed[joinWithColon(name.EnumString(), id)] = limit
 			}
 		}
 	}
@@ -197,7 +204,8 @@ func loadAndParseDefaultLimits(path string) (limits, error) {
 			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, limitNames)
 		}
 		v.name = name
-		parsed[name.EnumString()] = precomputeLimit(v)
+		v.precompute()
+		parsed[name.EnumString()] = v
 	}
 	return parsed, nil
 }
