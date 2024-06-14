@@ -825,7 +825,7 @@ func main() {
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
-	if *daemon && c.Mailer.Frequency.GetDuration() == 0 {
+	if *daemon && c.Mailer.Frequency.Get() == 0 {
 		fmt.Fprintln(os.Stderr, "mailer.frequency is not set in the JSON config")
 		os.Exit(1)
 	}
@@ -904,7 +904,7 @@ func main() {
 		}
 		// Add some padding to the nag times so we send _before_ the configured
 		// time rather than after. See https://github.com/letsencrypt/boulder/pull/1029
-		adjustedInterval := dur + c.Mailer.Frequency.GetDuration()
+		adjustedInterval := dur + c.Mailer.Frequency.Get()
 		nags = append(nags, adjustedInterval)
 	}
 	// Make sure durations are sorted in increasing order
@@ -943,7 +943,7 @@ func main() {
 	go cmd.CatchSignals(cancel)
 
 	if *daemon {
-		t := time.NewTicker(c.Mailer.Frequency.GetDuration())
+		t := time.NewTicker(c.Mailer.Frequency.Get())
 		for {
 			select {
 			case <-t.C:

@@ -168,10 +168,10 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		grpc.ChainStreamInterceptor(streamInterceptors...),
 		grpc.StatsHandler(otelgrpc.NewServerHandler(otelgrpc.WithFilter(filters.Not(filters.HealthCheck())))),
 	}
-	if sb.cfg.MaxConnectionAge.GetDuration() > 0 {
+	if sb.cfg.MaxConnectionAge.Get() > 0 {
 		options = append(options,
 			grpc.KeepaliveParams(keepalive.ServerParameters{
-				MaxConnectionAge: sb.cfg.MaxConnectionAge.GetDuration(),
+				MaxConnectionAge: sb.cfg.MaxConnectionAge.Get(),
 			}))
 	}
 

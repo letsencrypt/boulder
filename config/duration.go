@@ -6,15 +6,17 @@ import (
 	"time"
 )
 
-// Duration is just an alias for time.Duration that allows
-// serialization to YAML as well as JSON.
+// Duration is a new time.Duration type definition that allows serialization to
+// YAML as well as JSON.
 type Duration time.Duration
 
-func (d *Duration) GetDuration() time.Duration {
+// Get returns a time.Duration from the Duration.
+func (d *Duration) Get() time.Duration {
 	return time.Duration(*d)
 }
 
-func (d *Duration) SetDuration(td time.Duration) {
+// Set allows configuring the Duration's value.
+func (d *Duration) Set(td time.Duration) {
 	*d = Duration(td)
 }
 
@@ -36,7 +38,7 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	dur, err := time.ParseDuration(s)
-	d.SetDuration(dur)
+	d.Set(dur)
 
 	return err
 }
@@ -59,7 +61,7 @@ func (d *Duration) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err != nil {
 		return err
 	}
-	d.SetDuration(dur)
+	d.Set(dur)
 
 	return nil
 }

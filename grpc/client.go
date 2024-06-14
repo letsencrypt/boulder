@@ -41,7 +41,7 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry p
 		return nil, err
 	}
 
-	cmi := clientMetadataInterceptor{c.Timeout.GetDuration(), metrics, clk, !c.NoWaitForReady}
+	cmi := clientMetadataInterceptor{c.Timeout.Get(), metrics, clk, !c.NoWaitForReady}
 
 	unaryInterceptors := []grpc.UnaryClientInterceptor{
 		cmi.Unary,

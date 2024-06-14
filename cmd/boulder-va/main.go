@@ -70,7 +70,7 @@ func main() {
 	var resolver bdns.Client
 	if !c.VA.DNSAllowLoopbackAddresses {
 		resolver = bdns.New(
-			c.VA.DNSTimeout.GetDuration(),
+			c.VA.DNSTimeout.Get(),
 			servers,
 			scope,
 			clk,
@@ -79,7 +79,7 @@ func main() {
 			tlsConfig)
 	} else {
 		resolver = bdns.NewTest(
-			c.VA.DNSTimeout.GetDuration(),
+			c.VA.DNSTimeout.Get(),
 			servers,
 			scope,
 			clk,

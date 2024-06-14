@@ -138,17 +138,17 @@ func NewRingFromConfig(c Config, stats prometheus.Registerer, log blog.Logger) (
 		TLSConfig: tlsConfig,
 
 		MaxRetries:      c.MaxRetries,
-		MinRetryBackoff: c.MinRetryBackoff.GetDuration(),
-		MaxRetryBackoff: c.MaxRetryBackoff.GetDuration(),
-		DialTimeout:     c.DialTimeout.GetDuration(),
-		ReadTimeout:     c.ReadTimeout.GetDuration(),
-		WriteTimeout:    c.WriteTimeout.GetDuration(),
+		MinRetryBackoff: c.MinRetryBackoff.Get(),
+		MaxRetryBackoff: c.MaxRetryBackoff.Get(),
+		DialTimeout:     c.DialTimeout.Get(),
+		ReadTimeout:     c.ReadTimeout.Get(),
+		WriteTimeout:    c.WriteTimeout.Get(),
 
 		PoolSize:        c.PoolSize,
 		MinIdleConns:    c.MinIdleConns,
-		ConnMaxLifetime: c.MaxConnAge.GetDuration(),
-		PoolTimeout:     c.PoolTimeout.GetDuration(),
-		ConnMaxIdleTime: c.IdleTimeout.GetDuration(),
+		ConnMaxLifetime: c.MaxConnAge.Get(),
+		PoolTimeout:     c.PoolTimeout.Get(),
+		ConnMaxIdleTime: c.IdleTimeout.Get(),
 	})
 	if len(c.ShardAddrs) > 0 {
 		// Client was statically configured with a list of shards.
@@ -157,7 +157,7 @@ func NewRingFromConfig(c Config, stats prometheus.Registerer, log blog.Logger) (
 
 	var lookup *lookup
 	if len(c.Lookups) != 0 {
-		lookup, err = newLookup(c.Lookups, c.LookupDNSAuthority, c.LookupFrequency.GetDuration(), inner, log, stats)
+		lookup, err = newLookup(c.Lookups, c.LookupDNSAuthority, c.LookupFrequency.Get(), inner, log, stats)
 		if err != nil {
 			return nil, err
 		}

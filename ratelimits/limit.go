@@ -50,7 +50,7 @@ type limit struct {
 }
 
 func precomputeLimit(l limit) limit {
-	l.emissionInterval = l.Period.GetDuration().Nanoseconds() / l.Count
+	l.emissionInterval = l.Period.Get().Nanoseconds() / l.Count
 	l.burstOffset = l.emissionInterval * l.Burst
 	return l
 }
@@ -62,8 +62,8 @@ func validateLimit(l limit) error {
 	if l.Count <= 0 {
 		return fmt.Errorf("invalid count '%d', must be > 0", l.Count)
 	}
-	if l.Period.GetDuration() <= 0 {
-		return fmt.Errorf("invalid period '%s', must be > 0", l.Period)
+	if l.Period.Get() <= 0 {
+		return fmt.Errorf("invalid period '%s', must be > 0", l.Period.Get())
 	}
 	return nil
 }

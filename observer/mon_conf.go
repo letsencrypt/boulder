@@ -20,7 +20,7 @@ type MonConf struct {
 
 // validatePeriod ensures the received `Period` field is at least 1µs.
 func (c *MonConf) validatePeriod() error {
-	if c.Period.GetDuration() < 1*time.Microsecond {
+	if c.Period.Get() < 1*time.Microsecond {
 		return errors.New("period must be at least 1µs")
 	}
 	return nil
@@ -59,5 +59,5 @@ func (c MonConf) makeMonitor(collectors map[string]prometheus.Collector) (*monit
 	if err != nil {
 		return nil, err
 	}
-	return &monitor{c.Period.GetDuration(), prober}, nil
+	return &monitor{c.Period.Get(), prober}, nil
 }

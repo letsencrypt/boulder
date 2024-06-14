@@ -40,7 +40,7 @@ func (c *Common) SetDefaultsAndValidate(grpcAddr, debugAddr *string) error {
 		c.DebugAddr = *debugAddr
 	}
 
-	if c.DNSTimeout.GetDuration() <= 0 {
+	if c.DNSTimeout.Get() <= 0 {
 		return fmt.Errorf("'dnsTimeout' is required")
 	}
 

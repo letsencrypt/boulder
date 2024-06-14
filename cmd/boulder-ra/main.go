@@ -230,7 +230,7 @@ func main() {
 	finalLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.FinalLogs, loglist.Informational)
 	cmd.FailOnError(err, "Failed to load final logs")
 
-	ctp = ctpolicy.New(pubc, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.GetDuration(), logger, scope)
+	ctp = ctpolicy.New(pubc, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.Get(), logger, scope)
 
 	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
 	// or completed validation MUST be obtained no more than 398 days prior
@@ -250,7 +250,7 @@ func main() {
 	}
 	pendingAuthorizationLifetime := time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
-	if features.Get().AsyncFinalize && c.RA.FinalizeTimeout.GetDuration() == 0 {
+	if features.Get().AsyncFinalize && c.RA.FinalizeTimeout.Get() == 0 {
 		cmd.Fail("finalizeTimeout must be supplied when AsyncFinalize feature is enabled")
 	}
 
@@ -289,8 +289,8 @@ func main() {
 		pendingAuthorizationLifetime,
 		pubc,
 		caaClient,
-		c.RA.OrderLifetime.GetDuration(),
-		c.RA.FinalizeTimeout.GetDuration(),
+		c.RA.OrderLifetime.Get(),
+		c.RA.FinalizeTimeout.Get(),
 		ctp,
 		apc,
 		issuerCerts,

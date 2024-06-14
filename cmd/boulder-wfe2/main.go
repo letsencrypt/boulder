@@ -314,8 +314,8 @@ func main() {
 	kp, err := sagoodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
-	if c.WFE.StaleTimeout.GetDuration() == 0 {
-		c.WFE.StaleTimeout.SetDuration(time.Minute * 10)
+	if c.WFE.StaleTimeout.Get() == 0 {
+		c.WFE.StaleTimeout.Set(time.Minute * 10)
 	}
 
 	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
@@ -355,7 +355,7 @@ func main() {
 	if c.WFE.AccountCache != nil {
 		accountGetter = wfe2.NewAccountCache(sac,
 			c.WFE.AccountCache.Size,
-			c.WFE.AccountCache.TTL.GetDuration(),
+			c.WFE.AccountCache.TTL.Get(),
 			clk,
 			stats)
 	} else {
@@ -368,8 +368,8 @@ func main() {
 		certChains,
 		issuerCerts,
 		logger,
-		c.WFE.Timeout.GetDuration(),
-		c.WFE.StaleTimeout.GetDuration(),
+		c.WFE.Timeout.Get(),
+		c.WFE.StaleTimeout.Get(),
 		authorizationLifetime,
 		pendingAuthorizationLifetime,
 		rac,
@@ -439,7 +439,7 @@ func main() {
 	// ListenAndServe() and ListenAndServeTLS() to immediately return, then waits
 	// for any lingering connection-handling goroutines to finish their work.
 	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.GetDuration())
+		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.Get())
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 		_ = tlsSrv.Shutdown(ctx)

@@ -513,8 +513,8 @@ func main() {
 		emailTemplate:       emailTemplate,
 		logger:              logger,
 		clk:                 clk,
-		backoffIntervalMax:  config.BadKeyRevoker.BackoffIntervalMax.GetDuration(),
-		backoffIntervalBase: config.BadKeyRevoker.Interval.GetDuration(),
+		backoffIntervalMax:  config.BadKeyRevoker.BackoffIntervalMax.Get(),
+		backoffIntervalBase: config.BadKeyRevoker.Interval.Get(),
 		backoffFactor:       1.3,
 	}
 

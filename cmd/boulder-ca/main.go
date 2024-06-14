@@ -155,16 +155,16 @@ func main() {
 		cmd.Fail("Error in CA config: MaxNames must not be 0")
 	}
 
-	if c.CA.LifespanOCSP.GetDuration() == 0 {
-		c.CA.LifespanOCSP.SetDuration(96 * time.Hour)
+	if c.CA.LifespanOCSP.Get() == 0 {
+		c.CA.LifespanOCSP.Set(96 * time.Hour)
 	}
 
 	// TODO(#7159): Remove these fallbacks once all live configs are setting the
 	// CRL validity interval inside the Issuance.CRLProfile Config.
-	if c.CA.Issuance.CRLProfile.ValidityInterval.GetDuration() == 0 && c.CA.LifespanCRL.GetDuration() != 0 {
+	if c.CA.Issuance.CRLProfile.ValidityInterval.Get() == 0 && c.CA.LifespanCRL.Get() != 0 {
 		c.CA.Issuance.CRLProfile.ValidityInterval = c.CA.LifespanCRL
 	}
-	if c.CA.Issuance.CRLProfile.MaxBackdate.GetDuration() == 0 && c.CA.Backdate.GetDuration() != 0 {
+	if c.CA.Issuance.CRLProfile.MaxBackdate.Get() == 0 && c.CA.Backdate.Get() != 0 {
 		c.CA.Issuance.CRLProfile.MaxBackdate = c.CA.Backdate
 	}
 
@@ -250,9 +250,9 @@ func main() {
 	if !c.CA.DisableOCSPService {
 		ocspi, err := ca.NewOCSPImpl(
 			issuers,
-			c.CA.LifespanOCSP.GetDuration(),
+			c.CA.LifespanOCSP.Get(),
 			c.CA.OCSPLogMaxLength,
-			c.CA.OCSPLogPeriod.GetDuration(),
+			c.CA.OCSPLogPeriod.Get(),
 			logger,
 			scope,
 			metrics,
@@ -287,8 +287,8 @@ func main() {
 			c.CA.Issuance.CertProfiles,
 			lints,
 			ecdsaAllowList,
-			c.CA.Expiry.GetDuration(),
-			c.CA.Backdate.GetDuration(),
+			c.CA.Expiry.Get(),
+			c.CA.Backdate.Get(),
 			c.CA.SerialPrefix,
 			c.CA.MaxNames,
 			kp,

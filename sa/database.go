@@ -60,8 +60,8 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 	settings := DbSettings{
 		MaxOpenConns:    config.MaxOpenConns,
 		MaxIdleConns:    config.MaxIdleConns,
-		ConnMaxLifetime: config.ConnMaxLifetime.GetDuration(),
-		ConnMaxIdleTime: config.ConnMaxIdleTime.GetDuration(),
+		ConnMaxLifetime: config.ConnMaxLifetime.Get(),
+		ConnMaxIdleTime: config.ConnMaxIdleTime.Get(),
 	}
 
 	mysqlConfig, err := mysql.ParseDSN(url)
