@@ -1405,7 +1405,9 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 
 			default:
 				// This indicates a database state which should never occur.
-				return nil, fmt.Errorf("impossible database state encoutered")
+				return nil, fmt.Errorf("impossible database state encountered while pausing identifier %s",
+					identifier.Value,
+				)
 			}
 		}
 		return nil, nil
