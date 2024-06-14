@@ -290,7 +290,7 @@ func TestValidateJWT(t *testing.T) {
 			ExpiresAt:                   now.Add(24 * time.Hour),
 			UnpauseSeed:                 unpauseSeed,
 			RegID:                       0, // This is a special case where 0 is turned into an empty string in the Subject field of a jwt.Claims
-			ExpectedValidationErrSubstr: "Registration ID required",
+			ExpectedValidationErrSubstr: "required for account unpausing",
 		},
 		{
 			Name:                        "validating expired JWT fails",
