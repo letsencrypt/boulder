@@ -4845,3 +4845,46 @@ func TestGetPausedIdentifiers(t *testing.T) {
 		})
 	}
 }
+
+func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	ptrTime := func(t time.Time) *time.Time {
+		return &t
+	}
+
+	// Insert two paused identifiers for two different accounts.
+	err := sa.dbMap.Insert(ctx, &pausedModel{
+		RegistrationID: 1,
+		identifierModel: identifierModel{
+			Type:  identifierTypeToUint[string(identifier.DNS)],
+			Value: "example.com",
+		},
+		PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+	})
+	test.AssertNotError(t, err, "inserting test identifier")
+
+	err = sa.dbMap.Insert(ctx, &pausedModel{
+		RegistrationID: 2,
+		identifierModel: identifierModel{
+			Type:  identifierTypeToUint[string(identifier.DNS)],
+			Value: "example.net",
+		},
+		PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+	})
+	test.AssertNotError(t, err, "inserting test identifier")
+
+	// Unpause the first account.
+	_, err = sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	test.AssertNotError(t, err, "UnpauseAccount failed")
+
+	// Check that the second account's identifier is still paused.
+	identifiers, err := sa.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: 2})
+	test.AssertNotError(t, err, "GetPausedIdentifiers failed")
+	test.AssertEquals(t, len(identifiers.Identifiers), 1)
+	test.AssertEquals(t, identifiers.Identifiers[0].Value, "example.net")
+}
