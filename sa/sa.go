@@ -1350,16 +1350,13 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				identifier.Type,
 				identifier.Value,
 			)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+
+			switch {
+			case err != nil && !errors.Is(err, sql.ErrNoRows):
+				// Error querying the database.
 				return nil, pauseError("querying pause status for", err)
-			}
 
-			if entry.PausedAt != nil && entry.UnpausedAt == nil {
-				// Identifier is already paused.
-				continue
-			}
-
-			if errors.Is(err, sql.ErrNoRows) {
+			case errors.Is(err, sql.ErrNoRows):
 				// Not currently or previously paused, insert a new pause record.
 				pausedAt := ssa.clk.Now().Truncate(time.Second)
 				err = tx.Insert(ctx, &pausedModel{
@@ -1377,9 +1374,12 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				// Identifier successfully paused.
 				response.Paused++
 				continue
-			}
 
-			if entry.UnpausedAt != nil {
+			case entry.UnpausedAt == nil || entry.PausedAt.After(*entry.UnpausedAt):
+				// Identifier is already paused.
+				continue
+
+			case entry.UnpausedAt.After(*entry.PausedAt):
 				// Previously paused (and unpaused), repause the identifier.
 				_, err := tx.ExecContext(ctx, `
 				UPDATE paused
@@ -1402,14 +1402,18 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				// Identifier successfully repaused.
 				response.Repaused++
 				continue
+
+			default:
+				// This indicates a database state which should never occur.
+				return nil, fmt.Errorf("impossible database state encoutered")
 			}
 		}
 		return nil, nil
 	})
 	if err != nil {
+		// Error occurred during transaction.
 		return nil, err
 	}
-
 	return response, nil
 }
 

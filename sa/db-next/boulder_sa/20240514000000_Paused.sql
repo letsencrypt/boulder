@@ -9,7 +9,7 @@ CREATE TABLE `paused` (
   `registrationID` bigint(20) NOT NULL,
   `identifierType` tinyint(4) NOT NULL,
   `identifierValue` varchar(255) NOT NULL,
-  `pausedAt` datetime DEFAULT NULL,
+  `pausedAt` datetime NOT NULL,
   `unpausedAt` datetime DEFAULT NULL,
   PRIMARY KEY (`registrationID`, `identifierType`, `identifierValue`)
 );
