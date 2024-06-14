@@ -1356,7 +1356,7 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				// Error querying the database.
 				return nil, pauseError("querying pause status for", err)
 
-			case errors.Is(err, sql.ErrNoRows):
+			case err != nil && errors.Is(err, sql.ErrNoRows):
 				// Not currently or previously paused, insert a new pause record.
 				pausedAt := ssa.clk.Now().Truncate(time.Second)
 				err = tx.Insert(ctx, &pausedModel{
