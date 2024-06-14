@@ -74,11 +74,6 @@ type Config struct {
 	OpenTelemetryHTTPConfig cmd.OpenTelemetryHTTPConfig
 }
 
-type CacheConfig struct {
-	Size int
-	TTL  config.Duration
-}
-
 func setupSFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, string) {
 	var unpauseSeed string
 	if c.SFE.Unpause.Seed.PasswordFile != "" {

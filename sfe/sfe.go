@@ -165,19 +165,16 @@ type unpauseJWT string
 
 func (sfe *SelfServiceFrontEndImpl) getHelper(response http.ResponseWriter, incomingJWT unpauseJWT) {
 	if incomingJWT != "" {
-		data := struct {
+		type tmplData struct {
 			UnpausePath string
 			JWT         string
-		}{
-			UnpausePath: unpausePath,
-			JWT:         string(incomingJWT),
 		}
 
 		// Serve the actual unpause page given to a Subscriber. Populates the
 		// unpause form with the JWT from the URL. That JWT itself may be
 		// invalid or expired, but that validation will be performed only after
 		// submitting the form.
-		renderTemplate(response, "unpause-params.html", data)
+		renderTemplate(response, "unpause-params.html", tmplData{unpausePath, string(incomingJWT)})
 	} else {
 		// We only want to accept requests containing the JWT param.
 		renderTemplate(response, "unpause-noParams.html", nil)
@@ -187,36 +184,30 @@ func (sfe *SelfServiceFrontEndImpl) getHelper(response http.ResponseWriter, inco
 // posthelper After clicking unpause, serve a page indicating if the unpause succeeded or failed.
 func (sfe *SelfServiceFrontEndImpl) postHelper(response http.ResponseWriter, incomingJWT unpauseJWT) {
 	if incomingJWT != "" {
-		data := struct {
+		type tmplData struct {
 			ShouldUnpause bool
 			AccountID     string
-		}{
-			ShouldUnpause: false,
 		}
 
 		claims, err := sfe.validateJWTforAccount(incomingJWT)
-		if err == nil {
-			data.ShouldUnpause = true
-
-			// TODO(#7356) Declare a registration ID variable to populate an
-			// rapb unpause account request message.
-			_, innerErr := strconv.ParseInt(claims.Subject, 10, 64)
-			if innerErr != nil {
-				renderTemplate(response, "unpause-noParams.html", nil)
-			}
-			data.AccountID = claims.Subject
-
-			// TODO(#7536) Send gRPC request to the RA informing it to unpause
-			// the account specified in the claim. At this point we should wait
-			// for the RA to process the request before returning to the client,
-			// just in case the request fails.
-
-			// Success, the account has been unpaused.
-			renderTemplate(response, "unpause-post.html", data)
+		if err != nil {
+			renderTemplate(response, "unpause-post.html", nil)
 		}
 
-		// Error condition
-		renderTemplate(response, "unpause-post.html", nil)
+		// TODO(#7356) Declare a registration ID variable to populate an
+		// rapb unpause account request message.
+		_, innerErr := strconv.ParseInt(claims.Subject, 10, 64)
+		if innerErr != nil {
+			renderTemplate(response, "unpause-noParams.html", nil)
+		}
+
+		// TODO(#7536) Send gRPC request to the RA informing it to unpause
+		// the account specified in the claim. At this point we should wait
+		// for the RA to process the request before returning to the client,
+		// just in case the request fails.
+
+		// Success, the account has been unpaused.
+		renderTemplate(response, "unpause-post.html", tmplData{true, claims.Subject})
 	} else {
 		renderTemplate(response, "unpause-noParams.html", nil)
 	}
@@ -240,7 +231,6 @@ func (sfe *SelfServiceFrontEndImpl) Unpause(response http.ResponseWriter, reques
 }
 
 type sfeJWTClaims struct {
-	// Embedded claims
 	jwt.Claims
 
 	// Version is a custom claim used to mass invalidate existing JWTs by
@@ -282,7 +272,7 @@ func (sfe *SelfServiceFrontEndImpl) validateJWTforAccount(incomingJWT unpauseJWT
 	}
 
 	if len(incomingClaims.Subject) == 0 {
-		return sfeJWTClaims{}, errors.New("Registration ID required for account unpausing")
+		return sfeJWTClaims{}, errors.New("Account ID required for account unpausing")
 	}
 
 	if incomingClaims.Version == "" {
