@@ -4316,6 +4316,10 @@ func TestUnpauseAccount(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
+	ptrTime := func(t time.Time) *time.Time {
+		return &t
+	}
+
 	type args struct {
 		state []pausedModel
 		req   *sapb.RegistrationID
@@ -4341,6 +4345,7 @@ func TestUnpauseAccount(t *testing.T) {
 							Type:  identifierTypeToUint[string(identifier.DNS)],
 							Value: "example.com",
 						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
 					},
 				},
 				req: &sapb.RegistrationID{Id: 1},
@@ -4356,6 +4361,7 @@ func TestUnpauseAccount(t *testing.T) {
 							Type:  identifierTypeToUint[string(identifier.DNS)],
 							Value: "example.com",
 						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
 					},
 					{
 						RegistrationID: 1,
@@ -4363,6 +4369,7 @@ func TestUnpauseAccount(t *testing.T) {
 							Type:  identifierTypeToUint[string(identifier.DNS)],
 							Value: "example.net",
 						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
 					},
 					{
 						RegistrationID: 1,
@@ -4370,6 +4377,7 @@ func TestUnpauseAccount(t *testing.T) {
 							Type:  identifierTypeToUint[string(identifier.DNS)],
 							Value: "example.org",
 						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
 					},
 				},
 				req: &sapb.RegistrationID{Id: 1},
