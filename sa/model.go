@@ -1324,10 +1324,10 @@ func newPBFromIdentifierModel(id identifierModel) (*sapb.Identifier, error) {
 	}, nil
 }
 
-func newIdentifierModelsFromPB(pb []*sapb.Identifier) ([]identifierModel, error) {
-	var ids []identifierModel
-	for _, p := range pb {
-		id, err := newIdentifierModelFromPB(p)
+func newIdentifierModelsFromPB(pbs []*sapb.Identifier) ([]identifierModel, error) {
+	ids := make([]identifierModel, 0, len(pbs))
+	for _, pb := range pbs {
+		id, err := newIdentifierModelFromPB(pb)
 		if err != nil {
 			return nil, err
 		}
@@ -1337,15 +1337,15 @@ func newIdentifierModelsFromPB(pb []*sapb.Identifier) ([]identifierModel, error)
 }
 
 func newPBFromIdentifierModels(ids []identifierModel) (*sapb.Identifiers, error) {
-	var pb []*sapb.Identifier
+	pbs := make([]*sapb.Identifier, 0, len(ids))
 	for _, id := range ids {
-		p, err := newPBFromIdentifierModel(id)
+		pb, err := newPBFromIdentifierModel(id)
 		if err != nil {
 			return nil, err
 		}
-		pb = append(pb, p)
+		pbs = append(pbs, pb)
 	}
-	return &sapb.Identifiers{Identifiers: pb}, nil
+	return &sapb.Identifiers{Identifiers: pbs}, nil
 }
 
 // pausedModel represents a row in the paused table. The pausedAt and unpausedAt
@@ -1355,6 +1355,6 @@ func newPBFromIdentifierModels(ids []identifierModel) (*sapb.Identifiers, error)
 type pausedModel struct {
 	identifierModel
 	RegistrationID int64      `db:"registrationID"`
-	PausedAt       *time.Time `db:"pausedAt"`
+	PausedAt       time.Time  `db:"pausedAt"`
 	UnpausedAt     *time.Time `db:"unpausedAt"`
 }
