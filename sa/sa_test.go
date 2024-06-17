@@ -4819,12 +4819,6 @@ func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	defer func() {
-		// Drop all rows from the paused table.
-		_, err := sa.dbMap.ExecContext(ctx, "TRUNCATE TABLE paused")
-		test.AssertNotError(t, err, "Truncate table paused failed")
-	}()
-
 	// Insert two paused identifiers for two different accounts.
 	err := sa.dbMap.Insert(ctx, &pausedModel{
 		RegistrationID: 1,

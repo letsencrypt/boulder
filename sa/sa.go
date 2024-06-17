@@ -1382,11 +1382,13 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				// Previously paused (and unpaused), repause the identifier.
 				_, err := tx.ExecContext(ctx, `
 				UPDATE paused
-				SET pausedAt = ?
+				SET pausedAt = ?,
+				    unpausedAt = NULL
 				WHERE 
 					registrationID = ? AND 
 					identifierType = ? AND 
-					identifierValue = ?`,
+					identifierValue = ? AND
+					unpausedAt IS NOT NULL`,
 					ssa.clk.Now().Truncate(time.Second),
 					req.RegistrationID,
 					identifier.Type,

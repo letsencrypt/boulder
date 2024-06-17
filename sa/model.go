@@ -1348,10 +1348,12 @@ func newPBFromIdentifierModels(ids []identifierModel) (*sapb.Identifiers, error)
 	return &sapb.Identifiers{Identifiers: pbs}, nil
 }
 
-// pausedModel represents a row in the paused table. The pausedAt and unpausedAt
-// fields are pointers because they are NULL-able columns. Valid states are:
-//   - Identifier paused: pausedAt is non-NULL, unpausedAt is NULL
-//   - Identifier unpaused: pausedAt is non-NULL, unpausedAt is non-NULL
+// pausedModel represents a row in the paused table. It contains the
+// registrationID of the paused account, the time the (account, identifier) pair
+// was paused, and the time the pair was unpaused. The UnpausedAt field is
+// nullable because the pair may not have been unpaused yet. A pair is
+// considered paused if there is a matching row in the paused table with a NULL
+// UnpausedAt time.
 type pausedModel struct {
 	identifierModel
 	RegistrationID int64      `db:"registrationID"`
