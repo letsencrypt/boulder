@@ -344,7 +344,7 @@ func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64
 		if err != nil {
 			return nil, err
 		}
-		if perAccountLimit.isOverride {
+		if perAccountLimit.isOverride() {
 			// An override is configured for the CertificatesPerDomainPerAccount
 			// limit.
 			perAccountPerDomainKey, err := newRegIdDomainBucketKey(CertificatesPerDomainPerAccount, regId, name)

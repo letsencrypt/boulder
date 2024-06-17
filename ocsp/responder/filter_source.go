@@ -13,22 +13,26 @@ import (
 	"strings"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 )
 
+// responderID contains the SHA1 hashes of an issuer certificate's name and key,
+// exactly as the issuerNameHash and issuerKeyHash fields of an OCSP request
+// should be computed by OCSP clients that are compliant with RFC 5019, the
+// Lightweight OCSP Profile for High-Volume Environments. It also contains the
+// Subject Common Name of the issuer certificate, for our own observability.
 type responderID struct {
-	nameHash []byte
-	keyHash  []byte
+	nameHash   []byte
+	keyHash    []byte
+	commonName string
 }
 
-// computeLightweightResponderID computes the SHA1 hashes of the certificate's
-// name and key, exactly as the issuerNameHash and issuerKeyHash fields should
-// be computed by OCSP clients that are compliant with RFC 5019, Lightweight
-// OCSP Profile for High-Volume Environments.
+// computeLightweightResponderID builds a responderID from an issuer certificate.
 func computeLightweightResponderID(ic *issuance.Certificate) (responderID, error) {
 	// nameHash is the SHA1 hash over the DER encoding of the issuer certificate's
 	// Subject Distinguished Name.
@@ -49,7 +53,7 @@ func computeLightweightResponderID(ic *issuance.Certificate) (responderID, error
 	}
 	keyHash := sha1.Sum(spki.PublicKey.RightAlign())
 
-	return responderID{nameHash[:], keyHash[:]}, nil
+	return responderID{nameHash[:], keyHash[:], ic.Subject.CommonName}, nil
 }
 
 type filterSource struct {
@@ -82,7 +86,7 @@ func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []strin
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_filter_responses",
 		Help: "Count of OCSP requests/responses by action taken by the filter",
-	}, []string{"result"})
+	}, []string{"result", "issuer"})
 	stats.MustRegister(counter)
 
 	return &filterSource{
@@ -103,24 +107,26 @@ func (src *filterSource) Response(ctx context.Context, req *ocsp.Request) (*Resp
 	iss, err := src.checkRequest(req)
 	if err != nil {
 		src.log.Debugf("Not responding to filtered OCSP request: %s", err.Error())
-		src.counter.WithLabelValues("request_filtered").Inc()
+		src.counter.WithLabelValues("request_filtered", "none").Inc()
 		return nil, err
 	}
 
+	counter := src.counter.MustCurryWith(prometheus.Labels{"issuer": src.issuers[iss].commonName})
+
 	resp, err := src.wrapped.Response(ctx, req)
 	if err != nil {
-		src.counter.WithLabelValues("wrapped_error").Inc()
+		counter.WithLabelValues("wrapped_error").Inc()
 		return nil, err
 	}
 
 	err = src.checkResponse(iss, resp)
 	if err != nil {
 		src.log.Warningf("OCSP Response not sent for CA=%s, Serial=%s, err: %s", hex.EncodeToString(req.IssuerKeyHash), core.SerialToString(req.SerialNumber), err)
-		src.counter.WithLabelValues("response_filtered").Inc()
+		counter.WithLabelValues("response_filtered").Inc()
 		return nil, err
 	}
 
-	src.counter.WithLabelValues("success").Inc()
+	counter.WithLabelValues("success").Inc()
 	return resp, nil
 }
 

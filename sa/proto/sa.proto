@@ -41,6 +41,8 @@ service StorageAuthorityReadOnly {
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
+  rpc CheckIdentifiersPaused (PauseRequest) returns (Identifiers) {}
+  rpc GetPausedIdentifiers (RegistrationID) returns (Identifiers) {}
 }
 
 // StorageAuthority provides full read/write access to the database.
@@ -77,6 +79,8 @@ service StorageAuthority {
   rpc KeyBlocked(SPKIHash) returns (Exists) {}
   rpc ReplacementOrderExists(Serial) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
+  rpc CheckIdentifiersPaused (PauseRequest) returns (Identifiers) {}
+  rpc GetPausedIdentifiers (RegistrationID) returns (Identifiers) {}
   // Adders
   rpc AddBlockedKey(AddBlockedKeyRequest) returns (google.protobuf.Empty) {}
   rpc AddCertificate(AddCertificateRequest) returns (google.protobuf.Empty) {}
@@ -96,6 +100,8 @@ service StorageAuthority {
   rpc UpdateRevokedCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc LeaseCRLShard(LeaseCRLShardRequest) returns (LeaseCRLShardResponse) {}
   rpc UpdateCRLShard(UpdateCRLShardRequest) returns (google.protobuf.Empty) {}
+  rpc PauseIdentifiers(PauseRequest) returns (PauseIdentifiersResponse) {}
+  rpc UnpauseAccount(RegistrationID) returns (google.protobuf.Empty) {}
 }
 
 message RegistrationID {
@@ -413,4 +419,23 @@ message UpdateCRLShardRequest {
   int64 shardIdx = 2;
   google.protobuf.Timestamp thisUpdate = 3;
   google.protobuf.Timestamp nextUpdate = 4;
+}
+
+message Identifier {
+  string type = 1;
+  string value = 2;
+}
+
+message Identifiers {
+  repeated Identifier identifiers = 1;
+}
+
+message PauseRequest {
+  int64 registrationID = 1;
+  repeated Identifier identifiers = 2;
+}
+
+message PauseIdentifiersResponse {
+  int64 paused = 1;
+  int64 repaused = 2;
 }

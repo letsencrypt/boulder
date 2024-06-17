@@ -17,6 +17,7 @@ var testingPolicy = &KeyPolicy{
 	AllowRSA:           true,
 	AllowECDSANISTP256: true,
 	AllowECDSANISTP384: true,
+	AllowECDSANISTP521: true,
 }
 
 func TestUnknownKeyType(t *testing.T) {
@@ -146,12 +147,12 @@ func TestECDSABadCurve(t *testing.T) {
 
 var invalidCurves = []elliptic.Curve{
 	elliptic.P224(),
-	elliptic.P521(),
 }
 
 var validCurves = []elliptic.Curve{
 	elliptic.P256(),
 	elliptic.P384(),
+	elliptic.P521(),
 }
 
 func TestECDSAGoodKey(t *testing.T) {
@@ -287,6 +288,15 @@ func TestDBBlocklistReject(t *testing.T) {
 	test.AssertError(t, err, "GoodKey didn't fail with a blocked key")
 	test.AssertErrorIs(t, err, ErrBadKey)
 	test.AssertEquals(t, err.Error(), "public key is forbidden")
+}
+
+func TestDefaultECDSAKeys(t *testing.T) {
+	policy, err := NewKeyPolicy(&Config{}, nil)
+	test.AssertNotError(t, err, "NewKeyPolicy failed")
+	test.Assert(t, policy.AllowRSA, "RSA should be allowed")
+	test.Assert(t, policy.AllowECDSANISTP256, "NIST P256 should be allowed")
+	test.Assert(t, policy.AllowECDSANISTP384, "NIST P384 should be allowed")
+	test.Assert(t, !policy.AllowECDSANISTP521, "NIST P521 should not be allowed")
 }
 
 func TestRSAStrangeSize(t *testing.T) {
