@@ -40,6 +40,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -4306,4 +4307,584 @@ func TestGetSerialsByAccount(t *testing.T) {
 	}
 	test.AssertNotError(t, err, "calling GetSerialsByAccount")
 	test.AssertEquals(t, len(seen), 2)
+}
+
+func TestUnpauseAccount(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	ptrTime := func(t time.Time) *time.Time {
+		return &t
+	}
+
+	type args struct {
+		state []pausedModel
+		req   *sapb.RegistrationID
+	}
+	tests := []struct {
+		name string
+		args args
+	}{
+		{
+			name: "UnpauseAccount with no paused identifiers",
+			args: args{
+				state: nil,
+				req:   &sapb.RegistrationID{Id: 1},
+			},
+		},
+		{
+			name: "UnpauseAccount with one paused identifier",
+			args: args{
+				state: []pausedModel{
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.com",
+						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+					},
+				},
+				req: &sapb.RegistrationID{Id: 1},
+			},
+		},
+		{
+			name: "UnpauseAccount with multiple paused identifiers",
+			args: args{
+				state: []pausedModel{
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.com",
+						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+					},
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.net",
+						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+					},
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.org",
+						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+					},
+				},
+				req: &sapb.RegistrationID{Id: 1},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup table state.
+			for _, state := range tt.args.state {
+				err := sa.dbMap.Insert(ctx, &state)
+				test.AssertNotError(t, err, "inserting test identifier")
+			}
+
+			_, err := sa.UnpauseAccount(ctx, tt.args.req)
+			test.AssertNotError(t, err, "Unexpected error for UnpauseAccount()")
+
+			// Count the number of paused identifiers.
+			var count int
+			err = sa.dbReadOnlyMap.SelectOne(
+				ctx,
+				&count,
+				"SELECT COUNT(*) FROM paused WHERE registrationID = ? AND unpausedAt IS NULL",
+				tt.args.req.Id,
+			)
+			test.AssertNotError(t, err, "SELECT COUNT(*) failed")
+			test.AssertEquals(t, count, 0)
+
+			// Drop all rows from the paused table.
+			_, err = sa.dbMap.ExecContext(ctx, "TRUNCATE TABLE paused")
+			test.AssertNotError(t, err, "Truncate table paused failed")
+		})
+	}
+}
+
+func TestPauseIdentifiers(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	ptrTime := func(t time.Time) *time.Time {
+		return &t
+	}
+
+	type args struct {
+		state []pausedModel
+		req   *sapb.PauseRequest
+	}
+	tests := []struct {
+		name string
+		args args
+		want *sapb.PauseIdentifiersResponse
+	}{
+		{
+			name: "An identifier which is not now or previously paused",
+			args: args{
+				state: nil,
+				req: &sapb.PauseRequest{
+					RegistrationID: 1,
+					Identifiers: []*sapb.Identifier{
+						{
+							Type:  string(identifier.DNS),
+							Value: "example.com",
+						},
+					},
+				},
+			},
+			want: &sapb.PauseIdentifiersResponse{
+				Paused:   1,
+				Repaused: 0,
+			},
+		},
+		{
+			name: "One unpaused entry which was previously paused",
+			args: args{
+				state: []pausedModel{
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.com",
+						},
+						PausedAt:   ptrTime(sa.clk.Now().Add(-time.Hour)),
+						UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
+					},
+				},
+				req: &sapb.PauseRequest{
+					RegistrationID: 1,
+					Identifiers: []*sapb.Identifier{
+						{
+							Type:  string(identifier.DNS),
+							Value: "example.com",
+						},
+					},
+				},
+			},
+			want: &sapb.PauseIdentifiersResponse{
+				Paused:   0,
+				Repaused: 1,
+			},
+		},
+		{
+			name: "An identifier which is currently paused",
+			args: args{
+				state: []pausedModel{
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.com",
+						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+					},
+				},
+				req: &sapb.PauseRequest{
+					RegistrationID: 1,
+					Identifiers: []*sapb.Identifier{
+						{
+							Type:  string(identifier.DNS),
+							Value: "example.com",
+						},
+					},
+				},
+			},
+			want: &sapb.PauseIdentifiersResponse{
+				Paused:   0,
+				Repaused: 0,
+			},
+		},
+		{
+			name: "Two previously paused entries and one new entry",
+			args: args{
+				state: []pausedModel{
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.com",
+						},
+						PausedAt:   ptrTime(sa.clk.Now().Add(-time.Hour)),
+						UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
+					},
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.net",
+						},
+						PausedAt:   ptrTime(sa.clk.Now().Add(-time.Hour)),
+						UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
+					},
+				},
+				req: &sapb.PauseRequest{
+					RegistrationID: 1,
+					Identifiers: []*sapb.Identifier{
+						{
+							Type:  string(identifier.DNS),
+							Value: "example.com",
+						},
+						{
+							Type:  string(identifier.DNS),
+							Value: "example.net",
+						},
+						{
+							Type:  string(identifier.DNS),
+							Value: "example.org",
+						},
+					},
+				},
+			},
+			want: &sapb.PauseIdentifiersResponse{
+				Paused:   1,
+				Repaused: 2,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup table state.
+			for _, state := range tt.args.state {
+				err := sa.dbMap.Insert(ctx, &state)
+				test.AssertNotError(t, err, "inserting test identifier")
+			}
+
+			got, err := sa.PauseIdentifiers(ctx, tt.args.req)
+			test.AssertNotError(t, err, "Unexpected error for PauseIdentifiers()")
+			test.AssertEquals(t, got.Paused, tt.want.Paused)
+			test.AssertEquals(t, got.Repaused, tt.want.Repaused)
+
+			// Drop all rows from the paused table.
+			_, err = sa.dbMap.ExecContext(ctx, "TRUNCATE TABLE paused")
+			test.AssertNotError(t, err, "Truncate table paused failed")
+		})
+	}
+}
+
+func TestCheckIdentifiersPaused(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	ptrTime := func(t time.Time) *time.Time {
+		return &t
+	}
+
+	type args struct {
+		state []pausedModel
+		req   *sapb.PauseRequest
+	}
+	tests := []struct {
+		name string
+		args args
+		want *sapb.Identifiers
+	}{
+		{
+			name: "No paused identifiers",
+			args: args{
+				state: nil,
+				req: &sapb.PauseRequest{
+					RegistrationID: 1,
+					Identifiers: []*sapb.Identifier{
+						{
+							Type:  string(identifier.DNS),
+							Value: "example.com",
+						},
+					},
+				},
+			},
+			want: &sapb.Identifiers{
+				Identifiers: nil,
+			},
+		},
+		{
+			name: "One paused identifier",
+			args: args{
+				state: []pausedModel{
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.com",
+						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+					},
+				},
+				req: &sapb.PauseRequest{
+					RegistrationID: 1,
+					Identifiers: []*sapb.Identifier{
+						{
+							Type:  string(identifier.DNS),
+							Value: "example.com",
+						},
+					},
+				},
+			},
+			want: &sapb.Identifiers{
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+				},
+			},
+		},
+		{
+			name: "Two paused identifiers, one unpaused",
+			args: args{
+				state: []pausedModel{
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.com",
+						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+					},
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.net",
+						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+					},
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.org",
+						},
+						PausedAt:   ptrTime(sa.clk.Now().Add(-time.Hour)),
+						UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
+					},
+				},
+				req: &sapb.PauseRequest{
+					RegistrationID: 1,
+					Identifiers: []*sapb.Identifier{
+						{
+							Type:  string(identifier.DNS),
+							Value: "example.com",
+						},
+						{
+							Type:  string(identifier.DNS),
+							Value: "example.net",
+						},
+						{
+							Type:  string(identifier.DNS),
+							Value: "example.org",
+						},
+					},
+				},
+			},
+			want: &sapb.Identifiers{
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.net",
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup table state.
+			for _, state := range tt.args.state {
+				err := sa.dbMap.Insert(ctx, &state)
+				test.AssertNotError(t, err, "inserting test identifier")
+			}
+
+			got, err := sa.CheckIdentifiersPaused(ctx, tt.args.req)
+			test.AssertNotError(t, err, "Unexpected error for PauseIdentifiers()")
+			test.AssertDeepEquals(t, got.Identifiers, tt.want.Identifiers)
+
+			// Drop all rows from the paused table.
+			_, err = sa.dbMap.ExecContext(ctx, "TRUNCATE TABLE paused")
+			test.AssertNotError(t, err, "Truncate table paused failed")
+		})
+	}
+}
+
+func TestGetPausedIdentifiers(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	ptrTime := func(t time.Time) *time.Time {
+		return &t
+	}
+
+	type args struct {
+		state []pausedModel
+		req   *sapb.RegistrationID
+	}
+	tests := []struct {
+		name string
+		args args
+		want *sapb.Identifiers
+	}{
+		{
+			name: "No paused identifiers",
+			args: args{
+				state: nil,
+				req:   &sapb.RegistrationID{Id: 1},
+			},
+			want: &sapb.Identifiers{
+				Identifiers: nil,
+			},
+		},
+		{
+			name: "One paused identifier",
+			args: args{
+				state: []pausedModel{
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.com",
+						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+					},
+				},
+				req: &sapb.RegistrationID{Id: 1},
+			},
+			want: &sapb.Identifiers{
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+				},
+			},
+		},
+		{
+			name: "Two paused identifiers, one unpaused",
+			args: args{
+				state: []pausedModel{
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.com",
+						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+					},
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.net",
+						},
+						PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+					},
+					{
+						RegistrationID: 1,
+						identifierModel: identifierModel{
+							Type:  identifierTypeToUint[string(identifier.DNS)],
+							Value: "example.org",
+						},
+						PausedAt:   ptrTime(sa.clk.Now().Add(-time.Hour)),
+						UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
+					},
+				},
+				req: &sapb.RegistrationID{Id: 1},
+			},
+			want: &sapb.Identifiers{
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.net",
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup table state.
+			for _, state := range tt.args.state {
+				err := sa.dbMap.Insert(ctx, &state)
+				test.AssertNotError(t, err, "inserting test identifier")
+			}
+
+			got, err := sa.GetPausedIdentifiers(ctx, tt.args.req)
+			test.AssertNotError(t, err, "Unexpected error for PauseIdentifiers()")
+			test.AssertDeepEquals(t, got.Identifiers, tt.want.Identifiers)
+
+			// Drop all rows from the paused table.
+			_, err = sa.dbMap.ExecContext(ctx, "TRUNCATE TABLE paused")
+			test.AssertNotError(t, err, "Truncate table paused failed")
+		})
+	}
+}
+
+func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	ptrTime := func(t time.Time) *time.Time {
+		return &t
+	}
+
+	// Insert two paused identifiers for two different accounts.
+	err := sa.dbMap.Insert(ctx, &pausedModel{
+		RegistrationID: 1,
+		identifierModel: identifierModel{
+			Type:  identifierTypeToUint[string(identifier.DNS)],
+			Value: "example.com",
+		},
+		PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+	})
+	test.AssertNotError(t, err, "inserting test identifier")
+
+	err = sa.dbMap.Insert(ctx, &pausedModel{
+		RegistrationID: 2,
+		identifierModel: identifierModel{
+			Type:  identifierTypeToUint[string(identifier.DNS)],
+			Value: "example.net",
+		},
+		PausedAt: ptrTime(sa.clk.Now().Add(-time.Hour)),
+	})
+	test.AssertNotError(t, err, "inserting test identifier")
+
+	// Unpause the first account.
+	_, err = sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	test.AssertNotError(t, err, "UnpauseAccount failed")
+
+	// Check that the second account's identifier is still paused.
+	identifiers, err := sa.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: 2})
+	test.AssertNotError(t, err, "GetPausedIdentifiers failed")
+	test.AssertEquals(t, len(identifiers.Identifiers), 1)
+	test.AssertEquals(t, identifiers.Identifiers[0].Value, "example.net")
 }

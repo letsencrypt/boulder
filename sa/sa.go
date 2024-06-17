@@ -3,6 +3,7 @@ package sa
 import (
 	"context"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1311,4 +1312,132 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+// PauseIdentifiers pauses a set of identifiers for the provided account. If an
+// identifier is currently paused, this is a no-op. If an identifier was
+// previously paused and unpaused, it will be repaused. All work is accomplished
+// in a transaction to limit possible race conditions.
+func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.PauseRequest) (*sapb.PauseIdentifiersResponse, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifiers) {
+		return nil, errIncompleteRequest
+	}
+
+	// Marshal the identifier now that we've crossed the RPC boundary.
+	identifiers, err := newIdentifierModelsFromPB(req.Identifiers)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &sapb.PauseIdentifiersResponse{}
+	_, err = db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		for _, identifier := range identifiers {
+			pauseError := func(op string, err error) error {
+				return fmt.Errorf("while %s identifier %s for registration ID %d: %w",
+					op, identifier.Value, req.RegistrationID, err,
+				)
+			}
+
+			var entry pausedModel
+			err := tx.SelectOne(ctx, &entry, `
+			SELECT pausedAt, unpausedAt
+			FROM paused
+			WHERE 
+				registrationID = ? AND 
+				identifierType = ? AND 
+				identifierValue = ?`,
+				req.RegistrationID,
+				identifier.Type,
+				identifier.Value,
+			)
+
+			switch {
+			case err != nil && !errors.Is(err, sql.ErrNoRows):
+				// Error querying the database.
+				return nil, pauseError("querying pause status for", err)
+
+			case err != nil && errors.Is(err, sql.ErrNoRows):
+				// Not currently or previously paused, insert a new pause record.
+				pausedAt := ssa.clk.Now().Truncate(time.Second)
+				err = tx.Insert(ctx, &pausedModel{
+					RegistrationID: req.RegistrationID,
+					PausedAt:       &pausedAt,
+					identifierModel: identifierModel{
+						Type:  identifier.Type,
+						Value: identifier.Value,
+					},
+				})
+				if err != nil && !db.IsDuplicate(err) {
+					return nil, pauseError("pausing", err)
+				}
+
+				// Identifier successfully paused.
+				response.Paused++
+				continue
+
+			case entry.UnpausedAt == nil || entry.PausedAt.After(*entry.UnpausedAt):
+				// Identifier is already paused.
+				continue
+
+			case entry.UnpausedAt.After(*entry.PausedAt):
+				// Previously paused (and unpaused), repause the identifier.
+				_, err := tx.ExecContext(ctx, `
+				UPDATE paused
+				SET pausedAt = ?,
+					unpausedAt = NULL
+				WHERE 
+					registrationID = ? AND 
+					identifierType = ? AND 
+					identifierValue = ? AND
+					unpausedAt IS NOT NULL`,
+					ssa.clk.Now().Truncate(time.Second),
+					req.RegistrationID,
+					identifier.Type,
+					identifier.Value,
+				)
+				if err != nil {
+					return nil, pauseError("repausing", err)
+				}
+
+				// Identifier successfully repaused.
+				response.Repaused++
+				continue
+
+			default:
+				// This indicates a database state which should never occur.
+				return nil, fmt.Errorf("impossible database state encountered while pausing identifier %s",
+					identifier.Value,
+				)
+			}
+		}
+		return nil, nil
+	})
+	if err != nil {
+		// Error occurred during transaction.
+		return nil, err
+	}
+	return response, nil
+}
+
+// UnpauseAccount will unpause all paused identifiers for the provided account.
+// If no identifiers are currently paused, this is a no-op.
+func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error) {
+	if core.IsAnyNilOrZero(req.Id) {
+		return nil, errIncompleteRequest
+	}
+
+	_, err := ssa.dbMap.ExecContext(ctx, `
+	UPDATE paused
+	SET unpausedAt = ?
+	WHERE 
+		registrationID = ? AND
+		unpausedAt IS NULL`,
+		ssa.clk.Now().Truncate(time.Second),
+		req.Id,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return nil, nil
 }

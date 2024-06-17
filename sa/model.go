@@ -1294,3 +1294,67 @@ func setReplacementOrderFinalized(ctx context.Context, db db.Execer, orderID int
 	}
 	return nil
 }
+
+type identifierModel struct {
+	Type  uint8  `db:"identifierType"`
+	Value string `db:"identifierValue"`
+}
+
+func newIdentifierModelFromPB(pb *sapb.Identifier) (identifierModel, error) {
+	idType, ok := identifierTypeToUint[pb.Type]
+	if !ok {
+		return identifierModel{}, fmt.Errorf("unsupported identifier type %q", pb.Type)
+	}
+
+	return identifierModel{
+		Type:  idType,
+		Value: pb.Value,
+	}, nil
+}
+
+func newPBFromIdentifierModel(id identifierModel) (*sapb.Identifier, error) {
+	idType, ok := uintToIdentifierType[id.Type]
+	if !ok {
+		return nil, fmt.Errorf("unsupported identifier type %d", id.Type)
+	}
+
+	return &sapb.Identifier{
+		Type:  idType,
+		Value: id.Value,
+	}, nil
+}
+
+func newIdentifierModelsFromPB(pb []*sapb.Identifier) ([]identifierModel, error) {
+	var ids []identifierModel
+	for _, p := range pb {
+		id, err := newIdentifierModelFromPB(p)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func newPBFromIdentifierModels(ids []identifierModel) (*sapb.Identifiers, error) {
+	var pb []*sapb.Identifier
+	for _, id := range ids {
+		p, err := newPBFromIdentifierModel(id)
+		if err != nil {
+			return nil, err
+		}
+		pb = append(pb, p)
+	}
+	return &sapb.Identifiers{Identifiers: pb}, nil
+}
+
+// pausedModel represents a row in the paused table. The pausedAt and unpausedAt
+// fields are pointers because they are NULL-able columns. Valid states are:
+//   - Identifier paused: pausedAt is non-NULL, unpausedAt is NULL
+//   - Identifier unpaused: pausedAt is non-NULL, unpausedAt is non-NULL
+type pausedModel struct {
+	identifierModel
+	RegistrationID int64      `db:"registrationID"`
+	PausedAt       *time.Time `db:"pausedAt"`
+	UnpausedAt     *time.Time `db:"unpausedAt"`
+}

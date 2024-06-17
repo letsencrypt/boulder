@@ -1402,3 +1402,96 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, 
 		return stream.Send(&sapb.Serial{Serial: row.Serial})
 	})
 }
+
+// CheckIdentifiersPaused takes a slice of identifiers and returns a slice of
+// the first 15 identifier values which are currently paused for the provided
+// account. If no matches are found, an empty slice is returned.
+func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, req *sapb.PauseRequest) (*sapb.Identifiers, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifiers) {
+		return nil, errIncompleteRequest
+	}
+
+	identifiers, err := newIdentifierModelsFromPB(req.Identifiers)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(identifiers) == 0 {
+		// No identifier values to check.
+		return nil, nil
+	}
+
+	identifiersByType := map[uint8][]string{}
+	for _, id := range identifiers {
+		identifiersByType[id.Type] = append(identifiersByType[id.Type], id.Value)
+	}
+
+	// Build a query to retrieve up to 15 paused identifiers using OR clauses
+	// for conditions specific to each type. This approach handles mixed
+	// identifier types in a single query. Assuming 3 DNS identifiers and 1 IP
+	// identifier, the resulting query would look like:
+	//
+	// SELECT identifierType, identifierValue
+	// FROM paused WHERE registrationID = ? AND
+	// unpausedAt IS NULL AND
+	//     ((identifierType = ? AND identifierValue IN (?, ?, ?)) OR
+	//      (identifierType = ? AND identifierValue IN (?)))
+	// LIMIT 15
+	//
+	// Corresponding args array for placeholders: [<regID>, 0, "example.com",
+	// "example.net", "example.org", 1, "1.2.3.4"]
+
+	var conditions []string
+	args := []interface{}{req.RegistrationID}
+	for idType, values := range identifiersByType {
+		conditions = append(conditions,
+			fmt.Sprintf("identifierType = ? AND identifierValue IN (%s)",
+				db.QuestionMarks(len(values)),
+			),
+		)
+		args = append(args, idType)
+		for _, value := range values {
+			args = append(args, value)
+		}
+	}
+
+	query := fmt.Sprintf(`
+        SELECT identifierType, identifierValue
+        FROM paused
+        WHERE registrationID = ? AND unpausedAt IS NULL AND (%s) LIMIT 15`,
+		strings.Join(conditions, " OR "))
+
+	var matches []identifierModel
+	_, err = ssa.dbReadOnlyMap.Select(ctx, &matches, query, args...)
+	if err != nil && !db.IsNoRows(err) {
+		// Error querying the database.
+		return nil, err
+	}
+
+	return newPBFromIdentifierModels(matches)
+}
+
+// GetPausedIdentifiers returns a slice of paused identifiers for the provided
+// account. If no paused identifiers are found, an empty slice is returned. The
+// results are limited to the first 15 paused identifiers.
+func (ssa *SQLStorageAuthorityRO) GetPausedIdentifiers(ctx context.Context, req *sapb.RegistrationID) (*sapb.Identifiers, error) {
+	if core.IsAnyNilOrZero(req.Id) {
+		return nil, errIncompleteRequest
+	}
+
+	var matches []identifierModel
+	_, err := ssa.dbReadOnlyMap.Select(ctx, &matches, `
+		SELECT identifierType, identifierValue
+		FROM paused
+		WHERE 
+			registrationID = ? AND
+			unpausedAt IS NULL
+		LIMIT 15`,
+		req.Id,
+	)
+	if err != nil && !db.IsNoRows(err) {
+		return nil, err
+	}
+
+	return newPBFromIdentifierModels(matches)
+}
