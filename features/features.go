@@ -15,13 +15,18 @@ import (
 // then call features.Set(parsedConfig) to load the parsed struct into this
 // package's global Config.
 type Config struct {
-	// Deprecated features. Safe for removal once all references to them have
-	// been removed from deployed configuration.
-	CAAAfterValidation         bool
-	AllowNoCommonName          bool
-	SHA256SubjectKeyIdentifier bool
-	EnforceMultiVA             bool
-	MultiVAFullResults         bool
+	// Deprecated features. These features have no effect. Removing them from
+	// configuration is safe.
+	//
+	// Once all references to them have been removed from deployed configuration,
+	// they can be deleted from this struct, after which Boulder will fail to
+	// start if they are present in configuration.
+	CAAAfterValidation                bool
+	AllowNoCommonName                 bool
+	SHA256SubjectKeyIdentifier        bool
+	EnforceMultiVA                    bool
+	MultiVAFullResults                bool
+	CertCheckerRequiresCorrespondence bool
 
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
@@ -45,12 +50,6 @@ type Config struct {
 	// query enabled by CertCheckerChecksValidations didn't find corresponding
 	// authorizations.
 	CertCheckerRequiresValidations bool
-
-	// CertCheckerRequiresCorrespondence enables an extra query for each certificate
-	// checked, to find the linting precertificate in the `precertificates` table.
-	// It then checks that the final certificate "corresponds" to the precertificate
-	// using `precert.Correspond`.
-	CertCheckerRequiresCorrespondence bool
 
 	// AsyncFinalize enables the RA to return approximately immediately from
 	// requests to finalize orders. This allows us to take longer getting SCTs,

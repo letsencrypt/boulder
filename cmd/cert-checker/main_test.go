@@ -29,7 +29,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	blog "github.com/letsencrypt/boulder/log"
@@ -660,7 +659,6 @@ func TestIgnoredLint(t *testing.T) {
 }
 
 func TestPrecertCorrespond(t *testing.T) {
-	features.Set(features.Config{CertCheckerRequiresCorrespondence: true})
 	checker := newChecker(nil, clock.New(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
 	checker.getPrecert = func(_ context.Context, _ string) ([]byte, error) {
 		return []byte("hello"), nil

@@ -452,19 +452,17 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
 		}
 
-		if features.Get().CertCheckerRequiresCorrespondence {
-			precertDER, err := c.getPrecert(ctx, cert.Serial)
+		precertDER, err := c.getPrecert(ctx, cert.Serial)
+		if err != nil {
+			// Log and continue, since we want the problems slice to only contains
+			// problems with the cert itself.
+			c.logger.Errf("fetching linting precertificate for %s: %s", cert.Serial, err)
+			atomic.AddInt64(&c.issuedReport.DbErrs, 1)
+		} else {
+			err = precert.Correspond(precertDER, cert.DER)
 			if err != nil {
-				// Log and continue, since we want the problems slice to only contains
-				// problems with the cert itself.
-				c.logger.Errf("fetching linting precertificate for %s: %s", cert.Serial, err)
-				atomic.AddInt64(&c.issuedReport.DbErrs, 1)
-			} else {
-				err = precert.Correspond(precertDER, cert.DER)
-				if err != nil {
-					problems = append(problems,
-						fmt.Sprintf("Certificate does not correspond to precert for %s: %s", cert.Serial, err))
-				}
+				problems = append(problems,
+					fmt.Sprintf("Certificate does not correspond to precert for %s: %s", cert.Serial, err))
 			}
 		}
 
