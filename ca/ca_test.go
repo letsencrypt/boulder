@@ -198,11 +198,9 @@ func setup(t *testing.T) *testCtx {
 		test.AssertNotError(t, err, "Couldn't load test issuer")
 	}
 
-	keyPolicy := goodkey.KeyPolicy{
-		AllowRSA:           true,
-		AllowECDSANISTP256: true,
-		AllowECDSANISTP384: true,
-	}
+	keyPolicy, err := goodkey.NewPolicy(nil, nil)
+	test.AssertNotError(t, err, "Failed to create test keypolicy")
+
 	signatureCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "signatures",

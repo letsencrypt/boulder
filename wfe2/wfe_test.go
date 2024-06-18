@@ -297,12 +297,6 @@ func loadKey(t *testing.T, keyBytes []byte) crypto.Signer {
 	return nil
 }
 
-var testKeyPolicy = goodkey.KeyPolicy{
-	AllowRSA:           true,
-	AllowECDSANISTP256: true,
-	AllowECDSANISTP384: true,
-}
-
 var ctx = context.Background()
 
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
@@ -310,6 +304,9 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 
 	fc := clock.NewFake()
 	stats := metrics.NoopRegisterer
+
+	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
+	test.AssertNotError(t, err, "creating test keypolicy")
 
 	certChains := map[issuance.NameID][][]byte{}
 	issuerCertificates := map[issuance.NameID]*issuance.Certificate{}

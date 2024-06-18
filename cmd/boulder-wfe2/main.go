@@ -311,7 +311,7 @@ func main() {
 
 	rac, sac, gnc, rnc, npKey := setupWFE(c, stats, clk)
 
-	kp, err := sagoodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
+	kp, err := sagoodkey.NewPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.WFE.StaleTimeout.Duration == 0 {

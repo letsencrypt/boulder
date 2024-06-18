@@ -553,7 +553,7 @@ func main() {
 	if config.CertChecker.GoodKey.BlockedKeyFile != "" {
 		cmd.Fail("cert-checker does not support checking against blocked key files")
 	}
-	kp, err := sagoodkey.NewKeyPolicy(&config.CertChecker.GoodKey, nil)
+	kp, err := sagoodkey.NewPolicy(&config.CertChecker.GoodKey, nil)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	saDbMap, err := sa.InitWrappedDb(config.CertChecker.DB, prometheus.DefaultRegisterer, logger)
