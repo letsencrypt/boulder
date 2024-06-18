@@ -2050,7 +2050,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 //
 // Precondition: names must be a list of DNS names that all pass
 // policy.WellFormedDomainNames.
-func (wfe *WebFrontEndImpl) newNewOrderLimitTransactions(regId int64, names []string) []ratelimits.Transaction {
+func (wfe *WebFrontEndImpl) newNewOrderLimitTransactions(regId int64, names []string, isRenewal bool) []ratelimits.Transaction {
 	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Limiter is disabled.
 		return nil
@@ -2063,12 +2063,14 @@ func (wfe *WebFrontEndImpl) newNewOrderLimitTransactions(regId int64, names []st
 	}
 
 	var transactions []ratelimits.Transaction
-	txn, err := wfe.txnBuilder.OrdersPerAccountTransaction(regId)
-	if err != nil {
-		logTxnErr(err, ratelimits.NewOrdersPerAccount)
-		return nil
+	if features.Get().CheckRenewalExemptionAtWFE && !isRenewal {
+		txn, err := wfe.txnBuilder.OrdersPerAccountTransaction(regId)
+		if err != nil {
+			logTxnErr(err, ratelimits.NewOrdersPerAccount)
+			return nil
+		}
+		transactions = append(transactions, txn)
 	}
-	transactions = append(transactions, txn)
 
 	failedAuthzTxns, err := wfe.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId, names, wfe.maxNames)
 	if err != nil {
@@ -2077,14 +2079,16 @@ func (wfe *WebFrontEndImpl) newNewOrderLimitTransactions(regId int64, names []st
 	}
 	transactions = append(transactions, failedAuthzTxns...)
 
-	certsPerDomainTxns, err := wfe.txnBuilder.CertificatesPerDomainTransactions(regId, names, wfe.maxNames)
-	if err != nil {
-		logTxnErr(err, ratelimits.CertificatesPerDomain)
-		return nil
+	if features.Get().CheckRenewalExemptionAtWFE && !isRenewal {
+		certsPerDomainTxns, err := wfe.txnBuilder.CertificatesPerDomainTransactions(regId, names, wfe.maxNames)
+		if err != nil {
+			logTxnErr(err, ratelimits.CertificatesPerDomain)
+			return nil
+		}
+		transactions = append(transactions, certsPerDomainTxns...)
 	}
-	transactions = append(transactions, certsPerDomainTxns...)
 
-	txn, err = wfe.txnBuilder.CertificatesPerFQDNSetTransaction(names)
+	txn, err := wfe.txnBuilder.CertificatesPerFQDNSetTransaction(names)
 	if err != nil {
 		logTxnErr(err, ratelimits.CertificatesPerFQDNSet)
 		return nil
@@ -2359,6 +2363,20 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		}
 	}
 
+	var isRenewal bool
+	// TODO(#7511) Remove this feature flag check.
+	if features.Get().CheckRenewalExemptionAtWFE && !limitsExempt {
+		// The Subscriber does not have an ARI exemption. However, we can check
+		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount
+		// and CertificatesPerDomain limits.
+		exists, err := wfe.sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While checking renewal exemption status"), err)
+			return
+		}
+		isRenewal = exists.Exists
+	}
+
 	err = wfe.validateCertificateProfileName(newOrderRequest.Profile)
 	if err != nil {
 		// TODO(#7392) Provide link to profile documentation.
@@ -2372,7 +2390,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// ratelimits package and cannot be prematurely canceled by the requester.
 	var txns []ratelimits.Transaction
 	if !limitsExempt {
-		txns = wfe.newNewOrderLimitTransactions(acct.ID, names)
+		txns = wfe.newNewOrderLimitTransactions(acct.ID, names, isRenewal)
 		go wfe.checkNewOrderLimits(ctx, txns)
 	}
 
@@ -2400,6 +2418,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		ReplacesSerial:         replaces,
 		LimitsExempt:           limitsExempt,
 		CertificateProfileName: newOrderRequest.Profile,
+		IsRenewal:              isRenewal,
 	})
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
