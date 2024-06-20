@@ -2483,7 +2483,7 @@ func TestNewOrder(t *testing.T) {
 	{
 		"Identifiers": [
 		  {"type": "dns", "value": "not-ExAmPlE.com"},
-			{"type": "dns", "value": "WWW.nOt-example.coM"}
+		  {"type": "dns", "value": "WWW.nOt-example.coM"}
 		]
 	}`
 
