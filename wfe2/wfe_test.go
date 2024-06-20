@@ -2482,8 +2482,8 @@ func TestNewOrder(t *testing.T) {
 	validOrderBodyWithMixedCaseIdentifiers := `
 	{
 		"Identifiers": [
-		  {"type": "dns", "value": "not-ExAmPlE.com"},
-		  {"type": "dns", "value": "WWW.nOt-example.coM"}
+		  {"type": "dns", "value": "Not-Example.com"},
+			{"type": "dns", "value": "WWW.Not-example.com"}
 		]
 	}`
 
