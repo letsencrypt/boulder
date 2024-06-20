@@ -2467,7 +2467,7 @@ func TestNewOrder(t *testing.T) {
 	nonDNSIdentifierBody := `
 	{
 		"Identifiers": [
-		  {"type": "dns",    "value": "not-example.com"},
+			{"type": "dns",    "value": "not-example.com"},
 			{"type": "dns",    "value": "www.not-example.com"},
 			{"type": "fakeID", "value": "www.i-am-21.com"}
 		]
@@ -2477,8 +2477,16 @@ func TestNewOrder(t *testing.T) {
 	validOrderBody := `
 	{
 		"Identifiers": [
-		  {"type": "dns", "value": "not-example.com"},
+			{"type": "dns", "value": "not-example.com"},
 			{"type": "dns", "value": "www.not-example.com"}
+		]
+	}`
+
+	validOrderBodyWithMixedCaseIdentifiers := `
+	{
+		"Identifiers": [
+			{"type": "dns", "value": "Not-Example.com"},
+			{"type": "dns", "value": "WWW.Not-example.com"}
 		]
 	}`
 
@@ -2583,8 +2591,8 @@ func TestNewOrder(t *testing.T) {
 				"status": "pending",
 				"expires": "2021-02-01T01:01:01Z",
 				"identifiers": [
-					{ "type": "dns", "value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"},
-					{ "type": "dns", "value": "not-example.com"}
+					{ "type": "dns", "value": "not-example.com"},
+					{ "type": "dns", "value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"}
 				],
 				"authorizations": [
 					"http://localhost/acme/authz-v3/1"
@@ -2595,6 +2603,23 @@ func TestNewOrder(t *testing.T) {
 		{
 			Name:    "POST, good payload",
 			Request: signAndPost(signer, targetPath, signedURL, validOrderBody),
+			ExpectedBody: `
+					{
+						"status": "pending",
+						"expires": "2021-02-01T01:01:01Z",
+						"identifiers": [
+							{ "type": "dns", "value": "not-example.com"},
+							{ "type": "dns", "value": "www.not-example.com"}
+						],
+						"authorizations": [
+							"http://localhost/acme/authz-v3/1"
+						],
+						"finalize": "http://localhost/acme/finalize/1/1"
+					}`,
+		},
+		{
+			Name:    "POST, good payload, but when the input had mixed case",
+			Request: signAndPost(signer, targetPath, signedURL, validOrderBodyWithMixedCaseIdentifiers),
 			ExpectedBody: `
 					{
 						"status": "pending",
