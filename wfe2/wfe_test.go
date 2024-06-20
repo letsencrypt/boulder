@@ -244,7 +244,7 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewO
 		RegistrationID:   in.RegistrationID,
 		Created:          timestamppb.New(created),
 		Expires:          timestamppb.New(expires),
-		Names:            in.Names,
+		Names:            core.UniqueLowerNames(in.Names),
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
 	}, nil
@@ -2479,6 +2479,14 @@ func TestNewOrder(t *testing.T) {
 		]
 	}`
 
+	validOrderBodyWithMixedCaseIdentifiers := `
+	{
+		"Identifiers": [
+		  {"type": "dns", "value": "not-ExAmPlE.com"},
+			{"type": "dns", "value": "WWW.nOt-example.coM"}
+		]
+	}`
+
 	// Body with a SAN that is longer than 64 bytes. This one is 65 bytes.
 	tooLongCNBody := `
 	{
@@ -2580,8 +2588,8 @@ func TestNewOrder(t *testing.T) {
 				"status": "pending",
 				"expires": "2021-02-01T01:01:01Z",
 				"identifiers": [
-					{ "type": "dns", "value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"},
-					{ "type": "dns", "value": "not-example.com"}
+					{ "type": "dns", "value": "not-example.com"},
+					{ "type": "dns", "value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"}
 				],
 				"authorizations": [
 					"http://localhost/acme/authz-v3/1"
@@ -2592,6 +2600,23 @@ func TestNewOrder(t *testing.T) {
 		{
 			Name:    "POST, good payload",
 			Request: signAndPost(signer, targetPath, signedURL, validOrderBody),
+			ExpectedBody: `
+					{
+						"status": "pending",
+						"expires": "2021-02-01T01:01:01Z",
+						"identifiers": [
+							{ "type": "dns", "value": "not-example.com"},
+							{ "type": "dns", "value": "www.not-example.com"}
+						],
+						"authorizations": [
+							"http://localhost/acme/authz-v3/1"
+						],
+						"finalize": "http://localhost/acme/finalize/1/1"
+					}`,
+		},
+		{
+			Name:    "POST, good payload, but when the input had mixed case",
+			Request: signAndPost(signer, targetPath, signedURL, validOrderBodyWithMixedCaseIdentifiers),
 			ExpectedBody: `
 					{
 						"status": "pending",

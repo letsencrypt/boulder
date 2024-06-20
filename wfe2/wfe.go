@@ -2337,7 +2337,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		names[i] = ident.Value
 	}
 
-	err = policy.WellFormedDomainNames(names)
+	// Ensure that all names are normalized to meet the precondition for
+	// policy.WellFormedDomainNames
+	err = policy.WellFormedDomainNames(core.UniqueLowerNames(names))
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Invalid identifiers requested"), nil)
 		return
