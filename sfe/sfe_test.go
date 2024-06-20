@@ -85,7 +85,7 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *co
 	return &emptypb.Empty{}, nil
 }
 
-func (ra *MockRegistrationAuthority) UnpauseAccount(context.Context, *corepb.Registration, ...grpc.CallOption) (*emptypb.Empty, error) {
+func (ra *MockRegistrationAuthority) UnpauseAccount(context.Context, *rapb.UnpauseAccountRequest, ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
