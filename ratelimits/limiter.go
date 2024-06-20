@@ -196,9 +196,9 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 
 		d := maybeSpend(l.clk, txn.limit, tat, txn.cost)
 
-		if txn.limit.isOverride {
+		if txn.limit.isOverride() {
 			utilization := float64(txn.limit.Burst-d.Remaining) / float64(txn.limit.Burst)
-			l.overrideUsageGauge.WithLabelValues(txn.limit.name.String(), txn.bucketKey).Set(utilization)
+			l.overrideUsageGauge.WithLabelValues(txn.limit.name.String(), txn.limit.overrideKey).Set(utilization)
 		}
 
 		if d.Allowed && (tat != d.newTAT) && txn.spend {

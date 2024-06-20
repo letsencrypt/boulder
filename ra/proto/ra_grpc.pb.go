@@ -33,6 +33,7 @@ const (
 	RegistrationAuthority_NewOrder_FullMethodName                          = "/ra.RegistrationAuthority/NewOrder"
 	RegistrationAuthority_FinalizeOrder_FullMethodName                     = "/ra.RegistrationAuthority/FinalizeOrder"
 	RegistrationAuthority_GenerateOCSP_FullMethodName                      = "/ra.RegistrationAuthority/GenerateOCSP"
+	RegistrationAuthority_UnpauseAccount_FullMethodName                    = "/ra.RegistrationAuthority/UnpauseAccount"
 )
 
 // RegistrationAuthorityClient is the client API for RegistrationAuthority service.
@@ -51,6 +52,7 @@ type RegistrationAuthorityClient interface {
 	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	// Generate an OCSP response based on the DB's current status and reason code.
 	GenerateOCSP(ctx context.Context, in *GenerateOCSPRequest, opts ...grpc.CallOption) (*proto1.OCSPResponse, error)
+	UnpauseAccount(ctx context.Context, in *UnpauseAccountRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type registrationAuthorityClient struct {
@@ -171,6 +173,16 @@ func (c *registrationAuthorityClient) GenerateOCSP(ctx context.Context, in *Gene
 	return out, nil
 }
 
+func (c *registrationAuthorityClient) UnpauseAccount(ctx context.Context, in *UnpauseAccountRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, RegistrationAuthority_UnpauseAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RegistrationAuthorityServer is the server API for RegistrationAuthority service.
 // All implementations must embed UnimplementedRegistrationAuthorityServer
 // for forward compatibility
@@ -187,6 +199,7 @@ type RegistrationAuthorityServer interface {
 	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*proto.Order, error)
 	// Generate an OCSP response based on the DB's current status and reason code.
 	GenerateOCSP(context.Context, *GenerateOCSPRequest) (*proto1.OCSPResponse, error)
+	UnpauseAccount(context.Context, *UnpauseAccountRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedRegistrationAuthorityServer()
 }
 
@@ -226,6 +239,9 @@ func (UnimplementedRegistrationAuthorityServer) FinalizeOrder(context.Context, *
 }
 func (UnimplementedRegistrationAuthorityServer) GenerateOCSP(context.Context, *GenerateOCSPRequest) (*proto1.OCSPResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GenerateOCSP not implemented")
+}
+func (UnimplementedRegistrationAuthorityServer) UnpauseAccount(context.Context, *UnpauseAccountRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UnpauseAccount not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) mustEmbedUnimplementedRegistrationAuthorityServer() {}
 
@@ -438,6 +454,24 @@ func _RegistrationAuthority_GenerateOCSP_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RegistrationAuthority_UnpauseAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnpauseAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegistrationAuthorityServer).UnpauseAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RegistrationAuthority_UnpauseAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegistrationAuthorityServer).UnpauseAccount(ctx, req.(*UnpauseAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RegistrationAuthority_ServiceDesc is the grpc.ServiceDesc for RegistrationAuthority service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -488,6 +522,10 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GenerateOCSP",
 			Handler:    _RegistrationAuthority_GenerateOCSP_Handler,
+		},
+		{
+			MethodName: "UnpauseAccount",
+			Handler:    _RegistrationAuthority_UnpauseAccount_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -235,6 +235,10 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *co
 	return &emptypb.Empty{}, nil
 }
 
+func (ra *MockRegistrationAuthority) UnpauseAccount(context.Context, *rapb.UnpauseAccountRequest, ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
 func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	created := time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC)
 	expires := time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC)
@@ -297,12 +301,6 @@ func loadKey(t *testing.T, keyBytes []byte) crypto.Signer {
 	return nil
 }
 
-var testKeyPolicy = goodkey.KeyPolicy{
-	AllowRSA:           true,
-	AllowECDSANISTP256: true,
-	AllowECDSANISTP384: true,
-}
-
 var ctx = context.Background()
 
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
@@ -310,6 +308,9 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 
 	fc := clock.NewFake()
 	stats := metrics.NoopRegisterer
+
+	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
+	test.AssertNotError(t, err, "creating test keypolicy")
 
 	certChains := map[issuance.NameID][][]byte{}
 	issuerCertificates := map[issuance.NameID]*issuance.Certificate{}
@@ -2467,7 +2468,7 @@ func TestNewOrder(t *testing.T) {
 	nonDNSIdentifierBody := `
 	{
 		"Identifiers": [
-		  {"type": "dns",    "value": "not-example.com"},
+			{"type": "dns",    "value": "not-example.com"},
 			{"type": "dns",    "value": "www.not-example.com"},
 			{"type": "fakeID", "value": "www.i-am-21.com"}
 		]
@@ -2477,8 +2478,16 @@ func TestNewOrder(t *testing.T) {
 	validOrderBody := `
 	{
 		"Identifiers": [
-		  {"type": "dns", "value": "not-example.com"},
+			{"type": "dns", "value": "not-example.com"},
 			{"type": "dns", "value": "www.not-example.com"}
+		]
+	}`
+
+	validOrderBodyWithMixedCaseIdentifiers := `
+	{
+		"Identifiers": [
+			{"type": "dns", "value": "Not-Example.com"},
+			{"type": "dns", "value": "WWW.Not-example.com"}
 		]
 	}`
 
@@ -2583,8 +2592,8 @@ func TestNewOrder(t *testing.T) {
 				"status": "pending",
 				"expires": "2021-02-01T01:01:01Z",
 				"identifiers": [
-					{ "type": "dns", "value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"},
-					{ "type": "dns", "value": "not-example.com"}
+					{ "type": "dns", "value": "not-example.com"},
+					{ "type": "dns", "value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"}
 				],
 				"authorizations": [
 					"http://localhost/acme/authz-v3/1"
@@ -2595,6 +2604,23 @@ func TestNewOrder(t *testing.T) {
 		{
 			Name:    "POST, good payload",
 			Request: signAndPost(signer, targetPath, signedURL, validOrderBody),
+			ExpectedBody: `
+					{
+						"status": "pending",
+						"expires": "2021-02-01T01:01:01Z",
+						"identifiers": [
+							{ "type": "dns", "value": "not-example.com"},
+							{ "type": "dns", "value": "www.not-example.com"}
+						],
+						"authorizations": [
+							"http://localhost/acme/authz-v3/1"
+						],
+						"finalize": "http://localhost/acme/finalize/1/1"
+					}`,
+		},
+		{
+			Name:    "POST, good payload, but when the input had mixed case",
+			Request: signAndPost(signer, targetPath, signedURL, validOrderBodyWithMixedCaseIdentifiers),
 			ExpectedBody: `
 					{
 						"status": "pending",
