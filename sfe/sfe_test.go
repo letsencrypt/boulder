@@ -85,6 +85,10 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *co
 	return &emptypb.Empty{}, nil
 }
 
+func (ra *MockRegistrationAuthority) UnpauseAccount(context.Context, *corepb.Registration, ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
 func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	created := time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC)
 	expires := time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC)
