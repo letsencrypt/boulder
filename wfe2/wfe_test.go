@@ -244,7 +244,7 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewO
 		RegistrationID:   in.RegistrationID,
 		Created:          timestamppb.New(created),
 		Expires:          timestamppb.New(expires),
-		Names:            core.UniqueLowerNames(in.Names),
+		Names:            in.Names,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
 	}, nil

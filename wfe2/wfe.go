@@ -2343,20 +2343,17 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Invalid identifiers requested"), nil)
 		return
 	}
-	// TODO(#7555) Replace names with normalizedNames
-	if len(names) > wfe.maxNames {
+	if len(normalizedNames) > wfe.maxNames {
 		wfe.sendError(response, logEvent, probs.Malformed("Order cannot contain more than %d DNS names", wfe.maxNames), nil)
 		return
 	}
 
-	// TODO(#7555) Replace names with normalizedNames
-	logEvent.DNSNames = names
+	logEvent.DNSNames = normalizedNames
 
 	var replaces string
 	var limitsExempt bool
 	if features.Get().TrackReplacementCertificatesARI {
-		// TODO(#7555) Replace names with normalizedNames
-		replaces, limitsExempt, err = wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
+		replaces, limitsExempt, err = wfe.validateReplacementOrder(ctx, acct, normalizedNames, newOrderRequest.Replaces)
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
 			return
@@ -2399,9 +2396,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}()
 
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
-		RegistrationID: acct.ID,
-		// TODO(#7555) Replace names with normalizedNames
-		Names:                  names,
+		RegistrationID:         acct.ID,
+		Names:                  normalizedNames,
 		ReplacesSerial:         replaces,
 		LimitsExempt:           limitsExempt,
 		CertificateProfileName: newOrderRequest.Profile,
