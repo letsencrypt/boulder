@@ -2464,7 +2464,7 @@ func TestNewOrder(t *testing.T) {
 	nonDNSIdentifierBody := `
 	{
 		"Identifiers": [
-		  {"type": "dns",    "value": "not-example.com"},
+			{"type": "dns",    "value": "not-example.com"},
 			{"type": "dns",    "value": "www.not-example.com"},
 			{"type": "fakeID", "value": "www.i-am-21.com"}
 		]
@@ -2474,7 +2474,7 @@ func TestNewOrder(t *testing.T) {
 	validOrderBody := `
 	{
 		"Identifiers": [
-		  {"type": "dns", "value": "not-example.com"},
+			{"type": "dns", "value": "not-example.com"},
 			{"type": "dns", "value": "www.not-example.com"}
 		]
 	}`
@@ -2482,7 +2482,7 @@ func TestNewOrder(t *testing.T) {
 	validOrderBodyWithMixedCaseIdentifiers := `
 	{
 		"Identifiers": [
-		  {"type": "dns", "value": "Not-Example.com"},
+			{"type": "dns", "value": "Not-Example.com"},
 			{"type": "dns", "value": "WWW.Not-example.com"}
 		]
 	}`
