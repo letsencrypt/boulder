@@ -2337,23 +2337,23 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		names[i] = ident.Value
 	}
 
-	normalizedNames := core.UniqueLowerNames(names)
-	err = policy.WellFormedDomainNames(normalizedNames)
+	names = core.UniqueLowerNames(names)
+	err = policy.WellFormedDomainNames(names)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Invalid identifiers requested"), nil)
 		return
 	}
-	if len(normalizedNames) > wfe.maxNames {
+	if len(names) > wfe.maxNames {
 		wfe.sendError(response, logEvent, probs.Malformed("Order cannot contain more than %d DNS names", wfe.maxNames), nil)
 		return
 	}
 
-	logEvent.DNSNames = normalizedNames
+	logEvent.DNSNames = names
 
 	var replaces string
 	var limitsExempt bool
 	if features.Get().TrackReplacementCertificatesARI {
-		replaces, limitsExempt, err = wfe.validateReplacementOrder(ctx, acct, normalizedNames, newOrderRequest.Replaces)
+		replaces, limitsExempt, err = wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
 			return
@@ -2373,7 +2373,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// ratelimits package and cannot be prematurely canceled by the requester.
 	var txns []ratelimits.Transaction
 	if !limitsExempt {
-		txns = wfe.newNewOrderLimitTransactions(acct.ID, normalizedNames)
+		txns = wfe.newNewOrderLimitTransactions(acct.ID, names)
 		go wfe.checkNewOrderLimits(ctx, txns)
 	}
 
@@ -2397,7 +2397,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID:         acct.ID,
-		Names:                  normalizedNames,
+		Names:                  names,
 		ReplacesSerial:         replaces,
 		LimitsExempt:           limitsExempt,
 		CertificateProfileName: newOrderRequest.Profile,
