@@ -24,6 +24,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -53,6 +55,7 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
+
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -80,7 +83,7 @@ type caaChecker interface {
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
-	rapb.UnimplementedRegistrationAuthorityServer
+	rapb.UnsafeRegistrationAuthorityServer
 	CA        capb.CertificateAuthorityClient
 	OCSP      capb.OCSPGeneratorClient
 	VA        vapb.VAClient
@@ -123,6 +126,8 @@ type RegistrationAuthorityImpl struct {
 	inflightFinalizes           prometheus.Gauge
 	certCSRMismatch             prometheus.Counter
 }
+
+var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
 func NewRegistrationAuthorityImpl(
@@ -1886,16 +1891,10 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.InternalServerError("could not compute expected key authorization value")
 	}
 
-	// Populate the ProvidedKeyAuthorization such that the VA can confirm the
-	// expected vs actual without needing the registration key. Historically this
-	// was done with the value from the challenge response and so the field name
-	// is called "ProvidedKeyAuthorization", in reality this is just
-	// "KeyAuthorization".
-	// TODO(@cpu): Rename ProvidedKeyAuthorization to KeyAuthorization
 	ch.ProvidedKeyAuthorization = expectedKeyAuthorization
 
 	// Double check before sending to VA
-	if cErr := ch.CheckConsistencyForValidation(); cErr != nil {
+	if cErr := ch.CheckPending(); cErr != nil {
 		return nil, berrors.MalformedError(cErr.Error())
 	}
 
@@ -1916,6 +1915,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				Id:    authz.ID,
 				RegID: authz.RegistrationID,
 			},
+			ExpectedKeyAuthorization: expectedKeyAuthorization,
 		}
 		res, err := ra.VA.PerformValidation(vaCtx, &req)
 		challenge := &authz.Challenges[challIndex]
@@ -2703,7 +2703,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier id
 	}
 	// Check each challenge for sanity.
 	for _, challenge := range challenges {
-		err := challenge.CheckConsistencyForClientOffer()
+		err := challenge.CheckPending()
 		if err != nil {
 			// berrors.InternalServerError because we generated these challenges, they should
 			// be OK.
@@ -2756,4 +2756,15 @@ func validateContactsPresent(contacts []string, contactsPresent bool) error {
 
 func (ra *RegistrationAuthorityImpl) DrainFinalize() {
 	ra.finalizeWG.Wait()
+}
+
+// UnpauseAccount receives a validated account unpause request from the SFE and
+// instructs the SA to unpause that account. If the account cannot be unpaused,
+// an error is returned.
+func (ra *RegistrationAuthorityImpl) UnpauseAccount(ctx context.Context, request *rapb.UnpauseAccountRequest) (*emptypb.Empty, error) {
+	if core.IsAnyNilOrZero(request.RegistrationID) {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	return nil, status.Errorf(codes.Unimplemented, "method UnpauseAccount not implemented")
 }

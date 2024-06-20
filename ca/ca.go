@@ -24,6 +24,8 @@ import (
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/zmap/zlint/v3/lint"
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -77,10 +79,50 @@ type certProfilesMaps struct {
 	profileByName map[string]*certProfileWithID
 }
 
+// caMetrics holds various metrics which are shared between caImpl, ocspImpl,
+// and crlImpl.
+type caMetrics struct {
+	signatureCount *prometheus.CounterVec
+	signErrorCount *prometheus.CounterVec
+	lintErrorCount prometheus.Counter
+}
+
+func NewCAMetrics(stats prometheus.Registerer) *caMetrics {
+	signatureCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "signatures",
+			Help: "Number of signatures",
+		},
+		[]string{"purpose", "issuer"})
+	stats.MustRegister(signatureCount)
+
+	signErrorCount := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "signature_errors",
+		Help: "A counter of signature errors labelled by error type",
+	}, []string{"type"})
+	stats.MustRegister(signErrorCount)
+
+	lintErrorCount := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "lint_errors",
+			Help: "Number of issuances that were halted by linting errors",
+		})
+	stats.MustRegister(lintErrorCount)
+
+	return &caMetrics{signatureCount, signErrorCount, lintErrorCount}
+}
+
+func (m *caMetrics) noteSignError(err error) {
+	var pkcs11Error pkcs11.Error
+	if errors.As(err, &pkcs11Error) {
+		m.signErrorCount.WithLabelValues("HSM").Inc()
+	}
+}
+
 // certificateAuthorityImpl represents a CA that signs certificates.
 // It can sign OCSP responses as well, but only via delegation to an ocspImpl.
 type certificateAuthorityImpl struct {
-	capb.UnimplementedCertificateAuthorityServer
+	capb.UnsafeCertificateAuthorityServer
 	sa           sapb.StorageAuthorityCertificateClient
 	pa           core.PolicyAuthority
 	issuers      issuerMaps
@@ -96,10 +138,10 @@ type certificateAuthorityImpl struct {
 	keyPolicy      goodkey.KeyPolicy
 	clk            clock.Clock
 	log            blog.Logger
-	signatureCount *prometheus.CounterVec
-	signErrorCount *prometheus.CounterVec
-	lintErrorCount prometheus.Counter
+	metrics        *caMetrics
 }
+
+var _ capb.CertificateAuthorityServer = (*certificateAuthorityImpl)(nil)
 
 // makeIssuerMaps processes a list of issuers into a set of maps for easy
 // lookup either by key algorithm (useful for picking an issuer for a precert)
@@ -215,9 +257,7 @@ func NewCertificateAuthorityImpl(
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
-	stats prometheus.Registerer,
-	signatureCount *prometheus.CounterVec,
-	signErrorCount *prometheus.CounterVec,
+	metrics *caMetrics,
 	clk clock.Clock,
 ) (*certificateAuthorityImpl, error) {
 	var ca *certificateAuthorityImpl
@@ -249,13 +289,6 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
-	lintErrorCount := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "lint_errors",
-			Help: "Number of issuances that were halted by linting errors",
-		})
-	stats.MustRegister(lintErrorCount)
-
 	ca = &certificateAuthorityImpl{
 		sa:             sa,
 		pa:             pa,
@@ -267,22 +300,12 @@ func NewCertificateAuthorityImpl(
 		maxNames:       maxNames,
 		keyPolicy:      keyPolicy,
 		log:            logger,
-		signatureCount: signatureCount,
-		signErrorCount: signErrorCount,
-		lintErrorCount: lintErrorCount,
+		metrics:        metrics,
 		clk:            clk,
 		ecdsaAllowList: ecdsaAllowList,
 	}
 
 	return ca, nil
-}
-
-// noteSignError is called after operations that may cause a PKCS11 signing error.
-func (ca *certificateAuthorityImpl) noteSignError(err error) {
-	var pkcs11Error *pkcs11.Error
-	if errors.As(err, &pkcs11Error) {
-		ca.signErrorCount.WithLabelValues("HSM").Inc()
-	}
 }
 
 var ocspStatusToCode = map[string]int{
@@ -419,7 +442,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing cert: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] precert=[%s]",
 		issuer.Name(), serialHex, req.RegistrationID, names, certProfile.name, certProfile.hash, hex.EncodeToString(precert.Raw))
 
-	_, issuanceToken, err := issuer.Prepare(certProfile.profile, issuanceReq)
+	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, issuanceReq)
 	if err != nil {
 		ca.log.AuditErrf("Preparing cert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			issuer.Name(), serialHex, req.RegistrationID, names, certProfile.name, certProfile.hash, err)
@@ -428,13 +451,18 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
-		ca.noteSignError(err)
+		ca.metrics.noteSignError(err)
 		ca.log.AuditErrf("Signing cert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			issuer.Name(), serialHex, req.RegistrationID, names, certProfile.name, certProfile.hash, err)
 		return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
 	}
 
-	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
+	err = tbsCertIsDeterministic(lintCertBytes, certDER)
+	if err != nil {
+		return nil, err
+	}
+
+	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing cert success: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certificate=[%s] certProfileName=[%s] certProfileHash=[%x]",
 		issuer.Name(), serialHex, req.RegistrationID, names, hex.EncodeToString(certDER), certProfile.name, certProfile.hash)
 
@@ -585,7 +613,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		ca.log.AuditErrf("Preparing precert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), certProfile.name, certProfile.hash, err)
 		if errors.Is(err, linter.ErrLinting) {
-			ca.lintErrorCount.Inc()
+			ca.metrics.lintErrorCount.Inc()
 		}
 		return nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
 	}
@@ -603,15 +631,83 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
-		ca.noteSignError(err)
+		ca.metrics.noteSignError(err)
 		ca.log.AuditErrf("Signing precert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), certProfile.name, certProfile.hash, err)
 		return nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
 	}
 
-	ca.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
+	err = tbsCertIsDeterministic(lintCertBytes, certDER)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing precert success: issuer=[%s] serial=[%s] regID=[%d] names=[%s] precertificate=[%s] certProfileName=[%s] certProfileHash=[%x]",
 		issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(certDER), certProfile.name, certProfile.hash)
 
 	return certDER, &certProfileWithID{certProfile.name, certProfile.hash, nil}, nil
+}
+
+// verifyTBSCertIsDeterministic verifies that x509.CreateCertificate signing
+// operation is deterministic and produced identical DER bytes between the given
+// lint certificate and leaf certificate. If the DER byte equality check fails
+// it's mississuance, but it's better to know about the problem sooner than
+// later. The caller is responsible for passing the appropriate valid
+// certificate bytes in the correct position.
+func tbsCertIsDeterministic(lintCertBytes []byte, leafCertBytes []byte) error {
+	if core.IsAnyNilOrZero(lintCertBytes, leafCertBytes) {
+		return fmt.Errorf("lintCertBytes of leafCertBytes were nil")
+	}
+
+	// extractTBSCertBytes is a partial copy of //crypto/x509/parser.go to
+	// extract the RawTBSCertificate field from given DER bytes. It the
+	// RawTBSCertificate field bytes or an error if the given bytes cannot be
+	// parsed. This is far more performant than parsing the entire *Certificate
+	// structure with x509.ParseCertificate().
+	//
+	// RFC 5280, Section 4.1
+	//    Certificate  ::=  SEQUENCE  {
+	//      tbsCertificate       TBSCertificate,
+	//      signatureAlgorithm   AlgorithmIdentifier,
+	//      signatureValue       BIT STRING  }
+	//
+	//    TBSCertificate  ::=  SEQUENCE  {
+	//      ..
+	extractTBSCertBytes := func(inputDERBytes *[]byte) ([]byte, error) {
+		input := cryptobyte.String(*inputDERBytes)
+
+		// Extract the Certificate bytes
+		if !input.ReadASN1(&input, cryptobyte_asn1.SEQUENCE) {
+			return nil, errors.New("malformed certificate")
+		}
+
+		var tbs cryptobyte.String
+		// Extract the TBSCertificate bytes from the Certificate bytes
+		if !input.ReadASN1(&tbs, cryptobyte_asn1.SEQUENCE) {
+			return nil, errors.New("malformed tbs certificate")
+		}
+
+		if tbs.Empty() {
+			return nil, errors.New("parsed RawTBSCertificate field was empty")
+		}
+
+		return tbs, nil
+	}
+
+	lintRawTBSCert, err := extractTBSCertBytes(&lintCertBytes)
+	if err != nil {
+		return fmt.Errorf("while extracting lint TBS cert: %w", err)
+	}
+
+	leafRawTBSCert, err := extractTBSCertBytes(&leafCertBytes)
+	if err != nil {
+		return fmt.Errorf("while extracting leaf TBS cert: %w", err)
+	}
+
+	if !bytes.Equal(lintRawTBSCert, leafRawTBSCert) {
+		return fmt.Errorf("mismatch between lintCert and leafCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintRawTBSCert, leafRawTBSCert)
+	}
+
+	return nil
 }

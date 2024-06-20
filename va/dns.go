@@ -48,7 +48,7 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 	return
 }
 
-func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, error) {
+func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.DNS {
 		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
 		return nil, berrors.MalformedError("Identifier type for DNS was not itself DNS")
@@ -56,7 +56,7 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 
 	// Compute the digest of the key authorization file
 	h := sha256.New()
-	h.Write([]byte(challenge.ProvidedKeyAuthorization))
+	h.Write([]byte(keyAuthorization))
 	authorizedKeysDigest := base64.RawURLEncoding.EncodeToString(h.Sum(nil))
 
 	// Look for the required record in the DNS

@@ -235,6 +235,10 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *co
 	return &emptypb.Empty{}, nil
 }
 
+func (ra *MockRegistrationAuthority) UnpauseAccount(context.Context, *rapb.UnpauseAccountRequest, ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
 func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	created := time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC)
 	expires := time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC)
@@ -297,12 +301,6 @@ func loadKey(t *testing.T, keyBytes []byte) crypto.Signer {
 	return nil
 }
 
-var testKeyPolicy = goodkey.KeyPolicy{
-	AllowRSA:           true,
-	AllowECDSANISTP256: true,
-	AllowECDSANISTP384: true,
-}
-
 var ctx = context.Background()
 
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
@@ -310,6 +308,9 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 
 	fc := clock.NewFake()
 	stats := metrics.NoopRegisterer
+
+	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
+	test.AssertNotError(t, err, "creating test keypolicy")
 
 	certChains := map[issuance.NameID][][]byte{}
 	issuerCertificates := map[issuance.NameID]*issuance.Certificate{}
@@ -2467,7 +2468,7 @@ func TestNewOrder(t *testing.T) {
 	nonDNSIdentifierBody := `
 	{
 		"Identifiers": [
-		  {"type": "dns",    "value": "not-example.com"},
+			{"type": "dns",    "value": "not-example.com"},
 			{"type": "dns",    "value": "www.not-example.com"},
 			{"type": "fakeID", "value": "www.i-am-21.com"}
 		]
@@ -2477,8 +2478,16 @@ func TestNewOrder(t *testing.T) {
 	validOrderBody := `
 	{
 		"Identifiers": [
-		  {"type": "dns", "value": "not-example.com"},
+			{"type": "dns", "value": "not-example.com"},
 			{"type": "dns", "value": "www.not-example.com"}
+		]
+	}`
+
+	validOrderBodyWithMixedCaseIdentifiers := `
+	{
+		"Identifiers": [
+			{"type": "dns", "value": "Not-Example.com"},
+			{"type": "dns", "value": "WWW.Not-example.com"}
 		]
 	}`
 
@@ -2540,6 +2549,11 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request included empty domain name","status":400}`,
 		},
 		{
+			Name:         "POST, invalid domain name identifier",
+			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":"example.invalid"}]}`),
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"Invalid identifiers requested :: Cannot issue for \"example.invalid\": Domain name does not end with a valid public suffix (TLD)","status":400}`,
+		},
+		{
 			Name:         "POST, no identifiers in payload",
 			Request:      signAndPost(signer, targetPath, signedURL, "{}"),
 			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request did not specify any identifiers","status":400}`,
@@ -2578,8 +2592,8 @@ func TestNewOrder(t *testing.T) {
 				"status": "pending",
 				"expires": "2021-02-01T01:01:01Z",
 				"identifiers": [
-					{ "type": "dns", "value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"},
-					{ "type": "dns", "value": "not-example.com"}
+					{ "type": "dns", "value": "not-example.com"},
+					{ "type": "dns", "value": "thisreallylongexampledomainisabytelongerthanthemaxcnbytelimit.com"}
 				],
 				"authorizations": [
 					"http://localhost/acme/authz-v3/1"
@@ -2590,6 +2604,23 @@ func TestNewOrder(t *testing.T) {
 		{
 			Name:    "POST, good payload",
 			Request: signAndPost(signer, targetPath, signedURL, validOrderBody),
+			ExpectedBody: `
+					{
+						"status": "pending",
+						"expires": "2021-02-01T01:01:01Z",
+						"identifiers": [
+							{ "type": "dns", "value": "not-example.com"},
+							{ "type": "dns", "value": "www.not-example.com"}
+						],
+						"authorizations": [
+							"http://localhost/acme/authz-v3/1"
+						],
+						"finalize": "http://localhost/acme/finalize/1/1"
+					}`,
+		},
+		{
+			Name:    "POST, good payload, but when the input had mixed case",
+			Request: signAndPost(signer, targetPath, signedURL, validOrderBodyWithMixedCaseIdentifiers),
 			ExpectedBody: `
 					{
 						"status": "pending",
@@ -3323,7 +3354,6 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 	chal := authz.Challenges[0]
 	test.AssertEquals(t, chal.URL, "http://localhost/acme/chall-v3/12345/po1V2w")
-	test.AssertEquals(t, chal.URI, "")
 	test.AssertEquals(t, chal.ProvidedKeyAuthorization, "")
 }
 
@@ -3634,111 +3664,6 @@ func TestIncidentARI(t *testing.T) {
 	test.AssertEquals(t, ri.SuggestedWindow.End.After(ri.SuggestedWindow.Start), true)
 	// The end of the window should also be in the past.
 	test.AssertEquals(t, ri.SuggestedWindow.End.Before(wfe.clk.Now()), true)
-}
-
-type mockSAWithSerialMetadata struct {
-	sapb.StorageAuthorityReadOnlyClient
-	serial string
-	regID  int64
-}
-
-// GetSerialMetadata returns fake metadata if it recognizes the given serial.
-func (sa *mockSAWithSerialMetadata) GetSerialMetadata(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
-	if req.Serial != sa.serial {
-		return nil, berrors.NotFoundError("metadata for certificate with serial %q not found", req.Serial)
-	}
-
-	return &sapb.SerialMetadata{
-		Serial:         sa.serial,
-		RegistrationID: sa.regID,
-	}, nil
-}
-
-// TestUpdateARI tests that requests for real certs issued to the correct regID
-// are accepted, while all others result in errors.
-func TestUpdateARI(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-
-	features.Set(features.Config{ServeRenewalInfo: true})
-	defer features.Reset()
-
-	makePost := func(regID int64, body string) *http.Request {
-		signedURL := fmt.Sprintf("http://localhost%s", renewalInfoPath)
-		_, _, jwsBody := signer.byKeyID(regID, nil, signedURL, body)
-		return makePostRequestWithPath(renewalInfoPath, jwsBody)
-	}
-
-	type jsonReq struct {
-		CertID   string `json:"certID"`
-		Replaced bool   `json:"replaced"`
-	}
-
-	// Load a cert, its issuer, and use OCSP to compute issuer name/key hashes.
-	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
-	test.AssertNotError(t, err, "failed to load test certificate")
-
-	// Set up the mock SA.
-	msa := mockSAWithSerialMetadata{wfe.sa, core.SerialToString(cert.SerialNumber), 1}
-	wfe.sa = &msa
-
-	// An empty POST should result in an error.
-	req := makePost(1, "")
-	responseWriter := httptest.NewRecorder()
-	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
-
-	// Non-certID base64 should result in an error.
-	req = makePost(1, "aGVsbG8gd29ybGQK") // $ echo "hello world" | base64
-	responseWriter = httptest.NewRecorder()
-	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
-
-	// Unrecognized serial should result in an error.
-	certID := fmt.Sprintf("%s.%s",
-		base64.RawURLEncoding.EncodeToString(cert.AuthorityKeyId),
-		base64.RawURLEncoding.EncodeToString(big.NewInt(12345).Bytes()),
-	)
-	body, err := json.Marshal(jsonReq{
-		CertID:   certID,
-		Replaced: true,
-	})
-	test.AssertNotError(t, err, "failed to marshal request body")
-	req = makePost(1, string(body))
-	responseWriter = httptest.NewRecorder()
-	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
-
-	// Recognized serial but owned by the wrong account should result in an error.
-	msa.regID = 2
-	certID = fmt.Sprintf("%s.%s",
-		base64.RawURLEncoding.EncodeToString(cert.AuthorityKeyId),
-		base64.RawURLEncoding.EncodeToString(cert.SerialNumber.Bytes()),
-	)
-	body, err = json.Marshal(jsonReq{
-		CertID:   certID,
-		Replaced: true,
-	})
-	test.AssertNotError(t, err, "failed to marshal request body")
-	req = makePost(1, string(body))
-	responseWriter = httptest.NewRecorder()
-	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
-
-	// Recognized serial and owned by the right account should work.
-	msa.regID = 1
-	certID = fmt.Sprintf("%s.%s",
-		base64.RawURLEncoding.EncodeToString(cert.AuthorityKeyId),
-		base64.RawURLEncoding.EncodeToString(cert.SerialNumber.Bytes()),
-	)
-	body, err = json.Marshal(jsonReq{
-		CertID:   certID,
-		Replaced: true,
-	})
-	test.AssertNotError(t, err, "failed to marshal request body")
-	req = makePost(1, string(body))
-	responseWriter = httptest.NewRecorder()
-	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 }
 
 func TestOldTLSInbound(t *testing.T) {

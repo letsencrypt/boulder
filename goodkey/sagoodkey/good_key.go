@@ -14,9 +14,9 @@ import (
 // significantly simpler.
 type BlockedKeyCheckFunc func(context.Context, *sapb.SPKIHash, ...grpc.CallOption) (*sapb.Exists, error)
 
-// NewKeyPolicy returns a KeyPolicy that uses a sa.BlockedKey method.
-// See goodkey.NewKeyPolicy for more details about the policy itself.
-func NewKeyPolicy(config *goodkey.Config, bkc BlockedKeyCheckFunc) (goodkey.KeyPolicy, error) {
+// NewPolicy returns a KeyPolicy that uses a sa.BlockedKey method.
+// See goodkey.NewPolicy for more details about the policy itself.
+func NewPolicy(config *goodkey.Config, bkc BlockedKeyCheckFunc) (goodkey.KeyPolicy, error) {
 	var genericCheck goodkey.BlockedKeyCheckFunc
 	if bkc != nil {
 		genericCheck = func(ctx context.Context, keyHash []byte) (bool, error) {
@@ -28,5 +28,5 @@ func NewKeyPolicy(config *goodkey.Config, bkc BlockedKeyCheckFunc) (goodkey.KeyP
 		}
 	}
 
-	return goodkey.NewKeyPolicy(config, genericCheck)
+	return goodkey.NewPolicy(config, genericCheck)
 }

@@ -8,6 +8,10 @@ import (
 	"io"
 	"strings"
 
+	"google.golang.org/grpc"
+
+	"github.com/prometheus/client_golang/prometheus"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -17,12 +21,15 @@ import (
 )
 
 type crlImpl struct {
-	capb.UnimplementedCRLGeneratorServer
+	capb.UnsafeCRLGeneratorServer
 	issuers   map[issuance.NameID]*issuance.Issuer
 	profile   *issuance.CRLProfile
 	maxLogLen int
 	log       blog.Logger
+	metrics   *caMetrics
 }
+
+var _ capb.CRLGeneratorServer = (*crlImpl)(nil)
 
 // NewCRLImpl returns a new object which fulfils the ca.proto CRLGenerator
 // interface. It uses the list of issuers to determine what issuers it can
@@ -32,7 +39,9 @@ func NewCRLImpl(
 	issuers []*issuance.Issuer,
 	profileConfig issuance.CRLProfileConfig,
 	maxLogLen int,
-	logger blog.Logger) (*crlImpl, error) {
+	logger blog.Logger,
+	metrics *caMetrics,
+) (*crlImpl, error) {
 	issuersByNameID := make(map[issuance.NameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
@@ -48,10 +57,11 @@ func NewCRLImpl(
 		profile:   profile,
 		maxLogLen: maxLogLen,
 		log:       logger,
+		metrics:   metrics,
 	}, nil
 }
 
-func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error {
+func (ci *crlImpl) GenerateCRL(stream grpc.BidiStreamingServer[capb.GenerateCRLRequest, capb.GenerateCRLResponse]) error {
 	var issuer *issuance.Issuer
 	var req *issuance.CRLRequest
 	rcs := make([]x509.RevocationListEntry, 0)
@@ -130,8 +140,10 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 
 	crlBytes, err := issuer.IssueCRL(ci.profile, req)
 	if err != nil {
+		ci.metrics.noteSignError(err)
 		return fmt.Errorf("signing crl: %w", err)
 	}
+	ci.metrics.signatureCount.With(prometheus.Labels{"purpose": "crl", "issuer": issuer.Name()}).Inc()
 
 	hash := sha256.Sum256(crlBytes)
 	ci.log.AuditInfof(

@@ -90,7 +90,7 @@ type mockSARO struct {
 	sapb.StorageAuthorityReadOnlyClient
 }
 
-func (sa *mockSARO) GetSerialsByKey(ctx context.Context, _ *sapb.SPKIHash, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByKeyClient, error) {
+func (sa *mockSARO) GetSerialsByKey(ctx context.Context, _ *sapb.SPKIHash, _ ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.Serial], error) {
 	return &mocks.ServerStreamClient[sapb.Serial]{}, nil
 }
 

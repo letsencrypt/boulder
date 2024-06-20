@@ -18,6 +18,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/crl"
@@ -35,7 +36,7 @@ type simpleS3 interface {
 }
 
 type crlStorer struct {
-	cspb.UnimplementedCRLStorerServer
+	cspb.UnsafeCRLStorerServer
 	s3Client         simpleS3
 	s3Bucket         string
 	issuers          map[issuance.NameID]*issuance.Certificate
@@ -45,6 +46,8 @@ type crlStorer struct {
 	log              blog.Logger
 	clk              clock.Clock
 }
+
+var _ cspb.CRLStorerServer = (*crlStorer)(nil)
 
 func New(
 	issuers []*issuance.Certificate,
@@ -97,7 +100,7 @@ func New(
 // UploadCRL implements the gRPC method of the same name. It takes a stream of
 // bytes as its input, parses and runs some sanity checks on the CRL, and then
 // uploads it to S3.
-func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
+func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLRequest, emptypb.Empty]) error {
 	var issuer *issuance.Certificate
 	var shardIdx int64
 	var crlNumber *big.Int

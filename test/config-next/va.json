@@ -38,8 +38,6 @@
 			}
 		},
 		"features": {
-			"EnforceMultiVA": true,
-			"MultiVAFullResults": true,
 			"EnforceMultiCAA": true,
 			"MultiCAAFullResults": true,
 			"DOH": true

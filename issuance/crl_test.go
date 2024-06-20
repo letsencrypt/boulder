@@ -186,27 +186,29 @@ func TestIssueCRL(t *testing.T) {
 //
 // https://datatracker.ietf.org/doc/html/rfc5280#appendix-A.1 page 118
 //
-//		TBSCertList  ::=  SEQUENCE  {
-//			   ..
-//				revokedCertificates     SEQUENCE OF SEQUENCE  {
-//			   ..
-//		    } OPTIONAL,
-//	     }
+//	CertificateList  ::=  SEQUENCE  {
+//		tbsCertList          TBSCertList
+//	     ..
+//	}
+//
+//	TBSCertList  ::=  SEQUENCE  {
+//		..
+//		revokedCertificates     SEQUENCE OF SEQUENCE  {
+//		..
+//		} OPTIONAL,
+//	}
 func revokedCertificatesFieldExists(der []byte) (bool, error) {
 	input := cryptobyte.String(der)
-	if !input.ReadASN1Element(&input, cryptobyte_asn1.SEQUENCE) {
-		return false, errors.New("x509: malformed crl")
-	}
+
+	// Extract the CertificateList
 	if !input.ReadASN1(&input, cryptobyte_asn1.SEQUENCE) {
-		return false, errors.New("x509: malformed crl")
+		return false, errors.New("malformed crl")
 	}
 
 	var tbs cryptobyte.String
-	if !input.ReadASN1Element(&tbs, cryptobyte_asn1.SEQUENCE) {
-		return false, errors.New("x509: malformed tbs crl")
-	}
-	if !tbs.ReadASN1(&tbs, cryptobyte_asn1.SEQUENCE) {
-		return false, errors.New("x509: malformed tbs crl")
+	// Extract the TBSCertList from the CertificateList
+	if !input.ReadASN1(&tbs, cryptobyte_asn1.SEQUENCE) {
+		return false, errors.New("malformed tbs crl")
 	}
 
 	// Skip optional version

@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/ratelimits"
 
 	// 'grpc/noncebalancer' is imported for its init function.
@@ -1207,10 +1208,6 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	// Update the challenge URL to be relative to the HTTP request Host
 	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengePath, authz.ID, challenge.StringID()))
 
-	// Ensure the challenge URI isn't written by setting it to
-	// a value that the JSON omitempty tag considers empty
-	challenge.URI = ""
-
 	// ACMEv2 never sends the KeyAuthorization back in a challenge object.
 	challenge.ProvidedKeyAuthorization = ""
 
@@ -2048,6 +2045,11 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	return respObj
 }
 
+// newNewOrderLimitTransactions constructs a set of rate limit transactions to
+// evaluate for a new-order request.
+//
+// Precondition: names must be a list of DNS names that all pass
+// policy.WellFormedDomainNames.
 func (wfe *WebFrontEndImpl) newNewOrderLimitTransactions(regId int64, names []string) []ratelimits.Transaction {
 	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Limiter is disabled.
@@ -2057,7 +2059,7 @@ func (wfe *WebFrontEndImpl) newNewOrderLimitTransactions(regId int64, names []st
 	logTxnErr := func(err error, limit ratelimits.Name) {
 		// TODO(#5545): Once key-value rate limits are authoritative this log
 		// line should be removed in favor of returning the error.
-		wfe.log.Errf("constructing rate limit transaction for %s rate limit: %s", limit, err)
+		wfe.log.Infof("error constructing rate limit transaction for %s rate limit: %s", limit, err)
 	}
 
 	var transactions []ratelimits.Transaction
@@ -2333,6 +2335,17 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			return
 		}
 		names[i] = ident.Value
+	}
+
+	names = core.UniqueLowerNames(names)
+	err = policy.WellFormedDomainNames(names)
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Invalid identifiers requested"), nil)
+		return
+	}
+	if len(names) > wfe.maxNames {
+		wfe.sendError(response, logEvent, probs.Malformed("Order cannot contain more than %d DNS names", wfe.maxNames), nil)
+		return
 	}
 
 	logEvent.DNSNames = names
@@ -2673,11 +2686,6 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	if request.Method == http.MethodPost {
-		wfe.UpdateRenewal(ctx, logEvent, response, request)
-		return
-	}
-
 	if len(request.URL.Path) == 0 {
 		wfe.sendError(response, logEvent, probs.NotFound("Must specify a request path"), nil)
 		return
@@ -2709,59 +2717,6 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 		return
 	}
-}
-
-// UpdateRenewal is used by the client to inform the server that they have
-// replaced the certificate in question, so it can be safely revoked. All
-// requests must be authenticated to the account which ordered the cert.
-func (wfe *WebFrontEndImpl) UpdateRenewal(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	if !features.Get().ServeRenewalInfo {
-		wfe.sendError(response, logEvent, probs.NotFound("Feature not enabled"), nil)
-		return
-	}
-
-	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
-	addRequesterHeader(response, logEvent.Requester)
-	if prob != nil {
-		// validPOSTForAccount handles its own setting of logEvent.Errors
-		wfe.sendError(response, logEvent, prob, nil)
-		return
-	}
-
-	var updateRenewalRequest struct {
-		CertID   string `json:"certID"`
-		Replaced bool   `json:"replaced"`
-	}
-	err := json.Unmarshal(body, &updateRenewalRequest)
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Unable to unmarshal RenewalInfo POST request body"), err)
-		return
-	}
-
-	decodedSerial, err := parseARICertID(updateRenewalRequest.CertID, wfe.issuerCertificates)
-	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While parsing ARI CertID an error occurred"), err)
-		return
-	}
-
-	// We can do all of our processing based just on the serial, because Boulder
-	// does not re-use the same serial across multiple issuers.
-	logEvent.Extra["RequestedSerial"] = decodedSerial
-
-	metadata, err := wfe.sa.GetSerialMetadata(ctx, &sapb.Serial{Serial: decodedSerial})
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), err)
-		return
-	}
-
-	if acct.ID != metadata.RegistrationID {
-		wfe.sendError(response, logEvent, probs.Unauthorized("Account ID doesn't match ID for certificate"), err)
-		return
-	}
-
-	// TODO(#6732): Write the replaced status to persistent storage.
-
-	response.WriteHeader(http.StatusOK)
 }
 
 func extractRequesterIP(req *http.Request) (net.IP, error) {

@@ -1599,7 +1599,7 @@ func TestValidSelfAuthenticatedPOSTGoodKeyErrors(t *testing.T) {
 		return false, context.DeadlineExceeded
 	}
 
-	kp, err := goodkey.NewKeyPolicy(&goodkey.Config{}, timeoutErrCheckFunc)
+	kp, err := goodkey.NewPolicy(nil, timeoutErrCheckFunc)
 	test.AssertNotError(t, err, "making key policy")
 
 	wfe.keyPolicy = kp
@@ -1614,7 +1614,7 @@ func TestValidSelfAuthenticatedPOSTGoodKeyErrors(t *testing.T) {
 		return false, fmt.Errorf("oh no: %w", goodkey.ErrBadKey)
 	}
 
-	kp, err = goodkey.NewKeyPolicy(&goodkey.Config{}, badKeyCheckFunc)
+	kp, err = goodkey.NewPolicy(nil, badKeyCheckFunc)
 	test.AssertNotError(t, err, "making key policy")
 
 	wfe.keyPolicy = kp

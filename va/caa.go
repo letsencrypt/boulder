@@ -212,7 +212,7 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 	// If we are using `features.MultiCAAFullResults` then we haven't returned
 	// early and can now log the differential between what the primary VA saw and
 	// what all of the remote VAs saw.
-	va.logRemoteDifferentials(
+	va.logRemoteResults(
 		domain,
 		acctID,
 		challengeType,

@@ -6,10 +6,11 @@ import (
 	"os"
 	"testing"
 
+	yaml "gopkg.in/yaml.v3"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/web"
-	yaml "gopkg.in/yaml.v3"
 )
 
 func TestBlockedKeys(t *testing.T) {
@@ -76,11 +77,9 @@ func TestBlockedKeys(t *testing.T) {
 	test.AssertNotError(t, err, "unexpected error loading empty blockedKeys yaml file")
 
 	// Create a test policy that doesn't reference the blocked list
-	testingPolicy := &KeyPolicy{
-		AllowRSA:           true,
-		AllowECDSANISTP256: true,
-		AllowECDSANISTP384: true,
-	}
+	testingPolicy := &KeyPolicy{allowedKeys: AllowedKeys{
+		RSA2048: true, RSA3072: true, RSA4096: true, ECDSAP256: true, ECDSAP384: true,
+	}}
 
 	// All of the test keys should not be considered blocked
 	for _, k := range blockedKeys {

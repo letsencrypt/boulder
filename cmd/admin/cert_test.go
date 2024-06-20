@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
-	"io"
 	"os"
 	"path"
 	"slices"
@@ -25,6 +24,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/mocks"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -41,23 +41,12 @@ type mockSAWithIncident struct {
 
 // SerialsForIncident returns a fake gRPC stream client object which itself
 // will return the mockSAWithIncident's serials in order.
-func (msa *mockSAWithIncident) SerialsForIncident(_ context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_SerialsForIncidentClient, error) {
-	return &mockSerialsForIncidentClient{unsentSerials: msa.incidentSerials}, nil
-}
-
-type mockSerialsForIncidentClient struct {
-	grpc.ClientStream
-	unsentSerials []string
-}
-
-// Recv returns the next serial from the pre-loaded list.
-func (c *mockSerialsForIncidentClient) Recv() (*sapb.IncidentSerial, error) {
-	if len(c.unsentSerials) > 0 {
-		res := c.unsentSerials[0]
-		c.unsentSerials = c.unsentSerials[1:]
-		return &sapb.IncidentSerial{Serial: res}, nil
+func (msa *mockSAWithIncident) SerialsForIncident(_ context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.IncidentSerial], error) {
+	fakeResults := make([]*sapb.IncidentSerial, len(msa.incidentSerials))
+	for i, serial := range msa.incidentSerials {
+		fakeResults[i] = &sapb.IncidentSerial{Serial: serial}
 	}
-	return nil, io.EOF
+	return &mocks.ServerStreamClient[sapb.IncidentSerial]{Results: fakeResults}, nil
 }
 
 func TestSerialsFromIncidentTable(t *testing.T) {
@@ -99,26 +88,15 @@ type mockSAWithKey struct {
 
 // GetSerialsByKey returns a fake gRPC stream client object which itself
 // will return the mockSAWithKey's serials in order.
-func (msa *mockSAWithKey) GetSerialsByKey(_ context.Context, req *sapb.SPKIHash, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByKeyClient, error) {
+func (msa *mockSAWithKey) GetSerialsByKey(_ context.Context, req *sapb.SPKIHash, _ ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.Serial], error) {
 	if !slices.Equal(req.KeyHash, msa.keyHash) {
-		return &mockSerialsClient{}, nil
+		return &mocks.ServerStreamClient[sapb.Serial]{}, nil
 	}
-	return &mockSerialsClient{unsentSerials: msa.serials}, nil
-}
-
-type mockSerialsClient struct {
-	grpc.ClientStream
-	unsentSerials []string
-}
-
-// Recv returns the next serial from the pre-loaded list.
-func (c *mockSerialsClient) Recv() (*sapb.Serial, error) {
-	if len(c.unsentSerials) > 0 {
-		res := c.unsentSerials[0]
-		c.unsentSerials = c.unsentSerials[1:]
-		return &sapb.Serial{Serial: res}, nil
+	fakeResults := make([]*sapb.Serial, len(msa.serials))
+	for i, serial := range msa.serials {
+		fakeResults[i] = &sapb.Serial{Serial: serial}
 	}
-	return nil, io.EOF
+	return &mocks.ServerStreamClient[sapb.Serial]{Results: fakeResults}, nil
 }
 
 func TestSerialsFromPrivateKey(t *testing.T) {
@@ -162,13 +140,17 @@ func (msa *mockSAWithAccount) GetRegistration(_ context.Context, req *sapb.Regis
 	return &corepb.Registration{}, nil
 }
 
-// SerialsForIncident returns a fake gRPC stream client object which itself
+// GetSerialsByAccount returns a fake gRPC stream client object which itself
 // will return the mockSAWithAccount's serials in order.
-func (msa *mockSAWithAccount) GetSerialsByAccount(_ context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetSerialsByAccountClient, error) {
+func (msa *mockSAWithAccount) GetSerialsByAccount(_ context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.Serial], error) {
 	if req.Id != msa.regID {
-		return &mockSerialsClient{}, nil
+		return &mocks.ServerStreamClient[sapb.Serial]{}, nil
 	}
-	return &mockSerialsClient{unsentSerials: msa.serials}, nil
+	fakeResults := make([]*sapb.Serial, len(msa.serials))
+	for i, serial := range msa.serials {
+		fakeResults[i] = &sapb.Serial{Serial: serial}
+	}
+	return &mocks.ServerStreamClient[sapb.Serial]{Results: fakeResults}, nil
 }
 
 func TestSerialsFromRegID(t *testing.T) {

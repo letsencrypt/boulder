@@ -33,10 +33,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestImplementation(t *testing.T) {
-	test.AssertImplementsGRPCServer(t, &Impl{}, pubpb.UnimplementedPublisherServer{})
-}
-
 var log = blog.UseMock()
 var ctx = context.Background()
 

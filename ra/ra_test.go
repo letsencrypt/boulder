@@ -69,10 +69,6 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
-func TestImplementation(t *testing.T) {
-	test.AssertImplementsGRPCServer(t, &RegistrationAuthorityImpl{}, rapb.UnimplementedRegistrationAuthorityServer{})
-}
-
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
 	t.Helper()
 
@@ -227,12 +223,6 @@ var (
 
 	log = blog.UseMock()
 )
-
-var testKeyPolicy = goodkey.KeyPolicy{
-	AllowRSA:           true,
-	AllowECDSANISTP256: true,
-	AllowECDSANISTP384: true,
-}
 
 var ctx = context.Background()
 
@@ -400,6 +390,9 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		txnBuilder, err = ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
 		test.AssertNotError(t, err, "making transaction composer")
 	}
+
+	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
+	test.AssertNotError(t, err, "making keypolicy")
 
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
