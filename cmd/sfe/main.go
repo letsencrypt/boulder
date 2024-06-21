@@ -52,17 +52,10 @@ type Config struct {
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
 
-		Unpause struct {
-			// Seed is a secret that should contain 256 bits (32 bytes) of
-			// random data used to derive an x/crypto/ed25519 keypair (e.g. the
-			// output of `openssl rand -hex 16`). In a multi-DC deployment this
-			// value should be the same across all boulder-wfe and sfe
-			// instances.
-			Seed cmd.PasswordConfig `validate:"-"`
-		}
-
 		Features features.Config
 	}
+
+	Unpause cmd.UnpauseConfig
 
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
@@ -73,13 +66,11 @@ type Config struct {
 
 func setupSFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, string) {
 	var unpauseSeed string
-	if c.SFE.Unpause.Seed.PasswordFile != "" {
+	if c.Unpause.Seed.PasswordFile != "" {
 		var err error
-		unpauseSeed, err = c.SFE.Unpause.Seed.Pass()
-		cmd.FailOnError(err, "Failed to load unpauseKey")
-		if unpauseSeed == "" {
-			cmd.Fail("unpauseKey must not be empty")
-		}
+		unpauseSeed, err = c.Unpause.Seed.Pass()
+		cmd.FailOnError(err, "Failed to load unpauseSeed")
+
 		// The seed is used to generate an x/crypto/ed25519 keypair which
 		// requires a SeedSize of 32 bytes or the generator will panic.
 		if len(unpauseSeed) != 32 {

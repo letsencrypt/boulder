@@ -553,3 +553,12 @@ type DNSProvider struct {
 	// 1 1 8153 0a4d4d4d.addr.dc1.consul.
 	SRVLookup ServiceDomain `validate:"required"`
 }
+
+type UnpauseConfig struct {
+	// Seed is a secret that should contain 256 bits (32 bytes) of
+	// random data used to derive an x/crypto/ed25519 keypair (e.g. the
+	// output of `openssl rand -hex 16`). In a multi-DC deployment this
+	// value should be the same across all boulder-wfe and sfe
+	// instances.
+	Seed PasswordConfig `validate:"-"`
+}

@@ -7,11 +7,6 @@
 		"serverKeyPath": "test/certs/ipki/boulder/key.pem",
 		"timeout": "30s",
 		"shutdownStopTimeout": "10s",
-		"unpause": {
-			"seed": {
-				"passwordFile": "test/secrets/sfe_unpauseKey_seed"
-			}
-		},
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/sfe.boulder/cert.pem",
@@ -38,6 +33,11 @@
 			"hostOverride": "sa.boulder"
 		},
 		"features": {}
+	},
+	"unpause": {
+		"seed": {
+			"passwordFile": "test/secrets/sfe_unpauseKey_seed"
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 6,
