@@ -44,9 +44,6 @@ type Config struct {
 		// shutting down any listening servers.
 		ShutdownStopTimeout config.Duration
 
-		// AllowOrigins is for setting CORS on OPTIONS requests
-		AllowOrigins []string
-
 		ServerCertificatePath string `validate:"required_with=TLSListenAddress"`
 		ServerKeyPath         string `validate:"required_with=TLSListenAddress"`
 
@@ -167,7 +164,6 @@ func main() {
 		unpauseSeed,
 	)
 	cmd.FailOnError(err, "Unable to create SFE")
-	sfei.AllowOrigins = c.SFE.AllowOrigins
 
 	logger.Infof("Server running, listening on %s....", c.SFE.ListenAddress)
 	handler := sfei.Handler(stats, c.OpenTelemetryHTTPConfig.Options()...)

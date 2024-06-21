@@ -5,9 +5,6 @@
 		"debugAddr": ":8015",
 		"serverCertificatePath": "test/certs/ipki/boulder/cert.pem",
 		"serverKeyPath": "test/certs/ipki/boulder/key.pem",
-		"allowOrigins": [
-			"*"
-		],
 		"timeout": "30s",
 		"shutdownStopTimeout": "10s",
 		"unpause": {

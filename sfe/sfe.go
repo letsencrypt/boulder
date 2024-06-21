@@ -65,9 +65,6 @@ type SelfServiceFrontEndImpl struct {
 	// requestTimeout is the per-request overall timeout.
 	requestTimeout time.Duration
 
-	// CORS settings
-	AllowOrigins []string
-
 	// unpausePubKey is a x/crypto/ed25519 public key derived from a seed value
 	// shared by the SFE and WFE. It is used to validate incoming JWT signatures
 	// on the unpause endpoint.
