@@ -142,7 +142,6 @@ func (sfe *SelfServiceFrontEndImpl) Index(response http.ResponseWriter, request 
 		response.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-
 	renderTemplate(response, "index.html", nil)
 }
 

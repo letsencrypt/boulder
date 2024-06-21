@@ -25,6 +25,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
 
@@ -109,6 +110,10 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, in *rapb
 	return in.Order, nil
 }
 
+func mustParseURL(s string) *url.URL {
+	return must.Do(url.Parse(s))
+}
+
 // openssl rand -hex 16
 const unpauseSeed = "42c812bab780e38f80cc9578cebe3f96"
 
@@ -137,33 +142,71 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 	return sfe, fc
 }
 
-func TestIndex(t *testing.T) {
+func TestIndexPath(t *testing.T) {
 	t.Parallel()
 	sfe, _ := setupSFE(t)
 	responseWriter := httptest.NewRecorder()
-	url, _ := url.Parse("/")
 	sfe.Index(responseWriter, &http.Request{
 		Method: "GET",
-		URL:    url,
+		URL:    mustParseURL("/"),
 	})
 
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertNotEquals(t, responseWriter.Body.String(), "404 page not found\n")
+	test.AssertContains(t, responseWriter.Body.String(), "<title>Self-Service Frontend</title>")
+}
 
-	/*
-			test.Assert(t, strings.Contains(responseWriter.Body.String(), directoryPath),
-				"directory path not found")
-		test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "public, max-age=0, no-cache")
+func TestBuildIDPath(t *testing.T) {
+	t.Parallel()
+	sfe, _ := setupSFE(t)
+	responseWriter := httptest.NewRecorder()
+	sfe.BuildID(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL("/build"),
+	})
 
-		responseWriter.Body.Reset()
-		responseWriter.Header().Del("Cache-Control")
-		url, _ = url.Parse("/foo")
-		wfe.Index(ctx, newRequestEvent(), responseWriter, &http.Request{
-			URL: url,
-		})
-		test.AssertEquals(t, responseWriter.Body.String(), "404 page not found\n")
-		test.AssertEquals(t, responseWriter.Header().Get("Cache-Control"), "")
-	*/
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertContains(t, responseWriter.Body.String(), "Boulder=(")
+}
+
+func TestUnpausePath(t *testing.T) {
+	t.Parallel()
+	sfe, _ := setupSFE(t)
+
+	// GET with no JWT
+	responseWriter := httptest.NewRecorder()
+	sfe.Unpause(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(unpausePath),
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertContains(t, responseWriter.Body.String(), "significant number of failed validation attempts without any recent")
+
+	// GET with a JWT
+	responseWriter = httptest.NewRecorder()
+	sfe.Unpause(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(fmt.Sprintf(unpausePath + "?jwt=x")),
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertContains(t, responseWriter.Body.String(), "This action will allow you to resume")
+
+	// POST with no JWT
+	responseWriter = httptest.NewRecorder()
+	sfe.Unpause(responseWriter, &http.Request{
+		Method: "POST",
+		URL:    mustParseURL(unpausePath),
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertContains(t, responseWriter.Body.String(), "There is no action for you to take.")
+
+	// POST with invalid JWT
+	responseWriter = httptest.NewRecorder()
+	sfe.Unpause(responseWriter, &http.Request{
+		Method: "POST",
+		URL:    mustParseURL(fmt.Sprintf(unpausePath + "?jwt=x")),
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertContains(t, responseWriter.Body.String(), "An error was encountered when attempting to unpause")
 }
 
 // makeJWTForAccount is a standin for a WFE method that returns an unpauseJWT or
