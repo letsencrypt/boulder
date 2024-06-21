@@ -620,39 +620,6 @@ func link(url, relation string) string {
 	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
 }
 
-func (wfe *WebFrontEndImpl) newNewAccountLimitTransactions(ip net.IP) []ratelimits.Transaction {
-	if wfe.limiter == nil && wfe.txnBuilder == nil {
-		// Limiter is disabled.
-		return nil
-	}
-
-	warn := func(err error, limit ratelimits.Name) {
-		// TODO(#5545): Once key-value rate limits are authoritative this log
-		// line should be removed in favor of returning the error.
-		wfe.log.Warningf("checking %s rate limit: %s", limit, err)
-	}
-
-	var transactions []ratelimits.Transaction
-	txn, err := wfe.txnBuilder.RegistrationsPerIPAddressTransaction(ip)
-	if err != nil {
-		warn(err, ratelimits.NewRegistrationsPerIPAddress)
-		return nil
-	}
-	transactions = append(transactions, txn)
-
-	if ip.To4() != nil {
-		// This request was made from an IPv4 address.
-		return transactions
-	}
-
-	txn, err = wfe.txnBuilder.RegistrationsPerIPv6RangeTransaction(ip)
-	if err != nil {
-		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
-		return nil
-	}
-	return append(transactions, txn)
-}
-
 // checkNewAccountLimits checks whether sufficient limit quota exists for the
 // creation of a new account. If so, that quota is spent. If an error is
 // encountered during the check, it is logged but not returned.
@@ -660,31 +627,32 @@ func (wfe *WebFrontEndImpl) newNewAccountLimitTransactions(ip net.IP) []ratelimi
 // TODO(#5545): For now we're simply exercising the new rate limiter codepath.
 // This should eventually return a berrors.RateLimit error containing the retry
 // after duration among other information available in the ratelimits.Decision.
-func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, transactions []ratelimits.Transaction) {
+func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) func() {
+	noop := func() {}
 	if wfe.limiter == nil && wfe.txnBuilder == nil {
-		// Limiter is disabled.
-		return
+		// Key-value rate limiting is disabled.
+		return noop
 	}
 
-	_, err := wfe.limiter.BatchSpend(ctx, transactions)
+	txns, err := wfe.txnBuilder.NewNewAccountLimitTransactions(ip)
+	if err != nil {
+		// TODO(#5545): Once key-value rate limits are authoritative this
+		// log line should be removed in favor of returning the error.
+		wfe.log.Infof("building new account limit transactions: %v", err)
+		return noop
+	}
+
+	_, err = wfe.limiter.BatchSpend(ctx, txns)
 	if err != nil {
 		wfe.log.Errf("checking newAccount limits: %s", err)
-	}
-}
-
-// refundNewAccountLimits is typically called when a new account creation fails.
-// It refunds the limit quota consumed by the request, allowing the caller to
-// retry immediately. If an error is encountered during the refund, it is logged
-// but not returned.
-func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, transactions []ratelimits.Transaction) {
-	if wfe.limiter == nil && wfe.txnBuilder == nil {
-		// Limiter is disabled.
-		return
+		return noop
 	}
 
-	_, err := wfe.limiter.BatchRefund(ctx, transactions)
-	if err != nil {
-		wfe.log.Errf("refunding newAccount limits: %s", err)
+	return func() {
+		_, err := wfe.limiter.BatchRefund(ctx, txns)
+		if err != nil {
+			wfe.log.Errf("refunding newAccount limits: %s", err)
+		}
 	}
 }
 
@@ -814,8 +782,10 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	// are authoritative. This saves us from adding latency to each request.
 	// Goroutines spun out below will respect a context deadline set by the
 	// ratelimits package and cannot be prematurely canceled by the requester.
-	txns := wfe.newNewAccountLimitTransactions(ip)
-	go wfe.checkNewAccountLimits(ctx, txns)
+	refundLimits := func() {}
+	go func() {
+		refundLimits = wfe.checkNewAccountLimits(ctx, ip)
+	}()
 
 	var newRegistrationSuccessful bool
 	var errIsRateLimit bool
@@ -824,7 +794,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			// This can be a little racy, but we're not going to worry about it
 			// for now. If the check hasn't completed yet, we can pretty safely
 			// assume that the refund will be similarly delayed.
-			go wfe.refundNewAccountLimits(ctx, txns)
+			go refundLimits()
 		}
 	}()
 
@@ -2045,53 +2015,6 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	return respObj
 }
 
-// newNewOrderLimitTransactions constructs a set of rate limit transactions to
-// evaluate for a new-order request.
-//
-// Precondition: names must be a list of DNS names that all pass
-// policy.WellFormedDomainNames.
-func (wfe *WebFrontEndImpl) newNewOrderLimitTransactions(regId int64, names []string) []ratelimits.Transaction {
-	if wfe.limiter == nil && wfe.txnBuilder == nil {
-		// Limiter is disabled.
-		return nil
-	}
-
-	logTxnErr := func(err error, limit ratelimits.Name) {
-		// TODO(#5545): Once key-value rate limits are authoritative this log
-		// line should be removed in favor of returning the error.
-		wfe.log.Infof("error constructing rate limit transaction for %s rate limit: %s", limit, err)
-	}
-
-	var transactions []ratelimits.Transaction
-	txn, err := wfe.txnBuilder.OrdersPerAccountTransaction(regId)
-	if err != nil {
-		logTxnErr(err, ratelimits.NewOrdersPerAccount)
-		return nil
-	}
-	transactions = append(transactions, txn)
-
-	failedAuthzTxns, err := wfe.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId, names, wfe.maxNames)
-	if err != nil {
-		logTxnErr(err, ratelimits.FailedAuthorizationsPerDomainPerAccount)
-		return nil
-	}
-	transactions = append(transactions, failedAuthzTxns...)
-
-	certsPerDomainTxns, err := wfe.txnBuilder.CertificatesPerDomainTransactions(regId, names, wfe.maxNames)
-	if err != nil {
-		logTxnErr(err, ratelimits.CertificatesPerDomain)
-		return nil
-	}
-	transactions = append(transactions, certsPerDomainTxns...)
-
-	txn, err = wfe.txnBuilder.CertificatesPerFQDNSetTransaction(names)
-	if err != nil {
-		logTxnErr(err, ratelimits.CertificatesPerFQDNSet)
-		return nil
-	}
-	return append(transactions, txn)
-}
-
 // checkNewOrderLimits checks whether sufficient limit quota exists for the
 // creation of a new order. If so, that quota is spent. If an error is
 // encountered during the check, it is logged but not returned.
@@ -2099,29 +2022,33 @@ func (wfe *WebFrontEndImpl) newNewOrderLimitTransactions(regId int64, names []st
 // TODO(#5545): For now we're simply exercising the new rate limiter codepath.
 // This should eventually return a berrors.RateLimit error containing the retry
 // after duration among other information available in the ratelimits.Decision.
-func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, transactions []ratelimits.Transaction) {
+func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, names []string) func() {
+	noop := func() {}
 	if wfe.limiter == nil && wfe.txnBuilder == nil {
-		// Limiter is disabled.
-		return
+		// Key-value rate limiting is disabled.
+		return noop
 	}
 
-	_, err := wfe.limiter.BatchSpend(ctx, transactions)
+	txns, err := wfe.txnBuilder.NewNewOrderLimitTransactions(regId, names, wfe.maxNames)
+	if err != nil {
+		wfe.log.Errf("building new order limit transactions: %v", err)
+		return noop
+	}
+
+	_, err = wfe.limiter.BatchSpend(ctx, txns)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return
+			return nil
 		}
 		wfe.log.Errf("checking newOrder limits: %s", err)
-	}
-}
-
-func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, transactions []ratelimits.Transaction) {
-	if wfe.limiter == nil || wfe.txnBuilder == nil {
-		return
+		return noop
 	}
 
-	_, err := wfe.limiter.BatchRefund(ctx, transactions)
-	if err != nil {
-		wfe.log.Errf("refunding newOrder limits: %s", err)
+	return func() {
+		_, err := wfe.limiter.BatchRefund(ctx, txns)
+		if err != nil {
+			wfe.log.Errf("refunding newOrder limits: %s", err)
+		}
 	}
 }
 
@@ -2371,10 +2298,11 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// are authoritative. This saves us from adding latency to each request.
 	// Goroutines spun out below will respect a context deadline set by the
 	// ratelimits package and cannot be prematurely canceled by the requester.
-	var txns []ratelimits.Transaction
+	refundLimits := func() {}
 	if !limitsExempt {
-		txns = wfe.newNewOrderLimitTransactions(acct.ID, names)
-		go wfe.checkNewOrderLimits(ctx, txns)
+		go func() {
+			refundLimits = wfe.checkNewOrderLimits(ctx, acct.ID, names)
+		}()
 	}
 
 	var newOrderSuccessful bool
@@ -2391,7 +2319,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			// This can be a little racy, but we're not going to worry about it
 			// for now. If the check hasn't completed yet, we can pretty safely
 			// assume that the refund will be similarly delayed.
-			go wfe.refundNewOrderLimits(ctx, txns)
+			go refundLimits()
 		}
 	}()
 
