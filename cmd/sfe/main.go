@@ -3,6 +3,7 @@ package notmain
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"flag"
 	"fmt"
 	"log"
@@ -64,19 +65,9 @@ type Config struct {
 	OpenTelemetryHTTPConfig cmd.OpenTelemetryHTTPConfig
 }
 
-func setupSFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, string) {
-	var unpauseSeed string
-	if c.Unpause.Seed.PasswordFile != "" {
-		var err error
-		unpauseSeed, err = c.Unpause.Seed.Pass()
-		cmd.FailOnError(err, "Failed to load unpauseSeed")
-
-		// The seed is used to generate an x/crypto/ed25519 keypair which
-		// requires a SeedSize of 32 bytes or the generator will panic.
-		if len(unpauseSeed) != 32 {
-			cmd.Fail("unpauseSeed should be 32 hexadecimal characters e.g. the output of 'openssl rand -hex 16'")
-		}
-	}
+func setupSFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, ed25519.PrivateKey) {
+	privateKey, err := c.Unpause.GenerateKeyPair()
+	cmd.FailOnError(err, "Unpause key generation")
 
 	tlsConfig, err := c.SFE.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
@@ -89,7 +80,7 @@ func setupSFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
-	return rac, sac, unpauseSeed
+	return rac, sac, privateKey
 }
 
 type errorWriter struct {
@@ -143,7 +134,7 @@ func main() {
 
 	clk := cmd.Clock()
 
-	rac, sac, unpauseSeed := setupSFE(c, stats, clk)
+	rac, sac, unpausePrivateKey := setupSFE(c, stats, clk)
 
 	sfei, err := sfe.NewSelfServiceFrontEndImpl(
 		stats,
@@ -152,7 +143,7 @@ func main() {
 		c.SFE.Timeout.Duration,
 		rac,
 		sac,
-		unpauseSeed,
+		unpausePrivateKey.Public().(ed25519.PublicKey),
 	)
 	cmd.FailOnError(err, "Unable to create SFE")
 

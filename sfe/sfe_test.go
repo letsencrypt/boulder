@@ -128,6 +128,8 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 
 	mockSA := mocks.NewStorageAuthorityReadOnly(fc)
 
+	unpausePublicKey := ed25519.NewKeyFromSeed([]byte(unpauseSeed)).Public().(ed25519.PublicKey)
+
 	sfe, err := NewSelfServiceFrontEndImpl(
 		stats,
 		fc,
@@ -135,7 +137,7 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 		10*time.Second,
 		&MockRegistrationAuthority{},
 		mockSA,
-		unpauseSeed,
+		unpausePublicKey,
 	)
 	test.AssertNotError(t, err, "Unable to create SFE")
 
@@ -218,8 +220,9 @@ func makeJWTForAccount(notBefore time.Time, issuedAt time.Time, expiresAt time.T
 		return "", errors.New("seed length invalid")
 	}
 
-	// Only the private key is needed for signing. The derives its own public
-	// key from the shared seed for validating the signature.
+	// Only the private key is needed for signing. The SFE only needs the public
+	// key corresponding to the the private key derived from the shared seed for
+	// validating the signature.
 	privateKey := ed25519.NewKeyFromSeed(seed)
 	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.EdDSA, Key: privateKey}, (&jose.SignerOptions{}).WithType("JWT"))
 	if err != nil {

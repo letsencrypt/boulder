@@ -1,7 +1,6 @@
 package sfe
 
 import (
-	"crypto"
 	"crypto/ed25519"
 	"embed"
 	"errors"
@@ -65,10 +64,10 @@ type SelfServiceFrontEndImpl struct {
 	// requestTimeout is the per-request overall timeout.
 	requestTimeout time.Duration
 
-	// unpausePubKey is a x/crypto/ed25519 public key derived from a seed value
-	// shared by the SFE and WFE. It is used to validate incoming JWT signatures
-	// on the unpause endpoint.
-	unpausePubKey crypto.PublicKey
+	// unpausePublicKey should be derived from a seed value shared by the SFE
+	// and WFE. It is used to validate incoming JWT signatures on the unpause
+	// endpoint.
+	unpausePublicKey ed25519.PublicKey
 }
 
 // NewSelfServiceFrontEndImpl constructs a web service for Boulder
@@ -79,25 +78,15 @@ func NewSelfServiceFrontEndImpl(
 	requestTimeout time.Duration,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
-	unpauseSeed string,
+	unpausePublicKey ed25519.PublicKey,
 ) (SelfServiceFrontEndImpl, error) {
-	// The seed is used to generate an x/crypto/ed25519 keypair which
-	// requires a SeedSize of 32 bytes or the generator will panic.
-	if len(unpauseSeed) != 32 {
-		return SelfServiceFrontEndImpl{}, errors.New("unpauseSeed should be 32 hexadecimal characters e.g. the output of 'openssl rand -hex 16'")
-	}
-
-	// We only need the public key to check the JWT signature and it only needs
-	// to be generate at startup.
-	unpausePubKey := ed25519.NewKeyFromSeed([]byte(unpauseSeed)).Public()
-
 	sfe := SelfServiceFrontEndImpl{
-		log:            logger,
-		clk:            clk,
-		requestTimeout: requestTimeout,
-		ra:             rac,
-		sa:             sac,
-		unpausePubKey:  unpausePubKey,
+		log:              logger,
+		clk:              clk,
+		requestTimeout:   requestTimeout,
+		ra:               rac,
+		sa:               sac,
+		unpausePublicKey: unpausePublicKey,
 	}
 
 	return sfe, nil
@@ -250,7 +239,7 @@ func (sfe *SelfServiceFrontEndImpl) validateJWTforAccount(incomingJWT unpauseJWT
 	}
 
 	incomingClaims := sfeJWTClaims{}
-	err = token.Claims(sfe.unpausePubKey, &incomingClaims)
+	err = token.Claims(sfe.unpausePublicKey, &incomingClaims)
 	if err != nil {
 		return sfeJWTClaims{}, err
 	}
