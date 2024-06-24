@@ -65,7 +65,7 @@ func TestDuplicateFQDNRateLimit(t *testing.T) {
 		test.AssertNotError(t, err, "making transaction composer")
 
 		// Check that the CertificatesPerFQDNSet limit is reached.
-		txns, err := txnBuilder.NewNewOrderLimitTransactions(1, []string{domain}, 100)
+		txns, err := txnBuilder.NewOrderLimitTransactions(1, []string{domain}, 100)
 		test.AssertNotError(t, err, "making transaction")
 		result, err := limiter.BatchSpend(context.Background(), txns)
 		test.AssertNotError(t, err, "checking transaction")

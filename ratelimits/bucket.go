@@ -413,13 +413,13 @@ func (builder *TransactionBuilder) certificatesPerFQDNSetTransaction(orderNames 
 	return newTransaction(limit, bucketKey, 1)
 }
 
-// NewNewOrderLimitTransactions takes in values from a new-order request and and
+// NewOrderLimitTransactions takes in values from a new-order request and and
 // returns the set of rate limit transactions that should be evaluated before
 // allowing the request to proceed.
 //
 // Precondition: names must be a list of DNS names that all pass
 // policy.WellFormedDomainNames.
-func (builder *TransactionBuilder) NewNewOrderLimitTransactions(regId int64, names []string, maxNames int) ([]Transaction, error) {
+func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, names []string, maxNames int) ([]Transaction, error) {
 	makeTxnError := func(err error, limit Name) error {
 		return fmt.Errorf("error constructing rate limit transaction for %s rate limit: %w", limit, err)
 	}
@@ -450,10 +450,10 @@ func (builder *TransactionBuilder) NewNewOrderLimitTransactions(regId int64, nam
 	return append(transactions, txn), nil
 }
 
-// NewNewAccountLimitTransactions takes in an IP address from a new-account
-// request and returns the set of rate limit transactions that should be
-// evaluated before allowing the request to proceed.
-func (builder *TransactionBuilder) NewNewAccountLimitTransactions(ip net.IP) ([]Transaction, error) {
+// NewAccountLimitTransactions takes in an IP address from a new-account request
+// and returns the set of rate limit transactions that should be evaluated
+// before allowing the request to proceed.
+func (builder *TransactionBuilder) NewAccountLimitTransactions(ip net.IP) ([]Transaction, error) {
 	makeTxnError := func(err error, limit Name) error {
 		return fmt.Errorf("error constructing rate limit transaction for %s rate limit: %w", limit, err)
 	}
