@@ -565,17 +565,16 @@ type UnpauseConfig struct {
 }
 
 // GenerateKeyPair creates an Ed25519 public/private keypair from an input seed
-// value. It returns the private key, from which the corresponding public key
-// can be retrieved, or an error. Callers should only use this at startup to
-// avoid unnecessary computation.
+// value. It returns the private key from which the corresponding public key can
+// be retrieved or an error. Callers should only use this at startup to avoid
+// unnecessary computation.
 func (u *UnpauseConfig) GenerateKeyPair() (ed25519.PrivateKey, error) {
 	seed, err := u.Seed.Pass()
 	if err != nil {
 		return nil, err
 	}
 
-	// The Pass() method will gladly output an empty string "to maintain
-	// backwards compatibility" which is definitely not what we want.
+	// Avoids a panic in ed25519.NewKeyFromSeed if the seed is not 32 bytes.
 	if len(seed) != 32 {
 		return nil, errors.New("unpause seed must be 32 characters e.g. the output of 'openssl rand -hex 16'")
 	}
