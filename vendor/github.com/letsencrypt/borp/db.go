@@ -102,6 +102,9 @@ func (m *DbMap) createIndexImpl(ctx context.Context, dialect reflect.Type,
 	}
 	s.WriteString(" index")
 	s.WriteString(fmt.Sprintf(" %s on %s", index.IndexName, table.TableName))
+	if dname := dialect.Name(); dname == "PostgresDialect" && index.IndexType != "" {
+		s.WriteString(fmt.Sprintf(" %s %s", m.Dialect.CreateIndexSuffix(), index.IndexType))
+	}
 	s.WriteString(" (")
 	for x, col := range index.columns {
 		if x > 0 {
@@ -594,6 +597,11 @@ func (m *DbMap) Select(ctx context.Context, i interface{}, query string, args ..
 		expandSliceArgs(&query, args...)
 	}
 
+	args, err := m.convertArgs(args...)
+	if err != nil {
+		return nil, err
+	}
+
 	return hookedselect(ctx, m, m, i, query, args...)
 }
 
@@ -602,6 +610,11 @@ func (m *DbMap) Select(ctx context.Context, i interface{}, query string, args ..
 func (m *DbMap) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	if m.ExpandSliceArgs {
 		expandSliceArgs(&query, args...)
+	}
+
+	args, err := m.convertArgs(args...)
+	if err != nil {
+		return nil, err
 	}
 
 	if m.logger != nil {
@@ -617,6 +630,11 @@ func (m *DbMap) SelectInt(ctx context.Context, query string, args ...interface{}
 		expandSliceArgs(&query, args...)
 	}
 
+	args, err := m.convertArgs(args...)
+	if err != nil {
+		return 0, err
+	}
+
 	return SelectInt(ctx, m, query, args...)
 }
 
@@ -624,6 +642,11 @@ func (m *DbMap) SelectInt(ctx context.Context, query string, args ...interface{}
 func (m *DbMap) SelectNullInt(ctx context.Context, query string, args ...interface{}) (sql.NullInt64, error) {
 	if m.ExpandSliceArgs {
 		expandSliceArgs(&query, args...)
+	}
+
+	args, err := m.convertArgs(args...)
+	if err != nil {
+		return sql.NullInt64{}, err
 	}
 
 	return SelectNullInt(ctx, m, query, args...)
@@ -635,6 +658,11 @@ func (m *DbMap) SelectFloat(ctx context.Context, query string, args ...interface
 		expandSliceArgs(&query, args...)
 	}
 
+	args, err := m.convertArgs(args...)
+	if err != nil {
+		return 0, err
+	}
+
 	return SelectFloat(ctx, m, query, args...)
 }
 
@@ -642,6 +670,11 @@ func (m *DbMap) SelectFloat(ctx context.Context, query string, args ...interface
 func (m *DbMap) SelectNullFloat(ctx context.Context, query string, args ...interface{}) (sql.NullFloat64, error) {
 	if m.ExpandSliceArgs {
 		expandSliceArgs(&query, args...)
+	}
+
+	args, err := m.convertArgs(args...)
+	if err != nil {
+		return sql.NullFloat64{}, err
 	}
 
 	return SelectNullFloat(ctx, m, query, args...)
@@ -653,6 +686,11 @@ func (m *DbMap) SelectStr(ctx context.Context, query string, args ...interface{}
 		expandSliceArgs(&query, args...)
 	}
 
+	args, err := m.convertArgs(args...)
+	if err != nil {
+		return "", err
+	}
+
 	return SelectStr(ctx, m, query, args...)
 }
 
@@ -662,6 +700,11 @@ func (m *DbMap) SelectNullStr(ctx context.Context, query string, args ...interfa
 		expandSliceArgs(&query, args...)
 	}
 
+	args, err := m.convertArgs(args...)
+	if err != nil {
+		return sql.NullString{}, err
+	}
+
 	return SelectNullStr(ctx, m, query, args...)
 }
 
@@ -669,6 +712,11 @@ func (m *DbMap) SelectNullStr(ctx context.Context, query string, args ...interfa
 func (m *DbMap) SelectOne(ctx context.Context, holder interface{}, query string, args ...interface{}) error {
 	if m.ExpandSliceArgs {
 		expandSliceArgs(&query, args...)
+	}
+
+	args, err := m.convertArgs(args...)
+	if err != nil {
+		return err
 	}
 
 	return SelectOne(ctx, m, m, holder, query, args...)
@@ -795,6 +843,11 @@ func (m *DbMap) QueryRowContext(ctx context.Context, query string, args ...inter
 		expandSliceArgs(&query, args...)
 	}
 
+	args, err := m.convertArgs(args...)
+	if err != nil {
+		return nil
+	}
+
 	if m.logger != nil {
 		now := time.Now()
 		defer m.trace(now, query, args...)
@@ -806,6 +859,11 @@ func (m *DbMap) QueryRowContext(ctx context.Context, query string, args ...inter
 func (m *DbMap) QueryContext(ctx context.Context, q string, args ...interface{}) (*sql.Rows, error) {
 	if m.ExpandSliceArgs {
 		expandSliceArgs(&q, args...)
+	}
+
+	args, err := m.convertArgs(args...)
+	if err != nil {
+		return nil, err
 	}
 
 	if m.logger != nil {
@@ -824,6 +882,22 @@ func (m *DbMap) trace(started time.Time, query string, args ...interface{}) {
 		var margs = argsString(args...)
 		m.logger.Printf("%s%s [%s] (%v)", m.logPrefix, query, margs, (time.Since(started)))
 	}
+}
+
+// convertArgs passes each argument through the TypeConverter, if any,
+// and returns the result (which may be identical to the input).
+func (m *DbMap) convertArgs(args ...interface{}) ([]interface{}, error) {
+	if m.TypeConverter == nil {
+		return args, nil
+	}
+	for i, arg := range args {
+		converted, err := m.TypeConverter.ToDb(arg)
+		if err != nil {
+			return nil, err
+		}
+		args[i] = converted
+	}
+	return args, nil
 }
 
 type stringer interface {
