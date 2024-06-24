@@ -127,9 +127,6 @@ type certificateAuthorityImpl struct {
 	issuers      issuerMaps
 	certProfiles certProfilesMaps
 
-	// This is temporary, and will be used for testing and slow roll-out
-	// of ECDSA issuance, but will then be removed.
-	ecdsaAllowList *ECDSAAllowList
 	prefix         int // Prepended to the serial number
 	validityPeriod time.Duration
 	backdate       time.Duration
@@ -249,7 +246,6 @@ func NewCertificateAuthorityImpl(
 	defaultCertProfileName string,
 	certificateProfiles map[string]issuance.ProfileConfig,
 	lints lint.Registry,
-	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
 	certBackdate time.Duration,
 	serialPrefix int,
@@ -301,7 +297,6 @@ func NewCertificateAuthorityImpl(
 		log:            logger,
 		metrics:        metrics,
 		clk:            clk,
-		ecdsaAllowList: ecdsaAllowList,
 	}
 
 	return ca, nil
@@ -565,11 +560,8 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 
 	// Select which pool of issuers to use, based on the to-be-issued cert's key
-	// type and whether we're using the ECDSA Allow List.
+	// type.
 	alg := csr.PublicKeyAlgorithm
-	if alg == x509.ECDSA && ca.ecdsaAllowList != nil && !ca.ecdsaAllowList.permitted(issueReq.RegistrationID) {
-		alg = x509.RSA
-	}
 
 	// Select a random issuer from among the active issuers of this key type.
 	issuerPool, ok := ca.issuers.byAlg[alg]
