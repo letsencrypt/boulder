@@ -2337,6 +2337,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		names[i] = ident.Value
 	}
 
+	names = core.UniqueLowerNames(names)
 	err = policy.WellFormedDomainNames(names)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Invalid identifiers requested"), nil)

@@ -281,8 +281,8 @@ func fieldByName(val reflect.Value, fieldName string) *reflect.Value {
 		return &f
 	}
 
-	// try to find by case insensitive match in the case where columns are
-	// aliased in the sql
+	// try to find by case insensitive match - only the Postgres driver
+	// seems to require this
 	fieldNameL := strings.ToLower(fieldName)
 	fieldCount := val.NumField()
 	t := val.Type()

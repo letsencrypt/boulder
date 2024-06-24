@@ -244,6 +244,26 @@ func (sa *StorageAuthority) SerialsForIncident(ctx context.Context, _ *sapb.Seri
 	return &ServerStreamClient[sapb.IncidentSerial]{}, nil
 }
 
+// CheckIdentifiersPaused is a mock
+func (sa *StorageAuthorityReadOnly) CheckIdentifiersPaused(_ context.Context, _ *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
+	return nil, nil
+}
+
+// CheckIdentifiersPaused is a mock
+func (sa *StorageAuthority) CheckIdentifiersPaused(_ context.Context, _ *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
+	return nil, nil
+}
+
+// GetPausedIdentifiers is a mock
+func (sa *StorageAuthorityReadOnly) GetPausedIdentifiers(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
+	return nil, nil
+}
+
+// GetPausedIdentifiers is a mock
+func (sa *StorageAuthority) GetPausedIdentifiers(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
+	return nil, nil
+}
+
 // GetRevokedCerts is a mock
 func (sa *StorageAuthorityReadOnly) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetRevokedCertsClient, error) {
 	return &ServerStreamClient[corepb.CRLEntry]{}, nil
@@ -457,7 +477,7 @@ func (sa *StorageAuthorityReadOnly) GetValidAuthorizations2(ctx context.Context,
 			RegistrationID: req.RegistrationID,
 			Expires:        &exp,
 			Identifier: identifier.ACMEIdentifier{
-				Type:  "dns",
+				Type:  identifier.DNS,
 				Value: name,
 			},
 			Challenges: []core.Challenge{

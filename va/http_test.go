@@ -992,7 +992,7 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "ipv6.localhost",
 			Path: "/ok",
 			ExpectedProblem: probs.Connection(
-				"::1: Fetching http://ipv6.localhost/ok: Error getting validation data"),
+				"::1: Fetching http://ipv6.localhost/ok: Connection refused"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					Hostname:          "ipv6.localhost",
@@ -1098,14 +1098,14 @@ func TestFetchHTTP(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 			defer cancel()
 			body, records, err := va.fetchHTTP(ctx, tc.Host, tc.Path)
-			if err != nil && tc.ExpectedProblem == nil {
-				t.Errorf("expected nil prob, got %#v\n", err)
-			} else if err == nil && tc.ExpectedProblem != nil {
-				t.Errorf("expected %#v prob, got nil", tc.ExpectedProblem)
-			} else if err != nil && tc.ExpectedProblem != nil {
+			if tc.ExpectedProblem == nil {
+				test.AssertNotError(t, err, "expected nil prob")
+			} else {
+				test.AssertError(t, err, "expected non-nil prob")
 				prob := detailedError(err)
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
-			} else {
+			}
+			if tc.ExpectedBody != "" {
 				test.AssertEquals(t, string(body), tc.ExpectedBody)
 			}
 			// in all cases we expect validation records to be present and matching expected
@@ -1378,7 +1378,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 	var err error
 	for range 20 {
 		_, err = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), expectedToken, expectedKeyAuthorization)
-		if err != nil && strings.Contains(err.Error(), "Network unreachable") {
+		if err != nil && strings.Contains(err.Error(), "network is unreachable") {
 			continue
 		} else {
 			break

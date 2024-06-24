@@ -13,11 +13,12 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-var testingPolicy = &KeyPolicy{
-	AllowRSA:           true,
-	AllowECDSANISTP256: true,
-	AllowECDSANISTP384: true,
-}
+// testingPolicy is a simple policy which allows all of the key types, so that
+// the unit tests can exercise checks against all key types.
+var testingPolicy = &KeyPolicy{allowedKeys: AllowedKeys{
+	RSA2048: true, RSA3072: true, RSA4096: true,
+	ECDSAP256: true, ECDSAP384: true, ECDSAP521: true,
+}}
 
 func TestUnknownKeyType(t *testing.T) {
 	notAKey := struct{}{}
@@ -146,12 +147,12 @@ func TestECDSABadCurve(t *testing.T) {
 
 var invalidCurves = []elliptic.Curve{
 	elliptic.P224(),
-	elliptic.P521(),
 }
 
 var validCurves = []elliptic.Curve{
 	elliptic.P256(),
 	elliptic.P384(),
+	elliptic.P521(),
 }
 
 func TestECDSAGoodKey(t *testing.T) {
@@ -263,7 +264,7 @@ func TestDBBlocklistAccept(t *testing.T) {
 			return false, nil
 		},
 	} {
-		policy, err := NewKeyPolicy(&Config{}, testCheck)
+		policy, err := NewPolicy(nil, testCheck)
 		test.AssertNotError(t, err, "NewKeyPolicy failed")
 
 		k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -278,7 +279,7 @@ func TestDBBlocklistReject(t *testing.T) {
 		return true, nil
 	}
 
-	policy, err := NewKeyPolicy(&Config{}, testCheck)
+	policy, err := NewPolicy(nil, testCheck)
 	test.AssertNotError(t, err, "NewKeyPolicy failed")
 
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -287,6 +288,26 @@ func TestDBBlocklistReject(t *testing.T) {
 	test.AssertError(t, err, "GoodKey didn't fail with a blocked key")
 	test.AssertErrorIs(t, err, ErrBadKey)
 	test.AssertEquals(t, err.Error(), "public key is forbidden")
+}
+
+func TestDefaultAllowedKeys(t *testing.T) {
+	policy, err := NewPolicy(nil, nil)
+	test.AssertNotError(t, err, "NewPolicy with nil config failed")
+	test.Assert(t, policy.allowedKeys.RSA2048, "RSA 2048 should be allowed")
+	test.Assert(t, policy.allowedKeys.RSA3072, "RSA 3072 should be allowed")
+	test.Assert(t, policy.allowedKeys.RSA4096, "RSA 4096 should be allowed")
+	test.Assert(t, policy.allowedKeys.ECDSAP256, "NIST P256 should be allowed")
+	test.Assert(t, policy.allowedKeys.ECDSAP384, "NIST P384 should be allowed")
+	test.Assert(t, !policy.allowedKeys.ECDSAP521, "NIST P521 should not be allowed")
+
+	policy, err = NewPolicy(&Config{FermatRounds: 100}, nil)
+	test.AssertNotError(t, err, "NewPolicy with nil config.AllowedKeys failed")
+	test.Assert(t, policy.allowedKeys.RSA2048, "RSA 2048 should be allowed")
+	test.Assert(t, policy.allowedKeys.RSA3072, "RSA 3072 should be allowed")
+	test.Assert(t, policy.allowedKeys.RSA4096, "RSA 4096 should be allowed")
+	test.Assert(t, policy.allowedKeys.ECDSAP256, "NIST P256 should be allowed")
+	test.Assert(t, policy.allowedKeys.ECDSAP384, "NIST P384 should be allowed")
+	test.Assert(t, !policy.allowedKeys.ECDSAP521, "NIST P521 should not be allowed")
 }
 
 func TestRSAStrangeSize(t *testing.T) {

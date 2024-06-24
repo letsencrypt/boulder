@@ -224,12 +224,6 @@ var (
 	log = blog.UseMock()
 )
 
-var testKeyPolicy = goodkey.KeyPolicy{
-	AllowRSA:           true,
-	AllowECDSANISTP256: true,
-	AllowECDSANISTP384: true,
-}
-
 var ctx = context.Background()
 
 // dummyRateLimitConfig satisfies the rl.RateLimitConfig interface while
@@ -396,6 +390,9 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		txnBuilder, err = ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
 		test.AssertNotError(t, err, "making transaction composer")
 	}
+
+	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
+	test.AssertNotError(t, err, "making keypolicy")
 
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,

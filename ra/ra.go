@@ -24,6 +24,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -53,6 +55,7 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
+
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -2753,4 +2756,15 @@ func validateContactsPresent(contacts []string, contactsPresent bool) error {
 
 func (ra *RegistrationAuthorityImpl) DrainFinalize() {
 	ra.finalizeWG.Wait()
+}
+
+// UnpauseAccount receives a validated account unpause request from the SFE and
+// instructs the SA to unpause that account. If the account cannot be unpaused,
+// an error is returned.
+func (ra *RegistrationAuthorityImpl) UnpauseAccount(ctx context.Context, request *rapb.UnpauseAccountRequest) (*emptypb.Empty, error) {
+	if core.IsAnyNilOrZero(request.RegistrationID) {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	return nil, status.Errorf(codes.Unimplemented, "method UnpauseAccount not implemented")
 }

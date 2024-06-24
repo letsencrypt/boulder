@@ -141,7 +141,7 @@ func (bkr *badKeyRevoker) findUnrevoked(ctx context.Context, unchecked unchecked
 			"SELECT id, certSerial FROM keyHashToSerial WHERE keyHash = ? AND id > ? AND certNotAfter > ? ORDER BY id LIMIT ?",
 			unchecked.KeyHash,
 			initialID,
-			bkr.clk.Now(),
+			bkr.clk.Now().Truncate(time.Second),
 			bkr.serialBatchSize,
 		)
 		if err != nil {
