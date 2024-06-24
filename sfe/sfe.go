@@ -150,40 +150,30 @@ type unpauseJWT string
 
 func (sfe *SelfServiceFrontEndImpl) getHelper(response http.ResponseWriter, incomingJWT unpauseJWT) {
 	if incomingJWT != "" {
-		type tmplData struct {
-			UnpausePath string
-			JWT         string
-		}
-
 		// Serve the actual unpause page given to a Subscriber. Populates the
 		// unpause form with the JWT from the URL. That JWT itself may be
-		// invalid or expired, but that validation will be performed only after
-		// submitting the form.
-		renderTemplate(response, "unpause-params.html", tmplData{unpausePath, string(incomingJWT)})
+		// invalid or expired, but that validation can only be performed only
+		// after submitting the form.
+		unpausePrepareToUnpause(response, unpausePath, string(incomingJWT))
 	} else {
 		// We only want to accept requests containing the JWT param.
-		renderTemplate(response, "unpause-noParams.html", nil)
+		unpauseInvalidRequest(response)
 	}
 }
 
 // posthelper After clicking unpause, serve a page indicating if the unpause succeeded or failed.
 func (sfe *SelfServiceFrontEndImpl) postHelper(response http.ResponseWriter, incomingJWT unpauseJWT) {
 	if incomingJWT != "" {
-		type tmplData struct {
-			ShouldUnpause bool
-			AccountID     string
-		}
-
 		claims, err := sfe.validateJWTforAccount(incomingJWT)
 		if err != nil {
-			renderTemplate(response, "unpause-post.html", nil)
+			unpauseFailure(response)
 		}
 
 		// TODO(#7356) Declare a registration ID variable to populate an
 		// rapb unpause account request message.
 		_, innerErr := strconv.ParseInt(claims.Subject, 10, 64)
 		if innerErr != nil {
-			renderTemplate(response, "unpause-noParams.html", nil)
+			unpauseInvalidRequest(response)
 		}
 
 		// TODO(#7536) Send gRPC request to the RA informing it to unpause
@@ -192,10 +182,50 @@ func (sfe *SelfServiceFrontEndImpl) postHelper(response http.ResponseWriter, inc
 		// just in case the request fails.
 
 		// Success, the account has been unpaused.
-		renderTemplate(response, "unpause-post.html", tmplData{true, claims.Subject})
+		unpauseSuccessful(response, claims.Subject)
 	} else {
-		renderTemplate(response, "unpause-noParams.html", nil)
+		unpauseInvalidRequest(response)
 	}
+}
+
+// unpauseInvalidRequest is a helper that displays a page indicating there's no
+// action for a Subscriber to take due to an invalid or lack of JWT in the data
+// object.
+func unpauseInvalidRequest(response http.ResponseWriter) {
+	renderTemplate(response, "unpause-noParams.html", nil)
+}
+
+// unpauseSuccessful is a helper that displays a success message to the
+// Subscriber if their account has been unpaused.
+func unpauseSuccessful(response http.ResponseWriter, accountID string) {
+	type tmplData struct {
+		ShouldUnpause bool
+		AccountID     string
+	}
+	renderTemplate(response, "unpause-post.html", tmplData{true, accountID})
+}
+
+// unpauseFailure is a helper that displays a failure message to the Subscriber
+// indicating that their account has failed to unpause. This should only be used
+// when the JWT fails to validate and other failures should use
+// unpauseInvalidRequest.
+func unpauseFailure(response http.ResponseWriter) {
+	type tmplData struct {
+		ShouldUnpause bool
+	}
+	renderTemplate(response, "unpause-post.html", tmplData{false})
+}
+
+// unpausePrepareToUnpause is a helper that displays a page containing a filled
+// out form containing a JWT created by the WFE. Upon accessing that link, the
+// Subscriber would click the "unpause my account" button to submit the form
+// back to the SFE.
+func unpausePrepareToUnpause(response http.ResponseWriter, unpausePath string, incomingJWT string) {
+	type tmplData struct {
+		UnpausePath string
+		JWT         string
+	}
+	renderTemplate(response, "unpause-params.html", tmplData{unpausePath, incomingJWT})
 }
 
 // Unpause allows a requester to unpause their account via a form present on the
