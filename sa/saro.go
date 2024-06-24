@@ -1214,7 +1214,7 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(re
 	})
 }
 
-// getRevokedCertsFromCertificateStatusTable uses the new old certificateStatus
+// getRevokedCertsFromCertificateStatusTable uses the old certificateStatus
 // table to implement GetRevokedCerts.
 func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
 	atTime := req.RevokedBefore.AsTime()
