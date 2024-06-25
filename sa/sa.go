@@ -1233,7 +1233,10 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 
 // UpdateCRLShard updates the thisUpdate and nextUpdate timestamps of a CRL
 // shard. It rejects the update if it would cause the thisUpdate timestamp to
-// move backwards. It does *not* reject the update if the shard is no longer
+// move backwards, but if thisUpdate would stay the same (for instance, multiple
+// CRL generations within a single second), it will succeed.
+//
+// It does *not* reject the update if the shard is no longer
 // leased: although this would be unexpected (because the lease timestamp should
 // be the same as the crl-updater's context expiration), it's not inherently a
 // sign of an update that should be skipped. It does reject the update if the
@@ -1258,7 +1261,7 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 				SET thisUpdate = ?, nextUpdate = ?, leasedUntil = ?
 				WHERE issuerID = ?
 				AND idx = ?
-				AND (thisUpdate is NULL OR thisUpdate < ?)
+				AND (thisUpdate is NULL OR thisUpdate <= ?)
 				LIMIT 1`,
 			req.ThisUpdate.AsTime(),
 			nextUpdate,
@@ -1276,7 +1279,7 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 			return nil, err
 		}
 		if rowsAffected == 0 {
-			return nil, fmt.Errorf("unable to update shard %d for issuer %d", req.ShardIdx, req.IssuerNameID)
+			return nil, fmt.Errorf("unable to update shard %d for issuer %d; possibly because shard exists", req.ShardIdx, req.IssuerNameID)
 		}
 		if rowsAffected != 1 {
 			return nil, errors.New("update affected unexpected number of rows")
