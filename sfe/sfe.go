@@ -164,7 +164,7 @@ func (sfe *SelfServiceFrontEndImpl) getHelper(response http.ResponseWriter, inco
 // posthelper After clicking unpause, serve a page indicating if the unpause succeeded or failed.
 func (sfe *SelfServiceFrontEndImpl) postHelper(response http.ResponseWriter, incomingJWT unpauseJWT) {
 	if incomingJWT != "" {
-		claims, err := sfe.validateJWTforAccount(incomingJWT)
+		claims, err := sfe.validateUnpauseJWTforAccount(incomingJWT)
 		if err != nil {
 			unpauseFailure(response)
 		}
@@ -253,11 +253,10 @@ type sfeJWTClaims struct {
 	Version string `json:"apiVersion,omitempty"`
 }
 
-// validateJWT derives a ed25519 public key from a seed shared by the SFE and
-// WFE. The public key is used to validate the signature and contents of an
+// validateUnpauseJWTforAccount validates the signature and contents of an
 // unpauseJWT and verify that the its claims match a set of expected claims.
 // Passing validations returns the claims or an error.
-func (sfe *SelfServiceFrontEndImpl) validateJWTforAccount(incomingJWT unpauseJWT) (sfeJWTClaims, error) {
+func (sfe *SelfServiceFrontEndImpl) validateUnpauseJWTforAccount(incomingJWT unpauseJWT) (sfeJWTClaims, error) {
 	slug := strings.Split(unpausePath, "/")
 	if len(slug) != 4 {
 		return sfeJWTClaims{}, errors.New("Could not parse API version")

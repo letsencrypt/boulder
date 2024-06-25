@@ -376,7 +376,7 @@ func TestValidateJWT(t *testing.T) {
 			// claim in the JWT as a first pass annoyance for clients attempting
 			// to automate unpausing.
 			fc.Add(10 * time.Minute)
-			_, err = sfe.validateJWTforAccount(newJWT)
+			_, err = sfe.validateUnpauseJWTforAccount(newJWT)
 			if tc.ExpectedValidationErrSubstr != "" || err != nil {
 				test.AssertError(t, err, "Error expected, but received none")
 				test.AssertContains(t, err.Error(), tc.ExpectedValidationErrSubstr)
