@@ -780,22 +780,12 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		InitialIP:       ipBytes,
 	}
 
-	// TODO(#5545): Spending and Refunding can be async until these rate limits
-	// are authoritative. This saves us from adding latency to each request.
-	// Goroutines spun out below will respect a context deadline set by the
-	// ratelimits package and cannot be prematurely canceled by the requester.
-	refundLimits := func() {}
-	go func() {
-		refundLimits = wfe.checkNewAccountLimits(ctx, ip)
-	}()
+	refundLimits := wfe.checkNewAccountLimits(ctx, ip)
 
 	var newRegistrationSuccessful bool
 	var errIsRateLimit bool
 	defer func() {
 		if !newRegistrationSuccessful && !errIsRateLimit && refundLimits != nil {
-			// This can be a little racy, but we're not going to worry about it
-			// for now. If the check hasn't completed yet, we can pretty safely
-			// assume that the refund will be similarly delayed.
 			go refundLimits()
 		}
 	}()
@@ -2297,16 +2287,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// TODO(#5545): Spending and Refunding can be async until these rate limits
-	// are authoritative. This saves us from adding latency to each request.
-	// Goroutines spun out below will respect a context deadline set by the
-	// ratelimits package and cannot be prematurely canceled by the requester.
-	refundLimits := func() {}
-	if !limitsExempt {
-		go func() {
-			refundLimits = wfe.checkNewOrderLimits(ctx, acct.ID, names)
-		}()
-	}
+	refundLimits := wfe.checkNewOrderLimits(ctx, acct.ID, names)
 
 	var newOrderSuccessful bool
 	var errIsRateLimit bool
@@ -2319,9 +2300,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		}
 
 		if !newOrderSuccessful && !errIsRateLimit && refundLimits != nil {
-			// This can be a little racy, but we're not going to worry about it
-			// for now. If the check hasn't completed yet, we can pretty safely
-			// assume that the refund will be similarly delayed.
 			go refundLimits()
 		}
 	}()
