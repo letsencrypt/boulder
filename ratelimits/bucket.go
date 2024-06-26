@@ -183,9 +183,9 @@ func NewTransactionBuilder(defaults, overrides string) (*TransactionBuilder, err
 	return &TransactionBuilder{registry}, nil
 }
 
-// RegistrationsPerIPAddressTransaction returns a Transaction for the
+// registrationsPerIPAddressTransaction returns a Transaction for the
 // NewRegistrationsPerIPAddress limit for the provided IP address.
-func (builder *TransactionBuilder) RegistrationsPerIPAddressTransaction(ip net.IP) (Transaction, error) {
+func (builder *TransactionBuilder) registrationsPerIPAddressTransaction(ip net.IP) (Transaction, error) {
 	bucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, ip)
 	if err != nil {
 		return Transaction{}, err
@@ -200,10 +200,10 @@ func (builder *TransactionBuilder) RegistrationsPerIPAddressTransaction(ip net.I
 	return newTransaction(limit, bucketKey, 1)
 }
 
-// RegistrationsPerIPv6RangeTransaction returns a Transaction for the
+// registrationsPerIPv6RangeTransaction returns a Transaction for the
 // NewRegistrationsPerIPv6Range limit for the /48 IPv6 range which contains the
 // provided IPv6 address.
-func (builder *TransactionBuilder) RegistrationsPerIPv6RangeTransaction(ip net.IP) (Transaction, error) {
+func (builder *TransactionBuilder) registrationsPerIPv6RangeTransaction(ip net.IP) (Transaction, error) {
 	bucketKey, err := newIPv6RangeCIDRBucketKey(NewRegistrationsPerIPv6Range, ip)
 	if err != nil {
 		return Transaction{}, err
@@ -218,9 +218,9 @@ func (builder *TransactionBuilder) RegistrationsPerIPv6RangeTransaction(ip net.I
 	return newTransaction(limit, bucketKey, 1)
 }
 
-// OrdersPerAccountTransaction returns a Transaction for the NewOrdersPerAccount
+// ordersPerAccountTransaction returns a Transaction for the NewOrdersPerAccount
 // limit for the provided ACME registration Id.
-func (builder *TransactionBuilder) OrdersPerAccountTransaction(regId int64) (Transaction, error) {
+func (builder *TransactionBuilder) ordersPerAccountTransaction(regId int64) (Transaction, error) {
 	bucketKey, err := newRegIdBucketKey(NewOrdersPerAccount, regId)
 	if err != nil {
 		return Transaction{}, err
@@ -309,7 +309,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendO
 	return txn, nil
 }
 
-// CertificatesPerDomainTransactions returns a slice of Transactions for the
+// certificatesPerDomainTransactions returns a slice of Transactions for the
 // provided order domain names. An error is returned if any of the order domain
 // names are invalid. When a CertificatesPerDomainPerAccount override is
 // configured, two types of Transactions are returned:
@@ -324,7 +324,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendO
 //
 // Precondition: orderDomains must all pass policy.WellFormedDomainNames.
 // Precondition: len(orderDomains) < maxNames.
-func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64, orderDomains []string, maxNames int) ([]Transaction, error) {
+func (builder *TransactionBuilder) certificatesPerDomainTransactions(regId int64, orderDomains []string, maxNames int) ([]Transaction, error) {
 	if len(orderDomains) > maxNames {
 		return nil, fmt.Errorf("order contains more than %d DNS names", maxNames)
 	}
@@ -396,9 +396,9 @@ func (builder *TransactionBuilder) CertificatesPerDomainTransactions(regId int64
 	return txns, nil
 }
 
-// CertificatesPerFQDNSetTransaction returns a Transaction for the provided
+// certificatesPerFQDNSetTransaction returns a Transaction for the provided
 // order domain names.
-func (builder *TransactionBuilder) CertificatesPerFQDNSetTransaction(orderNames []string) (Transaction, error) {
+func (builder *TransactionBuilder) certificatesPerFQDNSetTransaction(orderNames []string) (Transaction, error) {
 	bucketKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, orderNames)
 	if err != nil {
 		return Transaction{}, err
@@ -411,4 +411,68 @@ func (builder *TransactionBuilder) CertificatesPerFQDNSetTransaction(orderNames 
 		return Transaction{}, err
 	}
 	return newTransaction(limit, bucketKey, 1)
+}
+
+// NewOrderLimitTransactions takes in values from a new-order request and and
+// returns the set of rate limit transactions that should be evaluated before
+// allowing the request to proceed.
+//
+// Precondition: names must be a list of DNS names that all pass
+// policy.WellFormedDomainNames.
+func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, names []string, maxNames int) ([]Transaction, error) {
+	makeTxnError := func(err error, limit Name) error {
+		return fmt.Errorf("error constructing rate limit transaction for %s rate limit: %w", limit, err)
+	}
+
+	var transactions []Transaction
+	txn, err := builder.ordersPerAccountTransaction(regId)
+	if err != nil {
+		return nil, makeTxnError(err, NewOrdersPerAccount)
+	}
+	transactions = append(transactions, txn)
+
+	failedAuthzTxns, err := builder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId, names, maxNames)
+	if err != nil {
+		return nil, makeTxnError(err, FailedAuthorizationsPerDomainPerAccount)
+	}
+	transactions = append(transactions, failedAuthzTxns...)
+
+	certsPerDomainTxns, err := builder.certificatesPerDomainTransactions(regId, names, maxNames)
+	if err != nil {
+		return nil, makeTxnError(err, CertificatesPerDomain)
+	}
+	transactions = append(transactions, certsPerDomainTxns...)
+
+	txn, err = builder.certificatesPerFQDNSetTransaction(names)
+	if err != nil {
+		return nil, makeTxnError(err, CertificatesPerFQDNSet)
+	}
+	return append(transactions, txn), nil
+}
+
+// NewAccountLimitTransactions takes in an IP address from a new-account request
+// and returns the set of rate limit transactions that should be evaluated
+// before allowing the request to proceed.
+func (builder *TransactionBuilder) NewAccountLimitTransactions(ip net.IP) ([]Transaction, error) {
+	makeTxnError := func(err error, limit Name) error {
+		return fmt.Errorf("error constructing rate limit transaction for %s rate limit: %w", limit, err)
+	}
+
+	var transactions []Transaction
+	txn, err := builder.registrationsPerIPAddressTransaction(ip)
+	if err != nil {
+		return nil, makeTxnError(err, NewRegistrationsPerIPAddress)
+	}
+	transactions = append(transactions, txn)
+
+	if ip.To4() != nil {
+		// This request was made from an IPv4 address.
+		return transactions, nil
+	}
+
+	txn, err = builder.registrationsPerIPv6RangeTransaction(ip)
+	if err != nil {
+		return nil, makeTxnError(err, NewRegistrationsPerIPv6Range)
+	}
+	return append(transactions, txn), nil
 }

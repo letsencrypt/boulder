@@ -36,7 +36,6 @@ func TestOCSP(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
