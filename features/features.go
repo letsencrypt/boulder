@@ -27,10 +27,7 @@ type Config struct {
 	EnforceMultiVA                    bool
 	MultiVAFullResults                bool
 	CertCheckerRequiresCorrespondence bool
-
-	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
-	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
-	ECDSAForAll bool
+	ECDSAForAll                       bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.

@@ -100,10 +100,6 @@ type Config struct {
 		// Recommended to be around 500ms.
 		OCSPLogPeriod config.Duration
 
-		// Path of a YAML file containing the list of int64 RegIDs
-		// allowed to request ECDSA issuance
-		ECDSAAllowListFilename string
-
 		// CTLogListFile is the path to a JSON file on disk containing the set of
 		// all logs trusted by Chrome. The file must match the v3 log list schema:
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
@@ -236,15 +232,6 @@ func main() {
 	kp, err := sagoodkey.NewPolicy(&c.CA.GoodKey, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
-	var ecdsaAllowList *ca.ECDSAAllowList
-	var entries int
-	if c.CA.ECDSAAllowListFilename != "" {
-		// Create an allow list object.
-		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename)
-		cmd.FailOnError(err, "Unable to load ECDSA allow list from YAML file")
-		logger.Infof("Loaded an ECDSA allow list with %d entries", entries)
-	}
-
 	srv := bgrpc.NewServer(c.CA.GRPCCA, logger)
 
 	if !c.CA.DisableOCSPService {
@@ -286,7 +273,6 @@ func main() {
 			c.CA.Issuance.DefaultCertificateProfileName,
 			c.CA.Issuance.CertProfiles,
 			lints,
-			ecdsaAllowList,
 			c.CA.Expiry.Duration,
 			c.CA.Backdate.Duration,
 			c.CA.SerialPrefix,
