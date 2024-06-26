@@ -14,6 +14,7 @@ import (
 	"net/http/pprof"
 	"os"
 	"os/signal"
+	"reflect"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -34,6 +35,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
 	"google.golang.org/grpc/grpclog"
 
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/strictyaml"
@@ -435,6 +437,21 @@ func ReadConfigFile(filename string, out interface{}) error {
 	return decodeJSONStrict(file, out)
 }
 
+// ValidatorForConfigDuration enables registration of our custom config.Duration
+// type as a time.Duration and performing validation on the configured value
+// using the standard suite of validation functions.
+func ValidatorForConfigDuration(field reflect.Value) interface{} {
+	if c, ok := field.Interface().(config.Duration); ok {
+		t, err := c.ToTimeDuration()
+		if err != nil {
+			return err
+		}
+		return t
+	}
+
+	return nil
+}
+
 // ValidateJSONConfig takes a *ConfigValidator and an io.Reader containing a
 // JSON representation of a config. The JSON data is unmarshaled into the
 // *ConfigValidator's inner Config and then validated according to the
@@ -454,6 +471,9 @@ func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
 			return err
 		}
 	}
+
+	// Register custom types for use with existing validation tags.
+	validate.RegisterCustomTypeFunc(ValidatorForConfigDuration, config.Duration{})
 
 	err := decodeJSONStrict(in, cv.Config)
 	if err != nil {
@@ -496,6 +516,9 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 			return err
 		}
 	}
+
+	// Register custom types for use with existing validation tags.
+	validate.RegisterCustomTypeFunc(ValidatorForConfigDuration, config.Duration{})
 
 	inBytes, err := io.ReadAll(in)
 	if err != nil {

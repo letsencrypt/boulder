@@ -11,10 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -196,9 +198,10 @@ func loadConfigFile(t *testing.T, path string) *os.File {
 
 func TestFailedConfigValidation(t *testing.T) {
 	type FooConfig struct {
-		VitalValue       string `yaml:"vitalValue" validate:"required"`
-		VoluntarilyVoid  string `yaml:"voluntarilyVoid"`
-		VisciouslyVetted string `yaml:"visciouslyVetted" validate:"omitempty,endswith=baz"`
+		VitalValue       string          `yaml:"vitalValue" validate:"required"`
+		VoluntarilyVoid  string          `yaml:"voluntarilyVoid"`
+		VisciouslyVetted string          `yaml:"visciouslyVetted" validate:"omitempty,endswith=baz"`
+		VolatileVagery   config.Duration `yaml:"volatileVagery" validate:"required,lte=120s"`
 	}
 
 	// Violates 'endswith' tag JSON.
@@ -228,6 +231,13 @@ func TestFailedConfigValidation(t *testing.T) {
 	err = ValidateYAMLConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
 	test.AssertError(t, err, "Expected validation error")
 	test.AssertContains(t, err.Error(), "'required'")
+
+	// Violates 'lte' tag JSON for config.Duration type.
+	cf = loadConfigFile(t, "testdata/3_configDuration_too_darn_big.json")
+	defer cf.Close()
+	err = ValidateJSONConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
+	test.AssertError(t, err, "Expected validation error")
+	test.AssertContains(t, err.Error(), "'lte'")
 }
 
 func TestFailExit(t *testing.T) {
