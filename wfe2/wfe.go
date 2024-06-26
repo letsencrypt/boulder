@@ -2271,9 +2271,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	logEvent.DNSNames = names
 
 	var replaces string
-	var limitsExempt bool
+	var isARIRenewal bool
 	if features.Get().TrackReplacementCertificatesARI {
-		replaces, limitsExempt, err = wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
+		replaces, isARIRenewal, err = wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
 			return
@@ -2282,7 +2282,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	var isRenewal bool
 	// TODO(#7511) Remove this feature flag check.
-	if features.Get().CheckRenewalExemptionAtWFE && !limitsExempt {
+	if features.Get().CheckRenewalExemptionAtWFE && !isARIRenewal {
 		// The Subscriber does not have an ARI exemption. However, we can check
 		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount
 		// and CertificatesPerDomain limits.
@@ -2309,7 +2309,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		if features.Get().TrackReplacementCertificatesARI {
 			wfe.stats.ariReplacementOrders.With(prometheus.Labels{
 				"isReplacement": fmt.Sprintf("%t", replaces != ""),
-				"limitsExempt":  fmt.Sprintf("%t", limitsExempt),
+				"limitsExempt":  fmt.Sprintf("%t", isARIRenewal),
 			}).Inc()
 		}
 
@@ -2322,8 +2322,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		RegistrationID:         acct.ID,
 		Names:                  names,
 		ReplacesSerial:         replaces,
-		LimitsExempt:           limitsExempt,
 		CertificateProfileName: newOrderRequest.Profile,
+		IsARIRenewal:           isARIRenewal,
 		IsRenewal:              isRenewal,
 	})
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero

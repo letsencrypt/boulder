@@ -433,12 +433,6 @@ func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, names 
 			return nil, makeTxnError(err, NewOrdersPerAccount)
 		}
 		transactions = append(transactions, txn)
-
-		txns, err := builder.certificatesPerDomainTransactions(regId, names, maxNames)
-		if err != nil {
-			return nil, makeTxnError(err, CertificatesPerDomain)
-		}
-		transactions = append(transactions, txns...)
 	}
 
 	txns, err := builder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId, names, maxNames)
@@ -446,6 +440,15 @@ func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, names 
 		return nil, makeTxnError(err, FailedAuthorizationsPerDomainPerAccount)
 	}
 	transactions = append(transactions, txns...)
+
+	// TODO(#7511) Remove this feature flag check.
+	if features.Get().CheckRenewalExemptionAtWFE && !isRenewal {
+		txns, err := builder.certificatesPerDomainTransactions(regId, names, maxNames)
+		if err != nil {
+			return nil, makeTxnError(err, CertificatesPerDomain)
+		}
+		transactions = append(transactions, txns...)
+	}
 
 	txn, err := builder.certificatesPerFQDNSetTransaction(names)
 	if err != nil {

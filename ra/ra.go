@@ -2525,7 +2525,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-	if !req.LimitsExempt {
+	if !req.IsARIRenewal {
 
 		// Check if there is rate limit space for issuing a certificate.
 		err = ra.checkNewOrderLimits(ctx, newOrder.Names, newOrder.RegistrationID, req.IsRenewal)
@@ -2605,7 +2605,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-	if len(missingAuthzNames) > 0 && !req.LimitsExempt {
+	if len(missingAuthzNames) > 0 && !req.IsARIRenewal {
 		pendingAuthzLimits := ra.rlPolicies.PendingAuthorizationsPerAccount()
 		if pendingAuthzLimits.Enabled() {
 			// The order isn't fully authorized we need to check that the client
