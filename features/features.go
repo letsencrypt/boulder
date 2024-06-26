@@ -90,11 +90,11 @@ type Config struct {
 	MultipleCertificateProfiles bool
 
 	// CheckRenewalExemptionAtWFE when enabled, triggers the following behavior:
-	//  - WFE.NewOrder: checks if the order is a renewal, and if so:
-	//    - skips checks for NewOrdersPerAccount and NewOrdersPerDomain, also
-	//    - passes the isRenewal value in the NewOrderRequest to the RA.
-	//  - RA.NewOrderAndAuthzs: skips checks for legacy NewOrdersPerAccount
-	//    and NewOrdersPerDomain.
+	//  - WFE.NewOrder: checks if the order is a renewal and if so skips checks
+	//    for NewOrdersPerAccount and NewOrdersPerDomain limits.
+	//  - RA.NewOrderAndAuthzs: skips checks for legacy NewOrdersPerAccount and
+	//    NewOrdersPerDomain limits if the WFE indicates that the order is a
+	//    renewal.
 	//
 	// TODO(#7511): Remove this feature flag.
 	CheckRenewalExemptionAtWFE bool
