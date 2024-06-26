@@ -11,17 +11,17 @@
     <p>
         You have been directed to this page because your Account ID is
         temporarily restricted from requesting new certificates for certain
-        hostnames, following a significant number of failed validation attempts
-        without any recent successes.
+        hostnames. Every validation attempt over the past 14 day period has
+        failed.
     </p>
     
     <h2>Why Did This Happen?</h2> 
     <p>
         This often happens when domain names expire, point to new hosts, or if
         there are issues with the DNS configuration or web server settings.
-        These problems prevent your ACME client from successfully validating
-        control over the domain, which is necessary for issuing TLS
-        certificates.
+        These problems prevent your ACME client from successfully <a
+        href="https://letsencrypt.org/how-it-works/">validating control over the
+        domain</a>, which is necessary for issuing TLS certificates.
     </p>
     
     <h2>What Can You Do?</h2>
@@ -31,7 +31,10 @@
         challenges. This might involve updating DNS records, renewing domain
         registrations, or adjusting web server configurations. If you use a
         hosting provider or third-party service for domain management, you may
-        need to coordinate with them.
+        need to coordinate with them. If you believe you've fixed the underlying
+        issue, consider attempting issuance against our <a
+        href="https://letsencrypt.org/docs/staging-environment/">staging
+        environment</a> to verify your fix.
     </p>
     
     <h2>Ready to Unpause?</h2>
