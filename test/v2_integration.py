@@ -45,6 +45,24 @@ import socket
 import challtestsrv
 challSrv = challtestsrv.ChallTestServer()
 
+def test_dns_account_challenge_multidomain():
+    """
+    Test issuance for two random domains using DNS-ACCOUNT-01.
+    """
+    # Only config-next has a dns-account-01 challenge
+    if not CONFIG_NEXT:
+        return
+    chisel2.auth_and_issue([random_domain(), random_domain()], chall_type="dns-account-01")
+
+def test_dns_account_challenge_wildcardmultidomain():
+    """
+    Test issuance for a random domain and a random wildcard domain using DNS-ACCOUNT-01.
+    """
+    # Only config-next has a dns-account-01 challenge
+    if not CONFIG_NEXT:
+        return
+    chisel2.auth_and_issue([random_domain(), "*."+random_domain()], chall_type="dns-account-01")
+
 def test_multidomain():
     chisel2.auth_and_issue([random_domain(), random_domain()])
 
@@ -102,8 +120,10 @@ def check_challenge_dns_err(chalType):
                 c = chisel2.get_chall(authzr, challenges.DNS01)
             elif chalType == "tls-alpn-01":
                 c = chisel2.get_chall(authzr, challenges.TLSALPN01)
+            elif chalType == "dns-account-01":
+                c = chisel2.get_chall(authzr, challenges.DNSACCOUNT01)
             else:
-                raise(Exception("Invalid challenge type requested: {0}".format(challType)))
+                raise(Exception("Invalid challenge type requested: {0}".format(chalType)))
 
             # The failed challenge's error should match expected
             error = c.error

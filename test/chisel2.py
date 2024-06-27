@@ -124,6 +124,8 @@ def auth_and_issue(domains, chall_type="dns-01", email=None, cert_output=None, c
         cleanup = do_http_challenges(client, authzs)
     elif chall_type == "dns-01":
         cleanup = do_dns_challenges(client, authzs)
+    elif chall_type == "dns-account-01":
+        cleanup = do_dns_account_challenges(client, authzs)
     elif chall_type == "tls-alpn-01":
         cleanup = do_tlsalpn_challenges(client, authzs)
     else:
@@ -144,6 +146,20 @@ def do_dns_challenges(client, authzs):
     for a in authzs:
         c = get_chall(a, challenges.DNS01)
         name, value = (c.validation_domain_name(a.body.identifier.value),
+            c.validation(client.net.key))
+        cleanup_hosts.append(name)
+        challSrv.add_dns01_response(name, value)
+        client.answer_challenge(c, c.response(client.net.key))
+    def cleanup():
+        for host in cleanup_hosts:
+            challSrv.remove_dns01_response(host)
+    return cleanup
+
+def do_dns_account_challenges(client, authzs):
+    cleanup_hosts = []
+    for a in authzs:
+        c = get_chall(a, challenges.DNSACCOUNT01)
+        name, value = (c.validation_domain_name(client.net.account.uri, a.body.identifier.value),
             c.validation(client.net.key))
         cleanup_hosts.append(name)
         challSrv.add_dns01_response(name, value)
