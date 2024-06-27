@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 	"time"
 )
 
@@ -10,6 +11,17 @@ import (
 // methods such as serialization to YAML or JSON.
 type Duration struct {
 	time.Duration `validate:"required"`
+}
+
+// DurationCustomTypeFunc enables registration of our custom config.Duration
+// type as a time.Duration and performing validation on the configured value
+// using the standard suite of validation functions.
+func DurationCustomTypeFunc(field reflect.Value) interface{} {
+	if c, ok := field.Interface().(Duration); ok {
+		return c.Duration
+	}
+
+	return reflect.Invalid
 }
 
 // ErrDurationMustBeString is returned when a non-string value is

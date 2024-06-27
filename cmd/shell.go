@@ -14,7 +14,6 @@ import (
 	"net/http/pprof"
 	"os"
 	"os/signal"
-	"reflect"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -437,17 +436,6 @@ func ReadConfigFile(filename string, out interface{}) error {
 	return decodeJSONStrict(file, out)
 }
 
-// ValidatorForConfigDuration enables registration of our custom config.Duration
-// type as a time.Duration and performing validation on the configured value
-// using the standard suite of validation functions.
-func ValidatorForConfigDuration(field reflect.Value) interface{} {
-	if c, ok := field.Interface().(config.Duration); ok {
-		return c.Duration
-	}
-
-	return nil
-}
-
 // ValidateJSONConfig takes a *ConfigValidator and an io.Reader containing a
 // JSON representation of a config. The JSON data is unmarshaled into the
 // *ConfigValidator's inner Config and then validated according to the
@@ -469,7 +457,7 @@ func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
 	}
 
 	// Register custom types for use with existing validation tags.
-	validate.RegisterCustomTypeFunc(ValidatorForConfigDuration, config.Duration{})
+	validate.RegisterCustomTypeFunc(config.DurationCustomTypeFunc, config.Duration{})
 
 	err := decodeJSONStrict(in, cv.Config)
 	if err != nil {
@@ -514,7 +502,7 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 	}
 
 	// Register custom types for use with existing validation tags.
-	validate.RegisterCustomTypeFunc(ValidatorForConfigDuration, config.Duration{})
+	validate.RegisterCustomTypeFunc(config.DurationCustomTypeFunc, config.Duration{})
 
 	inBytes, err := io.ReadAll(in)
 	if err != nil {
