@@ -2016,13 +2016,13 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 // TODO(#5545): For now we're simply exercising the new rate limiter codepath.
 // This should eventually return a berrors.RateLimit error containing the retry
 // after duration among other information available in the ratelimits.Decision.
-func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, names []string) func() {
+func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, names []string, isRenewal bool) func() {
 	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Key-value rate limiting is disabled.
 		return nil
 	}
 
-	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, wfe.maxNames)
+	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, wfe.maxNames, isRenewal)
 	if err != nil {
 		wfe.log.Errf("building new order limit transactions: %v", err)
 		return nil
@@ -2271,13 +2271,27 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	logEvent.DNSNames = names
 
 	var replaces string
-	var limitsExempt bool
+	var isARIRenewal bool
 	if features.Get().TrackReplacementCertificatesARI {
-		replaces, limitsExempt, err = wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
+		replaces, isARIRenewal, err = wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
 			return
 		}
+	}
+
+	var isRenewal bool
+	// TODO(#7511) Remove this feature flag check.
+	if features.Get().CheckRenewalExemptionAtWFE && !isARIRenewal {
+		// The Subscriber does not have an ARI exemption. However, we can check
+		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount
+		// and CertificatesPerDomain limits.
+		exists, err := wfe.sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While checking renewal exemption status"), err)
+			return
+		}
+		isRenewal = exists.Exists
 	}
 
 	err = wfe.validateCertificateProfileName(newOrderRequest.Profile)
@@ -2287,7 +2301,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	refundLimits := wfe.checkNewOrderLimits(ctx, acct.ID, names)
+	refundLimits := wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal)
 
 	var newOrderSuccessful bool
 	var errIsRateLimit bool
@@ -2295,7 +2309,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		if features.Get().TrackReplacementCertificatesARI {
 			wfe.stats.ariReplacementOrders.With(prometheus.Labels{
 				"isReplacement": fmt.Sprintf("%t", replaces != ""),
-				"limitsExempt":  fmt.Sprintf("%t", limitsExempt),
+				"limitsExempt":  fmt.Sprintf("%t", isARIRenewal),
 			}).Inc()
 		}
 
@@ -2308,8 +2322,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		RegistrationID:         acct.ID,
 		Names:                  names,
 		ReplacesSerial:         replaces,
-		LimitsExempt:           limitsExempt,
 		CertificateProfileName: newOrderRequest.Profile,
+		IsARIRenewal:           isARIRenewal,
+		IsRenewal:              isRenewal,
 	})
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {

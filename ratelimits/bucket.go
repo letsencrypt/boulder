@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/features"
 )
 
 // ErrInvalidCost indicates that the cost specified was < 0.
@@ -419,31 +420,37 @@ func (builder *TransactionBuilder) certificatesPerFQDNSetTransaction(orderNames 
 //
 // Precondition: names must be a list of DNS names that all pass
 // policy.WellFormedDomainNames.
-func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, names []string, maxNames int) ([]Transaction, error) {
+func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, names []string, maxNames int, isRenewal bool) ([]Transaction, error) {
 	makeTxnError := func(err error, limit Name) error {
 		return fmt.Errorf("error constructing rate limit transaction for %s rate limit: %w", limit, err)
 	}
 
 	var transactions []Transaction
-	txn, err := builder.ordersPerAccountTransaction(regId)
-	if err != nil {
-		return nil, makeTxnError(err, NewOrdersPerAccount)
+	// TODO(#7511) Remove this feature flag check.
+	if features.Get().CheckRenewalExemptionAtWFE && !isRenewal {
+		txn, err := builder.ordersPerAccountTransaction(regId)
+		if err != nil {
+			return nil, makeTxnError(err, NewOrdersPerAccount)
+		}
+		transactions = append(transactions, txn)
 	}
-	transactions = append(transactions, txn)
 
-	failedAuthzTxns, err := builder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId, names, maxNames)
+	txns, err := builder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId, names, maxNames)
 	if err != nil {
 		return nil, makeTxnError(err, FailedAuthorizationsPerDomainPerAccount)
 	}
-	transactions = append(transactions, failedAuthzTxns...)
+	transactions = append(transactions, txns...)
 
-	certsPerDomainTxns, err := builder.certificatesPerDomainTransactions(regId, names, maxNames)
-	if err != nil {
-		return nil, makeTxnError(err, CertificatesPerDomain)
+	// TODO(#7511) Remove this feature flag check.
+	if features.Get().CheckRenewalExemptionAtWFE && !isRenewal {
+		txns, err := builder.certificatesPerDomainTransactions(regId, names, maxNames)
+		if err != nil {
+			return nil, makeTxnError(err, CertificatesPerDomain)
+		}
+		transactions = append(transactions, txns...)
 	}
-	transactions = append(transactions, certsPerDomainTxns...)
 
-	txn, err = builder.certificatesPerFQDNSetTransaction(names)
+	txn, err := builder.certificatesPerFQDNSetTransaction(names)
 	if err != nil {
 		return nil, makeTxnError(err, CertificatesPerFQDNSet)
 	}

@@ -128,7 +128,8 @@
 		},
 		"features": {
 			"ServeRenewalInfo": true,
-			"TrackReplacementCertificatesARI": true
+			"TrackReplacementCertificatesARI": true,
+			"CheckRenewalExemptionAtWFE": true
 		},
 		"certificateProfileNames": [
 			"defaultBoulderCertificateProfile"
