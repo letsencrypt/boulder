@@ -442,11 +442,7 @@ func ReadConfigFile(filename string, out interface{}) error {
 // using the standard suite of validation functions.
 func ValidatorForConfigDuration(field reflect.Value) interface{} {
 	if c, ok := field.Interface().(config.Duration); ok {
-		t, err := c.ToTimeDuration()
-		if err != nil {
-			return err
-		}
-		return t
+		return c.Duration
 	}
 
 	return nil

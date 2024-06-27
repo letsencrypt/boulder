@@ -12,16 +12,6 @@ type Duration struct {
 	time.Duration `validate:"required"`
 }
 
-// ToTimeDuration returns a time.Duration from the Duration or an error.
-func (d Duration) ToTimeDuration() (time.Duration, error) {
-	t, err := time.ParseDuration(d.String())
-	if err != nil {
-		return 0, err
-	}
-
-	return t, nil
-}
-
 // ErrDurationMustBeString is returned when a non-string value is
 // presented to be deserialized as a ConfigDuration
 var ErrDurationMustBeString = errors.New("cannot JSON unmarshal something other than a string into a ConfigDuration")

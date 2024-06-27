@@ -201,7 +201,8 @@ func TestFailedConfigValidation(t *testing.T) {
 		VitalValue       string          `yaml:"vitalValue" validate:"required"`
 		VoluntarilyVoid  string          `yaml:"voluntarilyVoid"`
 		VisciouslyVetted string          `yaml:"visciouslyVetted" validate:"omitempty,endswith=baz"`
-		VolatileVagery   config.Duration `yaml:"volatileVagery" validate:"required,lte=120s"`
+		VolatileVagary   config.Duration `yaml:"volatileVagary" validate:"required,lte=120s"`
+		VernalVeil       config.Duration `yaml:"vernalVeil" validate:"required"`
 	}
 
 	// Violates 'endswith' tag JSON.
@@ -238,6 +239,27 @@ func TestFailedConfigValidation(t *testing.T) {
 	err = ValidateJSONConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
 	test.AssertError(t, err, "Expected validation error")
 	test.AssertContains(t, err.Error(), "'lte'")
+
+	// Violates 'lte' tag JSON for config.Duration type.
+	cf = loadConfigFile(t, "testdata/3_configDuration_too_darn_big.json")
+	defer cf.Close()
+	err = ValidateJSONConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
+	test.AssertError(t, err, "Expected validation error")
+	test.AssertContains(t, err.Error(), "'lte'")
+
+	// Incorrect value for the config.Duration type.
+	cf = loadConfigFile(t, "testdata/4_incorrect_data_for_type.json")
+	defer cf.Close()
+	err = ValidateJSONConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
+	test.AssertError(t, err, "Expected error")
+	test.AssertContains(t, err.Error(), "missing unit in duration")
+
+	// Incorrect value for the config.Duration type.
+	cf = loadConfigFile(t, "testdata/4_incorrect_data_for_type.yaml")
+	defer cf.Close()
+	err = ValidateYAMLConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
+	test.AssertError(t, err, "Expected error")
+	test.AssertContains(t, err.Error(), "missing unit in duration")
 }
 
 func TestFailExit(t *testing.T) {
