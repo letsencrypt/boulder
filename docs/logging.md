@@ -51,3 +51,21 @@ We attach a simple checksum to each log line. This is not a cryptographically
 secure hash, but is intended to let us catch corruption in the log system. This
 is a short chunk of base64 encoded data near the beginning of the log line. It
 is consumed by cmd/log-validator.
+
+## When to Log
+
+We try to limit Boulder to only outputting two kinds of logs:
+
+1. Exactly one log line per request, output by the WFE; and
+2. Exactly one log line per auditable event, such as signing an object, output
+   by whichever component performed the auditable action.
+
+This limits the number of log lines we have to store, and limits the number of
+different kinds of log lines one might have to parse to derive metrics.
+
+There are exceptions to the above. The most obvious category of exception is
+asynchronous activity that might fail, such as submitting final certificates to
+informational CT logs. In such cases, the log line cannot be replaced by a
+returned error object, because there is no pending gRPC or web request to return
+to. If these logs become problematic, we should consider methods of sampling
+them, or replacing them solely with metrics.
