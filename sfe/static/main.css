@@ -1,6 +1,6 @@
 /* Universal styles */
 * {
-    font-family: "Nunito", Arial, sans-serif;
+    font-family: system-ui, sans-serif;
 }
 /* Basic layout */
 body {
