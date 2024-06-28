@@ -135,7 +135,7 @@ SERVICES = (
         ('boulder-ra-1', 'boulder-ra-2', 'boulder-sa-1', 'boulder-sa-2', 'nonce-service-taro-1', 'nonce-service-taro-2', 'nonce-service-zinc-1')),
     Service('sfe',
         4003, None, None,
-        ('./bin/boulder', 'sfe', '--config', os.path.join(config_dir, 'sfe.json'), '--addr', ':4003', '--tls-addr', ':4432', '--debug-addr', ':8015'),
+        ('./bin/boulder', 'sfe', '--config', os.path.join(config_dir, 'sfe.json'), '--addr', ':4003', '--debug-addr', ':8015'),
         ('boulder-ra-1', 'boulder-ra-2', 'boulder-sa-1', 'boulder-sa-2',)),
     Service('log-validator',
         8016, None, None,

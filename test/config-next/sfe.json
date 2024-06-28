@@ -1,10 +1,7 @@
 {
 	"sfe": {
 		"listenAddress": "0.0.0.0:4003",
-		"TLSListenAddress": "0.0.0.0:4432",
 		"debugAddr": ":8015",
-		"serverCertificatePath": "test/certs/ipki/boulder/cert.pem",
-		"serverKeyPath": "test/certs/ipki/boulder/key.pem",
 		"timeout": "30s",
 		"shutdownStopTimeout": "10s",
 		"tls": {
