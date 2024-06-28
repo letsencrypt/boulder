@@ -38,17 +38,7 @@ var (
 
 	//go:embed all:templates all:pages
 	dynamicFS embed.FS
-
-	// HTML pages to-be-served by the SFE
-	tmplPages *template.Template
 )
-
-// Parse the files once at startup to avoid each request causing the server to
-// JIT parse. The pages are stored in an in-memory embed.FS to prevent
-// unnecessary filesystem I/O on a physical HDD.
-func init() {
-	tmplPages = template.Must(template.New("pages").ParseFS(dynamicFS, "templates/layout.html", "pages/*"))
-}
 
 // SelfServiceFrontEndImpl provides all the logic for Boulder's selfservice
 // frontend web-facing interface, i.e., a portal where a subscriber can unpause
@@ -68,6 +58,9 @@ type SelfServiceFrontEndImpl struct {
 	// and WFE. It is used to validate incoming JWT signatures on the unpause
 	// endpoint.
 	unpausePublicKey ed25519.PublicKey
+
+	// HTML pages served by the SFE
+	templatePages *template.Template
 }
 
 // NewSelfServiceFrontEndImpl constructs a web service for Boulder
@@ -80,6 +73,12 @@ func NewSelfServiceFrontEndImpl(
 	sac sapb.StorageAuthorityReadOnlyClient,
 	unpausePublicKey ed25519.PublicKey,
 ) (SelfServiceFrontEndImpl, error) {
+
+	// Parse the files once at startup to avoid each request causing the server
+	// to JIT parse. The pages are stored in an in-memory embed.FS to prevent
+	// unnecessary filesystem I/O on a physical HDD.
+	tmplPages := template.Must(template.New("pages").ParseFS(dynamicFS, "templates/layout.html", "pages/*"))
+
 	sfe := SelfServiceFrontEndImpl{
 		log:              logger,
 		clk:              clk,
@@ -87,6 +86,7 @@ func NewSelfServiceFrontEndImpl(
 		ra:               rac,
 		sa:               sac,
 		unpausePublicKey: unpausePublicKey,
+		templatePages:    tmplPages,
 	}
 
 	return sfe, nil
@@ -112,13 +112,13 @@ func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTT
 // renderTemplate takes an HTML template instantiated by the SFE init() and an
 // optional dynamicData which are rendered and served back to the client via the
 // response writer.
-func renderTemplate(w http.ResponseWriter, subTmpl string, dynamicData any) {
-	if len(subTmpl) == 0 {
+func (sfe *SelfServiceFrontEndImpl) renderTemplate(w http.ResponseWriter, filename string, dynamicData any) {
+	if len(filename) == 0 {
 		http.Error(w, "Template page does not exist", http.StatusInternalServerError)
 		return
 	}
 
-	err := tmplPages.ExecuteTemplate(w, subTmpl, dynamicData)
+	err := sfe.templatePages.ExecuteTemplate(w, filename, dynamicData)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -127,11 +127,10 @@ func renderTemplate(w http.ResponseWriter, subTmpl string, dynamicData any) {
 // Index is the homepage of the SFE
 func (sfe *SelfServiceFrontEndImpl) Index(response http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
-		response.Header().Set("Access-Control-Allow-Methods", "GET, HEAD")
 		response.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	renderTemplate(response, "index.html", nil)
+	sfe.renderTemplate(response, "index.html", nil)
 }
 
 // BuildID tells the requester what boulder build version is running.
@@ -152,28 +151,29 @@ func (sfe *SelfServiceFrontEndImpl) getHelper(response http.ResponseWriter, inco
 	if incomingJWT != "" {
 		// Serve the actual unpause page given to a Subscriber. Populates the
 		// unpause form with the JWT from the URL. That JWT itself may be
-		// invalid or expired, but that validation can only be performed only
-		// after submitting the form.
-		unpausePrepareToUnpause(response, unpausePath, string(incomingJWT))
+		// invalid or expired, but that validation will be performed after
+		// submitting the form.
+		sfe.unpausePrepareToUnpause(response, unpausePath, string(incomingJWT))
 	} else {
 		// We only want to accept requests containing the JWT param.
-		unpauseInvalidRequest(response)
+		sfe.unpauseInvalidRequest(response)
 	}
 }
 
-// posthelper After clicking unpause, serve a page indicating if the unpause succeeded or failed.
+// posthelper serves a page indicating if the unpause succeeded or failed upon
+// clicking the unpause button.
 func (sfe *SelfServiceFrontEndImpl) postHelper(response http.ResponseWriter, incomingJWT unpauseJWT) {
 	if incomingJWT != "" {
-		claims, err := sfe.validateUnpauseJWTforAccount(incomingJWT)
+		regID, err := sfe.validateUnpauseJWTforAccount(incomingJWT)
 		if err != nil {
-			unpauseFailure(response)
+			sfe.unpauseFailure(response)
 		}
 
 		// TODO(#7356) Declare a registration ID variable to populate an
 		// rapb unpause account request message.
-		_, innerErr := strconv.ParseInt(claims.Subject, 10, 64)
+		_, innerErr := strconv.ParseInt(regID, 10, 64)
 		if innerErr != nil {
-			unpauseInvalidRequest(response)
+			sfe.unpauseInvalidRequest(response)
 		}
 
 		// TODO(#7536) Send gRPC request to the RA informing it to unpause
@@ -182,50 +182,50 @@ func (sfe *SelfServiceFrontEndImpl) postHelper(response http.ResponseWriter, inc
 		// just in case the request fails.
 
 		// Success, the account has been unpaused.
-		unpauseSuccessful(response, claims.Subject)
+		sfe.unpauseSuccessful(response, regID)
 	} else {
-		unpauseInvalidRequest(response)
+		sfe.unpauseInvalidRequest(response)
 	}
 }
 
 // unpauseInvalidRequest is a helper that displays a page indicating there's no
 // action for a Subscriber to take due to an invalid or lack of JWT in the data
 // object.
-func unpauseInvalidRequest(response http.ResponseWriter) {
-	renderTemplate(response, "unpause-noParams.html", nil)
+func (sfe *SelfServiceFrontEndImpl) unpauseInvalidRequest(response http.ResponseWriter) {
+	sfe.renderTemplate(response, "unpause-noParams.html", nil)
 }
 
 // unpauseSuccessful is a helper that displays a success message to the
 // Subscriber if their account has been unpaused.
-func unpauseSuccessful(response http.ResponseWriter, accountID string) {
+func (sfe *SelfServiceFrontEndImpl) unpauseSuccessful(response http.ResponseWriter, accountID string) {
 	type tmplData struct {
 		ShouldUnpause bool
 		AccountID     string
 	}
-	renderTemplate(response, "unpause-post.html", tmplData{true, accountID})
+	sfe.renderTemplate(response, "unpause-post.html", tmplData{true, accountID})
 }
 
 // unpauseFailure is a helper that displays a failure message to the Subscriber
 // indicating that their account has failed to unpause. This should only be used
 // when the JWT fails to validate and other failures should use
 // unpauseInvalidRequest.
-func unpauseFailure(response http.ResponseWriter) {
+func (sfe *SelfServiceFrontEndImpl) unpauseFailure(response http.ResponseWriter) {
 	type tmplData struct {
 		ShouldUnpause bool
 	}
-	renderTemplate(response, "unpause-post.html", tmplData{false})
+	sfe.renderTemplate(response, "unpause-post.html", tmplData{false})
 }
 
 // unpausePrepareToUnpause is a helper that displays a page containing a filled
 // out form containing a JWT created by the WFE. Upon accessing that link, the
 // Subscriber would click the "unpause my account" button to submit the form
 // back to the SFE.
-func unpausePrepareToUnpause(response http.ResponseWriter, unpausePath string, incomingJWT string) {
+func (sfe *SelfServiceFrontEndImpl) unpausePrepareToUnpause(response http.ResponseWriter, unpausePath string, incomingJWT string) {
 	type tmplData struct {
 		UnpausePath string
 		JWT         string
 	}
-	renderTemplate(response, "unpause-params.html", tmplData{unpausePath, incomingJWT})
+	sfe.renderTemplate(response, "unpause-params.html", tmplData{unpausePath, incomingJWT})
 }
 
 // Unpause allows a requester to unpause their account via a form present on the
@@ -245,32 +245,33 @@ func (sfe *SelfServiceFrontEndImpl) Unpause(response http.ResponseWriter, reques
 	}
 }
 
-type sfeJWTClaims struct {
-	jwt.Claims
-
-	// Version is a custom claim used to mass invalidate existing JWTs by
-	// changing the API version via unpausePath.
-	Version string `json:"apiVersion,omitempty"`
-}
-
 // validateUnpauseJWTforAccount validates the signature and contents of an
 // unpauseJWT and verify that the its claims match a set of expected claims.
-// Passing validations returns the claims or an error.
-func (sfe *SelfServiceFrontEndImpl) validateUnpauseJWTforAccount(incomingJWT unpauseJWT) (sfeJWTClaims, error) {
+// After JWT validation, return the registration ID from claim's subject if the
+// validation was successful or an error.
+func (sfe *SelfServiceFrontEndImpl) validateUnpauseJWTforAccount(incomingJWT unpauseJWT) (string, error) {
 	slug := strings.Split(unpausePath, "/")
 	if len(slug) != 4 {
-		return sfeJWTClaims{}, errors.New("Could not parse API version")
+		return "", errors.New("Could not parse API version")
 	}
 
 	token, err := jwt.ParseSigned(string(incomingJWT), []jose.SignatureAlgorithm{jose.EdDSA})
 	if err != nil {
-		return sfeJWTClaims{}, fmt.Errorf("parsing JWT: %s", err)
+		return "", fmt.Errorf("parsing JWT: %s", err)
+	}
+
+	type sfeJWTClaims struct {
+		jwt.Claims
+
+		// Version is a custom claim used to mass invalidate existing JWTs by
+		// changing the API version via unpausePath.
+		Version string `json:"apiVersion,omitempty"`
 	}
 
 	incomingClaims := sfeJWTClaims{}
 	err = token.Claims(sfe.unpausePublicKey, &incomingClaims)
 	if err != nil {
-		return sfeJWTClaims{}, err
+		return "", err
 	}
 
 	expectedClaims := jwt.Expected{
@@ -282,20 +283,20 @@ func (sfe *SelfServiceFrontEndImpl) validateUnpauseJWTforAccount(incomingJWT unp
 
 	err = incomingClaims.Validate(expectedClaims)
 	if err != nil {
-		return sfeJWTClaims{}, err
+		return "", err
 	}
 
 	if len(incomingClaims.Subject) == 0 {
-		return sfeJWTClaims{}, errors.New("Account ID required for account unpausing")
+		return "", errors.New("Account ID required for account unpausing")
 	}
 
 	if incomingClaims.Version == "" {
-		return sfeJWTClaims{}, errors.New("Incoming JWT was created with no API version")
+		return "", errors.New("Incoming JWT was created with no API version")
 	}
 
 	if incomingClaims.Version != slug[2] {
-		return sfeJWTClaims{}, fmt.Errorf("JWT created for unpause API version %s was provided to the incompatible API version %s", incomingClaims.Version, slug[2])
+		return "", fmt.Errorf("JWT created for unpause API version %s was provided to the incompatible API version %s", incomingClaims.Version, slug[2])
 	}
 
-	return incomingClaims, nil
+	return incomingClaims.Subject, nil
 }
