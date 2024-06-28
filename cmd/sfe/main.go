@@ -1,15 +1,11 @@
 package notmain
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
 	"flag"
-	"fmt"
-	"log"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,10 +14,10 @@ import (
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sfe"
+	"github.com/letsencrypt/boulder/web"
 )
 
 type Config struct {
@@ -32,21 +28,13 @@ type Config struct {
 		// HTTP requests. Defaults to ":80".
 		ListenAddress string `validate:"omitempty,hostname_port"`
 
-		// TLSListenAddress is the address:port on which to listen for incoming
-		// HTTPS requests. If none is provided the SFE will not listen for HTTPS
-		// requests.
-		TLSListenAddress string `validate:"omitempty,hostname_port"`
-
 		// Timeout is the per-request overall timeout. This should be slightly
-		// lower than the upstream's timeout when making request to the SFE.
+		// lower than the upstream's timeout when making requests to the SFE.
 		Timeout config.Duration `validate:"-"`
 
 		// ShutdownStopTimeout is the duration that the SFE will wait before
 		// shutting down any listening servers.
 		ShutdownStopTimeout config.Duration
-
-		ServerCertificatePath string `validate:"required_with=TLSListenAddress"`
-		ServerKeyPath         string `validate:"required_with=TLSListenAddress"`
 
 		TLS cmd.TLSConfig
 
@@ -83,25 +71,8 @@ func setupSFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 	return rac, sac, privateKey
 }
 
-type errorWriter struct {
-	blog.Logger
-}
-
-func (ew errorWriter) Write(p []byte) (n int, err error) {
-	// log.Logger will append a newline to all messages before calling
-	// Write. Our log checksum checker doesn't like newlines, because
-	// syslog will strip them out so the calculated checksums will
-	// differ. So that we don't hit this corner case for every line
-	// logged from inside net/http.Server we strip the newline before
-	// we get to the checksum generator.
-	p = bytes.TrimRight(p, "\n")
-	ew.Logger.Err(fmt.Sprintf("net/http.Server: %s", string(p)))
-	return
-}
-
 func main() {
 	listenAddr := flag.String("addr", "", "HTTP listen address override")
-	tlsAddr := flag.String("tls-addr", "", "HTTPS listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -121,9 +92,6 @@ func main() {
 	}
 	if c.SFE.ListenAddress == "" {
 		cmd.Fail("HTTP listen address is not configured")
-	}
-	if *tlsAddr != "" {
-		c.SFE.TLSListenAddress = *tlsAddr
 	}
 	if *debugAddr != "" {
 		c.SFE.DebugAddr = *debugAddr
@@ -150,39 +118,13 @@ func main() {
 	logger.Infof("Server running, listening on %s....", c.SFE.ListenAddress)
 	handler := sfei.Handler(stats, c.OpenTelemetryHTTPConfig.Options()...)
 
-	srv := http.Server{
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 120 * time.Second,
-		IdleTimeout:  120 * time.Second,
-		Addr:         c.SFE.ListenAddress,
-		ErrorLog:     log.New(errorWriter{logger}, "", 0),
-		Handler:      handler,
-	}
-
+	srv := web.NewServer(c.SFE.ListenAddress, handler, logger)
 	go func() {
 		err := srv.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			cmd.FailOnError(err, "Running HTTP server")
 		}
 	}()
-
-	tlsSrv := http.Server{
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 120 * time.Second,
-		IdleTimeout:  120 * time.Second,
-		Addr:         c.SFE.TLSListenAddress,
-		ErrorLog:     log.New(errorWriter{logger}, "", 0),
-		Handler:      handler,
-	}
-	if tlsSrv.Addr != "" {
-		go func() {
-			logger.Infof("TLS server listening on %s", tlsSrv.Addr)
-			err := tlsSrv.ListenAndServeTLS(c.SFE.ServerCertificatePath, c.SFE.ServerKeyPath)
-			if err != nil && err != http.ErrServerClosed {
-				cmd.FailOnError(err, "Running TLS server")
-			}
-		}()
-	}
 
 	// When main is ready to exit (because it has received a shutdown signal),
 	// gracefully shutdown the servers. Calling these shutdown functions causes
@@ -192,7 +134,6 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), c.SFE.ShutdownStopTimeout.Duration)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
-		_ = tlsSrv.Shutdown(ctx)
 		oTelShutdown(ctx)
 	}()
 
