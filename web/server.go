@@ -26,8 +26,8 @@ func (ew errorWriter) Write(p []byte) (n int, err error) {
 	return
 }
 
-// NewServer returns an http.Server listening on the given address for each path
-// in the handler. Errors are sent to the given logger.
+// NewServer returns an http.Server which will listen on the given address, when
+// started, for each path in the handler. Errors are sent to the given logger.
 func NewServer(listenAddr string, handler http.Handler, logger blog.Logger) http.Server {
 	return http.Server{
 		ReadTimeout:  30 * time.Second,
