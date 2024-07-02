@@ -560,13 +560,13 @@ func parseCAARecord(caa *dns.CAA) (string, []caaParameter, error) {
 	issuerDomainName := strings.TrimFunc(parts[0], isWSP)
 	paramList := parts[1:]
 
-	var caaParameters []caaParameter
 	// Handle the case where a semi-colon is specified following the domain
 	// but no parameters are given.
 	if len(paramList) == 1 && strings.TrimFunc(paramList[0], isWSP) == "" {
 		return issuerDomainName, nil, nil
 	}
 
+	var caaParameters []caaParameter
 	for _, parameter := range paramList {
 		// A parameter tag cannot include equal signs (ASCII 0x3D),
 		// however they are permitted in the value itself.
@@ -657,14 +657,22 @@ var validationMethodRegexp = regexp.MustCompile(`^[[:alnum:]-]+$`)
 
 // caaValidationMethodMatches checks that the validationmethods CAA parameter,
 // if present, contains the exact name of the ACME validation method used to
-// validate this domain. We only accept
-// See RFC 8657 Section 4: https://www.rfc-editor.org/rfc/rfc8657.html#section-4
+// validate this domain. We accept only a single "validationmethods" parameter
+// and will fail if multiple are found in the CAA RR, even if all tag-value
+// pairs would be valid. See RFC 8657 Section 4:
+// https://www.rfc-editor.org/rfc/rfc8657.html#section-4.
 func caaValidationMethodMatches(caaParams []caaParameter, method core.AcmeChallenge) bool {
 	var validationMethods string
 	var found bool
 	for _, param := range caaParams {
 		if param.tag == "validationmethods" {
 			if found {
+				// RFC 8657 does not define what behavior to take when multiple
+				// "validationmethods" parameters exist, but we make the
+				// conscious choice to fail validation similar to how multiple
+				// "accounturi" parameters are "unsatisfiable". Subscribers
+				// should be aware of RFC 8657 Section 5.8:
+				// https://www.rfc-editor.org/rfc/rfc8657.html#section-5.8
 				return false
 			}
 			validationMethods = param.val
@@ -677,8 +685,11 @@ func caaValidationMethodMatches(caaParams []caaParameter, method core.AcmeChalle
 	}
 
 	for _, m := range strings.Split(validationMethods, ",") {
-		// If any listed method does not match the ABNF 1*(ALPHA / DIGIT / "-"),
-		// immediately reject the whole record.
+		// The value of the "validationmethods" parameter MUST comply with the
+		// following ABNF [RFC5234]:
+		//
+		//      value = [*(label ",") label]
+		//      label = 1*(ALPHA / DIGIT / "-")
 		if !validationMethodRegexp.MatchString(m) {
 			return false
 		}
