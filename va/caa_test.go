@@ -1109,16 +1109,17 @@ func TestSelectCAA(t *testing.T) {
 }
 
 func TestAccountURIMatches(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
-		params   map[string]string
+		params   []caaParameter
 		prefixes []string
 		id       int64
 		want     bool
 	}{
 		{
 			name:   "empty accounturi",
-			params: map[string]string{},
+			params: nil,
 			prefixes: []string{
 				"https://acme-v01.api.letsencrypt.org/acme/reg/",
 			},
@@ -1126,10 +1127,17 @@ func TestAccountURIMatches(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "non-uri accounturi",
-			params: map[string]string{
-				"accounturi": "\\invalid 😎/123456",
+			name:   "no accounturi in rr, but other parameters exist",
+			params: []caaParameter{{tag: "validationmethods", val: "tls-alpn-01"}},
+			prefixes: []string{
+				"https://acme-v02.api.letsencrypt.org/acme/reg/",
 			},
+			id:   123456,
+			want: true,
+		},
+		{
+			name:   "non-uri accounturi",
+			params: []caaParameter{{tag: "accounturi", val: "\\invalid 😎/123456"}},
 			prefixes: []string{
 				"\\invalid 😎",
 			},
@@ -1137,10 +1145,8 @@ func TestAccountURIMatches(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "simple match",
-			params: map[string]string{
-				"accounturi": "https://acme-v01.api.letsencrypt.org/acme/reg/123456",
-			},
+			name:   "simple match",
+			params: []caaParameter{{tag: "accounturi", val: "https://acme-v01.api.letsencrypt.org/acme/reg/123456"}},
 			prefixes: []string{
 				"https://acme-v01.api.letsencrypt.org/acme/reg/",
 			},
@@ -1148,10 +1154,17 @@ func TestAccountURIMatches(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "accountid mismatch",
-			params: map[string]string{
-				"accounturi": "https://acme-v01.api.letsencrypt.org/acme/reg/123456",
+			name:   "simple match, but has a friend",
+			params: []caaParameter{{tag: "validationmethods", val: "dns-01"}, {tag: "accounturi", val: "https://acme-v01.api.letsencrypt.org/acme/reg/123456"}},
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/reg/",
 			},
+			id:   123456,
+			want: true,
+		},
+		{
+			name:   "accountid mismatch",
+			params: []caaParameter{{tag: "accounturi", val: "https://acme-v01.api.letsencrypt.org/acme/reg/123456"}},
 			prefixes: []string{
 				"https://acme-v01.api.letsencrypt.org/acme/reg/",
 			},
@@ -1159,10 +1172,53 @@ func TestAccountURIMatches(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "multiple prefixes, match first",
-			params: map[string]string{
-				"accounturi": "https://acme-staging.api.letsencrypt.org/acme/reg/123456",
+			name:   "single parameter, no value",
+			params: []caaParameter{{tag: "accounturi", val: ""}},
+			prefixes: []string{
+				"https://acme-v02.api.letsencrypt.org/acme/reg/",
 			},
+			id:   123456,
+			want: false,
+		},
+		{
+			name:   "multiple parameters, each with no value",
+			params: []caaParameter{{tag: "accounturi", val: ""}, {tag: "accounturi", val: ""}},
+			prefixes: []string{
+				"https://acme-v02.api.letsencrypt.org/acme/reg/",
+			},
+			id:   123456,
+			want: false,
+		},
+		{
+			name:   "multiple parameters, one with no value",
+			params: []caaParameter{{tag: "accounturi", val: ""}, {tag: "accounturi", val: "https://acme-v02.api.letsencrypt.org/acme/reg/123456"}},
+			prefixes: []string{
+				"https://acme-v02.api.letsencrypt.org/acme/reg/",
+			},
+			id:   123456,
+			want: false,
+		},
+		{
+			name:   "multiple parameters, each with an identical value",
+			params: []caaParameter{{tag: "accounturi", val: "https://acme-v02.api.letsencrypt.org/acme/reg/123456"}, {tag: "accounturi", val: "https://acme-v02.api.letsencrypt.org/acme/reg/123456"}},
+			prefixes: []string{
+				"https://acme-v02.api.letsencrypt.org/acme/reg/",
+			},
+			id:   123456,
+			want: false,
+		},
+		{
+			name:   "multiple parameters, each with a different value",
+			params: []caaParameter{{tag: "accounturi", val: "https://acme-v02.api.letsencrypt.org/acme/reg/69"}, {tag: "accounturi", val: "https://acme-v02.api.letsencrypt.org/acme/reg/420"}},
+			prefixes: []string{
+				"https://acme-v02.api.letsencrypt.org/acme/reg/",
+			},
+			id:   69,
+			want: false,
+		},
+		{
+			name:   "multiple prefixes, match first",
+			params: []caaParameter{{tag: "accounturi", val: "https://acme-staging.api.letsencrypt.org/acme/reg/123456"}},
 			prefixes: []string{
 				"https://acme-staging.api.letsencrypt.org/acme/reg/",
 				"https://acme-staging-v02.api.letsencrypt.org/acme/acct/",
@@ -1171,10 +1227,8 @@ func TestAccountURIMatches(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "multiple prefixes, match second",
-			params: map[string]string{
-				"accounturi": "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
-			},
+			name:   "multiple prefixes, match second",
+			params: []caaParameter{{tag: "accounturi", val: "https://acme-v02.api.letsencrypt.org/acme/acct/123456"}},
 			prefixes: []string{
 				"https://acme-v01.api.letsencrypt.org/acme/reg/",
 				"https://acme-v02.api.letsencrypt.org/acme/acct/",
@@ -1183,10 +1237,8 @@ func TestAccountURIMatches(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "multiple prefixes, match none",
-			params: map[string]string{
-				"accounturi": "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
-			},
+			name:   "multiple prefixes, match none",
+			params: []caaParameter{{tag: "accounturi", val: "https://acme-v02.api.letsencrypt.org/acme/acct/123456"}},
 			prefixes: []string{
 				"https://acme-v01.api.letsencrypt.org/acme/acct/",
 				"https://acme-v03.api.letsencrypt.org/acme/acct/",
@@ -1195,10 +1247,8 @@ func TestAccountURIMatches(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "three prefixes",
-			params: map[string]string{
-				"accounturi": "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
-			},
+			name:   "three prefixes",
+			params: []caaParameter{{tag: "accounturi", val: "https://acme-v02.api.letsencrypt.org/acme/acct/123456"}},
 			prefixes: []string{
 				"https://acme-v01.api.letsencrypt.org/acme/reg/",
 				"https://acme-v02.api.letsencrypt.org/acme/acct/",
@@ -1208,10 +1258,8 @@ func TestAccountURIMatches(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "multiple prefixes, wrong accountid",
-			params: map[string]string{
-				"accounturi": "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
-			},
+			name:   "multiple prefixes, wrong accountid",
+			params: []caaParameter{{tag: "accounturi", val: "https://acme-v02.api.letsencrypt.org/acme/acct/123456"}},
 			prefixes: []string{
 				"https://acme-v01.api.letsencrypt.org/acme/reg/",
 				"https://acme-v02.api.letsencrypt.org/acme/acct/",
@@ -1222,7 +1270,10 @@ func TestAccountURIMatches(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		// TODO(#7454) Remove this rebinding
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := caaAccountURIMatches(tc.params, tc.prefixes, tc.id)
 			test.AssertEquals(t, got, tc.want)
 		})
@@ -1230,86 +1281,116 @@ func TestAccountURIMatches(t *testing.T) {
 }
 
 func TestValidationMethodMatches(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
-		params map[string]string
+		params []caaParameter
 		method core.AcmeChallenge
 		want   bool
 	}{
 		{
 			name:   "empty validationmethods",
-			params: map[string]string{},
+			params: nil,
 			method: core.ChallengeTypeHTTP01,
 			want:   true,
 		},
 		{
-			name: "only comma",
-			params: map[string]string{
-				"validationmethods": ",",
-			},
-			method: core.ChallengeTypeHTTP01,
-			want:   false,
-		},
-		{
-			name: "malformed method",
-			params: map[string]string{
-				"validationmethods": "howdy !",
-			},
-			method: core.ChallengeTypeHTTP01,
-			want:   false,
-		},
-		{
-			name: "invalid method",
-			params: map[string]string{
-				"validationmethods": "tls-sni-01",
-			},
-			method: core.ChallengeTypeHTTP01,
-			want:   false,
-		},
-		{
-			name: "simple match",
-			params: map[string]string{
-				"validationmethods": "http-01",
-			},
+			name:   "no validationmethods in rr, but other parameters exist", // validationmethods is not mandatory
+			params: []caaParameter{{tag: "accounturi", val: "ph1LwuzHere"}},
 			method: core.ChallengeTypeHTTP01,
 			want:   true,
 		},
 		{
-			name: "simple mismatch",
-			params: map[string]string{
-				"validationmethods": "dns-01",
-			},
+			name:   "no value",
+			params: []caaParameter{{tag: "validationmethods", val: ""}}, // equivalent to forbidding issuance
 			method: core.ChallengeTypeHTTP01,
 			want:   false,
 		},
 		{
-			name: "multiple choices, match first",
-			params: map[string]string{
-				"validationmethods": "http-01,dns-01",
-			},
+			name:   "only comma",
+			params: []caaParameter{{tag: "validationmethods", val: ","}},
+			method: core.ChallengeTypeHTTP01,
+			want:   false,
+		},
+		{
+			name:   "malformed method",
+			params: []caaParameter{{tag: "validationmethods", val: "howdy !"}},
+			method: core.ChallengeTypeHTTP01,
+			want:   false,
+		},
+		{
+			name:   "invalid method",
+			params: []caaParameter{{tag: "validationmethods", val: "tls-sni-01"}},
+			method: core.ChallengeTypeHTTP01,
+			want:   false,
+		},
+		{
+			name:   "simple match",
+			params: []caaParameter{{tag: "validationmethods", val: "http-01"}},
 			method: core.ChallengeTypeHTTP01,
 			want:   true,
 		},
 		{
-			name: "multiple choices, match second",
-			params: map[string]string{
-				"validationmethods": "http-01,dns-01",
-			},
+			name:   "simple match, but has a friend",
+			params: []caaParameter{{tag: "accounturi", val: "https://example.org"}, {tag: "validationmethods", val: "http-01"}},
+			method: core.ChallengeTypeHTTP01,
+			want:   true,
+		},
+		{
+			name:   "multiple validationmethods, each with no value",
+			params: []caaParameter{{tag: "validationmethods", val: ""}, {tag: "validationmethods", val: ""}},
+			method: core.ChallengeTypeHTTP01,
+			want:   false,
+		},
+		{
+			name:   "multiple validationmethods, one with no value",
+			params: []caaParameter{{tag: "validationmethods", val: ""}, {tag: "validationmethods", val: "http-01"}},
+			method: core.ChallengeTypeHTTP01,
+			want:   false,
+		},
+		{
+			name:   "multiple validationmethods, each with an identical value",
+			params: []caaParameter{{tag: "validationmethods", val: "http-01"}, {tag: "validationmethods", val: "http-01"}},
+			method: core.ChallengeTypeHTTP01,
+			want:   false,
+		},
+		{
+			name:   "multiple validationmethods, each with a different value",
+			params: []caaParameter{{tag: "validationmethods", val: "http-01"}, {tag: "validationmethods", val: "dns-01"}},
+			method: core.ChallengeTypeHTTP01,
+			want:   false,
+		},
+		{
+			name:   "simple mismatch",
+			params: []caaParameter{{tag: "validationmethods", val: "dns-01"}},
+			method: core.ChallengeTypeHTTP01,
+			want:   false,
+		},
+		{
+			name:   "multiple choices, match first",
+			params: []caaParameter{{tag: "validationmethods", val: "http-01,dns-01"}},
+			method: core.ChallengeTypeHTTP01,
+			want:   true,
+		},
+		{
+			name:   "multiple choices, match second",
+			params: []caaParameter{{tag: "validationmethods", val: "http-01,dns-01"}},
 			method: core.ChallengeTypeDNS01,
 			want:   true,
 		},
 		{
-			name: "multiple choices, match none",
-			params: map[string]string{
-				"validationmethods": "http-01,dns-01",
-			},
+			name:   "multiple choices, match none",
+			params: []caaParameter{{tag: "validationmethods", val: "http-01,dns-01"}},
 			method: core.ChallengeTypeTLSALPN01,
 			want:   false,
 		},
 	}
 
 	for _, tc := range tests {
+		// TODO(#7454) Remove this rebinding
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := caaValidationMethodMatches(tc.params, tc.method)
 			test.AssertEquals(t, got, tc.want)
 		})
@@ -1317,81 +1398,96 @@ func TestValidationMethodMatches(t *testing.T) {
 }
 
 func TestExtractIssuerDomainAndParameters(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name            string
 		value           string
 		wantDomain      string
-		wantParameters  map[string]string
+		wantParameters  []caaParameter
 		expectErrSubstr string
 	}{
 		{
 			name:            "empty record is valid",
 			value:           "",
 			wantDomain:      "",
-			wantParameters:  map[string]string{},
+			wantParameters:  nil,
 			expectErrSubstr: "",
 		},
 		{
 			name:            "only semicolon is valid",
 			value:           ";",
 			wantDomain:      "",
-			wantParameters:  map[string]string{},
+			wantParameters:  nil,
 			expectErrSubstr: "",
 		},
 		{
 			name:            "only semicolon and whitespace is valid",
 			value:           " ; ",
 			wantDomain:      "",
-			wantParameters:  map[string]string{},
+			wantParameters:  nil,
 			expectErrSubstr: "",
 		},
 		{
 			name:            "only domain is valid",
 			value:           "letsencrypt.org",
 			wantDomain:      "letsencrypt.org",
-			wantParameters:  map[string]string{},
+			wantParameters:  nil,
 			expectErrSubstr: "",
 		},
 		{
 			name:            "only domain with trailing semicolon is valid",
 			value:           "letsencrypt.org;",
 			wantDomain:      "letsencrypt.org",
-			wantParameters:  map[string]string{},
+			wantParameters:  nil,
+			expectErrSubstr: "",
+		},
+		{
+			name:            "only domain with semicolon and trailing whitespace is valid",
+			value:           "letsencrypt.org;   ",
+			wantDomain:      "letsencrypt.org",
+			wantParameters:  nil,
 			expectErrSubstr: "",
 		},
 		{
 			name:            "domain with params and whitespace is valid",
 			value:           "  letsencrypt.org	;foo=bar;baz=bar",
 			wantDomain:      "letsencrypt.org",
-			wantParameters:  map[string]string{"foo": "bar", "baz": "bar"},
+			wantParameters:  []caaParameter{{tag: "foo", val: "bar"}, {tag: "baz", val: "bar"}},
 			expectErrSubstr: "",
 		},
 		{
 			name:            "domain with params and different whitespace is valid",
 			value:           "	letsencrypt.org ;foo=bar;baz=bar",
 			wantDomain:      "letsencrypt.org",
-			wantParameters:  map[string]string{"foo": "bar", "baz": "bar"},
+			wantParameters:  []caaParameter{{tag: "foo", val: "bar"}, {tag: "baz", val: "bar"}},
 			expectErrSubstr: "",
 		},
 		{
 			name:            "empty params are valid",
 			value:           "letsencrypt.org; foo=; baz =	bar",
 			wantDomain:      "letsencrypt.org",
-			wantParameters:  map[string]string{"foo": "", "baz": "bar"},
+			wantParameters:  []caaParameter{{tag: "foo", val: ""}, {tag: "baz", val: "bar"}},
 			expectErrSubstr: "",
 		},
 		{
 			name:            "whitespace around params is valid",
 			value:           "letsencrypt.org; foo=	; baz =	bar",
 			wantDomain:      "letsencrypt.org",
-			wantParameters:  map[string]string{"foo": "", "baz": "bar"},
+			wantParameters:  []caaParameter{{tag: "foo", val: ""}, {tag: "baz", val: "bar"}},
 			expectErrSubstr: "",
 		},
 		{
 			name:            "comma-separated param values are valid",
 			value:           "letsencrypt.org; foo=b1,b2,b3	; baz =		a=b	",
 			wantDomain:      "letsencrypt.org",
-			wantParameters:  map[string]string{"foo": "b1,b2,b3", "baz": "a=b"},
+			wantParameters:  []caaParameter{{tag: "foo", val: "b1,b2,b3"}, {tag: "baz", val: "a=b"}},
+			expectErrSubstr: "",
+		},
+		{
+			name:            "duplicate tags are valid",
+			value:           "letsencrypt.org; foo=b1,b2,b3	; foo= b1,b2,b3	",
+			wantDomain:      "letsencrypt.org",
+			wantParameters:  []caaParameter{{tag: "foo", val: "b1,b2,b3"}, {tag: "foo", val: "b1,b2,b3"}},
 			expectErrSubstr: "",
 		},
 		{
@@ -1413,7 +1509,7 @@ func TestExtractIssuerDomainAndParameters(t *testing.T) {
 			name:            "hyphens in param values are valid",
 			value:           "letsencrypt.org; 1=2; baz=a-b",
 			wantDomain:      "letsencrypt.org",
-			wantParameters:  map[string]string{"1": "2", "baz": "a-b"},
+			wantParameters:  []caaParameter{{tag: "1", val: "2"}, {tag: "baz", val: "a-b"}},
 			expectErrSubstr: "",
 		},
 		{
@@ -1443,7 +1539,10 @@ func TestExtractIssuerDomainAndParameters(t *testing.T) {
 		},
 	}
 	for _, tc := range tests {
+		// TODO(#7454) Remove this rebinding
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			gotDomain, gotParameters, gotErr := parseCAARecord(&dns.CAA{Value: tc.value})
 
 			if tc.expectErrSubstr == "" {
