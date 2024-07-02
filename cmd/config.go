@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"crypto/ed25519"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -556,28 +555,8 @@ type DNSProvider struct {
 }
 
 type UnpauseConfig struct {
-	// Seed is a secret that should contain 256 bits (32 bytes) of
-	// random data used to derive an x/crypto/ed25519 keypair (e.g. the
-	// output of `openssl rand -hex 16`). In a multi-DC deployment this
-	// value should be the same across all boulder-wfe and sfe
-	// instances.
-	Seed PasswordConfig `validate:"-"`
-}
-
-// GenerateKeyPair creates an Ed25519 public/private keypair from an input seed
-// value. It returns the private key from which the corresponding public key can
-// be retrieved or an error. Callers should only use this at startup to avoid
-// unnecessary computation.
-func (u *UnpauseConfig) GenerateKeyPair() (ed25519.PrivateKey, error) {
-	seed, err := u.Seed.Pass()
-	if err != nil {
-		return nil, err
-	}
-
-	// Avoids a panic in ed25519.NewKeyFromSeed if the seed is not 32 bytes.
-	if len(seed) != 32 {
-		return nil, errors.New("unpause seed must be 32 characters e.g. the output of 'openssl rand -hex 16'")
-	}
-
-	return ed25519.NewKeyFromSeed([]byte(seed)), nil
+	// HMACKey is a secret that gets SHA256 hashed and is used to sign/validate
+	// unpause JWTs. In a multi-DC deployment this value should be the same
+	// across all boulder-wfe and sfe instances.
+	HMACKey PasswordConfig `validate:"-"`
 }

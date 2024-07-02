@@ -3,8 +3,7 @@ package sfe
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"errors"
+	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -127,8 +126,7 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 	stats := metrics.NoopRegisterer
 
 	mockSA := mocks.NewStorageAuthorityReadOnly(fc)
-
-	unpausePublicKey := ed25519.NewKeyFromSeed([]byte(unpauseSeed)).Public().(ed25519.PublicKey)
+	unpauseHMACHash := sha256.Sum256([]byte(unpauseSeed))
 
 	sfe, err := NewSelfServiceFrontEndImpl(
 		stats,
@@ -137,7 +135,7 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 		10*time.Second,
 		&MockRegistrationAuthority{},
 		mockSA,
-		unpausePublicKey,
+		unpauseHMACHash[:],
 	)
 	test.AssertNotError(t, err, "Unable to create SFE")
 
@@ -215,16 +213,12 @@ func TestUnpausePath(t *testing.T) {
 // an error. The JWT contains a set of claims which should be validated by the
 // caller.
 func makeJWTForAccount(notBefore time.Time, issuedAt time.Time, expiresAt time.Time, seed []byte, regID int64, apiVersion string) (unpauseJWT, error) {
-	// A seed must be at least 16 bytes (32 elements) or go-jose will panic.
-	if len(seed) != 32 {
-		return "", errors.New("seed length invalid")
+	if len(seed) <= 0 {
+		return "", fmt.Errorf("invalid seed length")
 	}
 
-	// Only the private key is needed for signing. The SFE only needs the public
-	// key corresponding to the the private key derived from the shared seed for
-	// validating the signature.
-	privateKey := ed25519.NewKeyFromSeed(seed)
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.EdDSA, Key: privateKey}, (&jose.SignerOptions{}).WithType("JWT"))
+	hmacHash := sha256.Sum256([]byte(seed))
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.HS256, Key: hmacHash[:]}, (&jose.SignerOptions{}).WithType("JWT"))
 	if err != nil {
 		return "", fmt.Errorf("making signer: %s", err)
 	}
@@ -320,17 +314,7 @@ func TestValidateJWT(t *testing.T) {
 			ExpiresAt:                   now.Add(30 * time.Minute),
 			UnpauseSeed:                 "",
 			RegID:                       1,
-			ExpectedMakeJWTSubstr:       "seed length invalid",
-			ExpectedValidationErrSubstr: "JWS format must have",
-		},
-		{
-			Name:                        "creating JWT with invalid seed size fails",
-			IssuedAt:                    now,
-			NotBefore:                   now.Add(5 * time.Minute),
-			ExpiresAt:                   now.Add(30 * time.Minute),
-			UnpauseSeed:                 "12",
-			RegID:                       1,
-			ExpectedMakeJWTSubstr:       "seed length invalid",
+			ExpectedMakeJWTSubstr:       "invalid seed length",
 			ExpectedValidationErrSubstr: "JWS format must have",
 		},
 		{

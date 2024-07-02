@@ -1,7 +1,6 @@
 package sfe
 
 import (
-	"crypto/ed25519"
 	"embed"
 	"errors"
 	"fmt"
@@ -54,10 +53,9 @@ type SelfServiceFrontEndImpl struct {
 	// requestTimeout is the per-request overall timeout.
 	requestTimeout time.Duration
 
-	// unpausePublicKey should be derived from a seed value shared by the SFE
-	// and WFE. It is used to validate incoming JWT signatures on the unpause
-	// endpoint.
-	unpausePublicKey ed25519.PublicKey
+	// unpauseHMACHash is used to validate incoming JWT signatures on the
+	// unpause endpoint and should be shared by the SFE and WFE.
+	unpauseHMACHash []byte
 
 	// HTML pages served by the SFE
 	templatePages *template.Template
@@ -71,7 +69,7 @@ func NewSelfServiceFrontEndImpl(
 	requestTimeout time.Duration,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
-	unpausePublicKey ed25519.PublicKey,
+	unpauseHMACHash []byte,
 ) (SelfServiceFrontEndImpl, error) {
 
 	// Parse the files once at startup to avoid each request causing the server
@@ -80,13 +78,13 @@ func NewSelfServiceFrontEndImpl(
 	tmplPages := template.Must(template.New("pages").ParseFS(dynamicFS, "templates/layout.html", "pages/*"))
 
 	sfe := SelfServiceFrontEndImpl{
-		log:              logger,
-		clk:              clk,
-		requestTimeout:   requestTimeout,
-		ra:               rac,
-		sa:               sac,
-		unpausePublicKey: unpausePublicKey,
-		templatePages:    tmplPages,
+		log:             logger,
+		clk:             clk,
+		requestTimeout:  requestTimeout,
+		ra:              rac,
+		sa:              sac,
+		unpauseHMACHash: unpauseHMACHash,
+		templatePages:   tmplPages,
 	}
 
 	return sfe, nil
@@ -255,7 +253,7 @@ func (sfe *SelfServiceFrontEndImpl) validateUnpauseJWTforAccount(incomingJWT unp
 		return "", errors.New("Could not parse API version")
 	}
 
-	token, err := jwt.ParseSigned(string(incomingJWT), []jose.SignatureAlgorithm{jose.EdDSA})
+	token, err := jwt.ParseSigned(string(incomingJWT), []jose.SignatureAlgorithm{jose.HS256})
 	if err != nil {
 		return "", fmt.Errorf("parsing JWT: %s", err)
 	}
@@ -267,9 +265,9 @@ func (sfe *SelfServiceFrontEndImpl) validateUnpauseJWTforAccount(incomingJWT unp
 		// changing the API version via unpausePath.
 		Version string `json:"apiVersion,omitempty"`
 	}
-
+	x := sfe.unpauseHMACHash[:]
 	incomingClaims := sfeJWTClaims{}
-	err = token.Claims(sfe.unpausePublicKey, &incomingClaims)
+	err = token.Claims(x, &incomingClaims)
 	if err != nil {
 		return "", err
 	}

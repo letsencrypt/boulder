@@ -2,7 +2,7 @@ package notmain
 
 import (
 	"context"
-	"crypto/ed25519"
+	"crypto/sha256"
 	"flag"
 	"net/http"
 	"os"
@@ -53,9 +53,15 @@ type Config struct {
 	OpenTelemetryHTTPConfig cmd.OpenTelemetryHTTPConfig
 }
 
-func setupSFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, ed25519.PrivateKey) {
-	privateKey, err := c.Unpause.GenerateKeyPair()
-	cmd.FailOnError(err, "Unpause key generation")
+func setupSFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, []byte) {
+	unpauseHMACKey, err := c.Unpause.HMACKey.Pass()
+	cmd.FailOnError(err, "Failed to load unpauseHMACKey")
+
+	if len(unpauseHMACKey) <= 0 {
+		cmd.Fail("Invalid unpauseHMACKey length")
+	}
+
+	unpauseHMACHash := sha256.Sum256([]byte(unpauseHMACKey))
 
 	tlsConfig, err := c.SFE.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
@@ -68,7 +74,7 @@ func setupSFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
-	return rac, sac, privateKey
+	return rac, sac, unpauseHMACHash[:]
 }
 
 func main() {
@@ -102,7 +108,7 @@ func main() {
 
 	clk := cmd.Clock()
 
-	rac, sac, unpausePrivateKey := setupSFE(c, stats, clk)
+	rac, sac, unpauseHMACHash := setupSFE(c, stats, clk)
 
 	sfei, err := sfe.NewSelfServiceFrontEndImpl(
 		stats,
@@ -111,7 +117,7 @@ func main() {
 		c.SFE.Timeout.Duration,
 		rac,
 		sac,
-		unpausePrivateKey.Public().(ed25519.PublicKey),
+		unpauseHMACHash,
 	)
 	cmd.FailOnError(err, "Unable to create SFE")
 
