@@ -1402,7 +1402,7 @@ def test_expiration_mailer():
     order = chisel2.auth_and_issue([random_domain()], email=email_addr)
     cert = parse_cert(order)
     # Check that the expiration mailer sends a reminder
-    expiry = cert.not_valid_after
+    expiry = cert.not_valid_after_utc
     no_reminder = expiry + datetime.timedelta(days=-31)
     first_reminder = expiry + datetime.timedelta(days=-13)
     last_reminder = expiry + datetime.timedelta(days=-2)
