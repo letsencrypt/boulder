@@ -617,11 +617,6 @@ func caaDomainMatches(caaDomain string, issuerDomain string) bool {
 // found in the CAA RR.
 // See RFC 8657 Section 3: https://www.rfc-editor.org/rfc/rfc8657.html#section-3
 func caaAccountURIMatches(caaParams []caaParameter, accountURIPrefixes []string, accountID int64) bool {
-	if len(caaParams) == 0 {
-		// No parameters is fine.
-		return true
-	}
-
 	var found bool
 	var accountURI string
 	for _, c := range caaParams {
