@@ -32,8 +32,8 @@
 		"features": {}
 	},
 	"unpause": {
-		"seed": {
-			"passwordFile": "test/secrets/sfe_unpauseKey_seed"
+		"hmacKey": {
+			"passwordFile": "test/secrets/sfe_unpause_key"
 		}
 	},
 	"syslog": {
