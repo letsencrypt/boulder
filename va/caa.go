@@ -613,6 +613,8 @@ func caaDomainMatches(caaDomain string, issuerDomain string) bool {
 // caaAccountURIMatches checks that the accounturi CAA parameter, if present,
 // matches one of the specific account URIs we expect. We support multiple
 // account URI prefixes to handle accounts which were registered under ACMEv1.
+// We accept only a single "accounturi" parameter and will fail if multiple are
+// found in the CAA RR.
 // See RFC 8657 Section 3: https://www.rfc-editor.org/rfc/rfc8657.html#section-3
 func caaAccountURIMatches(caaParams []caaParameter, accountURIPrefixes []string, accountID int64) bool {
 	if len(caaParams) == 0 {
