@@ -1154,6 +1154,15 @@ func TestAccountURIMatches(t *testing.T) {
 			want: true,
 		},
 		{
+			name:   "simple match, but has a friend",
+			params: []caaParameter{{tag: "validationmethods", val: "dns-01"}, {tag: "accounturi", val: "https://acme-v01.api.letsencrypt.org/acme/reg/123456"}},
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/reg/",
+			},
+			id:   123456,
+			want: true,
+		},
+		{
 			name:   "accountid mismatch",
 			params: []caaParameter{{tag: "accounturi", val: "https://acme-v01.api.letsencrypt.org/acme/reg/123456"}},
 			prefixes: []string{
@@ -1318,6 +1327,12 @@ func TestValidationMethodMatches(t *testing.T) {
 		{
 			name:   "simple match",
 			params: []caaParameter{{tag: "validationmethods", val: "http-01"}},
+			method: core.ChallengeTypeHTTP01,
+			want:   true,
+		},
+		{
+			name:   "simple match, but has a friend",
+			params: []caaParameter{{tag: "accounturi", val: "https://example.org"}, {tag: "validationmethods", val: "http-01"}},
 			method: core.ChallengeTypeHTTP01,
 			want:   true,
 		},
