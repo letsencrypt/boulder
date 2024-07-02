@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/ed25519"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -552,4 +553,31 @@ type DNSProvider struct {
 	// 1 1 8053 0a4d4d4d.addr.dc1.consul.
 	// 1 1 8153 0a4d4d4d.addr.dc1.consul.
 	SRVLookup ServiceDomain `validate:"required"`
+}
+
+type UnpauseConfig struct {
+	// Seed is a secret that should contain 256 bits (32 bytes) of
+	// random data used to derive an x/crypto/ed25519 keypair (e.g. the
+	// output of `openssl rand -hex 16`). In a multi-DC deployment this
+	// value should be the same across all boulder-wfe and sfe
+	// instances.
+	Seed PasswordConfig `validate:"-"`
+}
+
+// GenerateKeyPair creates an Ed25519 public/private keypair from an input seed
+// value. It returns the private key from which the corresponding public key can
+// be retrieved or an error. Callers should only use this at startup to avoid
+// unnecessary computation.
+func (u *UnpauseConfig) GenerateKeyPair() (ed25519.PrivateKey, error) {
+	seed, err := u.Seed.Pass()
+	if err != nil {
+		return nil, err
+	}
+
+	// Avoids a panic in ed25519.NewKeyFromSeed if the seed is not 32 bytes.
+	if len(seed) != 32 {
+		return nil, errors.New("unpause seed must be 32 characters e.g. the output of 'openssl rand -hex 16'")
+	}
+
+	return ed25519.NewKeyFromSeed([]byte(seed)), nil
 }
