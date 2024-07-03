@@ -1077,6 +1077,7 @@ func TestAddIssuedNames(t *testing.T) {
 	serial := big.NewInt(1)
 	expectedSerial := "000000000000000000000000000000000001"
 	notBefore := time.Date(2018, 2, 14, 12, 0, 0, 0, time.UTC)
+	expectedNotBefore := notBefore.Truncate(24 * time.Hour)
 	placeholdersPerName := "(?,?,?,?)"
 	baseQuery := "INSERT INTO issuedNames (reversedName,serial,notBefore,renewal) VALUES"
 
@@ -1097,7 +1098,7 @@ func TestAddIssuedNames(t *testing.T) {
 			ExpectedArgs: []interface{}{
 				"uk.co.example",
 				expectedSerial,
-				notBefore,
+				expectedNotBefore,
 				false,
 			},
 		},
@@ -1110,11 +1111,11 @@ func TestAddIssuedNames(t *testing.T) {
 			ExpectedArgs: []interface{}{
 				"uk.co.example",
 				expectedSerial,
-				notBefore,
+				expectedNotBefore,
 				false,
 				"xyz.example",
 				expectedSerial,
-				notBefore,
+				expectedNotBefore,
 				false,
 			},
 		},
@@ -1127,7 +1128,7 @@ func TestAddIssuedNames(t *testing.T) {
 			ExpectedArgs: []interface{}{
 				"uk.co.example",
 				expectedSerial,
-				notBefore,
+				expectedNotBefore,
 				true,
 			},
 		},
@@ -1140,11 +1141,11 @@ func TestAddIssuedNames(t *testing.T) {
 			ExpectedArgs: []interface{}{
 				"uk.co.example",
 				expectedSerial,
-				notBefore,
+				expectedNotBefore,
 				true,
 				"xyz.example",
 				expectedSerial,
-				notBefore,
+				expectedNotBefore,
 				true,
 			},
 		},

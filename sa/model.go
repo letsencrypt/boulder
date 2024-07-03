@@ -1008,7 +1008,7 @@ func addIssuedNames(ctx context.Context, queryer db.Queryer, cert *x509.Certific
 		err = multiInserter.Add([]interface{}{
 			ReverseName(name),
 			core.SerialToString(cert.SerialNumber),
-			cert.NotBefore,
+			cert.NotBefore.Truncate(24 * time.Hour),
 			isRenewal,
 		})
 		if err != nil {
