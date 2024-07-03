@@ -5,12 +5,17 @@
         {{ template "meta" }}
     </header>
     <body>
+    <h1>No Action Required</h1>
     <div>
-    <p>This is an <a href="https://tools.ietf.org/html/rfc8555">ACME</a> Certificate
-    Authority running <a href="https://github.com/letsencrypt/boulder">Boulder</a>.
-    However, this is not an <a href="https://tools.ietf.org/html/rfc8555">ACME</a>
-    endpoint. The <a href="https://letsencrypt.org/getting-started/">directory</a>
-    is in another castle!</p>
+    <p>
+        There is no action for you to take. This page is intended for
+        Subscribers whose accounts have been temporarily restricted from
+        requesting new certificates for certain hostnames, following a
+        significant number of failed validation attempts without any recent
+        successes. If your account was paused, your <a
+        href="https://letsencrypt.org/docs/client-options/">ACME client</a>
+        would provide you with a URL to visit to unpause your account.
+    </p>
     </div>
 </body>
 

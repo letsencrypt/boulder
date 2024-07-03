@@ -2,7 +2,6 @@ package notmain
 
 import (
 	"context"
-	"crypto/sha256"
 	"flag"
 	"net/http"
 	"os"
@@ -57,11 +56,11 @@ func setupSFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 	unpauseHMACKey, err := c.Unpause.HMACKey.Pass()
 	cmd.FailOnError(err, "Failed to load unpauseHMACKey")
 
-	if len(unpauseHMACKey) <= 0 {
-		cmd.Fail("Invalid unpauseHMACKey length")
+	if len(unpauseHMACKey) != 32 {
+		cmd.Fail("Invalid unpauseHMACKey length, should be 32 alphanumeric characters")
 	}
 
-	unpauseHMACHash := sha256.Sum256([]byte(unpauseHMACKey))
+	//unpauseHMACHash := sha256.Sum256([]byte(unpauseHMACKey))
 
 	tlsConfig, err := c.SFE.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
@@ -74,7 +73,7 @@ func setupSFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
-	return rac, sac, unpauseHMACHash[:]
+	return rac, sac, []byte(unpauseHMACKey)
 }
 
 func main() {

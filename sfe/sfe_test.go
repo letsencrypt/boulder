@@ -3,7 +3,6 @@ package sfe
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -113,8 +112,7 @@ func mustParseURL(s string) *url.URL {
 	return must.Do(url.Parse(s))
 }
 
-// openssl rand -hex 16
-const unpauseSeed = "42c812bab780e38f80cc9578cebe3f96"
+const hmacKey = "pcl04dl3tt3rb1gb4dd4db0d34ts000p"
 
 func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 	features.Reset()
@@ -126,7 +124,6 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 	stats := metrics.NoopRegisterer
 
 	mockSA := mocks.NewStorageAuthorityReadOnly(fc)
-	unpauseHMACHash := sha256.Sum256([]byte(unpauseSeed))
 
 	sfe, err := NewSelfServiceFrontEndImpl(
 		stats,
@@ -135,7 +132,7 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 		10*time.Second,
 		&MockRegistrationAuthority{},
 		mockSA,
-		unpauseHMACHash[:],
+		[]byte(hmacKey),
 	)
 	test.AssertNotError(t, err, "Unable to create SFE")
 
@@ -176,7 +173,7 @@ func TestUnpausePath(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	sfe.Unpause(responseWriter, &http.Request{
 		Method: "GET",
-		URL:    mustParseURL(unpausePath),
+		URL:    mustParseURL(unpauseGetForm),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "significant number of failed validation attempts without any recent")
@@ -185,7 +182,7 @@ func TestUnpausePath(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	sfe.Unpause(responseWriter, &http.Request{
 		Method: "GET",
-		URL:    mustParseURL(fmt.Sprintf(unpausePath + "?jwt=x")),
+		URL:    mustParseURL(fmt.Sprintf(unpauseGetForm + "?jwt=x")),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "This action will allow you to resume")
@@ -194,7 +191,7 @@ func TestUnpausePath(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	sfe.Unpause(responseWriter, &http.Request{
 		Method: "POST",
-		URL:    mustParseURL(unpausePath),
+		URL:    mustParseURL(unpausePostForm),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "There is no action for you to take.")
@@ -203,7 +200,7 @@ func TestUnpausePath(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	sfe.Unpause(responseWriter, &http.Request{
 		Method: "POST",
-		URL:    mustParseURL(fmt.Sprintf(unpausePath + "?jwt=x")),
+		URL:    mustParseURL(fmt.Sprintf(unpausePostForm + "?jwt=x")),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "An error was encountered when attempting to unpause")
@@ -212,13 +209,12 @@ func TestUnpausePath(t *testing.T) {
 // makeJWTForAccount is a standin for a WFE method that returns an unpauseJWT or
 // an error. The JWT contains a set of claims which should be validated by the
 // caller.
-func makeJWTForAccount(notBefore time.Time, issuedAt time.Time, expiresAt time.Time, seed []byte, regID int64, apiVersion string) (unpauseJWT, error) {
-	if len(seed) <= 0 {
+func makeJWTForAccount(notBefore time.Time, issuedAt time.Time, expiresAt time.Time, hmacKey []byte, regID int64, apiVersion string) (unpauseJWT, error) {
+	if len(hmacKey) != 32 {
 		return "", fmt.Errorf("invalid seed length")
 	}
 
-	hmacHash := sha256.Sum256([]byte(seed))
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.HS256, Key: hmacHash[:]}, (&jose.SignerOptions{}).WithType("JWT"))
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.HS256, Key: hmacKey}, (&jose.SignerOptions{}).WithType("JWT"))
 	if err != nil {
 		return "", fmt.Errorf("making signer: %s", err)
 	}
@@ -273,26 +269,26 @@ func TestValidateJWT(t *testing.T) {
 		IssuedAt                    time.Time
 		NotBefore                   time.Time
 		ExpiresAt                   time.Time
-		UnpauseSeed                 string
+		HMACKey                     string
 		RegID                       int64  // Default value set in makeJWTForAccount
 		Version                     string // Default value set in makeJWTForAccount
 		ExpectedMakeJWTSubstr       string
 		ExpectedValidationErrSubstr string
 	}{
 		{
-			Name:        "valid",
-			IssuedAt:    now,
-			NotBefore:   now.Add(5 * time.Minute),
-			ExpiresAt:   now.Add(30 * time.Minute),
-			UnpauseSeed: unpauseSeed,
-			RegID:       1,
+			Name:      "valid",
+			IssuedAt:  now,
+			NotBefore: now,
+			ExpiresAt: now.Add(30 * time.Minute),
+			HMACKey:   hmacKey,
+			RegID:     1,
 		},
 		{
 			Name:                        "apiVersion mismatch",
 			IssuedAt:                    now,
 			NotBefore:                   now.Add(5 * time.Minute),
 			ExpiresAt:                   now.Add(30 * time.Minute),
-			UnpauseSeed:                 unpauseSeed,
+			HMACKey:                     hmacKey,
 			RegID:                       1,
 			Version:                     "v2",
 			ExpectedValidationErrSubstr: "incompatible API version",
@@ -302,7 +298,7 @@ func TestValidateJWT(t *testing.T) {
 			IssuedAt:                    now,
 			NotBefore:                   now.Add(5 * time.Minute),
 			ExpiresAt:                   now.Add(30 * time.Minute),
-			UnpauseSeed:                 unpauseSeed,
+			HMACKey:                     hmacKey,
 			RegID:                       1,
 			Version:                     "magicEmptyString",
 			ExpectedValidationErrSubstr: "no API version",
@@ -312,7 +308,7 @@ func TestValidateJWT(t *testing.T) {
 			IssuedAt:                    now,
 			NotBefore:                   now.Add(5 * time.Minute),
 			ExpiresAt:                   now.Add(30 * time.Minute),
-			UnpauseSeed:                 "",
+			HMACKey:                     "",
 			RegID:                       1,
 			ExpectedMakeJWTSubstr:       "invalid seed length",
 			ExpectedValidationErrSubstr: "JWS format must have",
@@ -322,8 +318,8 @@ func TestValidateJWT(t *testing.T) {
 			IssuedAt:                    now,
 			NotBefore:                   now.Add(5 * time.Minute),
 			ExpiresAt:                   now.Add(24 * time.Hour),
-			UnpauseSeed:                 unpauseSeed,
-			RegID:                       0, // This is a special case where 0 is turned into an empty string in the Subject field of a jwt.Claims
+			HMACKey:                     hmacKey,
+			RegID:                       0, // This is a magic case where 0 is turned into an empty string in the Subject field of a jwt.Claims
 			ExpectedValidationErrSubstr: "required for account unpausing",
 		},
 		{
@@ -331,16 +327,16 @@ func TestValidateJWT(t *testing.T) {
 			IssuedAt:                    now,
 			NotBefore:                   now.Add(5 * time.Minute),
 			ExpiresAt:                   now.Add(-24 * time.Hour),
-			UnpauseSeed:                 unpauseSeed,
+			HMACKey:                     hmacKey,
 			RegID:                       1,
 			ExpectedValidationErrSubstr: "token is expired (exp)",
 		},
 		{
-			Name:                        "validating JWT with key derived from different seed fails",
+			Name:                        "validating JWT with hash derived from different seed fails",
 			IssuedAt:                    now,
 			NotBefore:                   now.Add(5 * time.Minute),
 			ExpiresAt:                   now.Add(30 * time.Minute),
-			UnpauseSeed:                 "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+			HMACKey:                     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
 			RegID:                       1,
 			ExpectedValidationErrSubstr: "cryptographic primitive",
 		},
@@ -348,7 +344,7 @@ func TestValidateJWT(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			fc = originalClock
-			newJWT, err := makeJWTForAccount(tc.NotBefore, tc.IssuedAt, tc.ExpiresAt, []byte(tc.UnpauseSeed), tc.RegID, tc.Version)
+			newJWT, err := makeJWTForAccount(tc.NotBefore, tc.IssuedAt, tc.ExpiresAt, []byte(tc.HMACKey), tc.RegID, tc.Version)
 			if tc.ExpectedMakeJWTSubstr != "" || string(newJWT) == "" {
 				test.AssertError(t, err, "JWT was created but should not have been")
 				test.AssertContains(t, err.Error(), tc.ExpectedMakeJWTSubstr)

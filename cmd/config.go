@@ -555,8 +555,10 @@ type DNSProvider struct {
 }
 
 type UnpauseConfig struct {
-	// HMACKey is a secret that gets SHA256 hashed and is used to sign/validate
-	// unpause JWTs. In a multi-DC deployment this value should be the same
-	// across all boulder-wfe and sfe instances.
+	// HMACKey is a shared symmetric secret used to sign/validate unpause JWTs.
+	// It should be 32 alphanumeric characters, e.g. the output of `openssl rand
+	// -hex 16` to satisfy the go-jose HS256 algorithm implementation. In a
+	// multi-DC deployment this value should be the same across all boulder-wfe
+	// and sfe instances.
 	HMACKey PasswordConfig `validate:"-"`
 }
