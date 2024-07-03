@@ -532,13 +532,19 @@ func (va *ValidationAuthorityImpl) validateCAA(caaSet *caaResult, wildcard bool,
 	return false, caaSet.name
 }
 
+// caaParameter is a key-value pair parsed from a single CAA RR.
+type caaParameter struct {
+	tag string
+	val string
+}
+
 // parseCAARecord extracts the domain and parameters (if any) from a
 // issue/issuewild CAA record. This follows RFC 8659 Section 4.2 and Section 4.3
 // (https://www.rfc-editor.org/rfc/rfc8659.html#section-4). It returns the
 // domain name (which may be the empty string if the record forbids issuance)
-// and a tag-value map of CAA parameters, or a descriptive error if the record
-// is malformed.
-func parseCAARecord(caa *dns.CAA) (string, map[string]string, error) {
+// and a slice of CAA parameters, or a descriptive error if the record is
+// malformed.
+func parseCAARecord(caa *dns.CAA) (string, []caaParameter, error) {
 	isWSP := func(r rune) bool {
 		return r == '\t' || r == ' '
 	}
@@ -546,16 +552,21 @@ func parseCAARecord(caa *dns.CAA) (string, map[string]string, error) {
 	// Semi-colons (ASCII 0x3B) are prohibited from being specified in the
 	// parameter tag or value, hence we can simply split on semi-colons.
 	parts := strings.Split(caa.Value, ";")
-	domain := strings.TrimFunc(parts[0], isWSP)
+
+	// See https://www.rfc-editor.org/rfc/rfc8659.html#section-4.2
+	//
+	// 		issuer-domain-name = label *("." label)
+	// 		label = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT))
+	issuerDomainName := strings.TrimFunc(parts[0], isWSP)
 	paramList := parts[1:]
-	parameters := make(map[string]string)
 
 	// Handle the case where a semi-colon is specified following the domain
 	// but no parameters are given.
 	if len(paramList) == 1 && strings.TrimFunc(paramList[0], isWSP) == "" {
-		return domain, parameters, nil
+		return issuerDomainName, nil, nil
 	}
 
+	var caaParameters []caaParameter
 	for _, parameter := range paramList {
 		// A parameter tag cannot include equal signs (ASCII 0x3D),
 		// however they are permitted in the value itself.
@@ -584,10 +595,13 @@ func parseCAARecord(caa *dns.CAA) (string, map[string]string, error) {
 			}
 		}
 
-		parameters[tag] = value
+		caaParameters = append(caaParameters, caaParameter{
+			tag: tag,
+			val: value,
+		})
 	}
 
-	return domain, parameters, nil
+	return issuerDomainName, caaParameters, nil
 }
 
 // caaDomainMatches checks that the issuer domain name listed in the parsed
@@ -599,10 +613,26 @@ func caaDomainMatches(caaDomain string, issuerDomain string) bool {
 // caaAccountURIMatches checks that the accounturi CAA parameter, if present,
 // matches one of the specific account URIs we expect. We support multiple
 // account URI prefixes to handle accounts which were registered under ACMEv1.
+// We accept only a single "accounturi" parameter and will fail if multiple are
+// found in the CAA RR.
 // See RFC 8657 Section 3: https://www.rfc-editor.org/rfc/rfc8657.html#section-3
-func caaAccountURIMatches(caaParams map[string]string, accountURIPrefixes []string, accountID int64) bool {
-	accountURI, ok := caaParams["accounturi"]
-	if !ok {
+func caaAccountURIMatches(caaParams []caaParameter, accountURIPrefixes []string, accountID int64) bool {
+	var found bool
+	var accountURI string
+	for _, c := range caaParams {
+		if c.tag == "accounturi" {
+			if found {
+				// A Property with multiple "accounturi" parameters is
+				// unsatisfiable.
+				return false
+			}
+			accountURI = c.val
+			found = true
+		}
+	}
+
+	if !found {
+		// A Property without an "accounturi" parameter matches any account.
 		return true
 	}
 
@@ -624,17 +654,39 @@ var validationMethodRegexp = regexp.MustCompile(`^[[:alnum:]-]+$`)
 
 // caaValidationMethodMatches checks that the validationmethods CAA parameter,
 // if present, contains the exact name of the ACME validation method used to
-// validate this domain.
-// See RFC 8657 Section 4: https://www.rfc-editor.org/rfc/rfc8657.html#section-4
-func caaValidationMethodMatches(caaParams map[string]string, method core.AcmeChallenge) bool {
-	commaSeparatedMethods, ok := caaParams["validationmethods"]
-	if !ok {
+// validate this domain. We accept only a single "validationmethods" parameter
+// and will fail if multiple are found in the CAA RR, even if all tag-value
+// pairs would be valid. See RFC 8657 Section 4:
+// https://www.rfc-editor.org/rfc/rfc8657.html#section-4.
+func caaValidationMethodMatches(caaParams []caaParameter, method core.AcmeChallenge) bool {
+	var validationMethods string
+	var found bool
+	for _, param := range caaParams {
+		if param.tag == "validationmethods" {
+			if found {
+				// RFC 8657 does not define what behavior to take when multiple
+				// "validationmethods" parameters exist, but we make the
+				// conscious choice to fail validation similar to how multiple
+				// "accounturi" parameters are "unsatisfiable". Subscribers
+				// should be aware of RFC 8657 Section 5.8:
+				// https://www.rfc-editor.org/rfc/rfc8657.html#section-5.8
+				return false
+			}
+			validationMethods = param.val
+			found = true
+		}
+	}
+
+	if !found {
 		return true
 	}
 
-	for _, m := range strings.Split(commaSeparatedMethods, ",") {
-		// If any listed method does not match the ABNF 1*(ALPHA / DIGIT / "-"),
-		// immediately reject the whole record.
+	for _, m := range strings.Split(validationMethods, ",") {
+		// The value of the "validationmethods" parameter MUST comply with the
+		// following ABNF [RFC5234]:
+		//
+		//      value = [*(label ",") label]
+		//      label = 1*(ALPHA / DIGIT / "-")
 		if !validationMethodRegexp.MatchString(m) {
 			return false
 		}
@@ -643,10 +695,10 @@ func caaValidationMethodMatches(caaParams map[string]string, method core.AcmeCha
 		if !caaMethod.IsValid() {
 			continue
 		}
-
 		if caaMethod == method {
 			return true
 		}
 	}
+
 	return false
 }
