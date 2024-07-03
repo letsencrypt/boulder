@@ -686,6 +686,9 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.Context, acctID int64, names []string, limit ratelimit.RateLimitPolicy) error {
 	// Check if there is already an existing certificate for the exact name set we
 	// are issuing for. If so bypass the newOrders limit.
+	//
+	// TODO(#7511): This check and early return should be removed, it's
+	// being performed at the WFE.
 	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
 	if err != nil {
 		return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
@@ -1483,6 +1486,9 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	// check if there is already an existing certificate for
 	// the exact name set we are issuing for. If so bypass the
 	// the certificatesPerName limit.
+	//
+	// TODO(#7511): This check and early return should be removed, it's
+	// being performed, once, at the WFE.
 	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
 	if err != nil {
 		return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
@@ -1580,9 +1586,11 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 	}
 }
 
-func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, names []string, regID int64) error {
+func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, names []string, regID int64, isRenewal bool) error {
 	newOrdersPerAccountLimits := ra.rlPolicies.NewOrdersPerAccount()
-	if newOrdersPerAccountLimits.Enabled() {
+	// TODO(#7511): Remove the feature flag check.
+	skipCheck := features.Get().CheckRenewalExemptionAtWFE && isRenewal
+	if newOrdersPerAccountLimits.Enabled() && !skipCheck {
 		started := ra.clk.Now()
 		err := ra.checkNewOrdersPerAccountLimit(ctx, regID, names, newOrdersPerAccountLimits)
 		elapsed := ra.clk.Since(started)
@@ -1596,7 +1604,7 @@ func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, na
 	}
 
 	certNameLimits := ra.rlPolicies.CertificatesPerName()
-	if certNameLimits.Enabled() {
+	if certNameLimits.Enabled() && !skipCheck {
 		started := ra.clk.Now()
 		err := ra.checkCertificatesPerNameLimit(ctx, names, certNameLimits, regID)
 		elapsed := ra.clk.Since(started)
@@ -2517,10 +2525,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-	if !req.LimitsExempt {
+	if !req.IsARIRenewal {
 
 		// Check if there is rate limit space for issuing a certificate.
-		err = ra.checkNewOrderLimits(ctx, newOrder.Names, newOrder.RegistrationID)
+		err = ra.checkNewOrderLimits(ctx, newOrder.Names, newOrder.RegistrationID, req.IsRenewal)
 		if err != nil {
 			return nil, err
 		}
@@ -2597,7 +2605,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-	if len(missingAuthzNames) > 0 && !req.LimitsExempt {
+	if len(missingAuthzNames) > 0 && !req.IsARIRenewal {
 		pendingAuthzLimits := ra.rlPolicies.PendingAuthorizationsPerAccount()
 		if pendingAuthzLimits.Enabled() {
 			// The order isn't fully authorized we need to check that the client

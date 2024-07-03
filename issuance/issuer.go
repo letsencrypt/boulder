@@ -157,8 +157,7 @@ type IssuerConfig struct {
 	// (for which an issuance token is presented), OCSP responses, and CRLs.
 	// All Active issuers of a given key type (RSA or ECDSA) are part of a pool
 	// and each precertificate will be issued randomly from a selected pool.
-	// The selection of which pool depends on the precertificate's key algorithm,
-	// the ECDSAForAll feature flag, and the ECDSAAllowListFilename config field.
+	// The selection of which pool depends on the precertificate's key algorithm.
 	Active bool
 
 	IssuerURL  string `validate:"required,url"`

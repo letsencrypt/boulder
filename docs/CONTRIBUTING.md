@@ -326,7 +326,7 @@ must check that timestamps are non-zero before accepting them.
 
 # Rounding time in DB
 
-All times that we write to the database are truncated to one second's worth of
+All times that we send to the database are truncated to one second's worth of
 precision. This reduces the size of indexes that include timestamps, and makes
 querying them more efficient. The Storage Authority (SA) is responsible for this
 truncation, and performs it for SELECT queries as well as INSERT and UPDATE.

@@ -230,8 +230,8 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIP(ctx context.Context, re
 		 createdAt <= :latest`,
 		map[string]interface{}{
 			"ip":       req.Ip,
-			"earliest": req.Range.Earliest.AsTime().Truncate(time.Second),
-			"latest":   req.Range.Latest.AsTime().Truncate(time.Second),
+			"earliest": req.Range.Earliest.AsTime(),
+			"latest":   req.Range.Latest.AsTime(),
 		})
 	if err != nil {
 		return nil, err
@@ -261,8 +261,8 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIPRange(ctx context.Contex
 		 :earliest < createdAt AND
 		 createdAt <= :latest`,
 		map[string]interface{}{
-			"earliest": req.Range.Earliest.AsTime().Truncate(time.Second),
-			"latest":   req.Range.Latest.AsTime().Truncate(time.Second),
+			"earliest": req.Range.Earliest.AsTime(),
+			"latest":   req.Range.Latest.AsTime(),
 			"beginIP":  beginIP,
 			"endIP":    endIP,
 		})
@@ -507,7 +507,7 @@ func (ssa *SQLStorageAuthorityRO) CountFQDNSets(ctx context.Context, req *sapb.C
 		WHERE setHash = ?
 		AND issued > ?`,
 		core.HashNames(req.Domains),
-		ssa.clk.Now().Add(-req.Window.AsDuration()).Truncate(time.Second),
+		ssa.clk.Now().Add(-req.Window.AsDuration()),
 	)
 	return &sapb.Count{Count: count}, err
 }
@@ -531,7 +531,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 		AND issued > ?
 		ORDER BY issued DESC`,
 		core.HashNames(req.Domains),
-		ssa.clk.Now().Add(-req.Window.AsDuration()).Truncate(time.Second),
+		ssa.clk.Now().Add(-req.Window.AsDuration()),
 	)
 	if err != nil {
 		return nil, err
@@ -708,8 +708,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 					AND expires > ?
 					ORDER BY expires ASC
 					LIMIT 1`,
-		fqdnHash,
-		ssa.clk.Now().Truncate(time.Second))
+		fqdnHash, ssa.clk.Now())
 
 	if db.IsNoRows(err) {
 		return nil, berrors.NotFoundError("no order matching request found")
@@ -792,7 +791,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		req.RegistrationID,
 		statusUint(core.StatusValid),
 		statusUint(core.StatusPending),
-		req.Now.AsTime().Truncate(time.Second),
+		req.Now.AsTime(),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 
@@ -860,7 +859,7 @@ func (ssa *SQLStorageAuthorityRO) GetPendingAuthorization2(ctx context.Context, 
 		map[string]interface{}{
 			"regID":      req.RegistrationID,
 			"status":     statusUint(core.StatusPending),
-			"validUntil": req.ValidUntil.AsTime().Truncate(time.Second),
+			"validUntil": req.ValidUntil.AsTime(),
 			"dnsType":    identifierTypeToUint[string(identifier.DNS)],
 			"ident":      req.IdentifierValue,
 		},
@@ -889,7 +888,7 @@ func (ssa *SQLStorageAuthorityRO) CountPendingAuthorizations2(ctx context.Contex
 		status = :status`,
 		map[string]interface{}{
 			"regID":   req.Id,
-			"expires": ssa.clk.Now().Truncate(time.Second),
+			"expires": ssa.clk.Now(),
 			"status":  statusUint(core.StatusPending),
 		},
 	)
@@ -930,7 +929,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 		),
 		map[string]interface{}{
 			"regID":   req.AcctID,
-			"expires": ssa.clk.Now().Truncate(time.Second),
+			"expires": ssa.clk.Now(),
 			"status":  statusUint(core.StatusValid),
 			"orderID": req.Id,
 		},
@@ -976,8 +975,8 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 			"regID":           req.RegistrationID,
 			"dnsType":         identifierTypeToUint[string(identifier.DNS)],
 			"ident":           req.Hostname,
-			"expiresEarliest": req.Range.Earliest.AsTime().Truncate(time.Second),
-			"expiresLatest":   req.Range.Latest.AsTime().Truncate(time.Second),
+			"expiresEarliest": req.Range.Earliest.AsTime(),
+			"expiresLatest":   req.Range.Latest.AsTime(),
 			"status":          statusUint(core.StatusInvalid),
 		},
 	)
@@ -1010,7 +1009,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 	params := []interface{}{
 		req.RegistrationID,
 		statusUint(core.StatusValid),
-		req.Now.AsTime().Truncate(time.Second),
+		req.Now.AsTime(),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 	for _, domain := range req.Domains {
@@ -1226,8 +1225,8 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req 
 		AND issuerID = ?
 		AND status = ?`
 	params := []interface{}{
-		req.ExpiresAfter.AsTime().Truncate(time.Second),
-		req.ExpiresBefore.AsTime().Truncate(time.Second),
+		req.ExpiresAfter.AsTime(),
+		req.ExpiresBefore.AsTime(),
 		req.IssuerNameID,
 		core.OCSPStatusRevoked,
 	}
@@ -1358,7 +1357,7 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByKey(req *sapb.SPKIHash, stream grp
 		AND certNotAfter > ?`
 	params := []interface{}{
 		req.KeyHash,
-		ssa.clk.Now().Truncate(time.Second),
+		ssa.clk.Now(),
 	}
 
 	selector, err := db.NewMappedSelector[keyHashModel](ssa.dbReadOnlyMap)
@@ -1385,7 +1384,7 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, 
 		AND expires > ?`
 	params := []interface{}{
 		req.Id,
-		ssa.clk.Now().Truncate(time.Second),
+		ssa.clk.Now(),
 	}
 
 	selector, err := db.NewMappedSelector[recordedSerialModel](ssa.dbReadOnlyMap)

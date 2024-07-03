@@ -149,9 +149,7 @@
 		"ocspLogMaxLength": 4000,
 		"ocspLogPeriod": "500ms",
 		"ctLogListFile": "test/ct-test-srv/log_list.json",
-		"features": {
-			"ECDSAForAll": true
-		}
+		"features": {}
 	},
 	"pa": {
 		"challenges": {
