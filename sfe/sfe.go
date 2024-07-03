@@ -201,18 +201,6 @@ func (sfe *SelfServiceFrontEndImpl) unpauseInvalidRequest(response http.Response
 	sfe.renderTemplate(response, "index.html", nil)
 }
 
-/*
-// unpauseSuccessful is a helper that displays a success message to the
-// Subscriber if their account has been unpaused.
-func (sfe *SelfServiceFrontEndImpl) unpauseSuccessful(response http.ResponseWriter, request *http.Request, accountID string) {
-	type tmplData struct {
-		ShouldUnpause bool
-		AccountID     string
-	}
-	//sfe.renderTemplate(response, "unpause-post.html", tmplData{true, accountID})
-}
-*/
-
 type unpauseStatusTemplateData struct {
 	ShouldUnpause bool
 }
