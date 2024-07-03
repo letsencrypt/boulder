@@ -2,8 +2,10 @@ package bdns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
+	"net/url"
 
 	"github.com/miekg/dns"
 )
@@ -96,7 +98,9 @@ var extendedErrorCodeToString = map[uint16]string{
 func (d Error) Error() string {
 	var detail, additional string
 	if d.underlying != nil {
-		if netErr, ok := d.underlying.(*net.OpError); ok {
+		var netErr *net.OpError
+		var urlErr *url.Error
+		if errors.As(d.underlying, &netErr) {
 			if netErr.Timeout() {
 				detail = detailDNSTimeout
 			} else {
@@ -104,9 +108,14 @@ func (d Error) Error() string {
 			}
 			// Note: we check d.underlying here even though `Timeout()` does this because the call to `netErr.Timeout()` above only
 			// happens for `*net.OpError` underlying types!
-		} else if d.underlying == context.DeadlineExceeded {
+		} else if errors.As(d.underlying, &urlErr) && urlErr.Timeout() {
+			// For DOH queries, we can get back a `*url.Error` that wraps the unexported type
+			// `http.httpError`. Unfortunately `http.httpError` doesn't wrap any errors (like
+			// context.DeadlineExceeded), we can't check for that; instead we need to call Timeout().
 			detail = detailDNSTimeout
-		} else if d.underlying == context.Canceled {
+		} else if errors.Is(d.underlying, context.DeadlineExceeded) {
+			detail = detailDNSTimeout
+		} else if errors.Is(d.underlying, context.Canceled) {
 			detail = detailCanceled
 		} else {
 			detail = detailServerFailure
