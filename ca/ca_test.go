@@ -275,7 +275,6 @@ func TestSerialPrefix(t *testing.T) {
 		"",
 		nil,
 		nil,
-		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		0,
@@ -291,7 +290,6 @@ func TestSerialPrefix(t *testing.T) {
 		nil,
 		nil,
 		"",
-		nil,
 		nil,
 		nil,
 		testCtx.certExpiry,
@@ -352,7 +350,7 @@ func TestIssuePrecertificate(t *testing.T) {
 		// the precertificates previously generated from the preceding
 		// "precertificate" test.
 		for _, mode := range []string{"precertificate", "certificate-for-precertificate"} {
-			ca, sa := issueCertificateSubTestSetup(t, nil)
+			ca, sa := issueCertificateSubTestSetup(t)
 			t.Run(fmt.Sprintf("%s - %s", mode, testCase.name), func(t *testing.T) {
 				t.Parallel()
 				req, err := x509.ParseCertificateRequest(testCase.csr)
@@ -388,12 +386,8 @@ func TestIssuePrecertificate(t *testing.T) {
 	}
 }
 
-func issueCertificateSubTestSetup(t *testing.T, e *ECDSAAllowList) (*certificateAuthorityImpl, *mockSA) {
+func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
-	ecdsaAllowList := &ECDSAAllowList{}
-	if e == nil {
-		e = ecdsaAllowList
-	}
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
@@ -402,7 +396,6 @@ func issueCertificateSubTestSetup(t *testing.T, e *ECDSAAllowList) (*certificate
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		e,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -450,7 +443,6 @@ func TestNoIssuers(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -475,7 +467,6 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -553,7 +544,6 @@ func TestUnpredictableIssuance(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -722,7 +712,6 @@ func TestProfiles(t *testing.T) {
 				tc.defaultName,
 				tc.profileConfigs,
 				testCtx.lints,
-				nil,
 				testCtx.certExpiry,
 				testCtx.certBackdate,
 				testCtx.serialPrefix,
@@ -764,39 +753,6 @@ func TestProfiles(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestECDSAAllowList(t *testing.T) {
-	t.Parallel()
-	req := &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID}
-
-	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
-	regIDMap := makeRegIDsMap([]int64{arbitraryRegID})
-	ca, _ := issueCertificateSubTestSetup(t, &ECDSAAllowList{regIDMap})
-	result, err := ca.IssuePrecertificate(ctx, req)
-	test.AssertNotError(t, err, "Failed to issue certificate")
-	cert, err := x509.ParseCertificate(result.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-	test.AssertEquals(t, cert.SignatureAlgorithm, x509.ECDSAWithSHA384)
-
-	// With allowlist not containing arbitraryRegID, issuance should fall back to RSA issuer.
-	regIDMap = makeRegIDsMap([]int64{2002})
-	ca, _ = issueCertificateSubTestSetup(t, &ECDSAAllowList{regIDMap})
-	result, err = ca.IssuePrecertificate(ctx, req)
-	test.AssertNotError(t, err, "Failed to issue certificate")
-	cert, err = x509.ParseCertificate(result.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-	test.AssertEquals(t, cert.SignatureAlgorithm, x509.SHA256WithRSA)
-
-	// With empty allowlist but ECDSAForAll enabled, issuance should come from ECDSA issuer.
-	ca, _ = issueCertificateSubTestSetup(t, nil)
-	features.Set(features.Config{ECDSAForAll: true})
-	defer features.Reset()
-	result, err = ca.IssuePrecertificate(ctx, req)
-	test.AssertNotError(t, err, "Failed to issue certificate")
-	cert, err = x509.ParseCertificate(result.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-	test.AssertEquals(t, cert.SignatureAlgorithm, x509.ECDSAWithSHA384)
 }
 
 func TestInvalidCSRs(t *testing.T) {
@@ -864,7 +820,6 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.defaultCertProfileName,
 			testCtx.certProfiles,
 			testCtx.lints,
-			nil,
 			testCtx.certExpiry,
 			testCtx.certBackdate,
 			testCtx.serialPrefix,
@@ -903,7 +858,6 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -1004,7 +958,6 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -1073,7 +1026,6 @@ func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *test
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -1193,7 +1145,6 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -1244,7 +1195,6 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,

@@ -27,10 +27,7 @@ type Config struct {
 	EnforceMultiVA                    bool
 	MultiVAFullResults                bool
 	CertCheckerRequiresCorrespondence bool
-
-	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
-	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
-	ECDSAForAll bool
+	ECDSAForAll                       bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -91,6 +88,16 @@ type Config struct {
 	//     `orders.certificateProfileName` column. Values in this column are
 	//     allowed to be empty.
 	MultipleCertificateProfiles bool
+
+	// CheckRenewalExemptionAtWFE when enabled, triggers the following behavior:
+	//  - WFE.NewOrder: checks if the order is a renewal and if so skips checks
+	//    for NewOrdersPerAccount and NewOrdersPerDomain limits.
+	//  - RA.NewOrderAndAuthzs: skips checks for legacy NewOrdersPerAccount and
+	//    NewOrdersPerDomain limits if the WFE indicates that the order is a
+	//    renewal.
+	//
+	// TODO(#7511): Remove this feature flag.
+	CheckRenewalExemptionAtWFE bool
 }
 
 var fMu = new(sync.RWMutex)

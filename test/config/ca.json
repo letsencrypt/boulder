@@ -144,9 +144,7 @@
 		},
 		"ocspLogMaxLength": 4000,
 		"ocspLogPeriod": "500ms",
-		"features": {
-			"ECDSAForAll": true
-		}
+		"features": {}
 	},
 	"pa": {
 		"challenges": {
