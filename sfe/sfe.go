@@ -166,7 +166,8 @@ func (sfe *SelfServiceFrontEndImpl) getHelper(response http.ResponseWriter, inco
 }
 
 // posthelper serves a page indicating if the unpause succeeded or failed upon
-// clicking the unpause button.
+// clicking the unpause button. We are explicitly choosing to not address CSRF
+// at this time because we control creation and redemption of the JWT.
 func (sfe *SelfServiceFrontEndImpl) postHelper(response http.ResponseWriter, request *http.Request, incomingJWT unpauseJWT) {
 	if incomingJWT != "" {
 		regID, _, err := sfe.validateUnpauseJWTforAccount(incomingJWT)
