@@ -166,9 +166,10 @@ func TestBuildIDPath(t *testing.T) {
 	test.AssertContains(t, responseWriter.Body.String(), "Boulder=(")
 }
 
-func TestUnpausePath(t *testing.T) {
+func TestUnpausePaths(t *testing.T) {
 	t.Parallel()
-	sfe, _ := setupSFE(t)
+	sfe, fc := setupSFE(t)
+	now := fc.Now()
 
 	// GET with no JWT
 	responseWriter := httptest.NewRecorder()
@@ -179,11 +180,22 @@ func TestUnpausePath(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "significant number of failed validation attempts without any recent")
 
-	// GET with a JWT
+	// GET with an invalid JWT
 	responseWriter = httptest.NewRecorder()
 	sfe.Unpause(responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL(fmt.Sprintf(unpauseGetForm + "?jwt=x")),
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertContains(t, responseWriter.Body.String(), "error was encountered when attempting to unpause your account")
+
+	// GET with a valid JWT
+	validJWT, err := makeJWTForAccount(now, now, now.Add(24*time.Hour), []byte(hmacKey), 1, "v1", "example.com")
+	test.AssertNotError(t, err, "Should have been able to create JWT, but could not")
+	responseWriter = httptest.NewRecorder()
+	sfe.Unpause(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(fmt.Sprintf(unpauseGetForm + "?jwt=" + string(validJWT))),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "This action will allow you to resume")
@@ -197,7 +209,7 @@ func TestUnpausePath(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "There is no action for you to take.")
 
-	// POST with invalid JWT
+	// POST with an invalid JWT
 	responseWriter = httptest.NewRecorder()
 	sfe.Unpause(responseWriter, &http.Request{
 		Method: "POST",
@@ -205,6 +217,24 @@ func TestUnpausePath(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "An error was encountered when attempting to unpause")
+
+	// POST with a valid JWT redirects to a success page
+	responseWriter = httptest.NewRecorder()
+	sfe.Unpause(responseWriter, &http.Request{
+		Method: "POST",
+		URL:    mustParseURL(fmt.Sprintf(unpausePostForm + "?jwt=" + string(validJWT))),
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusFound)
+	test.AssertEquals(t, unpauseSuccessful, responseWriter.Result().Header.Get("Location"))
+
+	// Redirecting after a successful unpause POST displays the success page.
+	responseWriter = httptest.NewRecorder()
+	sfe.UnpauseSuccessful(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(unpauseSuccessful),
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertContains(t, responseWriter.Body.String(), "Your ACME account has been unpaused.")
 }
 
 // makeJWTForAccount is a standin for a WFE method that returns an unpauseJWT or
