@@ -4402,6 +4402,7 @@ func TestUnpauseAccount(t *testing.T) {
 		})
 	}
 }
+
 func bulkInsertPausedIdentifiers(ctx context.Context, sa *SQLStorageAuthority, count int) error {
 	const batchSize = 1000
 
