@@ -9,9 +9,12 @@
     <h1>Action Required to Unpause Your ACME Account</h1>
 
     <p>
-        You have been directed to this page because your Account ID is
-        temporarily restricted from requesting new certificates for certain
-        hostnames.
+        You have been directed to this page because your Account ID {{ .AccountID }} 
+        is temporarily restricted from requesting new certificates for certain
+        hostnames including, but potentially not limited to, the following:
+        <ul>
+            {{ range $domain := .PausedDomains }}<li>{{ $domain }}</li>{{ end }}
+        </ul>
     </p>
     
     <h2>Why Did This Happen?</h2> 

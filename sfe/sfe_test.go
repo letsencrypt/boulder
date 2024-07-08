@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -209,7 +210,7 @@ func TestUnpausePath(t *testing.T) {
 // makeJWTForAccount is a standin for a WFE method that returns an unpauseJWT or
 // an error. The JWT contains a set of claims which should be validated by the
 // caller.
-func makeJWTForAccount(notBefore time.Time, issuedAt time.Time, expiresAt time.Time, hmacKey []byte, regID int64, apiVersion string) (unpauseJWT, error) {
+func makeJWTForAccount(notBefore time.Time, issuedAt time.Time, expiresAt time.Time, hmacKey []byte, regID int64, apiVersion string, pausedDomains string) (unpauseJWT, error) {
 	if len(hmacKey) != 32 {
 		return "", fmt.Errorf("invalid seed length")
 	}
@@ -235,10 +236,28 @@ func makeJWTForAccount(notBefore time.Time, issuedAt time.Time, expiresAt time.T
 		apiVersion = "v1"
 	}
 
+	// Ensure that we always send at least one domain in the JWT.
+	if pausedDomains == "" {
+		pausedDomains = "example.com"
+	}
+
+	// The SA returns a maximum of 15 domains and the SFE displays some text
+	// about "potentially more domains" being paused.
+	domains := strings.Split(pausedDomains, ",")
+	if len(domains) > 15 {
+		domains = domains[:15]
+	}
+
+	// Join slice back into a comma separated string with the maximum of 15
+	// domains.
+	pausedDomains = strings.Join(domains, ",")
+
 	customClaims := struct {
 		Version string `json:"apiVersion,omitempty"`
+		Domains string `json:"pausedDomains,omitempty"`
 	}{
 		apiVersion,
+		pausedDomains,
 	}
 
 	wfeClaims := jwt.Claims{
@@ -272,22 +291,35 @@ func TestValidateJWT(t *testing.T) {
 		HMACKey                     string
 		RegID                       int64  // Default value set in makeJWTForAccount
 		Version                     string // Default value set in makeJWTForAccount
+		PausedDomains               string // Default value set in makeJWTForAccount
+		ExpectedPausedDomains       []string
 		ExpectedMakeJWTSubstr       string
 		ExpectedValidationErrSubstr string
 	}{
 		{
-			Name:      "valid",
-			IssuedAt:  now,
-			NotBefore: now,
-			ExpiresAt: now.Add(30 * time.Minute),
-			HMACKey:   hmacKey,
-			RegID:     1,
+			Name:                  "valid",
+			IssuedAt:              now,
+			NotBefore:             now,
+			ExpiresAt:             now.Add(1 * time.Hour),
+			HMACKey:               hmacKey,
+			RegID:                 1,
+			ExpectedPausedDomains: []string{"example.com"},
+		},
+		{
+			Name:                  "valid, but more than 15 domains sent",
+			IssuedAt:              now,
+			NotBefore:             now,
+			ExpiresAt:             now.Add(1 * time.Hour),
+			HMACKey:               hmacKey,
+			RegID:                 1,
+			PausedDomains:         "1.example.com,2.example.com,3.example.com,4.example.com,5.example.com,6.example.com,7.example.com,8.example.com,9.example.com,10.example.com,11.example.com,12.example.com,13.example.com,14.example.com,15.example.com,16.example.com",
+			ExpectedPausedDomains: []string{"1.example.com", "2.example.com", "3.example.com", "4.example.com", "5.example.com", "6.example.com", "7.example.com", "8.example.com", "9.example.com", "10.example.com", "11.example.com", "12.example.com", "13.example.com", "14.example.com", "15.example.com"},
 		},
 		{
 			Name:                        "apiVersion mismatch",
 			IssuedAt:                    now,
 			NotBefore:                   now.Add(5 * time.Minute),
-			ExpiresAt:                   now.Add(30 * time.Minute),
+			ExpiresAt:                   now.Add(1 * time.Hour),
 			HMACKey:                     hmacKey,
 			RegID:                       1,
 			Version:                     "v2",
@@ -297,7 +329,7 @@ func TestValidateJWT(t *testing.T) {
 			Name:                        "no API specified in claim",
 			IssuedAt:                    now,
 			NotBefore:                   now.Add(5 * time.Minute),
-			ExpiresAt:                   now.Add(30 * time.Minute),
+			ExpiresAt:                   now.Add(1 * time.Hour),
 			HMACKey:                     hmacKey,
 			RegID:                       1,
 			Version:                     "magicEmptyString",
@@ -307,7 +339,7 @@ func TestValidateJWT(t *testing.T) {
 			Name:                        "creating JWT with empty seed fails",
 			IssuedAt:                    now,
 			NotBefore:                   now.Add(5 * time.Minute),
-			ExpiresAt:                   now.Add(30 * time.Minute),
+			ExpiresAt:                   now.Add(1 * time.Hour),
 			HMACKey:                     "",
 			RegID:                       1,
 			ExpectedMakeJWTSubstr:       "invalid seed length",
@@ -335,7 +367,7 @@ func TestValidateJWT(t *testing.T) {
 			Name:                        "validating JWT with hash derived from different seed fails",
 			IssuedAt:                    now,
 			NotBefore:                   now.Add(5 * time.Minute),
-			ExpiresAt:                   now.Add(30 * time.Minute),
+			ExpiresAt:                   now.Add(1 * time.Hour),
 			HMACKey:                     "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
 			RegID:                       1,
 			ExpectedValidationErrSubstr: "cryptographic primitive",
@@ -344,7 +376,7 @@ func TestValidateJWT(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			fc = originalClock
-			newJWT, err := makeJWTForAccount(tc.NotBefore, tc.IssuedAt, tc.ExpiresAt, []byte(tc.HMACKey), tc.RegID, tc.Version)
+			newJWT, err := makeJWTForAccount(tc.NotBefore, tc.IssuedAt, tc.ExpiresAt, []byte(tc.HMACKey), tc.RegID, tc.Version, tc.PausedDomains)
 			if tc.ExpectedMakeJWTSubstr != "" || string(newJWT) == "" {
 				test.AssertError(t, err, "JWT was created but should not have been")
 				test.AssertContains(t, err.Error(), tc.ExpectedMakeJWTSubstr)
@@ -356,12 +388,13 @@ func TestValidateJWT(t *testing.T) {
 			// claim in the JWT as a first pass annoyance for clients attempting
 			// to automate unpausing.
 			fc.Add(10 * time.Minute)
-			_, err = sfe.validateUnpauseJWTforAccount(newJWT)
+			_, domains, err := sfe.validateUnpauseJWTforAccount(newJWT)
 			if tc.ExpectedValidationErrSubstr != "" || err != nil {
 				test.AssertError(t, err, "Error expected, but received none")
 				test.AssertContains(t, err.Error(), tc.ExpectedValidationErrSubstr)
 			} else {
 				test.AssertNotError(t, err, "Unable to validate JWT")
+				test.AssertDeepEquals(t, domains, tc.ExpectedPausedDomains)
 			}
 		})
 	}
