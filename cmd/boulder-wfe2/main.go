@@ -11,9 +11,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
@@ -199,47 +196,6 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 	return certs[0], buf.Bytes(), nil
 }
 
-func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, nonce.Getter, nonce.Redeemer, string) {
-	tlsConfig, err := c.WFE.TLS.Load(scope)
-	cmd.FailOnError(err, "TLS config")
-
-	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
-	rac := rapb.NewRegistrationAuthorityClient(raConn)
-
-	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
-
-	if c.WFE.RedeemNonceService == nil {
-		cmd.Fail("'redeemNonceService' must be configured.")
-	}
-	if c.WFE.GetNonceService == nil {
-		cmd.Fail("'getNonceService' must be configured")
-	}
-
-	var rncKey string
-	if c.WFE.NoncePrefixKey.PasswordFile != "" {
-		rncKey, err = c.WFE.NoncePrefixKey.Pass()
-		cmd.FailOnError(err, "Failed to load noncePrefixKey")
-	}
-
-	getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
-	gnc := nonce.NewGetter(getNonceConn)
-
-	if c.WFE.RedeemNonceService.SRVResolver != noncebalancer.SRVResolverScheme {
-		cmd.Fail(fmt.Sprintf(
-			"'redeemNonceService.SRVResolver' must be set to %q", noncebalancer.SRVResolverScheme),
-		)
-	}
-	redeemNonceConn, err := bgrpc.ClientSetup(c.WFE.RedeemNonceService, tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
-	rnc := nonce.NewRedeemer(redeemNonceConn)
-
-	return rac, sac, gnc, rnc, rncKey
-}
-
 type errorWriter struct {
 	blog.Logger
 }
@@ -309,7 +265,42 @@ func main() {
 
 	clk := cmd.Clock()
 
-	rac, sac, gnc, rnc, npKey := setupWFE(c, stats, clk)
+	tlsConfig, err := c.WFE.TLS.Load(stats)
+	cmd.FailOnError(err, "TLS config")
+
+	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tlsConfig, stats, clk)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
+	rac := rapb.NewRegistrationAuthorityClient(raConn)
+
+	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, stats, clk)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
+
+	if c.WFE.RedeemNonceService == nil {
+		cmd.Fail("'redeemNonceService' must be configured.")
+	}
+	if c.WFE.GetNonceService == nil {
+		cmd.Fail("'getNonceService' must be configured")
+	}
+
+	var noncePrefixKey string
+	if c.WFE.NoncePrefixKey.PasswordFile != "" {
+		noncePrefixKey, err = c.WFE.NoncePrefixKey.Pass()
+		cmd.FailOnError(err, "Failed to load noncePrefixKey")
+	}
+
+	getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, stats, clk)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
+	gnc := nonce.NewGetter(getNonceConn)
+
+	if c.WFE.RedeemNonceService.SRVResolver != noncebalancer.SRVResolverScheme {
+		cmd.Fail(fmt.Sprintf(
+			"'redeemNonceService.SRVResolver' must be set to %q", noncebalancer.SRVResolverScheme),
+		)
+	}
+	redeemNonceConn, err := bgrpc.ClientSetup(c.WFE.RedeemNonceService, tlsConfig, stats, clk)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
+	rnc := nonce.NewRedeemer(redeemNonceConn)
 
 	kp, err := sagoodkey.NewPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
@@ -376,7 +367,7 @@ func main() {
 		sac,
 		gnc,
 		rnc,
-		npKey,
+		noncePrefixKey,
 		accountGetter,
 		limiter,
 		txnBuilder,
