@@ -181,7 +181,7 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, re
 
 	// Serve the actual unpause page given to a Subscriber. Populates the
 	// unpause form with the JWT from the URL.
-	sfe.renderTemplate(response, "unpause-form.html", tmplData{unpausePostForm, string(incomingJWT), regID, domains})
+	sfe.renderTemplate(response, "unpause-form.html", tmplData{unpausePostForm, incomingJWT, regID, domains})
 }
 
 // UnpauseSubmit serves a page indicating if the unpause form submission
