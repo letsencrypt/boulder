@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/url"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -51,6 +52,9 @@ func TestError(t *testing.T) {
 		}, {
 			&Error{dns.TypeA, "hostname", nil, dns.RcodeFormatError, nil},
 			"DNS problem: FORMERR looking up A for hostname",
+		}, {
+			&Error{dns.TypeA, "hostname", &url.Error{Op: "GET", URL: "https://example.com/", Err: dohTimeoutError{}}, -1, nil},
+			"DNS problem: query timed out looking up A for hostname",
 		},
 	}
 	for _, tc := range testCases {
@@ -58,6 +62,16 @@ func TestError(t *testing.T) {
 			t.Errorf("got %q, expected %q", tc.err.Error(), tc.expected)
 		}
 	}
+}
+
+type dohTimeoutError struct{}
+
+func (dohTimeoutError) Error() string {
+	return "doh no"
+}
+
+func (dohTimeoutError) Timeout() bool {
+	return true
 }
 
 func TestWrapErr(t *testing.T) {
