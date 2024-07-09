@@ -598,6 +598,9 @@ func (wfe *WebFrontEndImpl) Nonce(
 	// field with the "no-store" directive in responses for the newNonce resource,
 	// in order to prevent caching of this resource.
 	response.Header().Set("Cache-Control", "no-store")
+
+	// No need to log successful nonce requests, they're boring.
+	logEvent.Suppress()
 }
 
 // sendError wraps web.SendError
