@@ -599,7 +599,7 @@ func (wfe *WebFrontEndImpl) Nonce(
 	// in order to prevent caching of this resource.
 	response.Header().Set("Cache-Control", "no-store")
 
-	// No need to log succesful nonce GETs, they're boring.
+	// No need to log successful nonce requests, they're boring.
 	logEvent.Suppress()
 }
 
