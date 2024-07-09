@@ -195,6 +195,12 @@ func main() {
 		issuers = append(issuers, issuer)
 	}
 
+	// Output issuer details here rather than in Issuers loop above to avoid
+	// interleaving with clock logs.
+	for _, issuer := range issuers {
+		logger.Infof("Loaded issuer: name=[%s] keytype=[%s] nameID=[%v] isActive=[%t]", issuer.Name(), issuer.KeyType(), issuer.NameID(), issuer.IsActive())
+	}
+
 	if c.CA.Issuance.DefaultCertificateProfileName == "" {
 		c.CA.Issuance.DefaultCertificateProfileName = "defaultBoulderCertificateProfile"
 	}
