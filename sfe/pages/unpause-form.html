@@ -46,17 +46,18 @@
         requesting certificates for all affected hostnames associated with your
         account.
     </p>
-        <div>
-            <form action="{{ .UnpauseFormRedirectionPath }}?jwt={{ .JWT }}" method="POST">
-              <button class="primary" id="submit">Please Unpause My Account</button>
-            </form>
-        </div>
     <p>
         <strong>Note:</strong> If you face difficulties unpausing your account or
         need more guidance, our <a
         href="https://community.letsencrypt.org">community support forum</a> is
         a great resource for troubleshooting and advice.
     </p>
+        <div>
+            <form action="{{ .UnpauseFormRedirectionPath }}?jwt={{ .JWT }}" method="POST">
+              <button class="primary" id="submit">Please Unpause My Account</button>
+            </form>
+        </div>
+
     </div>
 </body>
 

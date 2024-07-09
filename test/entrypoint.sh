@@ -16,6 +16,8 @@ service rsyslog start
 # make sure we can reach the proxysql.
 ./test/wait-for-it.sh bproxysql 6032
 
+./test/wait-for-it.sh bpkilint 80
+
 # create the database
 MYSQL_CONTAINER=1 $DIR/create_db.sh
 

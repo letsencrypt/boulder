@@ -18,7 +18,6 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/letsencrypt/boulder/core"
-
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -29,14 +28,13 @@ const (
 	// The API version should be checked when parsing parameters to quickly deny
 	// a client request. Can be used to mass-invalidate URLs. Must be
 	// concatenated with other path slugs.
-	unpauseAPISlug = "/sfe/v1"
+	unpauseAPIPrefix = "/sfe/v1"
+	unpauseGetForm   = unpauseAPIPrefix + "/unpause"
+	unpausePostForm  = unpauseAPIPrefix + "/do-unpause"
+	unpauseStatus    = unpauseAPIPrefix + "/unpause-status"
 )
 
 var (
-	unpauseGetForm    = unpauseAPISlug + "/unpause"
-	unpausePostForm   = unpauseAPISlug + "/do-unpause"
-	unpauseSuccessful = unpauseAPISlug + "/unpause-successful"
-
 	//go:embed all:static
 	staticFS embed.FS
 
@@ -58,9 +56,9 @@ type SelfServiceFrontEndImpl struct {
 	// requestTimeout is the per-request overall timeout.
 	requestTimeout time.Duration
 
-	// unpauseHMACHash is used to validate incoming JWT signatures on the
-	// unpause endpoint and should be shared by the SFE and WFE.
-	unpauseHMACHash []byte
+	// unpauseHMACKey is used to validate incoming JWT signatures on the unpause
+	// endpoint and should be shared by the SFE and WFE.
+	unpauseHMACKey []byte
 
 	// HTML pages served by the SFE
 	templatePages *template.Template
@@ -74,7 +72,7 @@ func NewSelfServiceFrontEndImpl(
 	requestTimeout time.Duration,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
-	unpauseHMACHash []byte,
+	unpauseHMACKey []byte,
 ) (SelfServiceFrontEndImpl, error) {
 
 	// Parse the files once at startup to avoid each request causing the server
@@ -83,13 +81,13 @@ func NewSelfServiceFrontEndImpl(
 	tmplPages := template.Must(template.New("pages").ParseFS(dynamicFS, "templates/layout.html", "pages/*"))
 
 	sfe := SelfServiceFrontEndImpl{
-		log:             logger,
-		clk:             clk,
-		requestTimeout:  requestTimeout,
-		ra:              rac,
-		sa:              sac,
-		unpauseHMACHash: unpauseHMACHash,
-		templatePages:   tmplPages,
+		log:            logger,
+		clk:            clk,
+		requestTimeout: requestTimeout,
+		ra:             rac,
+		sa:             sac,
+		unpauseHMACKey: unpauseHMACKey,
+		templatePages:  tmplPages,
 	}
 
 	return sfe, nil
@@ -107,16 +105,15 @@ func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTT
 	m.Handle("GET /static/", staticAssetsHandler)
 	m.HandleFunc("/", sfe.Index)
 	m.HandleFunc("GET /build", sfe.BuildID)
-	m.HandleFunc(unpauseGetForm, sfe.Unpause)
-	m.HandleFunc(unpausePostForm, sfe.Unpause)
-	m.HandleFunc(unpauseSuccessful, sfe.UnpauseSuccessful)
+	m.HandleFunc(unpauseGetForm, sfe.UnpauseForm)
+	m.HandleFunc(unpausePostForm, sfe.UnpauseSubmit)
+	m.HandleFunc(unpauseStatus, sfe.UnpauseStatus)
 
 	return measured_http.New(m, sfe.clk, stats, oTelHTTPOptions...)
 }
 
-// renderTemplate takes an HTML template instantiated by the SFE init() and an
-// optional dynamicData which are rendered and served back to the client via the
-// response writer.
+// renderTemplate takes the name of an HTML template and optional dynamicData
+// which are rendered and served back to the client via the response writer.
 func (sfe *SelfServiceFrontEndImpl) renderTemplate(w http.ResponseWriter, filename string, dynamicData any) {
 	if len(filename) == 0 {
 		http.Error(w, "Template page does not exist", http.StatusInternalServerError)
@@ -152,82 +149,26 @@ func (sfe *SelfServiceFrontEndImpl) BuildID(response http.ResponseWriter, reques
 // SFE to unpause the requester's account.
 type unpauseJWT string
 
-func (sfe *SelfServiceFrontEndImpl) getHelper(response http.ResponseWriter, incomingJWT unpauseJWT) {
-	if incomingJWT != "" {
-		// Serve the actual unpause page given to a Subscriber. Populates the
-		// unpause form with the JWT from the URL. That JWT itself may be
-		// invalid or expired, but that validation will be performed after
-		// submitting the form.
-		sfe.unpausePrepareToUnpause(response, unpausePostForm, incomingJWT)
-	} else {
-		// We only want to accept requests containing the JWT param.
-		sfe.unpauseInvalidRequest(response)
+// UnpauseForm allows a requester to unpause their account via a form present on
+// the page. The Subscriber's client will receive a log line emitted by the WFE
+// which contains a URL pre-filled with a JWT that will populate a hidden field
+// in this form.
+func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodHead && request.Method != http.MethodGet {
+		response.Header().Set("Access-Control-Allow-Methods", "GET, HEAD")
+		response.WriteHeader(http.StatusMethodNotAllowed)
+		return
 	}
-}
 
-// posthelper serves a page indicating if the unpause succeeded or failed upon
-// clicking the unpause button. We are explicitly choosing to not address CSRF
-// at this time because we control creation and redemption of the JWT.
-func (sfe *SelfServiceFrontEndImpl) postHelper(response http.ResponseWriter, request *http.Request, incomingJWT unpauseJWT) {
-	if incomingJWT != "" {
-		regID, _, err := sfe.validateUnpauseJWTforAccount(incomingJWT)
-		if err != nil {
-			sfe.unpauseFailure(response)
-			return
-		}
-
-		// TODO(#7356) Declare a registration ID variable to populate an
-		// rapb unpause account request message.
-		_, innerErr := strconv.ParseInt(regID, 10, 64)
-		if innerErr != nil {
-			sfe.unpauseFailure(response)
-			return
-		}
-
-		// TODO(#7536) Send gRPC nrequest to the RA informing it to unpause
-		// the account specified in the claim. At this point we should wait
-		// for the RA to process the request before returning to the client,
-		// just in case the request fails.
-
-		// Success, the account has been unpaused.
-		http.Redirect(response, request, unpauseSuccessful, http.StatusFound)
-	} else {
+	incomingJWT := request.URL.Query().Get("jwt")
+	if incomingJWT == "" {
 		sfe.unpauseInvalidRequest(response)
+		return
 	}
-}
 
-// unpauseInvalidRequest is a helper that displays a page indicating there's no
-// action for a Subscriber to take due to lack of JWT in the data object.
-func (sfe *SelfServiceFrontEndImpl) unpauseInvalidRequest(response http.ResponseWriter) {
-	sfe.renderTemplate(response, "index.html", nil)
-}
-
-type unpauseStatusTemplateData struct {
-	ShouldUnpause bool
-}
-
-// unpauseFailure is a helper that displays a failure message to the Subscriber
-// indicating that their account has failed to unpause. This should only be used
-// when the JWT fails to validate and other failures should use
-// unpauseInvalidRequest.
-func (sfe *SelfServiceFrontEndImpl) unpauseFailure(response http.ResponseWriter) {
-	sfe.renderTemplate(response, "unpause-status.html", unpauseStatusTemplateData{false})
-}
-
-// UnpauseSuccessful displays a success message to the Subscriber indicating
-// that their account has been unpaused.
-func (sfe *SelfServiceFrontEndImpl) UnpauseSuccessful(response http.ResponseWriter, request *http.Request) {
-	sfe.renderTemplate(response, "unpause-status.html", unpauseStatusTemplateData{true})
-}
-
-// unpausePrepareToUnpause is a helper that displays a page containing a filled
-// out form containing a JWT created by the WFE. Upon accessing that link, the
-// Subscriber would click the "unpause my account" button to submit the form
-// back to the SFE.
-func (sfe *SelfServiceFrontEndImpl) unpausePrepareToUnpause(response http.ResponseWriter, formRedirectionPath string, incomingJWT unpauseJWT) {
-	regID, domains, err := sfe.validateUnpauseJWTforAccount(incomingJWT)
+	regID, domains, err := sfe.validateUnpauseJWTforAccount(unpauseJWT(incomingJWT))
 	if err != nil {
-		sfe.unpauseFailure(response)
+		sfe.unpauseStatusHelper(response, false)
 		return
 	}
 
@@ -237,24 +178,86 @@ func (sfe *SelfServiceFrontEndImpl) unpausePrepareToUnpause(response http.Respon
 		AccountID                  string
 		PausedDomains              []string
 	}
-	sfe.renderTemplate(response, "unpause-form.html", tmplData{formRedirectionPath, string(incomingJWT), regID, domains})
+
+	// Serve the actual unpause page given to a Subscriber. Populates the
+	// unpause form with the JWT from the URL.
+	sfe.renderTemplate(response, "unpause-form.html", tmplData{unpausePostForm, string(incomingJWT), regID, domains})
 }
 
-// Unpause allows a requester to unpause their account via a form present on the
-// page.
-func (sfe *SelfServiceFrontEndImpl) Unpause(response http.ResponseWriter, request *http.Request) {
-	switch request.Method {
-	case http.MethodHead:
-		return
-	case http.MethodGet:
-		sfe.getHelper(response, unpauseJWT(request.URL.Query().Get("jwt")))
-	case http.MethodPost:
-		sfe.postHelper(response, request, unpauseJWT(request.URL.Query().Get("jwt")))
-	default:
-		response.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST")
+// UnpauseSubmit serves a page indicating if the unpause form submission
+// succeeded or failed upon clicking the unpause button. We are explicitly
+// choosing to not address CSRF at this time because we control creation and
+// redemption of the JWT.
+func (sfe *SelfServiceFrontEndImpl) UnpauseSubmit(response http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		response.Header().Set("Access-Control-Allow-Methods", "POST")
 		response.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+
+	incomingJWT := request.URL.Query().Get("jwt")
+	if incomingJWT == "" {
+		sfe.unpauseInvalidRequest(response)
+		return
+	}
+
+	regID, _, err := sfe.validateUnpauseJWTforAccount(unpauseJWT(incomingJWT))
+	if err != nil {
+		sfe.unpauseStatusHelper(response, false)
+		return
+	}
+
+	// TODO(#7356) Declare a registration ID variable to populate an
+	// rapb unpause account request message.
+	_, innerErr := strconv.ParseInt(regID, 10, 64)
+	if innerErr != nil {
+		sfe.unpauseStatusHelper(response, false)
+		return
+	}
+
+	// TODO(#7536) Send gRPC nrequest to the RA informing it to unpause
+	// the account specified in the claim. At this point we should wait
+	// for the RA to process the request before returning to the client,
+	// just in case the request fails.
+
+	// Success, the account has been unpaused.
+	http.Redirect(response, request, unpauseStatus, http.StatusFound)
+}
+
+// unpauseInvalidRequest is a helper that displays a page indicating the
+// Subscriber perform basic troubleshooting due to lack of JWT in the data
+// object.
+func (sfe *SelfServiceFrontEndImpl) unpauseInvalidRequest(response http.ResponseWriter) {
+	sfe.renderTemplate(response, "unpause-invalid-request.html", nil)
+}
+
+type unpauseStatusTemplateData struct {
+	UnpauseSuccessful bool
+}
+
+// unpauseStatus is a helper that, by default, displays a failure message to the
+// Subscriber indicating that their account has failed to unpause. For failure
+// scenarios, only when the JWT validation should call this. Other types of
+// failures should use unpauseInvalidRequest. For successes, call UnpauseStatus
+// instead.
+func (sfe *SelfServiceFrontEndImpl) unpauseStatusHelper(response http.ResponseWriter, status bool) {
+	sfe.renderTemplate(response, "unpause-status.html", unpauseStatusTemplateData{status})
+}
+
+// UnpauseStatus displays a success message to the Subscriber indicating that
+// their account has been unpaused.
+func (sfe *SelfServiceFrontEndImpl) UnpauseStatus(response http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodHead && request.Method != http.MethodGet {
+		response.Header().Set("Access-Control-Allow-Methods", "GET, HEAD")
+		response.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	// TODO(#7580) This should only be reachable after a client has clicked the
+	// "Please unblock my account" button and that request succeeding. No one
+	// should be able to access this page otherwise.
+
+	sfe.unpauseStatusHelper(response, true)
 }
 
 // validateUnpauseJWTforAccount validates the signature and contents of an
@@ -262,7 +265,7 @@ func (sfe *SelfServiceFrontEndImpl) Unpause(response http.ResponseWriter, reques
 // After JWT validation, return the registration ID from claim's subject and
 // paused domains if the validation was successful or an error.
 func (sfe *SelfServiceFrontEndImpl) validateUnpauseJWTforAccount(incomingJWT unpauseJWT) (string, []string, error) {
-	slug := strings.Split(unpauseAPISlug, "/")
+	slug := strings.Split(unpauseAPIPrefix, "/")
 	if len(slug) != 3 {
 		return "", nil, errors.New("Could not parse API version")
 	}
@@ -284,7 +287,7 @@ func (sfe *SelfServiceFrontEndImpl) validateUnpauseJWTforAccount(incomingJWT unp
 	}
 
 	incomingClaims := sfeJWTClaims{}
-	err = token.Claims(sfe.unpauseHMACHash[:], &incomingClaims)
+	err = token.Claims(sfe.unpauseHMACKey[:], &incomingClaims)
 	if err != nil {
 		return "", nil, err
 	}

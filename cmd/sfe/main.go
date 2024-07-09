@@ -6,9 +6,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
@@ -40,40 +37,16 @@ type Config struct {
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
 
+		Unpause cmd.UnpauseConfig
+
 		Features features.Config
 	}
-
-	Unpause cmd.UnpauseConfig
 
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
 
 	// OpenTelemetryHTTPConfig configures tracing on incoming HTTP requests
 	OpenTelemetryHTTPConfig cmd.OpenTelemetryHTTPConfig
-}
-
-func setupSFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, []byte) {
-	unpauseHMACKey, err := c.Unpause.HMACKey.Pass()
-	cmd.FailOnError(err, "Failed to load unpauseHMACKey")
-
-	if len(unpauseHMACKey) != 32 {
-		cmd.Fail("Invalid unpauseHMACKey length, should be 32 alphanumeric characters")
-	}
-
-	//unpauseHMACHash := sha256.Sum256([]byte(unpauseHMACKey))
-
-	tlsConfig, err := c.SFE.TLS.Load(scope)
-	cmd.FailOnError(err, "TLS config")
-
-	raConn, err := bgrpc.ClientSetup(c.SFE.RAService, tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
-	rac := rapb.NewRegistrationAuthorityClient(raConn)
-
-	saConn, err := bgrpc.ClientSetup(c.SFE.SAService, tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
-
-	return rac, sac, []byte(unpauseHMACKey)
 }
 
 func main() {
@@ -107,7 +80,27 @@ func main() {
 
 	clk := cmd.Clock()
 
-	rac, sac, unpauseHMACHash := setupSFE(c, stats, clk)
+	unpauseHMACKey, err := c.SFE.Unpause.HMACKey.Pass()
+	cmd.FailOnError(err, "Failed to load unpauseHMACKey")
+
+	if len(unpauseHMACKey) != 32 {
+		cmd.Fail("Invalid unpauseHMACKey length, should be 32 alphanumeric characters")
+	}
+
+	// The jose.SigningKey key interface where this is used can be satisfied by
+	// a byte slice, not a string.
+	unpauseHMACKeyBytes := []byte(unpauseHMACKey)
+
+	tlsConfig, err := c.SFE.TLS.Load(stats)
+	cmd.FailOnError(err, "TLS config")
+
+	raConn, err := bgrpc.ClientSetup(c.SFE.RAService, tlsConfig, stats, clk)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
+	rac := rapb.NewRegistrationAuthorityClient(raConn)
+
+	saConn, err := bgrpc.ClientSetup(c.SFE.SAService, tlsConfig, stats, clk)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
+	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
 	sfei, err := sfe.NewSelfServiceFrontEndImpl(
 		stats,
@@ -116,7 +109,7 @@ func main() {
 		c.SFE.Timeout.Duration,
 		rac,
 		sac,
-		unpauseHMACHash,
+		unpauseHMACKeyBytes,
 	)
 	cmd.FailOnError(err, "Unable to create SFE")
 

@@ -29,12 +29,12 @@
 			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
+		"unpause": {
+			"hmacKey": {
+				"passwordFile": "test/secrets/sfe_unpause_key"
+			}
+		},
 		"features": {}
-	},
-	"unpause": {
-		"hmacKey": {
-			"passwordFile": "test/secrets/sfe_unpause_key"
-		}
 	},
 	"syslog": {
 		"stdoutlevel": 4,
