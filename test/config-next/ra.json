@@ -105,7 +105,8 @@
 			}
 		},
 		"features": {
-			"AsyncFinalize": true
+			"AsyncFinalize": true,
+			"CheckRenewalExemptionAtWFE": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

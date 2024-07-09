@@ -4455,7 +4455,7 @@ func TestNewOrderRateLimitingExempt(t *testing.T) {
 	test.AssertError(t, err, "orderTwo should have failed")
 
 	// Exempt orderTwo from rate limiting.
-	exampleOrderTwo.LimitsExempt = true
+	exampleOrderTwo.IsARIRenewal = true
 	_, err = ra.NewOrder(ctx, exampleOrderTwo)
 	test.AssertNotError(t, err, "orderTwo should have succeeded")
 }
@@ -4496,7 +4496,7 @@ func TestNewOrderFailedAuthzRateLimitingExempt(t *testing.T) {
 	test.AssertError(t, err, "expected error for domain with too many failures")
 
 	// Exempt the order from rate limiting.
-	exampleOrder.LimitsExempt = true
+	exampleOrder.IsARIRenewal = true
 	_, err = ra.NewOrder(ctx, exampleOrder)
 	test.AssertNotError(t, err, "limit exempt order should have succeeded")
 }

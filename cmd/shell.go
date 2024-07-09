@@ -34,6 +34,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
 	"google.golang.org/grpc/grpclog"
 
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/strictyaml"
@@ -455,6 +456,9 @@ func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
 		}
 	}
 
+	// Register custom types for use with existing validation tags.
+	validate.RegisterCustomTypeFunc(config.DurationCustomTypeFunc, config.Duration{})
+
 	err := decodeJSONStrict(in, cv.Config)
 	if err != nil {
 		return err
@@ -496,6 +500,9 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 			return err
 		}
 	}
+
+	// Register custom types for use with existing validation tags.
+	validate.RegisterCustomTypeFunc(config.DurationCustomTypeFunc, config.Duration{})
 
 	inBytes, err := io.ReadAll(in)
 	if err != nil {

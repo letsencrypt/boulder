@@ -16,7 +16,10 @@
 		"issuerCerts": [
 			"test/certs/webpki/int-rsa-a.cert.pem",
 			"test/certs/webpki/int-rsa-b.cert.pem",
-			"test/certs/webpki/int-ecdsa-a.cert.pem"
+			"test/certs/webpki/int-rsa-c.cert.pem",
+			"test/certs/webpki/int-ecdsa-a.cert.pem",
+			"test/certs/webpki/int-ecdsa-b.cert.pem",
+			"test/certs/webpki/int-ecdsa-c.cert.pem"
 		],
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",

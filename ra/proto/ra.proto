@@ -69,12 +69,15 @@ message AdministrativelyRevokeCertificateRequest {
 }
 
 message NewOrderRequest {
-  // Next unused field number: 6
+  // Next unused field number: 7
   int64 registrationID = 1;
   repeated string names = 2;
   string replacesSerial = 3;
-  bool limitsExempt = 4;
+  // TODO(#7512): Remove this field.
+  bool isARIRenewal = 4;
   string certificateProfileName = 5;
+  // TODO(#7512): Remove this field.
+  bool isRenewal = 6;
 }
 
 message FinalizeOrderRequest {
