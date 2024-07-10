@@ -42,7 +42,7 @@ ipki() (
   # Used by Boulder gRPC services as both server and client mTLS certificates.
   for SERVICE in admin-revoker expiration-mailer ocsp-responder consul \
     wfe akamai-purger bad-key-revoker crl-updater crl-storer \
-    health-checker rocsp-tool; do
+    health-checker rocsp-tool sfe; do
     minica -domains "${SERVICE}.boulder" &
   done
 

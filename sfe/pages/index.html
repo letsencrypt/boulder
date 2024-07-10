@@ -1,0 +1,22 @@
+<!doctype html>
+<html dir="ltr" lang="en-US">
+    <header>
+        <title>Self-Service Frontend</title>
+        {{ template "meta" }}
+    </header>
+    <body>
+    <h1>No Action Required</h1>
+    <div>
+    <p>
+        There is no action for you to take. This page is intended for
+        Subscribers whose accounts have been temporarily restricted from
+        requesting new certificates for certain hostnames, following a
+        significant number of failed validation attempts without any recent
+        successes. If your account was paused, your <a
+        href="https://letsencrypt.org/docs/client-options/">ACME client</a>
+        would provide you with a URL to visit to unpause your account.
+    </p>
+    </div>
+</body>
+
+{{template "footer"}}

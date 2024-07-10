@@ -29,6 +29,7 @@ import (
 	_ "github.com/letsencrypt/boulder/cmd/remoteva"
 	_ "github.com/letsencrypt/boulder/cmd/reversed-hostname-checker"
 	_ "github.com/letsencrypt/boulder/cmd/rocsp-tool"
+	_ "github.com/letsencrypt/boulder/cmd/sfe"
 	"github.com/letsencrypt/boulder/core"
 
 	"github.com/letsencrypt/boulder/cmd"
