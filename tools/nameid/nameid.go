@@ -9,7 +9,7 @@ import (
 )
 
 func usage() {
-	fmt.Printf("Usage: %s [OPTIONS] cert1.pem certN.pem certN+1.pem\n", os.Args[0])
+	fmt.Printf("Usage: %s [OPTIONS] [CERTIFICATE(S)]\n", os.Args[0])
 }
 
 func main() {
@@ -21,17 +21,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	for _, cert := range flag.Args() {
-		issuer, err := issuance.LoadCertificate(cert)
+	for _, certFile := range flag.Args() {
+		issuer, err := issuance.LoadCertificate(certFile)
 		if err != nil {
-			fmt.Println(err)
+			if *shorthandFlag {
+				fmt.Println(err)
+			} else {
+				fmt.Printf("%s\t- %v", certFile, err)
+			}
 			os.Exit(1)
 		}
 
 		if *shorthandFlag {
 			fmt.Printf("%d\n", issuer.NameID())
 		} else {
-			fmt.Printf("%s\t- %d\n", cert, issuer.NameID())
+			fmt.Printf("%s\t- %d\n", certFile, issuer.NameID())
 		}
 	}
 }
