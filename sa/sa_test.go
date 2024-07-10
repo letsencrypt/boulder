@@ -4403,6 +4403,74 @@ func TestUnpauseAccount(t *testing.T) {
 	}
 }
 
+func bulkInsertPausedIdentifiers(ctx context.Context, sa *SQLStorageAuthority, count int) error {
+	const batchSize = 1000
+
+	values := make([]interface{}, 0, batchSize*4)
+	now := sa.clk.Now().Add(-time.Hour)
+	batches := (count + batchSize - 1) / batchSize
+
+	for batch := 0; batch < batches; batch++ {
+		query := `
+		INSERT INTO paused (registrationID, identifierType, identifierValue, pausedAt)
+		VALUES`
+
+		start := batch * batchSize
+		end := start + batchSize
+		if end > count {
+			end = count
+		}
+
+		for i := start; i < end; i++ {
+			if i > start {
+				query += ","
+			}
+			query += "(?, ?, ?, ?)"
+			values = append(values, 1, identifierTypeToUint[string(identifier.DNS)], fmt.Sprintf("example%d.com", i), now)
+		}
+
+		_, err := sa.dbMap.ExecContext(ctx, query, values...)
+		if err != nil {
+			return fmt.Errorf("bulk inserting paused identifiers: %w", err)
+		}
+		values = values[:0]
+	}
+
+	return nil
+}
+
+func TestUnpauseAccountWithTwoLoops(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	err := bulkInsertPausedIdentifiers(ctx, sa, 12000)
+	test.AssertNotError(t, err, "bulk inserting paused identifiers")
+
+	result, err := sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	test.AssertNotError(t, err, "Unexpected error for UnpauseAccount()")
+	test.AssertEquals(t, result.Count, int64(12000))
+}
+
+func TestUnpauseAccountWithMaxLoops(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	err := bulkInsertPausedIdentifiers(ctx, sa, 50001)
+	test.AssertNotError(t, err, "bulk inserting paused identifiers")
+
+	result, err := sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	test.AssertNotError(t, err, "Unexpected error for UnpauseAccount()")
+	test.AssertEquals(t, result.Count, int64(50000))
+}
+
 func TestPauseIdentifiers(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		t.Skip("Test requires paused database table")

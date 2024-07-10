@@ -1456,7 +1456,7 @@ type StorageAuthorityClient interface {
 	LeaseCRLShard(ctx context.Context, in *LeaseCRLShardRequest, opts ...grpc.CallOption) (*LeaseCRLShardResponse, error)
 	UpdateCRLShard(ctx context.Context, in *UpdateCRLShardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	PauseIdentifiers(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*PauseIdentifiersResponse, error)
-	UnpauseAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	UnpauseAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Count, error)
 }
 
 type storageAuthorityClient struct {
@@ -2023,9 +2023,9 @@ func (c *storageAuthorityClient) PauseIdentifiers(ctx context.Context, in *Pause
 	return out, nil
 }
 
-func (c *storageAuthorityClient) UnpauseAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *storageAuthorityClient) UnpauseAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Count, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
+	out := new(Count)
 	err := c.cc.Invoke(ctx, StorageAuthority_UnpauseAccount_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -2091,7 +2091,7 @@ type StorageAuthorityServer interface {
 	LeaseCRLShard(context.Context, *LeaseCRLShardRequest) (*LeaseCRLShardResponse, error)
 	UpdateCRLShard(context.Context, *UpdateCRLShardRequest) (*emptypb.Empty, error)
 	PauseIdentifiers(context.Context, *PauseRequest) (*PauseIdentifiersResponse, error)
-	UnpauseAccount(context.Context, *RegistrationID) (*emptypb.Empty, error)
+	UnpauseAccount(context.Context, *RegistrationID) (*Count, error)
 	mustEmbedUnimplementedStorageAuthorityServer()
 }
 
@@ -2255,7 +2255,7 @@ func (UnimplementedStorageAuthorityServer) UpdateCRLShard(context.Context, *Upda
 func (UnimplementedStorageAuthorityServer) PauseIdentifiers(context.Context, *PauseRequest) (*PauseIdentifiersResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PauseIdentifiers not implemented")
 }
-func (UnimplementedStorageAuthorityServer) UnpauseAccount(context.Context, *RegistrationID) (*emptypb.Empty, error) {
+func (UnimplementedStorageAuthorityServer) UnpauseAccount(context.Context, *RegistrationID) (*Count, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UnpauseAccount not implemented")
 }
 func (UnimplementedStorageAuthorityServer) mustEmbedUnimplementedStorageAuthorityServer() {}
