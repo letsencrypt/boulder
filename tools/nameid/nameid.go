@@ -31,7 +31,7 @@ func main() {
 		if *shorthandFlag {
 			fmt.Printf("%d\n", issuer.NameID())
 		} else {
-			fmt.Printf("%s - %d\n", cert, issuer.NameID())
+			fmt.Printf("%s\t- %d\n", cert, issuer.NameID())
 		}
 	}
 }
