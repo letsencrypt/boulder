@@ -9,7 +9,7 @@ import (
 )
 
 func usage() {
-	fmt.Printf("Usage: %s [OPTIONS] [CERTIFICATE(S)]\n", os.Args[0])
+	fmt.Printf("Usage: %s [OPTIONS] [ISSUER CERTIFICATE(S)]\n", os.Args[0])
 }
 
 func main() {
