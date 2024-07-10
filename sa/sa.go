@@ -1359,7 +1359,7 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				// Identifier is already paused.
 				continue
 
-			case entry.UnpausedAt != nil && entry.UnpausedAt.After(ssa.clk.Now().Add(-14*24*time.Hour)):
+			case entry.UnpausedAt.After(ssa.clk.Now().Add(-14*24*time.Hour)):
 				// Previously unpaused less than two weeks ago, skip this identifier.
 				continue
 
