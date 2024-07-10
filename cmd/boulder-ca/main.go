@@ -188,16 +188,12 @@ func main() {
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
 
+	clk := cmd.Clock()
 	issuers := make([]*issuance.Issuer, 0, len(c.CA.Issuance.Issuers))
 	for _, issuerConfig := range c.CA.Issuance.Issuers {
-		issuer, err := issuance.LoadIssuer(issuerConfig, cmd.Clock())
+		issuer, err := issuance.LoadIssuer(issuerConfig, clk)
 		cmd.FailOnError(err, "Loading issuer")
 		issuers = append(issuers, issuer)
-	}
-
-	// Output issuer details here rather than in Issuers loop above to avoid
-	// interleaving with clock logs.
-	for _, issuer := range issuers {
 		logger.Infof("Loaded issuer: name=[%s] keytype=[%s] nameID=[%v] isActive=[%t]", issuer.Name(), issuer.KeyType(), issuer.NameID(), issuer.IsActive())
 	}
 
@@ -228,8 +224,6 @@ func main() {
 
 	tlsConfig, err := c.CA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
-
-	clk := cmd.Clock()
 
 	conn, err := bgrpc.ClientSetup(c.CA.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
