@@ -78,7 +78,6 @@ func TestLoadCertificate(t *testing.T) {
 		{"happy path", "../test/hierarchy/int-e1.cert.pem", ""},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := LoadCertificate(tc.path)
@@ -122,7 +121,6 @@ func TestLoadSigner(t *testing.T) {
 		// keys in it don't match the fakeKey we generated above.
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := loadSigner(tc.loc, fakeKey.Public())
@@ -180,7 +178,6 @@ func TestNewIssuerKeyUsage(t *testing.T) {
 		{"all three", x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature, ""},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := newIssuer(
