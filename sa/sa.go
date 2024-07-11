@@ -1295,8 +1295,10 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 
 // PauseIdentifiers pauses a set of identifiers for the provided account. If an
 // identifier is currently paused, this is a no-op. If an identifier was
-// previously paused and unpaused, it will be repaused. All work is accomplished
-// in a transaction to limit possible race conditions.
+// previously paused and unpaused, it will be repaused unless it was unpaused
+// less than two weeks ago. The response will indicate how many identifiers were
+// paused and how many were repaused. All work is accomplished in a transaction
+// to limit possible race conditions.
 func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.PauseRequest) (*sapb.PauseIdentifiersResponse, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifiers) {
 		return nil, errIncompleteRequest
@@ -1355,6 +1357,10 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 
 			case entry.UnpausedAt == nil || entry.PausedAt.After(*entry.UnpausedAt):
 				// Identifier is already paused.
+				continue
+
+			case entry.UnpausedAt.After(ssa.clk.Now().Add(-14 * 24 * time.Hour)):
+				// Previously unpaused less than two weeks ago, skip this identifier.
 				continue
 
 			case entry.UnpausedAt.After(entry.PausedAt):

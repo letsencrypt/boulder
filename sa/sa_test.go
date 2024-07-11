@@ -4482,6 +4482,9 @@ func TestPauseIdentifiers(t *testing.T) {
 		return &t
 	}
 
+	fourWeeksAgo := sa.clk.Now().Add(-4 * 7 * 24 * time.Hour)
+	threeWeeksAgo := sa.clk.Now().Add(-3 * 7 * 24 * time.Hour)
+
 	tests := []struct {
 		name  string
 		state []pausedModel
@@ -4514,8 +4517,8 @@ func TestPauseIdentifiers(t *testing.T) {
 						Type:  identifierTypeToUint[string(identifier.DNS)],
 						Value: "example.com",
 					},
-					PausedAt:   sa.clk.Now().Add(-time.Hour),
-					UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
+					PausedAt:   fourWeeksAgo,
+					UnpausedAt: ptrTime(threeWeeksAgo),
 				},
 			},
 			req: &sapb.PauseRequest{
@@ -4533,6 +4536,33 @@ func TestPauseIdentifiers(t *testing.T) {
 			},
 		},
 		{
+			name: "One unpaused entry which was previously paused and unpaused less than 2 weeks ago",
+			state: []pausedModel{
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.com",
+					},
+					PausedAt:   fourWeeksAgo,
+					UnpausedAt: ptrTime(sa.clk.Now().Add(-13 * 24 * time.Hour)),
+				},
+			},
+			req: &sapb.PauseRequest{
+				RegistrationID: 1,
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+				},
+			},
+			want: &sapb.PauseIdentifiersResponse{
+				Paused:   0,
+				Repaused: 0,
+			},
+		},
+		{
 			name: "An identifier which is currently paused",
 			state: []pausedModel{
 				{
@@ -4541,7 +4571,7 @@ func TestPauseIdentifiers(t *testing.T) {
 						Type:  identifierTypeToUint[string(identifier.DNS)],
 						Value: "example.com",
 					},
-					PausedAt: sa.clk.Now().Add(-time.Hour),
+					PausedAt: fourWeeksAgo,
 				},
 			},
 			req: &sapb.PauseRequest{
@@ -4567,8 +4597,8 @@ func TestPauseIdentifiers(t *testing.T) {
 						Type:  identifierTypeToUint[string(identifier.DNS)],
 						Value: "example.com",
 					},
-					PausedAt:   sa.clk.Now().Add(-time.Hour),
-					UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
+					PausedAt:   fourWeeksAgo,
+					UnpausedAt: ptrTime(threeWeeksAgo),
 				},
 				{
 					RegistrationID: 1,
@@ -4576,8 +4606,8 @@ func TestPauseIdentifiers(t *testing.T) {
 						Type:  identifierTypeToUint[string(identifier.DNS)],
 						Value: "example.net",
 					},
-					PausedAt:   sa.clk.Now().Add(-time.Hour),
-					UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
+					PausedAt:   fourWeeksAgo,
+					UnpausedAt: ptrTime(threeWeeksAgo),
 				},
 			},
 			req: &sapb.PauseRequest{
