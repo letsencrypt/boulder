@@ -105,9 +105,9 @@ func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTT
 	m.Handle("GET /static/", staticAssetsHandler)
 	m.HandleFunc("/", sfe.Index)
 	m.HandleFunc("GET /build", sfe.BuildID)
-	m.HandleFunc(fmt.Sprint("GET "+unpauseGetForm), sfe.UnpauseForm)
-	m.HandleFunc(fmt.Sprint("POST "+unpausePostForm), sfe.UnpauseSubmit)
-	m.HandleFunc(fmt.Sprint("GET "+unpauseStatus), sfe.UnpauseStatus)
+	m.HandleFunc("GET "+unpauseGetForm, sfe.UnpauseForm)
+	m.HandleFunc("POST "+unpausePostForm, sfe.UnpauseSubmit)
+	m.HandleFunc("GET "+unpauseStatus, sfe.UnpauseStatus)
 
 	return measured_http.New(m, sfe.clk, stats, oTelHTTPOptions...)
 }
