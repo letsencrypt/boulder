@@ -13,7 +13,7 @@ func usage() {
 }
 
 func main() {
-	var shorthandFlag = flag.Bool("s", false, "Display only the nameid for each given certificate")
+	var shorthandFlag = flag.Bool("s", false, "Display only the nameid for each given issuer certificate")
 	flag.Parse()
 
 	if len(os.Args) <= 1 {
@@ -24,18 +24,14 @@ func main() {
 	for _, certFile := range flag.Args() {
 		issuer, err := issuance.LoadCertificate(certFile)
 		if err != nil {
-			if *shorthandFlag {
-				fmt.Println(err)
-			} else {
-				fmt.Printf("%s\t- %v", certFile, err)
-			}
+			fmt.Fprintf(os.Stderr, "%s\n", err)
 			os.Exit(1)
 		}
 
 		if *shorthandFlag {
-			fmt.Printf("%d\n", issuer.NameID())
+			fmt.Println(issuer.NameID())
 		} else {
-			fmt.Printf("%s\t- %d\n", certFile, issuer.NameID())
+			fmt.Printf("%s: %d\n", certFile, issuer.NameID())
 		}
 	}
 }
