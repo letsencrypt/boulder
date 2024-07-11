@@ -65,6 +65,8 @@ func (c Client) ReplacementOrder(account Account, oldCert *x509.Certificate, ide
 	if err != nil {
 		return newOrderResp, err
 	}
+	defer resp.Body.Close()
+
 	newOrderResp.URL = resp.Header.Get("Location")
 	return newOrderResp, nil
 }
