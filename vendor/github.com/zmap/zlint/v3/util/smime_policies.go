@@ -1,7 +1,7 @@
 package util
 
 /*
- * ZLint Copyright 2021 Regents of the University of Michigan
+ * ZLint Copyright 2024 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -18,9 +18,13 @@ import (
 	"github.com/zmap/zcrypto/x509"
 )
 
-func IsMailboxValidatedCertificate(c *x509.Certificate) bool {
+func IsSMIMEBRCertificate(c *x509.Certificate) bool {
+	return IsLegacySMIMECertificate(c) || IsMultipurposeSMIMECertificate(c) || IsStrictSMIMECertificate(c)
+}
+
+func IsIndividualValidatedCertificate(c *x509.Certificate) bool {
 	for _, oid := range c.PolicyIdentifiers {
-		if oid.Equal(SMIMEBRMailboxValidatedLegacyOID) || oid.Equal(SMIMEBRMailboxValidatedMultipurposeOID) || oid.Equal(SMIMEBRMailboxValidatedStrictOID) {
+		if oid.Equal(SMIMEBRIndividualValidatedLegacyOID) || oid.Equal(SMIMEBRIndividualValidatedMultipurposeOID) || oid.Equal(SMIMEBRIndividualValidatedStrictOID) {
 			return true
 		}
 	}
@@ -28,13 +32,9 @@ func IsMailboxValidatedCertificate(c *x509.Certificate) bool {
 	return false
 }
 
-func IsSMIMEBRCertificate(c *x509.Certificate) bool {
-	return IsLegacySMIMECertificate(c) || IsMultipurposeSMIMECertificate(c) || IsStrictSMIMECertificate(c)
-}
-
-func IsLegacySMIMECertificate(c *x509.Certificate) bool {
+func IsMailboxValidatedCertificate(c *x509.Certificate) bool {
 	for _, oid := range c.PolicyIdentifiers {
-		if oid.Equal(SMIMEBRMailboxValidatedLegacyOID) || oid.Equal(SMIMEBROrganizationValidatedLegacyOID) || oid.Equal(SMIMEBRSponsorValidatedLegacyOID) || oid.Equal(SMIMEBRIndividualValidatedLegacyOID) {
+		if oid.Equal(SMIMEBRMailboxValidatedLegacyOID) || oid.Equal(SMIMEBRMailboxValidatedMultipurposeOID) || oid.Equal(SMIMEBRMailboxValidatedStrictOID) {
 			return true
 		}
 	}
@@ -55,6 +55,16 @@ func IsOrganizationValidatedCertificate(c *x509.Certificate) bool {
 func IsSponsorValidatedCertificate(c *x509.Certificate) bool {
 	for _, oid := range c.PolicyIdentifiers {
 		if oid.Equal(SMIMEBRSponsorValidatedLegacyOID) || oid.Equal(SMIMEBRSponsorValidatedMultipurposeOID) || oid.Equal(SMIMEBRSponsorValidatedStrictOID) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func IsLegacySMIMECertificate(c *x509.Certificate) bool {
+	for _, oid := range c.PolicyIdentifiers {
+		if oid.Equal(SMIMEBRMailboxValidatedLegacyOID) || oid.Equal(SMIMEBROrganizationValidatedLegacyOID) || oid.Equal(SMIMEBRSponsorValidatedLegacyOID) || oid.Equal(SMIMEBRIndividualValidatedLegacyOID) {
 			return true
 		}
 	}

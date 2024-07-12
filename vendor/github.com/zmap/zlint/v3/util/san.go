@@ -1,6 +1,10 @@
 package util
 
-import "github.com/zmap/zcrypto/x509"
+import (
+	"net/mail"
+
+	"github.com/zmap/zcrypto/x509"
+)
 
 func HasEmailSAN(c *x509.Certificate) bool {
 	for _, san := range c.EmailAddresses {
@@ -16,4 +20,11 @@ func HasEmailSAN(c *x509.Certificate) bool {
 	}
 
 	return false
+}
+
+// IsMailboxAddress returns true if the passed in string resembles an RFC 5322
+// mailbox address.
+func IsMailboxAddress(address string) bool {
+	validAddress, err := mail.ParseAddress(address)
+	return err == nil && validAddress.Address == address
 }
