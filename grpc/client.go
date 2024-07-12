@@ -5,21 +5,23 @@ import (
 	"errors"
 	"fmt"
 
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/cmd"
-	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+
+	"github.com/letsencrypt/boulder/cmd"
+	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 
 	// 'grpc/health' is imported for its init function, which causes clients to
 	// rely on the Health Service for load-balancing.
 	// 'grpc/internal/resolver/dns' is imported for its init function, which
 	// registers the SRV resolver.
-	_ "github.com/letsencrypt/boulder/grpc/internal/resolver/dns"
 	"google.golang.org/grpc/balancer/roundrobin"
 	_ "google.golang.org/grpc/health"
+
+	_ "github.com/letsencrypt/boulder/grpc/internal/resolver/dns"
 )
 
 // ClientSetup creates a gRPC TransportCredentials that presents
@@ -82,8 +84,9 @@ type clientMetrics struct {
 // maximum of once per registry, or there will be conflicting names.
 func newClientMetrics(stats prometheus.Registerer) (clientMetrics, error) {
 	// Create the grpc prometheus client metrics instance and register it
-	grpcMetrics := grpc_prometheus.NewClientMetrics()
-	grpcMetrics.EnableClientHandlingTimeHistogram()
+	grpcMetrics := grpc_prometheus.NewClientMetrics(
+		grpc_prometheus.WithClientHandlingTimeHistogram(),
+	)
 	err := stats.Register(grpcMetrics)
 	if err != nil {
 		are := prometheus.AlreadyRegisteredError{}
