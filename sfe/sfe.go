@@ -105,9 +105,9 @@ func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTT
 	m.Handle("GET /static/", staticAssetsHandler)
 	m.HandleFunc("/", sfe.Index)
 	m.HandleFunc("GET /build", sfe.BuildID)
-	m.HandleFunc(unpauseGetForm, sfe.UnpauseForm)
-	m.HandleFunc(unpausePostForm, sfe.UnpauseSubmit)
-	m.HandleFunc(unpauseStatus, sfe.UnpauseStatus)
+	m.HandleFunc("GET "+unpauseGetForm, sfe.UnpauseForm)
+	m.HandleFunc("POST "+unpausePostForm, sfe.UnpauseSubmit)
+	m.HandleFunc("GET "+unpauseStatus, sfe.UnpauseStatus)
 
 	return measured_http.New(m, sfe.clk, stats, oTelHTTPOptions...)
 }
@@ -128,10 +128,6 @@ func (sfe *SelfServiceFrontEndImpl) renderTemplate(w http.ResponseWriter, filena
 
 // Index is the homepage of the SFE
 func (sfe *SelfServiceFrontEndImpl) Index(response http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodGet && request.Method != http.MethodHead {
-		response.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
 	sfe.renderTemplate(response, "index.html", nil)
 }
 
@@ -154,12 +150,6 @@ type unpauseJWT string
 // which contains a URL pre-filled with a JWT that will populate a hidden field
 // in this form.
 func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodHead && request.Method != http.MethodGet {
-		response.Header().Set("Access-Control-Allow-Methods", "GET, HEAD")
-		response.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
 	incomingJWT := request.URL.Query().Get("jwt")
 	if incomingJWT == "" {
 		sfe.unpauseInvalidRequest(response)
@@ -189,12 +179,6 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, re
 // choosing to not address CSRF at this time because we control creation and
 // redemption of the JWT.
 func (sfe *SelfServiceFrontEndImpl) UnpauseSubmit(response http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodPost {
-		response.Header().Set("Access-Control-Allow-Methods", "POST")
-		response.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
 	incomingJWT := request.URL.Query().Get("jwt")
 	if incomingJWT == "" {
 		sfe.unpauseInvalidRequest(response)
@@ -215,10 +199,10 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseSubmit(response http.ResponseWriter, 
 		return
 	}
 
-	// TODO(#7536) Send gRPC nrequest to the RA informing it to unpause
-	// the account specified in the claim. At this point we should wait
-	// for the RA to process the request before returning to the client,
-	// just in case the request fails.
+	// TODO(#7536) Send a gRPC request to the RA informing it to unpause the
+	// account specified in the claim. At this point we should wait for the RA
+	// to process the request before returning to the client, just in case the
+	// request fails.
 
 	// Success, the account has been unpaused.
 	http.Redirect(response, request, unpauseStatus, http.StatusFound)
