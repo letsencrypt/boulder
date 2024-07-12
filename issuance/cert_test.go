@@ -29,6 +29,7 @@ var (
 func defaultProfile() *Profile {
 	lints, _ := linter.NewRegistry([]string{
 		"w_ct_sct_policy_count_unsatisfied",
+		"w_ext_subject_key_identifier_not_recommended_subscriber",
 		"e_scts_from_same_operator",
 	})
 	p, _ := NewProfile(defaultProfileConfig(), lints)
@@ -383,8 +384,10 @@ func TestIssueCommonName(t *testing.T) {
 
 	lints, err := linter.NewRegistry([]string{
 		"w_subject_common_name_included",
+		"w_ext_subject_key_identifier_not_recommended_subscriber",
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
+		"e_cab_dv_subject_invalid_values",
 	})
 	test.AssertNotError(t, err, "building test lint registry")
 	cnProfile, err := NewProfile(defaultProfileConfig(), lints)
@@ -472,10 +475,7 @@ func TestIssueSCTList(t *testing.T) {
 	err := loglist.InitLintList("../test/ct-test-srv/log_list.json")
 	test.AssertNotError(t, err, "failed to load log list")
 
-	lints, err := linter.NewRegistry([]string{})
-	test.AssertNotError(t, err, "building test lint registry")
-	enforceSCTsProfile, err := NewProfile(defaultProfileConfig(), lints)
-	test.AssertNotError(t, err, "NewProfile failed")
+	enforceSCTsProfile := defaultProfile()
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -699,8 +699,10 @@ func TestMismatchedProfiles(t *testing.T) {
 
 	lints, err := linter.NewRegistry([]string{
 		"w_subject_common_name_included",
+		"w_ext_subject_key_identifier_not_recommended_subscriber",
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
+		"e_cab_dv_subject_invalid_values",
 	})
 	test.AssertNotError(t, err, "building test lint registry")
 	cnProfile, err := NewProfile(defaultProfileConfig(), lints)
@@ -728,6 +730,7 @@ func TestMismatchedProfiles(t *testing.T) {
 	profileConfig.AllowCommonName = false
 	lints, err = linter.NewRegistry([]string{
 		"w_ct_sct_policy_count_unsatisfied",
+		"w_ext_subject_key_identifier_not_recommended_subscriber",
 		"e_scts_from_same_operator",
 	})
 	test.AssertNotError(t, err, "building test lint registry")
