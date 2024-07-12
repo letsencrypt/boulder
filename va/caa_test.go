@@ -1270,8 +1270,6 @@ func TestAccountURIMatches(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		// TODO(#7454) Remove this rebinding
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := caaAccountURIMatches(tc.params, tc.prefixes, tc.id)
@@ -1387,8 +1385,6 @@ func TestValidationMethodMatches(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		// TODO(#7454) Remove this rebinding
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := caaValidationMethodMatches(tc.params, tc.method)
@@ -1539,8 +1535,6 @@ func TestExtractIssuerDomainAndParameters(t *testing.T) {
 		},
 	}
 	for _, tc := range tests {
-		// TODO(#7454) Remove this rebinding
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			gotDomain, gotParameters, gotErr := parseCAARecord(&dns.CAA{Value: tc.value})
