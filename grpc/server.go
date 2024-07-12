@@ -292,9 +292,7 @@ type serverMetrics struct {
 func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 	// Create the grpc prometheus server metrics instance and register it
 	grpcMetrics := grpc_prometheus.NewServerMetrics(
-		grpc_prometheus.WithServerHandlingTimeHistogram(
-			grpc_prometheus.WithHistogramBuckets([]float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30, 60, 90}),
-		),
+		grpc_prometheus.WithServerHandlingTimeHistogram(),
 	)
 	err := stats.Register(grpcMetrics)
 	if err != nil {

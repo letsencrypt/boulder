@@ -85,9 +85,7 @@ type clientMetrics struct {
 func newClientMetrics(stats prometheus.Registerer) (clientMetrics, error) {
 	// Create the grpc prometheus client metrics instance and register it
 	grpcMetrics := grpc_prometheus.NewClientMetrics(
-		grpc_prometheus.WithClientHandlingTimeHistogram(
-			grpc_prometheus.WithHistogramBuckets([]float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30, 60, 90}),
-		),
+		grpc_prometheus.WithClientHandlingTimeHistogram(),
 	)
 	err := stats.Register(grpcMetrics)
 	if err != nil {
