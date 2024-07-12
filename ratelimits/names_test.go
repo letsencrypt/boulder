@@ -192,7 +192,6 @@ func TestValidateIdForName(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(fmt.Sprintf("%s/%s", tc.limit, tc.desc), func(t *testing.T) {
 			t.Parallel()
 			err := validateIdForName(tc.limit, tc.id)

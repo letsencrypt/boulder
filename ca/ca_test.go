@@ -342,9 +342,6 @@ func TestIssuePrecertificate(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		// TODO(#7454) Remove this rebinding
-		testCase := testCase
-
 		// The loop through the issuance modes must be inside the loop through
 		// |testCases| because the "certificate-for-precertificate" tests use
 		// the precertificates previously generated from the preceding
@@ -697,8 +694,6 @@ func TestProfiles(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		// TODO(#7454) Remove this rebinding
-		tc := tc
 		// This is handled by boulder-ca, not the CA package.
 		if tc.defaultName == "" {
 			tc.defaultName = testCtx.defaultCertProfileName
@@ -809,8 +804,6 @@ func TestInvalidCSRs(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		// TODO(#7454) Remove this rebinding
-		testCase := testCase
 		testCtx := setup(t)
 		sa := &mockSA{}
 		ca, err := NewCertificateAuthorityImpl(
@@ -1319,8 +1312,6 @@ func TestVerifyTBSCertIsDeterministic(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		// TODO(#7454) Remove this rebinding
-		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 			err := tbsCertIsDeterministic(testCase.lintCertBytes, testCase.leafCertBytes)

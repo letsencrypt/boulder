@@ -3,9 +3,10 @@ package lints
 import (
 	"testing"
 
-	"github.com/letsencrypt/boulder/test"
 	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
+
+	"github.com/letsencrypt/boulder/test"
 )
 
 var onlyContainsUserCertsTag = asn1.Tag(1).ContextSpecific()
@@ -78,7 +79,6 @@ func TestReadOptionalASN1BooleanWithTag(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
