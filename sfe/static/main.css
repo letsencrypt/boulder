@@ -1,0 +1,45 @@
+/* Universal styles */
+* {
+    font-family: system-ui, sans-serif;
+}
+/* Basic layout */
+body {
+    max-width: 40em;
+    margin: 2em auto 0;
+    padding: 0 1rem;
+}
+/* Link styling */
+a {
+    color: #3771c8;
+}
+a:hover {
+    color: #274f8c;
+}
+/* Content styling */
+.content {
+    display: none;
+    border: 1px solid #c2e9e9;
+    background-color: #c2e9e9;
+    padding: 1.5rem;
+    border-radius: 0 0.25rem 0.25rem 0.25rem;
+}
+.content.active {
+    display: block;
+}
+/* Button styling */
+button {
+    font-size: 1rem;
+}
+button.primary {
+    color: #fff;
+    background-color: #3771c8;
+    padding: 0.625rem 1.6rem;
+    font-weight: 600;
+    border-radius: 0.25rem;
+    border: none;
+}
+button.primary:hover {
+    background-color: #285999;
+    cursor: pointer;
+}
+/* jep 2024 */

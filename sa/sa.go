@@ -1295,8 +1295,10 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 
 // PauseIdentifiers pauses a set of identifiers for the provided account. If an
 // identifier is currently paused, this is a no-op. If an identifier was
-// previously paused and unpaused, it will be repaused. All work is accomplished
-// in a transaction to limit possible race conditions.
+// previously paused and unpaused, it will be repaused unless it was unpaused
+// less than two weeks ago. The response will indicate how many identifiers were
+// paused and how many were repaused. All work is accomplished in a transaction
+// to limit possible race conditions.
 func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.PauseRequest) (*sapb.PauseIdentifiersResponse, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifiers) {
 		return nil, errIncompleteRequest
@@ -1357,6 +1359,10 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				// Identifier is already paused.
 				continue
 
+			case entry.UnpausedAt.After(ssa.clk.Now().Add(-14 * 24 * time.Hour)):
+				// Previously unpaused less than two weeks ago, skip this identifier.
+				continue
+
 			case entry.UnpausedAt.After(entry.PausedAt):
 				// Previously paused (and unpaused), repause the identifier.
 				_, err := tx.ExecContext(ctx, `
@@ -1397,25 +1403,44 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 	return response, nil
 }
 
-// UnpauseAccount will unpause all paused identifiers for the provided account.
-// If no identifiers are currently paused, this is a no-op.
-func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error) {
+// UnpauseAccount uses up to 5 iterations of UPDATE queries each with a LIMIT of
+// 10,000 to unpause up to 50,000 identifiers and returns a count of identifiers
+// unpaused. If the returned count is 50,000 there may be more paused identifiers.
+func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
 	if core.IsAnyNilOrZero(req.Id) {
 		return nil, errIncompleteRequest
 	}
 
-	_, err := ssa.dbMap.ExecContext(ctx, `
-	UPDATE paused
-	SET unpausedAt = ?
-	WHERE 
-		registrationID = ? AND
-		unpausedAt IS NULL`,
-		ssa.clk.Now().Truncate(time.Second),
-		req.Id,
-	)
-	if err != nil {
-		return nil, err
+	const batchSize = 10000
+	total := &sapb.Count{}
+
+	for i := 0; i < 5; i++ {
+		result, err := ssa.dbMap.ExecContext(ctx, `
+			UPDATE paused
+			SET unpausedAt = ?
+			WHERE 
+				registrationID = ? AND
+				unpausedAt IS NULL
+			LIMIT ?`,
+			ssa.clk.Now(),
+			req.Id,
+			batchSize,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+
+		total.Count += rowsAffected
+		if rowsAffected < batchSize {
+			// Fewer than batchSize rows were updated, so we're done.
+			break
+		}
 	}
 
-	return nil, nil
+	return total, nil
 }

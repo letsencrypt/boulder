@@ -6,7 +6,6 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"time"
@@ -19,12 +18,12 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	"github.com/letsencrypt/boulder/issuance"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/nonce"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimits"
 	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/letsencrypt/boulder/web"
 	"github.com/letsencrypt/boulder/wfe2"
 )
 
@@ -42,7 +41,7 @@ type Config struct {
 		TLSListenAddress string `validate:"omitempty,hostname_port"`
 
 		// Timeout is the per-request overall timeout. This should be slightly
-		// lower than the upstream's timeout when making request to the WFE.
+		// lower than the upstream's timeout when making requests to the WFE.
 		Timeout config.Duration `validate:"-"`
 
 		ServerCertificatePath string `validate:"required_with=TLSListenAddress"`
@@ -194,22 +193,6 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 	}
 
 	return certs[0], buf.Bytes(), nil
-}
-
-type errorWriter struct {
-	blog.Logger
-}
-
-func (ew errorWriter) Write(p []byte) (n int, err error) {
-	// log.Logger will append a newline to all messages before calling
-	// Write. Our log checksum checker doesn't like newlines, because
-	// syslog will strip them out so the calculated checksums will
-	// differ. So that we don't hit this corner case for every line
-	// logged from inside net/http.Server we strip the newline before
-	// we get to the checksum generator.
-	p = bytes.TrimRight(p, "\n")
-	ew.Logger.Err(fmt.Sprintf("net/http.Server: %s", string(p)))
-	return
 }
 
 func main() {
@@ -391,15 +374,7 @@ func main() {
 	logger.Infof("Server running, listening on %s....", c.WFE.ListenAddress)
 	handler := wfe.Handler(stats, c.OpenTelemetryHTTPConfig.Options()...)
 
-	srv := http.Server{
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 120 * time.Second,
-		IdleTimeout:  120 * time.Second,
-		Addr:         c.WFE.ListenAddress,
-		ErrorLog:     log.New(errorWriter{logger}, "", 0),
-		Handler:      handler,
-	}
-
+	srv := web.NewServer(c.WFE.ListenAddress, handler, logger)
 	go func() {
 		err := srv.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
@@ -407,14 +382,7 @@ func main() {
 		}
 	}()
 
-	tlsSrv := http.Server{
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 120 * time.Second,
-		IdleTimeout:  120 * time.Second,
-		Addr:         c.WFE.TLSListenAddress,
-		ErrorLog:     log.New(errorWriter{logger}, "", 0),
-		Handler:      handler,
-	}
+	tlsSrv := web.NewServer(c.WFE.TLSListenAddress, handler, logger)
 	if tlsSrv.Addr != "" {
 		go func() {
 			logger.Infof("TLS server listening on %s", tlsSrv.Addr)

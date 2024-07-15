@@ -39,6 +39,7 @@ func (c Client) GetRenewalInfo(cert *x509.Certificate) (RenewalInfo, error) {
 	if err != nil {
 		return ri, err
 	}
+	defer resp.Body.Close()
 
 	ri.RetryAfter, err = parseRetryAfter(resp.Header.Get("Retry-After"))
 	return ri, err

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -291,8 +291,9 @@ type serverMetrics struct {
 // single registry, it will gracefully avoid registering duplicate metrics.
 func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 	// Create the grpc prometheus server metrics instance and register it
-	grpcMetrics := grpc_prometheus.NewServerMetrics()
-	grpcMetrics.EnableHandlingTimeHistogram()
+	grpcMetrics := grpc_prometheus.NewServerMetrics(
+		grpc_prometheus.WithServerHandlingTimeHistogram(),
+	)
 	err := stats.Register(grpcMetrics)
 	if err != nil {
 		are := prometheus.AlreadyRegisteredError{}

@@ -101,7 +101,7 @@ service StorageAuthority {
   rpc LeaseCRLShard(LeaseCRLShardRequest) returns (LeaseCRLShardResponse) {}
   rpc UpdateCRLShard(UpdateCRLShardRequest) returns (google.protobuf.Empty) {}
   rpc PauseIdentifiers(PauseRequest) returns (PauseIdentifiersResponse) {}
-  rpc UnpauseAccount(RegistrationID) returns (google.protobuf.Empty) {}
+  rpc UnpauseAccount(RegistrationID) returns (Count) {}
 }
 
 message RegistrationID {

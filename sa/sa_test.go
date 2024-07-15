@@ -4403,6 +4403,74 @@ func TestUnpauseAccount(t *testing.T) {
 	}
 }
 
+func bulkInsertPausedIdentifiers(ctx context.Context, sa *SQLStorageAuthority, count int) error {
+	const batchSize = 1000
+
+	values := make([]interface{}, 0, batchSize*4)
+	now := sa.clk.Now().Add(-time.Hour)
+	batches := (count + batchSize - 1) / batchSize
+
+	for batch := 0; batch < batches; batch++ {
+		query := `
+		INSERT INTO paused (registrationID, identifierType, identifierValue, pausedAt)
+		VALUES`
+
+		start := batch * batchSize
+		end := start + batchSize
+		if end > count {
+			end = count
+		}
+
+		for i := start; i < end; i++ {
+			if i > start {
+				query += ","
+			}
+			query += "(?, ?, ?, ?)"
+			values = append(values, 1, identifierTypeToUint[string(identifier.DNS)], fmt.Sprintf("example%d.com", i), now)
+		}
+
+		_, err := sa.dbMap.ExecContext(ctx, query, values...)
+		if err != nil {
+			return fmt.Errorf("bulk inserting paused identifiers: %w", err)
+		}
+		values = values[:0]
+	}
+
+	return nil
+}
+
+func TestUnpauseAccountWithTwoLoops(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	err := bulkInsertPausedIdentifiers(ctx, sa, 12000)
+	test.AssertNotError(t, err, "bulk inserting paused identifiers")
+
+	result, err := sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	test.AssertNotError(t, err, "Unexpected error for UnpauseAccount()")
+	test.AssertEquals(t, result.Count, int64(12000))
+}
+
+func TestUnpauseAccountWithMaxLoops(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	err := bulkInsertPausedIdentifiers(ctx, sa, 50001)
+	test.AssertNotError(t, err, "bulk inserting paused identifiers")
+
+	result, err := sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	test.AssertNotError(t, err, "Unexpected error for UnpauseAccount()")
+	test.AssertEquals(t, result.Count, int64(50000))
+}
+
 func TestPauseIdentifiers(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		t.Skip("Test requires paused database table")
@@ -4413,6 +4481,9 @@ func TestPauseIdentifiers(t *testing.T) {
 	ptrTime := func(t time.Time) *time.Time {
 		return &t
 	}
+
+	fourWeeksAgo := sa.clk.Now().Add(-4 * 7 * 24 * time.Hour)
+	threeWeeksAgo := sa.clk.Now().Add(-3 * 7 * 24 * time.Hour)
 
 	tests := []struct {
 		name  string
@@ -4446,8 +4517,8 @@ func TestPauseIdentifiers(t *testing.T) {
 						Type:  identifierTypeToUint[string(identifier.DNS)],
 						Value: "example.com",
 					},
-					PausedAt:   sa.clk.Now().Add(-time.Hour),
-					UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
+					PausedAt:   fourWeeksAgo,
+					UnpausedAt: ptrTime(threeWeeksAgo),
 				},
 			},
 			req: &sapb.PauseRequest{
@@ -4465,6 +4536,33 @@ func TestPauseIdentifiers(t *testing.T) {
 			},
 		},
 		{
+			name: "One unpaused entry which was previously paused and unpaused less than 2 weeks ago",
+			state: []pausedModel{
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.com",
+					},
+					PausedAt:   fourWeeksAgo,
+					UnpausedAt: ptrTime(sa.clk.Now().Add(-13 * 24 * time.Hour)),
+				},
+			},
+			req: &sapb.PauseRequest{
+				RegistrationID: 1,
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+				},
+			},
+			want: &sapb.PauseIdentifiersResponse{
+				Paused:   0,
+				Repaused: 0,
+			},
+		},
+		{
 			name: "An identifier which is currently paused",
 			state: []pausedModel{
 				{
@@ -4473,7 +4571,7 @@ func TestPauseIdentifiers(t *testing.T) {
 						Type:  identifierTypeToUint[string(identifier.DNS)],
 						Value: "example.com",
 					},
-					PausedAt: sa.clk.Now().Add(-time.Hour),
+					PausedAt: fourWeeksAgo,
 				},
 			},
 			req: &sapb.PauseRequest{
@@ -4499,8 +4597,8 @@ func TestPauseIdentifiers(t *testing.T) {
 						Type:  identifierTypeToUint[string(identifier.DNS)],
 						Value: "example.com",
 					},
-					PausedAt:   sa.clk.Now().Add(-time.Hour),
-					UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
+					PausedAt:   fourWeeksAgo,
+					UnpausedAt: ptrTime(threeWeeksAgo),
 				},
 				{
 					RegistrationID: 1,
@@ -4508,8 +4606,8 @@ func TestPauseIdentifiers(t *testing.T) {
 						Type:  identifierTypeToUint[string(identifier.DNS)],
 						Value: "example.net",
 					},
-					PausedAt:   sa.clk.Now().Add(-time.Hour),
-					UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
+					PausedAt:   fourWeeksAgo,
+					UnpausedAt: ptrTime(threeWeeksAgo),
 				},
 			},
 			req: &sapb.PauseRequest{
