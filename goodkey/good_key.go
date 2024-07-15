@@ -53,7 +53,7 @@ type Config struct {
 	// FermatRounds is an integer number of rounds of Fermat's factorization
 	// method that should be performed to attempt to detect keys whose modulus can
 	// be trivially factored because the two factors are very close to each other.
-	// If this config value is empty or 0, it will default to 100 rounds.
+	// If this config value is empty or 0, it will default to 110 rounds.
 	FermatRounds int
 }
 
@@ -122,7 +122,7 @@ type KeyPolicy struct {
 // defaults. If the config's AllowedKeys is nil, the LetsEncryptCPS AllowedKeys
 // is used. If the config's WeakKeyFile or BlockedKeyFile paths are empty, those
 // checks are disabled. If the config's FermatRounds is 0, Fermat Factorization
-// defaults to attempting 100 rounds.
+// defaults to attempting 110 rounds.
 func NewPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 	if config == nil {
 		config = &Config{}
@@ -152,7 +152,8 @@ func NewPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 	if config.FermatRounds < 0 {
 		return KeyPolicy{}, fmt.Errorf("Fermat factorization rounds cannot be negative: %d", config.FermatRounds)
 	} else if config.FermatRounds == 0 {
-		kp.fermatRounds = 100
+		// The BRs require 100 rounds, so give ourselves a margin above that.
+		kp.fermatRounds = 110
 	} else {
 		kp.fermatRounds = config.FermatRounds
 	}
