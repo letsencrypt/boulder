@@ -3,11 +3,12 @@ package redis
 import (
 	"fmt"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/redis/go-redis/v9"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/redis/go-redis/v9"
 )
 
 // Config contains the configuration needed to act as a Redis client.

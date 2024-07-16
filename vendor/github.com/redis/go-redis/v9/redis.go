@@ -283,8 +283,13 @@ func (c *baseClient) initConn(ctx context.Context, cn *pool.Conn) error {
 	}
 	cn.Inited = true
 
+	var err error
 	username, password := c.opt.Username, c.opt.Password
-	if c.opt.CredentialsProvider != nil {
+	if c.opt.CredentialsProviderContext != nil {
+		if username, password, err = c.opt.CredentialsProviderContext(ctx); err != nil {
+			return err
+		}
+	} else if c.opt.CredentialsProvider != nil {
 		username, password = c.opt.CredentialsProvider()
 	}
 
@@ -300,7 +305,7 @@ func (c *baseClient) initConn(ctx context.Context, cn *pool.Conn) error {
 
 	// for redis-server versions that do not support the HELLO command,
 	// RESP2 will continue to be used.
-	if err := conn.Hello(ctx, protocol, username, password, "").Err(); err == nil {
+	if err = conn.Hello(ctx, protocol, username, password, "").Err(); err == nil {
 		auth = true
 	} else if !isRedisError(err) {
 		// When the server responds with the RESP protocol and the result is not a normal
@@ -312,18 +317,8 @@ func (c *baseClient) initConn(ctx context.Context, cn *pool.Conn) error {
 		// difficult to rely on error strings to determine all results.
 		return err
 	}
-	if !c.opt.DisableIndentity {
-		libName := ""
-		libVer := Version()
-		if c.opt.IdentitySuffix != "" {
-			libName = c.opt.IdentitySuffix
-		}
-		libInfo := LibraryInfo{LibName: &libName}
-		conn.ClientSetInfo(ctx, libInfo)
-		libInfo = LibraryInfo{LibVer: &libVer}
-		conn.ClientSetInfo(ctx, libInfo)
-	}
-	_, err := conn.Pipelined(ctx, func(pipe Pipeliner) error {
+
+	_, err = conn.Pipelined(ctx, func(pipe Pipeliner) error {
 		if !auth && password != "" {
 			if username != "" {
 				pipe.AuthACL(ctx, username, password)
@@ -348,6 +343,18 @@ func (c *baseClient) initConn(ctx context.Context, cn *pool.Conn) error {
 	})
 	if err != nil {
 		return err
+	}
+
+	if !c.opt.DisableIndentity {
+		libName := ""
+		libVer := Version()
+		if c.opt.IdentitySuffix != "" {
+			libName = c.opt.IdentitySuffix
+		}
+		p := conn.Pipeline()
+		p.ClientSetInfo(ctx, WithLibraryName(libName))
+		p.ClientSetInfo(ctx, WithLibraryVersion(libVer))
+		_, _ = p.Exec(ctx)
 	}
 
 	if c.opt.OnConnect != nil {

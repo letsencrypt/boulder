@@ -24,7 +24,8 @@ require (
 	github.com/nxadm/tail v1.4.11
 	github.com/prometheus/client_golang v1.15.1
 	github.com/prometheus/client_model v0.4.0
-	github.com/redis/go-redis/v9 v9.4.0
+	github.com/redis/go-redis/extra/redisotel/v9 v9.5.3
+	github.com/redis/go-redis/v9 v9.5.3
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 	github.com/weppos/publicsuffix-go v0.30.3-0.20240510084413-5f1d03393b3d
 	github.com/zmap/zcrypto v0.0.0-20231219022726-a1f61fb1661c
@@ -78,6 +79,7 @@ require (
 	github.com/poy/onpar v1.1.2 // indirect
 	github.com/prometheus/common v0.42.0 // indirect
 	github.com/prometheus/procfs v0.9.0 // indirect
+	github.com/redis/go-redis/extra/rediscmd/v9 v9.5.3 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.27.0 // indirect
 	go.opentelemetry.io/otel/metric v1.27.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.2.0 // indirect

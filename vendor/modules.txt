@@ -249,7 +249,13 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/redis/go-redis/v9 v9.4.0
+# github.com/redis/go-redis/extra/rediscmd/v9 v9.5.3
+## explicit; go 1.19
+github.com/redis/go-redis/extra/rediscmd/v9
+# github.com/redis/go-redis/extra/redisotel/v9 v9.5.3
+## explicit; go 1.19
+github.com/redis/go-redis/extra/redisotel/v9
+# github.com/redis/go-redis/v9 v9.5.3
 ## explicit; go 1.18
 github.com/redis/go-redis/v9
 github.com/redis/go-redis/v9/internal
@@ -313,6 +319,7 @@ go.opentelemetry.io/otel/internal/global
 go.opentelemetry.io/otel/propagation
 go.opentelemetry.io/otel/semconv/v1.17.0
 go.opentelemetry.io/otel/semconv/v1.20.0
+go.opentelemetry.io/otel/semconv/v1.24.0
 go.opentelemetry.io/otel/semconv/v1.25.0
 # go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.27.0
 ## explicit; go 1.21
