@@ -95,8 +95,8 @@
 						"admin-revoker.boulder",
 						"bad-key-revoker.boulder",
 						"ocsp-responder.boulder",
-						"wfe.boulder",
-						"sfe.boulder"
+						"sfe.boulder",
+						"wfe.boulder"
 					]
 				},
 				"grpc.health.v1.Health": {
