@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -162,6 +163,11 @@ func NewRingFromConfig(c Config, stats prometheus.Registerer, log blog.Logger) (
 			return nil, err
 		}
 		lookup.start()
+	}
+
+	err = redisotel.InstrumentTracing(inner)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Ring{
