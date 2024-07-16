@@ -95,6 +95,7 @@
 						"admin-revoker.boulder",
 						"bad-key-revoker.boulder",
 						"ocsp-responder.boulder",
+						"sfe.boulder",
 						"wfe.boulder"
 					]
 				},

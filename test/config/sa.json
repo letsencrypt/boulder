@@ -35,6 +35,7 @@
 						"admin-revoker.boulder",
 						"crl-updater.boulder",
 						"ocsp-responder.boulder",
+						"sfe.boulder",
 						"wfe.boulder"
 					]
 				},
