@@ -149,11 +149,11 @@ func NewPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 		}
 		kp.blockedList = blocked
 	}
-	if config.FermatRounds < 100 {
-		return KeyPolicy{}, fmt.Errorf("Fermat factorization rounds must be at least 100: %d", config.FermatRounds)
-	} else if config.FermatRounds == 0 {
+	if config.FermatRounds == 0 {
 		// The BRs require 100 rounds, so give ourselves a margin above that.
 		kp.fermatRounds = 110
+	} else if config.FermatRounds < 100 {
+		return KeyPolicy{}, fmt.Errorf("Fermat factorization rounds must be at least 100: %d", config.FermatRounds)
 	} else {
 		kp.fermatRounds = config.FermatRounds
 	}
