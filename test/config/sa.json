@@ -35,8 +35,8 @@
 						"admin-revoker.boulder",
 						"crl-updater.boulder",
 						"ocsp-responder.boulder",
-						"wfe.boulder",
-						"sfe.boulder"
+						"sfe.boulder",
+						"wfe.boulder"
 					]
 				},
 				"grpc.health.v1.Health": {
