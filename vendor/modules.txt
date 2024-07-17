@@ -129,7 +129,7 @@ github.com/beorn7/perks/quantile
 # github.com/cenkalti/backoff/v4 v4.3.0
 ## explicit; go 1.18
 github.com/cenkalti/backoff/v4
-# github.com/cespare/xxhash/v2 v2.2.0
+# github.com/cespare/xxhash/v2 v2.3.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
 # github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f
@@ -183,9 +183,12 @@ github.com/google/certificate-transparency-go/jsonclient
 github.com/google/certificate-transparency-go/tls
 github.com/google/certificate-transparency-go/x509
 github.com/google/certificate-transparency-go/x509/pkix
-# github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
-## explicit
-github.com/grpc-ecosystem/go-grpc-prometheus
+# github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.0.1
+## explicit; go 1.19
+github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus
+# github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.1.0
+## explicit; go 1.19
+github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors
 # github.com/grpc-ecosystem/grpc-gateway/v2 v2.20.0
 ## explicit; go 1.20
 github.com/grpc-ecosystem/grpc-gateway/v2/internal/httprule
@@ -209,7 +212,7 @@ github.com/letsencrypt/validator/v10
 # github.com/matttproud/golang_protobuf_extensions v1.0.4
 ## explicit; go 1.9
 github.com/matttproud/golang_protobuf_extensions/pbutil
-# github.com/miekg/dns v1.1.58
+# github.com/miekg/dns v1.1.61
 ## explicit; go 1.19
 github.com/miekg/dns
 # github.com/miekg/pkcs11 v1.1.1
@@ -246,7 +249,7 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/redis/go-redis/v9 v9.3.0
+# github.com/redis/go-redis/v9 v9.4.0
 ## explicit; go 1.18
 github.com/redis/go-redis/v9
 github.com/redis/go-redis/v9/internal
@@ -356,13 +359,12 @@ golang.org/x/crypto/pbkdf2
 # golang.org/x/exp v0.0.0-20240112132812-db7319d0e0e3
 ## explicit; go 1.20
 golang.org/x/exp/maps
-# golang.org/x/mod v0.17.0
+# golang.org/x/mod v0.18.0
 ## explicit; go 1.18
 golang.org/x/mod/semver
 # golang.org/x/net v0.27.0
 ## explicit; go 1.18
 golang.org/x/net/bpf
-golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
@@ -393,7 +395,7 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d
+# golang.org/x/tools v0.22.0
 ## explicit; go 1.19
 golang.org/x/tools/go/gcexportdata
 golang.org/x/tools/go/internal/packagesdriver
@@ -469,6 +471,10 @@ google.golang.org/grpc/internal/transport/networktype
 google.golang.org/grpc/keepalive
 google.golang.org/grpc/metadata
 google.golang.org/grpc/peer
+google.golang.org/grpc/reflection
+google.golang.org/grpc/reflection/grpc_reflection_v1
+google.golang.org/grpc/reflection/grpc_reflection_v1alpha
+google.golang.org/grpc/reflection/internal
 google.golang.org/grpc/resolver
 google.golang.org/grpc/resolver/dns
 google.golang.org/grpc/serviceconfig
