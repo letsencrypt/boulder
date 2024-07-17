@@ -2478,9 +2478,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	newOrder := &sapb.NewOrderRequest{
-		RegistrationID: req.RegistrationID,
-		Names:          core.UniqueLowerNames(req.Names),
-		ReplacesSerial: req.ReplacesSerial,
+		RegistrationID:         req.RegistrationID,
+		Names:                  core.UniqueLowerNames(req.Names),
+		CertificateProfileName: req.CertificateProfileName,
+		ReplacesSerial:         req.ReplacesSerial,
 	}
 
 	if len(newOrder.Names) > ra.maxNames {
@@ -2519,14 +2520,17 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if existingOrder.Id == 0 || existingOrder.Status == "" || existingOrder.RegistrationID == 0 || len(existingOrder.Names) == 0 || core.IsAnyNilOrZero(existingOrder.Created, existingOrder.Expires) {
 			return nil, errIncompleteGRPCResponse
 		}
-		// Track how often we reuse an existing order and how old that order is.
-		ra.orderAges.WithLabelValues("NewOrder").Observe(ra.clk.Since(existingOrder.Created.AsTime()).Seconds())
-		return existingOrder, nil
+
+		// Only re-use the order if the profile matches.
+		if newOrder.CertificateProfileName == "" || existingOrder.CertificateProfileName == newOrder.CertificateProfileName {
+			// Track how often we reuse an existing order and how old that order is.
+			ra.orderAges.WithLabelValues("NewOrder").Observe(ra.clk.Since(existingOrder.Created.AsTime()).Seconds())
+			return existingOrder, nil
+		}
 	}
 
 	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
 	if !req.IsARIRenewal {
-
 		// Check if there is rate limit space for issuing a certificate.
 		err = ra.checkNewOrderLimits(ctx, newOrder.Names, newOrder.RegistrationID, req.IsRenewal)
 		if err != nil {
