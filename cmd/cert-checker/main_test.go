@@ -59,7 +59,7 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	kp, err = sagoodkey.NewPolicy(&goodkey.Config{}, nil)
+	kp, err = sagoodkey.NewPolicy(nil, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
