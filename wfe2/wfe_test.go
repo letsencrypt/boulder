@@ -408,6 +408,9 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		txnBuilder,
 		100,
 		[]string{""},
+		[]byte("pcl04dl3tt3rb1gb4dd4db0d34ts000p"),
+		time.Hour*24*14,
+		"https://boulder.service.consul:4003",
 	)
 	test.AssertNotError(t, err, "Unable to create WFE")
 

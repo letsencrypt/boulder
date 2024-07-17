@@ -129,11 +129,17 @@
 		"features": {
 			"ServeRenewalInfo": true,
 			"TrackReplacementCertificatesARI": true,
-			"CheckRenewalExemptionAtWFE": true
+			"CheckRenewalExemptionAtWFE": true,
+			"CheckIdentifiersPaused": true
 		},
 		"certificateProfileNames": [
 			"defaultBoulderCertificateProfile"
-		]
+		],
+		"unpauseHMACKey": {
+			"keyFile": "test/secrets/sfe_unpause_key"
+		},
+		"unpauseJWTLifetime": "336h",
+		"sfeURL": "https://boulder.service.consul:4003"
 	},
 	"syslog": {
 		"stdoutlevel": 4,

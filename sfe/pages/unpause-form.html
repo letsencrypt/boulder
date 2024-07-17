@@ -11,9 +11,9 @@
     <p>
         You have been directed to this page because your Account ID {{ .AccountID }} 
         is temporarily restricted from requesting new certificates for certain
-        hostnames including, but potentially not limited to, the following:
+        identifiers including, but potentially not limited to, the following:
         <ul>
-            {{ range $domain := .PausedDomains }}<li>{{ $domain }}</li>{{ end }}
+            {{ range $identifier := .Identifiers }}<li>{{ $identifier }}</li>{{ end }}
         </ul>
     </p>
     
@@ -29,7 +29,7 @@
     <h2>What Can You Do?</h2>
     <p>
         Please check the DNS configuration and web server settings for the
-        affected hostnames. Ensure they are properly set up to respond to ACME
+        affected identifiers. Ensure they are properly set up to respond to ACME
         challenges. This might involve updating DNS records, renewing domain
         registrations, or adjusting web server configurations. If you use a
         hosting provider or third-party service for domain management, you may
@@ -43,8 +43,8 @@
     <p>
         Once you have addressed these issues, click the button below to remove
         the pause on your account. This action will allow you to resume
-        requesting certificates for all affected hostnames associated with your
-        account.
+        requesting certificates for all affected identifiers associated with
+        your account.
     </p>
     <p>
         <strong>Note:</strong> If you face difficulties unpausing your account or

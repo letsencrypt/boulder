@@ -37,7 +37,10 @@ type Config struct {
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
 
-		Unpause cmd.UnpauseConfig
+		// UnpauseHMACKey validates incoming JWT signatures at the unpause
+		// endpoint. This key must be the same as the one configured for all
+		// WFEs. This field is required to enable the pausing feature.
+		UnpauseHMACKey cmd.HMACKeyConfig
 
 		Features features.Config
 	}
@@ -80,16 +83,8 @@ func main() {
 
 	clk := cmd.Clock()
 
-	unpauseHMACKey, err := c.SFE.Unpause.HMACKey.Pass()
+	unpauseHMACKey, err := c.SFE.UnpauseHMACKey.Load()
 	cmd.FailOnError(err, "Failed to load unpauseHMACKey")
-
-	if len(unpauseHMACKey) != 32 {
-		cmd.Fail("Invalid unpauseHMACKey length, should be 32 alphanumeric characters")
-	}
-
-	// The jose.SigningKey key interface where this is used can be satisfied by
-	// a byte slice, not a string.
-	unpauseHMACKeyBytes := []byte(unpauseHMACKey)
 
 	tlsConfig, err := c.SFE.TLS.Load(stats)
 	cmd.FailOnError(err, "TLS config")
@@ -109,7 +104,7 @@ func main() {
 		c.SFE.Timeout.Duration,
 		rac,
 		sac,
-		unpauseHMACKeyBytes,
+		unpauseHMACKey,
 	)
 	cmd.FailOnError(err, "Unable to create SFE")
 

@@ -31,6 +31,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/ratelimits"
+	"github.com/letsencrypt/boulder/unpause"
 
 	// 'grpc/noncebalancer' is imported for its init function.
 	_ "github.com/letsencrypt/boulder/grpc/noncebalancer"
@@ -165,6 +166,10 @@ type WebFrontEndImpl struct {
 	txnBuilder                   *ratelimits.TransactionBuilder
 	maxNames                     int
 
+	unpauseHMACKey     []byte
+	unpauseJWTLifetime time.Duration
+	sfeURL             string
+
 	// certificateProfileNames is a list of profile names that are allowed to be
 	// passed to the newOrder endpoint. If a profile name is not in this list,
 	// the request will be rejected as malformed.
@@ -193,6 +198,9 @@ func NewWebFrontEndImpl(
 	txnBuilder *ratelimits.TransactionBuilder,
 	maxNames int,
 	certificateProfileNames []string,
+	unpauseHMACKey []byte,
+	unpauseJWTLifetime time.Duration,
+	sfeURL string,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
@@ -231,6 +239,9 @@ func NewWebFrontEndImpl(
 		txnBuilder:                   txnBuilder,
 		maxNames:                     maxNames,
 		certificateProfileNames:      certificateProfileNames,
+		unpauseHMACKey:               unpauseHMACKey,
+		unpauseJWTLifetime:           unpauseJWTLifetime,
+		sfeURL:                       sfeURL,
 	}
 
 	return wfe, nil
@@ -2245,6 +2256,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// type identifier here. Check to make sure one of the strings is
 	// short enough to meet the max CN bytes requirement.
 	names := make([]string, len(newOrderRequest.Identifiers))
+	identMap := make(map[string]*sapb.Identifier, len(newOrderRequest.Identifiers))
 	for i, ident := range newOrderRequest.Identifiers {
 		if ident.Type != identifier.DNS {
 			wfe.sendError(response, logEvent,
@@ -2258,6 +2270,13 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			return
 		}
 		names[i] = ident.Value
+		lowerValue := strings.ToLower(ident.Value)
+		if slices.Contains(names, lowerValue) {
+			identMap[lowerValue] = &sapb.Identifier{
+				Type:  string(ident.Type),
+				Value: ident.Value,
+			}
+		}
 	}
 
 	names = core.UniqueLowerNames(names)
@@ -2272,6 +2291,45 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	logEvent.DNSNames = names
+
+	if features.Get().CheckIdentifiersPaused {
+		// Check if any of the identifiers are paused.
+		orderIdentifiers := make([]*sapb.Identifier, 0, len(names))
+		for _, name := range names {
+			ident, exists := identMap[name]
+			if exists {
+				orderIdentifiers = append(orderIdentifiers, ident)
+			}
+		}
+		paused, err := wfe.sa.CheckIdentifiersPaused(ctx, &sapb.PauseRequest{
+			RegistrationID: acct.ID,
+			Identifiers:    orderIdentifiers,
+		})
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error checking if identifiers are paused"), err)
+			return
+		}
+
+		if len(paused.Identifiers) > 0 {
+			// Some or all of the identifiers are paused.
+			pausedValues := make([]string, len(paused.Identifiers))
+			for i, ident := range paused.Identifiers {
+				pausedValues[i] = ident.Value
+			}
+			unpauseJWT, err := unpause.GenerateJWT(wfe.unpauseHMACKey, acct.ID, pausedValues, wfe.unpauseJWTLifetime, wfe.clk)
+			if err != nil {
+				wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error generating unpause JWT"), err)
+				return
+			}
+			pausedMsg := fmt.Sprintf(
+				"Your account is temporarily prevented from requesting certificates for %s and possibly others. Please visit: %s",
+				strings.Join(pausedValues, ", "),
+				fmt.Sprintf("%s%s?jwt=%s", wfe.sfeURL, unpause.GetForm, unpauseJWT),
+			)
+			wfe.sendError(response, logEvent, probs.Paused(pausedMsg), nil)
+			return
+		}
+	}
 
 	var replaces string
 	var isARIRenewal bool

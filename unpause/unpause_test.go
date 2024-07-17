@@ -1,0 +1,151 @@
+package unpause
+
+import (
+	"testing"
+	"time"
+
+	"github.com/go-jose/go-jose/v4/jwt"
+	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/test"
+)
+
+func TestUnpauseJWT(t *testing.T) {
+	fc := clock.NewFake()
+	hmacKey := []byte("pcl04dl3tt3rb1gb4dd4db0d34ts000p")
+
+	type args struct {
+		key         []byte
+		version     string
+		account     int64
+		identifiers []string
+		lifetime    time.Duration
+		clk         clock.Clock
+	}
+
+	tests := []struct {
+		name               string
+		args               args
+		want               JWTClaims
+		wantGenerateJWTErr bool
+		wantRedeemJWTErr   bool
+	}{
+		{
+			name: "valid one identifier",
+			args: args{
+				key:         hmacKey,
+				version:     APIVersion,
+				account:     1234567890,
+				identifiers: []string{"example.com"},
+				lifetime:    time.Hour,
+				clk:         fc,
+			},
+			want: JWTClaims{
+				Claims: jwt.Claims{
+					Issuer:    defaultIssuer,
+					Subject:   "1234567890",
+					Audience:  jwt.Audience{defaultAudience},
+					NotBefore: jwt.NewNumericDate(fc.Now()),
+					Expiry:    jwt.NewNumericDate(fc.Now().Add(time.Hour)),
+					IssuedAt:  jwt.NewNumericDate(fc.Now()),
+				},
+				Version:     APIVersion,
+				Identifiers: "example.com",
+			},
+			wantGenerateJWTErr: false,
+			wantRedeemJWTErr:   false,
+		},
+		{
+			name: "valid multiple identifiers",
+			args: args{
+				key:         hmacKey,
+				version:     APIVersion,
+				account:     1234567890,
+				identifiers: []string{"example.com", "example.org", "example.net"},
+				lifetime:    time.Hour,
+				clk:         fc,
+			},
+			want: JWTClaims{
+				Claims: jwt.Claims{
+					Issuer:    defaultIssuer,
+					Subject:   "1234567890",
+					Audience:  jwt.Audience{defaultAudience},
+					NotBefore: jwt.NewNumericDate(fc.Now()),
+					Expiry:    jwt.NewNumericDate(fc.Now().Add(time.Hour)),
+					IssuedAt:  jwt.NewNumericDate(fc.Now()),
+				},
+				Version:     APIVersion,
+				Identifiers: "example.com,example.org,example.net",
+			},
+			wantGenerateJWTErr: false,
+			wantRedeemJWTErr:   false,
+		},
+		{
+			name: "invalid no account",
+			args: args{
+				key:         hmacKey,
+				version:     APIVersion,
+				account:     0,
+				identifiers: []string{"example.com"},
+				lifetime:    time.Hour,
+				clk:         fc,
+			},
+			want:               JWTClaims{},
+			wantGenerateJWTErr: false,
+			wantRedeemJWTErr:   true,
+		},
+		{
+			name: "invalid key too small",
+			args: args{
+				key:         []byte("key"),
+				version:     APIVersion,
+				account:     1234567890,
+				identifiers: []string{"example.com"},
+				lifetime:    time.Hour,
+				clk:         fc,
+			},
+			want:               JWTClaims{},
+			wantGenerateJWTErr: true,
+			wantRedeemJWTErr:   false,
+		},
+		{
+			name: "invalid no identifiers",
+			args: args{
+				key:         hmacKey,
+				version:     APIVersion,
+				account:     1234567890,
+				identifiers: nil,
+				lifetime:    time.Hour,
+				clk:         fc,
+			},
+			want:               JWTClaims{},
+			wantGenerateJWTErr: false,
+			wantRedeemJWTErr:   true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			token, err := GenerateJWT(tt.args.key, tt.args.account, tt.args.identifiers, tt.args.lifetime, tt.args.clk)
+			if tt.wantGenerateJWTErr {
+				test.AssertError(t, err, "expected error from GenerateJWT()")
+				return
+			}
+			test.AssertNotError(t, err, "unexpected error from GenerateJWT()")
+
+			got, err := RedeemJWT(token, tt.args.key, tt.args.version, tt.args.clk)
+			if tt.wantRedeemJWTErr {
+				test.AssertError(t, err, "expected error from RedeemJWT()")
+				return
+			}
+			test.AssertNotError(t, err, "unexpected error from RedeemJWT()")
+			test.AssertEquals(t, got.Issuer, tt.want.Issuer)
+			test.AssertEquals(t, got.Subject, tt.want.Subject)
+			test.AssertDeepEquals(t, got.Audience, tt.want.Audience)
+			test.Assert(t, got.Expiry.Time().Equal(tt.want.Expiry.Time()), "expected Expiry time to be equal")
+			test.Assert(t, got.NotBefore.Time().Equal(tt.want.NotBefore.Time()), "expected NotBefore time to be equal")
+			test.Assert(t, got.IssuedAt.Time().Equal(tt.want.IssuedAt.Time()), "expected IssuedAt time to be equal")
+			test.AssertEquals(t, got.Version, tt.want.Version)
+			test.AssertEquals(t, got.Identifiers, tt.want.Identifiers)
+		})
+	}
+}
