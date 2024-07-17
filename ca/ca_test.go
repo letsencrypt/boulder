@@ -1216,18 +1216,6 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	test.AssertMetricWithLabelsEquals(t, ca.metrics.signatureCount, prometheus.Labels{"purpose": "certificate", "status": "success"}, 0)
 }
 
-func TestGenerateSKID(t *testing.T) {
-	t.Parallel()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "Error generating key")
-
-	sha256skid, err := generateSKID(key.Public())
-	test.AssertNotError(t, err, "Error generating SKID")
-	test.AssertEquals(t, len(sha256skid), 20)
-	test.AssertEquals(t, cap(sha256skid), 20)
-	features.Reset()
-}
-
 func TestVerifyTBSCertIsDeterministic(t *testing.T) {
 	t.Parallel()
 

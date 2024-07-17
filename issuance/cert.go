@@ -85,7 +85,8 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 		return errors.New("inactive issuer cannot issue precert")
 	}
 
-	if len(req.SubjectKeyId) != 20 {
+	if len(req.SubjectKeyId) != 0 && len(req.SubjectKeyId) != 20 {
+		// It must either be exactly 20 bytes, or not populated at all.
 		return errors.New("unexpected subject key ID length")
 	}
 
@@ -201,7 +202,11 @@ var mustStapleExt = pkix.Extension{
 
 // IssuanceRequest describes a certificate issuance request
 type IssuanceRequest struct {
-	PublicKey    crypto.PublicKey
+	PublicKey crypto.PublicKey
+
+	// TODO(#7446): Remove this once precerts are being generated without a SKID.
+	// This remains here for the sake of deployability, to ensure that certs
+	// generated from precerts which contain a SKID will also have the same SKID.
 	SubjectKeyId []byte
 
 	Serial []byte
@@ -269,7 +274,9 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		template.KeyUsage = x509.KeyUsageDigitalSignature
 	}
 
-	template.SubjectKeyId = req.SubjectKeyId
+	if len(req.SubjectKeyId) != 0 {
+		template.SubjectKeyId = req.SubjectKeyId
+	}
 
 	if req.IncludeCTPoison {
 		template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
