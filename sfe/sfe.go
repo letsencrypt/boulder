@@ -32,7 +32,7 @@ var (
 	//go:embed all:static
 	staticFS embed.FS
 
-	//go:embed all:templates all:pages
+	//go:embed all:templates all:pages all:static
 	dynamicFS embed.FS
 )
 

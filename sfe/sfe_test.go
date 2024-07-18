@@ -151,7 +151,7 @@ func TestIndexPath(t *testing.T) {
 	})
 
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertContains(t, responseWriter.Body.String(), "<title>Self-Service Frontend</title>")
+	test.AssertContains(t, responseWriter.Body.String(), "<title>Let's Encrypt - Self-Service Portal</title>")
 }
 
 func TestBuildIDPath(t *testing.T) {
@@ -178,7 +178,7 @@ func TestUnpausePaths(t *testing.T) {
 		URL:    mustParseURL(unpause.GetForm),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertContains(t, responseWriter.Body.String(), "request was invalid meaning that we could not")
+	test.AssertContains(t, responseWriter.Body.String(), "Invalid unpause URL")
 
 	// GET with an invalid JWT
 	responseWriter = httptest.NewRecorder()
@@ -187,7 +187,7 @@ func TestUnpausePaths(t *testing.T) {
 		URL:    mustParseURL(fmt.Sprintf(unpause.GetForm + "?jwt=x")),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertContains(t, responseWriter.Body.String(), "error was encountered when attempting to unpause your account")
+	test.AssertContains(t, responseWriter.Body.String(), "An error occurred while unpausing your account")
 
 	// GET with a valid JWT
 	unpauseSigner, err := unpause.NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})
@@ -200,7 +200,7 @@ func TestUnpausePaths(t *testing.T) {
 		URL:    mustParseURL(fmt.Sprintf(unpause.GetForm + "?jwt=" + validJWT)),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertContains(t, responseWriter.Body.String(), "This action will allow you to resume")
+	test.AssertContains(t, responseWriter.Body.String(), "Action required to unpause your account")
 
 	// POST with no JWT
 	responseWriter = httptest.NewRecorder()
@@ -209,7 +209,7 @@ func TestUnpausePaths(t *testing.T) {
 		URL:    mustParseURL(unpausePostForm),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertContains(t, responseWriter.Body.String(), "request was invalid meaning that we could not")
+	test.AssertContains(t, responseWriter.Body.String(), "Invalid unpause URL")
 
 	// POST with an invalid JWT
 	responseWriter = httptest.NewRecorder()
@@ -218,7 +218,7 @@ func TestUnpausePaths(t *testing.T) {
 		URL:    mustParseURL(fmt.Sprintf(unpausePostForm + "?jwt=x")),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertContains(t, responseWriter.Body.String(), "An error was encountered when attempting to unpause")
+	test.AssertContains(t, responseWriter.Body.String(), "An error occurred while unpausing your account")
 
 	// POST with a valid JWT redirects to a success page
 	responseWriter = httptest.NewRecorder()
@@ -236,5 +236,5 @@ func TestUnpausePaths(t *testing.T) {
 		URL:    mustParseURL(unpauseStatus),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertContains(t, responseWriter.Body.String(), "Your ACME account has been unpaused.")
+	test.AssertContains(t, responseWriter.Body.String(), "Account successfully unpaused")
 }
