@@ -38,9 +38,14 @@ type ProfileConfig struct {
 	// Deprecated: We intend to include SCTs in all final Certificates for the
 	// foreseeable future.
 	AllowSCTList bool
-	// AllowCommonName, when false, causes all IssuanceRequests which specify a CN
-	// to be rejected.
+	// AllowCommonName has no effect.
+	// Deprecated: Rather than rejecting IssuanceRequests which include a common
+	// name, we would prefer to simply drop the CN. Use `OmitCommonName` instead.
 	AllowCommonName bool
+
+	// OmitCommonName causes the CN field to be excluded from the resulting
+	// certificate, regardless of its inclusion in the IssuanceRequest.
+	OmitCommonName bool
 
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
@@ -57,7 +62,7 @@ type PolicyConfig struct {
 // Profile is the validated structure created by reading in ProfileConfigs and IssuerConfigs
 type Profile struct {
 	allowMustStaple bool
-	allowCommonName bool
+	omitCommonName  bool
 
 	maxBackdate time.Duration
 	maxValidity time.Duration
@@ -69,7 +74,7 @@ type Profile struct {
 func NewProfile(profileConfig ProfileConfig, lints lint.Registry) (*Profile, error) {
 	sp := &Profile{
 		allowMustStaple: profileConfig.AllowMustStaple,
-		allowCommonName: profileConfig.AllowCommonName,
+		omitCommonName:  profileConfig.OmitCommonName,
 		maxBackdate:     profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:     profileConfig.MaxValidityPeriod.Duration,
 		lints:           lints,
@@ -101,10 +106,6 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 
 	if req.IncludeCTPoison && req.sctList != nil {
 		return errors.New("cannot include both ct poison and sct list extensions")
-	}
-
-	if !prof.allowCommonName && req.CommonName != "" {
-		return errors.New("common name cannot be included")
 	}
 
 	// The validity period is calculated inclusive of the whole second represented
@@ -255,7 +256,7 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 	// populate template from the issuance request
 	template.NotBefore, template.NotAfter = req.NotBefore, req.NotAfter
 	template.SerialNumber = big.NewInt(0).SetBytes(req.Serial)
-	if req.CommonName != "" {
+	if req.CommonName != "" && !prof.omitCommonName {
 		template.Subject.CommonName = req.CommonName
 	}
 	template.DNSNames = req.DNSNames

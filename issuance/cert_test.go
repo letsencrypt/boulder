@@ -107,19 +107,6 @@ func TestRequestValid(t *testing.T) {
 			expectedError: "cannot include both ct poison and sct list extensions",
 		},
 		{
-			name: "common name not allowed",
-			issuer: &Issuer{
-				active: true,
-			},
-			profile: &Profile{},
-			request: &IssuanceRequest{
-				PublicKey:    &ecdsa.PublicKey{},
-				SubjectKeyId: goodSKID,
-				CommonName:   "cn",
-			},
-			expectedError: "common name cannot be included",
-		},
-		{
 			name: "negative validity",
 			issuer: &Issuer{
 				active: true,
@@ -386,13 +373,14 @@ func TestIssueCommonName(t *testing.T) {
 		PublicKey:       pk.Public(),
 		SubjectKeyId:    goodSKID,
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
-		CommonName:      "example.com",
 		DNSNames:        []string{"example.com", "www.example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
 		IncludeCTPoison: true,
 	}
 
+	// In the default profile, the common name is allowed if requested.
+	ir.CommonName = "example.com"
 	_, issuanceToken, err := signer.Prepare(cnProfile, ir)
 	test.AssertNotError(t, err, "Prepare failed")
 	certBytes, err := signer.Issue(issuanceToken)
@@ -401,10 +389,7 @@ func TestIssueCommonName(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse certificate")
 	test.AssertEquals(t, cert.Subject.CommonName, "example.com")
 
-	cnProfile.allowCommonName = false
-	_, _, err = signer.Prepare(cnProfile, ir)
-	test.AssertError(t, err, "Prepare should have failed")
-
+	// But not including the common name should be acceptable as well.
 	ir.CommonName = ""
 	_, issuanceToken, err = signer.Prepare(cnProfile, ir)
 	test.AssertNotError(t, err, "Prepare failed")
@@ -413,7 +398,17 @@ func TestIssueCommonName(t *testing.T) {
 	cert, err = x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse certificate")
 	test.AssertEquals(t, cert.Subject.CommonName, "")
-	test.AssertDeepEquals(t, cert.DNSNames, []string{"example.com", "www.example.com"})
+
+	// And the common name should be omitted if the profile is so configured.
+	ir.CommonName = "example.com"
+	cnProfile.omitCommonName = true
+	_, issuanceToken, err = signer.Prepare(cnProfile, ir)
+	test.AssertNotError(t, err, "Prepare failed")
+	certBytes, err = signer.Issue(issuanceToken)
+	test.AssertNotError(t, err, "Issue failed")
+	cert, err = x509.ParseCertificate(certBytes)
+	test.AssertNotError(t, err, "failed to parse certificate")
+	test.AssertEquals(t, cert.Subject.CommonName, "")
 }
 
 func TestIssueCTPoison(t *testing.T) {
