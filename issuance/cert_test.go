@@ -93,40 +93,11 @@ func TestRequestValid(t *testing.T) {
 			expectedError: "must-staple extension cannot be included",
 		},
 		{
-			name: "ct poison not allowed",
+			name: "both sct list and ct poison provided",
 			issuer: &Issuer{
 				active: true,
 			},
 			profile: &Profile{},
-			request: &IssuanceRequest{
-				PublicKey:       &ecdsa.PublicKey{},
-				SubjectKeyId:    goodSKID,
-				IncludeCTPoison: true,
-			},
-			expectedError: "ct poison extension cannot be included",
-		},
-		{
-			name: "sct list not allowed",
-			issuer: &Issuer{
-				active: true,
-			},
-			profile: &Profile{},
-			request: &IssuanceRequest{
-				PublicKey:    &ecdsa.PublicKey{},
-				SubjectKeyId: goodSKID,
-				sctList:      []ct.SignedCertificateTimestamp{},
-			},
-			expectedError: "sct list extension cannot be included",
-		},
-		{
-			name: "sct list and ct poison not allowed",
-			issuer: &Issuer{
-				active: true,
-			},
-			profile: &Profile{
-				allowCTPoison: true,
-				allowSCTList:  true,
-			},
 			request: &IssuanceRequest{
 				PublicKey:       &ecdsa.PublicKey{},
 				SubjectKeyId:    goodSKID,
@@ -263,7 +234,24 @@ func TestRequestValid(t *testing.T) {
 			expectedError: "serial must be between 9 and 19 bytes",
 		},
 		{
-			name: "good",
+			name: "good with poison",
+			issuer: &Issuer{
+				active: true,
+			},
+			profile: &Profile{
+				maxValidity: time.Hour * 2,
+			},
+			request: &IssuanceRequest{
+				PublicKey:       &ecdsa.PublicKey{},
+				SubjectKeyId:    goodSKID,
+				NotBefore:       fc.Now(),
+				NotAfter:        fc.Now().Add(time.Hour),
+				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				IncludeCTPoison: true,
+			},
+		},
+		{
+			name: "good with scts",
 			issuer: &Issuer{
 				active: true,
 			},
@@ -276,6 +264,7 @@ func TestRequestValid(t *testing.T) {
 				NotBefore:    fc.Now(),
 				NotAfter:     fc.Now().Add(time.Hour),
 				Serial:       []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				sctList:      []ct.SignedCertificateTimestamp{},
 			},
 		},
 	}
