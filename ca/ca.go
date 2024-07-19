@@ -127,14 +127,12 @@ type certificateAuthorityImpl struct {
 	issuers      issuerMaps
 	certProfiles certProfilesMaps
 
-	prefix         int // Prepended to the serial number
-	validityPeriod time.Duration
-	backdate       time.Duration
-	maxNames       int
-	keyPolicy      goodkey.KeyPolicy
-	clk            clock.Clock
-	log            blog.Logger
-	metrics        *caMetrics
+	prefix    int // Prepended to the serial number
+	maxNames  int
+	keyPolicy goodkey.KeyPolicy
+	clk       clock.Clock
+	log       blog.Logger
+	metrics   *caMetrics
 }
 
 var _ capb.CertificateAuthorityServer = (*certificateAuthorityImpl)(nil)
@@ -246,8 +244,6 @@ func NewCertificateAuthorityImpl(
 	defaultCertProfileName string,
 	certificateProfiles map[string]issuance.ProfileConfig,
 	lints lint.Registry,
-	certExpiry time.Duration,
-	certBackdate time.Duration,
 	serialPrefix int,
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
@@ -257,13 +253,6 @@ func NewCertificateAuthorityImpl(
 ) (*certificateAuthorityImpl, error) {
 	var ca *certificateAuthorityImpl
 	var err error
-
-	// TODO(briansmith): Make the backdate setting mandatory after the
-	// production ca.json has been updated to include it. Until then, manually
-	// default to 1h, which is the backdating duration we currently use.
-	if certBackdate == 0 {
-		certBackdate = time.Hour
-	}
 
 	if serialPrefix < 1 || serialPrefix > 127 {
 		err = errors.New("serial prefix must be between 1 and 127")
@@ -285,18 +274,16 @@ func NewCertificateAuthorityImpl(
 	}
 
 	ca = &certificateAuthorityImpl{
-		sa:             sa,
-		pa:             pa,
-		issuers:        issuers,
-		certProfiles:   certProfiles,
-		validityPeriod: certExpiry,
-		backdate:       certBackdate,
-		prefix:         serialPrefix,
-		maxNames:       maxNames,
-		keyPolicy:      keyPolicy,
-		log:            logger,
-		metrics:        metrics,
-		clk:            clk,
+		sa:           sa,
+		pa:           pa,
+		issuers:      issuers,
+		certProfiles: certProfiles,
+		prefix:       serialPrefix,
+		maxNames:     maxNames,
+		keyPolicy:    keyPolicy,
+		log:          logger,
+		metrics:      metrics,
+		clk:          clk,
 	}
 
 	return ca, nil

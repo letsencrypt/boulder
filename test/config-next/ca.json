@@ -144,8 +144,6 @@
 				"w_sub_cert_aia_contains_internal_names"
 			]
 		},
-		"expiry": "7776000s",
-		"backdate": "1h",
 		"serialPrefix": 127,
 		"maxNames": 100,
 		"lifespanOCSP": "96h",

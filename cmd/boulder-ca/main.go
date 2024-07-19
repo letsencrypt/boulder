@@ -58,9 +58,11 @@ type Config struct {
 		}
 
 		// How long issued certificates are valid for.
+		// Deprecated: Use Issuace.CertProfiles.MaxValidityPeriod instead.
 		Expiry config.Duration
 
 		// How far back certificates should be backdated.
+		// Deprecated: Use Issuace.CertProfiles.MaxValidityBackdate instead.
 		Backdate config.Duration
 
 		// What digits we should prepend to serials after randomly generating them.
@@ -273,8 +275,6 @@ func main() {
 			c.CA.Issuance.DefaultCertificateProfileName,
 			c.CA.Issuance.CertProfiles,
 			lints,
-			c.CA.Expiry.Duration,
-			c.CA.Backdate.Duration,
 			c.CA.SerialPrefix,
 			c.CA.MaxNames,
 			kp,
