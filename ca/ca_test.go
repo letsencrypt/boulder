@@ -327,7 +327,6 @@ func TestIssuePrecertificate(t *testing.T) {
 		subTest func(t *testing.T, i *TestCertificateIssuance)
 	}{
 		{"IssuePrecertificate", CNandSANCSR, issueCertificateSubTestIssuePrecertificate},
-		{"ValidityUsesCAClock", CNandSANCSR, issueCertificateSubTestValidityUsesCAClock},
 		{"ProfileSelectionRSA", CNandSANCSR, issueCertificateSubTestProfileSelectionRSA},
 		{"ProfileSelectionECDSA", ECDSACSR, issueCertificateSubTestProfileSelectionECDSA},
 		{"MustStaple", MustStapleCSR, issueCertificateSubTestMustStaple},
@@ -416,11 +415,6 @@ func issueCertificateSubTestIssuePrecertificate(t *testing.T, i *TestCertificate
 	if len(cert.Subject.Country) > 0 {
 		t.Errorf("Subject contained unauthorized values: %v", cert.Subject)
 	}
-}
-
-func issueCertificateSubTestValidityUsesCAClock(t *testing.T, i *TestCertificateIssuance) {
-	test.AssertEquals(t, i.cert.NotBefore, i.ca.clk.Now().Add(-1*i.ca.backdate))
-	test.AssertEquals(t, i.cert.NotAfter.Add(time.Second).Sub(i.cert.NotBefore), i.ca.validityPeriod)
 }
 
 // Test failure mode when no issuers are present.

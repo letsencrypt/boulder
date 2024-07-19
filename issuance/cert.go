@@ -83,6 +83,19 @@ func NewProfile(profileConfig ProfileConfig, lints lint.Registry) (*Profile, err
 	return sp, nil
 }
 
+// GenerateValidity returns a notBefore/notAfter pair bracketing the input time,
+// based on the profile's configured backdate and validity.
+func (p *Profile) GenerateValidity(now time.Time) (time.Time, time.Time) {
+	// Don't use the full maxBackdate, to ensure that the actual backdate remains
+	// acceptable throughout the rest of the issuance process.
+	backdate := time.Duration(float64(p.maxBackdate.Nanoseconds()) * 0.9)
+	notBefore := now.Add(-1 * backdate)
+	// Subtract one second, because certificate validity periods are *inclusive*
+	// of their final second.
+	notAfter := notBefore.Add(p.maxValidity).Add(-1 * time.Second)
+	return notBefore, notAfter
+}
+
 // requestValid verifies the passed IssuanceRequest against the profile. If the
 // request doesn't match the signing profile an error is returned.
 func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceRequest) error {

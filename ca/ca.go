@@ -320,8 +320,6 @@ var ocspStatusToCode = map[string]int{
 // [issuance cycle]: https://github.com/letsencrypt/boulder/blob/main/docs/ISSUANCE-CYCLE.md
 func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
-	// issueReq.CertProfileName may be empty and will be populated in
-	// issuePrecertificateInner if so.
 	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID) {
 		return nil, berrors.InternalServerError("Incomplete issue certificate request")
 	}
@@ -339,9 +337,15 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, fmt.Errorf("the CA is incapable of using a profile named %s", issueReq.CertProfileName)
 	}
 
-	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
+	serialBigInt, err := ca.generateSerialNumber()
 	if err != nil {
 		return nil, err
+	}
+
+	notBefore, notAfter := certProfile.profile.GenerateValidity(ca.clk.Now())
+	validity := validity{
+		NotBefore: notBefore,
+		NotAfter:  notAfter,
 	}
 
 	serialHex := core.SerialToString(serialBigInt)
@@ -350,7 +354,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		Serial:  serialHex,
 		RegID:   regID,
 		Created: timestamppb.New(ca.clk.Now()),
-		Expires: timestamppb.New(validity.NotAfter),
+		Expires: timestamppb.New(notAfter),
 	})
 	if err != nil {
 		return nil, err
@@ -499,7 +503,9 @@ type validity struct {
 	NotAfter  time.Time
 }
 
-func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int, validity, error) {
+// generateSerialNumber produces a big.Int which has more than 64 bits of
+// entropy and has the CA's configured one-byte prefix.
+func (ca *certificateAuthorityImpl) generateSerialNumber() (*big.Int, error) {
 	// We want 136 bits of random number, plus an 8-bit instance id prefix.
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
@@ -508,18 +514,12 @@ func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	if err != nil {
 		err = berrors.InternalServerError("failed to generate serial: %s", err)
 		ca.log.AuditErrf("Serial randomness failed, err=[%v]", err)
-		return nil, validity{}, err
+		return nil, err
 	}
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
 
-	notBefore := ca.clk.Now().Add(-ca.backdate)
-	validity := validity{
-		NotBefore: notBefore,
-		NotAfter:  notBefore.Add(ca.validityPeriod - time.Second),
-	}
-
-	return serialBigInt, validity, nil
+	return serialBigInt, nil
 }
 
 // generateSKID computes the Subject Key Identifier using one of the methods in
