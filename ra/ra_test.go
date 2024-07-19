@@ -2045,13 +2045,15 @@ func TestNewOrder(t *testing.T) {
 
 	now := fc.Now()
 	orderA, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		Names:          []string{"b.com", "a.com", "a.com", "C.COM"},
+		RegistrationID:         Registration.Id,
+		CertificateProfileName: "test",
+		Names:                  []string{"b.com", "a.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderA.RegistrationID, int64(1))
 	test.AssertEquals(t, orderA.Expires.AsTime(), now.Add(time.Hour))
 	test.AssertEquals(t, len(orderA.Names), 3)
+	test.AssertEquals(t, orderA.CertificateProfileName, "test")
 	// We expect the order names to have been sorted, deduped, and lowercased
 	test.AssertDeepEquals(t, orderA.Names, []string{"a.com", "b.com", "c.com"})
 	test.AssertEquals(t, orderA.Id, int64(1))
@@ -2167,6 +2169,16 @@ func TestNewOrderReuse(t *testing.T) {
 				Names:          names,
 			},
 			// We do not expect reuse because the order regID differs from firstOrder
+			ExpectReuse: false,
+		},
+		{
+			Name: "Duplicate order, different profile",
+			OrderReq: &rapb.NewOrderRequest{
+				RegistrationID:         Registration.Id,
+				CertificateProfileName: "different",
+				Names:                  names,
+			},
+			// We do not expect reuse because the profile name differs from firstOrder
 			ExpectReuse: false,
 		},
 		{
