@@ -30,15 +30,13 @@ type ProfileConfig struct {
 	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
 	// OCSP Must Staple extension to be rejected.
 	AllowMustStaple bool
-	// AllowCTPoison, when false, causes all IssuanceRequests which want the
-	// CT Poison extension to be rejected.
+	// AllowCTPoison has no effect.
 	// Deprecated: We will always allow the CT Poison extension because it is
-	// mandated for Precertificates. This boolean has no effect.
+	// mandated for Precertificates.
 	AllowCTPoison bool
-	// AllowSCTList, when false, causes all IssuanceRequests which include SCTs
-	// to be rejected.
+	// AllowSCTList has no effect.
 	// Deprecated: We intend to include SCTs in all final Certificates for the
-	// foreseeable future. This boolean has no effect.
+	// foreseeable future.
 	AllowSCTList bool
 	// AllowCommonName, when false, causes all IssuanceRequests which specify a CN
 	// to be rejected.
