@@ -2521,8 +2521,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			return nil, errIncompleteGRPCResponse
 		}
 
-		// Only re-use the order if the profile matches.
-		if newOrder.CertificateProfileName == "" || existingOrder.CertificateProfileName == newOrder.CertificateProfileName {
+		// Only re-use the order if the profile (even if it is just the empty
+		// string, leaving us to choose a default profile) matches.
+		if existingOrder.CertificateProfileName == newOrder.CertificateProfileName {
 			// Track how often we reuse an existing order and how old that order is.
 			ra.orderAges.WithLabelValues("NewOrder").Observe(ra.clk.Since(existingOrder.Created.AsTime()).Seconds())
 			return existingOrder, nil
