@@ -6,8 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Let's Encrypt - Self-Service Portal</title>
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css"
-        integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
     <style>
         * {
             font-family: system-ui, sans-serif;
@@ -21,6 +19,13 @@
             flex-direction: column;
             min-height: 100vh;
         }
+        html {
+            line-height: 1.15;
+        }
+        div {
+            display: block;
+            unicode-bidi: isolate;
+        }
         body {
             flex: 1;
             align-items: center;
@@ -28,6 +33,11 @@
         h1, h2, h3, h4, h5, h6 {
             color: #003C66;
             font-weight: normal;
+        }
+        h1 {
+            font-size: 2em;
+            margin: .67em 0;
+            display: block;
         }
         a, a:hover {
             color: #285999;
@@ -52,6 +62,7 @@
         .section, .highlight {
             width: 100%;
             max-width: 45em;
+            padding: 10px 20px;
             box-sizing: border-box;
         }
         .section {
@@ -59,9 +70,6 @@
             margin-bottom: -20px;
         }
         .highlight {
-            padding: 10px 20px;
-            box-sizing: border-box;
-            /* distinct style for FAQ section */
             margin-top: 20px;
             margin-bottom: 5px;
             background-color: #e9f0fa;
@@ -77,6 +85,11 @@
             transition: background-color 0.3s;
             border-radius: 8px;
             margin: 10px 0px 0px;
+            font-family: inherit;
+            font-size: 100%;
+            line-height: 1.15;
+            overflow: visible;
+            text-transform: none;
         }
         button.primary:hover {
             background-color: #285999;
