@@ -326,6 +326,19 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, berrors.InternalServerError("Incomplete issue certificate request")
 	}
 
+	// The CA must check if it is capable of issuing for the given certificate
+	// profile name. The name is checked here instead of the hash because the RA
+	// is unaware of what certificate profiles exist. Pre-existing orders stored
+	// in the database may not have an associated certificate profile name and
+	// will take the default name stored alongside the map.
+	if issueReq.CertProfileName == "" {
+		issueReq.CertProfileName = ca.certProfiles.defaultName
+	}
+	certProfile, ok := ca.certProfiles.profileByName[issueReq.CertProfileName]
+	if !ok {
+		return nil, fmt.Errorf("the CA is incapable of using a profile named %s", issueReq.CertProfileName)
+	}
+
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
 	if err != nil {
 		return nil, err
@@ -343,7 +356,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, cpwid, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
+	precertDER, cpwid, err := ca.issuePrecertificateInner(ctx, issueReq, certProfile, serialBigInt, validity)
 	if err != nil {
 		return nil, err
 	}
@@ -532,20 +545,7 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 	return skid[0:20:20], nil
 }
 
-func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *certProfileWithID, error) {
-	// The CA must check if it is capable of issuing for the given certificate
-	// profile name. The name is checked here instead of the hash because the RA
-	// is unaware of what certificate profiles exist. Pre-existing orders stored
-	// in the database may not have an associated certificate profile name and
-	// will take the default name stored alongside the map.
-	if issueReq.CertProfileName == "" {
-		issueReq.CertProfileName = ca.certProfiles.defaultName
-	}
-	certProfile, ok := ca.certProfiles.profileByName[issueReq.CertProfileName]
-	if !ok {
-		return nil, nil, fmt.Errorf("the CA is incapable of using a profile named %s", issueReq.CertProfileName)
-	}
-
+func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, certProfile *certProfileWithID, serialBigInt *big.Int, validity validity) ([]byte, *certProfileWithID, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, nil, err
