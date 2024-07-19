@@ -11,6 +11,10 @@
     <ul>
         {{ range $identifier := .Identifiers }}<li>{{ $identifier}}</li>{{ end }}
     </ul>
+    <p>
+        These identifiers were paused after consistently failing validation
+        attempts without any successes over an extended period.
+    </p>
 </div>
 
 <div class="section">
