@@ -57,6 +57,9 @@
 				"modern": {
 					"allowMustStaple": true,
 					"omitCommonName": true,
+					"omitKeyEncipherment": true,
+					"omitClientAuth": true,
+					"omitSKID": true,
 					"policies": [
 						{
 							"oid": "2.23.140.1.2.1"
