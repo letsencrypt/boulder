@@ -46,8 +46,6 @@
 			"certProfiles": {
 				"defaultBoulderCertificateProfile": {
 					"allowMustStaple": true,
-					"allowCTPoison": true,
-					"allowSCTList": true,
 					"allowCommonName": true,
 					"policies": [
 						{
