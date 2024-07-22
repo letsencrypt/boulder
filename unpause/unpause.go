@@ -14,8 +14,10 @@ import (
 
 const (
 	// API
-	APIVersion = "v1"
-	APIPrefix  = "/sfe/" + APIVersion
+
+	// Changing this value will invalidate all existing JWTs.
+	apiVersion = "v1"
+	APIPrefix  = "/sfe/" + apiVersion
 	GetForm    = APIPrefix + "/unpause"
 
 	// JWT
@@ -24,19 +26,19 @@ const (
 )
 
 // JWTClaims represents the claims of a JWT token issued by the WFE for
-// redemption by the SFE. The JWT contains the following claims required for
-// unpausing:
-//   - Subject: the account ID of the Subscriber,
-//   - Version: the API version this JWT was created for,
-//   - Identifiers: a set of paused identifiers.
+// redemption by the SFE. The following claims required for unpausing:
+//   - Subject: the account ID of the Subscriber
+//   - V: the API version this JWT was created for
+//   - I: a set of ACME identifier values. Identifier types are omitted
+//     since DNS and IP string representations do not overlap.
 type JWTClaims struct {
 	jwt.Claims
 
-	// Version is the API version this JWT was created for.
-	Version string `json:"version"`
+	// V is the API version this JWT was created for.
+	V string `json:"version"`
 
-	// Identifiers is set of comma separated ACME identifiers.
-	Identifiers string `json:"identifiers"`
+	// I is set of comma separated ACME identifiers.
+	I string `json:"identifiers"`
 }
 
 // GenerateJWT generates a serialized unpause JWT with the provided claims.
@@ -48,15 +50,13 @@ func GenerateJWT(key []byte, regID int64, identifiers []string, lifetime time.Du
 
 	claims := JWTClaims{
 		Claims: jwt.Claims{
-			Issuer:    defaultIssuer,
-			Subject:   fmt.Sprintf("%d", regID),
-			Audience:  jwt.Audience{defaultAudience},
-			Expiry:    jwt.NewNumericDate(clk.Now().Add(lifetime)),
-			NotBefore: jwt.NewNumericDate(clk.Now()),
-			IssuedAt:  jwt.NewNumericDate(clk.Now()),
+			Issuer:   defaultIssuer,
+			Subject:  fmt.Sprintf("%d", regID),
+			Audience: jwt.Audience{defaultAudience},
+			Expiry:   jwt.NewNumericDate(clk.Now().Add(lifetime)),
 		},
-		Version:     APIVersion,
-		Identifiers: strings.Join(identifiers, ","),
+		V: apiVersion,
+		I: strings.Join(identifiers, ","),
 	}
 
 	serialized, err := jwt.Signed(signer).Claims(&claims).Serialize()
@@ -85,7 +85,7 @@ func RedeemJWT(token string, key []byte, version string, clk clock.Clock) (JWTCl
 	}
 
 	claims := JWTClaims{}
-	err = parsedToken.Claims(key[:], &claims)
+	err = parsedToken.Claims(key, &claims)
 	if err != nil {
 		return JWTClaims{}, fmt.Errorf("verifying JWT: %s", err)
 	}
@@ -113,15 +113,15 @@ func RedeemJWT(token string, key []byte, version string, clk clock.Clock) (JWTCl
 		return JWTClaims{}, errors.New("no account ID specified in the JWT")
 	}
 
-	if claims.Version == "" {
+	if claims.V == "" {
 		return JWTClaims{}, errors.New("no API version specified in the JWT")
 	}
 
-	if claims.Version != version {
-		return JWTClaims{}, fmt.Errorf("unexpected API version in the JWT: %s", claims.Version)
+	if claims.V != version {
+		return JWTClaims{}, fmt.Errorf("unexpected API version in the JWT: %s", claims.V)
 	}
 
-	if claims.Identifiers == "" {
+	if claims.I == "" {
 		return JWTClaims{}, errors.New("no identifiers specified in the JWT")
 	}
 

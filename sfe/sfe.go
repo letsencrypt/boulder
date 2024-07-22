@@ -240,5 +240,5 @@ func (sfe *SelfServiceFrontEndImpl) validateUnpauseJWTforAccount(incomingJWT str
 		return 0, nil, errors.New("failed to parse account ID")
 	}
 
-	return account, strings.Split(claims.Identifiers, ","), nil
+	return account, strings.Split(claims.I, ","), nil
 }

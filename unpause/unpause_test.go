@@ -33,7 +33,7 @@ func TestUnpauseJWT(t *testing.T) {
 			name: "valid one identifier",
 			args: args{
 				key:         hmacKey,
-				version:     APIVersion,
+				version:     apiVersion,
 				account:     1234567890,
 				identifiers: []string{"example.com"},
 				lifetime:    time.Hour,
@@ -41,15 +41,13 @@ func TestUnpauseJWT(t *testing.T) {
 			},
 			want: JWTClaims{
 				Claims: jwt.Claims{
-					Issuer:    defaultIssuer,
-					Subject:   "1234567890",
-					Audience:  jwt.Audience{defaultAudience},
-					NotBefore: jwt.NewNumericDate(fc.Now()),
-					Expiry:    jwt.NewNumericDate(fc.Now().Add(time.Hour)),
-					IssuedAt:  jwt.NewNumericDate(fc.Now()),
+					Issuer:   defaultIssuer,
+					Subject:  "1234567890",
+					Audience: jwt.Audience{defaultAudience},
+					Expiry:   jwt.NewNumericDate(fc.Now().Add(time.Hour)),
 				},
-				Version:     APIVersion,
-				Identifiers: "example.com",
+				V: apiVersion,
+				I: "example.com",
 			},
 			wantGenerateJWTErr: false,
 			wantRedeemJWTErr:   false,
@@ -58,7 +56,7 @@ func TestUnpauseJWT(t *testing.T) {
 			name: "valid multiple identifiers",
 			args: args{
 				key:         hmacKey,
-				version:     APIVersion,
+				version:     apiVersion,
 				account:     1234567890,
 				identifiers: []string{"example.com", "example.org", "example.net"},
 				lifetime:    time.Hour,
@@ -66,15 +64,13 @@ func TestUnpauseJWT(t *testing.T) {
 			},
 			want: JWTClaims{
 				Claims: jwt.Claims{
-					Issuer:    defaultIssuer,
-					Subject:   "1234567890",
-					Audience:  jwt.Audience{defaultAudience},
-					NotBefore: jwt.NewNumericDate(fc.Now()),
-					Expiry:    jwt.NewNumericDate(fc.Now().Add(time.Hour)),
-					IssuedAt:  jwt.NewNumericDate(fc.Now()),
+					Issuer:   defaultIssuer,
+					Subject:  "1234567890",
+					Audience: jwt.Audience{defaultAudience},
+					Expiry:   jwt.NewNumericDate(fc.Now().Add(time.Hour)),
 				},
-				Version:     APIVersion,
-				Identifiers: "example.com,example.org,example.net",
+				V: apiVersion,
+				I: "example.com,example.org,example.net",
 			},
 			wantGenerateJWTErr: false,
 			wantRedeemJWTErr:   false,
@@ -83,7 +79,7 @@ func TestUnpauseJWT(t *testing.T) {
 			name: "invalid no account",
 			args: args{
 				key:         hmacKey,
-				version:     APIVersion,
+				version:     apiVersion,
 				account:     0,
 				identifiers: []string{"example.com"},
 				lifetime:    time.Hour,
@@ -97,7 +93,7 @@ func TestUnpauseJWT(t *testing.T) {
 			name: "invalid key too small",
 			args: args{
 				key:         []byte("key"),
-				version:     APIVersion,
+				version:     apiVersion,
 				account:     1234567890,
 				identifiers: []string{"example.com"},
 				lifetime:    time.Hour,
@@ -111,7 +107,7 @@ func TestUnpauseJWT(t *testing.T) {
 			name: "invalid no identifiers",
 			args: args{
 				key:         hmacKey,
-				version:     APIVersion,
+				version:     apiVersion,
 				account:     1234567890,
 				identifiers: nil,
 				lifetime:    time.Hour,
@@ -142,10 +138,8 @@ func TestUnpauseJWT(t *testing.T) {
 			test.AssertEquals(t, got.Subject, tt.want.Subject)
 			test.AssertDeepEquals(t, got.Audience, tt.want.Audience)
 			test.Assert(t, got.Expiry.Time().Equal(tt.want.Expiry.Time()), "expected Expiry time to be equal")
-			test.Assert(t, got.NotBefore.Time().Equal(tt.want.NotBefore.Time()), "expected NotBefore time to be equal")
-			test.Assert(t, got.IssuedAt.Time().Equal(tt.want.IssuedAt.Time()), "expected IssuedAt time to be equal")
-			test.AssertEquals(t, got.Version, tt.want.Version)
-			test.AssertEquals(t, got.Identifiers, tt.want.Identifiers)
+			test.AssertEquals(t, got.V, tt.want.V)
+			test.AssertEquals(t, got.I, tt.want.I)
 		})
 	}
 }
