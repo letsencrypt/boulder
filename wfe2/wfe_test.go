@@ -407,7 +407,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		limiter,
 		txnBuilder,
 		100,
-		[]string{""},
+		nil,
 	)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
@@ -3816,7 +3816,7 @@ func TestNewOrderWithProfile(t *testing.T) {
 	expectProfileName := "test-profile"
 	wfe.ra = &mockRA{expectProfileName: expectProfileName}
 	mux := wfe.Handler(metrics.NoopRegisterer)
-	wfe.certificateProfileNames = []string{expectProfileName}
+	wfe.certProfiles = map[string]string{expectProfileName: "description"}
 
 	// Test that the newOrder endpoint returns the proper error if an invalid
 	// profile is specified.
@@ -3855,8 +3855,8 @@ func TestNewOrderWithProfile(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to unmarshal order response")
 	test.AssertEquals(t, errorResp1["status"], "valid")
 
-	// Set the acceptable profiles to an empty list, the WFE should no longer accept any profiles.
-	wfe.certificateProfileNames = []string{}
+	// Set the acceptable profiles to the empty set, the WFE should no longer accept any profiles.
+	wfe.certProfiles = map[string]string{}
 	responseWriter = httptest.NewRecorder()
 	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, validOrderBody)
 	mux.ServeHTTP(responseWriter, r)

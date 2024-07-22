@@ -131,9 +131,9 @@
 			"TrackReplacementCertificatesARI": true,
 			"CheckRenewalExemptionAtWFE": true
 		},
-		"certificateProfileNames": [
-			"defaultBoulderCertificateProfile"
-		]
+		"certProfiles": {
+			"defaultBoulderCertificateProfile": "The normal profile you know and love"
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 4,
