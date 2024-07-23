@@ -34,7 +34,7 @@ var kp goodkey.KeyPolicy
 
 func init() {
 	var err error
-	kp, err = goodkey.NewPolicy(&goodkey.Config{FermatRounds: 100}, nil)
+	kp, err = goodkey.NewPolicy(nil, nil)
 	if err != nil {
 		log.Fatal("Could not create goodkey.KeyPolicy")
 	}

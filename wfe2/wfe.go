@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/core"
@@ -29,21 +30,19 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/policy"
-	"github.com/letsencrypt/boulder/ratelimits"
-	"github.com/letsencrypt/boulder/unpause"
-
-	// 'grpc/noncebalancer' is imported for its init function.
-	_ "github.com/letsencrypt/boulder/grpc/noncebalancer"
+	_ "github.com/letsencrypt/boulder/grpc/noncebalancer" // imported for its init function.
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	"github.com/letsencrypt/boulder/nonce"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/letsencrypt/boulder/unpause"
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -170,10 +169,10 @@ type WebFrontEndImpl struct {
 	unpauseJWTLifetime time.Duration
 	sfeURL             string
 
-	// certificateProfileNames is a list of profile names that are allowed to be
-	// passed to the newOrder endpoint. If a profile name is not in this list,
-	// the request will be rejected as malformed.
-	certificateProfileNames []string
+	// certProfiles is a map of acceptable certificate profile names to
+	// descriptions (perhaps including URLs) of those profiles. NewOrder
+	// Requests with a profile name not present in this map will be rejected.
+	certProfiles map[string]string
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -197,7 +196,7 @@ func NewWebFrontEndImpl(
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,
 	maxNames int,
-	certificateProfileNames []string,
+	certProfiles map[string]string,
 	unpauseHMACKey []byte,
 	unpauseJWTLifetime time.Duration,
 	sfeURL string,
@@ -238,7 +237,7 @@ func NewWebFrontEndImpl(
 		limiter:                      limiter,
 		txnBuilder:                   txnBuilder,
 		maxNames:                     maxNames,
-		certificateProfileNames:      certificateProfileNames,
+		certProfiles:                 certProfiles,
 		unpauseHMACKey:               unpauseHMACKey,
 		unpauseJWTLifetime:           unpauseJWTLifetime,
 		sfeURL:                       sfeURL,
@@ -560,6 +559,9 @@ func (wfe *WebFrontEndImpl) Directory(
 		metaMap["caaIdentities"] = []string{
 			wfe.DirectoryCAAIdentity,
 		}
+	}
+	if len(wfe.certProfiles) != 0 {
+		metaMap["profiles"] = wfe.certProfiles
 	}
 	// The "meta" directory entry may also include a string with a website URL
 	if wfe.DirectoryWebsite != "" {
@@ -2201,7 +2203,7 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 		// No profile name is specified.
 		return nil
 	}
-	if !slices.Contains(wfe.certificateProfileNames, profile) {
+	if !slices.Contains(maps.Keys(wfe.certProfiles), profile) {
 		// The profile name is not in the list of configured profiles.
 		return errors.New("not a recognized profile name")
 	}

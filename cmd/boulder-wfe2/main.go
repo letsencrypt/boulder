@@ -155,11 +155,11 @@ type Config struct {
 		// the CA and RA configurations.
 		MaxNames int `validate:"min=0,max=100"`
 
-		// CertificateProfileNames is the list of acceptable certificate profile
-		// names for newOrder requests. Requests with a profile name not in this
-		// list will be rejected. This field is optional; if unset, no profile
-		// names are accepted.
-		CertificateProfileNames []string `validate:"omitempty,dive,alphanum,min=1,max=32"`
+		// CertProfiles is a map of acceptable certificate profile names to
+		// descriptions (perhaps including URLs) of those profiles. NewOrder
+		// Requests with a profile name not present in this map will be rejected.
+		// This field is optional; if unset, no profile names are accepted.
+		CertProfiles map[string]string `validate:"omitempty,dive,keys,alphanum,min=1,max=32,endkeys"`
 
 		// UnpauseHMACKey signs outgoing JWTs for redemption at the unpause
 		// endpoint. This key must match the one configured for all SFEs. This
@@ -377,7 +377,7 @@ func main() {
 		limiter,
 		txnBuilder,
 		maxNames,
-		c.WFE.CertificateProfileNames,
+		c.WFE.CertProfiles,
 		unpauseHMACKey,
 		c.WFE.UnpauseJWTLifetime.Duration,
 		c.WFE.SFEUrl,

@@ -300,7 +300,7 @@ func TestDefaultAllowedKeys(t *testing.T) {
 	test.Assert(t, policy.allowedKeys.ECDSAP384, "NIST P384 should be allowed")
 	test.Assert(t, !policy.allowedKeys.ECDSAP521, "NIST P521 should not be allowed")
 
-	policy, err = NewPolicy(&Config{FermatRounds: 100}, nil)
+	policy, err = NewPolicy(&Config{}, nil)
 	test.AssertNotError(t, err, "NewPolicy with nil config.AllowedKeys failed")
 	test.Assert(t, policy.allowedKeys.RSA2048, "RSA 2048 should be allowed")
 	test.Assert(t, policy.allowedKeys.RSA3072, "RSA 3072 should be allowed")

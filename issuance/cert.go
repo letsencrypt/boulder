@@ -27,9 +27,19 @@ import (
 
 // ProfileConfig describes the certificate issuance constraints for all issuers.
 type ProfileConfig struct {
+	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
+	// OCSP Must Staple extension to be rejected.
 	AllowMustStaple bool
-	AllowCTPoison   bool
-	AllowSCTList    bool
+	// AllowCTPoison has no effect.
+	// Deprecated: We will always allow the CT Poison extension because it is
+	// mandated for Precertificates.
+	AllowCTPoison bool
+	// AllowSCTList has no effect.
+	// Deprecated: We intend to include SCTs in all final Certificates for the
+	// foreseeable future.
+	AllowSCTList bool
+	// AllowCommonName, when false, causes all IssuanceRequests which specify a CN
+	// to be rejected.
 	AllowCommonName bool
 
 	MaxValidityPeriod   config.Duration
@@ -47,8 +57,6 @@ type PolicyConfig struct {
 // Profile is the validated structure created by reading in ProfileConfigs and IssuerConfigs
 type Profile struct {
 	allowMustStaple bool
-	allowCTPoison   bool
-	allowSCTList    bool
 	allowCommonName bool
 
 	maxBackdate time.Duration
@@ -61,8 +69,6 @@ type Profile struct {
 func NewProfile(profileConfig ProfileConfig, lints lint.Registry) (*Profile, error) {
 	sp := &Profile{
 		allowMustStaple: profileConfig.AllowMustStaple,
-		allowCTPoison:   profileConfig.AllowCTPoison,
-		allowSCTList:    profileConfig.AllowSCTList,
 		allowCommonName: profileConfig.AllowCommonName,
 		maxBackdate:     profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:     profileConfig.MaxValidityPeriod.Duration,
@@ -91,14 +97,6 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 
 	if !prof.allowMustStaple && req.IncludeMustStaple {
 		return errors.New("must-staple extension cannot be included")
-	}
-
-	if !prof.allowCTPoison && req.IncludeCTPoison {
-		return errors.New("ct poison extension cannot be included")
-	}
-
-	if !prof.allowSCTList && req.sctList != nil {
-		return errors.New("sct list extension cannot be included")
 	}
 
 	if req.IncludeCTPoison && req.sctList != nil {
