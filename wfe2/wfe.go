@@ -2209,6 +2209,47 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 	return nil
 }
 
+func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, identifiers []identifier.ACMEIdentifier, uniqueNames []string, regID int64) ([]string, error) {
+	identifierMap := make(map[string]identifier.ACMEIdentifier)
+	for _, ident := range identifiers {
+		identifierMap[ident.Value] = ident
+	}
+
+	uniqueIdentifiers := make([]*sapb.Identifier, 0, len(uniqueNames))
+	for _, name := range uniqueNames {
+		ident, exists := identifierMap[name]
+		if exists {
+			uniqueIdentifiers = append(
+				uniqueIdentifiers,
+				&sapb.Identifier{Type: string(ident.Type), Value: ident.Value},
+			)
+		} else {
+			// This should never happen.
+			return nil, fmt.Errorf("identifier %q not found in identifiers list", name)
+		}
+	}
+
+	// Check if any of the requested identifiers are paused.
+	paused, err := wfe.sa.CheckIdentifiersPaused(ctx, &sapb.PauseRequest{
+		RegistrationID: regID,
+		Identifiers:    uniqueIdentifiers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(paused.Identifiers) <= 0 {
+		// No identifiers are paused.
+		return nil, nil
+	}
+
+	// At least one of the requested identifiers is paused.
+	pausedValues := make([]string, 0, len(paused.Identifiers))
+	for _, ident := range paused.Identifiers {
+		pausedValues = append(pausedValues, ident.Value)
+	}
+	return pausedValues, nil
+}
+
 // NewOrder is used by clients to create a new order object and a set of
 // authorizations to fulfill for issuance.
 func (wfe *WebFrontEndImpl) NewOrder(
@@ -2256,7 +2297,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// type identifier here. Check to make sure one of the strings is
 	// short enough to meet the max CN bytes requirement.
 	names := make([]string, len(newOrderRequest.Identifiers))
-	identMap := make(map[string]*sapb.Identifier, len(newOrderRequest.Identifiers))
 	for i, ident := range newOrderRequest.Identifiers {
 		if ident.Type != identifier.DNS {
 			wfe.sendError(response, logEvent,
@@ -2270,13 +2310,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			return
 		}
 		names[i] = ident.Value
-		lowerValue := strings.ToLower(ident.Value)
-		if slices.Contains(names, lowerValue) {
-			identMap[lowerValue] = &sapb.Identifier{
-				Type:  string(ident.Type),
-				Value: ident.Value,
-			}
-		}
 	}
 
 	names = core.UniqueLowerNames(names)
@@ -2293,40 +2326,22 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	logEvent.DNSNames = names
 
 	if features.Get().CheckIdentifiersPaused {
-		// Check if any of the identifiers are paused.
-		orderIdentifiers := make([]*sapb.Identifier, 0, len(names))
-		for _, name := range names {
-			ident, exists := identMap[name]
-			if exists {
-				orderIdentifiers = append(orderIdentifiers, ident)
-			}
-		}
-		paused, err := wfe.sa.CheckIdentifiersPaused(ctx, &sapb.PauseRequest{
-			RegistrationID: acct.ID,
-			Identifiers:    orderIdentifiers,
-		})
+		pausedValues, err := wfe.checkIdentifiersPaused(ctx, newOrderRequest.Identifiers, names, acct.ID)
 		if err != nil {
-			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error checking if identifiers are paused"), err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("Failure while checking pause status of identifiers"), err)
 			return
 		}
-
-		if len(paused.Identifiers) > 0 {
-			// Some or all of the identifiers are paused.
-			pausedValues := make([]string, len(paused.Identifiers))
-			for i, ident := range paused.Identifiers {
-				pausedValues[i] = ident.Value
-			}
-			unpauseJWT, err := unpause.GenerateJWT(wfe.unpauseHMACKey, acct.ID, pausedValues, wfe.unpauseJWTLifetime, wfe.clk)
+		if len(pausedValues) > 0 {
+			jwt, err := unpause.GenerateJWT(wfe.unpauseHMACKey, acct.ID, pausedValues, wfe.unpauseJWTLifetime, wfe.clk)
 			if err != nil {
-				wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error generating unpause JWT"), err)
-				return
+				wfe.sendError(response, logEvent, probs.ServerInternal("Error generating JWT for self-service unpause"), err)
 			}
-			pausedMsg := fmt.Sprintf(
+			msg := fmt.Sprintf(
 				"Your account is temporarily prevented from requesting certificates for %s and possibly others. Please visit: %s",
 				strings.Join(pausedValues, ", "),
-				fmt.Sprintf("%s%s?jwt=%s", wfe.sfeURL, unpause.GetForm, unpauseJWT),
+				fmt.Sprintf("%s%s?jwt=%s", wfe.sfeURL, unpause.GetForm, jwt),
 			)
-			wfe.sendError(response, logEvent, probs.Paused(pausedMsg), nil)
+			wfe.sendError(response, logEvent, probs.Paused(msg), nil)
 			return
 		}
 	}
