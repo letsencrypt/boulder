@@ -99,7 +99,7 @@ func RedeemJWT(token string, key []byte, version string, clk clock.Clock) (JWTCl
 		Time: clk.Now(),
 	})
 	if err != nil {
-		return JWTClaims{}, fmt.Errorf("validating JWT: %s", err)
+		return JWTClaims{}, fmt.Errorf("validating JWT: %w", err)
 	}
 
 	if len(claims.Subject) == 0 {
