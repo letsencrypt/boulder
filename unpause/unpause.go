@@ -53,6 +53,8 @@ func GenerateJWT(key []byte, regID int64, identifiers []string, lifetime time.Du
 			Issuer:   defaultIssuer,
 			Subject:  fmt.Sprintf("%d", regID),
 			Audience: jwt.Audience{defaultAudience},
+			// IssuedAt is necessary for metrics.
+			IssuedAt: jwt.NewNumericDate(clk.Now()),
 			Expiry:   jwt.NewNumericDate(clk.Now().Add(lifetime)),
 		},
 		V: apiVersion,
