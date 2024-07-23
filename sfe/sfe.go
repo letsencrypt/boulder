@@ -142,7 +142,7 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, re
 		return
 	}
 
-	regID, identifiers, err := sfe.validateUnpauseJWTforAccount(incomingJWT)
+	regID, identifiers, err := sfe.parseUnpauseJWT(incomingJWT)
 	if err != nil {
 		sfe.unpauseStatusHelper(response, false)
 		return
@@ -171,7 +171,7 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseSubmit(response http.ResponseWriter, 
 		return
 	}
 
-	_, _, err := sfe.validateUnpauseJWTforAccount(incomingJWT)
+	_, _, err := sfe.parseUnpauseJWT(incomingJWT)
 	if err != nil {
 		sfe.unpauseStatusHelper(response, false)
 		return
@@ -221,10 +221,10 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseStatus(response http.ResponseWriter, 
 	sfe.unpauseStatusHelper(response, true)
 }
 
-// validateUnpauseJWTforAccount validates the incoming JWT and returns the
-// subscriber's registration ID and a slice of paused identifiers unpacked from
-// the claims. If the JWT is invalid, an error is returned.
-func (sfe *SelfServiceFrontEndImpl) validateUnpauseJWTforAccount(incomingJWT string) (int64, []string, error) {
+// parseUnpauseJWT extracts and returns the subscriber's registration ID and a
+// slice of paused identifiers from the claims. If the JWT cannot be parsed or
+// is otherwise invalid, an error is returned.
+func (sfe *SelfServiceFrontEndImpl) parseUnpauseJWT(incomingJWT string) (int64, []string, error) {
 	slug := strings.Split(unpause.APIPrefix, "/")
 	if len(slug) != 3 {
 		return 0, nil, errors.New("failed to parse API version")
@@ -237,7 +237,9 @@ func (sfe *SelfServiceFrontEndImpl) validateUnpauseJWTforAccount(incomingJWT str
 
 	account, convErr := strconv.ParseInt(claims.Subject, 10, 64)
 	if convErr != nil {
-		return 0, nil, errors.New("failed to parse account ID")
+		// This should never happen as this was just validated by the call to
+		// unpause.RedeemJWT().
+		return 0, nil, errors.New("failed to parse account ID from JWT")
 	}
 
 	return account, strings.Split(claims.I, ","), nil
