@@ -141,20 +141,16 @@ func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[st
 		pipeline.Get(ctx, bucketKey)
 	}
 	results, err := pipeline.Exec(ctx)
-	if err != nil {
-		if !errors.Is(err, redis.Nil) {
-			r.observeLatency("batchget", r.clk.Since(start), err)
-			return nil, err
-		}
-		// One of the keys does not exist. We'll account for this when
-		// processing the results.
+	if err != nil && !errors.Is(err, redis.Nil) {
+		r.observeLatency("batchget", r.clk.Since(start), err)
+		return nil, err
 	}
 
 	totalLatency := r.clk.Since(start)
 	perEntryLatency := totalLatency / time.Duration(len(bucketKeys))
 
-	var batchErr error
 	tats := make(map[string]time.Time, len(bucketKeys))
+	notFoundCount := 0
 	for i, result := range results {
 		tatNano, err := result.(*redis.StringCmd).Int64()
 		if err != nil {
@@ -166,11 +162,20 @@ func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[st
 			}
 			// Bucket key does not exist.
 			r.observeLatency("batchget_entry", perEntryLatency, err)
-			batchErr = errMixedSuccess
+			notFoundCount++
 			continue
 		}
 		tats[bucketKeys[i]] = time.Unix(0, tatNano).UTC()
 		r.observeLatency("batchget_entry", perEntryLatency, nil)
+	}
+
+	var batchErr error
+	if notFoundCount < len(bucketKeys) {
+		// Some keys were not found.
+		batchErr = errMixedSuccess
+	} else if notFoundCount == len(bucketKeys) {
+		// All keys were not found.
+		batchErr = redis.Nil
 	}
 
 	r.observeLatency("batchget", totalLatency, batchErr)
