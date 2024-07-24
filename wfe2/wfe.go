@@ -1990,6 +1990,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		Expires:     order.Expires.AsTime(),
 		Identifiers: idents,
 		Finalize:    finalizeURL,
+		Profile:     order.CertificateProfileName,
 	}
 	// If there is an order error, prefix its type with the V2 namespace
 	if order.Error != nil {
