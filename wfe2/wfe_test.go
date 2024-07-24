@@ -2768,6 +2768,7 @@ func TestFinalizeOrder(t *testing.T) {
   "identifiers": [
     {"type":"dns","value":"example.com"}
   ],
+	"profile": "default",
   "authorizations": [
     "http://localhost/acme/authz-v3/1"
   ],
@@ -2786,8 +2787,7 @@ func TestFinalizeOrder(t *testing.T) {
 					t.Errorf("Header %q: Expected %q, got %q", k, v, got)
 				}
 			}
-			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-				tc.ExpectedBody)
+			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedBody)
 		})
 	}
 
@@ -2939,7 +2939,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "Good request",
 			Request:  makeGet("1/1"),
-			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "profile": "default", "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "404 request",
@@ -2984,7 +2984,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "Valid POST-as-GET",
 			Request:  makePost(1, "1/1", ""),
-			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "profile": "default", "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "GET new order",
@@ -2995,17 +2995,17 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "GET new order from old endpoint",
 			Request:  makeGet("1/9"),
-			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "profile": "default", "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "POST-as-GET new order",
 			Request:  makePost(1, "1/9", ""),
-			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "profile": "default", "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "POST-as-GET processing order",
 			Request:  makePost(1, "1/10", ""),
-			Response: `{"status": "processing","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/10"}`,
+			Response: `{"status": "processing","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "profile": "default", "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/10"}`,
 			Headers:  map[string]string{"Retry-After": "3"},
 		},
 	}
@@ -3018,6 +3018,9 @@ func TestGetOrder(t *testing.T) {
 			} else {
 				wfe.GetOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
 			}
+			t.Log(tc.Name)
+			t.Log("actual:", responseWriter.Body.String())
+			t.Log("expect:", tc.Response)
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.Response)
 			for k, v := range tc.Headers {
 				test.AssertEquals(t, responseWriter.Header().Get(k), v)
