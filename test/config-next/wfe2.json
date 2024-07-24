@@ -132,7 +132,8 @@
 			"CheckRenewalExemptionAtWFE": true
 		},
 		"certProfiles": {
-			"defaultBoulderCertificateProfile": "The normal profile you know and love"
+			"legacy": "The normal profile you know and love",
+			"modern": "Profile 2: Electric Boogaloo"
 		}
 	},
 	"syslog": {
