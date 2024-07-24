@@ -330,10 +330,6 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	}
 
 	notBefore, notAfter := certProfile.profile.GenerateValidity(ca.clk.Now())
-	validity := validity{
-		NotBefore: notBefore,
-		NotAfter:  notAfter,
-	}
 
 	serialHex := core.SerialToString(serialBigInt)
 	regID := issueReq.RegistrationID
@@ -347,7 +343,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, cpwid, err := ca.issuePrecertificateInner(ctx, issueReq, certProfile, serialBigInt, validity)
+	precertDER, cpwid, err := ca.issuePrecertificateInner(ctx, issueReq, certProfile, serialBigInt, notBefore, notAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -485,11 +481,6 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	}, nil
 }
 
-type validity struct {
-	NotBefore time.Time
-	NotAfter  time.Time
-}
-
 // generateSerialNumber produces a big.Int which has more than 64 bits of
 // entropy and has the CA's configured one-byte prefix.
 func (ca *certificateAuthorityImpl) generateSerialNumber() (*big.Int, error) {
@@ -532,7 +523,7 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 	return skid[0:20:20], nil
 }
 
-func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, certProfile *certProfileWithID, serialBigInt *big.Int, validity validity) ([]byte, *certProfileWithID, error) {
+func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, certProfile *certProfileWithID, serialBigInt *big.Int, notBefore time.Time, notAfter time.Time) ([]byte, *certProfileWithID, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, nil, err
@@ -557,7 +548,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 	issuer := issuerPool[mrand.Intn(len(issuerPool))]
 
-	if issuer.Cert.NotAfter.Before(validity.NotAfter) {
+	if issuer.Cert.NotAfter.Before(notAfter) {
 		err = berrors.InternalServerError("cannot issue a certificate that expires after the issuer certificate")
 		ca.log.AuditErr(err.Error())
 		return nil, nil, err
@@ -582,8 +573,8 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		CommonName:        names.CN,
 		IncludeCTPoison:   true,
 		IncludeMustStaple: issuance.ContainsMustStaple(csr.Extensions),
-		NotBefore:         validity.NotBefore,
-		NotAfter:          validity.NotAfter,
+		NotBefore:         notBefore,
+		NotAfter:          notAfter,
 	}
 
 	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, req)
