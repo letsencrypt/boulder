@@ -62,7 +62,7 @@
 							"oid": "2.23.140.1.2.1"
 						}
 					],
-					"maxValidityPeriod": "7776000s",
+					"maxValidityPeriod": "583200s",
 					"maxValidityBackdate": "1h5m"
 				}
 			},
