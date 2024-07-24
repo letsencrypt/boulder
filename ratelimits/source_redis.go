@@ -170,10 +170,10 @@ func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[st
 	}
 
 	var batchErr error
-	if notFoundCount < len(bucketKeys) {
+	if notFoundCount < len(results) {
 		// Some keys were not found.
 		batchErr = errMixedSuccess
-	} else if notFoundCount == len(bucketKeys) {
+	} else if notFoundCount == len(results) {
 		// All keys were not found.
 		batchErr = redis.Nil
 	}
