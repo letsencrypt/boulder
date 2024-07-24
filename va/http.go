@@ -494,13 +494,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		numRedirects++
 		va.metrics.http01Redirects.Inc()
 
-		// If TLS was used, record the negotiated key exchange mechanism in the most
-		// recent validationRecord.
-		// TODO(#7321): Remove this when we have collected enough data.
-		if req.Response.TLS != nil {
-			records[len(records)-1].UsedRSAKEX = usedRSAKEX(req.Response.TLS.CipherSuite)
-		}
-
 		if req.Response.TLS != nil && req.Response.TLS.Version < tls.VersionTLS12 {
 			return berrors.ConnectionFailureError(
 				"validation attempt was redirected to an HTTPS server that doesn't " +
@@ -641,13 +634,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	if len(body) >= maxResponseSize {
 		return nil, records, newIPError(records[len(records)-1].AddressUsed, berrors.UnauthorizedError("Invalid response from %s: %q",
 			records[len(records)-1].URL, body))
-	}
-
-	// We were successful, so record the negotiated key exchange mechanism in the
-	// last validationRecord.
-	// TODO(#7321): Remove this when we have collected enough data.
-	if httpResponse.TLS != nil {
-		records[len(records)-1].UsedRSAKEX = usedRSAKEX(httpResponse.TLS.CipherSuite)
 	}
 
 	return body, records, nil

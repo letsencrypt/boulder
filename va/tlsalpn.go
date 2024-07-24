@@ -289,10 +289,6 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 					hex.EncodeToString(h[:]),
 				))
 			}
-			// We were successful, so record the negotiated key exchange mechanism in
-			// the validationRecord.
-			// TODO(#7321): Remove this when we have collected enough data.
-			validationRecord.UsedRSAKEX = usedRSAKEX(cs.CipherSuite)
 			return validationRecords, nil
 		}
 	}
