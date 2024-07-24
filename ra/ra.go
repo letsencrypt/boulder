@@ -112,19 +112,18 @@ type RegistrationAuthorityImpl struct {
 
 	ctpolicy *ctpolicy.CTPolicy
 
-	ctpolicyResults             *prometheus.HistogramVec
-	revocationReasonCounter     *prometheus.CounterVec
-	namesPerCert                *prometheus.HistogramVec
-	rlCheckLatency              *prometheus.HistogramVec
-	rlOverrideUsageGauge        *prometheus.GaugeVec
-	newRegCounter               prometheus.Counter
-	recheckCAACounter           prometheus.Counter
-	newCertCounter              *prometheus.CounterVec
-	recheckCAAUsedAuthzLifetime prometheus.Counter
-	authzAges                   *prometheus.HistogramVec
-	orderAges                   *prometheus.HistogramVec
-	inflightFinalizes           prometheus.Gauge
-	certCSRMismatch             prometheus.Counter
+	ctpolicyResults         *prometheus.HistogramVec
+	revocationReasonCounter *prometheus.CounterVec
+	namesPerCert            *prometheus.HistogramVec
+	rlCheckLatency          *prometheus.HistogramVec
+	rlOverrideUsageGauge    *prometheus.GaugeVec
+	newRegCounter           prometheus.Counter
+	recheckCAACounter       prometheus.Counter
+	newCertCounter          *prometheus.CounterVec
+	authzAges               *prometheus.HistogramVec
+	orderAges               *prometheus.HistogramVec
+	inflightFinalizes       prometheus.Gauge
+	certCSRMismatch         prometheus.Counter
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
@@ -195,12 +194,6 @@ func NewRegistrationAuthorityImpl(
 		Help: "A counter of CAA rechecks",
 	})
 	stats.MustRegister(recheckCAACounter)
-
-	recheckCAAUsedAuthzLifetime := prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "recheck_caa_used_authz_lifetime",
-		Help: "A counter times the old codepath was used for CAA recheck time",
-	})
-	stats.MustRegister(recheckCAAUsedAuthzLifetime)
 
 	newCertCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "new_certificates",
@@ -281,7 +274,6 @@ func NewRegistrationAuthorityImpl(
 		recheckCAACounter:            recheckCAACounter,
 		newCertCounter:               newCertCounter,
 		revocationReasonCounter:      revocationReasonCounter,
-		recheckCAAUsedAuthzLifetime:  recheckCAAUsedAuthzLifetime,
 		authzAges:                    authzAges,
 		orderAges:                    orderAges,
 		inflightFinalizes:            inflightFinalizes,
@@ -863,13 +855,6 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	// Set the recheck time to 7 hours ago.
 	caaRecheckAfter := now.Add(caaRecheckDuration)
 
-	// Set a CAA recheck time based on the assumption of a 30 day authz
-	// lifetime. This has been deprecated in favor of a new check based
-	// off the Validated time stored in the database, but we want to check
-	// both for a time and increment a stat if this code path is hit for
-	// compliance safety.
-	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(caaRecheckDuration)
-
 	for _, name := range names {
 		authz := authzs[name]
 		if authz == nil {
@@ -883,13 +868,6 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 		} else if staleCAA {
 			// Ensure that CAA is rechecked for this name
 			recheckAuthzs = append(recheckAuthzs, authz)
-		} else if authz.Expires.Before(caaRecheckTime) {
-			// Ensure that CAA is rechecked for this name
-			recheckAuthzs = append(recheckAuthzs, authz)
-			// This codepath should not be used, but is here as a safety
-			// net until the new codepath is proven. Increment metric if
-			// it is used.
-			ra.recheckCAAUsedAuthzLifetime.Add(1)
 		}
 	}
 
@@ -2478,9 +2456,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	newOrder := &sapb.NewOrderRequest{
-		RegistrationID: req.RegistrationID,
-		Names:          core.UniqueLowerNames(req.Names),
-		ReplacesSerial: req.ReplacesSerial,
+		RegistrationID:         req.RegistrationID,
+		Names:                  core.UniqueLowerNames(req.Names),
+		CertificateProfileName: req.CertificateProfileName,
+		ReplacesSerial:         req.ReplacesSerial,
 	}
 
 	if len(newOrder.Names) > ra.maxNames {
@@ -2519,14 +2498,18 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if existingOrder.Id == 0 || existingOrder.Status == "" || existingOrder.RegistrationID == 0 || len(existingOrder.Names) == 0 || core.IsAnyNilOrZero(existingOrder.Created, existingOrder.Expires) {
 			return nil, errIncompleteGRPCResponse
 		}
-		// Track how often we reuse an existing order and how old that order is.
-		ra.orderAges.WithLabelValues("NewOrder").Observe(ra.clk.Since(existingOrder.Created.AsTime()).Seconds())
-		return existingOrder, nil
+
+		// Only re-use the order if the profile (even if it is just the empty
+		// string, leaving us to choose a default profile) matches.
+		if existingOrder.CertificateProfileName == newOrder.CertificateProfileName {
+			// Track how often we reuse an existing order and how old that order is.
+			ra.orderAges.WithLabelValues("NewOrder").Observe(ra.clk.Since(existingOrder.Created.AsTime()).Seconds())
+			return existingOrder, nil
+		}
 	}
 
 	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
 	if !req.IsARIRenewal {
-
 		// Check if there is rate limit space for issuing a certificate.
 		err = ra.checkNewOrderLimits(ctx, newOrder.Names, newOrder.RegistrationID, req.IsRenewal)
 		if err != nil {
