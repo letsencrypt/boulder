@@ -4546,3 +4546,43 @@ func TestNewOrderReplacesSerialCarriesThroughToSA(t *testing.T) {
 	_, err := ra.NewOrder(ctx, exampleOrder)
 	test.AssertNotError(t, err, "order with ReplacesSerial should have succeeded")
 }
+
+// newMockSAUnpauseAccount is a fake which includes all of the SA methods called
+// in the course of an account unpause. Its behavior can be customized by
+// providing the number of unpaused account identifiers to allow testing of
+// various scenarios.
+type mockSAUnpauseAccount struct {
+	sapb.StorageAuthorityClient
+	identsToUnpause int64
+	receivedRegID   int64
+}
+
+func (sa *mockSAUnpauseAccount) UnpauseAccount(_ context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
+	sa.receivedRegID = req.Id
+	return &sapb.Count{Count: sa.identsToUnpause}, nil
+}
+
+// TestUnpauseAccount tests that the RA's UnpauseAccount method correctly passes
+// the requested RegID to the SA, and correctly passes the SA's count back to
+// the caller.
+func TestUnpauseAccount(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	mockSA := mockSAUnpauseAccount{identsToUnpause: 0}
+	ra.SA = &mockSA
+
+	res, err := ra.UnpauseAccount(context.Background(), &rapb.UnpauseAccountRequest{
+		RegistrationID: 1,
+	})
+	test.AssertNotError(t, err, "Should have been able to unpause account")
+	test.AssertEquals(t, res.Count, int64(0))
+	test.AssertEquals(t, mockSA.receivedRegID, int64(1))
+
+	mockSA.identsToUnpause = 50001
+	res, err = ra.UnpauseAccount(context.Background(), &rapb.UnpauseAccountRequest{
+		RegistrationID: 1,
+	})
+	test.AssertNotError(t, err, "Should have been able to unpause account")
+	test.AssertEquals(t, res.Count, int64(50001))
+}

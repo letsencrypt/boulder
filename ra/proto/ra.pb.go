@@ -638,6 +638,54 @@ func (x *UnpauseAccountRequest) GetRegistrationID() int64 {
 	return 0
 }
 
+type UnpauseAccountResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// Count is the number of identifiers which were unpaused for the input regid.
+	Count int64 `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
+}
+
+func (x *UnpauseAccountResponse) Reset() {
+	*x = UnpauseAccountResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_ra_proto_msgTypes[10]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *UnpauseAccountResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnpauseAccountResponse) ProtoMessage() {}
+
+func (x *UnpauseAccountResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_ra_proto_msgTypes[10]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnpauseAccountResponse.ProtoReflect.Descriptor instead.
+func (*UnpauseAccountResponse) Descriptor() ([]byte, []int) {
+	return file_ra_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *UnpauseAccountResponse) GetCount() int64 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
 var File_ra_proto protoreflect.FileDescriptor
 
 var file_ra_proto_rawDesc = []byte{
@@ -719,7 +767,10 @@ var file_ra_proto_rawDesc = []byte{
 	0x63, 0x6f, 0x75, 0x6e, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x26, 0x0a, 0x0e,
 	0x72, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x44, 0x18, 0x01,
 	0x20, 0x01, 0x28, 0x03, 0x52, 0x0e, 0x72, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74, 0x69,
-	0x6f, 0x6e, 0x49, 0x44, 0x32, 0xf4, 0x06, 0x0a, 0x15, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72,
+	0x6f, 0x6e, 0x49, 0x44, 0x22, 0x2e, 0x0a, 0x16, 0x55, 0x6e, 0x70, 0x61, 0x75, 0x73, 0x65, 0x41,
+	0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x14,
+	0x0a, 0x05, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x03, 0x52, 0x05, 0x63,
+	0x6f, 0x75, 0x6e, 0x74, 0x32, 0xf8, 0x06, 0x0a, 0x15, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72,
 	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x41, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79, 0x12, 0x3b,
 	0x0a, 0x0f, 0x4e, 0x65, 0x77, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72, 0x61, 0x74, 0x69, 0x6f,
 	0x6e, 0x12, 0x12, 0x2e, 0x63, 0x6f, 0x72, 0x65, 0x2e, 0x52, 0x65, 0x67, 0x69, 0x73, 0x74, 0x72,
@@ -770,14 +821,15 @@ var file_ra_proto_rawDesc = []byte{
 	0x61, 0x74, 0x65, 0x4f, 0x43, 0x53, 0x50, 0x12, 0x17, 0x2e, 0x72, 0x61, 0x2e, 0x47, 0x65, 0x6e,
 	0x65, 0x72, 0x61, 0x74, 0x65, 0x4f, 0x43, 0x53, 0x50, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
 	0x1a, 0x10, 0x2e, 0x63, 0x61, 0x2e, 0x4f, 0x43, 0x53, 0x50, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
-	0x73, 0x65, 0x22, 0x00, 0x12, 0x45, 0x0a, 0x0e, 0x55, 0x6e, 0x70, 0x61, 0x75, 0x73, 0x65, 0x41,
+	0x73, 0x65, 0x22, 0x00, 0x12, 0x49, 0x0a, 0x0e, 0x55, 0x6e, 0x70, 0x61, 0x75, 0x73, 0x65, 0x41,
 	0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x12, 0x19, 0x2e, 0x72, 0x61, 0x2e, 0x55, 0x6e, 0x70, 0x61,
 	0x75, 0x73, 0x65, 0x41, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
-	0x74, 0x1a, 0x16, 0x2e, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f,
-	0x62, 0x75, 0x66, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x22, 0x00, 0x42, 0x29, 0x5a, 0x27, 0x67,
-	0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x65, 0x74, 0x73, 0x65, 0x6e,
-	0x63, 0x72, 0x79, 0x70, 0x74, 0x2f, 0x62, 0x6f, 0x75, 0x6c, 0x64, 0x65, 0x72, 0x2f, 0x72, 0x61,
-	0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x74, 0x1a, 0x1a, 0x2e, 0x72, 0x61, 0x2e, 0x55, 0x6e, 0x70, 0x61, 0x75, 0x73, 0x65, 0x41, 0x63,
+	0x63, 0x6f, 0x75, 0x6e, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42,
+	0x29, 0x5a, 0x27, 0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6c, 0x65,
+	0x74, 0x73, 0x65, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74, 0x2f, 0x62, 0x6f, 0x75, 0x6c, 0x64, 0x65,
+	0x72, 0x2f, 0x72, 0x61, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74,
+	0x6f, 0x33,
 }
 
 var (
@@ -792,7 +844,7 @@ func file_ra_proto_rawDescGZIP() []byte {
 	return file_ra_proto_rawDescData
 }
 
-var file_ra_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_ra_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_ra_proto_goTypes = []interface{}{
 	(*GenerateOCSPRequest)(nil),                      // 0: ra.GenerateOCSPRequest
 	(*UpdateRegistrationRequest)(nil),                // 1: ra.UpdateRegistrationRequest
@@ -804,25 +856,26 @@ var file_ra_proto_goTypes = []interface{}{
 	(*NewOrderRequest)(nil),                          // 7: ra.NewOrderRequest
 	(*FinalizeOrderRequest)(nil),                     // 8: ra.FinalizeOrderRequest
 	(*UnpauseAccountRequest)(nil),                    // 9: ra.UnpauseAccountRequest
-	(*proto.Registration)(nil),                       // 10: core.Registration
-	(*proto.Authorization)(nil),                      // 11: core.Authorization
-	(*proto.Challenge)(nil),                          // 12: core.Challenge
-	(*proto.Order)(nil),                              // 13: core.Order
-	(*emptypb.Empty)(nil),                            // 14: google.protobuf.Empty
-	(*proto1.OCSPResponse)(nil),                      // 15: ca.OCSPResponse
+	(*UnpauseAccountResponse)(nil),                   // 10: ra.UnpauseAccountResponse
+	(*proto.Registration)(nil),                       // 11: core.Registration
+	(*proto.Authorization)(nil),                      // 12: core.Authorization
+	(*proto.Challenge)(nil),                          // 13: core.Challenge
+	(*proto.Order)(nil),                              // 14: core.Order
+	(*emptypb.Empty)(nil),                            // 15: google.protobuf.Empty
+	(*proto1.OCSPResponse)(nil),                      // 16: ca.OCSPResponse
 }
 var file_ra_proto_depIdxs = []int32{
-	10, // 0: ra.UpdateRegistrationRequest.base:type_name -> core.Registration
-	10, // 1: ra.UpdateRegistrationRequest.update:type_name -> core.Registration
-	11, // 2: ra.UpdateAuthorizationRequest.authz:type_name -> core.Authorization
-	12, // 3: ra.UpdateAuthorizationRequest.response:type_name -> core.Challenge
-	11, // 4: ra.PerformValidationRequest.authz:type_name -> core.Authorization
-	13, // 5: ra.FinalizeOrderRequest.order:type_name -> core.Order
-	10, // 6: ra.RegistrationAuthority.NewRegistration:input_type -> core.Registration
+	11, // 0: ra.UpdateRegistrationRequest.base:type_name -> core.Registration
+	11, // 1: ra.UpdateRegistrationRequest.update:type_name -> core.Registration
+	12, // 2: ra.UpdateAuthorizationRequest.authz:type_name -> core.Authorization
+	13, // 3: ra.UpdateAuthorizationRequest.response:type_name -> core.Challenge
+	12, // 4: ra.PerformValidationRequest.authz:type_name -> core.Authorization
+	14, // 5: ra.FinalizeOrderRequest.order:type_name -> core.Order
+	11, // 6: ra.RegistrationAuthority.NewRegistration:input_type -> core.Registration
 	1,  // 7: ra.RegistrationAuthority.UpdateRegistration:input_type -> ra.UpdateRegistrationRequest
 	3,  // 8: ra.RegistrationAuthority.PerformValidation:input_type -> ra.PerformValidationRequest
-	10, // 9: ra.RegistrationAuthority.DeactivateRegistration:input_type -> core.Registration
-	11, // 10: ra.RegistrationAuthority.DeactivateAuthorization:input_type -> core.Authorization
+	11, // 9: ra.RegistrationAuthority.DeactivateRegistration:input_type -> core.Registration
+	12, // 10: ra.RegistrationAuthority.DeactivateAuthorization:input_type -> core.Authorization
 	4,  // 11: ra.RegistrationAuthority.RevokeCertByApplicant:input_type -> ra.RevokeCertByApplicantRequest
 	5,  // 12: ra.RegistrationAuthority.RevokeCertByKey:input_type -> ra.RevokeCertByKeyRequest
 	6,  // 13: ra.RegistrationAuthority.AdministrativelyRevokeCertificate:input_type -> ra.AdministrativelyRevokeCertificateRequest
@@ -830,18 +883,18 @@ var file_ra_proto_depIdxs = []int32{
 	8,  // 15: ra.RegistrationAuthority.FinalizeOrder:input_type -> ra.FinalizeOrderRequest
 	0,  // 16: ra.RegistrationAuthority.GenerateOCSP:input_type -> ra.GenerateOCSPRequest
 	9,  // 17: ra.RegistrationAuthority.UnpauseAccount:input_type -> ra.UnpauseAccountRequest
-	10, // 18: ra.RegistrationAuthority.NewRegistration:output_type -> core.Registration
-	10, // 19: ra.RegistrationAuthority.UpdateRegistration:output_type -> core.Registration
-	11, // 20: ra.RegistrationAuthority.PerformValidation:output_type -> core.Authorization
-	14, // 21: ra.RegistrationAuthority.DeactivateRegistration:output_type -> google.protobuf.Empty
-	14, // 22: ra.RegistrationAuthority.DeactivateAuthorization:output_type -> google.protobuf.Empty
-	14, // 23: ra.RegistrationAuthority.RevokeCertByApplicant:output_type -> google.protobuf.Empty
-	14, // 24: ra.RegistrationAuthority.RevokeCertByKey:output_type -> google.protobuf.Empty
-	14, // 25: ra.RegistrationAuthority.AdministrativelyRevokeCertificate:output_type -> google.protobuf.Empty
-	13, // 26: ra.RegistrationAuthority.NewOrder:output_type -> core.Order
-	13, // 27: ra.RegistrationAuthority.FinalizeOrder:output_type -> core.Order
-	15, // 28: ra.RegistrationAuthority.GenerateOCSP:output_type -> ca.OCSPResponse
-	14, // 29: ra.RegistrationAuthority.UnpauseAccount:output_type -> google.protobuf.Empty
+	11, // 18: ra.RegistrationAuthority.NewRegistration:output_type -> core.Registration
+	11, // 19: ra.RegistrationAuthority.UpdateRegistration:output_type -> core.Registration
+	12, // 20: ra.RegistrationAuthority.PerformValidation:output_type -> core.Authorization
+	15, // 21: ra.RegistrationAuthority.DeactivateRegistration:output_type -> google.protobuf.Empty
+	15, // 22: ra.RegistrationAuthority.DeactivateAuthorization:output_type -> google.protobuf.Empty
+	15, // 23: ra.RegistrationAuthority.RevokeCertByApplicant:output_type -> google.protobuf.Empty
+	15, // 24: ra.RegistrationAuthority.RevokeCertByKey:output_type -> google.protobuf.Empty
+	15, // 25: ra.RegistrationAuthority.AdministrativelyRevokeCertificate:output_type -> google.protobuf.Empty
+	14, // 26: ra.RegistrationAuthority.NewOrder:output_type -> core.Order
+	14, // 27: ra.RegistrationAuthority.FinalizeOrder:output_type -> core.Order
+	16, // 28: ra.RegistrationAuthority.GenerateOCSP:output_type -> ca.OCSPResponse
+	10, // 29: ra.RegistrationAuthority.UnpauseAccount:output_type -> ra.UnpauseAccountResponse
 	18, // [18:30] is the sub-list for method output_type
 	6,  // [6:18] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name
@@ -975,6 +1028,18 @@ func file_ra_proto_init() {
 				return nil
 			}
 		}
+		file_ra_proto_msgTypes[10].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*UnpauseAccountResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -982,7 +1047,7 @@ func file_ra_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_ra_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
