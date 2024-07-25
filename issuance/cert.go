@@ -49,7 +49,7 @@ type ProfileConfig struct {
 	// OmitKeyEncipherment causes the keyEncipherment bit to be omitted from the
 	// Key Usage field of all certificates (instead of only from ECDSA certs).
 	OmitKeyEncipherment bool
-	// OmitClientAuth causes the id-kp-clientAuth OID (TLS CLient Authentication)
+	// OmitClientAuth causes the id-kp-clientAuth OID (TLS Client Authentication)
 	// to be omitted from the EKU extension.
 	OmitClientAuth bool
 	// OmitSKID causes the Subject Key Identifier extension to be omitted.
