@@ -327,7 +327,7 @@ func NormalizeIdentifiers(identifiers []identifier.ACMEIdentifier) []identifier.
 	}
 
 	sort.Slice(identifiers, func(i, j int) bool {
-		return identifiers[i].Value < identifiers[j].Value
+		return fmt.Sprintf("%s:%s", identifiers[i].Type, identifiers[i].Value) < fmt.Sprintf("%s:%s", identifiers[j].Type, identifiers[j].Value)
 	})
 
 	return slices.Compact(identifiers)
