@@ -1,32 +1,27 @@
-<!doctype html>
-<html dir="ltr" lang="en-US">
-    <header>
-        <title>Unpause - Self-Service Frontend</title>
-        {{ template "meta" }}
-    </header>
-    <body>
-    <div>
+{{ template "header" }}
+
+<div class="section">
+
     {{ if eq .UnpauseSuccessful true }}
-    <h1>Your ACME Account Has Been Unpaused</h1>
 
+    <h1>Account successfully unpaused</h1>
     <p>
-        Your ACME account has been unpaused. To obtain a new certificate,
-        re-attempt issuance with your ACME client. Future repeated validation
-        failures with no successes will result in your account being paused
-        again.
+        To obtain a new certificate, re-attempt issuance with your ACME client.
+        Future repeated validation failures with no successes will result in
+        identifiers being paused again.
     </p>
-    {{ else }} 
-    <h1>Error Occurred While Unpausing Account</h1>
 
-    <p>        
-        An error was encountered when attempting to unpause your account. Please
-        try again later. You may visit our <a
-        href="https://community.letsencrypt.org">community forum</a> and request
-        assistance if the problem persists.
+    {{ else }}
+
+    <h1>An error occurred while unpausing your account</h1>
+    <p>
+        Please try again later. If you face continued difficulties, please visit our <a
+        href="https://community.letsencrypt.org">community support forum</a>
+        for troubleshooting and advice.
     </p>
+
     {{ end }}
 
-    </div>
-</body>
+</div>
 
 {{template "footer"}}
