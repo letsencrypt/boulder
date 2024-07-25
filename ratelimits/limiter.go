@@ -40,22 +40,26 @@ type Limiter struct {
 // NewLimiter returns a new *Limiter. The provided source must be safe for
 // concurrent use.
 func NewLimiter(clk clock.Clock, source source, stats prometheus.Registerer) (*Limiter, error) {
-	limiter := &Limiter{source: source, clk: clk}
-	limiter.spendLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	spendLatency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "ratelimits_spend_latency",
 		Help: fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", Allowed, Denied),
 		// Exponential buckets ranging from 0.0005s to 3s.
 		Buckets: prometheus.ExponentialBuckets(0.0005, 3, 8),
 	}, []string{"limit", "decision"})
-	stats.MustRegister(limiter.spendLatency)
+	stats.MustRegister(spendLatency)
 
-	limiter.overrideUsageGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	overrideUsageGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "ratelimits_override_usage",
 		Help: "Proportion of override limit used, by limit name and bucket key.",
 	}, []string{"limit", "bucket_key"})
-	stats.MustRegister(limiter.overrideUsageGauge)
+	stats.MustRegister(overrideUsageGauge)
 
-	return limiter, nil
+	return &Limiter{
+		source:             source,
+		clk:                clk,
+		spendLatency:       spendLatency,
+		overrideUsageGauge: overrideUsageGauge,
+	}, nil
 }
 
 type Decision struct {
@@ -166,6 +170,8 @@ func (d *batchDecision) merge(in *Decision) {
 //   - Remaining is the smallest value of each across all Decisions, and
 //   - Decisions resulting from spend-only Transactions are never merged.
 func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision, error) {
+	start := l.clk.Now()
+
 	batch, bucketKeys, err := prepareBatch(txns)
 	if err != nil {
 		return nil, err
@@ -183,9 +189,9 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		return nil, err
 	}
 
-	start := l.clk.Now()
 	batchDecision := newBatchDecision()
 	newTATs := make(map[string]time.Time)
+	txnOutcomes := make(map[Transaction]string)
 
 	for _, txn := range batch {
 		tat, exists := tats[txn.bucketKey]
@@ -209,16 +215,25 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		if !txn.spendOnly() {
 			batchDecision.merge(d)
 		}
+
+		txnOutcomes[txn] = Denied
+		if d.Allowed {
+			txnOutcomes[txn] = Allowed
+		}
 	}
 
-	if batchDecision.Allowed {
+	if batchDecision.Allowed && len(newTATs) > 0 {
 		err = l.source.BatchSet(ctx, newTATs)
 		if err != nil {
 			return nil, err
 		}
-		l.spendLatency.WithLabelValues("batch", Allowed).Observe(l.clk.Since(start).Seconds())
-	} else {
-		l.spendLatency.WithLabelValues("batch", Denied).Observe(l.clk.Since(start).Seconds())
+	}
+
+	// Observe latency equally across all transactions in the batch.
+	totalLatency := l.clk.Since(start)
+	perTxnLatency := totalLatency / time.Duration(len(txnOutcomes))
+	for txn, outcome := range txnOutcomes {
+		l.spendLatency.WithLabelValues(txn.limit.name.String(), outcome).Observe(perTxnLatency.Seconds())
 	}
 	return batchDecision.Decision, nil
 }

@@ -554,11 +554,25 @@ type DNSProvider struct {
 	SRVLookup ServiceDomain `validate:"required"`
 }
 
-type UnpauseConfig struct {
-	// HMACKey is a shared symmetric secret used to sign/validate unpause JWTs.
-	// It should be 32 alphanumeric characters, e.g. the output of `openssl rand
-	// -hex 16` to satisfy the go-jose HS256 algorithm implementation. In a
-	// multi-DC deployment this value should be the same across all boulder-wfe
-	// and sfe instances.
-	HMACKey PasswordConfig `validate:"-"`
+// HMACKeyConfig contains a path to a file containing an HMAC key.
+type HMACKeyConfig struct {
+	KeyFile string `validate:"required"`
+}
+
+// Load loads the HMAC key from the file, ensures it is exactly 32 characters
+// in length, and returns it as a byte slice.
+func (hc *HMACKeyConfig) Load() ([]byte, error) {
+	contents, err := os.ReadFile(hc.KeyFile)
+	if err != nil {
+		return nil, err
+	}
+	trimmed := strings.TrimRight(string(contents), "\n")
+
+	if len(trimmed) != 32 {
+		return nil, fmt.Errorf(
+			"validating unpauseHMACKey, length must be 32 alphanumeric characters, got %d",
+			len(trimmed),
+		)
+	}
+	return []byte(trimmed), nil
 }

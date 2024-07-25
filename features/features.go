@@ -98,6 +98,12 @@ type Config struct {
 	//
 	// TODO(#7511): Remove this feature flag.
 	CheckRenewalExemptionAtWFE bool
+
+	// CheckIdentifiersPaused checks if any of the identifiers in the order are
+	// currently paused at NewOrder time. If any are paused, an error is
+	// returned to the Subscriber indicating that the order cannot be processed
+	// until the paused identifiers are unpaused and the order is resubmitted.
+	CheckIdentifiersPaused bool
 }
 
 var fMu = new(sync.RWMutex)

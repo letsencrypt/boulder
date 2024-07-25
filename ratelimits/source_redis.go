@@ -42,10 +42,15 @@ func NewRedisSource(client *redis.Ring, clk clock.Clock, stats prometheus.Regist
 	}
 }
 
+var errMixedSuccess = errors.New("some keys not found")
+
 // resultForError returns a string representing the result of the operation
 // based on the provided error.
 func resultForError(err error) string {
-	if errors.Is(redis.Nil, err) {
+	if errors.Is(errMixedSuccess, err) {
+		// Indicates that some of the keys in a batchset operation were not found.
+		return "mixedSuccess"
+	} else if errors.Is(redis.Nil, err) {
 		// Bucket key does not exist.
 		return "notFound"
 	} else if errors.Is(err, context.DeadlineExceeded) {
@@ -68,6 +73,14 @@ func resultForError(err error) string {
 	return "failed"
 }
 
+func (r *RedisSource) observeLatency(call string, latency time.Duration, err error) {
+	result := "success"
+	if err != nil {
+		result = resultForError(err)
+	}
+	r.latency.With(prometheus.Labels{"call": call, "result": result}).Observe(latency.Seconds())
+}
+
 // BatchSet stores TATs at the specified bucketKeys using a pipelined Redis
 // Transaction in order to reduce the number of round-trips to each Redis shard.
 // An error is returned if the operation failed and nil otherwise.
@@ -80,11 +93,17 @@ func (r *RedisSource) BatchSet(ctx context.Context, buckets map[string]time.Time
 	}
 	_, err := pipeline.Exec(ctx)
 	if err != nil {
-		r.latency.With(prometheus.Labels{"call": "batchset", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
+		r.observeLatency("batchset", r.clk.Since(start), err)
 		return err
 	}
 
-	r.latency.With(prometheus.Labels{"call": "batchset", "result": "success"}).Observe(time.Since(start).Seconds())
+	totalLatency := r.clk.Since(start)
+	perSetLatency := totalLatency / time.Duration(len(buckets))
+	for range buckets {
+		r.observeLatency("batchset_entry", perSetLatency, nil)
+	}
+
+	r.observeLatency("batchset", totalLatency, nil)
 	return nil
 }
 
@@ -98,14 +117,15 @@ func (r *RedisSource) Get(ctx context.Context, bucketKey string) (time.Time, err
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			// Bucket key does not exist.
-			r.latency.With(prometheus.Labels{"call": "get", "result": "notFound"}).Observe(time.Since(start).Seconds())
+			r.observeLatency("get", r.clk.Since(start), err)
 			return time.Time{}, ErrBucketNotFound
 		}
-		r.latency.With(prometheus.Labels{"call": "get", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
+		// An error occurred while retrieving the TAT.
+		r.observeLatency("get", r.clk.Since(start), err)
 		return time.Time{}, err
 	}
 
-	r.latency.With(prometheus.Labels{"call": "get", "result": "success"}).Observe(time.Since(start).Seconds())
+	r.observeLatency("get", r.clk.Since(start), nil)
 	return time.Unix(0, tatNano).UTC(), nil
 }
 
@@ -121,28 +141,44 @@ func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[st
 		pipeline.Get(ctx, bucketKey)
 	}
 	results, err := pipeline.Exec(ctx)
-	if err != nil {
-		r.latency.With(prometheus.Labels{"call": "batchget", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
-		if !errors.Is(err, redis.Nil) {
-			return nil, err
-		}
+	if err != nil && !errors.Is(err, redis.Nil) {
+		r.observeLatency("batchget", r.clk.Since(start), err)
+		return nil, err
 	}
 
+	totalLatency := r.clk.Since(start)
+	perEntryLatency := totalLatency / time.Duration(len(bucketKeys))
+
 	tats := make(map[string]time.Time, len(bucketKeys))
+	notFoundCount := 0
 	for i, result := range results {
 		tatNano, err := result.(*redis.StringCmd).Int64()
 		if err != nil {
-			if errors.Is(err, redis.Nil) {
-				// Bucket key does not exist.
-				continue
+			if !errors.Is(err, redis.Nil) {
+				// This should never happen as any errors should have been
+				// caught after the pipeline.Exec() call.
+				r.observeLatency("batchget", r.clk.Since(start), err)
+				return nil, err
 			}
-			r.latency.With(prometheus.Labels{"call": "batchget", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
-			return nil, err
+			// Bucket key does not exist.
+			r.observeLatency("batchget_entry", perEntryLatency, err)
+			notFoundCount++
+			continue
 		}
 		tats[bucketKeys[i]] = time.Unix(0, tatNano).UTC()
+		r.observeLatency("batchget_entry", perEntryLatency, nil)
 	}
 
-	r.latency.With(prometheus.Labels{"call": "batchget", "result": "success"}).Observe(time.Since(start).Seconds())
+	var batchErr error
+	if notFoundCount < len(results) {
+		// Some keys were not found.
+		batchErr = errMixedSuccess
+	} else if notFoundCount == len(results) {
+		// All keys were not found.
+		batchErr = redis.Nil
+	}
+
+	r.observeLatency("batchget", totalLatency, batchErr)
 	return tats, nil
 }
 
@@ -154,11 +190,11 @@ func (r *RedisSource) Delete(ctx context.Context, bucketKey string) error {
 
 	err := r.client.Del(ctx, bucketKey).Err()
 	if err != nil {
-		r.latency.With(prometheus.Labels{"call": "delete", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
+		r.observeLatency("delete", r.clk.Since(start), err)
 		return err
 	}
 
-	r.latency.With(prometheus.Labels{"call": "delete", "result": "success"}).Observe(time.Since(start).Seconds())
+	r.observeLatency("delete", r.clk.Since(start), nil)
 	return nil
 }
 
@@ -171,9 +207,10 @@ func (r *RedisSource) Ping(ctx context.Context) error {
 		return shard.Ping(ctx).Err()
 	})
 	if err != nil {
-		r.latency.With(prometheus.Labels{"call": "ping", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
+		r.observeLatency("ping", r.clk.Since(start), err)
 		return err
 	}
-	r.latency.With(prometheus.Labels{"call": "ping", "result": "success"}).Observe(time.Since(start).Seconds())
+
+	r.observeLatency("ping", r.clk.Since(start), nil)
 	return nil
 }

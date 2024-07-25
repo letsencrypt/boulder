@@ -2098,7 +2098,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		authzMapPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
 			Domains:        cert.DNSNames,
-			Now:            timestamppb.New(ra.clk.Now()),
+			ValidUntil:     timestamppb.New(ra.clk.Now()),
 		})
 		if err != nil {
 			return nil, err
@@ -2526,7 +2526,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	getAuthReq := &sapb.GetAuthorizationsRequest{
 		RegistrationID: newOrder.RegistrationID,
-		Now:            timestamppb.New(authzExpiryCutoff),
+		ValidUntil:     timestamppb.New(authzExpiryCutoff),
 		Domains:        newOrder.Names,
 	}
 	existingAuthz, err := ra.SA.GetAuthorizations2(ctx, getAuthReq)

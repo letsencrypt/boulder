@@ -783,7 +783,7 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 // provided. If both a valid and pending authorization exist only the valid one will be returned.
 func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if len(req.Domains) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.Now) {
+	if len(req.Domains) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.ValidUntil) {
 		return nil, errIncompleteRequest
 	}
 	var authzModels []authzModel
@@ -791,7 +791,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		req.RegistrationID,
 		statusUint(core.StatusValid),
 		statusUint(core.StatusPending),
-		req.Now.AsTime(),
+		req.ValidUntil.AsTime(),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 
@@ -991,7 +991,7 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 // only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if len(req.Domains) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.Now) {
+	if len(req.Domains) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.ValidUntil) {
 		return nil, errIncompleteRequest
 	}
 
@@ -1009,7 +1009,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 	params := []interface{}{
 		req.RegistrationID,
 		statusUint(core.StatusValid),
-		req.Now.AsTime(),
+		req.ValidUntil.AsTime(),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 	for _, domain := range req.Domains {
