@@ -399,7 +399,7 @@ func (sa *StorageAuthorityReadOnly) GetOrder(_ context.Context, req *sapb.OrderR
 		V2Authorizations:       []int64{1},
 		CertificateSerial:      "serial",
 		Error:                  nil,
-		CertificateProfileName: "defaultBoulderCertificateProfile",
+		CertificateProfileName: "default",
 	}
 
 	// Order ID doesn't have a certificate serial yet
