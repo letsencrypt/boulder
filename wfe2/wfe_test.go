@@ -388,11 +388,15 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	txnBuilder, err := ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
 	test.AssertNotError(t, err, "making transaction composer")
 
-	var signer unpause.JWTSigner
+	var unpauseSigner unpause.JWTSigner
+	var unpauseLifetime time.Duration
+	var unpauseURL string
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		features.Set(features.Config{CheckRenewalExemptionAtWFE: true})
-		signer, err = unpause.NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})
+		unpauseSigner, err = unpause.NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})
 		test.AssertNotError(t, err, "making unpause signer")
+		unpauseLifetime = time.Hour * 24 * 14
+		unpauseURL = "https://boulder.service.consul:4003"
 	}
 
 	wfe, err := NewWebFrontEndImpl(
@@ -416,9 +420,9 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		txnBuilder,
 		100,
 		nil,
-		signer,
-		time.Hour*24*14,
-		"https://boulder.service.consul:4003",
+		unpauseSigner,
+		unpauseLifetime,
+		unpauseURL,
 	)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
