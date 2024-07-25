@@ -26,6 +26,7 @@ import (
 	"unicode"
 
 	"github.com/go-jose/go-jose/v4"
+	"github.com/letsencrypt/boulder/identifier"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -313,6 +314,26 @@ func UniqueLowerNames(names []string) (unique []string) {
 		unique = append(unique, name)
 	}
 	sort.Strings(unique)
+	return
+}
+
+// UniqueLowerACMEIdentifiers returns the set of all unique ACME identifiers in
+// the input after all of them are lowercased. The returned identifier values
+// will be in their lowercased form.
+func UniqueLowerACMEIdentifiers(identifiers []identifier.ACMEIdentifier) (unique []identifier.ACMEIdentifier) {
+	identifierMap := make(map[identifier.ACMEIdentifier]struct{}, len(identifiers))
+	for _, id := range identifiers {
+		lowercasedID := identifier.ACMEIdentifier{
+			Type:  id.Type,
+			Value: strings.ToLower(id.Value),
+		}
+		identifierMap[lowercasedID] = struct{}{}
+	}
+
+	unique = make([]identifier.ACMEIdentifier, 0, len(identifierMap))
+	for id := range identifierMap {
+		unique = append(unique, id)
+	}
 	return
 }
 

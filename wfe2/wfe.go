@@ -2211,30 +2211,19 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 	return nil
 }
 
-func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, identifiers []identifier.ACMEIdentifier, uniqueNames []string, regID int64) ([]string, error) {
-	identifierMap := make(map[string]identifier.ACMEIdentifier)
-	for _, ident := range identifiers {
-		identifierMap[ident.Value] = ident
+func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIdentifiers []identifier.ACMEIdentifier, regID int64) ([]string, error) {
+	uniqueOrderIdentifiers := core.UniqueLowerACMEIdentifiers(orderIdentifiers)
+	var identifiers []*sapb.Identifier
+	for _, ident := range uniqueOrderIdentifiers {
+		identifiers = append(identifiers, &sapb.Identifier{
+			Type:  string(ident.Type),
+			Value: ident.Value,
+		})
 	}
 
-	uniqueIdentifiers := make([]*sapb.Identifier, 0, len(uniqueNames))
-	for _, name := range uniqueNames {
-		ident, exists := identifierMap[name]
-		if exists {
-			uniqueIdentifiers = append(
-				uniqueIdentifiers,
-				&sapb.Identifier{Type: string(ident.Type), Value: ident.Value},
-			)
-		} else {
-			// This should never happen.
-			return nil, fmt.Errorf("identifier %q not found in identifiers list", name)
-		}
-	}
-
-	// Check if any of the requested identifiers are paused.
 	paused, err := wfe.sa.CheckIdentifiersPaused(ctx, &sapb.PauseRequest{
 		RegistrationID: regID,
-		Identifiers:    uniqueIdentifiers,
+		Identifiers:    identifiers,
 	})
 	if err != nil {
 		return nil, err
@@ -2249,6 +2238,7 @@ func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, identifi
 	for _, ident := range paused.Identifiers {
 		pausedValues = append(pausedValues, ident.Value)
 	}
+
 	return pausedValues, nil
 }
 
@@ -2328,7 +2318,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	logEvent.DNSNames = names
 
 	if features.Get().CheckIdentifiersPaused {
-		pausedValues, err := wfe.checkIdentifiersPaused(ctx, newOrderRequest.Identifiers, names, acct.ID)
+		pausedValues, err := wfe.checkIdentifiersPaused(ctx, newOrderRequest.Identifiers, acct.ID)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Failure while checking pause status of identifiers"), err)
 			return

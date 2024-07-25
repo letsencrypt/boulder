@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -248,6 +249,32 @@ func TestUniqueLowerNames(t *testing.T) {
 	u := UniqueLowerNames([]string{"foobar.com", "fooBAR.com", "baz.com", "foobar.com", "bar.com", "bar.com", "a.com"})
 	sort.Strings(u)
 	test.AssertDeepEquals(t, []string{"a.com", "bar.com", "baz.com", "foobar.com"}, u)
+}
+
+func TestUniqueLowerACMEIdentifiers(t *testing.T) {
+	identifiers := []identifier.ACMEIdentifier{
+		{Type: "DNS", Value: "foobar.com"},
+		{Type: "DNS", Value: "fooBAR.com"},
+		{Type: "DNS", Value: "baz.com"},
+		{Type: "DNS", Value: "foobar.com"},
+		{Type: "DNS", Value: "bar.com"},
+		{Type: "DNS", Value: "bar.com"},
+		{Type: "DNS", Value: "a.com"},
+	}
+	expected := []identifier.ACMEIdentifier{
+		{Type: "DNS", Value: "a.com"},
+		{Type: "DNS", Value: "bar.com"},
+		{Type: "DNS", Value: "baz.com"},
+		{Type: "DNS", Value: "foobar.com"},
+	}
+	u := UniqueLowerACMEIdentifiers(identifiers)
+	sort.Slice(u, func(i, j int) bool {
+		if u[i].Type == u[j].Type {
+			return u[i].Value < u[j].Value
+		}
+		return u[i].Type < u[j].Type
+	})
+	test.AssertDeepEquals(t, expected, u)
 }
 
 func TestValidSerial(t *testing.T) {
