@@ -554,7 +554,9 @@ type DNSProvider struct {
 	SRVLookup ServiceDomain `validate:"required"`
 }
 
-// HMACKeyConfig contains a path to a file containing an HMAC key.
+// HMACKeyConfig specifies a path to a file containing an HMAC key. The key must
+// consist of 256 bits of random data to be suitable for use as a 256-bit
+// hashing key (e.g., the output of `openssl rand -hex 32`).
 type HMACKeyConfig struct {
 	KeyFile string `validate:"required"`
 }

@@ -76,6 +76,8 @@ type Config struct {
 		// an HMAC-SHA256 key (e.g. the output of `openssl rand -hex 32`). In a
 		// multi-DC deployment this value should be the same across all
 		// boulder-wfe and nonce-service instances.
+		//
+		// TODO(#7632) Update this to use the new HMACKeyConfig.
 		NoncePrefixKey cmd.PasswordConfig `validate:"-"`
 
 		// Chains is a list of lists of certificate filenames. Each inner list is
