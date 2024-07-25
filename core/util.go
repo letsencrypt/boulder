@@ -20,6 +20,7 @@ import (
 	"path"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -317,24 +318,19 @@ func UniqueLowerNames(names []string) (unique []string) {
 	return
 }
 
-// UniqueLowerACMEIdentifiers returns the set of all unique ACME identifiers in
-// the input after all of them are lowercased. The returned identifier values
-// will be in their lowercased form.
-func UniqueLowerACMEIdentifiers(identifiers []identifier.ACMEIdentifier) (unique []identifier.ACMEIdentifier) {
-	identifierMap := make(map[identifier.ACMEIdentifier]struct{}, len(identifiers))
-	for _, id := range identifiers {
-		lowercasedID := identifier.ACMEIdentifier{
-			Type:  id.Type,
-			Value: strings.ToLower(id.Value),
-		}
-		identifierMap[lowercasedID] = struct{}{}
+// NormalizeIdentifiers returns the set of all unique ACME identifiers in the
+// input after all of them are lowercased. The returned identifier values will
+// be in their lowercased form and sorted alphabetically by value.
+func NormalizeIdentifiers(identifiers []identifier.ACMEIdentifier) []identifier.ACMEIdentifier {
+	for i := range identifiers {
+		identifiers[i].Value = strings.ToLower(identifiers[i].Value)
 	}
 
-	unique = make([]identifier.ACMEIdentifier, 0, len(identifierMap))
-	for id := range identifierMap {
-		unique = append(unique, id)
-	}
-	return
+	sort.Slice(identifiers, func(i, j int) bool {
+		return identifiers[i].Value < identifiers[j].Value
+	})
+
+	return slices.Compact(identifiers)
 }
 
 // HashNames returns a hash of the names requested. This is intended for use

@@ -167,7 +167,7 @@ type WebFrontEndImpl struct {
 
 	unpauseSigner      unpause.JWTSigner
 	unpauseJWTLifetime time.Duration
-	sfeURL             string
+	unpauseURL         string
 
 	// certProfiles is a map of acceptable certificate profile names to
 	// descriptions (perhaps including URLs) of those profiles. NewOrder
@@ -240,7 +240,7 @@ func NewWebFrontEndImpl(
 		certProfiles:                 certProfiles,
 		unpauseSigner:                unpauseSigner,
 		unpauseJWTLifetime:           unpauseJWTLifetime,
-		sfeURL:                       unpauseURL,
+		unpauseURL:                   unpauseURL,
 	}
 
 	return wfe, nil
@@ -2213,7 +2213,7 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 }
 
 func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIdentifiers []identifier.ACMEIdentifier, regID int64) ([]string, error) {
-	uniqueOrderIdentifiers := core.UniqueLowerACMEIdentifiers(orderIdentifiers)
+	uniqueOrderIdentifiers := core.NormalizeIdentifiers(orderIdentifiers)
 	var identifiers []*sapb.Identifier
 	for _, ident := range uniqueOrderIdentifiers {
 		identifiers = append(identifiers, &sapb.Identifier{
@@ -2332,7 +2332,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			msg := fmt.Sprintf(
 				"Your account is temporarily prevented from requesting certificates for %s and possibly others. Please visit: %s",
 				strings.Join(pausedValues, ", "),
-				fmt.Sprintf("%s%s?jwt=%s", wfe.sfeURL, unpause.GetForm, jwt),
+				fmt.Sprintf("%s%s?jwt=%s", wfe.unpauseURL, unpause.GetForm, jwt),
 			)
 			wfe.sendError(response, logEvent, probs.Paused(msg), nil)
 			return

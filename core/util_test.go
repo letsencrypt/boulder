@@ -251,7 +251,7 @@ func TestUniqueLowerNames(t *testing.T) {
 	test.AssertDeepEquals(t, []string{"a.com", "bar.com", "baz.com", "foobar.com"}, u)
 }
 
-func TestUniqueLowerACMEIdentifiers(t *testing.T) {
+func TestNormalizeIdentifiers(t *testing.T) {
 	identifiers := []identifier.ACMEIdentifier{
 		{Type: "DNS", Value: "foobar.com"},
 		{Type: "DNS", Value: "fooBAR.com"},
@@ -267,13 +267,7 @@ func TestUniqueLowerACMEIdentifiers(t *testing.T) {
 		{Type: "DNS", Value: "baz.com"},
 		{Type: "DNS", Value: "foobar.com"},
 	}
-	u := UniqueLowerACMEIdentifiers(identifiers)
-	sort.Slice(u, func(i, j int) bool {
-		if u[i].Type == u[j].Type {
-			return u[i].Value < u[j].Value
-		}
-		return u[i].Type < u[j].Type
-	})
+	u := NormalizeIdentifiers(identifiers)
 	test.AssertDeepEquals(t, expected, u)
 }
 
