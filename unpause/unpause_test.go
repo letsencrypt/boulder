@@ -6,12 +6,19 @@ import (
 
 	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/test"
 )
 
 func TestUnpauseJWT(t *testing.T) {
 	fc := clock.NewFake()
-	hmacKey := []byte("pcl04dl3tt3rb1gb4dd4db0d34ts000p")
+
+	signer, err := NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})
+	test.AssertNotError(t, err, "unexpected error from NewJWTSigner()")
+
+	config := cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"}
+	hmacKey, err := config.Load()
+	test.AssertNotError(t, err, "unexpected error from Load()")
 
 	type args struct {
 		key         []byte
@@ -100,8 +107,8 @@ func TestUnpauseJWT(t *testing.T) {
 				clk:         fc,
 			},
 			want:               JWTClaims{},
-			wantGenerateJWTErr: true,
-			wantRedeemJWTErr:   false,
+			wantGenerateJWTErr: false,
+			wantRedeemJWTErr:   true,
 		},
 		{
 			name: "invalid no identifiers",
@@ -121,7 +128,7 @@ func TestUnpauseJWT(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			token, err := GenerateJWT(tt.args.key, tt.args.account, tt.args.identifiers, tt.args.lifetime, tt.args.clk)
+			token, err := GenerateJWT(signer, tt.args.account, tt.args.identifiers, tt.args.lifetime, tt.args.clk)
 			if tt.wantGenerateJWTErr {
 				test.AssertError(t, err, "expected error from GenerateJWT()")
 				return

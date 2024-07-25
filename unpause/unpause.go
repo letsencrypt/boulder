@@ -10,6 +10,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/cmd"
 )
 
 const (
@@ -24,6 +25,20 @@ const (
 	defaultIssuer   = "WFE"
 	defaultAudience = "SFE Unpause"
 )
+
+// JWTSigner is a type alias for jose.Signer. To create a JWTSigner instance,
+// use the NewJWTSigner function provided in this package.
+type JWTSigner = jose.Signer
+
+// NewJWTSigner loads the HMAC key from the provided configuration and returns a
+// new JWT signer.
+func NewJWTSigner(hmacKey cmd.HMACKeyConfig) (JWTSigner, error) {
+	key, err := hmacKey.Load()
+	if err != nil {
+		return nil, err
+	}
+	return jose.NewSigner(jose.SigningKey{Algorithm: jose.HS256, Key: key}, nil)
+}
 
 // JWTClaims represents the claims of a JWT token issued by the WFE for
 // redemption by the SFE. The following claims required for unpausing:
@@ -42,12 +57,7 @@ type JWTClaims struct {
 }
 
 // GenerateJWT generates a serialized unpause JWT with the provided claims.
-func GenerateJWT(key []byte, regID int64, identifiers []string, lifetime time.Duration, clk clock.Clock) (string, error) {
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.HS256, Key: key}, nil)
-	if err != nil {
-		return "", fmt.Errorf("creating signer: %s", err)
-	}
-
+func GenerateJWT(signer JWTSigner, regID int64, identifiers []string, lifetime time.Duration, clk clock.Clock) (string, error) {
 	claims := JWTClaims{
 		Claims: jwt.Claims{
 			Issuer:   defaultIssuer,

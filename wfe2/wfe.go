@@ -165,7 +165,7 @@ type WebFrontEndImpl struct {
 	txnBuilder                   *ratelimits.TransactionBuilder
 	maxNames                     int
 
-	unpauseHMACKey     []byte
+	unpauseSigner      unpause.JWTSigner
 	unpauseJWTLifetime time.Duration
 	sfeURL             string
 
@@ -197,9 +197,9 @@ func NewWebFrontEndImpl(
 	txnBuilder *ratelimits.TransactionBuilder,
 	maxNames int,
 	certProfiles map[string]string,
-	unpauseHMACKey []byte,
+	unpauseSigner unpause.JWTSigner,
 	unpauseJWTLifetime time.Duration,
-	sfeURL string,
+	unpauseURL string,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
@@ -238,9 +238,9 @@ func NewWebFrontEndImpl(
 		txnBuilder:                   txnBuilder,
 		maxNames:                     maxNames,
 		certProfiles:                 certProfiles,
-		unpauseHMACKey:               unpauseHMACKey,
+		unpauseSigner:                unpauseSigner,
 		unpauseJWTLifetime:           unpauseJWTLifetime,
-		sfeURL:                       sfeURL,
+		sfeURL:                       unpauseURL,
 	}
 
 	return wfe, nil
@@ -2334,7 +2334,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			return
 		}
 		if len(pausedValues) > 0 {
-			jwt, err := unpause.GenerateJWT(wfe.unpauseHMACKey, acct.ID, pausedValues, wfe.unpauseJWTLifetime, wfe.clk)
+			jwt, err := unpause.GenerateJWT(wfe.unpauseSigner, acct.ID, pausedValues, wfe.unpauseJWTLifetime, wfe.clk)
 			if err != nil {
 				wfe.sendError(response, logEvent, probs.ServerInternal("Error generating JWT for self-service unpause"), err)
 			}

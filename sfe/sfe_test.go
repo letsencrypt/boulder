@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
@@ -111,8 +112,6 @@ func mustParseURL(s string) *url.URL {
 	return must.Do(url.Parse(s))
 }
 
-const hmacKey = "pcl04dl3tt3rb1gb4dd4db0d34ts000p"
-
 func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 	features.Reset()
 
@@ -124,6 +123,10 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 
 	mockSA := mocks.NewStorageAuthorityReadOnly(fc)
 
+	hmacKey := cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"}
+	key, err := hmacKey.Load()
+	test.AssertNotError(t, err, "Unable to load HMAC key")
+
 	sfe, err := NewSelfServiceFrontEndImpl(
 		stats,
 		fc,
@@ -131,7 +134,7 @@ func setupSFE(t *testing.T) (SelfServiceFrontEndImpl, clock.FakeClock) {
 		10*time.Second,
 		&MockRegistrationAuthority{},
 		mockSA,
-		[]byte(hmacKey),
+		key,
 	)
 	test.AssertNotError(t, err, "Unable to create SFE")
 
@@ -187,7 +190,9 @@ func TestUnpausePaths(t *testing.T) {
 	test.AssertContains(t, responseWriter.Body.String(), "error was encountered when attempting to unpause your account")
 
 	// GET with a valid JWT
-	validJWT, err := unpause.GenerateJWT([]byte(hmacKey), 1234567890, []string{"example.com"}, time.Hour, fc)
+	unpauseSigner, err := unpause.NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})
+	test.AssertNotError(t, err, "Should have been able to create JWT signer, but could not")
+	validJWT, err := unpause.GenerateJWT(unpauseSigner, 1234567890, []string{"example.com"}, time.Hour, fc)
 	test.AssertNotError(t, err, "Should have been able to create JWT, but could not")
 	responseWriter = httptest.NewRecorder()
 	sfe.UnpauseForm(responseWriter, &http.Request{
