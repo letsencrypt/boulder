@@ -29,10 +29,8 @@
 			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
-		"unpause": {
-			"hmacKey": {
-				"passwordFile": "test/secrets/sfe_unpause_key"
-			}
+		"unpauseHMACKey": {
+			"keyFile": "test/secrets/sfe_unpause_key"
 		},
 		"features": {}
 	},

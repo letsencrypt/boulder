@@ -217,6 +217,15 @@ func RateLimited(detail string) *ProblemDetails {
 	}
 }
 
+// Paused returns a ProblemDetails representing a RateLimitedProblem error
+func Paused(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       RateLimitedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusTooManyRequests,
+	}
+}
+
 // RejectedIdentifier returns a ProblemDetails with a RejectedIdentifierProblem and a 400 Bad
 // Request status code.
 func RejectedIdentifier(detail string) *ProblemDetails {

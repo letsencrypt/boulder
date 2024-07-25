@@ -59,6 +59,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	inmemnonce "github.com/letsencrypt/boulder/test/inmem/nonce"
+	"github.com/letsencrypt/boulder/unpause"
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -387,6 +388,17 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	txnBuilder, err := ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
 	test.AssertNotError(t, err, "making transaction composer")
 
+	var unpauseSigner unpause.JWTSigner
+	var unpauseLifetime time.Duration
+	var unpauseURL string
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		features.Set(features.Config{CheckRenewalExemptionAtWFE: true})
+		unpauseSigner, err = unpause.NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})
+		test.AssertNotError(t, err, "making unpause signer")
+		unpauseLifetime = time.Hour * 24 * 14
+		unpauseURL = "https://boulder.service.consul:4003"
+	}
+
 	wfe, err := NewWebFrontEndImpl(
 		stats,
 		fc,
@@ -408,6 +420,9 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		txnBuilder,
 		100,
 		nil,
+		unpauseSigner,
+		unpauseLifetime,
+		unpauseURL,
 	)
 	test.AssertNotError(t, err, "Unable to create WFE")
 

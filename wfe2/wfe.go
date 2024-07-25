@@ -42,6 +42,7 @@ import (
 	"github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/letsencrypt/boulder/unpause"
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -164,6 +165,10 @@ type WebFrontEndImpl struct {
 	txnBuilder                   *ratelimits.TransactionBuilder
 	maxNames                     int
 
+	unpauseSigner      unpause.JWTSigner
+	unpauseJWTLifetime time.Duration
+	unpauseURL         string
+
 	// certProfiles is a map of acceptable certificate profile names to
 	// descriptions (perhaps including URLs) of those profiles. NewOrder
 	// Requests with a profile name not present in this map will be rejected.
@@ -192,6 +197,9 @@ func NewWebFrontEndImpl(
 	txnBuilder *ratelimits.TransactionBuilder,
 	maxNames int,
 	certProfiles map[string]string,
+	unpauseSigner unpause.JWTSigner,
+	unpauseJWTLifetime time.Duration,
+	unpauseURL string,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
@@ -230,6 +238,9 @@ func NewWebFrontEndImpl(
 		txnBuilder:                   txnBuilder,
 		maxNames:                     maxNames,
 		certProfiles:                 certProfiles,
+		unpauseSigner:                unpauseSigner,
+		unpauseJWTLifetime:           unpauseJWTLifetime,
+		unpauseURL:                   unpauseURL,
 	}
 
 	return wfe, nil
@@ -2201,6 +2212,37 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 	return nil
 }
 
+func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIdentifiers []identifier.ACMEIdentifier, regID int64) ([]string, error) {
+	uniqueOrderIdentifiers := core.NormalizeIdentifiers(orderIdentifiers)
+	var identifiers []*sapb.Identifier
+	for _, ident := range uniqueOrderIdentifiers {
+		identifiers = append(identifiers, &sapb.Identifier{
+			Type:  string(ident.Type),
+			Value: ident.Value,
+		})
+	}
+
+	paused, err := wfe.sa.CheckIdentifiersPaused(ctx, &sapb.PauseRequest{
+		RegistrationID: regID,
+		Identifiers:    identifiers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(paused.Identifiers) <= 0 {
+		// No identifiers are paused.
+		return nil, nil
+	}
+
+	// At least one of the requested identifiers is paused.
+	pausedValues := make([]string, 0, len(paused.Identifiers))
+	for _, ident := range paused.Identifiers {
+		pausedValues = append(pausedValues, ident.Value)
+	}
+
+	return pausedValues, nil
+}
+
 // NewOrder is used by clients to create a new order object and a set of
 // authorizations to fulfill for issuance.
 func (wfe *WebFrontEndImpl) NewOrder(
@@ -2275,6 +2317,27 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	logEvent.DNSNames = names
+
+	if features.Get().CheckIdentifiersPaused {
+		pausedValues, err := wfe.checkIdentifiersPaused(ctx, newOrderRequest.Identifiers, acct.ID)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Failure while checking pause status of identifiers"), err)
+			return
+		}
+		if len(pausedValues) > 0 {
+			jwt, err := unpause.GenerateJWT(wfe.unpauseSigner, acct.ID, pausedValues, wfe.unpauseJWTLifetime, wfe.clk)
+			if err != nil {
+				wfe.sendError(response, logEvent, probs.ServerInternal("Error generating JWT for self-service unpause"), err)
+			}
+			msg := fmt.Sprintf(
+				"Your account is temporarily prevented from requesting certificates for %s and possibly others. Please visit: %s",
+				strings.Join(pausedValues, ", "),
+				fmt.Sprintf("%s%s?jwt=%s", wfe.unpauseURL, unpause.GetForm, jwt),
+			)
+			wfe.sendError(response, logEvent, probs.Paused(msg), nil)
+			return
+		}
+	}
 
 	var replaces string
 	var isARIRenewal bool

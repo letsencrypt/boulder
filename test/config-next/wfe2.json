@@ -129,11 +129,19 @@
 		"features": {
 			"ServeRenewalInfo": true,
 			"TrackReplacementCertificatesARI": true,
-			"CheckRenewalExemptionAtWFE": true
+			"CheckRenewalExemptionAtWFE": true,
+			"CheckIdentifiersPaused": true
 		},
 		"certProfiles": {
 			"legacy": "The normal profile you know and love",
 			"modern": "Profile 2: Electric Boogaloo"
+		},
+		"unpause": {
+			"hmacKey": {
+				"keyFile": "test/secrets/sfe_unpause_key"
+			},
+			"jwtLifetime": "336h",
+			"url": "https://boulder.service.consul:4003"
 		}
 	},
 	"syslog": {
