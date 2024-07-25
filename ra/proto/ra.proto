@@ -20,7 +20,7 @@ service RegistrationAuthority {
   rpc FinalizeOrder(FinalizeOrderRequest) returns (core.Order) {}
   // Generate an OCSP response based on the DB's current status and reason code.
   rpc GenerateOCSP(GenerateOCSPRequest) returns (ca.OCSPResponse) {}
-  rpc UnpauseAccount(UnpauseAccountRequest) returns (google.protobuf.Empty) {}
+  rpc UnpauseAccount(UnpauseAccountRequest) returns (UnpauseAccountResponse) {}
 }
 
 message GenerateOCSPRequest {
@@ -90,4 +90,11 @@ message UnpauseAccountRequest {
 
   // The registrationID to be unpaused so issuance can be resumed.
   int64 registrationID = 1;
+}
+
+message UnpauseAccountResponse {
+  // Next unused field number: 2
+
+  // Count is the number of identifiers which were unpaused for the input regid.
+  int64 count = 1;
 }

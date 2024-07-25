@@ -52,7 +52,7 @@ type RegistrationAuthorityClient interface {
 	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	// Generate an OCSP response based on the DB's current status and reason code.
 	GenerateOCSP(ctx context.Context, in *GenerateOCSPRequest, opts ...grpc.CallOption) (*proto1.OCSPResponse, error)
-	UnpauseAccount(ctx context.Context, in *UnpauseAccountRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	UnpauseAccount(ctx context.Context, in *UnpauseAccountRequest, opts ...grpc.CallOption) (*UnpauseAccountResponse, error)
 }
 
 type registrationAuthorityClient struct {
@@ -173,9 +173,9 @@ func (c *registrationAuthorityClient) GenerateOCSP(ctx context.Context, in *Gene
 	return out, nil
 }
 
-func (c *registrationAuthorityClient) UnpauseAccount(ctx context.Context, in *UnpauseAccountRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *registrationAuthorityClient) UnpauseAccount(ctx context.Context, in *UnpauseAccountRequest, opts ...grpc.CallOption) (*UnpauseAccountResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
+	out := new(UnpauseAccountResponse)
 	err := c.cc.Invoke(ctx, RegistrationAuthority_UnpauseAccount_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -199,7 +199,7 @@ type RegistrationAuthorityServer interface {
 	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*proto.Order, error)
 	// Generate an OCSP response based on the DB's current status and reason code.
 	GenerateOCSP(context.Context, *GenerateOCSPRequest) (*proto1.OCSPResponse, error)
-	UnpauseAccount(context.Context, *UnpauseAccountRequest) (*emptypb.Empty, error)
+	UnpauseAccount(context.Context, *UnpauseAccountRequest) (*UnpauseAccountResponse, error)
 	mustEmbedUnimplementedRegistrationAuthorityServer()
 }
 
@@ -240,7 +240,7 @@ func (UnimplementedRegistrationAuthorityServer) FinalizeOrder(context.Context, *
 func (UnimplementedRegistrationAuthorityServer) GenerateOCSP(context.Context, *GenerateOCSPRequest) (*proto1.OCSPResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GenerateOCSP not implemented")
 }
-func (UnimplementedRegistrationAuthorityServer) UnpauseAccount(context.Context, *UnpauseAccountRequest) (*emptypb.Empty, error) {
+func (UnimplementedRegistrationAuthorityServer) UnpauseAccount(context.Context, *UnpauseAccountRequest) (*UnpauseAccountResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UnpauseAccount not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) mustEmbedUnimplementedRegistrationAuthorityServer() {}
