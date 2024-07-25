@@ -127,14 +127,12 @@ type certificateAuthorityImpl struct {
 	issuers      issuerMaps
 	certProfiles certProfilesMaps
 
-	prefix         int // Prepended to the serial number
-	validityPeriod time.Duration
-	backdate       time.Duration
-	maxNames       int
-	keyPolicy      goodkey.KeyPolicy
-	clk            clock.Clock
-	log            blog.Logger
-	metrics        *caMetrics
+	prefix    int // Prepended to the serial number
+	maxNames  int
+	keyPolicy goodkey.KeyPolicy
+	clk       clock.Clock
+	log       blog.Logger
+	metrics   *caMetrics
 }
 
 var _ capb.CertificateAuthorityServer = (*certificateAuthorityImpl)(nil)
@@ -246,8 +244,6 @@ func NewCertificateAuthorityImpl(
 	defaultCertProfileName string,
 	certificateProfiles map[string]issuance.ProfileConfig,
 	lints lint.Registry,
-	certExpiry time.Duration,
-	certBackdate time.Duration,
 	serialPrefix int,
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
@@ -257,13 +253,6 @@ func NewCertificateAuthorityImpl(
 ) (*certificateAuthorityImpl, error) {
 	var ca *certificateAuthorityImpl
 	var err error
-
-	// TODO(briansmith): Make the backdate setting mandatory after the
-	// production ca.json has been updated to include it. Until then, manually
-	// default to 1h, which is the backdating duration we currently use.
-	if certBackdate == 0 {
-		certBackdate = time.Hour
-	}
 
 	if serialPrefix < 1 || serialPrefix > 127 {
 		err = errors.New("serial prefix must be between 1 and 127")
@@ -285,18 +274,16 @@ func NewCertificateAuthorityImpl(
 	}
 
 	ca = &certificateAuthorityImpl{
-		sa:             sa,
-		pa:             pa,
-		issuers:        issuers,
-		certProfiles:   certProfiles,
-		validityPeriod: certExpiry,
-		backdate:       certBackdate,
-		prefix:         serialPrefix,
-		maxNames:       maxNames,
-		keyPolicy:      keyPolicy,
-		log:            logger,
-		metrics:        metrics,
-		clk:            clk,
+		sa:           sa,
+		pa:           pa,
+		issuers:      issuers,
+		certProfiles: certProfiles,
+		prefix:       serialPrefix,
+		maxNames:     maxNames,
+		keyPolicy:    keyPolicy,
+		log:          logger,
+		metrics:      metrics,
+		clk:          clk,
 	}
 
 	return ca, nil
@@ -320,16 +307,29 @@ var ocspStatusToCode = map[string]int{
 // [issuance cycle]: https://github.com/letsencrypt/boulder/blob/main/docs/ISSUANCE-CYCLE.md
 func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
-	// issueReq.CertProfileName may be empty and will be populated in
-	// issuePrecertificateInner if so.
 	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID) {
 		return nil, berrors.InternalServerError("Incomplete issue certificate request")
 	}
 
-	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
+	// The CA must check if it is capable of issuing for the given certificate
+	// profile name. The name is checked here instead of the hash because the RA
+	// is unaware of what certificate profiles exist. Pre-existing orders stored
+	// in the database may not have an associated certificate profile name and
+	// will take the default name stored alongside the map.
+	if issueReq.CertProfileName == "" {
+		issueReq.CertProfileName = ca.certProfiles.defaultName
+	}
+	certProfile, ok := ca.certProfiles.profileByName[issueReq.CertProfileName]
+	if !ok {
+		return nil, fmt.Errorf("the CA is incapable of using a profile named %s", issueReq.CertProfileName)
+	}
+
+	serialBigInt, err := ca.generateSerialNumber()
 	if err != nil {
 		return nil, err
 	}
+
+	notBefore, notAfter := certProfile.profile.GenerateValidity(ca.clk.Now())
 
 	serialHex := core.SerialToString(serialBigInt)
 	regID := issueReq.RegistrationID
@@ -337,13 +337,13 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		Serial:  serialHex,
 		RegID:   regID,
 		Created: timestamppb.New(ca.clk.Now()),
-		Expires: timestamppb.New(validity.NotAfter),
+		Expires: timestamppb.New(notAfter),
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	precertDER, cpwid, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
+	precertDER, cpwid, err := ca.issuePrecertificateInner(ctx, issueReq, certProfile, serialBigInt, notBefore, notAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -481,12 +481,9 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	}, nil
 }
 
-type validity struct {
-	NotBefore time.Time
-	NotAfter  time.Time
-}
-
-func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int, validity, error) {
+// generateSerialNumber produces a big.Int which has more than 64 bits of
+// entropy and has the CA's configured one-byte prefix.
+func (ca *certificateAuthorityImpl) generateSerialNumber() (*big.Int, error) {
 	// We want 136 bits of random number, plus an 8-bit instance id prefix.
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
@@ -495,18 +492,12 @@ func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	if err != nil {
 		err = berrors.InternalServerError("failed to generate serial: %s", err)
 		ca.log.AuditErrf("Serial randomness failed, err=[%v]", err)
-		return nil, validity{}, err
+		return nil, err
 	}
 	serialBigInt := big.NewInt(0)
 	serialBigInt = serialBigInt.SetBytes(serialBytes)
 
-	notBefore := ca.clk.Now().Add(-ca.backdate)
-	validity := validity{
-		NotBefore: notBefore,
-		NotAfter:  notBefore.Add(ca.validityPeriod - time.Second),
-	}
-
-	return serialBigInt, validity, nil
+	return serialBigInt, nil
 }
 
 // generateSKID computes the Subject Key Identifier using one of the methods in
@@ -532,20 +523,7 @@ func generateSKID(pk crypto.PublicKey) ([]byte, error) {
 	return skid[0:20:20], nil
 }
 
-func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *certProfileWithID, error) {
-	// The CA must check if it is capable of issuing for the given certificate
-	// profile name. The name is checked here instead of the hash because the RA
-	// is unaware of what certificate profiles exist. Pre-existing orders stored
-	// in the database may not have an associated certificate profile name and
-	// will take the default name stored alongside the map.
-	if issueReq.CertProfileName == "" {
-		issueReq.CertProfileName = ca.certProfiles.defaultName
-	}
-	certProfile, ok := ca.certProfiles.profileByName[issueReq.CertProfileName]
-	if !ok {
-		return nil, nil, fmt.Errorf("the CA is incapable of using a profile named %s", issueReq.CertProfileName)
-	}
-
+func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, certProfile *certProfileWithID, serialBigInt *big.Int, notBefore time.Time, notAfter time.Time) ([]byte, *certProfileWithID, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, nil, err
@@ -570,7 +548,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 	issuer := issuerPool[mrand.Intn(len(issuerPool))]
 
-	if issuer.Cert.NotAfter.Before(validity.NotAfter) {
+	if issuer.Cert.NotAfter.Before(notAfter) {
 		err = berrors.InternalServerError("cannot issue a certificate that expires after the issuer certificate")
 		ca.log.AuditErr(err.Error())
 		return nil, nil, err
@@ -595,8 +573,8 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		CommonName:        names.CN,
 		IncludeCTPoison:   true,
 		IncludeMustStaple: issuance.ContainsMustStaple(csr.Extensions),
-		NotBefore:         validity.NotBefore,
-		NotAfter:          validity.NotAfter,
+		NotBefore:         notBefore,
+		NotAfter:          notAfter,
 	}
 
 	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, req)

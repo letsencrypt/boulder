@@ -72,6 +72,18 @@ type Profile struct {
 
 // NewProfile converts the profile config and lint registry into a usable profile.
 func NewProfile(profileConfig ProfileConfig, lints lint.Registry) (*Profile, error) {
+	// The Baseline Requirements, Section 7.1.2.7, says that the notBefore time
+	// must be "within 48 hours of the time of signing". We can be even stricter.
+	if profileConfig.MaxValidityBackdate.Duration >= 24*time.Hour {
+		return nil, fmt.Errorf("backdate %q is too large", profileConfig.MaxValidityBackdate.Duration)
+	}
+
+	// Our CP/CPS, Section 7.1, says that our Subscriber Certificates have a
+	// validity period of "up to 100 days".
+	if profileConfig.MaxValidityPeriod.Duration >= 100*24*time.Hour {
+		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
+	}
+
 	sp := &Profile{
 		allowMustStaple: profileConfig.AllowMustStaple,
 		omitCommonName:  profileConfig.OmitCommonName,
@@ -81,6 +93,19 @@ func NewProfile(profileConfig ProfileConfig, lints lint.Registry) (*Profile, err
 	}
 
 	return sp, nil
+}
+
+// GenerateValidity returns a notBefore/notAfter pair bracketing the input time,
+// based on the profile's configured backdate and validity.
+func (p *Profile) GenerateValidity(now time.Time) (time.Time, time.Time) {
+	// Don't use the full maxBackdate, to ensure that the actual backdate remains
+	// acceptable throughout the rest of the issuance process.
+	backdate := time.Duration(float64(p.maxBackdate.Nanoseconds()) * 0.9)
+	notBefore := now.Add(-1 * backdate)
+	// Subtract one second, because certificate validity periods are *inclusive*
+	// of their final second (Baseline Requirements, Section 1.6.1).
+	notAfter := notBefore.Add(p.maxValidity).Add(-1 * time.Second)
+	return notBefore, notAfter
 }
 
 // requestValid verifies the passed IssuanceRequest against the profile. If the

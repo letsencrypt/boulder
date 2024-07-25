@@ -106,8 +106,6 @@ type testCtx struct {
 	defaultCertProfileName string
 	lints                  lint.Registry
 	certProfiles           map[string]issuance.ProfileConfig
-	certExpiry             time.Duration
-	certBackdate           time.Duration
 	serialPrefix           int
 	maxNames               int
 	boulderIssuers         []*issuance.Issuer
@@ -164,7 +162,7 @@ func setup(t *testing.T) *testCtx {
 		Policies: []issuance.PolicyConfig{
 			{OID: "2.23.140.1.2.1"},
 		},
-		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 365},
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 	}
 	certProfiles["modern"] = issuance.ProfileConfig{
@@ -173,7 +171,7 @@ func setup(t *testing.T) *testCtx {
 		Policies: []issuance.PolicyConfig{
 			{OID: "2.23.140.1.2.1"},
 		},
-		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 6},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 	}
 	test.AssertEquals(t, len(certProfiles), 2)
@@ -247,8 +245,6 @@ func setup(t *testing.T) *testCtx {
 		defaultCertProfileName: "legacy",
 		lints:                  lints,
 		certProfiles:           certProfiles,
-		certExpiry:             8760 * time.Hour,
-		certBackdate:           time.Hour,
 		serialPrefix:           17,
 		maxNames:               2,
 		boulderIssuers:         boulderIssuers,
@@ -270,8 +266,6 @@ func TestSerialPrefix(t *testing.T) {
 		"",
 		nil,
 		nil,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
 		0,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -287,8 +281,6 @@ func TestSerialPrefix(t *testing.T) {
 		"",
 		nil,
 		nil,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
 		128,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -327,7 +319,6 @@ func TestIssuePrecertificate(t *testing.T) {
 		subTest func(t *testing.T, i *TestCertificateIssuance)
 	}{
 		{"IssuePrecertificate", CNandSANCSR, issueCertificateSubTestIssuePrecertificate},
-		{"ValidityUsesCAClock", CNandSANCSR, issueCertificateSubTestValidityUsesCAClock},
 		{"ProfileSelectionRSA", CNandSANCSR, issueCertificateSubTestProfileSelectionRSA},
 		{"ProfileSelectionECDSA", ECDSACSR, issueCertificateSubTestProfileSelectionECDSA},
 		{"MustStaple", MustStapleCSR, issueCertificateSubTestMustStaple},
@@ -388,8 +379,6 @@ func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *moc
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -418,11 +407,6 @@ func issueCertificateSubTestIssuePrecertificate(t *testing.T, i *TestCertificate
 	}
 }
 
-func issueCertificateSubTestValidityUsesCAClock(t *testing.T, i *TestCertificateIssuance) {
-	test.AssertEquals(t, i.cert.NotBefore, i.ca.clk.Now().Add(-1*i.ca.backdate))
-	test.AssertEquals(t, i.cert.NotAfter.Add(time.Second).Sub(i.cert.NotBefore), i.ca.validityPeriod)
-}
-
 // Test failure mode when no issuers are present.
 func TestNoIssuers(t *testing.T) {
 	t.Parallel()
@@ -435,8 +419,6 @@ func TestNoIssuers(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -459,8 +441,6 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -536,8 +516,6 @@ func TestUnpredictableIssuance(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -612,7 +590,7 @@ func TestProfiles(t *testing.T) {
 		Policies: []issuance.PolicyConfig{
 			{OID: "2.23.140.1.2.1"},
 		},
-		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 399},
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 	}
 	test.AssertEquals(t, len(badProfiles), 1)
@@ -651,11 +629,11 @@ func TestProfiles(t *testing.T) {
 			expectedProfiles: []nameToHash{
 				{
 					name: "legacy",
-					hash: [32]byte{0xf7, 0x53, 0xef, 0xcd, 0x5a, 0x17, 0x22, 0x2, 0x79, 0xc8, 0xcb, 0x7a, 0x3d, 0x60, 0x46, 0x8b, 0xa0, 0x3b, 0x8b, 0x1a, 0x81, 0x19, 0x7e, 0x84, 0x19, 0x7f, 0x16, 0xd7, 0x95, 0x39, 0xef, 0x8e},
+					hash: [32]byte{0x41, 0xda, 0xe6, 0x97, 0xec, 0x2, 0x4c, 0x68, 0x7, 0x45, 0x57, 0xa2, 0x25, 0x86, 0xbb, 0xbe, 0x5, 0x8a, 0x40, 0x5, 0x72, 0xf5, 0x3f, 0x9f, 0x89, 0x2b, 0x1a, 0x24, 0x10, 0xab, 0xfc, 0x95},
 				},
 				{
 					name: "modern",
-					hash: [32]byte{0x44, 0x1d, 0x9d, 0xbc, 0x4c, 0xfc, 0xf, 0x95, 0xa4, 0x32, 0xc0, 0xcb, 0x76, 0xd1, 0x1b, 0xcb, 0xbe, 0xf1, 0x14, 0xe7, 0xa3, 0xf6, 0xfd, 0x7, 0x14, 0xb5, 0xfa, 0x2f, 0xb6, 0x1, 0x22, 0xc},
+					hash: [32]byte{0x85, 0xfb, 0x36, 0xdc, 0xef, 0x1b, 0x77, 0xc9, 0x50, 0x29, 0x36, 0xe7, 0xf2, 0xf8, 0xc, 0xed, 0xc, 0x14, 0xa8, 0x11, 0x18, 0xe9, 0x9f, 0xb3, 0xc1, 0xc7, 0x78, 0x81, 0xa2, 0x6, 0x2d, 0x12},
 				},
 			},
 		},
@@ -673,7 +651,7 @@ func TestProfiles(t *testing.T) {
 					// We'll change the mapped hash key under the hood during
 					// the test.
 					name: "ruhroh",
-					hash: [32]byte{0x4f, 0x23, 0x87, 0xe0, 0xc3, 0x1, 0xac, 0x3d, 0x40, 0x94, 0xa8, 0x5c, 0x71, 0xef, 0x40, 0xb5, 0xa, 0xfd, 0xb0, 0xb2, 0xb0, 0x6b, 0x2c, 0x2a, 0xf9, 0xb1, 0x5, 0xf, 0x37, 0x42, 0xf4, 0x23},
+					hash: [32]byte{0x12, 0x20, 0xb4, 0x5e, 0xf5, 0x9, 0x68, 0x37, 0x71, 0xb8, 0x2b, 0x2d, 0x1, 0xf6, 0xd5, 0x8c, 0xae, 0x9c, 0x6d, 0xc, 0x81, 0xb8, 0x60, 0xad, 0xfe, 0x31, 0x7, 0x60, 0x7e, 0x58, 0xed, 0xa4},
 				},
 			},
 		},
@@ -693,8 +671,6 @@ func TestProfiles(t *testing.T) {
 				tc.defaultName,
 				tc.profileConfigs,
 				testCtx.lints,
-				testCtx.certExpiry,
-				testCtx.certBackdate,
 				testCtx.serialPrefix,
 				testCtx.maxNames,
 				testCtx.keyPolicy,
@@ -799,8 +775,6 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.defaultCertProfileName,
 			testCtx.certProfiles,
 			testCtx.lints,
-			testCtx.certExpiry,
-			testCtx.certBackdate,
 			testCtx.serialPrefix,
 			testCtx.maxNames,
 			testCtx.keyPolicy,
@@ -829,16 +803,18 @@ func TestInvalidCSRs(t *testing.T) {
 func TestRejectValidityTooLong(t *testing.T) {
 	t.Parallel()
 	testCtx := setup(t)
-	sa := &mockSA{}
+
+	// Jump to a time just moments before the test issuers expire.
+	future := testCtx.boulderIssuers[0].Cert.Certificate.NotAfter.Add(-1 * time.Hour)
+	testCtx.fc.Set(future)
+
 	ca, err := NewCertificateAuthorityImpl(
-		sa,
+		&mockSA{},
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -847,10 +823,6 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
-	future, err := time.Parse(time.RFC3339, "2025-02-10T00:30:00Z")
-
-	test.AssertNotError(t, err, "Failed to parse time")
-	testCtx.fc.Set(future)
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
 	_, err = ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID})
 	test.AssertError(t, err, "Cannot issue a certificate that expires after the intermediate certificate")
@@ -937,8 +909,6 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -1005,8 +975,6 @@ func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *test
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -1124,8 +1092,6 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -1174,8 +1140,6 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.lints,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,

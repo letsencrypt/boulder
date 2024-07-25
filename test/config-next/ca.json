@@ -62,7 +62,7 @@
 							"oid": "2.23.140.1.2.1"
 						}
 					],
-					"maxValidityPeriod": "7776000s",
+					"maxValidityPeriod": "583200s",
 					"maxValidityBackdate": "1h5m"
 				}
 			},
@@ -144,8 +144,6 @@
 				"w_sub_cert_aia_contains_internal_names"
 			]
 		},
-		"expiry": "7776000s",
-		"backdate": "1h",
 		"serialPrefix": 127,
 		"maxNames": 100,
 		"lifespanOCSP": "96h",

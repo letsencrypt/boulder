@@ -35,6 +35,43 @@ func defaultProfile() *Profile {
 	return p
 }
 
+func TestGenerateValidity(t *testing.T) {
+	fc := clock.NewFake()
+	fc.Set(time.Date(2015, time.June, 04, 11, 04, 38, 0, time.UTC))
+
+	tests := []struct {
+		name      string
+		backdate  time.Duration
+		validity  time.Duration
+		notBefore time.Time
+		notAfter  time.Time
+	}{
+		{
+			name:      "normal usage",
+			backdate:  time.Hour, // 90% of one hour is 54 minutes
+			validity:  7 * 24 * time.Hour,
+			notBefore: time.Date(2015, time.June, 04, 10, 10, 38, 0, time.UTC),
+			notAfter:  time.Date(2015, time.June, 11, 10, 10, 37, 0, time.UTC),
+		},
+		{
+			name:      "zero backdate",
+			backdate:  0,
+			validity:  7 * 24 * time.Hour,
+			notBefore: time.Date(2015, time.June, 04, 11, 04, 38, 0, time.UTC),
+			notAfter:  time.Date(2015, time.June, 11, 11, 04, 37, 0, time.UTC),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := Profile{maxBackdate: tc.backdate, maxValidity: tc.validity}
+			notBefore, notAfter := p.GenerateValidity(fc.Now())
+			test.AssertEquals(t, notBefore, tc.notBefore)
+			test.AssertEquals(t, notAfter, tc.notAfter)
+		})
+	}
+}
+
 func TestRequestValid(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Add(time.Hour * 24)
