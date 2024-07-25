@@ -131,7 +131,7 @@ message GetValidAuthorizationsRequest {
   int64 registrationID = 1;
   repeated string domains = 2;
   reserved 3; // Previously nowNS
-  google.protobuf.Timestamp now = 4;
+  google.protobuf.Timestamp validUntil = 4;
 }
 
 message ValidAuthorizations {
@@ -298,7 +298,7 @@ message GetAuthorizationsRequest {
   int64 registrationID = 1;
   repeated string domains = 2;
   reserved 3; // Previously nowNS
-  google.protobuf.Timestamp now = 4;
+  google.protobuf.Timestamp validUntil = 4;
 }
 
 message Authorizations {

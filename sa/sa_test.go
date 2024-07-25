@@ -1745,7 +1745,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	authz, err := sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID: reg.Id,
 		Domains:        idents,
-		Now:            timestamppb.New(expiryCutoff),
+		ValidUntil:     timestamppb.New(expiryCutoff),
 	})
 	// It should not fail
 	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
@@ -1757,7 +1757,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID: reg.Id,
 		Domains:        append(idents, identD),
-		Now:            timestamppb.New(expiryCutoff),
+		ValidUntil:     timestamppb.New(expiryCutoff),
 	})
 	// It should not fail
 	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
@@ -3122,7 +3122,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			"bbb",
 		},
 		RegistrationID: regID,
-		Now:            timestamppb.New(now),
+		ValidUntil:     timestamppb.New(now),
 	})
 	test.AssertNotError(t, err, "sa.GetValidAuthorizations2 failed")
 	test.AssertEquals(t, len(authzs.Authz), 1)

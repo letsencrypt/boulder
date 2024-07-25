@@ -468,10 +468,10 @@ func (sa *StorageAuthorityReadOnly) GetValidAuthorizations2(ctx context.Context,
 	if req.RegistrationID != 1 && req.RegistrationID != 5 && req.RegistrationID != 4 {
 		return &sapb.Authorizations{}, nil
 	}
-	now := req.Now.AsTime()
+	expiryCutoff := req.ValidUntil.AsTime()
 	auths := &sapb.Authorizations{}
 	for _, name := range req.Domains {
-		exp := now.AddDate(100, 0, 0)
+		exp := expiryCutoff.AddDate(100, 0, 0)
 		authzPB, err := bgrpc.AuthzToPB(core.Authorization{
 			Status:         core.StatusValid,
 			RegistrationID: req.RegistrationID,
@@ -485,7 +485,7 @@ func (sa *StorageAuthorityReadOnly) GetValidAuthorizations2(ctx context.Context,
 					Status:    core.StatusValid,
 					Type:      core.ChallengeTypeDNS01,
 					Token:     "exampleToken",
-					Validated: &now,
+					Validated: &expiryCutoff,
 				},
 			},
 		})
