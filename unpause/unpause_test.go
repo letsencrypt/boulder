@@ -97,6 +97,9 @@ func TestUnpauseJWT(t *testing.T) {
 			wantRedeemJWTErr:   true,
 		},
 		{
+			// This test is only testing the "key too small" case for RedeemJWT
+			// because the "key too small" case for GenerateJWT is handled when
+			// the key is loaded to initialize a signer.
 			name: "invalid key too small",
 			args: args{
 				key:         []byte("key"),
