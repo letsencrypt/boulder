@@ -45,7 +45,7 @@ type Config struct {
 
 			// One of the profile names must match the value of
 			// DefaultCertificateProfileName or boulder-ca will fail to start.
-			CertProfiles map[string]issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
+			CertProfiles map[string]*issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
 
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile issuance.CRLProfileConfig `validate:"-"`
@@ -216,8 +216,8 @@ func main() {
 	// top-level profile as the only individual profile instead.
 	// TODO(#7414) Remove this fallback.
 	if len(c.CA.Issuance.CertProfiles) == 0 {
-		c.CA.Issuance.CertProfiles = make(map[string]issuance.ProfileConfig, 0)
-		c.CA.Issuance.CertProfiles[c.CA.Issuance.DefaultCertificateProfileName] = c.CA.Issuance.Profile
+		c.CA.Issuance.CertProfiles = make(map[string]*issuance.ProfileConfig, 0)
+		c.CA.Issuance.CertProfiles[c.CA.Issuance.DefaultCertificateProfileName] = &c.CA.Issuance.Profile
 	}
 
 	// If any individual cert profile doesn't have its own lint configuration,

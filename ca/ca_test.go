@@ -102,7 +102,7 @@ type testCtx struct {
 	ocsp                   *ocspImpl
 	crl                    *crlImpl
 	defaultCertProfileName string
-	certProfiles           map[string]issuance.ProfileConfig
+	certProfiles           map[string]*issuance.ProfileConfig
 	serialPrefix           int
 	maxNames               int
 	boulderIssuers         []*issuance.Issuer
@@ -153,14 +153,14 @@ func setup(t *testing.T) *testCtx {
 	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
-	certProfiles := make(map[string]issuance.ProfileConfig, 0)
-	certProfiles["legacy"] = issuance.ProfileConfig{
+	certProfiles := make(map[string]*issuance.ProfileConfig, 0)
+	certProfiles["legacy"] = &issuance.ProfileConfig{
 		AllowMustStaple:     true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 		IgnoredLints:        []string{"w_subject_common_name_included"},
 	}
-	certProfiles["modern"] = issuance.ProfileConfig{
+	certProfiles["modern"] = &issuance.ProfileConfig{
 		AllowMustStaple:     true,
 		OmitCommonName:      true,
 		OmitKeyEncipherment: true,
@@ -561,7 +561,7 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 	testCases := []struct {
 		name              string
 		defaultName       string
-		profileConfigs    map[string]issuance.ProfileConfig
+		profileConfigs    map[string]*issuance.ProfileConfig
 		expectedErrSubstr string
 		expectedProfiles  []nameToHash
 	}{
@@ -572,30 +572,30 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 		},
 		{
 			name:              "no profiles",
-			profileConfigs:    map[string]issuance.ProfileConfig{},
+			profileConfigs:    map[string]*issuance.ProfileConfig{},
 			expectedErrSubstr: "at least one certificate profile",
 		},
 		{
 			name:        "no profile matching default name",
 			defaultName: "default",
-			profileConfigs: map[string]issuance.ProfileConfig{
-				"notDefault": testProfile,
+			profileConfigs: map[string]*issuance.ProfileConfig{
+				"notDefault": &testProfile,
 			},
 			expectedErrSubstr: "profile object was not found for that name",
 		},
 		{
 			name:        "duplicate hash",
 			defaultName: "default",
-			profileConfigs: map[string]issuance.ProfileConfig{
-				"default":  testProfile,
-				"default2": testProfile,
+			profileConfigs: map[string]*issuance.ProfileConfig{
+				"default":  &testProfile,
+				"default2": &testProfile,
 			},
 			expectedErrSubstr: "duplicate certificate profile hash",
 		},
 		{
 			name:        "empty profile config",
 			defaultName: "empty",
-			profileConfigs: map[string]issuance.ProfileConfig{
+			profileConfigs: map[string]*issuance.ProfileConfig{
 				"empty": {},
 			},
 			expectedProfiles: []nameToHash{
