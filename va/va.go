@@ -312,7 +312,6 @@ type verificationRequestEvent struct {
 	Hostname          string         `json:",omitempty"`
 	Challenge         core.Challenge `json:",omitempty"`
 	ValidationLatency float64
-	UsedRSAKEX        bool   `json:",omitempty"`
 	Error             string `json:",omitempty"`
 	InternalError     string `json:",omitempty"`
 }
@@ -713,15 +712,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		err = errors.New("records from local validation failed sanity check")
 	}
 
-	// Copy the "UsedRSAKEX" value from the last validationRecord into the log
-	// event. Only the last record should have this bool set, because we only
-	// record it if/when validation is finally successful, but we use the loop
-	// just in case that assumption changes.
-	// TODO(#7321): Remove this when we have collected enough data.
-	for _, record := range records {
-		logEvent.UsedRSAKEX = record.UsedRSAKEX || logEvent.UsedRSAKEX
-	}
-
 	if err != nil {
 		logEvent.InternalError = err.Error()
 		prob = detailedError(err)
@@ -735,11 +725,4 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// errors to the end user.
 	prob = va.performRemoteValidation(ctx, req)
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
-}
-
-// usedRSAKEX returns true if the given cipher suite involves the use of an
-// RSA key exchange mechanism.
-// TODO(#7321): Remove this when we have collected enough data.
-func usedRSAKEX(cs uint16) bool {
-	return strings.HasPrefix(tls.CipherSuiteName(cs), "TLS_RSA_")
 }
