@@ -40,7 +40,7 @@ func TestUnpauseJWT(t *testing.T) {
 			name: "valid one identifier",
 			args: args{
 				key:         hmacKey,
-				version:     apiVersion,
+				version:     APIVersion,
 				account:     1234567890,
 				identifiers: []string{"example.com"},
 				lifetime:    time.Hour,
@@ -53,7 +53,7 @@ func TestUnpauseJWT(t *testing.T) {
 					Audience: jwt.Audience{defaultAudience},
 					Expiry:   jwt.NewNumericDate(fc.Now().Add(time.Hour)),
 				},
-				V: apiVersion,
+				V: APIVersion,
 				I: "example.com",
 			},
 			wantGenerateJWTErr: false,
@@ -63,7 +63,7 @@ func TestUnpauseJWT(t *testing.T) {
 			name: "valid multiple identifiers",
 			args: args{
 				key:         hmacKey,
-				version:     apiVersion,
+				version:     APIVersion,
 				account:     1234567890,
 				identifiers: []string{"example.com", "example.org", "example.net"},
 				lifetime:    time.Hour,
@@ -76,7 +76,7 @@ func TestUnpauseJWT(t *testing.T) {
 					Audience: jwt.Audience{defaultAudience},
 					Expiry:   jwt.NewNumericDate(fc.Now().Add(time.Hour)),
 				},
-				V: apiVersion,
+				V: APIVersion,
 				I: "example.com,example.org,example.net",
 			},
 			wantGenerateJWTErr: false,
@@ -86,7 +86,7 @@ func TestUnpauseJWT(t *testing.T) {
 			name: "invalid no account",
 			args: args{
 				key:         hmacKey,
-				version:     apiVersion,
+				version:     APIVersion,
 				account:     0,
 				identifiers: []string{"example.com"},
 				lifetime:    time.Hour,
@@ -103,7 +103,7 @@ func TestUnpauseJWT(t *testing.T) {
 			name: "invalid key too small",
 			args: args{
 				key:         []byte("key"),
-				version:     apiVersion,
+				version:     APIVersion,
 				account:     1234567890,
 				identifiers: []string{"example.com"},
 				lifetime:    time.Hour,
@@ -117,7 +117,7 @@ func TestUnpauseJWT(t *testing.T) {
 			name: "invalid no identifiers",
 			args: args{
 				key:         hmacKey,
-				version:     apiVersion,
+				version:     APIVersion,
 				account:     1234567890,
 				identifiers: nil,
 				lifetime:    time.Hour,
