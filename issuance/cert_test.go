@@ -27,11 +27,7 @@ var (
 )
 
 func defaultProfile() *Profile {
-	lints, _ := linter.NewRegistry([]string{
-		"w_ct_sct_policy_count_unsatisfied",
-		"e_scts_from_same_operator",
-	})
-	p, _ := NewProfile(defaultProfileConfig(), lints)
+	p, _ := NewProfile(defaultProfileConfig())
 	return p
 }
 
@@ -390,13 +386,13 @@ func TestIssueCommonName(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 
-	lints, err := linter.NewRegistry([]string{
+	prof := defaultProfileConfig()
+	prof.IgnoredLints = []string{
 		"w_subject_common_name_included",
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
-	})
-	test.AssertNotError(t, err, "building test lint registry")
-	cnProfile, err := NewProfile(defaultProfileConfig(), lints)
+	}
+	cnProfile, err := NewProfile(prof)
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
@@ -448,18 +444,17 @@ func TestIssueOmissions(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 
-	lints, err := linter.NewRegistry([]string{
-		"w_ext_subject_key_identifier_missing_sub_cert",
-		"w_ct_sct_policy_count_unsatisfied",
-		"e_scts_from_same_operator",
-	})
-	test.AssertNotError(t, err, "building test lint registry")
 	pc := defaultProfileConfig()
 	pc.OmitCommonName = true
 	pc.OmitKeyEncipherment = true
 	pc.OmitClientAuth = true
 	pc.OmitSKID = true
-	prof, err := NewProfile(pc, lints)
+	pc.IgnoredLints = []string{
+		"w_ext_subject_key_identifier_missing_sub_cert",
+		"w_ct_sct_policy_count_unsatisfied",
+		"e_scts_from_same_operator",
+	}
+	prof, err := NewProfile(pc)
 	test.AssertNotError(t, err, "building test profile")
 
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
@@ -533,9 +528,9 @@ func TestIssueSCTList(t *testing.T) {
 	err := loglist.InitLintList("../test/ct-test-srv/log_list.json")
 	test.AssertNotError(t, err, "failed to load log list")
 
-	lints, err := linter.NewRegistry([]string{})
-	test.AssertNotError(t, err, "building test lint registry")
-	enforceSCTsProfile, err := NewProfile(defaultProfileConfig(), lints)
+	pc := defaultProfileConfig()
+	pc.IgnoredLints = []string{}
+	enforceSCTsProfile, err := NewProfile(pc)
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
@@ -632,9 +627,9 @@ func TestIssueBadLint(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 
-	lints, err := linter.NewRegistry([]string{})
-	test.AssertNotError(t, err, "building test lint registry")
-	noSkipLintsProfile, err := NewProfile(defaultProfileConfig(), lints)
+	pc := defaultProfileConfig()
+	pc.IgnoredLints = []string{}
+	noSkipLintsProfile, err := NewProfile(pc)
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
@@ -758,13 +753,13 @@ func TestMismatchedProfiles(t *testing.T) {
 	issuer1, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 
-	lints, err := linter.NewRegistry([]string{
+	pc := defaultProfileConfig()
+	pc.IgnoredLints = []string{
 		"w_subject_common_name_included",
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
-	})
-	test.AssertNotError(t, err, "building test lint registry")
-	cnProfile, err := NewProfile(defaultProfileConfig(), lints)
+	}
+	cnProfile, err := NewProfile(pc)
 	test.AssertNotError(t, err, "NewProfile failed")
 
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -785,14 +780,14 @@ func TestMismatchedProfiles(t *testing.T) {
 	test.AssertNotError(t, err, "signing precert")
 
 	// Create a new profile that differs slightly (no common name)
-	profileConfig := defaultProfileConfig()
-	profileConfig.AllowCommonName = false
-	lints, err = linter.NewRegistry([]string{
+	pc = defaultProfileConfig()
+	pc.AllowCommonName = false
+	pc.IgnoredLints = []string{
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
-	})
+	}
 	test.AssertNotError(t, err, "building test lint registry")
-	noCNProfile, err := NewProfile(profileConfig, lints)
+	noCNProfile, err := NewProfile(pc)
 	test.AssertNotError(t, err, "NewProfile failed")
 
 	issuer2, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)

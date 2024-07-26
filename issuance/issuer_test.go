@@ -27,6 +27,10 @@ func defaultProfileConfig() ProfileConfig {
 		AllowMustStaple:     true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
+		IgnoredLints: []string{
+			"w_ct_sct_policy_count_unsatisfied",
+			"e_scts_from_same_operator",
+		},
 	}
 }
 
