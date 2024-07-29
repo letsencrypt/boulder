@@ -1,7 +1,7 @@
 package cabf_smime_br
 
 /*
- * ZLint Copyright 2023 Regents of the University of Michigan
+ * ZLint Copyright 2024 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -20,7 +20,7 @@ import (
 	"github.com/zmap/zlint/v3/util"
 )
 
-// shallHaveCrlDistributionPoints - linter to enforce requirement that SMIME certificates SHALL contain emailProtecton EKU
+// legacyMultipurposeEKUCheck - linter to enforce requirement that SMIME certificates SHALL contain emailProtecton EKU
 type legacyMultipurposeEKUCheck struct {
 }
 
@@ -37,7 +37,7 @@ func init() {
 	})
 }
 
-// NewShallHaveCrlDistributionPoints creates a new linter to enforce MAY/SHALL NOT field requirements for mailbox validated SMIME certs
+// NewLegacyMultipurposeEKUCheck creates a new linter to enforce MAY/SHALL NOT field requirements for mailbox validated SMIME certs
 func NewLegacyMultipurposeEKUCheck() lint.CertificateLintInterface {
 	return &legacyMultipurposeEKUCheck{}
 }

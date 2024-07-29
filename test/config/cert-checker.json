@@ -16,8 +16,10 @@
 			"7776000s"
 		],
 		"ignoredLints": [
+			"e_cab_dv_subject_invalid_values",
 			"w_subject_common_name_included",
-			"w_sub_cert_aia_contains_internal_names"
+			"w_sub_cert_aia_contains_internal_names",
+			"w_ext_subject_key_identifier_not_recommended_subscriber"
 		]
 	},
 	"pa": {

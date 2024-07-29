@@ -1,7 +1,7 @@
 package cabf_br
 
 /*
- * ZLint Copyright 2023 Regents of the University of Michigan
+ * ZLint Copyright 2024 Regents of the University of Michigan
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy
@@ -15,6 +15,7 @@ package cabf_br
  */
 
 import (
+	"net"
 	"net/url"
 	"time"
 
@@ -53,7 +54,7 @@ func NewSubCertAIAInternalName() lint.LintInterface {
 }
 
 func (l *subCertAIAInternalName) CheckApplies(c *x509.Certificate) bool {
-	return util.IsSubscriberCert(c)
+	return util.IsSubscriberCert(c) && util.IsExtInCert(c, util.AiaOID)
 }
 
 func (l *subCertAIAInternalName) Execute(c *x509.Certificate) *lint.LintResult {
@@ -62,6 +63,11 @@ func (l *subCertAIAInternalName) Execute(c *x509.Certificate) *lint.LintResult {
 		if err != nil {
 			return &lint.LintResult{Status: lint.Error}
 		}
+
+		if net.ParseIP(purl.Host) != nil {
+			continue
+		}
+
 		if !util.HasValidTLD(purl.Hostname(), time.Now()) {
 			return &lint.LintResult{Status: lint.Warn}
 		}
@@ -71,6 +77,11 @@ func (l *subCertAIAInternalName) Execute(c *x509.Certificate) *lint.LintResult {
 		if err != nil {
 			return &lint.LintResult{Status: lint.Error}
 		}
+
+		if net.ParseIP(purl.Host) != nil {
+			continue
+		}
+
 		if !util.HasValidTLD(purl.Hostname(), time.Now()) {
 			return &lint.LintResult{Status: lint.Warn}
 		}

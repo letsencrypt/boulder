@@ -638,6 +638,7 @@ func TestIgnoredLint(t *testing.T) {
 		"zlint warn: w_subject_common_name_included",
 		"zlint info: w_ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.",
 		"zlint error: e_scts_from_same_operator Certificate had too few embedded SCTs; browser policy requires 2.",
+		"zlint warn: w_ext_subject_key_identifier_not_recommended_subscriber",
 	}
 	sort.Strings(expectedProblems)
 
@@ -650,10 +651,11 @@ func TestIgnoredLint(t *testing.T) {
 	// Check the certificate again with an ignore map that excludes the affected
 	// lints. This should return no problems.
 	_, problems = checker.checkCert(context.Background(), cert, map[string]bool{
-		"e_sub_cert_aia_does_not_contain_ocsp_url": true,
-		"w_subject_common_name_included":           true,
-		"w_ct_sct_policy_count_unsatisfied":        true,
-		"e_scts_from_same_operator":                true,
+		"e_sub_cert_aia_does_not_contain_ocsp_url":                true,
+		"w_subject_common_name_included":                          true,
+		"w_ext_subject_key_identifier_not_recommended_subscriber": true,
+		"w_ct_sct_policy_count_unsatisfied":                       true,
+		"e_scts_from_same_operator":                               true,
 	})
 	test.AssertEquals(t, len(problems), 0)
 }
