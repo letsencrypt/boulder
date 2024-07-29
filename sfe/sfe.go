@@ -138,12 +138,6 @@ func (sfe *SelfServiceFrontEndImpl) BuildID(response http.ResponseWriter, reques
 // in this form.
 func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, request *http.Request) {
 	incomingJWT := request.URL.Query().Get("jwt")
-	if incomingJWT == "" || len(strings.Split(incomingJWT, ".")) != 3 {
-		// JWT is missing or malformed. This could happen if the Subscriber
-		// failed to copy the entire URL from their logs.
-		sfe.unpauseRequestMalformed(response)
-		return
-	}
 
 	regID, identifiers, err := sfe.parseUnpauseJWT(incomingJWT)
 	if err != nil {
@@ -175,14 +169,10 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, re
 }
 
 // UnpauseSubmit serves a page showing the result of the unpause form submission.
-// CSRF is not addressed as we control JWT creation and redemption.
+// CSRF is not addressed because a third party causing submission of an unpause
+// form is not harmful.
 func (sfe *SelfServiceFrontEndImpl) UnpauseSubmit(response http.ResponseWriter, request *http.Request) {
 	incomingJWT := request.URL.Query().Get("jwt")
-	if incomingJWT == "" || len(strings.Split(incomingJWT, ".")) != 3 {
-		// This should never happen if the request came from our form.
-		sfe.unpauseRequestMalformed(response)
-		return
-	}
 
 	_, _, err := sfe.parseUnpauseJWT(incomingJWT)
 	if err != nil {
@@ -247,8 +237,16 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseStatus(response http.ResponseWriter, 
 
 // parseUnpauseJWT extracts and returns the subscriber's registration ID and a
 // slice of paused identifiers from the claims. If the JWT cannot be parsed or
-// is otherwise invalid, an error is returned.
+// is otherwise invalid, an error is returned. If the JWT is missing or
+// malformed, unpause.ErrMalformedJWT is returned.
 func (sfe *SelfServiceFrontEndImpl) parseUnpauseJWT(incomingJWT string) (int64, []string, error) {
+	if incomingJWT == "" || len(strings.Split(incomingJWT, ".")) != 3 {
+		// JWT is missing or malformed. This could happen if the Subscriber
+		// failed to copy the entire URL from their logs. This should never
+		// happen if the request came from our form.
+		return 0, nil, unpause.ErrMalformedJWT
+	}
+
 	claims, err := unpause.RedeemJWT(incomingJWT, sfe.unpauseHMACKey, unpause.APIVersion, sfe.clk)
 	if err != nil {
 		return 0, nil, err
