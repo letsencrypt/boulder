@@ -766,11 +766,11 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 	}
 	for _, eku := range parsedCertificate.ExtKeyUsage {
 		if eku != x509.ExtKeyUsageServerAuth && eku != x509.ExtKeyUsageClientAuth {
-			return berrors.InternalServerError("generated certificate doesn't have correct key usage extensions")
+			return berrors.InternalServerError("generated certificate has unacceptable EKU")
 		}
 	}
 	if !slices.Contains(parsedCertificate.ExtKeyUsage, x509.ExtKeyUsageServerAuth) {
-		return berrors.InternalServerError("generated certificate doesn't have correct key usage extensions")
+		return berrors.InternalServerError("generated certificate doesn't have serverAuth EKU")
 	}
 
 	return nil

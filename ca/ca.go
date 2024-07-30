@@ -208,19 +208,19 @@ func makeCertificateProfilesMap(defaultName string, profiles map[string]issuance
 		}
 		hash := sha256.Sum256(encodedProfile.Bytes())
 
-		cpwid := certProfileWithID{
+		withID := certProfileWithID{
 			name:    name,
 			hash:    hash,
 			profile: profile,
 		}
 
-		profilesByName[name] = &cpwid
+		profilesByName[name] = &withID
 
 		_, found := profilesByHash[hash]
 		if found {
 			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile hash %d", hash)
 		}
-		profilesByHash[hash] = &cpwid
+		profilesByHash[hash] = &withID
 	}
 
 	return certProfilesMaps{defaultName, profilesByHash, profilesByName}, nil
