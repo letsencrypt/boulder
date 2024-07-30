@@ -191,7 +191,7 @@ func TestUnpausePaths(t *testing.T) {
 		URL:    mustParseURL(unpauseStatus + "?count=1"),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertContains(t, responseWriter.Body.String(), "Successfully unpaused all 1 paused identifiers")
+	test.AssertContains(t, responseWriter.Body.String(), "Successfully unpaused all 1 identifier(s)")
 
 	// Redirecting after a successful unpause POST with a count of 0 displays
 	// the already unpaused page.
@@ -211,5 +211,5 @@ func TestUnpausePaths(t *testing.T) {
 		URL:    mustParseURL(unpauseStatus + "?count=" + fmt.Sprintf("%d", unpause.RequestLimit)),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertContains(t, responseWriter.Body.String(), fmt.Sprintf("Successfully unpaused %d paused identifiers", unpause.RequestLimit))
+	test.AssertContains(t, responseWriter.Body.String(), "Some identifiers were unpaused")
 }
