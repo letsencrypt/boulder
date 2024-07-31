@@ -35,23 +35,23 @@ type goTooOldError struct {
 	error
 }
 
-// responseDeduper wraps a driverResponse, deduplicating its contents.
+// responseDeduper wraps a DriverResponse, deduplicating its contents.
 type responseDeduper struct {
 	seenRoots    map[string]bool
 	seenPackages map[string]*Package
-	dr           *driverResponse
+	dr           *DriverResponse
 }
 
 func newDeduper() *responseDeduper {
 	return &responseDeduper{
-		dr:           &driverResponse{},
+		dr:           &DriverResponse{},
 		seenRoots:    map[string]bool{},
 		seenPackages: map[string]*Package{},
 	}
 }
 
-// addAll fills in r with a driverResponse.
-func (r *responseDeduper) addAll(dr *driverResponse) {
+// addAll fills in r with a DriverResponse.
+func (r *responseDeduper) addAll(dr *DriverResponse) {
 	for _, pkg := range dr.Packages {
 		r.addPackage(pkg)
 	}
@@ -128,7 +128,7 @@ func (state *golistState) mustGetEnv() map[string]string {
 // goListDriver uses the go list command to interpret the patterns and produce
 // the build system package structure.
 // See driver for more details.
-func goListDriver(cfg *Config, patterns ...string) (*driverResponse, error) {
+func goListDriver(cfg *Config, patterns ...string) (_ *DriverResponse, err error) {
 	// Make sure that any asynchronous go commands are killed when we return.
 	parentCtx := cfg.Context
 	if parentCtx == nil {
@@ -146,16 +146,18 @@ func goListDriver(cfg *Config, patterns ...string) (*driverResponse, error) {
 	}
 
 	// Fill in response.Sizes asynchronously if necessary.
-	var sizeserr error
-	var sizeswg sync.WaitGroup
 	if cfg.Mode&NeedTypesSizes != 0 || cfg.Mode&NeedTypes != 0 {
-		sizeswg.Add(1)
+		errCh := make(chan error)
 		go func() {
 			compiler, arch, err := packagesdriver.GetSizesForArgsGolist(ctx, state.cfgInvocation(), cfg.gocmdRunner)
-			sizeserr = err
 			response.dr.Compiler = compiler
 			response.dr.Arch = arch
-			sizeswg.Done()
+			errCh <- err
+		}()
+		defer func() {
+			if sizesErr := <-errCh; sizesErr != nil {
+				err = sizesErr
+			}
 		}()
 	}
 
@@ -208,10 +210,7 @@ extractQueries:
 		}
 	}
 
-	sizeswg.Wait()
-	if sizeserr != nil {
-		return nil, sizeserr
-	}
+	// (We may yet return an error due to defer.)
 	return response.dr, nil
 }
 
@@ -266,7 +265,7 @@ func (state *golistState) runContainsQueries(response *responseDeduper, queries 
 
 // adhocPackage attempts to load or construct an ad-hoc package for a given
 // query, if the original call to the driver produced inadequate results.
-func (state *golistState) adhocPackage(pattern, query string) (*driverResponse, error) {
+func (state *golistState) adhocPackage(pattern, query string) (*DriverResponse, error) {
 	response, err := state.createDriverResponse(query)
 	if err != nil {
 		return nil, err
@@ -357,7 +356,7 @@ func otherFiles(p *jsonPackage) [][]string {
 
 // createDriverResponse uses the "go list" command to expand the pattern
 // words and return a response for the specified packages.
-func (state *golistState) createDriverResponse(words ...string) (*driverResponse, error) {
+func (state *golistState) createDriverResponse(words ...string) (*DriverResponse, error) {
 	// go list uses the following identifiers in ImportPath and Imports:
 	//
 	// 	"p"			-- importable package or main (command)
@@ -384,7 +383,7 @@ func (state *golistState) createDriverResponse(words ...string) (*driverResponse
 	pkgs := make(map[string]*Package)
 	additionalErrors := make(map[string][]Error)
 	// Decode the JSON and convert it to Package form.
-	response := &driverResponse{
+	response := &DriverResponse{
 		GoVersion: goVersion,
 	}
 	for dec := json.NewDecoder(buf); dec.More(); {
@@ -842,6 +841,7 @@ func (state *golistState) cfgInvocation() gocommand.Invocation {
 		Env:        cfg.Env,
 		Logf:       cfg.Logf,
 		WorkingDir: cfg.Dir,
+		Overlay:    cfg.goListOverlayFile,
 	}
 }
 
@@ -850,26 +850,6 @@ func (state *golistState) invokeGo(verb string, args ...string) (*bytes.Buffer, 
 	cfg := state.cfg
 
 	inv := state.cfgInvocation()
-
-	// For Go versions 1.16 and above, `go list` accepts overlays directly via
-	// the -overlay flag. Set it, if it's available.
-	//
-	// The check for "list" is not necessarily required, but we should avoid
-	// getting the go version if possible.
-	if verb == "list" {
-		goVersion, err := state.getGoVersion()
-		if err != nil {
-			return nil, err
-		}
-		if goVersion >= 16 {
-			filename, cleanup, err := state.writeOverlays()
-			if err != nil {
-				return nil, err
-			}
-			defer cleanup()
-			inv.Overlay = filename
-		}
-	}
 	inv.Verb = verb
 	inv.Args = args
 	gocmdRunner := cfg.gocmdRunner
@@ -1014,67 +994,6 @@ func (state *golistState) invokeGo(verb string, args ...string) (*bytes.Buffer, 
 		}
 	}
 	return stdout, nil
-}
-
-// OverlayJSON is the format overlay files are expected to be in.
-// The Replace map maps from overlaid paths to replacement paths:
-// the Go command will forward all reads trying to open
-// each overlaid path to its replacement path, or consider the overlaid
-// path not to exist if the replacement path is empty.
-//
-// From golang/go#39958.
-type OverlayJSON struct {
-	Replace map[string]string `json:"replace,omitempty"`
-}
-
-// writeOverlays writes out files for go list's -overlay flag, as described
-// above.
-func (state *golistState) writeOverlays() (filename string, cleanup func(), err error) {
-	// Do nothing if there are no overlays in the config.
-	if len(state.cfg.Overlay) == 0 {
-		return "", func() {}, nil
-	}
-	dir, err := os.MkdirTemp("", "gopackages-*")
-	if err != nil {
-		return "", nil, err
-	}
-	// The caller must clean up this directory, unless this function returns an
-	// error.
-	cleanup = func() {
-		os.RemoveAll(dir)
-	}
-	defer func() {
-		if err != nil {
-			cleanup()
-		}
-	}()
-	overlays := map[string]string{}
-	for k, v := range state.cfg.Overlay {
-		// Create a unique filename for the overlaid files, to avoid
-		// creating nested directories.
-		noSeparator := strings.Join(strings.Split(filepath.ToSlash(k), "/"), "")
-		f, err := os.CreateTemp(dir, fmt.Sprintf("*-%s", noSeparator))
-		if err != nil {
-			return "", func() {}, err
-		}
-		if _, err := f.Write(v); err != nil {
-			return "", func() {}, err
-		}
-		if err := f.Close(); err != nil {
-			return "", func() {}, err
-		}
-		overlays[k] = f.Name()
-	}
-	b, err := json.Marshal(OverlayJSON{Replace: overlays})
-	if err != nil {
-		return "", func() {}, err
-	}
-	// Write out the overlay file that contains the filepath mappings.
-	filename = filepath.Join(dir, "overlay.json")
-	if err := os.WriteFile(filename, b, 0665); err != nil {
-		return "", func() {}, err
-	}
-	return filename, cleanup, nil
 }
 
 func containsGoFile(s []string) bool {

@@ -367,7 +367,7 @@ func TestInFlightRPCStat(t *testing.T) {
 	c := test_proto.NewChillerClient(conn)
 
 	// Fire off a few RPCs. They will block on the blockedServer's roadblock wg
-	for i := 0; i < numRPCs; i++ {
+	for range numRPCs {
 		go func() {
 			// Ignore errors, just chilllll.
 			_, _ = c.Chill(context.Background(), &test_proto.Time{})

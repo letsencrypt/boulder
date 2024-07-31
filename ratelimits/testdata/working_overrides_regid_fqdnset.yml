@@ -2,14 +2,20 @@
     burst: 40
     count: 40
     period: 1s
-    ids: [example.com]
+    ids:
+      - id: example.com
+        comment: Foo
 - CertificatesPerFQDNSet:
     burst: 50
     count: 50
     period: 2s
-    ids: ["example.com,example.net"]
+    ids:
+      - id: "example.com,example.net"
+        comment: Foo
 - CertificatesPerFQDNSet:
     burst: 60
     count: 60
     period: 3s
-    ids: ["example.com,example.net,example.org"]
+    ids:
+      - id: "example.com,example.net,example.org"
+        comment: Foo

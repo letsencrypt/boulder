@@ -15,18 +15,29 @@ import (
 // of accounts which have a matching contact email address does not use a
 // database index. Therefore, when updating the found accounts, it does not exit
 // on failure, preferring to continue and make as much progress as possible.
-func (a *admin) subcommandUpdateEmail(ctx context.Context, args []string) error {
-	subflags := flag.NewFlagSet("update-email", flag.ExitOnError)
-	address := subflags.String("address", "", "Email address to update")
-	clear := subflags.Bool("clear", false, "If set, remove the address")
-	_ = subflags.Parse(args)
+type subcommandUpdateEmail struct {
+	address string
+	clear   bool
+}
 
-	if *address == "" {
+var _ subcommand = (*subcommandUpdateEmail)(nil)
+
+func (s *subcommandUpdateEmail) Desc() string {
+	return "Change or remove an email address across all accounts"
+}
+
+func (s *subcommandUpdateEmail) Flags(flag *flag.FlagSet) {
+	flag.StringVar(&s.address, "address", "", "Email address to update")
+	flag.BoolVar(&s.clear, "clear", false, "If set, remove the address")
+}
+
+func (s *subcommandUpdateEmail) Run(ctx context.Context, a *admin) error {
+	if s.address == "" {
 		return errors.New("the -address flag is required")
 	}
 
-	if *clear {
-		return a.clearEmail(ctx, *address)
+	if s.clear {
+		return a.clearEmail(ctx, s.address)
 	}
 
 	return errors.New("no action to perform on the given email was specified")

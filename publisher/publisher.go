@@ -197,13 +197,15 @@ func initMetrics(stats prometheus.Registerer) *pubMetrics {
 
 // Impl defines a Publisher
 type Impl struct {
-	pubpb.UnimplementedPublisherServer
+	pubpb.UnsafePublisherServer
 	log           blog.Logger
 	userAgent     string
 	issuerBundles map[issuance.NameID][]ct.ASN1Cert
 	ctLogsCache   logCache
 	metrics       *pubMetrics
 }
+
+var _ pubpb.PublisherServer = (*Impl)(nil)
 
 // New creates a Publisher that will submit certificates
 // to requested CT logs
@@ -402,7 +404,7 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, tim
 
 // GetCTBundleForChain takes a slice of *issuance.Certificate(s)
 // representing a certificate chain and returns a slice of
-// ct.ANS1Cert(s) in the same order
+// ct.ASN1Cert(s) in the same order
 func GetCTBundleForChain(chain []*issuance.Certificate) []ct.ASN1Cert {
 	var ctBundle []ct.ASN1Cert
 	for _, cert := range chain {

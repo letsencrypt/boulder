@@ -117,7 +117,7 @@ func LoadChain(certFiles []string) ([]*Certificate, error) {
 	// Pre-load all the certificates to make validation easier.
 	certs := make([]*Certificate, len(certFiles))
 	var err error
-	for i := 0; i < len(certFiles); i++ {
+	for i := range len(certFiles) {
 		certs[i], err = LoadCertificate(certFiles[i])
 		if err != nil {
 			return nil, fmt.Errorf("failed to load certificate %q: %w", certFiles[i], err)
@@ -127,7 +127,7 @@ func LoadChain(certFiles []string) ([]*Certificate, error) {
 	// Iterate over all certs except for the last, checking that their signature
 	// comes from the next cert in the list.
 	chain := make([]*Certificate, len(certFiles)-1)
-	for i := 0; i < len(certs)-1; i++ {
+	for i := range len(certs) - 1 {
 		err = certs[i].CheckSignatureFrom(certs[i+1].Certificate)
 		if err != nil {
 			return nil, fmt.Errorf("failed to verify signature from %q to %q (%q to %q): %w",
@@ -152,8 +152,13 @@ func LoadChain(certFiles []string) ([]*Certificate, error) {
 
 // IssuerConfig describes the constraints on and URLs used by a single issuer.
 type IssuerConfig struct {
-	UseForRSALeaves   bool
-	UseForECDSALeaves bool
+	// Active determines if the issuer can be used to sign precertificates. All
+	// issuers, regardless of this field, can be used to sign final certificates
+	// (for which an issuance token is presented), OCSP responses, and CRLs.
+	// All Active issuers of a given key type (RSA or ECDSA) are part of a pool
+	// and each precertificate will be issued randomly from a selected pool.
+	// The selection of which pool depends on the precertificate's key algorithm.
+	Active bool
 
 	IssuerURL  string `validate:"required,url"`
 	OCSPURL    string `validate:"required,url"`
@@ -188,9 +193,9 @@ type Issuer struct {
 	Signer crypto.Signer
 	Linter *linter.Linter
 
-	sigAlg            x509.SignatureAlgorithm
-	useForRSALeaves   bool
-	useForECDSALeaves bool
+	keyAlg x509.PublicKeyAlgorithm
+	sigAlg x509.SignatureAlgorithm
+	active bool
 
 	// Used to set the Authority Information Access caIssuers URL in issued
 	// certificates.
@@ -208,11 +213,14 @@ type Issuer struct {
 // newIssuer constructs a new Issuer from the in-memory certificate and signer.
 // It exists as a helper for LoadIssuer to make testing simpler.
 func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk clock.Clock) (*Issuer, error) {
+	var keyAlg x509.PublicKeyAlgorithm
 	var sigAlg x509.SignatureAlgorithm
 	switch k := cert.PublicKey.(type) {
 	case *rsa.PublicKey:
+		keyAlg = x509.RSA
 		sigAlg = x509.SHA256WithRSA
 	case *ecdsa.PublicKey:
+		keyAlg = x509.ECDSA
 		switch k.Curve {
 		case elliptic.P256():
 			sigAlg = x509.ECDSAWithSHA256
@@ -231,13 +239,14 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 	if config.OCSPURL == "" {
 		return nil, errors.New("OCSP URL is required")
 	}
-	if config.CRLURLBase != "" {
-		if !strings.HasPrefix(config.CRLURLBase, "http://") {
-			return nil, fmt.Errorf("crlURLBase must use HTTP scheme, got %q", config.CRLURLBase)
-		}
-		if !strings.HasSuffix(config.CRLURLBase, "/") {
-			return nil, fmt.Errorf("crlURLBase must end with exactly one forward slash, got %q", config.CRLURLBase)
-		}
+	if config.CRLURLBase == "" {
+		return nil, errors.New("CRL URL base is required")
+	}
+	if !strings.HasPrefix(config.CRLURLBase, "http://") {
+		return nil, fmt.Errorf("crlURLBase must use HTTP scheme, got %q", config.CRLURLBase)
+	}
+	if !strings.HasSuffix(config.CRLURLBase, "/") {
+		return nil, fmt.Errorf("crlURLBase must end with exactly one forward slash, got %q", config.CRLURLBase)
 	}
 
 	// We require that all of our issuers be capable of both issuing certs and
@@ -258,32 +267,31 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 	}
 
 	i := &Issuer{
-		Cert:              cert,
-		Signer:            signer,
-		Linter:            lintSigner,
-		sigAlg:            sigAlg,
-		useForRSALeaves:   config.UseForRSALeaves,
-		useForECDSALeaves: config.UseForECDSALeaves,
-		issuerURL:         config.IssuerURL,
-		ocspURL:           config.OCSPURL,
-		crlURLBase:        config.CRLURLBase,
-		clk:               clk,
+		Cert:       cert,
+		Signer:     signer,
+		Linter:     lintSigner,
+		keyAlg:     keyAlg,
+		sigAlg:     sigAlg,
+		active:     config.Active,
+		issuerURL:  config.IssuerURL,
+		ocspURL:    config.OCSPURL,
+		crlURLBase: config.CRLURLBase,
+		clk:        clk,
 	}
 	return i, nil
 }
 
-// Algs provides the list of leaf certificate public key algorithms for which
-// this issuer is willing to issue. This is not necessarily the same as the
-// public key algorithm or signature algorithm in this issuer's own cert.
-func (i *Issuer) Algs() []x509.PublicKeyAlgorithm {
-	var algs []x509.PublicKeyAlgorithm
-	if i.useForRSALeaves {
-		algs = append(algs, x509.RSA)
-	}
-	if i.useForECDSALeaves {
-		algs = append(algs, x509.ECDSA)
-	}
-	return algs
+// KeyType returns either x509.RSA or x509.ECDSA, depending on whether the
+// issuer has an RSA or ECDSA keypair. This is useful for determining which
+// issuance requests should be routed to this issuer.
+func (i *Issuer) KeyType() x509.PublicKeyAlgorithm {
+	return i.keyAlg
+}
+
+// IsActive is true if the issuer is willing to issue precertificates, and false
+// if the issuer is only willing to issue final certificates, OCSP, and CRLs.
+func (i *Issuer) IsActive() bool {
+	return i.active
 }
 
 // Name provides the Common Name specified in the issuer's certificate.

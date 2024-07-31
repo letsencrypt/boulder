@@ -263,6 +263,7 @@ struct ltchars {
 #include <linux/sched.h>
 #include <linux/seccomp.h>
 #include <linux/serial.h>
+#include <linux/sock_diag.h>
 #include <linux/sockios.h>
 #include <linux/taskstats.h>
 #include <linux/tipc.h>
@@ -549,6 +550,7 @@ ccflags="$@"
 		$2 !~ "NLA_TYPE_MASK" &&
 		$2 !~ /^RTC_VL_(ACCURACY|BACKUP|DATA)/ &&
 		$2 ~ /^(NETLINK|NLM|NLMSG|NLA|IFA|IFAN|RT|RTC|RTCF|RTN|RTPROT|RTNH|ARPHRD|ETH_P|NETNSA)_/ ||
+		$2 ~ /^SOCK_|SK_DIAG_|SKNLGRP_$/ ||
 		$2 ~ /^FIORDCHK$/ ||
 		$2 ~ /^SIOC/ ||
 		$2 ~ /^TIOC/ ||
@@ -584,7 +586,7 @@ ccflags="$@"
 		$2 ~ /^KEY_(SPEC|REQKEY_DEFL)_/ ||
 		$2 ~ /^KEYCTL_/ ||
 		$2 ~ /^PERF_/ ||
-		$2 ~ /^SECCOMP_MODE_/ ||
+		$2 ~ /^SECCOMP_/ ||
 		$2 ~ /^SEEK_/ ||
 		$2 ~ /^SCHED_/ ||
 		$2 ~ /^SPLICE_/ ||

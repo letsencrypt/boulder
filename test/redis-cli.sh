@@ -4,9 +4,9 @@ set -feuo pipefail
 
 ARGS="-p 4218 \
     --tls \
-    --cert /test/redis-tls/redis/cert.pem \
-    --key /test/redis-tls/redis/key.pem \
-    --cacert /test/redis-tls/minica.pem \
+    --cert /test/certs/ipki/redis/cert.pem \
+    --key /test/certs/ipki/redis/key.pem \
+    --cacert /test/certs/ipki/minica.pem \
     --user admin-user \
     --pass 435e9c4225f08813ef3af7c725f0d30d263b9cd3"
 

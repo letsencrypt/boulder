@@ -16,8 +16,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -373,7 +373,8 @@ type precertificateModel struct {
 	Expires        time.Time
 }
 
-type orderModel struct {
+// TODO(#7324) orderModelv1 is deprecated, use orderModelv2 moving forward.
+type orderModelv1 struct {
 	ID                int64
 	RegistrationID    int64
 	Expires           time.Time
@@ -383,10 +384,15 @@ type orderModel struct {
 	BeganProcessing   bool
 }
 
-type requestedNameModel struct {
-	ID           int64
-	OrderID      int64
-	ReversedName string
+type orderModelv2 struct {
+	ID                     int64
+	RegistrationID         int64
+	Expires                time.Time
+	Created                time.Time
+	Error                  []byte
+	CertificateSerial      string
+	BeganProcessing        bool
+	CertificateProfileName string
 }
 
 type orderToAuthzModel struct {
@@ -394,8 +400,9 @@ type orderToAuthzModel struct {
 	AuthzID int64
 }
 
-func orderToModel(order *corepb.Order) (*orderModel, error) {
-	om := &orderModel{
+// TODO(#7324) orderToModelv1 is deprecated, use orderModelv2 moving forward.
+func orderToModelv1(order *corepb.Order) (*orderModelv1, error) {
+	om := &orderModelv1{
 		ID:                order.Id,
 		RegistrationID:    order.RegistrationID,
 		Expires:           order.Expires.AsTime(),
@@ -417,7 +424,8 @@ func orderToModel(order *corepb.Order) (*orderModel, error) {
 	return om, nil
 }
 
-func modelToOrder(om *orderModel) (*corepb.Order, error) {
+// TODO(#7324) modelToOrderv1 is deprecated, use orderModelv2 moving forward.
+func modelToOrderv1(om *orderModelv1) (*corepb.Order, error) {
 	order := &corepb.Order{
 		Id:                om.ID,
 		RegistrationID:    om.RegistrationID,
@@ -425,6 +433,54 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		Created:           timestamppb.New(om.Created),
 		CertificateSerial: om.CertificateSerial,
 		BeganProcessing:   om.BeganProcessing,
+	}
+	if len(om.Error) > 0 {
+		var problem corepb.ProblemDetails
+		err := json.Unmarshal(om.Error, &problem)
+		if err != nil {
+			return &corepb.Order{}, badJSONError(
+				"failed to unmarshal order model's error",
+				om.Error,
+				err)
+		}
+		order.Error = &problem
+	}
+	return order, nil
+}
+
+func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
+	om := &orderModelv2{
+		ID:                     order.Id,
+		RegistrationID:         order.RegistrationID,
+		Expires:                order.Expires.AsTime(),
+		Created:                order.Created.AsTime(),
+		BeganProcessing:        order.BeganProcessing,
+		CertificateSerial:      order.CertificateSerial,
+		CertificateProfileName: order.CertificateProfileName,
+	}
+
+	if order.Error != nil {
+		errJSON, err := json.Marshal(order.Error)
+		if err != nil {
+			return nil, err
+		}
+		if len(errJSON) > mediumBlobSize {
+			return nil, fmt.Errorf("Error object is too large to store in the database")
+		}
+		om.Error = errJSON
+	}
+	return om, nil
+}
+
+func modelToOrderv2(om *orderModelv2) (*corepb.Order, error) {
+	order := &corepb.Order{
+		Id:                     om.ID,
+		RegistrationID:         om.RegistrationID,
+		Expires:                timestamppb.New(om.Expires),
+		Created:                timestamppb.New(om.Created),
+		CertificateSerial:      om.CertificateSerial,
+		BeganProcessing:        om.BeganProcessing,
+		CertificateProfileName: om.CertificateProfileName,
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails
@@ -952,7 +1008,7 @@ func addIssuedNames(ctx context.Context, queryer db.Queryer, cert *x509.Certific
 		err = multiInserter.Add([]interface{}{
 			ReverseName(name),
 			core.SerialToString(cert.SerialNumber),
-			cert.NotBefore,
+			cert.NotBefore.Truncate(24 * time.Hour),
 			isRenewal,
 		})
 		if err != nil {
@@ -992,7 +1048,7 @@ var blockedKeysColumns = "keyHash, added, source, comment"
 //     processing, then the order is status ready.
 //
 // An error is returned for any other case.
-func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now time.Time) (string, error) {
+func statusForOrder(order *corepb.Order, authzValidityInfo []authzValidity, now time.Time) (string, error) {
 	// Without any further work we know an order with an error is invalid
 	if order.Error != nil {
 		return string(core.StatusInvalid), nil
@@ -1007,13 +1063,6 @@ func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now
 	// return fewer authz objects than expected, triggering a 500 error response.
 	if order.Expires.AsTime().Before(now) {
 		return string(core.StatusInvalid), nil
-	}
-
-	// Get the full Authorization objects for the order
-	authzValidityInfo, err := getAuthorizationStatuses(ctx, s, order.V2Authorizations)
-	// If there was an error getting the authorizations, return it immediately
-	if err != nil {
-		return "", err
 	}
 
 	// If getAuthorizationStatuses returned a different number of authorization
@@ -1034,7 +1083,7 @@ func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now
 
 	// Loop over each of the order's authorization objects to examine the authz status
 	for _, info := range authzValidityInfo {
-		switch core.AcmeStatus(info.Status) {
+		switch uintToStatus[info.Status] {
 		case core.StatusPending:
 			pendingAuthzs++
 		case core.StatusValid:
@@ -1047,7 +1096,7 @@ func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now
 			otherAuthzs++
 		default:
 			return "", berrors.InternalServerError(
-				"Order is in an invalid state. Authz has invalid status %s",
+				"Order is in an invalid state. Authz has invalid status %d",
 				info.Status)
 		}
 		if info.Expires.Before(now) {
@@ -1100,9 +1149,12 @@ func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now
 			"authorizations", order.Id)
 }
 
+// authzValidity is a subset of authzModel
 type authzValidity struct {
-	Status  string
-	Expires time.Time
+	IdentifierType  uint8     `db:"identifierType"`
+	IdentifierValue string    `db:"identifierValue"`
+	Status          uint8     `db:"status"`
+	Expires         time.Time `db:"expires"`
 }
 
 // getAuthorizationStatuses takes a sequence of authz IDs, and returns the
@@ -1112,14 +1164,11 @@ func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) (
 	for _, id := range ids {
 		params = append(params, id)
 	}
-	var validityInfo []struct {
-		Status  uint8
-		Expires time.Time
-	}
+	var validities []authzValidity
 	_, err := s.Select(
 		ctx,
-		&validityInfo,
-		fmt.Sprintf("SELECT status, expires FROM authz2 WHERE id IN (%s)",
+		&validities,
+		fmt.Sprintf("SELECT identifierType, identifierValue, status, expires FROM authz2 WHERE id IN (%s)",
 			db.QuestionMarks(0, len(ids))),
 		params...,
 	)
@@ -1127,14 +1176,7 @@ func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) (
 		return nil, err
 	}
 
-	allAuthzValidity := make([]authzValidity, len(validityInfo))
-	for i, info := range validityInfo {
-		allAuthzValidity[i] = authzValidity{
-			Status:  string(uintToStatus[info.Status]),
-			Expires: info.Expires,
-		}
-	}
-	return allAuthzValidity, nil
+	return validities, nil
 }
 
 // authzForOrder retrieves the authorization IDs for an order.
@@ -1147,23 +1189,6 @@ func authzForOrder(ctx context.Context, s db.Selector, orderID int64) ([]int64, 
 		orderID,
 	)
 	return v2IDs, err
-}
-
-// namesForOrder finds all of the requested names associated with an order. The
-// names are returned in their reversed form (see `sa.ReverseName`).
-func namesForOrder(ctx context.Context, s db.Selector, orderID int64) ([]string, error) {
-	var reversedNames []string
-	_, err := s.Select(
-		ctx,
-		&reversedNames,
-		`SELECT reversedName
-	   FROM requestedNames
-	   WHERE orderID = $1`,
-		orderID)
-	if err != nil {
-		return nil, err
-	}
-	return reversedNames, nil
 }
 
 // crlShardModel represents one row in the crlShards table. The ThisUpdate and
@@ -1268,4 +1293,70 @@ func setReplacementOrderFinalized(ctx context.Context, db db.Execer, orderID int
 		return err
 	}
 	return nil
+}
+
+type identifierModel struct {
+	Type  uint8  `db:"identifierType"`
+	Value string `db:"identifierValue"`
+}
+
+func newIdentifierModelFromPB(pb *sapb.Identifier) (identifierModel, error) {
+	idType, ok := identifierTypeToUint[pb.Type]
+	if !ok {
+		return identifierModel{}, fmt.Errorf("unsupported identifier type %q", pb.Type)
+	}
+
+	return identifierModel{
+		Type:  idType,
+		Value: pb.Value,
+	}, nil
+}
+
+func newPBFromIdentifierModel(id identifierModel) (*sapb.Identifier, error) {
+	idType, ok := uintToIdentifierType[id.Type]
+	if !ok {
+		return nil, fmt.Errorf("unsupported identifier type %d", id.Type)
+	}
+
+	return &sapb.Identifier{
+		Type:  idType,
+		Value: id.Value,
+	}, nil
+}
+
+func newIdentifierModelsFromPB(pbs []*sapb.Identifier) ([]identifierModel, error) {
+	ids := make([]identifierModel, 0, len(pbs))
+	for _, pb := range pbs {
+		id, err := newIdentifierModelFromPB(pb)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func newPBFromIdentifierModels(ids []identifierModel) (*sapb.Identifiers, error) {
+	pbs := make([]*sapb.Identifier, 0, len(ids))
+	for _, id := range ids {
+		pb, err := newPBFromIdentifierModel(id)
+		if err != nil {
+			return nil, err
+		}
+		pbs = append(pbs, pb)
+	}
+	return &sapb.Identifiers{Identifiers: pbs}, nil
+}
+
+// pausedModel represents a row in the paused table. It contains the
+// registrationID of the paused account, the time the (account, identifier) pair
+// was paused, and the time the pair was unpaused. The UnpausedAt field is
+// nullable because the pair may not have been unpaused yet. A pair is
+// considered paused if there is a matching row in the paused table with a NULL
+// UnpausedAt time.
+type pausedModel struct {
+	identifierModel
+	RegistrationID int64      `db:"registrationID"`
+	PausedAt       time.Time  `db:"pausedAt"`
+	UnpausedAt     *time.Time `db:"unpausedAt"`
 }

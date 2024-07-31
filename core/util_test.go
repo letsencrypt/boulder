@@ -12,10 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/go-jose/go-jose.v2"
 
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -31,7 +32,7 @@ func TestNewToken(t *testing.T) {
 	// Test for very blatant RNG failures:
 	// Try 2^20 birthdays in a 2^72 search space...
 	// our naive collision probability here is  2^-32...
-	for i := 0; i < 1000000; i++ {
+	for range 1000000 {
 		token = NewToken()[:12] // just sample a portion
 		test.Assert(t, !collider[token], "Token collision!")
 		collider[token] = true
@@ -39,9 +40,9 @@ func TestNewToken(t *testing.T) {
 }
 
 func TestLooksLikeAToken(t *testing.T) {
-	test.Assert(t, !LooksLikeAToken("R-UL_7MrV3tUUjO9v5ym2srK3dGGCwlxbVyKBdwLOS"), "Accepted short token")
-	test.Assert(t, !LooksLikeAToken("R-UL_7MrV3tUUjO9v5ym2srK3dGGCwlxbVyKBdwLOS%"), "Accepted invalid token")
-	test.Assert(t, LooksLikeAToken("R-UL_7MrV3tUUjO9v5ym2srK3dGGCwlxbVyKBdwLOSU"), "Rejected valid token")
+	test.Assert(t, !looksLikeAToken("R-UL_7MrV3tUUjO9v5ym2srK3dGGCwlxbVyKBdwLOS"), "Accepted short token")
+	test.Assert(t, !looksLikeAToken("R-UL_7MrV3tUUjO9v5ym2srK3dGGCwlxbVyKBdwLOS%"), "Accepted invalid token")
+	test.Assert(t, looksLikeAToken("R-UL_7MrV3tUUjO9v5ym2srK3dGGCwlxbVyKBdwLOSU"), "Rejected valid token")
 }
 
 func TestSerialUtils(t *testing.T) {
@@ -237,7 +238,7 @@ func BenchmarkIsAnyNilOrZero(b *testing.B) {
 
 	for _, v := range table {
 		b.Run(fmt.Sprintf("input_%T_%v", v.input, v.input), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				_ = IsAnyNilOrZero(v.input)
 			}
 		})
@@ -248,6 +249,26 @@ func TestUniqueLowerNames(t *testing.T) {
 	u := UniqueLowerNames([]string{"foobar.com", "fooBAR.com", "baz.com", "foobar.com", "bar.com", "bar.com", "a.com"})
 	sort.Strings(u)
 	test.AssertDeepEquals(t, []string{"a.com", "bar.com", "baz.com", "foobar.com"}, u)
+}
+
+func TestNormalizeIdentifiers(t *testing.T) {
+	identifiers := []identifier.ACMEIdentifier{
+		{Type: "DNS", Value: "foobar.com"},
+		{Type: "DNS", Value: "fooBAR.com"},
+		{Type: "DNS", Value: "baz.com"},
+		{Type: "DNS", Value: "foobar.com"},
+		{Type: "DNS", Value: "bar.com"},
+		{Type: "DNS", Value: "bar.com"},
+		{Type: "DNS", Value: "a.com"},
+	}
+	expected := []identifier.ACMEIdentifier{
+		{Type: "DNS", Value: "a.com"},
+		{Type: "DNS", Value: "bar.com"},
+		{Type: "DNS", Value: "baz.com"},
+		{Type: "DNS", Value: "foobar.com"},
+	}
+	u := NormalizeIdentifiers(identifiers)
+	test.AssertDeepEquals(t, expected, u)
 }
 
 func TestValidSerial(t *testing.T) {
@@ -272,16 +293,16 @@ func TestLoadCert(t *testing.T) {
 	test.AssertError(t, err, "Loading nonexistent path did not error")
 	test.AssertErrorWraps(t, err, &osPathErr)
 
-	_, err = LoadCert("../test/test-ca.der")
+	_, err = LoadCert("../test/hierarchy/README.md")
 	test.AssertError(t, err, "Loading non-PEM file did not error")
-	test.AssertEquals(t, err.Error(), "no data in cert PEM file \"../test/test-ca.der\"")
+	test.AssertContains(t, err.Error(), "no data in cert PEM file")
 
 	_, err = LoadCert("../test/hierarchy/int-e1.key.pem")
-	test.AssertError(t, err, "Loading non-cert file did not error")
-	test.AssertEquals(t, err.Error(), "x509: malformed tbs certificate")
+	test.AssertError(t, err, "Loading non-cert PEM file did not error")
+	test.AssertContains(t, err.Error(), "x509: malformed tbs certificate")
 
 	cert, err := LoadCert("../test/hierarchy/int-r3.cert.pem")
-	test.AssertNotError(t, err, "Failed to load cert file")
+	test.AssertNotError(t, err, "Failed to load cert PEM file")
 	test.AssertEquals(t, cert.Subject.CommonName, "(TEST) Radical Rhino R3")
 }
 

@@ -27,9 +27,9 @@
 			}
 		},
 		"tls": {
-			"caCertFile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/nonce.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/nonce.boulder/key.pem"
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/nonce.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/nonce.boulder/key.pem"
 		}
 	}
 }

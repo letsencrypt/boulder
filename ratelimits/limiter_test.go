@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // tenZeroZeroTwo is overridden in 'testdata/working_override.yml' to have
@@ -41,7 +42,7 @@ func setup(t *testing.T) (context.Context, map[string]*Limiter, *TransactionBuil
 	// Generate a random IP address to avoid collisions during and between test
 	// runs.
 	randIP := make(net.IP, 4)
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		randIP[i] = byte(rand.Intn(256))
 	}
 
@@ -108,7 +109,7 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 			clk.Add(d.ResetIn)
 
 			// Quickly spend 40 requests in a row.
-			for i := 0; i < 40; i++ {
+			for i := range 40 {
 				d, err = l.Spend(testCtx, overriddenTxn1)
 				test.AssertNotError(t, err, "should not error")
 				test.Assert(t, d.Allowed, "should be allowed")
@@ -361,7 +362,7 @@ func TestLimiter_DefaultLimits(t *testing.T) {
 			clk.Add(d.ResetIn)
 
 			// Quickly spend 20 requests in a row.
-			for i := 0; i < 20; i++ {
+			for i := range 20 {
 				d, err = l.Spend(testCtx, txn1)
 				test.AssertNotError(t, err, "should not error")
 				test.Assert(t, d.Allowed, "should be allowed")

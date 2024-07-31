@@ -13,7 +13,7 @@ func QuestionMarks(starting, n int) string {
 	}
 	var qmarks strings.Builder
 	qmarks.Grow(2 * n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if i == 0 {
 			fmt.Fprintf(&qmarks, "$%d", starting+i+1)
 		} else {

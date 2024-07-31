@@ -3,6 +3,7 @@ package sa
 import (
 	"context"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,7 +37,8 @@ var (
 // read-only methods provided by the SQLStorageAuthorityRO, those wrapper
 // implementations are in saro.go, next to the real implementations.
 type SQLStorageAuthority struct {
-	sapb.UnimplementedStorageAuthorityServer
+	sapb.UnsafeStorageAuthorityServer
+
 	*SQLStorageAuthorityRO
 
 	dbMap *db.WrappedMap
@@ -48,6 +50,8 @@ type SQLStorageAuthority struct {
 	// this occurs.
 	rateLimitWriteErrors prometheus.Counter
 }
+
+var _ sapb.StorageAuthorityServer = (*SQLStorageAuthority)(nil)
 
 // NewSQLStorageAuthorityWrapping provides persistence using a SQL backend for
 // Boulder. It takes a read-only storage authority to wrap, which is useful if
@@ -499,12 +503,27 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Second, insert the new order.
-		order := &orderModel{
-			RegistrationID: req.NewOrder.RegistrationID,
-			Expires:        req.NewOrder.Expires.AsTime(),
-			Created:        ssa.clk.Now(),
+		var orderID int64
+		var err error
+		created := ssa.clk.Now()
+		if features.Get().MultipleCertificateProfiles {
+			omv2 := orderModelv2{
+				RegistrationID:         req.NewOrder.RegistrationID,
+				Expires:                req.NewOrder.Expires.AsTime(),
+				Created:                created,
+				CertificateProfileName: req.NewOrder.CertificateProfileName,
+			}
+			err = tx.Insert(ctx, &omv2)
+			orderID = omv2.ID
+		} else {
+			omv1 := orderModelv1{
+				RegistrationID: req.NewOrder.RegistrationID,
+				Expires:        req.NewOrder.Expires.AsTime(),
+				Created:        created,
+			}
+			err = tx.Insert(ctx, &omv1)
+			orderID = omv1.ID
 		}
-		err := tx.Insert(ctx, order)
 		if err != nil {
 			return nil, err
 		}
@@ -515,13 +534,13 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			return nil, err
 		}
 		for _, id := range req.NewOrder.V2Authorizations {
-			err = inserter.Add([]interface{}{order.ID, id})
+			err := inserter.Add([]interface{}{orderID, id})
 			if err != nil {
 				return nil, err
 			}
 		}
 		for _, id := range newAuthzIDs {
-			err = inserter.Add([]interface{}{order.ID, id})
+			err := inserter.Add([]interface{}{orderID, id})
 			if err != nil {
 				return nil, err
 			}
@@ -531,24 +550,8 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			return nil, err
 		}
 
-		// Fourth, insert all of the requestedNames.
-		inserter, err = db.NewMultiInserter("requestedNames", []string{"orderID", "reversedName"}, "")
-		if err != nil {
-			return nil, err
-		}
-		for _, name := range req.NewOrder.Names {
-			err = inserter.Add([]interface{}{order.ID, ReverseName(name)})
-			if err != nil {
-				return nil, err
-			}
-		}
-		_, err = inserter.Insert(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
-
-		// Fifth, insert the FQDNSet entry for the order.
-		err = addOrderFQDNSet(ctx, tx, req.NewOrder.Names, order.ID, order.RegistrationID, order.Expires)
+		// Fourth, insert the FQDNSet entry for the order.
+		err = addOrderFQDNSet(ctx, tx, req.NewOrder.Names, orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {
 			return nil, err
 		}
@@ -556,8 +559,8 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// Finally, build the overall Order PB.
 		res := &corepb.Order{
 			// ID and Created were auto-populated on the order model when it was inserted.
-			Id:      order.ID,
-			Created: timestamppb.New(order.Created),
+			Id:      orderID,
+			Created: timestamppb.New(created),
 			// These are carried over from the original request unchanged.
 			RegistrationID: req.NewOrder.RegistrationID,
 			Expires:        req.NewOrder.Expires,
@@ -566,20 +569,31 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			V2Authorizations: append(req.NewOrder.V2Authorizations, newAuthzIDs...),
 			// A new order is never processing because it can't be finalized yet.
 			BeganProcessing: false,
+			// An empty string is allowed. When the RA retrieves the order and
+			// transmits it to the CA, the empty string will take the value of
+			// DefaultCertProfileName from the //issuance package.
+			CertificateProfileName: req.NewOrder.CertificateProfileName,
 		}
 
-		if features.Get().TrackReplacementCertificatesARI && req.NewOrder.ReplacesSerial != "" {
+		if req.NewOrder.ReplacesSerial != "" {
 			// Update the replacementOrders table to indicate that this order
 			// replaces the provided certificate serial.
-			err := addReplacementOrder(ctx, tx, req.NewOrder.ReplacesSerial, order.ID, order.Expires)
+			err := addReplacementOrder(ctx, tx, req.NewOrder.ReplacesSerial, orderID, req.NewOrder.Expires.AsTime())
 			if err != nil {
 				return nil, err
 			}
 		}
 
+		// Get the partial Authorization objects for the order
+		authzValidityInfo, err := getAuthorizationStatuses(ctx, tx, res.V2Authorizations)
+		// If there was an error getting the authorizations, return it immediately
+		if err != nil {
+			return nil, err
+		}
+
 		// Calculate the order status before returning it. Since it may have reused
 		// all valid authorizations the order may be "born" in a ready status.
-		status, err := statusForOrder(ctx, tx, res, ssa.clk.Now())
+		status, err := statusForOrder(res, authzValidityInfo, ssa.clk.Now())
 		if err != nil {
 			return nil, err
 		}
@@ -644,7 +658,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 		return nil, errIncompleteRequest
 	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		om, err := orderToModel(&corepb.Order{
+		om, err := orderToModelv2(&corepb.Order{
 			Id:    req.Id,
 			Error: req.Error,
 		})
@@ -1220,7 +1234,10 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 
 // UpdateCRLShard updates the thisUpdate and nextUpdate timestamps of a CRL
 // shard. It rejects the update if it would cause the thisUpdate timestamp to
-// move backwards. It does *not* reject the update if the shard is no longer
+// move backwards, but if thisUpdate would stay the same (for instance, multiple
+// CRL generations within a single second), it will succeed.
+//
+// It does *not* reject the update if the shard is no longer
 // leased: although this would be unexpected (because the lease timestamp should
 // be the same as the crl-updater's context expiration), it's not inherently a
 // sign of an update that should be skipped. It does reject the update if the
@@ -1245,7 +1262,7 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 				SET thisUpdate = $1, nextUpdate = $2, leasedUntil = $3
 				WHERE issuerID = $4
 				AND idx = $5
-				AND (thisUpdate is NULL OR thisUpdate < $6)
+				AND (thisUpdate is NULL OR thisUpdate <= $6)
 				LIMIT 1`,
 			req.ThisUpdate.AsTime(),
 			nextUpdate,
@@ -1263,7 +1280,7 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 			return nil, err
 		}
 		if rowsAffected == 0 {
-			return nil, fmt.Errorf("unable to update shard %d for issuer %d", req.ShardIdx, req.IssuerNameID)
+			return nil, fmt.Errorf("unable to update shard %d for issuer %d; possibly because shard exists", req.ShardIdx, req.IssuerNameID)
 		}
 		if rowsAffected != 1 {
 			return nil, errors.New("update affected unexpected number of rows")
@@ -1275,4 +1292,156 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+// PauseIdentifiers pauses a set of identifiers for the provided account. If an
+// identifier is currently paused, this is a no-op. If an identifier was
+// previously paused and unpaused, it will be repaused unless it was unpaused
+// less than two weeks ago. The response will indicate how many identifiers were
+// paused and how many were repaused. All work is accomplished in a transaction
+// to limit possible race conditions.
+func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.PauseRequest) (*sapb.PauseIdentifiersResponse, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifiers) {
+		return nil, errIncompleteRequest
+	}
+
+	// Marshal the identifier now that we've crossed the RPC boundary.
+	identifiers, err := newIdentifierModelsFromPB(req.Identifiers)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &sapb.PauseIdentifiersResponse{}
+	_, err = db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		for _, identifier := range identifiers {
+			pauseError := func(op string, err error) error {
+				return fmt.Errorf("while %s identifier %s for registration ID %d: %w",
+					op, identifier.Value, req.RegistrationID, err,
+				)
+			}
+
+			var entry pausedModel
+			err := tx.SelectOne(ctx, &entry, `
+			SELECT pausedAt, unpausedAt
+			FROM paused
+			WHERE 
+				registrationID = ? AND 
+				identifierType = ? AND 
+				identifierValue = ?`,
+				req.RegistrationID,
+				identifier.Type,
+				identifier.Value,
+			)
+
+			switch {
+			case err != nil && !errors.Is(err, sql.ErrNoRows):
+				// Error querying the database.
+				return nil, pauseError("querying pause status for", err)
+
+			case err != nil && errors.Is(err, sql.ErrNoRows):
+				// Not currently or previously paused, insert a new pause record.
+				err = tx.Insert(ctx, &pausedModel{
+					RegistrationID: req.RegistrationID,
+					PausedAt:       ssa.clk.Now().Truncate(time.Second),
+					identifierModel: identifierModel{
+						Type:  identifier.Type,
+						Value: identifier.Value,
+					},
+				})
+				if err != nil && !db.IsDuplicate(err) {
+					return nil, pauseError("pausing", err)
+				}
+
+				// Identifier successfully paused.
+				response.Paused++
+				continue
+
+			case entry.UnpausedAt == nil || entry.PausedAt.After(*entry.UnpausedAt):
+				// Identifier is already paused.
+				continue
+
+			case entry.UnpausedAt.After(ssa.clk.Now().Add(-14 * 24 * time.Hour)):
+				// Previously unpaused less than two weeks ago, skip this identifier.
+				continue
+
+			case entry.UnpausedAt.After(entry.PausedAt):
+				// Previously paused (and unpaused), repause the identifier.
+				_, err := tx.ExecContext(ctx, `
+				UPDATE paused
+				SET pausedAt = ?,
+				    unpausedAt = NULL
+				WHERE 
+					registrationID = ? AND 
+					identifierType = ? AND 
+					identifierValue = ? AND
+					unpausedAt IS NOT NULL`,
+					ssa.clk.Now().Truncate(time.Second),
+					req.RegistrationID,
+					identifier.Type,
+					identifier.Value,
+				)
+				if err != nil {
+					return nil, pauseError("repausing", err)
+				}
+
+				// Identifier successfully repaused.
+				response.Repaused++
+				continue
+
+			default:
+				// This indicates a database state which should never occur.
+				return nil, fmt.Errorf("impossible database state encountered while pausing identifier %s",
+					identifier.Value,
+				)
+			}
+		}
+		return nil, nil
+	})
+	if err != nil {
+		// Error occurred during transaction.
+		return nil, err
+	}
+	return response, nil
+}
+
+// UnpauseAccount uses up to 5 iterations of UPDATE queries each with a LIMIT of
+// 10,000 to unpause up to 50,000 identifiers and returns a count of identifiers
+// unpaused. If the returned count is 50,000 there may be more paused identifiers.
+func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
+	if core.IsAnyNilOrZero(req.Id) {
+		return nil, errIncompleteRequest
+	}
+
+	const batchSize = 10000
+	total := &sapb.Count{}
+
+	for i := 0; i < 5; i++ {
+		result, err := ssa.dbMap.ExecContext(ctx, `
+			UPDATE paused
+			SET unpausedAt = ?
+			WHERE 
+				registrationID = ? AND
+				unpausedAt IS NULL
+			LIMIT ?`,
+			ssa.clk.Now(),
+			req.Id,
+			batchSize,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+
+		total.Count += rowsAffected
+		if rowsAffected < batchSize {
+			// Fewer than batchSize rows were updated, so we're done.
+			break
+		}
+	}
+
+	return total, nil
 }

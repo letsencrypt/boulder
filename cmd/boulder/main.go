@@ -15,7 +15,6 @@ import (
 	_ "github.com/letsencrypt/boulder/cmd/boulder-sa"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-va"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-wfe2"
-	_ "github.com/letsencrypt/boulder/cmd/caa-log-checker"
 	_ "github.com/letsencrypt/boulder/cmd/cert-checker"
 	_ "github.com/letsencrypt/boulder/cmd/contact-auditor"
 	_ "github.com/letsencrypt/boulder/cmd/crl-checker"
@@ -27,8 +26,10 @@ import (
 	_ "github.com/letsencrypt/boulder/cmd/nonce-service"
 	_ "github.com/letsencrypt/boulder/cmd/notify-mailer"
 	_ "github.com/letsencrypt/boulder/cmd/ocsp-responder"
+	_ "github.com/letsencrypt/boulder/cmd/remoteva"
 	_ "github.com/letsencrypt/boulder/cmd/reversed-hostname-checker"
 	_ "github.com/letsencrypt/boulder/cmd/rocsp-tool"
+	_ "github.com/letsencrypt/boulder/cmd/sfe"
 	"github.com/letsencrypt/boulder/core"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -57,7 +58,7 @@ func readAndValidateConfigFile(name, filename string) error {
 // getConfigPath returns the path to the config file if it was provided as a
 // command line flag. If the flag was not provided, it returns an empty string.
 func getConfigPath() string {
-	for i := 0; i < len(os.Args); i++ {
+	for i := range len(os.Args) {
 		arg := os.Args[i]
 		if arg == "--config" || arg == "-config" {
 			if i+1 < len(os.Args) {

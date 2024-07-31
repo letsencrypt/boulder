@@ -12,19 +12,19 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/mocks"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
-// fakeGRCC is a fake sapb.StorageAuthority_GetRevokedCertsClient which can be
+// fakeGRCC is a fake grpc.ClientStreamingClient which can be
 // populated with some CRL entries or an error for use as the return value of
 // a faked GetRevokedCerts call.
 type fakeGRCC struct {
@@ -50,13 +50,13 @@ func (f *fakeGRCC) Recv() (*corepb.CRLEntry, error) {
 // fakeGRCC to be used as the return value for calls to GetRevokedCerts, and a
 // fake timestamp to serve as the database's maximum notAfter value.
 type fakeSAC struct {
-	mocks.StorageAuthority
+	sapb.StorageAuthorityClient
 	grcc        fakeGRCC
 	maxNotAfter time.Time
 	leaseError  error
 }
 
-func (f *fakeSAC) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
+func (f *fakeSAC) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[corepb.CRLEntry], error) {
 	return &f.grcc, nil
 }
 
@@ -71,7 +71,7 @@ func (f *fakeSAC) LeaseCRLShard(_ context.Context, req *sapb.LeaseCRLShardReques
 	return &sapb.LeaseCRLShardResponse{IssuerNameID: req.IssuerNameID, ShardIdx: req.MinShardIdx}, nil
 }
 
-// fakeGCC is a fake capb.CRLGenerator_GenerateCRLClient which can be
+// fakeGCC is a fake grpc.BidiStreamingClient which can be
 // populated with some CRL entries or an error for use as the return value of
 // a faked GenerateCRL call.
 type fakeGCC struct {
@@ -108,11 +108,11 @@ type fakeCGC struct {
 	gcc fakeGCC
 }
 
-func (f *fakeCGC) GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (capb.CRLGenerator_GenerateCRLClient, error) {
+func (f *fakeCGC) GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[capb.GenerateCRLRequest, capb.GenerateCRLResponse], error) {
 	return &f.gcc, nil
 }
 
-// fakeUCC is a fake cspb.CRLStorer_UploadCRLClient which can be populated with
+// fakeUCC is a fake grpc.ClientStreamingClient which can be populated with
 // an error for use as the return value of a faked UploadCRL call.
 type fakeUCC struct {
 	grpc.ClientStream
@@ -137,7 +137,7 @@ type fakeCSC struct {
 	ucc fakeUCC
 }
 
-func (f *fakeCSC) UploadCRL(ctx context.Context, opts ...grpc.CallOption) (cspb.CRLStorer_UploadCRLClient, error) {
+func (f *fakeCSC) UploadCRL(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[cspb.UploadCRLRequest, emptypb.Empty], error) {
 	return &f.ucc, nil
 }
 

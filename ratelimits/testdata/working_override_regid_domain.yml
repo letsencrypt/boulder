@@ -2,4 +2,6 @@
     burst: 40
     count: 40
     period: 1s
-    ids: [example.com]
+    ids:
+      - id: example.com
+        comment: Foo

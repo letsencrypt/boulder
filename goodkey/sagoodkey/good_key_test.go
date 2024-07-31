@@ -21,7 +21,7 @@ func TestDBBlocklistAccept(t *testing.T) {
 			return &sapb.Exists{Exists: false}, nil
 		},
 	} {
-		policy, err := NewKeyPolicy(&goodkey.Config{}, testCheck)
+		policy, err := NewPolicy(&goodkey.Config{}, testCheck)
 		test.AssertNotError(t, err, "NewKeyPolicy failed")
 
 		k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -36,7 +36,7 @@ func TestDBBlocklistReject(t *testing.T) {
 		return &sapb.Exists{Exists: true}, nil
 	}
 
-	policy, err := NewKeyPolicy(&goodkey.Config{}, testCheck)
+	policy, err := NewPolicy(&goodkey.Config{}, testCheck)
 	test.AssertNotError(t, err, "NewKeyPolicy failed")
 
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

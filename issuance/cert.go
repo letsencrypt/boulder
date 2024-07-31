@@ -22,16 +22,30 @@ import (
 	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/config"
-	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/precert"
 )
 
 // ProfileConfig describes the certificate issuance constraints for all issuers.
 type ProfileConfig struct {
+	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
+	// OCSP Must Staple extension to be rejected.
 	AllowMustStaple bool
-	AllowCTPoison   bool
-	AllowSCTList    bool
+	// AllowCTPoison has no effect.
+	// Deprecated: We will always allow the CT Poison extension because it is
+	// mandated for Precertificates.
+	AllowCTPoison bool
+	// AllowSCTList has no effect.
+	// Deprecated: We intend to include SCTs in all final Certificates for the
+	// foreseeable future.
+	AllowSCTList bool
+	// AllowCommonName has no effect.
+	// Deprecated: Rather than rejecting IssuanceRequests which include a common
+	// name, we would prefer to simply drop the CN. Use `OmitCommonName` instead.
 	AllowCommonName bool
+
+	// OmitCommonName causes the CN field to be excluded from the resulting
+	// certificate, regardless of its inclusion in the IssuanceRequest.
+	OmitCommonName bool
 
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
@@ -48,9 +62,7 @@ type PolicyConfig struct {
 // Profile is the validated structure created by reading in ProfileConfigs and IssuerConfigs
 type Profile struct {
 	allowMustStaple bool
-	allowCTPoison   bool
-	allowSCTList    bool
-	allowCommonName bool
+	omitCommonName  bool
 
 	maxBackdate time.Duration
 	maxValidity time.Duration
@@ -58,41 +70,55 @@ type Profile struct {
 	lints lint.Registry
 }
 
-// NewProfile synthesizes the profile config and issuer config into a single
-// object, and checks various aspects for correctness.
-func NewProfile(profileConfig ProfileConfig, skipLints []string) (*Profile, error) {
-	reg, err := linter.NewRegistry(skipLints)
-	if err != nil {
-		return nil, fmt.Errorf("creating lint registry: %w", err)
+// NewProfile converts the profile config and lint registry into a usable profile.
+func NewProfile(profileConfig ProfileConfig, lints lint.Registry) (*Profile, error) {
+	// The Baseline Requirements, Section 7.1.2.7, says that the notBefore time
+	// must be "within 48 hours of the time of signing". We can be even stricter.
+	if profileConfig.MaxValidityBackdate.Duration >= 24*time.Hour {
+		return nil, fmt.Errorf("backdate %q is too large", profileConfig.MaxValidityBackdate.Duration)
+	}
+
+	// Our CP/CPS, Section 7.1, says that our Subscriber Certificates have a
+	// validity period of "up to 100 days".
+	if profileConfig.MaxValidityPeriod.Duration >= 100*24*time.Hour {
+		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
 	}
 
 	sp := &Profile{
 		allowMustStaple: profileConfig.AllowMustStaple,
-		allowCTPoison:   profileConfig.AllowCTPoison,
-		allowSCTList:    profileConfig.AllowSCTList,
-		allowCommonName: profileConfig.AllowCommonName,
+		omitCommonName:  profileConfig.OmitCommonName,
 		maxBackdate:     profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:     profileConfig.MaxValidityPeriod.Duration,
-		lints:           reg,
+		lints:           lints,
 	}
 
 	return sp, nil
+}
+
+// GenerateValidity returns a notBefore/notAfter pair bracketing the input time,
+// based on the profile's configured backdate and validity.
+func (p *Profile) GenerateValidity(now time.Time) (time.Time, time.Time) {
+	// Don't use the full maxBackdate, to ensure that the actual backdate remains
+	// acceptable throughout the rest of the issuance process.
+	backdate := time.Duration(float64(p.maxBackdate.Nanoseconds()) * 0.9)
+	notBefore := now.Add(-1 * backdate)
+	// Subtract one second, because certificate validity periods are *inclusive*
+	// of their final second (Baseline Requirements, Section 1.6.1).
+	notAfter := notBefore.Add(p.maxValidity).Add(-1 * time.Second)
+	return notBefore, notAfter
 }
 
 // requestValid verifies the passed IssuanceRequest against the profile. If the
 // request doesn't match the signing profile an error is returned.
 func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceRequest) error {
 	switch req.PublicKey.(type) {
-	case *rsa.PublicKey:
-		if !i.useForRSALeaves {
-			return errors.New("cannot sign RSA public keys")
-		}
-	case *ecdsa.PublicKey:
-		if !i.useForECDSALeaves {
-			return errors.New("cannot sign ECDSA public keys")
-		}
+	case *rsa.PublicKey, *ecdsa.PublicKey:
 	default:
 		return errors.New("unsupported public key type")
+	}
+
+	if len(req.precertDER) == 0 && !i.active {
+		return errors.New("inactive issuer cannot issue precert")
 	}
 
 	if len(req.SubjectKeyId) != 20 {
@@ -103,20 +129,8 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 		return errors.New("must-staple extension cannot be included")
 	}
 
-	if !prof.allowCTPoison && req.IncludeCTPoison {
-		return errors.New("ct poison extension cannot be included")
-	}
-
-	if !prof.allowSCTList && req.sctList != nil {
-		return errors.New("sct list extension cannot be included")
-	}
-
 	if req.IncludeCTPoison && req.sctList != nil {
 		return errors.New("cannot include both ct poison and sct list extensions")
-	}
-
-	if !prof.allowCommonName && req.CommonName != "" {
-		return errors.New("common name cannot be included")
 	}
 
 	// The validity period is calculated inclusive of the whole second represented
@@ -267,7 +281,7 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 	// populate template from the issuance request
 	template.NotBefore, template.NotAfter = req.NotBefore, req.NotAfter
 	template.SerialNumber = big.NewInt(0).SetBytes(req.Serial)
-	if req.CommonName != "" {
+	if req.CommonName != "" && !prof.omitCommonName {
 		template.Subject.CommonName = req.CommonName
 	}
 	template.DNSNames = req.DNSNames

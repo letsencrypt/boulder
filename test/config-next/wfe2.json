@@ -1,8 +1,8 @@
 {
 	"wfe": {
 		"timeout": "30s",
-		"serverCertificatePath": "test/wfe-tls/boulder/cert.pem",
-		"serverKeyPath": "test/wfe-tls/boulder/key.pem",
+		"serverCertificatePath": "test/certs/ipki/boulder/cert.pem",
+		"serverKeyPath": "test/certs/ipki/boulder/key.pem",
 		"allowOrigins": [
 			"*"
 		],
@@ -15,9 +15,9 @@
 			"blockedKeyFile": "test/example-blocked-keys.yaml"
 		},
 		"tls": {
-			"caCertFile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/wfe.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/wfe.boulder/key.pem"
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/wfe.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/wfe.boulder/key.pem"
 		},
 		"raService": {
 			"dnsAuthority": "consul.service.consul",
@@ -75,28 +75,28 @@
 		},
 		"chains": [
 			[
-				"/hierarchy/intermediate-cert-rsa-a.pem",
-				"/hierarchy/root-cert-rsa.pem"
+				"test/certs/webpki/int-rsa-a.cert.pem",
+				"test/certs/webpki/root-rsa.cert.pem"
 			],
 			[
-				"/hierarchy/intermediate-cert-rsa-b.pem",
-				"/hierarchy/root-cert-rsa.pem"
+				"test/certs/webpki/int-rsa-b.cert.pem",
+				"test/certs/webpki/root-rsa.cert.pem"
 			],
 			[
-				"/hierarchy/intermediate-cert-ecdsa-a.pem",
-				"/hierarchy/root-cert-ecdsa.pem"
+				"test/certs/webpki/int-ecdsa-a.cert.pem",
+				"test/certs/webpki/root-ecdsa.cert.pem"
 			],
 			[
-				"/hierarchy/intermediate-cert-ecdsa-b.pem",
-				"/hierarchy/root-cert-ecdsa.pem"
+				"test/certs/webpki/int-ecdsa-b.cert.pem",
+				"test/certs/webpki/root-ecdsa.cert.pem"
 			],
 			[
-				"/hierarchy/intermediate-cross-cert-ecdsa-a.pem",
-				"/hierarchy/root-cert-rsa.pem"
+				"test/certs/webpki/int-ecdsa-a-cross.cert.pem",
+				"test/certs/webpki/root-rsa.cert.pem"
 			],
 			[
-				"/hierarchy/intermediate-cross-cert-ecdsa-b.pem",
-				"/hierarchy/root-cert-rsa.pem"
+				"test/certs/webpki/int-ecdsa-b-cross.cert.pem",
+				"test/certs/webpki/root-rsa.cert.pem"
 			]
 		],
 		"staleTimeout": "5m",
@@ -118,16 +118,30 @@
 				"poolSize": 100,
 				"routeRandomly": true,
 				"tls": {
-					"caCertFile": "test/redis-tls/minica.pem",
-					"certFile": "test/redis-tls/boulder/cert.pem",
-					"keyFile": "test/redis-tls/boulder/key.pem"
+					"caCertFile": "test/certs/ipki/minica.pem",
+					"certFile": "test/certs/ipki/wfe.boulder/cert.pem",
+					"keyFile": "test/certs/ipki/wfe.boulder/key.pem"
 				}
 			},
 			"Defaults": "test/config-next/wfe2-ratelimit-defaults.yml",
 			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml"
 		},
 		"features": {
-			"ServeRenewalInfo": true
+			"ServeRenewalInfo": true,
+			"TrackReplacementCertificatesARI": true,
+			"CheckRenewalExemptionAtWFE": true,
+			"CheckIdentifiersPaused": true
+		},
+		"certProfiles": {
+			"legacy": "The normal profile you know and love",
+			"modern": "Profile 2: Electric Boogaloo"
+		},
+		"unpause": {
+			"hmacKey": {
+				"keyFile": "test/secrets/sfe_unpause_key"
+			},
+			"jwtLifetime": "336h",
+			"url": "https://boulder.service.consul:4003"
 		}
 	},
 	"syslog": {

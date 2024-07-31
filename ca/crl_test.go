@@ -14,10 +14,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestImplementationCRL(t *testing.T) {
-	test.AssertImplementsGRPCServer(t, &crlImpl{}, capb.UnimplementedCRLGeneratorServer{})
-}
-
 type mockGenerateCRLBidiStream struct {
 	grpc.ServerStream
 	input  <-chan *capb.GenerateCRLRequest
@@ -38,6 +34,7 @@ func (s mockGenerateCRLBidiStream) Send(entry *capb.GenerateCRLResponse) error {
 }
 
 func TestGenerateCRL(t *testing.T) {
+	t.Parallel()
 	testCtx := setup(t)
 	crli := testCtx.crl
 	errs := make(chan error, 1)

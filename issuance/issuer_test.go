@@ -24,9 +24,6 @@ import (
 
 func defaultProfileConfig() ProfileConfig {
 	return ProfileConfig{
-		AllowCommonName:     true,
-		AllowCTPoison:       true,
-		AllowSCTList:        true,
 		AllowMustStaple:     true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
@@ -35,11 +32,10 @@ func defaultProfileConfig() ProfileConfig {
 
 func defaultIssuerConfig() IssuerConfig {
 	return IssuerConfig{
-		UseForECDSALeaves: true,
-		UseForRSALeaves:   true,
-		IssuerURL:         "http://issuer-url.example.org",
-		OCSPURL:           "http://ocsp-url.example.org",
-		CRLURLBase:        "http://crl-url.example.org/",
+		Active:     true,
+		IssuerURL:  "http://issuer-url.example.org",
+		OCSPURL:    "http://ocsp-url.example.org",
+		CRLURLBase: "http://crl-url.example.org/",
 	}
 }
 
@@ -79,7 +75,6 @@ func TestLoadCertificate(t *testing.T) {
 		{"happy path", "../test/hierarchy/int-e1.cert.pem", ""},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := LoadCertificate(tc.path)
@@ -123,7 +118,6 @@ func TestLoadSigner(t *testing.T) {
 		// keys in it don't match the fakeKey we generated above.
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := loadSigner(tc.loc, fakeKey.Public())
@@ -181,7 +175,6 @@ func TestNewIssuerKeyUsage(t *testing.T) {
 		{"all three", x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature, ""},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := newIssuer(
@@ -215,12 +208,12 @@ func TestNewIssuerKeyUsage(t *testing.T) {
 
 func TestLoadChain_Valid(t *testing.T) {
 	chain, err := LoadChain([]string{
-		"../test/test-ca-cross.pem",
-		"../test/test-root2.pem",
+		"../test/hierarchy/int-e1.cert.pem",
+		"../test/hierarchy/root-x2.cert.pem",
 	})
 	test.AssertNotError(t, err, "Should load valid chain")
 
-	expectedIssuer, err := core.LoadCert("../test/test-ca-cross.pem")
+	expectedIssuer, err := core.LoadCert("../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "Failed to load test issuer")
 
 	chainIssuer := chain[0]
@@ -237,12 +230,12 @@ func TestLoadChain_TooShort(t *testing.T) {
 func TestLoadChain_Unloadable(t *testing.T) {
 	_, err := LoadChain([]string{
 		"does-not-exist.pem",
-		"../test/test-root2.pem",
+		"../test/hierarchy/root-x2.cert.pem",
 	})
 	test.AssertError(t, err, "Should reject unloadable chain")
 
 	_, err = LoadChain([]string{
-		"../test/test-ca-cross.pem",
+		"../test/hierarchy/int-e1.cert.pem",
 		"does-not-exist.pem",
 	})
 	test.AssertError(t, err, "Should reject unloadable chain")
@@ -252,19 +245,19 @@ func TestLoadChain_Unloadable(t *testing.T) {
 	test.AssertNotError(t, err, "Error writing invalid PEM tmp file")
 	_, err = LoadChain([]string{
 		invalidPEMFile.Name(),
-		"../test/test-root2.pem",
+		"../test/hierarchy/root-x2.cert.pem",
 	})
 	test.AssertError(t, err, "Should reject unloadable chain")
 }
 
 func TestLoadChain_InvalidSig(t *testing.T) {
 	_, err := LoadChain([]string{
-		"../test/test-root2.pem",
-		"../test/test-ca-cross.pem",
+		"../test/hierarchy/int-e1.cert.pem",
+		"../test/hierarchy/root-x1.cert.pem",
 	})
 	test.AssertError(t, err, "Should reject invalid signature")
-	test.Assert(t, strings.Contains(err.Error(), "test-ca-cross.pem"),
+	test.Assert(t, strings.Contains(err.Error(), "root-x1.cert.pem"),
 		fmt.Sprintf("Expected error to mention filename, got: %s", err))
-	test.Assert(t, strings.Contains(err.Error(), "signature from \"CN=happy hacker fake CA\""),
+	test.Assert(t, strings.Contains(err.Error(), "signature from \"CN=(TEST) Ineffable Ice X1"),
 		fmt.Sprintf("Expected error to mention subject, got: %s", err))
 }

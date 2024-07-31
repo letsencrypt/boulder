@@ -15,9 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/miekg/pkcs11"
+
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/miekg/pkcs11"
 )
 
 // samplePubkey returns a slice of bytes containing an encoded
@@ -575,9 +576,6 @@ func TestLoadCert(t *testing.T) {
 
 	_, err = loadCert("../../test/hierarchy/int-e1.key.pem")
 	test.AssertError(t, err, "should have failed when trying to parse a private key")
-
-	_, err = loadCert("../../test/test-root.pubkey.pem")
-	test.AssertError(t, err, "should have failed when trying to parse a public key")
 }
 
 func TestGenerateSKID(t *testing.T) {

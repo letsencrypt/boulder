@@ -163,7 +163,7 @@ func (s mockServerStream[T]) Context() context.Context {
 	return s.context
 }
 
-func (sa SA) SerialsForIncident(ctx context.Context, req *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
+func (sa SA) SerialsForIncident(ctx context.Context, req *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.IncidentSerial], error) {
 	streamChan := make(chan mockStreamResult[*sapb.IncidentSerial])
 	client := mockClientStream[*sapb.IncidentSerial]{stream: streamChan}
 	server := mockServerStream[*sapb.IncidentSerial]{context: ctx, stream: streamChan}

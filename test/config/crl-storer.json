@@ -2,9 +2,9 @@
 	"crlStorer": {
 		"debugAddr": ":9667",
 		"tls": {
-			"caCertfile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/crl-storer.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/crl-storer.boulder/key.pem"
+			"caCertfile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/crl-storer.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/crl-storer.boulder/key.pem"
 		},
 		"grpc": {
 			"address": ":9309",
@@ -23,11 +23,14 @@
 			}
 		},
 		"issuerCerts": [
-			"/hierarchy/intermediate-cert-rsa-a.pem",
-			"/hierarchy/intermediate-cert-rsa-b.pem",
-			"/hierarchy/intermediate-cert-ecdsa-a.pem"
+			"test/certs/webpki/int-rsa-a.cert.pem",
+			"test/certs/webpki/int-rsa-b.cert.pem",
+			"test/certs/webpki/int-rsa-c.cert.pem",
+			"test/certs/webpki/int-ecdsa-a.cert.pem",
+			"test/certs/webpki/int-ecdsa-b.cert.pem",
+			"test/certs/webpki/int-ecdsa-c.cert.pem"
 		],
-		"s3Endpoint": "http://localhost:7890",
+		"s3Endpoint": "http://localhost:4501",
 		"s3Bucket": "lets-encrypt-crls",
 		"awsConfigFile": "test/config/crl-storer.ini",
 		"awsCredsFile": "test/secrets/aws_creds.ini"

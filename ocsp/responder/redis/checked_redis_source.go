@@ -66,7 +66,7 @@ func NewCheckedRedisSource(base *redisSource, dbMap dbSelector, sac sapb.Storage
 	return newCheckedRedisSource(base, dbMap, sac, stats, log), nil
 }
 
-// newCheckRedisSource is an internal-only constructor that takes a private interface as a parameter.
+// newCheckedRedisSource is an internal-only constructor that takes a private interface as a parameter.
 // We call this from tests and from NewCheckedRedisSource.
 func newCheckedRedisSource(base rocspSourceInterface, dbMap dbSelector, sac sapb.StorageAuthorityReadOnlyClient, stats prometheus.Registerer, log blog.Logger) *checkedRedisSource {
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{

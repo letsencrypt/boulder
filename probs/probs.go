@@ -20,6 +20,8 @@ const (
 	BadRevocationReasonProblem   = ProblemType("badRevocationReason")
 	BadSignatureAlgorithmProblem = ProblemType("badSignatureAlgorithm")
 	CAAProblem                   = ProblemType("caa")
+	// ConflictProblem is a problem type that is not defined in RFC8555.
+	ConflictProblem              = ProblemType("conflict")
 	ConnectionProblem            = ProblemType("connection")
 	DNSProblem                   = ProblemType("dns")
 	InvalidContactProblem        = ProblemType("invalidContact")
@@ -215,6 +217,15 @@ func RateLimited(detail string) *ProblemDetails {
 	}
 }
 
+// Paused returns a ProblemDetails representing a RateLimitedProblem error
+func Paused(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       RateLimitedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusTooManyRequests,
+	}
+}
+
 // RejectedIdentifier returns a ProblemDetails with a RejectedIdentifierProblem and a 400 Bad
 // Request status code.
 func RejectedIdentifier(detail string) *ProblemDetails {
@@ -290,11 +301,11 @@ func Canceled(detail string, a ...any) *ProblemDetails {
 	}
 }
 
-// Conflict returns a ProblemDetails with a MalformedProblem and a 409 Conflict
+// Conflict returns a ProblemDetails with a ConflictProblem and a 409 Conflict
 // status code.
 func Conflict(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:       MalformedProblem,
+		Type:       ConflictProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusConflict,
 	}

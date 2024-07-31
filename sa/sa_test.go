@@ -18,11 +18,13 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,7 +33,6 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -39,6 +40,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -59,9 +61,18 @@ var (
 }`
 )
 
-func TestImplementation(t *testing.T) {
-	test.AssertImplementsGRPCServer(t, &SQLStorageAuthority{}, sapb.UnimplementedStorageAuthorityServer{})
-	test.AssertImplementsGRPCServer(t, &SQLStorageAuthorityRO{}, sapb.UnimplementedStorageAuthorityReadOnlyServer{})
+type fakeServerStream[T any] struct {
+	grpc.ServerStream
+	output chan<- *T
+}
+
+func (s *fakeServerStream[T]) Send(msg *T) error {
+	s.output <- msg
+	return nil
+}
+
+func (s *fakeServerStream[T]) Context() context.Context {
+	return context.Background()
 }
 
 // initSA constructs a SQLStorageAuthority and a clean up function that should
@@ -1066,6 +1077,7 @@ func TestAddIssuedNames(t *testing.T) {
 	serial := big.NewInt(1)
 	expectedSerial := "000000000000000000000000000000000001"
 	notBefore := time.Date(2018, 2, 14, 12, 0, 0, 0, time.UTC)
+	expectedNotBefore := notBefore.Truncate(24 * time.Hour)
 	// TODO: needs updating for positional placeholders
 	placeholdersPerName := "($n,$n,$n,$n)"
 	baseQuery := "INSERT INTO issuedNames (reversedName,serial,notBefore,renewal) VALUES"
@@ -1087,7 +1099,7 @@ func TestAddIssuedNames(t *testing.T) {
 			ExpectedArgs: []interface{}{
 				"uk.co.example",
 				expectedSerial,
-				notBefore,
+				expectedNotBefore,
 				false,
 			},
 		},
@@ -1100,11 +1112,11 @@ func TestAddIssuedNames(t *testing.T) {
 			ExpectedArgs: []interface{}{
 				"uk.co.example",
 				expectedSerial,
-				notBefore,
+				expectedNotBefore,
 				false,
 				"xyz.example",
 				expectedSerial,
-				notBefore,
+				expectedNotBefore,
 				false,
 			},
 		},
@@ -1117,7 +1129,7 @@ func TestAddIssuedNames(t *testing.T) {
 			ExpectedArgs: []interface{}{
 				"uk.co.example",
 				expectedSerial,
-				notBefore,
+				expectedNotBefore,
 				true,
 			},
 		},
@@ -1130,11 +1142,11 @@ func TestAddIssuedNames(t *testing.T) {
 			ExpectedArgs: []interface{}{
 				"uk.co.example",
 				expectedSerial,
-				notBefore,
+				expectedNotBefore,
 				true,
 				"xyz.example",
 				expectedSerial,
-				notBefore,
+				expectedNotBefore,
 				true,
 			},
 		},
@@ -1154,62 +1166,13 @@ func TestAddIssuedNames(t *testing.T) {
 				tc.Renewal)
 			test.AssertNotError(t, err, "addIssuedNames failed")
 			expectedPlaceholders := placeholdersPerName
-			for i := 0; i < len(tc.IssuedNames)-1; i++ {
+			for range len(tc.IssuedNames) - 1 {
 				expectedPlaceholders = fmt.Sprintf("%s,%s", expectedPlaceholders, placeholdersPerName)
 			}
 			expectedQuery := fmt.Sprintf("%s %s", baseQuery, expectedPlaceholders)
 			test.AssertEquals(t, e.query, expectedQuery)
 			if !reflect.DeepEqual(e.args, tc.ExpectedArgs) {
 				t.Errorf("Wrong args: got\n%#v, expected\n%#v", e.args, tc.ExpectedArgs)
-			}
-		})
-	}
-}
-
-func TestPreviousCertificateExists(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
-
-	reg := createWorkingRegistration(t, sa)
-
-	_, testCert := test.ThrowAwayCert(t, clk)
-
-	issued := sa.clk.Now()
-	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          testCert.Raw,
-		Issued:       timestamppb.New(issued),
-		RegID:        reg.Id,
-		IssuerNameID: 1,
-	})
-	test.AssertNotError(t, err, "Failed to add precertificate")
-	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    testCert.Raw,
-		RegID:  reg.Id,
-		Issued: timestamppb.New(issued),
-	})
-	test.AssertNotError(t, err, "calling AddCertificate")
-
-	cases := []struct {
-		name     string
-		domain   string
-		regID    int64
-		expected bool
-	}{
-		{"matches", testCert.DNSNames[0], reg.Id, true},
-		{"wrongDomain", "example.org", reg.Id, false},
-		{"wrongAccount", testCert.DNSNames[0], 3333, false},
-	}
-
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			exists, err := sa.PreviousCertificateExists(context.Background(),
-				&sapb.PreviousCertificateExistsRequest{
-					Domain: testCase.domain,
-					RegID:  testCase.regID,
-				})
-			test.AssertNotError(t, err, "calling PreviousCertificateExists")
-			if exists.Exists != testCase.expected {
-				t.Errorf("wanted %v got %v", testCase.expected, exists.Exists)
 			}
 		})
 	}
@@ -1322,11 +1285,6 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
 	test.AssertEquals(t, len(authzIDs), 4)
 	test.AssertDeepEquals(t, authzIDs, []int64{1, 2, 3, 4})
-
-	names, err := namesForOrder(ctx, sa.dbReadOnlyMap, order.Id)
-	test.AssertNotError(t, err, "namesForOrder errored")
-	test.AssertEquals(t, len(names), 4)
-	test.AssertDeepEquals(t, names, []string{"com.a", "com.b", "com.c", "com.d"})
 }
 
 // TestNewOrderAndAuthzs_NonNilInnerOrder verifies that a nil
@@ -1521,7 +1479,7 @@ func TestFinalizeOrder(t *testing.T) {
 	test.AssertEquals(t, updatedOrder.Status, string(core.StatusValid))
 }
 
-func TestOrder(t *testing.T) {
+func TestOrderWithOrderModelv1(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1585,6 +1543,151 @@ func TestOrder(t *testing.T) {
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
 }
 
+func TestOrderWithOrderModelv2(t *testing.T) {
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		t.Skip()
+	}
+
+	// The feature must be set before the SA is constructed because of a
+	// conditional on this feature in //sa/database.go.
+	features.Set(features.Config{MultipleCertificateProfiles: true})
+	defer features.Reset()
+
+	fc := clock.NewFake()
+	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
+
+	dbMap, err := DBMapForTest(vars.DBConnSA)
+	test.AssertNotError(t, err, "Couldn't create dbMap")
+
+	saro, err := NewSQLStorageAuthorityRO(dbMap, nil, metrics.NoopRegisterer, 1, 0, fc, log)
+	test.AssertNotError(t, err, "Couldn't create SARO")
+
+	sa, err := NewSQLStorageAuthorityWrapping(saro, dbMap, metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "Couldn't create SA")
+	defer test.ResetBoulderTestDatabase(t)
+
+	// Create a test registration to reference
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	authzExpires := fc.Now().Add(time.Hour)
+	authzID := createPendingAuthorization(t, sa, "example.com", authzExpires)
+
+	// Set the order to expire in two hours
+	expires := fc.Now().Add(2 * time.Hour)
+
+	inputOrder := &corepb.Order{
+		RegistrationID:         reg.Id,
+		Expires:                timestamppb.New(expires),
+		Names:                  []string{"example.com"},
+		V2Authorizations:       []int64{authzID},
+		CertificateProfileName: "tbiapb",
+	}
+
+	// Create the order
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:         inputOrder.RegistrationID,
+			Expires:                inputOrder.Expires,
+			Names:                  inputOrder.Names,
+			V2Authorizations:       inputOrder.V2Authorizations,
+			CertificateProfileName: inputOrder.CertificateProfileName,
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
+
+	// The Order from GetOrder should match the following expected order
+	created := sa.clk.Now()
+	expectedOrder := &corepb.Order{
+		// The registration ID, authorizations, expiry, and names should match the
+		// input to NewOrderAndAuthzs
+		RegistrationID:   inputOrder.RegistrationID,
+		V2Authorizations: inputOrder.V2Authorizations,
+		Names:            inputOrder.Names,
+		Expires:          inputOrder.Expires,
+		// The ID should have been set to 1 by the SA
+		Id: 1,
+		// The status should be pending
+		Status: string(core.StatusPending),
+		// The serial should be empty since this is a pending order
+		CertificateSerial: "",
+		// We should not be processing it
+		BeganProcessing: false,
+		// The created timestamp should have been set to the current time
+		Created:                timestamppb.New(created),
+		CertificateProfileName: "tbiapb",
+	}
+
+	// Fetch the order by its ID and make sure it matches the expected
+	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	test.AssertNotError(t, err, "sa.GetOrder failed")
+	test.AssertDeepEquals(t, storedOrder, expectedOrder)
+
+	//
+	// Test that an order without a certificate profile name, but with the
+	// MultipleCertificateProfiles feature flag enabled works as expected.
+	//
+
+	// Create a test registration to reference
+	key2, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 2}}.MarshalJSON()
+	initialIP2, _ := net.ParseIP("44.44.44.44").MarshalText()
+	reg2, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key2,
+		InitialIP: initialIP2,
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	inputOrderNoName := &corepb.Order{
+		RegistrationID:   reg2.Id,
+		Expires:          timestamppb.New(expires),
+		Names:            []string{"example.com"},
+		V2Authorizations: []int64{authzID},
+	}
+
+	// Create the order
+	orderNoName, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:         inputOrderNoName.RegistrationID,
+			Expires:                inputOrderNoName.Expires,
+			Names:                  inputOrderNoName.Names,
+			V2Authorizations:       inputOrderNoName.V2Authorizations,
+			CertificateProfileName: inputOrderNoName.CertificateProfileName,
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
+
+	// The Order from GetOrder should match the following expected order
+	created = sa.clk.Now()
+	expectedOrderNoName := &corepb.Order{
+		// The registration ID, authorizations, expiry, and names should match the
+		// input to NewOrderAndAuthzs
+		RegistrationID:   inputOrderNoName.RegistrationID,
+		V2Authorizations: inputOrderNoName.V2Authorizations,
+		Names:            inputOrderNoName.Names,
+		Expires:          inputOrderNoName.Expires,
+		// The ID should have been set to 2 by the SA
+		Id: 2,
+		// The status should be pending
+		Status: string(core.StatusPending),
+		// The serial should be empty since this is a pending order
+		CertificateSerial: "",
+		// We should not be processing it
+		BeganProcessing: false,
+		// The created timestamp should have been set to the current time
+		Created: timestamppb.New(created),
+	}
+
+	// Fetch the order by its ID and make sure it matches the expected
+	storedOrderNoName, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: orderNoName.Id})
+	test.AssertNotError(t, err, "sa.GetOrder failed")
+	test.AssertDeepEquals(t, storedOrderNoName, expectedOrderNoName)
+}
+
 // TestGetAuthorization2NoRows ensures that the GetAuthorization2 function returns
 // the correct error when there are no results for the provided ID.
 func TestGetAuthorization2NoRows(t *testing.T) {
@@ -1643,7 +1746,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	authz, err := sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID: reg.Id,
 		Domains:        idents,
-		Now:            timestamppb.New(expiryCutoff),
+		ValidUntil:     timestamppb.New(expiryCutoff),
 	})
 	// It should not fail
 	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
@@ -1655,7 +1758,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID: reg.Id,
 		Domains:        append(idents, identD),
-		Now:            timestamppb.New(expiryCutoff),
+		ValidUntil:     timestamppb.New(expiryCutoff),
 	})
 	// It should not fail
 	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
@@ -3020,7 +3123,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			"bbb",
 		},
 		RegistrationID: regID,
-		Now:            timestamppb.New(now),
+		ValidUntil:     timestamppb.New(now),
 	})
 	test.AssertNotError(t, err, "sa.GetValidAuthorizations2 failed")
 	test.AssertEquals(t, len(authzs.Authz), 1)
@@ -3222,20 +3325,6 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertEquals(t, len(result.Incidents), 1)
 }
 
-type mockSerialsForIncidentServerStream struct {
-	grpc.ServerStream
-	output chan<- *sapb.IncidentSerial
-}
-
-func (s mockSerialsForIncidentServerStream) Send(serial *sapb.IncidentSerial) error {
-	s.output <- serial
-	return nil
-}
-
-func (s mockSerialsForIncidentServerStream) Context() context.Context {
-	return context.Background()
-}
-
 func TestSerialsForIncident(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
@@ -3245,7 +3334,7 @@ func TestSerialsForIncident(t *testing.T) {
 	defer test.ResetIncidentsTestDatabase(t)
 
 	// Request serials from a malformed incident table name.
-	mockServerStream := mockSerialsForIncidentServerStream{}
+	mockServerStream := &fakeServerStream[sapb.IncidentSerial]{}
 	err = sa.SerialsForIncident(
 		&sapb.SerialsForIncidentRequest{
 			IncidentTable: "incidesnt_Baz",
@@ -3256,7 +3345,7 @@ func TestSerialsForIncident(t *testing.T) {
 	test.AssertContains(t, err.Error(), "malformed table name \"incidesnt_Baz\"")
 
 	// Request serials from another malformed incident table name.
-	mockServerStream = mockSerialsForIncidentServerStream{}
+	mockServerStream = &fakeServerStream[sapb.IncidentSerial]{}
 	longTableName := "incident_l" + strings.Repeat("o", 1000) + "ng"
 	err = sa.SerialsForIncident(
 		&sapb.SerialsForIncidentRequest{
@@ -3268,7 +3357,7 @@ func TestSerialsForIncident(t *testing.T) {
 	test.AssertContains(t, err.Error(), fmt.Sprintf("malformed table name %q", longTableName))
 
 	// Request serials for an incident table which doesn't exists.
-	mockServerStream = mockSerialsForIncidentServerStream{}
+	mockServerStream = &fakeServerStream[sapb.IncidentSerial]{}
 	err = sa.SerialsForIncident(
 		&sapb.SerialsForIncidentRequest{
 			IncidentTable: "incident_baz",
@@ -3290,7 +3379,7 @@ func TestSerialsForIncident(t *testing.T) {
 	// Request serials from table 'incident_foo', which we expect to exist but
 	// be empty.
 	stream := make(chan *sapb.IncidentSerial)
-	mockServerStream = mockSerialsForIncidentServerStream{output: stream}
+	mockServerStream = &fakeServerStream[sapb.IncidentSerial]{output: stream}
 	go func() {
 		err = sa.SerialsForIncident(
 			&sapb.SerialsForIncidentRequest{
@@ -3325,7 +3414,7 @@ func TestSerialsForIncident(t *testing.T) {
 
 	// Request all 4 serials from the incident table we just added entries to.
 	stream = make(chan *sapb.IncidentSerial)
-	mockServerStream = mockSerialsForIncidentServerStream{output: stream}
+	mockServerStream = &fakeServerStream[sapb.IncidentSerial]{output: stream}
 	go func() {
 		err = sa.SerialsForIncident(
 			&sapb.SerialsForIncidentRequest{
@@ -3349,20 +3438,6 @@ func TestSerialsForIncident(t *testing.T) {
 		"1335": true, "1336": true, "1337": true, "1338": true,
 	})
 	test.AssertNotError(t, err, "Error getting serials for incident")
-}
-
-type mockGetRevokedCertsServerStream struct {
-	grpc.ServerStream
-	output chan<- *corepb.CRLEntry
-}
-
-func (s mockGetRevokedCertsServerStream) Send(entry *corepb.CRLEntry) error {
-	s.output <- entry
-	return nil
-}
-
-func (s mockGetRevokedCertsServerStream) Context() context.Context {
-	return context.Background()
 }
 
 func TestGetRevokedCerts(t *testing.T) {
@@ -3400,7 +3475,7 @@ func TestGetRevokedCerts(t *testing.T) {
 	// how many results it returned.
 	countRevokedCerts := func(req *sapb.GetRevokedCertsRequest) (int, error) {
 		stream := make(chan *corepb.CRLEntry)
-		mockServerStream := mockGetRevokedCertsServerStream{output: stream}
+		mockServerStream := &fakeServerStream[corepb.CRLEntry]{output: stream}
 		var err error
 		go func() {
 			err = sa.GetRevokedCerts(req, mockServerStream)
@@ -3524,7 +3599,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	// how many results it returned.
 	countRevokedCerts := func(req *sapb.GetRevokedCertsRequest) (int, error) {
 		stream := make(chan *corepb.CRLEntry)
-		mockServerStream := mockGetRevokedCertsServerStream{output: stream}
+		mockServerStream := &fakeServerStream[corepb.CRLEntry]{output: stream}
 		var err error
 		go func() {
 			err = sa.GetRevokedCerts(req, mockServerStream)
@@ -3593,7 +3668,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
-	// Asking for revoked certs from a different shard should return zero reults.
+	// Asking for revoked certs from a different shard should return zero results.
 	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
 	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
@@ -4113,4 +4188,765 @@ func TestReplacementOrderExists(t *testing.T) {
 	test.AssertNotError(t, err, "SELECT from replacementOrders failed")
 	test.AssertEquals(t, newReplacementOrder.Id, replacementRow.OrderID)
 	test.AssertEquals(t, newReplacementOrder.Expires.AsTime(), replacementRow.OrderExpires)
+}
+
+func TestGetSerialsByKey(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Insert four rows into keyHashToSerial: two that should match the query,
+	// one that should not match due to keyHash mismatch, and one that should not
+	// match due to being already expired.
+	expectedHash := make([]byte, 32)
+	expectedHash[0] = 1
+	differentHash := make([]byte, 32)
+	differentHash[0] = 2
+	inserts := []keyHashModel{
+		{
+			KeyHash:      expectedHash,
+			CertSerial:   "1",
+			CertNotAfter: fc.Now().Add(time.Hour),
+		},
+		{
+			KeyHash:      expectedHash,
+			CertSerial:   "2",
+			CertNotAfter: fc.Now().Add(2 * time.Hour),
+		},
+		{
+			KeyHash:      expectedHash,
+			CertSerial:   "3",
+			CertNotAfter: fc.Now().Add(-1 * time.Hour),
+		},
+		{
+			KeyHash:      differentHash,
+			CertSerial:   "4",
+			CertNotAfter: fc.Now().Add(time.Hour),
+		},
+	}
+
+	for _, row := range inserts {
+		err := sa.dbMap.Insert(context.Background(), &row)
+		test.AssertNotError(t, err, "inserting test keyHash")
+	}
+
+	// Expect the result res to have two entries.
+	res := make(chan *sapb.Serial)
+	stream := &fakeServerStream[sapb.Serial]{output: res}
+	var err error
+	go func() {
+		err = sa.GetSerialsByKey(&sapb.SPKIHash{KeyHash: expectedHash}, stream)
+		close(res) // Let our main test thread continue.
+	}()
+
+	var seen []string
+	for serial := range res {
+		if !slices.Contains([]string{"1", "2"}, serial.Serial) {
+			t.Errorf("Received unexpected serial %q", serial.Serial)
+		}
+		if slices.Contains(seen, serial.Serial) {
+			t.Errorf("Received serial %q more than once", serial.Serial)
+		}
+		seen = append(seen, serial.Serial)
+	}
+	test.AssertNotError(t, err, "calling GetSerialsByKey")
+	test.AssertEquals(t, len(seen), 2)
+}
+
+func TestGetSerialsByAccount(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	expectedReg := createWorkingRegistration(t, sa)
+
+	// Insert three rows into the serials table: two that should match the query,
+	// and one that should not match due to being already expired. We do not here
+	// test filtering on the regID itself, because our test setup makes it very
+	// hard to insert two fake registrations rows with different IDs.
+	inserts := []recordedSerialModel{
+		{
+			Serial:         "1",
+			RegistrationID: expectedReg.Id,
+			Created:        fc.Now().Add(-23 * time.Hour),
+			Expires:        fc.Now().Add(time.Hour),
+		},
+		{
+			Serial:         "2",
+			RegistrationID: expectedReg.Id,
+			Created:        fc.Now().Add(-22 * time.Hour),
+			Expires:        fc.Now().Add(2 * time.Hour),
+		},
+		{
+			Serial:         "3",
+			RegistrationID: expectedReg.Id,
+			Created:        fc.Now().Add(-23 * time.Hour),
+			Expires:        fc.Now().Add(-1 * time.Hour),
+		},
+	}
+
+	for _, row := range inserts {
+		err := sa.dbMap.Insert(context.Background(), &row)
+		test.AssertNotError(t, err, "inserting test serial")
+	}
+
+	// Expect the result stream to have two entries.
+	res := make(chan *sapb.Serial)
+	stream := &fakeServerStream[sapb.Serial]{output: res}
+	var err error
+	go func() {
+		err = sa.GetSerialsByAccount(&sapb.RegistrationID{Id: expectedReg.Id}, stream)
+		close(res) // Let our main test thread continue.
+	}()
+
+	var seen []string
+	for serial := range res {
+		if !slices.Contains([]string{"1", "2"}, serial.Serial) {
+			t.Errorf("Received unexpected serial %q", serial.Serial)
+		}
+		if slices.Contains(seen, serial.Serial) {
+			t.Errorf("Received serial %q more than once", serial.Serial)
+		}
+		seen = append(seen, serial.Serial)
+	}
+	test.AssertNotError(t, err, "calling GetSerialsByAccount")
+	test.AssertEquals(t, len(seen), 2)
+}
+
+func TestUnpauseAccount(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	tests := []struct {
+		name  string
+		state []pausedModel
+		req   *sapb.RegistrationID
+	}{
+		{
+			name:  "UnpauseAccount with no paused identifiers",
+			state: nil,
+			req:   &sapb.RegistrationID{Id: 1},
+		},
+		{
+			name: "UnpauseAccount with one paused identifier",
+			state: []pausedModel{
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.com",
+					},
+					PausedAt: sa.clk.Now().Add(-time.Hour),
+				},
+			},
+			req: &sapb.RegistrationID{Id: 1},
+		},
+		{
+			name: "UnpauseAccount with multiple paused identifiers",
+			state: []pausedModel{
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.com",
+					},
+					PausedAt: sa.clk.Now().Add(-time.Hour),
+				},
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.net",
+					},
+					PausedAt: sa.clk.Now().Add(-time.Hour),
+				},
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.org",
+					},
+					PausedAt: sa.clk.Now().Add(-time.Hour),
+				},
+			},
+			req: &sapb.RegistrationID{Id: 1},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				// Drop all rows from the paused table.
+				_, err := sa.dbMap.ExecContext(ctx, "TRUNCATE TABLE paused")
+				test.AssertNotError(t, err, "truncating paused table")
+			}()
+
+			// Setup table state.
+			for _, state := range tt.state {
+				err := sa.dbMap.Insert(ctx, &state)
+				test.AssertNotError(t, err, "inserting test identifier")
+			}
+
+			_, err := sa.UnpauseAccount(ctx, tt.req)
+			test.AssertNotError(t, err, "Unexpected error for UnpauseAccount()")
+
+			// Count the number of paused identifiers.
+			var count int
+			err = sa.dbReadOnlyMap.SelectOne(
+				ctx,
+				&count,
+				"SELECT COUNT(*) FROM paused WHERE registrationID = ? AND unpausedAt IS NULL",
+				tt.req.Id,
+			)
+			test.AssertNotError(t, err, "SELECT COUNT(*) failed")
+			test.AssertEquals(t, count, 0)
+		})
+	}
+}
+
+func bulkInsertPausedIdentifiers(ctx context.Context, sa *SQLStorageAuthority, count int) error {
+	const batchSize = 1000
+
+	values := make([]interface{}, 0, batchSize*4)
+	now := sa.clk.Now().Add(-time.Hour)
+	batches := (count + batchSize - 1) / batchSize
+
+	for batch := 0; batch < batches; batch++ {
+		query := `
+		INSERT INTO paused (registrationID, identifierType, identifierValue, pausedAt)
+		VALUES`
+
+		start := batch * batchSize
+		end := start + batchSize
+		if end > count {
+			end = count
+		}
+
+		for i := start; i < end; i++ {
+			if i > start {
+				query += ","
+			}
+			query += "(?, ?, ?, ?)"
+			values = append(values, 1, identifierTypeToUint[string(identifier.DNS)], fmt.Sprintf("example%d.com", i), now)
+		}
+
+		_, err := sa.dbMap.ExecContext(ctx, query, values...)
+		if err != nil {
+			return fmt.Errorf("bulk inserting paused identifiers: %w", err)
+		}
+		values = values[:0]
+	}
+
+	return nil
+}
+
+func TestUnpauseAccountWithTwoLoops(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	err := bulkInsertPausedIdentifiers(ctx, sa, 12000)
+	test.AssertNotError(t, err, "bulk inserting paused identifiers")
+
+	result, err := sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	test.AssertNotError(t, err, "Unexpected error for UnpauseAccount()")
+	test.AssertEquals(t, result.Count, int64(12000))
+}
+
+func TestUnpauseAccountWithMaxLoops(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	err := bulkInsertPausedIdentifiers(ctx, sa, 50001)
+	test.AssertNotError(t, err, "bulk inserting paused identifiers")
+
+	result, err := sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	test.AssertNotError(t, err, "Unexpected error for UnpauseAccount()")
+	test.AssertEquals(t, result.Count, int64(50000))
+}
+
+func TestPauseIdentifiers(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	ptrTime := func(t time.Time) *time.Time {
+		return &t
+	}
+
+	fourWeeksAgo := sa.clk.Now().Add(-4 * 7 * 24 * time.Hour)
+	threeWeeksAgo := sa.clk.Now().Add(-3 * 7 * 24 * time.Hour)
+
+	tests := []struct {
+		name  string
+		state []pausedModel
+		req   *sapb.PauseRequest
+		want  *sapb.PauseIdentifiersResponse
+	}{
+		{
+			name:  "An identifier which is not now or previously paused",
+			state: nil,
+			req: &sapb.PauseRequest{
+				RegistrationID: 1,
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+				},
+			},
+			want: &sapb.PauseIdentifiersResponse{
+				Paused:   1,
+				Repaused: 0,
+			},
+		},
+		{
+			name: "One unpaused entry which was previously paused",
+			state: []pausedModel{
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.com",
+					},
+					PausedAt:   fourWeeksAgo,
+					UnpausedAt: ptrTime(threeWeeksAgo),
+				},
+			},
+			req: &sapb.PauseRequest{
+				RegistrationID: 1,
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+				},
+			},
+			want: &sapb.PauseIdentifiersResponse{
+				Paused:   0,
+				Repaused: 1,
+			},
+		},
+		{
+			name: "One unpaused entry which was previously paused and unpaused less than 2 weeks ago",
+			state: []pausedModel{
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.com",
+					},
+					PausedAt:   fourWeeksAgo,
+					UnpausedAt: ptrTime(sa.clk.Now().Add(-13 * 24 * time.Hour)),
+				},
+			},
+			req: &sapb.PauseRequest{
+				RegistrationID: 1,
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+				},
+			},
+			want: &sapb.PauseIdentifiersResponse{
+				Paused:   0,
+				Repaused: 0,
+			},
+		},
+		{
+			name: "An identifier which is currently paused",
+			state: []pausedModel{
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.com",
+					},
+					PausedAt: fourWeeksAgo,
+				},
+			},
+			req: &sapb.PauseRequest{
+				RegistrationID: 1,
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+				},
+			},
+			want: &sapb.PauseIdentifiersResponse{
+				Paused:   0,
+				Repaused: 0,
+			},
+		},
+		{
+			name: "Two previously paused entries and one new entry",
+			state: []pausedModel{
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.com",
+					},
+					PausedAt:   fourWeeksAgo,
+					UnpausedAt: ptrTime(threeWeeksAgo),
+				},
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.net",
+					},
+					PausedAt:   fourWeeksAgo,
+					UnpausedAt: ptrTime(threeWeeksAgo),
+				},
+			},
+			req: &sapb.PauseRequest{
+				RegistrationID: 1,
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.net",
+					},
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.org",
+					},
+				},
+			},
+			want: &sapb.PauseIdentifiersResponse{
+				Paused:   1,
+				Repaused: 2,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				// Drop all rows from the paused table.
+				_, err := sa.dbMap.ExecContext(ctx, "TRUNCATE TABLE paused")
+				test.AssertNotError(t, err, "Truncate table paused failed")
+			}()
+
+			// Setup table state.
+			for _, state := range tt.state {
+				err := sa.dbMap.Insert(ctx, &state)
+				test.AssertNotError(t, err, "inserting test identifier")
+			}
+
+			got, err := sa.PauseIdentifiers(ctx, tt.req)
+			test.AssertNotError(t, err, "Unexpected error for PauseIdentifiers()")
+			test.AssertEquals(t, got.Paused, tt.want.Paused)
+			test.AssertEquals(t, got.Repaused, tt.want.Repaused)
+		})
+	}
+}
+
+func TestCheckIdentifiersPaused(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	ptrTime := func(t time.Time) *time.Time {
+		return &t
+	}
+
+	tests := []struct {
+		name  string
+		state []pausedModel
+		req   *sapb.PauseRequest
+		want  *sapb.Identifiers
+	}{
+		{
+			name:  "No paused identifiers",
+			state: nil,
+			req: &sapb.PauseRequest{
+				RegistrationID: 1,
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+				},
+			},
+			want: &sapb.Identifiers{
+				Identifiers: []*sapb.Identifier{},
+			},
+		},
+		{
+			name: "One paused identifier",
+			state: []pausedModel{
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.com",
+					},
+					PausedAt: sa.clk.Now().Add(-time.Hour),
+				},
+			},
+			req: &sapb.PauseRequest{
+				RegistrationID: 1,
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+				},
+			},
+			want: &sapb.Identifiers{
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+				},
+			},
+		},
+		{
+			name: "Two paused identifiers, one unpaused",
+			state: []pausedModel{
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.com",
+					},
+					PausedAt: sa.clk.Now().Add(-time.Hour),
+				},
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.net",
+					},
+					PausedAt: sa.clk.Now().Add(-time.Hour),
+				},
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.org",
+					},
+					PausedAt:   sa.clk.Now().Add(-time.Hour),
+					UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
+				},
+			},
+			req: &sapb.PauseRequest{
+				RegistrationID: 1,
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.net",
+					},
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.org",
+					},
+				},
+			},
+			want: &sapb.Identifiers{
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.net",
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				// Drop all rows from the paused table.
+				_, err := sa.dbMap.ExecContext(ctx, "TRUNCATE TABLE paused")
+				test.AssertNotError(t, err, "Truncate table paused failed")
+			}()
+
+			// Setup table state.
+			for _, state := range tt.state {
+				err := sa.dbMap.Insert(ctx, &state)
+				test.AssertNotError(t, err, "inserting test identifier")
+			}
+
+			got, err := sa.CheckIdentifiersPaused(ctx, tt.req)
+			test.AssertNotError(t, err, "Unexpected error for PauseIdentifiers()")
+			test.AssertDeepEquals(t, got.Identifiers, tt.want.Identifiers)
+		})
+	}
+}
+
+func TestGetPausedIdentifiers(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	ptrTime := func(t time.Time) *time.Time {
+		return &t
+	}
+
+	tests := []struct {
+		name  string
+		state []pausedModel
+		req   *sapb.RegistrationID
+		want  *sapb.Identifiers
+	}{
+		{
+			name:  "No paused identifiers",
+			state: nil,
+			req:   &sapb.RegistrationID{Id: 1},
+			want: &sapb.Identifiers{
+				Identifiers: []*sapb.Identifier{},
+			},
+		},
+		{
+			name: "One paused identifier",
+			state: []pausedModel{
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.com",
+					},
+					PausedAt: sa.clk.Now().Add(-time.Hour),
+				},
+			},
+			req: &sapb.RegistrationID{Id: 1},
+			want: &sapb.Identifiers{
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+				},
+			},
+		},
+		{
+			name: "Two paused identifiers, one unpaused",
+			state: []pausedModel{
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.com",
+					},
+					PausedAt: sa.clk.Now().Add(-time.Hour),
+				},
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.net",
+					},
+					PausedAt: sa.clk.Now().Add(-time.Hour),
+				},
+				{
+					RegistrationID: 1,
+					identifierModel: identifierModel{
+						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Value: "example.org",
+					},
+					PausedAt:   sa.clk.Now().Add(-time.Hour),
+					UnpausedAt: ptrTime(sa.clk.Now().Add(-time.Minute)),
+				},
+			},
+			req: &sapb.RegistrationID{Id: 1},
+			want: &sapb.Identifiers{
+				Identifiers: []*sapb.Identifier{
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.com",
+					},
+					{
+						Type:  string(identifier.DNS),
+						Value: "example.net",
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				// Drop all rows from the paused table.
+				_, err := sa.dbMap.ExecContext(ctx, "TRUNCATE TABLE paused")
+				test.AssertNotError(t, err, "Truncate table paused failed")
+			}()
+
+			// Setup table state.
+			for _, state := range tt.state {
+				err := sa.dbMap.Insert(ctx, &state)
+				test.AssertNotError(t, err, "inserting test identifier")
+			}
+
+			got, err := sa.GetPausedIdentifiers(ctx, tt.req)
+			test.AssertNotError(t, err, "Unexpected error for PauseIdentifiers()")
+			test.AssertDeepEquals(t, got.Identifiers, tt.want.Identifiers)
+		})
+	}
+}
+
+func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires paused database table")
+	}
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Insert two paused identifiers for two different accounts.
+	err := sa.dbMap.Insert(ctx, &pausedModel{
+		RegistrationID: 1,
+		identifierModel: identifierModel{
+			Type:  identifierTypeToUint[string(identifier.DNS)],
+			Value: "example.com",
+		},
+		PausedAt: sa.clk.Now().Add(-time.Hour),
+	})
+	test.AssertNotError(t, err, "inserting test identifier")
+
+	err = sa.dbMap.Insert(ctx, &pausedModel{
+		RegistrationID: 2,
+		identifierModel: identifierModel{
+			Type:  identifierTypeToUint[string(identifier.DNS)],
+			Value: "example.net",
+		},
+		PausedAt: sa.clk.Now().Add(-time.Hour),
+	})
+	test.AssertNotError(t, err, "inserting test identifier")
+
+	// Unpause the first account.
+	_, err = sa.UnpauseAccount(ctx, &sapb.RegistrationID{Id: 1})
+	test.AssertNotError(t, err, "UnpauseAccount failed")
+
+	// Check that the second account's identifier is still paused.
+	identifiers, err := sa.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: 2})
+	test.AssertNotError(t, err, "GetPausedIdentifiers failed")
+	test.AssertEquals(t, len(identifiers.Identifiers), 1)
+	test.AssertEquals(t, identifiers.Identifiers[0].Value, "example.net")
 }

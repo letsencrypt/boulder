@@ -3,8 +3,7 @@
 		"purgeRetries": 10,
 		"purgeRetryBackoff": "50ms",
 		"throughput": {
-			"queueEntriesPerBatch": 2,
-			"purgeBatchInterval": "32ms"
+			"totalInstances": 1
 		},
 		"baseURL": "http://localhost:6789",
 		"clientToken": "its-a-token",
@@ -12,9 +11,9 @@
 		"accessToken": "idk-how-this-is-different-from-client-token-but-okay",
 		"v3Network": "staging",
 		"tls": {
-			"caCertfile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/akamai-purger.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/akamai-purger.boulder/key.pem"
+			"caCertfile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/akamai-purger.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/akamai-purger.boulder/key.pem"
 		},
 		"grpc": {
 			"address": ":9099",

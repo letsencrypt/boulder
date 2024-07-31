@@ -36,13 +36,12 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.21.8_2024-03-05
-          - go1.22.1_2024-03-05
+          - go1.22.5_2024-07-03
         # Tests command definitions. Use the entire "docker compose" command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
           - "./t.sh --lints --generate"
-          - "./t.sh --integration && ./test/test-caa-log-checker.sh"
+          - "./t.sh --integration"
           # Testing Config Changes:
           # Config changes that have landed in main but not yet been applied to
           # production can be made in `test/config-next/<component>.json`.
@@ -72,7 +71,7 @@ jobs:
       - name: Docker Login
         # You may pin to the exact commit or the version.
         # uses: docker/login-action@f3364599c6aa293cdc2b8391b1b56d0c30e45c8a
-        uses: docker/login-action@v3.0.0
+        uses: docker/login-action@v3.2.0
         with:
           # Username used to log against the Docker registry
           username: ${{ secrets.DOCKER_USERNAME}}
@@ -90,9 +89,6 @@ jobs:
       # Pre-pull the docker containers before running the tests.
       - name: docker compose pull
         run: docker compose pull
-
-      # Enable https://github.com/golang/go/wiki/LoopvarExperiment
-      - run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
 
       # Run the test matrix. This will run
       - name: "Run Test: ${{ matrix.tests }}"
@@ -126,7 +122,7 @@ jobs:
       # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
       fail-fast: false
       matrix:
-        go-version: [ '1.21.5' ]
+        go-version: [ '1.22.5' ]
 
     steps:
       # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it

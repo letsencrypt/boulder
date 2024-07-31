@@ -20,14 +20,16 @@ import (
 	"path"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 	"unicode"
 
+	"github.com/go-jose/go-jose/v4"
+	"github.com/letsencrypt/boulder/identifier"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.in/go-jose/go-jose.v2"
 )
 
 const Unspecified = "Unspecified"
@@ -76,9 +78,9 @@ func NewToken() string {
 
 var tokenFormat = regexp.MustCompile(`^[\w-]{43}$`)
 
-// LooksLikeAToken checks whether a string represents a 32-octet value in
+// looksLikeAToken checks whether a string represents a 32-octet value in
 // the URL-safe base64 alphabet.
-func LooksLikeAToken(token string) bool {
+func looksLikeAToken(token string) bool {
 	return tokenFormat.MatchString(token)
 }
 
@@ -314,6 +316,21 @@ func UniqueLowerNames(names []string) (unique []string) {
 	}
 	sort.Strings(unique)
 	return
+}
+
+// NormalizeIdentifiers returns the set of all unique ACME identifiers in the
+// input after all of them are lowercased. The returned identifier values will
+// be in their lowercased form and sorted alphabetically by value.
+func NormalizeIdentifiers(identifiers []identifier.ACMEIdentifier) []identifier.ACMEIdentifier {
+	for i := range identifiers {
+		identifiers[i].Value = strings.ToLower(identifiers[i].Value)
+	}
+
+	sort.Slice(identifiers, func(i, j int) bool {
+		return fmt.Sprintf("%s:%s", identifiers[i].Type, identifiers[i].Value) < fmt.Sprintf("%s:%s", identifiers[j].Type, identifiers[j].Value)
+	})
+
+	return slices.Compact(identifiers)
 }
 
 // HashNames returns a hash of the names requested. This is intended for use

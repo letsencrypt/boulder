@@ -11,12 +11,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/status"
-	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -54,11 +55,16 @@ func sigAlgorithmForKey(key *jose.JSONWebKey) (jose.SignatureAlgorithm, error) {
 	return "", errors.New("JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521)")
 }
 
-var supportedAlgs = map[string]bool{
-	string(jose.RS256): true,
-	string(jose.ES256): true,
-	string(jose.ES384): true,
-	string(jose.ES512): true,
+// getSupportedAlgs returns a sorted slice of joseSignatureAlgorithm's from a
+// map of boulder allowed signature algorithms. We use a function for this to
+// ensure that the source-of-truth slice can never be modified.
+func getSupportedAlgs() []jose.SignatureAlgorithm {
+	return []jose.SignatureAlgorithm{
+		jose.RS256,
+		jose.ES256,
+		jose.ES384,
+		jose.ES512,
+	}
 }
 
 // Check that (1) there is a suitable algorithm for the provided key based on its
@@ -66,11 +72,11 @@ var supportedAlgs = map[string]bool{
 // that algorithm, and (3) the Algorithm field on the JWK is present and matches
 // that algorithm.
 func checkAlgorithm(key *jose.JSONWebKey, header jose.Header) error {
-	sigHeaderAlg := header.Algorithm
-	if !supportedAlgs[sigHeaderAlg] {
+	sigHeaderAlg := jose.SignatureAlgorithm(header.Algorithm)
+	if !slices.Contains(getSupportedAlgs(), sigHeaderAlg) {
 		return fmt.Errorf(
-			"JWS signature header contains unsupported algorithm %q, expected one of RS256, ES256, ES384 or ES512",
-			header.Algorithm,
+			"JWS signature header contains unsupported algorithm %q, expected one of %s",
+			header.Algorithm, getSupportedAlgs(),
 		)
 	}
 
@@ -78,7 +84,7 @@ func checkAlgorithm(key *jose.JSONWebKey, header jose.Header) error {
 	if err != nil {
 		return err
 	}
-	if sigHeaderAlg != string(expectedAlg) {
+	if sigHeaderAlg != expectedAlg {
 		return fmt.Errorf("JWS signature header algorithm %q does not match expected algorithm %q for JWK", sigHeaderAlg, string(expectedAlg))
 	}
 	if key.Algorithm != "" && key.Algorithm != string(expectedAlg) {
@@ -218,53 +224,35 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMissingNonce"}).Inc()
 		return probs.BadNonce("JWS has no anti-replay nonce")
 	}
-	var valid bool
-	var err error
-	if wfe.noncePrefixMap == nil {
-		// Dispatch nonce redemption RPCs dynamically.
-		prob := nonceWellFormed(header.Nonce, nonce.PrefixLen)
-		if prob != nil {
-			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMalformedNonce"}).Inc()
-			return prob
-		}
 
-		// Populate the context with the nonce prefix and HMAC key. These are
-		// used by a custom gRPC balancer, known as "noncebalancer", to route
-		// redemption RPCs to the backend that originally issued the nonce.
-		ctx = context.WithValue(ctx, nonce.PrefixCtxKey{}, header.Nonce[:nonce.PrefixLen])
-		ctx = context.WithValue(ctx, nonce.HMACKeyCtxKey{}, wfe.rncKey)
+	prob := nonceWellFormed(header.Nonce, nonce.PrefixLen)
+	if prob != nil {
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMalformedNonce"}).Inc()
+		return prob
+	}
 
-		resp, err := wfe.rnc.Redeem(ctx, &noncepb.NonceMessage{Nonce: header.Nonce})
-		if err != nil {
-			rpcStatus, ok := status.FromError(err)
-			if !ok || rpcStatus != nb.ErrNoBackendsMatchPrefix {
-				return web.ProblemDetailsForError(err, "failed to redeem nonce")
-			}
+	// Populate the context with the nonce prefix and HMAC key. These are
+	// used by a custom gRPC balancer, known as "noncebalancer", to route
+	// redemption RPCs to the backend that originally issued the nonce.
+	ctx = context.WithValue(ctx, nonce.PrefixCtxKey{}, header.Nonce[:nonce.PrefixLen])
+	ctx = context.WithValue(ctx, nonce.HMACKeyCtxKey{}, wfe.rncKey)
 
-			// ErrNoBackendsMatchPrefix suggests that the nonce backend, which
-			// issued this nonce, is presently unreachable or unrecognized by
-			// this WFE. As this is a transient failure, the client should retry
-			// their request with a fresh nonce.
-			resp = &noncepb.ValidMessage{Valid: false}
-			wfe.stats.nonceNoMatchingBackendCount.Inc()
-		}
-		valid = resp.Valid
-	} else {
-		// Dispatch nonce redpemption RPCs using a static mapping.
-		//
-		// TODO(#6610) Remove code below and the `npm` mapping.
-		prob := nonceWellFormed(header.Nonce, nonce.DeprecatedPrefixLen)
-		if prob != nil {
-			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMalformedNonce"}).Inc()
-			return prob
-		}
-
-		valid, err = nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, header.Nonce)
-		if err != nil {
+	resp, err := wfe.rnc.Redeem(ctx, &noncepb.NonceMessage{Nonce: header.Nonce})
+	if err != nil {
+		rpcStatus, ok := status.FromError(err)
+		if !ok || rpcStatus != nb.ErrNoBackendsMatchPrefix {
 			return web.ProblemDetailsForError(err, "failed to redeem nonce")
 		}
+
+		// ErrNoBackendsMatchPrefix suggests that the nonce backend, which
+		// issued this nonce, is presently unreachable or unrecognized by
+		// this WFE. As this is a transient failure, the client should retry
+		// their request with a fresh nonce.
+		resp = &noncepb.ValidMessage{Valid: false}
+		wfe.stats.nonceNoMatchingBackendCount.Inc()
 	}
-	if !valid {
+
+	if !resp.Valid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
 		return probs.BadNonce(fmt.Sprintf("JWS has an invalid anti-replay nonce: %q", header.Nonce))
 	}
@@ -387,7 +375,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, *probs.Pr
 	// Parse the JWS using go-jose and enforce that the expected one non-empty
 	// signature is present in the parsed JWS.
 	bodyStr := string(body)
-	parsedJWS, err := jose.ParseSigned(bodyStr)
+	parsedJWS, err := jose.ParseSigned(bodyStr, getSupportedAlgs())
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSParseError"}).Inc()
 		return nil, probs.Malformed("Parse error reading JWS")
@@ -560,8 +548,6 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	jws *bJSONWebSignature,
 	jwk *jose.JSONWebKey,
 	request *http.Request) ([]byte, *probs.ProblemDetails) {
-
-	// Check that the public key and JWS algorithms match expected
 	err := checkAlgorithm(jwk, jws.Signatures[0].Header)
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSAlgorithmCheckFailed"}).Inc()
@@ -782,20 +768,20 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	oldKey *jose.JSONWebKey) (*rolloverOperation, *probs.ProblemDetails) {
 
 	// Extract the embedded JWK from the inner JWS' protected headers
-	jwk, prob := wfe.extractJWK(innerJWS.Signatures[0].Header)
+	innerJWK, prob := wfe.extractJWK(innerJWS.Signatures[0].Header)
 	if prob != nil {
 		return nil, prob
 	}
 
 	// If the key doesn't meet the GoodKey policy return a problem immediately
-	err := wfe.keyPolicy.GoodKey(ctx, jwk.Key)
+	err := wfe.keyPolicy.GoodKey(ctx, innerJWK.Key)
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWKRejectedByGoodKey"}).Inc()
 		return nil, probs.BadPublicKey(err.Error())
 	}
 
 	// Check that the public key and JWS algorithms match expected
-	err = checkAlgorithm(jwk, innerJWS.Signatures[0].Header)
+	err = checkAlgorithm(innerJWK, innerJWS.Signatures[0].Header)
 	if err != nil {
 		return nil, probs.Malformed(err.Error())
 	}
@@ -804,7 +790,7 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	// NOTE(@cpu): We do not use `wfe.validJWSForKey` here because the inner JWS
 	// of a key rollover operation is special (e.g. has no nonce, doesn't have an
 	// HTTP request to match the URL to)
-	innerPayload, err := innerJWS.Verify(jwk)
+	innerPayload, err := innerJWS.Verify(innerJWK)
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWSVerifyFailed"}).Inc()
 		return nil, probs.Malformed("Inner JWS does not verify with embedded JWK")
@@ -848,6 +834,6 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 			OldKey:  *oldKey,
 			Account: req.Account,
 		},
-		NewKey: *jwk,
+		NewKey: *innerJWK,
 	}, nil
 }

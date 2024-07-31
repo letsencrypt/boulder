@@ -2,4 +2,10 @@
     burst: 40
     count: 40
     period: 1s
-    ids: [10.0.0.5, 10.0.0.2, lol]
+    ids:
+      - id: 10.0.0.5
+        comment: Foo
+      - id: 10.0.0.2
+        comment: Bar
+      - id: lol
+        comment: Baz

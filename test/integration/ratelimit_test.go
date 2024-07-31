@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -35,9 +36,9 @@ func TestDuplicateFQDNRateLimit(t *testing.T) {
 		rc := bredis.Config{
 			Username: "unittest-rw",
 			TLS: cmd.TLSConfig{
-				CACertFile: "test/redis-tls/minica.pem",
-				CertFile:   "test/redis-tls/boulder/cert.pem",
-				KeyFile:    "test/redis-tls/boulder/key.pem",
+				CACertFile: "test/certs/ipki/minica.pem",
+				CertFile:   "test/certs/ipki/localhost/cert.pem",
+				KeyFile:    "test/certs/ipki/localhost/key.pem",
 			},
 			Lookups: []cmd.ServiceDomain{
 				{
@@ -64,9 +65,9 @@ func TestDuplicateFQDNRateLimit(t *testing.T) {
 		test.AssertNotError(t, err, "making transaction composer")
 
 		// Check that the CertificatesPerFQDNSet limit is reached.
-		txn, err := txnBuilder.CertificatesPerFQDNSetTransaction([]string{domain})
+		txns, err := txnBuilder.NewOrderLimitTransactions(1, []string{domain}, 100, false)
 		test.AssertNotError(t, err, "making transaction")
-		result, err := limiter.Check(context.Background(), txn)
+		result, err := limiter.BatchSpend(context.Background(), txns)
 		test.AssertNotError(t, err, "checking transaction")
 		test.Assert(t, !result.Allowed, "should not be allowed")
 	}

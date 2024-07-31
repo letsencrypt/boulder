@@ -8,20 +8,22 @@
 		"pendingAuthorizationLifetimeDays": 7,
 		"goodkey": {
 			"weakKeyFile": "test/example-weak-keys.json",
-			"blockedKeyFile": "test/example-blocked-keys.yaml",
-			"fermatRounds": 100
+			"blockedKeyFile": "test/example-blocked-keys.yaml"
 		},
 		"orderLifetime": "168h",
 		"finalizeTimeout": "30s",
 		"issuerCerts": [
-			"/hierarchy/intermediate-cert-rsa-a.pem",
-			"/hierarchy/intermediate-cert-rsa-b.pem",
-			"/hierarchy/intermediate-cert-ecdsa-a.pem"
+			"test/certs/webpki/int-rsa-a.cert.pem",
+			"test/certs/webpki/int-rsa-b.cert.pem",
+			"test/certs/webpki/int-rsa-c.cert.pem",
+			"test/certs/webpki/int-ecdsa-a.cert.pem",
+			"test/certs/webpki/int-ecdsa-b.cert.pem",
+			"test/certs/webpki/int-ecdsa-c.cert.pem"
 		],
 		"tls": {
-			"caCertFile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/ra.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/ra.boulder/key.pem"
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/ra.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/ra.boulder/key.pem"
 		},
 		"vaService": {
 			"dnsAuthority": "consul.service.consul",
@@ -91,7 +93,8 @@
 						"admin-revoker.boulder",
 						"bad-key-revoker.boulder",
 						"ocsp-responder.boulder",
-						"wfe.boulder"
+						"wfe.boulder",
+						"sfe.boulder"
 					]
 				},
 				"grpc.health.v1.Health": {
@@ -102,7 +105,8 @@
 			}
 		},
 		"features": {
-			"AsyncFinalize": true
+			"AsyncFinalize": true,
+			"CheckRenewalExemptionAtWFE": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

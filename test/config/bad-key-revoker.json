@@ -6,9 +6,9 @@
 		},
 		"debugAddr": ":8020",
 		"tls": {
-			"caCertFile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/bad-key-revoker.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/bad-key-revoker.boulder/key.pem"
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/bad-key-revoker.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/bad-key-revoker.boulder/key.pem"
 		},
 		"raService": {
 			"dnsAuthority": "consul.service.consul",
@@ -26,7 +26,7 @@
 			"username": "cert-manager@example.com",
 			"from": "bad key revoker <bad-key-revoker@test.org>",
 			"passwordFile": "test/secrets/smtp_password",
-			"SMTPTrustedRootFile": "test/mail-test-srv/minica.pem",
+			"SMTPTrustedRootFile": "test/certs/ipki/minica.pem",
 			"emailSubject": "Certificates you've issued have been revoked due to key compromise",
 			"emailTemplate": "test/example-bad-key-revoker-template"
 		},

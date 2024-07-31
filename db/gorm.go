@@ -55,7 +55,7 @@ func NewMappedSelector[T any](executor MappedExecutor) (MappedSelector[T], error
 	// check should be performed at the time the mapping is declared.
 	columns := make([]string, 0)
 	seen := make(map[string]struct{})
-	for i := 0; i < t.NumField(); i++ {
+	for i := range t.NumField() {
 		field := t.Field(i)
 		if field.Anonymous {
 			return nil, fmt.Errorf("struct contains anonymous embedded struct %q", field.Name)
@@ -140,6 +140,45 @@ func (ts mappedSelector[T]) QueryFrom(ctx context.Context, tablename string, cla
 type rows[T any] struct {
 	wrapped *sql.Rows
 	numCols int
+}
+
+// ForEach calls the given function with each model object retrieved by
+// repeatedly calling .Get(). It closes the rows object when it hits an error
+// or finishes iterating over the rows, so it can only be called once. This is
+// the intended way to use the result of QueryContext or QueryFrom; the other
+// methods on this type are lower-level and intended for advanced use only.
+func (r rows[T]) ForEach(do func(*T) error) (err error) {
+	defer func() {
+		// Close the row reader when we exit. Use the named error return to combine
+		// any error from normal execution with any error from closing.
+		closeErr := r.Close()
+		if closeErr != nil && err != nil {
+			err = fmt.Errorf("%w; also while closing the row reader: %w", err, closeErr)
+		} else if closeErr != nil {
+			err = closeErr
+		}
+		// If closeErr is nil, then just leaving the existing named return alone
+		// will do the right thing.
+	}()
+
+	for r.Next() {
+		row, err := r.Get()
+		if err != nil {
+			return fmt.Errorf("reading row: %w", err)
+		}
+
+		err = do(row)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = r.Err()
+	if err != nil {
+		return fmt.Errorf("iterating over row reader: %w", err)
+	}
+
+	return nil
 }
 
 // Next is a wrapper around sql.Rows.Next(). It must be called before every call

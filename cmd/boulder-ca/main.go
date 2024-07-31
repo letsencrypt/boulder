@@ -4,9 +4,10 @@ import (
 	"context"
 	"flag"
 	"os"
+	"reflect"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -18,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
+	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -34,17 +36,33 @@ type Config struct {
 
 		// Issuance contains all information necessary to load and initialize issuers.
 		Issuance struct {
-			Profile issuance.ProfileConfig
+			// The name of the certificate profile to use if one wasn't provided
+			// by the RA during NewOrder and Finalize requests. Must match a
+			// configured certificate profile or boulder-ca will fail to start.
+			DefaultCertificateProfileName string `validate:"omitempty,alphanum,min=1,max=32"`
+
+			// TODO(#7414) Remove this deprecated field.
+			// Deprecated: Use CertProfiles instead. Profile implicitly takes
+			// the internal Boulder default value of ca.DefaultCertProfileName.
+			Profile issuance.ProfileConfig `validate:"required_without=CertProfiles,structonly"`
+
+			// One of the profile names must match the value of
+			// DefaultCertificateProfileName or boulder-ca will fail to start.
+			CertProfiles map[string]issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
+
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile   issuance.CRLProfileConfig `validate:"-"`
 			Issuers      []issuance.IssuerConfig   `validate:"min=1,dive"`
+			LintConfig   string
 			IgnoredLints []string
 		}
 
 		// How long issued certificates are valid for.
+		// Deprecated: Use Issuace.CertProfiles.MaxValidityPeriod instead.
 		Expiry config.Duration
 
 		// How far back certificates should be backdated.
+		// Deprecated: Use Issuace.CertProfiles.MaxValidityBackdate instead.
 		Backdate config.Duration
 
 		// What digits we should prepend to serials after randomly generating them.
@@ -84,20 +102,10 @@ type Config struct {
 		// Recommended to be around 500ms.
 		OCSPLogPeriod config.Duration
 
-		// Path of a YAML file containing the list of int64 RegIDs
-		// allowed to request ECDSA issuance
-		ECDSAAllowListFilename string
-
 		// CTLogListFile is the path to a JSON file on disk containing the set of
 		// all logs trusted by Chrome. The file must match the v3 log list schema:
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 		CTLogListFile string
-
-		// CRLDPBase is the piece of the CRL Distribution Point URI which is common
-		// across all issuers and shards. It must use the http:// scheme, and must
-		// not end with a slash. Example: "http://prod.c.lencr.org".
-		// TODO(#7296): Remove this fallback once all configs have issuer.CRLBaseURL
-		CRLDPBase string `validate:"required,url,startswith=http://,endsnotwith=/"`
 
 		// DisableCertService causes the CertificateAuthority gRPC service to not
 		// start, preventing any certificates or precertificates from being issued.
@@ -162,21 +170,7 @@ func main() {
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
-	// These two metrics are created and registered here so they can be shared
-	// between NewCertificateAuthorityImpl and NewOCSPImpl.
-	signatureCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "signatures",
-			Help: "Number of signatures",
-		},
-		[]string{"purpose", "issuer"})
-	scope.MustRegister(signatureCount)
-
-	signErrorCount := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "signature_errors",
-		Help: "A counter of signature errors labelled by error type",
-	}, []string{"type"})
-	scope.MustRegister(signErrorCount)
+	metrics := ca.NewCAMetrics(scope)
 
 	cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 
@@ -196,36 +190,49 @@ func main() {
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
 
+	clk := cmd.Clock()
 	issuers := make([]*issuance.Issuer, 0, len(c.CA.Issuance.Issuers))
 	for _, issuerConfig := range c.CA.Issuance.Issuers {
-		issuer, err := issuance.LoadIssuer(issuerConfig, cmd.Clock())
+		issuer, err := issuance.LoadIssuer(issuerConfig, clk)
 		cmd.FailOnError(err, "Loading issuer")
 		issuers = append(issuers, issuer)
+		logger.Infof("Loaded issuer: name=[%s] keytype=[%s] nameID=[%v] isActive=[%t]", issuer.Name(), issuer.KeyType(), issuer.NameID(), issuer.IsActive())
 	}
 
-	profile, err := issuance.NewProfile(c.CA.Issuance.Profile, c.CA.Issuance.IgnoredLints)
-	cmd.FailOnError(err, "Couldn't load issuance profile")
+	if c.CA.Issuance.DefaultCertificateProfileName == "" {
+		c.CA.Issuance.DefaultCertificateProfileName = "defaultBoulderCertificateProfile"
+	}
+	logger.Infof("Configured default certificate profile name set to: %s", c.CA.Issuance.DefaultCertificateProfileName)
+
+	// TODO(#7414) Remove this check.
+	if !reflect.ValueOf(c.CA.Issuance.Profile).IsZero() && len(c.CA.Issuance.CertProfiles) > 0 {
+		cmd.Fail("Only one of Issuance.Profile or Issuance.CertProfiles can be configured")
+	}
+
+	// TODO(#7414) Remove this check.
+	// Use the deprecated Profile as a CertProfiles
+	if len(c.CA.Issuance.CertProfiles) == 0 {
+		c.CA.Issuance.CertProfiles = make(map[string]issuance.ProfileConfig, 0)
+		c.CA.Issuance.CertProfiles[c.CA.Issuance.DefaultCertificateProfileName] = c.CA.Issuance.Profile
+	}
+
+	lints, err := linter.NewRegistry(c.CA.Issuance.IgnoredLints)
+	cmd.FailOnError(err, "Failed to create zlint registry")
+	if c.CA.Issuance.LintConfig != "" {
+		lintconfig, err := lint.NewConfigFromFile(c.CA.Issuance.LintConfig)
+		cmd.FailOnError(err, "Failed to load zlint config file")
+		lints.SetConfiguration(lintconfig)
+	}
 
 	tlsConfig, err := c.CA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
-
-	clk := cmd.Clock()
 
 	conn, err := bgrpc.ClientSetup(c.CA.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := sapb.NewStorageAuthorityClient(conn)
 
-	kp, err := sagoodkey.NewKeyPolicy(&c.CA.GoodKey, sa.KeyBlocked)
+	kp, err := sagoodkey.NewPolicy(&c.CA.GoodKey, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
-
-	var ecdsaAllowList *ca.ECDSAAllowList
-	var entries int
-	if c.CA.ECDSAAllowListFilename != "" {
-		// Create an allow list object.
-		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename)
-		cmd.FailOnError(err, "Unable to load ECDSA allow list from YAML file")
-		logger.Infof("Loaded an ECDSA allow list with %d entries", entries)
-	}
 
 	srv := bgrpc.NewServer(c.CA.GRPCCA, logger)
 
@@ -237,8 +244,7 @@ func main() {
 			c.CA.OCSPLogPeriod.Duration,
 			logger,
 			scope,
-			signatureCount,
-			signErrorCount,
+			metrics,
 			clk,
 		)
 		cmd.FailOnError(err, "Failed to create OCSP impl")
@@ -252,9 +258,9 @@ func main() {
 		crli, err := ca.NewCRLImpl(
 			issuers,
 			c.CA.Issuance.CRLProfile,
-			c.CA.CRLDPBase,
 			c.CA.OCSPLogMaxLength,
 			logger,
+			metrics,
 		)
 		cmd.FailOnError(err, "Failed to create CRL impl")
 
@@ -266,17 +272,14 @@ func main() {
 			sa,
 			pa,
 			issuers,
-			profile,
-			ecdsaAllowList,
-			c.CA.Expiry.Duration,
-			c.CA.Backdate.Duration,
+			c.CA.Issuance.DefaultCertificateProfileName,
+			c.CA.Issuance.CertProfiles,
+			lints,
 			c.CA.SerialPrefix,
 			c.CA.MaxNames,
 			kp,
 			logger,
-			scope,
-			signatureCount,
-			signErrorCount,
+			metrics,
 			clk)
 		cmd.FailOnError(err, "Failed to create CA impl")
 

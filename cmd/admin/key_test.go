@@ -5,10 +5,15 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"os"
+	"os/user"
 	"path"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,6 +48,26 @@ func TestSPKIHashFromPrivateKey(t *testing.T) {
 	test.AssertByteEquals(t, res, keyHash[:])
 }
 
+func TestSPKIHashesFromFile(t *testing.T) {
+	var spkiHexes []string
+	for i := range 10 {
+		h := sha256.Sum256([]byte(strconv.Itoa(i)))
+		spkiHexes = append(spkiHexes, hex.EncodeToString(h[:]))
+	}
+
+	spkiFile := path.Join(t.TempDir(), "spkis.txt")
+	err := os.WriteFile(spkiFile, []byte(strings.Join(spkiHexes, "\n")), os.ModeAppend)
+	test.AssertNotError(t, err, "writing test spki file")
+
+	a := admin{}
+
+	res, err := a.spkiHashesFromFile(spkiFile)
+	test.AssertNotError(t, err, "")
+	for i, spkiHash := range res {
+		test.AssertEquals(t, hex.EncodeToString(spkiHash), spkiHexes[i])
+	}
+}
+
 // mockSARecordingBlocks is a mock which only implements the AddBlockedKey gRPC
 // method.
 type mockSARecordingBlocks struct {
@@ -61,6 +86,18 @@ func (msa *mockSARecordingBlocks) reset() {
 	msa.blockRequests = nil
 }
 
+type mockSARO struct {
+	sapb.StorageAuthorityReadOnlyClient
+}
+
+func (sa *mockSARO) GetSerialsByKey(ctx context.Context, _ *sapb.SPKIHash, _ ...grpc.CallOption) (grpc.ServerStreamingClient[sapb.Serial], error) {
+	return &mocks.ServerStreamClient[sapb.Serial]{}, nil
+}
+
+func (sa *mockSARO) KeyBlocked(ctx context.Context, req *sapb.SPKIHash, _ ...grpc.CallOption) (*sapb.Exists, error) {
+	return &sapb.Exists{Exists: false}, nil
+}
+
 func TestBlockSPKIHash(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
@@ -72,13 +109,14 @@ func TestBlockSPKIHash(t *testing.T) {
 	keyHash, err := core.KeyDigest(privKey.Public())
 	test.AssertNotError(t, err, "computing test SPKI hash")
 
-	a := admin{saroc: &mocks.StorageAuthorityReadOnly{}, sac: &msa, clk: fc, log: log}
+	a := admin{saroc: &mockSARO{}, sac: &msa, clk: fc, log: log}
+	u := &user.User{}
 
 	// A full run should result in one request with the right fields.
 	msa.reset()
 	log.Clear()
 	a.dryRun = false
-	err = a.blockSPKIHash(context.Background(), keyHash[:], "hello world")
+	err = a.blockSPKIHash(context.Background(), keyHash[:], u, "hello world")
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(log.GetAllMatching("Found 0 unexpired certificates")), 1)
 	test.AssertEquals(t, len(msa.blockRequests), 1)
@@ -90,7 +128,7 @@ func TestBlockSPKIHash(t *testing.T) {
 	log.Clear()
 	a.dryRun = true
 	a.sac = dryRunSAC{log: log}
-	err = a.blockSPKIHash(context.Background(), keyHash[:], "")
+	err = a.blockSPKIHash(context.Background(), keyHash[:], u, "")
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(log.GetAllMatching("Found 0 unexpired certificates")), 1)
 	test.AssertEquals(t, len(log.GetAllMatching("dry-run:")), 1)

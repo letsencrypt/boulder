@@ -2,9 +2,9 @@
 	"ca": {
 		"debugAddr": ":8001",
 		"tls": {
-			"caCertFile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/ca.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/ca.boulder/key.pem"
+			"caCertFile": "test/certs/ipki/minica.pem",
+			"certFile": "test/certs/ipki/ca.boulder/cert.pem",
+			"keyFile": "test/certs/ipki/ca.boulder/key.pem"
 		},
 		"hostnamePolicyFile": "test/hostname-policy.yaml",
 		"grpcCA": {
@@ -59,41 +59,74 @@
 			},
 			"issuers": [
 				{
-					"useForRSALeaves": false,
-					"useForECDSALeaves": true,
-					"issuerURL": "http://127.0.0.1:4001/aia/issuer/5214744660557630",
-					"ocspURL": "http://127.0.0.1:4002/",
+					"active": true,
+					"issuerURL": "http://ca.example.org:4502/int-ecdsa-a",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/ecdsa-a/",
 					"location": {
-						"configFile": "/hierarchy/intermediate-signing-key-ecdsa.pkcs11.json",
-						"certFile": "/hierarchy/intermediate-cert-ecdsa-a.pem",
+						"configFile": "test/certs/webpki/int-ecdsa-a.pkcs11.json",
+						"certFile": "test/certs/webpki/int-ecdsa-a.cert.pem",
 						"numSessions": 2
 					}
 				},
 				{
-					"useForRSALeaves": true,
-					"useForECDSALeaves": true,
-					"issuerURL": "http://127.0.0.1:4001/aia/issuer/6605440498369741",
-					"ocspURL": "http://127.0.0.1:4002/",
+					"active": true,
+					"issuerURL": "http://ca.example.org:4502/int-ecdsa-b",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/ecdsa-b/",
 					"location": {
-						"configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
-						"certFile": "/hierarchy/intermediate-cert-rsa-a.pem",
+						"configFile": "test/certs/webpki/int-ecdsa-b.pkcs11.json",
+						"certFile": "test/certs/webpki/int-ecdsa-b.cert.pem",
 						"numSessions": 2
 					}
 				},
 				{
-					"useForRSALeaves": false,
-					"useForECDSALeaves": false,
-					"issuerURL": "http://127.0.0.1:4001/aia/issuer/41127673797486028",
-					"ocspURL": "http://127.0.0.1:4002/",
+					"active": false,
+					"issuerURL": "http://ca.example.org:4502/int-ecdsa-c",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/ecdsa-c/",
 					"location": {
-						"configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
-						"certFile": "/hierarchy/intermediate-cert-rsa-b.pem",
+						"configFile": "test/certs/webpki/int-ecdsa-c.pkcs11.json",
+						"certFile": "test/certs/webpki/int-ecdsa-c.cert.pem",
+						"numSessions": 2
+					}
+				},
+				{
+					"active": true,
+					"issuerURL": "http://ca.example.org:4502/int-rsa-a",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/rsa-a/",
+					"location": {
+						"configFile": "test/certs/webpki/int-rsa-a.pkcs11.json",
+						"certFile": "test/certs/webpki/int-rsa-a.cert.pem",
+						"numSessions": 2
+					}
+				},
+				{
+					"active": true,
+					"issuerURL": "http://ca.example.org:4502/int-rsa-b",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/rsa-b/",
+					"location": {
+						"configFile": "test/certs/webpki/int-rsa-b.pkcs11.json",
+						"certFile": "test/certs/webpki/int-rsa-b.cert.pem",
+						"numSessions": 2
+					}
+				},
+				{
+					"active": false,
+					"issuerURL": "http://ca.example.org:4502/int-rsa-c",
+					"ocspURL": "http://ca.example.org:4002/",
+					"crlURLBase": "http://ca.example.org:4501/rsa-c/",
+					"location": {
+						"configFile": "test/certs/webpki/int-rsa-c.pkcs11.json",
+						"certFile": "test/certs/webpki/int-rsa-c.cert.pem",
 						"numSessions": 2
 					}
 				}
 			],
+			"lintConfig": "test/config/zlint.toml",
 			"ignoredLints": [
-				"n_subject_common_name_included",
 				"w_subject_common_name_included",
 				"w_sub_cert_aia_contains_internal_names"
 			]
@@ -104,7 +137,6 @@
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
 		"lifespanCRL": "216h",
-		"crldpBase": "http://c.boulder.test",
 		"goodkey": {
 			"weakKeyFile": "test/example-weak-keys.json",
 			"blockedKeyFile": "test/example-blocked-keys.yaml",
@@ -112,7 +144,6 @@
 		},
 		"ocspLogMaxLength": 4000,
 		"ocspLogPeriod": "500ms",
-		"ecdsaAllowListFilename": "test/config/ecdsaAllowList.yml",
 		"features": {}
 	},
 	"pa": {

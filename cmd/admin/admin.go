@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -34,11 +36,24 @@ type admin struct {
 
 // newAdmin constructs a new admin object on the heap and returns a pointer to
 // it.
-func newAdmin(c Config, dryRun bool, clk clock.Clock, logger blog.Logger, scope prometheus.Registerer) (*admin, error) {
-	// Unlike most boulder service constructors, this does all of its own gRPC
-	// and database connection setup. If this is broken out into its own package
+func newAdmin(configFile string, dryRun bool) (*admin, error) {
+	// Unlike most boulder service constructors, this does all of its own config
+	// parsing and dependency setup. If this is broken out into its own package
 	// (outside the //cmd/ directory) those pieces of setup should stay behind
 	// in //cmd/admin/main.go, to match other boulder services.
+	var c Config
+	err := cmd.ReadConfigFile(configFile, &c)
+	if err != nil {
+		return nil, fmt.Errorf("parsing config file: %w", err)
+	}
+
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Admin.DebugAddr)
+	defer oTelShutdown(context.Background())
+	logger.Info(cmd.VersionString())
+
+	clk := cmd.Clock()
+	features.Set(c.Admin.Features)
+
 	tlsConfig, err := c.Admin.TLS.Load(scope)
 	if err != nil {
 		return nil, fmt.Errorf("loading TLS config: %w", err)

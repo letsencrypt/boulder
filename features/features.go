@@ -15,22 +15,19 @@ import (
 // then call features.Set(parsedConfig) to load the parsed struct into this
 // package's global Config.
 type Config struct {
-	// Deprecated features. Safe for removal once all references to them have
-	// been removed from deployed configuration.
-	CAAAfterValidation         bool
-	AllowNoCommonName          bool
-	SHA256SubjectKeyIdentifier bool
-
-	// EnforceMultiVA causes the VA to block on remote VA PerformValidation
-	// requests in order to make a valid/invalid decision with the results.
-	EnforceMultiVA bool
-	// MultiVAFullResults will cause the main VA to wait for all of the remote VA
-	// results, not just the threshold required to make a decision.
-	MultiVAFullResults bool
-
-	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
-	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
-	ECDSAForAll bool
+	// Deprecated features. These features have no effect. Removing them from
+	// configuration is safe.
+	//
+	// Once all references to them have been removed from deployed configuration,
+	// they can be deleted from this struct, after which Boulder will fail to
+	// start if they are present in configuration.
+	CAAAfterValidation                bool
+	AllowNoCommonName                 bool
+	SHA256SubjectKeyIdentifier        bool
+	EnforceMultiVA                    bool
+	MultiVAFullResults                bool
+	CertCheckerRequiresCorrespondence bool
+	ECDSAForAll                       bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -50,12 +47,6 @@ type Config struct {
 	// query enabled by CertCheckerChecksValidations didn't find corresponding
 	// authorizations.
 	CertCheckerRequiresValidations bool
-
-	// CertCheckerRequiresCorrespondence enables an extra query for each certificate
-	// checked, to find the linting precertificate in the `precertificates` table.
-	// It then checks that the final certificate "corresponds" to the precertificate
-	// using `precert.Correspond`.
-	CertCheckerRequiresCorrespondence bool
 
 	// AsyncFinalize enables the RA to return approximately immediately from
 	// requests to finalize orders. This allows us to take longer getting SCTs,
@@ -89,6 +80,30 @@ type Config struct {
 	//     a 'orderID' matching the finalized order to true. This will occur
 	//     inside of the finalize (order) transaction.
 	TrackReplacementCertificatesARI bool
+
+	// MultipleCertificateProfiles, when enabled, triggers the following
+	// behavior:
+	//   - SA.NewOrderAndAuthzs: upon receiving a NewOrderRequest with a
+	//     `certificateProfileName` value, will add that value to the database's
+	//     `orders.certificateProfileName` column. Values in this column are
+	//     allowed to be empty.
+	MultipleCertificateProfiles bool
+
+	// CheckRenewalExemptionAtWFE when enabled, triggers the following behavior:
+	//  - WFE.NewOrder: checks if the order is a renewal and if so skips checks
+	//    for NewOrdersPerAccount and NewOrdersPerDomain limits.
+	//  - RA.NewOrderAndAuthzs: skips checks for legacy NewOrdersPerAccount and
+	//    NewOrdersPerDomain limits if the WFE indicates that the order is a
+	//    renewal.
+	//
+	// TODO(#7511): Remove this feature flag.
+	CheckRenewalExemptionAtWFE bool
+
+	// CheckIdentifiersPaused checks if any of the identifiers in the order are
+	// currently paused at NewOrder time. If any are paused, an error is
+	// returned to the Subscriber indicating that the order cannot be processed
+	// until the paused identifiers are unpaused and the order is resubmitted.
+	CheckIdentifiersPaused bool
 }
 
 var fMu = new(sync.RWMutex)

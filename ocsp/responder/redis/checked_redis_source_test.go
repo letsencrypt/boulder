@@ -18,7 +18,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ocsp/responder"
 	ocsp_test "github.com/letsencrypt/boulder/ocsp/test"
 	"github.com/letsencrypt/boulder/sa"
@@ -99,7 +98,7 @@ func (s notFoundSelector) SelectOne(_ context.Context, _ interface{}, _ string, 
 
 // echoSA always returns the given revocation status.
 type echoSA struct {
-	mocks.StorageAuthorityReadOnly
+	sapb.StorageAuthorityReadOnlyClient
 	status *sapb.RevocationStatus
 }
 
@@ -109,7 +108,7 @@ func (s *echoSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...g
 
 // errorSA always returns an error.
 type errorSA struct {
-	mocks.StorageAuthorityReadOnly
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 func (s *errorSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
@@ -118,7 +117,7 @@ func (s *errorSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...
 
 // notFoundSA always returns a NotFound error.
 type notFoundSA struct {
-	mocks.StorageAuthorityReadOnly
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 func (s *notFoundSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {

@@ -15,8 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         GO_VERSION:
-          - "1.21.8"
-          - "1.22.1"
+          - "1.22.5"
     runs-on: ubuntu-20.04
     permissions:
       contents: write
@@ -25,14 +24,17 @@ jobs:
         with:
           persist-credentials: false
 
-      # Enable https://github.com/golang/go/wiki/LoopvarExperiment
-      - run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
-
       - name: Build .deb
         id: build
         env:
           GO_VERSION: ${{ matrix.GO_VERSION }}
         run: ./tools/make-assets.sh
+
+      - name: Compute checksums
+        id: checksums
+        # The files listed on this line must be identical to the files uploaded
+        # in the last step.
+        run: sha256sum boulder*.deb boulder*.tar.gz >| checksums.txt
 
       - name: Create release
         env:
@@ -45,4 +47,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # https://cli.github.com/manual/gh_release_upload
-        run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb boulder*.tar.gz
+        run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb boulder*.tar.gz checksums.txt

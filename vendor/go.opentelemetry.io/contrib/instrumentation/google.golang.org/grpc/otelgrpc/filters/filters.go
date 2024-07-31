@@ -1,22 +1,15 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
+// Package filters provides a set of filters useful with the
+// [otelgrpc.WithFilter] option to control which inbound requests are instrumented.
 package filters // import "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
 
 import (
 	"path"
 	"strings"
+
+	"google.golang.org/grpc/stats"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 )
@@ -30,20 +23,8 @@ type gRPCPath struct {
 // and returns as gRPCPath object that has divided service and method names
 // https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md
 // If name is not FullMethod, returned gRPCPath has empty service field.
-func splitFullMethod(i *otelgrpc.InterceptorInfo) gRPCPath {
-	var name string
-	switch i.Type {
-	case otelgrpc.UnaryServer:
-		name = i.UnaryServerInfo.FullMethod
-	case otelgrpc.StreamServer:
-		name = i.StreamServerInfo.FullMethod
-	case otelgrpc.UnaryClient, otelgrpc.StreamClient:
-		name = i.Method
-	default:
-		name = i.Method
-	}
-
-	s, m := path.Split(name)
+func splitFullMethod(i *stats.RPCTagInfo) gRPCPath {
+	s, m := path.Split(i.FullMethodName)
 	if s != "" {
 		s = path.Clean(s)
 		s = strings.TrimLeft(s, "/")
@@ -58,7 +39,7 @@ func splitFullMethod(i *otelgrpc.InterceptorInfo) gRPCPath {
 // Any takes a list of Filters and returns a Filter that
 // returns true if any Filter in the list returns true.
 func Any(fs ...otelgrpc.Filter) otelgrpc.Filter {
-	return func(i *otelgrpc.InterceptorInfo) bool {
+	return func(i *stats.RPCTagInfo) bool {
 		for _, f := range fs {
 			if f(i) {
 				return true
@@ -71,7 +52,7 @@ func Any(fs ...otelgrpc.Filter) otelgrpc.Filter {
 // All takes a list of Filters and returns a Filter that
 // returns true only if all Filters in the list return true.
 func All(fs ...otelgrpc.Filter) otelgrpc.Filter {
-	return func(i *otelgrpc.InterceptorInfo) bool {
+	return func(i *stats.RPCTagInfo) bool {
 		for _, f := range fs {
 			if !f(i) {
 				return false
@@ -89,7 +70,7 @@ func None(fs ...otelgrpc.Filter) otelgrpc.Filter {
 
 // Not provides a convenience mechanism for inverting a Filter.
 func Not(f otelgrpc.Filter) otelgrpc.Filter {
-	return func(i *otelgrpc.InterceptorInfo) bool {
+	return func(i *stats.RPCTagInfo) bool {
 		return !f(i)
 	}
 }
@@ -97,7 +78,7 @@ func Not(f otelgrpc.Filter) otelgrpc.Filter {
 // MethodName returns a Filter that returns true if the request's
 // method name matches the provided string n.
 func MethodName(n string) otelgrpc.Filter {
-	return func(i *otelgrpc.InterceptorInfo) bool {
+	return func(i *stats.RPCTagInfo) bool {
 		p := splitFullMethod(i)
 		return p.method == n
 	}
@@ -106,7 +87,7 @@ func MethodName(n string) otelgrpc.Filter {
 // MethodPrefix returns a Filter that returns true if the request's
 // method starts with the provided string pre.
 func MethodPrefix(pre string) otelgrpc.Filter {
-	return func(i *otelgrpc.InterceptorInfo) bool {
+	return func(i *stats.RPCTagInfo) bool {
 		p := splitFullMethod(i)
 		return strings.HasPrefix(p.method, pre)
 	}
@@ -116,26 +97,15 @@ func MethodPrefix(pre string) otelgrpc.Filter {
 // full RPC method string, i.e. /package.service/method, starts with
 // the provided string n.
 func FullMethodName(n string) otelgrpc.Filter {
-	return func(i *otelgrpc.InterceptorInfo) bool {
-		var fm string
-		switch i.Type {
-		case otelgrpc.UnaryClient, otelgrpc.StreamClient:
-			fm = i.Method
-		case otelgrpc.UnaryServer:
-			fm = i.UnaryServerInfo.FullMethod
-		case otelgrpc.StreamServer:
-			fm = i.StreamServerInfo.FullMethod
-		default:
-			fm = i.Method
-		}
-		return fm == n
+	return func(i *stats.RPCTagInfo) bool {
+		return i.FullMethodName == n
 	}
 }
 
 // ServiceName returns a Filter that returns true if the request's
 // service name, i.e. package.service, matches s.
 func ServiceName(s string) otelgrpc.Filter {
-	return func(i *otelgrpc.InterceptorInfo) bool {
+	return func(i *stats.RPCTagInfo) bool {
 		p := splitFullMethod(i)
 		return p.service == s
 	}
@@ -144,7 +114,7 @@ func ServiceName(s string) otelgrpc.Filter {
 // ServicePrefix returns a Filter that returns true if the request's
 // service name, i.e. package.service, starts with the provided string pre.
 func ServicePrefix(pre string) otelgrpc.Filter {
-	return func(i *otelgrpc.InterceptorInfo) bool {
+	return func(i *stats.RPCTagInfo) bool {
 		p := splitFullMethod(i)
 		return strings.HasPrefix(p.service, pre)
 	}

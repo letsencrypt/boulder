@@ -10,10 +10,10 @@ log_level   = "ERROR"
 enable_agent_tls_for_checks = true
 tls {
   defaults {
-    ca_file         = "test/grpc-creds/minica.pem"
-    ca_path         = "test/grpc-creds/minica-key.pem"
-    cert_file       = "test/grpc-creds/consul.boulder/cert.pem"
-    key_file        = "test/grpc-creds/consul.boulder/key.pem"
+    ca_file         = "test/certs/ipki/minica.pem"
+    ca_path         = "test/certs/ipki/minica-key.pem"
+    cert_file       = "test/certs/ipki/consul.boulder/cert.pem"
+    key_file        = "test/certs/ipki/consul.boulder/key.pem"
     verify_incoming = false
   }
 }
@@ -173,6 +173,23 @@ services {
   name    = "rva1"
   address = "10.77.77.77"
   port    = 9498
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+}
+
+# TODO(#5294) Remove rva2-a/b in favor of rva1-a/b
+services {
+  id      = "rva2-a"
+  name    = "rva2"
+  address = "10.77.77.77"
+  port    = 9897
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+}
+
+services {
+  id      = "rva2-b"
+  name    = "rva2"
+  address = "10.77.77.77"
+  port    = 9998
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
