@@ -11,6 +11,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -137,14 +138,21 @@ func (sfe *SelfServiceFrontEndImpl) BuildID(response http.ResponseWriter, reques
 // in this form.
 func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, request *http.Request) {
 	incomingJWT := request.URL.Query().Get("jwt")
-	if incomingJWT == "" {
-		sfe.unpauseInvalidRequest(response)
-		return
-	}
 
 	regID, identifiers, err := sfe.parseUnpauseJWT(incomingJWT)
 	if err != nil {
-		sfe.unpauseStatusHelper(response, false)
+		if errors.Is(err, jwt.ErrExpired) {
+			// JWT expired before the Subscriber visited the unpause page.
+			sfe.unpauseTokenExpired(response)
+			return
+		}
+		if errors.Is(err, unpause.ErrMalformedJWT) {
+			// JWT is malformed. This could happen if the Subscriber failed to
+			// copy the entire URL from their logs.
+			sfe.unpauseRequestMalformed(response)
+			return
+		}
+		sfe.unpauseFailed(response)
 		return
 	}
 
@@ -160,20 +168,26 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, re
 	sfe.renderTemplate(response, "unpause-form.html", tmplData{unpausePostForm, incomingJWT, regID, identifiers})
 }
 
-// UnpauseSubmit serves a page indicating if the unpause form submission
-// succeeded or failed upon clicking the unpause button. We are explicitly
-// choosing to not address CSRF at this time because we control creation and
-// redemption of the JWT.
+// UnpauseSubmit serves a page showing the result of the unpause form submission.
+// CSRF is not addressed because a third party causing submission of an unpause
+// form is not harmful.
 func (sfe *SelfServiceFrontEndImpl) UnpauseSubmit(response http.ResponseWriter, request *http.Request) {
 	incomingJWT := request.URL.Query().Get("jwt")
-	if incomingJWT == "" {
-		sfe.unpauseInvalidRequest(response)
-		return
-	}
 
 	_, _, err := sfe.parseUnpauseJWT(incomingJWT)
 	if err != nil {
-		sfe.unpauseStatusHelper(response, false)
+		if errors.Is(err, jwt.ErrExpired) {
+			// JWT expired before the Subscriber could click the unpause button.
+			sfe.unpauseTokenExpired(response)
+			return
+		}
+		if errors.Is(err, unpause.ErrMalformedJWT) {
+			// JWT is malformed. This should never happen if the request came
+			// from our form.
+			sfe.unpauseRequestMalformed(response)
+			return
+		}
+		sfe.unpauseFailed(response)
 		return
 	}
 
@@ -186,24 +200,24 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseSubmit(response http.ResponseWriter, 
 	http.Redirect(response, request, unpauseStatus, http.StatusFound)
 }
 
-// unpauseInvalidRequest is a helper that displays a page indicating the
-// Subscriber perform basic troubleshooting due to lack of JWT in the data
-// object.
-func (sfe *SelfServiceFrontEndImpl) unpauseInvalidRequest(response http.ResponseWriter) {
+func (sfe *SelfServiceFrontEndImpl) unpauseRequestMalformed(response http.ResponseWriter) {
 	sfe.renderTemplate(response, "unpause-invalid-request.html", nil)
 }
 
-type unpauseStatusTemplateData struct {
-	UnpauseSuccessful bool
+func (sfe *SelfServiceFrontEndImpl) unpauseTokenExpired(response http.ResponseWriter) {
+	sfe.renderTemplate(response, "unpause-expired.html", nil)
 }
 
-// unpauseStatus is a helper that, by default, displays a failure message to the
-// Subscriber indicating that their account has failed to unpause. For failure
-// scenarios, only when the JWT validation should call this. Other types of
-// failures should use unpauseInvalidRequest. For successes, call UnpauseStatus
-// instead.
-func (sfe *SelfServiceFrontEndImpl) unpauseStatusHelper(response http.ResponseWriter, status bool) {
-	sfe.renderTemplate(response, "unpause-status.html", unpauseStatusTemplateData{status})
+type unpauseStatusTemplate struct {
+	Successful bool
+}
+
+func (sfe *SelfServiceFrontEndImpl) unpauseFailed(response http.ResponseWriter) {
+	sfe.renderTemplate(response, "unpause-status.html", unpauseStatusTemplate{Successful: false})
+}
+
+func (sfe *SelfServiceFrontEndImpl) unpauseSuccessful(response http.ResponseWriter) {
+	sfe.renderTemplate(response, "unpause-status.html", unpauseStatusTemplate{Successful: true})
 }
 
 // UnpauseStatus displays a success message to the Subscriber indicating that
@@ -218,19 +232,22 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseStatus(response http.ResponseWriter, 
 	// TODO(#7580) This should only be reachable after a client has clicked the
 	// "Please unblock my account" button and that request succeeding. No one
 	// should be able to access this page otherwise.
-	sfe.unpauseStatusHelper(response, true)
+	sfe.unpauseSuccessful(response)
 }
 
 // parseUnpauseJWT extracts and returns the subscriber's registration ID and a
 // slice of paused identifiers from the claims. If the JWT cannot be parsed or
-// is otherwise invalid, an error is returned.
+// is otherwise invalid, an error is returned. If the JWT is missing or
+// malformed, unpause.ErrMalformedJWT is returned.
 func (sfe *SelfServiceFrontEndImpl) parseUnpauseJWT(incomingJWT string) (int64, []string, error) {
-	slug := strings.Split(unpause.APIPrefix, "/")
-	if len(slug) != 3 {
-		return 0, nil, errors.New("failed to parse API version")
+	if incomingJWT == "" || len(strings.Split(incomingJWT, ".")) != 3 {
+		// JWT is missing or malformed. This could happen if the Subscriber
+		// failed to copy the entire URL from their logs. This should never
+		// happen if the request came from our form.
+		return 0, nil, unpause.ErrMalformedJWT
 	}
 
-	claims, err := unpause.RedeemJWT(incomingJWT, sfe.unpauseHMACKey, slug[2], sfe.clk)
+	claims, err := unpause.RedeemJWT(incomingJWT, sfe.unpauseHMACKey, unpause.APIVersion, sfe.clk)
 	if err != nil {
 		return 0, nil, err
 	}
