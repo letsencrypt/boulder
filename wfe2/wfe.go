@@ -75,6 +75,7 @@ const (
 
     // Plesk
     caRootPath    = "/ca-root"
+    caEcdsaRootPath    = "/ca-ecdsa-root"
 )
 
 const (
@@ -433,6 +434,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 
     // Plesk
     wfe.HandleFunc(m, caRootPath, wfe.CARoot, "GET")
+    wfe.HandleFunc(m, caEcdsaRootPath, wfe.CAEcdsaRoot, "GET")
 
 	// Endpoint for draft-ietf-acme-ari
 	if features.Get().ServeRenewalInfo {
@@ -511,6 +513,24 @@ func (wfe *WebFrontEndImpl) CARoot(
 	}
 
 	response.Write(caRoot)
+}
+
+// CAEcdsaRoot returns ecdsa Root CA content
+func (wfe *WebFrontEndImpl) CAEcdsaRoot(
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+	filePath := "test/certs/webpki/root-ecdsa.cert.pem"
+	caEcdsaRoot, err := ioutil.ReadFile(filePath)
+
+	if err != nil {
+		prob := probs.ServerInternal(fmt.Sprintf("could not get ecdsa root ca: %v", err))
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	response.Write(caEcdsaRoot)
 }
 
 // Directory is an HTTP request handler that provides the directory
