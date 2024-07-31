@@ -1352,13 +1352,8 @@ func (ssa *SQLStorageAuthorityRO) ReplacementOrderExists(ctx context.Context, re
 // certificates affected by a key compromise.
 func (ssa *SQLStorageAuthorityRO) GetSerialsByKey(req *sapb.SPKIHash, stream grpc.ServerStreamingServer[sapb.Serial]) error {
 	clauses := `
-<<<<<<< HEAD
 		WHERE keyHash = $1
-		AND certNotAfter > NOW()`
-=======
-		WHERE keyHash = ?
 		AND certNotAfter > ?`
->>>>>>> main
 	params := []interface{}{
 		req.KeyHash,
 		ssa.clk.Now(),
@@ -1384,13 +1379,8 @@ func (ssa *SQLStorageAuthorityRO) GetSerialsByKey(req *sapb.SPKIHash, stream grp
 // an account's certs upon their request.
 func (ssa *SQLStorageAuthorityRO) GetSerialsByAccount(req *sapb.RegistrationID, stream grpc.ServerStreamingServer[sapb.Serial]) error {
 	clauses := `
-<<<<<<< HEAD
 		WHERE registrationID = $1
-		AND expires > NOW()`
-=======
-		WHERE registrationID = ?
 		AND expires > ?`
->>>>>>> main
 	params := []interface{}{
 		req.Id,
 		ssa.clk.Now(),
@@ -1452,9 +1442,10 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 	var conditions []string
 	args := []interface{}{req.RegistrationID}
 	for idType, values := range identifiersByType {
+		/// XXX TODO this is broken
 		conditions = append(conditions,
-			fmt.Sprintf("identifierType = ? AND identifierValue IN (%s)",
-				db.QuestionMarks(len(values)),
+			fmt.Sprintf("identifierType = $1 AND identifierValue IN (%s)",
+				db.QuestionMarks(1, len(values)),
 			),
 		)
 		args = append(args, idType)
@@ -1466,7 +1457,7 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 	query := fmt.Sprintf(`
         SELECT identifierType, identifierValue
         FROM paused
-        WHERE registrationID = ? AND unpausedAt IS NULL AND (%s) LIMIT 15`,
+        WHERE registrationID = $1 AND unpausedAt IS NULL AND (%s) LIMIT 15`,
 		strings.Join(conditions, " OR "))
 
 	var matches []identifierModel

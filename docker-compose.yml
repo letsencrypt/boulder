@@ -50,6 +50,7 @@ services:
       - 4003:4003 # SFE
     depends_on:
       - bmysql
+      - bpsql
       - bproxysql
       - bredis_1
       - bredis_2
@@ -66,6 +67,7 @@ services:
     image: postgres:latest
     networks:
       bouldernet:
+        ipv4_address: 10.77.77.32
         aliases:
           - boulder-psql
     environment:

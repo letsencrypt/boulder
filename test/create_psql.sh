@@ -41,7 +41,7 @@ function create_empty_db() {
 
 # set db connection for if running in a separate container or not
 export PGPASSWORD=VV5PugWx0QQyVHHmdwvSu+RW60U
-dbconn="psql -U postgres -h 10.77.77.2"
+dbconn="psql -U postgres -h 10.77.77.32"
 
 for db in $DBS; do
   for env in $ENVS; do
