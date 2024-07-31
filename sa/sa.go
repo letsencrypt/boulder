@@ -1142,8 +1142,7 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 				`UPDATE crlShards
 					SET leasedUntil = $1
 					WHERE issuerID = $2
-					AND idx = $3
-					LIMIT 1`,
+					AND idx = $3`,
 				req.Until.AsTime(),
 				req.IssuerNameID,
 				shardIdx,
@@ -1210,8 +1209,7 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 				`UPDATE crlShards
 					SET leasedUntil = $1
 					WHERE issuerID = $2
-					AND idx = $3
-					LIMIT 1`,
+					AND idx = $3`,
 				req.Until.AsTime(),
 				req.IssuerNameID,
 				req.MinShardIdx,
@@ -1263,8 +1261,7 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 				SET thisUpdate = $1, nextUpdate = $2, leasedUntil = $3
 				WHERE issuerID = $4
 				AND idx = $5
-				AND (thisUpdate is NULL OR thisUpdate <= $6)
-				LIMIT 1`,
+				AND (thisUpdate is NULL OR thisUpdate <= $6)`,
 			req.ThisUpdate.AsTime(),
 			nextUpdate,
 			req.ThisUpdate.AsTime(),
