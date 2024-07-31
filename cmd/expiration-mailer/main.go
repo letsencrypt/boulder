@@ -320,7 +320,7 @@ func (m *mailer) certIsRenewed(ctx context.Context, names []string, issued time.
 	err := m.dbMap.SelectOne(
 		ctx,
 		&present,
-		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? AND issued > ? LIMIT 1)`,
+		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = $1 AND issued > $2 LIMIT 1)`,
 		namehash,
 		issued,
 	)
@@ -555,7 +555,7 @@ func (m *mailer) getCertsWithJoin(ctx context.Context, left, right time.Time, ex
 				AND cs.notAfter > :cutoffA
 				AND cs.notAfter <= :cutoffB
 				AND cs.status != 'revoked'
-				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cs.notAfter) > :nagCutoff, 1)
+				AND COALESCE(EXTRACT(EPOCH FROM (cs.lastExpirationNagSent - cs.notAfter)) > :nagCutoff, true)
 				ORDER BY cs.notAfter ASC
 				LIMIT :certificatesPerTick`,
 		map[string]interface{}{
@@ -588,7 +588,7 @@ func (m *mailer) getCerts(ctx context.Context, left, right time.Time, expiresIn 
 				WHERE cs.notAfter > :cutoffA
 				AND cs.notAfter <= :cutoffB
 				AND cs.status != 'revoked'
-				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cs.notAfter) > :nagCutoff, 1)
+				AND COALESCE(EXTRACT(EPOCH FROM (cs.lastExpirationNagSent - cs.notAfter)) > :nagCutoff, true)
 				ORDER BY cs.notAfter ASC
 				LIMIT :certificatesPerTick`,
 		map[string]interface{}{
