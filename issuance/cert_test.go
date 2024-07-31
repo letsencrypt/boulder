@@ -322,10 +322,6 @@ func TestGenerateTemplate(t *testing.T) {
 	expected := &x509.Certificate{
 		BasicConstraintsValid: true,
 		SignatureAlgorithm:    x509.SHA256WithRSA,
-		ExtKeyUsage: []x509.ExtKeyUsage{
-			x509.ExtKeyUsageServerAuth,
-			x509.ExtKeyUsageClientAuth,
-		},
 		IssuingCertificateURL: []string{"http://issuer"},
 		OCSPServer:            []string{"http://ocsp"},
 		CRLDistributionPoints: nil,
@@ -448,11 +444,55 @@ func TestIssueCommonName(t *testing.T) {
 	test.AssertEquals(t, cert.Subject.CommonName, "")
 }
 
+func TestIssueOmissions(t *testing.T) {
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+
+	lints, err := linter.NewRegistry([]string{
+		"w_ext_subject_key_identifier_missing_sub_cert",
+		"w_ct_sct_policy_count_unsatisfied",
+		"e_scts_from_same_operator",
+	})
+	test.AssertNotError(t, err, "building test lint registry")
+	pc := defaultProfileConfig()
+	pc.OmitCommonName = true
+	pc.OmitKeyEncipherment = true
+	pc.OmitClientAuth = true
+	pc.OmitSKID = true
+	prof, err := NewProfile(pc, lints)
+	test.AssertNotError(t, err, "building test profile")
+
+	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
+	test.AssertNotError(t, err, "NewIssuer failed")
+
+	pk, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "failed to generate test key")
+	_, issuanceToken, err := signer.Prepare(prof, &IssuanceRequest{
+		PublicKey:       pk.Public(),
+		SubjectKeyId:    goodSKID,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:        []string{"example.com"},
+		CommonName:      "example.com",
+		IncludeCTPoison: true,
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+	})
+	test.AssertNotError(t, err, "Prepare failed")
+	certBytes, err := signer.Issue(issuanceToken)
+	test.AssertNotError(t, err, "Issue failed")
+	cert, err := x509.ParseCertificate(certBytes)
+	test.AssertNotError(t, err, "failed to parse certificate")
+
+	test.AssertEquals(t, cert.Subject.CommonName, "")
+	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature)
+	test.AssertDeepEquals(t, cert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth})
+	test.AssertEquals(t, len(cert.SubjectKeyId), 0)
+}
+
 func TestIssueCTPoison(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
-	test.AssertNotError(t, err, "NewIssuer failed")
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")

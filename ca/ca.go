@@ -184,8 +184,8 @@ func makeCertificateProfilesMap(defaultName string, profiles map[string]issuance
 		return certProfilesMaps{}, fmt.Errorf("defaultCertificateProfileName:\"%s\" was configured, but a profile object was not found for that name", defaultName)
 	}
 
-	profileByName := make(map[string]*certProfileWithID, len(profiles))
-	profileByHash := make(map[[32]byte]*certProfileWithID, len(profiles))
+	profilesByName := make(map[string]*certProfileWithID, len(profiles))
+	profilesByHash := make(map[[32]byte]*certProfileWithID, len(profiles))
 
 	for name, profileConfig := range profiles {
 		profile, err := issuance.NewProfile(profileConfig, lints)
@@ -208,30 +208,22 @@ func makeCertificateProfilesMap(defaultName string, profiles map[string]issuance
 		}
 		hash := sha256.Sum256(encodedProfile.Bytes())
 
-		_, ok := profileByName[name]
-		if !ok {
-			profileByName[name] = &certProfileWithID{
-				name:    name,
-				hash:    hash,
-				profile: profile,
-			}
-		} else {
-			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile name %s", name)
+		withID := certProfileWithID{
+			name:    name,
+			hash:    hash,
+			profile: profile,
 		}
 
-		_, ok = profileByHash[hash]
-		if !ok {
-			profileByHash[hash] = &certProfileWithID{
-				name:    name,
-				hash:    hash,
-				profile: profile,
-			}
-		} else {
+		profilesByName[name] = &withID
+
+		_, found := profilesByHash[hash]
+		if found {
 			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile hash %d", hash)
 		}
+		profilesByHash[hash] = &withID
 	}
 
-	return certProfilesMaps{defaultName, profileByHash, profileByName}, nil
+	return certProfilesMaps{defaultName, profilesByHash, profilesByName}, nil
 }
 
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates

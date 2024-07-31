@@ -46,6 +46,14 @@ type ProfileConfig struct {
 	// OmitCommonName causes the CN field to be excluded from the resulting
 	// certificate, regardless of its inclusion in the IssuanceRequest.
 	OmitCommonName bool
+	// OmitKeyEncipherment causes the keyEncipherment bit to be omitted from the
+	// Key Usage field of all certificates (instead of only from ECDSA certs).
+	OmitKeyEncipherment bool
+	// OmitClientAuth causes the id-kp-clientAuth OID (TLS Client Authentication)
+	// to be omitted from the EKU extension.
+	OmitClientAuth bool
+	// OmitSKID causes the Subject Key Identifier extension to be omitted.
+	OmitSKID bool
 
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
@@ -61,8 +69,11 @@ type PolicyConfig struct {
 
 // Profile is the validated structure created by reading in ProfileConfigs and IssuerConfigs
 type Profile struct {
-	allowMustStaple bool
-	omitCommonName  bool
+	allowMustStaple     bool
+	omitCommonName      bool
+	omitKeyEncipherment bool
+	omitClientAuth      bool
+	omitSKID            bool
 
 	maxBackdate time.Duration
 	maxValidity time.Duration
@@ -85,11 +96,14 @@ func NewProfile(profileConfig ProfileConfig, lints lint.Registry) (*Profile, err
 	}
 
 	sp := &Profile{
-		allowMustStaple: profileConfig.AllowMustStaple,
-		omitCommonName:  profileConfig.OmitCommonName,
-		maxBackdate:     profileConfig.MaxValidityBackdate.Duration,
-		maxValidity:     profileConfig.MaxValidityPeriod.Duration,
-		lints:           lints,
+		allowMustStaple:     profileConfig.AllowMustStaple,
+		omitCommonName:      profileConfig.OmitCommonName,
+		omitKeyEncipherment: profileConfig.OmitKeyEncipherment,
+		omitClientAuth:      profileConfig.OmitClientAuth,
+		omitSKID:            profileConfig.OmitSKID,
+		maxBackdate:         profileConfig.MaxValidityBackdate.Duration,
+		maxValidity:         profileConfig.MaxValidityPeriod.Duration,
+		lints:               lints,
 	}
 
 	return sp, nil
@@ -121,7 +135,7 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 		return errors.New("inactive issuer cannot issue precert")
 	}
 
-	if len(req.SubjectKeyId) != 20 {
+	if len(req.SubjectKeyId) != 0 && len(req.SubjectKeyId) != 20 {
 		return errors.New("unexpected subject key ID length")
 	}
 
@@ -162,11 +176,7 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 
 func (i *Issuer) generateTemplate() *x509.Certificate {
 	template := &x509.Certificate{
-		SignatureAlgorithm: i.sigAlg,
-		ExtKeyUsage: []x509.ExtKeyUsage{
-			x509.ExtKeyUsageServerAuth,
-			x509.ExtKeyUsageClientAuth,
-		},
+		SignatureAlgorithm:    i.sigAlg,
 		OCSPServer:            []string{i.ocspURL},
 		IssuingCertificateURL: []string{i.issuerURL},
 		BasicConstraintsValid: true,
@@ -278,6 +288,17 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 	// generate template from the issuer's data
 	template := i.generateTemplate()
 
+	ekus := []x509.ExtKeyUsage{
+		x509.ExtKeyUsageServerAuth,
+		x509.ExtKeyUsageClientAuth,
+	}
+	if prof.omitClientAuth {
+		ekus = []x509.ExtKeyUsage{
+			x509.ExtKeyUsageServerAuth,
+		}
+	}
+	template.ExtKeyUsage = ekus
+
 	// populate template from the issuance request
 	template.NotBefore, template.NotAfter = req.NotBefore, req.NotAfter
 	template.SerialNumber = big.NewInt(0).SetBytes(req.Serial)
@@ -288,12 +309,18 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 
 	switch req.PublicKey.(type) {
 	case *rsa.PublicKey:
-		template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
+		if prof.omitKeyEncipherment {
+			template.KeyUsage = x509.KeyUsageDigitalSignature
+		} else {
+			template.KeyUsage = x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
+		}
 	case *ecdsa.PublicKey:
 		template.KeyUsage = x509.KeyUsageDigitalSignature
 	}
 
-	template.SubjectKeyId = req.SubjectKeyId
+	if !prof.omitSKID {
+		template.SubjectKeyId = req.SubjectKeyId
+	}
 
 	if req.IncludeCTPoison {
 		template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)

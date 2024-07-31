@@ -158,19 +158,16 @@ func setup(t *testing.T) *testCtx {
 
 	certProfiles := make(map[string]issuance.ProfileConfig, 0)
 	certProfiles["legacy"] = issuance.ProfileConfig{
-		AllowMustStaple: true,
-		Policies: []issuance.PolicyConfig{
-			{OID: "2.23.140.1.2.1"},
-		},
+		AllowMustStaple:     true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 	}
 	certProfiles["modern"] = issuance.ProfileConfig{
-		AllowMustStaple: true,
-		OmitCommonName:  true,
-		Policies: []issuance.PolicyConfig{
-			{OID: "2.23.140.1.2.1"},
-		},
+		AllowMustStaple:     true,
+		OmitCommonName:      true,
+		OmitKeyEncipherment: true,
+		OmitClientAuth:      true,
+		OmitSKID:            true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 6},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 	}
@@ -556,157 +553,112 @@ func TestUnpredictableIssuance(t *testing.T) {
 	test.Assert(t, seenR3, "Expected at least one issuance from active issuer")
 }
 
-func TestProfiles(t *testing.T) {
+func TestMakeCertificateProfilesMap(t *testing.T) {
 	t.Parallel()
 	testCtx := setup(t)
 	test.AssertEquals(t, len(testCtx.certProfiles), 2)
 
-	sa := &mockSA{}
-
-	// These profiles contain the same data which will produce an identical
-	// hash, even though the names are different.
-	duplicateProfiles := make(map[string]issuance.ProfileConfig, 0)
-	duplicateProfiles["legacy"] = issuance.ProfileConfig{
-		AllowMustStaple: false,
-		Policies: []issuance.PolicyConfig{
-			{OID: "2.23.140.1.2.1"},
-		},
+	testProfile := issuance.ProfileConfig{
+		AllowMustStaple:     false,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 	}
-	duplicateProfiles["modern"] = issuance.ProfileConfig{
-		AllowMustStaple: false,
-		Policies: []issuance.PolicyConfig{
-			{OID: "2.23.140.1.2.1"},
-		},
-		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
-		MaxValidityBackdate: config.Duration{Duration: time.Hour},
-	}
-	test.AssertEquals(t, len(duplicateProfiles), 2)
-
-	badProfiles := make(map[string]issuance.ProfileConfig, 0)
-	badProfiles["ruhroh"] = issuance.ProfileConfig{
-		AllowMustStaple: false,
-		Policies: []issuance.PolicyConfig{
-			{OID: "2.23.140.1.2.1"},
-		},
-		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
-		MaxValidityBackdate: config.Duration{Duration: time.Hour},
-	}
-	test.AssertEquals(t, len(badProfiles), 1)
 
 	type nameToHash struct {
 		name string
 		hash [32]byte
 	}
 
-	emptyMap := make(map[string]issuance.ProfileConfig, 0)
 	testCases := []struct {
 		name              string
-		profileConfigs    map[string]issuance.ProfileConfig
 		defaultName       string
+		profileConfigs    map[string]issuance.ProfileConfig
 		expectedErrSubstr string
 		expectedProfiles  []nameToHash
 	}{
-		{
-			name:              "no profiles",
-			profileConfigs:    emptyMap,
-			expectedErrSubstr: "at least one certificate profile",
-		},
 		{
 			name:              "nil profile map",
 			profileConfigs:    nil,
 			expectedErrSubstr: "at least one certificate profile",
 		},
 		{
-			name:              "duplicate hash",
-			profileConfigs:    duplicateProfiles,
+			name:              "no profiles",
+			profileConfigs:    map[string]issuance.ProfileConfig{},
+			expectedErrSubstr: "at least one certificate profile",
+		},
+		{
+			name:        "no profile matching default name",
+			defaultName: "default",
+			profileConfigs: map[string]issuance.ProfileConfig{
+				"notDefault": testProfile,
+			},
+			expectedErrSubstr: "profile object was not found for that name",
+		},
+		{
+			name:        "duplicate hash",
+			defaultName: "default",
+			profileConfigs: map[string]issuance.ProfileConfig{
+				"default":  testProfile,
+				"default2": testProfile,
+			},
 			expectedErrSubstr: "duplicate certificate profile hash",
 		},
 		{
-			name:           "default profiles from setup func",
-			profileConfigs: testCtx.certProfiles,
+			name:        "empty profile config",
+			defaultName: "empty",
+			profileConfigs: map[string]issuance.ProfileConfig{
+				"empty": {},
+			},
 			expectedProfiles: []nameToHash{
 				{
-					name: "legacy",
-					hash: [32]byte{0x41, 0xda, 0xe6, 0x97, 0xec, 0x2, 0x4c, 0x68, 0x7, 0x45, 0x57, 0xa2, 0x25, 0x86, 0xbb, 0xbe, 0x5, 0x8a, 0x40, 0x5, 0x72, 0xf5, 0x3f, 0x9f, 0x89, 0x2b, 0x1a, 0x24, 0x10, 0xab, 0xfc, 0x95},
-				},
-				{
-					name: "modern",
-					hash: [32]byte{0x85, 0xfb, 0x36, 0xdc, 0xef, 0x1b, 0x77, 0xc9, 0x50, 0x29, 0x36, 0xe7, 0xf2, 0xf8, 0xc, 0xed, 0xc, 0x14, 0xa8, 0x11, 0x18, 0xe9, 0x9f, 0xb3, 0xc1, 0xc7, 0x78, 0x81, 0xa2, 0x6, 0x2d, 0x12},
+					name: "empty",
+					hash: [32]byte{0xec, 0xf4, 0x43, 0xe, 0x26, 0x1, 0x8c, 0x8b, 0x85, 0x83, 0x0, 0x6f, 0x55, 0xbd, 0x45, 0xd8, 0x66, 0x88, 0x95, 0x41, 0xd0, 0x9f, 0x8, 0x2e, 0x9b, 0x2b, 0xc9, 0x8a, 0xb4, 0x86, 0x69, 0x59},
 				},
 			},
 		},
 		{
-			name:              "no profile matching default name",
-			profileConfigs:    badProfiles,
-			expectedErrSubstr: "profile object was not found for that name",
-		},
-		{
-			name:           "certificate profile hash changed mid-issuance",
-			profileConfigs: badProfiles,
-			defaultName:    "ruhroh",
+			name:           "default profiles from setup func",
+			defaultName:    testCtx.defaultCertProfileName,
+			profileConfigs: testCtx.certProfiles,
 			expectedProfiles: []nameToHash{
 				{
-					// We'll change the mapped hash key under the hood during
-					// the test.
-					name: "ruhroh",
-					hash: [32]byte{0x12, 0x20, 0xb4, 0x5e, 0xf5, 0x9, 0x68, 0x37, 0x71, 0xb8, 0x2b, 0x2d, 0x1, 0xf6, 0xd5, 0x8c, 0xae, 0x9c, 0x6d, 0xc, 0x81, 0xb8, 0x60, 0xad, 0xfe, 0x31, 0x7, 0x60, 0x7e, 0x58, 0xed, 0xa4},
+					name: "legacy",
+					hash: [32]byte{0x1e, 0x35, 0x19, 0x16, 0x69, 0xff, 0x4, 0x7b, 0xa5, 0xb5, 0xf, 0x2b, 0x59, 0x88, 0x7e, 0xe4, 0x22, 0x23, 0xb1, 0xad, 0xfc, 0x18, 0xe9, 0x9c, 0x57, 0x3f, 0x3, 0x95, 0xe3, 0xac, 0xff, 0x3c},
+				},
+				{
+					name: "modern",
+					hash: [32]byte{0xa7, 0x9b, 0xb1, 0x14, 0x8e, 0x12, 0x4, 0xb4, 0xb1, 0x14, 0xe9, 0x78, 0x2e, 0x4c, 0x20, 0x91, 0x90, 0xd0, 0x2d, 0x4e, 0x30, 0x96, 0xb2, 0xcf, 0xe0, 0xff, 0x70, 0x1f, 0x4e, 0x51, 0xf, 0x1e},
 				},
 			},
 		},
 	}
 
 	for _, tc := range testCases {
-		// This is handled by boulder-ca, not the CA package.
-		if tc.defaultName == "" {
-			tc.defaultName = testCtx.defaultCertProfileName
-		}
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			tCA, err := NewCertificateAuthorityImpl(
-				sa,
-				testCtx.pa,
-				testCtx.boulderIssuers,
-				tc.defaultName,
-				tc.profileConfigs,
-				testCtx.lints,
-				testCtx.serialPrefix,
-				testCtx.maxNames,
-				testCtx.keyPolicy,
-				testCtx.logger,
-				testCtx.metrics,
-				testCtx.fc,
+			profiles, err := makeCertificateProfilesMap(
+				tc.defaultName, tc.profileConfigs, lint.NewRegistry(),
 			)
 
 			if tc.expectedErrSubstr != "" {
+				test.AssertError(t, err, "profile construction should have failed")
 				test.AssertContains(t, err.Error(), tc.expectedErrSubstr)
-				test.AssertError(t, err, "No profile found during CA construction.")
 			} else {
-				test.AssertNotError(t, err, "Profiles should exist, but were not found")
+				test.AssertNotError(t, err, "profile construction should have succeeded")
 			}
 
 			if tc.expectedProfiles != nil {
-				test.AssertEquals(t, len(tCA.certProfiles.profileByName), len(tc.expectedProfiles))
+				test.AssertEquals(t, len(profiles.profileByName), len(tc.expectedProfiles))
 			}
 
 			for _, expected := range tc.expectedProfiles {
-				cpwid, ok := tCA.certProfiles.profileByName[expected.name]
-				test.Assert(t, ok, "Profile name was not found, but should have been")
+				cpwid, ok := profiles.profileByName[expected.name]
+				test.Assert(t, ok, fmt.Sprintf("expected profile %q not found", expected.name))
 				test.AssertEquals(t, cpwid.hash, expected.hash)
 
-				if tc.name == "certificate profile hash changed mid-issuance" {
-					// This is an attempt to simulate the hash changing, but the
-					// name remaining the same on a CA node in the duration
-					// between CA1 sending capb.IssuePrecerticateResponse and
-					// before the RA calls
-					// capb.IssueCertificateForPrecertificate. We expect the
-					// receiving CA2 to error that the hash we expect could not
-					// be found in the map.
-					originalHash := cpwid.hash
-					cpwid.hash = [32]byte{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 6, 6, 6}
-					test.AssertNotEquals(t, originalHash, cpwid.hash)
-				}
+				cpwid, ok = profiles.profileByHash[expected.hash]
+				test.Assert(t, ok, fmt.Sprintf("expected profile %q not found", expected.hash))
+				test.AssertEquals(t, cpwid.name, expected.name)
 			}
 		})
 	}

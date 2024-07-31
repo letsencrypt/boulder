@@ -46,22 +46,15 @@
 			"certProfiles": {
 				"legacy": {
 					"allowMustStaple": true,
-					"policies": [
-						{
-							"oid": "2.23.140.1.2.1"
-						}
-					],
 					"maxValidityPeriod": "7776000s",
 					"maxValidityBackdate": "1h5m"
 				},
 				"modern": {
 					"allowMustStaple": true,
 					"omitCommonName": true,
-					"policies": [
-						{
-							"oid": "2.23.140.1.2.1"
-						}
-					],
+					"omitKeyEncipherment": true,
+					"omitClientAuth": true,
+					"omitSKID": true,
 					"maxValidityPeriod": "583200s",
 					"maxValidityBackdate": "1h5m"
 				}
