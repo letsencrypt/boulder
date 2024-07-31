@@ -25,6 +25,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/letsencrypt/boulder/unpause"
 )
 
 var (
@@ -1412,10 +1413,9 @@ func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.Re
 		return nil, errIncompleteRequest
 	}
 
-	const batchSize = 10000
 	total := &sapb.Count{}
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < unpause.MaxBatches; i++ {
 		result, err := ssa.dbMap.ExecContext(ctx, `
 			UPDATE paused
 			SET unpausedAt = ?
@@ -1425,7 +1425,7 @@ func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.Re
 			LIMIT ?`,
 			ssa.clk.Now(),
 			req.Id,
-			batchSize,
+			unpause.BatchSize,
 		)
 		if err != nil {
 			return nil, err
@@ -1437,7 +1437,7 @@ func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.Re
 		}
 
 		total.Count += rowsAffected
-		if rowsAffected < batchSize {
+		if rowsAffected < unpause.BatchSize {
 			// Fewer than batchSize rows were updated, so we're done.
 			break
 		}

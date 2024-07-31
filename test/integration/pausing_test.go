@@ -20,7 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestPausedOrderFails(t *testing.T) {
+func TestIdentifiersPausedForAccount(t *testing.T) {
 	t.Parallel()
 
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
@@ -72,4 +72,12 @@ func TestPausedOrderFails(t *testing.T) {
 	test.AssertError(t, err, "Should not be able to issue a certificate for a paused domain")
 	test.AssertContains(t, err.Error(), "Your account is temporarily prevented from requesting certificates for")
 	test.AssertContains(t, err.Error(), "https://boulder.service.consul:4003/sfe/v1/unpause?jwt=")
+
+	_, err = saClient.UnpauseAccount(context.Background(), &sapb.RegistrationID{
+		Id: regID,
+	})
+	test.AssertNotError(t, err, "Failed to unpause domain")
+
+	_, err = authAndIssue(c, nil, []string{domain}, true)
+	test.AssertNotError(t, err, "Should be able to issue a certificate for an unpaused domain")
 }

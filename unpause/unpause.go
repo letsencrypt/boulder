@@ -17,9 +17,22 @@ const (
 	// API
 
 	// Changing this value will invalidate all existing JWTs.
-	apiVersion = "v1"
-	APIPrefix  = "/sfe/" + apiVersion
+	APIVersion = "v1"
+	APIPrefix  = "/sfe/" + APIVersion
 	GetForm    = APIPrefix + "/unpause"
+
+	// BatchSize is the maximum number of identifiers that the SA will unpause
+	// in a single batch.
+	BatchSize = 10000
+
+	// MaxBatches is the maximum number of batches that the SA will unpause in a
+	// single request.
+	MaxBatches = 5
+
+	// RequestLimit is the maximum number of identifiers that the SA will
+	// unpause in a single request. This is used by the SFE to infer whether
+	// there are more identifiers to unpause.
+	RequestLimit = BatchSize * MaxBatches
 
 	// JWT
 	defaultIssuer   = "WFE"
@@ -67,7 +80,7 @@ func GenerateJWT(signer JWTSigner, regID int64, identifiers []string, lifetime t
 			IssuedAt: jwt.NewNumericDate(clk.Now()),
 			Expiry:   jwt.NewNumericDate(clk.Now().Add(lifetime)),
 		},
-		V: apiVersion,
+		V: APIVersion,
 		I: strings.Join(identifiers, ","),
 	}
 
@@ -78,6 +91,9 @@ func GenerateJWT(signer JWTSigner, regID int64, identifiers []string, lifetime t
 
 	return serialized, nil
 }
+
+// ErrMalformedJWT is returned when the JWT is malformed.
+var ErrMalformedJWT = errors.New("malformed JWT")
 
 // RedeemJWT deserializes an unpause JWT and returns the validated claims. The
 // key is used to validate the signature of the JWT. The version is the expected
@@ -90,16 +106,18 @@ func GenerateJWT(signer JWTSigner, regID int64, identifiers []string, lifetime t
 //   - subject can be parsed as a 64-bit integer,
 //   - contains a set of paused identifiers as 'Identifiers', and
 //   - contains the API the expected version as 'Version'.
+//
+// If the JWT is malformed or invalid in any way, ErrMalformedJWT is returned.
 func RedeemJWT(token string, key []byte, version string, clk clock.Clock) (JWTClaims, error) {
 	parsedToken, err := jwt.ParseSigned(token, []jose.SignatureAlgorithm{jose.HS256})
 	if err != nil {
-		return JWTClaims{}, fmt.Errorf("parsing JWT: %s", err)
+		return JWTClaims{}, errors.Join(ErrMalformedJWT, err)
 	}
 
 	claims := JWTClaims{}
 	err = parsedToken.Claims(key, &claims)
 	if err != nil {
-		return JWTClaims{}, fmt.Errorf("verifying JWT: %s", err)
+		return JWTClaims{}, errors.Join(ErrMalformedJWT, err)
 	}
 
 	err = claims.Validate(jwt.Expected{
