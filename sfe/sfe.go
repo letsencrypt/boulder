@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"text/template"
@@ -84,23 +85,35 @@ func NewSelfServiceFrontEndImpl(
 	return sfe, nil
 }
 
+// handleWithTimeout registers a handler with a timeout using an
+// http.TimeoutHandler.
+func (sfe *SelfServiceFrontEndImpl) handleWithTimeout(mux *http.ServeMux, path string, handler http.HandlerFunc) {
+	timeout := sfe.requestTimeout
+	if timeout <= 0 {
+		// Default to 5 minutes if no timeout is set.
+		timeout = 5 * time.Minute
+	}
+	timeoutHandler := http.TimeoutHandler(handler, timeout, "Request timed out")
+	mux.Handle(path, timeoutHandler)
+}
+
 // Handler returns an http.Handler that uses various functions for various
 // non-ACME-specified paths. Each endpoint should have a corresponding HTML
 // page that shares the same name as the endpoint.
 func (sfe *SelfServiceFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions ...otelhttp.Option) http.Handler {
-	m := http.NewServeMux()
+	mux := http.NewServeMux()
 
 	sfs, _ := fs.Sub(staticFS, "static")
 	staticAssetsHandler := http.StripPrefix("/static/", http.FileServerFS(sfs))
+	mux.Handle("GET /static/", staticAssetsHandler)
 
-	m.Handle("GET /static/", staticAssetsHandler)
-	m.HandleFunc("/", sfe.Index)
-	m.HandleFunc("GET /build", sfe.BuildID)
-	m.HandleFunc("GET "+unpause.GetForm, sfe.UnpauseForm)
-	m.HandleFunc("POST "+unpausePostForm, sfe.UnpauseSubmit)
-	m.HandleFunc("GET "+unpauseStatus, sfe.UnpauseStatus)
+	sfe.handleWithTimeout(mux, "/", sfe.Index)
+	sfe.handleWithTimeout(mux, "GET /build", sfe.BuildID)
+	sfe.handleWithTimeout(mux, "GET "+unpause.GetForm, sfe.UnpauseForm)
+	sfe.handleWithTimeout(mux, "POST "+unpausePostForm, sfe.UnpauseSubmit)
+	sfe.handleWithTimeout(mux, "GET "+unpauseStatus, sfe.UnpauseStatus)
 
-	return measured_http.New(m, sfe.clk, stats, oTelHTTPOptions...)
+	return measured_http.New(mux, sfe.clk, stats, oTelHTTPOptions...)
 }
 
 // renderTemplate takes the name of an HTML template and optional dynamicData
@@ -139,7 +152,7 @@ func (sfe *SelfServiceFrontEndImpl) BuildID(response http.ResponseWriter, reques
 func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, request *http.Request) {
 	incomingJWT := request.URL.Query().Get("jwt")
 
-	regID, identifiers, err := sfe.parseUnpauseJWT(incomingJWT)
+	accountID, identifiers, err := sfe.parseUnpauseJWT(incomingJWT)
 	if err != nil {
 		if errors.Is(err, jwt.ErrExpired) {
 			// JWT expired before the Subscriber visited the unpause page.
@@ -157,15 +170,14 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, re
 	}
 
 	type tmplData struct {
-		UnpauseFormRedirectionPath string
-		JWT                        string
-		AccountID                  int64
-		Identifiers                []string
+		PostPath    string
+		JWT         string
+		AccountID   int64
+		Identifiers []string
 	}
 
-	// Serve the actual unpause page given to a Subscriber. Populates the
-	// unpause form with the JWT from the URL.
-	sfe.renderTemplate(response, "unpause-form.html", tmplData{unpausePostForm, incomingJWT, regID, identifiers})
+	// Present the unpause form to the Subscriber.
+	sfe.renderTemplate(response, "unpause-form.html", tmplData{unpausePostForm, incomingJWT, accountID, identifiers})
 }
 
 // UnpauseSubmit serves a page showing the result of the unpause form submission.
@@ -174,7 +186,7 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, re
 func (sfe *SelfServiceFrontEndImpl) UnpauseSubmit(response http.ResponseWriter, request *http.Request) {
 	incomingJWT := request.URL.Query().Get("jwt")
 
-	_, _, err := sfe.parseUnpauseJWT(incomingJWT)
+	accountID, _, err := sfe.parseUnpauseJWT(incomingJWT)
 	if err != nil {
 		if errors.Is(err, jwt.ErrExpired) {
 			// JWT expired before the Subscriber could click the unpause button.
@@ -191,13 +203,19 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseSubmit(response http.ResponseWriter, 
 		return
 	}
 
-	// TODO(#7536) Send gRPC request to the RA informing it to unpause
-	// the account specified in the claim. At this point we should wait
-	// for the RA to process the request before returning to the client,
-	// just in case the request fails.
+	unpaused, err := sfe.ra.UnpauseAccount(request.Context(), &rapb.UnpauseAccountRequest{
+		RegistrationID: accountID,
+	})
+	if err != nil {
+		sfe.unpauseFailed(response)
+		return
+	}
 
-	// Success, the account has been unpaused.
-	http.Redirect(response, request, unpauseStatus, http.StatusFound)
+	// Redirect to the unpause status page with the count of unpaused
+	// identifiers.
+	params := url.Values{}
+	params.Add("count", fmt.Sprintf("%d", unpaused.Count))
+	http.Redirect(response, request, unpauseStatus+"?"+params.Encode(), http.StatusFound)
 }
 
 func (sfe *SelfServiceFrontEndImpl) unpauseRequestMalformed(response http.ResponseWriter) {
@@ -210,14 +228,20 @@ func (sfe *SelfServiceFrontEndImpl) unpauseTokenExpired(response http.ResponseWr
 
 type unpauseStatusTemplate struct {
 	Successful bool
+	Limit      int64
+	Count      int64
 }
 
 func (sfe *SelfServiceFrontEndImpl) unpauseFailed(response http.ResponseWriter) {
 	sfe.renderTemplate(response, "unpause-status.html", unpauseStatusTemplate{Successful: false})
 }
 
-func (sfe *SelfServiceFrontEndImpl) unpauseSuccessful(response http.ResponseWriter) {
-	sfe.renderTemplate(response, "unpause-status.html", unpauseStatusTemplate{Successful: true})
+func (sfe *SelfServiceFrontEndImpl) unpauseSuccessful(response http.ResponseWriter, count int64) {
+	sfe.renderTemplate(response, "unpause-status.html", unpauseStatusTemplate{
+		Successful: true,
+		Limit:      unpause.RequestLimit,
+		Count:      count},
+	)
 }
 
 // UnpauseStatus displays a success message to the Subscriber indicating that
@@ -229,10 +253,13 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseStatus(response http.ResponseWriter, 
 		return
 	}
 
-	// TODO(#7580) This should only be reachable after a client has clicked the
-	// "Please unblock my account" button and that request succeeding. No one
-	// should be able to access this page otherwise.
-	sfe.unpauseSuccessful(response)
+	count, err := strconv.ParseInt(request.URL.Query().Get("count"), 10, 64)
+	if err != nil || count < 0 {
+		sfe.unpauseFailed(response)
+		return
+	}
+
+	sfe.unpauseSuccessful(response, count)
 }
 
 // parseUnpauseJWT extracts and returns the subscriber's registration ID and a

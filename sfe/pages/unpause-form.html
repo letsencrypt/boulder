@@ -56,7 +56,7 @@
         resume requesting certificates for all affected identifiers associated
         with your account, not just those listed above.
     </p>
-    <form action="{{ .UnpauseFormRedirectionPath }}?jwt={{ .JWT }}" method="POST">
+    <form action="{{ .PostPath }}?jwt={{ .JWT }}" method="POST">
         <button class="primary" id="submit">Please Unpause My Account</button>
     </form>
 </div>

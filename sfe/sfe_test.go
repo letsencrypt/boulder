@@ -182,14 +182,34 @@ func TestUnpausePaths(t *testing.T) {
 		URL:    mustParseURL(fmt.Sprintf(unpausePostForm + "?jwt=" + validJWT)),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusFound)
-	test.AssertEquals(t, unpauseStatus, responseWriter.Result().Header.Get("Location"))
+	test.AssertEquals(t, unpauseStatus+"?count=0", responseWriter.Result().Header.Get("Location"))
 
 	// Redirecting after a successful unpause POST displays the success page.
 	responseWriter = httptest.NewRecorder()
 	sfe.UnpauseStatus(responseWriter, &http.Request{
 		Method: "GET",
-		URL:    mustParseURL(unpauseStatus),
+		URL:    mustParseURL(unpauseStatus + "?count=1"),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertContains(t, responseWriter.Body.String(), "Account successfully unpaused")
+	test.AssertContains(t, responseWriter.Body.String(), "Successfully unpaused all 1 identifier(s)")
+
+	// Redirecting after a successful unpause POST with a count of 0 displays
+	// the already unpaused page.
+	responseWriter = httptest.NewRecorder()
+	sfe.UnpauseStatus(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(unpauseStatus + "?count=0"),
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertContains(t, responseWriter.Body.String(), "Account already unpaused")
+
+	// Redirecting after a successful unpause POST with a count equal to the
+	// maximum number of identifiers displays the success with caveat page.
+	responseWriter = httptest.NewRecorder()
+	sfe.UnpauseStatus(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(unpauseStatus + "?count=" + fmt.Sprintf("%d", unpause.RequestLimit)),
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertContains(t, responseWriter.Body.String(), "Some identifiers were unpaused")
 }

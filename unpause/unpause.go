@@ -21,6 +21,19 @@ const (
 	APIPrefix  = "/sfe/" + APIVersion
 	GetForm    = APIPrefix + "/unpause"
 
+	// BatchSize is the maximum number of identifiers that the SA will unpause
+	// in a single batch.
+	BatchSize = 10000
+
+	// MaxBatches is the maximum number of batches that the SA will unpause in a
+	// single request.
+	MaxBatches = 5
+
+	// RequestLimit is the maximum number of identifiers that the SA will
+	// unpause in a single request. This is used by the SFE to infer whether
+	// there are more identifiers to unpause.
+	RequestLimit = BatchSize * MaxBatches
+
 	// JWT
 	defaultIssuer   = "WFE"
 	defaultAudience = "SFE Unpause"
