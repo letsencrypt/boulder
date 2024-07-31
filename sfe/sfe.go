@@ -1,7 +1,6 @@
 package sfe
 
 import (
-	"context"
 	"embed"
 	"errors"
 	"fmt"
@@ -86,25 +85,16 @@ func NewSelfServiceFrontEndImpl(
 	return sfe, nil
 }
 
-// timeoutMiddleware applies the configured per-request timeout to the request
-// context. If no timeout is set, it defaults to 5 minutes.
-func (sfe *SelfServiceFrontEndImpl) timeoutMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		timeout := sfe.requestTimeout
-		if timeout <= 0 {
-			// Default to 5 minutes if no timeout is set.
-			timeout = 5 * time.Minute
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), timeout)
-		defer cancel()
-
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-// handleWithTimeout registers a handler with timeout middleware.
+// handleWithTimeout registers a handler with a timeout using an
+// http.TimeoutHandler.
 func (sfe *SelfServiceFrontEndImpl) handleWithTimeout(mux *http.ServeMux, path string, handler http.HandlerFunc) {
-	mux.Handle(path, sfe.timeoutMiddleware(handler))
+	timeout := sfe.requestTimeout
+	if timeout <= 0 {
+		// Default to 5 minutes if no timeout is set.
+		timeout = 5 * time.Minute
+	}
+	timeoutHandler := http.TimeoutHandler(handler, timeout, "Request timed out")
+	mux.Handle(path, timeoutHandler)
 }
 
 // Handler returns an http.Handler that uses various functions for various
@@ -265,7 +255,6 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseStatus(response http.ResponseWriter, 
 
 	count, err := strconv.ParseInt(request.URL.Query().Get("count"), 10, 64)
 	if err != nil || count < 0 {
-		// This should never happen as the count is set by the SFE.
 		sfe.unpauseFailed(response)
 		return
 	}
