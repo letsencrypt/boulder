@@ -22,7 +22,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/zmap/zlint/v3/lint"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -34,7 +33,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/issuance"
-	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/must"
@@ -104,8 +102,7 @@ type testCtx struct {
 	ocsp                   *ocspImpl
 	crl                    *crlImpl
 	defaultCertProfileName string
-	lints                  lint.Registry
-	certProfiles           map[string]issuance.ProfileConfig
+	certProfiles           map[string]*issuance.ProfileConfig
 	serialPrefix           int
 	maxNames               int
 	boulderIssuers         []*issuance.Issuer
@@ -156,13 +153,14 @@ func setup(t *testing.T) *testCtx {
 	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
-	certProfiles := make(map[string]issuance.ProfileConfig, 0)
-	certProfiles["legacy"] = issuance.ProfileConfig{
+	certProfiles := make(map[string]*issuance.ProfileConfig, 0)
+	certProfiles["legacy"] = &issuance.ProfileConfig{
 		AllowMustStaple:     true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
+		IgnoredLints:        []string{"w_subject_common_name_included"},
 	}
-	certProfiles["modern"] = issuance.ProfileConfig{
+	certProfiles["modern"] = &issuance.ProfileConfig{
 		AllowMustStaple:     true,
 		OmitCommonName:      true,
 		OmitKeyEncipherment: true,
@@ -170,6 +168,7 @@ func setup(t *testing.T) *testCtx {
 		OmitSKID:            true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 6},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
+		IgnoredLints:        []string{"w_ext_subject_key_identifier_missing_sub_cert"},
 	}
 	test.AssertEquals(t, len(certProfiles), 2)
 
@@ -208,9 +207,6 @@ func setup(t *testing.T) *testCtx {
 		})
 	cametrics := &caMetrics{signatureCount, signErrorCount, lintErrorCount}
 
-	lints, err := linter.NewRegistry([]string{"w_subject_common_name_included"})
-	test.AssertNotError(t, err, "Failed to create zlint registry")
-
 	ocsp, err := NewOCSPImpl(
 		boulderIssuers,
 		24*time.Hour,
@@ -240,7 +236,6 @@ func setup(t *testing.T) *testCtx {
 		ocsp:                   ocsp,
 		crl:                    crl,
 		defaultCertProfileName: "legacy",
-		lints:                  lints,
 		certProfiles:           certProfiles,
 		serialPrefix:           17,
 		maxNames:               2,
@@ -262,7 +257,6 @@ func TestSerialPrefix(t *testing.T) {
 		nil,
 		"",
 		nil,
-		nil,
 		0,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -276,7 +270,6 @@ func TestSerialPrefix(t *testing.T) {
 		nil,
 		nil,
 		"",
-		nil,
 		nil,
 		128,
 		testCtx.maxNames,
@@ -375,7 +368,6 @@ func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *moc
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
-		testCtx.lints,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -415,7 +407,6 @@ func TestNoIssuers(t *testing.T) {
 		nil, // No issuers
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
-		testCtx.lints,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -437,7 +428,6 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
-		testCtx.lints,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -512,7 +502,6 @@ func TestUnpredictableIssuance(t *testing.T) {
 		boulderIssuers,
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
-		testCtx.lints,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -572,7 +561,7 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 	testCases := []struct {
 		name              string
 		defaultName       string
-		profileConfigs    map[string]issuance.ProfileConfig
+		profileConfigs    map[string]*issuance.ProfileConfig
 		expectedErrSubstr string
 		expectedProfiles  []nameToHash
 	}{
@@ -583,36 +572,36 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 		},
 		{
 			name:              "no profiles",
-			profileConfigs:    map[string]issuance.ProfileConfig{},
+			profileConfigs:    map[string]*issuance.ProfileConfig{},
 			expectedErrSubstr: "at least one certificate profile",
 		},
 		{
 			name:        "no profile matching default name",
 			defaultName: "default",
-			profileConfigs: map[string]issuance.ProfileConfig{
-				"notDefault": testProfile,
+			profileConfigs: map[string]*issuance.ProfileConfig{
+				"notDefault": &testProfile,
 			},
 			expectedErrSubstr: "profile object was not found for that name",
 		},
 		{
 			name:        "duplicate hash",
 			defaultName: "default",
-			profileConfigs: map[string]issuance.ProfileConfig{
-				"default":  testProfile,
-				"default2": testProfile,
+			profileConfigs: map[string]*issuance.ProfileConfig{
+				"default":  &testProfile,
+				"default2": &testProfile,
 			},
 			expectedErrSubstr: "duplicate certificate profile hash",
 		},
 		{
 			name:        "empty profile config",
 			defaultName: "empty",
-			profileConfigs: map[string]issuance.ProfileConfig{
+			profileConfigs: map[string]*issuance.ProfileConfig{
 				"empty": {},
 			},
 			expectedProfiles: []nameToHash{
 				{
 					name: "empty",
-					hash: [32]byte{0xec, 0xf4, 0x43, 0xe, 0x26, 0x1, 0x8c, 0x8b, 0x85, 0x83, 0x0, 0x6f, 0x55, 0xbd, 0x45, 0xd8, 0x66, 0x88, 0x95, 0x41, 0xd0, 0x9f, 0x8, 0x2e, 0x9b, 0x2b, 0xc9, 0x8a, 0xb4, 0x86, 0x69, 0x59},
+					hash: [32]byte{0x25, 0x27, 0x72, 0xa1, 0xaf, 0x95, 0xfe, 0xc7, 0x32, 0x78, 0x38, 0x97, 0xd0, 0xf1, 0x83, 0x92, 0xc3, 0xac, 0x60, 0x91, 0x68, 0x4f, 0x22, 0xb6, 0x57, 0x2f, 0x89, 0x1a, 0x54, 0xe5, 0xd8, 0xa3},
 				},
 			},
 		},
@@ -623,11 +612,11 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 			expectedProfiles: []nameToHash{
 				{
 					name: "legacy",
-					hash: [32]byte{0x1e, 0x35, 0x19, 0x16, 0x69, 0xff, 0x4, 0x7b, 0xa5, 0xb5, 0xf, 0x2b, 0x59, 0x88, 0x7e, 0xe4, 0x22, 0x23, 0xb1, 0xad, 0xfc, 0x18, 0xe9, 0x9c, 0x57, 0x3f, 0x3, 0x95, 0xe3, 0xac, 0xff, 0x3c},
+					hash: [32]byte{0x44, 0xc5, 0xbc, 0x73, 0x8, 0x95, 0xba, 0x4c, 0x13, 0x12, 0xc4, 0xc, 0x5d, 0x77, 0x2f, 0x54, 0xf8, 0x54, 0x1, 0xb8, 0x84, 0xaf, 0x6c, 0x58, 0x74, 0x6, 0xac, 0xda, 0x3e, 0x37, 0xfc, 0x88},
 				},
 				{
 					name: "modern",
-					hash: [32]byte{0xa7, 0x9b, 0xb1, 0x14, 0x8e, 0x12, 0x4, 0xb4, 0xb1, 0x14, 0xe9, 0x78, 0x2e, 0x4c, 0x20, 0x91, 0x90, 0xd0, 0x2d, 0x4e, 0x30, 0x96, 0xb2, 0xcf, 0xe0, 0xff, 0x70, 0x1f, 0x4e, 0x51, 0xf, 0x1e},
+					hash: [32]byte{0x58, 0x7, 0xea, 0x3a, 0x85, 0xcd, 0xf9, 0xd1, 0x7a, 0x9a, 0x59, 0x76, 0xfc, 0x92, 0xea, 0x1b, 0x69, 0x54, 0xe4, 0xbe, 0xcf, 0xe3, 0x91, 0xfa, 0x85, 0x4, 0xbf, 0x1f, 0x55, 0x97, 0x2c, 0x8b},
 				},
 			},
 		},
@@ -636,9 +625,7 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			profiles, err := makeCertificateProfilesMap(
-				tc.defaultName, tc.profileConfigs, lint.NewRegistry(),
-			)
+			profiles, err := makeCertificateProfilesMap(tc.defaultName, tc.profileConfigs)
 
 			if tc.expectedErrSubstr != "" {
 				test.AssertError(t, err, "profile construction should have failed")
@@ -726,7 +713,6 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.boulderIssuers,
 			testCtx.defaultCertProfileName,
 			testCtx.certProfiles,
-			testCtx.lints,
 			testCtx.serialPrefix,
 			testCtx.maxNames,
 			testCtx.keyPolicy,
@@ -766,7 +752,6 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
-		testCtx.lints,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -860,7 +845,6 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
-		testCtx.lints,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -926,7 +910,6 @@ func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *test
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
-		testCtx.lints,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -1043,7 +1026,6 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
-		testCtx.lints,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -1091,7 +1073,6 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
-		testCtx.lints,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,

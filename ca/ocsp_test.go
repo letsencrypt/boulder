@@ -35,7 +35,6 @@ func TestOCSP(t *testing.T) {
 		testCtx.boulderIssuers,
 		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
-		testCtx.lints,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,

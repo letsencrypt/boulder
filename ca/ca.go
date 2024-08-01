@@ -23,7 +23,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/zmap/zlint/v3/lint"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/ocsp"
@@ -166,14 +165,13 @@ func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 // profile configs into a two pre-computed maps: 1) a human-readable name to the
 // profile and 2) a unique hash over contents of the profile to the profile
 // itself. It returns the maps or an error if a duplicate name or hash is found.
-// It also associates the given lint registry with each profile.
 //
 // The unique hash is used in the case of
 //   - RA instructs CA1 to issue a precertificate
 //   - CA1 returns the precertificate DER bytes and profile hash to the RA
 //   - RA instructs CA2 to issue a final certificate, but CA2 does not contain a
 //     profile corresponding to that hash and an issuance is prevented.
-func makeCertificateProfilesMap(defaultName string, profiles map[string]issuance.ProfileConfig, lints lint.Registry) (certProfilesMaps, error) {
+func makeCertificateProfilesMap(defaultName string, profiles map[string]*issuance.ProfileConfig) (certProfilesMaps, error) {
 	if len(profiles) <= 0 {
 		return certProfilesMaps{}, fmt.Errorf("must pass at least one certificate profile")
 	}
@@ -188,7 +186,7 @@ func makeCertificateProfilesMap(defaultName string, profiles map[string]issuance
 	profilesByHash := make(map[[32]byte]*certProfileWithID, len(profiles))
 
 	for name, profileConfig := range profiles {
-		profile, err := issuance.NewProfile(profileConfig, lints)
+		profile, err := issuance.NewProfile(profileConfig)
 		if err != nil {
 			return certProfilesMaps{}, err
 		}
@@ -234,8 +232,7 @@ func NewCertificateAuthorityImpl(
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
 	defaultCertProfileName string,
-	certificateProfiles map[string]issuance.ProfileConfig,
-	lints lint.Registry,
+	certificateProfiles map[string]*issuance.ProfileConfig,
 	serialPrefix int,
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
@@ -255,7 +252,7 @@ func NewCertificateAuthorityImpl(
 		return nil, errors.New("must have at least one issuer")
 	}
 
-	certProfiles, err := makeCertificateProfilesMap(defaultCertProfileName, certificateProfiles, lints)
+	certProfiles, err := makeCertificateProfilesMap(defaultCertProfileName, certificateProfiles)
 	if err != nil {
 		return nil, err
 	}

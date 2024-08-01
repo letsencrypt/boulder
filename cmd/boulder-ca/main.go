@@ -7,8 +7,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/zmap/zlint/v3/lint"
-
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -19,7 +17,6 @@ import (
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
-	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -48,12 +45,18 @@ type Config struct {
 
 			// One of the profile names must match the value of
 			// DefaultCertificateProfileName or boulder-ca will fail to start.
-			CertProfiles map[string]issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
+			CertProfiles map[string]*issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
 
 			// TODO(#7159): Make this required once all live configs are using it.
-			CRLProfile   issuance.CRLProfileConfig `validate:"-"`
-			Issuers      []issuance.IssuerConfig   `validate:"min=1,dive"`
-			LintConfig   string
+			CRLProfile issuance.CRLProfileConfig `validate:"-"`
+			Issuers    []issuance.IssuerConfig   `validate:"min=1,dive"`
+
+			// LintConfig is a path to a zlint config file.
+			// Deprecated: Use CertProfiles.LintConfig instead.
+			LintConfig string
+			// IgnoredLints is a list of lint names for which any errors should be
+			// ignored.
+			// Deprecated: Use CertProfiles.IgnoredLints instead.
 			IgnoredLints []string
 		}
 
@@ -209,19 +212,22 @@ func main() {
 		cmd.Fail("Only one of Issuance.Profile or Issuance.CertProfiles can be configured")
 	}
 
-	// TODO(#7414) Remove this check.
-	// Use the deprecated Profile as a CertProfiles
+	// If no individual cert profiles are configured, pretend that the deprecated
+	// top-level profile as the only individual profile instead.
+	// TODO(#7414) Remove this fallback.
 	if len(c.CA.Issuance.CertProfiles) == 0 {
-		c.CA.Issuance.CertProfiles = make(map[string]issuance.ProfileConfig, 0)
-		c.CA.Issuance.CertProfiles[c.CA.Issuance.DefaultCertificateProfileName] = c.CA.Issuance.Profile
+		c.CA.Issuance.CertProfiles = make(map[string]*issuance.ProfileConfig, 0)
+		c.CA.Issuance.CertProfiles[c.CA.Issuance.DefaultCertificateProfileName] = &c.CA.Issuance.Profile
 	}
 
-	lints, err := linter.NewRegistry(c.CA.Issuance.IgnoredLints)
-	cmd.FailOnError(err, "Failed to create zlint registry")
-	if c.CA.Issuance.LintConfig != "" {
-		lintconfig, err := lint.NewConfigFromFile(c.CA.Issuance.LintConfig)
-		cmd.FailOnError(err, "Failed to load zlint config file")
-		lints.SetConfiguration(lintconfig)
+	// If any individual cert profile doesn't have its own lint configuration,
+	// instead copy in the deprecated top-level lint configuration.
+	// TODO(#7414): Remove this fallback.
+	for _, prof := range c.CA.Issuance.CertProfiles {
+		if prof.LintConfig == "" && len(prof.IgnoredLints) == 0 {
+			prof.LintConfig = c.CA.Issuance.LintConfig
+			prof.IgnoredLints = c.CA.Issuance.IgnoredLints
+		}
 	}
 
 	tlsConfig, err := c.CA.TLS.Load(scope)
@@ -274,7 +280,6 @@ func main() {
 			issuers,
 			c.CA.Issuance.DefaultCertificateProfileName,
 			c.CA.Issuance.CertProfiles,
-			lints,
 			c.CA.SerialPrefix,
 			c.CA.MaxNames,
 			kp,

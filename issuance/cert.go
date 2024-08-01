@@ -21,7 +21,9 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/zmap/zlint/v3/lint"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/precert"
 )
 
@@ -58,6 +60,13 @@ type ProfileConfig struct {
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
 
+	// LintConfig is a path to a zlint config file, which can be used to control
+	// the behavior of zlint's "customizable lints".
+	LintConfig string
+	// IgnoredLints is a list of lint names that we know will fail for this
+	// profile, and which we know it is safe to ignore.
+	IgnoredLints []string
+
 	// Deprecated: we do not respect this field.
 	Policies []PolicyConfig `validate:"-"`
 }
@@ -81,8 +90,8 @@ type Profile struct {
 	lints lint.Registry
 }
 
-// NewProfile converts the profile config and lint registry into a usable profile.
-func NewProfile(profileConfig ProfileConfig, lints lint.Registry) (*Profile, error) {
+// NewProfile converts the profile config into a usable profile.
+func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 	// The Baseline Requirements, Section 7.1.2.7, says that the notBefore time
 	// must be "within 48 hours of the time of signing". We can be even stricter.
 	if profileConfig.MaxValidityBackdate.Duration >= 24*time.Hour {
@@ -93,6 +102,14 @@ func NewProfile(profileConfig ProfileConfig, lints lint.Registry) (*Profile, err
 	// validity period of "up to 100 days".
 	if profileConfig.MaxValidityPeriod.Duration >= 100*24*time.Hour {
 		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
+	}
+
+	lints, err := linter.NewRegistry(profileConfig.IgnoredLints)
+	cmd.FailOnError(err, "Failed to create zlint registry")
+	if profileConfig.LintConfig != "" {
+		lintconfig, err := lint.NewConfigFromFile(profileConfig.LintConfig)
+		cmd.FailOnError(err, "Failed to load zlint config file")
+		lints.SetConfiguration(lintconfig)
 	}
 
 	sp := &Profile{
