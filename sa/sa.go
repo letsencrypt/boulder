@@ -474,7 +474,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 				if authz.Status != string(core.StatusPending) {
 					return nil, berrors.InternalServerError("authorization must be pending")
 				}
-				am, err := authzPBToModel(authz)
+				am, err := newAuthzReqToModel(authz)
 				if err != nil {
 					return nil, err
 				}
@@ -483,7 +483,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 					am.IdentifierType,
 					am.IdentifierValue,
 					am.RegistrationID,
-					statusToUint[core.StatusPending],
+					am.Status,
 					am.Expires,
 					am.Challenges,
 					nil,
