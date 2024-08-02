@@ -2611,7 +2611,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// Loop through each of the names missing authzs and create a new pending
 	// authorization for each.
-	var newAuthzs []*corepb.Authorization
+	var newAuthzs []*sapb.NewAuthzRequest
 	for _, name := range missingAuthzNames {
 		pb, err := ra.createPendingAuthz(newOrder.RegistrationID, identifier.ACMEIdentifier{
 			Type:  identifier.DNS,
@@ -2679,9 +2679,13 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // createPendingAuthz checks that a name is allowed for issuance and creates the
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
-func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier identifier.ACMEIdentifier) (*corepb.Authorization, error) {
-	authz := &corepb.Authorization{
-		Identifier:     identifier.Value,
+func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier identifier.ACMEIdentifier) (*sapb.NewAuthzRequest, error) {
+	authz := &sapb.NewAuthzRequest{
+		IdentifierValue: identifier.Value,
+		Identifier: &sapb.Identifier{
+			Type:  string(identifier.Type),
+			Value: identifier.Value,
+		},
 		RegistrationID: reg,
 		Status:         string(core.StatusPending),
 		Expires:        timestamppb.New(ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second)),
@@ -2696,6 +2700,8 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier id
 		return nil, berrors.InternalServerError(err.Error())
 	}
 	// Check each challenge for sanity.
+	var token string
+	var challTypes []string
 	for _, challenge := range challenges {
 		err := challenge.CheckPending()
 		if err != nil {
@@ -2704,12 +2710,31 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier id
 			err = berrors.InternalServerError("challenge didn't pass sanity check: %+v", challenge)
 			return nil, err
 		}
+
+		if token == "" {
+			token = challenge.Token
+		} else {
+			if challenge.Token != token {
+				return nil, berrors.InternalServerError("generated different tokens for challenges within the same authz")
+			}
+		}
+
+		if slices.Contains(challTypes, string(challenge.Type)) {
+			return nil, berrors.InternalServerError("generated multiple challenges of the same type within the same authz")
+		} else {
+			challTypes = append(challTypes, string(challenge.Type))
+		}
+
 		challPB, err := bgrpc.ChallengeToPB(challenge)
 		if err != nil {
 			return nil, err
 		}
 		authz.Challenges = append(authz.Challenges, challPB)
 	}
+
+	authz.Token = token
+	authz.ChallengeTypes = challTypes
+
 	return authz, nil
 }
 
