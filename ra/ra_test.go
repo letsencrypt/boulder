@@ -2990,7 +2990,7 @@ func TestFinalizeOrder(t *testing.T) {
 				},
 				Csr: twoDomainCSR,
 			},
-			ExpectedErrMsg: "authorizations for these names not found: a.com, b.com",
+			ExpectedErrMsg: "authorizations for these identifiers not found: a.com, b.com",
 		},
 		{
 			Name: "Order with correct authorizations, ready status",

@@ -775,7 +775,7 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 			return nil, err
 		}
 		resp.Authzs = append(resp.Authzs, authzPB)
-		// TODO: Stop populating the .Authzs field once it is no longer used.
+		// TODO(#7646): Stop populating the .Authzs field once it is no longer used.
 		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: k, Authz: authzPB})
 	}
 	return resp, nil
@@ -941,7 +941,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 		return nil, err
 	}
 
-	// TODO: Stop constructing this map, as it's not forward-compatible with
+	// TODO(#7646): Stop constructing this map, as it's not forward-compatible with
 	// other identifier types, and is an inefficient wire format.
 	byName := make(map[string]authzModel)
 	for _, am := range ams {

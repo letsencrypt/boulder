@@ -806,7 +806,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	var invalid []string
 	var expired []string
 	for _, name := range names {
-		// TODO: Iterate directly over identifiers here, once the rest of the
+		// TODO(#7647): Iterate directly over identifiers here, once the rest of the
 		// finalization flow supports non-dnsName identifiers.
 		ident := identifier.DNSIdentifier(name)
 
