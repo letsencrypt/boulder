@@ -722,7 +722,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWKRejectedByGoodKey"}).Inc()
 			return nil, nil, probs.BadPublicKey(err.Error())
 		}
-		return nil, nil, probs.ServerInternal("error checking key quality")
+		return nil, nil, probs.ServerInternal("internal error while checking JWK")
 	}
 
 	return payload, pubKey, nil
