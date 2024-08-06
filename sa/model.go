@@ -693,7 +693,7 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
 			Id:             authz.Id,
 			Identifier:     authz.IdentifierValue,
 			RegistrationID: authz.RegistrationID,
-			Status:         authz.Status,
+			Status:         string(core.StatusPending),
 			Expires:        authz.Expires,
 			Challenges:     authz.Challenges,
 		})
@@ -705,13 +705,18 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.StatusPending],
 		Expires:         authz.Expires.AsTime(),
-		Token:           []byte(authz.Token),
 	}
 
-	for _, chall := range authz.Challenges {
+	for _, challType := range authz.ChallengeTypes {
 		// Set the challenge type bit in the bitmap
-		am.Challenges |= 1 << challTypeToUint[chall.Type]
+		am.Challenges |= 1 << challTypeToUint[challType]
 	}
+
+	token, err := base64.RawURLEncoding.DecodeString(authz.Token)
+	if err != nil {
+		return nil, err
+	}
+	am.Token = token
 
 	return am, nil
 }
