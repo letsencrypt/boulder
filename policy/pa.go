@@ -517,38 +517,31 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 }
 
 // ChallengeTypesFor determines which challenge types are acceptable for the
-// given identifier.
-func (pa *AuthorityImpl) ChallengeTypesFor(identifier identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
-	// If the identifier is for a DNS wildcard name we only
-	// provide a DNS-01 challenge as a matter of CA policy.
-	if strings.HasPrefix(identifier.Value, "*.") {
-		// We must have the DNS-01 challenge type enabled to create challenges for
-		// a wildcard identifier per LE policy.
-		if !pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
-			return nil, fmt.Errorf(
-				"Challenges requested for wildcard identifier but DNS-01 " +
-					"challenge type is not enabled")
-		}
-		// Only provide a DNS-01-Wildcard challenge
+// given identifier. This determination is made purely based on the identifier,
+// and not based on which challenge types are enabled, so that challenge type
+// filtering can happen dynamically at request rather than being set in stone
+// at creation time.
+func (pa *AuthorityImpl) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
+	// If the identifier is for a DNS wildcard name we only provide a DNS-01
+	// challenge, to comply with the BRs Sections 3.2.2.4.19 and 3.2.2.4.20
+	// stating that ACME HTTP-01 and TLS-ALPN-01 are not suitable for validating
+	// Wildcard Domains.
+	if ident.Type == identifier.DNS && strings.HasPrefix(ident.Value, "*.") {
 		return []core.AcmeChallenge{core.ChallengeTypeDNS01}, nil
 	}
 
-	// Otherwise we collect up challenges based on what is enabled.
-	var challenges []core.AcmeChallenge
-
-	if pa.ChallengeTypeEnabled(core.ChallengeTypeHTTP01) {
-		challenges = append(challenges, core.ChallengeTypeHTTP01)
+	// Return all challenge types we support for non-wildcard DNS identifiers.
+	if ident.Type == identifier.DNS {
+		return []core.AcmeChallenge{
+			core.ChallengeTypeHTTP01,
+			core.ChallengeTypeDNS01,
+			core.ChallengeTypeTLSALPN01,
+		}, nil
 	}
 
-	if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSALPN01) {
-		challenges = append(challenges, core.ChallengeTypeTLSALPN01)
-	}
-
-	if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
-		challenges = append(challenges, core.ChallengeTypeDNS01)
-	}
-
-	return challenges, nil
+	// Otherwise return an error because we don't support any challenges for this
+	// identifier type.
+	return nil, fmt.Errorf("unrecognized identifier type %q", ident.Type)
 }
 
 // ChallengeTypeEnabled returns whether the specified challenge type is enabled

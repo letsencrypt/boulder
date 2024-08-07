@@ -388,52 +388,52 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 }
 
 func TestChallengeTypesFor(t *testing.T) {
+	t.Parallel()
 	pa := paImpl(t)
 
-	challenges, err := pa.ChallengeTypesFor(identifier.ACMEIdentifier{})
-	test.AssertNotError(t, err, "ChallengesFor failed")
-
-	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
-
-	seenChalls := make(map[core.AcmeChallenge]bool)
-	for _, challenge := range challenges {
-		test.Assert(t, !seenChalls[challenge], "should not already have seen this type")
-		seenChalls[challenge] = true
-
-		test.Assert(t, enabledChallenges[challenge], "Unsupported challenge returned")
+	testCases := []struct {
+		name       string
+		ident      identifier.ACMEIdentifier
+		wantChalls []core.AcmeChallenge
+		wantErr    string
+	}{
+		{
+			name:  "dns",
+			ident: identifier.DNSIdentifier("example.com"),
+			wantChalls: []core.AcmeChallenge{
+				core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeTLSALPN01,
+			},
+		},
+		{
+			name:  "wildcard",
+			ident: identifier.DNSIdentifier("*.example.com"),
+			wantChalls: []core.AcmeChallenge{
+				core.ChallengeTypeDNS01,
+			},
+		},
+		{
+			name:    "other",
+			ident:   identifier.ACMEIdentifier{Type: "ip", Value: "1.2.3.4"},
+			wantErr: "unrecognized identifier type",
+		},
 	}
-	test.AssertEquals(t, len(seenChalls), len(enabledChallenges))
-}
 
-func TestChallengeTypesForWildcard(t *testing.T) {
-	// wildcardIdent is an identifier for a wildcard domain name
-	wildcardIdent := identifier.ACMEIdentifier{
-		Type:  identifier.DNS,
-		Value: "*.zombo.com",
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			challs, err := pa.ChallengeTypesFor(tc.ident)
+
+			if len(tc.wantChalls) != 0 {
+				test.AssertNotError(t, err, "should have succeeded")
+				test.AssertDeepEquals(t, challs, tc.wantChalls)
+			}
+
+			if tc.wantErr != "" {
+				test.AssertError(t, err, "should have errored")
+				test.AssertContains(t, err.Error(), tc.wantErr)
+			}
+		})
 	}
-
-	// First try to get a challenge for the wildcard ident without the
-	// DNS-01 challenge type enabled. This should produce an error
-	var enabledChallenges = map[core.AcmeChallenge]bool{
-		core.ChallengeTypeHTTP01: true,
-		core.ChallengeTypeDNS01:  false,
-	}
-	pa := must.Do(New(enabledChallenges, blog.NewMock()))
-	_, err := pa.ChallengeTypesFor(wildcardIdent)
-	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
-		"when DNS-01 was disabled")
-	test.AssertEquals(t, err.Error(), "Challenges requested for wildcard "+
-		"identifier but DNS-01 challenge type is not enabled")
-
-	// Try again with DNS-01 enabled. It should not error and
-	// should return only one DNS-01 type challenge
-	enabledChallenges[core.ChallengeTypeDNS01] = true
-	pa = must.Do(New(enabledChallenges, blog.NewMock()))
-	challenges, err := pa.ChallengeTypesFor(wildcardIdent)
-	test.AssertNotError(t, err, "ChallengesFor errored for a wildcard ident "+
-		"unexpectedly")
-	test.AssertEquals(t, len(challenges), 1)
-	test.AssertEquals(t, challenges[0], core.ChallengeTypeDNS01)
 }
 
 // TestMalformedExactBlocklist tests that loading a YAML policy file with an
