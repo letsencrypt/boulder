@@ -2121,8 +2121,8 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		// authorizations for all names in the cert.
 		logEvent.Method = "control"
 
-		var authzMapPB *sapb.Authorizations
-		authzMapPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+		var authzPB *sapb.Authorizations
+		authzPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
 			Domains:        cert.DNSNames,
 			ValidUntil:     timestamppb.New(ra.clk.Now()),
@@ -2131,12 +2131,15 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 			return nil, err
 		}
 
-		m := make(map[string]struct{})
-		for _, authz := range authzMapPB.Authz {
-			m[authz.Domain] = struct{}{}
+		var authzMap map[identifier.ACMEIdentifier]*core.Authorization
+		authzMap, err = bgrpc.PBToAuthzMap(authzPB)
+		if err != nil {
+			return nil, err
 		}
+
+		// TODO(#7647): Support other kinds of SANs/identifiers here.
 		for _, name := range cert.DNSNames {
-			if _, present := m[name]; !present {
+			if _, present := authzMap[identifier.DNSIdentifier(name)]; !present {
 				return nil, berrors.UnauthorizedError("requester does not control all names in cert with serial %q", serialString)
 			}
 		}
