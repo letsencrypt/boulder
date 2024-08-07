@@ -39,7 +39,6 @@ const (
 	StorageAuthorityReadOnly_GetMaxExpiration_FullMethodName             = "/sa.StorageAuthorityReadOnly/GetMaxExpiration"
 	StorageAuthorityReadOnly_GetOrder_FullMethodName                     = "/sa.StorageAuthorityReadOnly/GetOrder"
 	StorageAuthorityReadOnly_GetOrderForNames_FullMethodName             = "/sa.StorageAuthorityReadOnly/GetOrderForNames"
-	StorageAuthorityReadOnly_GetPendingAuthorization2_FullMethodName     = "/sa.StorageAuthorityReadOnly/GetPendingAuthorization2"
 	StorageAuthorityReadOnly_GetRegistration_FullMethodName              = "/sa.StorageAuthorityReadOnly/GetRegistration"
 	StorageAuthorityReadOnly_GetRegistrationByKey_FullMethodName         = "/sa.StorageAuthorityReadOnly/GetRegistrationByKey"
 	StorageAuthorityReadOnly_GetRevocationStatus_FullMethodName          = "/sa.StorageAuthorityReadOnly/GetRevocationStatus"
@@ -78,7 +77,6 @@ type StorageAuthorityReadOnlyClient interface {
 	GetMaxExpiration(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*timestamppb.Timestamp, error)
 	GetOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	GetOrderForNames(ctx context.Context, in *GetOrderForNamesRequest, opts ...grpc.CallOption) (*proto.Order, error)
-	GetPendingAuthorization2(ctx context.Context, in *GetPendingAuthorizationRequest, opts ...grpc.CallOption) (*proto.Authorization, error)
 	GetRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*proto.Registration, error)
 	GetRegistrationByKey(ctx context.Context, in *JSONWebKey, opts ...grpc.CallOption) (*proto.Registration, error)
 	GetRevocationStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*RevocationStatus, error)
@@ -268,16 +266,6 @@ func (c *storageAuthorityReadOnlyClient) GetOrderForNames(ctx context.Context, i
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(proto.Order)
 	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetOrderForNames_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityReadOnlyClient) GetPendingAuthorization2(ctx context.Context, in *GetPendingAuthorizationRequest, opts ...grpc.CallOption) (*proto.Authorization, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(proto.Authorization)
-	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetPendingAuthorization2_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -491,7 +479,6 @@ type StorageAuthorityReadOnlyServer interface {
 	GetMaxExpiration(context.Context, *emptypb.Empty) (*timestamppb.Timestamp, error)
 	GetOrder(context.Context, *OrderRequest) (*proto.Order, error)
 	GetOrderForNames(context.Context, *GetOrderForNamesRequest) (*proto.Order, error)
-	GetPendingAuthorization2(context.Context, *GetPendingAuthorizationRequest) (*proto.Authorization, error)
 	GetRegistration(context.Context, *RegistrationID) (*proto.Registration, error)
 	GetRegistrationByKey(context.Context, *JSONWebKey) (*proto.Registration, error)
 	GetRevocationStatus(context.Context, *Serial) (*RevocationStatus, error)
@@ -564,9 +551,6 @@ func (UnimplementedStorageAuthorityReadOnlyServer) GetOrder(context.Context, *Or
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetOrderForNames(context.Context, *GetOrderForNamesRequest) (*proto.Order, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetOrderForNames not implemented")
-}
-func (UnimplementedStorageAuthorityReadOnlyServer) GetPendingAuthorization2(context.Context, *GetPendingAuthorizationRequest) (*proto.Authorization, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetPendingAuthorization2 not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetRegistration(context.Context, *RegistrationID) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRegistration not implemented")
@@ -933,24 +917,6 @@ func _StorageAuthorityReadOnly_GetOrderForNames_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StorageAuthorityReadOnly_GetPendingAuthorization2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetPendingAuthorizationRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityReadOnlyServer).GetPendingAuthorization2(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthorityReadOnly_GetPendingAuthorization2_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityReadOnlyServer).GetPendingAuthorization2(ctx, req.(*GetPendingAuthorizationRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _StorageAuthorityReadOnly_GetRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegistrationID)
 	if err := dec(in); err != nil {
@@ -1269,10 +1235,6 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthorityReadOnly_GetOrderForNames_Handler,
 		},
 		{
-			MethodName: "GetPendingAuthorization2",
-			Handler:    _StorageAuthorityReadOnly_GetPendingAuthorization2_Handler,
-		},
-		{
 			MethodName: "GetRegistration",
 			Handler:    _StorageAuthorityReadOnly_GetRegistration_Handler,
 		},
@@ -1360,7 +1322,6 @@ const (
 	StorageAuthority_GetMaxExpiration_FullMethodName             = "/sa.StorageAuthority/GetMaxExpiration"
 	StorageAuthority_GetOrder_FullMethodName                     = "/sa.StorageAuthority/GetOrder"
 	StorageAuthority_GetOrderForNames_FullMethodName             = "/sa.StorageAuthority/GetOrderForNames"
-	StorageAuthority_GetPendingAuthorization2_FullMethodName     = "/sa.StorageAuthority/GetPendingAuthorization2"
 	StorageAuthority_GetRegistration_FullMethodName              = "/sa.StorageAuthority/GetRegistration"
 	StorageAuthority_GetRegistrationByKey_FullMethodName         = "/sa.StorageAuthority/GetRegistrationByKey"
 	StorageAuthority_GetRevocationStatus_FullMethodName          = "/sa.StorageAuthority/GetRevocationStatus"
@@ -1420,7 +1381,6 @@ type StorageAuthorityClient interface {
 	GetMaxExpiration(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*timestamppb.Timestamp, error)
 	GetOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	GetOrderForNames(ctx context.Context, in *GetOrderForNamesRequest, opts ...grpc.CallOption) (*proto.Order, error)
-	GetPendingAuthorization2(ctx context.Context, in *GetPendingAuthorizationRequest, opts ...grpc.CallOption) (*proto.Authorization, error)
 	GetRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*proto.Registration, error)
 	GetRegistrationByKey(ctx context.Context, in *JSONWebKey, opts ...grpc.CallOption) (*proto.Registration, error)
 	GetRevocationStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*RevocationStatus, error)
@@ -1631,16 +1591,6 @@ func (c *storageAuthorityClient) GetOrderForNames(ctx context.Context, in *GetOr
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(proto.Order)
 	err := c.cc.Invoke(ctx, StorageAuthority_GetOrderForNames_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityClient) GetPendingAuthorization2(ctx context.Context, in *GetPendingAuthorizationRequest, opts ...grpc.CallOption) (*proto.Authorization, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(proto.Authorization)
-	err := c.cc.Invoke(ctx, StorageAuthority_GetPendingAuthorization2_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2055,7 +2005,6 @@ type StorageAuthorityServer interface {
 	GetMaxExpiration(context.Context, *emptypb.Empty) (*timestamppb.Timestamp, error)
 	GetOrder(context.Context, *OrderRequest) (*proto.Order, error)
 	GetOrderForNames(context.Context, *GetOrderForNamesRequest) (*proto.Order, error)
-	GetPendingAuthorization2(context.Context, *GetPendingAuthorizationRequest) (*proto.Authorization, error)
 	GetRegistration(context.Context, *RegistrationID) (*proto.Registration, error)
 	GetRegistrationByKey(context.Context, *JSONWebKey) (*proto.Registration, error)
 	GetRevocationStatus(context.Context, *Serial) (*RevocationStatus, error)
@@ -2149,9 +2098,6 @@ func (UnimplementedStorageAuthorityServer) GetOrder(context.Context, *OrderReque
 }
 func (UnimplementedStorageAuthorityServer) GetOrderForNames(context.Context, *GetOrderForNamesRequest) (*proto.Order, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetOrderForNames not implemented")
-}
-func (UnimplementedStorageAuthorityServer) GetPendingAuthorization2(context.Context, *GetPendingAuthorizationRequest) (*proto.Authorization, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetPendingAuthorization2 not implemented")
 }
 func (UnimplementedStorageAuthorityServer) GetRegistration(context.Context, *RegistrationID) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRegistration not implemented")
@@ -2573,24 +2519,6 @@ func _StorageAuthority_GetOrderForNames_Handler(srv interface{}, ctx context.Con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityServer).GetOrderForNames(ctx, req.(*GetOrderForNamesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageAuthority_GetPendingAuthorization2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetPendingAuthorizationRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityServer).GetPendingAuthorization2(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthority_GetPendingAuthorization2_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).GetPendingAuthorization2(ctx, req.(*GetPendingAuthorizationRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3271,10 +3199,6 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetOrderForNames",
 			Handler:    _StorageAuthority_GetOrderForNames_Handler,
-		},
-		{
-			MethodName: "GetPendingAuthorization2",
-			Handler:    _StorageAuthority_GetPendingAuthorization2_Handler,
 		},
 		{
 			MethodName: "GetRegistration",

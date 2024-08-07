@@ -836,43 +836,6 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 	return authzModelMapToPB(authzModelMap)
 }
 
-// GetPendingAuthorization2 returns the most recent Pending authorization with
-// the given identifier, if available. This method only supports DNS identifier types.
-// TODO(#5816): Consider removing this method, as it has no callers.
-func (ssa *SQLStorageAuthorityRO) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if req.RegistrationID == 0 || req.IdentifierValue == "" || core.IsAnyNilOrZero(req.ValidUntil) {
-		return nil, errIncompleteRequest
-	}
-	var am authzModel
-	err := ssa.dbReadOnlyMap.SelectOne(
-		ctx,
-		&am,
-		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
-			registrationID = :regID AND
-			status = :status AND
-			expires > :validUntil AND
-			identifierType = :dnsType AND
-			identifierValue = :ident
-			ORDER BY expires ASC
-			LIMIT 1 `, authzFields),
-		map[string]interface{}{
-			"regID":      req.RegistrationID,
-			"status":     statusUint(core.StatusPending),
-			"validUntil": req.ValidUntil.AsTime(),
-			"dnsType":    identifierTypeToUint[string(identifier.DNS)],
-			"ident":      req.IdentifierValue,
-		},
-	)
-	if err != nil {
-		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError("pending authz not found")
-		}
-		return nil, err
-	}
-	return modelToAuthzPB(am)
-}
-
 // CountPendingAuthorizations2 returns the number of pending, unexpired authorizations
 // for the given registration.
 func (ssa *SQLStorageAuthorityRO) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
