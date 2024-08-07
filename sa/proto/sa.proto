@@ -27,7 +27,6 @@ service StorageAuthorityReadOnly {
   rpc GetMaxExpiration(google.protobuf.Empty) returns (google.protobuf.Timestamp) {}
   rpc GetOrder(OrderRequest) returns (core.Order) {}
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
-  rpc GetPendingAuthorization2(GetPendingAuthorizationRequest) returns (core.Authorization) {}
   rpc GetRegistration(RegistrationID) returns (core.Registration) {}
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
@@ -65,7 +64,6 @@ service StorageAuthority {
   rpc GetMaxExpiration(google.protobuf.Empty) returns (google.protobuf.Timestamp) {}
   rpc GetOrder(OrderRequest) returns (core.Order) {}
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
-  rpc GetPendingAuthorization2(GetPendingAuthorizationRequest) returns (core.Authorization) {}
   rpc GetRegistration(RegistrationID) returns (core.Registration) {}
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
@@ -114,16 +112,6 @@ message JSONWebKey {
 
 message AuthorizationID {
   string id = 1;
-}
-
-message GetPendingAuthorizationRequest {
-  // Next unused field number: 6
-  int64 registrationID = 1;
-  string identifierType = 2;
-  string identifierValue = 3;
-  // Result must be valid until at least this Unix timestamp (nanos)
-  reserved 4; // Previously validUntilNS
-  google.protobuf.Timestamp validUntil = 5; // Result must be valid until at least this timestamp
 }
 
 message GetValidAuthorizationsRequest {

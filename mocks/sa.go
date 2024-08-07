@@ -504,10 +504,6 @@ func (sa *StorageAuthorityReadOnly) GetAuthorizations2(ctx context.Context, req 
 	return &sapb.Authorizations{}, nil
 }
 
-func (sa *StorageAuthorityReadOnly) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
-	return nil, nil
-}
-
 var (
 	authzIdValid       = int64(1)
 	authzIdPending     = int64(2)
