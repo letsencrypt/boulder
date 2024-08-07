@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"math/rand"
 	"net"
 	"net/http"
 	"slices"
@@ -1105,7 +1106,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		return
 	}
 	challengeID := slug[1]
-	authzPB, err := wfe.sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authorizationID})
+	authzPB, err := wfe.ra.GetAuthorization(ctx, &rapb.GetAuthorizationRequest{Id: authorizationID})
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
 			notFound()
@@ -1212,6 +1213,13 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 	for i := range authz.Challenges {
 		wfe.prepChallengeForDisplay(request, *authz, &authz.Challenges[i])
 	}
+
+	// Shuffle the challenges so no one relies on their order.
+	for i := range authz.Challenges {
+		j := rand.Intn(i + 1)
+		authz.Challenges[i], authz.Challenges[j] = authz.Challenges[j], authz.Challenges[i]
+	}
+
 	authz.ID = ""
 	authz.RegistrationID = 0
 
@@ -1546,7 +1554,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
-	authzPB, err := wfe.sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
+	authzPB, err := wfe.ra.GetAuthorization(ctx, &rapb.GetAuthorizationRequest{Id: authzID})
 	if errors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 		return
