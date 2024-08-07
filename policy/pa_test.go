@@ -12,6 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -393,16 +394,16 @@ func TestChallengeTypesFor(t *testing.T) {
 	challenges, err := pa.ChallengeTypesFor(identifier.ACMEIdentifier{})
 	test.AssertNotError(t, err, "ChallengesFor failed")
 
-	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
+	test.Assert(t, len(challenges) == len(pa.enabledChallenges), "Wrong number of challenges returned")
 
 	seenChalls := make(map[core.AcmeChallenge]bool)
 	for _, challenge := range challenges {
 		test.Assert(t, !seenChalls[challenge], "should not already have seen this type")
 		seenChalls[challenge] = true
 
-		test.Assert(t, enabledChallenges[challenge], "Unsupported challenge returned")
+		test.Assert(t, pa.enabledChallenges[challenge.Type], "Unsupported challenge returned")
 	}
-	test.AssertEquals(t, len(seenChalls), len(enabledChallenges))
+	test.AssertEquals(t, len(seenChalls), len(pa.enabledChallenges))
 }
 
 func TestChallengeTypesForWildcard(t *testing.T) {
@@ -434,6 +435,55 @@ func TestChallengeTypesForWildcard(t *testing.T) {
 		"unexpectedly")
 	test.AssertEquals(t, len(challenges), 1)
 	test.AssertEquals(t, challenges[0], core.ChallengeTypeDNS01)
+}
+
+func TestChallengeTypesFor(t *testing.T) {
+	t.Parallel()
+	pa := paImpl(t)
+
+	testCases := []struct {
+		name       string
+		ident      identifier.ACMEIdentifier
+		wantChalls []core.AcmeChallenge
+		wantErr    string
+	}{
+		{
+			name:  "dns",
+			ident: identifier.DNSIdentifier("example.com"),
+			wantChalls: []core.AcmeChallenge{
+				core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeTLSALPN01,
+			},
+		},
+		{
+			name:  "wildcard",
+			ident: identifier.DNSIdentifier("*.example.com"),
+			wantChalls: []core.AcmeChallenge{
+				core.ChallengeTypeDNS01,
+			},
+		},
+		{
+			name:    "other",
+			ident:   identifier.ACMEIdentifier{Type: "ip", Value: "1.2.3.4"},
+			wantErr: "unrecognized identifier type",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			challs, err := pa.ChallengeTypesFor(tc.ident)
+
+			if len(tc.wantChalls) != 0 {
+				test.AssertNotError(t, err, "should have succeeded")
+				test.AssertDeepEquals(t, challs, tc.wantChalls)
+			}
+
+			if tc.wantErr != "" {
+				test.AssertError(t, err, "should have errored")
+				test.AssertContains(t, err.Error(), tc.wantErr)
+			}
+		})
+	}
 }
 
 // TestMalformedExactBlocklist tests that loading a YAML policy file with an
