@@ -683,7 +683,8 @@ func hasMultipleNonPendingChallenges(challenges []*corepb.Challenge) bool {
 }
 
 // newAuthzReqToModel converts an sapb.NewAuthzRequest to the authzModel storage
-// representation.
+// representation. It hardcodes the status to "pending" because it should be
+// impossible to create an authz in any other state.
 func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
 	if authz.Token == "" && len(authz.ChallengeTypes) == 0 {
 		// This is actually a corepb.Authorization, sent to us by a not-yet-updated
