@@ -337,14 +337,14 @@ func (authz *Authorization) FindChallengeByStringID(id string) int {
 // challenge is valid.
 func (authz *Authorization) SolvedBy() (AcmeChallenge, error) {
 	if len(authz.Challenges) == 0 {
-		return "", fmt.Errorf("Authorization has no challenges")
+		return "", fmt.Errorf("authorization has no challenges")
 	}
 	for _, chal := range authz.Challenges {
 		if chal.Status == StatusValid {
 			return chal.Type, nil
 		}
 	}
-	return "", fmt.Errorf("Authorization not solved by any challenge")
+	return "", fmt.Errorf("authorization not solved by any challenge")
 }
 
 // JSONBuffer fields get encoded and decoded JOSE-style, in base64url encoding

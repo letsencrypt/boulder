@@ -12,16 +12,16 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/test"
 )
 
-var enabledChallenges = map[core.AcmeChallenge]bool{
-	core.ChallengeTypeHTTP01: true,
-	core.ChallengeTypeDNS01:  true,
-}
-
 func paImpl(t *testing.T) *AuthorityImpl {
+	enabledChallenges := map[core.AcmeChallenge]bool{
+		core.ChallengeTypeHTTP01:    true,
+		core.ChallengeTypeDNS01:     true,
+		core.ChallengeTypeTLSALPN01: true,
+	}
+
 	pa, err := New(enabledChallenges, blog.NewMock())
 	if err != nil {
 		t.Fatalf("Couldn't create policy implementation: %s", err)
@@ -482,4 +482,84 @@ func TestValidEmailError(t *testing.T) {
 
 	err = ValidEmail("example@-foobar.com")
 	test.AssertEquals(t, err.Error(), "contact email \"example@-foobar.com\" has invalid domain : Domain name contains an invalid character")
+}
+
+func TestCheckAuthz(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		authz   core.Authorization
+		enabled map[core.AcmeChallenge]bool
+		wantErr string
+	}{
+		{
+			name: "unrecognized identifier",
+			authz: core.Authorization{
+				Identifier: identifier.ACMEIdentifier{Type: "oops", Value: "example.com"},
+				Challenges: []core.Challenge{{Type: core.ChallengeTypeDNS01, Status: core.StatusValid}},
+			},
+			wantErr: "unrecognized identifier type",
+		},
+		{
+			name: "no challenges",
+			authz: core.Authorization{
+				Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
+				Challenges: []core.Challenge{},
+			},
+			wantErr: "has no challenges",
+		},
+		{
+			name: "no valid challenges",
+			authz: core.Authorization{
+				Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
+				Challenges: []core.Challenge{{Type: core.ChallengeTypeDNS01, Status: core.StatusPending}},
+			},
+			wantErr: "not solved by any challenge",
+		},
+		{
+			name: "solved by disabled challenge",
+			authz: core.Authorization{
+				Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
+				Challenges: []core.Challenge{{Type: core.ChallengeTypeDNS01, Status: core.StatusValid}},
+			},
+			enabled: map[core.AcmeChallenge]bool{core.ChallengeTypeHTTP01: true},
+			wantErr: "disabled challenge type",
+		},
+		{
+			name: "solved by wrong kind of challenge",
+			authz: core.Authorization{
+				Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "*.example.com"},
+				Challenges: []core.Challenge{{Type: core.ChallengeTypeHTTP01, Status: core.StatusValid}},
+			},
+			wantErr: "invalid challenge",
+		},
+		{
+			name: "valid authz",
+			authz: core.Authorization{
+				Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
+				Challenges: []core.Challenge{{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusValid}},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			pa := paImpl(t)
+
+			if tc.enabled != nil {
+				pa.enabledChallenges = tc.enabled
+			}
+
+			err := pa.CheckAuthz(&tc.authz)
+
+			if tc.wantErr == "" {
+				test.AssertNotError(t, err, "should have succeeded")
+			} else {
+				test.AssertError(t, err, "should have errored")
+				test.AssertContains(t, err.Error(), tc.wantErr)
+			}
+		})
+	}
 }
