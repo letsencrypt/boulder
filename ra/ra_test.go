@@ -4180,12 +4180,7 @@ func (msa *mockSARevocationWithAuthzs) GetValidAuthorizations2(ctx context.Conte
 	}
 
 	for _, name := range req.Domains {
-		authzs.Authz = append(authzs.Authz, &sapb.Authorizations_MapElement{
-			Domain: name,
-			Authz: &corepb.Authorization{
-				Identifier: name,
-			},
-		})
+		authzs.Authzs = append(authzs.Authzs, &corepb.Authorization{Identifier: name})
 	}
 
 	return authzs, nil
