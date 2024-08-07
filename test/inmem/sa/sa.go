@@ -49,10 +49,6 @@ func (sa SA) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizations
 	return sa.Impl.GetAuthorizations2(ctx, req)
 }
 
-func (sa SA) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
-	return sa.Impl.GetPendingAuthorization2(ctx, req)
-}
-
 func (sa SA) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return sa.Impl.GetValidAuthorizations2(ctx, req)
 }
