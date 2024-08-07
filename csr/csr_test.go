@@ -22,8 +22,8 @@ import (
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengesFor(identifier identifier.ACMEIdentifier) (challenges []core.Challenge, err error) {
-	return
+func (pa *mockPA) ChallengeTypesFor(identifier identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
+	return []core.AcmeChallenge{}, nil
 }
 
 func (pa *mockPA) WillingToIssue(domains []string) error {

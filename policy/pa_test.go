@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
@@ -12,7 +14,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/test"
-	"gopkg.in/yaml.v3"
 )
 
 var enabledChallenges = map[core.AcmeChallenge]bool{
@@ -386,26 +387,25 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 		})
 }
 
-func TestChallengesFor(t *testing.T) {
+func TestChallengeTypesFor(t *testing.T) {
 	pa := paImpl(t)
 
-	challenges, err := pa.ChallengesFor(identifier.ACMEIdentifier{})
+	challenges, err := pa.ChallengeTypesFor(identifier.ACMEIdentifier{})
 	test.AssertNotError(t, err, "ChallengesFor failed")
 
 	test.Assert(t, len(challenges) == len(enabledChallenges), "Wrong number of challenges returned")
 
 	seenChalls := make(map[core.AcmeChallenge]bool)
 	for _, challenge := range challenges {
-		test.Assert(t, !seenChalls[challenge.Type], "should not already have seen this type")
-		seenChalls[challenge.Type] = true
+		test.Assert(t, !seenChalls[challenge], "should not already have seen this type")
+		seenChalls[challenge] = true
 
-		test.Assert(t, enabledChallenges[challenge.Type], "Unsupported challenge returned")
+		test.Assert(t, enabledChallenges[challenge], "Unsupported challenge returned")
 	}
 	test.AssertEquals(t, len(seenChalls), len(enabledChallenges))
-
 }
 
-func TestChallengesForWildcard(t *testing.T) {
+func TestChallengeTypesForWildcard(t *testing.T) {
 	// wildcardIdent is an identifier for a wildcard domain name
 	wildcardIdent := identifier.ACMEIdentifier{
 		Type:  identifier.DNS,
@@ -419,7 +419,7 @@ func TestChallengesForWildcard(t *testing.T) {
 		core.ChallengeTypeDNS01:  false,
 	}
 	pa := must.Do(New(enabledChallenges, blog.NewMock()))
-	_, err := pa.ChallengesFor(wildcardIdent)
+	_, err := pa.ChallengeTypesFor(wildcardIdent)
 	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
 		"when DNS-01 was disabled")
 	test.AssertEquals(t, err.Error(), "Challenges requested for wildcard "+
@@ -429,11 +429,11 @@ func TestChallengesForWildcard(t *testing.T) {
 	// should return only one DNS-01 type challenge
 	enabledChallenges[core.ChallengeTypeDNS01] = true
 	pa = must.Do(New(enabledChallenges, blog.NewMock()))
-	challenges, err := pa.ChallengesFor(wildcardIdent)
+	challenges, err := pa.ChallengeTypesFor(wildcardIdent)
 	test.AssertNotError(t, err, "ChallengesFor errored for a wildcard ident "+
 		"unexpectedly")
 	test.AssertEquals(t, len(challenges), 1)
-	test.AssertEquals(t, challenges[0].Type, core.ChallengeTypeDNS01)
+	test.AssertEquals(t, challenges[0], core.ChallengeTypeDNS01)
 }
 
 // TestMalformedExactBlocklist tests that loading a YAML policy file with an

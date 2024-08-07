@@ -685,20 +685,6 @@ func hasMultipleNonPendingChallenges(challenges []*corepb.Challenge) bool {
 // newAuthzReqToModel converts an sapb.NewAuthzRequest to the authzModel storage
 // representation.
 func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
-	if authz.Token == "" && len(authz.ChallengeTypes) == 0 {
-		// This is actually a corepb.Authorization, sent to us by a not-yet-updated
-		// RA. Use the old code-path instead.
-		// TODO(#5913): Remove this fallback.
-		return authzPBToModel(&corepb.Authorization{
-			Id:             authz.Id,
-			Identifier:     authz.IdentifierValue,
-			RegistrationID: authz.RegistrationID,
-			Status:         string(core.StatusPending),
-			Expires:        authz.Expires,
-			Challenges:     authz.Challenges,
-		})
-	}
-
 	am := &authzModel{
 		IdentifierType:  identifierTypeToUint[authz.Identifier.Type],
 		IdentifierValue: authz.Identifier.Value,
