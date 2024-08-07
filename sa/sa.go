@@ -462,6 +462,12 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		return nil, errIncompleteRequest
 	}
 
+	for _, authz := range req.NewAuthzs {
+		if authz.RegistrationID != req.NewOrder.RegistrationID {
+			return nil, errors.New("new order and authzs must all be associated with same account")
+		}
+	}
+
 	output, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		// First, insert all of the new authorizations and record their IDs.
 		newAuthzIDs := make([]int64, 0)
