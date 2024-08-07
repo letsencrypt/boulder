@@ -1231,14 +1231,7 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
-	// Create a test registration to reference
-	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
-	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
-	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-	})
-	test.AssertNotError(t, err, "Couldn't create test registration")
+	reg := createWorkingRegistration(t, sa)
 
 	// Insert two pre-existing authorizations to reference
 	idA := createPendingAuthorization(t, sa, "a.com", sa.clk.Now().Add(time.Hour))
@@ -1292,16 +1285,10 @@ func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
-	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
-	initialIP, _ := net.ParseIP("17.17.17.17").MarshalText()
-	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-	})
-	test.AssertNotError(t, err, "Couldn't create test registration")
+	reg := createWorkingRegistration(t, sa)
 
 	expires := fc.Now().Add(2 * time.Hour)
-	_, err = sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+	_, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewAuthzs: []*sapb.NewAuthzRequest{
 			{
 				Identifier:     &sapb.Identifier{Type: "dns", Value: "c.com"},
@@ -1319,28 +1306,13 @@ func TestNewOrderAndAuthzs_MismatchedRegID(t *testing.T) {
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
-	key1, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
-	initialIP, _ := net.ParseIP("17.17.17.17").MarshalText()
-	reg1, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key1,
-		InitialIP: initialIP,
-	})
-	test.AssertNotError(t, err, "Couldn't create test registration")
-
-	key2, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}}.MarshalJSON()
-	reg2, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key2,
-		InitialIP: initialIP,
-	})
-	test.AssertNotError(t, err, "Couldn't create test registration")
-
-	_, err = sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+	_, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID: reg1.Id,
+			RegistrationID: 1,
 		},
 		NewAuthzs: []*sapb.NewAuthzRequest{
 			{
-				RegistrationID: reg2.Id,
+				RegistrationID: 2,
 			},
 		},
 	})
@@ -1352,15 +1324,7 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
-	// Create a test registration to reference.
-	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
-	initialIP, _ := net.ParseIP("17.17.17.17").MarshalText()
-	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-	})
-	test.AssertNotError(t, err, "Couldn't create test registration")
-
+	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour)
 	domain := "a.com"
 
@@ -1412,14 +1376,7 @@ func TestSetOrderProcessing(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
-	// Create a test registration to reference
-	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
-	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
-	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-	})
-	test.AssertNotError(t, err, "Couldn't create test registration")
+	reg := createWorkingRegistration(t, sa)
 
 	// Add one valid authz
 	expires := fc.Now().Add(time.Hour)
@@ -1461,16 +1418,7 @@ func TestFinalizeOrder(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
-	// Create a test registration to reference
-	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
-	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
-	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-	})
-	test.AssertNotError(t, err, "Couldn't create test registration")
-
-	// Add one valid authz
+	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour)
 	attemptedAt := fc.Now()
 	authzID := createFinalizedAuthorization(t, sa, "example.com", expires, "valid", attemptedAt)
@@ -1510,15 +1458,7 @@ func TestOrderWithOrderModelv1(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
-	// Create a test registration to reference
-	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
-	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
-	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-	})
-	test.AssertNotError(t, err, "Couldn't create test registration")
-
+	reg := createWorkingRegistration(t, sa)
 	authzExpires := fc.Now().Add(time.Hour)
 	authzID := createPendingAuthorization(t, sa, "example.com", authzExpires)
 
@@ -1594,14 +1534,7 @@ func TestOrderWithOrderModelv2(t *testing.T) {
 	defer test.ResetBoulderTestDatabase(t)
 
 	// Create a test registration to reference
-	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
-	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
-	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-	})
-	test.AssertNotError(t, err, "Couldn't create test registration")
-
+	reg := createWorkingRegistration(t, sa)
 	authzExpires := fc.Now().Add(time.Hour)
 	authzID := createPendingAuthorization(t, sa, "example.com", authzExpires)
 
@@ -1660,17 +1593,8 @@ func TestOrderWithOrderModelv2(t *testing.T) {
 	// MultipleCertificateProfiles feature flag enabled works as expected.
 	//
 
-	// Create a test registration to reference
-	key2, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 2}}.MarshalJSON()
-	initialIP2, _ := net.ParseIP("44.44.44.44").MarshalText()
-	reg2, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key2,
-		InitialIP: initialIP2,
-	})
-	test.AssertNotError(t, err, "Couldn't create test registration")
-
 	inputOrderNoName := &corepb.Order{
-		RegistrationID:   reg2.Id,
+		RegistrationID:   reg.Id,
 		Expires:          timestamppb.New(expires),
 		DnsNames:         []string{"example.com"},
 		V2Authorizations: []int64{authzID},
