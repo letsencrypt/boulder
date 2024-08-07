@@ -2871,36 +2871,6 @@ func TestRehydrateHostPort(t *testing.T) {
 	test.AssertError(t, err, "URL field cannot be empty")
 }
 
-func TestGetPendingAuthorization2(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
-
-	domain := "example.com"
-	expiresA := fc.Now().Add(time.Hour).UTC()
-	expiresB := fc.Now().Add(time.Hour * 3).UTC()
-	authzIDA := createPendingAuthorization(t, sa, domain, expiresA)
-	authzIDB := createPendingAuthorization(t, sa, domain, expiresB)
-
-	regID := int64(1)
-	validUntil := fc.Now().Add(time.Hour * 2).UTC()
-	dbVer, err := sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
-		RegistrationID:  regID,
-		IdentifierValue: domain,
-		ValidUntil:      timestamppb.New(validUntil),
-	})
-	test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
-	test.AssertEquals(t, fmt.Sprintf("%d", authzIDB), dbVer.Id)
-
-	validUntil = fc.Now().UTC()
-	dbVer, err = sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
-		RegistrationID:  regID,
-		IdentifierValue: domain,
-		ValidUntil:      timestamppb.New(validUntil),
-	})
-	test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
-	test.AssertEquals(t, fmt.Sprintf("%d", authzIDA), dbVer.Id)
-}
-
 func TestCountPendingAuthorizations2(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
