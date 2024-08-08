@@ -1762,8 +1762,8 @@ func TestRecheckCAADates(t *testing.T) {
 		}
 	}
 
-	authzs := map[string]*core.Authorization{
-		"recent.com": {
+	authzs := map[identifier.ACMEIdentifier]*core.Authorization{
+		identifier.DNSIdentifier("recent.com"): {
 			Identifier: makeIdentifier("recent.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{
@@ -1775,7 +1775,7 @@ func TestRecheckCAADates(t *testing.T) {
 				},
 			},
 		},
-		"older.com": {
+		identifier.DNSIdentifier("older.com"): {
 			Identifier: makeIdentifier("older.com"),
 			Expires:    &olderExpires,
 			Challenges: []core.Challenge{
@@ -1787,7 +1787,7 @@ func TestRecheckCAADates(t *testing.T) {
 				},
 			},
 		},
-		"older2.com": {
+		identifier.DNSIdentifier("older2.com"): {
 			Identifier: makeIdentifier("older2.com"),
 			Expires:    &olderExpires,
 			Challenges: []core.Challenge{
@@ -1799,7 +1799,7 @@ func TestRecheckCAADates(t *testing.T) {
 				},
 			},
 		},
-		"wildcard.com": {
+		identifier.DNSIdentifier("wildcard.com"): {
 			Identifier: makeIdentifier("wildcard.com"),
 			Expires:    &olderExpires,
 			Challenges: []core.Challenge{
@@ -1811,7 +1811,7 @@ func TestRecheckCAADates(t *testing.T) {
 				},
 			},
 		},
-		"*.wildcard.com": {
+		identifier.DNSIdentifier("*.wildcard.com"): {
 			Identifier: makeIdentifier("*.wildcard.com"),
 			Expires:    &olderExpires,
 			Challenges: []core.Challenge{
@@ -1823,7 +1823,9 @@ func TestRecheckCAADates(t *testing.T) {
 				},
 			},
 		},
-		"twochallenges.com": {
+	}
+	twoChallenges := map[identifier.ACMEIdentifier]*core.Authorization{
+		identifier.DNSIdentifier("twochallenges.com"): {
 			ID:         "twochal",
 			Identifier: makeIdentifier("twochallenges.com"),
 			Expires:    &recentExpires,
@@ -1842,13 +1844,17 @@ func TestRecheckCAADates(t *testing.T) {
 				},
 			},
 		},
-		"nochallenges.com": {
+	}
+	noChallenges := map[identifier.ACMEIdentifier]*core.Authorization{
+		identifier.DNSIdentifier("nochallenges.com"): {
 			ID:         "nochal",
 			Identifier: makeIdentifier("nochallenges.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{},
 		},
-		"novalidationtime.com": {
+	}
+	noValidationTime := map[identifier.ACMEIdentifier]*core.Authorization{
+		identifier.DNSIdentifier("novalidationtime.com"): {
 			ID:         "noval",
 			Identifier: makeIdentifier("novalidationtime.com"),
 			Expires:    &recentExpires,
@@ -1865,23 +1871,22 @@ func TestRecheckCAADates(t *testing.T) {
 
 	// NOTE: The names provided here correspond to authorizations in the
 	// `mockSAWithRecentAndOlder`
-	names := []string{"recent.com", "older.com", "older2.com", "wildcard.com", "*.wildcard.com"}
-	err := ra.checkAuthorizationsCAA(context.Background(), Registration.Id, names, authzs, fc.Now())
+	err := ra.checkAuthorizationsCAA(context.Background(), Registration.Id, authzs, fc.Now())
 	// We expect that there is no error rechecking authorizations for these names
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
 
 	// Should error if a authorization has `!= 1` challenge
-	err = ra.checkAuthorizationsCAA(context.Background(), Registration.Id, []string{"twochallenges.com"}, authzs, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), Registration.Id, twoChallenges, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 2 found for: id twochal")
 
 	// Should error if a authorization has `!= 1` challenge
-	err = ra.checkAuthorizationsCAA(context.Background(), Registration.Id, []string{"nochallenges.com"}, authzs, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), Registration.Id, noChallenges, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 0 found for: id nochal")
 
 	// Should error if authorization's challenge has no validated timestamp
-	err = ra.checkAuthorizationsCAA(context.Background(), Registration.Id, []string{"novalidationtime.com"}, authzs, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), Registration.Id, noValidationTime, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization's challenge has no validated timestamp for: id noval")
 
 	// We expect that "recent.com" is not checked because its mock authorization
@@ -2897,7 +2902,7 @@ func TestFinalizeOrder(t *testing.T) {
 				},
 				Csr: oneDomainCSR,
 			},
-			ExpectedErrMsg: "Order includes different number of names than CSR specifies",
+			ExpectedErrMsg: "CSR does not specify same identifiers as Order",
 		},
 		{
 			Name: "CSR and Order with diff number of names (other way)",
@@ -2910,7 +2915,7 @@ func TestFinalizeOrder(t *testing.T) {
 				},
 				Csr: twoDomainCSR,
 			},
-			ExpectedErrMsg: "Order includes different number of names than CSR specifies",
+			ExpectedErrMsg: "CSR does not specify same identifiers as Order",
 		},
 		{
 			Name: "CSR missing an order name",
@@ -2923,7 +2928,7 @@ func TestFinalizeOrder(t *testing.T) {
 				},
 				Csr: oneDomainCSR,
 			},
-			ExpectedErrMsg: "CSR is missing Order domain \"foobar.com\"",
+			ExpectedErrMsg: "CSR does not specify same identifiers as Order",
 		},
 		{
 			Name: "CSR with policy forbidden name",
@@ -2973,7 +2978,7 @@ func TestFinalizeOrder(t *testing.T) {
 				},
 				Csr: twoDomainCSR,
 			},
-			ExpectedErrMsg: "authorizations for these names not found or expired: a.com, b.com",
+			ExpectedErrMsg: "authorizations for these identifiers not found: a.com, b.com",
 		},
 		{
 			Name: "Order with correct authorizations, ready status",

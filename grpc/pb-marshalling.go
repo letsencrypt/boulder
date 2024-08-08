@@ -421,14 +421,26 @@ func PBToCertStatus(pb *corepb.CertificateStatus) core.CertificateStatus {
 
 // PBToAuthzMap converts a protobuf map of domains mapped to protobuf authorizations to a
 // golang map[string]*core.Authorization.
-func PBToAuthzMap(pb *sapb.Authorizations) (map[string]*core.Authorization, error) {
-	m := make(map[string]*core.Authorization, len(pb.Authz))
-	for _, v := range pb.Authz {
-		authz, err := PBToAuthz(v.Authz)
-		if err != nil {
-			return nil, err
+func PBToAuthzMap(pb *sapb.Authorizations) (map[identifier.ACMEIdentifier]*core.Authorization, error) {
+	m := make(map[identifier.ACMEIdentifier]*core.Authorization, len(pb.Authz))
+	if len(pb.Authzs) != 0 {
+		// Prefer the new field, if it is populated.
+		for _, v := range pb.Authzs {
+			authz, err := PBToAuthz(v)
+			if err != nil {
+				return nil, err
+			}
+			m[authz.Identifier] = &authz
 		}
-		m[v.Domain] = &authz
+	} else {
+		// Fall back to the old field, if necessary.
+		for _, v := range pb.Authz {
+			authz, err := PBToAuthz(v.Authz)
+			if err != nil {
+				return nil, err
+			}
+			m[authz.Identifier] = &authz
+		}
 	}
 	return m, nil
 }

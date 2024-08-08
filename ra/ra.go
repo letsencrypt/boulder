@@ -783,9 +783,10 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 // will be of type BoulderError.
 func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	ctx context.Context,
-	names []string,
+	orderID orderID,
 	acctID accountID,
-	orderID orderID) (map[string]*core.Authorization, error) {
+	names []string,
+	now time.Time) (map[identifier.ACMEIdentifier]*core.Authorization, error) {
 	// Get all of the valid authorizations for this account/order
 	req := &sapb.GetValidOrderAuthorizationsRequest{
 		Id:     int64(orderID),
@@ -800,21 +801,66 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 		return nil, err
 	}
 
-	// Ensure the names from the CSR are free of duplicates & lowercased.
-	names = core.UniqueLowerNames(names)
+	// Ensure that every identifier has a matching authz, and vice-versa.
+	var missing []string
+	var invalid []string
+	var expired []string
+	for _, name := range names {
+		// TODO(#7647): Iterate directly over identifiers here, once the rest of the
+		// finalization flow supports non-dnsName identifiers.
+		ident := identifier.DNSIdentifier(name)
 
-	// Check the authorizations to ensure validity for the names required.
-	err = ra.checkAuthorizationsCAA(ctx, int64(acctID), names, authzs, ra.clk.Now())
-	if err != nil {
-		return nil, err
-	}
-
-	// Check the challenges themselves too.
-	for _, authz := range authzs {
+		authz, ok := authzs[ident]
+		if !ok || authz == nil {
+			missing = append(missing, ident.Value)
+			continue
+		}
+		if authz.Status != core.StatusValid {
+			invalid = append(invalid, ident.Value)
+			continue
+		}
+		if authz.Expires.Before(now) {
+			expired = append(expired, ident.Value)
+			continue
+		}
 		err = ra.PA.CheckAuthz(authz)
 		if err != nil {
-			return nil, err
+			invalid = append(invalid, ident.Value)
+			continue
 		}
+	}
+
+	if len(missing) > 0 {
+		return nil, berrors.UnauthorizedError(
+			"authorizations for these identifiers not found: %s",
+			strings.Join(missing, ", "),
+		)
+	}
+
+	if len(invalid) > 0 {
+		return nil, berrors.UnauthorizedError(
+			"authorizations for these identifiers not valid: %s",
+			strings.Join(invalid, ", "),
+		)
+	}
+	if len(expired) > 0 {
+		return nil, berrors.UnauthorizedError(
+			"authorizations for these identifiers expired: %s",
+			strings.Join(expired, ", "),
+		)
+	}
+
+	// Even though this check is cheap, we do it after the more specific checks
+	// so that we can return more specific error messages.
+	if len(names) != len(authzs) {
+		return nil, berrors.UnauthorizedError("incorrect number of names requested for finalization")
+	}
+
+	// Check that the authzs either don't need CAA rechecking, or do the
+	// necessary CAA rechecks right now.
+	err = ra.checkAuthorizationsCAA(ctx, int64(acctID), authzs, now)
+	if err != nil {
+		return nil, err
 	}
 
 	return authzs, nil
@@ -833,19 +879,15 @@ func validatedBefore(authz *core.Authorization, caaRecheckTime time.Time) (bool,
 	return authz.Challenges[0].Validated.Before(caaRecheckTime), nil
 }
 
-// checkAuthorizationsCAA implements the common logic of validating a set of
-// authorizations against a set of names that is used by both
-// `checkAuthorizations` and `checkOrderAuthorizations`. If required CAA will be
-// rechecked for authorizations that are too old.
-// If it returns an error, it will be of type BoulderError.
+// checkAuthorizationsCAA ensures that we have sufficiently-recent CAA checks
+// for every input identifier/authz. If any authz was validated too long ago, it
+// kicks off a CAA recheck for that identifier If it returns an error, it will
+// be of type BoulderError.
 func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	ctx context.Context,
 	acctID int64,
-	names []string,
-	authzs map[string]*core.Authorization,
+	authzs map[identifier.ACMEIdentifier]*core.Authorization,
 	now time.Time) error {
-	// badNames contains the names that were unauthorized
-	var badNames []string
 	// recheckAuthzs is a list of authorizations that must have their CAA records rechecked
 	var recheckAuthzs []*core.Authorization
 
@@ -858,15 +900,8 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	// Set the recheck time to 7 hours ago.
 	caaRecheckAfter := now.Add(caaRecheckDuration)
 
-	for _, name := range names {
-		authz := authzs[name]
-		if authz == nil {
-			badNames = append(badNames, name)
-		} else if authz.Expires == nil {
-			return berrors.InternalServerError("found an authorization with a nil Expires field: id %s", authz.ID)
-		} else if authz.Expires.Before(now) {
-			badNames = append(badNames, name)
-		} else if staleCAA, err := validatedBefore(authz, caaRecheckAfter); err != nil {
+	for _, authz := range authzs {
+		if staleCAA, err := validatedBefore(authz, caaRecheckAfter); err != nil {
 			return berrors.InternalServerError(err.Error())
 		} else if staleCAA {
 			// Ensure that CAA is rechecked for this name
@@ -879,13 +914,6 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 		if err != nil {
 			return err
 		}
-	}
-
-	if len(badNames) > 0 {
-		return berrors.UnauthorizedError(
-			"authorizations for these names not found or expired: %s",
-			strings.Join(badNames, ", "),
-		)
 	}
 
 	caaEvent := &finalizationCAACheckEvent{
@@ -1155,16 +1183,9 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	csrNames := csrlib.NamesFromCSR(csr).SANs
 	orderNames := core.UniqueLowerNames(req.Order.Names)
 
-	// Immediately reject the request if the number of names differ
-	if len(orderNames) != len(csrNames) {
-		return nil, berrors.UnauthorizedError("Order includes different number of names than CSR specifies")
-	}
-
 	// Check that the order names and the CSR names are an exact match
-	for i, name := range orderNames {
-		if name != csrNames[i] {
-			return nil, berrors.UnauthorizedError("CSR is missing Order domain %q", name)
-		}
+	if !slices.Equal(csrNames, orderNames) {
+		return nil, berrors.UnauthorizedError(("CSR does not specify same identifiers as Order"))
 	}
 
 	// Get the originating account for use in the next check.
@@ -1183,9 +1204,10 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		return nil, berrors.MalformedError("certificate public key must be different than account key")
 	}
 
-	// Double-check that all authorizations on this order are also associated with
-	// the same account as the order itself.
-	authzs, err := ra.checkOrderAuthorizations(ctx, csrNames, accountID(req.Order.RegistrationID), orderID(req.Order.Id))
+	// Double-check that all authorizations on this order are valid, are also
+	// associated with the same account as the order itself, and have recent CAA.
+	authzs, err := ra.checkOrderAuthorizations(
+		ctx, orderID(req.Order.Id), accountID(req.Order.RegistrationID), csrNames, ra.clk.Now())
 	if err != nil {
 		// Pass through the error without wrapping it because the called functions
 		// return BoulderError and we don't want to lose the type.
@@ -1195,11 +1217,11 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// Collect up a certificateRequestAuthz that stores the ID and challenge type
 	// of each of the valid authorizations we used for this issuance.
 	logEventAuthzs := make(map[string]certificateRequestAuthz, len(csrNames))
-	for name, authz := range authzs {
+	for _, authz := range authzs {
 		// No need to check for error here because we know this same call just
 		// succeeded inside ra.checkOrderAuthorizations
 		solvedByChallengeType, _ := authz.SolvedBy()
-		logEventAuthzs[name] = certificateRequestAuthz{
+		logEventAuthzs[authz.Identifier.Value] = certificateRequestAuthz{
 			ID:            authz.ID,
 			ChallengeType: solvedByChallengeType,
 		}

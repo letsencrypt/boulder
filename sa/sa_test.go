@@ -3034,18 +3034,6 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 		})
 	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
 	test.AssertEquals(t, len(authzMap.Authz), 0)
-
-	// Getting the order authorizations for an order that does exist, but for the
-	// wrong acct ID should return nothing
-	wrongAcctID := int64(0xDEADDA7ABA5E)
-	authzMap, err = sa.GetValidOrderAuthorizations2(
-		context.Background(),
-		&sapb.GetValidOrderAuthorizationsRequest{
-			Id:     order.Id,
-			AcctID: wrongAcctID,
-		})
-	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
-	test.AssertEquals(t, len(authzMap.Authz), 0)
 }
 
 func TestCountInvalidAuthorizations2(t *testing.T) {

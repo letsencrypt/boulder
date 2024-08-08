@@ -122,14 +122,6 @@ message GetValidAuthorizationsRequest {
   google.protobuf.Timestamp validUntil = 4;
 }
 
-message ValidAuthorizations {
-  message MapElement {
-          string domain = 1;
-          core.Authorization authz = 2;
-  }
-  repeated MapElement valid = 1;
-}
-
 message Serial {
   string serial = 1;
 }
@@ -313,7 +305,8 @@ message Authorizations {
           string domain = 1;
           core.Authorization authz = 2;
   }
-  repeated MapElement authz = 1;
+  repeated MapElement authz = 1; // Deprecated, use authzs instead.
+  repeated core.Authorization authzs = 2;
 }
 
 message AuthorizationIDs {

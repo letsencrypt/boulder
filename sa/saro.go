@@ -774,6 +774,8 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 		if err != nil {
 			return nil, err
 		}
+		resp.Authzs = append(resp.Authzs, authzPB)
+		// TODO(#7646): Stop populating the .Authzs field once it is no longer used.
 		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: k, Authz: authzPB})
 	}
 	return resp, nil
@@ -861,10 +863,17 @@ func (ssa *SQLStorageAuthorityRO) CountPendingAuthorizations2(ctx context.Contex
 	return &sapb.Count{Count: count}, nil
 }
 
-// GetValidOrderAuthorizations2 is used to find the valid, unexpired authorizations
-// associated with a specific order and account ID.
+// GetValidOrderAuthorizations2 is used to get all authorizations
+// associated with the given Order ID.
+// NOTE: The name is outdated. It does *not* filter out invalid or expired
+// authorizations; that it left to the caller. It also ignores the RegID field
+// of the input: ensuring that the returned authorizations match the same RegID
+// as the Order is also left to the caller. This is because the caller is
+// generally in a better position to provide insightful error messages, whereas
+// simply omitting an authz from this method's response would leave the caller
+// wondering why that authz was omitted.
 func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Context, req *sapb.GetValidOrderAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if req.AcctID == 0 || req.Id == 0 {
+	if core.IsAnyNilOrZero(req.Id) {
 		return nil, errIncompleteRequest
 	}
 
@@ -884,16 +893,10 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 		&ams,
 		fmt.Sprintf(`SELECT %s FROM authz2
 			LEFT JOIN orderToAuthz2 ON authz2.ID = orderToAuthz2.authzID
-			WHERE authz2.registrationID = :regID AND
-			authz2.expires > :expires AND
-			authz2.status = :status AND
-			orderToAuthz2.orderID = :orderID`,
+			WHERE orderToAuthz2.orderID = :orderID`,
 			strings.Join(qualifiedAuthzFields, " "),
 		),
 		map[string]interface{}{
-			"regID":   req.AcctID,
-			"expires": ssa.clk.Now(),
-			"status":  statusUint(core.StatusValid),
 			"orderID": req.Id,
 		},
 	)
@@ -901,15 +904,18 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 		return nil, err
 	}
 
+	// TODO(#7646): Stop constructing this map, as it's not forward-compatible with
+	// other identifier types, and is an inefficient wire format.
 	byName := make(map[string]authzModel)
 	for _, am := range ams {
 		if uintToIdentifierType[am.IdentifierType] != string(identifier.DNS) {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %d", am.IdentifierType, am.ID)
 		}
-		existing, present := byName[am.IdentifierValue]
-		if !present || am.Expires.After(existing.Expires) {
-			byName[am.IdentifierValue] = am
+		_, present := byName[am.IdentifierValue]
+		if present {
+			return nil, fmt.Errorf("identifier %q appears twice in authzs for order %d", am.IdentifierValue, req.Id)
 		}
+		byName[am.IdentifierValue] = am
 	}
 
 	return authzModelMapToPB(byName)
