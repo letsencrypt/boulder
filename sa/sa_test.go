@@ -1258,20 +1258,22 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 			V2Authorizations: []int64{1, 2},
 		},
 		// And add new authorizations for the other two names.
-		NewAuthzs: []*corepb.Authorization{
+		NewAuthzs: []*sapb.NewAuthzRequest{
 			{
-				Identifier:     "c.com",
+				Identifier:     &sapb.Identifier{Type: "dns", Value: "c.com"},
 				RegistrationID: reg.Id,
 				Expires:        timestamppb.New(nowC),
 				Status:         "pending",
-				Challenges:     []*corepb.Challenge{{Token: core.NewToken()}},
+				ChallengeTypes: []string{string(core.ChallengeTypeHTTP01)},
+				Token:          core.NewToken(),
 			},
 			{
-				Identifier:     "d.com",
+				Identifier:     &sapb.Identifier{Type: "dns", Value: "d.com"},
 				RegistrationID: reg.Id,
 				Expires:        timestamppb.New(nowD),
 				Status:         "pending",
-				Challenges:     []*corepb.Challenge{{Token: core.NewToken()}},
+				ChallengeTypes: []string{string(core.ChallengeTypeHTTP01)},
+				Token:          core.NewToken(),
 			},
 		},
 	})
@@ -1302,13 +1304,13 @@ func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
 
 	expires := fc.Now().Add(2 * time.Hour)
 	_, err = sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewAuthzs: []*corepb.Authorization{
+		NewAuthzs: []*sapb.NewAuthzRequest{
 			{
-				Identifier:     "a.com",
+				Identifier:     &sapb.Identifier{Type: "dns", Value: "c.com"},
 				RegistrationID: reg.Id,
 				Expires:        timestamppb.New(expires),
-				Status:         "pending",
-				Challenges:     []*corepb.Challenge{{Token: core.NewToken()}},
+				ChallengeTypes: []string{string(core.ChallengeTypeDNS01)},
+				Token:          core.NewToken(),
 			},
 		},
 	})
@@ -1334,14 +1336,14 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	// Create an authz that does not yet exist in the database with some invalid
 	// data smuggled in.
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewAuthzs: []*corepb.Authorization{
+		NewAuthzs: []*sapb.NewAuthzRequest{
 			{
-				Identifier:     domain,
-				RegistrationID: reg.Id,
-				Expires:        timestamppb.New(expires),
-				Status:         string(core.StatusPending),
+				IdentifierValue: domain,
+				RegistrationID:  reg.Id,
+				Expires:         timestamppb.New(expires),
 				Challenges: []*corepb.Challenge{
 					{
+						Type:   string(core.ChallengeTypeHTTP01),
 						Status: "real fake garbage data",
 						Token:  core.NewToken(),
 					},

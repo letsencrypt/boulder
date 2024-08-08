@@ -5310,6 +5310,16 @@ type LibraryInfo struct {
 	LibVer  *string
 }
 
+// WithLibraryName returns a valid LibraryInfo with library name only.
+func WithLibraryName(libName string) LibraryInfo {
+	return LibraryInfo{LibName: &libName}
+}
+
+// WithLibraryVersion returns a valid LibraryInfo with library version only.
+func WithLibraryVersion(libVer string) LibraryInfo {
+	return LibraryInfo{LibVer: &libVer}
+}
+
 // -------------------------------------------
 
 type InfoCmd struct {
@@ -5444,9 +5454,12 @@ func (cmd *MonitorCmd) readMonitor(rd *proto.Reader, cancel context.CancelFunc) 
 	for {
 		cmd.mu.Lock()
 		st := cmd.status
+		pk, _ := rd.Peek(1)
 		cmd.mu.Unlock()
-		if pk, _ := rd.Peek(1); len(pk) != 0 && st == monitorStatusStart {
+		if len(pk) != 0 && st == monitorStatusStart {
+			cmd.mu.Lock()
 			line, err := rd.ReadString()
+			cmd.mu.Unlock()
 			if err != nil {
 				return err
 			}

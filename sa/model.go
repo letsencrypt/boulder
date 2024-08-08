@@ -682,6 +682,46 @@ func hasMultipleNonPendingChallenges(challenges []*corepb.Challenge) bool {
 	return false
 }
 
+// newAuthzReqToModel converts an sapb.NewAuthzRequest to the authzModel storage
+// representation. It hardcodes the status to "pending" because it should be
+// impossible to create an authz in any other state.
+func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
+	if authz.Token == "" && len(authz.ChallengeTypes) == 0 {
+		// This is actually a corepb.Authorization, sent to us by a not-yet-updated
+		// RA. Use the old code-path instead.
+		// TODO(#5913): Remove this fallback.
+		return authzPBToModel(&corepb.Authorization{
+			Id:             authz.Id,
+			Identifier:     authz.IdentifierValue,
+			RegistrationID: authz.RegistrationID,
+			Status:         string(core.StatusPending),
+			Expires:        authz.Expires,
+			Challenges:     authz.Challenges,
+		})
+	}
+
+	am := &authzModel{
+		IdentifierType:  identifierTypeToUint[authz.Identifier.Type],
+		IdentifierValue: authz.Identifier.Value,
+		RegistrationID:  authz.RegistrationID,
+		Status:          statusToUint[core.StatusPending],
+		Expires:         authz.Expires.AsTime(),
+	}
+
+	for _, challType := range authz.ChallengeTypes {
+		// Set the challenge type bit in the bitmap
+		am.Challenges |= 1 << challTypeToUint[challType]
+	}
+
+	token, err := base64.RawURLEncoding.DecodeString(authz.Token)
+	if err != nil {
+		return nil, err
+	}
+	am.Token = token
+
+	return am, nil
+}
+
 // authzPBToModel converts a protobuf authorization representation to the
 // authzModel storage representation.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {

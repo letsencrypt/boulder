@@ -3,11 +3,13 @@ package redis
 import (
 	"fmt"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/redis/go-redis/extra/redisotel/v9"
+	"github.com/redis/go-redis/v9"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/redis/go-redis/v9"
 )
 
 // Config contains the configuration needed to act as a Redis client.
@@ -161,6 +163,11 @@ func NewRingFromConfig(c Config, stats prometheus.Registerer, log blog.Logger) (
 			return nil, err
 		}
 		lookup.start()
+	}
+
+	err = redisotel.InstrumentTracing(inner)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Ring{
