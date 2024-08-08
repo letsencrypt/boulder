@@ -256,9 +256,28 @@ message NewOrderRequest {
   string certificateProfileName = 7;
 }
 
+// NewAuthzRequest starts with all the same fields as corepb.Authorization,
+// because it is replacing that type in NewOrderAndAuthzsRequest, and then
+// improves from there.
+message NewAuthzRequest {
+  // Next unused field number: 13
+  string id = 1; // TODO(#5931): Remove this field
+  string identifierValue = 2; // TODO(#5931): Remove this field
+  Identifier identifier = 12;
+  int64 registrationID = 3;
+  string status = 4; // TODO(#5931): Remove this field
+  reserved 5; // Previously expiresNS
+  google.protobuf.Timestamp expires = 9;
+  repeated core.Challenge challenges = 6; // TODO(#5931): Remove this field
+  reserved 7; // previously ACMEv1 combinations
+  reserved 8; // previously v2
+  repeated string challengeTypes = 10;
+  string token = 11;
+}
+
 message NewOrderAndAuthzsRequest {
   NewOrderRequest newOrder = 1;
-  repeated core.Authorization newAuthzs = 2;
+  repeated NewAuthzRequest newAuthzs = 2;
 }
 
 message SetOrderErrorRequest {

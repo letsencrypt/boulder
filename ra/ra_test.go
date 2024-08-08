@@ -72,40 +72,28 @@ import (
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
 	t.Helper()
 
-	authz := core.Authorization{
-		Identifier:     identifier.DNSIdentifier(domain),
-		RegistrationID: Registration.Id,
-		Status:         "pending",
-		Expires:        &exp,
-		Challenges: []core.Challenge{
-			{
-				Token:  core.NewToken(),
-				Type:   core.ChallengeTypeHTTP01,
-				Status: core.StatusPending,
+	res, err := sa.NewOrderAndAuthzs(
+		context.Background(),
+		&sapb.NewOrderAndAuthzsRequest{
+			NewOrder: &sapb.NewOrderRequest{
+				RegistrationID: Registration.Id,
+				Expires:        timestamppb.New(exp),
+				Names:          []string{domain},
 			},
-			{
-				Token:  core.NewToken(),
-				Type:   core.ChallengeTypeDNS01,
-				Status: core.StatusPending,
-			},
-			{
-				Token:  core.NewToken(),
-				Type:   core.ChallengeTypeTLSALPN01,
-				Status: core.StatusPending,
+			NewAuthzs: []*sapb.NewAuthzRequest{
+				{
+					Identifier:     &sapb.Identifier{Type: string(core.ChallengeTypeDNS01), Value: domain},
+					RegistrationID: Registration.Id,
+					Expires:        timestamppb.New(exp),
+					ChallengeTypes: []string{
+						string(core.ChallengeTypeHTTP01),
+						string(core.ChallengeTypeDNS01),
+						string(core.ChallengeTypeTLSALPN01)},
+					Token: core.NewToken(),
+				},
 			},
 		},
-	}
-	authzPB, err := bgrpc.AuthzToPB(authz)
-	test.AssertNotError(t, err, "AuthzToPB failed")
-
-	res, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID: Registration.Id,
-			Expires:        timestamppb.New(exp),
-			Names:          []string{domain},
-		},
-		NewAuthzs: []*corepb.Authorization{authzPB},
-	})
+	)
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
 
 	return getAuthorization(t, fmt.Sprint(res.V2Authorizations[0]), sa)
