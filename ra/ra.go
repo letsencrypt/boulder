@@ -2121,8 +2121,8 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		// authorizations for all names in the cert.
 		logEvent.Method = "control"
 
-		var authzMapPB *sapb.Authorizations
-		authzMapPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+		var authzPB *sapb.Authorizations
+		authzPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
 			Domains:        cert.DNSNames,
 			ValidUntil:     timestamppb.New(ra.clk.Now()),
@@ -2131,12 +2131,15 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 			return nil, err
 		}
 
-		m := make(map[string]struct{})
-		for _, authz := range authzMapPB.Authz {
-			m[authz.Domain] = struct{}{}
+		var authzMap map[identifier.ACMEIdentifier]*core.Authorization
+		authzMap, err = bgrpc.PBToAuthzMap(authzPB)
+		if err != nil {
+			return nil, err
 		}
+
+		// TODO(#7647): Support other kinds of SANs/identifiers here.
 		for _, name := range cert.DNSNames {
-			if _, present := m[name]; !present {
+			if _, present := authzMap[identifier.DNSIdentifier(name)]; !present {
 				return nil, berrors.UnauthorizedError("requester does not control all names in cert with serial %q", serialString)
 			}
 		}
@@ -2561,59 +2564,59 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	// Collect up the authorizations we found into a map keyed by the domains the
-	// authorizations correspond to
-	nameToExistingAuthz := make(map[string]*corepb.Authorization, len(newOrder.Names))
-	for _, v := range existingAuthz.Authz {
-		nameToExistingAuthz[v.Domain] = v.Authz
+	identToExistingAuthz, err := bgrpc.PBToAuthzMap(existingAuthz)
+	if err != nil {
+		return nil, err
 	}
 
 	// For each of the names in the order, if there is an acceptable
 	// existing authz, append it to the order to reuse it. Otherwise track
 	// that there is a missing authz for that name.
-	var missingAuthzNames []string
+	// TODO(#7647): Support non-dnsName identifier types here.
+	var missingAuthzIdents []identifier.ACMEIdentifier
 	for _, name := range newOrder.Names {
+		ident := identifier.DNSIdentifier(name)
 		// If there isn't an existing authz, note that its missing and continue
-		if _, exists := nameToExistingAuthz[name]; !exists {
-			missingAuthzNames = append(missingAuthzNames, name)
+		authz, exists := identToExistingAuthz[ident]
+		if !exists {
+			missingAuthzIdents = append(missingAuthzIdents, ident)
 			continue
 		}
-		authz := nameToExistingAuthz[name]
-		authzAge := (ra.authorizationLifetime - authz.Expires.AsTime().Sub(ra.clk.Now())).Seconds()
+		authzAge := (ra.authorizationLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		// If the identifier is a wildcard and the existing authz only has one
 		// DNS-01 type challenge we can reuse it. In theory we will
 		// never get back an authorization for a domain with a wildcard prefix
 		// that doesn't meet this criteria from SA.GetAuthorizations but we verify
 		// again to be safe.
 		if strings.HasPrefix(name, "*.") &&
-			len(authz.Challenges) == 1 && core.AcmeChallenge(authz.Challenges[0].Type) == core.ChallengeTypeDNS01 {
-			authzID, err := strconv.ParseInt(authz.Id, 10, 64)
+			len(authz.Challenges) == 1 && authz.Challenges[0].Type == core.ChallengeTypeDNS01 {
+			authzID, err := strconv.ParseInt(authz.ID, 10, 64)
 			if err != nil {
 				return nil, err
 			}
 			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
-			ra.authzAges.WithLabelValues("NewOrder", authz.Status).Observe(authzAge)
+			ra.authzAges.WithLabelValues("NewOrder", string(authz.Status)).Observe(authzAge)
 			continue
 		} else if !strings.HasPrefix(name, "*.") {
 			// If the identifier isn't a wildcard, we can reuse any authz
-			authzID, err := strconv.ParseInt(authz.Id, 10, 64)
+			authzID, err := strconv.ParseInt(authz.ID, 10, 64)
 			if err != nil {
 				return nil, err
 			}
 			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
-			ra.authzAges.WithLabelValues("NewOrder", authz.Status).Observe(authzAge)
+			ra.authzAges.WithLabelValues("NewOrder", string(authz.Status)).Observe(authzAge)
 			continue
 		}
 
-		// Delete the authz from the nameToExistingAuthz map since we are not reusing it.
-		delete(nameToExistingAuthz, name)
+		// Delete the authz from the identToExistingAuthz map since we are not reusing it.
+		delete(identToExistingAuthz, ident)
 		// If we reached this point then the existing authz was not acceptable for
 		// reuse and we need to mark the name as requiring a new pending authz
-		missingAuthzNames = append(missingAuthzNames, name)
+		missingAuthzIdents = append(missingAuthzIdents, ident)
 	}
 
 	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-	if len(missingAuthzNames) > 0 && !req.IsARIRenewal {
+	if len(missingAuthzIdents) > 0 && !req.IsARIRenewal {
 		pendingAuthzLimits := ra.rlPolicies.PendingAuthorizationsPerAccount()
 		if pendingAuthzLimits.Enabled() {
 			// The order isn't fully authorized we need to check that the client
@@ -2634,10 +2637,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Loop through each of the names missing authzs and create a new pending
 	// authorization for each.
 	var newAuthzs []*sapb.NewAuthzRequest
-	for _, name := range missingAuthzNames {
+	for _, ident := range missingAuthzIdents {
 		pb, err := ra.createPendingAuthz(newOrder.RegistrationID, identifier.ACMEIdentifier{
-			Type:  identifier.DNS,
-			Value: name,
+			Type:  ident.Type,
+			Value: ident.Value,
 		})
 		if err != nil {
 			return nil, err
@@ -2652,18 +2655,17 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	// Check the reused authorizations to see if any have an expiry before the
 	// minExpiry (the order's lifetime)
-	for _, authz := range nameToExistingAuthz {
+	for _, authz := range identToExistingAuthz {
 		// An authz without an expiry is an unexpected internal server event
 		if core.IsAnyNilOrZero(authz.Expires) {
 			return nil, berrors.InternalServerError(
 				"SA.GetAuthorizations returned an authz (%s) with zero expiry",
-				authz.Id)
+				authz.ID)
 		}
 		// If the reused authorization expires before the minExpiry, it's expiry
 		// is the new minExpiry.
-		authzExpiry := authz.Expires.AsTime()
-		if authzExpiry.Before(minExpiry) {
-			minExpiry = authzExpiry
+		if authz.Expires.Before(minExpiry) {
+			minExpiry = *authz.Expires
 		}
 	}
 	// If the newly created pending authz's have an expiry closer than the
