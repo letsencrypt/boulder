@@ -10,6 +10,8 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/letsencrypt/boulder/config"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -454,6 +456,136 @@ func TestLimiter_RefundAndReset(t *testing.T) {
 			newDecision, err := l.Refund(testCtx, checkOnlyTxn1)
 			test.AssertNotError(t, err, "should not error")
 			test.AssertEquals(t, newDecision.newTAT, expectedDecision.newTAT)
+		})
+	}
+}
+
+func TestRateLimitError(t *testing.T) {
+	t.Parallel()
+	clk := clock.NewFake()
+
+	testCases := []struct {
+		name            string
+		decision        *Decision
+		expectedErr     string
+		expectedErrType berrors.ErrorType
+	}{
+		{
+			name: "Allowed decision",
+			decision: &Decision{
+				Allowed: true,
+			},
+		},
+		{
+			name: "RegistrationsPerIP limit reached",
+			decision: &Decision{
+				Allowed: false,
+				RetryIn: 5 * time.Second,
+				transaction: Transaction{
+					limit: limit{
+						name:   NewRegistrationsPerIPAddress,
+						Burst:  10,
+						Period: config.Duration{Duration: time.Hour},
+					},
+				},
+			},
+			expectedErr:     "too many new registrations (10) from this IP address in the last 1h0m0s, retry after 1970-01-01T00:00:05Z",
+			expectedErrType: berrors.RateLimit,
+		},
+		{
+			name: "RegistrationsPerIPv6Range limit reached",
+			decision: &Decision{
+				Allowed: false,
+				RetryIn: 10 * time.Second,
+				transaction: Transaction{
+					limit: limit{
+						name:   NewRegistrationsPerIPv6Range,
+						Burst:  5,
+						Period: config.Duration{Duration: time.Hour},
+					},
+				},
+			},
+			expectedErr:     "too many new registrations (5) from this /48 block of IPv6 addresses in the last 1h0m0s, retry after 1970-01-01T00:00:10Z",
+			expectedErrType: berrors.RateLimit,
+		},
+		{
+			name: "FailedAuthorizationsPerDomainPerAccount limit reached",
+			decision: &Decision{
+				Allowed: false,
+				RetryIn: 15 * time.Second,
+				transaction: Transaction{
+					limit: limit{
+						name:   FailedAuthorizationsPerDomainPerAccount,
+						Burst:  7,
+						Period: config.Duration{Duration: time.Hour},
+					},
+					bucketKey: "4:12345:example.com",
+				},
+			},
+			expectedErr:     "too many failed authorizations (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01T00:00:15Z",
+			expectedErrType: berrors.RateLimit,
+		},
+		{
+			name: "CertificatesPerDomain limit reached",
+			decision: &Decision{
+				Allowed: false,
+				RetryIn: 20 * time.Second,
+				transaction: Transaction{
+					limit: limit{
+						name:   CertificatesPerDomain,
+						Burst:  3,
+						Period: config.Duration{Duration: time.Hour},
+					},
+					bucketKey: "5:example.org",
+				},
+			},
+			expectedErr:     "too many certificates (3) already issued for \"example.org\" in the last 1h0m0s, retry after 1970-01-01T00:00:20Z",
+			expectedErrType: berrors.RateLimit,
+		},
+		{
+			name: "CertificatesPerDomainPerAccount limit reached",
+			decision: &Decision{
+				Allowed: false,
+				RetryIn: 20 * time.Second,
+				transaction: Transaction{
+					limit: limit{
+						name:   CertificatesPerDomainPerAccount,
+						Burst:  3,
+						Period: config.Duration{Duration: time.Hour},
+					},
+					bucketKey: "6:12345678:example.net",
+				},
+			},
+			expectedErr:     "too many certificates (3) already issued for \"example.net\" in the last 1h0m0s, retry after 1970-01-01T00:00:20Z",
+			expectedErrType: berrors.RateLimit,
+		},
+		{
+			name: "Unknown rate limit name",
+			decision: &Decision{
+				Allowed: false,
+				RetryIn: 30 * time.Second,
+				transaction: Transaction{
+					limit: limit{
+						name: 9999999,
+					},
+				},
+			},
+			expectedErr:     "cannot generate error for unknown rate limit",
+			expectedErrType: berrors.InternalServer,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := tc.decision.RateLimitError(clk)
+			if tc.expectedErr == "" {
+				test.AssertNotError(t, err, "expected no error")
+			} else {
+				test.AssertError(t, err, "expected an error")
+				test.AssertContains(t, err.Error(), tc.expectedErr)
+				test.AssertErrorIs(t, err, tc.expectedErrType)
+			}
 		})
 	}
 }
