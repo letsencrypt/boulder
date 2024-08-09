@@ -92,7 +92,6 @@ func createValidationRequest(domain string, challengeType core.AcmeChallenge) *v
 			Status:            string(core.StatusPending),
 			Token:             expectedToken,
 			Validationrecords: nil,
-			KeyAuthorization:  expectedKeyAuthorization,
 		},
 		Authz: &vapb.AuthzMeta{
 			Id:    "",

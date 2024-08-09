@@ -83,7 +83,6 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		Type:              string(challenge.Type),
 		Status:            string(challenge.Status),
 		Token:             challenge.Token,
-		KeyAuthorization:  challenge.ProvidedKeyAuthorization,
 		Error:             prob,
 		Validationrecords: recordAry,
 		Validated:         validated,
@@ -123,9 +122,6 @@ func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		Error:            prob,
 		ValidationRecord: recordAry,
 		Validated:        validated,
-	}
-	if in.KeyAuthorization != "" {
-		ch.ProvidedKeyAuthorization = in.KeyAuthorization
 	}
 	return ch, nil
 }

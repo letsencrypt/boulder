@@ -631,8 +631,7 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 // The returned result will always contain a list of validation records, even
 // when it also contains a problem.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	// TODO(#7514): Add req.ExpectedKeyAuthorization to this check
-	if core.IsAnyNilOrZero(req, req.Domain, req.Challenge, req.Authz) {
+	if core.IsAnyNilOrZero(req, req.Domain, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
@@ -644,15 +643,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	err = challenge.CheckPending()
 	if err != nil {
 		return nil, berrors.MalformedError("challenge failed consistency check: %s", err)
-	}
-
-	// TODO(#7514): Remove this fallback and belt-and-suspenders check.
-	keyAuthorization := req.ExpectedKeyAuthorization
-	if len(keyAuthorization) == 0 {
-		keyAuthorization = req.Challenge.KeyAuthorization
-	}
-	if len(keyAuthorization) == 0 {
-		return nil, errors.New("no expected keyAuthorization provided")
 	}
 
 	// Set up variables and a deferred closure to report validation latency
@@ -703,7 +693,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		req.Authz.RegID,
 		challenge.Type,
 		challenge.Token,
-		keyAuthorization)
+		req.ExpectedKeyAuthorization)
 	localLatency = time.Since(vStart)
 
 	// Check for malformed ValidationRecords
