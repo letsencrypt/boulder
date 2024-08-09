@@ -6,14 +6,15 @@ package semaphore_test
 
 import (
 	"context"
-	"math/rand"
+	"math/rand/v2"
 	"runtime"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/semaphore"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/letsencrypt/boulder/semaphore"
 )
 
 const maxSleep = 1 * time.Millisecond
@@ -21,7 +22,7 @@ const maxSleep = 1 * time.Millisecond
 func HammerWeighted(sem *semaphore.Weighted, n int64, loops int) {
 	for i := 0; i < loops; i++ {
 		_ = sem.Acquire(context.Background(), n)
-		time.Sleep(time.Duration(rand.Int63n(int64(maxSleep/time.Nanosecond))) * time.Nanosecond)
+		time.Sleep(time.Duration(rand.Int64N(int64(maxSleep/time.Nanosecond))) * time.Nanosecond)
 		sem.Release(n)
 	}
 }
