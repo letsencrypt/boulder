@@ -1902,8 +1902,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.InternalServerError("could not compute expected key authorization value")
 	}
 
-	ch.ProvidedKeyAuthorization = expectedKeyAuthorization
-
 	// Double check before sending to VA
 	if cErr := ch.CheckPending(); cErr != nil {
 		return nil, berrors.MalformedError(cErr.Error())
