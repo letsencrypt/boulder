@@ -5,8 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"slices"
+	"strings"
 	"time"
+
+	berrors "github.com/letsencrypt/boulder/errors"
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
@@ -83,6 +87,96 @@ type Decision struct {
 	// theoretical arrival time (TAT) of next request. It must be no more than
 	// (burst * (period / count)) in the future at any single point in time.
 	newTAT time.Time
+
+	// transaction is the Transaction that resulted in this Decision. It is
+	// included for the production of verbose Subscriber-facing errors. It is
+	// set by the Limiter before returning the Decision.
+	transaction Transaction
+}
+
+// RateLimitError returns a verbose Subscriber-facing error for denied
+// *Decisions. If the *Decision is allowed, it returns nil.
+func (d *Decision) RateLimitError(clk clock.Clock) error {
+	if d.Allowed {
+		return nil
+	}
+
+	// Add 0-3% jitter to the RetryIn duration to prevent thundering herd.
+	jitter := time.Duration(float64(d.RetryIn) * 0.03 * rand.Float64())
+	retryAfter := d.RetryIn + jitter
+	retryAfterTs := clk.Now().Add(retryAfter).Format(time.RFC3339)
+
+	switch d.transaction.limit.name {
+	case NewRegistrationsPerIPAddress:
+		return berrors.RegistrationsPerIPError(
+			retryAfter,
+			"too many new registrations (%d) from this IP address in the last %s, retry after %s",
+			d.transaction.limit.Burst,
+			d.transaction.limit.Period.Duration,
+			retryAfterTs,
+		)
+
+	case NewRegistrationsPerIPv6Range:
+		return berrors.RateLimitError(
+			retryAfter,
+			"too many new registrations (%d) from this /48 block of IPv6 addresses in the last %s, retry after %s",
+			d.transaction.limit.Burst,
+			d.transaction.limit.Period.Duration,
+			retryAfterTs,
+		)
+	case NewOrdersPerAccount:
+		return berrors.RateLimitError(
+			retryAfter,
+			"too many new orders (%d) from this account in the last %s, retry after %s",
+			d.transaction.limit.Burst,
+			d.transaction.limit.Period.Duration,
+			retryAfterTs,
+		)
+
+	case FailedAuthorizationsPerDomainPerAccount:
+		// Uses bucket key 'enum:regId:domain'.
+		idx := strings.LastIndex(d.transaction.bucketKey, ":")
+		if idx == -1 {
+			return berrors.InternalServerError("empty bucket key while generating error")
+		}
+		domain := d.transaction.bucketKey[idx+1:]
+		return berrors.FailedValidationError(
+			retryAfter,
+			"too many failed authorizations (%d) for %q in the last %s, retry after %s",
+			d.transaction.limit.Burst,
+			domain,
+			d.transaction.limit.Period.Duration,
+			retryAfterTs,
+		)
+
+	case CertificatesPerDomain, CertificatesPerDomainPerAccount:
+		// Uses bucket key 'enum:domain' or 'enum:regId:domain' respectively.
+		idx := strings.LastIndex(d.transaction.bucketKey, ":")
+		if idx == -1 {
+			return berrors.InternalServerError("empty bucket key while generating error")
+		}
+		domain := d.transaction.bucketKey[idx+1:]
+		return berrors.RateLimitError(
+			retryAfter,
+			"too many certificates (%d) already issued for %q in the last %s, retry after %s",
+			d.transaction.limit.Burst,
+			domain,
+			d.transaction.limit.Period.Duration,
+			retryAfterTs,
+		)
+
+	case CertificatesPerFQDNSet:
+		return berrors.DuplicateCertificateError(
+			retryAfter,
+			"too many certificates (%d) already issued for this exact set of domains in the last %s, retry after %s",
+			d.transaction.limit.Burst,
+			d.transaction.limit.Period.Duration,
+			retryAfterTs,
+		)
+
+	default:
+		return berrors.InternalServerError("cannot generate error for unknown rate limit")
+	}
 }
 
 // Check DOES NOT deduct the cost of the request from the provided bucket's
@@ -105,9 +199,13 @@ func (l *Limiter) Check(ctx context.Context, txn Transaction) (*Decision, error)
 		// First request from this client. No need to initialize the bucket
 		// because this is a check, not a spend. A TAT of "now" is equivalent to
 		// a full bucket.
-		return maybeSpend(l.clk, txn.limit, l.clk.Now(), txn.cost), nil
+		d := maybeSpend(l.clk, txn.limit, l.clk.Now(), txn.cost)
+		d.transaction = txn
+		return d, nil
 	}
-	return maybeSpend(l.clk, txn.limit, tat, txn.cost), nil
+	d := maybeSpend(l.clk, txn.limit, tat, txn.cost)
+	d.transaction = txn
+	return d, nil
 }
 
 // Spend attempts to deduct the cost from the provided bucket's capacity. The
@@ -153,10 +251,11 @@ func newBatchDecision() *batchDecision {
 func (d *batchDecision) merge(in *Decision) {
 	d.Allowed = d.Allowed && in.Allowed
 	d.Remaining = min(d.Remaining, in.Remaining)
-	d.RetryIn = max(d.RetryIn, in.RetryIn)
 	d.ResetIn = max(d.ResetIn, in.ResetIn)
 	if in.newTAT.After(d.newTAT) {
 		d.newTAT = in.newTAT
+		d.RetryIn = in.RetryIn
+		d.transaction = in.transaction
 	}
 }
 
@@ -201,6 +300,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		}
 
 		d := maybeSpend(l.clk, txn.limit, tat, txn.cost)
+		d.transaction = txn
 
 		if txn.limit.isOverride() {
 			utilization := float64(txn.limit.Burst-d.Remaining) / float64(txn.limit.Burst)
@@ -297,6 +397,7 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 			cost = txn.cost
 		}
 		d := maybeRefund(l.clk, txn.limit, tat, cost)
+		d.transaction = txn
 		batchDecision.merge(d)
 		if d.Allowed && tat != d.newTAT {
 			// New bucket state should be persisted.
