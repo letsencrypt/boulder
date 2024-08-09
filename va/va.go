@@ -632,7 +632,7 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 // when it also contains a problem.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
 	// TODO(#7514): Add req.ExpectedKeyAuthorization to this check
-	if core.IsAnyNilOrZero(req, req.Domain, req.Challenge, req.Authz) {
+	if core.IsAnyNilOrZero(req, req.DnsName, req.Challenge, req.Authz) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
@@ -664,7 +664,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	logEvent := verificationRequestEvent{
 		ID:        req.Authz.Id,
 		Requester: req.Authz.RegID,
-		Hostname:  req.Domain,
+		Hostname:  req.DnsName,
 		Challenge: challenge,
 	}
 	defer func() {
@@ -699,7 +699,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// was successful or not, and cannot themselves fail.
 	records, err := va.performLocalValidation(
 		ctx,
-		identifier.DNSIdentifier(req.Domain),
+		identifier.DNSIdentifier(req.DnsName),
 		req.Authz.RegID,
 		challenge.Type,
 		challenge.Token,

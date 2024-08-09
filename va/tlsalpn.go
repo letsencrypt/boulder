@@ -64,7 +64,7 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 
 	allAddrs, resolvers, err := va.getAddrs(ctx, identifier.Value)
 	validationRecord := core.ValidationRecord{
-		Hostname:          identifier.Value,
+		DnsName:           identifier.Value,
 		AddressesResolved: allAddrs,
 		Port:              strconv.Itoa(va.tlsPort),
 		ResolverAddrs:     resolvers,
@@ -103,11 +103,11 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 	// an error - there's nothing left to try
 	if len(v4) == 0 && len(validationRecord.AddressesTried) > 0 {
 		return nil, nil, validationRecord, berrors.MalformedError("Unable to contact %q at %q, no IPv4 addresses to try as fallback",
-			validationRecord.Hostname, validationRecord.AddressesTried[0])
+			validationRecord.DnsName, validationRecord.AddressesTried[0])
 	} else if len(v4) == 0 && len(validationRecord.AddressesTried) == 0 {
 		// It shouldn't be possible that there are no IPv4 addresses and no previous
 		// attempts at an IPv6 address connection but be defensive about it anyway
-		return nil, nil, validationRecord, berrors.MalformedError("No IP addresses found for %q", validationRecord.Hostname)
+		return nil, nil, validationRecord, berrors.MalformedError("No IP addresses found for %q", validationRecord.DnsName)
 	}
 
 	// Otherwise if there are no IPv6 addresses, or there was an error

@@ -73,7 +73,7 @@ func TestChallenge(t *testing.T) {
 	ip := net.ParseIP("1.1.1.1")
 	chall.ValidationRecord = []core.ValidationRecord{
 		{
-			Hostname:          "example.com",
+			DnsName:           "example.com",
 			Port:              "2020",
 			AddressesResolved: []net.IP{ip},
 			AddressUsed:       ip,
@@ -115,7 +115,7 @@ func TestChallenge(t *testing.T) {
 func TestValidationRecord(t *testing.T) {
 	ip := net.ParseIP("1.1.1.1")
 	vr := core.ValidationRecord{
-		Hostname:          "exampleA.com",
+		DnsName:           "exampleA.com",
 		Port:              "80",
 		AddressesResolved: []net.IP{ip},
 		AddressUsed:       ip,
@@ -136,7 +136,7 @@ func TestValidationRecord(t *testing.T) {
 func TestValidationResult(t *testing.T) {
 	ip := net.ParseIP("1.1.1.1")
 	vrA := core.ValidationRecord{
-		Hostname:          "exampleA.com",
+		DnsName:           "exampleA.com",
 		Port:              "443",
 		AddressesResolved: []net.IP{ip},
 		AddressUsed:       ip,
@@ -145,7 +145,7 @@ func TestValidationResult(t *testing.T) {
 		ResolverAddrs:     []string{"resolver:5353"},
 	}
 	vrB := core.ValidationRecord{
-		Hostname:          "exampleB.com",
+		DnsName:           "exampleB.com",
 		Port:              "443",
 		AddressesResolved: []net.IP{ip},
 		AddressUsed:       ip,
@@ -302,7 +302,7 @@ func TestOrderValid(t *testing.T) {
 				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				Names:             []string{"example.com"},
+				DnsNames:          []string{"example.com"},
 				BeganProcessing:   false,
 				Created:           timestamppb.New(created),
 			},
@@ -315,7 +315,7 @@ func TestOrderValid(t *testing.T) {
 				RegistrationID:   1,
 				Expires:          timestamppb.New(expires),
 				V2Authorizations: []int64{},
-				Names:            []string{"example.com"},
+				DnsNames:         []string{"example.com"},
 				BeganProcessing:  false,
 				Created:          timestamppb.New(created),
 			},
@@ -333,7 +333,7 @@ func TestOrderValid(t *testing.T) {
 				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				Names:             []string{"example.com"},
+				DnsNames:          []string{"example.com"},
 				BeganProcessing:   false,
 			},
 		},
@@ -345,7 +345,7 @@ func TestOrderValid(t *testing.T) {
 				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				Names:             []string{"example.com"},
+				DnsNames:          []string{"example.com"},
 				BeganProcessing:   false,
 			},
 		},
@@ -357,7 +357,7 @@ func TestOrderValid(t *testing.T) {
 				Expires:           nil,
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				Names:             []string{"example.com"},
+				DnsNames:          []string{"example.com"},
 				BeganProcessing:   false,
 			},
 		},
@@ -369,7 +369,7 @@ func TestOrderValid(t *testing.T) {
 				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				Names:             []string{},
+				DnsNames:          []string{},
 				BeganProcessing:   false,
 			},
 		},
