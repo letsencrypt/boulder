@@ -6,12 +6,12 @@
 -- rate of ~18% per year.
 
 CREATE TABLE `paused` (
-  `registrationID` bigint(20) NOT NULL,
+  `registrationID` bigint(20) UNSIGNED NOT NULL,
   `identifierType` tinyint(4) NOT NULL,
   `identifierValue` varchar(255) NOT NULL,
   `pausedAt` datetime NOT NULL,
   `unpausedAt` datetime DEFAULT NULL,
-  PRIMARY KEY (`registrationID`, `identifierType`, `identifierValue`)
+  PRIMARY KEY (`registrationID`, `identifierValue`, `identifierType`)
 );
 
 -- +migrate Down
