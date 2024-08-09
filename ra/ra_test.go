@@ -2325,8 +2325,8 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 	expires := clk.Now().Add(24 * time.Hour)
 	ra.SA = &mockInvalidPlusValidAuthzAuthority{
 		mockSAWithAuthzs: mockSAWithAuthzs{
-			authzs: map[string]*core.Authorization{
-				"example.com": {
+			authzs: []*core.Authorization{
+				{
 					ID:             "1",
 					Identifier:     identifier.DNSIdentifier("example.com"),
 					RegistrationID: Registration.Id,
@@ -2336,6 +2336,7 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 						{
 							Type:   core.ChallengeTypeHTTP01,
 							Status: core.StatusValid,
+							Token:  core.NewToken(),
 						},
 					},
 				},
@@ -2370,7 +2371,7 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 // facilitate the full execution of RA.NewOrder.
 type mockSAWithAuthzs struct {
 	sapb.StorageAuthorityClient
-	authzs map[string]*core.Authorization
+	authzs []*core.Authorization
 }
 
 // GetOrderForNames is a mock which always returns NotFound so that NewOrder
@@ -2385,12 +2386,12 @@ func (msa *mockSAWithAuthzs) GetOrderForNames(ctx context.Context, req *sapb.Get
 // situation correctly.
 func (msa *mockSAWithAuthzs) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	resp := &sapb.Authorizations{}
-	for k, v := range msa.authzs {
+	for _, v := range msa.authzs {
 		authzPB, err := bgrpc.AuthzToPB(*v)
 		if err != nil {
 			return nil, err
 		}
-		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: k, Authz: authzPB})
+		resp.Authzs = append(resp.Authzs, authzPB)
 	}
 	return resp, nil
 }
@@ -2435,8 +2436,8 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	// "zombo.com"
 	expires := time.Now()
 	ra.SA = &mockSAWithAuthzs{
-		authzs: map[string]*core.Authorization{
-			"*.zombo.com": {
+		authzs: []*core.Authorization{
+			{
 				// A static fake ID we can check for in a unit test
 				ID:             "1",
 				Identifier:     identifier.DNSIdentifier("*.zombo.com"),
@@ -2449,15 +2450,17 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 					{
 						Type:   core.ChallengeTypeHTTP01, // The dreaded HTTP-01! X__X
 						Status: core.StatusValid,
+						Token:  core.NewToken(),
 					},
 					// DNS-01 challenge is pending
 					{
 						Type:   core.ChallengeTypeDNS01,
 						Status: core.StatusPending,
+						Token:  core.NewToken(),
 					},
 				},
 			},
-			"zombo.com": {
+			{
 				// A static fake ID we can check for in a unit test
 				ID:             "2",
 				Identifier:     identifier.DNSIdentifier("zombo.com"),
@@ -2470,11 +2473,13 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 					{
 						Type:   core.ChallengeTypeHTTP01,
 						Status: core.StatusValid,
+						Token:  core.NewToken(),
 					},
 					// DNS-01 challenge is pending
 					{
 						Type:   core.ChallengeTypeDNS01,
 						Status: core.StatusPending,
+						Token:  core.NewToken(),
 					},
 				},
 			},
@@ -2678,8 +2683,8 @@ func TestNewOrderExpiry(t *testing.T) {
 	// Use a mock SA that always returns a soon-to-be-expired valid authz for
 	// "zombo.com".
 	ra.SA = &mockSAWithAuthzs{
-		authzs: map[string]*core.Authorization{
-			"zombo.com": {
+		authzs: []*core.Authorization{
+			{
 				// A static fake ID we can check for in a unit test
 				ID:             "1",
 				Identifier:     identifier.DNSIdentifier("zombo.com"),
@@ -2690,6 +2695,7 @@ func TestNewOrderExpiry(t *testing.T) {
 					{
 						Type:   core.ChallengeTypeHTTP01,
 						Status: core.StatusValid,
+						Token:  core.NewToken(),
 					},
 				},
 			},
@@ -4479,7 +4485,7 @@ func TestNewOrderFailedAuthzRateLimitingExempt(t *testing.T) {
 
 	// Mock SA that has a failed authorization for "example.com".
 	ra.SA = &mockInvalidPlusValidAuthzAuthority{
-		mockSAWithAuthzs{authzs: map[string]*core.Authorization{}},
+		mockSAWithAuthzs{authzs: []*core.Authorization{}},
 		"example.com",
 	}
 
