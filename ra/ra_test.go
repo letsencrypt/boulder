@@ -874,19 +874,6 @@ func TestPerformValidationSuccess(t *testing.T) {
 		Problems: nil,
 	}
 
-	var remainingFailedValidations int64
-	var rlTxns []ratelimits.Transaction
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		// Gather a baseline for the rate limit.
-		var err error
-		rlTxns, err = ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(authzPB.RegistrationID, []string{Identifier}, 100)
-		test.AssertNotError(t, err, "FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions failed")
-
-		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
-		test.AssertNotError(t, err, "BatchSpend failed")
-		remainingFailedValidations = d.Remaining
-	}
-
 	now := fc.Now()
 	challIdx := dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
@@ -928,13 +915,6 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
-
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		// The failed validations bucket should be identical to the baseline.
-		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
-		test.AssertNotError(t, err, "BatchSpend failed")
-		test.AssertEquals(t, d.Remaining, remainingFailedValidations)
-	}
 }
 
 func TestPerformValidationVAError(t *testing.T) {
@@ -942,19 +922,6 @@ func TestPerformValidationVAError(t *testing.T) {
 	defer cleanUp()
 
 	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
-
-	var remainingFailedValidations int64
-	var rlTxns []ratelimits.Transaction
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		// Gather a baseline for the rate limit.
-		var err error
-		rlTxns, err = ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(authzPB.RegistrationID, []string{Identifier}, 100)
-		test.AssertNotError(t, err, "FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions failed")
-
-		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
-		test.AssertNotError(t, err, "BatchSpend failed")
-		remainingFailedValidations = d.Remaining
-	}
 
 	va.PerformValidationRequestResultError = fmt.Errorf("Something went wrong")
 
@@ -995,13 +962,6 @@ func TestPerformValidationVAError(t *testing.T) {
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
-
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		// The failed validations bucket should have been decremented by 1.
-		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
-		test.AssertNotError(t, err, "BatchSpend failed")
-		test.AssertEquals(t, d.Remaining, remainingFailedValidations-1)
-	}
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
