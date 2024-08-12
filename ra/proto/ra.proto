@@ -72,7 +72,7 @@ message AdministrativelyRevokeCertificateRequest {
 message NewOrderRequest {
   // Next unused field number: 7
   int64 registrationID = 1;
-  repeated string names = 2;
+  repeated string dnsNames = 2;
   string replacesSerial = 3;
   // TODO(#7512): Remove this field.
   bool isARIRenewal = 4;

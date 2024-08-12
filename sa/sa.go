@@ -548,7 +548,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fourth, insert the FQDNSet entry for the order.
-		err = addOrderFQDNSet(ctx, tx, req.NewOrder.Names, orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
+		err = addOrderFQDNSet(ctx, tx, req.NewOrder.DnsNames, orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {
 			return nil, err
 		}
@@ -561,7 +561,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			// These are carried over from the original request unchanged.
 			RegistrationID: req.NewOrder.RegistrationID,
 			Expires:        req.NewOrder.Expires,
-			Names:          req.NewOrder.Names,
+			DnsNames:       req.NewOrder.DnsNames,
 			// Have to combine the already-associated and newly-reacted authzs.
 			V2Authorizations: append(req.NewOrder.V2Authorizations, newAuthzIDs...),
 			// A new order is never processing because it can't be finalized yet.
@@ -762,7 +762,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		if req.Attempted == string(core.ChallengeTypeHTTP01) {
 			// Remove these fields because they can be rehydrated later
 			// on from the URL field.
-			record.Hostname = ""
+			record.DnsName = ""
 			record.Port = ""
 		}
 		validationRecords = append(validationRecords, record)

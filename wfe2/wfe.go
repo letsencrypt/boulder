@@ -1117,7 +1117,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	// Ensure gRPC response is complete.
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || core.IsAnyNilOrZero(authzPB.Expires) {
+	if authzPB.Id == "" || authzPB.DnsName == "" || authzPB.Status == "" || core.IsAnyNilOrZero(authzPB.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -1315,7 +1315,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			ChallengeIndex: int64(challengeIndex),
 		})
 		// TODO(#7153): Check each value via core.IsAnyNilOrZero
-		if err != nil || authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || core.IsAnyNilOrZero(authzPB.Expires) {
+		if err != nil || authzPB == nil || authzPB.Id == "" || authzPB.DnsName == "" || authzPB.Status == "" || core.IsAnyNilOrZero(authzPB.Expires) {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
 		}
@@ -1560,13 +1560,13 @@ func (wfe *WebFrontEndImpl) Authorization(
 
 	// Ensure gRPC response is complete.
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || core.IsAnyNilOrZero(authzPB.Expires) {
+	if authzPB.Id == "" || authzPB.DnsName == "" || authzPB.Status == "" || core.IsAnyNilOrZero(authzPB.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
 
-	if identifier.IdentifierType(authzPB.Identifier) == identifier.DNS {
-		logEvent.DNSName = authzPB.Identifier
+	if identifier.IdentifierType(authzPB.DnsName) == identifier.DNS {
+		logEvent.DNSName = authzPB.DnsName
 	}
 	logEvent.Status = authzPB.Status
 
@@ -1987,8 +1987,8 @@ type orderJSON struct {
 // DNS type identifiers and additionally create absolute URLs for the finalize
 // URL and the ceritificate URL as appropriate.
 func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corepb.Order) orderJSON {
-	idents := make([]identifier.ACMEIdentifier, len(order.Names))
-	for i, name := range order.Names {
+	idents := make([]identifier.ACMEIdentifier, len(order.DnsNames))
+	for i, name := range order.DnsNames {
 		idents[i] = identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
 	}
 	finalizeURL := web.RelativeEndpoint(request,
@@ -2352,7 +2352,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		// The Subscriber does not have an ARI exemption. However, we can check
 		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount
 		// and CertificatesPerDomain limits.
-		exists, err := wfe.sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
+		exists, err := wfe.sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names})
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While checking renewal exemption status"), err)
 			return
@@ -2386,14 +2386,14 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID:         acct.ID,
-		Names:                  names,
+		DnsNames:               names,
 		ReplacesSerial:         replaces,
 		CertificateProfileName: newOrderRequest.Profile,
 		IsARIRenewal:           isARIRenewal,
 		IsRenewal:              isRenewal,
 	})
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
+	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.DnsNames) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		if errors.Is(err, berrors.RateLimit) {
 			// Request was denied by a legacy rate limit. In this error case we
@@ -2464,7 +2464,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	}
 
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if order.Id == 0 || order.Status == "" || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
+	if order.Id == 0 || order.Status == "" || order.RegistrationID == 0 || len(order.DnsNames) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2545,7 +2545,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if order.Id == 0 || order.Status == "" || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
+	if order.Id == 0 || order.Status == "" || order.RegistrationID == 0 || len(order.DnsNames) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2595,7 +2595,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	logEvent.DNSNames = order.Names
+	logEvent.DNSNames = order.DnsNames
 	logEvent.Extra["KeyType"] = web.KeyTypeToString(csr.PublicKey)
 
 	updatedOrder, err := wfe.ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
@@ -2607,7 +2607,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if updatedOrder == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.Names) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
+	if updatedOrder == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.DnsNames) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}

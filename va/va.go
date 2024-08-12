@@ -631,7 +631,7 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 // The returned result will always contain a list of validation records, even
 // when it also contains a problem.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	if core.IsAnyNilOrZero(req, req.Domain, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
+	if core.IsAnyNilOrZero(req, req.DnsName, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
@@ -654,7 +654,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	logEvent := verificationRequestEvent{
 		ID:        req.Authz.Id,
 		Requester: req.Authz.RegID,
-		Hostname:  req.Domain,
+		Hostname:  req.DnsName,
 		Challenge: challenge,
 	}
 	defer func() {
@@ -689,7 +689,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// was successful or not, and cannot themselves fail.
 	records, err := va.performLocalValidation(
 		ctx,
-		identifier.DNSIdentifier(req.Domain),
+		identifier.DNSIdentifier(req.DnsName),
 		req.Authz.RegID,
 		challenge.Type,
 		challenge.Token,

@@ -72,7 +72,7 @@ func TestAuthzModel(t *testing.T) {
 	expires := now.Add(24 * time.Hour)
 	authzPB := &corepb.Authorization{
 		Id:             "1",
-		Identifier:     "example.com",
+		DnsName:        "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
 		Expires:        timestamppb.New(expires),
@@ -118,7 +118,7 @@ func TestAuthzModel(t *testing.T) {
 	expires = now.Add(24 * time.Hour)
 	authzPB = &corepb.Authorization{
 		Id:             "1",
-		Identifier:     "example.com",
+		DnsName:        "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
 		Expires:        timestamppb.New(expires),
@@ -169,7 +169,7 @@ func TestAuthzModel(t *testing.T) {
 	expires = now.Add(24 * time.Hour)
 	authzPB = &corepb.Authorization{
 		Id:             "1",
-		Identifier:     "example.com",
+		DnsName:        "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusInvalid),
 		Expires:        timestamppb.New(expires),
@@ -210,7 +210,7 @@ func TestAuthzModel(t *testing.T) {
 	expires = now.Add(24 * time.Hour)
 	authzPB = &corepb.Authorization{
 		Id:             "1",
-		Identifier:     "example.com",
+		DnsName:        "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
 		Expires:        timestamppb.New(expires),

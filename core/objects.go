@@ -125,7 +125,7 @@ type ValidationRecord struct {
 	URL string `json:"url,omitempty"`
 
 	// Shared
-	Hostname          string   `json:"hostname,omitempty"`
+	DnsName           string   `json:"hostname,omitempty"`
 	Port              string   `json:"port,omitempty"`
 	AddressesResolved []net.IP `json:"addressesResolved,omitempty"`
 	AddressUsed       net.IP   `json:"addressUsed,omitempty"`
@@ -209,7 +209,7 @@ func (ch Challenge) RecordsSane() bool {
 		for _, rec := range ch.ValidationRecord {
 			// TODO(#7140): Add a check for ResolverAddress == "" only after the
 			// core.proto change has been deployed.
-			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
+			if rec.URL == "" || rec.DnsName == "" || rec.Port == "" || rec.AddressUsed == nil ||
 				len(rec.AddressesResolved) == 0 {
 				return false
 			}
@@ -223,7 +223,7 @@ func (ch Challenge) RecordsSane() bool {
 		}
 		// TODO(#7140): Add a check for ResolverAddress == "" only after the
 		// core.proto change has been deployed.
-		if ch.ValidationRecord[0].Hostname == "" || ch.ValidationRecord[0].Port == "" ||
+		if ch.ValidationRecord[0].DnsName == "" || ch.ValidationRecord[0].Port == "" ||
 			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
@@ -233,7 +233,7 @@ func (ch Challenge) RecordsSane() bool {
 		}
 		// TODO(#7140): Add a check for ResolverAddress == "" only after the
 		// core.proto change has been deployed.
-		if ch.ValidationRecord[0].Hostname == "" {
+		if ch.ValidationRecord[0].DnsName == "" {
 			return false
 		}
 		return true

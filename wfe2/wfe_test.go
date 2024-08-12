@@ -233,7 +233,7 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewO
 		RegistrationID:   in.RegistrationID,
 		Created:          timestamppb.New(created),
 		Expires:          timestamppb.New(expires),
-		Names:            in.Names,
+		DnsNames:         in.DnsNames,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
 	}, nil
@@ -3400,7 +3400,7 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	orderJSON := wfe.orderToOrderJSON(&http.Request{}, &corepb.Order{
 		Id:               1,
 		RegistrationID:   1,
-		Names:            []string{"a"},
+		DnsNames:         []string{"a"},
 		Status:           string(core.StatusPending),
 		Expires:          timestamppb.New(expires),
 		V2Authorizations: []int64{1, 2},
@@ -3802,7 +3802,7 @@ func (sa *mockRA) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, opts .
 		RegistrationID:         987654321,
 		Created:                timestamppb.New(created),
 		Expires:                timestamppb.New(exp),
-		Names:                  []string{"example.com"},
+		DnsNames:               []string{"example.com"},
 		Status:                 string(core.StatusValid),
 		V2Authorizations:       []int64{1},
 		CertificateSerial:      "serial",
