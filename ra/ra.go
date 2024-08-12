@@ -350,7 +350,7 @@ type certificateRevocationEvent struct {
 	// serial number.
 	SerialNumber string `json:",omitempty"`
 	// Reason is the integer representing the revocation reason used.
-	Reason int64 `json:",omitempty"`
+	Reason int64 `json:"reason"`
 	// Method is the way in which revocation was requested.
 	// It will be one of the strings: "applicant", "subscriber", "control", "key", or "admin".
 	Method string `json:",omitempty"`
