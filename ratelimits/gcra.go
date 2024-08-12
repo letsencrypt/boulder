@@ -37,10 +37,10 @@ func maybeSpend(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
 		// Too little capacity to satisfy the cost, deny the request.
 		residual := (nowUnix - (tatUnix - txn.limit.burstOffset)) / txn.limit.emissionInterval
 		return &Decision{
-			Allowed:     false,
-			Remaining:   residual,
-			RetryIn:     -time.Duration(difference),
-			ResetIn:     time.Duration(tatUnix - nowUnix),
+			allowed:     false,
+			remaining:   residual,
+			retryIn:     -time.Duration(difference),
+			resetIn:     time.Duration(tatUnix - nowUnix),
 			newTAT:      time.Unix(0, tatUnix).UTC(),
 			transaction: txn,
 		}
@@ -53,10 +53,10 @@ func maybeSpend(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
 		retryIn = time.Duration(costIncrement - difference)
 	}
 	return &Decision{
-		Allowed:     true,
-		Remaining:   residual,
-		RetryIn:     retryIn,
-		ResetIn:     time.Duration(newTAT - nowUnix),
+		allowed:     true,
+		remaining:   residual,
+		retryIn:     retryIn,
+		resetIn:     time.Duration(newTAT - nowUnix),
 		newTAT:      time.Unix(0, newTAT).UTC(),
 		transaction: txn,
 	}
@@ -79,10 +79,10 @@ func maybeRefund(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
 	if nowUnix > tatUnix {
 		// The TAT is in the past, therefore the bucket is full.
 		return &Decision{
-			Allowed:   false,
-			Remaining: txn.limit.Burst,
-			RetryIn:   time.Duration(0),
-			ResetIn:   time.Duration(0),
+			allowed:   false,
+			remaining: txn.limit.Burst,
+			retryIn:   time.Duration(0),
+			resetIn:   time.Duration(0),
 			newTAT:    tat,
 		}
 	}
@@ -103,10 +103,10 @@ func maybeRefund(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
 	residual := difference / txn.limit.emissionInterval
 
 	return &Decision{
-		Allowed:     (newTAT != tatUnix),
-		Remaining:   residual,
-		RetryIn:     time.Duration(0),
-		ResetIn:     time.Duration(newTAT - nowUnix),
+		allowed:     (newTAT != tatUnix),
+		remaining:   residual,
+		retryIn:     time.Duration(0),
+		resetIn:     time.Duration(newTAT - nowUnix),
 		newTAT:      time.Unix(0, newTAT).UTC(),
 		transaction: txn,
 	}
