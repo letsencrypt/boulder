@@ -578,7 +578,7 @@ func TestRateLimitError(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := tc.decision.RateLimitError(now)
+			err := tc.decision.Result(now)
 			if tc.expectedErr == "" {
 				test.AssertNotError(t, err, "expected no error")
 			} else {

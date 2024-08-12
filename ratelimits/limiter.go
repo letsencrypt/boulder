@@ -94,9 +94,11 @@ type Decision struct {
 	transaction Transaction
 }
 
-// RateLimitError returns a verbose Subscriber-facing error for denied
-// *Decisions. If the *Decision is allowed, it returns nil.
-func (d *Decision) RateLimitError(now time.Time) error {
+// Result translates a denied *Decision into a berrors.RateLimitError for the
+// Subscriber, or returns nil if the *Decision allows the request. The error
+// message includes a human-readable description of the exceeded rate limit and
+// a retry-after timestamp.
+func (d *Decision) Result(now time.Time) error {
 	if d.Allowed {
 		return nil
 	}
