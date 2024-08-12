@@ -177,14 +177,6 @@ type Challenge struct {
 	// by all current challenges (http-01, tls-alpn-01, and dns-01).
 	Token string `json:"token,omitempty"`
 
-	// ProvidedKeyAuthorization used to carry the expected key authorization from
-	// the RA to the VA. However, since this field is never presented to the user
-	// via the ACME API, it should not be on this type.
-	//
-	// Deprecated: use vapb.PerformValidationRequest.ExpectedKeyAuthorization instead.
-	// TODO(#7514): Remove this.
-	ProvidedKeyAuthorization string `json:"keyAuthorization,omitempty"`
-
 	// Contains information about URLs used or redirected to and IPs resolved and
 	// used
 	ValidationRecord []ValidationRecord `json:"validationRecord,omitempty"`

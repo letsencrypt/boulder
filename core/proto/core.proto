@@ -7,7 +7,7 @@ import "google/protobuf/timestamp.proto";
 
 message Challenge {
   // Next unused field number: 13
-  reserved 4, 8, 11;
+  reserved 4, 5, 8, 11;
   int64 id = 1;
   // Fields specified by RFC 8555, Section 8.
   string type = 2;
@@ -19,8 +19,6 @@ message Challenge {
   string token = 3;
   // Additional fields for our own record keeping.
   repeated ValidationRecord validationrecords = 10;
-  // TODO(#7514): Remove this.
-  string keyAuthorization = 5;
 }
 
 message ValidationRecord {

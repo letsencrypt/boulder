@@ -11,6 +11,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/cmd"
+	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/ratelimits"
@@ -52,7 +53,7 @@ func TestDuplicateFQDNRateLimit(t *testing.T) {
 			PasswordFile: "test/secrets/ratelimits_redis_password",
 		}
 
-		fc := clock.NewFake()
+		fc := clock.New()
 		stats := metrics.NoopRegisterer
 		log := blog.NewMock()
 		ring, err := bredis.NewRingFromConfig(rc, stats, log)
@@ -67,8 +68,10 @@ func TestDuplicateFQDNRateLimit(t *testing.T) {
 		// Check that the CertificatesPerFQDNSet limit is reached.
 		txns, err := txnBuilder.NewOrderLimitTransactions(1, []string{domain}, 100, false)
 		test.AssertNotError(t, err, "making transaction")
-		result, err := limiter.BatchSpend(context.Background(), txns)
+		decision, err := limiter.BatchSpend(context.Background(), txns)
 		test.AssertNotError(t, err, "checking transaction")
-		test.Assert(t, !result.Allowed, "should not be allowed")
+		err = decision.Result(fc.Now())
+		test.AssertErrorIs(t, err, berrors.RateLimit)
+		test.AssertContains(t, err.Error(), "too many certificates (2) already issued for this exact set of domains in the last 3h0m0s")
 	}
 }

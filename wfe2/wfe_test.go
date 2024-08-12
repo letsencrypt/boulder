@@ -3337,8 +3337,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		Identifier:     identifier.DNSIdentifier("*.example.com"),
 		Challenges: []core.Challenge{
 			{
-				Type:                     "dns",
-				ProvidedKeyAuthorization: "	🔑",
+				Type: "dns",
 			},
 		},
 	}
@@ -3356,7 +3355,6 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 	chal := authz.Challenges[0]
 	test.AssertEquals(t, chal.URL, "http://localhost/acme/chall-v3/12345/po1V2w")
-	test.AssertEquals(t, chal.ProvidedKeyAuthorization, "")
 }
 
 // noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `FinalizeOrder`

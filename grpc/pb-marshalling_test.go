@@ -55,11 +55,10 @@ func TestChallenge(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to unmarshal test key")
 	validated := time.Now().Round(0).UTC()
 	chall := core.Challenge{
-		Type:                     core.ChallengeTypeDNS01,
-		Status:                   core.StatusValid,
-		Token:                    "asd",
-		ProvidedKeyAuthorization: "keyauth",
-		Validated:                &validated,
+		Type:      core.ChallengeTypeDNS01,
+		Status:    core.StatusValid,
+		Token:     "asd",
+		Validated: &validated,
 	}
 
 	pb, err := ChallengeToPB(chall)
@@ -98,11 +97,10 @@ func TestChallenge(t *testing.T) {
 	test.AssertEquals(t, err, ErrMissingParameters)
 
 	challNilValidation := core.Challenge{
-		Type:                     core.ChallengeTypeDNS01,
-		Status:                   core.StatusValid,
-		Token:                    "asd",
-		ProvidedKeyAuthorization: "keyauth",
-		Validated:                nil,
+		Type:      core.ChallengeTypeDNS01,
+		Status:    core.StatusValid,
+		Token:     "asd",
+		Validated: nil,
 	}
 	pb, err = ChallengeToPB(challNilValidation)
 	test.AssertNotError(t, err, "ChallengeToPB failed")
@@ -229,16 +227,14 @@ func TestAuthz(t *testing.T) {
 	exp := time.Now().AddDate(0, 0, 1).UTC()
 	identifier := identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"}
 	challA := core.Challenge{
-		Type:                     core.ChallengeTypeDNS01,
-		Status:                   core.StatusPending,
-		Token:                    "asd",
-		ProvidedKeyAuthorization: "keyauth",
+		Type:   core.ChallengeTypeDNS01,
+		Status: core.StatusPending,
+		Token:  "asd",
 	}
 	challB := core.Challenge{
-		Type:                     core.ChallengeTypeDNS01,
-		Status:                   core.StatusPending,
-		Token:                    "asd2",
-		ProvidedKeyAuthorization: "keyauth4",
+		Type:   core.ChallengeTypeDNS01,
+		Status: core.StatusPending,
+		Token:  "asd2",
 	}
 	inAuthz := core.Authorization{
 		ID:             "1",

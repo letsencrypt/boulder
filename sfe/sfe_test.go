@@ -75,7 +75,7 @@ func TestIndexPath(t *testing.T) {
 	})
 
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	test.AssertContains(t, responseWriter.Body.String(), "<title>Let's Encrypt - Self-Service Portal</title>")
+	test.AssertContains(t, responseWriter.Body.String(), "<title>Let's Encrypt - Portal</title>")
 }
 
 func TestBuildIDPath(t *testing.T) {

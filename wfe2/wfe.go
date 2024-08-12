@@ -1186,9 +1186,6 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	// Update the challenge URL to be relative to the HTTP request Host
 	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengePath, authz.ID, challenge.StringID()))
 
-	// ACMEv2 never sends the KeyAuthorization back in a challenge object.
-	challenge.ProvidedKeyAuthorization = ""
-
 	// Internally, we store challenge error problems with just the short form
 	// (e.g. "CAA") of the problem type. But for external display, we need to
 	// prefix the error type with the RFC8555 ACME Error namespace.
@@ -2327,7 +2324,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		if len(pausedValues) > 0 {
 			jwt, err := unpause.GenerateJWT(wfe.unpauseSigner, acct.ID, pausedValues, wfe.unpauseJWTLifetime, wfe.clk)
 			if err != nil {
-				wfe.sendError(response, logEvent, probs.ServerInternal("Error generating JWT for self-service unpause"), err)
+				wfe.sendError(response, logEvent, probs.ServerInternal("Error generating JWT for unpause portal"), err)
 			}
 			msg := fmt.Sprintf(
 				"Your account is temporarily prevented from requesting certificates for %s and possibly others. Please visit: %s",
