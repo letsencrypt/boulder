@@ -13,8 +13,6 @@ message Challenge {
   string uri = 9;
   string token = 3;
   reserved 4; // Previously accountKey
-  // TODO(#7514): Remove this.
-  string keyAuthorization = 5;
   repeated ValidationRecord validationrecords = 10;
   ProblemDetails error = 7;
   reserved 8; // Unused and accidentally skipped during initial commit.
