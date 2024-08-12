@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"net/mail"
 	"os"
@@ -46,7 +46,7 @@ func New(challengeTypes map[core.AcmeChallenge]bool, log blog.Logger) (*Authorit
 		log:               log,
 		enabledChallenges: challengeTypes,
 		// We don't need real randomness for this.
-		pseudoRNG: rand.New(rand.NewSource(99)),
+		pseudoRNG: rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())),
 	}
 
 	return &pa, nil

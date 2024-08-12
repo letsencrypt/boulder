@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/bits"
-	mrand "math/rand"
+	mrand "math/rand/v2"
 	"net"
 	"os"
 	"reflect"
@@ -3358,7 +3358,7 @@ func TestSerialsForIncident(t *testing.T) {
 		"1335": true, "1336": true, "1337": true, "1338": true,
 	}
 	for i := range expectedSerials {
-		randInt := func() int64 { return mrand.Int63() }
+		randInt := func() int64 { return mrand.Int64() }
 		_, err := testIncidentsDbMap.ExecContext(ctx,
 			fmt.Sprintf("INSERT INTO incident_foo (%s) VALUES ('%s', %d, %d, '%s')",
 				"serial, registrationID, orderID, lastNoticeSent",
