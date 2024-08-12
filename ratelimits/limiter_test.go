@@ -462,7 +462,7 @@ func TestLimiter_RefundAndReset(t *testing.T) {
 
 func TestRateLimitError(t *testing.T) {
 	t.Parallel()
-	clk := clock.NewFake()
+	now := clock.NewFake().Now()
 
 	testCases := []struct {
 		name            string
@@ -489,7 +489,7 @@ func TestRateLimitError(t *testing.T) {
 					},
 				},
 			},
-			expectedErr:     "too many new registrations (10) from this IP address in the last 1h0m0s, retry after 1970-01-01T00:00:05Z",
+			expectedErr:     "too many new registrations (10) from this IP address in the last 1h0m0s, retry after 1970-01-01 00:00:05 UTC",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -505,7 +505,7 @@ func TestRateLimitError(t *testing.T) {
 					},
 				},
 			},
-			expectedErr:     "too many new registrations (5) from this /48 block of IPv6 addresses in the last 1h0m0s, retry after 1970-01-01T00:00:10Z",
+			expectedErr:     "too many new registrations (5) from this /48 block of IPv6 addresses in the last 1h0m0s, retry after 1970-01-01 00:00:10 UTC",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -522,7 +522,7 @@ func TestRateLimitError(t *testing.T) {
 					bucketKey: "4:12345:example.com",
 				},
 			},
-			expectedErr:     "too many failed authorizations (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01T00:00:15Z",
+			expectedErr:     "too many failed authorizations (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01 00:00:15 UTC",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -539,7 +539,7 @@ func TestRateLimitError(t *testing.T) {
 					bucketKey: "5:example.org",
 				},
 			},
-			expectedErr:     "too many certificates (3) already issued for \"example.org\" in the last 1h0m0s, retry after 1970-01-01T00:00:20Z",
+			expectedErr:     "too many certificates (3) already issued for \"example.org\" in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -556,7 +556,7 @@ func TestRateLimitError(t *testing.T) {
 					bucketKey: "6:12345678:example.net",
 				},
 			},
-			expectedErr:     "too many certificates (3) already issued for \"example.net\" in the last 1h0m0s, retry after 1970-01-01T00:00:20Z",
+			expectedErr:     "too many certificates (3) already issued for \"example.net\" in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -578,7 +578,7 @@ func TestRateLimitError(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			err := tc.decision.RateLimitError(clk)
+			err := tc.decision.RateLimitError(now)
 			if tc.expectedErr == "" {
 				test.AssertNotError(t, err, "expected no error")
 			} else {

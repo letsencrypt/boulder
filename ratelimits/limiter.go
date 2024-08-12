@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	berrors "github.com/letsencrypt/boulder/errors"
-
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+
+	berrors "github.com/letsencrypt/boulder/errors"
 )
 
 const (
@@ -96,7 +96,7 @@ type Decision struct {
 
 // RateLimitError returns a verbose Subscriber-facing error for denied
 // *Decisions. If the *Decision is allowed, it returns nil.
-func (d *Decision) RateLimitError(clk clock.Clock) error {
+func (d *Decision) RateLimitError(now time.Time) error {
 	if d.Allowed {
 		return nil
 	}
@@ -104,7 +104,7 @@ func (d *Decision) RateLimitError(clk clock.Clock) error {
 	// Add 0-3% jitter to the RetryIn duration to prevent thundering herd.
 	jitter := time.Duration(float64(d.RetryIn) * 0.03 * rand.Float64())
 	retryAfter := d.RetryIn + jitter
-	retryAfterTs := clk.Now().Add(retryAfter).Format(time.RFC3339)
+	retryAfterTs := now.UTC().Add(retryAfter).Format("2006-01-02 15:04:05 MST")
 
 	switch d.transaction.limit.name {
 	case NewRegistrationsPerIPAddress:
@@ -137,7 +137,7 @@ func (d *Decision) RateLimitError(clk clock.Clock) error {
 		// Uses bucket key 'enum:regId:domain'.
 		idx := strings.LastIndex(d.transaction.bucketKey, ":")
 		if idx == -1 {
-			return berrors.InternalServerError("empty bucket key while generating error")
+			return berrors.InternalServerError("unrecognized bucket key while generating error")
 		}
 		domain := d.transaction.bucketKey[idx+1:]
 		return berrors.FailedValidationError(
@@ -153,7 +153,7 @@ func (d *Decision) RateLimitError(clk clock.Clock) error {
 		// Uses bucket key 'enum:domain' or 'enum:regId:domain' respectively.
 		idx := strings.LastIndex(d.transaction.bucketKey, ":")
 		if idx == -1 {
-			return berrors.InternalServerError("empty bucket key while generating error")
+			return berrors.InternalServerError("unrecognized bucket key while generating error")
 		}
 		domain := d.transaction.bucketKey[idx+1:]
 		return berrors.RateLimitError(
@@ -199,13 +199,9 @@ func (l *Limiter) Check(ctx context.Context, txn Transaction) (*Decision, error)
 		// First request from this client. No need to initialize the bucket
 		// because this is a check, not a spend. A TAT of "now" is equivalent to
 		// a full bucket.
-		d := maybeSpend(l.clk, txn.limit, l.clk.Now(), txn.cost)
-		d.transaction = txn
-		return d, nil
+		return maybeSpend(l.clk, txn, l.clk.Now()), nil
 	}
-	d := maybeSpend(l.clk, txn.limit, tat, txn.cost)
-	d.transaction = txn
-	return d, nil
+	return maybeSpend(l.clk, txn, tat), nil
 }
 
 // Spend attempts to deduct the cost from the provided bucket's capacity. The
@@ -299,8 +295,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 			tat = l.clk.Now()
 		}
 
-		d := maybeSpend(l.clk, txn.limit, tat, txn.cost)
-		d.transaction = txn
+		d := maybeSpend(l.clk, txn, tat)
 
 		if txn.limit.isOverride() {
 			utilization := float64(txn.limit.Burst-d.Remaining) / float64(txn.limit.Burst)
@@ -392,12 +387,11 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 			continue
 		}
 
-		var cost int64
-		if !txn.checkOnly() {
-			cost = txn.cost
+		if txn.checkOnly() {
+			// The cost of check-only transactions are never refunded.
+			txn.cost = 0
 		}
-		d := maybeRefund(l.clk, txn.limit, tat, cost)
-		d.transaction = txn
+		d := maybeRefund(l.clk, txn, tat)
 		batchDecision.merge(d)
 		if d.Allowed && tat != d.newTAT {
 			// New bucket state should be persisted.

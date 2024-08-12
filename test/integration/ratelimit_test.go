@@ -71,7 +71,7 @@ func TestDuplicateFQDNRateLimit(t *testing.T) {
 		decision, err := limiter.BatchSpend(context.Background(), txns)
 		test.AssertNotError(t, err, "checking transaction")
 		test.Assert(t, !decision.Allowed, "should not be allowed")
-		err = decision.RateLimitError(fc)
+		err = decision.RateLimitError(fc.Now())
 		test.AssertErrorIs(t, err, berrors.RateLimit)
 		test.AssertContains(t, err.Error(), "too many certificates (2) already issued for this exact set of domains in the last 3h0m0s")
 	}
