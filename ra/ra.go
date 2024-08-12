@@ -2815,6 +2815,29 @@ func (ra *RegistrationAuthorityImpl) UnpauseAccount(ctx context.Context, request
 	return &rapb.UnpauseAccountResponse{Count: count.Count}, nil
 }
 
+func (ra *RegistrationAuthorityImpl) GetAuthorization(ctx context.Context, req *rapb.GetAuthorizationRequest) (*corepb.Authorization, error) {
+	if core.IsAnyNilOrZero(req, req.Id) {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	authz, err := ra.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: req.Id})
+	if err != nil {
+		return nil, fmt.Errorf("getting authz from SA: %w", err)
+	}
+
+	// Filter out any challenges which are currently disabled, so that the client
+	// doesn't attempt them.
+	challs := []*corepb.Challenge{}
+	for _, chall := range authz.Challenges {
+		if ra.PA.ChallengeTypeEnabled(core.AcmeChallenge(chall.Type)) {
+			challs = append(challs, chall)
+		}
+	}
+
+	authz.Challenges = challs
+	return authz, nil
+}
+
 func (ra *RegistrationAuthorityImpl) DrainFinalize() {
 	ra.finalizeWG.Wait()
 }

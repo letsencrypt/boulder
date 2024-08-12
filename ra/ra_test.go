@@ -2396,6 +2396,15 @@ func (msa *mockSAWithAuthzs) GetAuthorizations2(ctx context.Context, req *sapb.G
 	return resp, nil
 }
 
+func (msa *mockSAWithAuthzs) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2, _ ...grpc.CallOption) (*corepb.Authorization, error) {
+	for _, authz := range msa.authzs {
+		if authz.ID == fmt.Sprintf("%d", req.Id) {
+			return bgrpc.AuthzToPB(*authz)
+		}
+	}
+	return nil, berrors.NotFoundError("no such authz")
+}
+
 // NewOrderAndAuthzs is a mock which just reflects the incoming request back,
 // pretending to have created new db rows for the requested newAuthzs.
 func (msa *mockSAWithAuthzs) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
@@ -4584,4 +4593,47 @@ func TestUnpauseAccount(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Should have been able to unpause account")
 	test.AssertEquals(t, res.Count, int64(50001))
+}
+
+func TestGetAuthorization(t *testing.T) {
+	_, _, ra, _, cleanup := initAuthorities(t)
+	defer cleanup()
+
+	ra.SA = &mockSAWithAuthzs{
+		authzs: map[string]*core.Authorization{
+			"example.com": {
+				ID:         "1",
+				Identifier: identifier.DNSIdentifier("example.com"),
+				Status:     "valid",
+				Challenges: []core.Challenge{
+					{
+						Type:   core.ChallengeTypeHTTP01,
+						Status: core.StatusValid,
+					},
+				},
+			},
+		},
+	}
+
+	// With HTTP01 enabled, GetAuthorization should pass the mock challenge through.
+	pa, err := policy.New(map[core.AcmeChallenge]bool{
+		core.ChallengeTypeHTTP01: true,
+		core.ChallengeTypeDNS01:  true,
+	}, blog.NewMock())
+	test.AssertNotError(t, err, "Couldn't create PA")
+	ra.PA = pa
+	authz, err := ra.GetAuthorization(context.Background(), &rapb.GetAuthorizationRequest{Id: 1})
+	test.AssertNotError(t, err, "should not fail")
+	test.AssertEquals(t, len(authz.Challenges), 1)
+	test.AssertEquals(t, authz.Challenges[0].Type, string(core.ChallengeTypeHTTP01))
+
+	// With HTTP01 disabled, GetAuthorization should filter out the mock challenge.
+	pa, err = policy.New(map[core.AcmeChallenge]bool{
+		core.ChallengeTypeDNS01: true,
+	}, blog.NewMock())
+	test.AssertNotError(t, err, "Couldn't create PA")
+	ra.PA = pa
+	authz, err = ra.GetAuthorization(context.Background(), &rapb.GetAuthorizationRequest{Id: 1})
+	test.AssertNotError(t, err, "should not fail")
+	test.AssertEquals(t, len(authz.Challenges), 0)
 }
