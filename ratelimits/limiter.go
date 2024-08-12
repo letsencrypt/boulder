@@ -103,6 +103,8 @@ func (d *Decision) Result(now time.Time) error {
 		return nil
 	}
 
+	fmt.Printf("\n\n%#v\n\n", d.transaction)
+
 	// Add 0-3% jitter to the RetryIn duration to prevent thundering herd.
 	jitter := time.Duration(float64(d.RetryIn) * 0.03 * rand.Float64())
 	retryAfter := d.RetryIn + jitter

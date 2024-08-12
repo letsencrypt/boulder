@@ -37,11 +37,12 @@ func maybeSpend(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
 		// Too little capacity to satisfy the cost, deny the request.
 		residual := (nowUnix - (tatUnix - txn.limit.burstOffset)) / txn.limit.emissionInterval
 		return &Decision{
-			Allowed:   false,
-			Remaining: residual,
-			RetryIn:   -time.Duration(difference),
-			ResetIn:   time.Duration(tatUnix - nowUnix),
-			newTAT:    time.Unix(0, tatUnix).UTC(),
+			Allowed:     false,
+			Remaining:   residual,
+			RetryIn:     -time.Duration(difference),
+			ResetIn:     time.Duration(tatUnix - nowUnix),
+			newTAT:      time.Unix(0, tatUnix).UTC(),
+			transaction: txn,
 		}
 	}
 

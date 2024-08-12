@@ -20,6 +20,8 @@ func TestDecide(t *testing.T) {
 	test.AssertEquals(t, d.Remaining, int64(9))
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
 	test.AssertEquals(t, d.ResetIn, time.Second)
+	// Transaction is set when we're allowed.
+	test.AssertEquals(t, d.transaction, Transaction{"test", limit, 1, true, true})
 
 	// Immediately use another 9 of our remaining requests.
 	d = maybeSpend(clk, Transaction{"test", limit, 9, true, true}, d.newTAT)
@@ -39,6 +41,8 @@ func TestDecide(t *testing.T) {
 	test.AssertEquals(t, d.Remaining, int64(0))
 	test.AssertEquals(t, d.RetryIn, time.Second)
 	test.AssertEquals(t, d.ResetIn, time.Second*10)
+	// Transaction is set when we're denied.
+	test.AssertEquals(t, d.transaction, Transaction{"test", limit, 1, true, true})
 
 	// Let's try being exactly as patient as we're told to be.
 	clk.Add(d.RetryIn)
@@ -143,6 +147,8 @@ func TestMaybeRefund(t *testing.T) {
 	test.AssertEquals(t, d.Remaining, int64(9))
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
 	test.AssertEquals(t, d.ResetIn, time.Second)
+	// Transaction is set when we're refunding.
+	test.AssertEquals(t, d.transaction, Transaction{"test", limit, 1, true, true})
 
 	// Refund back to 10.
 	d = maybeRefund(clk, Transaction{"test", limit, 1, true, true}, d.newTAT)
@@ -172,6 +178,8 @@ func TestMaybeRefund(t *testing.T) {
 	test.AssertEquals(t, d.Remaining, int64(10))
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
 	test.AssertEquals(t, d.ResetIn, time.Duration(0))
+	// Transaction is set when our bucket is full.
+	test.AssertEquals(t, d.transaction, Transaction{"test", limit, 1, true, true})
 
 	// Spend 10 all 10 of our requests.
 	d = maybeSpend(clk, Transaction{"test", limit, 10, true, true}, d.newTAT)
