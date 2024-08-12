@@ -2327,7 +2327,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		if len(pausedValues) > 0 {
 			jwt, err := unpause.GenerateJWT(wfe.unpauseSigner, acct.ID, pausedValues, wfe.unpauseJWTLifetime, wfe.clk)
 			if err != nil {
-				wfe.sendError(response, logEvent, probs.ServerInternal("Error generating JWT for self-service unpause"), err)
+				wfe.sendError(response, logEvent, probs.ServerInternal("Error generating JWT for unpause portal"), err)
 			}
 			msg := fmt.Sprintf(
 				"Your account is temporarily prevented from requesting certificates for %s and possibly others. Please visit: %s",
