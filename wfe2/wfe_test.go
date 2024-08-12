@@ -41,7 +41,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
-	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -185,6 +184,7 @@ EeMZ9nWyIM6bktLrE11HnFOnKhAYsM5fZA==
 
 type MockRegistrationAuthority struct {
 	rapb.RegistrationAuthorityClient
+	clk                  clock.Clock
 	lastRevocationReason revocation.Reason
 }
 
@@ -214,6 +214,67 @@ func (ra *MockRegistrationAuthority) RevokeCertByApplicant(ctx context.Context, 
 func (ra *MockRegistrationAuthority) RevokeCertByKey(ctx context.Context, in *rapb.RevokeCertByKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	ra.lastRevocationReason = revocation.Reason(ocsp.KeyCompromise)
 	return &emptypb.Empty{}, nil
+}
+
+// GetAuthorization returns a different authorization depending on the requested
+// ID. All authorizations are associated with RegID 1, except for the one that isn't.
+func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rapb.GetAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
+	switch in.Id {
+	case 1: // Return a valid authorization with a single valid challenge.
+		return &corepb.Authorization{
+			Id:             "1",
+			RegistrationID: 1,
+			DnsName:        "not-an-example.com",
+			Status:         string(core.StatusValid),
+			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
+			Challenges: []*corepb.Challenge{
+				{Id: 1, Type: "http-01", Status: string(core.StatusValid), Token: "token"},
+			},
+		}, nil
+	case 2: // Return a pending authorization with three pending challenges.
+		return &corepb.Authorization{
+			Id:             "2",
+			RegistrationID: 1,
+			DnsName:        "not-an-example.com",
+			Status:         string(core.StatusPending),
+			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
+			Challenges: []*corepb.Challenge{
+				{Id: 1, Type: "http-01", Status: string(core.StatusPending), Token: "token"},
+				{Id: 2, Type: "dns-01", Status: string(core.StatusPending), Token: "token"},
+				{Id: 3, Type: "tls-alpn-01", Status: string(core.StatusPending), Token: "token"},
+			},
+		}, nil
+	case 3: // Return an expired authorization with three pending (but expired) challenges.
+		return &corepb.Authorization{
+			Id:             "3",
+			RegistrationID: 1,
+			DnsName:        "not-an-example.com",
+			Status:         string(core.StatusPending),
+			Expires:        timestamppb.New(ra.clk.Now().AddDate(-1, 0, 0)),
+			Challenges: []*corepb.Challenge{
+				{Id: 1, Type: "http-01", Status: string(core.StatusPending), Token: "token"},
+				{Id: 2, Type: "dns-01", Status: string(core.StatusPending), Token: "token"},
+				{Id: 3, Type: "tls-alpn-01", Status: string(core.StatusPending), Token: "token"},
+			},
+		}, nil
+	case 4: // Return an internal server error.
+		return nil, fmt.Errorf("unspecified error")
+	case 5: // Return a pending authorization as above, but associated with RegID 2.
+		return &corepb.Authorization{
+			Id:             "5",
+			RegistrationID: 2,
+			DnsName:        "not-an-example.com",
+			Status:         string(core.StatusPending),
+			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
+			Challenges: []*corepb.Challenge{
+				{Id: 1, Type: "http-01", Status: string(core.StatusPending), Token: "token"},
+				{Id: 2, Type: "dns-01", Status: string(core.StatusPending), Token: "token"},
+				{Id: 3, Type: "tls-alpn-01", Status: string(core.StatusPending), Token: "token"},
+			},
+		}, nil
+	}
+
+	return nil, berrors.NotFoundError("no authorization found with id %q", in.Id)
 }
 
 func (ra *MockRegistrationAuthority) DeactivateAuthorization(context.Context, *corepb.Authorization, ...grpc.CallOption) (*emptypb.Empty, error) {
@@ -394,7 +455,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		10*time.Second,
 		30*24*time.Hour,
 		7*24*time.Hour,
-		&MockRegistrationAuthority{},
+		&MockRegistrationAuthority{clk: fc},
 		mockSA,
 		gnc,
 		rnc,
@@ -1107,35 +1168,33 @@ func TestHTTPMethods(t *testing.T) {
 func TestGetChallenge(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
-	challengeURL := "http://localhost/acme/chall-v3/1/-ZfxEw"
+	// The slug "7TyhFQ" is the StringID of a challenge with type "http-01" and
+	// token "token".
+	challSlug := "7TyhFQ"
 
 	for _, method := range []string{"GET", "HEAD"} {
 		resp := httptest.NewRecorder()
 
+		// We set req.URL.Path separately to emulate the path-stripping that
+		// Boulder's request handler does.
+		challengeURL := fmt.Sprintf("http://localhost/acme/chall-v3/1/%s", challSlug)
 		req, err := http.NewRequest(method, challengeURL, nil)
-		req.URL.Path = "1/-ZfxEw"
 		test.AssertNotError(t, err, "Could not make NewRequest")
+		req.URL.Path = fmt.Sprintf("1/%s", challSlug)
 
 		wfe.Challenge(ctx, newRequestEvent(), resp, req)
-		test.AssertEquals(t,
-			resp.Code,
-			http.StatusOK)
-		test.AssertEquals(t,
-			resp.Header().Get("Location"),
-			challengeURL)
-		test.AssertEquals(t,
-			resp.Header().Get("Content-Type"),
-			"application/json")
-		test.AssertEquals(t,
-			resp.Header().Get("Link"),
-			`<http://localhost/acme/authz-v3/1>;rel="up"`)
+		test.AssertEquals(t, resp.Code, http.StatusOK)
+		test.AssertEquals(t, resp.Header().Get("Location"), challengeURL)
+		test.AssertEquals(t, resp.Header().Get("Content-Type"), "application/json")
+		test.AssertEquals(t, resp.Header().Get("Link"), `<http://localhost/acme/authz-v3/1>;rel="up"`)
+
 		// Body is only relevant for GET. For HEAD, body will
 		// be discarded by HandleFunc() anyway, so it doesn't
 		// matter what Challenge() writes to it.
 		if method == "GET" {
 			test.AssertUnmarshaledEquals(
 				t, resp.Body.String(),
-				`{"status": "pending", "type":"dns","token":"token","url":"http://localhost/acme/chall-v3/1/-ZfxEw"}`)
+				`{"status": "valid", "type":"http-01","token":"token","url":"http://localhost/acme/chall-v3/1/7TyhFQ"}`)
 		}
 	}
 }
@@ -1162,17 +1221,18 @@ func TestChallenge(t *testing.T) {
 	}{
 		{
 			Name:           "Valid challenge",
-			Request:        post("1/-ZfxEw"),
+			Request:        post("1/7TyhFQ"),
 			ExpectedStatus: http.StatusOK,
 			ExpectedHeaders: map[string]string{
-				"Location": "http://localhost/acme/chall-v3/1/-ZfxEw",
-				"Link":     `<http://localhost/acme/authz-v3/1>;rel="up"`,
+				"Content-Type": "application/json",
+				"Location":     "http://localhost/acme/chall-v3/1/7TyhFQ",
+				"Link":         `<http://localhost/acme/authz-v3/1>;rel="up"`,
 			},
-			ExpectedBody: `{"status": "pending", "type":"dns","token":"token","url":"http://localhost/acme/chall-v3/1/-ZfxEw"}`,
+			ExpectedBody: `{"status": "valid", "type":"http-01","token":"token","url":"http://localhost/acme/chall-v3/1/7TyhFQ"}`,
 		},
 		{
 			Name:           "Expired challenge",
-			Request:        post("3/-ZfxEw"),
+			Request:        post("3/7TyhFQ"),
 			ExpectedStatus: http.StatusNotFound,
 			ExpectedBody:   `{"type":"` + probs.ErrorNS + `malformed","detail":"Expired authorization","status":404}`,
 		},
@@ -1184,21 +1244,21 @@ func TestChallenge(t *testing.T) {
 		},
 		{
 			Name:           "Unspecified database error",
-			Request:        post("4/-ZfxEw"),
+			Request:        post("4/7TyhFQ"),
 			ExpectedStatus: http.StatusInternalServerError,
 			ExpectedBody:   `{"type":"` + probs.ErrorNS + `serverInternal","detail":"Problem getting authorization","status":500}`,
 		},
 		{
 			Name:           "POST-as-GET, wrong owner",
-			Request:        postAsGet(1, "5/-ZfxEw", ""),
+			Request:        postAsGet(1, "5/7TyhFQ", ""),
 			ExpectedStatus: http.StatusForbidden,
 			ExpectedBody:   `{"type":"` + probs.ErrorNS + `unauthorized","detail":"User account ID doesn't match account ID in authorization","status":403}`,
 		},
 		{
 			Name:           "Valid POST-as-GET",
-			Request:        postAsGet(1, "1/-ZfxEw", ""),
+			Request:        postAsGet(1, "1/7TyhFQ", ""),
 			ExpectedStatus: http.StatusOK,
-			ExpectedBody:   `{"status": "pending", "type":"dns", "token":"token", "url": "http://localhost/acme/chall-v3/1/-ZfxEw"}`,
+			ExpectedBody:   `{"status": "valid", "type":"http-01", "token":"token", "url": "http://localhost/acme/chall-v3/1/7TyhFQ"}`,
 		},
 	}
 
@@ -1232,21 +1292,21 @@ func (ra *MockRAPerformValidationError) PerformValidation(context.Context, *rapb
 // with an already valid authorization just returns the challenge without calling
 // the RA.
 func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-	wfe.ra = &MockRAPerformValidationError{}
+	wfe, fc, signer := setupWFE(t)
+	wfe.ra = &MockRAPerformValidationError{MockRegistrationAuthority{clk: fc}}
 	responseWriter := httptest.NewRecorder()
 
-	signedURL := "http://localhost/1/-ZfxEw"
+	signedURL := "http://localhost/1/7TyhFQ"
 	_, _, jwsBody := signer.byKeyID(1, nil, signedURL, `{}`)
-	request := makePostRequestWithPath("1/-ZfxEw", jwsBody)
+	request := makePostRequestWithPath("1/7TyhFQ", jwsBody)
 	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
 
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
-	  "status": "pending",
-		"type": "dns",
-		"token":"token",
-		"url": "http://localhost/acme/chall-v3/1/-ZfxEw"
+	  "status": "valid",
+		"type": "http-01",
+		"token": "token",
+		"url": "http://localhost/acme/chall-v3/1/7TyhFQ"
 	  }`)
 }
 
@@ -1254,15 +1314,15 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 // PerformValidation that the WFE returns an internal server error as expected
 // and does not panic or otherwise bug out.
 func TestUpdateChallengeRAError(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
+	wfe, fc, signer := setupWFE(t)
 	// Mock the RA to always fail PerformValidation
-	wfe.ra = &MockRAPerformValidationError{}
+	wfe.ra = &MockRAPerformValidationError{MockRegistrationAuthority{clk: fc}}
 
 	// Update a pending challenge
-	signedURL := "http://localhost/2/-ZfxEw"
+	signedURL := "http://localhost/2/7TyhFQ"
 	_, _, jwsBody := signer.byKeyID(1, nil, signedURL, `{}`)
 	responseWriter := httptest.NewRecorder()
-	request := makePostRequestWithPath("2/-ZfxEw", jwsBody)
+	request := makePostRequestWithPath("2/7TyhFQ", jwsBody)
 
 	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
 
@@ -1622,10 +1682,10 @@ func TestGetAuthorization(t *testing.T) {
 		"expires": "2070-01-01T00:00:00Z",
 		"challenges": [
 			{
-			  "status": "pending",
-				"type": "dns",
+			  "status": "valid",
+				"type": "http-01",
 				"token":"token",
-				"url": "http://localhost/acme/chall-v3/1/-ZfxEw"
+				"url": "http://localhost/acme/chall-v3/1/7TyhFQ"
 			}
 		]
 	}`)
@@ -1649,49 +1709,46 @@ func TestAuthorization500(t *testing.T) {
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), expected)
 }
 
-// SAWithFailedChallenges is a mocks.StorageAuthority that has
-// a `GetAuthorization` implementation that can return authorizations with
-// failed challenges.
-type SAWithFailedChallenges struct {
-	sapb.StorageAuthorityReadOnlyClient
-	Clk clock.FakeClock
+// RAWithFailedChallenges is a fake RA whose GetAuthorization method returns
+// an authz with a failed challenge.
+type RAWithFailedChallenge struct {
+	rapb.RegistrationAuthorityClient
+	clk clock.Clock
 }
 
-func (sa *SAWithFailedChallenges) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2, _ ...grpc.CallOption) (*corepb.Authorization, error) {
-	authz := core.Authorization{
-		ID:             "55",
-		Status:         core.StatusValid,
+func (ra *RAWithFailedChallenge) GetAuthorization(ctx context.Context, id *rapb.GetAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
+	return &corepb.Authorization{
+		Id:             "6",
 		RegistrationID: 1,
-		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
-		Challenges: []core.Challenge{
+		DnsName:        "not-an-example.com",
+		Status:         string(core.StatusInvalid),
+		Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
+		Challenges: []*corepb.Challenge{
 			{
-				Status: core.StatusInvalid,
-				Type:   "dns",
-				Token:  "exampleToken",
-				Error: &probs.ProblemDetails{
-					Type:       "things:are:whack",
-					Detail:     "whack attack",
-					HTTPStatus: 555,
+				Id:     1,
+				Type:   "http-01",
+				Status: string(core.StatusInvalid),
+				Token:  "token",
+				Error: &corepb.ProblemDetails{
+					ProblemType: "things:are:whack",
+					Detail:      "whack attack",
+					HttpStatus:  555,
 				},
 			},
 		},
-	}
-	exp := sa.Clk.Now().AddDate(100, 0, 0)
-	authz.Expires = &exp
-	return bgrpc.AuthzToPB(authz)
+	}, nil
 }
 
 // TestAuthorizationChallengeNamespace tests that the runtime prefixing of
 // Challenge Problem Types works as expected
 func TestAuthorizationChallengeNamespace(t *testing.T) {
 	wfe, clk, _ := setupWFE(t)
-
-	wfe.sa = &SAWithFailedChallenges{Clk: clk}
+	wfe.ra = &RAWithFailedChallenge{clk: clk}
 
 	responseWriter := httptest.NewRecorder()
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
-		URL:    mustParseURL("55"),
+		URL:    mustParseURL("6"),
 	})
 
 	var authz core.Authorization
@@ -2368,10 +2425,10 @@ func TestDeactivateAuthorization(t *testing.T) {
 		  "expires": "2070-01-01T00:00:00Z",
 		  "challenges": [
 		    {
-				"status": "pending",
-			  "type": "dns",
-			  "token":"token",
-		      "url": "http://localhost/acme/chall-v3/1/-ZfxEw"
+					"status": "valid",
+					"type": "http-01",
+					"token": "token",
+					"url": "http://localhost/acme/chall-v3/1/7TyhFQ"
 		    }
 		  ]
 		}`)
@@ -3411,25 +3468,6 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	})
 }
 
-func TestGetChallengeUpRel(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-
-	challengeURL := "http://localhost/acme/chall-v3/1/-ZfxEw"
-	resp := httptest.NewRecorder()
-
-	req, err := http.NewRequest("GET", challengeURL, nil)
-	test.AssertNotError(t, err, "Could not make NewRequest")
-	req.URL.Path = "1/-ZfxEw"
-
-	wfe.Challenge(ctx, newRequestEvent(), resp, req)
-	test.AssertEquals(t,
-		resp.Code,
-		http.StatusOK)
-	test.AssertEquals(t,
-		resp.Header().Get("Link"),
-		`<http://localhost/acme/authz-v3/1>;rel="up"`)
-}
-
 func TestPrepAccountForDisplay(t *testing.T) {
 	acct := &core.Registration{
 		ID:        1987,
@@ -3498,12 +3536,12 @@ func TestGETAPIChallenge(t *testing.T) {
 	}{
 		{
 			name:              "fresh authz challenge",
-			path:              "1/-ZfxEw",
+			path:              "1/7TyhFQ",
 			expectTooFreshErr: true,
 		},
 		{
 			name:              "old authz challenge",
-			path:              "2/-ZfxEw",
+			path:              "2/7TyhFQ",
 			expectTooFreshErr: false,
 		},
 	}
