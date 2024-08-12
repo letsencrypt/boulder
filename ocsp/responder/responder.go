@@ -40,7 +40,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"time"
@@ -153,7 +153,7 @@ var hashToString = map[crypto.Hash]string{
 }
 
 func SampledError(log blog.Logger, sampleRate int, format string, a ...interface{}) {
-	if sampleRate > 0 && rand.Intn(sampleRate) == 0 {
+	if sampleRate > 0 && rand.IntN(sampleRate) == 0 {
 		log.Errf(format, a...)
 	}
 }

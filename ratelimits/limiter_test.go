@@ -2,7 +2,7 @@ package ratelimits
 
 import (
 	"context"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"testing"
 	"time"
@@ -43,7 +43,7 @@ func setup(t *testing.T) (context.Context, map[string]*Limiter, *TransactionBuil
 	// runs.
 	randIP := make(net.IP, 4)
 	for i := range 4 {
-		randIP[i] = byte(rand.Intn(256))
+		randIP[i] = byte(rand.IntN(256))
 	}
 
 	// Construct a limiter for each source.
