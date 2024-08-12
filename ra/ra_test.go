@@ -4600,8 +4600,8 @@ func TestGetAuthorization(t *testing.T) {
 	defer cleanup()
 
 	ra.SA = &mockSAWithAuthzs{
-		authzs: map[string]*core.Authorization{
-			"example.com": {
+		authzs: []*core.Authorization{
+			{
 				ID:         "1",
 				Identifier: identifier.DNSIdentifier("example.com"),
 				Status:     "valid",
