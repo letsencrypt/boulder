@@ -491,9 +491,12 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	if err != nil {
 		return nil, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
 	}
-	err = ra.checkRegistrationLimits(ctx, ipAddr)
-	if err != nil {
-		return nil, err
+
+	if !features.Get().NewRateLimitsNewAccountAuthoritative {
+		err = ra.checkRegistrationLimits(ctx, ipAddr)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Check that contacts conform to our expectations.
@@ -1816,6 +1819,9 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	return err
 }
 
+// countFailedValidation increments the failed authorizations per domain per
+// account rate limit. There is no reason to surface errors from this function
+// to the Subscriber, spends against this limit are best effort.
 func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, regId int64, name string) {
 	if ra.limiter == nil || ra.txnBuilder == nil {
 		// Limiter is disabled.
@@ -1957,13 +1963,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		if prob != nil {
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
-
-			// TODO(#5545): Spending can be async until key-value rate limits
-			// are authoritative. This saves us from adding latency to each
-			// request. Goroutines spun out below will respect a context
-			// deadline set by the ratelimits package and cannot be prematurely
-			// canceled by the requester.
-			go ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier.Value)
+			ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier.Value)
 		} else {
 			challenge.Status = core.StatusValid
 		}
@@ -2535,7 +2535,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-	if !req.IsARIRenewal {
+	if !req.IsARIRenewal && !features.Get().NewRateLimitsNewOrderAuthoritative {
 		// Check if there is rate limit space for issuing a certificate.
 		err = ra.checkNewOrderLimits(ctx, newOrder.DnsNames, newOrder.RegistrationID, req.IsRenewal)
 		if err != nil {
@@ -2614,7 +2614,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-	if len(missingAuthzIdents) > 0 && !req.IsARIRenewal {
+	if len(missingAuthzIdents) > 0 && !req.IsARIRenewal && !features.Get().NewRateLimitsNewOrderAuthoritative {
 		pendingAuthzLimits := ra.rlPolicies.PendingAuthorizationsPerAccount()
 		if pendingAuthzLimits.Enabled() {
 			// The order isn't fully authorized we need to check that the client
