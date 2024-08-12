@@ -79,11 +79,12 @@ func maybeRefund(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
 	if nowUnix > tatUnix {
 		// The TAT is in the past, therefore the bucket is full.
 		return &Decision{
-			allowed:   false,
-			remaining: txn.limit.Burst,
-			retryIn:   time.Duration(0),
-			resetIn:   time.Duration(0),
-			newTAT:    tat,
+			allowed:     false,
+			remaining:   txn.limit.Burst,
+			retryIn:     time.Duration(0),
+			resetIn:     time.Duration(0),
+			newTAT:      tat,
+			transaction: txn,
 		}
 	}
 

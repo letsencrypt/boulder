@@ -206,6 +206,8 @@ func TestMaybeRefund(t *testing.T) {
 	test.AssertEquals(t, d.remaining, int64(10))
 	test.AssertEquals(t, d.retryIn, time.Duration(0))
 	test.AssertEquals(t, d.resetIn, time.Duration(0))
+	// Transaction is set when our TAT is in the past.
+	test.AssertEquals(t, d.transaction, Transaction{"test", limit, 1, true, true})
 
 	// Spend 5 of our 10 requests, then refund 1.
 	d = maybeSpend(clk, Transaction{"test", limit, 5, true, true}, d.newTAT)
