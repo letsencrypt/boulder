@@ -21,13 +21,12 @@
 package grpcrand
 
 import (
-	"math/rand"
+	"math/rand/v2"
 	"sync"
-	"time"
 )
 
 var (
-	r  = rand.New(rand.NewSource(time.Now().UnixNano()))
+	r  = rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
 	mu sync.Mutex
 )
 
@@ -42,14 +41,14 @@ func Int() int {
 func Int63n(n int64) int64 {
 	mu.Lock()
 	defer mu.Unlock()
-	return r.Int63n(n)
+	return r.Int64N(n)
 }
 
 // Intn implements rand.Intn on the grpcrand global source.
 func Intn(n int) int {
 	mu.Lock()
 	defer mu.Unlock()
-	return r.Intn(n)
+	return r.IntN(n)
 }
 
 // Float64 implements rand.Float64 on the grpcrand global source.

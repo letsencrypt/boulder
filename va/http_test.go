@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	mrand "math/rand"
+	mrand "math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -1213,7 +1213,7 @@ func TestHTTPBadPort(t *testing.T) {
 	// Pick a random port between 40000 and 65000 - with great certainty we won't
 	// have an HTTP server listening on this port and the test will fail as
 	// intended
-	badPort := 40000 + mrand.Intn(25000)
+	badPort := 40000 + mrand.IntN(25000)
 	va.httpPort = badPort
 
 	_, err := va.validateHTTP01(ctx, dnsi("localhost"), expectedToken, expectedKeyAuthorization)
