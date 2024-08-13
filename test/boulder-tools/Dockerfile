@@ -14,7 +14,7 @@ RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.1
 RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@bb9882e6ae58f0a80a6390b50a5ec3bd63e46a3c
 RUN go install github.com/letsencrypt/pebble/v2/cmd/pebble-challtestsrv@17d64a3
 RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.60.0
-RUN go install honnef.co/go/tools/cmd/staticcheck@2023.1.7
+RUN go install honnef.co/go/tools/cmd/staticcheck@2024.1
 RUN go install github.com/jsha/minica@v1.1.0
 
 FROM rust:bullseye as rustdeps
