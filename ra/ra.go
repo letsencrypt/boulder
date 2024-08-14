@@ -871,10 +871,10 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 func validatedBefore(authz *core.Authorization, caaRecheckTime time.Time) (bool, error) {
 	numChallenges := len(authz.Challenges)
 	if numChallenges != 1 {
-		return false, fmt.Errorf("authorization has incorrect number of challenges. 1 expected, %d found for: id %s", numChallenges, authz.ID)
+		return false, berrors.InternalServerError("authorization has incorrect number of challenges. 1 expected, %d found for: id %s", numChallenges, authz.ID)
 	}
 	if authz.Challenges[0].Validated == nil {
-		return false, fmt.Errorf("authorization's challenge has no validated timestamp for: id %s", authz.ID)
+		return false, berrors.InternalServerError("authorization's challenge has no validated timestamp for: id %s", authz.ID)
 	}
 	return authz.Challenges[0].Validated.Before(caaRecheckTime), nil
 }
@@ -902,7 +902,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 
 	for _, authz := range authzs {
 		if staleCAA, err := validatedBefore(authz, caaRecheckAfter); err != nil {
-			return berrors.InternalServerError(err.Error())
+			return err
 		} else if staleCAA {
 			// Ensure that CAA is rechecked for this name
 			recheckAuthzs = append(recheckAuthzs, authz)
@@ -974,7 +974,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 					authz.ID, name,
 				)
 			} else if resp.Problem != nil {
-				err = berrors.CAAError(resp.Problem.Detail)
+				err = berrors.CAAError("rechecking caa: %s", resp.Problem.Detail)
 			}
 			ch <- authzCAAResult{
 				authz: authz,
@@ -1410,16 +1410,13 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, e
 	started := ra.clk.Now()
 	scts, err := ra.ctpolicy.GetSCTs(ctx, cert, expiration)
 	took := ra.clk.Since(started)
-	// The final cert has already been issued so actually return it to the
-	// user even if this fails since we aren't actually doing anything with
-	// the SCTs yet.
 	if err != nil {
 		state := "failure"
 		if err == context.DeadlineExceeded {
 			state = "deadlineExceeded"
 			// Convert the error to a missingSCTsError to communicate the timeout,
 			// otherwise it will be a generic serverInternalError
-			err = berrors.MissingSCTsError(err.Error())
+			err = berrors.MissingSCTsError("failed to get SCTs: %s", err.Error())
 		}
 		ra.log.Warningf("ctpolicy.GetSCTs failed: %s", err)
 		ra.ctpolicyResults.With(prometheus.Labels{"result": state}).Observe(took.Seconds())
@@ -1889,11 +1886,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Look up the account key for this authorization
 	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: authz.RegistrationID})
 	if err != nil {
-		return nil, berrors.InternalServerError(err.Error())
+		return nil, berrors.InternalServerError("getting acct for authorization: %s", err.Error())
 	}
 	reg, err := bgrpc.PbToRegistration(regPB)
 	if err != nil {
-		return nil, berrors.InternalServerError(err.Error())
+		return nil, berrors.InternalServerError("getting acct for authorization: %s", err.Error())
 	}
 
 	// Compute the key authorization field based on the registration key
@@ -1904,7 +1901,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 	// Double check before sending to VA
 	if cErr := ch.CheckPending(); cErr != nil {
-		return nil, berrors.MalformedError(cErr.Error())
+		return nil, berrors.MalformedError("cannot validate challenge: %s", cErr.Error())
 	}
 
 	// Dispatch to the VA for service
@@ -2416,7 +2413,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 	}
 	_, err := ra.SA.DeactivateRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
 	if err != nil {
-		return nil, berrors.InternalServerError(err.Error())
+		return nil, err
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -2719,7 +2716,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier id
 		// The only time ChallengesFor errors it is a fatal configuration error
 		// where challenges required by policy for an identifier are not enabled. We
 		// want to treat this as an internal server error.
-		return nil, berrors.InternalServerError(err.Error())
+		return nil, berrors.InternalServerError("determining challenges for authorization: %s", err.Error())
 	}
 	// Check each challenge for sanity.
 	var token string

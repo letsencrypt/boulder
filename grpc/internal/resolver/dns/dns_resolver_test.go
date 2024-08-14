@@ -600,7 +600,7 @@ func TestCustomAuthority(t *testing.T) {
 
 			err = <-errChan
 			if err != nil {
-				t.Errorf(err.Error())
+				t.Error(err.Error())
 			}
 
 			if a.expectError {

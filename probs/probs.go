@@ -92,19 +92,19 @@ func AccountDoesNotExist(detail string) *ProblemDetails {
 
 // AlreadyRevoked returns a ProblemDetails with a AlreadyRevokedProblem and a 400 Bad
 // Request status code.
-func AlreadyRevoked(detail string, a ...any) *ProblemDetails {
+func AlreadyRevoked(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       AlreadyRevokedProblem,
-		Detail:     fmt.Sprintf(detail, a...),
+		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 // BadCSR returns a ProblemDetails representing a BadCSRProblem.
-func BadCSR(detail string, a ...any) *ProblemDetails {
+func BadCSR(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       BadCSRProblem,
-		Detail:     fmt.Sprintf(detail, a...),
+		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
@@ -121,30 +121,30 @@ func BadNonce(detail string) *ProblemDetails {
 
 // BadPublicKey returns a ProblemDetails with a BadPublicKeyProblem and a 400 Bad
 // Request status code.
-func BadPublicKey(detail string, a ...any) *ProblemDetails {
+func BadPublicKey(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       BadPublicKeyProblem,
-		Detail:     fmt.Sprintf(detail, a...),
+		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 // BadRevocationReason returns a ProblemDetails representing
 // a BadRevocationReasonProblem
-func BadRevocationReason(detail string, a ...any) *ProblemDetails {
+func BadRevocationReason(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       BadRevocationReasonProblem,
-		Detail:     fmt.Sprintf(detail, a...),
+		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
 
 // BadSignatureAlgorithm returns a ProblemDetails with a BadSignatureAlgorithmProblem
 // and a 400 Bad Request status code.
-func BadSignatureAlgorithm(detail string, a ...any) *ProblemDetails {
+func BadSignatureAlgorithm(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       BadSignatureAlgorithmProblem,
-		Detail:     fmt.Sprintf(detail, a...),
+		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}
 }
@@ -200,10 +200,10 @@ func Malformed(detail string, a ...any) *ProblemDetails {
 }
 
 // OrderNotReady returns a ProblemDetails representing a OrderNotReadyProblem
-func OrderNotReady(detail string, a ...any) *ProblemDetails {
+func OrderNotReady(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       OrderNotReadyProblem,
-		Detail:     fmt.Sprintf(detail, a...),
+		Detail:     detail,
 		HTTPStatus: http.StatusForbidden,
 	}
 }
