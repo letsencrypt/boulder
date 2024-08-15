@@ -93,6 +93,7 @@
 				"ra.RegistrationAuthority": {
 					"clientNames": [
 						"admin-revoker.boulder",
+						"admin.boulder",
 						"bad-key-revoker.boulder",
 						"ocsp-responder.boulder",
 						"sfe.boulder",
