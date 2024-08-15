@@ -2036,7 +2036,7 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 		return nil
 	}
 
-	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, wfe.maxNames, isRenewal)
+	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, isRenewal)
 	if err != nil {
 		wfe.log.Errf("building new order limit transactions: %v", err)
 		return nil
