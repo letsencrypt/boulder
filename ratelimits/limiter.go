@@ -276,7 +276,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		return nil, err
 	}
 
-	var batchDecision *Decision
+	batchDecision := &Decision{}
 	newTATs := make(map[string]time.Time)
 	txnOutcomes := make(map[Transaction]string)
 
@@ -300,6 +300,8 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		}
 
 		if !txn.spendOnly() {
+			// Spend-only Transactions are best-effort and do not contribute to
+			// the batchDecision.
 			batchDecision = stricter(batchDecision, d)
 		}
 
@@ -365,7 +367,7 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 		return nil, err
 	}
 
-	var batchDecision *Decision
+	batchDecision := &Decision{}
 	newTATs := make(map[string]time.Time)
 
 	for _, txn := range batch {
