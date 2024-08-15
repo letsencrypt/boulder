@@ -134,9 +134,8 @@ func (a *admin) unpauseAccount(incoming []csvData) error {
 	return nil
 }
 
-// readPausedAccountFile parses the contents of a CSV into a slice of
-// `pauseData` objects. It will return an error if an individual record is
-// malformed.
+// readPausedAccountFile parses the contents of a CSV into a slice of `csvData`
+// objects. It will return an error if an individual record is malformed.
 func (a *admin) readPausedAccountFile(filePath string) ([]csvData, error) {
 	fp, err := os.Open(filePath)
 	if err != nil {
