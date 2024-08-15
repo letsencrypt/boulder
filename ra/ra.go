@@ -2644,7 +2644,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			return nil, err
 		}
 		newAuthzs = append(newAuthzs, pb)
-		ra.authzAges.WithLabelValues("NewOrder", pb.Status).Observe(0)
+		ra.authzAges.WithLabelValues("NewOrder", string(core.StatusPending)).Observe(0)
 	}
 
 	// Start with the order's own expiry as the minExpiry. We only care
@@ -2702,60 +2702,26 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
 func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier identifier.ACMEIdentifier) (*sapb.NewAuthzRequest, error) {
+	challTypes, err := ra.PA.ChallengeTypesFor(identifier)
+	if err != nil {
+		return nil, err
+	}
+
+	challStrs := make([]string, len(challTypes))
+	for i, t := range challTypes {
+		challStrs[i] = string(t)
+	}
+
 	authz := &sapb.NewAuthzRequest{
-		DnsName: identifier.Value,
 		Identifier: &sapb.Identifier{
 			Type:  string(identifier.Type),
 			Value: identifier.Value,
 		},
 		RegistrationID: reg,
-		Status:         string(core.StatusPending),
 		Expires:        timestamppb.New(ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second)),
+		ChallengeTypes: challStrs,
+		Token:          core.NewToken(),
 	}
-
-	// Create challenges. The WFE will update them with URIs before sending them out.
-	challenges, err := ra.PA.ChallengesFor(identifier)
-	if err != nil {
-		// The only time ChallengesFor errors it is a fatal configuration error
-		// where challenges required by policy for an identifier are not enabled. We
-		// want to treat this as an internal server error.
-		return nil, berrors.InternalServerError(err.Error())
-	}
-	// Check each challenge for sanity.
-	var token string
-	var challTypes []string
-	for _, challenge := range challenges {
-		err := challenge.CheckPending()
-		if err != nil {
-			// berrors.InternalServerError because we generated these challenges, they should
-			// be OK.
-			err = berrors.InternalServerError("challenge didn't pass sanity check: %+v", challenge)
-			return nil, err
-		}
-
-		if token == "" {
-			token = challenge.Token
-		} else {
-			if challenge.Token != token {
-				return nil, berrors.InternalServerError("generated different tokens for challenges within the same authz")
-			}
-		}
-
-		if slices.Contains(challTypes, string(challenge.Type)) {
-			return nil, berrors.InternalServerError("generated multiple challenges of the same type within the same authz")
-		} else {
-			challTypes = append(challTypes, string(challenge.Type))
-		}
-
-		challPB, err := bgrpc.ChallengeToPB(challenge)
-		if err != nil {
-			return nil, err
-		}
-		authz.Challenges = append(authz.Challenges, challPB)
-	}
-
-	authz.Token = token
-	authz.ChallengeTypes = challTypes
 
 	return authz, nil
 }

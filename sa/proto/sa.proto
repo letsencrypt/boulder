@@ -253,14 +253,14 @@ message NewOrderRequest {
 // improves from there.
 message NewAuthzRequest {
   // Next unused field number: 13
-  string id = 1; // TODO(#5931): Remove this field
-  string dnsName = 2; // TODO(#5931): Remove this field
+  reserved 1; // previously id
+  reserved 2; // previously dnsName
   Identifier identifier = 12;
   int64 registrationID = 3;
-  string status = 4; // TODO(#5931): Remove this field
-  reserved 5; // Previously expiresNS
+  reserved 4; // previously status
+  reserved 5; // previously expiresNS
   google.protobuf.Timestamp expires = 9;
-  repeated core.Challenge challenges = 6; // TODO(#5931): Remove this field
+  reserved 6; // previously challenges
   reserved 7; // previously ACMEv1 combinations
   reserved 8; // previously v2
   repeated string challengeTypes = 10;
