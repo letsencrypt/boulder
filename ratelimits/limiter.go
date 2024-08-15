@@ -236,9 +236,6 @@ func prepareBatch(txns []Transaction) ([]Transaction, []string, error) {
 }
 
 func stricter(existing *Decision, incoming *Decision) *Decision {
-	if existing == nil {
-		return incoming
-	}
 	if existing.retryIn == incoming.retryIn {
 		if existing.remaining < incoming.remaining {
 			return existing
@@ -275,8 +272,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 	if err != nil {
 		return nil, err
 	}
-
-	batchDecision := &Decision{}
+	batchDecision := allowedDecision
 	newTATs := make(map[string]time.Time)
 	txnOutcomes := make(map[Transaction]string)
 
@@ -367,7 +363,7 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 		return nil, err
 	}
 
-	batchDecision := &Decision{}
+	batchDecision := allowedDecision
 	newTATs := make(map[string]time.Time)
 
 	for _, txn := range batch {
