@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	mrand "math/rand"
+	mrand "math/rand/v2"
 	"os"
 	"path"
 	"reflect"

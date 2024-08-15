@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"strings"
 	"time"
@@ -314,6 +314,6 @@ func (ll List) PickOne(operator string, expiry time.Time) (string, string, error
 		return "", "", fmt.Errorf("no log found for group %q and expiry %s", operator, expiry)
 	}
 
-	log := candidates[rand.Intn(len(candidates))]
+	log := candidates[rand.IntN(len(candidates))]
 	return log.Url, log.Key, nil
 }

@@ -9,8 +9,8 @@ import (
 // maybeSpend uses the GCRA algorithm to decide whether to allow a request. It
 // returns a Decision struct with the result of the decision and the updated
 // TAT. The cost must be 0 or greater and <= the burst capacity of the limit.
-func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision {
-	if cost < 0 || cost > rl.Burst {
+func maybeSpend(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
+	if txn.cost < 0 || txn.cost > txn.limit.Burst {
 		// The condition above is the union of the conditions checked in Check
 		// and Spend methods of Limiter. If this panic is reached, it means that
 		// the caller has introduced a bug.
@@ -27,36 +27,38 @@ func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision 
 	}
 
 	// Compute the cost increment.
-	costIncrement := rl.emissionInterval * cost
+	costIncrement := txn.limit.emissionInterval * txn.cost
 
 	// Deduct the cost to find the new TAT and residual capacity.
 	newTAT := tatUnix + costIncrement
-	difference := nowUnix - (newTAT - rl.burstOffset)
+	difference := nowUnix - (newTAT - txn.limit.burstOffset)
 
 	if difference < 0 {
 		// Too little capacity to satisfy the cost, deny the request.
-		residual := (nowUnix - (tatUnix - rl.burstOffset)) / rl.emissionInterval
+		residual := (nowUnix - (tatUnix - txn.limit.burstOffset)) / txn.limit.emissionInterval
 		return &Decision{
-			Allowed:   false,
-			Remaining: residual,
-			RetryIn:   -time.Duration(difference),
-			ResetIn:   time.Duration(tatUnix - nowUnix),
-			newTAT:    time.Unix(0, tatUnix).UTC(),
+			allowed:     false,
+			remaining:   residual,
+			retryIn:     -time.Duration(difference),
+			resetIn:     time.Duration(tatUnix - nowUnix),
+			newTAT:      time.Unix(0, tatUnix).UTC(),
+			transaction: txn,
 		}
 	}
 
 	// There is enough capacity to satisfy the cost, allow the request.
 	var retryIn time.Duration
-	residual := difference / rl.emissionInterval
+	residual := difference / txn.limit.emissionInterval
 	if difference < costIncrement {
 		retryIn = time.Duration(costIncrement - difference)
 	}
 	return &Decision{
-		Allowed:   true,
-		Remaining: residual,
-		RetryIn:   retryIn,
-		ResetIn:   time.Duration(newTAT - nowUnix),
-		newTAT:    time.Unix(0, newTAT).UTC(),
+		allowed:     true,
+		remaining:   residual,
+		retryIn:     retryIn,
+		resetIn:     time.Duration(newTAT - nowUnix),
+		newTAT:      time.Unix(0, newTAT).UTC(),
+		transaction: txn,
 	}
 }
 
@@ -64,8 +66,8 @@ func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision 
 // the cost of a request which was previously spent. The refund cost must be 0
 // or greater. A cost will only be refunded up to the burst capacity of the
 // limit. A partial refund is still considered successful.
-func maybeRefund(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision {
-	if cost < 0 || cost > rl.Burst {
+func maybeRefund(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
+	if txn.cost < 0 || txn.cost > txn.limit.Burst {
 		// The condition above is checked in the Refund method of Limiter. If
 		// this panic is reached, it means that the caller has introduced a bug.
 		panic("invalid cost for maybeRefund")
@@ -77,16 +79,17 @@ func maybeRefund(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision
 	if nowUnix > tatUnix {
 		// The TAT is in the past, therefore the bucket is full.
 		return &Decision{
-			Allowed:   false,
-			Remaining: rl.Burst,
-			RetryIn:   time.Duration(0),
-			ResetIn:   time.Duration(0),
-			newTAT:    tat,
+			allowed:     false,
+			remaining:   txn.limit.Burst,
+			retryIn:     time.Duration(0),
+			resetIn:     time.Duration(0),
+			newTAT:      tat,
+			transaction: txn,
 		}
 	}
 
 	// Compute the refund increment.
-	refundIncrement := rl.emissionInterval * cost
+	refundIncrement := txn.limit.emissionInterval * txn.cost
 
 	// Subtract the refund increment from the TAT to find the new TAT.
 	newTAT := tatUnix - refundIncrement
@@ -97,14 +100,15 @@ func maybeRefund(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision
 	}
 
 	// Calculate the new capacity.
-	difference := nowUnix - (newTAT - rl.burstOffset)
-	residual := difference / rl.emissionInterval
+	difference := nowUnix - (newTAT - txn.limit.burstOffset)
+	residual := difference / txn.limit.emissionInterval
 
 	return &Decision{
-		Allowed:   (newTAT != tatUnix),
-		Remaining: residual,
-		RetryIn:   time.Duration(0),
-		ResetIn:   time.Duration(newTAT - nowUnix),
-		newTAT:    time.Unix(0, newTAT).UTC(),
+		allowed:     (newTAT != tatUnix),
+		remaining:   residual,
+		retryIn:     time.Duration(0),
+		resetIn:     time.Duration(newTAT - nowUnix),
+		newTAT:      time.Unix(0, newTAT).UTC(),
+		transaction: txn,
 	}
 }

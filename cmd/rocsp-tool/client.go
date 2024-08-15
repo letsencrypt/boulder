@@ -3,7 +3,7 @@ package notmain
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"sync/atomic"
 	"time"
@@ -104,9 +104,9 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed, startFr
 		if result.err != nil {
 			errorCount++
 			if errorCount < 10 ||
-				(errorCount < 1000 && rand.Intn(1000) < 100) ||
-				(errorCount < 100000 && rand.Intn(1000) < 10) ||
-				(rand.Intn(1000) < 1) {
+				(errorCount < 1000 && rand.IntN(1000) < 100) ||
+				(errorCount < 100000 && rand.IntN(1000) < 10) ||
+				(rand.IntN(1000) < 1) {
 				cl.logger.Errf("error: %s", result.err)
 			}
 		} else {
@@ -115,9 +115,9 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed, startFr
 
 		total := successCount + errorCount
 		if total < 10 ||
-			(total < 1000 && rand.Intn(1000) < 100) ||
-			(total < 100000 && rand.Intn(1000) < 10) ||
-			(rand.Intn(1000) < 1) {
+			(total < 1000 && rand.IntN(1000) < 100) ||
+			(total < 100000 && rand.IntN(1000) < 10) ||
+			(rand.IntN(1000) < 1) {
 			cl.logger.Infof("stored %d responses, %d errors", successCount, errorCount)
 		}
 	}

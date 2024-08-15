@@ -17,6 +17,7 @@ service RegistrationAuthority {
   rpc RevokeCertByKey(RevokeCertByKeyRequest) returns (google.protobuf.Empty) {}
   rpc AdministrativelyRevokeCertificate(AdministrativelyRevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc NewOrder(NewOrderRequest) returns (core.Order) {}
+  rpc GetAuthorization(GetAuthorizationRequest) returns (core.Authorization) {}
   rpc FinalizeOrder(FinalizeOrderRequest) returns (core.Order) {}
   // Generate an OCSP response based on the DB's current status and reason code.
   rpc GenerateOCSP(GenerateOCSPRequest) returns (ca.OCSPResponse) {}
@@ -71,13 +72,17 @@ message AdministrativelyRevokeCertificateRequest {
 message NewOrderRequest {
   // Next unused field number: 7
   int64 registrationID = 1;
-  repeated string names = 2;
+  repeated string dnsNames = 2;
   string replacesSerial = 3;
   // TODO(#7512): Remove this field.
   bool isARIRenewal = 4;
   string certificateProfileName = 5;
   // TODO(#7512): Remove this field.
   bool isRenewal = 6;
+}
+
+message GetAuthorizationRequest {
+  int64 id = 1;
 }
 
 message FinalizeOrderRequest {

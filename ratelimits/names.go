@@ -13,10 +13,11 @@ import (
 // limit names as strings and to provide a type-safe way to refer to rate
 // limits.
 //
-// IMPORTANT: If you add a new limit Name, you MUST add:
-//   - it to the nameToString mapping,
-//   - an entry for it in the validateIdForName(), and
-//   - provide the appropriate constructors in bucket.go.
+// IMPORTANT: If you add or remove a limit Name, you MUST update:
+//   - the string representation of the Name in nameToString,
+//   - the validators for that name in validateIdForName(),
+//   - the transaction constructors for that name in bucket.go, and
+//   - the Subscriber facing error message in ErrForDecision().
 type Name int
 
 const (
@@ -77,6 +78,18 @@ const (
 	CertificatesPerFQDNSet
 )
 
+// nameToString is a map of Name values to string names.
+var nameToString = map[Name]string{
+	Unknown:                                 "Unknown",
+	NewRegistrationsPerIPAddress:            "NewRegistrationsPerIPAddress",
+	NewRegistrationsPerIPv6Range:            "NewRegistrationsPerIPv6Range",
+	NewOrdersPerAccount:                     "NewOrdersPerAccount",
+	FailedAuthorizationsPerDomainPerAccount: "FailedAuthorizationsPerDomainPerAccount",
+	CertificatesPerDomain:                   "CertificatesPerDomain",
+	CertificatesPerDomainPerAccount:         "CertificatesPerDomainPerAccount",
+	CertificatesPerFQDNSet:                  "CertificatesPerFQDNSet",
+}
+
 // isValid returns true if the Name is a valid rate limit name.
 func (n Name) isValid() bool {
 	return n > Unknown && n < Name(len(nameToString))
@@ -97,18 +110,6 @@ func (n Name) EnumString() string {
 		return nameToString[Unknown]
 	}
 	return strconv.Itoa(int(n))
-}
-
-// nameToString is a map of Name values to string names.
-var nameToString = map[Name]string{
-	Unknown:                                 "Unknown",
-	NewRegistrationsPerIPAddress:            "NewRegistrationsPerIPAddress",
-	NewRegistrationsPerIPv6Range:            "NewRegistrationsPerIPv6Range",
-	NewOrdersPerAccount:                     "NewOrdersPerAccount",
-	FailedAuthorizationsPerDomainPerAccount: "FailedAuthorizationsPerDomainPerAccount",
-	CertificatesPerDomain:                   "CertificatesPerDomain",
-	CertificatesPerDomainPerAccount:         "CertificatesPerDomainPerAccount",
-	CertificatesPerFQDNSet:                  "CertificatesPerFQDNSet",
 }
 
 // validIPAddress validates that the provided string is a valid IP address.

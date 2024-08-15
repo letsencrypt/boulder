@@ -15,7 +15,7 @@ import (
 	"errors"
 	"log"
 	"math/big"
-	mrand "math/rand"
+	mrand "math/rand/v2"
 	"os"
 	"slices"
 	"sort"
@@ -355,7 +355,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	reg := satest.CreateWorkingRegistration(t, isa.SA{Impl: sa})
 	test.AssertNotError(t, err, "Couldn't create registration")
 	for range 5 {
-		rawCert.SerialNumber = big.NewInt(mrand.Int63())
+		rawCert.SerialNumber = big.NewInt(mrand.Int64())
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
 		_, err = sa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{

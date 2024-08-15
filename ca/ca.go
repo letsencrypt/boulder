@@ -14,7 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	mrand "math/rand"
+	mrand "math/rand/v2"
 	"strings"
 	"time"
 
@@ -535,7 +535,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	if !ok || len(issuerPool) == 0 {
 		return nil, nil, berrors.InternalServerError("no issuers found for public key algorithm %s", csr.PublicKeyAlgorithm)
 	}
-	issuer := issuerPool[mrand.Intn(len(issuerPool))]
+	issuer := issuerPool[mrand.IntN(len(issuerPool))]
 
 	if issuer.Cert.NotAfter.Before(notAfter) {
 		err = berrors.InternalServerError("cannot issue a certificate that expires after the issuer certificate")

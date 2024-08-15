@@ -3,7 +3,7 @@ package va
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net/url"
 	"regexp"
 	"strings"

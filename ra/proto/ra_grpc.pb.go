@@ -31,6 +31,7 @@ const (
 	RegistrationAuthority_RevokeCertByKey_FullMethodName                   = "/ra.RegistrationAuthority/RevokeCertByKey"
 	RegistrationAuthority_AdministrativelyRevokeCertificate_FullMethodName = "/ra.RegistrationAuthority/AdministrativelyRevokeCertificate"
 	RegistrationAuthority_NewOrder_FullMethodName                          = "/ra.RegistrationAuthority/NewOrder"
+	RegistrationAuthority_GetAuthorization_FullMethodName                  = "/ra.RegistrationAuthority/GetAuthorization"
 	RegistrationAuthority_FinalizeOrder_FullMethodName                     = "/ra.RegistrationAuthority/FinalizeOrder"
 	RegistrationAuthority_GenerateOCSP_FullMethodName                      = "/ra.RegistrationAuthority/GenerateOCSP"
 	RegistrationAuthority_UnpauseAccount_FullMethodName                    = "/ra.RegistrationAuthority/UnpauseAccount"
@@ -49,6 +50,7 @@ type RegistrationAuthorityClient interface {
 	RevokeCertByKey(ctx context.Context, in *RevokeCertByKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AdministrativelyRevokeCertificate(ctx context.Context, in *AdministrativelyRevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	NewOrder(ctx context.Context, in *NewOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
+	GetAuthorization(ctx context.Context, in *GetAuthorizationRequest, opts ...grpc.CallOption) (*proto.Authorization, error)
 	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	// Generate an OCSP response based on the DB's current status and reason code.
 	GenerateOCSP(ctx context.Context, in *GenerateOCSPRequest, opts ...grpc.CallOption) (*proto1.OCSPResponse, error)
@@ -153,6 +155,16 @@ func (c *registrationAuthorityClient) NewOrder(ctx context.Context, in *NewOrder
 	return out, nil
 }
 
+func (c *registrationAuthorityClient) GetAuthorization(ctx context.Context, in *GetAuthorizationRequest, opts ...grpc.CallOption) (*proto.Authorization, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(proto.Authorization)
+	err := c.cc.Invoke(ctx, RegistrationAuthority_GetAuthorization_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *registrationAuthorityClient) FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*proto.Order, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(proto.Order)
@@ -196,6 +208,7 @@ type RegistrationAuthorityServer interface {
 	RevokeCertByKey(context.Context, *RevokeCertByKeyRequest) (*emptypb.Empty, error)
 	AdministrativelyRevokeCertificate(context.Context, *AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error)
 	NewOrder(context.Context, *NewOrderRequest) (*proto.Order, error)
+	GetAuthorization(context.Context, *GetAuthorizationRequest) (*proto.Authorization, error)
 	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*proto.Order, error)
 	// Generate an OCSP response based on the DB's current status and reason code.
 	GenerateOCSP(context.Context, *GenerateOCSPRequest) (*proto1.OCSPResponse, error)
@@ -233,6 +246,9 @@ func (UnimplementedRegistrationAuthorityServer) AdministrativelyRevokeCertificat
 }
 func (UnimplementedRegistrationAuthorityServer) NewOrder(context.Context, *NewOrderRequest) (*proto.Order, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewOrder not implemented")
+}
+func (UnimplementedRegistrationAuthorityServer) GetAuthorization(context.Context, *GetAuthorizationRequest) (*proto.Authorization, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAuthorization not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) FinalizeOrder(context.Context, *FinalizeOrderRequest) (*proto.Order, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FinalizeOrder not implemented")
@@ -418,6 +434,24 @@ func _RegistrationAuthority_NewOrder_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RegistrationAuthority_GetAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAuthorizationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegistrationAuthorityServer).GetAuthorization(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RegistrationAuthority_GetAuthorization_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegistrationAuthorityServer).GetAuthorization(ctx, req.(*GetAuthorizationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _RegistrationAuthority_FinalizeOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(FinalizeOrderRequest)
 	if err := dec(in); err != nil {
@@ -514,6 +548,10 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "NewOrder",
 			Handler:    _RegistrationAuthority_NewOrder_Handler,
+		},
+		{
+			MethodName: "GetAuthorization",
+			Handler:    _RegistrationAuthority_GetAuthorization_Handler,
 		},
 		{
 			MethodName: "FinalizeOrder",

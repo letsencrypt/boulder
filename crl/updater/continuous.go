@@ -2,7 +2,7 @@ package updater
 
 import (
 	"context"
-	"math/rand"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -21,7 +21,7 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 
 		// Wait for a random number of nanoseconds less than the updatePeriod, so
 		// that process restarts do not skip or delay shards deterministically.
-		waitTimer := time.NewTimer(time.Duration(rand.Int63n(cu.updatePeriod.Nanoseconds())))
+		waitTimer := time.NewTimer(time.Duration(rand.Int64N(cu.updatePeriod.Nanoseconds())))
 		defer waitTimer.Stop()
 		select {
 		case <-waitTimer.C:

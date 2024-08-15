@@ -4,15 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/letsencrypt/boulder/cmd"
 )
 
 // ServerProvider represents a type which can provide a list of addresses for
@@ -306,7 +307,7 @@ func (dp *dynamicProvider) Addrs() ([]string, error) {
 	var r []string
 	dp.mu.RLock()
 	for ip, ports := range dp.addrs {
-		port := fmt.Sprint(ports[rand.Intn(len(ports))])
+		port := fmt.Sprint(ports[rand.IntN(len(ports))])
 		addr := net.JoinHostPort(ip, port)
 		r = append(r, addr)
 	}

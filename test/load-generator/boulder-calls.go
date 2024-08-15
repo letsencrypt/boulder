@@ -16,7 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	mrand "math/rand"
+	mrand "math/rand/v2"
 	"net/http"
 	"time"
 
@@ -72,7 +72,7 @@ func getAccount(s *State, c *acmeCache) error {
 	}
 
 	// Select a random account from the state and put it into the context
-	c.acct = s.accts[mrand.Intn(len(s.accts))]
+	c.acct = s.accts[mrand.IntN(len(s.accts))]
 	c.ns = &nonceSource{s: s}
 	return nil
 }
@@ -164,7 +164,7 @@ func randDomain(base string) string {
 func newOrder(s *State, c *acmeCache) error {
 	// Pick a random number of names within the constraints of the maxNamesPerCert
 	// parameter
-	orderSize := 1 + mrand.Intn(s.maxNamesPerCert-1)
+	orderSize := 1 + mrand.IntN(s.maxNamesPerCert-1)
 	// Generate that many random domain names. There may be some duplicates, we
 	// don't care. The ACME server will collapse those down for us, how handy!
 	dnsNames := []identifier.ACMEIdentifier{}
@@ -231,7 +231,7 @@ func newOrder(s *State, c *acmeCache) error {
 // popPendingOrder *removes* a random pendingOrder from the context, returning
 // it.
 func popPendingOrder(c *acmeCache) *OrderJSON {
-	orderIndex := mrand.Intn(len(c.pendingOrders))
+	orderIndex := mrand.IntN(len(c.pendingOrders))
 	order := c.pendingOrders[orderIndex]
 	c.pendingOrders = append(c.pendingOrders[:orderIndex], c.pendingOrders[orderIndex+1:]...)
 	return order
@@ -465,7 +465,7 @@ func pollOrderForCert(order *OrderJSON, s *State, c *acmeCache) (*OrderJSON, err
 // popFulfilledOrder **removes** a fulfilled order from the context, returning
 // it. Fulfilled orders have all of their authorizations satisfied.
 func popFulfilledOrder(c *acmeCache) string {
-	orderIndex := mrand.Intn(len(c.fulfilledOrders))
+	orderIndex := mrand.IntN(len(c.fulfilledOrders))
 	order := c.fulfilledOrders[orderIndex]
 	c.fulfilledOrders = append(c.fulfilledOrders[:orderIndex], c.fulfilledOrders[orderIndex+1:]...)
 	return order
@@ -580,7 +580,7 @@ func postAsGet(s *State, c *acmeCache, url string, latencyTag string) (*http.Res
 }
 
 func popCertificate(c *acmeCache) string {
-	certIndex := mrand.Intn(len(c.certs))
+	certIndex := mrand.IntN(len(c.certs))
 	certURL := c.certs[certIndex]
 	c.certs = append(c.certs[:certIndex], c.certs[certIndex+1:]...)
 	return certURL

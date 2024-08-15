@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"net/url"
 	"os"
@@ -631,8 +631,7 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 // The returned result will always contain a list of validation records, even
 // when it also contains a problem.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	// TODO(#7514): Add req.ExpectedKeyAuthorization to this check
-	if core.IsAnyNilOrZero(req, req.Domain, req.Challenge, req.Authz) {
+	if core.IsAnyNilOrZero(req, req.DnsName, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
@@ -646,15 +645,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		return nil, berrors.MalformedError("challenge failed consistency check: %s", err)
 	}
 
-	// TODO(#7514): Remove this fallback and belt-and-suspenders check.
-	keyAuthorization := req.ExpectedKeyAuthorization
-	if len(keyAuthorization) == 0 {
-		keyAuthorization = req.Challenge.KeyAuthorization
-	}
-	if len(keyAuthorization) == 0 {
-		return nil, errors.New("no expected keyAuthorization provided")
-	}
-
 	// Set up variables and a deferred closure to report validation latency
 	// metrics and log validation errors. Below here, do not use := to redeclare
 	// `prob`, or this will fail.
@@ -664,7 +654,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	logEvent := verificationRequestEvent{
 		ID:        req.Authz.Id,
 		Requester: req.Authz.RegID,
-		Hostname:  req.Domain,
+		Hostname:  req.DnsName,
 		Challenge: challenge,
 	}
 	defer func() {
@@ -699,11 +689,11 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// was successful or not, and cannot themselves fail.
 	records, err := va.performLocalValidation(
 		ctx,
-		identifier.DNSIdentifier(req.Domain),
+		identifier.DNSIdentifier(req.DnsName),
 		req.Authz.RegID,
 		challenge.Type,
 		challenge.Token,
-		keyAuthorization)
+		req.ExpectedKeyAuthorization)
 	localLatency = time.Since(vStart)
 
 	// Check for malformed ValidationRecords
