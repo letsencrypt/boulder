@@ -492,10 +492,7 @@ func (sa *StorageAuthorityReadOnly) GetValidAuthorizations2(ctx context.Context,
 		if err != nil {
 			return nil, err
 		}
-		auths.Authz = append(auths.Authz, &sapb.Authorizations_MapElement{
-			Domain: name,
-			Authz:  authzPB,
-		})
+		auths.Authzs = append(auths.Authzs, authzPB)
 	}
 	return auths, nil
 }

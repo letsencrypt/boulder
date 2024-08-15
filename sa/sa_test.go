@@ -1779,7 +1779,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
 	// We should get back two authorizations since one of the three authorizations
 	// created above expires too soon.
-	test.AssertEquals(t, len(authz.Authz), 2)
+	test.AssertEquals(t, len(authz.Authzs), 2)
 
 	// Get authorizations for the names used above, and one name that doesn't exist
 	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
@@ -1790,7 +1790,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	// It should not fail
 	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
 	// It should still return only two authorizations
-	test.AssertEquals(t, len(authz.Authz), 2)
+	test.AssertEquals(t, len(authz.Authzs), 2)
 }
 
 func TestCountOrders(t *testing.T) {
@@ -2970,12 +2970,11 @@ func TestAuthzModelMapToPB(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, el := range out.Authz {
-		model, ok := input[el.Domain]
+	for _, authzPB := range out.Authzs {
+		model, ok := input[authzPB.DnsName]
 		if !ok {
-			t.Errorf("output had element for %q, a hostname not present in input", el.Domain)
+			t.Errorf("output had element for %q, a hostname not present in input", authzPB.DnsName)
 		}
-		authzPB := el.Authz
 		test.AssertEquals(t, authzPB.Id, fmt.Sprintf("%d", model.ID))
 		test.AssertEquals(t, authzPB.DnsName, model.IdentifierValue)
 		test.AssertEquals(t, authzPB.RegistrationID, model.RegistrationID)
@@ -2984,21 +2983,21 @@ func TestAuthzModelMapToPB(t *testing.T) {
 		if !model.Expires.Equal(gotTime) {
 			t.Errorf("Times didn't match. Got %s, expected %s (%s)", gotTime, model.Expires, authzPB.Expires.AsTime())
 		}
-		if len(el.Authz.Challenges) != bits.OnesCount(uint(model.Challenges)) {
-			t.Errorf("wrong number of challenges for %q: got %d, expected %d", el.Domain,
-				len(el.Authz.Challenges), bits.OnesCount(uint(model.Challenges)))
+		if len(authzPB.Challenges) != bits.OnesCount(uint(model.Challenges)) {
+			t.Errorf("wrong number of challenges for %q: got %d, expected %d", authzPB.DnsName,
+				len(authzPB.Challenges), bits.OnesCount(uint(model.Challenges)))
 		}
 		switch model.Challenges {
 		case 1:
-			test.AssertEquals(t, el.Authz.Challenges[0].Type, "http-01")
+			test.AssertEquals(t, authzPB.Challenges[0].Type, "http-01")
 		case 3:
-			test.AssertEquals(t, el.Authz.Challenges[0].Type, "http-01")
-			test.AssertEquals(t, el.Authz.Challenges[1].Type, "dns-01")
+			test.AssertEquals(t, authzPB.Challenges[0].Type, "http-01")
+			test.AssertEquals(t, authzPB.Challenges[1].Type, "dns-01")
 		case 4:
-			test.AssertEquals(t, el.Authz.Challenges[0].Type, "tls-alpn-01")
+			test.AssertEquals(t, authzPB.Challenges[0].Type, "tls-alpn-01")
 		}
 
-		delete(input, el.Domain)
+		delete(input, authzPB.DnsName)
 	}
 
 	for k := range input {
@@ -3031,35 +3030,35 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "AddOrder failed")
 
-	authzMap, err := sa.GetValidOrderAuthorizations2(
+	authzPBs, err := sa.GetValidOrderAuthorizations2(
 		context.Background(),
 		&sapb.GetValidOrderAuthorizationsRequest{
 			Id:     order.Id,
 			AcctID: reg.Id,
 		})
 	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
-	test.AssertNotNil(t, authzMap, "sa.GetValidOrderAuthorizations result was nil")
-	test.AssertEquals(t, len(authzMap.Authz), 2)
+	test.AssertNotNil(t, authzPBs, "sa.GetValidOrderAuthorizations result was nil")
+	test.AssertEquals(t, len(authzPBs.Authzs), 2)
 
 	namesToCheck := map[string]int64{"a.example.com": authzIDA, "b.example.com": authzIDB}
-	for _, a := range authzMap.Authz {
-		if fmt.Sprintf("%d", namesToCheck[a.Authz.DnsName]) != a.Authz.Id {
-			t.Fatalf("incorrect identifier %q with id %s", a.Authz.DnsName, a.Authz.Id)
+	for _, a := range authzPBs.Authzs {
+		if fmt.Sprintf("%d", namesToCheck[a.DnsName]) != a.Id {
+			t.Fatalf("incorrect identifier %q with id %s", a.DnsName, a.Id)
 		}
-		test.AssertEquals(t, a.Authz.Expires.AsTime(), expires)
-		delete(namesToCheck, a.Authz.DnsName)
+		test.AssertEquals(t, a.Expires.AsTime(), expires)
+		delete(namesToCheck, a.DnsName)
 	}
 
 	// Getting the order authorizations for an order that doesn't exist should return nothing
 	missingID := int64(0xC0FFEEEEEEE)
-	authzMap, err = sa.GetValidOrderAuthorizations2(
+	authzPBs, err = sa.GetValidOrderAuthorizations2(
 		context.Background(),
 		&sapb.GetValidOrderAuthorizationsRequest{
 			Id:     missingID,
 			AcctID: reg.Id,
 		})
 	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
-	test.AssertEquals(t, len(authzMap.Authz), 0)
+	test.AssertEquals(t, len(authzPBs.Authzs), 0)
 }
 
 func TestCountInvalidAuthorizations2(t *testing.T) {
@@ -3111,9 +3110,9 @@ func TestGetValidAuthorizations2(t *testing.T) {
 		ValidUntil:     timestamppb.New(now),
 	})
 	test.AssertNotError(t, err, "sa.GetValidAuthorizations2 failed")
-	test.AssertEquals(t, len(authzs.Authz), 1)
-	test.AssertEquals(t, authzs.Authz[0].Domain, ident)
-	test.AssertEquals(t, authzs.Authz[0].Authz.Id, fmt.Sprintf("%d", authzID))
+	test.AssertEquals(t, len(authzs.Authzs), 1)
+	test.AssertEquals(t, authzs.Authzs[0].DnsName, ident)
+	test.AssertEquals(t, authzs.Authzs[0].Id, fmt.Sprintf("%d", authzID))
 }
 
 func TestGetOrderExpired(t *testing.T) {

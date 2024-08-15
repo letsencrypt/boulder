@@ -769,14 +769,12 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 // protobuf authorizations map
 func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 	resp := &sapb.Authorizations{}
-	for k, v := range m {
+	for _, v := range m {
 		authzPB, err := modelToAuthzPB(v)
 		if err != nil {
 			return nil, err
 		}
 		resp.Authzs = append(resp.Authzs, authzPB)
-		// TODO(#7646): Stop populating the .Authzs field once it is no longer used.
-		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: k, Authz: authzPB})
 	}
 	return resp, nil
 }

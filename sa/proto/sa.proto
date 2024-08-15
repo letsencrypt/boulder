@@ -301,11 +301,6 @@ message GetAuthorizationsRequest {
 }
 
 message Authorizations {
-  message MapElement {
-          string domain = 1;
-          core.Authorization authz = 2;
-  }
-  repeated MapElement authz = 1; // Deprecated, use authzs instead.
   repeated core.Authorization authzs = 2;
 }
 
