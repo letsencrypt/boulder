@@ -2,20 +2,16 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/csv"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/letsencrypt/boulder/identifier"
-	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -85,8 +81,9 @@ func (u *subcommandUnpauseBatch) Run(ctx context.Context, a *admin) error {
 	return nil
 }
 
-// pauseData contains
-type pauseData struct {
+// csvData contains a golang representation of the data loaded in from a CSV
+// file for pausing and unpausing.
+type csvData struct {
 	accountID       int64
 	identifierType  identifier.IdentifierType
 	identifierValue []string
@@ -94,12 +91,12 @@ type pauseData struct {
 
 // pauseIdentifiers allows administratively pausing a set of domain names for an
 // account.
-func (a *admin) pauseIdentifiers(pd []pauseData) error {
-	if len(pd) <= 0 {
+func (a *admin) pauseIdentifiers(incoming []csvData) error {
+	if len(incoming) <= 0 {
 		return errors.New("cannot pause identifiers because no pauseData was sent")
 	}
 
-	for _, data := range pd {
+	for _, data := range incoming {
 		req := sapb.PauseRequest{
 			RegistrationID: data.accountID,
 			Identifiers: []*sapb.Identifier{{
@@ -119,16 +116,16 @@ func (a *admin) pauseIdentifiers(pd []pauseData) error {
 
 // unpauseAccount allows administratively unpausing all identifiers for an
 // account.
-func (a *admin) unpauseAccount(pd []pauseData) error {
-	if len(pd) <= 0 {
+func (a *admin) unpauseAccount(incoming []csvData) error {
+	if len(incoming) <= 0 {
 		return errors.New("cannot unpause accounts because no pauseData was sent")
 	}
 
-	for _, data := range pd {
-		req := rapb.UnpauseAccountRequest{
-			RegistrationID: data.accountID,
+	for _, data := range incoming {
+		req := sapb.RegistrationID{
+			Id: data.accountID,
 		}
-		_, err := a.rac.UnpauseAccount(context.Background(), &req)
+		_, err := a.sac.UnpauseAccount(context.Background(), &req)
 		if err != nil {
 			return err
 		}
@@ -140,7 +137,7 @@ func (a *admin) unpauseAccount(pd []pauseData) error {
 // readPausedAccountFile parses the contents of a CSV into a slice of
 // `pauseData` objects. It will return an error if an individual record is
 // malformed.
-func (a *admin) readPausedAccountFile(filePath string) ([]pauseData, error) {
+func (a *admin) readPausedAccountFile(filePath string) ([]csvData, error) {
 	fp, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("opening paused account data file: %w", err)
@@ -153,33 +150,23 @@ func (a *admin) readPausedAccountFile(filePath string) ([]pauseData, error) {
 	reader.FieldsPerRecord = -1
 	reader.TrimLeadingSpace = true
 
-	var parsedRecords []pauseData
-	hashToPauseData := make(map[string]pauseData)
+	var parsedRecords []csvData
 	lineCounter := 1
 
 	defer func() {
 		var record string
-		if len(hashToPauseData) == 1 {
+		if len(parsedRecords) == 1 {
 			record = "record"
 		} else {
 			record = "records"
 		}
-		fmt.Fprintf(os.Stderr, "detected %d valid %s from input file\n", len(hashToPauseData), record)
+		fmt.Fprintf(os.Stderr, "detected %d valid %s from input file\n", len(parsedRecords), record)
 	}()
 
 	// Process contents of the CSV file
 	for {
 		record, err := reader.Read()
 		if errors.Is(err, io.EOF) {
-			// Finished parsing the file.
-			//if len(record) == 0 {
-			//	return nil, errors.New("no records found")
-			//}
-
-			for _, value := range hashToPauseData {
-				parsedRecords = append(parsedRecords, value)
-			}
-
 			return parsedRecords, nil
 		} else if err != nil {
 			return nil, err
@@ -197,35 +184,20 @@ func (a *admin) readPausedAccountFile(filePath string) ([]pauseData, error) {
 			fmt.Fprintf(os.Stderr, "skipping: malformed identifierType entry on line %d\n", lineCounter)
 			continue
 		}
-		identifierType := identifier.IdentifierType(record[1])
 
+		// The remaining fields are the domain names, so make sure at least one
+		// exists.
 		if len(record) < 3 {
 			fmt.Fprintf(os.Stderr, "skipping: malformed identifierValue entry on line %d\n", lineCounter)
 			continue
 		}
-		// The remaining fields are the domain names.
-		identifierValue := record[2:]
-		slices.Sort(identifierValue)
 
-		// Construct a hash over the parsed line from the CSV. The hash will be
-		// used as a key mapping to a pauseData object containing the fields we
-		// wish to operate on.
-		hash := sha256.New()
-		var recordBytes []byte
-		recordBytes = append(recordBytes, byte(accountID))
-		recordBytes = append(recordBytes, []byte(identifierType)...)
-		recordBytes = append(recordBytes, []byte(strings.Join(identifierValue, ""))...)
-		b64Hash := base64.StdEncoding.EncodeToString(hash.Sum(recordBytes))
-
-		if _, ok := hashToPauseData[b64Hash]; !ok {
-			hashToPauseData[b64Hash] = pauseData{
-				accountID:       accountID,
-				identifierType:  identifierType,
-				identifierValue: identifierValue,
-			}
-		} else {
-			fmt.Fprintf(os.Stderr, "skipping: duplicate entry on line %d: %d,%s,%s\n", lineCounter, accountID, identifierType, identifierValue[:])
+		parsedRecord := csvData{
+			accountID:       accountID,
+			identifierType:  identifier.IdentifierType(record[1]),
+			identifierValue: record[2:],
 		}
+		parsedRecords = append(parsedRecords, parsedRecord)
 		lineCounter++
 	}
 }
