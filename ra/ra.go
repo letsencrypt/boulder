@@ -1311,13 +1311,13 @@ func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context,
 	var transactions []ratelimits.Transaction
 	txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderDomains)
 	if err != nil {
-		ra.log.Errf("building rate limit transactions at finalize: %s", err)
+		ra.log.Warningf("building rate limit transactions at finalize: %s", err)
 	}
 	transactions = append(transactions, txns...)
 
 	txn, err := ra.txnBuilder.CertificatesPerFQDNSetSpendOnlyTransaction(orderDomains)
 	if err != nil {
-		ra.log.Errf("building rate limit transaction at finalize: %s", err)
+		ra.log.Warningf("building rate limit transaction at finalize: %s", err)
 	}
 	transactions = append(transactions, txn)
 
@@ -1326,7 +1326,7 @@ func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context,
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
-		ra.log.Errf("spending against rate limits at finalize: %s", err)
+		ra.log.Warningf("spending against rate limits at finalize: %s", err)
 	}
 }
 
@@ -1861,7 +1861,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 
 	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, name)
 	if err != nil {
-		ra.log.Errf("building rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+		ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
 
 	_, err = ra.limiter.Spend(ctx, txn)
@@ -1869,7 +1869,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
-		ra.log.Errf("spending against the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+		ra.log.Warningf("spending against the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
 }
 

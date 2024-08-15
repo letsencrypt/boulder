@@ -662,14 +662,14 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 
 	_, err = wfe.limiter.BatchSpend(ctx, txns)
 	if err != nil {
-		wfe.log.Errf("checking newAccount limits: %s", err)
+		wfe.log.Warningf("checking newAccount limits: %s", err)
 		return nil
 	}
 
 	return func() {
 		_, err := wfe.limiter.BatchRefund(ctx, txns)
 		if err != nil {
-			wfe.log.Errf("refunding newAccount limits: %s", err)
+			wfe.log.Warningf("refunding newAccount limits: %s", err)
 		}
 	}
 }
@@ -2038,7 +2038,7 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 
 	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, isRenewal)
 	if err != nil {
-		wfe.log.Errf("building new order limit transactions: %v", err)
+		wfe.log.Warningf("building new order limit transactions: %v", err)
 		return nil
 	}
 
@@ -2047,14 +2047,14 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil
 		}
-		wfe.log.Errf("checking newOrder limits: %s", err)
+		wfe.log.Warningf("checking newOrder limits: %s", err)
 		return nil
 	}
 
 	return func() {
 		_, err := wfe.limiter.BatchRefund(ctx, txns)
 		if err != nil {
-			wfe.log.Errf("refunding newOrder limits: %s", err)
+			wfe.log.Warningf("refunding newOrder limits: %s", err)
 		}
 	}
 }
