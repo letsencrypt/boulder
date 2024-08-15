@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"net"
 	"net/mail"
 	"os"
@@ -35,21 +34,14 @@ type AuthorityImpl struct {
 	blocklistMu            sync.RWMutex
 
 	enabledChallenges map[core.AcmeChallenge]bool
-	pseudoRNG         *rand.Rand
-	rngMu             sync.Mutex
 }
 
 // New constructs a Policy Authority.
 func New(challengeTypes map[core.AcmeChallenge]bool, log blog.Logger) (*AuthorityImpl, error) {
-
-	pa := AuthorityImpl{
+	return &AuthorityImpl{
 		log:               log,
 		enabledChallenges: challengeTypes,
-		// We don't need real randomness for this.
-		pseudoRNG: rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())),
-	}
-
-	return &pa, nil
+	}, nil
 }
 
 // blockedNamesPolicy is a struct holding lists of blocked domain names. One for
@@ -524,11 +516,9 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 	return nil
 }
 
-// challengeTypesFor determines which challenge types are acceptable for the
+// ChallengeTypesFor determines which challenge types are acceptable for the
 // given identifier.
-func (pa *AuthorityImpl) challengeTypesFor(identifier identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
-	var challenges []core.AcmeChallenge
-
+func (pa *AuthorityImpl) ChallengeTypesFor(identifier identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
 	// If the identifier is for a DNS wildcard name we only
 	// provide a DNS-01 challenge as a matter of CA policy.
 	if strings.HasPrefix(identifier.Value, "*.") {
@@ -540,59 +530,25 @@ func (pa *AuthorityImpl) challengeTypesFor(identifier identifier.ACMEIdentifier)
 					"challenge type is not enabled")
 		}
 		// Only provide a DNS-01-Wildcard challenge
-		challenges = []core.AcmeChallenge{core.ChallengeTypeDNS01}
-	} else {
-		// Otherwise we collect up challenges based on what is enabled.
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeHTTP01) {
-			challenges = append(challenges, core.ChallengeTypeHTTP01)
-		}
+		return []core.AcmeChallenge{core.ChallengeTypeDNS01}, nil
+	}
 
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSALPN01) {
-			challenges = append(challenges, core.ChallengeTypeTLSALPN01)
-		}
+	// Otherwise we collect up challenges based on what is enabled.
+	var challenges []core.AcmeChallenge
 
-		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
-			challenges = append(challenges, core.ChallengeTypeDNS01)
-		}
+	if pa.ChallengeTypeEnabled(core.ChallengeTypeHTTP01) {
+		challenges = append(challenges, core.ChallengeTypeHTTP01)
+	}
+
+	if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSALPN01) {
+		challenges = append(challenges, core.ChallengeTypeTLSALPN01)
+	}
+
+	if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
+		challenges = append(challenges, core.ChallengeTypeDNS01)
 	}
 
 	return challenges, nil
-}
-
-// ChallengesFor determines which challenge types are acceptable for the given
-// identifier, and constructs new challenge objects for those challenge types.
-// The resulting challenge objects all share a single challenge token and are
-// returned in a random order.
-func (pa *AuthorityImpl) ChallengesFor(identifier identifier.ACMEIdentifier) ([]core.Challenge, error) {
-	challTypes, err := pa.challengeTypesFor(identifier)
-	if err != nil {
-		return nil, err
-	}
-
-	challenges := make([]core.Challenge, len(challTypes))
-
-	token := core.NewToken()
-
-	for i, t := range challTypes {
-		c, err := core.NewChallenge(t, token)
-		if err != nil {
-			return nil, err
-		}
-
-		challenges[i] = c
-	}
-
-	// We shuffle the challenges to prevent ACME clients from relying on the
-	// specific order that boulder returns them in.
-	shuffled := make([]core.Challenge, len(challenges))
-
-	pa.rngMu.Lock()
-	defer pa.rngMu.Unlock()
-	for i, challIdx := range pa.pseudoRNG.Perm(len(challenges)) {
-		shuffled[i] = challenges[challIdx]
-	}
-
-	return shuffled, nil
 }
 
 // ChallengeTypeEnabled returns whether the specified challenge type is enabled
@@ -610,7 +566,7 @@ func (pa *AuthorityImpl) CheckAuthz(authz *core.Authorization) error {
 		return err
 	}
 
-	challTypes, err := pa.challengeTypesFor(authz.Identifier)
+	challTypes, err := pa.ChallengeTypesFor(authz.Identifier)
 	if err != nil {
 		return err
 	}

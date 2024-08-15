@@ -1263,7 +1263,6 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 				Identifier:     &sapb.Identifier{Type: "dns", Value: "c.com"},
 				RegistrationID: reg.Id,
 				Expires:        timestamppb.New(nowC),
-				Status:         "pending",
 				ChallengeTypes: []string{string(core.ChallengeTypeHTTP01)},
 				Token:          core.NewToken(),
 			},
@@ -1271,7 +1270,6 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 				Identifier:     &sapb.Identifier{Type: "dns", Value: "d.com"},
 				RegistrationID: reg.Id,
 				Expires:        timestamppb.New(nowD),
-				Status:         "pending",
 				ChallengeTypes: []string{string(core.ChallengeTypeHTTP01)},
 				Token:          core.NewToken(),
 			},
@@ -1317,6 +1315,39 @@ func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
 	test.AssertErrorIs(t, err, errIncompleteRequest)
 }
 
+func TestNewOrderAndAuthzs_MismatchedRegID(t *testing.T) {
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+
+	key1, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("17.17.17.17").MarshalText()
+	reg1, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key1,
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	key2, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}}.MarshalJSON()
+	reg2, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key2,
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	_, err = sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID: reg1.Id,
+		},
+		NewAuthzs: []*sapb.NewAuthzRequest{
+			{
+				RegistrationID: reg2.Id,
+			},
+		},
+	})
+	test.AssertError(t, err, "mismatched regIDs should fail")
+	test.AssertContains(t, err.Error(), "same account")
+}
+
 func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
@@ -1338,16 +1369,11 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewAuthzs: []*sapb.NewAuthzRequest{
 			{
-				DnsName:        domain,
+				Identifier:     &sapb.Identifier{Type: "dns", Value: domain},
 				RegistrationID: reg.Id,
 				Expires:        timestamppb.New(expires),
-				Challenges: []*corepb.Challenge{
-					{
-						Type:   string(core.ChallengeTypeHTTP01),
-						Status: "real fake garbage data",
-						Token:  core.NewToken(),
-					},
-				},
+				ChallengeTypes: []string{string(core.ChallengeTypeHTTP01)},
+				Token:          core.NewToken(),
 			},
 		},
 		NewOrder: &sapb.NewOrderRequest{
