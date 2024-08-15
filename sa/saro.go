@@ -281,19 +281,19 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIPRange(ctx context.Contex
 // be run in parallel. If any of them error, only one error will be returned.
 func (ssa *SQLStorageAuthorityRO) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if len(req.Names) == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
+	if len(req.DnsNames) == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 
-	work := make(chan string, len(req.Names))
+	work := make(chan string, len(req.DnsNames))
 	type result struct {
 		err      error
 		count    int64
 		earliest time.Time
 		domain   string
 	}
-	results := make(chan result, len(req.Names))
-	for _, domain := range req.Names {
+	results := make(chan result, len(req.DnsNames))
+	for _, domain := range req.DnsNames {
 		work <- domain
 	}
 	close(work)
@@ -495,7 +495,7 @@ func (ssa *SQLStorageAuthorityRO) CountOrders(ctx context.Context, req *sapb.Cou
 // CountFQDNSets counts the total number of issuances, for a set of domains,
 // that occurred during a given window of time.
 func (ssa *SQLStorageAuthorityRO) CountFQDNSets(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
-	if core.IsAnyNilOrZero(req.Window) || len(req.Domains) == 0 {
+	if core.IsAnyNilOrZero(req.Window) || len(req.DnsNames) == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -506,7 +506,7 @@ func (ssa *SQLStorageAuthorityRO) CountFQDNSets(ctx context.Context, req *sapb.C
 		`SELECT COUNT(*) FROM fqdnSets
 		WHERE setHash = ?
 		AND issued > ?`,
-		core.HashNames(req.Domains),
+		core.HashNames(req.DnsNames),
 		ssa.clk.Now().Add(-req.Window.AsDuration()),
 	)
 	return &sapb.Count{Count: count}, err
@@ -516,7 +516,7 @@ func (ssa *SQLStorageAuthorityRO) CountFQDNSets(ctx context.Context, req *sapb.C
 // certificate, issued for a set of domains, during a given window of time,
 // starting from the most recent issuance.
 func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
-	if core.IsAnyNilOrZero(req.Window) || len(req.Domains) == 0 {
+	if core.IsAnyNilOrZero(req.Window) || len(req.DnsNames) == 0 {
 		return nil, errIncompleteRequest
 	}
 	type row struct {
@@ -530,7 +530,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 		WHERE setHash = ?
 		AND issued > ?
 		ORDER BY issued DESC`,
-		core.HashNames(req.Domains),
+		core.HashNames(req.DnsNames),
 		ssa.clk.Now().Add(-req.Window.AsDuration()),
 	)
 	if err != nil {
@@ -547,10 +547,10 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
 func (ssa *SQLStorageAuthorityRO) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
-	if len(req.Domains) == 0 {
+	if len(req.DnsNames) == 0 {
 		return nil, errIncompleteRequest
 	}
-	exists, err := ssa.checkFQDNSetExists(ctx, ssa.dbReadOnlyMap.SelectOne, req.Domains)
+	exists, err := ssa.checkFQDNSetExists(ctx, ssa.dbReadOnlyMap.SelectOne, req.DnsNames)
 	if err != nil {
 		return nil, err
 	}
@@ -631,7 +631,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		for _, a := range authzValidityInfo {
 			names = append(names, a.IdentifierValue)
 		}
-		order.Names = names
+		order.DnsNames = names
 
 		// Calculate the status for the order
 		status, err := statusForOrder(order, authzValidityInfo, ssa.clk.Now())
@@ -677,12 +677,12 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 // unexpired orders are considered. If no order meeting these requirements is
 // found a nil corepb.Order pointer is returned.
 func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
-	if req.AcctID == 0 || len(req.Names) == 0 {
+	if req.AcctID == 0 || len(req.DnsNames) == 0 {
 		return nil, errIncompleteRequest
 	}
 
 	// Hash the names requested for lookup in the orderFqdnSets table
-	fqdnHash := core.HashNames(req.Names)
+	fqdnHash := core.HashNames(req.DnsNames)
 
 	// Find a possibly-suitable order. We don't include the account ID or order
 	// status in this query because there's no index that includes those, so
@@ -785,7 +785,7 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 // provided. If both a valid and pending authorization exist only the valid one will be returned.
 func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if len(req.Domains) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.ValidUntil) {
+	if len(req.DnsNames) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.ValidUntil) {
 		return nil, errIncompleteRequest
 	}
 	var authzModels []authzModel
@@ -797,7 +797,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 
-	for _, name := range req.Domains {
+	for _, name := range req.DnsNames {
 		params = append(params, name)
 	}
 
@@ -810,7 +810,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 			identifierType = ? AND
 			identifierValue IN (%s)`,
 		authzFields,
-		db.QuestionMarks(len(req.Domains)),
+		db.QuestionMarks(len(req.DnsNames)),
 	)
 
 	_, err := ssa.dbReadOnlyMap.Select(
@@ -925,7 +925,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 // in a given time range. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if req.RegistrationID == 0 || req.Hostname == "" || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
+	if req.RegistrationID == 0 || req.DnsName == "" || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 
@@ -943,7 +943,7 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 		map[string]interface{}{
 			"regID":           req.RegistrationID,
 			"dnsType":         identifierTypeToUint[string(identifier.DNS)],
-			"ident":           req.Hostname,
+			"ident":           req.DnsName,
 			"expiresEarliest": req.Range.Earliest.AsTime(),
 			"expiresLatest":   req.Range.Latest.AsTime(),
 			"status":          statusUint(core.StatusInvalid),
@@ -960,7 +960,7 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 // only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if len(req.Domains) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.ValidUntil) {
+	if len(req.DnsNames) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.ValidUntil) {
 		return nil, errIncompleteRequest
 	}
 
@@ -972,7 +972,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 			identifierType = ? AND
 			identifierValue IN (%s)`,
 		authzFields,
-		db.QuestionMarks(len(req.Domains)),
+		db.QuestionMarks(len(req.DnsNames)),
 	)
 
 	params := []interface{}{
@@ -981,7 +981,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 		req.ValidUntil.AsTime(),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
-	for _, domain := range req.Domains {
+	for _, domain := range req.DnsNames {
 		params = append(params, domain)
 	}
 

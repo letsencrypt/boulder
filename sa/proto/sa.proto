@@ -117,7 +117,7 @@ message AuthorizationID {
 message GetValidAuthorizationsRequest {
   // Next unused field number: 5
   int64 registrationID = 1;
-  repeated string domains = 2;
+  repeated string dnsNames = 2;
   reserved 3; // Previously nowNS
   google.protobuf.Timestamp validUntil = 4;
 }
@@ -156,7 +156,7 @@ message Timestamps {
 
 message CountCertificatesByNamesRequest {
   Range range = 1;
-  repeated string names = 2;
+  repeated string dnsNames = 2;
 }
 
 message CountByNames {
@@ -171,7 +171,7 @@ message CountRegistrationsByIPRequest {
 
 message CountInvalidAuthorizationsRequest {
   int64 registrationID = 1;
-  string hostname = 2;
+  string dnsName = 2;
   // Count authorizations that expire in this range.
   Range range = 3;
 }
@@ -184,12 +184,12 @@ message CountOrdersRequest {
 message CountFQDNSetsRequest {
   // Next unused field number: 4
   reserved 1; // Previously windowNS
-  repeated string domains = 2;
+  repeated string dnsNames = 2;
   google.protobuf.Duration window = 3;
 }
 
 message FQDNSetExistsRequest {
-  repeated string domains = 1;
+  repeated string dnsNames = 1;
 }
 
 message Exists {
@@ -242,7 +242,7 @@ message NewOrderRequest {
   int64 registrationID = 1;
   reserved 2; // Previously expiresNS
   google.protobuf.Timestamp expires = 5;
-  repeated string names = 3;
+  repeated string dnsNames = 3;
   repeated int64 v2Authorizations = 4;
   string replacesSerial = 6;
   string certificateProfileName = 7;
@@ -254,7 +254,7 @@ message NewOrderRequest {
 message NewAuthzRequest {
   // Next unused field number: 13
   reserved 1; // previously id
-  reserved 2; // previously identifierValue
+  reserved 2; // previously dnsName
   Identifier identifier = 12;
   int64 registrationID = 3;
   reserved 4; // previously status
@@ -284,7 +284,7 @@ message GetValidOrderAuthorizationsRequest {
 
 message GetOrderForNamesRequest {
   int64 acctID = 1;
-  repeated string names = 2;
+  repeated string dnsNames = 2;
 }
 
 message FinalizeOrderRequest {
@@ -295,7 +295,7 @@ message FinalizeOrderRequest {
 message GetAuthorizationsRequest {
   // Next unused field number: 5
   int64 registrationID = 1;
-  repeated string domains = 2;
+  repeated string dnsNames = 2;
   reserved 3; // Previously nowNS
   google.protobuf.Timestamp validUntil = 4;
 }

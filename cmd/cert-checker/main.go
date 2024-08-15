@@ -312,7 +312,7 @@ func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificat
 	// Any authorization for a given name is sufficient.
 	nameToAuthz := make(map[string]*corepb.Authorization)
 	for _, m := range authzs {
-		nameToAuthz[m.Identifier] = m
+		nameToAuthz[m.DnsName] = m
 	}
 
 	var errors []error

@@ -86,18 +86,18 @@ var accountURIPrefixes = []string{"http://boulder.service.consul:4000/acme/reg/"
 
 func createValidationRequest(domain string, challengeType core.AcmeChallenge) *vapb.PerformValidationRequest {
 	return &vapb.PerformValidationRequest{
-		Domain: domain,
+		DnsName: domain,
 		Challenge: &corepb.Challenge{
 			Type:              string(challengeType),
 			Status:            string(core.StatusPending),
 			Token:             expectedToken,
 			Validationrecords: nil,
-			KeyAuthorization:  expectedKeyAuthorization,
 		},
 		Authz: &vapb.AuthzMeta{
 			Id:    "",
 			RegID: 1,
 		},
+		ExpectedKeyAuthorization: expectedKeyAuthorization,
 	}
 }
 

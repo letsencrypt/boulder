@@ -19,6 +19,6 @@ NewOrdersPerAccount:
   burst: 1500
   period: 3h
 CertificatesPerFQDNSet:
-  count: 6
-  burst: 6
-  period: 168h
+  count: 2
+  burst: 2
+  period: 3h

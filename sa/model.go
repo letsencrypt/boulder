@@ -570,12 +570,12 @@ func rehydrateHostPort(vr *core.ValidationRecord) error {
 		return fmt.Errorf("parsing validation record URL %q: %w", vr.URL, err)
 	}
 
-	if vr.Hostname == "" {
+	if vr.DnsName == "" {
 		hostname := parsedUrl.Hostname()
 		if hostname == "" {
 			return fmt.Errorf("hostname missing in URL %q", vr.URL)
 		}
-		vr.Hostname = hostname
+		vr.DnsName = hostname
 	}
 
 	if vr.Port == "" {
@@ -712,7 +712,8 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
 // authzModel storage representation.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 	am := &authzModel{
-		IdentifierValue: authz.Identifier,
+		IdentifierType:  identifierTypeToUint[string(identifier.DNS)],
+		IdentifierValue: authz.DnsName,
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.AcmeStatus(authz.Status)],
 		Expires:         authz.Expires.AsTime(),
@@ -853,10 +854,15 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 }
 
 func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
+	identType, ok := uintToIdentifierType[am.IdentifierType]
+	if !ok || identType != string(identifier.DNS) {
+		return nil, fmt.Errorf("unrecognized identifier type encoding %d", am.IdentifierType)
+	}
+
 	pb := &corepb.Authorization{
 		Id:             fmt.Sprintf("%d", am.ID),
 		Status:         string(uintToStatus[am.Status]),
-		Identifier:     am.IdentifierValue,
+		DnsName:        am.IdentifierValue,
 		RegistrationID: am.RegistrationID,
 		Expires:        timestamppb.New(am.Expires),
 	}
@@ -1142,7 +1148,7 @@ func statusForOrder(order *corepb.Order, authzValidityInfo []authzValidity, now 
 
 	// An order is fully authorized if it has valid authzs for each of the order
 	// names
-	fullyAuthorized := len(order.Names) == validAuthzs
+	fullyAuthorized := len(order.DnsNames) == validAuthzs
 
 	// If the order isn't fully authorized we've encountered an internal error:
 	// Above we checked for any invalid or pending authzs and should have returned

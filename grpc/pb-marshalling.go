@@ -83,7 +83,6 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		Type:              string(challenge.Type),
 		Status:            string(challenge.Status),
 		Token:             challenge.Token,
-		KeyAuthorization:  challenge.ProvidedKeyAuthorization,
 		Error:             prob,
 		Validationrecords: recordAry,
 		Validated:         validated,
@@ -124,9 +123,6 @@ func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		ValidationRecord: recordAry,
 		Validated:        validated,
 	}
-	if in.KeyAuthorization != "" {
-		ch.ProvidedKeyAuthorization = in.KeyAuthorization
-	}
 	return ch, nil
 }
 
@@ -145,7 +141,7 @@ func ValidationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 		return nil, err
 	}
 	return &corepb.ValidationRecord{
-		Hostname:          record.Hostname,
+		Hostname:          record.DnsName,
 		Port:              record.Port,
 		AddressesResolved: addrs,
 		AddressUsed:       addrUsed,
@@ -173,7 +169,7 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 		return
 	}
 	return core.ValidationRecord{
-		Hostname:          in.Hostname,
+		DnsName:           in.Hostname,
 		Port:              in.Port,
 		AddressesResolved: addrs,
 		AddressUsed:       addrUsed,
@@ -318,7 +314,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 
 	return &corepb.Authorization{
 		Id:             authz.ID,
-		Identifier:     authz.Identifier.Value,
+		DnsName:        authz.Identifier.Value,
 		RegistrationID: authz.RegistrationID,
 		Status:         string(authz.Status),
 		Expires:        expires,
@@ -342,7 +338,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	}
 	authz := core.Authorization{
 		ID:             pb.Id,
-		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: pb.Identifier},
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: pb.DnsName},
 		RegistrationID: pb.RegistrationID,
 		Status:         core.AcmeStatus(pb.Status),
 		Expires:        expires,
@@ -366,7 +362,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.Names) == 0)
+	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.DnsNames) == 0)
 }
 
 func CertToPB(cert core.Certificate) *corepb.Certificate {

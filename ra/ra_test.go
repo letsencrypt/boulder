@@ -78,7 +78,7 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 			NewOrder: &sapb.NewOrderRequest{
 				RegistrationID: Registration.Id,
 				Expires:        timestamppb.New(exp),
-				Names:          []string{domain},
+				DnsNames:       []string{domain},
 			},
 			NewAuthzs: []*sapb.NewAuthzRequest{
 				{
@@ -874,19 +874,6 @@ func TestPerformValidationSuccess(t *testing.T) {
 		Problems: nil,
 	}
 
-	var remainingFailedValidations int64
-	var rlTxns []ratelimits.Transaction
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		// Gather a baseline for the rate limit.
-		var err error
-		rlTxns, err = ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(authzPB.RegistrationID, []string{Identifier}, 100)
-		test.AssertNotError(t, err, "FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions failed")
-
-		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
-		test.AssertNotError(t, err, "BatchSpend failed")
-		remainingFailedValidations = d.Remaining
-	}
-
 	now := fc.Now()
 	challIdx := dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
@@ -928,13 +915,6 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
-
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		// The failed validations bucket should be identical to the baseline.
-		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
-		test.AssertNotError(t, err, "BatchSpend failed")
-		test.AssertEquals(t, d.Remaining, remainingFailedValidations)
-	}
 }
 
 func TestPerformValidationVAError(t *testing.T) {
@@ -942,19 +922,6 @@ func TestPerformValidationVAError(t *testing.T) {
 	defer cleanUp()
 
 	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
-
-	var remainingFailedValidations int64
-	var rlTxns []ratelimits.Transaction
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		// Gather a baseline for the rate limit.
-		var err error
-		rlTxns, err = ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(authzPB.RegistrationID, []string{Identifier}, 100)
-		test.AssertNotError(t, err, "FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions failed")
-
-		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
-		test.AssertNotError(t, err, "BatchSpend failed")
-		remainingFailedValidations = d.Remaining
-	}
 
 	va.PerformValidationRequestResultError = fmt.Errorf("Something went wrong")
 
@@ -995,13 +962,6 @@ func TestPerformValidationVAError(t *testing.T) {
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
-
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		// The failed validations bucket should have been decremented by 1.
-		d, err := ra.limiter.BatchSpend(ctx, rlTxns)
-		test.AssertNotError(t, err, "BatchSpend failed")
-		test.AssertEquals(t, d.Remaining, remainingFailedValidations-1)
-	}
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
@@ -1016,7 +976,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
-			Names:            []string{"www.example.com"},
+			DnsNames:         []string{"www.example.com"},
 			V2Authorizations: []int64{authzID},
 		},
 	})
@@ -1033,7 +993,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	_, err = ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
 		Order: &corepb.Order{
 			Status:         string(core.StatusReady),
-			Names:          []string{"www.example.com"},
+			DnsNames:       []string{"www.example.com"},
 			Id:             order.Id,
 			RegistrationID: Registration.Id,
 		},
@@ -1061,11 +1021,11 @@ func TestNewOrderRateLimiting(t *testing.T) {
 
 	orderOne := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"first.example.com"},
+		DnsNames:       []string{"first.example.com"},
 	}
 	orderTwo := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"second.example.com"},
+		DnsNames:       []string{"second.example.com"},
 	}
 
 	// To start, it should be possible to create a new order
@@ -1108,7 +1068,7 @@ func TestNewOrderRateLimiting(t *testing.T) {
 
 	_, err = ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"renewing.example.com"},
+		DnsNames:       []string{"renewing.example.com"},
 	})
 	test.AssertNotError(t, err, "Renewal of orderRenewal failed")
 
@@ -1151,7 +1111,7 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 	// Request an order for the test domain
 	newOrder := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{domain},
+		DnsNames:       []string{domain},
 	}
 
 	// With the feature flag enabled the NewOrder request should fail because of
@@ -1176,7 +1136,7 @@ type mockInvalidAuthorizationsAuthority struct {
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	if req.Hostname == sa.domainWithFailures {
+	if req.DnsName == sa.domainWithFailures {
 		return &sapb.Count{Count: 1}, nil
 	} else {
 		return &sapb.Count{}, nil
@@ -1219,7 +1179,7 @@ func (m *mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, req
 		m.t.Errorf("incorrect earliest: got '%v', expected '%v'", req.Range.Earliest.AsTime(), expectedEarliest)
 	}
 	counts := make(map[string]int64)
-	for _, name := range req.Names {
+	for _, name := range req.DnsNames {
 		if count, ok := m.nameCounts.Counts[name]; ok {
 			counts[name] = count
 		}
@@ -1538,7 +1498,7 @@ func (m mockSAWithFQDNSet) addFQDNSet(names []string) {
 
 // Search for a set of domain names in the FQDN set map
 func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
-	hash := m.hashNames(req.Domains)
+	hash := m.hashNames(req.DnsNames)
 	if _, exists := m.fqdnSet[hash]; exists {
 		return &sapb.Exists{Exists: true}, nil
 	}
@@ -1548,7 +1508,7 @@ func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExi
 // Return a map of domain -> certificate count.
 func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
 	counts := make(map[string]int64)
-	for _, name := range req.Names {
+	for _, name := range req.DnsNames {
 		entry, ok := m.issuanceTimestamps[name]
 		if ok {
 			counts[name] = int64(len(entry.Timestamps))
@@ -1559,7 +1519,7 @@ func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sa
 
 func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
 	var total int64
-	for _, name := range req.Domains {
+	for _, name := range req.DnsNames {
 		entry, ok := m.issuanceTimestamps[name]
 		if ok {
 			total += int64(len(entry.Timestamps))
@@ -1569,8 +1529,8 @@ func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, req *sapb.CountFQDNS
 }
 
 func (m mockSAWithFQDNSet) FQDNSetTimestampsForWindow(_ context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Timestamps, error) {
-	if len(req.Domains) == 1 {
-		return m.issuanceTimestamps[req.Domains[0]], nil
+	if len(req.DnsNames) == 1 {
+		return m.issuanceTimestamps[req.DnsNames[0]], nil
 	} else {
 		return nil, fmt.Errorf("FQDNSetTimestampsForWindow mock only supports a single domain")
 	}
@@ -2040,15 +2000,15 @@ func TestNewOrder(t *testing.T) {
 	orderA, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID:         Registration.Id,
 		CertificateProfileName: "test",
-		Names:                  []string{"b.com", "a.com", "a.com", "C.COM"},
+		DnsNames:               []string{"b.com", "a.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderA.RegistrationID, int64(1))
 	test.AssertEquals(t, orderA.Expires.AsTime(), now.Add(time.Hour))
-	test.AssertEquals(t, len(orderA.Names), 3)
+	test.AssertEquals(t, len(orderA.DnsNames), 3)
 	test.AssertEquals(t, orderA.CertificateProfileName, "test")
 	// We expect the order names to have been sorted, deduped, and lowercased
-	test.AssertDeepEquals(t, orderA.Names, []string{"a.com", "b.com", "c.com"})
+	test.AssertDeepEquals(t, orderA.DnsNames, []string{"a.com", "b.com", "c.com"})
 	test.AssertEquals(t, orderA.Id, int64(1))
 	test.AssertEquals(t, numAuthorizations(orderA), 3)
 
@@ -2056,31 +2016,31 @@ func TestNewOrder(t *testing.T) {
 	now = fc.Now()
 	orderB, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"b.com", "a.com", "C.COM"},
+		DnsNames:       []string{"b.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderB.RegistrationID, int64(1))
 	test.AssertEquals(t, orderB.Expires.AsTime(), now.Add(time.Hour))
 	// We expect orderB's ID to match orderA's because of pending order reuse
 	test.AssertEquals(t, orderB.Id, orderA.Id)
-	test.AssertEquals(t, len(orderB.Names), 3)
-	test.AssertDeepEquals(t, orderB.Names, []string{"a.com", "b.com", "c.com"})
+	test.AssertEquals(t, len(orderB.DnsNames), 3)
+	test.AssertDeepEquals(t, orderB.DnsNames, []string{"a.com", "b.com", "c.com"})
 	test.AssertEquals(t, numAuthorizations(orderB), 3)
 	test.AssertDeepEquals(t, orderB.V2Authorizations, orderA.V2Authorizations)
 
 	// Reuse all of the existing authorizations from the previous order and
 	// add a new one
-	orderA.Names = append(orderA.Names, "d.com")
+	orderA.DnsNames = append(orderA.DnsNames, "d.com")
 	now = fc.Now()
 	orderC, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          orderA.Names,
+		DnsNames:       orderA.DnsNames,
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderC.RegistrationID, int64(1))
 	test.AssertEquals(t, orderC.Expires.AsTime(), now.Add(time.Hour))
-	test.AssertEquals(t, len(orderC.Names), 4)
-	test.AssertDeepEquals(t, orderC.Names, []string{"a.com", "b.com", "c.com", "d.com"})
+	test.AssertEquals(t, len(orderC.DnsNames), 4)
+	test.AssertDeepEquals(t, orderC.DnsNames, []string{"a.com", "b.com", "c.com", "d.com"})
 	// We expect orderC's ID to not match orderA/orderB's because it is for
 	// a different set of names
 	test.AssertNotEquals(t, orderC.Id, orderA.Id)
@@ -2091,7 +2051,7 @@ func TestNewOrder(t *testing.T) {
 
 	_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"a"},
+		DnsNames:       []string{"a"},
 	})
 	test.AssertError(t, err, "NewOrder with invalid names did not error")
 	test.AssertEquals(t, err.Error(), "Cannot issue for \"a\": Domain name needs at least one dot")
@@ -2115,7 +2075,7 @@ func TestNewOrderReuse(t *testing.T) {
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          names,
+		DnsNames:       names,
 	}
 
 	// Create a second registration to reference
@@ -2150,7 +2110,7 @@ func TestNewOrderReuse(t *testing.T) {
 			Name: "Subset of order names, same regID",
 			OrderReq: &rapb.NewOrderRequest{
 				RegistrationID: Registration.Id,
-				Names:          []string{names[1]},
+				DnsNames:       []string{names[1]},
 			},
 			// We do not expect reuse because the order names don't match firstOrder
 			ExpectReuse: false,
@@ -2159,7 +2119,7 @@ func TestNewOrderReuse(t *testing.T) {
 			Name: "Duplicate order, different regID",
 			OrderReq: &rapb.NewOrderRequest{
 				RegistrationID: secondReg.Id,
-				Names:          names,
+				DnsNames:       names,
 			},
 			// We do not expect reuse because the order regID differs from firstOrder
 			ExpectReuse: false,
@@ -2169,7 +2129,7 @@ func TestNewOrderReuse(t *testing.T) {
 			OrderReq: &rapb.NewOrderRequest{
 				RegistrationID:         Registration.Id,
 				CertificateProfileName: "different",
-				Names:                  names,
+				DnsNames:               names,
 			},
 			// We do not expect reuse because the profile name differs from firstOrder
 			ExpectReuse: false,
@@ -2219,7 +2179,7 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          names,
+		DnsNames:       names,
 	}
 
 	// First, add an order with `names` for regA
@@ -2299,7 +2259,7 @@ type mockInvalidPlusValidAuthzAuthority struct {
 }
 
 func (sa *mockInvalidPlusValidAuthzAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	if req.Hostname == sa.domainWithFailures {
+	if req.DnsName == sa.domainWithFailures {
 		return &sapb.Count{Count: 1}, nil
 	} else {
 		return &sapb.Count{}, nil
@@ -2315,7 +2275,7 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 	ctx := context.Background()
 	order, err := ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"example.com"},
+		DnsNames:       []string{"example.com"},
 	})
 	test.AssertNotError(t, err, "adding an initial order for regA")
 	test.AssertNotNil(t, order.Id, "initial order had a nil ID")
@@ -2358,7 +2318,7 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 	// authorizations recently" error.
 	_, err = ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"example.com"},
+		DnsNames:       []string{"example.com"},
 	})
 
 	test.AssertError(t, err, "expected error for domain with too many failures")
@@ -2416,7 +2376,7 @@ func (msa *mockSAWithAuthzs) NewOrderAndAuthzs(ctx context.Context, req *sapb.Ne
 		// Fields from the input new order request.
 		RegistrationID:         req.NewOrder.RegistrationID,
 		Expires:                req.NewOrder.Expires,
-		Names:                  req.NewOrder.Names,
+		DnsNames:               req.NewOrder.DnsNames,
 		V2Authorizations:       authzIDs,
 		CertificateProfileName: req.NewOrder.CertificateProfileName,
 		// Mock new fields generated by the database transaction.
@@ -2498,7 +2458,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          names,
+		DnsNames:       names,
 	}
 
 	// Create an order for that request
@@ -2518,7 +2478,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	orderNames := []string{"example.com", "*.welcome.zombo.com"}
 	wildcardOrderRequest := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          orderNames,
+		DnsNames:       orderNames,
 	}
 
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
@@ -2527,10 +2487,10 @@ func TestNewOrderWildcard(t *testing.T) {
 	// We expect the order to be pending
 	test.AssertEquals(t, order.Status, string(core.StatusPending))
 	// We expect the order to have two names
-	test.AssertEquals(t, len(order.Names), 2)
+	test.AssertEquals(t, len(order.DnsNames), 2)
 	// We expect the order to have the names we requested
 	test.AssertDeepEquals(t,
-		core.UniqueLowerNames(order.Names),
+		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
@@ -2568,7 +2528,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	orderNames = []string{"zombo.com", "*.zombo.com"}
 	wildcardOrderRequest = &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          orderNames,
+		DnsNames:       orderNames,
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
@@ -2576,10 +2536,10 @@ func TestNewOrderWildcard(t *testing.T) {
 	// We expect the order to be pending
 	test.AssertEquals(t, order.Status, string(core.StatusPending))
 	// We expect the order to have two names
-	test.AssertEquals(t, len(order.Names), 2)
+	test.AssertEquals(t, len(order.DnsNames), 2)
 	// We expect the order to have the names we requested
 	test.AssertDeepEquals(t,
-		core.UniqueLowerNames(order.Names),
+		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
@@ -2612,7 +2572,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// pending authz for the domain
 	normalOrderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"everything.is.possible.zombo.com"},
+		DnsNames:       []string{"everything.is.possible.zombo.com"},
 	}
 	normalOrder, err := ra.NewOrder(context.Background(), normalOrderReq)
 	test.AssertNotError(t, err, "NewOrder failed for a normal non-wildcard order")
@@ -2638,7 +2598,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	orderNames = []string{"*.everything.is.possible.zombo.com"}
 	wildcardOrderRequest = &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          orderNames,
+		DnsNames:       orderNames,
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
@@ -2714,7 +2674,7 @@ func TestNewOrderExpiry(t *testing.T) {
 	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          names,
+		DnsNames:       names,
 	}
 
 	// Create an order for that request
@@ -2809,13 +2769,13 @@ func TestFinalizeOrder(t *testing.T) {
 	// Add a new order for the fake reg ID
 	fakeRegOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"001.example.com"},
+		DnsNames:       []string{"001.example.com"},
 	})
 	test.AssertNotError(t, err, "Could not add test order for fake reg ID order ID")
 
 	missingAuthzOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"002.example.com"},
+		DnsNames:       []string{"002.example.com"},
 	})
 	test.AssertNotError(t, err, "Could not add test order for missing authz order ID")
 
@@ -2823,7 +2783,7 @@ func TestFinalizeOrder(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
-			Names:            []string{"not-example.com", "www.not-example.com"},
+			DnsNames:         []string{"not-example.com", "www.not-example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
 		},
 	})
@@ -2860,7 +2820,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					Names:          []string{},
+					DnsNames:       []string{},
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2873,7 +2833,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusValid),
-					Names:          []string{"a.com"},
+					DnsNames:       []string{"a.com"},
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2886,7 +2846,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusPending),
-					Names:          []string{"a.com"},
+					DnsNames:       []string{"a.com"},
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2900,7 +2860,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					Names:          []string{"a.com"},
+					DnsNames:       []string{"a.com"},
 				},
 				Csr: []byte{0xC0, 0xFF, 0xEE},
 			},
@@ -2913,7 +2873,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					Names:          []string{"a.com", "b.com"},
+					DnsNames:       []string{"a.com", "b.com"},
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2926,7 +2886,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					Names:          []string{"a.com"},
+					DnsNames:       []string{"a.com"},
 				},
 				Csr: twoDomainCSR,
 			},
@@ -2939,7 +2899,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					Names:          []string{"foobar.com"},
+					DnsNames:       []string{"foobar.com"},
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2952,7 +2912,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:                1,
 					RegistrationID:    1,
 					Status:            string(core.StatusReady),
-					Names:             []string{"example.org"},
+					DnsNames:          []string{"example.org"},
 					Expires:           timestamppb.New(exp),
 					CertificateSerial: "",
 					BeganProcessing:   false,
@@ -2966,7 +2926,7 @@ func TestFinalizeOrder(t *testing.T) {
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
 					Status:            string(core.StatusReady),
-					Names:             []string{"a.com"},
+					DnsNames:          []string{"a.com"},
 					Id:                fakeRegOrder.Id,
 					RegistrationID:    fakeRegID,
 					Expires:           timestamppb.New(exp),
@@ -2983,7 +2943,7 @@ func TestFinalizeOrder(t *testing.T) {
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
 					Status:            string(core.StatusReady),
-					Names:             []string{"a.com", "b.com"},
+					DnsNames:          []string{"a.com", "b.com"},
 					Id:                missingAuthzOrder.Id,
 					RegistrationID:    Registration.Id,
 					Expires:           timestamppb.New(exp),
@@ -3048,7 +3008,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
-			Names:            []string{"not-example.com", "www.not-example.com"},
+			DnsNames:         []string{"not-example.com", "www.not-example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
 		},
 	})
@@ -3137,7 +3097,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	orderNames := []string{"*.zombo.com"}
 	wildcardOrderRequest := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          orderNames,
+		DnsNames:       orderNames,
 	}
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
@@ -3214,7 +3174,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
-			Names:            names,
+			DnsNames:         names,
 			V2Authorizations: authzIDs,
 		},
 	})
@@ -3298,7 +3258,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	// The event CommonName should match the expected common name
 	test.AssertEquals(t, event.CommonName, "not-example.com")
 	// The event names should match the order names
-	test.AssertDeepEquals(t, core.UniqueLowerNames(event.Names), core.UniqueLowerNames(order.Names))
+	test.AssertDeepEquals(t, core.UniqueLowerNames(event.Names), core.UniqueLowerNames(order.DnsNames))
 	// The event's NotBefore and NotAfter should match the cert's
 	test.AssertEquals(t, event.NotBefore, parsedCert.NotBefore)
 	test.AssertEquals(t, event.NotAfter, parsedCert.NotAfter)
@@ -3345,7 +3305,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
-			Names:            names,
+			DnsNames:         names,
 			V2Authorizations: authzIDs,
 		},
 	})
@@ -3509,7 +3469,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
-			Names:            []string{"not-example.com", "www.not-example.com"},
+			DnsNames:         []string{"not-example.com", "www.not-example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
 		},
 	})
@@ -3639,7 +3599,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
-			Names:            names,
+			DnsNames:         names,
 			V2Authorizations: authzIDs,
 		},
 	})
@@ -3804,7 +3764,7 @@ func TestIssueCertificateOuter(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:         Registration.Id,
 			Expires:                timestamppb.New(exp),
-			Names:                  names,
+			DnsNames:               names,
 			V2Authorizations:       authzIDs,
 			CertificateProfileName: "philsProfile",
 		},
@@ -3846,7 +3806,7 @@ func TestNewOrderMaxNames(t *testing.T) {
 	ra.maxNames = 2
 	_, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: 1,
-		Names: []string{
+		DnsNames: []string{
 			"a",
 			"b",
 			"c",
@@ -4188,11 +4148,11 @@ func (msa *mockSARevocationWithAuthzs) GetValidAuthorizations2(ctx context.Conte
 		return authzs, nil
 	}
 
-	for _, name := range req.Domains {
+	for _, name := range req.DnsNames {
 		authzs.Authz = append(authzs.Authz, &sapb.Authorizations_MapElement{
 			Domain: name,
 			Authz: &corepb.Authorization{
-				Identifier: name,
+				DnsName: name,
 			},
 		})
 	}
@@ -4455,11 +4415,11 @@ func TestNewOrderRateLimitingExempt(t *testing.T) {
 
 	exampleOrderOne := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"first.example.com", "second.example.com"},
+		DnsNames:       []string{"first.example.com", "second.example.com"},
 	}
 	exampleOrderTwo := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"first.example.com", "third.example.com"},
+		DnsNames:       []string{"first.example.com", "third.example.com"},
 	}
 
 	// Create an order immediately.
@@ -4482,7 +4442,7 @@ func TestNewOrderFailedAuthzRateLimitingExempt(t *testing.T) {
 
 	exampleOrder := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"example.com"},
+		DnsNames:       []string{"example.com"},
 	}
 
 	// Create an order, and thus a pending authz, for "example.com".
@@ -4533,7 +4493,7 @@ func (sa *mockNewOrderMustBeReplacementAuthority) NewOrderAndAuthzs(ctx context.
 		Expires:        req.NewOrder.Expires,
 		Status:         string(core.StatusPending),
 		Created:        timestamppb.New(time.Now()),
-		Names:          req.NewOrder.Names,
+		DnsNames:       req.NewOrder.DnsNames,
 	}, nil
 }
 
@@ -4543,7 +4503,7 @@ func TestNewOrderReplacesSerialCarriesThroughToSA(t *testing.T) {
 
 	exampleOrder := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		Names:          []string{"example.com"},
+		DnsNames:       []string{"example.com"},
 		ReplacesSerial: "1234",
 	}
 
@@ -4600,8 +4560,8 @@ func TestGetAuthorization(t *testing.T) {
 	defer cleanup()
 
 	ra.SA = &mockSAWithAuthzs{
-		authzs: map[string]*core.Authorization{
-			"example.com": {
+		authzs: []*core.Authorization{
+			{
 				ID:         "1",
 				Identifier: identifier.DNSIdentifier("example.com"),
 				Status:     "valid",
