@@ -2945,9 +2945,9 @@ func TestAuthzModelMapToPB(t *testing.T) {
 	}
 
 	for _, authzPB := range out.Authzs {
-		model, ok := input[authzPB.Identifier]
+		model, ok := input[authzPB.DnsName]
 		if !ok {
-			t.Errorf("output had element for %q, a hostname not present in input", authzPB.Identifier)
+			t.Errorf("output had element for %q, a hostname not present in input", authzPB.DnsName)
 		}
 		test.AssertEquals(t, authzPB.Id, fmt.Sprintf("%d", model.ID))
 		test.AssertEquals(t, authzPB.DnsName, model.IdentifierValue)
@@ -2958,7 +2958,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 			t.Errorf("Times didn't match. Got %s, expected %s (%s)", gotTime, model.Expires, authzPB.Expires.AsTime())
 		}
 		if len(authzPB.Challenges) != bits.OnesCount(uint(model.Challenges)) {
-			t.Errorf("wrong number of challenges for %q: got %d, expected %d", authzPB.Identifier,
+			t.Errorf("wrong number of challenges for %q: got %d, expected %d", authzPB.DnsName,
 				len(authzPB.Challenges), bits.OnesCount(uint(model.Challenges)))
 		}
 		switch model.Challenges {
@@ -2971,7 +2971,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 			test.AssertEquals(t, authzPB.Challenges[0].Type, "tls-alpn-01")
 		}
 
-		delete(input, authzPB.Identifier)
+		delete(input, authzPB.DnsName)
 	}
 
 	for k := range input {
@@ -3085,7 +3085,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "sa.GetValidAuthorizations2 failed")
 	test.AssertEquals(t, len(authzs.Authzs), 1)
-	test.AssertEquals(t, authzs.Authzs[0].Identifier, ident)
+	test.AssertEquals(t, authzs.Authzs[0].DnsName, ident)
 	test.AssertEquals(t, authzs.Authzs[0].Id, fmt.Sprintf("%d", authzID))
 }
 
