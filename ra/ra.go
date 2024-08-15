@@ -1298,6 +1298,38 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	return order, err
 }
 
+// countCertificateIssued increments the certificates (per domain and per
+// account) and duplicate certificate rate limits. There is no reason to surface
+// errors from this function to the Subscriber, spends against these limit are
+// best effort.
+func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderDomains []string) {
+	if ra.limiter == nil || ra.txnBuilder == nil {
+		// Limiter is disabled.
+		return
+	}
+
+	var transactions []ratelimits.Transaction
+	txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderDomains)
+	if err != nil {
+		ra.log.Warningf("building rate limit transactions at finalize: %s", err)
+	}
+	transactions = append(transactions, txns...)
+
+	txn, err := ra.txnBuilder.CertificatesPerFQDNSetSpendOnlyTransaction(orderDomains)
+	if err != nil {
+		ra.log.Warningf("building rate limit transaction at finalize: %s", err)
+	}
+	transactions = append(transactions, txn)
+
+	_, err = ra.limiter.BatchSpend(ctx, transactions)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		ra.log.Warningf("spending against rate limits at finalize: %s", err)
+	}
+}
+
 // certProfileID contains the name and hash of a certificate profile returned by
 // a CA.
 type certProfileID struct {
@@ -1385,6 +1417,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return nil, nil, wrapError(err, "parsing final certificate")
 	}
+
+	ra.countCertificateIssued(ctx, int64(acctID), parsedCertificate.DNSNames)
 
 	// Asynchronously submit the final certificate to any configured logs
 	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
@@ -1816,6 +1850,9 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	return err
 }
 
+// countFailedValidation increments the failed authorizations per domain per
+// account rate limit. There is no reason to surface errors from this function
+// to the Subscriber, spends against this limit are best effort.
 func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, regId int64, name string) {
 	if ra.limiter == nil || ra.txnBuilder == nil {
 		// Limiter is disabled.
@@ -1824,7 +1861,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 
 	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, name)
 	if err != nil {
-		ra.log.Errf("constructing rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+		ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
 
 	_, err = ra.limiter.Spend(ctx, txn)
@@ -1832,7 +1869,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
-		ra.log.Errf("checking the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+		ra.log.Warningf("spending against the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
 }
 
