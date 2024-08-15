@@ -235,6 +235,22 @@ func prepareBatch(txns []Transaction) ([]Transaction, []string, error) {
 	return transactions, bucketKeys, nil
 }
 
+// func stricter(existing *Decision, incoming *Decision) *Decision {
+// 	if existing == nil {
+// 		return incoming
+// 	}
+// 	if existing.retryIn == incoming.retryIn {
+// 		if existing.remaining < incoming.remaining {
+// 			return existing
+// 		}
+// 		return incoming
+// 	}
+// 	if existing.retryIn > incoming.retryIn {
+// 		return existing
+// 	}
+// 	return incoming
+// }
+
 type batchDecision struct {
 	*Decision
 }
@@ -252,7 +268,7 @@ func (d *batchDecision) merge(in *Decision) {
 	d.allowed = d.allowed && in.allowed
 	d.remaining = min(d.remaining, in.remaining)
 	d.resetIn = max(d.resetIn, in.resetIn)
-	if in.newTAT.After(d.newTAT) {
+	if in.retryIn >= d.retryIn {
 		d.newTAT = in.newTAT
 		d.retryIn = in.retryIn
 		d.transaction = in.transaction
@@ -262,12 +278,8 @@ func (d *batchDecision) merge(in *Decision) {
 // BatchSpend attempts to deduct the costs from the provided buckets'
 // capacities. If applicable, new bucket states are persisted to the underlying
 // datastore before returning. Non-existent buckets will be initialized WITH the
-// cost factored into the initial state. The following rules are applied to
-// merge the Decisions for each Transaction into a single batch Decision:
-//   - Allowed is true if all Transactions where check is true were allowed,
-//   - RetryIn and ResetIn are the largest values of each across all Decisions,
-//   - Remaining is the smallest value of each across all Decisions, and
-//   - Decisions resulting from spend-only Transactions are never merged.
+// cost factored into the initial state. The returned *Decision represents the
+// strictest of all *Decisions reached in the batch.
 func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision, error) {
 	start := l.clk.Now()
 
@@ -306,12 +318,18 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 			l.overrideUsageGauge.WithLabelValues(txn.limit.name.String(), txn.limit.overrideKey).Set(utilization)
 		}
 
+		if d.transaction.limit.name == FailedAuthorizationsPerDomainPerAccount {
+			fmt.Printf("FailedAuthorizationsPerDomainPerAccount: %#v\n\n", d)
+		}
+
 		if d.allowed && (tat != d.newTAT) && txn.spend {
 			// New bucket state should be persisted.
 			newTATs[txn.bucketKey] = d.newTAT
 		}
 
 		if !txn.spendOnly() {
+			// Spend-only Transactions are best-effort and do not contribute to
+			// the batchDecision.
 			batchDecision.merge(d)
 		}
 
@@ -357,12 +375,8 @@ func (l *Limiter) Refund(ctx context.Context, txn Transaction) (*Decision, error
 // buckets' capacities. Non-existent buckets will NOT be initialized. The new
 // bucket state is persisted to the underlying datastore, if applicable, before
 // returning. Spend-only Transactions are assumed to be refundable. Check-only
-// Transactions are never refunded. The following rules are applied to merge the
-// Decisions for each Transaction into a single batch Decision:
-//   - Allowed is true if all Transactions where check is true were allowed,
-//   - RetryIn and ResetIn are the largest values of each across all Decisions,
-//   - Remaining is the smallest value of each across all Decisions, and
-//   - Decisions resulting from spend-only Transactions are never merged.
+// Transactions are never refunded. The returned *Decision represents the
+// strictest of all *Decisions reached in the batch.
 func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decision, error) {
 	batch, bucketKeys, err := prepareBatch(txns)
 	if err != nil {

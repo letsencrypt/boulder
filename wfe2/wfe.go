@@ -2042,10 +2042,12 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 		return nil, nil
 	}
 
-	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, wfe.maxNames, isRenewal)
+	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, isRenewal)
 	if err != nil {
 		return nil, fmt.Errorf("building new order limit transactions: %w", err)
 	}
+
+	fmt.Printf("\n\nSPENDING AT NEW ORDER TIME\n")
 
 	d, err := wfe.limiter.BatchSpend(ctx, txns)
 	if err != nil {

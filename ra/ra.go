@@ -1301,6 +1301,38 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	return order, err
 }
 
+// countCertificateIssued increments the certficates (per domain and per
+// account) and duplicate certificate rate limits. There is no reason to surface
+// errors from this function to the Subscriber, spends against this limit are
+// best effort.
+func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderDomains []string) {
+	if ra.limiter == nil || ra.txnBuilder == nil {
+		// Limiter is disabled.
+		return
+	}
+
+	var transactions []ratelimits.Transaction
+	txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderDomains)
+	if err != nil {
+		ra.log.Errf("building rate limit transactions at issuance: %s", err)
+	}
+	transactions = append(transactions, txns...)
+
+	txn, err := ra.txnBuilder.CertificatesPerFQDNSetSpendOnlyTransaction(orderDomains)
+	if err != nil {
+		ra.log.Errf("building rate limit transactions at issuance: %s", err)
+	}
+	transactions = append(transactions, txn)
+
+	_, err = ra.limiter.BatchSpend(ctx, transactions)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		ra.log.Errf("spending against rate limits at issuance: %s", err)
+	}
+}
+
 // certProfileID contains the name and hash of a certificate profile returned by
 // a CA.
 type certProfileID struct {
@@ -1388,6 +1420,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return nil, nil, wrapError(err, "parsing final certificate")
 	}
+
+	ra.countCertificateIssued(ctx, int64(acctID), parsedCertificate.DNSNames)
 
 	// Asynchronously submit the final certificate to any configured logs
 	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
@@ -1830,15 +1864,17 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 
 	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, name)
 	if err != nil {
-		ra.log.Errf("constructing rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+		ra.log.Errf("building rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
+
+	fmt.Printf("\n\nSPENDING AFTER FAILED VALIDATION\n")
 
 	_, err = ra.limiter.Spend(ctx, txn)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
-		ra.log.Errf("checking the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+		ra.log.Errf("spending against the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
 }
 
