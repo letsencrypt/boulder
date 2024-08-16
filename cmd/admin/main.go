@@ -70,11 +70,11 @@ func main() {
 
 	// This is the registry of all subcommands that the admin tool can run.
 	subcommands := map[string]subcommand{
-		"revoke-cert":   &subcommandRevokeCert{},
-		"block-key":     &subcommandBlockKey{},
-		"update-email":  &subcommandUpdateEmail{},
-		"pause-batch":   &subcommandPauseIdentifier{},
-		"unpause-batch": &subcommandUnpauseAccount{},
+		"revoke-cert":      &subcommandRevokeCert{},
+		"block-key":        &subcommandBlockKey{},
+		"update-email":     &subcommandUpdateEmail{},
+		"pause-identifier": &subcommandPauseIdentifier{},
+		"unpause-account":  &subcommandUnpauseAccount{},
 	}
 
 	defaultUsage := flag.Usage
