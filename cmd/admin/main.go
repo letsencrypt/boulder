@@ -73,8 +73,8 @@ func main() {
 		"revoke-cert":   &subcommandRevokeCert{},
 		"block-key":     &subcommandBlockKey{},
 		"update-email":  &subcommandUpdateEmail{},
-		"pause-batch":   &subcommandPauseBatch{},
-		"unpause-batch": &subcommandUnpauseBatch{},
+		"pause-batch":   &subcommandPauseIdentifier{},
+		"unpause-batch": &subcommandUnpauseAccount{},
 	}
 
 	defaultUsage := flag.Usage
