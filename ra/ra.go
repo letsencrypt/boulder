@@ -491,9 +491,12 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	if err != nil {
 		return nil, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
 	}
-	err = ra.checkRegistrationLimits(ctx, ipAddr)
-	if err != nil {
-		return nil, err
+
+	if !features.Get().UseKvLimitsForNewAccount {
+		err = ra.checkRegistrationLimits(ctx, ipAddr)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Check that contacts conform to our expectations.
@@ -1302,18 +1305,20 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 // account) and duplicate certificate rate limits. There is no reason to surface
 // errors from this function to the Subscriber, spends against these limit are
 // best effort.
-func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderDomains []string) {
+func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderDomains []string, isRenewal bool) {
 	if ra.limiter == nil || ra.txnBuilder == nil {
 		// Limiter is disabled.
 		return
 	}
 
 	var transactions []ratelimits.Transaction
-	txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderDomains)
-	if err != nil {
-		ra.log.Warningf("building rate limit transactions at finalize: %s", err)
+	if !isRenewal {
+		txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderDomains)
+		if err != nil {
+			ra.log.Warningf("building rate limit transactions at finalize: %s", err)
+		}
+		transactions = append(transactions, txns...)
 	}
-	transactions = append(transactions, txns...)
 
 	txn, err := ra.txnBuilder.CertificatesPerFQDNSetSpendOnlyTransaction(orderDomains)
 	if err != nil {
@@ -1402,6 +1407,17 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return nil, nil, wrapError(err, "getting SCTs")
 	}
 
+	var isRenewal bool
+	if len(parsedPrecert.DNSNames) > 0 {
+		// This should never happen under normal operation, but it sometimes
+		// occurs under test.
+		exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: parsedPrecert.DNSNames})
+		if err != nil {
+			return nil, nil, wrapError(err, "checking if certificate is a renewal")
+		}
+		isRenewal = exists.Exists
+	}
+
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:             precert.DER,
 		SCTs:            scts,
@@ -1418,7 +1434,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return nil, nil, wrapError(err, "parsing final certificate")
 	}
 
-	ra.countCertificateIssued(ctx, int64(acctID), parsedCertificate.DNSNames)
+	ra.countCertificateIssued(ctx, int64(acctID), parsedCertificate.DNSNames, isRenewal)
 
 	// Asynchronously submit the final certificate to any configured logs
 	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
@@ -1994,13 +2010,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		if prob != nil {
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
-
-			// TODO(#5545): Spending can be async until key-value rate limits
-			// are authoritative. This saves us from adding latency to each
-			// request. Goroutines spun out below will respect a context
-			// deadline set by the ratelimits package and cannot be prematurely
-			// canceled by the requester.
-			go ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier.Value)
+			ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier.Value)
 		} else {
 			challenge.Status = core.StatusValid
 		}
@@ -2572,7 +2582,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-	if !req.IsARIRenewal {
+	if !req.IsARIRenewal && !features.Get().UseKvLimitsForNewOrder {
 		// Check if there is rate limit space for issuing a certificate.
 		err = ra.checkNewOrderLimits(ctx, newOrder.DnsNames, newOrder.RegistrationID, req.IsRenewal)
 		if err != nil {
@@ -2651,7 +2661,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-	if len(missingAuthzIdents) > 0 && !req.IsARIRenewal {
+	if len(missingAuthzIdents) > 0 && !req.IsARIRenewal && !features.Get().UseKvLimitsForNewOrder {
 		pendingAuthzLimits := ra.rlPolicies.PendingAuthorizationsPerAccount()
 		if pendingAuthzLimits.Enabled() {
 			// The order isn't fully authorized we need to check that the client

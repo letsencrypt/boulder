@@ -104,6 +104,19 @@ type Config struct {
 	// returned to the Subscriber indicating that the order cannot be processed
 	// until the paused identifiers are unpaused and the order is resubmitted.
 	CheckIdentifiersPaused bool
+
+	// UseKvLimitsForNewOrder when enabled, causes the key-value rate limiter to
+	// be the authoritative source of rate limiting information for new-order
+	// callers and disables the legacy rate limiting checks.
+	//
+	// Note: this flag does not disable writes to the certificatesPerName or
+	// fqdnSets tables at Finalize time.
+	UseKvLimitsForNewOrder bool
+
+	// UseKvLimitsForNewAccount when enabled, causes the key-value rate limiter
+	// to be the authoritative source of rate limiting information for
+	// new-account callers and disables the legacy rate limiting checks.
+	UseKvLimitsForNewAccount bool
 }
 
 var fMu = new(sync.RWMutex)

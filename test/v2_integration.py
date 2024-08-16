@@ -1559,12 +1559,14 @@ def test_renewal_exemption():
     chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
         lambda: chisel2.auth_and_issue(["mail." + base_domain]))
 
-# TODO(#5545)
-#   - Phase 2: Once the new rate limits are authoritative in config-next, ensure
-#     that this test only runs in config.
-#   - Phase 3: Once the new rate limits are authoritative in config, remove this
-#     test entirely.
+# TODO(#5545) Remove this test once key-value rate limits are authoritative in
+# production.
 def test_certificates_per_name():
+    if CONFIG_NEXT:
+        # This test is replaced by TestCertificatesPerDomain in the Go
+        # integration tests because key-value rate limits does not support
+        # override limits of 0.
+        return
     chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
         lambda: chisel2.auth_and_issue([random_domain() + ".lim.it"]))
 
