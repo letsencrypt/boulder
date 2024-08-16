@@ -21,7 +21,7 @@ type subcommandUnpauseAccount struct {
 var _ subcommand = (*subcommandUnpauseAccount)(nil)
 
 func (u *subcommandUnpauseAccount) Desc() string {
-	return "Batch unpause a file containing multiple account IDs where each is separated by a newline."
+	return "Administratively unpause an account to allow certificate issuance attempts"
 }
 
 func (u *subcommandUnpauseAccount) Flags(flag *flag.FlagSet) {

@@ -23,7 +23,7 @@ type subcommandPauseIdentifier struct {
 var _ subcommand = (*subcommandPauseIdentifier)(nil)
 
 func (p *subcommandPauseIdentifier) Desc() string {
-	return "Batch pause a CSV containing (account ID, identifier type, list of identifier strings)"
+	return "Administratively pause an account preventing it from attempting certificate issuance"
 }
 
 func (p *subcommandPauseIdentifier) Flags(flag *flag.FlagSet) {
