@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"golang.org/x/exp/maps"
 )
 
 // subcommandUnpauseAccount encapsulates the "admin unpause-account" command.
@@ -30,25 +31,35 @@ func (u *subcommandUnpauseAccount) Flags(flag *flag.FlagSet) {
 }
 
 func (u *subcommandUnpauseAccount) Run(ctx context.Context, a *admin) error {
-	if u.batchFile == "" && u.regID == 0 {
-		return errors.New("either the -batch-file or -account flag is required")
+	// This is a map of all input-selection flags to whether or not they were set
+	// to a non-default value. We use this to ensure that exactly one input
+	// selection flag was given on the command line.
+	setInputs := map[string]bool{
+		"-account":    u.regID != 0,
+		"-batch-file": u.batchFile != "",
 	}
-	if u.batchFile != "" && u.regID != 0 {
-		return errors.New("only one of -batch-file or -account flag should be used")
+	maps.DeleteFunc(setInputs, func(_ string, v bool) bool { return !v })
+	if len(setInputs) == 0 {
+		return errors.New("at least one input method flag must be specified")
+	} else if len(setInputs) > 1 {
+		return fmt.Errorf("more than one input method flag specified: %v", maps.Keys(setInputs))
 	}
 
 	var regIDs []int64
 	var err error
-	if u.batchFile != "" {
-		regIDs, err = a.readUnpauseAccountFile(u.batchFile)
-		if err != nil {
-			return err
-		}
-	} else {
+	switch maps.Keys(setInputs)[0] {
+	case "-account":
 		regIDs = []int64{u.regID}
+	case "-batch-file":
+		regIDs, err = a.readUnpauseAccountFile(u.batchFile)
+	default:
+		return errors.New("no recognized input method flag set (this shouldn't happen)")
+	}
+	if err != nil {
+		return fmt.Errorf("collecting serials to revoke: %w", err)
 	}
 
-	err = a.unpauseAccounts(regIDs)
+	err = a.unpauseAccounts(ctx, regIDs)
 	if err != nil {
 		return err
 	}
@@ -58,13 +69,13 @@ func (u *subcommandUnpauseAccount) Run(ctx context.Context, a *admin) error {
 
 // unpauseAccount allows administratively unpausing all identifiers for an
 // account.
-func (a *admin) unpauseAccounts(regIDs []int64) error {
+func (a *admin) unpauseAccounts(ctx context.Context, regIDs []int64) error {
 	if len(regIDs) <= 0 {
 		return errors.New("cannot unpause accounts because no pauseData was sent")
 	}
 
 	for _, regID := range regIDs {
-		_, err := a.sac.UnpauseAccount(context.Background(), &sapb.RegistrationID{Id: regID})
+		_, err := a.sac.UnpauseAccount(ctx, &sapb.RegistrationID{Id: regID})
 		if err != nil {
 			return err
 		}
@@ -73,8 +84,9 @@ func (a *admin) unpauseAccounts(regIDs []int64) error {
 	return nil
 }
 
-// readUnpauseAccountFile parses the contents of a CSV into a slice of `csvData`
-// objects. It will return an error if an individual record is malformed.
+// readUnpauseAccountFile parses the contents of a file containing one account
+// ID per into a slice of int64's. It will skip malformed records and continue
+// processing until the end of file marker.
 func (a *admin) readUnpauseAccountFile(filePath string) ([]int64, error) {
 	fp, err := os.Open(filePath)
 	if err != nil {
@@ -83,26 +95,16 @@ func (a *admin) readUnpauseAccountFile(filePath string) ([]int64, error) {
 	defer fp.Close()
 
 	var unpauseAccounts []int64
-	defer func() {
-		var record string
-		if len(unpauseAccounts) == 1 {
-			record = "record"
-		} else {
-			record = "records"
-		}
-		fmt.Fprintf(os.Stderr, "detected %d valid %s from input file\n", len(unpauseAccounts), record)
-	}()
-
-	lineCounter := 1
+	lineCounter := 0
 	scanner := bufio.NewScanner(fp)
 	for scanner.Scan() {
+		lineCounter++
 		regID, err := strconv.ParseInt(scanner.Text(), 10, 64)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "skipping: malformed account ID entry on line %d\n", lineCounter)
+			a.log.Infof("skipping: malformed account ID entry on line %d\n", lineCounter)
 			continue
 		}
 		unpauseAccounts = append(unpauseAccounts, regID)
-		lineCounter++
 	}
 
 	if err := scanner.Err(); err != nil {

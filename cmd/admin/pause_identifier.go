@@ -40,7 +40,7 @@ func (p *subcommandPauseIdentifier) Run(ctx context.Context, a *admin) error {
 		return err
 	}
 
-	err = a.pauseIdentifiers(identifiers)
+	err = a.pauseIdentifiers(ctx, identifiers)
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (p *subcommandPauseIdentifier) Run(ctx context.Context, a *admin) error {
 
 // pauseIdentifiers allows administratively pausing a set of domain names for an
 // account.
-func (a *admin) pauseIdentifiers(incoming []pauseCSVData) error {
+func (a *admin) pauseIdentifiers(ctx context.Context, incoming []pauseCSVData) error {
 	if len(incoming) <= 0 {
 		return errors.New("cannot pause identifiers because no pauseData was sent")
 	}
@@ -58,13 +58,14 @@ func (a *admin) pauseIdentifiers(incoming []pauseCSVData) error {
 	for _, data := range incoming {
 		req := sapb.PauseRequest{
 			RegistrationID: data.accountID,
-			Identifiers: []*sapb.Identifier{{
-				Type:  string(data.identifierType),
-				Value: strings.Join(data.identifierValue, ","),
-			},
+			Identifiers: []*sapb.Identifier{
+				{
+					Type:  string(data.identifierType),
+					Value: strings.Join(data.identifierValue, ","),
+				},
 			},
 		}
-		_, err := a.sac.PauseIdentifiers(context.Background(), &req)
+		_, err := a.sac.PauseIdentifiers(ctx, &req)
 		if err != nil {
 			return err
 		}
@@ -81,8 +82,10 @@ type pauseCSVData struct {
 	identifierValue []string
 }
 
-// readPausedAccountFile parses the contents of a CSV into a slice of `csvData`
-// objects. It will return an error if an individual record is malformed.
+// readPausedAccountFile parses the contents of a CSV into a slice of
+// `pauseCSVData` objects and returns it or an error. It will skip malformed
+// lines and continue processing until either the end of file marker is detected
+// or other read error.
 func (a *admin) readPausedAccountFile(filePath string) ([]pauseCSVData, error) {
 	fp, err := os.Open(filePath)
 	if err != nil {
@@ -97,44 +100,35 @@ func (a *admin) readPausedAccountFile(filePath string) ([]pauseCSVData, error) {
 	reader.TrimLeadingSpace = true
 
 	var parsedRecords []pauseCSVData
-	lineCounter := 1
-
-	defer func() {
-		var record string
-		if len(parsedRecords) == 1 {
-			record = "record"
-		} else {
-			record = "records"
-		}
-		fmt.Fprintf(os.Stderr, "detected %d valid %s from input file\n", len(parsedRecords), record)
-	}()
+	lineCounter := 0
 
 	// Process contents of the CSV file
 	for {
 		record, err := reader.Read()
 		if errors.Is(err, io.EOF) {
-			return parsedRecords, nil
+			break
 		} else if err != nil {
 			return nil, err
 		}
 
+		lineCounter++
 		recordID := record[0]
 		accountID, err := strconv.ParseInt(recordID, 10, 64)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "skipping: malformed accountID entry on line %d\n", lineCounter)
+			a.log.Infof("skipping: malformed accountID entry on line %d\n", lineCounter)
 			continue
 		}
 
 		// Ensure that an identifier type is present, otherwise skip the line.
 		if len(record[1]) == 0 {
-			fmt.Fprintf(os.Stderr, "skipping: malformed identifierType entry on line %d\n", lineCounter)
+			a.log.Infof("skipping: malformed identifierType entry on line %d\n", lineCounter)
 			continue
 		}
 
 		// The remaining fields are the domain names, so make sure at least one
 		// exists.
 		if len(record) < 3 {
-			fmt.Fprintf(os.Stderr, "skipping: malformed identifierValue entry on line %d\n", lineCounter)
+			a.log.Infof("skipping: malformed identifierValue entry on line %d\n", lineCounter)
 			continue
 		}
 
@@ -144,6 +138,8 @@ func (a *admin) readPausedAccountFile(filePath string) ([]pauseCSVData, error) {
 			identifierValue: record[2:],
 		}
 		parsedRecords = append(parsedRecords, parsedRecord)
-		lineCounter++
 	}
+	a.log.Infof("detected %d valid record(s) from input file\n", len(parsedRecords))
+
+	return parsedRecords, nil
 }
