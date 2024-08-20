@@ -223,9 +223,11 @@ func TestTraces(t *testing.T) {
 					// 8 ra -> sa rate limit spans omitted here
 					rpcSpan("sa.StorageAuthority/NewOrderAndAuthzs", ra, sa))),
 			httpSpan("/acme/authz-v3/",
-				rpcSpan("sa.StorageAuthorityReadOnly/GetAuthorization2", wfe, sa)),
+				rpcSpan("ra.RegistrationAuthority/GetAuthorization", wfe, ra,
+					rpcSpan("sa.StorageAuthority/GetAuthorization2", ra, sa))),
 			httpSpan("/acme/chall-v3/",
-				rpcSpan("sa.StorageAuthorityReadOnly/GetAuthorization2", wfe, sa),
+				rpcSpan("ra.RegistrationAuthority/GetAuthorization", wfe, ra,
+					rpcSpan("sa.StorageAuthority/GetAuthorization2", ra, sa)),
 				rpcSpan("ra.RegistrationAuthority/PerformValidation", wfe, ra,
 					rpcSpan("sa.StorageAuthority/GetRegistration", ra, sa))),
 			httpSpan("/acme/finalize/",
@@ -239,8 +241,10 @@ func TestTraces(t *testing.T) {
 					rpcSpan("Publisher/SubmitToSingleCTWithResult", ra, "boulder-publisher"),
 					rpcSpan("ca.CertificateAuthority/IssueCertificateForPrecertificate", ra, ca),
 					rpcSpan("sa.StorageAuthority/FinalizeOrder", ra, sa))),
-			httpSpan("/acme/order/", rpcSpan("sa.StorageAuthorityReadOnly/GetOrder", wfe, sa)),
-			httpSpan("/acme/cert/", rpcSpan("sa.StorageAuthorityReadOnly/GetCertificate", wfe, sa)),
+			httpSpan("/acme/order/",
+				rpcSpan("sa.StorageAuthorityReadOnly/GetOrder", wfe, sa)),
+			httpSpan("/acme/cert/",
+				rpcSpan("sa.StorageAuthorityReadOnly/GetCertificate", wfe, sa)),
 		},
 	}
 
