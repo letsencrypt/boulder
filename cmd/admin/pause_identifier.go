@@ -112,9 +112,17 @@ func (a *admin) readPausedAccountFile(filePath string) ([]pauseCSVData, error) {
 		}
 
 		lineCounter++
+
+		// We should have at least 3 fields, note that just commas is considered
+		// a valid CSV line.
+		if len(record) < 3 {
+			a.log.Infof("skipping: malformed identifierValue entry on line %d\n", lineCounter)
+			continue
+		}
+
 		recordID := record[0]
 		accountID, err := strconv.ParseInt(recordID, 10, 64)
-		if err != nil {
+		if err != nil || accountID == 0 {
 			a.log.Infof("skipping: malformed accountID entry on line %d\n", lineCounter)
 			continue
 		}
@@ -122,13 +130,6 @@ func (a *admin) readPausedAccountFile(filePath string) ([]pauseCSVData, error) {
 		// Ensure that an identifier type is present, otherwise skip the line.
 		if len(record[1]) == 0 {
 			a.log.Infof("skipping: malformed identifierType entry on line %d\n", lineCounter)
-			continue
-		}
-
-		// The remaining fields are the domain names, so make sure at least one
-		// exists.
-		if len(record) < 3 {
-			a.log.Infof("skipping: malformed identifierValue entry on line %d\n", lineCounter)
 			continue
 		}
 
