@@ -56,7 +56,7 @@ func TestReadingPauseCSVFiles(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			//t.Parallel()
+			t.Parallel()
 			log := blog.NewMock()
 			a := admin{log: log}
 
