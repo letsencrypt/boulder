@@ -59,7 +59,7 @@ func (u *subcommandUnpauseAccount) Run(ctx context.Context, a *admin) error {
 		return fmt.Errorf("collecting serials to revoke: %w", err)
 	}
 
-	err = a.unpauseAccounts(ctx, regIDs)
+	_, err = a.unpauseAccounts(ctx, regIDs)
 	if err != nil {
 		return err
 	}
@@ -68,20 +68,23 @@ func (u *subcommandUnpauseAccount) Run(ctx context.Context, a *admin) error {
 }
 
 // unpauseAccount allows administratively unpausing all identifiers for an
-// account.
-func (a *admin) unpauseAccounts(ctx context.Context, regIDs []int64) error {
+// account. Returns a slice of int64 which is counter of unpaused accounts or an
+// error.
+func (a *admin) unpauseAccounts(ctx context.Context, regIDs []int64) ([]int64, error) {
+	var count []int64
 	if len(regIDs) <= 0 {
-		return errors.New("cannot unpause accounts because no pauseData was sent")
+		return count, errors.New("cannot unpause accounts because no pauseData was sent")
 	}
 
 	for _, regID := range regIDs {
-		_, err := a.sac.UnpauseAccount(ctx, &sapb.RegistrationID{Id: regID})
+		response, err := a.sac.UnpauseAccount(ctx, &sapb.RegistrationID{Id: regID})
 		if err != nil {
-			return err
+			return count, err
 		}
+		count = append(count, response.Count)
 	}
 
-	return nil
+	return count, nil
 }
 
 // readUnpauseAccountFile parses the contents of a file containing one account

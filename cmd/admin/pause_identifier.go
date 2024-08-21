@@ -40,7 +40,7 @@ func (p *subcommandPauseIdentifier) Run(ctx context.Context, a *admin) error {
 		return err
 	}
 
-	err = a.pauseIdentifiers(ctx, identifiers)
+	_, err = a.pauseIdentifiers(ctx, identifiers)
 	if err != nil {
 		return err
 	}
@@ -49,12 +49,13 @@ func (p *subcommandPauseIdentifier) Run(ctx context.Context, a *admin) error {
 }
 
 // pauseIdentifiers allows administratively pausing a set of domain names for an
-// account.
-func (a *admin) pauseIdentifiers(ctx context.Context, incoming []pauseCSVData) error {
+// account. It returns a slice of PauseIdentifiersResponse or an error.
+func (a *admin) pauseIdentifiers(ctx context.Context, incoming []pauseCSVData) ([]*sapb.PauseIdentifiersResponse, error) {
 	if len(incoming) <= 0 {
-		return errors.New("cannot pause identifiers because no pauseData was sent")
+		return nil, errors.New("cannot pause identifiers because no pauseData was sent")
 	}
 
+	var responses []*sapb.PauseIdentifiersResponse
 	for _, data := range incoming {
 		req := sapb.PauseRequest{
 			RegistrationID: data.accountID,
@@ -65,13 +66,14 @@ func (a *admin) pauseIdentifiers(ctx context.Context, incoming []pauseCSVData) e
 				},
 			},
 		}
-		_, err := a.sac.PauseIdentifiers(ctx, &req)
+		response, err := a.sac.PauseIdentifiers(ctx, &req)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		responses = append(responses, response)
 	}
 
-	return nil
+	return responses, nil
 }
 
 // pauseCSVData contains a golang representation of the data loaded in from a
