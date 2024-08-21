@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path"
 	"strings"
@@ -13,35 +14,17 @@ import (
 	"google.golang.org/grpc"
 )
 
-// mockSAPaused is a mock which records the PauseRequest it received, and
-// returns the number of identifiers as a PauseIdentifiersResponse. It does not
-// maintain state of repaused identifiers.
-type mockSAUnpause struct {
-	sapb.StorageAuthorityClient
-	regIDCounter map[int64]int64
-}
-
-func (msa *mockSAUnpause) UnpauseAccount(ctx context.Context, in *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
-	if _, ok := msa.regIDCounter[in.Id]; ok {
-		msa.regIDCounter[in.Id] += 1
-	}
-
-	return &sapb.Count{Count: msa.regIDCounter[in.Id]}, nil
-}
-
-func TestUnpausingAccounts(t *testing.T) {
+func TestReadingUnpauseAccountsFile(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
 		name           string
 		data           []string
 		expectedRegIDs int
-		expectErr      bool
 	}{
 		{
-			name:      "No data in file",
-			data:      nil,
-			expectErr: true,
+			name: "No data in file",
+			data: nil,
 		},
 		{
 			name:           "valid",
@@ -64,7 +47,7 @@ func TestUnpausingAccounts(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 			log := blog.NewMock()
-			a := admin{sac: &mockSAUnpause{}, log: log}
+			a := admin{log: log}
 
 			file := path.Join(t.TempDir(), path.Base(t.Name()+".txt"))
 			err := os.WriteFile(file, []byte(strings.Join(testCase.data, "\n")), os.ModePerm)
@@ -73,14 +56,86 @@ func TestUnpausingAccounts(t *testing.T) {
 			regIDs, err := a.readUnpauseAccountFile(file)
 			test.AssertNotError(t, err, "no error expected, but received one")
 			test.AssertEquals(t, len(regIDs), testCase.expectedRegIDs)
+		})
+	}
+}
 
-			count, err := a.unpauseAccounts(context.TODO(), regIDs)
-			if testCase.expectErr {
-				test.AssertError(t, err, "should not have been able to unpause accounts, but did")
-			} else {
-				test.AssertNotError(t, err, "could not unpause accounts")
+// mockSAPaused is a mock that always succeeds. It records each PauseRequest it
+// receives, and returns the number of identifiers as a
+// PauseIdentifiersResponse. It does not maintain state of repaused identifiers.
+type mockSAUnpause struct {
+	sapb.StorageAuthorityClient
+	regIDCounter map[int64]int64
+}
+
+func (msa *mockSAUnpause) UnpauseAccount(ctx context.Context, in *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
+	if _, ok := msa.regIDCounter[in.Id]; ok {
+		msa.regIDCounter[in.Id] += 1
+	}
+
+	return &sapb.Count{Count: msa.regIDCounter[in.Id]}, nil
+}
+
+// mockSAUnpauseBroken is a mock that always returns an error.
+type mockSAUnpauseBroken struct {
+	sapb.StorageAuthorityClient
+}
+
+func (msa *mockSAUnpauseBroken) UnpauseAccount(ctx context.Context, in *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
+	return nil, errors.New("oh dear")
+}
+
+func TestUnpauseAccounts(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name            string
+		regIDs          []int64
+		saImpl          sapb.StorageAuthorityClient
+		expectedRecords int
+		expectErr       bool
+	}{
+		{
+			name:      "no data",
+			regIDs:    nil,
+			expectErr: true,
+		},
+		{
+			name:   "valid single entry",
+			regIDs: []int64{1},
+		},
+		{
+			name:      "valid single entry but broken SA",
+			expectErr: true,
+			saImpl:    &mockSAUnpauseBroken{},
+			regIDs:    []int64{1},
+		},
+		{
+			name:            "valid multiple entries with duplicates",
+			regIDs:          []int64{1, 1, 2, 3, 4},
+			expectedRecords: 5,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			log := blog.NewMock()
+
+			// Default to a working mock SA implementation
+			if testCase.saImpl == nil {
+				testCase.saImpl = &mockSAUnpause{}
 			}
-			test.AssertEquals(t, len(count), testCase.expectedRegIDs)
+			a := admin{sac: testCase.saImpl, log: log}
+
+			count, err := a.unpauseAccounts(context.TODO(), testCase.regIDs)
+			if testCase.expectErr {
+				test.AssertError(t, err, "should have errored, but did not")
+			} else {
+				test.AssertNotError(t, err, "should not have errored")
+				test.AssertEquals(t, len(count), len(testCase.regIDs))
+			}
 		})
 	}
 }

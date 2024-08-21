@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/letsencrypt/boulder/identifier"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -27,7 +26,7 @@ func (p *subcommandPauseIdentifier) Desc() string {
 }
 
 func (p *subcommandPauseIdentifier) Flags(flag *flag.FlagSet) {
-	flag.StringVar(&p.batchFile, "batch-file", "", "Path to a CSV file containing (account ID, identifier type, list of identifier strings)")
+	flag.StringVar(&p.batchFile, "batch-file", "", "Path to a CSV file containing (account ID, identifier type, identifier value)")
 }
 
 func (p *subcommandPauseIdentifier) Run(ctx context.Context, a *admin) error {
@@ -62,7 +61,7 @@ func (a *admin) pauseIdentifiers(ctx context.Context, incoming []pauseCSVData) (
 			Identifiers: []*sapb.Identifier{
 				{
 					Type:  string(data.identifierType),
-					Value: strings.Join(data.identifierValue, ","),
+					Value: data.identifierValue,
 				},
 			},
 		}
@@ -81,7 +80,7 @@ func (a *admin) pauseIdentifiers(ctx context.Context, incoming []pauseCSVData) (
 type pauseCSVData struct {
 	accountID       int64
 	identifierType  identifier.IdentifierType
-	identifierValue []string
+	identifierValue string
 }
 
 // readPausedAccountFile parses the contents of a CSV into a slice of
@@ -115,10 +114,10 @@ func (a *admin) readPausedAccountFile(filePath string) ([]pauseCSVData, error) {
 
 		lineCounter++
 
-		// We should have at least 3 fields, note that just commas is considered
+		// We should have strictly 3 fields, note that just commas is considered
 		// a valid CSV line.
-		if len(record) < 3 {
-			a.log.Infof("skipping: malformed identifierValue entry on line %d\n", lineCounter)
+		if len(record) != 3 {
+			a.log.Infof("skipping: malformed line %d, should contain exactly 3 fields\n", lineCounter)
 			continue
 		}
 
@@ -135,10 +134,15 @@ func (a *admin) readPausedAccountFile(filePath string) ([]pauseCSVData, error) {
 			continue
 		}
 
+		if len(record[2]) == 0 {
+			a.log.Infof("skipping: malformed identifierValue entry on line %d\n", lineCounter)
+			continue
+		}
+
 		parsedRecord := pauseCSVData{
 			accountID:       accountID,
 			identifierType:  identifier.IdentifierType(record[1]),
-			identifierValue: record[2:],
+			identifierValue: record[2],
 		}
 		parsedRecords = append(parsedRecords, parsedRecord)
 	}

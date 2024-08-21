@@ -73,7 +73,7 @@ func (u *subcommandUnpauseAccount) Run(ctx context.Context, a *admin) error {
 func (a *admin) unpauseAccounts(ctx context.Context, regIDs []int64) ([]int64, error) {
 	var count []int64
 	if len(regIDs) <= 0 {
-		return count, errors.New("cannot unpause accounts because no pauseData was sent")
+		return count, errors.New("no regIDs sent for unpausing")
 	}
 
 	for _, regID := range regIDs {
@@ -88,7 +88,7 @@ func (a *admin) unpauseAccounts(ctx context.Context, regIDs []int64) ([]int64, e
 }
 
 // readUnpauseAccountFile parses the contents of a file containing one account
-// ID per into a slice of int64's. It will skip malformed records and continue
+// ID per into a slice of int64s. It will skip malformed records and continue
 // processing until the end of file marker.
 func (a *admin) readUnpauseAccountFile(filePath string) ([]int64, error) {
 	fp, err := os.Open(filePath)
