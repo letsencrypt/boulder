@@ -1431,8 +1431,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return nil, nil, wrapError(err, "parsing final certificate")
 	}
 
-	dnsNames := slices.Clone(parsedCertificate.DNSNames)
-	go ra.countCertificateIssued(ctx, int64(acctID), dnsNames, isRenewal)
+	go ra.countCertificateIssued(ctx, int64(acctID), slices.Clone(parsedCertificate.DNSNames), isRenewal)
 
 	// Asynchronously submit the final certificate to any configured logs
 	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
