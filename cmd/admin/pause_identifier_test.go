@@ -106,11 +106,10 @@ func TestPauseIdentifiers(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name            string
-		data            []pauseCSVData
-		saImpl          sapb.StorageAuthorityClient
-		expectedRecords int
-		expectErr       bool
+		name      string
+		data      []pauseCSVData
+		saImpl    sapb.StorageAuthorityClient
+		expectErr bool
 	}{
 		{
 			name:      "no data",
@@ -168,7 +167,6 @@ func TestPauseIdentifiers(t *testing.T) {
 					identifierValue: "example.org",
 				},
 			},
-			expectedRecords: 5,
 		},
 	}
 

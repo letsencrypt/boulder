@@ -89,11 +89,10 @@ func TestUnpauseAccounts(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name            string
-		regIDs          []int64
-		saImpl          sapb.StorageAuthorityClient
-		expectedRecords int
-		expectErr       bool
+		name      string
+		regIDs    []int64
+		saImpl    sapb.StorageAuthorityClient
+		expectErr bool
 	}{
 		{
 			name:      "no data",
@@ -111,9 +110,8 @@ func TestUnpauseAccounts(t *testing.T) {
 			regIDs:    []int64{1},
 		},
 		{
-			name:            "valid multiple entries with duplicates",
-			regIDs:          []int64{1, 1, 2, 3, 4},
-			expectedRecords: 5,
+			name:   "valid multiple entries with duplicates",
+			regIDs: []int64{1, 1, 2, 3, 4},
 		},
 	}
 
