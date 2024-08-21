@@ -24,7 +24,7 @@ FILTER=()
 #
 
 function flush_redis() {
-  go run ./test/boulder-tools/flushredis.go
+  go run ./test/boulder-tools/flushredis/main.go
 }
 
 #

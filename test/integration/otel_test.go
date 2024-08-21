@@ -190,7 +190,7 @@ func httpSpan(endpoint string, children ...expectedSpans) expectedSpans {
 
 // TestTraces tests that all the expected spans are present and properly connected
 func TestTraces(t *testing.T) {
-	t.Skip("This test is flaky and should be fixed before re-enabling")
+	t.Parallel()
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		t.Skip("OpenTelemetry is only configured in config-next")
 	}
@@ -214,7 +214,7 @@ func TestTraces(t *testing.T) {
 				rpcSpan("sa.StorageAuthorityReadOnly/GetRegistrationByKey", wfe, sa),
 				rpcSpan("ra.RegistrationAuthority/NewRegistration", wfe, ra,
 					rpcSpan("sa.StorageAuthority/KeyBlocked", ra, sa),
-					rpcSpan("sa.StorageAuthority/CountRegistrationsByIP", ra, sa),
+					// 1 ra -> sa rate limit span omitted here
 					rpcSpan("sa.StorageAuthority/NewRegistration", ra, sa))),
 			httpSpan("/acme/new-order",
 				rpcSpan("sa.StorageAuthorityReadOnly/GetRegistration", wfe, sa),

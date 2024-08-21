@@ -2010,7 +2010,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		if prob != nil {
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
-			ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier.Value)
+			go ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier.Value)
 		} else {
 			challenge.Status = core.StatusValid
 		}

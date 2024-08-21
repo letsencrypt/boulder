@@ -642,7 +642,7 @@ func link(url, relation string) string {
 // function is returned that can be called to refund the quota if the account
 // creation fails, the func will be nil if any error was encountered during the
 // check.
-func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) (func() error, error) {
+func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) (func(), error) {
 	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Key-value rate limiting is disabled.
 		return nil, nil
@@ -663,12 +663,11 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		return nil, err
 	}
 
-	return func() error {
+	return func() {
 		_, err := wfe.limiter.BatchRefund(ctx, txns)
 		if err != nil {
-			return fmt.Errorf("refunding new account limits: %w", err)
+			wfe.log.Warningf("refunding new account limits: %s", err)
 		}
-		return nil
 	}, nil
 }
 
@@ -809,10 +808,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	var errIsRateLimit bool
 	defer func() {
 		if !newRegistrationSuccessful && !errIsRateLimit && refundLimits != nil {
-			err := refundLimits()
-			if err != nil {
-				wfe.log.Warningf(err.Error())
-			}
+			go refundLimits()
 		}
 	}()
 
@@ -2036,7 +2032,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 // encountered during the check, it is logged but not returned. A refund
 // function is returned that can be used to refund the quota if the order is not
 // created, the func will be nil if any error was encountered during the check.
-func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, names []string, isRenewal bool) (func() error, error) {
+func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, names []string, isRenewal bool) (func(), error) {
 	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Key-value rate limiting is disabled.
 		return nil, nil
@@ -2057,12 +2053,11 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 		return nil, err
 	}
 
-	return func() error {
+	return func() {
 		_, err := wfe.limiter.BatchRefund(ctx, txns)
 		if err != nil {
-			return fmt.Errorf("refunding new order limits: %w", err)
+			wfe.log.Warningf("refunding new order limits: %s", err)
 		}
-		return nil
 	}, nil
 }
 
@@ -2396,10 +2391,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		}
 
 		if !newOrderSuccessful && !errIsRateLimit && refundLimits != nil {
-			err := refundLimits()
-			if err != nil {
-				wfe.log.Warningf(err.Error())
-			}
+			go refundLimits()
 		}
 	}()
 
