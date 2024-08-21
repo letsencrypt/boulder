@@ -34,10 +34,12 @@ func TestPausingIdentifiers(t *testing.T) {
 		name            string
 		data            []string
 		expectedRecords int
+		expectErr       bool
 	}{
 		{
-			name: "No data in file",
-			data: nil,
+			name:      "No data in file",
+			data:      nil,
+			expectErr: true,
 		},
 		{
 			name:            "valid",
@@ -50,24 +52,29 @@ func TestPausingIdentifiers(t *testing.T) {
 			expectedRecords: 6,
 		},
 		{
-			name: "invalid just commas",
-			data: []string{",,,"},
+			name:      "invalid just commas",
+			data:      []string{",,,"},
+			expectErr: true,
 		},
 		{
-			name: "invalid only contains accountID",
-			data: []string{"1"},
+			name:      "invalid only contains accountID",
+			data:      []string{"1"},
+			expectErr: true,
 		},
 		{
-			name: "invalid only contains accountID and identifierType",
-			data: []string{"1,dns"},
+			name:      "invalid only contains accountID and identifierType",
+			data:      []string{"1,dns"},
+			expectErr: true,
 		},
 		{
-			name: "invalid missing identifierType",
-			data: []string{"1,,example.com"},
+			name:      "invalid missing identifierType",
+			data:      []string{"1,,example.com"},
+			expectErr: true,
 		},
 		{
-			name: "invalid accountID isnt an int",
-			data: []string{"blorple"},
+			name:      "invalid accountID isnt an int",
+			data:      []string{"blorple"},
+			expectErr: true,
 		},
 	}
 
@@ -86,7 +93,11 @@ func TestPausingIdentifiers(t *testing.T) {
 			test.AssertEquals(t, len(parsedData), testCase.expectedRecords)
 
 			responses, err := a.pauseIdentifiers(context.TODO(), parsedData)
-			test.AssertNotError(t, err, "could not pause identifiers")
+			if testCase.expectErr {
+				test.AssertError(t, err, "should not have been able to pause identifiers, but did")
+			} else {
+				test.AssertNotError(t, err, "could not pause identifiers")
+			}
 			test.AssertEquals(t, len(responses), testCase.expectedRecords)
 		})
 	}
