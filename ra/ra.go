@@ -1305,20 +1305,18 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 // account) and duplicate certificate rate limits. There is no reason to surface
 // errors from this function to the Subscriber, spends against these limit are
 // best effort.
-func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderDomains []string, isRenewal bool) {
+func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderDomains []string) {
 	if ra.limiter == nil || ra.txnBuilder == nil {
 		// Limiter is disabled.
 		return
 	}
 
 	var transactions []ratelimits.Transaction
-	if !isRenewal {
-		txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderDomains)
-		if err != nil {
-			ra.log.Warningf("building rate limit transactions at finalize: %s", err)
-		}
-		transactions = append(transactions, txns...)
+	txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderDomains)
+	if err != nil {
+		ra.log.Warningf("building rate limit transactions at finalize: %s", err)
 	}
+	transactions = append(transactions, txns...)
 
 	txn, err := ra.txnBuilder.CertificatesPerFQDNSetSpendOnlyTransaction(orderDomains)
 	if err != nil {
@@ -1407,17 +1405,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return nil, nil, wrapError(err, "getting SCTs")
 	}
 
-	var isRenewal bool
-	if len(parsedPrecert.DNSNames) > 0 {
-		// This should never happen under normal operation, but it sometimes
-		// occurs under test.
-		exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: parsedPrecert.DNSNames})
-		if err != nil {
-			return nil, nil, wrapError(err, "checking if certificate is a renewal")
-		}
-		isRenewal = exists.Exists
-	}
-
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:             precert.DER,
 		SCTs:            scts,
@@ -1434,7 +1421,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return nil, nil, wrapError(err, "parsing final certificate")
 	}
 
-	ra.countCertificateIssued(ctx, int64(acctID), parsedCertificate.DNSNames, isRenewal)
+	ra.countCertificateIssued(ctx, int64(acctID), parsedCertificate.DNSNames)
 
 	// Asynchronously submit the final certificate to any configured logs
 	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)

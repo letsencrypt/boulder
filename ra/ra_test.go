@@ -3709,10 +3709,6 @@ func (sa *mockSAWithFinalize) FinalizeOrder(ctx context.Context, req *sapb.Final
 	return &emptypb.Empty{}, nil
 }
 
-func (sa *mockSAWithFinalize) FQDNSetExists(ctx context.Context, in *sapb.FQDNSetExistsRequest, opts ...grpc.CallOption) (*sapb.Exists, error) {
-	return &sapb.Exists{}, nil
-}
-
 func TestIssueCertificateInnerWithProfile(t *testing.T) {
 	_, _, ra, fc, cleanup := initAuthorities(t)
 	defer cleanup()
