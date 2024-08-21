@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"slices"
@@ -1216,7 +1216,7 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 
 	// Shuffle the challenges so no one relies on their order.
 	for i := range authz.Challenges {
-		j := rand.Intn(i + 1)
+		j := rand.IntN(i + 1)
 		authz.Challenges[i], authz.Challenges[j] = authz.Challenges[j], authz.Challenges[i]
 	}
 

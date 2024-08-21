@@ -3384,34 +3384,117 @@ func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
 }
 
 func TestPrepAuthzForDisplay(t *testing.T) {
+	t.Parallel()
 	wfe, _, _ := setupWFE(t)
 
-	// Make an authz for a wildcard identifier
+	authz := &core.Authorization{
+		ID:             "12345",
+		Status:         core.StatusPending,
+		RegistrationID: 1,
+		Identifier:     identifier.DNSIdentifier("example.com"),
+		Challenges: []core.Challenge{
+			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusPending, Token: "token"},
+		},
+	}
+
+	// This modifies the authz in-place.
+	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
+
+	// The ID and RegID should be empty, since they're not part of the ACME API object.
+	test.AssertEquals(t, authz.ID, "")
+	test.AssertEquals(t, authz.RegistrationID, int64(0))
+}
+
+func TestPrepRevokedAuthzForDisplay(t *testing.T) {
+	t.Parallel()
+	wfe, _, _ := setupWFE(t)
+
+	authz := &core.Authorization{
+		ID:             "12345",
+		Status:         core.StatusInvalid,
+		RegistrationID: 1,
+		Identifier:     identifier.DNSIdentifier("example.com"),
+		Challenges: []core.Challenge{
+			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusPending, Token: "token"},
+		},
+	}
+
+	// This modifies the authz in-place.
+	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
+
+	// All of the challenges should be revoked as well.
+	for _, chall := range authz.Challenges {
+		test.AssertEquals(t, chall.Status, core.StatusInvalid)
+	}
+}
+
+func TestPrepWildcardAuthzForDisplay(t *testing.T) {
+	t.Parallel()
+	wfe, _, _ := setupWFE(t)
+
 	authz := &core.Authorization{
 		ID:             "12345",
 		Status:         core.StatusPending,
 		RegistrationID: 1,
 		Identifier:     identifier.DNSIdentifier("*.example.com"),
 		Challenges: []core.Challenge{
-			{
-				Type: "dns",
-			},
+			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
 		},
 	}
 
-	// Prep the wildcard authz for display
+	// This modifies the authz in-place.
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 
-	// The authz should not have a wildcard prefix in the identifier value
+	// The identifier should not start with a star, but the authz should be marked
+	// as a wildcard.
 	test.AssertEquals(t, strings.HasPrefix(authz.Identifier.Value, "*."), false)
-	// The authz should be marked as corresponding to a wildcard name
 	test.AssertEquals(t, authz.Wildcard, true)
+}
 
-	// We expect the authz challenge has its URL set and the URI emptied.
-	authz.ID = "12345"
-	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
-	chal := authz.Challenges[0]
-	test.AssertEquals(t, chal.URL, "http://localhost/acme/chall-v3/12345/po1V2w")
+func TestPrepAuthzForDisplayShuffle(t *testing.T) {
+	t.Parallel()
+	wfe, _, _ := setupWFE(t)
+
+	authz := &core.Authorization{
+		ID:             "12345",
+		Status:         core.StatusPending,
+		RegistrationID: 1,
+		Identifier:     identifier.DNSIdentifier("example.com"),
+		Challenges: []core.Challenge{
+			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusPending, Token: "token"},
+		},
+	}
+
+	// The challenges should be presented in an unpredictable order.
+
+	// Create a structure to count how many times each challenge type ends up in
+	// each position in the output authz.Challenges list.
+	counts := make(map[core.AcmeChallenge]map[int]int)
+	counts[core.ChallengeTypeDNS01] = map[int]int{0: 0, 1: 0, 2: 0}
+	counts[core.ChallengeTypeHTTP01] = map[int]int{0: 0, 1: 0, 2: 0}
+	counts[core.ChallengeTypeTLSALPN01] = map[int]int{0: 0, 1: 0, 2: 0}
+
+	// Prep the authz 100 times, and count where each challenge ended up each time.
+	for range 100 {
+		// This modifies the authz in place
+		wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
+		for i, chall := range authz.Challenges {
+			counts[chall.Type][i] += 1
+		}
+	}
+
+	// Ensure that at least some amount of randomization is happening.
+	for challType, indices := range counts {
+		for index, count := range indices {
+			test.Assert(t, count > 10, fmt.Sprintf("challenge type %s did not appear in position %d as often as expected", challType, index))
+		}
+	}
 }
 
 // noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `FinalizeOrder`
