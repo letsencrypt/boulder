@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
-	"fmt"
 	"math/rand/v2"
 	"net"
 	"os"
@@ -501,57 +500,9 @@ func (sa *StorageAuthorityReadOnly) GetAuthorizations2(ctx context.Context, req 
 	return &sapb.Authorizations{}, nil
 }
 
-var (
-	authzIdValid       = int64(1)
-	authzIdPending     = int64(2)
-	authzIdExpired     = int64(3)
-	authzIdErrorResult = int64(4)
-	authzIdDiffAccount = int64(5)
-)
-
 // GetAuthorization2 is a mock
 func (sa *StorageAuthorityReadOnly) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2, _ ...grpc.CallOption) (*corepb.Authorization, error) {
-	authz := core.Authorization{
-		Status:         core.StatusValid,
-		RegistrationID: 1,
-		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
-		Challenges: []core.Challenge{
-			{
-				Status: "pending",
-				Token:  "token",
-				Type:   "dns",
-			},
-		},
-	}
-
-	switch id.Id {
-	case authzIdValid:
-		exp := sa.clk.Now().AddDate(100, 0, 0)
-		authz.Expires = &exp
-		authz.ID = fmt.Sprintf("%d", authzIdValid)
-		return bgrpc.AuthzToPB(authz)
-	case authzIdPending:
-		exp := sa.clk.Now().AddDate(100, 0, 0)
-		authz.Expires = &exp
-		authz.ID = fmt.Sprintf("%d", authzIdPending)
-		authz.Status = core.StatusPending
-		return bgrpc.AuthzToPB(authz)
-	case authzIdExpired:
-		exp := sa.clk.Now().AddDate(0, -1, 0)
-		authz.Expires = &exp
-		authz.ID = fmt.Sprintf("%d", authzIdExpired)
-		return bgrpc.AuthzToPB(authz)
-	case authzIdErrorResult:
-		return nil, fmt.Errorf("unspecified database error")
-	case authzIdDiffAccount:
-		exp := sa.clk.Now().AddDate(100, 0, 0)
-		authz.RegistrationID = 2
-		authz.Expires = &exp
-		authz.ID = fmt.Sprintf("%d", authzIdDiffAccount)
-		return bgrpc.AuthzToPB(authz)
-	}
-
-	return nil, berrors.NotFoundError("no authorization found with id %q", id)
+	return &corepb.Authorization{}, nil
 }
 
 // GetSerialsByKey is a mock
