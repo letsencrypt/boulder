@@ -1404,6 +1404,7 @@ func TestHTTPDialTimeout(t *testing.T) {
 		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
 			prob.Detail, expectMatch)
 	}
+	t.Fail()
 }
 
 func TestHTTPRedirectLookup(t *testing.T) {
