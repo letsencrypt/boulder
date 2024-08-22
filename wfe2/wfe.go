@@ -642,36 +642,33 @@ func link(url, relation string) string {
 // function is returned that can be called to refund the quota if the account
 // creation fails, the func will be nil if any error was encountered during the
 // check.
-//
-// TODO(#5545): For now we're simply exercising the new rate limiter codepath.
-// This should eventually return a berrors.RateLimit error containing the retry
-// after duration among other information available in the ratelimits.Decision.
-func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) func() {
+func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) (func(), error) {
 	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Key-value rate limiting is disabled.
-		return nil
+		return nil, nil
 	}
 
 	txns, err := wfe.txnBuilder.NewAccountLimitTransactions(ip)
 	if err != nil {
-		// TODO(#5545): Once key-value rate limits are authoritative this
-		// log line should be removed in favor of returning the error.
-		wfe.log.Infof("building new account limit transactions: %v", err)
-		return nil
+		return nil, fmt.Errorf("building new account limit transactions: %w", err)
 	}
 
-	_, err = wfe.limiter.BatchSpend(ctx, txns)
+	d, err := wfe.limiter.BatchSpend(ctx, txns)
 	if err != nil {
-		wfe.log.Warningf("checking newAccount limits: %s", err)
-		return nil
+		return nil, fmt.Errorf("spending new account limits: %w", err)
+	}
+
+	err = d.Result(wfe.clk.Now())
+	if err != nil {
+		return nil, err
 	}
 
 	return func() {
 		_, err := wfe.limiter.BatchRefund(ctx, txns)
 		if err != nil {
-			wfe.log.Warningf("refunding newAccount limits: %s", err)
+			wfe.log.Warningf("refunding new account limits: %s", err)
 		}
-	}
+	}, nil
 }
 
 // NewAccount is used by clients to submit a new account
@@ -796,7 +793,16 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		InitialIP:       ipBytes,
 	}
 
-	refundLimits := wfe.checkNewAccountLimits(ctx, ip)
+	refundLimits, err := wfe.checkNewAccountLimits(ctx, ip)
+	if err != nil {
+		if errors.Is(err, berrors.RateLimit) {
+			if features.Get().UseKvLimitsForNewAccount {
+				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
+				return
+			}
+		}
+		wfe.log.Warningf(err.Error())
+	}
 
 	var newRegistrationSuccessful bool
 	var errIsRateLimit bool
@@ -2026,37 +2032,33 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 // encountered during the check, it is logged but not returned. A refund
 // function is returned that can be used to refund the quota if the order is not
 // created, the func will be nil if any error was encountered during the check.
-//
-// TODO(#5545): For now we're simply exercising the new rate limiter codepath.
-// This should eventually return a berrors.RateLimit error containing the retry
-// after duration among other information available in the ratelimits.Decision.
-func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, names []string, isRenewal bool) func() {
+func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, names []string, isRenewal bool) (func(), error) {
 	if wfe.limiter == nil && wfe.txnBuilder == nil {
 		// Key-value rate limiting is disabled.
-		return nil
+		return nil, nil
 	}
 
 	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, isRenewal)
 	if err != nil {
-		wfe.log.Warningf("building new order limit transactions: %v", err)
-		return nil
+		return nil, fmt.Errorf("building new order limit transactions: %w", err)
 	}
 
-	_, err = wfe.limiter.BatchSpend(ctx, txns)
+	d, err := wfe.limiter.BatchSpend(ctx, txns)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil
-		}
-		wfe.log.Warningf("checking newOrder limits: %s", err)
-		return nil
+		return nil, fmt.Errorf("spending new order limits: %w", err)
+	}
+
+	err = d.Result(wfe.clk.Now())
+	if err != nil {
+		return nil, err
 	}
 
 	return func() {
 		_, err := wfe.limiter.BatchRefund(ctx, txns)
 		if err != nil {
-			wfe.log.Warningf("refunding newOrder limits: %s", err)
+			wfe.log.Warningf("refunding new order limits: %s", err)
 		}
-	}
+	}, nil
 }
 
 // orderMatchesReplacement checks if the order matches the provided certificate
@@ -2367,7 +2369,16 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	refundLimits := wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal)
+	refundLimits, err := wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal)
+	if err != nil {
+		if errors.Is(err, berrors.RateLimit) {
+			if features.Get().UseKvLimitsForNewOrder {
+				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
+				return
+			}
+		}
+		wfe.log.Warningf(err.Error())
+	}
 
 	var newOrderSuccessful bool
 	var errIsRateLimit bool
