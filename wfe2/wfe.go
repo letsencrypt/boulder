@@ -1215,10 +1215,9 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 	}
 
 	// Shuffle the challenges so no one relies on their order.
-	for i := range authz.Challenges {
-		j := rand.IntN(i + 1)
+	rand.Shuffle(len(authz.Challenges), func(i, j int) {
 		authz.Challenges[i], authz.Challenges[j] = authz.Challenges[j], authz.Challenges[i]
-	}
+	})
 
 	authz.ID = ""
 	authz.RegistrationID = 0
