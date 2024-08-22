@@ -182,7 +182,7 @@ func TestPauseIdentifiers(t *testing.T) {
 			}
 			a := admin{sac: testCase.saImpl, log: log}
 
-			responses, err := a.pauseIdentifiers(context.TODO(), testCase.data)
+			responses, err := a.pauseIdentifiers(context.Background(), testCase.data)
 			if testCase.expectErr {
 				test.AssertError(t, err, "should have errored, but did not")
 			} else {
