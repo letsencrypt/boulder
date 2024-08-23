@@ -134,7 +134,7 @@ func TestCheckWildcardCert(t *testing.T) {
 	}
 	_, problems := checker.checkCert(context.Background(), cert, nil)
 	for _, p := range problems {
-		t.Errorf(p)
+		t.Error(p)
 	}
 }
 

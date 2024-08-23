@@ -47,7 +47,7 @@ func SendError(
 		logEvent.Error += fmt.Sprintf(" [%s]", strings.Join(subDetails, ", "))
 	}
 	if ierr != nil {
-		logEvent.AddError(fmt.Sprintf("%s", ierr))
+		logEvent.AddError("%s", ierr)
 	}
 
 	// Set the proper namespace for the problem and any sub-problems.

@@ -802,7 +802,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 				return
 			}
 		}
-		wfe.log.Warningf(err.Error())
+		wfe.log.Warning(err.Error())
 	}
 
 	var newRegistrationSuccessful bool
@@ -932,11 +932,11 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 			if !ok {
 				reasonStr = "unknown"
 			}
-			return nil, 0, probs.BadRevocationReason(
+			return nil, 0, probs.BadRevocationReason(fmt.Sprintf(
 				"unsupported revocation reason code provided: %s (%d). Supported reasons: %s",
 				reasonStr,
 				*revokeRequest.Reason,
-				revocation.UserAllowedReasonsMessage)
+				revocation.UserAllowedReasonsMessage))
 		}
 		reason = *revokeRequest.Reason
 	}
@@ -2384,7 +2384,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 				return
 			}
 		}
-		wfe.log.Warningf(err.Error())
+		wfe.log.Warning(err.Error())
 	}
 
 	var newOrderSuccessful bool
@@ -2582,11 +2582,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 
 	// Only ready orders can be finalized.
 	if order.Status != string(core.StatusReady) {
-		wfe.sendError(response, logEvent,
-			probs.OrderNotReady(
-				"Order's status (%q) is not acceptable for finalization",
-				order.Status),
-			nil)
+		wfe.sendError(response, logEvent, probs.OrderNotReady(fmt.Sprintf("Order's status (%q) is not acceptable for finalization", order.Status)), nil)
 		return
 	}
 

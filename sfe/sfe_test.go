@@ -123,7 +123,7 @@ func TestUnpausePaths(t *testing.T) {
 	fc.Add(time.Hour * 337)
 	sfe.UnpauseForm(responseWriter, &http.Request{
 		Method: "GET",
-		URL:    mustParseURL(fmt.Sprintf(unpause.GetForm + "?jwt=" + expiredJWT)),
+		URL:    mustParseURL(unpause.GetForm + "?jwt=" + expiredJWT),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "Expired unpause URL")
@@ -134,7 +134,7 @@ func TestUnpausePaths(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	sfe.UnpauseForm(responseWriter, &http.Request{
 		Method: "GET",
-		URL:    mustParseURL(fmt.Sprintf(unpause.GetForm + "?jwt=" + validJWT)),
+		URL:    mustParseURL(unpause.GetForm + "?jwt=" + validJWT),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "Action required to unpause your account")
@@ -143,7 +143,7 @@ func TestUnpausePaths(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	sfe.UnpauseSubmit(responseWriter, &http.Request{
 		Method: "POST",
-		URL:    mustParseURL(fmt.Sprintf(unpausePostForm + "?jwt=" + expiredJWT)),
+		URL:    mustParseURL(unpausePostForm + "?jwt=" + expiredJWT),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "Expired unpause URL")
@@ -161,7 +161,7 @@ func TestUnpausePaths(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	sfe.UnpauseSubmit(responseWriter, &http.Request{
 		Method: "POST",
-		URL:    mustParseURL(fmt.Sprintf(unpausePostForm + "?jwt=x.x")),
+		URL:    mustParseURL(unpausePostForm + "?jwt=x.x"),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "Invalid unpause URL")
@@ -170,7 +170,7 @@ func TestUnpausePaths(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	sfe.UnpauseSubmit(responseWriter, &http.Request{
 		Method: "POST",
-		URL:    mustParseURL(fmt.Sprintf(unpausePostForm + "?jwt=x.x.x")),
+		URL:    mustParseURL(unpausePostForm + "?jwt=x.x.x"),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "Invalid unpause URL")
@@ -179,7 +179,7 @@ func TestUnpausePaths(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	sfe.UnpauseSubmit(responseWriter, &http.Request{
 		Method: "POST",
-		URL:    mustParseURL(fmt.Sprintf(unpausePostForm + "?jwt=" + validJWT)),
+		URL:    mustParseURL(unpausePostForm + "?jwt=" + validJWT),
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusFound)
 	test.AssertEquals(t, unpauseStatus+"?count=0", responseWriter.Result().Header.Get("Location"))

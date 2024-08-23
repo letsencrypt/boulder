@@ -91,7 +91,7 @@ func unwrapError(err error, md metadata.MD) error {
 			inErrMsg,
 		)
 	}
-	inErr := berrors.New(berrors.ErrorType(inErrType), inErrMsg)
+	inErr := berrors.New(berrors.ErrorType(inErrType), inErrMsg) //nolint:govet
 	var outErr *berrors.BoulderError
 	if !errors.As(inErr, &outErr) {
 		return fmt.Errorf(
