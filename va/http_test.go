@@ -53,10 +53,23 @@ func TestDialerMismatchError(t *testing.T) {
 	test.AssertEquals(t, err.Error(), expectedErr.Error())
 }
 
-// TestPreresolvedDialerTimeout tests that the preresolvedDialer's DialContext
+// dnsMockReturnsUnroutable is a DNSClient mock that always returns an
+// unroutable address for LookupHost. This is useful in testing connect
+// timeouts.
+type dnsMockReturnsUnroutable struct {
+	*bdns.MockClient
+}
+
+func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddrs, error) {
+	return []net.IP{net.ParseIP("198.51.100.1")}, bdns.ResolverAddrs{"dnsMockReturnsUnroutable"}, nil
+}
+
+// TestDialerTimeout tests that the preresolvedDialer's DialContext
 // will timeout after the expected singleDialTimeout. This ensures timeouts at
-// the TCP level are handled correctly.
-func TestPreresolvedDialerTimeout(t *testing.T) {
+// the TCP level are handled correctly. It also ensures that we show the client
+// the appropriate "Timeout during connect" error message, which helps clients
+// distinguish between firewall problems and server problems.
+func TestDialerTimeout(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil, nil)
 	// Timeouts below 50ms tend to be flaky.
 	va.singleDialTimeout = 50 * time.Millisecond
@@ -77,7 +90,7 @@ func TestPreresolvedDialerTimeout(t *testing.T) {
 		started := time.Now()
 		_, _, err = va.fetchHTTP(ctx, "unroutable.invalid", "/.well-known/acme-challenge/whatever")
 		took = time.Since(started)
-		if err != nil && strings.Contains(err.Error(), "Network unreachable") {
+		if err != nil && strings.Contains(err.Error(), "network is unreachable") {
 			continue
 		} else {
 			break
@@ -97,13 +110,7 @@ func TestPreresolvedDialerTimeout(t *testing.T) {
 	}
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-
-	expectMatch := regexp.MustCompile(
-		"Fetching http://unroutable.invalid/.well-known/acme-challenge/.*: Timeout during connect")
-	if !expectMatch.MatchString(prob.Detail) {
-		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
-			prob.Detail, expectMatch)
-	}
+	test.AssertContains(t, prob.Detail, "Timeout during connect (likely firewall problem)")
 }
 
 func TestHTTPTransport(t *testing.T) {
@@ -1346,65 +1353,6 @@ func TestHTTPTimeout(t *testing.T) {
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	test.AssertEquals(t, prob.Detail, "127.0.0.1: Fetching http://localhost/.well-known/acme-challenge/wait-long: Timeout after connect (your server may be slow or overloaded)")
-}
-
-// dnsMockReturnsUnroutable is a DNSClient mock that always returns an
-// unroutable address for LookupHost. This is useful in testing connect
-// timeouts.
-type dnsMockReturnsUnroutable struct {
-	*bdns.MockClient
-}
-
-func (mock dnsMockReturnsUnroutable) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddrs, error) {
-	return []net.IP{net.ParseIP("198.51.100.1")}, bdns.ResolverAddrs{"dnsMockReturnsUnroutable"}, nil
-}
-
-// TestHTTPDialTimeout tests that we give the proper "Timeout during connect"
-// error when dial fails. We do this by using a mock DNS client that resolves
-// everything to an unroutable IP address.
-func TestHTTPDialTimeout(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
-
-	started := time.Now()
-	timeout := 250 * time.Millisecond
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockClient{}}
-	// The only method I've found so far to trigger a connect timeout is to
-	// connect to an unrouteable IP address. This usually generates a connection
-	// timeout, but will rarely return "Network unreachable" instead. If we get
-	// that, just retry until we get something other than "Network unreachable".
-	var err error
-	for range 20 {
-		_, err = va.validateHTTP01(ctx, dnsi("unroutable.invalid"), expectedToken, expectedKeyAuthorization)
-		if err != nil && strings.Contains(err.Error(), "network is unreachable") {
-			continue
-		} else {
-			break
-		}
-	}
-	if err == nil {
-		t.Fatalf("Connection should've timed out")
-	}
-	took := time.Since(started)
-	// Check that the HTTP connection doesn't return too fast, and times
-	// out after the expected time
-	if took < (timeout-200*time.Millisecond)/2 {
-		t.Fatalf("HTTP returned before %s (%s) with %q", timeout, took, err.Error())
-	}
-	if took > 2*timeout {
-		t.Fatalf("HTTP connection didn't timeout after %s seconds", timeout)
-	}
-	prob := detailedError(err)
-	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	expectMatch := regexp.MustCompile(
-		"Fetching http://unroutable.invalid/.well-known/acme-challenge/.*: Timeout during connect")
-	if !expectMatch.MatchString(prob.Detail) {
-		t.Errorf("Problem details incorrect. Got %q, expected to match %q",
-			prob.Detail, expectMatch)
-	}
-	t.Fail()
 }
 
 func TestHTTPRedirectLookup(t *testing.T) {
