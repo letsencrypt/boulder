@@ -8,7 +8,7 @@ import (
 // TODO(#5891): Move this interface to a more appropriate location.
 type PolicyAuthority interface {
 	WillingToIssue([]string) error
-	ChallengesFor(identifier.ACMEIdentifier) ([]Challenge, error)
+	ChallengeTypesFor(identifier.ACMEIdentifier) ([]AcmeChallenge, error)
 	ChallengeTypeEnabled(AcmeChallenge) bool
 	CheckAuthz(*Authorization) error
 }

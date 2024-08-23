@@ -491,9 +491,12 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	if err != nil {
 		return nil, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
 	}
-	err = ra.checkRegistrationLimits(ctx, ipAddr)
-	if err != nil {
-		return nil, err
+
+	if !features.Get().UseKvLimitsForNewAccount {
+		err = ra.checkRegistrationLimits(ctx, ipAddr)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Check that contacts conform to our expectations.
@@ -1298,6 +1301,40 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	return order, err
 }
 
+// countCertificateIssued increments the certificates (per domain and per
+// account) and duplicate certificate rate limits. There is no reason to surface
+// errors from this function to the Subscriber, spends against these limit are
+// best effort.
+func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderDomains []string, isRenewal bool) {
+	if ra.limiter == nil || ra.txnBuilder == nil {
+		// Limiter is disabled.
+		return
+	}
+
+	var transactions []ratelimits.Transaction
+	if !isRenewal {
+		txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderDomains)
+		if err != nil {
+			ra.log.Warningf("building rate limit transactions at finalize: %s", err)
+		}
+		transactions = append(transactions, txns...)
+	}
+
+	txn, err := ra.txnBuilder.CertificatesPerFQDNSetSpendOnlyTransaction(orderDomains)
+	if err != nil {
+		ra.log.Warningf("building rate limit transaction at finalize: %s", err)
+	}
+	transactions = append(transactions, txn)
+
+	_, err = ra.limiter.BatchSpend(ctx, transactions)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		ra.log.Warningf("spending against rate limits at finalize: %s", err)
+	}
+}
+
 // certProfileID contains the name and hash of a certificate profile returned by
 // a CA.
 type certProfileID struct {
@@ -1370,6 +1407,17 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return nil, nil, wrapError(err, "getting SCTs")
 	}
 
+	var isRenewal bool
+	if len(parsedPrecert.DNSNames) > 0 {
+		// This should never happen under normal operation, but it sometimes
+		// occurs under test.
+		exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: parsedPrecert.DNSNames})
+		if err != nil {
+			return nil, nil, wrapError(err, "checking if certificate is a renewal")
+		}
+		isRenewal = exists.Exists
+	}
+
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:             precert.DER,
 		SCTs:            scts,
@@ -1385,6 +1433,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return nil, nil, wrapError(err, "parsing final certificate")
 	}
+
+	go ra.countCertificateIssued(ctx, int64(acctID), slices.Clone(parsedCertificate.DNSNames), isRenewal)
 
 	// Asynchronously submit the final certificate to any configured logs
 	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
@@ -1813,6 +1863,9 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	return err
 }
 
+// countFailedValidation increments the failed authorizations per domain per
+// account rate limit. There is no reason to surface errors from this function
+// to the Subscriber, spends against this limit are best effort.
 func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, regId int64, name string) {
 	if ra.limiter == nil || ra.txnBuilder == nil {
 		// Limiter is disabled.
@@ -1821,7 +1874,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 
 	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, name)
 	if err != nil {
-		ra.log.Errf("constructing rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+		ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
 
 	_, err = ra.limiter.Spend(ctx, txn)
@@ -1829,7 +1882,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
-		ra.log.Errf("checking the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+		ra.log.Warningf("spending against the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
 }
 
@@ -1954,12 +2007,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		if prob != nil {
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
-
-			// TODO(#5545): Spending can be async until key-value rate limits
-			// are authoritative. This saves us from adding latency to each
-			// request. Goroutines spun out below will respect a context
-			// deadline set by the ratelimits package and cannot be prematurely
-			// canceled by the requester.
 			go ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier.Value)
 		} else {
 			challenge.Status = core.StatusValid
@@ -2532,7 +2579,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-	if !req.IsARIRenewal {
+	if !req.IsARIRenewal && !features.Get().UseKvLimitsForNewOrder {
 		// Check if there is rate limit space for issuing a certificate.
 		err = ra.checkNewOrderLimits(ctx, newOrder.DnsNames, newOrder.RegistrationID, req.IsRenewal)
 		if err != nil {
@@ -2611,7 +2658,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-	if len(missingAuthzIdents) > 0 && !req.IsARIRenewal {
+	if len(missingAuthzIdents) > 0 && !req.IsARIRenewal && !features.Get().UseKvLimitsForNewOrder {
 		pendingAuthzLimits := ra.rlPolicies.PendingAuthorizationsPerAccount()
 		if pendingAuthzLimits.Enabled() {
 			// The order isn't fully authorized we need to check that the client
@@ -2641,7 +2688,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			return nil, err
 		}
 		newAuthzs = append(newAuthzs, pb)
-		ra.authzAges.WithLabelValues("NewOrder", pb.Status).Observe(0)
+		ra.authzAges.WithLabelValues("NewOrder", string(core.StatusPending)).Observe(0)
 	}
 
 	// Start with the order's own expiry as the minExpiry. We only care
@@ -2699,60 +2746,26 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
 func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier identifier.ACMEIdentifier) (*sapb.NewAuthzRequest, error) {
+	challTypes, err := ra.PA.ChallengeTypesFor(identifier)
+	if err != nil {
+		return nil, err
+	}
+
+	challStrs := make([]string, len(challTypes))
+	for i, t := range challTypes {
+		challStrs[i] = string(t)
+	}
+
 	authz := &sapb.NewAuthzRequest{
-		DnsName: identifier.Value,
 		Identifier: &sapb.Identifier{
 			Type:  string(identifier.Type),
 			Value: identifier.Value,
 		},
 		RegistrationID: reg,
-		Status:         string(core.StatusPending),
 		Expires:        timestamppb.New(ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second)),
+		ChallengeTypes: challStrs,
+		Token:          core.NewToken(),
 	}
-
-	// Create challenges. The WFE will update them with URIs before sending them out.
-	challenges, err := ra.PA.ChallengesFor(identifier)
-	if err != nil {
-		// The only time ChallengesFor errors it is a fatal configuration error
-		// where challenges required by policy for an identifier are not enabled. We
-		// want to treat this as an internal server error.
-		return nil, berrors.InternalServerError("determining challenges for authorization: %s", err.Error())
-	}
-	// Check each challenge for sanity.
-	var token string
-	var challTypes []string
-	for _, challenge := range challenges {
-		err := challenge.CheckPending()
-		if err != nil {
-			// berrors.InternalServerError because we generated these challenges, they should
-			// be OK.
-			err = berrors.InternalServerError("challenge didn't pass sanity check: %+v", challenge)
-			return nil, err
-		}
-
-		if token == "" {
-			token = challenge.Token
-		} else {
-			if challenge.Token != token {
-				return nil, berrors.InternalServerError("generated different tokens for challenges within the same authz")
-			}
-		}
-
-		if slices.Contains(challTypes, string(challenge.Type)) {
-			return nil, berrors.InternalServerError("generated multiple challenges of the same type within the same authz")
-		} else {
-			challTypes = append(challTypes, string(challenge.Type))
-		}
-
-		challPB, err := bgrpc.ChallengeToPB(challenge)
-		if err != nil {
-			return nil, err
-		}
-		authz.Challenges = append(authz.Challenges, challPB)
-	}
-
-	authz.Token = token
-	authz.ChallengeTypes = challTypes
 
 	return authz, nil
 }

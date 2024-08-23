@@ -20,6 +20,14 @@ UNIT_FLAGS=()
 FILTER=()
 
 #
+# Cleanup Functions
+#
+
+function flush_redis() {
+  go run ./test/boulder-tools/flushredis/main.go
+}
+
+#
 # Print Functions
 #
 function print_outcome() {
@@ -225,6 +233,7 @@ fi
 STAGE="unit"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Unit Tests"
+  flush_redis
   run_unit_tests
 fi
 
@@ -234,6 +243,7 @@ fi
 STAGE="integration"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Integration Tests"
+  flush_redis
   python3 test/integration-test.py --chisel --gotest "${FILTER[@]}"
 fi
 

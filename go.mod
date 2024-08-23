@@ -27,7 +27,7 @@ require (
 	github.com/redis/go-redis/extra/redisotel/v9 v9.5.3
 	github.com/redis/go-redis/v9 v9.5.3
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
-	github.com/weppos/publicsuffix-go v0.30.3-0.20240510084413-5f1d03393b3d
+	github.com/weppos/publicsuffix-go v0.40.3-0.20240815124645-a8ed110559c9
 	github.com/zmap/zcrypto v0.0.0-20231219022726-a1f61fb1661c
 	github.com/zmap/zlint/v3 v3.6.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.52.0

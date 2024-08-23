@@ -769,36 +769,23 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 // protobuf authorizations map
 func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 	resp := &sapb.Authorizations{}
-	for k, v := range m {
+	for _, v := range m {
 		authzPB, err := modelToAuthzPB(v)
 		if err != nil {
 			return nil, err
 		}
 		resp.Authzs = append(resp.Authzs, authzPB)
-		// TODO(#7646): Stop populating the .Authzs field once it is no longer used.
-		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: k, Authz: authzPB})
 	}
 	return resp, nil
 }
 
-// GetAuthorizations2 returns any valid or pending authorizations that exist for the list of domains
-// provided. If both a valid and pending authorization exist only the valid one will be returned.
+// GetAuthorizations2 returns a single pending or valid authorization owned by
+// the given account for all given identifiers. If both a valid and pending
+// authorization exist only the valid one will be returned. Currently only dns
+// identifiers are supported.
 func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if len(req.DnsNames) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.ValidUntil) {
+	if core.IsAnyNilOrZero(req, req.RegistrationID, req.DnsNames, req.ValidUntil) {
 		return nil, errIncompleteRequest
-	}
-	var authzModels []authzModel
-	params := []interface{}{
-		req.RegistrationID,
-		statusUint(core.StatusValid),
-		statusUint(core.StatusPending),
-		req.ValidUntil.AsTime(),
-		identifierTypeToUint[string(identifier.DNS)],
-	}
-
-	for _, name := range req.DnsNames {
-		params = append(params, name)
 	}
 
 	query := fmt.Sprintf(
@@ -813,6 +800,17 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		db.QuestionMarks(len(req.DnsNames)),
 	)
 
+	params := []interface{}{
+		req.RegistrationID,
+		statusUint(core.StatusValid), statusUint(core.StatusPending),
+		req.ValidUntil.AsTime(),
+		identifierTypeToUint[string(identifier.DNS)],
+	}
+	for _, dnsName := range req.DnsNames {
+		params = append(params, dnsName)
+	}
+
+	var authzModels []authzModel
 	_, err := ssa.dbReadOnlyMap.Select(
 		ctx,
 		&authzModels,
@@ -827,8 +825,10 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		return &sapb.Authorizations{}, nil
 	}
 
-	authzModelMap := make(map[string]authzModel)
+	authzModelMap := make(map[string]authzModel, len(authzModels))
 	for _, am := range authzModels {
+		// If there is an existing authorization in the map, only replace it with
+		// one which has a "better" validation state (valid instead of pending).
 		existing, present := authzModelMap[am.IdentifierValue]
 		if !present || uintToStatus[existing.Status] == core.StatusPending && uintToStatus[am.Status] == core.StatusValid {
 			authzModelMap[am.IdentifierValue] = am
@@ -955,18 +955,19 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 	return &sapb.Count{Count: count}, nil
 }
 
-// GetValidAuthorizations2 returns the latest authorization for all
-// domain names that the account has authorizations for. This method
-// only supports DNS identifier types.
+// GetValidAuthorizations2 returns a single valid authorization owned by the
+// given account for all given identifiers. If more than one valid authorization
+// exists, only the one with the latest expiry will be returned. Currently only
+// dns identifiers are supported.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if len(req.DnsNames) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.ValidUntil) {
+	if core.IsAnyNilOrZero(req, req.RegistrationID, req.DnsNames, req.ValidUntil) {
 		return nil, errIncompleteRequest
 	}
 
 	query := fmt.Sprintf(
-		`SELECT %s FROM authz2 WHERE
-			registrationID = ? AND
+		`SELECT %s FROM authz2
+			USE INDEX (regID_identifier_status_expires_idx)
+			WHERE registrationID = ? AND
 			status = ? AND
 			expires > ? AND
 			identifierType = ? AND
@@ -981,8 +982,8 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 		req.ValidUntil.AsTime(),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
-	for _, domain := range req.DnsNames {
-		params = append(params, domain)
+	for _, dnsName := range req.DnsNames {
+		params = append(params, dnsName)
 	}
 
 	var authzModels []authzModel
@@ -996,19 +997,21 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 		return nil, err
 	}
 
+	if len(authzModels) == 0 {
+		return &sapb.Authorizations{}, nil
+	}
+
 	authzMap := make(map[string]authzModel, len(authzModels))
 	for _, am := range authzModels {
-		// Only allow DNS identifiers
-		if uintToIdentifierType[am.IdentifierType] != string(identifier.DNS) {
-			continue
-		}
 		// If there is an existing authorization in the map only replace it with one
 		// which has a later expiry.
-		if existing, present := authzMap[am.IdentifierValue]; present && am.Expires.Before(existing.Expires) {
+		existing, present := authzMap[am.IdentifierValue]
+		if present && am.Expires.Before(existing.Expires) {
 			continue
 		}
 		authzMap[am.IdentifierValue] = am
 	}
+
 	return authzModelMapToPB(authzMap)
 }
 

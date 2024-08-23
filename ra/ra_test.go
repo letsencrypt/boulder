@@ -3709,6 +3709,10 @@ func (sa *mockSAWithFinalize) FinalizeOrder(ctx context.Context, req *sapb.Final
 	return &emptypb.Empty{}, nil
 }
 
+func (sa *mockSAWithFinalize) FQDNSetExists(ctx context.Context, in *sapb.FQDNSetExistsRequest, opts ...grpc.CallOption) (*sapb.Exists, error) {
+	return &sapb.Exists{}, nil
+}
+
 func TestIssueCertificateInnerWithProfile(t *testing.T) {
 	_, _, ra, fc, cleanup := initAuthorities(t)
 	defer cleanup()
@@ -4149,12 +4153,7 @@ func (msa *mockSARevocationWithAuthzs) GetValidAuthorizations2(ctx context.Conte
 	}
 
 	for _, name := range req.DnsNames {
-		authzs.Authz = append(authzs.Authz, &sapb.Authorizations_MapElement{
-			Domain: name,
-			Authz: &corepb.Authorization{
-				DnsName: name,
-			},
-		})
+		authzs.Authzs = append(authzs.Authzs, &corepb.Authorization{DnsName: name})
 	}
 
 	return authzs, nil
