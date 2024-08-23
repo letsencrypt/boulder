@@ -581,12 +581,10 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// If there was an error and its a kind of error we consider a fallback error,
 	// then try to fallback.
 	if err != nil && fallbackErr(err) {
-		fmt.Println("got fallback error")
 		// Try to advance to another IP. If there was an error advancing we don't
 		// have a fallback address to use and must return the original error.
 		advanceTargetIPErr := target.nextIP()
 		if advanceTargetIPErr != nil {
-			fmt.Println("failed to advance target")
 			return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
 		}
 
@@ -594,7 +592,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// the retry record.
 		retryDialer, retryRecord, err := va.setupHTTPValidation(initialReq.URL.String(), target)
 		if err != nil {
-			fmt.Println("failed to setup new validation")
 			return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
 		}
 
@@ -609,12 +606,10 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// If the retry still failed there isn't anything more to do, return the
 		// error immediately.
 		if err != nil {
-			fmt.Println("failed to retry")
 			return nil, records, newIPError(retryRecord.AddressUsed, err)
 		}
 	} else if err != nil {
 		// if the error was not a fallbackErr then return immediately.
-		fmt.Println("got non-fallback error")
 		return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
 	}
 

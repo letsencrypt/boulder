@@ -345,10 +345,8 @@ func (i ipError) Error() string {
 // meaningful. It additionally handles `berrors.ConnectionFailure` errors by
 // passing through the detailed message.
 func detailedError(err error) *probs.ProblemDetails {
-	fmt.Printf("%#v\n", err)
 	var ipErr ipError
 	if errors.As(err, &ipErr) {
-		fmt.Println("unwrapping ipError")
 		detailedErr := detailedError(ipErr.err)
 		if ipErr.ip == nil {
 			// This should never happen.
@@ -361,7 +359,6 @@ func detailedError(err error) *probs.ProblemDetails {
 	// net/http wraps net.OpError in a url.Error. Unwrap them.
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) {
-		fmt.Println("unwrapping ipError")
 		prob := detailedError(urlErr.Err)
 		prob.Detail = fmt.Sprintf("Fetching %s: %s", urlErr.URL, prob.Detail)
 		return prob
@@ -397,7 +394,6 @@ func detailedError(err error) *probs.ProblemDetails {
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
-		fmt.Println("unwrapping net.Error")
 		return probs.Connection("Timeout after connect (your server may be slow or overloaded)")
 	}
 	if errors.Is(err, berrors.ConnectionFailure) {
