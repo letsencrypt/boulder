@@ -802,7 +802,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 				return
 			}
 		}
-		wfe.log.Warningf(err.Error())
+		wfe.log.Warning(err.Error())
 	}
 
 	var newRegistrationSuccessful bool
@@ -2384,7 +2384,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 				return
 			}
 		}
-		wfe.log.Warningf(err.Error())
+		wfe.log.Warning(err.Error())
 	}
 
 	var newOrderSuccessful bool
