@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -191,6 +193,17 @@ func main() {
 	if c.CA.CTLogListFile != "" {
 		err = loglist.InitLintList(c.CA.CTLogListFile)
 		cmd.FailOnError(err, "Failed to load CT Log List")
+	}
+
+	// Check that the system clock believes it is synced with a reliable time
+	// server. This is important for the CA because it selects our notBefore and
+	// notAfter values, which MUST NOT be more than 48 hours from the actual time
+	// of the signing operation per BRs Section 7.1.2.7.
+	var timex = new(unix.Timex)
+	status, err := unix.Adjtimex(timex)
+	cmd.FailOnError(err, "Failed to check system time")
+	if status == unix.TIME_ERROR {
+		cmd.Fail("System time not synchronized to a reliable server")
 	}
 
 	clk := cmd.Clock()
