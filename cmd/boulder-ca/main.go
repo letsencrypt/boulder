@@ -199,10 +199,11 @@ func main() {
 	// server. This is important for the CA because it selects our notBefore and
 	// notAfter values, which MUST NOT be more than 48 hours from the actual time
 	// of the signing operation per BRs Section 7.1.2.7.
+	// See https://man7.org/linux/man-pages/man2/adjtimex.2.html
 	var timex = new(unix.Timex)
-	status, err := unix.Adjtimex(timex)
+	clockState, err := unix.Adjtimex(timex)
 	cmd.FailOnError(err, "Failed to check system time")
-	if status == unix.TIME_ERROR {
+	if clockState == unix.TIME_ERROR {
 		cmd.Fail("System time not synchronized to a reliable server")
 	}
 
