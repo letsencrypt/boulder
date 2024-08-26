@@ -100,7 +100,7 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 		{
 			Name:          "No challenges",
 			Authz:         Authorization{},
-			ExpectedError: "Authorization has no challenges",
+			ExpectedError: "authorization has no challenges",
 		},
 		// An authz with all non-valid challenges should return nil
 		{
@@ -108,7 +108,7 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 			Authz: Authorization{
 				Challenges: []Challenge{HTTPChallenge01(""), DNSChallenge01("")},
 			},
-			ExpectedError: "Authorization not solved by any challenge",
+			ExpectedError: "authorization not solved by any challenge",
 		},
 		// An authz with one valid HTTP01 challenge amongst other challenges should
 		// return the HTTP01 challenge

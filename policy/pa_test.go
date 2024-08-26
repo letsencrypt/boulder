@@ -12,7 +12,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -386,55 +385,6 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 			Type:   berrors.RejectedIdentifier,
 			Detail: "Cannot issue for \"letsdecrypt.org\": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
 		})
-}
-
-func TestChallengeTypesFor(t *testing.T) {
-	pa := paImpl(t)
-
-	challenges, err := pa.ChallengeTypesFor(identifier.ACMEIdentifier{})
-	test.AssertNotError(t, err, "ChallengesFor failed")
-
-	test.Assert(t, len(challenges) == len(pa.enabledChallenges), "Wrong number of challenges returned")
-
-	seenChalls := make(map[core.AcmeChallenge]bool)
-	for _, challenge := range challenges {
-		test.Assert(t, !seenChalls[challenge], "should not already have seen this type")
-		seenChalls[challenge] = true
-
-		test.Assert(t, pa.enabledChallenges[challenge.Type], "Unsupported challenge returned")
-	}
-	test.AssertEquals(t, len(seenChalls), len(pa.enabledChallenges))
-}
-
-func TestChallengeTypesForWildcard(t *testing.T) {
-	// wildcardIdent is an identifier for a wildcard domain name
-	wildcardIdent := identifier.ACMEIdentifier{
-		Type:  identifier.DNS,
-		Value: "*.zombo.com",
-	}
-
-	// First try to get a challenge for the wildcard ident without the
-	// DNS-01 challenge type enabled. This should produce an error
-	var enabledChallenges = map[core.AcmeChallenge]bool{
-		core.ChallengeTypeHTTP01: true,
-		core.ChallengeTypeDNS01:  false,
-	}
-	pa := must.Do(New(enabledChallenges, blog.NewMock()))
-	_, err := pa.ChallengeTypesFor(wildcardIdent)
-	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
-		"when DNS-01 was disabled")
-	test.AssertEquals(t, err.Error(), "Challenges requested for wildcard "+
-		"identifier but DNS-01 challenge type is not enabled")
-
-	// Try again with DNS-01 enabled. It should not error and
-	// should return only one DNS-01 type challenge
-	enabledChallenges[core.ChallengeTypeDNS01] = true
-	pa = must.Do(New(enabledChallenges, blog.NewMock()))
-	challenges, err := pa.ChallengeTypesFor(wildcardIdent)
-	test.AssertNotError(t, err, "ChallengesFor errored for a wildcard ident "+
-		"unexpectedly")
-	test.AssertEquals(t, len(challenges), 1)
-	test.AssertEquals(t, challenges[0], core.ChallengeTypeDNS01)
 }
 
 func TestChallengeTypesFor(t *testing.T) {

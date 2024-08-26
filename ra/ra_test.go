@@ -2516,7 +2516,7 @@ func TestNewOrderWildcard(t *testing.T) {
 			test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01)
 		case "example.com":
 			// If the authz is for example.com, we expect it has normal challenges
-			test.AssertEquals(t, len(authz.Challenges), 2)
+			test.AssertEquals(t, len(authz.Challenges), 3)
 		default:
 			t.Fatalf("Received an authorization for a name not requested: %q", name)
 		}
@@ -2556,7 +2556,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		case "zombo.com":
 			// We expect that the base domain identifier auth has the normal number of
 			// challenges
-			test.AssertEquals(t, len(authz.Challenges), 2)
+			test.AssertEquals(t, len(authz.Challenges), 3)
 		case "*.zombo.com":
 			// We expect that the wildcard identifier auth has only a pending
 			// DNS-01 type challenge
@@ -2590,7 +2590,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// We expect the authz is for the identifier the correct domain
 	test.AssertEquals(t, authz.Identifier.Value, "everything.is.possible.zombo.com")
 	// We expect the authz has the normal # of challenges
-	test.AssertEquals(t, len(authz.Challenges), 2)
+	test.AssertEquals(t, len(authz.Challenges), 3)
 
 	// Now submit an order request for a wildcard of the domain we just created an
 	// order for. We should **NOT** reuse the authorization from the previous
