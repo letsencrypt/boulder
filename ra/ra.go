@@ -1638,9 +1638,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 
 func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, names []string, regID int64, isRenewal bool) error {
 	newOrdersPerAccountLimits := ra.rlPolicies.NewOrdersPerAccount()
-	// TODO(#7511): Remove the feature flag check.
-	skipCheck := features.Get().CheckRenewalExemptionAtWFE && isRenewal
-	if newOrdersPerAccountLimits.Enabled() && !skipCheck {
+	if newOrdersPerAccountLimits.Enabled() && !isRenewal {
 		started := ra.clk.Now()
 		err := ra.checkNewOrdersPerAccountLimit(ctx, regID, names, newOrdersPerAccountLimits)
 		elapsed := ra.clk.Since(started)
@@ -1654,7 +1652,7 @@ func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, na
 	}
 
 	certNameLimits := ra.rlPolicies.CertificatesPerName()
-	if certNameLimits.Enabled() && !skipCheck {
+	if certNameLimits.Enabled() && !isRenewal {
 		started := ra.clk.Now()
 		err := ra.checkCertificatesPerNameLimit(ctx, names, certNameLimits, regID)
 		elapsed := ra.clk.Since(started)
