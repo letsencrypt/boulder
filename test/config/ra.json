@@ -106,9 +106,7 @@
 				}
 			}
 		},
-		"features": {
-			"CheckRenewalExemptionAtWFE": true
-		},
+		"features": {},
 		"ctLogs": {
 			"stagger": "500ms",
 			"logListFile": "test/ct-test-srv/log_list.json",
