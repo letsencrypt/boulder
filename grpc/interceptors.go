@@ -99,10 +99,10 @@ func (smi *serverMetadataInterceptor) Unary(
 	deadline, ok := ctx.Deadline()
 	// Should never happen: there was no deadline.
 	if !ok {
-		deadline = time.Now().Add(100 * time.Second)
+		deadline = smi.clk.Now().Add(100 * time.Second)
 	}
 	deadline = deadline.Add(-returnOverhead)
-	remaining := time.Until(deadline)
+	remaining := deadline.Sub(smi.clk.Now())
 	if remaining < meaningfulWorkOverhead {
 		return nil, status.Errorf(codes.DeadlineExceeded, "not enough time left on clock: %s", remaining)
 	}
@@ -158,10 +158,10 @@ func (smi *serverMetadataInterceptor) Stream(
 	deadline, ok := ctx.Deadline()
 	// Should never happen: there was no deadline.
 	if !ok {
-		deadline = time.Now().Add(100 * time.Second)
+		deadline = smi.clk.Now().Add(100 * time.Second)
 	}
 	deadline = deadline.Add(-returnOverhead)
-	remaining := time.Until(deadline)
+	remaining := deadline.Sub(smi.clk.Now())
 	if remaining < meaningfulWorkOverhead {
 		return status.Errorf(codes.DeadlineExceeded, "not enough time left on clock: %s", remaining)
 	}
