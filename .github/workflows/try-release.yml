@@ -8,6 +8,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   try-release:
@@ -33,4 +34,12 @@ jobs:
         id: checksums
         # The files listed on this line must be identical to the files uploaded
         # in the last step of the real release action.
-        run: sha256sum boulder*.deb boulder*.tar.gz
+        run: sha256sum boulder*.deb boulder*.tar.gz >| boulder-${{ matrix.GO_VERSION }}.$(date +%s)-$(git rev-parse --short=8 HEAD).checksums.txt
+
+      - name: List files
+        id: files
+        run: ls boulder*.deb boulder*.tar.gz boulder*.checksums.txt
+
+      - name: Show checksums
+        id: check
+        run: cat boulder*.checksums.txt
