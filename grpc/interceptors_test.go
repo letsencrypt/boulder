@@ -184,7 +184,7 @@ func TestTimeouts(t *testing.T) {
 
 	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating server metrics")
-	si := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
+	si := newServerMetadataInterceptor(serverMetrics, clock.New())
 	s := grpc.NewServer(grpc.UnaryInterceptor(si.Unary))
 	test_proto.RegisterChillerServer(s, &testServer{})
 	go func() {
@@ -202,7 +202,7 @@ func TestTimeouts(t *testing.T) {
 	ci := &clientMetadataInterceptor{
 		timeout: 30 * time.Second,
 		metrics: clientMetrics,
-		clk:     clock.NewFake(),
+		clk:     clock.New(),
 	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
