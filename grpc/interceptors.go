@@ -220,7 +220,9 @@ func (smi *serverMetadataInterceptor) checkLatency(clientReqTime string) error {
 	// accurate timekeeping is critical to CA operations and large skew indicates
 	// something has gone very wrong.
 	if tooSkewed(elapsed) {
-		return fmt.Errorf("dangerously large gRPC clock skew: %s", elapsed)
+		return fmt.Errorf(
+			"gRPC client reported a very different time: %s (client) vs %s (this server)",
+			reqTime, smi.clk.Now())
 	}
 
 	// Publish an RPC latency observation to the histogram

@@ -336,12 +336,14 @@ func TestClockSkew(t *testing.T) {
 	// Skew the client clock forward and the request should fail due to skew
 	clientClk.Add(time.Hour)
 	_, err = client.Chill(ctx, &test_proto.Time{Duration: durationpb.New(100 * time.Millisecond)})
-	test.AssertError(t, err, "should succeed with positive client skew")
+	test.AssertError(t, err, "should fail with positive client skew")
+	test.AssertContains(t, err.Error(), "very different time")
 
 	// Skew the server clock forward and the request should fail due to skew
 	serverClk.Add(2 * time.Hour)
 	_, err = client.Chill(ctx, &test_proto.Time{Duration: durationpb.New(100 * time.Millisecond)})
-	test.AssertError(t, err, "should succeed with negative client skew")
+	test.AssertError(t, err, "should fail with negative client skew")
+	test.AssertContains(t, err.Error(), "very different time")
 }
 
 // blockedServer implements a ChillerServer with a Chill method that:
