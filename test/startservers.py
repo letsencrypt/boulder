@@ -223,7 +223,7 @@ def start(fakeclock):
             p = run(service.cmd, fakeclock)
             processes.append(p)
             if service.grpc_port is not None:
-                waithealth(' '.join(p.args), service.grpc_port, service.host_override, fakeclock)
+                waithealth(' '.join(p.args), service.grpc_port, service.host_override)
             else:
                 if not waitport(service.debug_port, ' '.join(p.args), perTickCheck=check):
                     return False
