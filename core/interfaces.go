@@ -10,5 +10,5 @@ type PolicyAuthority interface {
 	WillingToIssue([]string) error
 	ChallengeTypesFor(identifier.ACMEIdentifier) ([]AcmeChallenge, error)
 	ChallengeTypeEnabled(AcmeChallenge) bool
-	CheckAuthz(*Authorization) error
+	CheckAuthzChallenges(*Authorization) error
 }

@@ -484,7 +484,7 @@ func TestValidEmailError(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "contact email \"example@-foobar.com\" has invalid domain : Domain name contains an invalid character")
 }
 
-func TestCheckAuthz(t *testing.T) {
+func TestCheckAuthzChallenges(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -532,7 +532,7 @@ func TestCheckAuthz(t *testing.T) {
 				Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "*.example.com"},
 				Challenges: []core.Challenge{{Type: core.ChallengeTypeHTTP01, Status: core.StatusValid}},
 			},
-			wantErr: "invalid challenge",
+			wantErr: "inapplicable challenge type",
 		},
 		{
 			name: "valid authz",
@@ -552,7 +552,7 @@ func TestCheckAuthz(t *testing.T) {
 				pa.enabledChallenges = tc.enabled
 			}
 
-			err := pa.CheckAuthz(&tc.authz)
+			err := pa.CheckAuthzChallenges(&tc.authz)
 
 			if tc.wantErr == "" {
 				test.AssertNotError(t, err, "should have succeeded")

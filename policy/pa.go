@@ -551,10 +551,10 @@ func (pa *AuthorityImpl) ChallengeTypeEnabled(t core.AcmeChallenge) bool {
 	return pa.enabledChallenges[t]
 }
 
-// CheckAuthz determines that an authorization was fulfilled by a challenge that
-// is currently enabled and was appropriate for the kind of identifier in the
-// authorization.
-func (pa *AuthorityImpl) CheckAuthz(authz *core.Authorization) error {
+// CheckAuthzChallenges determines that an authorization was fulfilled by a
+// challenge that is currently enabled and was appropriate for the kind of
+// identifier in the authorization.
+func (pa *AuthorityImpl) CheckAuthzChallenges(authz *core.Authorization) error {
 	chall, err := authz.SolvedBy()
 	if err != nil {
 		return err
@@ -570,7 +570,7 @@ func (pa *AuthorityImpl) CheckAuthz(authz *core.Authorization) error {
 	}
 
 	if !slices.Contains(challTypes, chall) {
-		return errors.New("authorization fulfilled by invalid challenge")
+		return errors.New("authorization fulfilled by inapplicable challenge type")
 	}
 
 	return nil
