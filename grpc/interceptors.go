@@ -214,13 +214,15 @@ func (smi *serverMetadataInterceptor) checkLatency(clientReqTime string) error {
 	// Calculate the elapsed time since the client sent the RPC
 	reqTime := time.Unix(0, reqTimeUnixNanos)
 	elapsed := smi.clk.Since(reqTime)
+
 	// If the elapsed time is very large, that indicates it is probably due to
 	// clock skew rather than simple latency. Refuse to handle the request, since
 	// accurate timekeeping is critical to CA operations and large skew indicates
 	// something has gone very wrong.
-	if elapsed > 10*time.Minute || elapsed < -10*time.Minute {
+	if tooSkewed(elapsed) {
 		return fmt.Errorf("dangerously large gRPC clock skew: %s", elapsed)
 	}
+
 	// Publish an RPC latency observation to the histogram
 	smi.metrics.rpcLag.Observe(elapsed.Seconds())
 	return nil
