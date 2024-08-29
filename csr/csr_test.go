@@ -39,7 +39,7 @@ func (pa *mockPA) ChallengeTypeEnabled(t core.AcmeChallenge) bool {
 	return true
 }
 
-func (pa *mockPA) CheckAuthz(a *core.Authorization) error {
+func (pa *mockPA) CheckAuthzChallenges(a *core.Authorization) error {
 	return nil
 }
 

@@ -2516,7 +2516,7 @@ func TestNewOrderWildcard(t *testing.T) {
 			test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01)
 		case "example.com":
 			// If the authz is for example.com, we expect it has normal challenges
-			test.AssertEquals(t, len(authz.Challenges), 2)
+			test.AssertEquals(t, len(authz.Challenges), 3)
 		default:
 			t.Fatalf("Received an authorization for a name not requested: %q", name)
 		}
@@ -2556,7 +2556,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		case "zombo.com":
 			// We expect that the base domain identifier auth has the normal number of
 			// challenges
-			test.AssertEquals(t, len(authz.Challenges), 2)
+			test.AssertEquals(t, len(authz.Challenges), 3)
 		case "*.zombo.com":
 			// We expect that the wildcard identifier auth has only a pending
 			// DNS-01 type challenge
@@ -2590,7 +2590,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// We expect the authz is for the identifier the correct domain
 	test.AssertEquals(t, authz.Identifier.Value, "everything.is.possible.zombo.com")
 	// We expect the authz has the normal # of challenges
-	test.AssertEquals(t, len(authz.Challenges), 2)
+	test.AssertEquals(t, len(authz.Challenges), 3)
 
 	// Now submit an order request for a wildcard of the domain we just created an
 	// order for. We should **NOT** reuse the authorization from the previous
@@ -3151,6 +3151,61 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	_, err = ra.FinalizeOrder(context.Background(), finalizeReq)
 	test.AssertNotError(t, err, "FinalizeOrder failed for authorized "+
 		"wildcard order")
+}
+
+func TestFinalizeOrderDisabledChallenge(t *testing.T) {
+	_, sa, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Create a random domain
+	var bytes [3]byte
+	_, err := rand.Read(bytes[:])
+	test.AssertNotError(t, err, "creating test domain name")
+	domain := fmt.Sprintf("%x.example.com", bytes[:])
+
+	// Create a finalized authorization for that domain
+	authzID := createFinalizedAuthorization(
+		t, sa, domain, fc.Now().Add(24*time.Hour), core.ChallengeTypeHTTP01, fc.Now().Add(-1*time.Hour))
+
+	// Create an order that reuses that authorization
+	order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		DnsNames:       []string{domain},
+	})
+	test.AssertNotError(t, err, "creating test order")
+	test.AssertEquals(t, order.V2Authorizations[0], authzID)
+
+	// Create a CSR for this order
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "generating test key")
+	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey: testKey.PublicKey,
+		DNSNames:  []string{domain},
+	}, testKey)
+	test.AssertNotError(t, err, "Error creating policy forbid CSR")
+
+	// Replace the Policy Authority with one which has this challenge type disabled
+	pa, err := policy.New(map[core.AcmeChallenge]bool{
+		core.ChallengeTypeDNS01:     true,
+		core.ChallengeTypeTLSALPN01: true,
+	}, ra.log)
+	test.AssertNotError(t, err, "creating test PA")
+	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
+	test.AssertNotError(t, err, "loading test hostname policy")
+	ra.PA = pa
+
+	// Now finalizing this order should fail
+	_, err = ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{
+		Order: order,
+		Csr:   csr,
+	})
+	test.AssertError(t, err, "finalization should fail")
+
+	// Unfortunately we can't test for the PA's "which is now disabled" error
+	// message directly, because the RA discards it and collects all invalid names
+	// into a single more generic error message. But it does at least distinguish
+	// between missing, expired, and invalid, so we can test for "invalid".
+	test.AssertContains(t, err.Error(), "authorizations for these identifiers not valid")
 }
 
 func TestIssueCertificateAuditLog(t *testing.T) {

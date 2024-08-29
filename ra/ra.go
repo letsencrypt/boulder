@@ -826,7 +826,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 			expired = append(expired, ident.Value)
 			continue
 		}
-		err = ra.PA.CheckAuthz(authz)
+		err = ra.PA.CheckAuthzChallenges(authz)
 		if err != nil {
 			invalid = append(invalid, ident.Value)
 			continue
