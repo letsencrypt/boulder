@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/metrics"
@@ -60,7 +62,7 @@ func TestIdentifiersPausedForAccount(t *testing.T) {
 
 	_, err = saClient.PauseIdentifiers(context.Background(), &sapb.PauseRequest{
 		RegistrationID: regID,
-		Identifiers: []*sapb.Identifier{
+		Identifiers: []*corepb.Identifier{
 			{
 				Type:  string(identifier.DNS),
 				Value: domain},

@@ -82,7 +82,7 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 			},
 			NewAuthzs: []*sapb.NewAuthzRequest{
 				{
-					Identifier:     &sapb.Identifier{Type: string(core.ChallengeTypeDNS01), Value: domain},
+					Identifier:     &corepb.Identifier{Type: string(core.ChallengeTypeDNS01), Value: domain},
 					RegistrationID: Registration.Id,
 					Expires:        timestamppb.New(exp),
 					ChallengeTypes: []string{

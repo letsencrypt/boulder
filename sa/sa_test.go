@@ -1253,14 +1253,14 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 		// And add new authorizations for the other two names.
 		NewAuthzs: []*sapb.NewAuthzRequest{
 			{
-				Identifier:     &sapb.Identifier{Type: "dns", Value: "c.com"},
+				Identifier:     &corepb.Identifier{Type: "dns", Value: "c.com"},
 				RegistrationID: reg.Id,
 				Expires:        timestamppb.New(nowC),
 				ChallengeTypes: []string{string(core.ChallengeTypeHTTP01)},
 				Token:          core.NewToken(),
 			},
 			{
-				Identifier:     &sapb.Identifier{Type: "dns", Value: "d.com"},
+				Identifier:     &corepb.Identifier{Type: "dns", Value: "d.com"},
 				RegistrationID: reg.Id,
 				Expires:        timestamppb.New(nowD),
 				ChallengeTypes: []string{string(core.ChallengeTypeHTTP01)},
@@ -1291,7 +1291,7 @@ func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
 	_, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewAuthzs: []*sapb.NewAuthzRequest{
 			{
-				Identifier:     &sapb.Identifier{Type: "dns", Value: "c.com"},
+				Identifier:     &corepb.Identifier{Type: "dns", Value: "c.com"},
 				RegistrationID: reg.Id,
 				Expires:        timestamppb.New(expires),
 				ChallengeTypes: []string{string(core.ChallengeTypeDNS01)},
@@ -1333,7 +1333,7 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewAuthzs: []*sapb.NewAuthzRequest{
 			{
-				Identifier:     &sapb.Identifier{Type: "dns", Value: domain},
+				Identifier:     &corepb.Identifier{Type: "dns", Value: domain},
 				RegistrationID: reg.Id,
 				Expires:        timestamppb.New(expires),
 				ChallengeTypes: []string{string(core.ChallengeTypeHTTP01)},
@@ -4405,7 +4405,7 @@ func TestPauseIdentifiers(t *testing.T) {
 			state: nil,
 			req: &sapb.PauseRequest{
 				RegistrationID: 1,
-				Identifiers: []*sapb.Identifier{
+				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.DNS),
 						Value: "example.com",
@@ -4432,7 +4432,7 @@ func TestPauseIdentifiers(t *testing.T) {
 			},
 			req: &sapb.PauseRequest{
 				RegistrationID: 1,
-				Identifiers: []*sapb.Identifier{
+				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.DNS),
 						Value: "example.com",
@@ -4459,7 +4459,7 @@ func TestPauseIdentifiers(t *testing.T) {
 			},
 			req: &sapb.PauseRequest{
 				RegistrationID: 1,
-				Identifiers: []*sapb.Identifier{
+				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.DNS),
 						Value: "example.com",
@@ -4485,7 +4485,7 @@ func TestPauseIdentifiers(t *testing.T) {
 			},
 			req: &sapb.PauseRequest{
 				RegistrationID: 1,
-				Identifiers: []*sapb.Identifier{
+				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.DNS),
 						Value: "example.com",
@@ -4521,7 +4521,7 @@ func TestPauseIdentifiers(t *testing.T) {
 			},
 			req: &sapb.PauseRequest{
 				RegistrationID: 1,
-				Identifiers: []*sapb.Identifier{
+				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.DNS),
 						Value: "example.com",
@@ -4586,7 +4586,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 			state: nil,
 			req: &sapb.PauseRequest{
 				RegistrationID: 1,
-				Identifiers: []*sapb.Identifier{
+				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.DNS),
 						Value: "example.com",
@@ -4594,7 +4594,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 				},
 			},
 			want: &sapb.Identifiers{
-				Identifiers: []*sapb.Identifier{},
+				Identifiers: []*corepb.Identifier{},
 			},
 		},
 		{
@@ -4611,7 +4611,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 			},
 			req: &sapb.PauseRequest{
 				RegistrationID: 1,
-				Identifiers: []*sapb.Identifier{
+				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.DNS),
 						Value: "example.com",
@@ -4619,7 +4619,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 				},
 			},
 			want: &sapb.Identifiers{
-				Identifiers: []*sapb.Identifier{
+				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.DNS),
 						Value: "example.com",
@@ -4658,7 +4658,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 			},
 			req: &sapb.PauseRequest{
 				RegistrationID: 1,
-				Identifiers: []*sapb.Identifier{
+				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.DNS),
 						Value: "example.com",
@@ -4674,7 +4674,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 				},
 			},
 			want: &sapb.Identifiers{
-				Identifiers: []*sapb.Identifier{
+				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.DNS),
 						Value: "example.com",
@@ -4730,7 +4730,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 			state: nil,
 			req:   &sapb.RegistrationID{Id: 1},
 			want: &sapb.Identifiers{
-				Identifiers: []*sapb.Identifier{},
+				Identifiers: []*corepb.Identifier{},
 			},
 		},
 		{
@@ -4747,7 +4747,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 			},
 			req: &sapb.RegistrationID{Id: 1},
 			want: &sapb.Identifiers{
-				Identifiers: []*sapb.Identifier{
+				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.DNS),
 						Value: "example.com",
@@ -4786,7 +4786,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 			},
 			req: &sapb.RegistrationID{Id: 1},
 			want: &sapb.Identifiers{
-				Identifiers: []*sapb.Identifier{
+				Identifiers: []*corepb.Identifier{
 					{
 						Type:  string(identifier.DNS),
 						Value: "example.com",

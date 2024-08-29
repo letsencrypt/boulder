@@ -2757,7 +2757,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier id
 	}
 
 	authz := &sapb.NewAuthzRequest{
-		Identifier: &sapb.Identifier{
+		Identifier: &corepb.Identifier{
 			Type:  string(identifier.Type),
 			Value: identifier.Value,
 		},

@@ -255,7 +255,7 @@ message NewAuthzRequest {
   // Next unused field number: 13
   reserved 1; // previously id
   reserved 2; // previously dnsName
-  Identifier identifier = 12;
+  core.Identifier identifier = 12;
   int64 registrationID = 3;
   reserved 4; // previously status
   reserved 5; // previously expiresNS
@@ -416,18 +416,13 @@ message UpdateCRLShardRequest {
   google.protobuf.Timestamp nextUpdate = 4;
 }
 
-message Identifier {
-  string type = 1;
-  string value = 2;
-}
-
 message Identifiers {
-  repeated Identifier identifiers = 1;
+  repeated core.Identifier identifiers = 1;
 }
 
 message PauseRequest {
   int64 registrationID = 1;
-  repeated Identifier identifiers = 2;
+  repeated core.Identifier identifiers = 2;
 }
 
 message PauseIdentifiersResponse {
