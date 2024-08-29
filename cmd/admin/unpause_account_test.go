@@ -127,7 +127,7 @@ func TestUnpauseAccounts(t *testing.T) {
 			}
 			a := admin{sac: testCase.saImpl, log: log}
 
-			count, err := a.unpauseAccounts(context.Background(), testCase.regIDs)
+			count, err := a.unpauseAccounts(context.Background(), testCase.regIDs, 10)
 			if testCase.expectErr {
 				test.AssertError(t, err, "should have errored, but did not")
 			} else {
