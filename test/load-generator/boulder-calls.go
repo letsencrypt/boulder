@@ -169,7 +169,7 @@ func newOrder(s *State, c *acmeCache) error {
 	// don't care. The ACME server will collapse those down for us, how handy!
 	dnsNames := []identifier.ACMEIdentifier{}
 	for range orderSize {
-		dnsNames = append(dnsNames, identifier.DNSIdentifier(randDomain(s.domainBase)))
+		dnsNames = append(dnsNames, identifier.NewDNS(randDomain(s.domainBase)))
 	}
 
 	// create the new order request object

@@ -642,7 +642,7 @@ func SelectAuthzsMatchingIssuance(
 		statusToUint[core.StatusDeactivated],
 		issued.Add(-1*time.Second), // leeway for clock skew
 		issued.Add(1*time.Second),  // leeway for clock skew
-		identifierTypeToUint[string(identifier.DNS)],
+		identifierTypeToUint[string(identifier.TypeDNS)],
 	)
 	for _, name := range dnsNames {
 		args = append(args, name)
@@ -712,7 +712,7 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
 // authzModel storage representation.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 	am := &authzModel{
-		IdentifierType:  identifierTypeToUint[string(identifier.DNS)],
+		IdentifierType:  identifierTypeToUint[string(identifier.TypeDNS)],
 		IdentifierValue: authz.DnsName,
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.AcmeStatus(authz.Status)],
@@ -855,7 +855,7 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 
 func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	identType, ok := uintToIdentifierType[am.IdentifierType]
-	if !ok || identType != string(identifier.DNS) {
+	if !ok || identType != string(identifier.TypeDNS) {
 		return nil, fmt.Errorf("unrecognized identifier type encoding %d", am.IdentifierType)
 	}
 

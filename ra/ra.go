@@ -811,7 +811,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	for _, name := range names {
 		// TODO(#7647): Iterate directly over identifiers here, once the rest of the
 		// finalization flow supports non-dnsName identifiers.
-		ident := identifier.DNSIdentifier(name)
+		ident := identifier.NewDNS(name)
 
 		authz, ok := authzs[ident]
 		if !ok || authz == nil {
@@ -1565,7 +1565,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 			var subErrors []berrors.SubBoulderError
 			for _, name := range namesOutOfLimit {
 				subErrors = append(subErrors, berrors.SubBoulderError{
-					Identifier:   identifier.DNSIdentifier(name),
+					Identifier:   identifier.NewDNS(name),
 					BoulderError: berrors.RateLimitError(retryAfter, "too many certificates already issued. Retry after %s", retryString).(*berrors.BoulderError),
 				})
 			}
@@ -2181,7 +2181,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 
 		// TODO(#7647): Support other kinds of SANs/identifiers here.
 		for _, name := range cert.DNSNames {
-			if _, present := authzMap[identifier.DNSIdentifier(name)]; !present {
+			if _, present := authzMap[identifier.NewDNS(name)]; !present {
 				return nil, berrors.UnauthorizedError("requester does not control all names in cert with serial %q", serialString)
 			}
 		}
@@ -2617,7 +2617,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// TODO(#7647): Support non-dnsName identifier types here.
 	var missingAuthzIdents []identifier.ACMEIdentifier
 	for _, name := range newOrder.DnsNames {
-		ident := identifier.DNSIdentifier(name)
+		ident := identifier.NewDNS(name)
 		// If there isn't an existing authz, note that its missing and continue
 		authz, exists := identToExistingAuthz[ident]
 		if !exists {

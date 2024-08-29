@@ -10,10 +10,10 @@ import "net/netip"
 type IdentifierType string
 
 const (
-	// DNS is specified in RFC 8555 for DNS type identifiers.
-	DNS = IdentifierType("dns")
-	// IP is specified in RFC 8738
-	IP = IdentifierType("ip")
+	// TypeDNS is specified in RFC 8555 for TypeDNS type identifiers.
+	TypeDNS = IdentifierType("dns")
+	// TypeIP is specified in RFC 8738
+	TypeIP = IdentifierType("ip")
 )
 
 // ACMEIdentifier is a struct encoding an identifier that can be validated. The
@@ -28,20 +28,20 @@ type ACMEIdentifier struct {
 	Value string `json:"value"`
 }
 
-// DNSIdentifier is a convenience function for creating an ACMEIdentifier with
-// Type DNS for a given domain name.
-func DNSIdentifier(domain string) ACMEIdentifier {
+// NewDNS is a convenience function for creating an ACMEIdentifier with Type
+// NewDNS for a given domain name.
+func NewDNS(domain string) ACMEIdentifier {
 	return ACMEIdentifier{
-		Type:  DNS,
+		Type:  TypeDNS,
 		Value: domain,
 	}
 }
 
-// IPIdentifier is a convenience function for creating an ACMEIdentifier with
-// Type IP for a given IP address.
-func IPIdentifier(ip netip.Addr) ACMEIdentifier {
+// NewIP is a convenience function for creating an ACMEIdentifier with Type IP
+// for a given IP address.
+func NewIP(ip netip.Addr) ACMEIdentifier {
 	return ACMEIdentifier{
-		Type:  IP,
+		Type:  TypeIP,
 		Value: ip.StringExpanded(),
 	}
 }

@@ -804,7 +804,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		req.RegistrationID,
 		statusUint(core.StatusValid), statusUint(core.StatusPending),
 		req.ValidUntil.AsTime(),
-		identifierTypeToUint[string(identifier.DNS)],
+		identifierTypeToUint[string(identifier.TypeDNS)],
 	}
 	for _, dnsName := range req.DnsNames {
 		params = append(params, dnsName)
@@ -908,7 +908,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 	// other identifier types, and is an inefficient wire format.
 	byName := make(map[string]authzModel)
 	for _, am := range ams {
-		if uintToIdentifierType[am.IdentifierType] != string(identifier.DNS) {
+		if uintToIdentifierType[am.IdentifierType] != string(identifier.TypeDNS) {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %d", am.IdentifierType, am.ID)
 		}
 		_, present := byName[am.IdentifierValue]
@@ -942,7 +942,7 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 		identifierValue = :ident`,
 		map[string]interface{}{
 			"regID":           req.RegistrationID,
-			"dnsType":         identifierTypeToUint[string(identifier.DNS)],
+			"dnsType":         identifierTypeToUint[string(identifier.TypeDNS)],
 			"ident":           req.DnsName,
 			"expiresEarliest": req.Range.Earliest.AsTime(),
 			"expiresLatest":   req.Range.Latest.AsTime(),
@@ -980,7 +980,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 		req.RegistrationID,
 		statusUint(core.StatusValid),
 		req.ValidUntil.AsTime(),
-		identifierTypeToUint[string(identifier.DNS)],
+		identifierTypeToUint[string(identifier.TypeDNS)],
 	}
 	for _, dnsName := range req.DnsNames {
 		params = append(params, dnsName)

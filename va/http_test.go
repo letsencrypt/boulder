@@ -1312,13 +1312,13 @@ func TestHTTP(t *testing.T) {
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 
-	_, err = va.validateHTTP01(ctx, identifier.IPIdentifier(netip.MustParseAddr("127.0.0.1")), pathFound, ka(pathFound))
+	_, err = va.validateHTTP01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), pathFound, ka(pathFound))
 	if err == nil {
 		t.Fatalf("IdentifierType IP shouldn't have worked.")
 	}
 	test.AssertErrorIs(t, err, berrors.Malformed)
 
-	_, err = va.validateHTTP01(ctx, identifier.DNSIdentifier("always.invalid"), pathFound, ka(pathFound))
+	_, err = va.validateHTTP01(ctx, identifier.NewDNS("always.invalid"), pathFound, ka(pathFound))
 	if err == nil {
 		t.Fatalf("Domain name is invalid.")
 	}

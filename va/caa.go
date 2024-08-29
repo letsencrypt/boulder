@@ -49,7 +49,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		return nil, berrors.InternalServerError("unrecognized validation method %q", req.ValidationMethod)
 	}
 
-	acmeID := identifier.DNSIdentifier(req.Domain)
+	acmeID := identifier.NewDNS(req.Domain)
 	params := &caaParams{
 		accountURIID:     req.AccountURIID,
 		validationMethod: validationMethod,

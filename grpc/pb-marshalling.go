@@ -338,7 +338,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	}
 	authz := core.Authorization{
 		ID:             pb.Id,
-		Identifier:     identifier.DNSIdentifier(pb.DnsName),
+		Identifier:     identifier.NewDNS(pb.DnsName),
 		RegistrationID: pb.RegistrationID,
 		Status:         core.AcmeStatus(pb.Status),
 		Expires:        expires,

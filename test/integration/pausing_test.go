@@ -64,7 +64,7 @@ func TestIdentifiersPausedForAccount(t *testing.T) {
 		RegistrationID: regID,
 		Identifiers: []*corepb.Identifier{
 			{
-				Type:  string(identifier.DNS),
+				Type:  string(identifier.TypeDNS),
 				Value: domain},
 		},
 	})

@@ -139,7 +139,7 @@ func TestTLSALPN01FailIP(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	_, err = va.validateTLSALPN01(ctx, identifier.IPIdentifier(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
+	_, err = va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("IdentifierType IP shouldn't have worked.")
 	}

@@ -4242,7 +4242,7 @@ func TestUnpauseAccount(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
 					},
 					PausedAt: sa.clk.Now().Add(-time.Hour),
@@ -4256,7 +4256,7 @@ func TestUnpauseAccount(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
 					},
 					PausedAt: sa.clk.Now().Add(-time.Hour),
@@ -4264,7 +4264,7 @@ func TestUnpauseAccount(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.net",
 					},
 					PausedAt: sa.clk.Now().Add(-time.Hour),
@@ -4272,7 +4272,7 @@ func TestUnpauseAccount(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.org",
 					},
 					PausedAt: sa.clk.Now().Add(-time.Hour),
@@ -4335,7 +4335,7 @@ func bulkInsertPausedIdentifiers(ctx context.Context, sa *SQLStorageAuthority, c
 				query += ","
 			}
 			query += "(?, ?, ?, ?)"
-			values = append(values, 1, identifierTypeToUint[string(identifier.DNS)], fmt.Sprintf("example%d.com", i), now)
+			values = append(values, 1, identifierTypeToUint[string(identifier.TypeDNS)], fmt.Sprintf("example%d.com", i), now)
 		}
 
 		_, err := sa.dbMap.ExecContext(ctx, query, values...)
@@ -4407,7 +4407,7 @@ func TestPauseIdentifiers(t *testing.T) {
 				RegistrationID: 1,
 				Identifiers: []*corepb.Identifier{
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.com",
 					},
 				},
@@ -4423,7 +4423,7 @@ func TestPauseIdentifiers(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
 					},
 					PausedAt:   fourWeeksAgo,
@@ -4434,7 +4434,7 @@ func TestPauseIdentifiers(t *testing.T) {
 				RegistrationID: 1,
 				Identifiers: []*corepb.Identifier{
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.com",
 					},
 				},
@@ -4450,7 +4450,7 @@ func TestPauseIdentifiers(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
 					},
 					PausedAt:   fourWeeksAgo,
@@ -4461,7 +4461,7 @@ func TestPauseIdentifiers(t *testing.T) {
 				RegistrationID: 1,
 				Identifiers: []*corepb.Identifier{
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.com",
 					},
 				},
@@ -4477,7 +4477,7 @@ func TestPauseIdentifiers(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
 					},
 					PausedAt: fourWeeksAgo,
@@ -4487,7 +4487,7 @@ func TestPauseIdentifiers(t *testing.T) {
 				RegistrationID: 1,
 				Identifiers: []*corepb.Identifier{
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.com",
 					},
 				},
@@ -4503,7 +4503,7 @@ func TestPauseIdentifiers(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
 					},
 					PausedAt:   fourWeeksAgo,
@@ -4512,7 +4512,7 @@ func TestPauseIdentifiers(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.net",
 					},
 					PausedAt:   fourWeeksAgo,
@@ -4523,15 +4523,15 @@ func TestPauseIdentifiers(t *testing.T) {
 				RegistrationID: 1,
 				Identifiers: []*corepb.Identifier{
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.com",
 					},
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.net",
 					},
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.org",
 					},
 				},
@@ -4588,7 +4588,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 				RegistrationID: 1,
 				Identifiers: []*corepb.Identifier{
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.com",
 					},
 				},
@@ -4603,7 +4603,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
 					},
 					PausedAt: sa.clk.Now().Add(-time.Hour),
@@ -4613,7 +4613,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 				RegistrationID: 1,
 				Identifiers: []*corepb.Identifier{
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.com",
 					},
 				},
@@ -4621,7 +4621,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 			want: &sapb.Identifiers{
 				Identifiers: []*corepb.Identifier{
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.com",
 					},
 				},
@@ -4633,7 +4633,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
 					},
 					PausedAt: sa.clk.Now().Add(-time.Hour),
@@ -4641,7 +4641,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.net",
 					},
 					PausedAt: sa.clk.Now().Add(-time.Hour),
@@ -4649,7 +4649,7 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.org",
 					},
 					PausedAt:   sa.clk.Now().Add(-time.Hour),
@@ -4660,15 +4660,15 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 				RegistrationID: 1,
 				Identifiers: []*corepb.Identifier{
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.com",
 					},
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.net",
 					},
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.org",
 					},
 				},
@@ -4676,11 +4676,11 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 			want: &sapb.Identifiers{
 				Identifiers: []*corepb.Identifier{
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.com",
 					},
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.net",
 					},
 				},
@@ -4739,7 +4739,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
 					},
 					PausedAt: sa.clk.Now().Add(-time.Hour),
@@ -4749,7 +4749,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 			want: &sapb.Identifiers{
 				Identifiers: []*corepb.Identifier{
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.com",
 					},
 				},
@@ -4761,7 +4761,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.com",
 					},
 					PausedAt: sa.clk.Now().Add(-time.Hour),
@@ -4769,7 +4769,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.net",
 					},
 					PausedAt: sa.clk.Now().Add(-time.Hour),
@@ -4777,7 +4777,7 @@ func TestGetPausedIdentifiers(t *testing.T) {
 				{
 					RegistrationID: 1,
 					identifierModel: identifierModel{
-						Type:  identifierTypeToUint[string(identifier.DNS)],
+						Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 						Value: "example.org",
 					},
 					PausedAt:   sa.clk.Now().Add(-time.Hour),
@@ -4788,11 +4788,11 @@ func TestGetPausedIdentifiers(t *testing.T) {
 			want: &sapb.Identifiers{
 				Identifiers: []*corepb.Identifier{
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.com",
 					},
 					{
-						Type:  string(identifier.DNS),
+						Type:  string(identifier.TypeDNS),
 						Value: "example.net",
 					},
 				},
@@ -4831,7 +4831,7 @@ func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
 	err := sa.dbMap.Insert(ctx, &pausedModel{
 		RegistrationID: 1,
 		identifierModel: identifierModel{
-			Type:  identifierTypeToUint[string(identifier.DNS)],
+			Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 			Value: "example.com",
 		},
 		PausedAt: sa.clk.Now().Add(-time.Hour),
@@ -4841,7 +4841,7 @@ func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
 	err = sa.dbMap.Insert(ctx, &pausedModel{
 		RegistrationID: 2,
 		identifierModel: identifierModel{
-			Type:  identifierTypeToUint[string(identifier.DNS)],
+			Type:  identifierTypeToUint[string(identifier.TypeDNS)],
 			Value: "example.net",
 		},
 		PausedAt: sa.clk.Now().Add(-time.Hour),

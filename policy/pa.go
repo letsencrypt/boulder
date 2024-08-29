@@ -362,12 +362,12 @@ func subError(name string, err error) berrors.SubBoulderError {
 	var bErr *berrors.BoulderError
 	if errors.As(err, &bErr) {
 		return berrors.SubBoulderError{
-			Identifier:   identifier.DNSIdentifier(name),
+			Identifier:   identifier.NewDNS(name),
 			BoulderError: bErr,
 		}
 	} else {
 		return berrors.SubBoulderError{
-			Identifier: identifier.DNSIdentifier(name),
+			Identifier: identifier.NewDNS(name),
 			BoulderError: &berrors.BoulderError{
 				Type:   berrors.RejectedIdentifier,
 				Detail: err.Error(),
@@ -526,12 +526,12 @@ func (pa *AuthorityImpl) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]c
 	// challenge, to comply with the BRs Sections 3.2.2.4.19 and 3.2.2.4.20
 	// stating that ACME HTTP-01 and TLS-ALPN-01 are not suitable for validating
 	// Wildcard Domains.
-	if ident.Type == identifier.DNS && strings.HasPrefix(ident.Value, "*.") {
+	if ident.Type == identifier.TypeDNS && strings.HasPrefix(ident.Value, "*.") {
 		return []core.AcmeChallenge{core.ChallengeTypeDNS01}, nil
 	}
 
 	// Return all challenge types we support for non-wildcard DNS identifiers.
-	if ident.Type == identifier.DNS {
+	if ident.Type == identifier.TypeDNS {
 		return []core.AcmeChallenge{
 			core.ChallengeTypeHTTP01,
 			core.ChallengeTypeDNS01,
