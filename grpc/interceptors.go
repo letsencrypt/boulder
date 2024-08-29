@@ -78,11 +78,12 @@ func (smi *serverMetadataInterceptor) Unary(
 		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
 	}
 
-	// Extract the grpc metadata from the context. If the context has
-	// a `clientRequestTimeKey` field, and it has a value, then observe the RPC
-	// latency with Prometheus.
-	if md, ok := metadata.FromIncomingContext(ctx); ok && len(md[clientRequestTimeKey]) > 0 {
-		err := smi.observeLatency(md[clientRequestTimeKey][0])
+	// Extract the grpc metadata from the context, and handle the client request
+	// timestamp embedded in it. It's okay if the timestamp is missing, since some
+	// clients (like nomad's health-checker) don't set it.
+	md, ok := metadata.FromIncomingContext(ctx)
+	if ok && len(md[clientRequestTimeKey]) > 0 {
+		err := smi.checkLatency(md[clientRequestTimeKey][0])
 		if err != nil {
 			return nil, err
 		}
@@ -96,6 +97,9 @@ func (smi *serverMetadataInterceptor) Unary(
 	// opposed to "RA.NewCertificate timed out" (causing a 500).
 	// Once we've shaved the deadline, we ensure we have we have at least another
 	// 100ms left to do work; otherwise we abort early.
+	// Note that these computations use the global clock (time.Now) instead of
+	// the local clock (smi.clk.Now) because context.WithTimeout also uses the
+	// global clock.
 	deadline, ok := ctx.Deadline()
 	// Should never happen: there was no deadline.
 	if !ok {
@@ -137,11 +141,12 @@ func (smi *serverMetadataInterceptor) Stream(
 	handler grpc.StreamHandler) error {
 	ctx := ss.Context()
 
-	// Extract the grpc metadata from the context. If the context has
-	// a `clientRequestTimeKey` field, and it has a value, then observe the RPC
-	// latency with Prometheus.
-	if md, ok := metadata.FromIncomingContext(ctx); ok && len(md[clientRequestTimeKey]) > 0 {
-		err := smi.observeLatency(md[clientRequestTimeKey][0])
+	// Extract the grpc metadata from the context, and handle the client request
+	// timestamp embedded in it. It's okay if the timestamp is missing, since some
+	// clients (like nomad's health-checker) don't set it.
+	md, ok := metadata.FromIncomingContext(ctx)
+	if ok && len(md[clientRequestTimeKey]) > 0 {
+		err := smi.checkLatency(md[clientRequestTimeKey][0])
 		if err != nil {
 			return err
 		}
@@ -155,6 +160,9 @@ func (smi *serverMetadataInterceptor) Stream(
 	// opposed to "RA.NewCertificate timed out" (causing a 500).
 	// Once we've shaved the deadline, we ensure we have we have at least another
 	// 100ms left to do work; otherwise we abort early.
+	// Note that these computations use the global clock (time.Now) instead of
+	// the local clock (smi.clk.Now) because context.WithTimeout also uses the
+	// global clock.
 	deadline, ok := ctx.Deadline()
 	// Should never happen: there was no deadline.
 	if !ok {
@@ -190,12 +198,13 @@ func splitMethodName(fullMethodName string) (string, string) {
 	return "unknown", "unknown"
 }
 
-// observeLatency is called with the `clientRequestTimeKey` value from
+// checkLatency is called with the `clientRequestTimeKey` value from
 // a request's gRPC metadata. This string value is converted to a timestamp and
 // used to calculate the latency between send and receive time. The latency is
 // published to the server interceptor's rpcLag prometheus histogram. An error
-// is returned if the `clientReqTime` string is not a valid timestamp.
-func (smi *serverMetadataInterceptor) observeLatency(clientReqTime string) error {
+// is returned if the `clientReqTime` string is not a valid timestamp, or if
+// the latency is so large that it indicates dangerous levels of clock skew.
+func (smi *serverMetadataInterceptor) checkLatency(clientReqTime string) error {
 	// Convert the metadata request time into an int64
 	reqTimeUnixNanos, err := strconv.ParseInt(clientReqTime, 10, 64)
 	if err != nil {
@@ -205,6 +214,17 @@ func (smi *serverMetadataInterceptor) observeLatency(clientReqTime string) error
 	// Calculate the elapsed time since the client sent the RPC
 	reqTime := time.Unix(0, reqTimeUnixNanos)
 	elapsed := smi.clk.Since(reqTime)
+
+	// If the elapsed time is very large, that indicates it is probably due to
+	// clock skew rather than simple latency. Refuse to handle the request, since
+	// accurate timekeeping is critical to CA operations and large skew indicates
+	// something has gone very wrong.
+	if tooSkewed(elapsed) {
+		return fmt.Errorf(
+			"gRPC client reported a very different time: %s (client) vs %s (this server)",
+			reqTime, smi.clk.Now())
+	}
+
 	// Publish an RPC latency observation to the histogram
 	smi.metrics.rpcLag.Observe(elapsed.Seconds())
 	return nil
