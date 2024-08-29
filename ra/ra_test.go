@@ -1715,16 +1715,10 @@ func TestRecheckCAADates(t *testing.T) {
 	recentExpires := fc.Now().Add(15 * time.Hour)
 	olderValidated := fc.Now().Add(-8 * time.Hour)
 	olderExpires := fc.Now().Add(5 * time.Hour)
-	makeIdentifier := func(name string) identifier.ACMEIdentifier {
-		return identifier.ACMEIdentifier{
-			Type:  identifier.DNS,
-			Value: name,
-		}
-	}
 
 	authzs := map[identifier.ACMEIdentifier]*core.Authorization{
 		identifier.DNSIdentifier("recent.com"): {
-			Identifier: makeIdentifier("recent.com"),
+			Identifier: identifier.DNSIdentifier("recent.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1736,7 +1730,7 @@ func TestRecheckCAADates(t *testing.T) {
 			},
 		},
 		identifier.DNSIdentifier("older.com"): {
-			Identifier: makeIdentifier("older.com"),
+			Identifier: identifier.DNSIdentifier("older.com"),
 			Expires:    &olderExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1748,7 +1742,7 @@ func TestRecheckCAADates(t *testing.T) {
 			},
 		},
 		identifier.DNSIdentifier("older2.com"): {
-			Identifier: makeIdentifier("older2.com"),
+			Identifier: identifier.DNSIdentifier("older2.com"),
 			Expires:    &olderExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1760,7 +1754,7 @@ func TestRecheckCAADates(t *testing.T) {
 			},
 		},
 		identifier.DNSIdentifier("wildcard.com"): {
-			Identifier: makeIdentifier("wildcard.com"),
+			Identifier: identifier.DNSIdentifier("wildcard.com"),
 			Expires:    &olderExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1772,7 +1766,7 @@ func TestRecheckCAADates(t *testing.T) {
 			},
 		},
 		identifier.DNSIdentifier("*.wildcard.com"): {
-			Identifier: makeIdentifier("*.wildcard.com"),
+			Identifier: identifier.DNSIdentifier("*.wildcard.com"),
 			Expires:    &olderExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1787,7 +1781,7 @@ func TestRecheckCAADates(t *testing.T) {
 	twoChallenges := map[identifier.ACMEIdentifier]*core.Authorization{
 		identifier.DNSIdentifier("twochallenges.com"): {
 			ID:         "twochal",
-			Identifier: makeIdentifier("twochallenges.com"),
+			Identifier: identifier.DNSIdentifier("twochallenges.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1808,7 +1802,7 @@ func TestRecheckCAADates(t *testing.T) {
 	noChallenges := map[identifier.ACMEIdentifier]*core.Authorization{
 		identifier.DNSIdentifier("nochallenges.com"): {
 			ID:         "nochal",
-			Identifier: makeIdentifier("nochallenges.com"),
+			Identifier: identifier.DNSIdentifier("nochallenges.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{},
 		},
@@ -1816,7 +1810,7 @@ func TestRecheckCAADates(t *testing.T) {
 	noValidationTime := map[identifier.ACMEIdentifier]*core.Authorization{
 		identifier.DNSIdentifier("novalidationtime.com"): {
 			ID:         "noval",
-			Identifier: makeIdentifier("novalidationtime.com"),
+			Identifier: identifier.DNSIdentifier("novalidationtime.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1909,7 +1903,7 @@ func TestRecheckCAAEmpty(t *testing.T) {
 
 func makeHTTP01Authorization(domain string) *core.Authorization {
 	return &core.Authorization{
-		Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: domain},
+		Identifier: identifier.DNSIdentifier(domain),
 		Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 	}
 }

@@ -504,7 +504,7 @@ func TestCAALogging(t *testing.T) {
 				accountURIID:     tc.AccountURIID,
 				validationMethod: tc.ChallengeType,
 			}
-			_ = va.checkCAA(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: tc.Domain}, params)
+			_ = va.checkCAA(ctx, identifier.DNSIdentifier(tc.Domain), params)
 
 			caaLogLines := mockLog.GetAllMatching(`Checked CAA records for`)
 			if len(caaLogLines) != 1 {

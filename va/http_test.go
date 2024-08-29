@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -1311,14 +1312,13 @@ func TestHTTP(t *testing.T) {
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 
-	ipIdentifier := identifier.ACMEIdentifier{Type: identifier.IdentifierType("ip"), Value: "127.0.0.1"}
-	_, err = va.validateHTTP01(ctx, ipIdentifier, pathFound, ka(pathFound))
+	_, err = va.validateHTTP01(ctx, identifier.IPIdentifier(netip.MustParseAddr("127.0.0.1")), pathFound, ka(pathFound))
 	if err == nil {
 		t.Fatalf("IdentifierType IP shouldn't have worked.")
 	}
 	test.AssertErrorIs(t, err, berrors.Malformed)
 
-	_, err = va.validateHTTP01(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: "always.invalid"}, pathFound, ka(pathFound))
+	_, err = va.validateHTTP01(ctx, identifier.DNSIdentifier("always.invalid"), pathFound, ka(pathFound))
 	if err == nil {
 		t.Fatalf("Domain name is invalid.")
 	}

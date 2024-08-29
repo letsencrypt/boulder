@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"net/netip"
 	"os"
 	"testing"
 
@@ -335,14 +336,14 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 						Type:   berrors.Malformed,
 						Detail: "Domain name contains an invalid character",
 					},
-					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "letsdecrypt_org"},
+					Identifier: identifier.DNSIdentifier("letsdecrypt_org"),
 				},
 				{
 					BoulderError: &berrors.BoulderError{
 						Type:   berrors.Malformed,
 						Detail: "Domain name does not end with a valid public suffix (TLD)",
 					},
-					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.comm"},
+					Identifier: identifier.DNSIdentifier("example.comm"),
 				},
 			},
 		})
@@ -366,14 +367,14 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 						Type:   berrors.RejectedIdentifier,
 						Detail: "The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
 					},
-					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "letsdecrypt.org"},
+					Identifier: identifier.DNSIdentifier("letsdecrypt.org"),
 				},
 				{
 					BoulderError: &berrors.BoulderError{
 						Type:   berrors.RejectedIdentifier,
 						Detail: "The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
 					},
-					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
+					Identifier: identifier.DNSIdentifier("example.com"),
 				},
 			},
 		})
@@ -413,7 +414,7 @@ func TestChallengeTypesFor(t *testing.T) {
 		},
 		{
 			name:    "other",
-			ident:   identifier.ACMEIdentifier{Type: "ip", Value: "1.2.3.4"},
+			ident:   identifier.IPIdentifier(netip.MustParseAddr("1.2.3.4")),
 			wantErr: "unrecognized identifier type",
 		},
 	}

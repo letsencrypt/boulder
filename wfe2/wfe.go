@@ -2002,7 +2002,7 @@ type orderJSON struct {
 func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corepb.Order) orderJSON {
 	idents := make([]identifier.ACMEIdentifier, len(order.DnsNames))
 	for i, name := range order.DnsNames {
-		idents[i] = identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
+		idents[i] = identifier.DNSIdentifier(name)
 	}
 	finalizeURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", finalizeOrderPath, order.RegistrationID, order.Id))

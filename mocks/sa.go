@@ -475,10 +475,7 @@ func (sa *StorageAuthorityReadOnly) GetValidAuthorizations2(ctx context.Context,
 			Status:         core.StatusValid,
 			RegistrationID: req.RegistrationID,
 			Expires:        &exp,
-			Identifier: identifier.ACMEIdentifier{
-				Type:  identifier.DNS,
-				Value: name,
-			},
+			Identifier:     identifier.DNSIdentifier(name),
 			Challenges: []core.Challenge{
 				{
 					Status:    core.StatusValid,
