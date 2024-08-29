@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"sync"
+	"sync/atomic"
 
 	"github.com/letsencrypt/boulder/identifier"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -16,7 +18,8 @@ import (
 
 // subcommandPauseIdentifier encapsulates the "admin pause-identifiers" command.
 type subcommandPauseIdentifier struct {
-	batchFile string
+	batchFile   string
+	parallelism uint
 }
 
 var _ subcommand = (*subcommandPauseIdentifier)(nil)
@@ -27,6 +30,7 @@ func (p *subcommandPauseIdentifier) Desc() string {
 
 func (p *subcommandPauseIdentifier) Flags(flag *flag.FlagSet) {
 	flag.StringVar(&p.batchFile, "batch-file", "", "Path to a CSV file containing (account ID, identifier type, identifier value)")
+	flag.UintVar(&p.parallelism, "parallelism", 10, "The maximum number of concurrent pause requests to send to the SA (default: 10)")
 }
 
 func (p *subcommandPauseIdentifier) Run(ctx context.Context, a *admin) error {
@@ -39,7 +43,7 @@ func (p *subcommandPauseIdentifier) Run(ctx context.Context, a *admin) error {
 		return err
 	}
 
-	_, err = a.pauseIdentifiers(ctx, identifiers)
+	_, err = a.pauseIdentifiers(ctx, identifiers, p.parallelism)
 	if err != nil {
 		return err
 	}
@@ -47,29 +51,66 @@ func (p *subcommandPauseIdentifier) Run(ctx context.Context, a *admin) error {
 	return nil
 }
 
-// pauseIdentifiers allows administratively pausing a set of domain names for an
-// account. It returns a slice of PauseIdentifiersResponse or an error.
-func (a *admin) pauseIdentifiers(ctx context.Context, incoming []pauseCSVData) ([]*sapb.PauseIdentifiersResponse, error) {
-	if len(incoming) <= 0 {
+// pauseIdentifiers concurrently pauses identifiers for each account using up to
+// `parallelism` workers. It returns all pause responses and any accumulated
+// errors.
+func (a *admin) pauseIdentifiers(ctx context.Context, entries []pauseCSVData, parallelism uint) ([]*sapb.PauseIdentifiersResponse, error) {
+	if len(entries) <= 0 {
 		return nil, errors.New("cannot pause identifiers because no pauseData was sent")
 	}
 
+	accountToIdentifiers := make(map[int64][]*sapb.Identifier)
+	for _, entry := range entries {
+		accountToIdentifiers[entry.accountID] = append(accountToIdentifiers[entry.accountID], &sapb.Identifier{
+			Type:  string(entry.identifierType),
+			Value: entry.identifierValue,
+		})
+	}
+
+	var errCount atomic.Uint64
+	respChan := make(chan *sapb.PauseIdentifiersResponse, len(accountToIdentifiers))
+	work := make(chan struct {
+		accountID   int64
+		identifiers []*sapb.Identifier
+	}, parallelism)
+
+	var wg sync.WaitGroup
+	for i := uint(0); i < parallelism; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for data := range work {
+				response, err := a.sac.PauseIdentifiers(ctx, &sapb.PauseRequest{
+					RegistrationID: data.accountID,
+					Identifiers:    data.identifiers,
+				})
+				if err != nil {
+					errCount.Add(1)
+					a.log.Errf("error pausing identifier(s) %q for account %d: %v", data.identifiers, data.accountID, err)
+				} else {
+					respChan <- response
+				}
+			}
+		}()
+	}
+
+	for accountID, identifiers := range accountToIdentifiers {
+		work <- struct {
+			accountID   int64
+			identifiers []*sapb.Identifier
+		}{accountID, identifiers}
+	}
+	close(work)
+	wg.Wait()
+	close(respChan)
+
 	var responses []*sapb.PauseIdentifiersResponse
-	for _, data := range incoming {
-		req := sapb.PauseRequest{
-			RegistrationID: data.accountID,
-			Identifiers: []*sapb.Identifier{
-				{
-					Type:  string(data.identifierType),
-					Value: data.identifierValue,
-				},
-			},
-		}
-		response, err := a.sac.PauseIdentifiers(ctx, &req)
-		if err != nil {
-			return nil, err
-		}
+	for response := range respChan {
 		responses = append(responses, response)
+	}
+
+	if errCount.Load() > 0 {
+		return responses, fmt.Errorf("encountered %d errors while pausing identifiers; see logs above for details", errCount.Load())
 	}
 
 	return responses, nil

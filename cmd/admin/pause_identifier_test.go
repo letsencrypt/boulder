@@ -106,10 +106,11 @@ func TestPauseIdentifiers(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name      string
-		data      []pauseCSVData
-		saImpl    sapb.StorageAuthorityClient
-		expectErr bool
+		name          string
+		data          []pauseCSVData
+		saImpl        sapb.StorageAuthorityClient
+		expectRespLen int
+		expectErr     bool
 	}{
 		{
 			name:      "no data",
@@ -125,6 +126,7 @@ func TestPauseIdentifiers(t *testing.T) {
 					identifierValue: "example.com",
 				},
 			},
+			expectRespLen: 1,
 		},
 		{
 			name:      "valid single entry but broken SA",
@@ -167,6 +169,7 @@ func TestPauseIdentifiers(t *testing.T) {
 					identifierValue: "example.org",
 				},
 			},
+			expectRespLen: 3,
 		},
 	}
 
@@ -182,12 +185,13 @@ func TestPauseIdentifiers(t *testing.T) {
 			}
 			a := admin{sac: testCase.saImpl, log: log}
 
-			responses, err := a.pauseIdentifiers(context.Background(), testCase.data)
+			responses, err := a.pauseIdentifiers(context.Background(), testCase.data, 10)
 			if testCase.expectErr {
 				test.AssertError(t, err, "should have errored, but did not")
 			} else {
 				test.AssertNotError(t, err, "should not have errored")
-				test.AssertEquals(t, len(responses), len(testCase.data))
+				// Batching will consolidate identifiers under the same account.
+				test.AssertEquals(t, len(responses), testCase.expectRespLen)
 			}
 		})
 	}
