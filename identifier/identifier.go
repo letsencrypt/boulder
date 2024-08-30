@@ -3,7 +3,11 @@
 // and probs packages.
 package identifier
 
-import "net/netip"
+import (
+	"net/netip"
+
+	corepb "github.com/letsencrypt/boulder/core/proto"
+)
 
 // IdentifierType is a named string type for registered ACME identifier types.
 // See https://tools.ietf.org/html/rfc8555#section-9.7.7
@@ -26,6 +30,13 @@ type ACMEIdentifier struct {
 	// Value is the value of the identifier. For a DNS type identifier it is
 	// a domain name.
 	Value string `json:"value"`
+}
+
+func (i ACMEIdentifier) AsProto() *corepb.Identifier {
+	return &corepb.Identifier{
+		Type:  string(i.Type),
+		Value: i.Value,
+	}
 }
 
 // NewDNS is a convenience function for creating an ACMEIdentifier with Type

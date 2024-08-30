@@ -2680,10 +2680,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// authorization for each.
 	var newAuthzs []*sapb.NewAuthzRequest
 	for _, ident := range missingAuthzIdents {
-		pb, err := ra.createPendingAuthz(newOrder.RegistrationID, identifier.ACMEIdentifier{
-			Type:  ident.Type,
-			Value: ident.Value,
-		})
+		pb, err := ra.createPendingAuthz(newOrder.RegistrationID, ident)
 		if err != nil {
 			return nil, err
 		}
@@ -2745,8 +2742,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // createPendingAuthz checks that a name is allowed for issuance and creates the
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
-func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier identifier.ACMEIdentifier) (*sapb.NewAuthzRequest, error) {
-	challTypes, err := ra.PA.ChallengeTypesFor(identifier)
+func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, ident identifier.ACMEIdentifier) (*sapb.NewAuthzRequest, error) {
+	challTypes, err := ra.PA.ChallengeTypesFor(ident)
 	if err != nil {
 		return nil, err
 	}
@@ -2757,10 +2754,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier id
 	}
 
 	authz := &sapb.NewAuthzRequest{
-		Identifier: &corepb.Identifier{
-			Type:  string(identifier.Type),
-			Value: identifier.Value,
-		},
+		Identifier:     ident.AsProto(),
 		RegistrationID: reg,
 		Expires:        timestamppb.New(ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second)),
 		ChallengeTypes: challStrs,
