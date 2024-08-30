@@ -29,7 +29,7 @@ type ACMEIdentifier struct {
 }
 
 // NewDNS is a convenience function for creating an ACMEIdentifier with Type
-// NewDNS for a given domain name.
+// "dns" for a given domain name.
 func NewDNS(domain string) ACMEIdentifier {
 	return ACMEIdentifier{
 		Type:  TypeDNS,
@@ -37,7 +37,7 @@ func NewDNS(domain string) ACMEIdentifier {
 	}
 }
 
-// NewIP is a convenience function for creating an ACMEIdentifier with Type IP
+// NewIP is a convenience function for creating an ACMEIdentifier with Type "ip"
 // for a given IP address.
 func NewIP(ip netip.Addr) ACMEIdentifier {
 	return ACMEIdentifier{

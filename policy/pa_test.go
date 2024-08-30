@@ -505,7 +505,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "no challenges",
 			authz: core.Authorization{
-				Identifier: identifier.ACMEIdentifier{Type: identifier.TypeDNS, Value: "example.com"},
+				Identifier: identifier.NewDNS("example.com"),
 				Challenges: []core.Challenge{},
 			},
 			wantErr: "has no challenges",
@@ -513,7 +513,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "no valid challenges",
 			authz: core.Authorization{
-				Identifier: identifier.ACMEIdentifier{Type: identifier.TypeDNS, Value: "example.com"},
+				Identifier: identifier.NewDNS("example.com"),
 				Challenges: []core.Challenge{{Type: core.ChallengeTypeDNS01, Status: core.StatusPending}},
 			},
 			wantErr: "not solved by any challenge",
@@ -521,7 +521,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "solved by disabled challenge",
 			authz: core.Authorization{
-				Identifier: identifier.ACMEIdentifier{Type: identifier.TypeDNS, Value: "example.com"},
+				Identifier: identifier.NewDNS("example.com"),
 				Challenges: []core.Challenge{{Type: core.ChallengeTypeDNS01, Status: core.StatusValid}},
 			},
 			enabled: map[core.AcmeChallenge]bool{core.ChallengeTypeHTTP01: true},
@@ -530,7 +530,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "solved by wrong kind of challenge",
 			authz: core.Authorization{
-				Identifier: identifier.ACMEIdentifier{Type: identifier.TypeDNS, Value: "*.example.com"},
+				Identifier: identifier.NewDNS("*.example.com"),
 				Challenges: []core.Challenge{{Type: core.ChallengeTypeHTTP01, Status: core.StatusValid}},
 			},
 			wantErr: "inapplicable challenge type",
@@ -538,7 +538,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "valid authz",
 			authz: core.Authorization{
-				Identifier: identifier.ACMEIdentifier{Type: identifier.TypeDNS, Value: "example.com"},
+				Identifier: identifier.NewDNS("example.com"),
 				Challenges: []core.Challenge{{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusValid}},
 			},
 		},
