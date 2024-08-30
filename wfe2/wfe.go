@@ -1152,7 +1152,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		}
 	}
 
-	if authz.Identifier.Type == identifier.DNS {
+	if authz.Identifier.Type == identifier.TypeDNS {
 		logEvent.DNSName = authz.Identifier.Value
 	}
 	logEvent.Status = string(authz.Status)
@@ -1578,7 +1578,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
-	if identifier.IdentifierType(authzPB.DnsName) == identifier.DNS {
+	if identifier.IdentifierType(authzPB.DnsName) == identifier.TypeDNS {
 		logEvent.DNSName = authzPB.DnsName
 	}
 	logEvent.Status = authzPB.Status
@@ -2002,7 +2002,7 @@ type orderJSON struct {
 func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corepb.Order) orderJSON {
 	idents := make([]identifier.ACMEIdentifier, len(order.DnsNames))
 	for i, name := range order.DnsNames {
-		idents[i] = identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
+		idents[i] = identifier.NewDNS(name)
 	}
 	finalizeURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", finalizeOrderPath, order.RegistrationID, order.Id))
@@ -2220,9 +2220,9 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 
 func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIdentifiers []identifier.ACMEIdentifier, regID int64) ([]string, error) {
 	uniqueOrderIdentifiers := core.NormalizeIdentifiers(orderIdentifiers)
-	var identifiers []*sapb.Identifier
+	var identifiers []*corepb.Identifier
 	for _, ident := range uniqueOrderIdentifiers {
-		identifiers = append(identifiers, &sapb.Identifier{
+		identifiers = append(identifiers, &corepb.Identifier{
 			Type:  string(ident.Type),
 			Value: ident.Value,
 		})
@@ -2297,7 +2297,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// short enough to meet the max CN bytes requirement.
 	names := make([]string, len(newOrderRequest.Identifiers))
 	for i, ident := range newOrderRequest.Identifiers {
-		if ident.Type != identifier.DNS {
+		if ident.Type != identifier.TypeDNS {
 			wfe.sendError(response, logEvent,
 				probs.UnsupportedIdentifier("NewOrder request included invalid non-DNS type identifier: type %q, value %q",
 					ident.Type, ident.Value),

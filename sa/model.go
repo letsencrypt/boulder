@@ -642,7 +642,7 @@ func SelectAuthzsMatchingIssuance(
 		statusToUint[core.StatusDeactivated],
 		issued.Add(-1*time.Second), // leeway for clock skew
 		issued.Add(1*time.Second),  // leeway for clock skew
-		identifierTypeToUint[string(identifier.DNS)],
+		identifierTypeToUint[string(identifier.TypeDNS)],
 	)
 	for _, name := range dnsNames {
 		args = append(args, name)
@@ -712,7 +712,7 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
 // authzModel storage representation.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 	am := &authzModel{
-		IdentifierType:  identifierTypeToUint[string(identifier.DNS)],
+		IdentifierType:  identifierTypeToUint[string(identifier.TypeDNS)],
 		IdentifierValue: authz.DnsName,
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.AcmeStatus(authz.Status)],
@@ -855,7 +855,7 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 
 func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	identType, ok := uintToIdentifierType[am.IdentifierType]
-	if !ok || identType != string(identifier.DNS) {
+	if !ok || identType != string(identifier.TypeDNS) {
 		return nil, fmt.Errorf("unrecognized identifier type encoding %d", am.IdentifierType)
 	}
 
@@ -1332,7 +1332,7 @@ type identifierModel struct {
 	Value string `db:"identifierValue"`
 }
 
-func newIdentifierModelFromPB(pb *sapb.Identifier) (identifierModel, error) {
+func newIdentifierModelFromPB(pb *corepb.Identifier) (identifierModel, error) {
 	idType, ok := identifierTypeToUint[pb.Type]
 	if !ok {
 		return identifierModel{}, fmt.Errorf("unsupported identifier type %q", pb.Type)
@@ -1344,19 +1344,19 @@ func newIdentifierModelFromPB(pb *sapb.Identifier) (identifierModel, error) {
 	}, nil
 }
 
-func newPBFromIdentifierModel(id identifierModel) (*sapb.Identifier, error) {
+func newPBFromIdentifierModel(id identifierModel) (*corepb.Identifier, error) {
 	idType, ok := uintToIdentifierType[id.Type]
 	if !ok {
 		return nil, fmt.Errorf("unsupported identifier type %d", id.Type)
 	}
 
-	return &sapb.Identifier{
+	return &corepb.Identifier{
 		Type:  idType,
 		Value: id.Value,
 	}, nil
 }
 
-func newIdentifierModelsFromPB(pbs []*sapb.Identifier) ([]identifierModel, error) {
+func newIdentifierModelsFromPB(pbs []*corepb.Identifier) ([]identifierModel, error) {
 	ids := make([]identifierModel, 0, len(pbs))
 	for _, pb := range pbs {
 		id, err := newIdentifierModelFromPB(pb)
@@ -1369,7 +1369,7 @@ func newIdentifierModelsFromPB(pbs []*sapb.Identifier) ([]identifierModel, error
 }
 
 func newPBFromIdentifierModels(ids []identifierModel) (*sapb.Identifiers, error) {
-	pbs := make([]*sapb.Identifier, 0, len(ids))
+	pbs := make([]*corepb.Identifier, 0, len(ids))
 	for _, id := range ids {
 		pb, err := newPBFromIdentifierModel(id)
 		if err != nil {

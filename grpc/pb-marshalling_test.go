@@ -225,7 +225,7 @@ func TestRegistration(t *testing.T) {
 
 func TestAuthz(t *testing.T) {
 	exp := time.Now().AddDate(0, 0, 1).UTC()
-	identifier := identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"}
+	identifier := identifier.NewDNS("example.com")
 	challA := core.Challenge{
 		Type:   core.ChallengeTypeDNS01,
 		Status: core.StatusPending,

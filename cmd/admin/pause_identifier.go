@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -59,9 +60,9 @@ func (a *admin) pauseIdentifiers(ctx context.Context, entries []pauseCSVData, pa
 		return nil, errors.New("cannot pause identifiers because no pauseData was sent")
 	}
 
-	accountToIdentifiers := make(map[int64][]*sapb.Identifier)
+	accountToIdentifiers := make(map[int64][]*corepb.Identifier)
 	for _, entry := range entries {
-		accountToIdentifiers[entry.accountID] = append(accountToIdentifiers[entry.accountID], &sapb.Identifier{
+		accountToIdentifiers[entry.accountID] = append(accountToIdentifiers[entry.accountID], &corepb.Identifier{
 			Type:  string(entry.identifierType),
 			Value: entry.identifierValue,
 		})
@@ -71,7 +72,7 @@ func (a *admin) pauseIdentifiers(ctx context.Context, entries []pauseCSVData, pa
 	respChan := make(chan *sapb.PauseIdentifiersResponse, len(accountToIdentifiers))
 	work := make(chan struct {
 		accountID   int64
-		identifiers []*sapb.Identifier
+		identifiers []*corepb.Identifier
 	}, parallelism)
 
 	var wg sync.WaitGroup
@@ -97,7 +98,7 @@ func (a *admin) pauseIdentifiers(ctx context.Context, entries []pauseCSVData, pa
 	for accountID, identifiers := range accountToIdentifiers {
 		work <- struct {
 			accountID   int64
-			identifiers []*sapb.Identifier
+			identifiers []*corepb.Identifier
 		}{accountID, identifiers}
 	}
 	close(work)

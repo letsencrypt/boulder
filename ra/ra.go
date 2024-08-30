@@ -811,7 +811,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	for _, name := range names {
 		// TODO(#7647): Iterate directly over identifiers here, once the rest of the
 		// finalization flow supports non-dnsName identifiers.
-		ident := identifier.DNSIdentifier(name)
+		ident := identifier.NewDNS(name)
 
 		authz, ok := authzs[ident]
 		if !ok || authz == nil {
@@ -1565,7 +1565,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 			var subErrors []berrors.SubBoulderError
 			for _, name := range namesOutOfLimit {
 				subErrors = append(subErrors, berrors.SubBoulderError{
-					Identifier:   identifier.DNSIdentifier(name),
+					Identifier:   identifier.NewDNS(name),
 					BoulderError: berrors.RateLimitError(retryAfter, "too many certificates already issued. Retry after %s", retryString).(*berrors.BoulderError),
 				})
 			}
@@ -2181,7 +2181,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 
 		// TODO(#7647): Support other kinds of SANs/identifiers here.
 		for _, name := range cert.DNSNames {
-			if _, present := authzMap[identifier.DNSIdentifier(name)]; !present {
+			if _, present := authzMap[identifier.NewDNS(name)]; !present {
 				return nil, berrors.UnauthorizedError("requester does not control all names in cert with serial %q", serialString)
 			}
 		}
@@ -2617,7 +2617,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// TODO(#7647): Support non-dnsName identifier types here.
 	var missingAuthzIdents []identifier.ACMEIdentifier
 	for _, name := range newOrder.DnsNames {
-		ident := identifier.DNSIdentifier(name)
+		ident := identifier.NewDNS(name)
 		// If there isn't an existing authz, note that its missing and continue
 		authz, exists := identToExistingAuthz[ident]
 		if !exists {
@@ -2680,10 +2680,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// authorization for each.
 	var newAuthzs []*sapb.NewAuthzRequest
 	for _, ident := range missingAuthzIdents {
-		pb, err := ra.createPendingAuthz(newOrder.RegistrationID, identifier.ACMEIdentifier{
-			Type:  ident.Type,
-			Value: ident.Value,
-		})
+		pb, err := ra.createPendingAuthz(newOrder.RegistrationID, ident)
 		if err != nil {
 			return nil, err
 		}
@@ -2745,8 +2742,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // createPendingAuthz checks that a name is allowed for issuance and creates the
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
-func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier identifier.ACMEIdentifier) (*sapb.NewAuthzRequest, error) {
-	challTypes, err := ra.PA.ChallengeTypesFor(identifier)
+func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, ident identifier.ACMEIdentifier) (*sapb.NewAuthzRequest, error) {
+	challTypes, err := ra.PA.ChallengeTypesFor(ident)
 	if err != nil {
 		return nil, err
 	}
@@ -2757,10 +2754,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier id
 	}
 
 	authz := &sapb.NewAuthzRequest{
-		Identifier: &sapb.Identifier{
-			Type:  string(identifier.Type),
-			Value: identifier.Value,
-		},
+		Identifier:     ident.AsProto(),
 		RegistrationID: reg,
 		Expires:        timestamppb.New(ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second)),
 		ChallengeTypes: challStrs,

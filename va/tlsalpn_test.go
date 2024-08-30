@@ -14,8 +14,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -139,11 +139,7 @@ func TestTLSALPN01FailIP(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil, nil)
 
-	port := getPort(hs)
-	_, err = va.validateTLSALPN01(ctx, identifier.ACMEIdentifier{
-		Type:  identifier.IdentifierType("ip"),
-		Value: net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),
-	}, expectedKeyAuthorization)
+	_, err = va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("IdentifierType IP shouldn't have worked.")
 	}

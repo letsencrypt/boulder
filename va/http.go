@@ -640,7 +640,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 }
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, token string, keyAuthorization string) ([]core.ValidationRecord, error) {
-	if ident.Type != identifier.DNS {
+	if ident.Type != identifier.TypeDNS {
 		va.log.Infof("Got non-DNS identifier for HTTP validation: %s", ident)
 		return nil, berrors.MalformedError("Identifier type for HTTP validation was not DNS")
 	}

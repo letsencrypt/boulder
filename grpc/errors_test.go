@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/jmhodges/clock"
+
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/grpc/test_proto"
 	"github.com/letsencrypt/boulder/identifier"
@@ -96,7 +97,7 @@ func TestSubErrorWrapping(t *testing.T) {
 
 	subErrors := []berrors.SubBoulderError{
 		{
-			Identifier: identifier.DNSIdentifier("chillserver.com"),
+			Identifier: identifier.NewDNS("chillserver.com"),
 			BoulderError: &berrors.BoulderError{
 				Type:   berrors.RejectedIdentifier,
 				Detail: "2 ill 2 chill",

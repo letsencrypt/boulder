@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"net/netip"
 	"os"
 	"testing"
 
@@ -335,14 +336,14 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 						Type:   berrors.Malformed,
 						Detail: "Domain name contains an invalid character",
 					},
-					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "letsdecrypt_org"},
+					Identifier: identifier.NewDNS("letsdecrypt_org"),
 				},
 				{
 					BoulderError: &berrors.BoulderError{
 						Type:   berrors.Malformed,
 						Detail: "Domain name does not end with a valid public suffix (TLD)",
 					},
-					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.comm"},
+					Identifier: identifier.NewDNS("example.comm"),
 				},
 			},
 		})
@@ -366,14 +367,14 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 						Type:   berrors.RejectedIdentifier,
 						Detail: "The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
 					},
-					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "letsdecrypt.org"},
+					Identifier: identifier.NewDNS("letsdecrypt.org"),
 				},
 				{
 					BoulderError: &berrors.BoulderError{
 						Type:   berrors.RejectedIdentifier,
 						Detail: "The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
 					},
-					Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
+					Identifier: identifier.NewDNS("example.com"),
 				},
 			},
 		})
@@ -399,21 +400,21 @@ func TestChallengeTypesFor(t *testing.T) {
 	}{
 		{
 			name:  "dns",
-			ident: identifier.DNSIdentifier("example.com"),
+			ident: identifier.NewDNS("example.com"),
 			wantChalls: []core.AcmeChallenge{
 				core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeTLSALPN01,
 			},
 		},
 		{
 			name:  "wildcard",
-			ident: identifier.DNSIdentifier("*.example.com"),
+			ident: identifier.NewDNS("*.example.com"),
 			wantChalls: []core.AcmeChallenge{
 				core.ChallengeTypeDNS01,
 			},
 		},
 		{
 			name:    "other",
-			ident:   identifier.ACMEIdentifier{Type: "ip", Value: "1.2.3.4"},
+			ident:   identifier.NewIP(netip.MustParseAddr("1.2.3.4")),
 			wantErr: "unrecognized identifier type",
 		},
 	}
@@ -504,7 +505,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "no challenges",
 			authz: core.Authorization{
-				Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
+				Identifier: identifier.NewDNS("example.com"),
 				Challenges: []core.Challenge{},
 			},
 			wantErr: "has no challenges",
@@ -512,7 +513,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "no valid challenges",
 			authz: core.Authorization{
-				Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
+				Identifier: identifier.NewDNS("example.com"),
 				Challenges: []core.Challenge{{Type: core.ChallengeTypeDNS01, Status: core.StatusPending}},
 			},
 			wantErr: "not solved by any challenge",
@@ -520,7 +521,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "solved by disabled challenge",
 			authz: core.Authorization{
-				Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
+				Identifier: identifier.NewDNS("example.com"),
 				Challenges: []core.Challenge{{Type: core.ChallengeTypeDNS01, Status: core.StatusValid}},
 			},
 			enabled: map[core.AcmeChallenge]bool{core.ChallengeTypeHTTP01: true},
@@ -529,7 +530,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "solved by wrong kind of challenge",
 			authz: core.Authorization{
-				Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "*.example.com"},
+				Identifier: identifier.NewDNS("*.example.com"),
 				Challenges: []core.Challenge{{Type: core.ChallengeTypeHTTP01, Status: core.StatusValid}},
 			},
 			wantErr: "inapplicable challenge type",
@@ -537,7 +538,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "valid authz",
 			authz: core.Authorization{
-				Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: "example.com"},
+				Identifier: identifier.NewDNS("example.com"),
 				Challenges: []core.Challenge{{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusValid}},
 			},
 		},

@@ -3391,7 +3391,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		ID:             "12345",
 		Status:         core.StatusPending,
 		RegistrationID: 1,
-		Identifier:     identifier.DNSIdentifier("example.com"),
+		Identifier:     identifier.NewDNS("example.com"),
 		Challenges: []core.Challenge{
 			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
@@ -3415,7 +3415,7 @@ func TestPrepRevokedAuthzForDisplay(t *testing.T) {
 		ID:             "12345",
 		Status:         core.StatusInvalid,
 		RegistrationID: 1,
-		Identifier:     identifier.DNSIdentifier("example.com"),
+		Identifier:     identifier.NewDNS("example.com"),
 		Challenges: []core.Challenge{
 			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
@@ -3440,7 +3440,7 @@ func TestPrepWildcardAuthzForDisplay(t *testing.T) {
 		ID:             "12345",
 		Status:         core.StatusPending,
 		RegistrationID: 1,
-		Identifier:     identifier.DNSIdentifier("*.example.com"),
+		Identifier:     identifier.NewDNS("*.example.com"),
 		Challenges: []core.Challenge{
 			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
 		},
@@ -3463,7 +3463,7 @@ func TestPrepAuthzForDisplayShuffle(t *testing.T) {
 		ID:             "12345",
 		Status:         core.StatusPending,
 		RegistrationID: 1,
-		Identifier:     identifier.DNSIdentifier("example.com"),
+		Identifier:     identifier.NewDNS("example.com"),
 		Challenges: []core.Challenge{
 			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
 			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
