@@ -23,7 +23,7 @@ type issuingDistributionPoint struct {
 // others are omitted.
 type distributionPointName struct {
 	// Technically, FullName is of type GeneralNames, which is of type SEQUENCE OF
-	// GeneralName. But GeneralName itself is of type CHOICE, and the asn1.Marhsal
+	// GeneralName. But GeneralName itself is of type CHOICE, and the asn1.Marshal
 	// function doesn't support marshalling structs to CHOICEs, so we have to use
 	// asn1.RawValue and encode the GeneralName ourselves.
 	FullName []asn1.RawValue `asn1:"optional,tag:0"`

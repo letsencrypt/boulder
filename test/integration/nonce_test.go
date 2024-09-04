@@ -4,11 +4,10 @@ package integration
 
 import (
 	"context"
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/grpc/status"
 
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -17,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/test"
-	"google.golang.org/grpc/status"
 )
 
 type nonceBalancerTestConfig struct {
@@ -31,10 +29,6 @@ type nonceBalancerTestConfig struct {
 
 func TestNonceBalancer_NoBackendMatchingPrefix(t *testing.T) {
 	t.Parallel()
-
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		t.Skip("Derived nonce prefixes are only configured in config-next")
-	}
 
 	// We're going to use a minimal nonce service client called "notwfe" which
 	// masquerades as a wfe for the purpose of redeeming nonces.
