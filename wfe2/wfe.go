@@ -1998,7 +1998,7 @@ type orderJSON struct {
 // orderToOrderJSON converts a *corepb.Order instance into an orderJSON struct
 // that is returned in HTTP API responses. It will convert the order names to
 // DNS type identifiers and additionally create absolute URLs for the finalize
-// URL and the ceritificate URL as appropriate.
+// URL and the certificate URL as appropriate.
 func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corepb.Order) orderJSON {
 	idents := make([]identifier.ACMEIdentifier, len(order.DnsNames))
 	for i, name := range order.DnsNames {
