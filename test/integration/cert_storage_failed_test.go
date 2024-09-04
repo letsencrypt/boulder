@@ -96,12 +96,6 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 
 	ctx := context.Background()
 
-	// This test is gated on the StoreLintingCertificateInsteadOfPrecertificate
-	// feature flag.
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Skipping test because it requires the StoreLintingCertificateInsteadOfPrecertificate feature flag")
-	}
-
 	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
 	test.AssertNotError(t, err, "failed to open db connection")
 
