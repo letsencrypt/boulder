@@ -37,9 +37,8 @@ var (
 	invalidNoDNS        = berrors.BadCSRError("at least one DNS name is required")
 )
 
-// VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes
-// the CSR which lowers the case of DNS names and subject CN, and hoist a DNS name into the CN
-// if it is empty.
+// VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks, it normalizes
+// the CSR by calling NamesFromCSR.
 func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority) error {
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
@@ -92,7 +91,8 @@ type names struct {
 }
 
 // NamesFromCSR deduplicates and lower-cases the Subject Common Name and Subject
-// Alternative Names from the CSR. If the CSR contains a CN, then it preserves
+// Alternative Names from the CSR. If the CSR contains a CN that's too long to
+// fit, it demotes it to a SAN. If the CSR contains a CN, then it preserves
 // it and guarantees that the SANs also include it. If the CSR does not contain
 // a CN, then it also attempts to promote a SAN to the CN (if any is short
 // enough to fit).
@@ -101,11 +101,14 @@ func NamesFromCSR(csr *x509.CertificateRequest) names {
 	// but force a new allocation if an append happens so that we don't
 	// accidentally mutate the underlying csr.DNSNames array.
 	sans := csr.DNSNames[0:len(csr.DNSNames):len(csr.DNSNames)]
-	if csr.Subject.CommonName != "" {
+
+	if len(csr.Subject.CommonName) > maxCNLength {
 		sans = append(sans, csr.Subject.CommonName)
+		csr.Subject.CommonName = "" // FIXME: Will this mutate the underlying item & is that bad?
 	}
 
 	if csr.Subject.CommonName != "" {
+		sans = append(sans, csr.Subject.CommonName)
 		return names{SANs: core.UniqueLowerNames(sans), CN: strings.ToLower(csr.Subject.CommonName)}
 	}
 
