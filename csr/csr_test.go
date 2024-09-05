@@ -152,12 +152,14 @@ func TestVerifyCSR(t *testing.T) {
 func TestNamesFromCSR(t *testing.T) {
 	tooLongString := strings.Repeat("a", maxCNLength+1)
 
-	cases := []struct {
+	type mystruct struct {
 		name          string
 		csr           *x509.CertificateRequest
 		expectedCN    string
 		expectedNames []string
-	}{
+	}
+
+	cases := []mystruct{
 		{
 			"no explicit CN",
 			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
@@ -189,7 +191,16 @@ func TestNamesFromCSR(t *testing.T) {
 			[]string{"a.com", "b.com"},
 		},
 		{
-			"no explicit CN, too long leading SANs",
+			"no explicit CN, all SANs too long to be CNs",
+			&x509.CertificateRequest{DNSNames: []string{
+				tooLongString + ".a.com",
+				tooLongString + ".b.com",
+			}},
+			"",
+			[]string{tooLongString + ".a.com", tooLongString + ".b.com"},
+		},
+		{
+			"no explicit CN, leading SANs too long to be CNs",
 			&x509.CertificateRequest{DNSNames: []string{
 				tooLongString + ".a.com",
 				tooLongString + ".b.com",
@@ -200,7 +211,7 @@ func TestNamesFromCSR(t *testing.T) {
 			[]string{"a.com", tooLongString + ".a.com", tooLongString + ".b.com", "b.com"},
 		},
 		{
-			"explicit CN, too long leading SANs",
+			"explicit CN, leading SANs too long to be CNs",
 			&x509.CertificateRequest{
 				Subject: pkix.Name{CommonName: "A.com"},
 				DNSNames: []string{
@@ -211,6 +222,14 @@ func TestNamesFromCSR(t *testing.T) {
 				}},
 			"a.com",
 			[]string{"a.com", tooLongString + ".a.com", tooLongString + ".b.com", "b.com"},
+		},
+		{
+			"explicit CN that's too long to be a CN",
+			&x509.CertificateRequest{
+				Subject: pkix.Name{CommonName: tooLongString + "a.com"},
+			},
+			"",
+			[]string{tooLongString + ".a.com"},
 		},
 	}
 	for _, tc := range cases {
