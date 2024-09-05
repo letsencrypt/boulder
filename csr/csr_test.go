@@ -109,7 +109,7 @@ func TestVerifyCSR(t *testing.T) {
 			signedReqWithLongCN,
 			100,
 			&mockPA{},
-			berrors.BadCSRError("CN was longer than %d bytes", maxCNLength),
+			nil,
 		},
 		{
 			signedReqWithHosts,
@@ -226,10 +226,20 @@ func TestNamesFromCSR(t *testing.T) {
 		{
 			"explicit CN that's too long to be a CN",
 			&x509.CertificateRequest{
-				Subject: pkix.Name{CommonName: tooLongString + "a.com"},
+				Subject: pkix.Name{CommonName: tooLongString + ".a.com"},
 			},
 			"",
 			[]string{tooLongString + ".a.com"},
+		},
+		{
+			"explicit CN that's too long to be a CN, with a SAN",
+			&x509.CertificateRequest{
+				Subject: pkix.Name{CommonName: tooLongString + ".a.com"},
+				DNSNames: []string{
+					"b.com",
+				}},
+			"",
+			[]string{tooLongString + ".a.com", "b.com"},
 		},
 	}
 	for _, tc := range cases {
