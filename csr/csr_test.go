@@ -152,14 +152,12 @@ func TestVerifyCSR(t *testing.T) {
 func TestNamesFromCSR(t *testing.T) {
 	tooLongString := strings.Repeat("a", maxCNLength+1)
 
-	type mystruct struct {
+	cases := []struct {
 		name          string
 		csr           *x509.CertificateRequest
 		expectedCN    string
 		expectedNames []string
-	}
-
-	cases := []mystruct{
+	}{
 		{
 			"no explicit CN",
 			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
