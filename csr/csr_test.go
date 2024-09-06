@@ -189,7 +189,7 @@ func TestNamesFromCSR(t *testing.T) {
 			[]string{"a.com", "b.com"},
 		},
 		{
-			"no explicit CN, all SANs too long to be CNs",
+			"no explicit CN, all SANs too long to be the CN",
 			&x509.CertificateRequest{DNSNames: []string{
 				tooLongString + ".a.com",
 				tooLongString + ".b.com",
@@ -198,7 +198,7 @@ func TestNamesFromCSR(t *testing.T) {
 			[]string{tooLongString + ".a.com", tooLongString + ".b.com"},
 		},
 		{
-			"no explicit CN, leading SANs too long to be CNs",
+			"no explicit CN, leading SANs too long to be the CN",
 			&x509.CertificateRequest{DNSNames: []string{
 				tooLongString + ".a.com",
 				tooLongString + ".b.com",
@@ -209,7 +209,7 @@ func TestNamesFromCSR(t *testing.T) {
 			[]string{"a.com", tooLongString + ".a.com", tooLongString + ".b.com", "b.com"},
 		},
 		{
-			"explicit CN, leading SANs too long to be CNs",
+			"explicit CN, leading SANs too long to be the CN",
 			&x509.CertificateRequest{
 				Subject: pkix.Name{CommonName: "A.com"},
 				DNSNames: []string{
@@ -222,7 +222,7 @@ func TestNamesFromCSR(t *testing.T) {
 			[]string{"a.com", tooLongString + ".a.com", tooLongString + ".b.com", "b.com"},
 		},
 		{
-			"explicit CN that's too long to be a CN",
+			"explicit CN that's too long to be the CN",
 			&x509.CertificateRequest{
 				Subject: pkix.Name{CommonName: tooLongString + ".a.com"},
 			},
@@ -230,7 +230,7 @@ func TestNamesFromCSR(t *testing.T) {
 			[]string{tooLongString + ".a.com"},
 		},
 		{
-			"explicit CN that's too long to be a CN, with a SAN",
+			"explicit CN that's too long to be the CN, with a SAN",
 			&x509.CertificateRequest{
 				Subject: pkix.Name{CommonName: tooLongString + ".a.com"},
 				DNSNames: []string{
