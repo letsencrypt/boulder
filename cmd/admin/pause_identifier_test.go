@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"testing"
 
 	blog "github.com/letsencrypt/boulder/log"
@@ -83,11 +84,15 @@ func TestReadingPauseCSV(t *testing.T) {
 // received, and returns the number of identifiers as a
 // PauseIdentifiersResponse. It does not maintain state of repaused identifiers.
 type mockSAPaused struct {
+	mutex sync.Mutex
 	sapb.StorageAuthorityClient
 	reqs []*sapb.PauseRequest
 }
 
 func (msa *mockSAPaused) PauseIdentifiers(ctx context.Context, in *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error) {
+	msa.mutex.Lock()
+	defer msa.mutex.Unlock()
+
 	msa.reqs = append(msa.reqs, in)
 
 	return &sapb.PauseIdentifiersResponse{Paused: int64(len(in.Identifiers))}, nil
@@ -181,7 +186,7 @@ func TestPauseIdentifiers(t *testing.T) {
 
 			// Default to a working mock SA implementation
 			if testCase.saImpl == nil {
-				testCase.saImpl = &mockSAPaused{}
+				testCase.saImpl = &mockSAPaused{mutex: sync.Mutex{}}
 			}
 			a := admin{sac: testCase.saImpl, log: log}
 
