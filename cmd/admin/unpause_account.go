@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -84,9 +85,11 @@ func (a *admin) unpauseAccounts(ctx context.Context, accountIDs []int64, paralle
 	if len(accountIDs) <= 0 {
 		return nil, errors.New("no account IDs provided for unpausing")
 	}
+	slices.Sort(accountIDs)
+	accountIDs = slices.Compact(accountIDs)
 
 	countChan := make(chan unpauseCount, len(accountIDs))
-	work := make(chan int64, parallelism)
+	work := make(chan int64)
 
 	var wg sync.WaitGroup
 	var errCount atomic.Uint64
@@ -95,32 +98,39 @@ func (a *admin) unpauseAccounts(ctx context.Context, accountIDs []int64, paralle
 		go func() {
 			defer wg.Done()
 			for accountID := range work {
-				response, err := a.sac.UnpauseAccount(ctx, &sapb.RegistrationID{Id: accountID})
-				if err != nil {
-					errCount.Add(1)
-					a.log.Errf("error unpausing accountID %d: %v", accountID, err)
-					continue
+				totalCount := int64(0)
+				for {
+					response, err := a.sac.UnpauseAccount(ctx, &sapb.RegistrationID{Id: accountID})
+					if err != nil {
+						errCount.Add(1)
+						a.log.Errf("error unpausing accountID %d: %v", accountID, err)
+						break
+					}
+					totalCount += response.Count
+					if response.Count < unpause.RequestLimit {
+						// All identifiers have been unpaused.
+						break
+					}
 				}
-				if response.Count >= unpause.RequestLimit {
-					work <- accountID
-				}
-				countChan <- unpauseCount{accountID: accountID, count: response.Count}
+				countChan <- unpauseCount{accountID: accountID, count: totalCount}
 			}
 		}()
 	}
 
-	for _, accountID := range accountIDs {
-		work <- accountID
-	}
+	go func() {
+		for _, accountID := range accountIDs {
+			work <- accountID
+		}
+		close(work)
+	}()
 
-	wg.Wait()
-	close(work)
-	close(countChan)
+	go func() {
+		wg.Wait()
+		close(countChan)
+	}()
 
 	var unpauseCounts []unpauseCount
 	for count := range countChan {
-		// There could be multiple unpause requests for the same account ID if
-		// the account has more than `unpause.RequestLimit` identifiers.
 		unpauseCounts = append(unpauseCounts, count)
 	}
 

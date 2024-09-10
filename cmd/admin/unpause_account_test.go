@@ -60,20 +60,12 @@ func TestReadingUnpauseAccountsFile(t *testing.T) {
 	}
 }
 
-// mockSAPaused is a mock that always succeeds. It records each PauseRequest it
-// receives, and returns the number of identifiers as a
-// PauseIdentifiersResponse. It does not maintain state of repaused identifiers.
 type mockSAUnpause struct {
 	sapb.StorageAuthorityClient
-	regIDCounter map[int64]int64
 }
 
 func (msa *mockSAUnpause) UnpauseAccount(ctx context.Context, in *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
-	if _, ok := msa.regIDCounter[in.Id]; ok {
-		msa.regIDCounter[in.Id] += 1
-	}
-
-	return &sapb.Count{Count: msa.regIDCounter[in.Id]}, nil
+	return &sapb.Count{Count: 1}, nil
 }
 
 // mockSAUnpauseBroken is a mock that always returns an error.
@@ -89,10 +81,11 @@ func TestUnpauseAccounts(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name      string
-		regIDs    []int64
-		saImpl    sapb.StorageAuthorityClient
-		expectErr bool
+		name         string
+		regIDs       []int64
+		saImpl       sapb.StorageAuthorityClient
+		expectErr    bool
+		expectCounts int
 	}{
 		{
 			name:      "no data",
@@ -100,8 +93,9 @@ func TestUnpauseAccounts(t *testing.T) {
 			expectErr: true,
 		},
 		{
-			name:   "valid single entry",
-			regIDs: []int64{1},
+			name:         "valid single entry",
+			regIDs:       []int64{1},
+			expectCounts: 1,
 		},
 		{
 			name:      "valid single entry but broken SA",
@@ -110,8 +104,9 @@ func TestUnpauseAccounts(t *testing.T) {
 			regIDs:    []int64{1},
 		},
 		{
-			name:   "valid multiple entries with duplicates",
-			regIDs: []int64{1, 1, 2, 3, 4},
+			name:         "valid multiple entries with duplicates",
+			regIDs:       []int64{1, 1, 2, 3, 4},
+			expectCounts: 4,
 		},
 	}
 
@@ -127,12 +122,12 @@ func TestUnpauseAccounts(t *testing.T) {
 			}
 			a := admin{sac: testCase.saImpl, log: log}
 
-			count, err := a.unpauseAccounts(context.Background(), testCase.regIDs, 10)
+			counts, err := a.unpauseAccounts(context.Background(), testCase.regIDs, 10)
 			if testCase.expectErr {
 				test.AssertError(t, err, "should have errored, but did not")
 			} else {
 				test.AssertNotError(t, err, "should not have errored")
-				test.AssertEquals(t, len(count), len(testCase.regIDs))
+				test.AssertEquals(t, testCase.expectCounts, len(counts))
 			}
 		})
 	}
