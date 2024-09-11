@@ -24,6 +24,7 @@ import (
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/cryptobyte"
@@ -437,7 +438,11 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
 	}
 
-	_, span := ca.tracer.Start(ctx, "signing cert")
+	_, span := ca.tracer.Start(ctx, "signing cert", trace.WithAttributes(
+		attribute.String("serial", serialHex),
+		attribute.String("issuer", issuer.Name()),
+		attribute.String("certProfileName", certProfile.name),
+	))
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.metrics.noteSignError(err)
@@ -596,7 +601,11 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
-	_, span := ca.tracer.Start(ctx, "sign precert")
+	_, span := ca.tracer.Start(ctx, "signing precert", trace.WithAttributes(
+		attribute.String("serial", serialHex),
+		attribute.String("issuer", issuer.Name()),
+		attribute.String("certProfileName", certProfile.name),
+	))
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.metrics.noteSignError(err)
