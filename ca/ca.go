@@ -442,6 +442,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		attribute.String("serial", serialHex),
 		attribute.String("issuer", issuer.Name()),
 		attribute.String("certProfileName", certProfile.name),
+		attribute.StringSlice("names", issuanceReq.DNSNames),
 	))
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
@@ -605,6 +606,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		attribute.String("serial", serialHex),
 		attribute.String("issuer", issuer.Name()),
 		attribute.String("certProfileName", certProfile.name),
+		attribute.StringSlice("names", csr.DNSNames),
 	))
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
