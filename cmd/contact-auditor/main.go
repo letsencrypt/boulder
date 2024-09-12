@@ -99,12 +99,24 @@ func (c contactAuditor) writeResults(result string) {
 // run retrieves a cursor from `beginAuditQuery` and then audits the
 // `contact` column of all returned rows for abnormalities or policy
 // violations.
-func (c contactAuditor) run(ctx context.Context, resChan chan *result) error {
+func (c contactAuditor) run(ctx context.Context, resChan chan *result) (err error) {
 	c.logger.Infof("Beginning database query")
 	rows, err := c.beginAuditQuery(ctx)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		// Close the row reader when we exit. Use the named error return to combine
+		// any error from normal execution with any error from closing.
+		closeErr := rows.Close()
+		if closeErr != nil && err != nil {
+			err = fmt.Errorf("%w; also while closing the row reader: %w", err, closeErr)
+		} else if closeErr != nil {
+			err = closeErr
+		}
+		// If closeErr is nil, then just leaving the existing named return alone
+		// will do the right thing.
+	}()
 
 	for rows.Next() {
 		var id int64
@@ -130,12 +142,12 @@ func (c contactAuditor) run(ctx context.Context, resChan chan *result) error {
 			resChan <- &result{id, contacts, createdAt}
 		}
 	}
-	// Ensure the query wasn't interrupted before it could complete.
-	err = rows.Close()
+
+	err = rows.Err()
 	if err != nil {
-		return err
-	} else {
-		c.logger.Info("Query completed successfully")
+		// It's okay to return here, an abnormal termination automatically calls
+		// rows.Close(): http://go-database-sql.org/errors.html
+		return fmt.Errorf("querying db: %w", err)
 	}
 
 	// Only used for testing.

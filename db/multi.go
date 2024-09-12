@@ -104,35 +104,48 @@ func (mi *MultiInserter) query() (string, []interface{}) {
 // Insert inserts all the collected rows into the database represented by
 // `queryer`. If a non-empty returningColumn was provided, then it returns
 // the list of values from that column returned by the query.
-func (mi *MultiInserter) Insert(ctx context.Context, queryer Queryer) ([]int64, error) {
+func (mi *MultiInserter) Insert(ctx context.Context, queryer Queryer) (ids []int64, err error) {
 	query, queryArgs := mi.query()
 	rows, err := queryer.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		// Hack: sometimes in unittests we make a mock Queryer that returns a nil
+		// `*sql.Rows`. A nil `*sql.Rows` is not actually valid— calling `Close()`
+		// on it will panic— but here we choose to treat it like an empty list,
+		// and skip calling `Close()` to avoid the panic.
+		if rows != nil {
+			// Close the row reader when we exit. Use the named error return to combine
+			// any error from normal execution with any error from closing.
+			closeErr := rows.Close()
+			if closeErr != nil && err != nil {
+				err = fmt.Errorf("%w; also while closing the row reader: %w", err, closeErr)
+			} else if closeErr != nil {
+				err = closeErr
+			}
+			// If closeErr is nil, then just leaving the existing named return alone
+			// will do the right thing.
+		}
+	}()
 
-	ids := make([]int64, 0, len(mi.values))
+	ids = make([]int64, 0, len(mi.values))
 	if mi.returningColumn != "" {
 		for rows.Next() {
 			var id int64
 			err = rows.Scan(&id)
 			if err != nil {
-				rows.Close()
 				return nil, err
 			}
 			ids = append(ids, id)
 		}
 	}
 
-	// Hack: sometimes in unittests we make a mock Queryer that returns a nil
-	// `*sql.Rows`. A nil `*sql.Rows` is not actually valid— calling `Close()`
-	// on it will panic— but here we choose to treat it like an empty list,
-	// and skip calling `Close()` to avoid the panic.
-	if rows != nil {
-		err = rows.Close()
-		if err != nil {
-			return nil, err
-		}
+	err = rows.Err()
+	if err != nil {
+		// It's okay to return here, an abnormal termination automatically calls
+		// rows.Close(): http://go-database-sql.org/errors.html
+		return nil, fmt.Errorf("querying db: %w", err)
 	}
 
 	return ids, nil
