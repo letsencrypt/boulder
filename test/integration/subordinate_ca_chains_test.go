@@ -6,7 +6,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"os"
 	"strings"
 	"testing"
 
@@ -15,10 +14,6 @@ import (
 
 func TestSubordinateCAChainsServedByWFE(t *testing.T) {
 	t.Parallel()
-
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Skipping test in config")
-	}
 
 	client, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")

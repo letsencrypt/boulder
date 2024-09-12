@@ -689,7 +689,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// was successful or not, and cannot themselves fail.
 	records, err := va.performLocalValidation(
 		ctx,
-		identifier.DNSIdentifier(req.DnsName),
+		identifier.NewDNS(req.DnsName),
 		req.Authz.RegID,
 		challenge.Type,
 		challenge.Token,

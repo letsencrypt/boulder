@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -1255,15 +1256,8 @@ func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
 }
 
 func TestHTTP(t *testing.T) {
-	// NOTE: We do not attempt to shut down the server. The problem is that the
-	// "wait-long" handler sleeps for ten seconds, but this test finishes in less
-	// than that. So if we try to call hs.Close() at the end of the test, we'll be
-	// closing the test server while a request is still pending. Unfortunately,
-	// there appears to be an issue in httptest that trips Go's race detector when
-	// that happens, failing the test. So instead, we live with leaving the server
-	// around till the process exits.
-	// TODO(#1989): close hs
 	hs := httpSrv(t, expectedToken)
+	defer hs.Close()
 
 	va, log := setup(hs, 0, "", nil, nil)
 
@@ -1311,14 +1305,13 @@ func TestHTTP(t *testing.T) {
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 
-	ipIdentifier := identifier.ACMEIdentifier{Type: identifier.IdentifierType("ip"), Value: "127.0.0.1"}
-	_, err = va.validateHTTP01(ctx, ipIdentifier, pathFound, ka(pathFound))
+	_, err = va.validateHTTP01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), pathFound, ka(pathFound))
 	if err == nil {
 		t.Fatalf("IdentifierType IP shouldn't have worked.")
 	}
 	test.AssertErrorIs(t, err, berrors.Malformed)
 
-	_, err = va.validateHTTP01(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: "always.invalid"}, pathFound, ka(pathFound))
+	_, err = va.validateHTTP01(ctx, identifier.NewDNS("always.invalid"), pathFound, ka(pathFound))
 	if err == nil {
 		t.Fatalf("Domain name is invalid.")
 	}
@@ -1328,7 +1321,7 @@ func TestHTTP(t *testing.T) {
 
 func TestHTTPTimeout(t *testing.T) {
 	hs := httpSrv(t, expectedToken)
-	// TODO(#1989): close hs
+	defer hs.Close()
 
 	va, _ := setup(hs, 0, "", nil, nil)
 

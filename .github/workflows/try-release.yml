@@ -8,6 +8,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   try-release:
@@ -15,8 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         GO_VERSION:
-          - "1.22.5"
-          - "1.23.0"
+          - "1.23.1"
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
@@ -33,4 +33,12 @@ jobs:
         id: checksums
         # The files listed on this line must be identical to the files uploaded
         # in the last step of the real release action.
-        run: sha256sum boulder*.deb boulder*.tar.gz
+        run: sha256sum boulder*.deb boulder*.tar.gz >| boulder-${{ matrix.GO_VERSION }}.$(date +%s)-$(git rev-parse --short=8 HEAD).checksums.txt
+
+      - name: List files
+        id: files
+        run: ls boulder*.deb boulder*.tar.gz boulder*.checksums.txt
+
+      - name: Show checksums
+        id: check
+        run: cat boulder*.checksums.txt

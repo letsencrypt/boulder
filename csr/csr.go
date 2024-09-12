@@ -37,9 +37,9 @@ var (
 	invalidNoDNS        = berrors.BadCSRError("at least one DNS name is required")
 )
 
-// VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes
-// the CSR which lowers the case of DNS names and subject CN, and hoist a DNS name into the CN
-// if it is empty.
+// VerifyCSR checks the validity of a x509.CertificateRequest. It uses
+// NamesFromCSR to normalize the DNS names before checking whether we'll issue
+// for them.
 func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority) error {
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
@@ -67,6 +67,8 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return invalidIPPresent
 	}
 
+	// NamesFromCSR also performs normalization, returning values that may not
+	// match the literal CSR contents.
 	names := NamesFromCSR(csr)
 
 	if len(names.SANs) == 0 && names.CN == "" {
@@ -92,17 +94,23 @@ type names struct {
 }
 
 // NamesFromCSR deduplicates and lower-cases the Subject Common Name and Subject
-// Alternative Names from the CSR. If the CSR contains a CN, then it preserves
-// it and guarantees that the SANs also include it. If the CSR does not contain
-// a CN, then it also attempts to promote a SAN to the CN (if any is short
-// enough to fit).
+// Alternative Names from the CSR. If a CN was provided, it will be used if it
+// is short enough, otherwise there will be no CN. If no CN was provided, the CN
+// will be the first SAN that is short enough, which is done only for backwards
+// compatibility with prior Let's Encrypt behaviour. The resulting SANs will
+// always include the original CN, if any.
 func NamesFromCSR(csr *x509.CertificateRequest) names {
 	// Produce a new "sans" slice with the same memory address as csr.DNSNames
 	// but force a new allocation if an append happens so that we don't
 	// accidentally mutate the underlying csr.DNSNames array.
 	sans := csr.DNSNames[0:len(csr.DNSNames):len(csr.DNSNames)]
+
 	if csr.Subject.CommonName != "" {
 		sans = append(sans, csr.Subject.CommonName)
+	}
+
+	if len(csr.Subject.CommonName) > maxCNLength {
+		return names{SANs: core.UniqueLowerNames(sans)}
 	}
 
 	if csr.Subject.CommonName != "" {

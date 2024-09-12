@@ -24,7 +24,7 @@ func Clock() clock.Clock {
 
 		cl := clock.NewFake()
 		cl.Set(targetTime)
-		blog.Get().Infof("Time was set to %v via FAKECLOCK", targetTime)
+		blog.Get().Debugf("Time was set to %v via FAKECLOCK", targetTime)
 		return cl
 	}
 

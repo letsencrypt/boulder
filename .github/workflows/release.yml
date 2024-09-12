@@ -15,8 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         GO_VERSION:
-          - "1.22.5"
-          - "1.23.0"
+          - "1.23.1"
     runs-on: ubuntu-20.04
     permissions:
       contents: write
@@ -35,7 +34,7 @@ jobs:
         id: checksums
         # The files listed on this line must be identical to the files uploaded
         # in the last step.
-        run: sha256sum boulder*.deb boulder*.tar.gz >| checksums.txt
+        run: sha256sum boulder*.deb boulder*.tar.gz >| boulder-${{ matrix.GO_VERSION }}.$(date +%s)-$(git rev-parse --short=8 HEAD).checksums.txt
 
       - name: Create release
         env:
@@ -48,4 +47,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # https://cli.github.com/manual/gh_release_upload
-        run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb boulder*.tar.gz checksums.txt
+        run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb boulder*.tar.gz boulder*.checksums.txt

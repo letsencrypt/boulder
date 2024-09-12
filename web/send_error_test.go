@@ -19,14 +19,14 @@ func TestSendErrorSubProblemNamespace(t *testing.T) {
 	}).WithSubErrors(
 		[]berrors.SubBoulderError{
 			{
-				Identifier: identifier.DNSIdentifier("example.com"),
+				Identifier: identifier.NewDNS("example.com"),
 				BoulderError: &berrors.BoulderError{
 					Type:   berrors.Malformed,
 					Detail: "nop",
 				},
 			},
 			{
-				Identifier: identifier.DNSIdentifier("what about example.com"),
+				Identifier: identifier.NewDNS("what about example.com"),
 				BoulderError: &berrors.BoulderError{
 					Type:   berrors.Malformed,
 					Detail: "nah",
@@ -73,14 +73,14 @@ func TestSendErrorSubProbLogging(t *testing.T) {
 	}).WithSubErrors(
 		[]berrors.SubBoulderError{
 			{
-				Identifier: identifier.DNSIdentifier("example.com"),
+				Identifier: identifier.NewDNS("example.com"),
 				BoulderError: &berrors.BoulderError{
 					Type:   berrors.Malformed,
 					Detail: "nop",
 				},
 			},
 			{
-				Identifier: identifier.DNSIdentifier("what about example.com"),
+				Identifier: identifier.NewDNS("what about example.com"),
 				BoulderError: &berrors.BoulderError{
 					Type:   berrors.Malformed,
 					Detail: "nah",

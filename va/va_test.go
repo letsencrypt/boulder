@@ -69,7 +69,7 @@ var accountKey = &jose.JSONWebKey{Key: TheKey.Public()}
 
 // Return an ACME DNS identifier for the given hostname
 func dnsi(hostname string) identifier.ACMEIdentifier {
-	return identifier.DNSIdentifier(hostname)
+	return identifier.NewDNS(hostname)
 }
 
 var ctx context.Context

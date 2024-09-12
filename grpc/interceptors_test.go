@@ -290,6 +290,62 @@ func TestRequestTimeTagging(t *testing.T) {
 	test.AssertMetricWithLabelsEquals(t, si.metrics.rpcLag, prometheus.Labels{}, 1)
 }
 
+func TestClockSkew(t *testing.T) {
+	// Create two separate clocks for the client and server
+	serverClk := clock.NewFake()
+	serverClk.Set(time.Now())
+	clientClk := clock.NewFake()
+	clientClk.Set(time.Now())
+
+	// Listen for TCP requests on a random system assigned port number
+	lis, err := net.Listen("tcp", ":0")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	port := lis.Addr().(*net.TCPAddr).Port
+
+	// Start a gRPC server listening on that port
+	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating server metrics")
+	si := newServerMetadataInterceptor(serverMetrics, serverClk)
+	s := grpc.NewServer(grpc.UnaryInterceptor(si.Unary))
+	test_proto.RegisterChillerServer(s, &testServer{})
+	go func() { _ = s.Serve(lis) }()
+	defer s.Stop()
+
+	// Start a gRPC client talking to the server
+	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating client metrics")
+	ci := &clientMetadataInterceptor{metrics: clientMetrics, clk: clientClk, timeout: time.Second}
+	conn, err := grpc.NewClient(
+		net.JoinHostPort("localhost", strconv.Itoa(port)),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(ci.Unary),
+	)
+	test.AssertNotError(t, err, "creating test client")
+	client := test_proto.NewChillerClient(conn)
+
+	// Create a context with plenty of timeout
+	ctx, cancel := context.WithDeadline(context.Background(), clientClk.Now().Add(10*time.Second))
+	defer cancel()
+
+	// Attempt a gRPC request which should succeed
+	_, err = client.Chill(ctx, &test_proto.Time{Duration: durationpb.New(100 * time.Millisecond)})
+	test.AssertNotError(t, err, "should succeed with no skew")
+
+	// Skew the client clock forward and the request should fail due to skew
+	clientClk.Add(time.Hour)
+	_, err = client.Chill(ctx, &test_proto.Time{Duration: durationpb.New(100 * time.Millisecond)})
+	test.AssertError(t, err, "should fail with positive client skew")
+	test.AssertContains(t, err.Error(), "very different time")
+
+	// Skew the server clock forward and the request should fail due to skew
+	serverClk.Add(2 * time.Hour)
+	_, err = client.Chill(ctx, &test_proto.Time{Duration: durationpb.New(100 * time.Millisecond)})
+	test.AssertError(t, err, "should fail with negative client skew")
+	test.AssertContains(t, err.Error(), "very different time")
+}
+
 // blockedServer implements a ChillerServer with a Chill method that:
 //  1. Calls Done() on the received waitgroup when receiving an RPC
 //  2. Blocks the RPC on the roadblock waitgroup

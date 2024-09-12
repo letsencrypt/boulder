@@ -5,6 +5,11 @@ option go_package = "github.com/letsencrypt/boulder/core/proto";
 
 import "google/protobuf/timestamp.proto";
 
+message Identifier {
+  string type = 1;
+  string value = 2;
+}
+
 message Challenge {
   // Next unused field number: 13
   reserved 4, 5, 8, 11;

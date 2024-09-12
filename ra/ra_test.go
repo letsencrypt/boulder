@@ -82,7 +82,7 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 			},
 			NewAuthzs: []*sapb.NewAuthzRequest{
 				{
-					Identifier:     &sapb.Identifier{Type: string(core.ChallengeTypeDNS01), Value: domain},
+					Identifier:     &corepb.Identifier{Type: string(core.ChallengeTypeDNS01), Value: domain},
 					RegistrationID: Registration.Id,
 					Expires:        timestamppb.New(exp),
 					ChallengeTypes: []string{
@@ -817,7 +817,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	authz := core.Authorization{
 		ID:             "1337",
-		Identifier:     identifier.DNSIdentifier("not-example.com"),
+		Identifier:     identifier.NewDNS("not-example.com"),
 		RegistrationID: 1,
 		Status:         "valid",
 		Expires:        &exp,
@@ -1715,16 +1715,10 @@ func TestRecheckCAADates(t *testing.T) {
 	recentExpires := fc.Now().Add(15 * time.Hour)
 	olderValidated := fc.Now().Add(-8 * time.Hour)
 	olderExpires := fc.Now().Add(5 * time.Hour)
-	makeIdentifier := func(name string) identifier.ACMEIdentifier {
-		return identifier.ACMEIdentifier{
-			Type:  identifier.DNS,
-			Value: name,
-		}
-	}
 
 	authzs := map[identifier.ACMEIdentifier]*core.Authorization{
-		identifier.DNSIdentifier("recent.com"): {
-			Identifier: makeIdentifier("recent.com"),
+		identifier.NewDNS("recent.com"): {
+			Identifier: identifier.NewDNS("recent.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1735,8 +1729,8 @@ func TestRecheckCAADates(t *testing.T) {
 				},
 			},
 		},
-		identifier.DNSIdentifier("older.com"): {
-			Identifier: makeIdentifier("older.com"),
+		identifier.NewDNS("older.com"): {
+			Identifier: identifier.NewDNS("older.com"),
 			Expires:    &olderExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1747,8 +1741,8 @@ func TestRecheckCAADates(t *testing.T) {
 				},
 			},
 		},
-		identifier.DNSIdentifier("older2.com"): {
-			Identifier: makeIdentifier("older2.com"),
+		identifier.NewDNS("older2.com"): {
+			Identifier: identifier.NewDNS("older2.com"),
 			Expires:    &olderExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1759,8 +1753,8 @@ func TestRecheckCAADates(t *testing.T) {
 				},
 			},
 		},
-		identifier.DNSIdentifier("wildcard.com"): {
-			Identifier: makeIdentifier("wildcard.com"),
+		identifier.NewDNS("wildcard.com"): {
+			Identifier: identifier.NewDNS("wildcard.com"),
 			Expires:    &olderExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1771,8 +1765,8 @@ func TestRecheckCAADates(t *testing.T) {
 				},
 			},
 		},
-		identifier.DNSIdentifier("*.wildcard.com"): {
-			Identifier: makeIdentifier("*.wildcard.com"),
+		identifier.NewDNS("*.wildcard.com"): {
+			Identifier: identifier.NewDNS("*.wildcard.com"),
 			Expires:    &olderExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1785,9 +1779,9 @@ func TestRecheckCAADates(t *testing.T) {
 		},
 	}
 	twoChallenges := map[identifier.ACMEIdentifier]*core.Authorization{
-		identifier.DNSIdentifier("twochallenges.com"): {
+		identifier.NewDNS("twochallenges.com"): {
 			ID:         "twochal",
-			Identifier: makeIdentifier("twochallenges.com"),
+			Identifier: identifier.NewDNS("twochallenges.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1806,17 +1800,17 @@ func TestRecheckCAADates(t *testing.T) {
 		},
 	}
 	noChallenges := map[identifier.ACMEIdentifier]*core.Authorization{
-		identifier.DNSIdentifier("nochallenges.com"): {
+		identifier.NewDNS("nochallenges.com"): {
 			ID:         "nochal",
-			Identifier: makeIdentifier("nochallenges.com"),
+			Identifier: identifier.NewDNS("nochallenges.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{},
 		},
 	}
 	noValidationTime := map[identifier.ACMEIdentifier]*core.Authorization{
-		identifier.DNSIdentifier("novalidationtime.com"): {
+		identifier.NewDNS("novalidationtime.com"): {
 			ID:         "noval",
-			Identifier: makeIdentifier("novalidationtime.com"),
+			Identifier: identifier.NewDNS("novalidationtime.com"),
 			Expires:    &recentExpires,
 			Challenges: []core.Challenge{
 				{
@@ -1909,7 +1903,7 @@ func TestRecheckCAAEmpty(t *testing.T) {
 
 func makeHTTP01Authorization(domain string) *core.Authorization {
 	return &core.Authorization{
-		Identifier: identifier.ACMEIdentifier{Type: identifier.DNS, Value: domain},
+		Identifier: identifier.NewDNS(domain),
 		Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 	}
 }
@@ -2288,7 +2282,7 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 			authzs: []*core.Authorization{
 				{
 					ID:             "1",
-					Identifier:     identifier.DNSIdentifier("example.com"),
+					Identifier:     identifier.NewDNS("example.com"),
 					RegistrationID: Registration.Id,
 					Expires:        &expires,
 					Status:         "valid",
@@ -2409,7 +2403,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 			{
 				// A static fake ID we can check for in a unit test
 				ID:             "1",
-				Identifier:     identifier.DNSIdentifier("*.zombo.com"),
+				Identifier:     identifier.NewDNS("*.zombo.com"),
 				RegistrationID: Registration.Id,
 				// Authz is valid
 				Status:  "valid",
@@ -2432,7 +2426,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 			{
 				// A static fake ID we can check for in a unit test
 				ID:             "2",
-				Identifier:     identifier.DNSIdentifier("zombo.com"),
+				Identifier:     identifier.NewDNS("zombo.com"),
 				RegistrationID: Registration.Id,
 				// Authz is valid
 				Status:  "valid",
@@ -2516,7 +2510,7 @@ func TestNewOrderWildcard(t *testing.T) {
 			test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01)
 		case "example.com":
 			// If the authz is for example.com, we expect it has normal challenges
-			test.AssertEquals(t, len(authz.Challenges), 2)
+			test.AssertEquals(t, len(authz.Challenges), 3)
 		default:
 			t.Fatalf("Received an authorization for a name not requested: %q", name)
 		}
@@ -2556,7 +2550,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		case "zombo.com":
 			// We expect that the base domain identifier auth has the normal number of
 			// challenges
-			test.AssertEquals(t, len(authz.Challenges), 2)
+			test.AssertEquals(t, len(authz.Challenges), 3)
 		case "*.zombo.com":
 			// We expect that the wildcard identifier auth has only a pending
 			// DNS-01 type challenge
@@ -2590,7 +2584,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// We expect the authz is for the identifier the correct domain
 	test.AssertEquals(t, authz.Identifier.Value, "everything.is.possible.zombo.com")
 	// We expect the authz has the normal # of challenges
-	test.AssertEquals(t, len(authz.Challenges), 2)
+	test.AssertEquals(t, len(authz.Challenges), 3)
 
 	// Now submit an order request for a wildcard of the domain we just created an
 	// order for. We should **NOT** reuse the authorization from the previous
@@ -2656,7 +2650,7 @@ func TestNewOrderExpiry(t *testing.T) {
 			{
 				// A static fake ID we can check for in a unit test
 				ID:             "1",
-				Identifier:     identifier.DNSIdentifier("zombo.com"),
+				Identifier:     identifier.NewDNS("zombo.com"),
 				RegistrationID: Registration.Id,
 				Expires:        &fakeAuthzExpires,
 				Status:         "valid",
@@ -3153,6 +3147,61 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 		"wildcard order")
 }
 
+func TestFinalizeOrderDisabledChallenge(t *testing.T) {
+	_, sa, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Create a random domain
+	var bytes [3]byte
+	_, err := rand.Read(bytes[:])
+	test.AssertNotError(t, err, "creating test domain name")
+	domain := fmt.Sprintf("%x.example.com", bytes[:])
+
+	// Create a finalized authorization for that domain
+	authzID := createFinalizedAuthorization(
+		t, sa, domain, fc.Now().Add(24*time.Hour), core.ChallengeTypeHTTP01, fc.Now().Add(-1*time.Hour))
+
+	// Create an order that reuses that authorization
+	order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		DnsNames:       []string{domain},
+	})
+	test.AssertNotError(t, err, "creating test order")
+	test.AssertEquals(t, order.V2Authorizations[0], authzID)
+
+	// Create a CSR for this order
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "generating test key")
+	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey: testKey.PublicKey,
+		DNSNames:  []string{domain},
+	}, testKey)
+	test.AssertNotError(t, err, "Error creating policy forbid CSR")
+
+	// Replace the Policy Authority with one which has this challenge type disabled
+	pa, err := policy.New(map[core.AcmeChallenge]bool{
+		core.ChallengeTypeDNS01:     true,
+		core.ChallengeTypeTLSALPN01: true,
+	}, ra.log)
+	test.AssertNotError(t, err, "creating test PA")
+	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
+	test.AssertNotError(t, err, "loading test hostname policy")
+	ra.PA = pa
+
+	// Now finalizing this order should fail
+	_, err = ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{
+		Order: order,
+		Csr:   csr,
+	})
+	test.AssertError(t, err, "finalization should fail")
+
+	// Unfortunately we can't test for the PA's "which is now disabled" error
+	// message directly, because the RA discards it and collects all invalid names
+	// into a single more generic error message. But it does at least distinguish
+	// between missing, expired, and invalid, so we can test for "invalid".
+	test.AssertContains(t, err.Error(), "authorizations for these identifiers not valid")
+}
+
 func TestIssueCertificateAuditLog(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -3417,7 +3466,7 @@ func TestPerformValidationBadChallengeType(t *testing.T) {
 	exp := fc.Now().Add(10 * time.Hour)
 	authz := core.Authorization{
 		ID:             "1337",
-		Identifier:     identifier.DNSIdentifier("not-example.com"),
+		Identifier:     identifier.NewDNS("not-example.com"),
 		RegistrationID: 1,
 		Status:         "valid",
 		Challenges: []core.Challenge{
@@ -4562,7 +4611,7 @@ func TestGetAuthorization(t *testing.T) {
 		authzs: []*core.Authorization{
 			{
 				ID:         "1",
-				Identifier: identifier.DNSIdentifier("example.com"),
+				Identifier: identifier.NewDNS("example.com"),
 				Status:     "valid",
 				Challenges: []core.Challenge{
 					{
