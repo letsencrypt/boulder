@@ -12,6 +12,7 @@ linters:
     - unconvert
     - unparam
     - unused
+    - sqlclosecheck
     # TODO(#6202): Re-enable 'wastedassign' linter
 linters-settings:
   errcheck:
