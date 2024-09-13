@@ -314,20 +314,14 @@ func NewOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx c
 	otel.SetLogger(stdr.New(logOutput{logger}))
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) { logger.Errf("OpenTelemetry error: %v", err) }))
 
-	r, err := resource.Merge(
-		resource.Default(),
-		resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceNameKey.String(core.Command()),
-			semconv.ServiceVersionKey.String(core.GetBuildID()),
-		),
+	resources := resource.NewWithAttributes(
+		semconv.SchemaURL,
+		semconv.ServiceNameKey.String(core.Command()),
+		semconv.ServiceVersionKey.String(core.GetBuildID()),
 	)
-	if err != nil {
-		FailOnError(err, "Could not create OpenTelemetry resource")
-	}
 
 	opts := []trace.TracerProviderOption{
-		trace.WithResource(r),
+		trace.WithResource(resources),
 		// Use a ParentBased sampler to respect the sample decisions on incoming
 		// traces, and TraceIDRatioBased to randomly sample new traces.
 		trace.WithSampler(trace.ParentBased(trace.TraceIDRatioBased(config.SampleRatio))),
