@@ -285,11 +285,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 			if request.URL != nil {
 				logEvent.Slug = request.URL.Path
 			}
-			tls := request.Header.Get("TLS-Version")
-			if tls == "TLSv1" || tls == "TLSv1.1" {
-				wfe.sendError(response, logEvent, probs.Malformed("upgrade your ACME client to support TLSv1.2 or better"), nil)
-				return
-			}
 			if request.Method != "GET" || pattern == newNoncePath {
 				nonceMsg, err := wfe.gnc.Nonce(ctx, &emptypb.Empty{})
 				if err != nil {
