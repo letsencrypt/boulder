@@ -318,6 +318,7 @@ func NewOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx c
 		semconv.SchemaURL,
 		semconv.ServiceName(core.Command()),
 		semconv.ServiceVersion(core.GetBuildID()),
+		semconv.ProcessPID(os.Getpid()),
 	)
 
 	opts := []trace.TracerProviderOption{
