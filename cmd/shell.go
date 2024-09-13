@@ -316,8 +316,8 @@ func NewOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx c
 
 	resources := resource.NewWithAttributes(
 		semconv.SchemaURL,
-		semconv.ServiceNameKey.String(core.Command()),
-		semconv.ServiceVersionKey.String(core.GetBuildID()),
+		semconv.ServiceName(core.Command()),
+		semconv.ServiceVersion(core.GetBuildID()),
 	)
 
 	opts := []trace.TracerProviderOption{
