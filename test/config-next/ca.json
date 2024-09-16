@@ -152,7 +152,9 @@
 		"ocspLogMaxLength": 4000,
 		"ocspLogPeriod": "500ms",
 		"ctLogListFile": "test/ct-test-srv/log_list.json",
-		"features": {}
+		"features": {
+			"OmitShortLivedRevocation": true
+		}
 	},
 	"pa": {
 		"challenges": {

@@ -117,6 +117,13 @@ type Config struct {
 	// to be the authoritative source of rate limiting information for
 	// new-account callers and disables the legacy rate limiting checks.
 	UseKvLimitsForNewAccount bool
+
+	// OmitShortLivedRevocation causes the AIA OCSP URL and/or the CRLDP URL to be
+	// omitted from certificates whose validity period is less than or equal to 7
+	// days. This validity period is the threshold to qualify as a "Short-Lived
+	// Certificate" per the BRs Section 1.6.1, and therefore to not require
+	// revocation information per the BRs Sections 4.9.1.1 and 7.1.2.11.2.
+	OmitShortLivedRevocation bool
 }
 
 var fMu = new(sync.RWMutex)

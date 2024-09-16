@@ -23,6 +23,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/precert"
 )
@@ -323,6 +324,12 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		template.Subject.CommonName = req.CommonName
 	}
 	template.DNSNames = req.DNSNames
+
+	// Remove revocation information if the certificate is short-lived and the
+	// feature flag to do so is enabled.
+	if features.Get().OmitShortLivedRevocation && template.NotAfter.Before(template.NotBefore.Add(24*7*time.Hour)) {
+		template.OCSPServer = nil
+	}
 
 	switch req.PublicKey.(type) {
 	case *rsa.PublicKey:
