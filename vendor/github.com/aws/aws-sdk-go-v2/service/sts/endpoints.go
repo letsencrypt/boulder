@@ -1086,10 +1086,6 @@ func (m *resolveEndpointV2Middleware) HandleFinalize(ctx context.Context, in mid
 		return next.HandleFinalize(ctx, in)
 	}
 
-	if err := checkAccountID(getIdentity(ctx), m.options.AccountIDEndpointMode); err != nil {
-		return out, metadata, fmt.Errorf("invalid accountID set: %w", err)
-	}
-
 	req, ok := in.Request.(*smithyhttp.Request)
 	if !ok {
 		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)

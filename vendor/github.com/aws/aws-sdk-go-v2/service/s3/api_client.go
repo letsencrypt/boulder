@@ -267,16 +267,15 @@ func setResolvedDefaultsMode(o *Options) {
 // NewFromConfig returns a new client from the provided config.
 func NewFromConfig(cfg aws.Config, optFns ...func(*Options)) *Client {
 	opts := Options{
-		Region:                cfg.Region,
-		DefaultsMode:          cfg.DefaultsMode,
-		RuntimeEnvironment:    cfg.RuntimeEnvironment,
-		HTTPClient:            cfg.HTTPClient,
-		Credentials:           cfg.Credentials,
-		APIOptions:            cfg.APIOptions,
-		Logger:                cfg.Logger,
-		ClientLogMode:         cfg.ClientLogMode,
-		AppID:                 cfg.AppID,
-		AccountIDEndpointMode: cfg.AccountIDEndpointMode,
+		Region:             cfg.Region,
+		DefaultsMode:       cfg.DefaultsMode,
+		RuntimeEnvironment: cfg.RuntimeEnvironment,
+		HTTPClient:         cfg.HTTPClient,
+		Credentials:        cfg.Credentials,
+		APIOptions:         cfg.APIOptions,
+		Logger:             cfg.Logger,
+		ClientLogMode:      cfg.ClientLogMode,
+		AppID:              cfg.AppID,
 	}
 	resolveAWSRetryerProvider(cfg, &opts)
 	resolveAWSRetryMaxAttempts(cfg, &opts)
@@ -622,25 +621,6 @@ func addTimeOffsetBuild(stack *middleware.Stack, c *Client) error {
 }
 func initializeTimeOffsetResolver(c *Client) {
 	c.timeOffset = new(atomic.Int64)
-}
-
-func checkAccountID(identity smithyauth.Identity, mode aws.AccountIDEndpointMode) error {
-	switch mode {
-	case aws.AccountIDEndpointModeUnset:
-	case aws.AccountIDEndpointModePreferred:
-	case aws.AccountIDEndpointModeDisabled:
-	case aws.AccountIDEndpointModeRequired:
-		if ca, ok := identity.(*internalauthsmithy.CredentialsAdapter); !ok {
-			return fmt.Errorf("accountID is required but not set")
-		} else if ca.Credentials.AccountID == "" {
-			return fmt.Errorf("accountID is required but not set")
-		}
-	// default check in case invalid mode is configured through request config
-	default:
-		return fmt.Errorf("invalid accountID endpoint mode %s, must be preferred/required/disabled", mode)
-	}
-
-	return nil
 }
 
 func addUserAgentRetryMode(stack *middleware.Stack, options Options) error {
