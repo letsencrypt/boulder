@@ -41,7 +41,7 @@ func SendError(
 	// requesting certificates" error.
 	var primaryDetail = prob.Detail
 	if prob.Type == probs.PausedProblem {
-		primaryDetail = "account is paused"
+		primaryDetail = "account/ident pair is paused"
 	}
 
 	// Record details to the log event
