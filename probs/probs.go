@@ -27,6 +27,7 @@ const (
 	InvalidContactProblem        = ProblemType("invalidContact")
 	MalformedProblem             = ProblemType("malformed")
 	OrderNotReadyProblem         = ProblemType("orderNotReady")
+	PausedProblem                = ProblemType("rateLimited")
 	RateLimitedProblem           = ProblemType("rateLimited")
 	RejectedIdentifierProblem    = ProblemType("rejectedIdentifier")
 	ServerInternalProblem        = ProblemType("serverInternal")
@@ -220,7 +221,7 @@ func RateLimited(detail string) *ProblemDetails {
 // Paused returns a ProblemDetails representing a RateLimitedProblem error
 func Paused(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:       RateLimitedProblem,
+		Type:       PausedProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusTooManyRequests,
 	}
