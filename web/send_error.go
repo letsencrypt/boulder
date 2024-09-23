@@ -39,9 +39,9 @@ func SendError(
 
 	// Suppress logging of the "Your account is temporarily prevented from
 	// requesting certificates" error.
-	var primaryDetail string
+	var primaryDetail = prob.Detail
 	if prob.Type == probs.PausedProblem {
-		primaryDetail = "caller is paused"
+		primaryDetail = "account is paused"
 	}
 
 	// Record details to the log event
