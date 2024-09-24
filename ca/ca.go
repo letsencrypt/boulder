@@ -126,7 +126,7 @@ type certificateAuthorityImpl struct {
 	issuers      issuerMaps
 	certProfiles certProfilesMaps
 
-	prefix    uint8 // Prepended to the serial number
+	prefix    byte // Prepended to the serial number
 	maxNames  int
 	keyPolicy goodkey.KeyPolicy
 	clk       clock.Clock
@@ -233,7 +233,7 @@ func NewCertificateAuthorityImpl(
 	boulderIssuers []*issuance.Issuer,
 	defaultCertProfileName string,
 	certificateProfiles map[string]*issuance.ProfileConfig,
-	serialPrefix uint8,
+	serialPrefix byte,
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
@@ -243,8 +243,8 @@ func NewCertificateAuthorityImpl(
 	var ca *certificateAuthorityImpl
 	var err error
 
-	if serialPrefix < 1 || serialPrefix > 127 {
-		err = errors.New("serial prefix must be between 1 (0x01) and 127 (0x7f)")
+	if serialPrefix < 0x01 || serialPrefix > 0x7f {
+		err = errors.New("serial prefix must be between 0x01 (1) and 0x7f (127)")
 		return nil, err
 	}
 

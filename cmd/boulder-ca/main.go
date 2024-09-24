@@ -164,11 +164,11 @@ func main() {
 		c.CA.DebugAddr = *debugAddr
 	}
 
-	serialPrefix := uint8(c.CA.SerialPrefix)
+	serialPrefix := byte(c.CA.SerialPrefix)
 	if c.CA.SerialPrefixHex != "" {
 		parsedSerialPrefix, err := strconv.ParseUint(c.CA.SerialPrefixHex, 16, 8)
 		cmd.FailOnError(err, "Couldn't convert SerialPrefixHex to int")
-		serialPrefix = uint8(parsedSerialPrefix)
+		serialPrefix = byte(parsedSerialPrefix)
 	}
 
 	if c.CA.MaxNames == 0 {

@@ -103,7 +103,7 @@ type testCtx struct {
 	crl                    *crlImpl
 	defaultCertProfileName string
 	certProfiles           map[string]*issuance.ProfileConfig
-	serialPrefix           uint8
+	serialPrefix           byte
 	maxNames               int
 	boulderIssuers         []*issuance.Issuer
 	keyPolicy              goodkey.KeyPolicy
