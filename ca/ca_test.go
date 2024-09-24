@@ -103,7 +103,7 @@ type testCtx struct {
 	crl                    *crlImpl
 	defaultCertProfileName string
 	certProfiles           map[string]*issuance.ProfileConfig
-	serialPrefix           int
+	serialPrefix           uint8
 	maxNames               int
 	boulderIssuers         []*issuance.Issuer
 	keyPolicy              goodkey.KeyPolicy
@@ -237,7 +237,7 @@ func setup(t *testing.T) *testCtx {
 		crl:                    crl,
 		defaultCertProfileName: "legacy",
 		certProfiles:           certProfiles,
-		serialPrefix:           17,
+		serialPrefix:           0x11,
 		maxNames:               2,
 		boulderIssuers:         boulderIssuers,
 		keyPolicy:              keyPolicy,
@@ -257,7 +257,7 @@ func TestSerialPrefix(t *testing.T) {
 		nil,
 		"",
 		nil,
-		0,
+		0x00,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
 		testCtx.logger,
@@ -271,7 +271,7 @@ func TestSerialPrefix(t *testing.T) {
 		nil,
 		"",
 		nil,
-		128,
+		0x80,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
 		testCtx.logger,

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"reflect"
+	"strconv"
 	"time"
 
 	"github.com/letsencrypt/boulder/ca"
@@ -61,15 +62,26 @@ type Config struct {
 		}
 
 		// How long issued certificates are valid for.
-		// Deprecated: Use Issuace.CertProfiles.MaxValidityPeriod instead.
+		// Deprecated: Use Issuance.CertProfiles.MaxValidityPeriod instead.
 		Expiry config.Duration
 
 		// How far back certificates should be backdated.
-		// Deprecated: Use Issuace.CertProfiles.MaxValidityBackdate instead.
+		// Deprecated: Use Issuance.CertProfiles.MaxValidityBackdate instead.
 		Backdate config.Duration
 
 		// What digits we should prepend to serials after randomly generating them.
-		SerialPrefix int `validate:"required,min=1,max=127"`
+		// Deprecated: Use SerialPrefixHex instead.
+		SerialPrefix int `validate:"required_without=SerialPrefixHex,omitempty,min=1,max=127"`
+
+		// What hex string we should prepend to serials after randomly
+		// generating them. The minimum value is "01" to ensure that at least
+		// one bit in the prefix byte is set. The maximum value is "7f" to
+		// ensure that the first bit in the prefix byte is not set. The validate
+		// library cannot enforce mix/max values on strings, so that is done in
+		// NewCertificateAuthorityImpl.
+		//
+		// TODO(#7213): Replace `required_without` with `required` when SerialPrefix is removed.
+		SerialPrefixHex string `validate:"required_without=SerialPrefix,omitempty,hexadecimal,len=2"`
 
 		// MaxNames is the maximum number of subjectAltNames in a single cert.
 		// The value supplied MUST be greater than 0 and no more than 100. These
@@ -150,6 +162,13 @@ func main() {
 	}
 	if *debugAddr != "" {
 		c.CA.DebugAddr = *debugAddr
+	}
+
+	serialPrefix := uint8(c.CA.SerialPrefix)
+	if c.CA.SerialPrefixHex != "" {
+		parsedSerialPrefix, err := strconv.ParseUint(c.CA.SerialPrefixHex, 16, 8)
+		cmd.FailOnError(err, "Couldn't convert SerialPrefixHex to int")
+		serialPrefix = uint8(parsedSerialPrefix)
 	}
 
 	if c.CA.MaxNames == 0 {
@@ -280,7 +299,7 @@ func main() {
 			issuers,
 			c.CA.Issuance.DefaultCertificateProfileName,
 			c.CA.Issuance.CertProfiles,
-			c.CA.SerialPrefix,
+			serialPrefix,
 			c.CA.MaxNames,
 			kp,
 			logger,
