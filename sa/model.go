@@ -88,14 +88,18 @@ func ClearEmail(ctx context.Context, dbMap db.DatabaseMap, regID int64, email st
 			return nil, nil
 		}
 
-		currPb.Contact = newContacts
-		newModel, err := registrationPbToModel(currPb)
-		if err != nil {
-			return nil, err
-		}
+		// UPDATE the row with a direct database query, in order to avoid LockCol issues.
+		//
+		// TODO(#7716): Revert to use tx.Update() once LockCol has been removed.
+		_, err = dbMap.ExecContext(ctx,
+			"UPDATE registrations SET contact = ? WHERE id = ? LIMIT 1",
+			newContacts,
+			regID,
+		)
 
-		return tx.Update(ctx, newModel)
+		return nil, err
 	})
+
 	if overallError != nil {
 		return overallError
 	}
