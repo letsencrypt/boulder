@@ -37,8 +37,15 @@ func SendError(
 		response.WriteHeader(http.StatusInternalServerError)
 	}
 
+	// Suppress logging of the "Your account is temporarily prevented from
+	// requesting certificates" error.
+	var primaryDetail = prob.Detail
+	if prob.Type == probs.PausedProblem {
+		primaryDetail = "account/ident pair is paused"
+	}
+
 	// Record details to the log event
-	logEvent.Error = fmt.Sprintf("%d :: %s :: %s", prob.HTTPStatus, prob.Type, prob.Detail)
+	logEvent.Error = fmt.Sprintf("%d :: %s :: %s", prob.HTTPStatus, prob.Type, primaryDetail)
 	if len(prob.SubProblems) > 0 {
 		subDetails := make([]string, len(prob.SubProblems))
 		for i, sub := range prob.SubProblems {
