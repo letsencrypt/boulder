@@ -222,7 +222,7 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 	// Boulder's conception of time.
 	go func() {
 		for {
-			time.Sleep(time.Minute)
+			time.Sleep(time.Hour)
 			logger.Info(fmt.Sprintf("time=%s", time.Now().Format(time.RFC3339Nano)))
 		}
 	}()
