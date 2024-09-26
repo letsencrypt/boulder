@@ -116,7 +116,6 @@ func ClearEmail(ctx context.Context, dbMap db.DatabaseMap, regID int64, email st
 
 		return nil, nil
 	})
-
 	if overallError != nil {
 		return overallError
 	}
