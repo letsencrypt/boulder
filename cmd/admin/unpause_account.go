@@ -7,16 +7,21 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
+	"sync"
+	"sync/atomic"
 
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/letsencrypt/boulder/unpause"
 	"golang.org/x/exp/maps"
 )
 
 // subcommandUnpauseAccount encapsulates the "admin unpause-account" command.
 type subcommandUnpauseAccount struct {
-	batchFile string
-	regID     int64
+	accountID   int64
+	batchFile   string
+	parallelism uint
 }
 
 var _ subcommand = (*subcommandUnpauseAccount)(nil)
@@ -26,8 +31,9 @@ func (u *subcommandUnpauseAccount) Desc() string {
 }
 
 func (u *subcommandUnpauseAccount) Flags(flag *flag.FlagSet) {
+	flag.Int64Var(&u.accountID, "account", 0, "A single account ID to unpause")
 	flag.StringVar(&u.batchFile, "batch-file", "", "Path to a file containing multiple account IDs where each is separated by a newline")
-	flag.Int64Var(&u.regID, "account", 0, "A single account ID to unpause")
+	flag.UintVar(&u.parallelism, "parallelism", 10, "The maximum number of concurrent unpause requests to send to the SA (default: 10)")
 }
 
 func (u *subcommandUnpauseAccount) Run(ctx context.Context, a *admin) error {
@@ -35,7 +41,7 @@ func (u *subcommandUnpauseAccount) Run(ctx context.Context, a *admin) error {
 	// to a non-default value. We use this to ensure that exactly one input
 	// selection flag was given on the command line.
 	setInputs := map[string]bool{
-		"-account":    u.regID != 0,
+		"-account":    u.accountID != 0,
 		"-batch-file": u.batchFile != "",
 	}
 	maps.DeleteFunc(setInputs, func(_ string, v bool) bool { return !v })
@@ -49,7 +55,7 @@ func (u *subcommandUnpauseAccount) Run(ctx context.Context, a *admin) error {
 	var err error
 	switch maps.Keys(setInputs)[0] {
 	case "-account":
-		regIDs = []int64{u.regID}
+		regIDs = []int64{u.accountID}
 	case "-batch-file":
 		regIDs, err = a.readUnpauseAccountFile(u.batchFile)
 	default:
@@ -59,7 +65,7 @@ func (u *subcommandUnpauseAccount) Run(ctx context.Context, a *admin) error {
 		return fmt.Errorf("collecting serials to revoke: %w", err)
 	}
 
-	_, err = a.unpauseAccounts(ctx, regIDs)
+	_, err = a.unpauseAccounts(ctx, regIDs, u.parallelism)
 	if err != nil {
 		return err
 	}
@@ -67,24 +73,72 @@ func (u *subcommandUnpauseAccount) Run(ctx context.Context, a *admin) error {
 	return nil
 }
 
-// unpauseAccount allows administratively unpausing all identifiers for an
-// account. Returns a slice of int64 which is counter of unpaused accounts or an
-// error.
-func (a *admin) unpauseAccounts(ctx context.Context, regIDs []int64) ([]int64, error) {
-	var count []int64
-	if len(regIDs) <= 0 {
-		return count, errors.New("no regIDs sent for unpausing")
+type unpauseCount struct {
+	accountID int64
+	count     int64
+}
+
+// unpauseAccount concurrently unpauses all identifiers for each account using
+// up to `parallelism` workers. It returns a count of the number of identifiers
+// unpaused for each account and any accumulated errors.
+func (a *admin) unpauseAccounts(ctx context.Context, accountIDs []int64, parallelism uint) ([]unpauseCount, error) {
+	if len(accountIDs) <= 0 {
+		return nil, errors.New("no account IDs provided for unpausing")
+	}
+	slices.Sort(accountIDs)
+	accountIDs = slices.Compact(accountIDs)
+
+	countChan := make(chan unpauseCount, len(accountIDs))
+	work := make(chan int64)
+
+	var wg sync.WaitGroup
+	var errCount atomic.Uint64
+	for i := uint(0); i < parallelism; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for accountID := range work {
+				totalCount := int64(0)
+				for {
+					response, err := a.sac.UnpauseAccount(ctx, &sapb.RegistrationID{Id: accountID})
+					if err != nil {
+						errCount.Add(1)
+						a.log.Errf("error unpausing accountID %d: %v", accountID, err)
+						break
+					}
+					totalCount += response.Count
+					if response.Count < unpause.RequestLimit {
+						// All identifiers have been unpaused.
+						break
+					}
+				}
+				countChan <- unpauseCount{accountID: accountID, count: totalCount}
+			}
+		}()
 	}
 
-	for _, regID := range regIDs {
-		response, err := a.sac.UnpauseAccount(ctx, &sapb.RegistrationID{Id: regID})
-		if err != nil {
-			return count, err
+	go func() {
+		for _, accountID := range accountIDs {
+			work <- accountID
 		}
-		count = append(count, response.Count)
+		close(work)
+	}()
+
+	go func() {
+		wg.Wait()
+		close(countChan)
+	}()
+
+	var unpauseCounts []unpauseCount
+	for count := range countChan {
+		unpauseCounts = append(unpauseCounts, count)
 	}
 
-	return count, nil
+	if errCount.Load() > 0 {
+		return unpauseCounts, fmt.Errorf("encountered %d errors while unpausing; see logs above for details", errCount.Load())
+	}
+
+	return unpauseCounts, nil
 }
 
 // readUnpauseAccountFile parses the contents of a file containing one account
