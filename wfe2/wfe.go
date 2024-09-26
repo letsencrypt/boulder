@@ -801,8 +801,9 @@ func (wfe *WebFrontEndImpl) NewAccount(
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 				return
 			}
+		} else {
+			wfe.log.Warning(err.Error())
 		}
-		wfe.log.Warning(err.Error())
 	}
 
 	var newRegistrationSuccessful bool
@@ -2383,8 +2384,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 				return
 			}
+		} else {
+			wfe.log.Warning(err.Error())
 		}
-		wfe.log.Warning(err.Error())
 	}
 
 	var newOrderSuccessful bool
