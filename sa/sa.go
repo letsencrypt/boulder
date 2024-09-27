@@ -616,10 +616,12 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		return nil, fmt.Errorf("casting error in NewOrderAndAuthzs")
 	}
 
-	// Increment the order creation count
-	err = addNewOrdersRateLimit(ctx, ssa.dbMap, req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
-	if err != nil {
-		return nil, err
+	if !features.Get().DisableLegacyLimitWrites {
+		// Increment the order creation count
+		err = addNewOrdersRateLimit(ctx, ssa.dbMap, req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return order, nil

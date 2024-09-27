@@ -117,6 +117,11 @@ type Config struct {
 	// to be the authoritative source of rate limiting information for
 	// new-account callers and disables the legacy rate limiting checks.
 	UseKvLimitsForNewAccount bool
+
+	// DisableLegacyLimitWrites when enabled, disables writes to the newOrdersRL
+	// table at new-order time. This flag should only be used in conjunction with
+	// UseKvLimitsForNewOrder.
+	DisableLegacyLimitWrites bool
 }
 
 var fMu = new(sync.RWMutex)
