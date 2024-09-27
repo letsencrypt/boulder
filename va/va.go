@@ -469,7 +469,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	results := make(chan *rvaResult)
+	results := make(chan *rvaResult, len(va.remoteVAs))
 
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
@@ -529,16 +529,14 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 
 			if good >= required {
 				// Enough validations have succeeded to consider the
-				// authorization valid. Stop any remaining goroutines.
-				cancel()
+				// authorization valid.
 				return nil
 			}
 			if bad > va.maxRemoteFailures {
 				// Too many validations have failed to consider the
-				// authorization valid. Stop any remaining goroutines.
+				// authorization valid.
 				va.metrics.remoteValidationFailures.Inc()
 				firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
-				cancel()
 				return firstProb
 			}
 
@@ -546,7 +544,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 				// This condition should not occur - it indicates the good/bad
 				// counts neither met the required threshold nor the
 				// maxRemoteFailures threshold.
-				cancel()
 				return probs.ServerInternal("Too few remote PerformValidation RPC results")
 			}
 
