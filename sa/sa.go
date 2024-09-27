@@ -380,7 +380,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	_, rlTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		// Add to the rate limit table, but only for new certificates. Renewals
 		// don't count against the certificatesPerName limit.
-		if !isRenewal {
+		if !isRenewal && !features.Get().DisableLegacyLimitWrites {
 			timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
 			err := ssa.addCertificatesPerName(ctx, tx, parsedCertificate.DNSNames, timeToTheHour)
 			if err != nil {
