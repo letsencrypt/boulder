@@ -467,7 +467,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		err      error
 	}
 
-	results := make(chan *rvaResult)
+	results := make(chan *rvaResult, len(va.remoteVAs))
 
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
@@ -486,7 +486,9 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	bad := 0
 	var firstProb *probs.ProblemDetails
 
-	for res := range results {
+	for i := 0; i < len(va.remoteVAs); i++ {
+		res := <-results
+
 		var currProb *probs.ProblemDetails
 
 		if res.err != nil {
@@ -523,12 +525,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			va.metrics.remoteValidationFailures.Inc()
 			firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
 			return firstProb
-		}
-
-		// If we somehow haven't returned early, we need to break the loop once all
-		// of the VAs have returned a result.
-		if good+bad >= len(va.remoteVAs) {
-			break
 		}
 	}
 
