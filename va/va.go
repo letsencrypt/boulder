@@ -467,16 +467,23 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		err      error
 	}
 
-	results := make(chan *rvaResult, len(va.remoteVAs))
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	results := make(chan *rvaResult)
 
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA, out chan<- *rvaResult) {
 			res, err := rva.PerformValidation(ctx, req)
-			out <- &rvaResult{
+			select {
+			case out <- &rvaResult{
 				hostname: rva.Address,
 				response: res,
 				err:      err,
+			}:
+			case <-ctx.Done():
+				// Context canceled, exit the goroutine.
+				return
 			}
 		}(remoteVA, results)
 	}
@@ -484,53 +491,69 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	required := len(va.remoteVAs) - va.maxRemoteFailures
 	good := 0
 	bad := 0
+	total := 0
 	var firstProb *probs.ProblemDetails
 
-	for i := 0; i < len(va.remoteVAs); i++ {
-		res := <-results
+	for {
+		select {
+		case res := <-results:
+			total++
 
-		var currProb *probs.ProblemDetails
+			var currProb *probs.ProblemDetails
 
-		if res.err != nil {
-			bad++
+			if res.err != nil {
+				bad++
 
-			if canceled.Is(res.err) {
-				currProb = probs.ServerInternal("Remote PerformValidation RPC canceled")
+				if canceled.Is(res.err) {
+					currProb = probs.ServerInternal("Remote PerformValidation RPC canceled")
+				} else {
+					va.log.Errf("Remote VA %q.PerformValidation failed: %s", res.hostname, res.err)
+					currProb = probs.ServerInternal("Remote PerformValidation RPC failed")
+				}
+			} else if res.response.Problems != nil {
+				bad++
+
+				var err error
+				currProb, err = bgrpc.PBToProblemDetails(res.response.Problems)
+				if err != nil {
+					va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", res.hostname, err)
+					currProb = probs.ServerInternal("Remote PerformValidation RPC returned malformed result")
+				}
 			} else {
-				va.log.Errf("Remote VA %q.PerformValidation failed: %s", res.hostname, res.err)
-				currProb = probs.ServerInternal("Remote PerformValidation RPC failed")
+				good++
 			}
-		} else if res.response.Problems != nil {
-			bad++
 
-			var err error
-			currProb, err = bgrpc.PBToProblemDetails(res.response.Problems)
-			if err != nil {
-				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", res.hostname, err)
-				currProb = probs.ServerInternal("Remote PerformValidation RPC returned malformed result")
+			if firstProb == nil && currProb != nil {
+				firstProb = currProb
 			}
-		} else {
-			good++
-		}
 
-		if firstProb == nil && currProb != nil {
-			firstProb = currProb
-		}
+			if good >= required {
+				// Enough validations have succeeded to consider the
+				// authorization valid. Stop any remaining goroutines.
+				cancel()
+				return nil
+			}
+			if bad > va.maxRemoteFailures {
+				// Too many validations have failed to consider the
+				// authorization valid. Stop any remaining goroutines.
+				va.metrics.remoteValidationFailures.Inc()
+				firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
+				cancel()
+				return firstProb
+			}
 
-		// Return as soon as we have enough successes or failures for a definitive result.
-		if good >= required {
-			return nil
-		}
-		if bad > va.maxRemoteFailures {
-			va.metrics.remoteValidationFailures.Inc()
-			firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
-			return firstProb
+			if total >= len(va.remoteVAs) {
+				// This condition should not occur - it indicates the good/bad
+				// counts neither met the required threshold nor the
+				// maxRemoteFailures threshold.
+				cancel()
+				return probs.ServerInternal("Too few remote PerformValidation RPC results")
+			}
+
+		case <-ctx.Done():
+			return probs.ServerInternal("Context canceled before sufficient results received")
 		}
 	}
-
-	// This condition should not occur - it indicates the good/bad counts neither
-	// met the required threshold nor the maxRemoteFailures threshold.
-	return probs.ServerInternal("Too few remote PerformValidation RPC results")
 }
 
 // logRemoteResults is called by `processRemoteCAAResults` when the
