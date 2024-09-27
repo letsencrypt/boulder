@@ -88,13 +88,33 @@ func ClearEmail(ctx context.Context, dbMap db.DatabaseMap, regID int64, email st
 			return nil, nil
 		}
 
-		currPb.Contact = newContacts
-		newModel, err := registrationPbToModel(currPb)
+		// We don't want to write literal JSON "null" strings into the database if the
+		// list of contact addresses is empty. Replace any possibly-`nil` slice with
+		// an empty JSON array. We don't need to check reg.ContactPresent, because
+		// we're going to write the whole object to the database anyway.
+		jsonContact := []byte("[]")
+		if len(newContacts) != 0 {
+			jsonContact, err = json.Marshal(newContacts)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// UPDATE the row with a direct database query, in order to avoid LockCol issues.
+		result, err := tx.ExecContext(ctx,
+			"UPDATE registrations SET contact = ? WHERE id = ? LIMIT 1",
+			jsonContact,
+			regID,
+		)
 		if err != nil {
 			return nil, err
 		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil || rowsAffected != 1 {
+			return nil, berrors.InternalServerError("no registration updated with new contact field")
+		}
 
-		return tx.Update(ctx, newModel)
+		return nil, nil
 	})
 	if overallError != nil {
 		return overallError
