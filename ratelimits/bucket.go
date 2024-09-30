@@ -241,7 +241,6 @@ func (builder *TransactionBuilder) ordersPerAccountTransaction(regId int64) (Tra
 // any of the order domain names are invalid. This method should be used for
 // checking capacity, before allowing more authorizations to be created.
 //
-// Precondition: orderDomains must all pass policy.WellFormedDomainNames.
 // Precondition: len(orderDomains) < maxNames.
 func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId int64, orderDomains []string) ([]Transaction, error) {
 	// FailedAuthorizationsPerDomainPerAccount limit uses the 'enum:regId'
@@ -256,7 +255,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckO
 	}
 
 	var txns []Transaction
-	for _, name := range DomainsForRateLimiting(orderDomains) {
+	for _, name := range orderDomains {
 		// FailedAuthorizationsPerDomainPerAccount limit uses the
 		// 'enum:regId:domain' bucket key format for transactions.
 		perDomainPerAccountBucketKey, err := newRegIdDomainBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, name)
@@ -280,8 +279,6 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckO
 // only Transaction for the provided order domain name. An error is returned if
 // the order domain name is invalid. This method should be used for spending
 // capacity, as a result of a failed authorization.
-//
-// Precondition: orderDomain must pass policy.WellFormedDomainNames.
 func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId int64, orderDomain string) (Transaction, error) {
 	// FailedAuthorizationsPerDomainPerAccount limit uses the 'enum:regId'
 	// bucket key format for overrides.
@@ -294,14 +291,9 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendO
 		return Transaction{}, err
 	}
 
-	orderDomains := DomainsForRateLimiting([]string{orderDomain})
-	if len(orderDomains) != 1 {
-		return Transaction{}, fmt.Errorf("expected 1 valid domain name, got %q", orderDomain)
-	}
-
 	// FailedAuthorizationsPerDomainPerAccount limit uses the
 	// 'enum:regId:domain' bucket key format for transactions.
-	perDomainPerAccountBucketKey, err := newRegIdDomainBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, orderDomains[0])
+	perDomainPerAccountBucketKey, err := newRegIdDomainBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, orderDomain)
 	if err != nil {
 		return Transaction{}, err
 	}
