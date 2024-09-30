@@ -1920,7 +1920,7 @@ func newMockSAWithIncident(sa sapb.StorageAuthorityReadOnlyClient, serial []stri
 				{
 					Id:          0,
 					SerialTable: "incident_foo",
-					Url:         agreementURL,
+					Url:         "http://big.bad/incident",
 					RenewBy:     nil,
 					Enabled:     true,
 				},
@@ -3785,6 +3785,8 @@ func TestIncidentARI(t *testing.T) {
 	test.AssertEquals(t, ri.SuggestedWindow.End.After(ri.SuggestedWindow.Start), true)
 	// The end of the window should also be in the past.
 	test.AssertEquals(t, ri.SuggestedWindow.End.Before(wfe.clk.Now()), true)
+	// The explanationURL should be set.
+	test.AssertEquals(t, ri.ExplanationURL, "http://big.bad/incident")
 }
 
 func TestOldTLSInbound(t *testing.T) {

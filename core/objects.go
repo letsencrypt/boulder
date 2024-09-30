@@ -456,6 +456,7 @@ func (window SuggestedWindow) IsWithin(now time.Time) bool {
 // endpoint specified in draft-aaron-ari.
 type RenewalInfo struct {
 	SuggestedWindow SuggestedWindow `json:"suggestedWindow"`
+	ExplanationURL  string          `json:"explanationURL,omitempty"`
 }
 
 // RenewalInfoSimple constructs a `RenewalInfo` object and suggested window
@@ -478,13 +479,15 @@ func RenewalInfoSimple(issued time.Time, expires time.Time) RenewalInfo {
 // window in the past. Per the draft-ietf-acme-ari-01 spec, clients should
 // attempt to renew immediately if the suggested window is in the past. The
 // passed `now` is assumed to be a timestamp representing the current moment in
-// time.
-func RenewalInfoImmediate(now time.Time) RenewalInfo {
+// time. The `explanationURL` is an optional URL that the subscriber can use to
+// learn more about why the renewal is suggested.
+func RenewalInfoImmediate(now time.Time, explanationURL string) RenewalInfo {
 	oneHourAgo := now.Add(-1 * time.Hour)
 	return RenewalInfo{
 		SuggestedWindow: SuggestedWindow{
 			Start: oneHourAgo,
 			End:   oneHourAgo.Add(time.Minute * 30),
 		},
+		ExplanationURL: explanationURL,
 	}
 }
