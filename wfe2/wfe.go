@@ -2118,8 +2118,15 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 	}
 
 	if len(result.Incidents) > 0 {
+		// Find the earliest incident.
+		var earliest *sapb.Incident
+		for _, incident := range result.Incidents {
+			if earliest == nil || incident.RenewBy.AsTime().Before(earliest.RenewBy.AsTime()) {
+				earliest = incident
+			}
+		}
 		// The existing cert is impacted by an incident, renew immediately.
-		return core.RenewalInfoImmediate(wfe.clk.Now()), nil
+		return core.RenewalInfoImmediate(wfe.clk.Now(), earliest.Url), nil
 	}
 
 	// Check if the serial is revoked.
@@ -2130,7 +2137,7 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 
 	if status.Status == string(core.OCSPStatusRevoked) {
 		// The existing certificate is revoked, renew immediately.
-		return core.RenewalInfoImmediate(wfe.clk.Now()), nil
+		return core.RenewalInfoImmediate(wfe.clk.Now(), ""), nil
 	}
 
 	// It's okay to use GetCertificate (vs trying to get a precertificate),
