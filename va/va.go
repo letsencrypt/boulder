@@ -466,24 +466,17 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		response *vapb.ValidationResult
 		err      error
 	}
-	results := make(chan *rvaResult, len(va.remoteVAs))
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	results := make(chan *rvaResult, len(va.remoteVAs))
 
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA, out chan<- *rvaResult) {
 			res, err := rva.PerformValidation(ctx, req)
-			select {
-			case out <- &rvaResult{
+			out <- &rvaResult{
 				hostname: rva.Address,
 				response: res,
 				err:      err,
-			}:
-			case <-ctx.Done():
-				// Context canceled, exit the goroutine.
-				return
 			}
 		}(remoteVA, results)
 	}
