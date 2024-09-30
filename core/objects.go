@@ -456,7 +456,7 @@ func (window SuggestedWindow) IsWithin(now time.Time) bool {
 // endpoint specified in draft-aaron-ari.
 type RenewalInfo struct {
 	SuggestedWindow SuggestedWindow `json:"suggestedWindow"`
-	ExplanationURL  string          `json:"explanationUrl,omitempty"`
+	ExplanationURL  string          `json:"explanationURL,omitempty"`
 }
 
 // RenewalInfoSimple constructs a `RenewalInfo` object and suggested window
