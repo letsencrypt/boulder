@@ -1182,7 +1182,7 @@ func TestGetChallenge(t *testing.T) {
 		test.AssertNotError(t, err, "Could not make NewRequest")
 		req.URL.Path = fmt.Sprintf("1/%s", challSlug)
 
-		wfe.Challenge(ctx, newRequestEvent(), resp, req)
+		wfe.ChallengeHandler(ctx, newRequestEvent(), resp, req)
 		test.AssertEquals(t, resp.Code, http.StatusOK)
 		test.AssertEquals(t, resp.Header().Get("Location"), challengeURL)
 		test.AssertEquals(t, resp.Header().Get("Content-Type"), "application/json")
@@ -1265,7 +1265,7 @@ func TestChallenge(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
-			wfe.Challenge(ctx, newRequestEvent(), responseWriter, tc.Request)
+			wfe.ChallengeHandler(ctx, newRequestEvent(), responseWriter, tc.Request)
 			// Check the response code, headers and body match expected
 			headers := responseWriter.Header()
 			body := responseWriter.Body.String()
@@ -1299,7 +1299,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	signedURL := "http://localhost/1/7TyhFQ"
 	_, _, jwsBody := signer.byKeyID(1, nil, signedURL, `{}`)
 	request := makePostRequestWithPath("1/7TyhFQ", jwsBody)
-	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
+	wfe.ChallengeHandler(ctx, newRequestEvent(), responseWriter, request)
 
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
@@ -1324,7 +1324,7 @@ func TestUpdateChallengeRAError(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	request := makePostRequestWithPath("2/7TyhFQ", jwsBody)
 
-	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
+	wfe.ChallengeHandler(ctx, newRequestEvent(), responseWriter, request)
 
 	// The result should be an internal server error problem.
 	body := responseWriter.Body.String()
@@ -1647,7 +1647,7 @@ func TestGetAuthorization(t *testing.T) {
 	// Expired authorizations should be inaccessible
 	authzURL := "3"
 	responseWriter := httptest.NewRecorder()
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL(authzURL),
 	})
@@ -1657,7 +1657,7 @@ func TestGetAuthorization(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Ensure that a valid authorization can't be reached with an invalid URL
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		URL:    mustParseURL("1d"),
 		Method: "GET",
 	})
@@ -1669,7 +1669,7 @@ func TestGetAuthorization(t *testing.T) {
 
 	responseWriter = httptest.NewRecorder()
 	// Ensure that a POST-as-GET to an authorization works
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, postAsGet)
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, postAsGet)
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `
@@ -1697,7 +1697,7 @@ func TestAuthorization500(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	responseWriter := httptest.NewRecorder()
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL("4"),
 	})
@@ -1746,7 +1746,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	wfe.ra = &RAWithFailedChallenge{clk: clk}
 
 	responseWriter := httptest.NewRecorder()
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL("6"),
 	})
@@ -2403,7 +2403,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	_, _, body := signer.byKeyID(1, nil, "http://localhost/1", payload)
 	request := makePostRequestWithPath("1", body)
 
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, request)
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type": "`+probs.ErrorNS+`malformed","detail": "Invalid status value","status": 400}`)
@@ -2413,7 +2413,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	_, _, body = signer.byKeyID(1, nil, "http://localhost/1", payload)
 	request = makePostRequestWithPath("1", body)
 
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, request)
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
@@ -3594,7 +3594,7 @@ func TestGETAPIAuthz(t *testing.T) {
 	for _, tc := range testCases {
 		responseWriter := httptest.NewRecorder()
 		req, logEvent := makeGet(tc.path, getAuthzPath)
-		wfe.Authorization(context.Background(), logEvent, responseWriter, req)
+		wfe.AuthorizationHandler(context.Background(), logEvent, responseWriter, req)
 
 		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
 			t.Errorf("expected too fresh error, got http.StatusOK")
@@ -3633,7 +3633,7 @@ func TestGETAPIChallenge(t *testing.T) {
 	for _, tc := range testCases {
 		responseWriter := httptest.NewRecorder()
 		req, logEvent := makeGet(tc.path, getAuthzPath)
-		wfe.Challenge(context.Background(), logEvent, responseWriter, req)
+		wfe.ChallengeHandler(context.Background(), logEvent, responseWriter, req)
 
 		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
 			t.Errorf("expected too fresh error, got http.StatusOK")

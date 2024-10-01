@@ -57,18 +57,18 @@ const (
 	acctPath      = "/acme/acct/"
 	// When we moved to authzv2, we used a "-v3" suffix to avoid confusion
 	// regarding ACMEv2.
-	authzPath         = "/acme/authz-v3/"
-	authzCoolPath     = "/acme/authz/"
-	challengePath     = "/acme/chall-v3/"
-	challengeCoolPath = "/acme/chall/"
-	certPath          = "/acme/cert/"
-	revokeCertPath    = "/acme/revoke-cert"
-	buildIDPath       = "/build"
-	rolloverPath      = "/acme/key-change"
-	newNoncePath      = "/acme/new-nonce"
-	newOrderPath      = "/acme/new-order"
-	orderPath         = "/acme/order/"
-	finalizeOrderPath = "/acme/finalize/"
+	authzPath             = "/acme/authz-v3/"
+	authzPathWithAcct     = "/acme/authz/"
+	challengePath         = "/acme/chall-v3/"
+	challengePathWithAcct = "/acme/chall/"
+	certPath              = "/acme/cert/"
+	revokeCertPath        = "/acme/revoke-cert"
+	buildIDPath           = "/build"
+	rolloverPath          = "/acme/key-change"
+	newNoncePath          = "/acme/new-nonce"
+	newOrderPath          = "/acme/new-order"
+	orderPath             = "/acme/order/"
+	finalizeOrderPath     = "/acme/finalize/"
 
 	getAPIPrefix     = "/get/"
 	getOrderPath     = getAPIPrefix + "order/"
@@ -440,9 +440,9 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	// endpoints will be removed, leaving only POST-as-GET support.
 	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET", "POST")
 	wfe.HandleFunc(m, authzPath, wfe.AuthorizationHandler, "GET", "POST")
-	wfe.HandleFunc(m, authzCoolPath, wfe.AuthorizationCoolHandler, "GET", "POST")
+	wfe.HandleFunc(m, authzPathWithAcct, wfe.AuthorizationHandlerWithAccount, "GET", "POST")
 	wfe.HandleFunc(m, challengePath, wfe.ChallengeHandler, "GET", "POST")
-	wfe.HandleFunc(m, challengeCoolPath, wfe.ChallengeCoolHandler, "GET", "POST")
+	wfe.HandleFunc(m, challengePathWithAcct, wfe.ChallengeHandlerWithAccount, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
 	// Boulder-specific GET-able resource endpoints
 	wfe.HandleFunc(m, getOrderPath, wfe.GetOrder, "GET")
@@ -1111,10 +1111,10 @@ func (wfe *WebFrontEndImpl) ChallengeHandler(
 	wfe.Challenge(ctx, logEvent, response, request, slug[0], slug[1])
 }
 
-// ChallengeCoolHandler handles POST requests to challenge URLs of the form /acme/chall/{regID}/{authzID}/{challID}.
+// ChallengeHandlerWithAccount handles POST requests to challenge URLs of the form /acme/chall/{regID}/{authzID}/{challID}.
 //
 // [pattern]: https://pkg.go.dev/net/http#hdr-Patterns
-func (wfe *WebFrontEndImpl) ChallengeCoolHandler(
+func (wfe *WebFrontEndImpl) ChallengeHandlerWithAccount(
 	ctx context.Context,
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
@@ -1568,8 +1568,8 @@ func (wfe *WebFrontEndImpl) AuthorizationHandler(
 	wfe.Authorization(ctx, logEvent, response, request, request.URL.Path)
 }
 
-// AuthorizationCoolHandler handles requests to authorization URLs of the form /acme/authz/{regID}/{authzID}.
-func (wfe *WebFrontEndImpl) AuthorizationCoolHandler(
+// AuthorizationHandlerWithAccount handles requests to authorization URLs of the form /acme/authz/{regID}/{authzID}.
+func (wfe *WebFrontEndImpl) AuthorizationHandlerWithAccount(
 	ctx context.Context,
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
