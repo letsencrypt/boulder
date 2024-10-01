@@ -20,6 +20,27 @@ type Config struct {
 	RVA struct {
 		vaConfig.Common
 
+		// Cluster specifies the cluster name that this RVA belongs to. The
+		// format is unrestricted, but it should uniquely identify a group of
+		// RVAs deployed in the same physical datacenter.
+		//
+		// TODO(#7615): Make mandatory once referenced in audit logs. Update the
+		// comment above.
+		Cluster string `validate:"omitempty"`
+
+		// RIR indicates the Regional Internet Registry where this RVA is
+		// located. This will be used to to identify which RIR a given
+		// validation was performed from. Must be one of the following values:
+		//   - ARIN
+		//   - RIPE
+		//   - APNIC
+		//   - LACNIC
+		//   - AfriNIC
+		//
+		// TODO(#7615): Make mandatory once referenced in audit logs. Update the
+		// comment above.
+		RIR string `validate:"omitempty,oneof=ARIN RIPE APNIC LACNIC AfriNIC"`
+
 		// SkipGRPCClientCertVerification, when disabled as it should typically
 		// be, will cause the remoteva server (which receives gRPCs from a
 		// boulder-va client) to use our default RequireAndVerifyClientCert
