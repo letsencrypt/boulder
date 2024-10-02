@@ -1715,7 +1715,8 @@ func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, na
 // UpdateRegistration updates an existing Registration with new values. Caller
 // is responsible for making sure that update.Key is only different from base.Key
 // if it is being called from the WFE key change endpoint.
-// TODO(#5554): Split this into separate methods for updating Contacts vs Key.
+//
+// Deprecated: Use UpdateRegistrationContact or UpdateRegistrationKey instead.
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
 	// Error if the request is nil, there is no account key or IP address
 	if req.Base == nil || len(req.Base.Key) == 0 || len(req.Base.InitialIP) == 0 || req.Base.Id == 0 {
@@ -1744,6 +1745,51 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req
 	}
 
 	_, err = ra.SA.UpdateRegistration(ctx, update)
+	if err != nil {
+		// berrors.InternalServerError since the user-data was validated before being
+		// passed to the SA.
+		err = berrors.InternalServerError("Could not update registration: %s", err)
+		return nil, err
+	}
+
+	return update, nil
+}
+
+// UpdateRegistrationContact updates an existing Registration's contact.
+func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Context, req *rapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
+	if req == nil || req.RegistrationID == 0 {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	err := ra.validateContacts(req.Contact)
+	if err != nil {
+		return nil, err
+	}
+
+	update, err := ra.SA.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{
+		RegistrationID: req.RegistrationID,
+		Contact:        req.Contact,
+	})
+	if err != nil {
+		// berrors.InternalServerError since the user-data was validated before being
+		// passed to the SA.
+		err = berrors.InternalServerError("Could not update registration: %s", err)
+		return nil, err
+	}
+
+	return update, nil
+}
+
+// UpdateRegistrationKey updates an existing Registration's JWK.
+func (ra *RegistrationAuthorityImpl) UpdateRegistrationKey(ctx context.Context, req *rapb.UpdateRegistrationKeyRequest) (*corepb.Registration, error) {
+	if req == nil || req.RegistrationID == 0 || len(req.Jwk) == 0 {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	update, err := ra.SA.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{
+		RegistrationID: req.RegistrationID,
+		Jwk:            req.Jwk,
+	})
 	if err != nil {
 		// berrors.InternalServerError since the user-data was validated before being
 		// passed to the SA.
