@@ -51,8 +51,7 @@
 		"features": {
 			"MultipleCertificateProfiles": true,
 			"TrackReplacementCertificatesARI": true,
-			"DisableLegacyLimitWrites": true,
-			"InsertAuthzsIndividually": true
+			"DisableLegacyLimitWrites": true
 		}
 	},
 	"syslog": {

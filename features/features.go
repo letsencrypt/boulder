@@ -28,6 +28,7 @@ type Config struct {
 	MultiVAFullResults                bool
 	CertCheckerRequiresCorrespondence bool
 	ECDSAForAll                       bool
+	InsertAuthzsIndividually          bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -124,13 +125,6 @@ type Config struct {
 	//
 	// This flag should only be used in conjunction with UseKvLimitsForNewOrder.
 	DisableLegacyLimitWrites bool
-
-	// InsertAuthzsIndividually causes the SA's NewOrderAndAuthzs method to
-	// create each new authz one at a time, rather than using MultiInserter.
-	// Although this is expected to be a performance penalty, it is necessary to
-	// get the AUTO_INCREMENT ID of each new authz without relying on MariaDB's
-	// unique "INSERT ... RETURNING" functionality.
-	InsertAuthzsIndividually bool
 }
 
 var fMu = new(sync.RWMutex)
