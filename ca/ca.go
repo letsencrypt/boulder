@@ -565,9 +565,6 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 
 	serialHex := core.SerialToString(serialBigInt)
 
-	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
-		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw))
-
 	names := csrlib.NamesFromCSR(csr)
 	req := &issuance.IssuanceRequest{
 		PublicKey:         csr.PublicKey,
@@ -581,10 +578,13 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotAfter:          notAfter,
 	}
 
+	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
+		serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), hex.EncodeToString(csr.Raw))
+
 	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, req)
 	if err != nil {
 		ca.log.AuditErrf("Preparing precert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
-			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), certProfile.name, certProfile.hash, err)
+			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), certProfile.name, certProfile.hash, err)
 		if errors.Is(err, linter.ErrLinting) {
 			ca.metrics.lintErrorCount.Inc()
 		}
@@ -612,7 +612,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	if err != nil {
 		ca.metrics.noteSignError(err)
 		ca.log.AuditErrf("Signing precert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
-			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), certProfile.name, certProfile.hash, err)
+			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), certProfile.name, certProfile.hash, err)
 		span.SetStatus(codes.Error, err.Error())
 		span.End()
 		return nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
@@ -625,8 +625,8 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
-	ca.log.AuditInfof("Signing precert success: issuer=[%s] serial=[%s] regID=[%d] names=[%s] precertificate=[%s] certProfileName=[%s] certProfileHash=[%x]",
-		issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(certDER), certProfile.name, certProfile.hash)
+	ca.log.AuditInfof("Signing precert success: issuer=[%s] serial=[%s] regID=[%d] names=[%s] precert=[%s] certProfileName=[%s] certProfileHash=[%x]",
+		issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), hex.EncodeToString(certDER), certProfile.name, certProfile.hash)
 
 	return certDER, &certProfileWithID{certProfile.name, certProfile.hash, nil}, nil
 }
