@@ -1232,6 +1232,9 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
+	features.Set(features.Config{InsertAuthzsIndividually: true})
+	defer features.Reset()
+
 	reg := createWorkingRegistration(t, sa)
 
 	// Insert two pre-existing authorizations to reference
@@ -1286,6 +1289,9 @@ func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
+	features.Set(features.Config{InsertAuthzsIndividually: true})
+	defer features.Reset()
+
 	reg := createWorkingRegistration(t, sa)
 
 	expires := fc.Now().Add(2 * time.Hour)
@@ -1307,6 +1313,9 @@ func TestNewOrderAndAuthzs_MismatchedRegID(t *testing.T) {
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
+	features.Set(features.Config{InsertAuthzsIndividually: true})
+	defer features.Reset()
+
 	_, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID: 1,
@@ -1324,6 +1333,9 @@ func TestNewOrderAndAuthzs_MismatchedRegID(t *testing.T) {
 func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
+
+	features.Set(features.Config{InsertAuthzsIndividually: true})
+	defer features.Reset()
 
 	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour)
