@@ -129,7 +129,6 @@
 		"features": {
 			"ServeRenewalInfo": true,
 			"TrackReplacementCertificatesARI": true,
-			"CheckRenewalExemptionAtWFE": true,
 			"CheckIdentifiersPaused": true,
 			"UseKvLimitsForNewOrder": true,
 			"UseKvLimitsForNewAccount": true

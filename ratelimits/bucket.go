@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 )
 
 // ErrInvalidCost indicates that the cost specified was < 0.
@@ -497,8 +496,7 @@ func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, names 
 	}
 
 	var transactions []Transaction
-	// TODO(#7511) Remove this feature flag check.
-	if features.Get().CheckRenewalExemptionAtWFE && !isRenewal {
+	if !isRenewal {
 		txn, err := builder.ordersPerAccountTransaction(regId)
 		if err != nil {
 			return nil, makeTxnError(err, NewOrdersPerAccount)
@@ -512,8 +510,7 @@ func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, names 
 	}
 	transactions = append(transactions, txns...)
 
-	// TODO(#7511) Remove this feature flag check.
-	if features.Get().CheckRenewalExemptionAtWFE && !isRenewal {
+	if !isRenewal {
 		txns, err := builder.certificatesPerDomainCheckOnlyTransactions(regId, names)
 		if err != nil {
 			return nil, makeTxnError(err, CertificatesPerDomain)
