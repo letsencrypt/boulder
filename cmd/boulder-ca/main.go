@@ -73,7 +73,7 @@ type Config struct {
 		// Deprecated: Use SerialPrefixHex instead.
 		SerialPrefix int `validate:"required_without=SerialPrefixHex,omitempty,min=1,max=127"`
 
-		// What hex string we should prepend to serials after randomly
+		// SerialPrefixHex is the hex string to prepend to serials after randomly
 		// generating them. The minimum value is "01" to ensure that at least
 		// one bit in the prefix byte is set. The maximum value is "7f" to
 		// ensure that the first bit in the prefix byte is not set. The validate

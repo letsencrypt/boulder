@@ -130,7 +130,8 @@ type certificateAuthorityImpl struct {
 	issuers      issuerMaps
 	certProfiles certProfilesMaps
 
-	prefix    byte // Prepended to the serial number
+	// The prefix is prepended to the serial number.
+	prefix    byte
 	maxNames  int
 	keyPolicy goodkey.KeyPolicy
 	clk       clock.Clock
