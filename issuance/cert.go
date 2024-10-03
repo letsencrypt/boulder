@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -273,6 +274,32 @@ type IssuanceRequest struct {
 	// final certificate is expected to correspond to. If it is non-empty,
 	// SCTList must also be non-empty.
 	precertDER []byte
+}
+
+func (ir *IssuanceRequest) MarshalJSON() ([]byte, error) {
+	keyDER, err := x509.MarshalPKIXPublicKey(ir.PublicKey)
+	if err != nil {
+		keyDER = []byte("ERROR")
+	}
+
+	j := map[string]interface{}{
+		"publicKey":         keyDER,
+		"subjectKeyId":      fmt.Sprintf("%x", ir.SubjectKeyId),
+		"serial":            fmt.Sprintf("%x", ir.Serial),
+		"notBefore":         ir.NotBefore,
+		"notAfter":          ir.NotAfter,
+		"commonName":        ir.CommonName,
+		"dnsNames":          ir.DNSNames,
+		"includeMustStaple": ir.IncludeMustStaple,
+		"includeCTPoison":   ir.IncludeCTPoison,
+	}
+	if len(ir.sctList) > 0 {
+		j["sctList"] = ir.sctList
+	}
+	if len(ir.precertDER) > 0 {
+		j["precertDER"] = fmt.Sprintf("%x", ir.precertDER)
+	}
+	return json.Marshal(j)
 }
 
 // An issuanceToken represents an assertion that Issuer.Lint has generated

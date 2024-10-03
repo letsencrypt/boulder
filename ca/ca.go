@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"math/big"
 	mrand "math/rand/v2"
-	"strings"
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
@@ -427,14 +426,19 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return nil, err
 	}
 
-	names := strings.Join(issuanceReq.DNSNames, ", ")
-	ca.log.AuditInfof("Signing cert: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] precert=[%s]",
-		issuer.Name(), serialHex, req.RegistrationID, names, certProfile.name, certProfile.hash, hex.EncodeToString(precert.Raw))
+	logEvent := map[string]interface{}{
+		"issuanceRequest": issuanceReq,
+		"issuer":          issuer.Name(),
+		"orderID":         req.OrderID,
+		"profile":         certProfile.name,
+		"profileHash":     hex.EncodeToString(certProfile.hash[:]),
+		"regID":           req.RegistrationID,
+	}
+	ca.log.AuditObject("Signing cert", logEvent)
 
 	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, issuanceReq)
 	if err != nil {
-		ca.log.AuditErrf("Preparing cert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
-			issuer.Name(), serialHex, req.RegistrationID, names, certProfile.name, certProfile.hash, err)
+		ca.log.AuditErrf("Preparing cert failed: serial=[%s] err=[%v]", serialHex, err)
 		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
 	}
 
@@ -447,8 +451,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.metrics.noteSignError(err)
-		ca.log.AuditErrf("Signing cert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
-			issuer.Name(), serialHex, req.RegistrationID, names, certProfile.name, certProfile.hash, err)
+		ca.log.AuditErrf("Signing cert failed: serial=[%s] err=[%v]", serialHex, err)
 		span.SetStatus(codes.Error, err.Error())
 		span.End()
 		return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
@@ -461,8 +464,8 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	}
 
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
-	ca.log.AuditInfof("Signing cert success: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certificate=[%s] certProfileName=[%s] certProfileHash=[%x]",
-		issuer.Name(), serialHex, req.RegistrationID, names, hex.EncodeToString(certDER), certProfile.name, certProfile.hash)
+	logEvent["certificate"] = hex.EncodeToString(certDER)
+	ca.log.AuditObject("Signing cert success", logEvent)
 
 	_, err = ca.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    certDER,
@@ -470,8 +473,8 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		Issued: timestamppb.New(ca.clk.Now()),
 	})
 	if err != nil {
-		ca.log.AuditErrf("Failed RPC to store at SA: issuer=[%s] serial=[%s] cert=[%s] regID=[%d] orderID=[%d] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
-			issuer.Name(), serialHex, hex.EncodeToString(certDER), req.RegistrationID, req.OrderID, certProfile.name, certProfile.hash, err)
+		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s] regID=[%d] orderID=[%d] certificate=[%s]",
+			serialHex, req.RegistrationID, req.OrderID, hex.EncodeToString(certDER))
 		return nil, err
 	}
 
@@ -578,13 +581,20 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotAfter:          notAfter,
 	}
 
-	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
-		serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), hex.EncodeToString(csr.Raw))
+	logEvent := map[string]interface{}{
+		"csr":             hex.EncodeToString(csr.Raw),
+		"issuanceRequest": req,
+		"issuer":          issuer.Name(),
+		"profile":         certProfile.name,
+		"profileHash":     hex.EncodeToString(certProfile.hash[:]),
+		"regID":           issueReq.RegistrationID,
+		"orderID":         issueReq.OrderID,
+	}
+	ca.log.AuditObject("Signing precert", logEvent)
 
 	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, req)
 	if err != nil {
-		ca.log.AuditErrf("Preparing precert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
-			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), certProfile.name, certProfile.hash, err)
+		ca.log.AuditErrf("Preparing precert failed: serial=[%s] err=[%v]", serialHex, issueReq.RegistrationID, err)
 		if errors.Is(err, linter.ErrLinting) {
 			ca.metrics.lintErrorCount.Inc()
 		}
@@ -611,8 +621,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.metrics.noteSignError(err)
-		ca.log.AuditErrf("Signing precert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
-			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), certProfile.name, certProfile.hash, err)
+		ca.log.AuditErrf("Signing precert failed: serial=[%s] err=[%v]", serialHex, err)
 		span.SetStatus(codes.Error, err.Error())
 		span.End()
 		return nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
@@ -625,8 +634,11 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
-	ca.log.AuditInfof("Signing precert success: issuer=[%s] serial=[%s] regID=[%d] names=[%s] precert=[%s] certProfileName=[%s] certProfileHash=[%x]",
-		issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), hex.EncodeToString(certDER), certProfile.name, certProfile.hash)
+
+	logEvent["precert"] = hex.EncodeToString(certDER)
+	// The CSR is big and not that informative, so don't log it a second time.
+	delete(logEvent, "csr")
+	ca.log.AuditObject("Signing precert success", logEvent)
 
 	return certDER, &certProfileWithID{certProfile.name, certProfile.hash, nil}, nil
 }
