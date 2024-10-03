@@ -217,7 +217,7 @@ func (ll List) subset(names []string) (List, error) {
 	}
 
 	if len(remaining) > 0 {
-		missed := make([]string, len(remaining))
+		missed := make([]string, 0, len(remaining))
 		for name := range remaining {
 			missed = append(missed, fmt.Sprintf("%q", name))
 		}

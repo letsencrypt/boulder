@@ -285,11 +285,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 			if request.URL != nil {
 				logEvent.Slug = request.URL.Path
 			}
-			tls := request.Header.Get("TLS-Version")
-			if tls == "TLSv1" || tls == "TLSv1.1" {
-				wfe.sendError(response, logEvent, probs.Malformed("upgrade your ACME client to support TLSv1.2 or better"), nil)
-				return
-			}
 			if request.Method != "GET" || pattern == newNoncePath {
 				nonceMsg, err := wfe.gnc.Nonce(ctx, &emptypb.Empty{})
 				if err != nil {
@@ -801,8 +796,9 @@ func (wfe *WebFrontEndImpl) NewAccount(
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 				return
 			}
+		} else {
+			wfe.log.Warning(err.Error())
 		}
-		wfe.log.Warning(err.Error())
 	}
 
 	var newRegistrationSuccessful bool
@@ -2117,8 +2113,15 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 	}
 
 	if len(result.Incidents) > 0 {
+		// Find the earliest incident.
+		var earliest *sapb.Incident
+		for _, incident := range result.Incidents {
+			if earliest == nil || incident.RenewBy.AsTime().Before(earliest.RenewBy.AsTime()) {
+				earliest = incident
+			}
+		}
 		// The existing cert is impacted by an incident, renew immediately.
-		return core.RenewalInfoImmediate(wfe.clk.Now()), nil
+		return core.RenewalInfoImmediate(wfe.clk.Now(), earliest.Url), nil
 	}
 
 	// Check if the serial is revoked.
@@ -2129,7 +2132,7 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 
 	if status.Status == string(core.OCSPStatusRevoked) {
 		// The existing certificate is revoked, renew immediately.
-		return core.RenewalInfoImmediate(wfe.clk.Now()), nil
+		return core.RenewalInfoImmediate(wfe.clk.Now(), ""), nil
 	}
 
 	// It's okay to use GetCertificate (vs trying to get a precertificate),
@@ -2383,8 +2386,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 				return
 			}
+		} else {
+			wfe.log.Warning(err.Error())
 		}
-		wfe.log.Warning(err.Error())
 	}
 
 	var newOrderSuccessful bool

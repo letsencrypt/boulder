@@ -23,6 +23,10 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/ocsp"
@@ -132,6 +136,7 @@ type certificateAuthorityImpl struct {
 	clk       clock.Clock
 	log       blog.Logger
 	metrics   *caMetrics
+	tracer    trace.Tracer
 }
 
 var _ capb.CertificateAuthorityServer = (*certificateAuthorityImpl)(nil)
@@ -272,6 +277,7 @@ func NewCertificateAuthorityImpl(
 		keyPolicy:    keyPolicy,
 		log:          logger,
 		metrics:      metrics,
+		tracer:       otel.GetTracerProvider().Tracer("github.com/letsencrypt/boulder/ca"),
 		clk:          clk,
 	}
 
@@ -432,13 +438,22 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
 	}
 
+	_, span := ca.tracer.Start(ctx, "signing cert", trace.WithAttributes(
+		attribute.String("serial", serialHex),
+		attribute.String("issuer", issuer.Name()),
+		attribute.String("certProfileName", certProfile.name),
+		attribute.StringSlice("names", issuanceReq.DNSNames),
+	))
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.metrics.noteSignError(err)
 		ca.log.AuditErrf("Signing cert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			issuer.Name(), serialHex, req.RegistrationID, names, certProfile.name, certProfile.hash, err)
+		span.SetStatus(codes.Error, err.Error())
+		span.End()
 		return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
 	}
+	span.End()
 
 	err = tbsCertIsDeterministic(lintCertBytes, certDER)
 	if err != nil {
@@ -587,13 +602,22 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
+	_, span := ca.tracer.Start(ctx, "signing precert", trace.WithAttributes(
+		attribute.String("serial", serialHex),
+		attribute.String("issuer", issuer.Name()),
+		attribute.String("certProfileName", certProfile.name),
+		attribute.StringSlice("names", csr.DNSNames),
+	))
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.metrics.noteSignError(err)
 		ca.log.AuditErrf("Signing precert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), certProfile.name, certProfile.hash, err)
+		span.SetStatus(codes.Error, err.Error())
+		span.End()
 		return nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
 	}
+	span.End()
 
 	err = tbsCertIsDeterministic(lintCertBytes, certDER)
 	if err != nil {
