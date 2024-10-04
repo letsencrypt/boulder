@@ -176,14 +176,14 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, r
 	// an empty JSON array.
 	jsonContact := []byte("[]")
 	var err error
-	if len(req.Contact) != 0 {
-		jsonContact, err = json.Marshal(req.Contact)
+	if len(req.Contacts) != 0 {
+		jsonContact, err = json.Marshal(req.Contacts)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	result, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		result, err := tx.ExecContext(ctx,
 			"UPDATE registrations SET contact = ? WHERE id = ? LIMIT 1",
 			jsonContact,
@@ -207,14 +207,19 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, r
 
 		return updatedRegistration, nil
 	})
-	if overallError != nil {
-		return nil, overallError
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, nil
+	updatedRegistration, ok := result.(*corepb.Registration)
+	if !ok {
+		return nil, fmt.Errorf("casting error in UpdateRegistrationContact")
+	}
+
+	return updatedRegistration, nil
 }
 
-// UpdateRegistrationKey stores an updated JWK in a Registration
+// UpdateRegistrationKey stores an updated key in a Registration
 func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *sapb.UpdateRegistrationKeyRequest) (*corepb.Registration, error) {
 	if req == nil || req.RegistrationID == 0 || len(req.Jwk) == 0 {
 		return nil, errIncompleteRequest
@@ -233,7 +238,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 		return nil, err
 	}
 
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	result, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		result, err := tx.ExecContext(ctx,
 			"UPDATE registrations SET jwk = ?, jwk_sha256 = ? WHERE id = ? LIMIT 1",
 			jwk,
@@ -263,11 +268,16 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 
 		return updatedRegistration, nil
 	})
-	if overallError != nil {
-		return nil, overallError
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, nil
+	updatedRegistration, ok := result.(*corepb.Registration)
+	if !ok {
+		return nil, fmt.Errorf("casting error in UpdateRegistrationKey")
+	}
+
+	return updatedRegistration, nil
 }
 
 // AddSerial writes a record of a serial number generation to the DB.

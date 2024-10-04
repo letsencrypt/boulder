@@ -1761,26 +1761,24 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Conte
 		return nil, errIncompleteGRPCRequest
 	}
 
-	err := ra.validateContacts(req.Contact)
+	err := ra.validateContacts(req.Contacts)
 	if err != nil {
 		return nil, err
 	}
 
 	update, err := ra.SA.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{
 		RegistrationID: req.RegistrationID,
-		Contact:        req.Contact,
+		Contacts:       req.Contacts,
 	})
 	if err != nil {
-		// berrors.InternalServerError since the user-data was validated before being
-		// passed to the SA.
-		err = berrors.InternalServerError("Could not update registration: %s", err)
+		err = fmt.Errorf("failed to update registration contact: %w", err)
 		return nil, err
 	}
 
 	return update, nil
 }
 
-// UpdateRegistrationKey updates an existing Registration's JWK.
+// UpdateRegistrationKey updates an existing Registration's key.
 func (ra *RegistrationAuthorityImpl) UpdateRegistrationKey(ctx context.Context, req *rapb.UpdateRegistrationKeyRequest) (*corepb.Registration, error) {
 	if req == nil || req.RegistrationID == 0 || len(req.Jwk) == 0 {
 		return nil, errIncompleteGRPCRequest
@@ -1791,9 +1789,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationKey(ctx context.Context, 
 		Jwk:            req.Jwk,
 	})
 	if err != nil {
-		// berrors.InternalServerError since the user-data was validated before being
-		// passed to the SA.
-		err = berrors.InternalServerError("Could not update registration: %s", err)
+		err = fmt.Errorf("failed to update registration key: %w", err)
 		return nil, err
 	}
 

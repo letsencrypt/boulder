@@ -37,7 +37,7 @@ message UpdateRegistrationRequest {
 
 message UpdateRegistrationContactRequest {
   int64 registrationID = 1;
-  repeated string contact = 2;
+  repeated string contacts = 2;
 }
 
 message UpdateRegistrationKeyRequest {
