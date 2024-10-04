@@ -183,7 +183,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, r
 		}
 	}
 
-	result, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		result, err := tx.ExecContext(ctx,
 			"UPDATE registrations SET contact = ? WHERE id = ? LIMIT 1",
 			jsonContact,
@@ -207,8 +207,8 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, r
 
 		return updatedRegistration, nil
 	})
-	if err != nil {
-		return nil, err
+	if overallError != nil {
+		return nil, overallError
 	}
 
 	updatedRegistration, ok := result.(*corepb.Registration)
@@ -238,7 +238,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 		return nil, err
 	}
 
-	result, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		result, err := tx.ExecContext(ctx,
 			"UPDATE registrations SET jwk = ?, jwk_sha256 = ? WHERE id = ? LIMIT 1",
 			jwk,
@@ -268,8 +268,8 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 
 		return updatedRegistration, nil
 	})
-	if err != nil {
-		return nil, err
+	if overallError != nil {
+		return nil, overallError
 	}
 
 	updatedRegistration, ok := result.(*corepb.Registration)
