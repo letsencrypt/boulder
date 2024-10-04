@@ -97,6 +97,10 @@ type Config struct {
 	//    renewal.
 	//
 	// TODO(#7511): Remove this feature flag.
+	//
+	// Deprecated: This feature flag is deprecated and will be removed in the
+	// future. Code paths that depended on this flag have been defaulted to
+	// true.
 	CheckRenewalExemptionAtWFE bool
 
 	// CheckIdentifiersPaused checks if any of the identifiers in the order are
