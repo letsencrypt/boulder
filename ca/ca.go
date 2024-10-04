@@ -130,7 +130,8 @@ type certificateAuthorityImpl struct {
 	issuers      issuerMaps
 	certProfiles certProfilesMaps
 
-	prefix    int // Prepended to the serial number
+	// The prefix is prepended to the serial number.
+	prefix    byte
 	maxNames  int
 	keyPolicy goodkey.KeyPolicy
 	clk       clock.Clock
@@ -238,7 +239,7 @@ func NewCertificateAuthorityImpl(
 	boulderIssuers []*issuance.Issuer,
 	defaultCertProfileName string,
 	certificateProfiles map[string]*issuance.ProfileConfig,
-	serialPrefix int,
+	serialPrefix byte,
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
@@ -248,8 +249,8 @@ func NewCertificateAuthorityImpl(
 	var ca *certificateAuthorityImpl
 	var err error
 
-	if serialPrefix < 1 || serialPrefix > 127 {
-		err = errors.New("serial prefix must be between 1 and 127")
+	if serialPrefix < 0x01 || serialPrefix > 0x7f {
+		err = errors.New("serial prefix must be between 0x01 (1) and 0x7f (127)")
 		return nil, err
 	}
 
@@ -491,7 +492,7 @@ func (ca *certificateAuthorityImpl) generateSerialNumber() (*big.Int, error) {
 	// We want 136 bits of random number, plus an 8-bit instance id prefix.
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
-	serialBytes[0] = byte(ca.prefix)
+	serialBytes[0] = ca.prefix
 	_, err := rand.Read(serialBytes[1:])
 	if err != nil {
 		err = berrors.InternalServerError("failed to generate serial: %s", err)
