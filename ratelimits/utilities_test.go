@@ -6,7 +6,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestDomainsForRateLimiting(t *testing.T) {
+func TestFQDNsToETLDsPlusOne(t *testing.T) {
 	domains := FQDNsToETLDsPlusOne([]string{})
 	test.AssertEquals(t, len(domains), 0)
 
