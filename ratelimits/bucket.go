@@ -325,7 +325,7 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 	}
 
 	var txns []Transaction
-	for _, name := range DomainsForRateLimiting(orderDomains) {
+	for _, name := range FQDNsToETLDsPlusOne(orderDomains) {
 		perDomainBucketKey, err := newDomainBucketKey(CertificatesPerDomain, name)
 		if err != nil {
 			return nil, err
@@ -391,7 +391,7 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 	}
 
 	var txns []Transaction
-	for _, name := range DomainsForRateLimiting(orderDomains) {
+	for _, name := range FQDNsToETLDsPlusOne(orderDomains) {
 		perDomainBucketKey, err := newDomainBucketKey(CertificatesPerDomain, name)
 		if err != nil {
 			return nil, err

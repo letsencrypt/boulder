@@ -1520,7 +1520,7 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	tldNames := ratelimits.DomainsForRateLimiting(names)
+	tldNames := ratelimits.FQDNsToETLDsPlusOne(names)
 	namesOutOfLimit, earliest, err := ra.enforceNameCounts(ctx, tldNames, limit, regID)
 	if err != nil {
 		return fmt.Errorf("checking certificates per name limit for %q: %s",
