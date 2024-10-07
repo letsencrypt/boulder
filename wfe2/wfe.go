@@ -2359,8 +2359,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	var isRenewal bool
-	// TODO(#7511) Remove this feature flag check.
-	if features.Get().CheckRenewalExemptionAtWFE && !isARIRenewal {
+	if !isARIRenewal {
 		// The Subscriber does not have an ARI exemption. However, we can check
 		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount
 		// and CertificatesPerDomain limits.

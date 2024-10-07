@@ -1004,7 +1004,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 }
 
 func TestNewOrderRateLimiting(t *testing.T) {
-	_, sa, ra, fc, cleanUp := initAuthorities(t)
+	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.orderLifetime = 5 * 24 * time.Hour
@@ -1044,33 +1044,6 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	// new pending order is produced.
 	_, err = ra.NewOrder(ctx, orderOne)
 	test.AssertNotError(t, err, "Reuse of orderOne failed")
-
-	// Insert a specific certificate into the database, then create an order for
-	// the same set of names. This order should succeed because it's a renewal.
-	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "generating test key")
-	fakeCert := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		DNSNames:     []string{"renewing.example.com"},
-		NotBefore:    fc.Now().Add(-time.Hour),
-		NotAfter:     fc.Now().Add(time.Hour),
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-	}
-	certDER, err := x509.CreateCertificate(rand.Reader, fakeCert, fakeCert, testKey.Public(), testKey)
-	test.AssertNotError(t, err, "generating test certificate")
-	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          certDER,
-		RegID:        Registration.Id,
-		Issued:       timestamppb.New(fc.Now().Add(-time.Hour)),
-		IssuerNameID: 1,
-	})
-	test.AssertNotError(t, err, "Adding test certificate")
-
-	_, err = ra.NewOrder(ctx, &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"renewing.example.com"},
-	})
-	test.AssertNotError(t, err, "Renewal of orderRenewal failed")
 
 	// Advancing the clock by 2 * the rate limit duration should allow orderTwo to
 	// succeed
@@ -1490,12 +1463,6 @@ func (m mockSAWithFQDNSet) hashNames(names []string) string {
 	return string(hash[:])
 }
 
-// Add a set of domain names to the FQDN set
-func (m mockSAWithFQDNSet) addFQDNSet(names []string) {
-	hash := m.hashNames(names)
-	m.fqdnSet[hash] = true
-}
-
 // Search for a set of domain names in the FQDN set map
 func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
 	hash := m.hashNames(req.DnsNames)
@@ -1534,51 +1501,6 @@ func (m mockSAWithFQDNSet) FQDNSetTimestampsForWindow(_ context.Context, req *sa
 	} else {
 		return nil, fmt.Errorf("FQDNSetTimestampsForWindow mock only supports a single domain")
 	}
-}
-
-// Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
-// properly honours the FQDNSet exemption. E.g. that if a set of domains has
-// reached the certificates per name rate limit policy threshold but the exact
-// same set of FQDN's was previously issued, then it should not be considered
-// over the certificates per name limit.
-//
-// [0] https://github.com/letsencrypt/boulder/issues/1925
-func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Simple policy that only allows 1 certificate per name.
-	certsPerNamePolicy := ratelimit.RateLimitPolicy{
-		Threshold: 1,
-		Window:    config.Duration{Duration: 24 * time.Hour},
-	}
-
-	// Create a mock SA that has both name counts and an FQDN set
-	ts := timestamppb.New(ra.clk.Now())
-	mockSA := &mockSAWithFQDNSet{
-		issuanceTimestamps: map[string]*sapb.Timestamps{
-			"example.com": {Timestamps: []*timestamppb.Timestamp{ts, ts}},
-			"zombo.com":   {Timestamps: []*timestamppb.Timestamp{ts, ts}},
-		},
-		fqdnSet: map[string]bool{},
-		t:       t,
-	}
-	ra.SA = mockSA
-
-	// First check that without a pre-existing FQDN set that the provided set of
-	// names is rate limited due to being over the certificates per name limit for
-	// "example.com" and "zombo.com"
-	err := ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
-	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
-
-	// Now add a FQDN set entry for these domains
-	mockSA.addFQDNSet([]string{"www.example.com", "example.com", "www.zombo.com"})
-
-	// A subsequent check against the certificates per name limit should now be OK
-	// - there exists a FQDN set and so the exemption to this particular limit
-	// comes into effect.
-	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
-	test.AssertNotError(t, err, "FQDN set certificate per name exemption not applied correctly")
 }
 
 // TestExactPublicSuffixCertLimit tests the behaviour of issue #2681 with and
