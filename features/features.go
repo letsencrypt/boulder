@@ -28,6 +28,7 @@ type Config struct {
 	MultiVAFullResults                bool
 	CertCheckerRequiresCorrespondence bool
 	ECDSAForAll                       bool
+	CheckRenewalExemptionAtWFE        bool
 	InsertAuthzsIndividually          bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
@@ -89,16 +90,6 @@ type Config struct {
 	//     `orders.certificateProfileName` column. Values in this column are
 	//     allowed to be empty.
 	MultipleCertificateProfiles bool
-
-	// CheckRenewalExemptionAtWFE when enabled, triggers the following behavior:
-	//  - WFE.NewOrder: checks if the order is a renewal and if so skips checks
-	//    for NewOrdersPerAccount and NewOrdersPerDomain limits.
-	//  - RA.NewOrderAndAuthzs: skips checks for legacy NewOrdersPerAccount and
-	//    NewOrdersPerDomain limits if the WFE indicates that the order is a
-	//    renewal.
-	//
-	// TODO(#7511): Remove this feature flag.
-	CheckRenewalExemptionAtWFE bool
 
 	// CheckIdentifiersPaused checks if any of the identifiers in the order are
 	// currently paused at NewOrder time. If any are paused, an error is
