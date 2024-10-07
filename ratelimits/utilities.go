@@ -12,10 +12,10 @@ func joinWithColon(args ...string) string {
 	return strings.Join(args, ":")
 }
 
-// DomainsForRateLimiting transforms a list of FQDNs into a list of eTLD+1's
-// for the purpose of rate limiting. It also de-duplicates the output
-// domains. Exact public suffix matches are included.
-func DomainsForRateLimiting(names []string) []string {
+// FQDNsToETLDsPlusOne transforms a list of FQDNs into a list of eTLD+1's for
+// the CertificatesPerDomain limit. It also de-duplicates the output domains.
+// Exact public suffix matches are included.
+func FQDNsToETLDsPlusOne(names []string) []string {
 	var domains []string
 	for _, name := range names {
 		domain, err := publicsuffix.Domain(name)
