@@ -30,9 +30,9 @@ installation:
   go install github.com/letsencrypt/boulder/test/block-a-key/...
 
 usage:
-  block-a-key -cert <PEM encoded x509 certificate file>
+  block-a-key -cert <PEM formatted x509 certificate file>
   block-a-key -jwk <JSON encoded JWK file>
-  block-a-key -privateKey <PEM encoded private key file>
+  block-a-key -privateKey <PEM formatted private key file>
 
 output format:
   # <filepath>
@@ -46,7 +46,7 @@ examples:
   $> block-a-key -privateKey private.key
 `
 
-// keyFromPrivateKeyFile returns the public key from a PEM encoded private key
+// keyFromPrivateKeyFile returns the public key from a PEM formatted private key
 // located in pemFile or returns an error.
 func keyFromPrivateKeyFile(pemFile string) (crypto.PublicKey, error) {
 	_, pubKey, err := privatekey.Load(pemFile)
@@ -56,8 +56,8 @@ func keyFromPrivateKeyFile(pemFile string) (crypto.PublicKey, error) {
 	return pubKey, nil
 }
 
-// keyFromCert returns the public key from a PEM encoded certificate located in
-// pemFile or returns an error.
+// keyFromCert returns the public key from a PEM formatted certificate located
+// in pemFile or returns an error.
 func keyFromCert(pemFile string) (crypto.PublicKey, error) {
 	c, err := core.LoadCert(pemFile)
 	if err != nil {
@@ -77,9 +77,9 @@ func keyFromJWK(jsonFile string) (crypto.PublicKey, error) {
 }
 
 func main() {
-	certFileArg := flag.String("cert", "", "path to a PEM encoded X509 certificate file")
+	certFileArg := flag.String("cert", "", "path to a PEM formatted X509 certificate file")
 	jwkFileArg := flag.String("jwk", "", "path to a JSON encoded JWK file")
-	privKeyFileArg := flag.String("privateKey", "", "path to a PEM encoded private key file")
+	privKeyFileArg := flag.String("privateKey", "", "path to a PEM formatted private key file")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "%s\n\n", usageHelp)
