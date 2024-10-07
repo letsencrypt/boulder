@@ -1063,14 +1063,27 @@ func TestFQDNSetsExists(t *testing.T) {
 }
 
 type execRecorder struct {
-	query string
-	args  []interface{}
+	valuesPerRow int
+	query        string
+	args         []interface{}
 }
 
 func (e *execRecorder) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	e.query = query
 	e.args = args
-	return nil, nil
+	return rowsResult{int64(len(args) / e.valuesPerRow)}, nil
+}
+
+type rowsResult struct {
+	rowsAffected int64
+}
+
+func (r rowsResult) LastInsertId() (int64, error) {
+	return r.rowsAffected, nil
+}
+
+func (r rowsResult) RowsAffected() (int64, error) {
+	return r.rowsAffected, nil
 }
 
 func TestAddIssuedNames(t *testing.T) {
@@ -1153,7 +1166,7 @@ func TestAddIssuedNames(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			var e execRecorder
+			e := execRecorder{valuesPerRow: 4}
 			err := addIssuedNames(
 				ctx,
 				&e,
