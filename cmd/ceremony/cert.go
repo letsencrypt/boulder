@@ -17,9 +17,6 @@ import (
 
 type policyInfoConfig struct {
 	OID string
-	// Deprecated: we do not include the id-qt-cps policy qualifier in our
-	// certificate policy extensions anymore.
-	CPSURI string `yaml:"cps-uri"`
 }
 
 // certProfile contains the information required to generate a certificate
