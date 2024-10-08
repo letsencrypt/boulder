@@ -129,6 +129,7 @@ type ValidationRecord struct {
 	Port              string   `json:"port,omitempty"`
 	AddressesResolved []net.IP `json:"addressesResolved,omitempty"`
 	AddressUsed       net.IP   `json:"addressUsed,omitempty"`
+
 	// AddressesTried contains a list of addresses tried before the `AddressUsed`.
 	// Presently this will only ever be one IP from `AddressesResolved` since the
 	// only retry is in the case of a v6 failure with one v4 fallback. E.g. if
@@ -144,10 +145,29 @@ type ValidationRecord struct {
 	//   ...
 	// }
 	AddressesTried []net.IP `json:"addressesTried,omitempty"`
+
 	// ResolverAddrs is the host:port of the DNS resolver(s) that fulfilled the
 	// lookup for AddressUsed. During recursive A and AAAA lookups, a record may
 	// instead look like A:host:port or AAAA:host:port
 	ResolverAddrs []string `json:"resolverAddrs,omitempty"`
+
+	// Perspective uniquely identifies the Network Perspective used to perform
+	// the validation, as specified in BRs Section 5.4.1, Requirement 2.7
+	// ("Multi-Perspective Issuance Corroboration attempts from each Network
+	// Perspective"). It should uniquely identify either the Primary Perspective
+	// (VA) or a group of RVAs deployed in the same datacenter.
+	Perspective string `json:"perspective,omitempty"`
+
+	// RIR indicates the Regional Internet Registry where this RVA is located.
+	// This field is used to identify the RIR region from which a given
+	// validation was performed, as specified in the "Phased Implementation
+	// Timeline" in BRs Section 3.2.2.9. It must be one of the following values:
+	//   - ARIN
+	//   - RIPE
+	//   - APNIC
+	//   - LACNIC
+	//   - AfriNIC
+	RIR string `json:"rir,omitempty"`
 }
 
 // Challenge is an aggregate of all data needed for any challenges.

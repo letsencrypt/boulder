@@ -37,8 +37,8 @@
 			"http://boulder.service.consul:4000/acme/reg/",
 			"http://boulder.service.consul:4001/acme/acct/"
 		],
-		"cluster": "development",
-		"rir": "ARIN"
+		"perspective": "development",
+		"rir": "RIPE"
 	},
 	"syslog": {
 		"stdoutlevel": 4,
