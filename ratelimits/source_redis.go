@@ -89,7 +89,9 @@ func (r *RedisSource) BatchSet(ctx context.Context, buckets map[string]time.Time
 
 	pipeline := r.client.Pipeline()
 	for bucketKey, tat := range buckets {
-		pipeline.Set(ctx, bucketKey, tat.UTC().UnixNano(), 0)
+		// Set a TTL of TAT + 10 minutes to account for clock skew.
+		ttl := tat.UTC().Sub(r.clk.Now()) + 10*time.Minute
+		pipeline.Set(ctx, bucketKey, tat.UTC().UnixNano(), ttl)
 	}
 	_, err := pipeline.Exec(ctx)
 	if err != nil {

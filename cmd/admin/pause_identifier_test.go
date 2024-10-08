@@ -84,12 +84,9 @@ func TestReadingPauseCSV(t *testing.T) {
 // PauseIdentifiersResponse. It does not maintain state of repaused identifiers.
 type mockSAPaused struct {
 	sapb.StorageAuthorityClient
-	reqs []*sapb.PauseRequest
 }
 
 func (msa *mockSAPaused) PauseIdentifiers(ctx context.Context, in *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error) {
-	msa.reqs = append(msa.reqs, in)
-
 	return &sapb.PauseIdentifiersResponse{Paused: int64(len(in.Identifiers))}, nil
 }
 

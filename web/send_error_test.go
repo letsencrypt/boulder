@@ -8,6 +8,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -93,4 +94,12 @@ func TestSendErrorSubProbLogging(t *testing.T) {
 	SendError(log.NewMock(), rw, &logEvent, prob, errors.New("it bad"))
 
 	test.AssertEquals(t, logEvent.Error, `400 :: malformed :: dfoop :: bad ["example.com :: malformed :: dfoop :: nop", "what about example.com :: malformed :: dfoop :: nah"]`)
+}
+
+func TestSendErrorPausedProblemLoggingSuppression(t *testing.T) {
+	rw := httptest.NewRecorder()
+	logEvent := RequestEvent{}
+	SendError(log.NewMock(), rw, &logEvent, probs.Paused("I better not see any of this"), nil)
+
+	test.AssertEquals(t, logEvent.Error, "429 :: rateLimited :: account/ident pair is paused")
 }

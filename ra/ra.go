@@ -676,20 +676,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 // checkNewOrdersPerAccountLimit enforces the rlPolicies `NewOrdersPerAccount`
 // rate limit. This rate limit ensures a client can not create more than the
 // specified threshold of new orders within the specified time window.
-func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.Context, acctID int64, names []string, limit ratelimit.RateLimitPolicy) error {
-	// Check if there is already an existing certificate for the exact name set we
-	// are issuing for. If so bypass the newOrders limit.
-	//
-	// TODO(#7511): This check and early return should be removed, it's
-	// being performed at the WFE.
-	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names})
-	if err != nil {
-		return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
-	}
-	if exists.Exists {
-		return nil
-	}
-
+func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.Context, acctID int64, limit ratelimit.RateLimitPolicy) error {
 	now := ra.clk.Now()
 	count, err := ra.SA.CountOrders(ctx, &sapb.CountOrdersRequest{
 		AccountID: acctID,
@@ -1533,21 +1520,7 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	// check if there is already an existing certificate for
-	// the exact name set we are issuing for. If so bypass the
-	// the certificatesPerName limit.
-	//
-	// TODO(#7511): This check and early return should be removed, it's
-	// being performed, once, at the WFE.
-	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names})
-	if err != nil {
-		return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
-	}
-	if exists.Exists {
-		return nil
-	}
-
-	tldNames := ratelimits.DomainsForRateLimiting(names)
+	tldNames := ratelimits.FQDNsToETLDsPlusOne(names)
 	namesOutOfLimit, earliest, err := ra.enforceNameCounts(ctx, tldNames, limit, regID)
 	if err != nil {
 		return fmt.Errorf("checking certificates per name limit for %q: %s",
@@ -1638,11 +1611,9 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 
 func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, names []string, regID int64, isRenewal bool) error {
 	newOrdersPerAccountLimits := ra.rlPolicies.NewOrdersPerAccount()
-	// TODO(#7511): Remove the feature flag check.
-	skipCheck := features.Get().CheckRenewalExemptionAtWFE && isRenewal
-	if newOrdersPerAccountLimits.Enabled() && !skipCheck {
+	if newOrdersPerAccountLimits.Enabled() && !isRenewal {
 		started := ra.clk.Now()
-		err := ra.checkNewOrdersPerAccountLimit(ctx, regID, names, newOrdersPerAccountLimits)
+		err := ra.checkNewOrdersPerAccountLimit(ctx, regID, newOrdersPerAccountLimits)
 		elapsed := ra.clk.Since(started)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
@@ -1654,7 +1625,7 @@ func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, na
 	}
 
 	certNameLimits := ra.rlPolicies.CertificatesPerName()
-	if certNameLimits.Enabled() && !skipCheck {
+	if certNameLimits.Enabled() && !isRenewal {
 		started := ra.clk.Now()
 		err := ra.checkCertificatesPerNameLimit(ctx, names, certNameLimits, regID)
 		elapsed := ra.clk.Since(started)

@@ -467,7 +467,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		err      error
 	}
 
-	results := make(chan *rvaResult)
+	results := make(chan *rvaResult, len(va.remoteVAs))
 
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]

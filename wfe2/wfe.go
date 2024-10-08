@@ -287,11 +287,6 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 			if request.URL != nil {
 				logEvent.Slug = request.URL.Path
 			}
-			tls := request.Header.Get("TLS-Version")
-			if tls == "TLSv1" || tls == "TLSv1.1" {
-				wfe.sendError(response, logEvent, probs.Malformed("upgrade your ACME client to support TLSv1.2 or better"), nil)
-				return
-			}
 			if request.Method != "GET" || pattern == newNoncePath {
 				nonceMsg, err := wfe.gnc.Nonce(ctx, &emptypb.Empty{})
 				if err != nil {
@@ -805,8 +800,9 @@ func (wfe *WebFrontEndImpl) NewAccount(
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 				return
 			}
+		} else {
+			wfe.log.Warning(err.Error())
 		}
-		wfe.log.Warning(err.Error())
 	}
 
 	var newRegistrationSuccessful bool
@@ -2050,7 +2046,7 @@ type orderJSON struct {
 // orderToOrderJSON converts a *corepb.Order instance into an orderJSON struct
 // that is returned in HTTP API responses. It will convert the order names to
 // DNS type identifiers and additionally create absolute URLs for the finalize
-// URL and the ceritificate URL as appropriate.
+// URL and the certificate URL as appropriate.
 func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corepb.Order) orderJSON {
 	idents := make([]identifier.ACMEIdentifier, len(order.DnsNames))
 	for i, name := range order.DnsNames {
@@ -2169,8 +2165,15 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 	}
 
 	if len(result.Incidents) > 0 {
+		// Find the earliest incident.
+		var earliest *sapb.Incident
+		for _, incident := range result.Incidents {
+			if earliest == nil || incident.RenewBy.AsTime().Before(earliest.RenewBy.AsTime()) {
+				earliest = incident
+			}
+		}
 		// The existing cert is impacted by an incident, renew immediately.
-		return core.RenewalInfoImmediate(wfe.clk.Now()), nil
+		return core.RenewalInfoImmediate(wfe.clk.Now(), earliest.Url), nil
 	}
 
 	// Check if the serial is revoked.
@@ -2181,7 +2184,7 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 
 	if status.Status == string(core.OCSPStatusRevoked) {
 		// The existing certificate is revoked, renew immediately.
-		return core.RenewalInfoImmediate(wfe.clk.Now()), nil
+		return core.RenewalInfoImmediate(wfe.clk.Now(), ""), nil
 	}
 
 	// It's okay to use GetCertificate (vs trying to get a precertificate),
@@ -2408,8 +2411,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	var isRenewal bool
-	// TODO(#7511) Remove this feature flag check.
-	if features.Get().CheckRenewalExemptionAtWFE && !isARIRenewal {
+	if !isARIRenewal {
 		// The Subscriber does not have an ARI exemption. However, we can check
 		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount
 		// and CertificatesPerDomain limits.
@@ -2435,8 +2437,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 				return
 			}
+		} else {
+			wfe.log.Warning(err.Error())
 		}
-		wfe.log.Warning(err.Error())
 	}
 
 	var newOrderSuccessful bool

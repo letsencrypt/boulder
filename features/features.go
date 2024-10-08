@@ -28,6 +28,7 @@ type Config struct {
 	MultiVAFullResults                bool
 	CertCheckerRequiresCorrespondence bool
 	ECDSAForAll                       bool
+	CheckRenewalExemptionAtWFE        bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -89,16 +90,6 @@ type Config struct {
 	//     allowed to be empty.
 	MultipleCertificateProfiles bool
 
-	// CheckRenewalExemptionAtWFE when enabled, triggers the following behavior:
-	//  - WFE.NewOrder: checks if the order is a renewal and if so skips checks
-	//    for NewOrdersPerAccount and NewOrdersPerDomain limits.
-	//  - RA.NewOrderAndAuthzs: skips checks for legacy NewOrdersPerAccount and
-	//    NewOrdersPerDomain limits if the WFE indicates that the order is a
-	//    renewal.
-	//
-	// TODO(#7511): Remove this feature flag.
-	CheckRenewalExemptionAtWFE bool
-
 	// CheckIdentifiersPaused checks if any of the identifiers in the order are
 	// currently paused at NewOrder time. If any are paused, an error is
 	// returned to the Subscriber indicating that the order cannot be processed
@@ -117,6 +108,20 @@ type Config struct {
 	// to be the authoritative source of rate limiting information for
 	// new-account callers and disables the legacy rate limiting checks.
 	UseKvLimitsForNewAccount bool
+
+	// DisableLegacyLimitWrites when enabled, disables writes to:
+	//   - the newOrdersRL table at new-order time, and
+	//   - the certificatesPerName table at finalize time.
+	//
+	// This flag should only be used in conjunction with UseKvLimitsForNewOrder.
+	DisableLegacyLimitWrites bool
+
+	// InsertAuthzsIndividually causes the SA's NewOrderAndAuthzs method to
+	// create each new authz one at a time, rather than using MultiInserter.
+	// Although this is expected to be a performance penalty, it is necessary to
+	// get the AUTO_INCREMENT ID of each new authz without relying on MariaDB's
+	// unique "INSERT ... RETURNING" functionality.
+	InsertAuthzsIndividually bool
 }
 
 var fMu = new(sync.RWMutex)

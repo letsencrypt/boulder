@@ -49,6 +49,9 @@ type Config struct {
 	// BlockedKeyFile is the path to a YAML file containing base64-encoded SHA256
 	// hashes of PKIX Subject Public Keys that should be blocked. If this config
 	// value is empty, then blocked key checking will be disabled.
+	//
+	// Deprecated: This functionality is better performed by the blockedKeys database
+	// table, and will be removed in a future release.
 	BlockedKeyFile string
 	// FermatRounds is an integer number of rounds of Fermat's factorization
 	// method that should be performed to attempt to detect keys whose modulus can

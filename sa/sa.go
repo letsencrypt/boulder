@@ -380,7 +380,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	_, rlTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		// Add to the rate limit table, but only for new certificates. Renewals
 		// don't count against the certificatesPerName limit.
-		if !isRenewal {
+		if !isRenewal && !features.Get().DisableLegacyLimitWrites {
 			timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
 			err := ssa.addCertificatesPerName(ctx, tx, parsedCertificate.DNSNames, timeToTheHour)
 			if err != nil {
@@ -474,37 +474,51 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 	output, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		// First, insert all of the new authorizations and record their IDs.
 		newAuthzIDs := make([]int64, 0)
-		if len(req.NewAuthzs) != 0 {
-			inserter, err := db.NewMultiInserter("authz2", strings.Split(authzFields, ", "), "id")
-			if err != nil {
-				return nil, err
-			}
+		if features.Get().InsertAuthzsIndividually {
 			for _, authz := range req.NewAuthzs {
 				am, err := newAuthzReqToModel(authz)
 				if err != nil {
 					return nil, err
 				}
-				err = inserter.Add([]interface{}{
-					am.ID,
-					am.IdentifierType,
-					am.IdentifierValue,
-					am.RegistrationID,
-					statusToUint[core.StatusPending],
-					am.Expires,
-					am.Challenges,
-					nil,
-					nil,
-					am.Token,
-					nil,
-					nil,
-				})
+				err = tx.Insert(ctx, am)
 				if err != nil {
 					return nil, err
 				}
+				newAuthzIDs = append(newAuthzIDs, am.ID)
 			}
-			newAuthzIDs, err = inserter.Insert(ctx, tx)
-			if err != nil {
-				return nil, err
+		} else {
+			if len(req.NewAuthzs) != 0 {
+				inserter, err := db.NewMultiInserter("authz2", strings.Split(authzFields, ", "), "id")
+				if err != nil {
+					return nil, err
+				}
+				for _, authz := range req.NewAuthzs {
+					am, err := newAuthzReqToModel(authz)
+					if err != nil {
+						return nil, err
+					}
+					err = inserter.Add([]interface{}{
+						am.ID,
+						am.IdentifierType,
+						am.IdentifierValue,
+						am.RegistrationID,
+						statusToUint[core.StatusPending],
+						am.Expires,
+						am.Challenges,
+						nil,
+						nil,
+						am.Token,
+						nil,
+						nil,
+					})
+					if err != nil {
+						return nil, err
+					}
+				}
+				newAuthzIDs, err = inserter.Insert(ctx, tx)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 
@@ -616,10 +630,12 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		return nil, fmt.Errorf("casting error in NewOrderAndAuthzs")
 	}
 
-	// Increment the order creation count
-	err = addNewOrdersRateLimit(ctx, ssa.dbMap, req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
-	if err != nil {
-		return nil, err
+	if !features.Get().DisableLegacyLimitWrites {
+		// Increment the order creation count
+		err = addNewOrdersRateLimit(ctx, ssa.dbMap, req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return order, nil

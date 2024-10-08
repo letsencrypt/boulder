@@ -50,7 +50,9 @@
 		"healthCheckInterval": "4s",
 		"features": {
 			"MultipleCertificateProfiles": true,
-			"TrackReplacementCertificatesARI": true
+			"TrackReplacementCertificatesARI": true,
+			"DisableLegacyLimitWrites": true,
+			"InsertAuthzsIndividually": true
 		}
 	},
 	"syslog": {

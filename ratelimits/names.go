@@ -251,7 +251,7 @@ var stringToName = func() map[string]Name {
 
 // limitNames is a slice of all rate limit names.
 var limitNames = func() []string {
-	names := make([]string, len(nameToString))
+	names := make([]string, 0, len(nameToString))
 	for _, v := range nameToString {
 		names = append(names, v)
 	}
