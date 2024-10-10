@@ -10,10 +10,11 @@ import (
 
 func TestKeyBlocking(t *testing.T) {
 	testCases := []struct {
-		name     string
-		certPath string
-		jwkPath  string
-		expected string
+		name        string
+		certPath    string
+		jwkPath     string
+		privKeyPath string
+		expected    string
 	}{
 		// NOTE(@cpu): The JWKs and certificates were generated with the same
 		// keypair within an algorithm/parameter family. E.g. the RSA JWK public key
@@ -39,16 +40,28 @@ func TestKeyBlocking(t *testing.T) {
 			certPath: "test/test.rsa.cert.pem",
 			expected: "Qebc1V3SkX3izkYRGNJilm9Bcuvf0oox4U2Rn+b4JOE=",
 		},
+		{
+			name:        "P-256 ECDSA Private Key",
+			privKeyPath: "../hierarchy/ee-e1.key.pem",
+			expected:    "ysCgov5oH7fsFs+ry0ODIx7runcINcS8V/0a0NWNQSY=",
+		},
+		{
+			name:        "2048 RSA Private Key",
+			privKeyPath: "../hierarchy/ee-r4.key.pem",
+			expected:    "ClG5+g8ypi7kMF6mxMT+gszQbwLjPsIv9mHNVjOv4FU=",
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			var key crypto.PublicKey
 			var err error
-			if tc.jwkPath != "" {
+			if tc.certPath != "" {
+				key, err = keyFromCert(tc.certPath)
+			} else if tc.jwkPath != "" {
 				key, err = keyFromJWK(tc.jwkPath)
 			} else {
-				key, err = keyFromCert(tc.certPath)
+				key, err = keyFromPrivateKeyFile(tc.privKeyPath)
 			}
 			test.AssertNotError(t, err, "error getting key from input file")
 			spkiHash, err := core.KeyDigestB64(key)
