@@ -3714,6 +3714,11 @@ func (m *awsRestxml_deserializeOpGetBucketLifecycleConfiguration) HandleDeserial
 	output := &GetBucketLifecycleConfigurationOutput{}
 	out.Result = output
 
+	err = awsRestxml_deserializeOpHttpBindingsGetBucketLifecycleConfigurationOutput(output, response)
+	if err != nil {
+		return out, metadata, &smithy.DeserializationError{Err: fmt.Errorf("failed to decode response with invalid Http bindings, %w", err)}
+	}
+
 	var buff [1024]byte
 	ringBuffer := smithyio.NewRingBuffer(buff[:])
 	body := io.TeeReader(response.Body, ringBuffer)
@@ -3786,6 +3791,18 @@ func awsRestxml_deserializeOpErrorGetBucketLifecycleConfiguration(response *smit
 	}
 }
 
+func awsRestxml_deserializeOpHttpBindingsGetBucketLifecycleConfigurationOutput(v *GetBucketLifecycleConfigurationOutput, response *smithyhttp.Response) error {
+	if v == nil {
+		return fmt.Errorf("unsupported deserialization for nil %T", v)
+	}
+
+	if headerValues := response.Header.Values("x-amz-transition-default-minimum-object-size"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.TransitionDefaultMinimumObjectSize = types.TransitionDefaultMinimumObjectSize(headerValues[0])
+	}
+
+	return nil
+}
 func awsRestxml_deserializeOpDocumentGetBucketLifecycleConfigurationOutput(v **GetBucketLifecycleConfigurationOutput, decoder smithyxml.NodeDecoder) error {
 	if v == nil {
 		return fmt.Errorf("unexpected nil of type %T", v)
@@ -10742,10 +10759,9 @@ func (m *awsRestxml_deserializeOpPutBucketLifecycleConfiguration) HandleDeserial
 	output := &PutBucketLifecycleConfigurationOutput{}
 	out.Result = output
 
-	if _, err = io.Copy(ioutil.Discard, response.Body); err != nil {
-		return out, metadata, &smithy.DeserializationError{
-			Err: fmt.Errorf("failed to discard response body, %w", err),
-		}
+	err = awsRestxml_deserializeOpHttpBindingsPutBucketLifecycleConfigurationOutput(output, response)
+	if err != nil {
+		return out, metadata, &smithy.DeserializationError{Err: fmt.Errorf("failed to decode response with invalid Http bindings, %w", err)}
 	}
 
 	span.End()
@@ -10790,6 +10806,19 @@ func awsRestxml_deserializeOpErrorPutBucketLifecycleConfiguration(response *smit
 		return genericError
 
 	}
+}
+
+func awsRestxml_deserializeOpHttpBindingsPutBucketLifecycleConfigurationOutput(v *PutBucketLifecycleConfigurationOutput, response *smithyhttp.Response) error {
+	if v == nil {
+		return fmt.Errorf("unsupported deserialization for nil %T", v)
+	}
+
+	if headerValues := response.Header.Values("x-amz-transition-default-minimum-object-size"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.TransitionDefaultMinimumObjectSize = types.TransitionDefaultMinimumObjectSize(headerValues[0])
+	}
+
+	return nil
 }
 
 type awsRestxml_deserializeOpPutBucketLogging struct {

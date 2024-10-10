@@ -264,7 +264,7 @@ type PutObjectInput struct {
 
 	// This header can be used as a data integrity check to verify that the data
 	// received is the same data that was originally sent. This header specifies the
-	// base64-encoded, 32-bit CRC32 checksum of the object. For more information, see [Checking object integrity]
+	// base64-encoded, 32-bit CRC-32 checksum of the object. For more information, see [Checking object integrity]
 	// in the Amazon S3 User Guide.
 	//
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
@@ -272,8 +272,8 @@ type PutObjectInput struct {
 
 	// This header can be used as a data integrity check to verify that the data
 	// received is the same data that was originally sent. This header specifies the
-	// base64-encoded, 32-bit CRC32C checksum of the object. For more information, see [Checking object integrity]
-	// in the Amazon S3 User Guide.
+	// base64-encoded, 32-bit CRC-32C checksum of the object. For more information, see
+	// [Checking object integrity]in the Amazon S3 User Guide.
 	//
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
 	ChecksumCRC32C *string
@@ -600,7 +600,7 @@ type PutObjectOutput struct {
 	// encryption with Key Management Service (KMS) keys (SSE-KMS).
 	BucketKeyEnabled *bool
 
-	// The base64-encoded, 32-bit CRC32 checksum of the object. This will only be
+	// The base64-encoded, 32-bit CRC-32 checksum of the object. This will only be
 	// present if it was uploaded with the object. When you use an API operation on an
 	// object that was uploaded using multipart uploads, this value may not be a direct
 	// checksum value of the full object. Instead, it's a calculation based on the
@@ -611,7 +611,7 @@ type PutObjectOutput struct {
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums
 	ChecksumCRC32 *string
 
-	// The base64-encoded, 32-bit CRC32C checksum of the object. This will only be
+	// The base64-encoded, 32-bit CRC-32C checksum of the object. This will only be
 	// present if it was uploaded with the object. When you use an API operation on an
 	// object that was uploaded using multipart uploads, this value may not be a direct
 	// checksum value of the full object. Instead, it's a calculation based on the
