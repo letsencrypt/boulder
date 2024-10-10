@@ -47,7 +47,9 @@
 				}
 			}
 		},
-		"features": {}
+		"features": {
+			"InsertAuthzsIndividually": true
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 6,
