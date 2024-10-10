@@ -197,11 +197,15 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, r
 			return nil, berrors.InternalServerError("no registration ID '%d' updated with new contact field", req.RegistrationID)
 		}
 
-		updatedRegistration, err := selectRegistration(ctx, tx, "id", req.RegistrationID)
+		updatedRegistrationModel, err := selectRegistration(ctx, tx, "id", req.RegistrationID)
 		if err != nil {
 			if db.IsNoRows(err) {
 				return nil, berrors.NotFoundError("registration with ID '%d' not found", req.RegistrationID)
 			}
+			return nil, err
+		}
+		updatedRegistration, err := registrationModelToPb(updatedRegistrationModel)
+		if err != nil {
 			return nil, err
 		}
 
@@ -258,11 +262,15 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 			return nil, berrors.InternalServerError("no registration ID '%d' updated with new jwk", req.RegistrationID)
 		}
 
-		updatedRegistration, err := selectRegistration(ctx, tx, "id", req.RegistrationID)
+		updatedRegistrationModel, err := selectRegistration(ctx, tx, "id", req.RegistrationID)
 		if err != nil {
 			if db.IsNoRows(err) {
 				return nil, berrors.NotFoundError("registration with ID '%d' not found", req.RegistrationID)
 			}
+			return nil, err
+		}
+		updatedRegistration, err := registrationModelToPb(updatedRegistrationModel)
+		if err != nil {
 			return nil, err
 		}
 
