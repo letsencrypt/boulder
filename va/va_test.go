@@ -123,6 +123,8 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 		fc,
 		logger,
 		accountURIPrefixes,
+		PrimaryPerspective,
+		"",
 	)
 
 	if mockDNSClientOverride != nil {
@@ -146,10 +148,12 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 	return va, logger
 }
 
-func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride bdns.Client) RemoteClients {
-	rva, _ := setup(srv, 0, userAgent, nil, mockDNSClientOverride)
+func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride bdns.Client, perspective, rir string) (RemoteClients, *blog.Mock) {
+	rva, log := setup(srv, 0, userAgent, nil, mockDNSClientOverride)
+	rva.perspective = perspective
+	rva.rir = rir
 
-	return RemoteClients{VAClient: &inMemVA{*rva}, CAAClient: &inMemVA{*rva}}
+	return RemoteClients{VAClient: &inMemVA{*rva}, CAAClient: &inMemVA{*rva}}, log
 }
 
 type multiSrv struct {
@@ -369,8 +373,8 @@ func TestMultiVA(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil)
+	remoteVA1, _ := setupRemote(ms.Server, remoteUA1, nil, "", "")
+	remoteVA2, _ := setupRemote(ms.Server, remoteUA2, nil, "", "")
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
 		{remoteVA2, remoteUA2},
@@ -507,8 +511,8 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil)
+	remoteVA1, _ := setupRemote(ms.Server, remoteUA1, nil, "", "")
+	remoteVA2, _ := setupRemote(ms.Server, remoteUA2, nil, "", "")
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -557,8 +561,8 @@ func TestMultiVAPolicy(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil)
-	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil)
+	remoteVA1, _ := setupRemote(ms.Server, remoteUA1, nil, "", "")
+	remoteVA2, _ := setupRemote(ms.Server, remoteUA2, nil, "", "")
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -575,6 +579,40 @@ func TestMultiVAPolicy(t *testing.T) {
 	if res.Problems == nil {
 		t.Error("expected prob from PerformValidation, got nil")
 	}
+}
+
+func TestMultiVALogging(t *testing.T) {
+	const (
+		rva1UA  = "remote 1"
+		rva2UA  = "remote 2"
+		localUA = "local 1"
+	)
+
+	ms := httpMultiSrv(t, expectedToken, map[string]bool{localUA: true, rva1UA: true, rva2UA: true})
+	defer ms.Close()
+
+	rva1, rva1Log := setupRemote(ms.Server, rva1UA, nil, "dev-arin", "ARIN")
+	rva2, rva2Log := setupRemote(ms.Server, rva2UA, nil, "dev-ripe", "RIPE")
+
+	remoteVAs := []RemoteVA{
+		{rva1, rva1UA},
+		{rva2, rva2UA},
+	}
+	va, vaLog := setup(ms.Server, 0, localUA, remoteVAs, nil)
+	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
+	res, err := va.PerformValidation(ctx, req)
+	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed with: %#v", res.Problems))
+	test.AssertNotError(t, err, "performing validation")
+
+	// We do not log perspective or RIR for the local VAs.
+	test.Assert(t, len(vaLog.GetAllMatching(`"Perspective"`)) == 0, "expected no logged perspective for primary")
+	test.Assert(t, len(vaLog.GetAllMatching(`"RIR"`)) == 0, "expected no logged RIR for primary")
+
+	// We do log perspective and RIR for the remote VAs.
+	test.Assert(t, len(rva1Log.GetAllMatching(`"Perspective":"dev-arin"`)) == 1, "expected perspective of VA to be dev-arin")
+	test.Assert(t, len(rva1Log.GetAllMatching(`"RIR":"ARIN"`)) == 1, "expected perspective of VA to be ARIN")
+	test.Assert(t, len(rva2Log.GetAllMatching(`"Perspective":"dev-ripe"`)) == 1, "expected perspective of VA to be dev-ripe")
+	test.Assert(t, len(rva2Log.GetAllMatching(`"RIR":"RIPE"`)) == 1, "expected perspective of VA to be RIPE")
 }
 
 func TestDetailedError(t *testing.T) {
@@ -631,9 +669,9 @@ func TestDetailedError(t *testing.T) {
 
 func TestLogRemoteDifferentials(t *testing.T) {
 	// Create some remote VAs
-	remoteVA1 := setupRemote(nil, "remote 1", nil)
-	remoteVA2 := setupRemote(nil, "remote 2", nil)
-	remoteVA3 := setupRemote(nil, "remote 3", nil)
+	remoteVA1, _ := setupRemote(nil, "remote 1", nil, "", "")
+	remoteVA2, _ := setupRemote(nil, "remote 2", nil, "", "")
+	remoteVA3, _ := setupRemote(nil, "remote 3", nil, "", "")
 	remoteVAs := []RemoteVA{
 		{remoteVA1, "remote 1"},
 		{remoteVA2, "remote 2"},
