@@ -535,7 +535,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Third, insert all of the orderToAuthz relations.
-		// Have to combine the already-associated and newly-reacted authzs.
+		// Have to combine the already-associated and newly-created authzs.
 		allAuthzIds := append(req.NewOrder.V2Authorizations, newAuthzIDs...)
 		inserter, err := db.NewMultiInserter("orderToAuthz2", []string{"orderID", "authzID"}, "")
 		if err != nil {
