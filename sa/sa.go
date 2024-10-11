@@ -165,7 +165,8 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 	return &emptypb.Empty{}, nil
 }
 
-// UpdateRegistrationContact stores an updated contact in a Registration
+// UpdateRegistrationContact stores an updated contact in a Registration.
+// The updated contacts field may be empty.
 func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, req *sapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID) {
 		return nil, errIncompleteRequest
@@ -223,7 +224,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, r
 	return updatedRegistration, nil
 }
 
-// UpdateRegistrationKey stores an updated key in a Registration
+// UpdateRegistrationKey stores an updated key in a Registration.
 func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *sapb.UpdateRegistrationKeyRequest) (*corepb.Registration, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID, req.Jwk) {
 		return nil, errIncompleteRequest

@@ -1756,6 +1756,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req
 }
 
 // UpdateRegistrationContact updates an existing Registration's contact.
+// The updated contacts field may be empty.
 func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Context, req *rapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
