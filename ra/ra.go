@@ -1757,7 +1757,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req
 
 // UpdateRegistrationContact updates an existing Registration's contact.
 func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Context, req *rapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
-	if req == nil || req.RegistrationID == 0 {
+	if core.IsAnyNilOrZero(req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -1780,7 +1780,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Conte
 
 // UpdateRegistrationKey updates an existing Registration's key.
 func (ra *RegistrationAuthorityImpl) UpdateRegistrationKey(ctx context.Context, req *rapb.UpdateRegistrationKeyRequest) (*corepb.Registration, error) {
-	if req == nil || req.RegistrationID == 0 || len(req.Jwk) == 0 {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.Jwk) {
 		return nil, errIncompleteGRPCRequest
 	}
 

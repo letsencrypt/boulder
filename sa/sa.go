@@ -167,7 +167,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 
 // UpdateRegistrationContact stores an updated contact in a Registration
 func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, req *sapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
-	if req == nil || req.RegistrationID == 0 {
+	if core.IsAnyNilOrZero(req.RegistrationID) {
 		return nil, errIncompleteRequest
 	}
 
@@ -217,7 +217,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, r
 
 	updatedRegistration, ok := result.(*corepb.Registration)
 	if !ok {
-		return nil, fmt.Errorf("casting error in UpdateRegistrationContact")
+		return nil, fmt.Errorf("failed to assert result as *corepb.Registration in UpdateRegistrationContact")
 	}
 
 	return updatedRegistration, nil
@@ -225,7 +225,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, r
 
 // UpdateRegistrationKey stores an updated key in a Registration
 func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *sapb.UpdateRegistrationKeyRequest) (*corepb.Registration, error) {
-	if req == nil || req.RegistrationID == 0 || len(req.Jwk) == 0 {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.Jwk) {
 		return nil, errIncompleteRequest
 	}
 
@@ -282,7 +282,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 
 	updatedRegistration, ok := result.(*corepb.Registration)
 	if !ok {
-		return nil, fmt.Errorf("casting error in UpdateRegistrationKey")
+		return nil, fmt.Errorf("failed to assert result as *corepb.Registration in UpdateRegistrationKey")
 	}
 
 	return updatedRegistration, nil

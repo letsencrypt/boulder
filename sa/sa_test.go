@@ -4875,6 +4875,7 @@ func TestUpdateRegistrationContact(t *testing.T) {
 
 	noContact, _ := json.Marshal("")
 	exampleContact, _ := json.Marshal("test@example.com")
+	twoExampleContacts, _ := json.Marshal([]string{"test1@example.com", "test2@example.com"})
 
 	tests := []struct {
 		name            string
@@ -4897,6 +4898,18 @@ func TestUpdateRegistrationContact(t *testing.T) {
 		{
 			name:            "update a valid registration from one email address to no contacts",
 			oldContactsJSON: []string{string(exampleContact)},
+			newContacts:     []string{},
+			expectedError:   nil,
+		},
+		{
+			name:            "update a valid registration from one email address to two email addresses",
+			oldContactsJSON: []string{string(exampleContact)},
+			newContacts:     []string{"mailto:test1@example.com", "mailto:test2@example.com"},
+			expectedError:   nil,
+		},
+		{
+			name:            "update a valid registration from two email addresses to no contacts",
+			oldContactsJSON: []string{string(twoExampleContacts)},
 			newContacts:     []string{},
 			expectedError:   nil,
 		},
