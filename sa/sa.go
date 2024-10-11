@@ -237,7 +237,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 	if err != nil {
 		return nil, err
 	}
-	sha, err := core.KeyDigestB64(req.Jwk)
+	sha, err := core.KeyDigestB64(jwk.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +245,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		result, err := tx.ExecContext(ctx,
 			"UPDATE registrations SET jwk = ?, jwk_sha256 = ? WHERE id = ? LIMIT 1",
-			jwk,
+			req.Jwk,
 			sha,
 			req.RegistrationID,
 		)

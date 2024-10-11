@@ -4935,3 +4935,24 @@ func TestUpdateRegistrationContact(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateRegistrationKey(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       newAcctKey(t),
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, "creating new registration")
+
+	newJwk := newAcctKey(t)
+	reg, err = sa.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{
+		RegistrationID: reg.Id,
+		Jwk:            newJwk,
+	})
+	test.AssertNotError(t, err, "Unexpected error for UpdateRegistrationKey()")
+
+	test.AssertDeepEquals(t, reg.Key, newJwk)
+}
