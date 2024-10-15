@@ -76,6 +76,9 @@ const (
 	// Note: When this is referenced in an overrides file, the fqdnSet MUST be
 	// passed as a comma-separated list of domain names.
 	CertificatesPerFQDNSet
+
+    // TODO: <Add Description> @kruti-s
+	IssuancePausedPerDomainPerAccount
 )
 
 // nameToString is a map of Name values to string names.
@@ -85,9 +88,10 @@ var nameToString = map[Name]string{
 	NewRegistrationsPerIPv6Range:            "NewRegistrationsPerIPv6Range",
 	NewOrdersPerAccount:                     "NewOrdersPerAccount",
 	FailedAuthorizationsPerDomainPerAccount: "FailedAuthorizationsPerDomainPerAccount",
-	CertificatesPerDomain:                   "CertificatesPerDomain",
+    CertificatesPerDomain:                   "CertificatesPerDomain",
 	CertificatesPerDomainPerAccount:         "CertificatesPerDomainPerAccount",
 	CertificatesPerFQDNSet:                  "CertificatesPerFQDNSet",
+    IssuancePausedPerDomainPerAccount:       "IssuancePausedPerDomainPerAccount",
 }
 
 // isValid returns true if the Name is a valid rate limit name.
@@ -230,6 +234,15 @@ func validateIdForName(name Name, id string) error {
 	case CertificatesPerFQDNSet:
 		// 'enum:fqdnSet'
 		return validateFQDNSet(id)
+
+	case IssuancePausedPerDomainPerAccount:
+		if strings.Contains(id, ":") {
+			// 'enum:regId:domain' for transaction
+			return validateRegIdDomain(id)
+		} else {
+			// 'enum:regId' for overrides
+			return validateRegId(id)
+		}
 
 	case Unknown:
 		fallthrough

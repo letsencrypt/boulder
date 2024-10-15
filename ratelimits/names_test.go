@@ -135,6 +135,34 @@ func TestValidateIdForName(t *testing.T) {
 			err:   "invalid regId",
 		},
 		{
+			limit: IssuancePausedPerDomainPerAccount,
+			desc:  "transaction: valid regId and domain",
+			id:    "12345:example.com",
+		},
+		{
+			limit: IssuancePausedPerDomainPerAccount,
+			desc:  "transaction: invalid regId",
+			id:    "12ea5:example.com",
+			err:   "invalid regId",
+		},
+		{
+			limit: IssuancePausedPerDomainPerAccount,
+			desc:  "transaction: invalid domain",
+			id:    "12345:examplecom",
+			err:   "name needs at least one dot",
+		},
+		{
+			limit: IssuancePausedPerDomainPerAccount,
+			desc:  "override: valid regId",
+			id:    "12345",
+		},
+		{
+			limit: IssuancePausedPerDomainPerAccount,
+			desc:  "override: invalid regId",
+			id:    "12ea5",
+			err:   "invalid regId",
+		},
+		{
 			limit: CertificatesPerDomainPerAccount,
 			desc:  "transaction: valid regId and domain",
 			id:    "12345:example.com",
