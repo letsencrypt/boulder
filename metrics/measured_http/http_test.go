@@ -42,12 +42,21 @@ func TestMeasuring(t *testing.T) {
 		},
 		[]string{"endpoint", "method", "code"})
 
+	inFlightRequestsGauge := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "in_flight_requests",
+			Help: "Tracks the number of WFE requests currently in flight, labeled by endpoint.",
+		},
+		[]string{"endpoint"},
+	)
+
 	mux := http.NewServeMux()
 	mux.Handle("/foo", sleepyHandler{clk})
 	mh := MeasuredHandler{
-		serveMux: mux,
-		clk:      clk,
-		stat:     stat,
+		serveMux:              mux,
+		clk:                   clk,
+		stat:                  stat,
+		inFlightRequestsGauge: inFlightRequestsGauge,
 	}
 	mh.ServeHTTP(httptest.NewRecorder(), &http.Request{
 		URL:    &url.URL{Path: "/foo"},
