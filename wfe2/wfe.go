@@ -510,6 +510,9 @@ func (wfe *WebFrontEndImpl) Directory(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+	wfe.stats.inFlightRequestsGauge.WithLabelValues("directory").Inc()
+	defer wfe.stats.inFlightRequestsGauge.WithLabelValues("directory").Dec()
+
 	directoryEndpoints := map[string]interface{}{
 		"newAccount": newAcctPath,
 		"newNonce":   newNoncePath,
@@ -586,6 +589,9 @@ func (wfe *WebFrontEndImpl) Nonce(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+	wfe.stats.inFlightRequestsGauge.WithLabelValues("new-nonce").Inc()
+	defer wfe.stats.inFlightRequestsGauge.WithLabelValues("new-nonce").Dec()
+
 	if request.Method == http.MethodPost {
 		acct, prob := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
 		if prob != nil {
@@ -673,6 +679,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+	wfe.stats.inFlightRequestsGauge.WithLabelValues("new-account").Inc()
+	defer wfe.stats.inFlightRequestsGauge.WithLabelValues("new-account").Dec()
 
 	// NewAccount uses `validSelfAuthenticatedPOST` instead of
 	// `validPOSTforAccount` because there is no account to authenticate against
@@ -1046,6 +1054,8 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+	wfe.stats.inFlightRequestsGauge.WithLabelValues("revoke-cert").Inc()
+	defer wfe.stats.inFlightRequestsGauge.WithLabelValues("revoke-cert").Dec()
 
 	// The ACME specification handles the verification of revocation requests
 	// differently from other endpoints. For this reason we do *not* immediately
@@ -1094,6 +1104,9 @@ func (wfe *WebFrontEndImpl) Challenge(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+	wfe.stats.inFlightRequestsGauge.WithLabelValues("challenge").Inc()
+	defer wfe.stats.inFlightRequestsGauge.WithLabelValues("challenge").Dec()
+
 	notFound := func() {
 		wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
 	}
@@ -1359,6 +1372,9 @@ func (wfe *WebFrontEndImpl) Account(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+	wfe.stats.inFlightRequestsGauge.WithLabelValues("account").Inc()
+	defer wfe.stats.inFlightRequestsGauge.WithLabelValues("account").Dec()
+
 	body, _, currAcct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
@@ -1532,6 +1548,9 @@ func (wfe *WebFrontEndImpl) Authorization(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+	wfe.stats.inFlightRequestsGauge.WithLabelValues("authorization").Inc()
+	defer wfe.stats.inFlightRequestsGauge.WithLabelValues("authorization").Dec()
+
 	var requestAccount *core.Registration
 	var requestBody []byte
 	// If the request is a POST it is either:
@@ -1631,6 +1650,9 @@ func (wfe *WebFrontEndImpl) Authorization(
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	wfe.stats.inFlightRequestsGauge.WithLabelValues("certificate").Inc()
+	defer wfe.stats.inFlightRequestsGauge.WithLabelValues("certificate").Dec()
+
 	var requesterAccount *core.Registration
 	// Any POSTs to the Certificate endpoint should be POST-as-GET requests. There are
 	// no POSTs with a body allowed for this endpoint.
@@ -1862,6 +1884,9 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+	wfe.stats.inFlightRequestsGauge.WithLabelValues("key-rollover").Inc()
+	defer wfe.stats.inFlightRequestsGauge.WithLabelValues("key-rollover").Dec()
+
 	// Validate the outer JWS on the key rollover in standard fashion using
 	// validPOSTForAccount
 	outerBody, outerJWS, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
@@ -2259,6 +2284,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+	wfe.stats.inFlightRequestsGauge.WithLabelValues("new-order").Inc()
+	defer wfe.stats.inFlightRequestsGauge.WithLabelValues("new-order").Dec()
+
 	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
@@ -2444,6 +2472,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 // GetOrder is used to retrieve a existing order object
 func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	wfe.stats.inFlightRequestsGauge.WithLabelValues("get-order").Inc()
+	defer wfe.stats.inFlightRequestsGauge.WithLabelValues("get-order").Dec()
+
 	var requesterAccount *core.Registration
 	// Any POSTs to the Order endpoint should be POST-as-GET requests. There are
 	// no POSTs with a body allowed for this endpoint.
@@ -2527,6 +2558,9 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 // Most processing of the order details is handled by the RA but
 // we do attempt to throw away requests with invalid CSRs here.
 func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	wfe.stats.inFlightRequestsGauge.WithLabelValues("finalize-order").Inc()
+	defer wfe.stats.inFlightRequestsGauge.WithLabelValues("finalize-order").Dec()
+
 	// Validate the POST body signature and get the authenticated account for this
 	// finalize order request
 	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
@@ -2688,6 +2722,9 @@ func parseARICertID(path string, issuerCertificates map[issuance.NameID]*issuanc
 // RenewalInfo is used to get information about the suggested renewal window
 // for the given certificate. It only accepts unauthenticated GET requests.
 func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	wfe.stats.inFlightRequestsGauge.WithLabelValues("renewal-info").Inc()
+	defer wfe.stats.inFlightRequestsGauge.WithLabelValues("renewal-info").Dec()
+
 	if !features.Get().ServeRenewalInfo {
 		wfe.sendError(response, logEvent, probs.NotFound("Feature not enabled"), nil)
 		return

@@ -25,6 +25,22 @@ type wfe2Stats struct {
 	//   - isReplacement=[true|false]
 	//   - limitsExempt=[true|false]
 	ariReplacementOrders *prometheus.CounterVec
+	// inFlightRequestsGauge is a gauge that tracks the number of requests
+	// currently in flight, labeled by method. Possible values are:
+	//   - new-account
+	//   - account
+	//   - revoke-certificate
+	//   - key-rollover
+	//   - new-order
+	//   - finalize-order
+	//   - directory
+	//   - nonce
+	//   - get-order
+	//   - authorization
+	//   - challenge
+	//   - certificate
+	//   - renewal-info
+	inFlightRequestsGauge *prometheus.GaugeVec
 }
 
 func initStats(stats prometheus.Registerer) wfe2Stats {
@@ -78,6 +94,14 @@ func initStats(stats prometheus.Registerer) wfe2Stats {
 	)
 	stats.MustRegister(ariReplacementOrders)
 
+	inFlightRequestsGauge := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "in_flight_requests",
+			Help: "Tracks the number of WFE requests currently in flight, labeled by method.",
+		},
+		[]string{"method"},
+	)
+
 	return wfe2Stats{
 		httpErrorCount:              httpErrorCount,
 		joseErrorCount:              joseErrorCount,
@@ -85,5 +109,6 @@ func initStats(stats prometheus.Registerer) wfe2Stats {
 		improperECFieldLengths:      improperECFieldLengths,
 		nonceNoMatchingBackendCount: nonceNoBackendCount,
 		ariReplacementOrders:        ariReplacementOrders,
+		inFlightRequestsGauge:       inFlightRequestsGauge,
 	}
 }
