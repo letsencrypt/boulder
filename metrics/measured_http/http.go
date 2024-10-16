@@ -64,7 +64,7 @@ func New(m serveMux, clk clock.Clock, stats prometheus.Registerer, opts ...otelh
 			Name: "in_flight_requests",
 			Help: "Tracks the number of WFE requests currently in flight, labeled by endpoint.",
 		},
-		[]string{"method"},
+		[]string{"endpoint"},
 	)
 	stats.MustRegister(inFlightRequestsGauge)
 
