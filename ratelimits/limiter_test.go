@@ -539,7 +539,7 @@ func TestRateLimitError(t *testing.T) {
 					bucketKey: "8:12345:example.com",
 				},
 			},
-			expectedErr:     "too many failed authorizations (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01 00:00:15 UTC",
+			expectedErr:     "too many failed validation attempts (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01 00:00:15 UTC",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
