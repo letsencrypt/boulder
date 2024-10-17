@@ -3714,6 +3714,11 @@ func (m *awsRestxml_deserializeOpGetBucketLifecycleConfiguration) HandleDeserial
 	output := &GetBucketLifecycleConfigurationOutput{}
 	out.Result = output
 
+	err = awsRestxml_deserializeOpHttpBindingsGetBucketLifecycleConfigurationOutput(output, response)
+	if err != nil {
+		return out, metadata, &smithy.DeserializationError{Err: fmt.Errorf("failed to decode response with invalid Http bindings, %w", err)}
+	}
+
 	var buff [1024]byte
 	ringBuffer := smithyio.NewRingBuffer(buff[:])
 	body := io.TeeReader(response.Body, ringBuffer)
@@ -3786,6 +3791,18 @@ func awsRestxml_deserializeOpErrorGetBucketLifecycleConfiguration(response *smit
 	}
 }
 
+func awsRestxml_deserializeOpHttpBindingsGetBucketLifecycleConfigurationOutput(v *GetBucketLifecycleConfigurationOutput, response *smithyhttp.Response) error {
+	if v == nil {
+		return fmt.Errorf("unsupported deserialization for nil %T", v)
+	}
+
+	if headerValues := response.Header.Values("x-amz-transition-default-minimum-object-size"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.TransitionDefaultMinimumObjectSize = types.TransitionDefaultMinimumObjectSize(headerValues[0])
+	}
+
+	return nil
+}
 func awsRestxml_deserializeOpDocumentGetBucketLifecycleConfigurationOutput(v **GetBucketLifecycleConfigurationOutput, decoder smithyxml.NodeDecoder) error {
 	if v == nil {
 		return fmt.Errorf("unexpected nil of type %T", v)
@@ -10742,10 +10759,9 @@ func (m *awsRestxml_deserializeOpPutBucketLifecycleConfiguration) HandleDeserial
 	output := &PutBucketLifecycleConfigurationOutput{}
 	out.Result = output
 
-	if _, err = io.Copy(ioutil.Discard, response.Body); err != nil {
-		return out, metadata, &smithy.DeserializationError{
-			Err: fmt.Errorf("failed to discard response body, %w", err),
-		}
+	err = awsRestxml_deserializeOpHttpBindingsPutBucketLifecycleConfigurationOutput(output, response)
+	if err != nil {
+		return out, metadata, &smithy.DeserializationError{Err: fmt.Errorf("failed to decode response with invalid Http bindings, %w", err)}
 	}
 
 	span.End()
@@ -10790,6 +10806,19 @@ func awsRestxml_deserializeOpErrorPutBucketLifecycleConfiguration(response *smit
 		return genericError
 
 	}
+}
+
+func awsRestxml_deserializeOpHttpBindingsPutBucketLifecycleConfigurationOutput(v *PutBucketLifecycleConfigurationOutput, response *smithyhttp.Response) error {
+	if v == nil {
+		return fmt.Errorf("unsupported deserialization for nil %T", v)
+	}
+
+	if headerValues := response.Header.Values("x-amz-transition-default-minimum-object-size"); len(headerValues) != 0 {
+		headerValues[0] = strings.TrimSpace(headerValues[0])
+		v.TransitionDefaultMinimumObjectSize = types.TransitionDefaultMinimumObjectSize(headerValues[0])
+	}
+
+	return nil
 }
 
 type awsRestxml_deserializeOpPutBucketLogging struct {
@@ -18069,12 +18098,17 @@ func awsRestxml_deserializeDocumentLifecycleRuleAndOperator(v **types.LifecycleR
 	return nil
 }
 
-func awsRestxml_deserializeDocumentLifecycleRuleFilter(v *types.LifecycleRuleFilter, decoder smithyxml.NodeDecoder) error {
+func awsRestxml_deserializeDocumentLifecycleRuleFilter(v **types.LifecycleRuleFilter, decoder smithyxml.NodeDecoder) error {
 	if v == nil {
 		return fmt.Errorf("unexpected nil of type %T", v)
 	}
-	var uv types.LifecycleRuleFilter
-	var memberFound bool
+	var sv *types.LifecycleRuleFilter
+	if *v == nil {
+		sv = &types.LifecycleRuleFilter{}
+	} else {
+		sv = *v
+	}
+
 	for {
 		t, done, err := decoder.Token()
 		if err != nil {
@@ -18083,27 +18117,16 @@ func awsRestxml_deserializeDocumentLifecycleRuleFilter(v *types.LifecycleRuleFil
 		if done {
 			break
 		}
-		if memberFound {
-			if err = decoder.Decoder.Skip(); err != nil {
-				return err
-			}
-		}
 		originalDecoder := decoder
 		decoder = smithyxml.WrapNodeDecoder(originalDecoder.Decoder, t)
 		switch {
 		case strings.EqualFold("And", t.Name.Local):
-			var mv types.LifecycleRuleAndOperator
 			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
-			destAddr := &mv
-			if err := awsRestxml_deserializeDocumentLifecycleRuleAndOperator(&destAddr, nodeDecoder); err != nil {
+			if err := awsRestxml_deserializeDocumentLifecycleRuleAndOperator(&sv.And, nodeDecoder); err != nil {
 				return err
 			}
-			mv = *destAddr
-			uv = &types.LifecycleRuleFilterMemberAnd{Value: mv}
-			memberFound = true
 
 		case strings.EqualFold("ObjectSizeGreaterThan", t.Name.Local):
-			var mv int64
 			val, err := decoder.Value()
 			if err != nil {
 				return err
@@ -18117,13 +18140,10 @@ func awsRestxml_deserializeDocumentLifecycleRuleFilter(v *types.LifecycleRuleFil
 				if err != nil {
 					return err
 				}
-				mv = i64
+				sv.ObjectSizeGreaterThan = ptr.Int64(i64)
 			}
-			uv = &types.LifecycleRuleFilterMemberObjectSizeGreaterThan{Value: mv}
-			memberFound = true
 
 		case strings.EqualFold("ObjectSizeLessThan", t.Name.Local):
-			var mv int64
 			val, err := decoder.Value()
 			if err != nil {
 				return err
@@ -18137,13 +18157,10 @@ func awsRestxml_deserializeDocumentLifecycleRuleFilter(v *types.LifecycleRuleFil
 				if err != nil {
 					return err
 				}
-				mv = i64
+				sv.ObjectSizeLessThan = ptr.Int64(i64)
 			}
-			uv = &types.LifecycleRuleFilterMemberObjectSizeLessThan{Value: mv}
-			memberFound = true
 
 		case strings.EqualFold("Prefix", t.Name.Local):
-			var mv string
 			val, err := decoder.Value()
 			if err != nil {
 				return err
@@ -18153,30 +18170,26 @@ func awsRestxml_deserializeDocumentLifecycleRuleFilter(v *types.LifecycleRuleFil
 			}
 			{
 				xtv := string(val)
-				mv = xtv
+				sv.Prefix = ptr.String(xtv)
 			}
-			uv = &types.LifecycleRuleFilterMemberPrefix{Value: mv}
-			memberFound = true
 
 		case strings.EqualFold("Tag", t.Name.Local):
-			var mv types.Tag
 			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
-			destAddr := &mv
-			if err := awsRestxml_deserializeDocumentTag(&destAddr, nodeDecoder); err != nil {
+			if err := awsRestxml_deserializeDocumentTag(&sv.Tag, nodeDecoder); err != nil {
 				return err
 			}
-			mv = *destAddr
-			uv = &types.LifecycleRuleFilterMemberTag{Value: mv}
-			memberFound = true
 
 		default:
-			uv = &types.UnknownUnionMember{Tag: t.Name.Local}
-			memberFound = true
+			// Do nothing and ignore the unexpected tag element
+			err = decoder.Decoder.Skip()
+			if err != nil {
+				return err
+			}
 
 		}
 		decoder = originalDecoder
 	}
-	*v = uv
+	*v = sv
 	return nil
 }
 
@@ -21368,12 +21381,17 @@ func awsRestxml_deserializeDocumentReplicationRuleAndOperator(v **types.Replicat
 	return nil
 }
 
-func awsRestxml_deserializeDocumentReplicationRuleFilter(v *types.ReplicationRuleFilter, decoder smithyxml.NodeDecoder) error {
+func awsRestxml_deserializeDocumentReplicationRuleFilter(v **types.ReplicationRuleFilter, decoder smithyxml.NodeDecoder) error {
 	if v == nil {
 		return fmt.Errorf("unexpected nil of type %T", v)
 	}
-	var uv types.ReplicationRuleFilter
-	var memberFound bool
+	var sv *types.ReplicationRuleFilter
+	if *v == nil {
+		sv = &types.ReplicationRuleFilter{}
+	} else {
+		sv = *v
+	}
+
 	for {
 		t, done, err := decoder.Token()
 		if err != nil {
@@ -21382,27 +21400,16 @@ func awsRestxml_deserializeDocumentReplicationRuleFilter(v *types.ReplicationRul
 		if done {
 			break
 		}
-		if memberFound {
-			if err = decoder.Decoder.Skip(); err != nil {
-				return err
-			}
-		}
 		originalDecoder := decoder
 		decoder = smithyxml.WrapNodeDecoder(originalDecoder.Decoder, t)
 		switch {
 		case strings.EqualFold("And", t.Name.Local):
-			var mv types.ReplicationRuleAndOperator
 			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
-			destAddr := &mv
-			if err := awsRestxml_deserializeDocumentReplicationRuleAndOperator(&destAddr, nodeDecoder); err != nil {
+			if err := awsRestxml_deserializeDocumentReplicationRuleAndOperator(&sv.And, nodeDecoder); err != nil {
 				return err
 			}
-			mv = *destAddr
-			uv = &types.ReplicationRuleFilterMemberAnd{Value: mv}
-			memberFound = true
 
 		case strings.EqualFold("Prefix", t.Name.Local):
-			var mv string
 			val, err := decoder.Value()
 			if err != nil {
 				return err
@@ -21412,30 +21419,26 @@ func awsRestxml_deserializeDocumentReplicationRuleFilter(v *types.ReplicationRul
 			}
 			{
 				xtv := string(val)
-				mv = xtv
+				sv.Prefix = ptr.String(xtv)
 			}
-			uv = &types.ReplicationRuleFilterMemberPrefix{Value: mv}
-			memberFound = true
 
 		case strings.EqualFold("Tag", t.Name.Local):
-			var mv types.Tag
 			nodeDecoder := smithyxml.WrapNodeDecoder(decoder.Decoder, t)
-			destAddr := &mv
-			if err := awsRestxml_deserializeDocumentTag(&destAddr, nodeDecoder); err != nil {
+			if err := awsRestxml_deserializeDocumentTag(&sv.Tag, nodeDecoder); err != nil {
 				return err
 			}
-			mv = *destAddr
-			uv = &types.ReplicationRuleFilterMemberTag{Value: mv}
-			memberFound = true
 
 		default:
-			uv = &types.UnknownUnionMember{Tag: t.Name.Local}
-			memberFound = true
+			// Do nothing and ignore the unexpected tag element
+			err = decoder.Decoder.Skip()
+			if err != nil {
+				return err
+			}
 
 		}
 		decoder = originalDecoder
 	}
-	*v = uv
+	*v = sv
 	return nil
 }
 
