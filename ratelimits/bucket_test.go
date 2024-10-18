@@ -108,34 +108,11 @@ func TestIssuancePausedPerDomainPerAccountTransactions(t *testing.T) {
 	tb, err := NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml")
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
-	// A check-only transaction for the default per-account limit.
-	txns, err := tb.IssuancePausedPerDomainPerAccountCheckOnlyTransactions(123456789, []string{"so.many.labels.here.example.com"})
-	test.AssertNotError(t, err, "creating transactions")
-	test.AssertEquals(t, len(txns), 1)
-	test.AssertEquals(t, txns[0].bucketKey, "8:123456789:so.many.labels.here.example.com")
-	test.Assert(t, txns[0].checkOnly(), "should be check-only")
-	test.Assert(t, !txns[0].limit.isOverride(), "should not be an override")
-
-	// A spend-only transaction for the default per-account limit.
-	txn, err := tb.IssuancePausedPerDomainPerAccountSpendOnlyTransaction(123456789, "so.many.labels.here.example.com")
-	test.AssertNotError(t, err, "creating transaction")
-	test.AssertEquals(t, txn.bucketKey, "8:123456789:so.many.labels.here.example.com")
-	test.Assert(t, txn.spendOnly(), "should be spend-only")
-	test.Assert(t, !txn.limit.isOverride(), "should not be an override")
-
-	// A check-only transaction for the per-account limit override.
-	txns, err = tb.IssuancePausedPerDomainPerAccountCheckOnlyTransactions(13371338, []string{"so.many.labels.here.example.com"})
-	test.AssertNotError(t, err, "creating transactions")
-	test.AssertEquals(t, len(txns), 1)
-	test.AssertEquals(t, txns[0].bucketKey, "8:13371338:so.many.labels.here.example.com")
-	test.Assert(t, txns[0].checkOnly(), "should be check-only")
-	test.Assert(t, txns[0].limit.isOverride(), "should be an override")
-
-	// A spend-only transaction for the per-account limit override.
-	txn, err = tb.IssuancePausedPerDomainPerAccountSpendOnlyTransaction(13371338, "so.many.labels.here.example.com")
+	// A transaction for the per-account limit override.
+	txn, err := tb.IssuancePausedPerDomainPerAccountTransaction(13371338, "so.many.labels.here.example.com")
 	test.AssertNotError(t, err, "creating transaction")
 	test.AssertEquals(t, txn.bucketKey, "8:13371338:so.many.labels.here.example.com")
-	test.Assert(t, txn.spendOnly(), "should be spend-only")
+	test.Assert(t, txn.check && txn.spend, "should be check and spend")
 	test.Assert(t, txn.limit.isOverride(), "should be an override")
 }
 

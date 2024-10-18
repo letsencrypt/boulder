@@ -1837,7 +1837,9 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 // countFailedValidation increments the failed authorizations per domain per
 // account rate limit. There is no reason to surface errors from this function
 // to the Subscriber, spends against this limit are best effort.
-func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, regId int64, name string) {
+func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, regId int64, iden identifier.ACMEIdentifier) {
+	var name = iden.Value
+
 	if ra.limiter == nil || ra.txnBuilder == nil {
 		// Limiter is disabled.
 		return
@@ -1857,18 +1859,36 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 	}
 
 	// Increment ratelimit for IssuancePaused
-	txn, err = ra.txnBuilder.IssuancePausedPerDomainPerAccountSpendOnlyTransaction(regId, name)
+	txn, err = ra.txnBuilder.IssuancePausedPerDomainPerAccountTransaction(regId, name)
 	if err != nil {
 		ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.IssuancePausedPerDomainPerAccount, err)
 	}
 
-	_, err = ra.limiter.Spend(ctx, txn)
+	decision, err := ra.limiter.Spend(ctx, txn)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
 		ra.log.Warningf("spending against the %s rate limit: %s", ratelimits.IssuancePausedPerDomainPerAccount, err)
 	}
+	// TODO: is this how we want to catch this error
+	if decision == nil {
+		ra.log.Warningf("decision and error are both nil for the %s rate limit", ratelimits.IssuancePausedPerDomainPerAccount)
+		return
+	}
+
+	if decision.Result(ra.clk.Now()) != nil {
+		ra.SA.PauseIdentifiers(ctx, &sapb.PauseRequest{
+			RegistrationID: regId,
+			Identifiers: []*corepb.Identifier{
+				{
+					Type:  string(iden.Type),
+					Value: iden.Value,
+				},
+			},
+		})
+	}
+
 }
 
 // PerformValidation initiates validation for a specific challenge associated
@@ -1992,9 +2012,15 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		if prob != nil {
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
-			go ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier.Value)
+			go ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier)
 		} else {
 			challenge.Status = core.StatusValid
+			bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.IssuancePausedPerDomainPerAccount, authz.RegistrationID, authz.Identifier.Value)
+			if err != nil {
+				ra.log.Warningf("Can't get domain bucket key for regID=[%d] authzID=[%s] err=[%s]",
+					authz.RegistrationID, authz.ID, err)
+			}
+			ra.limiter.Reset(ctx, bucketKey)
 		}
 		challenge.Validated = &vStart
 		authz.Challenges[challIndex] = *challenge

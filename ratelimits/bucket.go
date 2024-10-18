@@ -64,9 +64,9 @@ func newDomainBucketKey(name Name, orderName string) (string, error) {
 	return joinWithColon(name.EnumString(), orderName), nil
 }
 
-// newRegIdDomainBucketKey validates and returns a bucketKey for limits that use
-// the 'enum:regId:domain' bucket key format.
-func newRegIdDomainBucketKey(name Name, regId int64, orderName string) (string, error) {
+// NewRegIdDomainBucketKey validates and returns a bucketKey for limits that use
+// the 'enum:regId:domain' bucket key format. This function is exported for use in ra.PerformValidation
+func NewRegIdDomainBucketKey(name Name, regId int64, orderName string) (string, error) {
 	regIdStr := strconv.FormatInt(regId, 10)
 	err := validateIdForName(name, joinWithColon(regIdStr, orderName))
 	if err != nil {
@@ -257,7 +257,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckO
 	for _, name := range orderDomains {
 		// FailedAuthorizationsPerDomainPerAccount limit uses the
 		// 'enum:regId:domain' bucket key format for transactions.
-		perDomainPerAccountBucketKey, err := newRegIdDomainBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, name)
+		perDomainPerAccountBucketKey, err := NewRegIdDomainBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, name)
 		if err != nil {
 			return nil, err
 		}
@@ -292,7 +292,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendO
 
 	// FailedAuthorizationsPerDomainPerAccount limit uses the
 	// 'enum:regId:domain' bucket key format for transactions.
-	perDomainPerAccountBucketKey, err := newRegIdDomainBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, orderDomain)
+	perDomainPerAccountBucketKey, err := NewRegIdDomainBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, orderDomain)
 	if err != nil {
 		return Transaction{}, err
 	}
@@ -304,50 +304,11 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendO
 	return txn, nil
 }
 
-// IssuancePausedPerDomainPerAccountCheckOnlyTransactions returns a slice
-// of Transactions for the provided order domain names. An error is returned if
-// any of the order domain names are invalid. This method should be used for
-// checking capacity, before allowing more authorizations to be created.
-//
-// Precondition: len(orderDomains) < maxNames.
-func (builder *TransactionBuilder) IssuancePausedPerDomainPerAccountCheckOnlyTransactions(regId int64, orderDomains []string) ([]Transaction, error) {
-	// IssuancePausedPerDomainPerAccount limit uses the 'enum:regId'
-	// bucket key format for overrides.
-	perAccountBucketKey, err := newRegIdBucketKey(IssuancePausedPerDomainPerAccount, regId)
-	if err != nil {
-		return nil, err
-	}
-	limit, err := builder.getLimit(IssuancePausedPerDomainPerAccount, perAccountBucketKey)
-	if err != nil && !errors.Is(err, errLimitDisabled) {
-		return nil, err
-	}
-
-	var txns []Transaction
-	for _, name := range orderDomains {
-		// IssuancePausedPerDomainPerAccount limit uses the
-		// 'enum:regId:domain' bucket key format for transactions.
-		perDomainPerAccountBucketKey, err := newRegIdDomainBucketKey(IssuancePausedPerDomainPerAccount, regId, name)
-		if err != nil {
-			return nil, err
-		}
-
-		// Add a check-only transaction for each per domain per account bucket.
-		// The cost is 0, as we are only checking that the account and domain
-		// pair aren't already over the limit.
-		txn, err := newCheckOnlyTransaction(limit, perDomainPerAccountBucketKey, 1)
-		if err != nil {
-			return nil, err
-		}
-		txns = append(txns, txn)
-	}
-	return txns, nil
-}
-
-// IssuancePausedPerDomainPerAccountSpendOnlyTransaction returns a spend-
-// only Transaction for the provided order domain name. An error is returned if
+// IssuancePausedPerDomainPerAccountTransaction returns a
+// Transaction for the provided order domain name. An error is returned if
 // the order domain name is invalid. This method should be used for spending
 // capacity, as a result of a failed authorization.
-func (builder *TransactionBuilder) IssuancePausedPerDomainPerAccountSpendOnlyTransaction(regId int64, orderDomain string) (Transaction, error) {
+func (builder *TransactionBuilder) IssuancePausedPerDomainPerAccountTransaction(regId int64, orderDomain string) (Transaction, error) {
 	// IssuancePausedPerDomainPerAccount limit uses the 'enum:regId'
 	// bucket key format for overrides.
 	perAccountBucketKey, err := newRegIdBucketKey(IssuancePausedPerDomainPerAccount, regId)
@@ -361,11 +322,12 @@ func (builder *TransactionBuilder) IssuancePausedPerDomainPerAccountSpendOnlyTra
 
 	// IssuancePausedPerDomainPerAccount limit uses the
 	// 'enum:regId:domain' bucket key format for transactions.
-	perDomainPerAccountBucketKey, err := newRegIdDomainBucketKey(IssuancePausedPerDomainPerAccount, regId, orderDomain)
+	perDomainPerAccountBucketKey, err := NewRegIdDomainBucketKey(IssuancePausedPerDomainPerAccount, regId, orderDomain)
 	if err != nil {
 		return Transaction{}, err
 	}
-	txn, err := newSpendOnlyTransaction(limit, perDomainPerAccountBucketKey, 1)
+
+	txn, err := newTransaction(limit, perDomainPerAccountBucketKey, 1)
 	if err != nil {
 		return Transaction{}, err
 	}
@@ -402,7 +364,7 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 		if perAccountLimit.isOverride() {
 			// An override is configured for the CertificatesPerDomainPerAccount
 			// limit.
-			perAccountPerDomainKey, err := newRegIdDomainBucketKey(CertificatesPerDomainPerAccount, regId, name)
+			perAccountPerDomainKey, err := NewRegIdDomainBucketKey(CertificatesPerDomainPerAccount, regId, name)
 			if err != nil {
 				return nil, err
 			}
@@ -468,7 +430,7 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 		if perAccountLimit.isOverride() {
 			// An override is configured for the CertificatesPerDomainPerAccount
 			// limit.
-			perAccountPerDomainKey, err := newRegIdDomainBucketKey(CertificatesPerDomainPerAccount, regId, name)
+			perAccountPerDomainKey, err := NewRegIdDomainBucketKey(CertificatesPerDomainPerAccount, regId, name)
 			if err != nil {
 				return nil, err
 			}

@@ -153,7 +153,7 @@ func (d *Decision) Result(now time.Time) error {
 			retryAfterTs,
 		)
 
-    case IssuancePausedPerDomainPerAccount:
+	case IssuancePausedPerDomainPerAccount:
 		// Uses bucket key 'enum:regId:domain'.
 		idx := strings.LastIndex(d.transaction.bucketKey, ":")
 		if idx == -1 {
