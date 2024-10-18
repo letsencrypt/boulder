@@ -81,10 +81,8 @@ func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rwws := &responseWriterWithStatus{w, 0}
 
 	subHandler, pattern := h.Handler(r)
-	if pattern != "/" {
-		h.inFlightRequestsGauge.WithLabelValues(pattern).Inc()
-		defer h.inFlightRequestsGauge.WithLabelValues(pattern).Dec()
-	}
+	h.inFlightRequestsGauge.WithLabelValues(pattern).Inc()
+	defer h.inFlightRequestsGauge.WithLabelValues(pattern).Dec()
 
 	// Use the method string only if it's a recognized HTTP method. This avoids
 	// ballooning timeseries with invalid methods from public input.
