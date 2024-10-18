@@ -181,7 +181,6 @@ func TestRegistration(t *testing.T) {
 		Key:       &key,
 		Contact:   &contacts,
 		Agreement: "yup",
-		InitialIP: net.ParseIP("1.1.1.1"),
 		CreatedAt: &createdAt,
 		Status:    core.StatusValid,
 	}
@@ -212,7 +211,6 @@ func TestRegistration(t *testing.T) {
 		Key:       &key,
 		Contact:   &contacts,
 		Agreement: "yup",
-		InitialIP: net.ParseIP("1.1.1.1"),
 		CreatedAt: nil,
 		Status:    core.StatusValid,
 	}

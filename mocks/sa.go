@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"math/rand/v2"
-	"net"
 	"os"
 	"time"
 
@@ -113,7 +112,6 @@ func (sa *StorageAuthorityReadOnly) GetRegistration(_ context.Context, req *sapb
 		return goodReg, nil
 	}
 
-	goodReg.InitialIP, _ = net.ParseIP("5.6.7.8").MarshalText()
 	goodReg.CreatedAt = timestamppb.New(time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC))
 	return goodReg, nil
 }
@@ -321,16 +319,6 @@ func (sa *StorageAuthorityReadOnly) FQDNSetExists(_ context.Context, _ *sapb.FQD
 // CountCertificatesByNames is a mock
 func (sa *StorageAuthorityReadOnly) CountCertificatesByNames(_ context.Context, _ *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
 	return &sapb.CountByNames{}, nil
-}
-
-// CountRegistrationsByIP is a mock
-func (sa *StorageAuthorityReadOnly) CountRegistrationsByIP(_ context.Context, _ *sapb.CountRegistrationsByIPRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return &sapb.Count{}, nil
-}
-
-// CountRegistrationsByIPRange is a mock
-func (sa *StorageAuthorityReadOnly) CountRegistrationsByIPRange(_ context.Context, _ *sapb.CountRegistrationsByIPRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return &sapb.Count{}, nil
 }
 
 // CountOrders is a mock

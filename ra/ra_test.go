@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"math/big"
 	mrand "math/rand/v2"
-	"net"
 	"os"
 	"regexp"
 	"strconv"
@@ -263,12 +262,6 @@ func (r *dummyRateLimitConfig) LoadPolicies(contents []byte) error {
 	return nil // NOP - unrequired behaviour for this mock
 }
 
-func parseAndMarshalIP(t *testing.T, ip string) []byte {
-	ipBytes, err := net.ParseIP(ip).MarshalText()
-	test.AssertNotError(t, err, "failed to marshal ip")
-	return ipBytes
-}
-
 func newAcctKey(t *testing.T) []byte {
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	jwk := &jose.JSONWebKey{Key: key.Public()}
@@ -331,12 +324,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	block, _ := pem.Decode(CSRPEM)
 	ExampleCSR, _ = x509.ParseCertificateRequest(block.Bytes)
 
-	initialIP, err := net.ParseIP("3.2.3.3").MarshalText()
 	test.AssertNotError(t, err, "Couldn't create initial IP")
 	Registration, _ = ssa.NewRegistration(ctx, &corepb.Registration{
-		Key:       AccountKeyJSONA,
-		InitialIP: initialIP,
-		Status:    string(core.StatusValid),
+		Key:    AccountKeyJSONA,
+		Status: string(core.StatusValid),
 	})
 
 	ctp := ctpolicy.New(&mocks.PublisherClient{}, loglist.List{
@@ -484,7 +475,6 @@ func TestNewRegistration(t *testing.T) {
 		Contact:         []string{mailto},
 		ContactsPresent: true,
 		Key:             acctKeyB,
-		InitialIP:       parseAndMarshalIP(t, "7.6.6.5"),
 	}
 
 	result, err := ra.NewRegistration(ctx, input)
@@ -512,8 +502,7 @@ func TestNewRegistrationContactsPresent(t *testing.T) {
 		{
 			Name: "No contacts provided by client ContactsPresent false",
 			Reg: &corepb.Registration{
-				Key:       newAcctKey(t),
-				InitialIP: parseAndMarshalIP(t, "7.6.6.5"),
+				Key: newAcctKey(t),
 			},
 			ExpectedErr: nil,
 		},
@@ -523,7 +512,6 @@ func TestNewRegistrationContactsPresent(t *testing.T) {
 				Contact:         []string{},
 				ContactsPresent: true,
 				Key:             newAcctKey(t),
-				InitialIP:       parseAndMarshalIP(t, "7.6.6.4"),
 			},
 			ExpectedErr: nil,
 		},
@@ -533,7 +521,6 @@ func TestNewRegistrationContactsPresent(t *testing.T) {
 				Contact:         []string{"mailto:foo@letsencrypt.org"},
 				ContactsPresent: true,
 				Key:             newAcctKey(t),
-				InitialIP:       parseAndMarshalIP(t, "7.6.4.3"),
 			},
 			ExpectedErr: nil,
 		},
@@ -543,7 +530,6 @@ func TestNewRegistrationContactsPresent(t *testing.T) {
 				Contact:         []string{"mailto:foo@letsencrypt.org"},
 				ContactsPresent: false,
 				Key:             newAcctKey(t),
-				InitialIP:       parseAndMarshalIP(t, "7.6.6.2"),
 			},
 			ExpectedErr: fmt.Errorf("account contacts present but contactsPresent false"),
 		},
@@ -583,7 +569,6 @@ func TestNewRegistrationSAFailure(t *testing.T) {
 		Contact:         []string{"mailto:test@example.com"},
 		ContactsPresent: true,
 		Key:             acctKeyB,
-		InitialIP:       parseAndMarshalIP(t, "7.6.6.5"),
 	}
 	result, err := ra.NewRegistration(ctx, &input)
 	if err == nil {
@@ -603,7 +588,6 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 		Contact:         []string{mailto},
 		ContactsPresent: true,
 		Agreement:       "I agreed",
-		InitialIP:       parseAndMarshalIP(t, "5.0.5.0"),
 	}
 
 	result, err := ra.NewRegistration(ctx, input)
@@ -628,129 +612,6 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	test.AssertError(t, err, "Should have rejected authorization with short key")
 }
 
-func TestNewRegistrationRateLimit(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Specify a dummy rate limit policy that allows 1 registration per exact IP
-	// match, and 2 per range.
-	ra.rlPolicies = &dummyRateLimitConfig{
-		RegistrationsPerIPPolicy: ratelimit.RateLimitPolicy{
-			Threshold: 1,
-			Window:    config.Duration{Duration: 24 * 90 * time.Hour},
-		},
-		RegistrationsPerIPRangePolicy: ratelimit.RateLimitPolicy{
-			Threshold: 2,
-			Window:    config.Duration{Duration: 24 * 90 * time.Hour},
-		},
-	}
-
-	// Create one registration for an IPv4 address
-	mailto := "mailto:foo@letsencrypt.org"
-	reg := &corepb.Registration{
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Key:             newAcctKey(t),
-		InitialIP:       parseAndMarshalIP(t, "7.6.6.5"),
-	}
-	// There should be no errors - it is within the RegistrationsPerIP rate limit
-	_, err := ra.NewRegistration(ctx, reg)
-	test.AssertNotError(t, err, "Unexpected error adding new IPv4 registration")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": ratelimits.Allowed}, 1)
-	// There are no overrides for this IP, so the override usage gauge should
-	// contain 0 entries with labels matching it.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "override_key": "7.6.6.5"}, 0)
-
-	// Create another registration for the same IPv4 address by changing the key
-	reg.Key = newAcctKey(t)
-
-	// There should be an error since a 2nd registration will exceed the
-	// RegistrationsPerIP rate limit
-	_, err = ra.NewRegistration(ctx, reg)
-	test.AssertError(t, err, "No error adding duplicate IPv4 registration")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": ratelimits.Denied}, 1)
-
-	// Create a registration for an IPv6 address
-	reg.Key = newAcctKey(t)
-	reg.InitialIP = parseAndMarshalIP(t, "2001:cdba:1234:5678:9101:1121:3257:9652")
-
-	// There should be no errors - it is within the RegistrationsPerIP rate limit
-	_, err = ra.NewRegistration(ctx, reg)
-	test.AssertNotError(t, err, "Unexpected error adding a new IPv6 registration")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": ratelimits.Allowed}, 2)
-
-	// Create a 2nd registration for the IPv6 address by changing the key
-	reg.Key = newAcctKey(t)
-
-	// There should be an error since a 2nd reg for the same IPv6 address will
-	// exceed the RegistrationsPerIP rate limit
-	_, err = ra.NewRegistration(ctx, reg)
-	test.AssertError(t, err, "No error adding duplicate IPv6 registration")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": ratelimits.Denied}, 2)
-
-	// Create a registration for an IPv6 address in the same /48
-	reg.Key = newAcctKey(t)
-	reg.InitialIP = parseAndMarshalIP(t, "2001:cdba:1234:5678:9101:1121:3257:9653")
-
-	// There should be no errors since two IPv6 addresses in the same /48 is
-	// within the RegistrationsPerIPRange limit
-	_, err = ra.NewRegistration(ctx, reg)
-	test.AssertNotError(t, err, "Unexpected error adding second IPv6 registration in the same /48")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIPRange, "decision": ratelimits.Allowed}, 2)
-
-	// Create a registration for yet another IPv6 address in the same /48
-	reg.Key = newAcctKey(t)
-	reg.InitialIP = parseAndMarshalIP(t, "2001:cdba:1234:5678:9101:1121:3257:9654")
-
-	// There should be an error since three registrations within the same IPv6
-	// /48 is outside of the RegistrationsPerIPRange limit
-	_, err = ra.NewRegistration(ctx, reg)
-	test.AssertError(t, err, "No error adding a third IPv6 registration in the same /48")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP range: see https://letsencrypt.org/docs/rate-limits/")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIPRange, "decision": ratelimits.Denied}, 1)
-}
-
-func TestRegistrationsPerIPOverrideUsage(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	regIP := net.ParseIP("4.5.6.7")
-	rlp := ratelimit.RateLimitPolicy{
-		Threshold: 2,
-		Window:    config.Duration{Duration: 23 * time.Hour},
-		Overrides: map[string]int64{
-			regIP.String(): 3,
-		},
-	}
-
-	mockCounterAlwaysTwo := func(context.Context, *sapb.CountRegistrationsByIPRequest, ...grpc.CallOption) (*sapb.Count, error) {
-		return &sapb.Count{Count: 2}, nil
-	}
-
-	// No error expected, the count of existing registrations for "4.5.6.7"
-	// should be 1 below the override threshold.
-	err := ra.checkRegistrationIPLimit(ctx, rlp, regIP, mockCounterAlwaysTwo)
-	test.AssertNotError(t, err, "Unexpected error checking RegistrationsPerIPRange limit")
-
-	// Accounting for the anticipated issuance, we expect "4.5.6.7" to be at
-	// 100% of their override threshold.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "override_key": regIP.String()}, 1)
-
-	mockCounterAlwaysThree := func(context.Context, *sapb.CountRegistrationsByIPRequest, ...grpc.CallOption) (*sapb.Count, error) {
-		return &sapb.Count{Count: 3}, nil
-	}
-
-	// Error expected, the count of existing registrations for "4.5.6.7" should
-	// be exactly at the threshold.
-	err = ra.checkRegistrationIPLimit(ctx, rlp, regIP, mockCounterAlwaysThree)
-	test.AssertError(t, err, "Expected error checking RegistrationsPerIPRange limit")
-
-	// Expecting 100% of the override for "4.5.6.7" to be utilized.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "override_key": regIP.String()}, 1)
-}
-
 type NoUpdateSA struct {
 	sapb.StorageAuthorityClient
 }
@@ -772,7 +633,6 @@ func TestUpdateRegistrationSame(t *testing.T) {
 		Contact:         []string{mailto},
 		ContactsPresent: true,
 		Agreement:       "I agreed",
-		InitialIP:       parseAndMarshalIP(t, "5.0.5.0"),
 	}
 	result, err := ra.NewRegistration(ctx, reg)
 	test.AssertNotError(t, err, "Could not create new registration")
@@ -1998,8 +1858,7 @@ func TestNewOrderReuse(t *testing.T) {
 	acctKeyB, err := AccountKeyB.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := &corepb.Registration{
-		Key:       acctKeyB,
-		InitialIP: parseAndMarshalIP(t, "42.42.42.42"),
+		Key: acctKeyB,
 	}
 	secondReg, err := ra.NewRegistration(ctx, input)
 	test.AssertNotError(t, err, "Error creating a second test registration")
