@@ -573,6 +573,7 @@ func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, names 
 		transactions = append(transactions, txn)
 	}
 
+	// TODO: @kruti-s do I need something like this for IssuancePaused?
 	txns, err := builder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId, names)
 	if err != nil {
 		return nil, makeTxnError(err, FailedAuthorizationsPerDomainPerAccount)

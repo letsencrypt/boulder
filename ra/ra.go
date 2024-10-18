@@ -1855,6 +1855,20 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 		}
 		ra.log.Warningf("spending against the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
+
+	// Increment ratelimit for IssuancePaused
+	txn, err = ra.txnBuilder.IssuancePausedPerDomainPerAccountSpendOnlyTransaction(regId, name)
+	if err != nil {
+		ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.IssuancePausedPerDomainPerAccount, err)
+	}
+
+	_, err = ra.limiter.Spend(ctx, txn)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		ra.log.Warningf("spending against the %s rate limit: %s", ratelimits.IssuancePausedPerDomainPerAccount, err)
+	}
 }
 
 // PerformValidation initiates validation for a specific challenge associated
