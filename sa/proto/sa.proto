@@ -15,8 +15,6 @@ service StorageAuthorityReadOnly {
   rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
   rpc CountOrders(CountOrdersRequest) returns (Count) {}
   rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
-  rpc CountRegistrationsByIP(CountRegistrationsByIPRequest) returns (Count) {}
-  rpc CountRegistrationsByIPRange(CountRegistrationsByIPRequest) returns (Count) {}
   rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
@@ -52,8 +50,6 @@ service StorageAuthority {
   rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
   rpc CountOrders(CountOrdersRequest) returns (Count) {}
   rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
-  rpc CountRegistrationsByIP(CountRegistrationsByIPRequest) returns (Count) {}
-  rpc CountRegistrationsByIPRange(CountRegistrationsByIPRequest) returns (Count) {}
   rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
@@ -162,11 +158,6 @@ message CountCertificatesByNamesRequest {
 message CountByNames {
   map<string, int64> counts = 1;
   google.protobuf.Timestamp earliest = 2; // Unix timestamp (nanoseconds)
-}
-
-message CountRegistrationsByIPRequest {
-  bytes ip = 1;
-  Range range = 2;
 }
 
 message CountInvalidAuthorizationsRequest {

@@ -766,13 +766,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 
-	// Prepare account information to create corepb.Registration
-	ipBytes, err := ip.MarshalText()
-	if err != nil {
-		wfe.sendError(response, logEvent,
-			web.ProblemDetailsForError(err, "Error creating new account"), err)
-		return
-	}
 	var contacts []string
 	var contactsPresent bool
 	if accountCreateRequest.Contact != nil {
@@ -786,7 +779,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		ContactsPresent: contactsPresent,
 		Agreement:       wfe.SubscriberAgreementURL,
 		Key:             keyBytes,
-		InitialIP:       ipBytes,
 	}
 
 	refundLimits, err := wfe.checkNewAccountLimits(ctx, ip)
@@ -838,7 +830,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	registrationValid := func(reg *corepb.Registration) bool {
-		return !(len(reg.Key) == 0 || len(reg.InitialIP) == 0) && reg.Id != 0
+		return !(len(reg.Key) == 0) && reg.Id != 0
 	}
 
 	if acctPB == nil || !registrationValid(acctPB) {

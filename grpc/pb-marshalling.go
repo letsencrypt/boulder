@@ -222,10 +222,6 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	if err != nil {
 		return nil, err
 	}
-	ipBytes, err := reg.InitialIP.MarshalText()
-	if err != nil {
-		return nil, err
-	}
 	var contacts []string
 	// Since the default value of corepb.Registration.Contact is a slice
 	// we need a indicator as to if the value is actually important on
@@ -248,7 +244,6 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 		Contact:         contacts,
 		ContactsPresent: contactsPresent,
 		Agreement:       reg.Agreement,
-		InitialIP:       ipBytes,
 		CreatedAt:       createdAt,
 		Status:          string(reg.Status),
 	}, nil
@@ -257,11 +252,6 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 	var key jose.JSONWebKey
 	err := key.UnmarshalJSON(pb.Key)
-	if err != nil {
-		return core.Registration{}, err
-	}
-	var initialIP net.IP
-	err = initialIP.UnmarshalText(pb.InitialIP)
 	if err != nil {
 		return core.Registration{}, err
 	}
@@ -289,7 +279,6 @@ func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 		Key:       &key,
 		Contact:   contacts,
 		Agreement: pb.Agreement,
-		InitialIP: initialIP,
 		CreatedAt: createdAt,
 		Status:    core.AcmeStatus(pb.Status),
 	}, nil

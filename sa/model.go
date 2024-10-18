@@ -59,7 +59,7 @@ func badJSONError(msg string, jsonData []byte, err error) error {
 	}
 }
 
-const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status"
+const regFields = "id, jwk, jwk_sha256, contact, agreement, createdAt, LockCol, status"
 
 // ClearEmail removes the provided email address from one specified registration. If
 // there are multiple email addresses present, it does not modify other ones. If the email
@@ -281,11 +281,15 @@ type regModel struct {
 	Agreement string `db:"agreement"`
 	// InitialIP is stored as sixteen binary bytes, regardless of whether it
 	// represents a v4 or v6 IP address.
+	//
+	// Deprecated: This field is no longer used and will be removed in a future.
 	InitialIP []byte    `db:"initialIp"`
 	CreatedAt time.Time `db:"createdAt"`
 	LockCol   int64
 	Status    string `db:"status"`
 }
+
+var defaultInitialIP = net.ParseIP("0.0.0.0").To16()
 
 func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 	// Even though we don't need to convert from JSON to an in-memory JSONWebKey
@@ -313,15 +317,6 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		}
 	}
 
-	// For some reason we use different serialization formats for InitialIP
-	// in database models and in protobufs, despite the fact that both formats
-	// are just []byte.
-	var initialIP net.IP
-	err = initialIP.UnmarshalText(reg.InitialIP)
-	if err != nil {
-		return nil, err
-	}
-
 	var createdAt time.Time
 	if !core.IsAnyNilOrZero(reg.CreatedAt) {
 		createdAt = reg.CreatedAt.AsTime()
@@ -333,14 +328,14 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		KeySHA256: sha,
 		Contact:   string(jsonContact),
 		Agreement: reg.Agreement,
-		InitialIP: []byte(initialIP.To16()),
+		InitialIP: defaultInitialIP,
 		CreatedAt: createdAt,
 		Status:    reg.Status,
 	}, nil
 }
 
 func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
-	if reg.ID == 0 || len(reg.Key) == 0 || len(reg.InitialIP) == 0 {
+	if reg.ID == 0 || len(reg.Key) == 0 {
 		return nil, errors.New("incomplete Registration retrieved from DB")
 	}
 
@@ -356,21 +351,12 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 		}
 	}
 
-	// For some reason we use different serialization formats for InitialIP
-	// in database models and in protobufs, despite the fact that both formats
-	// are just []byte.
-	ipBytes, err := net.IP(reg.InitialIP).MarshalText()
-	if err != nil {
-		return nil, err
-	}
-
 	return &corepb.Registration{
 		Id:              reg.ID,
 		Key:             reg.Key,
 		Contact:         contact,
 		ContactsPresent: contactsPresent,
 		Agreement:       reg.Agreement,
-		InitialIP:       ipBytes,
 		CreatedAt:       timestamppb.New(reg.CreatedAt.UTC()),
 		Status:          reg.Status,
 	}, nil

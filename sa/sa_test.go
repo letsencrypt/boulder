@@ -111,11 +111,9 @@ func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock, func()) {
 // CreateWorkingTestRegistration inserts a new, correct Registration into the
 // given SA.
 func createWorkingRegistration(t testing.TB, sa *SQLStorageAuthority) *corepb.Registration {
-	initialIP, _ := net.ParseIP("88.77.66.11").MarshalText()
 	reg, err := sa.NewRegistration(context.Background(), &corepb.Registration{
 		Key:       []byte(theKey),
 		Contact:   []string{"mailto:foo@example.com"},
-		InitialIP: initialIP,
 		CreatedAt: timestamppb.New(time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC)),
 		Status:    string(core.StatusValid),
 	})
@@ -181,11 +179,9 @@ func TestAddRegistration(t *testing.T) {
 	jwkJSON, _ := jwk.MarshalJSON()
 
 	contacts := []string{"mailto:foo@example.com"}
-	initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
 	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       jwkJSON,
-		Contact:   contacts,
-		InitialIP: initialIP,
+		Key:     jwkJSON,
+		Contact: contacts,
 	})
 	if err != nil {
 		t.Fatalf("Couldn't create new registration: %s", err)
@@ -204,12 +200,10 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertByteEquals(t, dbReg.Key, jwkJSON)
 	test.AssertDeepEquals(t, dbReg.CreatedAt.AsTime(), createdAt)
 
-	initialIP, _ = net.ParseIP("72.72.72.72").MarshalText()
 	newReg := &corepb.Registration{
 		Id:        reg.Id,
 		Key:       jwkJSON,
 		Contact:   []string{"test.com"},
-		InitialIP: initialIP,
 		Agreement: "yes",
 	}
 	_, err = sa.UpdateRegistration(ctx, newReg)
@@ -243,7 +237,7 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
 	test.AssertErrorIs(t, err, berrors.NotFound)
 
-	_, err = sa.UpdateRegistration(ctx, &corepb.Registration{Id: 100, Key: jwkJSON, InitialIP: []byte("foo")})
+	_, err = sa.UpdateRegistration(ctx, &corepb.Registration{Id: 100, Key: jwkJSON})
 	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
@@ -256,11 +250,9 @@ func TestSelectRegistration(t *testing.T) {
 	sha, err := core.KeyDigestB64(jwk.Key)
 	test.AssertNotError(t, err, "couldn't parse jwk.Key")
 
-	initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
 	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       jwkJSON,
-		Contact:   []string{"mailto:foo@example.com"},
-		InitialIP: initialIP,
+		Key:     jwkJSON,
+		Contact: []string{"mailto:foo@example.com"},
 	})
 	test.AssertNotError(t, err, fmt.Sprintf("couldn't create new registration: %s", err))
 	test.Assert(t, reg.Id != 0, "ID shouldn't be 0")
@@ -269,8 +261,6 @@ func TestSelectRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "selecting by id should work")
 	_, err = selectRegistration(ctx, sa.dbMap, "jwk_sha256", sha)
 	test.AssertNotError(t, err, "selecting by jwk_sha256 should work")
-	_, err = selectRegistration(ctx, sa.dbMap, "initialIP", reg.Id)
-	test.AssertError(t, err, "selecting by any other column should not work")
 }
 
 func TestReplicationLagRetries(t *testing.T) {
@@ -743,155 +733,6 @@ func TestCountCertificatesByNamesParallel(t *testing.T) {
 	for name, count := range expected {
 		test.AssertEquals(t, count, counts.Counts[name])
 	}
-}
-
-func TestCountRegistrationsByIP(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
-
-	contact := []string{"mailto:foo@example.com"}
-
-	// Create one IPv4 registration
-	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
-	initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
-	_, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-		Contact:   contact,
-	})
-	// Create two IPv6 registrations, both within the same /48
-	key, _ = jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}}.MarshalJSON()
-	initialIP, _ = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652").MarshalText()
-	test.AssertNotError(t, err, "Couldn't insert registration")
-	_, err = sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-		Contact:   contact,
-	})
-	test.AssertNotError(t, err, "Couldn't insert registration")
-	key, _ = jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}}.MarshalJSON()
-	initialIP, _ = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653").MarshalText()
-	_, err = sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-		Contact:   contact,
-	})
-	test.AssertNotError(t, err, "Couldn't insert registration")
-
-	latest := fc.Now()
-	earliest := latest.Add(-time.Hour * 24)
-	req := &sapb.CountRegistrationsByIPRequest{
-		Ip: net.ParseIP("1.1.1.1"),
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(earliest),
-			Latest:   timestamppb.New(latest),
-		},
-	}
-
-	// There should be 0 registrations for an IPv4 address we didn't add
-	// a registration for
-	count, err := sa.CountRegistrationsByIP(ctx, req)
-	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count.Count, int64(0))
-	// There should be 1 registration for the IPv4 address we did add
-	// a registration for.
-	req.Ip = net.ParseIP("43.34.43.34")
-	count, err = sa.CountRegistrationsByIP(ctx, req)
-	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count.Count, int64(1))
-	// There should be 1 registration for the first IPv6 address we added
-	// a registration for
-	req.Ip = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652")
-	count, err = sa.CountRegistrationsByIP(ctx, req)
-	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count.Count, int64(1))
-	// There should be 1 registration for the second IPv6 address we added
-	// a registration for as well
-	req.Ip = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653")
-	count, err = sa.CountRegistrationsByIP(ctx, req)
-	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count.Count, int64(1))
-	// There should be 0 registrations for an IPv6 address in the same /48 as the
-	// two IPv6 addresses with registrations
-	req.Ip = net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000")
-	count, err = sa.CountRegistrationsByIP(ctx, req)
-	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count.Count, int64(0))
-}
-
-func TestCountRegistrationsByIPRange(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
-
-	contact := []string{"mailto:foo@example.com"}
-
-	// Create one IPv4 registration
-	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
-	initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
-	_, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-		Contact:   contact,
-	})
-	// Create two IPv6 registrations, both within the same /48
-	key, _ = jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(2), E: 1}}.MarshalJSON()
-	initialIP, _ = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652").MarshalText()
-	test.AssertNotError(t, err, "Couldn't insert registration")
-	_, err = sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-		Contact:   contact,
-	})
-	test.AssertNotError(t, err, "Couldn't insert registration")
-	key, _ = jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(3), E: 1}}.MarshalJSON()
-	initialIP, _ = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653").MarshalText()
-	_, err = sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
-		Contact:   contact,
-	})
-	test.AssertNotError(t, err, "Couldn't insert registration")
-
-	latest := fc.Now()
-	earliest := latest.Add(-time.Hour * 24)
-	req := &sapb.CountRegistrationsByIPRequest{
-		Ip: net.ParseIP("1.1.1.1"),
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(earliest),
-			Latest:   timestamppb.New(latest),
-		},
-	}
-
-	// There should be 0 registrations in the range for an IPv4 address we didn't
-	// add a registration for
-	req.Ip = net.ParseIP("1.1.1.1")
-	count, err := sa.CountRegistrationsByIPRange(ctx, req)
-	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count.Count, int64(0))
-	// There should be 1 registration in the range for the IPv4 address we did
-	// add a registration for
-	req.Ip = net.ParseIP("43.34.43.34")
-	count, err = sa.CountRegistrationsByIPRange(ctx, req)
-	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count.Count, int64(1))
-	// There should be 2 registrations in the range for the first IPv6 address we added
-	// a registration for because it's in the same /48
-	req.Ip = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9652")
-	count, err = sa.CountRegistrationsByIPRange(ctx, req)
-	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count.Count, int64(2))
-	// There should be 2 registrations in the range for the second IPv6 address
-	// we added a registration for as well, because it too is in the same /48
-	req.Ip = net.ParseIP("2001:cdba:1234:5678:9101:1121:3257:9653")
-	count, err = sa.CountRegistrationsByIPRange(ctx, req)
-	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count.Count, int64(2))
-	// There should also be 2 registrations in the range for an arbitrary IPv6 address in
-	// the same /48 as the registrations we added
-	req.Ip = net.ParseIP("2001:cdba:1234:0000:0000:0000:0000:0000")
-	count, err = sa.CountRegistrationsByIPRange(ctx, req)
-	test.AssertNotError(t, err, "Failed to count registrations")
-	test.AssertEquals(t, count.Count, int64(2))
 }
 
 func TestFQDNSets(t *testing.T) {
@@ -1839,10 +1680,8 @@ func TestFasterGetOrderForNames(t *testing.T) {
 	expires := fc.Now().Add(time.Hour)
 
 	key, _ := goodTestJWK().MarshalJSON()
-	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
 	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
+		Key: key,
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
@@ -1885,10 +1724,8 @@ func TestGetOrderForNames(t *testing.T) {
 
 	// Create two test registrations to associate with orders
 	key, _ := goodTestJWK().MarshalJSON()
-	initialIP, _ := net.ParseIP("42.42.42.42").MarshalText()
 	regA, err := sa.NewRegistration(ctx, &corepb.Registration{
-		Key:       key,
-		InitialIP: initialIP,
+		Key: key,
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
