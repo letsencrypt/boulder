@@ -3,6 +3,8 @@ package sa
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -4919,4 +4921,100 @@ func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
 	test.AssertNotError(t, err, "GetPausedIdentifiers failed")
 	test.AssertEquals(t, len(identifiers.Identifiers), 1)
 	test.AssertEquals(t, identifiers.Identifiers[0].Value, "example.net")
+}
+
+func newAcctKey(t *testing.T) []byte {
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	jwk := &jose.JSONWebKey{Key: key.Public()}
+	acctKey, err := jwk.MarshalJSON()
+	test.AssertNotError(t, err, "failed to marshal account key")
+	return acctKey
+}
+
+func TestUpdateRegistrationContact(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	noContact, _ := json.Marshal("")
+	exampleContact, _ := json.Marshal("test@example.com")
+	twoExampleContacts, _ := json.Marshal([]string{"test1@example.com", "test2@example.com"})
+
+	tests := []struct {
+		name            string
+		oldContactsJSON []string
+		newContacts     []string
+		expectedError   error
+	}{
+		{
+			name:            "update a valid registration from no contacts to one email address",
+			oldContactsJSON: []string{string(noContact)},
+			newContacts:     []string{"mailto:test@example.com"},
+			expectedError:   nil,
+		},
+		{
+			name:            "update a valid registration from no contacts to two email addresses",
+			oldContactsJSON: []string{string(noContact)},
+			newContacts:     []string{"mailto:test1@example.com", "mailto:test2@example.com"},
+			expectedError:   nil,
+		},
+		{
+			name:            "update a valid registration from one email address to no contacts",
+			oldContactsJSON: []string{string(exampleContact)},
+			newContacts:     []string{},
+			expectedError:   nil,
+		},
+		{
+			name:            "update a valid registration from one email address to two email addresses",
+			oldContactsJSON: []string{string(exampleContact)},
+			newContacts:     []string{"mailto:test1@example.com", "mailto:test2@example.com"},
+			expectedError:   nil,
+		},
+		{
+			name:            "update a valid registration from two email addresses to no contacts",
+			oldContactsJSON: []string{string(twoExampleContacts)},
+			newContacts:     []string{},
+			expectedError:   nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
+
+			reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+				Contact:   tt.oldContactsJSON,
+				Key:       newAcctKey(t),
+				InitialIP: initialIP,
+			})
+			test.AssertNotError(t, err, "creating new registration")
+
+			reg, err = sa.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{
+				RegistrationID: reg.Id,
+				Contacts:       tt.newContacts,
+			})
+			test.AssertNotError(t, err, "Unexpected error for UpdateRegistrationContact()")
+
+			test.AssertDeepEquals(t, reg.Contact, tt.newContacts)
+		})
+	}
+}
+
+func TestUpdateRegistrationKey(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       newAcctKey(t),
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, "creating new registration")
+
+	newJwk := newAcctKey(t)
+	reg, err = sa.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{
+		RegistrationID: reg.Id,
+		Jwk:            newJwk,
+	})
+	test.AssertNotError(t, err, "Unexpected error for UpdateRegistrationKey()")
+
+	test.AssertDeepEquals(t, reg.Key, newJwk)
 }
