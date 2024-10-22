@@ -1104,7 +1104,7 @@ func (wfe *WebFrontEndImpl) ChallengeHandler(
 		return
 	}
 
-	wfe.Challenge(ctx, logEvent, response, request, slug[0], slug[1])
+	wfe.Challenge(ctx, logEvent, challengePath, response, request, slug[0], slug[1])
 }
 
 // ChallengeHandlerWithAccount handles POST requests to challenge URLs of the form /acme/chall/{regID}/{authzID}/{challID}.
@@ -1121,13 +1121,14 @@ func (wfe *WebFrontEndImpl) ChallengeHandlerWithAccount(
 		return
 	}
 	// Note: the regID is currently ignored.
-	wfe.Challenge(ctx, logEvent, response, request, slug[1], slug[2])
+	wfe.Challenge(ctx, logEvent, challengePath, response, request, slug[1], slug[2])
 }
 
 // Challenge handles POSTS to both formats of challenge URLs.
 func (wfe *WebFrontEndImpl) Challenge(
 	ctx context.Context,
 	logEvent *web.RequestEvent,
+	handlerPath string,
 	response http.ResponseWriter,
 	request *http.Request,
 	authorizationIDStr string,
@@ -1185,11 +1186,11 @@ func (wfe *WebFrontEndImpl) Challenge(
 	challenge := authz.Challenges[challengeIndex]
 	switch request.Method {
 	case "GET", "HEAD":
-		wfe.getChallenge(response, request, authz, &challenge, logEvent)
+		wfe.getChallenge(handlerPath, response, request, authz, &challenge, logEvent)
 
 	case "POST":
 		logEvent.ChallengeType = string(challenge.Type)
-		wfe.postChallenge(ctx, response, request, authz, challengeIndex, logEvent)
+		wfe.postChallenge(ctx, handlerPath, response, request, authz, challengeIndex, logEvent)
 	}
 }
 
@@ -1214,9 +1215,17 @@ func prepAccountForDisplay(acct *core.Registration) {
 // prepChallengeForDisplay takes a core.Challenge and prepares it for display to
 // the client by filling in its URL field and clearing several unnecessary
 // fields.
-func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz core.Authorization, challenge *core.Challenge) {
+func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
+	handlerPath string,
+	request *http.Request,
+	authz core.Authorization,
+	challenge *core.Challenge,
+) {
 	// Update the challenge URL to be relative to the HTTP request Host
 	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengePath, authz.ID, challenge.StringID()))
+	if handlerPath == challengePathWithAcct || handlerPath == authzPathWithAcct {
+		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%d/%s/%s", challengePathWithAcct, authz.RegistrationID, authz.ID, challenge.StringID()))
+	}
 
 	// Internally, we store challenge error problems with just the short form
 	// (e.g. "CAA") of the problem type. But for external display, we need to
@@ -1240,9 +1249,9 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 // prepAuthorizationForDisplay takes a core.Authorization and prepares it for
 // display to the client by clearing its ID and RegistrationID fields, and
 // preparing all its challenges.
-func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, authz *core.Authorization) {
+func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(handlerPath string, request *http.Request, authz *core.Authorization) {
 	for i := range authz.Challenges {
-		wfe.prepChallengeForDisplay(request, *authz, &authz.Challenges[i])
+		wfe.prepChallengeForDisplay(handlerPath, request, *authz, &authz.Challenges[i])
 	}
 
 	// Shuffle the challenges so no one relies on their order.
@@ -1267,13 +1276,13 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 }
 
 func (wfe *WebFrontEndImpl) getChallenge(
+	handlerPath string,
 	response http.ResponseWriter,
 	request *http.Request,
 	authz core.Authorization,
 	challenge *core.Challenge,
 	logEvent *web.RequestEvent) {
-
-	wfe.prepChallengeForDisplay(request, authz, challenge)
+	wfe.prepChallengeForDisplay(handlerPath, request, authz, challenge)
 
 	authzURL := urlForAuthz(authz, request)
 	response.Header().Add("Location", challenge.URL)
@@ -1290,6 +1299,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 
 func (wfe *WebFrontEndImpl) postChallenge(
 	ctx context.Context,
+	handlerPath string,
 	response http.ResponseWriter,
 	request *http.Request,
 	authz core.Authorization,
@@ -1318,7 +1328,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// challenge details, not a POST to initiate a challenge
 	if string(body) == "" {
 		challenge := authz.Challenges[challengeIndex]
-		wfe.getChallenge(response, request, authz, &challenge, logEvent)
+		wfe.getChallenge(handlerPath, response, request, authz, &challenge, logEvent)
 		return
 	}
 
@@ -1368,7 +1378,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 
 	// assumption: PerformValidation does not modify order of challenges
 	challenge := returnAuthz.Challenges[challengeIndex]
-	wfe.prepChallengeForDisplay(request, authz, &challenge)
+	wfe.prepChallengeForDisplay(handlerPath, request, authz, &challenge)
 
 	authzURL := urlForAuthz(authz, request)
 	response.Header().Add("Location", challenge.URL)
@@ -1561,7 +1571,7 @@ func (wfe *WebFrontEndImpl) AuthorizationHandler(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	wfe.Authorization(ctx, logEvent, response, request, request.URL.Path)
+	wfe.Authorization(ctx, authzPath, logEvent, response, request, request.URL.Path)
 }
 
 // AuthorizationHandlerWithAccount handles requests to authorization URLs of the form /acme/authz/{regID}/{authzID}.
@@ -1575,11 +1585,12 @@ func (wfe *WebFrontEndImpl) AuthorizationHandlerWithAccount(
 		wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 		return
 	}
-	wfe.Authorization(ctx, logEvent, response, request, slug[1])
+	wfe.Authorization(ctx, authzPathWithAcct, logEvent, response, request, slug[1])
 }
 
 func (wfe *WebFrontEndImpl) Authorization(
 	ctx context.Context,
+	handlerPath string,
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request,
@@ -1670,7 +1681,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
-	wfe.prepAuthorizationForDisplay(request, &authz)
+	wfe.prepAuthorizationForDisplay(handlerPath, request, &authz)
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, authz)
 	if err != nil {

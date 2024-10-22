@@ -3399,7 +3399,31 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	}
 
 	// This modifies the authz in-place.
-	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
+	wfe.prepAuthorizationForDisplay(authzPath, &http.Request{Host: "localhost"}, authz)
+
+	// The ID and RegID should be empty, since they're not part of the ACME API object.
+	test.AssertEquals(t, authz.ID, "")
+	test.AssertEquals(t, authz.RegistrationID, int64(0))
+}
+
+func TestPrepAuthzWithAccountForDisplay(t *testing.T) {
+	t.Parallel()
+	wfe, _, _ := setupWFE(t)
+
+	authz := &core.Authorization{
+		ID:             "12345",
+		Status:         core.StatusPending,
+		RegistrationID: 1,
+		Identifier:     identifier.NewDNS("example.com"),
+		Challenges: []core.Challenge{
+			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
+			{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusPending, Token: "token"},
+		},
+	}
+
+	// This modifies the authz in-place.
+	wfe.prepAuthorizationForDisplay(authzPathWithAcct, &http.Request{Host: "localhost"}, authz)
 
 	// The ID and RegID should be empty, since they're not part of the ACME API object.
 	test.AssertEquals(t, authz.ID, "")
@@ -3423,7 +3447,7 @@ func TestPrepRevokedAuthzForDisplay(t *testing.T) {
 	}
 
 	// This modifies the authz in-place.
-	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
+	wfe.prepAuthorizationForDisplay(authzPath, &http.Request{Host: "localhost"}, authz)
 
 	// All of the challenges should be revoked as well.
 	for _, chall := range authz.Challenges {
@@ -3446,7 +3470,7 @@ func TestPrepWildcardAuthzForDisplay(t *testing.T) {
 	}
 
 	// This modifies the authz in-place.
-	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
+	wfe.prepAuthorizationForDisplay(authzPath, &http.Request{Host: "localhost"}, authz)
 
 	// The identifier should not start with a star, but the authz should be marked
 	// as a wildcard.
@@ -3482,7 +3506,7 @@ func TestPrepAuthzForDisplayShuffle(t *testing.T) {
 	// Prep the authz 100 times, and count where each challenge ended up each time.
 	for range 100 {
 		// This modifies the authz in place
-		wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
+		wfe.prepAuthorizationForDisplay(challengePath, &http.Request{Host: "localhost"}, authz)
 		for i, chall := range authz.Challenges {
 			counts[chall.Type][i] += 1
 		}
