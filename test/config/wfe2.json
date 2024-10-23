@@ -107,7 +107,8 @@
 		"features": {
 			"ServeRenewalInfo": true,
 			"TrackReplacementCertificatesARI": true,
-			"CheckRenewalExemptionAtWFE": true
+			"CheckRenewalExemptionAtWFE": true,
+			"UseKvLimitsForNewAccount": true
 		}
 	},
 	"syslog": {

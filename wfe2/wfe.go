@@ -792,10 +792,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	refundLimits, err := wfe.checkNewAccountLimits(ctx, ip)
 	if err != nil {
 		if errors.Is(err, berrors.RateLimit) {
-			if features.Get().UseKvLimitsForNewAccount {
-				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
-				return
-			}
+			wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
+			return
 		} else {
 			wfe.log.Warning(err.Error())
 		}
