@@ -4059,9 +4059,6 @@ func TestReplacementOrderExists(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	features.Set(features.Config{TrackReplacementCertificatesARI: true})
-	defer features.Reset()
-
 	oldCertSerial := "1234567890"
 
 	// Check that a non-existent replacement order does not exist.
