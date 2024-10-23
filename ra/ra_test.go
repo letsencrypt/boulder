@@ -1013,7 +1013,7 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 	test.AssertEquals(t, bErr.RetryAfter, rateLimitDuration)
 
 	// The err should be the expected rate limit error
-	expected := "too many certificates already issued for \"early-ratelimit-example.com\". Retry after 2020-03-04T05:05:00Z: see https://letsencrypt.org/docs/rate-limits/"
+	expected := "too many certificates already issued for \"early-ratelimit-example.com\". Retry after 2020-03-04T05:05:00Z: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account"
 	test.AssertEquals(t, bErr.Error(), expected)
 }
 
@@ -1048,7 +1048,7 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 	err := ra.checkInvalidAuthorizationLimits(ctx, Registration.Id,
 		[]string{"charlie.brown.com", "all.i.do.is.lose.com"}, limit)
 	test.AssertError(t, err, "checkInvalidAuthorizationLimits did not encounter expected rate limit error")
-	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/failed-validation-limit/")
+	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account")
 }
 
 type mockSAWithNameCounts struct {
@@ -1117,7 +1117,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	// should contain 0 entries with labels matching it.
 	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "example.com"}, 0)
 	// Verify it has no sub errors as there is only one bad name
-	test.AssertEquals(t, err.Error(), "too many certificates already issued for \"example.com\". Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/")
+	test.AssertEquals(t, err.Error(), "too many certificates already issued for \"example.com\". Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account")
 	var bErr *berrors.BoulderError
 	test.AssertErrorWraps(t, err, &bErr)
 	test.AssertEquals(t, len(bErr.SubErrors), 0)
@@ -1130,7 +1130,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com, other-example.com")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
 	// Verify it has two sub errors as there are two bad names
-	test.AssertEquals(t, err.Error(), "too many certificates already issued for multiple names (\"example.com\" and 2 others). Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/")
+	test.AssertEquals(t, err.Error(), "too many certificates already issued for multiple names (\"example.com\" and 2 others). Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account")
 	test.AssertErrorWraps(t, err, &bErr)
 	test.AssertEquals(t, len(bErr.SubErrors), 2)
 
@@ -1241,7 +1241,7 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 			Name:   "FQDN set issuances above limit NS",
 			Domain: "over.example.com",
 			ExpectedErr: fmt.Errorf(
-				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/duplicate-certificate-limit/",
+				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-exact-set-of-hostnames",
 				expectRetryAfterNS,
 			),
 		},
@@ -1249,7 +1249,7 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 			Name:   "FQDN set issuances above limit",
 			Domain: "over.example.com",
 			ExpectedErr: fmt.Errorf(
-				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/duplicate-certificate-limit/",
+				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-exact-set-of-hostnames",
 				expectRetryAfter,
 			),
 		},
@@ -2154,7 +2154,7 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 	})
 
 	test.AssertError(t, err, "expected error for domain with too many failures")
-	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/failed-validation-limit/")
+	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account")
 }
 
 // mockSAWithAuthzs has a GetAuthorizations2 method that returns the protobuf
