@@ -492,11 +492,9 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 		return nil, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
 	}
 
-	if !features.Get().UseKvLimitsForNewAccount {
-		err = ra.checkRegistrationLimits(ctx, ipAddr)
-		if err != nil {
-			return nil, err
-		}
+	err = ra.checkRegistrationLimits(ctx, ipAddr)
+	if err != nil {
+		return nil, err
 	}
 
 	// Check that contacts conform to our expectations.
