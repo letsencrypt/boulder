@@ -793,6 +793,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if err != nil {
 		if errors.Is(err, berrors.RateLimit) {
 			wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
+			return
 		} else {
 			wfe.log.Warning(err.Error())
 		}
