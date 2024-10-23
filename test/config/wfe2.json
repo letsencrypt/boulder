@@ -106,7 +106,8 @@
 		"pendingAuthorizationLifetimeDays": 7,
 		"features": {
 			"ServeRenewalInfo": true,
-			"CheckRenewalExemptionAtWFE": true
+			"CheckRenewalExemptionAtWFE": true,
+			"UseKvLimitsForNewAccount": true
 		}
 	},
 	"syslog": {
