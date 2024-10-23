@@ -29,6 +29,7 @@ type Config struct {
 	CertCheckerRequiresCorrespondence bool
 	ECDSAForAll                       bool
 	CheckRenewalExemptionAtWFE        bool
+	UseKvLimitsForNewAccount          bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -103,11 +104,6 @@ type Config struct {
 	// Note: this flag does not disable writes to the certificatesPerName or
 	// fqdnSets tables at Finalize time.
 	UseKvLimitsForNewOrder bool
-
-	// UseKvLimitsForNewAccount when enabled, causes the key-value rate limiter
-	// to be the authoritative source of rate limiting information for
-	// new-account callers and disables the legacy rate limiting checks.
-	UseKvLimitsForNewAccount bool
 
 	// DisableLegacyLimitWrites when enabled, disables writes to:
 	//   - the newOrdersRL table at new-order time, and
