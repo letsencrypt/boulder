@@ -1121,7 +1121,7 @@ func (wfe *WebFrontEndImpl) ChallengeHandlerWithAccount(
 		return
 	}
 	// Note: the regID is currently ignored.
-	wfe.Challenge(ctx, logEvent, challengePath, response, request, slug[1], slug[2])
+	wfe.Challenge(ctx, logEvent, challengePathWithAcct, response, request, slug[1], slug[2])
 }
 
 // Challenge handles POSTS to both formats of challenge URLs.
@@ -1284,7 +1284,7 @@ func (wfe *WebFrontEndImpl) getChallenge(
 	logEvent *web.RequestEvent) {
 	wfe.prepChallengeForDisplay(handlerPath, request, authz, challenge)
 
-	authzURL := urlForAuthz(authz, request)
+	authzURL := urlForAuthz(handlerPath, authz, request)
 	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
@@ -1380,7 +1380,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	challenge := returnAuthz.Challenges[challengeIndex]
 	wfe.prepChallengeForDisplay(handlerPath, request, authz, &challenge)
 
-	authzURL := urlForAuthz(authz, request)
+	authzURL := urlForAuthz(handlerPath, authz, request)
 	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
@@ -2801,6 +2801,10 @@ func extractRequesterIP(req *http.Request) (net.IP, error) {
 	return net.ParseIP(host), nil
 }
 
-func urlForAuthz(authz core.Authorization, request *http.Request) string {
+func urlForAuthz(handlerPath string, authz core.Authorization, request *http.Request) string {
+	if handlerPath == challengePathWithAcct || handlerPath == authzPathWithAcct {
+		return web.RelativeEndpoint(request, fmt.Sprintf("%s%d/%s", authzPathWithAcct, authz.RegistrationID, authz.ID))
+	}
+
 	return web.RelativeEndpoint(request, authzPath+authz.ID)
 }
