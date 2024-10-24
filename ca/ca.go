@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"math/big"
 	mrand "math/rand/v2"
+	"strings"
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
@@ -148,7 +149,8 @@ type certificateAuthorityImpl struct {
 	issuers      issuerMaps
 	certProfiles certProfilesMaps
 
-	prefix    int // Prepended to the serial number
+	// The prefix is prepended to the serial number.
+	prefix    byte
 	maxNames  int
 	keyPolicy goodkey.KeyPolicy
 	clk       clock.Clock
@@ -256,7 +258,7 @@ func NewCertificateAuthorityImpl(
 	boulderIssuers []*issuance.Issuer,
 	defaultCertProfileName string,
 	certificateProfiles map[string]*issuance.ProfileConfig,
-	serialPrefix int,
+	serialPrefix byte,
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
@@ -266,8 +268,8 @@ func NewCertificateAuthorityImpl(
 	var ca *certificateAuthorityImpl
 	var err error
 
-	if serialPrefix < 1 || serialPrefix > 127 {
-		err = errors.New("serial prefix must be between 1 and 127")
+	if serialPrefix < 0x01 || serialPrefix > 0x7f {
+		err = errors.New("serial prefix must be between 0x01 (1) and 0x7f (127)")
 		return nil, err
 	}
 
@@ -492,8 +494,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		Issued: timestamppb.New(ca.clk.Now()),
 	})
 	if err != nil {
-		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s] regID=[%d] orderID=[%d] certificate=[%s]",
-			serialHex, req.RegistrationID, req.OrderID, hex.EncodeToString(certDER))
+		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s] err=[%v]", serialHex, hex.EncodeToString(certDER))
 		return nil, err
 	}
 
@@ -513,7 +514,7 @@ func (ca *certificateAuthorityImpl) generateSerialNumber() (*big.Int, error) {
 	// We want 136 bits of random number, plus an 8-bit instance id prefix.
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
-	serialBytes[0] = byte(ca.prefix)
+	serialBytes[0] = ca.prefix
 	_, err := rand.Read(serialBytes[1:])
 	if err != nil {
 		err = berrors.InternalServerError("failed to generate serial: %s", err)
@@ -589,7 +590,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 
 	names := csrlib.NamesFromCSR(csr)
 	req := &issuance.IssuanceRequest{
-		PublicKey:         issuance.MarshalablePublicKey{csr.PublicKey},
+		PublicKey:         issuance.MarshalablePublicKey{PublicKey: csr.PublicKey},
 		SubjectKeyId:      subjectKeyId,
 		Serial:            serialBigInt.Bytes(),
 		DNSNames:          names.SANs,
@@ -600,9 +601,12 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotAfter:          notAfter,
 	}
 
+	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
+		serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), hex.EncodeToString(csr.Raw))
+
 	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, req)
 	if err != nil {
-		ca.log.AuditErrf("Preparing precert failed: serial=[%s] err=[%v]", serialHex, issueReq.RegistrationID, err)
+		ca.log.AuditErrf("Preparing precert failed: serial=[%s] err=[%v]", serialHex, err)
 		if errors.Is(err, linter.ErrLinting) {
 			ca.metrics.lintErrorCount.Inc()
 		}

@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -29,8 +30,9 @@ installation:
   go install github.com/letsencrypt/boulder/test/block-a-key/...
 
 usage:
-  block-a-key -cert <PEM encoded x509 certificate file>
+  block-a-key -cert <PEM formatted x509 certificate file>
   block-a-key -jwk <JSON encoded JWK file>
+  block-a-key -privateKey <PEM formatted private key file>
 
 output format:
   # <filepath>
@@ -41,10 +43,21 @@ examples:
   ./test/block-a-key/test/test.ecdsa.jwk.json	cuwGhNNI6nfob5aqY90e7BleU6l7rfxku4X3UTJ3Z7M=
   $> block-a-key -cert ./test/block-a-key/test/test.rsa.cert.pem
   ./test/block-a-key/test/test.rsa.cert.pem	Qebc1V3SkX3izkYRGNJilm9Bcuvf0oox4U2Rn+b4JOE=
+  $> block-a-key -privateKey private.key
 `
 
-// keyFromCert returns the public key from a PEM encoded certificate located in
-// pemFile or returns an error.
+// keyFromPrivateKeyFile returns the public key from a PEM formatted private key
+// located in pemFile or returns an error.
+func keyFromPrivateKeyFile(pemFile string) (crypto.PublicKey, error) {
+	_, pubKey, err := privatekey.Load(pemFile)
+	if err != nil {
+		return nil, err
+	}
+	return pubKey, nil
+}
+
+// keyFromCert returns the public key from a PEM formatted certificate located
+// in pemFile or returns an error.
 func keyFromCert(pemFile string) (crypto.PublicKey, error) {
 	c, err := core.LoadCert(pemFile)
 	if err != nil {
@@ -64,8 +77,9 @@ func keyFromJWK(jsonFile string) (crypto.PublicKey, error) {
 }
 
 func main() {
-	certFileArg := flag.String("cert", "", "path to a PEM encoded X509 certificate file")
+	certFileArg := flag.String("cert", "", "path to a PEM formatted X509 certificate file")
 	jwkFileArg := flag.String("jwk", "", "path to a JSON encoded JWK file")
+	privKeyFileArg := flag.String("privateKey", "", "path to a PEM formatted private key file")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "%s\n\n", usageHelp)
@@ -75,12 +89,12 @@ func main() {
 
 	flag.Parse()
 
-	if *certFileArg == "" && *jwkFileArg == "" {
-		log.Fatalf("error: a -cert or -jwk argument must be provided")
+	if *certFileArg == "" && *jwkFileArg == "" && *privKeyFileArg == "" {
+		log.Fatalf("error: a -cert, -jwk, or -privateKey argument must be provided")
 	}
 
-	if *certFileArg != "" && *jwkFileArg != "" {
-		log.Fatalf("error: -cert and -jwk arguments are mutually exclusive")
+	if *certFileArg != "" && *jwkFileArg != "" && *privKeyFileArg != "" {
+		log.Fatalf("error: -cert, -jwk, and -privateKey arguments are mutually exclusive")
 	}
 
 	var file string
@@ -93,6 +107,9 @@ func main() {
 	} else if *jwkFileArg != "" {
 		file = *jwkFileArg
 		key, err = keyFromJWK(file)
+	} else if *privKeyFileArg != "" {
+		file = *privKeyFileArg
+		key, err = keyFromPrivateKeyFile(file)
 	} else {
 		err = errors.New("unexpected command line state")
 	}

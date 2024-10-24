@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"crypto/x509/pkix"
 	"math/big"
-	"os"
 	"testing"
 	"time"
 
@@ -50,27 +49,17 @@ func TestARI(t *testing.T) {
 	test.AssertEquals(t, ari.SuggestedWindow.End.Sub(time.Now()).Round(time.Hour), 1463*time.Hour)
 	test.AssertEquals(t, ari.RetryAfter.Sub(time.Now()).Round(time.Hour), 6*time.Hour)
 
-	// TODO(@pgporada): Clean this up when 'test/config/{sa,wfe2}.json' sets
-	// TrackReplacementCertificatesARI=true.
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		// Make a new order which indicates that it replaces the cert issued above.
-		_, order, err := makeClientAndOrder(client, key, []string{name}, true, cert)
-		test.AssertNotError(t, err, "failed to issue test cert")
-		replaceID, err := acme.GenerateARICertID(cert)
-		test.AssertNotError(t, err, "failed to generate ARI certID")
-		test.AssertEquals(t, order.Replaces, replaceID)
-		test.AssertNotEquals(t, order.Replaces, "")
+	// Make a new order which indicates that it replaces the cert issued above.
+	_, order, err := makeClientAndOrder(client, key, []string{name}, true, cert)
+	test.AssertNotError(t, err, "failed to issue test cert")
+	replaceID, err := acme.GenerateARICertID(cert)
+	test.AssertNotError(t, err, "failed to generate ARI certID")
+	test.AssertEquals(t, order.Replaces, replaceID)
+	test.AssertNotEquals(t, order.Replaces, "")
 
-		// Try it again and verify it fails
-		_, order, err = makeClientAndOrder(client, key, []string{name}, true, cert)
-		test.AssertError(t, err, "subsequent ARI replacements for a replaced cert should fail, but didn't")
-	} else {
-		// ARI is disabled so we only use the client to POST the replacement
-		// order, but we never finalize it.
-		replacementOrder, err := client.ReplacementOrder(client.Account, cert, []acme.Identifier{{Type: "dns", Value: name}})
-		test.AssertNotError(t, err, "ARI replacement request should have succeeded")
-		test.AssertNotEquals(t, replacementOrder.Replaces, "")
-	}
+	// Try it again and verify it fails
+	_, order, err = makeClientAndOrder(client, key, []string{name}, true, cert)
+	test.AssertError(t, err, "subsequent ARI replacements for a replaced cert should fail, but didn't")
 
 	// Revoke the cert and re-request ARI. The renewal window should now be in
 	// the past indicating to the client that a renewal should happen

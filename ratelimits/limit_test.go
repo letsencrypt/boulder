@@ -120,7 +120,7 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 	// Burst cannot be 0.
 	_, err = loadAndParseOverrideLimits("testdata/busted_override_burst_0.yml")
 	test.AssertError(t, err, "single override limit with burst=0")
-	test.Assert(t, !os.IsNotExist(err), "test file should exist")
+	test.AssertContains(t, err.Error(), "invalid burst")
 
 	// Id cannot be empty.
 	_, err = loadAndParseOverrideLimits("testdata/busted_override_empty_id.yml")
@@ -179,7 +179,7 @@ func TestLoadAndParseDefaultLimits(t *testing.T) {
 	// Burst cannot be 0.
 	_, err = loadAndParseDefaultLimits("testdata/busted_default_burst_0.yml")
 	test.AssertError(t, err, "single default limit with burst=0")
-	test.Assert(t, !os.IsNotExist(err), "test file should exist")
+	test.AssertContains(t, err.Error(), "invalid burst")
 
 	// Name cannot be empty.
 	_, err = loadAndParseDefaultLimits("testdata/busted_default_empty_name.yml")

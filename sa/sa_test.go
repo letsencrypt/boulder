@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -77,7 +78,7 @@ func (s *fakeServerStream[T]) Context() context.Context {
 
 // initSA constructs a SQLStorageAuthority and a clean up function that should
 // be defer'ed to the end of the test.
-func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
+func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	t.Helper()
 	features.Reset()
 
@@ -109,7 +110,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 
 // CreateWorkingTestRegistration inserts a new, correct Registration into the
 // given SA.
-func createWorkingRegistration(t *testing.T, sa *SQLStorageAuthority) *corepb.Registration {
+func createWorkingRegistration(t testing.TB, sa *SQLStorageAuthority) *corepb.Registration {
 	initialIP, _ := net.ParseIP("88.77.66.11").MarshalText()
 	reg, err := sa.NewRegistration(context.Background(), &corepb.Registration{
 		Key:       []byte(theKey),
@@ -1231,6 +1232,9 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
+	features.Set(features.Config{InsertAuthzsIndividually: true})
+	defer features.Reset()
+
 	reg := createWorkingRegistration(t, sa)
 
 	// Insert two pre-existing authorizations to reference
@@ -1285,6 +1289,9 @@ func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
+	features.Set(features.Config{InsertAuthzsIndividually: true})
+	defer features.Reset()
+
 	reg := createWorkingRegistration(t, sa)
 
 	expires := fc.Now().Add(2 * time.Hour)
@@ -1306,6 +1313,9 @@ func TestNewOrderAndAuthzs_MismatchedRegID(t *testing.T) {
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
+	features.Set(features.Config{InsertAuthzsIndividually: true})
+	defer features.Reset()
+
 	_, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID: 1,
@@ -1323,6 +1333,9 @@ func TestNewOrderAndAuthzs_MismatchedRegID(t *testing.T) {
 func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
+
+	features.Set(features.Config{InsertAuthzsIndividually: true})
+	defer features.Reset()
 
 	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour)
@@ -1370,6 +1383,55 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	test.AssertBoxedNil(t, am.AttemptedAt, "am.AttemptedAt should be nil")
 	test.AssertBoxedNil(t, am.ValidationError, "am.ValidationError should be nil")
 	test.AssertBoxedNil(t, am.ValidationRecord, "am.ValidationRecord should be nil")
+}
+
+func BenchmarkNewOrderAndAuthzs(b *testing.B) {
+	for _, flag := range []bool{false, true} {
+		for _, numIdents := range []int{1, 2, 5, 10, 20, 50, 100} {
+			b.Run(fmt.Sprintf("%t/%d", flag, numIdents), func(b *testing.B) {
+				sa, _, cleanup := initSA(b)
+				defer cleanup()
+
+				if flag {
+					features.Set(features.Config{InsertAuthzsIndividually: true})
+					defer features.Reset()
+				}
+
+				reg := createWorkingRegistration(b, sa)
+
+				dnsNames := make([]string, 0, numIdents)
+				newAuthzs := make([]*sapb.NewAuthzRequest, 0, numIdents)
+				for range numIdents {
+					var nameBytes [3]byte
+					_, _ = rand.Read(nameBytes[:])
+					name := fmt.Sprintf("%s.example.com", hex.EncodeToString(nameBytes[:]))
+
+					dnsNames = append(dnsNames, name)
+					newAuthzs = append(newAuthzs, &sapb.NewAuthzRequest{
+						RegistrationID: reg.Id,
+						Identifier:     identifier.NewDNS(name).AsProto(),
+						ChallengeTypes: []string{string(core.ChallengeTypeDNS01)},
+						Token:          core.NewToken(),
+						Expires:        timestamppb.New(sa.clk.Now().Add(24 * time.Hour)),
+					})
+				}
+
+				b.ResetTimer()
+
+				_, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+					NewOrder: &sapb.NewOrderRequest{
+						RegistrationID: reg.Id,
+						Expires:        timestamppb.New(sa.clk.Now().Add(24 * time.Hour)),
+						DnsNames:       dnsNames,
+					},
+					NewAuthzs: newAuthzs,
+				})
+				if err != nil {
+					b.Error(err)
+				}
+			})
+		}
+	}
 }
 
 func TestSetOrderProcessing(t *testing.T) {
@@ -3996,9 +4058,6 @@ func TestReplacementOrderExists(t *testing.T) {
 
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
-
-	features.Set(features.Config{TrackReplacementCertificatesARI: true})
-	defer features.Reset()
 
 	oldCertSerial := "1234567890"
 

@@ -20,6 +20,29 @@ type Config struct {
 	RVA struct {
 		vaConfig.Common
 
+		// Perspective uniquely identifies the Network Perspective used to
+		// perform the validation, as specified in BRs Section 5.4.1,
+		// Requirement 2.7 ("Multi-Perspective Issuance Corroboration attempts
+		// from each Network Perspective"). It should uniquely identify a group
+		// of RVAs deployed in the same datacenter.
+		//
+		// TODO(#7615): Make mandatory.
+		Perspective string `validate:"omitempty"`
+
+		// RIR indicates the Regional Internet Registry where this RVA is
+		// located. This field is used to identify the RIR region from which a
+		// given validation was performed, as specified in the "Phased
+		// Implementation Timeline" in BRs Section 3.2.2.9. It must be one of
+		// the following values:
+		//   - ARIN
+		//   - RIPE
+		//   - APNIC
+		//   - LACNIC
+		//   - AfriNIC
+		//
+		// TODO(#7615): Make mandatory.
+		RIR string `validate:"omitempty,oneof=ARIN RIPE APNIC LACNIC AfriNIC"`
+
 		// SkipGRPCClientCertVerification, when disabled as it should typically
 		// be, will cause the remoteva server (which receives gRPCs from a
 		// boulder-va client) to use our default RequireAndVerifyClientCert
@@ -118,7 +141,9 @@ func main() {
 		scope,
 		clk,
 		logger,
-		c.RVA.AccountURIPrefixes)
+		c.RVA.AccountURIPrefixes,
+		c.RVA.Perspective,
+		c.RVA.RIR)
 	cmd.FailOnError(err, "Unable to create Remote-VA server")
 
 	start, err := bgrpc.NewServer(c.RVA.GRPC, logger).Add(

@@ -474,37 +474,51 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 	output, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		// First, insert all of the new authorizations and record their IDs.
 		newAuthzIDs := make([]int64, 0)
-		if len(req.NewAuthzs) != 0 {
-			inserter, err := db.NewMultiInserter("authz2", strings.Split(authzFields, ", "), "id")
-			if err != nil {
-				return nil, err
-			}
+		if features.Get().InsertAuthzsIndividually {
 			for _, authz := range req.NewAuthzs {
 				am, err := newAuthzReqToModel(authz)
 				if err != nil {
 					return nil, err
 				}
-				err = inserter.Add([]interface{}{
-					am.ID,
-					am.IdentifierType,
-					am.IdentifierValue,
-					am.RegistrationID,
-					statusToUint[core.StatusPending],
-					am.Expires,
-					am.Challenges,
-					nil,
-					nil,
-					am.Token,
-					nil,
-					nil,
-				})
+				err = tx.Insert(ctx, am)
 				if err != nil {
 					return nil, err
 				}
+				newAuthzIDs = append(newAuthzIDs, am.ID)
 			}
-			newAuthzIDs, err = inserter.Insert(ctx, tx)
-			if err != nil {
-				return nil, err
+		} else {
+			if len(req.NewAuthzs) != 0 {
+				inserter, err := db.NewMultiInserter("authz2", strings.Split(authzFields, ", "), "id")
+				if err != nil {
+					return nil, err
+				}
+				for _, authz := range req.NewAuthzs {
+					am, err := newAuthzReqToModel(authz)
+					if err != nil {
+						return nil, err
+					}
+					err = inserter.Add([]interface{}{
+						am.ID,
+						am.IdentifierType,
+						am.IdentifierValue,
+						am.RegistrationID,
+						statusToUint[core.StatusPending],
+						am.Expires,
+						am.Challenges,
+						nil,
+						nil,
+						am.Token,
+						nil,
+						nil,
+					})
+					if err != nil {
+						return nil, err
+					}
+				}
+				newAuthzIDs, err = inserter.Insert(ctx, tx)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 
@@ -535,17 +549,13 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Third, insert all of the orderToAuthz relations.
+		// Have to combine the already-associated and newly-created authzs.
+		allAuthzIds := append(req.NewOrder.V2Authorizations, newAuthzIDs...)
 		inserter, err := db.NewMultiInserter("orderToAuthz2", []string{"orderID", "authzID"}, "")
 		if err != nil {
 			return nil, err
 		}
-		for _, id := range req.NewOrder.V2Authorizations {
-			err := inserter.Add([]interface{}{orderID, id})
-			if err != nil {
-				return nil, err
-			}
-		}
-		for _, id := range newAuthzIDs {
+		for _, id := range allAuthzIds {
 			err := inserter.Add([]interface{}{orderID, id})
 			if err != nil {
 				return nil, err
@@ -562,25 +572,6 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			return nil, err
 		}
 
-		// Finally, build the overall Order PB.
-		res := &corepb.Order{
-			// ID and Created were auto-populated on the order model when it was inserted.
-			Id:      orderID,
-			Created: timestamppb.New(created),
-			// These are carried over from the original request unchanged.
-			RegistrationID: req.NewOrder.RegistrationID,
-			Expires:        req.NewOrder.Expires,
-			DnsNames:       req.NewOrder.DnsNames,
-			// Have to combine the already-associated and newly-reacted authzs.
-			V2Authorizations: append(req.NewOrder.V2Authorizations, newAuthzIDs...),
-			// A new order is never processing because it can't be finalized yet.
-			BeganProcessing: false,
-			// An empty string is allowed. When the RA retrieves the order and
-			// transmits it to the CA, the empty string will take the value of
-			// DefaultCertProfileName from the //issuance package.
-			CertificateProfileName: req.NewOrder.CertificateProfileName,
-		}
-
 		if req.NewOrder.ReplacesSerial != "" {
 			// Update the replacementOrders table to indicate that this order
 			// replaces the provided certificate serial.
@@ -591,10 +582,29 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Get the partial Authorization objects for the order
-		authzValidityInfo, err := getAuthorizationStatuses(ctx, tx, res.V2Authorizations)
+		authzValidityInfo, err := getAuthorizationStatuses(ctx, tx, allAuthzIds)
 		// If there was an error getting the authorizations, return it immediately
 		if err != nil {
 			return nil, err
+		}
+
+		// Finally, build the overall Order PB.
+		res := &corepb.Order{
+			// ID and Created were auto-populated on the order model when it was inserted.
+			Id:      orderID,
+			Created: timestamppb.New(created),
+			// These are carried over from the original request unchanged.
+			RegistrationID: req.NewOrder.RegistrationID,
+			Expires:        req.NewOrder.Expires,
+			DnsNames:       req.NewOrder.DnsNames,
+			// This includes both reused and newly created authz IDs.
+			V2Authorizations: allAuthzIds,
+			// A new order is never processing because it can't be finalized yet.
+			BeganProcessing: false,
+			// An empty string is allowed. When the RA retrieves the order and
+			// transmits it to the CA, the empty string will take the value of
+			// DefaultCertProfileName from the //issuance package.
+			CertificateProfileName: req.NewOrder.CertificateProfileName,
 		}
 
 		// Calculate the order status before returning it. Since it may have reused
@@ -729,11 +739,9 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 			return nil, err
 		}
 
-		if features.Get().TrackReplacementCertificatesARI {
-			err = setReplacementOrderFinalized(ctx, tx, req.Id)
-			if err != nil {
-				return nil, err
-			}
+		err = setReplacementOrderFinalized(ctx, tx, req.Id)
+		if err != nil {
+			return nil, err
 		}
 
 		return nil, nil

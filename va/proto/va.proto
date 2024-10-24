@@ -40,4 +40,6 @@ message AuthzMeta {
 message ValidationResult {
   repeated core.ValidationRecord records = 1;
   core.ProblemDetails problems = 2;
+  string perspective = 3;
+  string rir = 4;
 }

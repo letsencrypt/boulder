@@ -115,7 +115,9 @@ func main() {
 		scope,
 		clk,
 		logger,
-		c.VA.AccountURIPrefixes)
+		c.VA.AccountURIPrefixes,
+		va.PrimaryPerspective,
+		"")
 	cmd.FailOnError(err, "Unable to create VA server")
 
 	start, err := bgrpc.NewServer(c.VA.GRPC, logger).Add(

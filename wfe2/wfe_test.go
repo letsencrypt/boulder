@@ -437,7 +437,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	var unpauseLifetime time.Duration
 	var unpauseURL string
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		features.Set(features.Config{CheckRenewalExemptionAtWFE: true})
 		unpauseSigner, err = unpause.NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})
 		test.AssertNotError(t, err, "making unpause signer")
 		unpauseLifetime = time.Hour * 24 * 14
@@ -4008,7 +4007,6 @@ func makeARICertID(leaf *x509.Certificate) (string, error) {
 
 func TestCountNewOrderWithReplaces(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	features.Set(features.Config{TrackReplacementCertificatesARI: true})
 
 	expectExpiry := time.Now().AddDate(0, 0, 1)
 	var expectAKID []byte

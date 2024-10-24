@@ -128,11 +128,8 @@
 		},
 		"features": {
 			"ServeRenewalInfo": true,
-			"TrackReplacementCertificatesARI": true,
-			"CheckRenewalExemptionAtWFE": true,
 			"CheckIdentifiersPaused": true,
-			"UseKvLimitsForNewOrder": true,
-			"UseKvLimitsForNewAccount": true
+			"UseKvLimitsForNewOrder": true
 		},
 		"certProfiles": {
 			"legacy": "The normal profile you know and love",

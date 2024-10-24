@@ -130,9 +130,7 @@
 		},
 		"features": {
 			"AsyncFinalize": true,
-			"CheckRenewalExemptionAtWFE": true,
-			"UseKvLimitsForNewOrder": true,
-			"UseKvLimitsForNewAccount": true
+			"UseKvLimitsForNewOrder": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",
