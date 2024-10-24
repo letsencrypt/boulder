@@ -332,7 +332,7 @@ func TestIssuePrecertificate(t *testing.T) {
 
 				var certDER []byte
 				response, err := ca.IssuePrecertificate(ctx, issueReq)
-
+				fmt.Fprintf(os.Stderr, "%s", strings.Join(ca.log.(*blog.Mock).GetAllMatching(".*"), "\n"))
 				test.AssertNotError(t, err, "Failed to issue precertificate")
 				certDER = response.DER
 

@@ -50,6 +50,25 @@ const (
 	certType    = certificateType("certificate")
 )
 
+// issuanceEvent is logged before and after issuance of precertificates and certificates.
+// The `omitempty` fields are not always present.
+// CSR, Precertificate, and Certificate are hex-encoded DER bytes to make it easier to
+// ad-hoc search for sequences or OIDs in logs. Other data, like public key within CSR,
+// is logged as base64 because it doesn't have interesting DER structure.
+type issuanceEvent struct {
+	CSR             string `json:",omitempty"`
+	IssuanceRequest *issuance.IssuanceRequest
+	Issuer          string
+	OrderID         int64
+	Profile         string
+	ProfileHash     string
+	Requester       int64
+	Result          struct {
+		Precertificate string `json:",omitempty"`
+		Certificate    string `json:",omitempty"`
+	}
+}
+
 // Two maps of keys to Issuers. Lookup by PublicKeyAlgorithm is useful for
 // determining the set of issuers which can sign a given (pre)cert, based on its
 // PublicKeyAlgorithm. Lookup by NameID is useful for looking up a specific
@@ -426,21 +445,21 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return nil, err
 	}
 
-	logEvent := map[string]interface{}{
-		"issuanceRequest": issuanceReq,
-		"issuer":          issuer.Name(),
-		"orderID":         req.OrderID,
-		"profile":         certProfile.name,
-		"profileHash":     hex.EncodeToString(certProfile.hash[:]),
-		"regID":           req.RegistrationID,
-	}
-	ca.log.AuditObject("Signing cert", logEvent)
-
 	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, issuanceReq)
 	if err != nil {
 		ca.log.AuditErrf("Preparing cert failed: serial=[%s] err=[%v]", serialHex, err)
 		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
 	}
+
+	logEvent := issuanceEvent{
+		IssuanceRequest: issuanceReq,
+		Issuer:          issuer.Name(),
+		OrderID:         req.OrderID,
+		Profile:         certProfile.name,
+		ProfileHash:     hex.EncodeToString(certProfile.hash[:]),
+		Requester:       req.RegistrationID,
+	}
+	ca.log.AuditObject("Signing cert", logEvent)
 
 	_, span := ca.tracer.Start(ctx, "signing cert", trace.WithAttributes(
 		attribute.String("serial", serialHex),
@@ -464,7 +483,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	}
 
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
-	logEvent["certificate"] = hex.EncodeToString(certDER)
+	logEvent.Result.Certificate = hex.EncodeToString(certDER)
 	ca.log.AuditObject("Signing cert success", logEvent)
 
 	_, err = ca.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
@@ -570,7 +589,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 
 	names := csrlib.NamesFromCSR(csr)
 	req := &issuance.IssuanceRequest{
-		PublicKey:         csr.PublicKey,
+		PublicKey:         issuance.MarshalablePublicKey{csr.PublicKey},
 		SubjectKeyId:      subjectKeyId,
 		Serial:            serialBigInt.Bytes(),
 		DNSNames:          names.SANs,
@@ -580,17 +599,6 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotBefore:         notBefore,
 		NotAfter:          notAfter,
 	}
-
-	logEvent := map[string]interface{}{
-		"csr":             hex.EncodeToString(csr.Raw),
-		"issuanceRequest": req,
-		"issuer":          issuer.Name(),
-		"profile":         certProfile.name,
-		"profileHash":     hex.EncodeToString(certProfile.hash[:]),
-		"regID":           issueReq.RegistrationID,
-		"orderID":         issueReq.OrderID,
-	}
-	ca.log.AuditObject("Signing precert", logEvent)
 
 	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, req)
 	if err != nil {
@@ -611,6 +619,17 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	if err != nil {
 		return nil, nil, err
 	}
+
+	logEvent := issuanceEvent{
+		CSR:             hex.EncodeToString(csr.Raw),
+		IssuanceRequest: req,
+		Issuer:          issuer.Name(),
+		Profile:         certProfile.name,
+		ProfileHash:     hex.EncodeToString(certProfile.hash[:]),
+		Requester:       issueReq.RegistrationID,
+		OrderID:         issueReq.OrderID,
+	}
+	ca.log.AuditObject("Signing precert", logEvent)
 
 	_, span := ca.tracer.Start(ctx, "signing precert", trace.WithAttributes(
 		attribute.String("serial", serialHex),
@@ -635,9 +654,9 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
 
-	logEvent["precert"] = hex.EncodeToString(certDER)
+	logEvent.Result.Precertificate = hex.EncodeToString(certDER)
 	// The CSR is big and not that informative, so don't log it a second time.
-	delete(logEvent, "csr")
+	logEvent.CSR = ""
 	ca.log.AuditObject("Signing precert success", logEvent)
 
 	return certDER, &certProfileWithID{certProfile.name, certProfile.hash, nil}, nil
