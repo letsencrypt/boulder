@@ -526,13 +526,13 @@ func TestRateLimitError(t *testing.T) {
 			expectedErrType: berrors.RateLimit,
 		},
 		{
-			name: "IssuancePausedPerDomainPerAccount limit reached",
+			name: "FailedAuthorizationsForPausingPerDomainPerAccount limit reached",
 			decision: &Decision{
 				allowed: false,
 				retryIn: 15 * time.Second,
 				transaction: Transaction{
 					limit: limit{
-						name:   IssuancePausedPerDomainPerAccount,
+						name:   FailedAuthorizationsForPausingPerDomainPerAccount,
 						Burst:  7,
 						Period: config.Duration{Duration: time.Hour},
 					},

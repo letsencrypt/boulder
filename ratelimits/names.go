@@ -77,21 +77,21 @@ const (
 	// passed as a comma-separated list of domain names.
 	CertificatesPerFQDNSet
 
-    // TODO: <Add Description> @kruti-s
-	IssuancePausedPerDomainPerAccount
+	// TODO: <Add Description> @kruti-s
+	FailedAuthorizationsForPausingPerDomainPerAccount
 )
 
 // nameToString is a map of Name values to string names.
 var nameToString = map[Name]string{
-	Unknown:                                 "Unknown",
-	NewRegistrationsPerIPAddress:            "NewRegistrationsPerIPAddress",
-	NewRegistrationsPerIPv6Range:            "NewRegistrationsPerIPv6Range",
-	NewOrdersPerAccount:                     "NewOrdersPerAccount",
-	FailedAuthorizationsPerDomainPerAccount: "FailedAuthorizationsPerDomainPerAccount",
-    CertificatesPerDomain:                   "CertificatesPerDomain",
-	CertificatesPerDomainPerAccount:         "CertificatesPerDomainPerAccount",
-	CertificatesPerFQDNSet:                  "CertificatesPerFQDNSet",
-    IssuancePausedPerDomainPerAccount:       "IssuancePausedPerDomainPerAccount",
+	Unknown:                                           "Unknown",
+	NewRegistrationsPerIPAddress:                      "NewRegistrationsPerIPAddress",
+	NewRegistrationsPerIPv6Range:                      "NewRegistrationsPerIPv6Range",
+	NewOrdersPerAccount:                               "NewOrdersPerAccount",
+	FailedAuthorizationsPerDomainPerAccount:           "FailedAuthorizationsPerDomainPerAccount",
+	CertificatesPerDomain:                             "CertificatesPerDomain",
+	CertificatesPerDomainPerAccount:                   "CertificatesPerDomainPerAccount",
+	CertificatesPerFQDNSet:                            "CertificatesPerFQDNSet",
+	FailedAuthorizationsForPausingPerDomainPerAccount: "FailedAuthorizationsForPausingPerDomainPerAccount",
 }
 
 // isValid returns true if the Name is a valid rate limit name.
@@ -235,7 +235,7 @@ func validateIdForName(name Name, id string) error {
 		// 'enum:fqdnSet'
 		return validateFQDNSet(id)
 
-	case IssuancePausedPerDomainPerAccount:
+	case FailedAuthorizationsForPausingPerDomainPerAccount:
 		if strings.Contains(id, ":") {
 			// 'enum:regId:domain' for transaction
 			return validateRegIdDomain(id)

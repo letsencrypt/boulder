@@ -304,25 +304,25 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendO
 	return txn, nil
 }
 
-// IssuancePausedPerDomainPerAccountTransaction returns a
+// FailedAuthorizationsForPausingPerDomainPerAccountTransaction returns a
 // Transaction for the provided order domain name. An error is returned if
 // the order domain name is invalid. This method should be used for spending
 // capacity, as a result of a failed authorization.
-func (builder *TransactionBuilder) IssuancePausedPerDomainPerAccountTransaction(regId int64, orderDomain string) (Transaction, error) {
-	// IssuancePausedPerDomainPerAccount limit uses the 'enum:regId'
+func (builder *TransactionBuilder) FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId int64, orderDomain string) (Transaction, error) {
+	// FailedAuthorizationsForPausingPerDomainPerAccount limit uses the 'enum:regId'
 	// bucket key format for overrides.
-	perAccountBucketKey, err := newRegIdBucketKey(IssuancePausedPerDomainPerAccount, regId)
+	perAccountBucketKey, err := newRegIdBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId)
 	if err != nil {
 		return Transaction{}, err
 	}
-	limit, err := builder.getLimit(IssuancePausedPerDomainPerAccount, perAccountBucketKey)
+	limit, err := builder.getLimit(FailedAuthorizationsForPausingPerDomainPerAccount, perAccountBucketKey)
 	if err != nil && !errors.Is(err, errLimitDisabled) {
 		return Transaction{}, err
 	}
 
-	// IssuancePausedPerDomainPerAccount limit uses the
+	// FailedAuthorizationsForPausingPerDomainPerAccount limit uses the
 	// 'enum:regId:domain' bucket key format for transactions.
-	perDomainPerAccountBucketKey, err := NewRegIdDomainBucketKey(IssuancePausedPerDomainPerAccount, regId, orderDomain)
+	perDomainPerAccountBucketKey, err := NewRegIdDomainBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId, orderDomain)
 	if err != nil {
 		return Transaction{}, err
 	}

@@ -14,7 +14,7 @@ FailedAuthorizationsPerDomainPerAccount:
   count: 3
   burst: 3
   period: 5m
-IssuancePausedPerDomainPerAccount:
+FailedAuthorizationsForPausingPerDomainPerAccount:
   count: 3600
   burst: 3600
   period: 960h

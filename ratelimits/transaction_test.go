@@ -102,14 +102,14 @@ func TestFailedAuthorizationsPerDomainPerAccountTransactions(t *testing.T) {
 	test.Assert(t, txn.limit.isOverride(), "should be an override")
 }
 
-func TestIssuancePausedPerDomainPerAccountTransactions(t *testing.T) {
+func TestFailedAuthorizationsForPausingPerDomainPerAccountTransactions(t *testing.T) {
 	t.Parallel()
 
 	tb, err := NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "testdata/working_override_13371338.yml")
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A transaction for the per-account limit override.
-	txn, err := tb.IssuancePausedPerDomainPerAccountTransaction(13371338, "so.many.labels.here.example.com")
+	txn, err := tb.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(13371338, "so.many.labels.here.example.com")
 	test.AssertNotError(t, err, "creating transaction")
 	test.AssertEquals(t, txn.bucketKey, "8:13371338:so.many.labels.here.example.com")
 	test.Assert(t, txn.check && txn.spend, "should be check and spend")

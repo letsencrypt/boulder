@@ -22,7 +22,7 @@
       - id: 5678
         comment: Foo
 
-- IssuancePausedPerDomainPerAccount:
+- FailedAuthorizationsForPausingPerDomainPerAccount:
     burst: 60
     count: 60
     period: 3s

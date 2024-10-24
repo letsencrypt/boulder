@@ -1769,7 +1769,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 }
 
 // countFailedValidation increments the failed authorizations per domain per
-// account rate limit. It also increments the issuance paused counter per
+// account rate limit. It also increments the failed authorizations for pausing per
 // domain per account rate limit. There is no reason to surface errors from
 // this function to the Subscriber, spends against this limit are best effort.
 func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
@@ -1794,9 +1794,9 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 	}
 
 	// Increment ratelimit for IssuancePaused
-	txn, err = ra.txnBuilder.IssuancePausedPerDomainPerAccountTransaction(regId, name)
+	txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, name)
 	if err != nil {
-		ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.IssuancePausedPerDomainPerAccount, err)
+		ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
 	}
 
 	decision, err := ra.limiter.Spend(ctx, txn)
@@ -1804,7 +1804,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
 		}
-		ra.log.Warningf("spending against the %s rate limit: %s", ratelimits.IssuancePausedPerDomainPerAccount, err)
+		ra.log.Warningf("spending against the %s rate limit: %s", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
 	}
 
 	if decision.Result(ra.clk.Now()) != nil {
@@ -1825,7 +1825,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 // There is no reason to surface errors from this function to the Subscriber
 
 func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
-	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.IssuancePausedPerDomainPerAccount, regId, ident.Value)
+	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident.Value)
 	if err != nil {
 		ra.log.Warningf("Can't get domain bucket key for regID=[%d] authzID=[%s] err=[%s]",
 			regId, ident, err)
