@@ -128,7 +128,6 @@
 		},
 		"features": {
 			"ServeRenewalInfo": true,
-			"TrackReplacementCertificatesARI": true,
 			"CheckIdentifiersPaused": true,
 			"UseKvLimitsForNewOrder": true
 		},

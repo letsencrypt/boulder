@@ -106,6 +106,7 @@
 		"pendingAuthorizationLifetimeDays": 7,
 		"features": {
 			"ServeRenewalInfo": true,
+			"TrackReplacementCertificatesARI": true,
 			"CheckRenewalExemptionAtWFE": true,
 			"UseKvLimitsForNewAccount": true
 		}
