@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -142,7 +143,7 @@ func (p *Profile) GenerateValidity(now time.Time) (time.Time, time.Time) {
 // requestValid verifies the passed IssuanceRequest against the profile. If the
 // request doesn't match the signing profile an error is returned.
 func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceRequest) error {
-	switch req.PublicKey.(type) {
+	switch req.PublicKey.PublicKey.(type) {
 	case *rsa.PublicKey, *ecdsa.PublicKey:
 	default:
 		return errors.New("unsupported public key type")
@@ -250,12 +251,36 @@ var mustStapleExt = pkix.Extension{
 	Value: []byte{0x30, 0x03, 0x02, 0x01, 0x05},
 }
 
-// IssuanceRequest describes a certificate issuance request
-type IssuanceRequest struct {
-	PublicKey    crypto.PublicKey
-	SubjectKeyId []byte
+// MarshalablePublicKey is a wrapper for crypto.PublicKey with a custom JSON
+// marshaller that encodes the public key as a DER-encoded SubjectPublicKeyInfo.
+type MarshalablePublicKey struct {
+	crypto.PublicKey
+}
 
-	Serial []byte
+func (pk MarshalablePublicKey) MarshalJSON() ([]byte, error) {
+	keyDER, err := x509.MarshalPKIXPublicKey(pk.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(keyDER)
+}
+
+type HexMarshalableBytes []byte
+
+func (h HexMarshalableBytes) MarshalJSON() ([]byte, error) {
+	return json.Marshal(fmt.Sprintf("%x", h))
+}
+
+// IssuanceRequest describes a certificate issuance request
+//
+// It can be marshaled as JSON for logging purposes, though note that sctList and precertDER
+// will be omitted from the marshaled output because they are unexported.
+type IssuanceRequest struct {
+	// PublicKey is of type MarshalablePublicKey so we can log an IssuanceRequest as a JSON object.
+	PublicKey    MarshalablePublicKey
+	SubjectKeyId HexMarshalableBytes
+
+	Serial HexMarshalableBytes
 
 	NotBefore time.Time
 	NotAfter  time.Time
@@ -283,7 +308,7 @@ type IssuanceRequest struct {
 type issuanceToken struct {
 	mu       sync.Mutex
 	template *x509.Certificate
-	pubKey   any
+	pubKey   MarshalablePublicKey
 	// A pointer to the issuer that created this token. This token may only
 	// be redeemed by the same issuer.
 	issuer *Issuer
@@ -324,7 +349,7 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 	}
 	template.DNSNames = req.DNSNames
 
-	switch req.PublicKey.(type) {
+	switch req.PublicKey.PublicKey.(type) {
 	case *rsa.PublicKey:
 		if prof.omitKeyEncipherment {
 			template.KeyUsage = x509.KeyUsageDigitalSignature
@@ -360,7 +385,7 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	lintCertBytes, err := i.Linter.Check(template, req.PublicKey, prof.lints)
+	lintCertBytes, err := i.Linter.Check(template, req.PublicKey.PublicKey, prof.lints)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}
@@ -395,7 +420,7 @@ func (i *Issuer) Issue(token *issuanceToken) ([]byte, error) {
 		return nil, errors.New("tried to redeem issuance token with the wrong issuer")
 	}
 
-	return x509.CreateCertificate(rand.Reader, template, i.Cert.Certificate, token.pubKey, i.Signer)
+	return x509.CreateCertificate(rand.Reader, template, i.Cert.Certificate, token.pubKey.PublicKey, i.Signer)
 }
 
 // ContainsMustStaple returns true if the provided set of extensions includes
@@ -430,7 +455,7 @@ func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTi
 		return nil, errors.New("provided certificate doesn't contain the CT poison extension")
 	}
 	return &IssuanceRequest{
-		PublicKey:         precert.PublicKey,
+		PublicKey:         MarshalablePublicKey{precert.PublicKey},
 		SubjectKeyId:      precert.SubjectKeyId,
 		Serial:            precert.SerialNumber.Bytes(),
 		NotBefore:         precert.NotBefore,
