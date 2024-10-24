@@ -739,11 +739,9 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 			return nil, err
 		}
 
-		if features.Get().TrackReplacementCertificatesARI {
-			err = setReplacementOrderFinalized(ctx, tx, req.Id)
-			if err != nil {
-				return nil, err
-			}
+		err = setReplacementOrderFinalized(ctx, tx, req.Id)
+		if err != nil {
+			return nil, err
 		}
 
 		return nil, nil

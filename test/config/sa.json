@@ -47,7 +47,9 @@
 				}
 			}
 		},
-		"features": {}
+		"features": {
+			"TrackReplacementCertificatesARI": true
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 6,
