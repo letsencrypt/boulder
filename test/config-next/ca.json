@@ -142,7 +142,7 @@
 				}
 			]
 		},
-		"serialPrefix": 127,
+		"serialPrefixHex": "7f",
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
 		"goodkey": {
@@ -162,7 +162,7 @@
 		}
 	},
 	"syslog": {
-		"stdoutlevel": 6,
+		"stdoutlevel": 4,
 		"sysloglevel": -1
 	},
 	"openTelemetry": {

@@ -251,12 +251,6 @@ var mustStapleExt = pkix.Extension{
 	Value: []byte{0x30, 0x03, 0x02, 0x01, 0x05},
 }
 
-type sctList []ct.SignedCertificateTimestamp
-
-func (list sctList) MarshalJSON() ([]byte, error) {
-	return []byte("[]"), nil
-}
-
 // MarshalablePublicKey is a wrapper for crypto.PublicKey with a custom JSON
 // marshaller that encodes the public key as a DER-encoded SubjectPublicKeyInfo.
 type MarshalablePublicKey struct {
@@ -299,7 +293,7 @@ type IssuanceRequest struct {
 
 	// sctList is a list of SCTs to include in a final certificate.
 	// If it is non-empty, PrecertDER must also be non-empty.
-	sctList sctList
+	sctList []ct.SignedCertificateTimestamp
 	// precertDER is the encoded bytes of the precertificate that a
 	// final certificate is expected to correspond to. If it is non-empty,
 	// SCTList must also be non-empty.
