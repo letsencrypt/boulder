@@ -415,58 +415,6 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 	return nil
 }
 
-// checkRegistrationLimits enforces the RegistrationsPerIP and
-// RegistrationsPerIPRange limits
-func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context, ip net.IP) error {
-	// Check the registrations per IP limit using the CountRegistrationsByIP SA
-	// function that matches IP addresses exactly
-	exactRegLimit := ra.rlPolicies.RegistrationsPerIP()
-	if exactRegLimit.Enabled() {
-		started := ra.clk.Now()
-		err := ra.checkRegistrationIPLimit(ctx, exactRegLimit, ip, ra.SA.CountRegistrationsByIP)
-		elapsed := ra.clk.Since(started)
-		if err != nil {
-			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIP, ratelimits.Denied).Observe(elapsed.Seconds())
-				ra.log.Infof("Rate limit exceeded, RegistrationsPerIP, by IP: %q", ip)
-			}
-			return err
-		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIP, ratelimits.Allowed).Observe(elapsed.Seconds())
-	}
-
-	// We only apply the fuzzy reg limit to IPv6 addresses.
-	// Per https://golang.org/pkg/net/#IP.To4 "If ip is not an IPv4 address, To4
-	// returns nil"
-	if ip.To4() != nil {
-		return nil
-	}
-
-	// Check the registrations per IP range limit using the
-	// CountRegistrationsByIPRange SA function that fuzzy-matches IPv6 addresses
-	// within a larger address range
-	fuzzyRegLimit := ra.rlPolicies.RegistrationsPerIPRange()
-	if fuzzyRegLimit.Enabled() {
-		started := ra.clk.Now()
-		err := ra.checkRegistrationIPLimit(ctx, fuzzyRegLimit, ip, ra.SA.CountRegistrationsByIPRange)
-		elapsed := ra.clk.Since(started)
-		if err != nil {
-			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIPRange, ratelimits.Denied).Observe(elapsed.Seconds())
-				ra.log.Infof("Rate limit exceeded, RegistrationsByIPRange, IP: %q", ip)
-
-				// For the fuzzyRegLimit we use a new error message that specifically
-				// mentions that the limit being exceeded is applied to a *range* of IPs
-				return berrors.RateLimitError(0, "too many registrations for this IP range")
-			}
-			return err
-		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIPRange, ratelimits.Allowed).Observe(elapsed.Seconds())
-	}
-
-	return nil
-}
-
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
 	// Error if the request is nil, there is no account key or IP address
@@ -483,20 +431,6 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	err = ra.keyPolicy.GoodKey(ctx, key.Key)
 	if err != nil {
 		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
-	}
-
-	// Check IP address rate limits.
-	var ipAddr net.IP
-	err = ipAddr.UnmarshalText(request.InitialIP)
-	if err != nil {
-		return nil, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
-	}
-
-	if !features.Get().UseKvLimitsForNewAccount {
-		err = ra.checkRegistrationLimits(ctx, ipAddr)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// Check that contacts conform to our expectations.

@@ -796,10 +796,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	refundLimits, err := wfe.checkNewAccountLimits(ctx, ip)
 	if err != nil {
 		if errors.Is(err, berrors.RateLimit) {
-			if features.Get().UseKvLimitsForNewAccount {
-				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
-				return
-			}
+			wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
+			return
 		} else {
 			wfe.log.Warning(err.Error())
 		}
@@ -2413,12 +2411,10 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	var replaces string
 	var isARIRenewal bool
-	if features.Get().TrackReplacementCertificatesARI {
-		replaces, isARIRenewal, err = wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
-		if err != nil {
-			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
-			return
-		}
+	replaces, isARIRenewal, err = wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
+		return
 	}
 
 	var isRenewal bool
@@ -2456,12 +2452,10 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	var newOrderSuccessful bool
 	var errIsRateLimit bool
 	defer func() {
-		if features.Get().TrackReplacementCertificatesARI {
-			wfe.stats.ariReplacementOrders.With(prometheus.Labels{
-				"isReplacement": fmt.Sprintf("%t", replaces != ""),
-				"limitsExempt":  fmt.Sprintf("%t", isARIRenewal),
-			}).Inc()
-		}
+		wfe.stats.ariReplacementOrders.With(prometheus.Labels{
+			"isReplacement": fmt.Sprintf("%t", replaces != ""),
+			"limitsExempt":  fmt.Sprintf("%t", isARIRenewal),
+		}).Inc()
 
 		if !newOrderSuccessful && !errIsRateLimit && refundLimits != nil {
 			go refundLimits()

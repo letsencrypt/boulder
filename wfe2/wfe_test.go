@@ -4408,7 +4408,6 @@ func makeARICertID(leaf *x509.Certificate) (string, error) {
 
 func TestCountNewOrderWithReplaces(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	features.Set(features.Config{TrackReplacementCertificatesARI: true})
 
 	expectExpiry := time.Now().AddDate(0, 0, 1)
 	var expectAKID []byte
