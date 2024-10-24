@@ -153,6 +153,22 @@ func (d *Decision) Result(now time.Time) error {
 			retryAfterTs,
 		)
 
+	case FailedAuthorizationsForPausingPerDomainPerAccount:
+		// Uses bucket key 'enum:regId:domain'.
+		idx := strings.LastIndex(d.transaction.bucketKey, ":")
+		if idx == -1 {
+			return berrors.InternalServerError("unrecognized bucket key while generating error")
+		}
+		domain := d.transaction.bucketKey[idx+1:]
+		return berrors.FailedValidationError(
+			retryAfter,
+			"too many failed validation attempts (%d) for %q in the last %s, retry after %s",
+			d.transaction.limit.Burst,
+			domain,
+			d.transaction.limit.Period.Duration,
+			retryAfterTs,
+		)
+
 	case CertificatesPerDomain, CertificatesPerDomainPerAccount:
 		// Uses bucket key 'enum:domain' or 'enum:regId:domain' respectively.
 		idx := strings.LastIndex(d.transaction.bucketKey, ":")
