@@ -1956,7 +1956,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			go ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier)
 		} else {
 			challenge.Status = core.StatusValid
-			ra.resetAccountPausingLimit(vaCtx, authz.RegistrationID, authz.Identifier)
+			go ra.resetAccountPausingLimit(vaCtx, authz.RegistrationID, authz.Identifier)
 		}
 		challenge.Validated = &vStart
 		authz.Challenges[challIndex] = *challenge
