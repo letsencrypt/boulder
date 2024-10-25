@@ -14,12 +14,14 @@ FailedAuthorizationsPerDomainPerAccount:
   count: 3
   burst: 3
   period: 5m
-# 40 failures per day across 90 days for FailedAuthorizationsForPausingPerDomainPerAccount
-# If someone fails the fastest they can possibly fail (5 times per hour, or 120 times per day, as enforced by the existing FailedAuthorizations limit), then they'll burn through the burst in 30 days, and burn through those 30 extra tokens in a few hours. 30 days is the fastest we want to pause anyone
-# If someone fails 40 times per day (i.e. right at our intended threshold), they'll get paused after ~92 days: 90 days to burn through their burst, and then a little bit more time to burn through the 90 tokens they've accumulated during that time.
-# If someone fails 30 times per day, just below our target threshold, they'll get paused after about 125 days
-# If someone fails 4 times per day, they'll take 900 days to burn through their initial burst, during which time they'll earn 900 more tokens, which they'll burn through in 225 days, during which time they'll end up being paused after about 1200 days, or just over 3 years.
-# If someone fails once per day, they'll never be paused.
+# The burst represents failing 40 times per day for 90 days. 
+# The count and period grant one "freebie" failure per day. 
+# In combination, these parameters mean that:
+# - Failing 120 times per day results in being paused after 30.25 days
+# - Failing 40 times per day results in being paused after 92.3 days
+# - Failing 20 times per day results in being paused after 6.2 months
+# - Failing 4 times per day results in being paused after 3.3 years
+# - Failing once per day results in never being paused
 FailedAuthorizationsForPausingPerDomainPerAccount:
   count: 1
   burst: 3600
