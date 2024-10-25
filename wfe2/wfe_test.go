@@ -3387,9 +3387,9 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	authz := &core.Authorization{
-		ID:             "12345",
+		ID:             "12345678",
 		Status:         core.StatusPending,
-		RegistrationID: 1,
+		RegistrationID: 87654321,
 		Identifier:     identifier.NewDNS("example.com"),
 		Challenges: []core.Challenge{
 			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
@@ -3401,9 +3401,11 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	// This modifies the authz in-place.
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 
-	// The ID and RegID should be empty, since they're not part of the ACME API object.
-	test.AssertEquals(t, authz.ID, "")
-	test.AssertEquals(t, authz.RegistrationID, int64(0))
+	// Ensure ID and RegID are omitted.
+	authzJSON, err := json.Marshal(authz)
+	test.AssertNotError(t, err, "Failed to marshal authz")
+	test.AssertNotContains(t, string(authzJSON), "\"id\":12345678")
+	test.AssertNotContains(t, string(authzJSON), "\"registrationID\":87654321")
 }
 
 func TestPrepRevokedAuthzForDisplay(t *testing.T) {
