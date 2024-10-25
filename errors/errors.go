@@ -179,26 +179,50 @@ func RateLimitError(retryAfter time.Duration, msg string, args ...interface{}) e
 	}
 }
 
-func DuplicateCertificateError(retryAfter time.Duration, msg string, args ...interface{}) error {
+func RegistrationsPerIPAddressError(retryAfter time.Duration, msg string, args ...interface{}) error {
 	return &BoulderError{
 		Type:       RateLimit,
-		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/duplicate-certificate-limit/", args...),
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/#new-registrations-per-ip-address", args...),
 		RetryAfter: retryAfter,
 	}
 }
 
-func FailedValidationError(retryAfter time.Duration, msg string, args ...interface{}) error {
+func RegistrationsPerIPv6RangeError(retryAfter time.Duration, msg string, args ...interface{}) error {
 	return &BoulderError{
 		Type:       RateLimit,
-		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/failed-validation-limit/", args...),
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/#new-registrations-per-ipv6-range", args...),
 		RetryAfter: retryAfter,
 	}
 }
 
-func RegistrationsPerIPError(retryAfter time.Duration, msg string, args ...interface{}) error {
+func NewOrdersPerAccountError(retryAfter time.Duration, msg string, args ...interface{}) error {
 	return &BoulderError{
 		Type:       RateLimit,
-		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/", args...),
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account", args...),
+		RetryAfter: retryAfter,
+	}
+}
+
+func CertificatesPerDomainError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return &BoulderError{
+		Type:       RateLimit,
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-registered-domain", args...),
+		RetryAfter: retryAfter,
+	}
+}
+
+func CertificatesPerFQDNSetError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return &BoulderError{
+		Type:       RateLimit,
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-exact-set-of-hostnames", args...),
+		RetryAfter: retryAfter,
+	}
+}
+
+func FailedAuthorizationsPerDomainPerAccountError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return &BoulderError{
+		Type:       RateLimit,
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account", args...),
 		RetryAfter: retryAfter,
 	}
 }

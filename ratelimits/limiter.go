@@ -112,7 +112,7 @@ func (d *Decision) Result(now time.Time) error {
 
 	switch d.transaction.limit.name {
 	case NewRegistrationsPerIPAddress:
-		return berrors.RegistrationsPerIPError(
+		return berrors.RegistrationsPerIPAddressError(
 			retryAfter,
 			"too many new registrations (%d) from this IP address in the last %s, retry after %s",
 			d.transaction.limit.Burst,
@@ -121,15 +121,15 @@ func (d *Decision) Result(now time.Time) error {
 		)
 
 	case NewRegistrationsPerIPv6Range:
-		return berrors.RateLimitError(
+		return berrors.RegistrationsPerIPv6RangeError(
 			retryAfter,
-			"too many new registrations (%d) from this /48 block of IPv6 addresses in the last %s, retry after %s",
+			"too many new registrations (%d) from this /48 subnet of IPv6 addresses in the last %s, retry after %s",
 			d.transaction.limit.Burst,
 			d.transaction.limit.Period.Duration,
 			retryAfterTs,
 		)
 	case NewOrdersPerAccount:
-		return berrors.RateLimitError(
+		return berrors.NewOrdersPerAccountError(
 			retryAfter,
 			"too many new orders (%d) from this account in the last %s, retry after %s",
 			d.transaction.limit.Burst,
@@ -144,7 +144,7 @@ func (d *Decision) Result(now time.Time) error {
 			return berrors.InternalServerError("unrecognized bucket key while generating error")
 		}
 		domain := d.transaction.bucketKey[idx+1:]
-		return berrors.FailedValidationError(
+		return berrors.FailedAuthorizationsPerDomainPerAccountError(
 			retryAfter,
 			"too many failed authorizations (%d) for %q in the last %s, retry after %s",
 			d.transaction.limit.Burst,
@@ -176,7 +176,7 @@ func (d *Decision) Result(now time.Time) error {
 			return berrors.InternalServerError("unrecognized bucket key while generating error")
 		}
 		domain := d.transaction.bucketKey[idx+1:]
-		return berrors.RateLimitError(
+		return berrors.CertificatesPerDomainError(
 			retryAfter,
 			"too many certificates (%d) already issued for %q in the last %s, retry after %s",
 			d.transaction.limit.Burst,
@@ -186,7 +186,7 @@ func (d *Decision) Result(now time.Time) error {
 		)
 
 	case CertificatesPerFQDNSet:
-		return berrors.DuplicateCertificateError(
+		return berrors.CertificatesPerFQDNSetError(
 			retryAfter,
 			"too many certificates (%d) already issued for this exact set of domains in the last %s, retry after %s",
 			d.transaction.limit.Burst,
