@@ -3387,9 +3387,9 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	authz := &core.Authorization{
-		ID:             "12345678",
+		ID:             "12345",
 		Status:         core.StatusPending,
-		RegistrationID: 87654321,
+		RegistrationID: 1,
 		Identifier:     identifier.NewDNS("example.com"),
 		Challenges: []core.Challenge{
 			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
@@ -3404,8 +3404,8 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	// Ensure ID and RegID are omitted.
 	authzJSON, err := json.Marshal(authz)
 	test.AssertNotError(t, err, "Failed to marshal authz")
-	test.AssertNotContains(t, string(authzJSON), "\"id\":12345678")
-	test.AssertNotContains(t, string(authzJSON), "\"registrationID\":87654321")
+	test.AssertNotContains(t, string(authzJSON), "\"id\":\"12345\"")
+	test.AssertNotContains(t, string(authzJSON), "\"registrationID\":\"1\"")
 }
 
 func TestPrepRevokedAuthzForDisplay(t *testing.T) {
