@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"math/big"
 	mrand "math/rand/v2"
-	"strings"
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
@@ -600,9 +599,6 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotBefore:         notBefore,
 		NotAfter:          notAfter,
 	}
-
-	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
-		serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), hex.EncodeToString(csr.Raw))
 
 	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, req)
 	if err != nil {
