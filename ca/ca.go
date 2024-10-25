@@ -592,6 +592,11 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
 	}
 
+	// Note: we write the linting certificate bytes to this table, rather than the precertificate
+	// (which we audit log but do not put in the database). This is to ensure that even if there is
+	// an error immediately after signing the precertificate, we have a record in the DB of what we
+	// intended to sign, and can do revocations based on that. See #6807.
+	// The name of the SA method ("AddPrecertificate") is a historical artifact.
 	_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 		Der:          lintCertBytes,
 		RegID:        issueReq.RegistrationID,
