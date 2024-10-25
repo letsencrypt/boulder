@@ -98,7 +98,7 @@ func TestCSR(t *testing.T) {
 	badCSR := strings.Replace(goodCSR, "Wul6", "Wul7", 1)
 
 	csrFile := path.Join(t.TempDir(), "bad.csr")
-	err := os.WriteFile(csrFile, []byte(badCSR), 0600)
+	err = os.WriteFile(csrFile, []byte(badCSR), 0600)
 	test.AssertNotError(t, err, "writing bad csr")
 
 	_, err = spkiHashFromCSRPEM(csrFile, true)
