@@ -68,6 +68,36 @@ func TestSPKIHashesFromFile(t *testing.T) {
 	}
 }
 
+// This CSR has had its final bit flipped in the signature
+// The key is the p256 test key from RFC9500
+const badCSR = `
+-----BEGIN CERTIFICATE REQUEST-----
+MIG6MGICAQAwADBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABEIlSPiPt4L/teyj
+dERSxyoeVY+9b3O+XkjpMjLMRcWxbEzRDEy41bihcTnpSILImSVymTQl9BQZq36Q
+pCpJQnKgADAKBggqhkjOPQQDAgNIADBFAiBadw3gvL9IjUfASUTa7MvmkbC4ZCvl
+21m1KMwkIx/+CQIhAKvuyfCcdZ0cWJYOXCOb1OavolWHIUzgEpNGUWul6O0t
+-----END CERTIFICATE REQUEST-----
+`
+
+// TestCSR checks that we get the correct SPKI from a CSR, even if its signature is invalid
+func TestCSR(t *testing.T) {
+	csrFile := path.Join(t.TempDir(), "bad.csr")
+	err := os.WriteFile(csrFile, []byte(badCSR), 0600)
+	test.AssertNotError(t, err, "writing bad csr")
+
+	_, err = spkiHashFromCSRPEM(csrFile, true)
+	test.AssertError(t, err, "expected invalid signature")
+
+	hashes, err := spkiHashFromCSRPEM(csrFile, false)
+	test.AssertNotError(t, err, "expected to read CSR with bad signature")
+
+	if len(hashes) != 1 {
+		t.Fatalf("expected to read 1 SPKI from CSR, read %d", len(hashes))
+	}
+	expected := "b2b04340cfaee616ec9c2c62d261b208e54bb197498df52e8cadede23ac0ba5e"
+	test.AssertEquals(t, hex.EncodeToString(hashes[0]), expected)
+}
+
 // mockSARecordingBlocks is a mock which only implements the AddBlockedKey gRPC
 // method.
 type mockSARecordingBlocks struct {
