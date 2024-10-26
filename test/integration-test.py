@@ -34,7 +34,7 @@ race_detection = True
 if os.environ.get('RACE', 'true') != 'true':
     race_detection = False
 
-def run_go_tests(filterPattern=None):
+def run_go_tests(filterPattern=None,verbose=False):
     """
     run_go_tests launches the Go integration tests. The go test command must
     return zero or an exception will be raised. If the filterPattern is provided
@@ -43,7 +43,10 @@ def run_go_tests(filterPattern=None):
     cmdLine = ["go", "test"]
     if filterPattern is not None and filterPattern != "":
         cmdLine = cmdLine + ["--test.run", filterPattern]
-    cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race", "./test/integration"]
+    cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race"]
+    if verbose:
+        cmdLine = cmdLine + ["-v"]
+    cmdLine = cmdLine +  ["./test/integration"]
     subprocess.check_call(cmdLine, stderr=subprocess.STDOUT)
 
 exit_status = 1
@@ -54,6 +57,8 @@ def main():
                         help="run integration tests using chisel")
     parser.add_argument('--gotest', dest="run_go", action="store_true",
                         help="run Go integration tests")
+    parser.add_argument('--gotestverbose', dest="run_go_verbose", action="store_true",
+                        help="run Go integration tests with verbose output")
     parser.add_argument('--filter', dest="test_case_filter", action="store",
                         help="Regex filter for test cases")
     # allow any ACME client to run custom command for integration
@@ -90,7 +95,10 @@ def main():
         run_chisel(args.test_case_filter)
 
     if args.run_go:
-        run_go_tests(args.test_case_filter)
+        run_go_tests(args.test_case_filter, False)
+    
+    if args.run_go_verbose:
+        run_go_tests(args.test_case_filter, True)
 
     if args.custom:
         run(args.custom.split())

@@ -107,7 +107,8 @@
 			}
 		},
 		"features": {
-			"CheckRenewalExemptionAtWFE": true
+			"CheckRenewalExemptionAtWFE": true,
+			"UseKvLimitsForNewAccount": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

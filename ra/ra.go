@@ -404,64 +404,12 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 
 	threshold, overrideKey := limit.GetThreshold(ip.String(), noRegistrationID)
 	if count.Count >= threshold {
-		return berrors.RegistrationsPerIPError(0, "too many registrations for this IP")
+		return berrors.RegistrationsPerIPAddressError(0, "too many registrations for this IP")
 	}
 	if overrideKey != "" {
 		// We do not support overrides for the NewRegistrationsPerIPRange limit.
 		utilization := float64(count.Count+1) / float64(threshold)
 		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.RegistrationsPerIP, overrideKey).Set(utilization)
-	}
-
-	return nil
-}
-
-// checkRegistrationLimits enforces the RegistrationsPerIP and
-// RegistrationsPerIPRange limits
-func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context, ip net.IP) error {
-	// Check the registrations per IP limit using the CountRegistrationsByIP SA
-	// function that matches IP addresses exactly
-	exactRegLimit := ra.rlPolicies.RegistrationsPerIP()
-	if exactRegLimit.Enabled() {
-		started := ra.clk.Now()
-		err := ra.checkRegistrationIPLimit(ctx, exactRegLimit, ip, ra.SA.CountRegistrationsByIP)
-		elapsed := ra.clk.Since(started)
-		if err != nil {
-			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIP, ratelimits.Denied).Observe(elapsed.Seconds())
-				ra.log.Infof("Rate limit exceeded, RegistrationsPerIP, by IP: %q", ip)
-			}
-			return err
-		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIP, ratelimits.Allowed).Observe(elapsed.Seconds())
-	}
-
-	// We only apply the fuzzy reg limit to IPv6 addresses.
-	// Per https://golang.org/pkg/net/#IP.To4 "If ip is not an IPv4 address, To4
-	// returns nil"
-	if ip.To4() != nil {
-		return nil
-	}
-
-	// Check the registrations per IP range limit using the
-	// CountRegistrationsByIPRange SA function that fuzzy-matches IPv6 addresses
-	// within a larger address range
-	fuzzyRegLimit := ra.rlPolicies.RegistrationsPerIPRange()
-	if fuzzyRegLimit.Enabled() {
-		started := ra.clk.Now()
-		err := ra.checkRegistrationIPLimit(ctx, fuzzyRegLimit, ip, ra.SA.CountRegistrationsByIPRange)
-		elapsed := ra.clk.Since(started)
-		if err != nil {
-			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIPRange, ratelimits.Denied).Observe(elapsed.Seconds())
-				ra.log.Infof("Rate limit exceeded, RegistrationsByIPRange, IP: %q", ip)
-
-				// For the fuzzyRegLimit we use a new error message that specifically
-				// mentions that the limit being exceeded is applied to a *range* of IPs
-				return berrors.RateLimitError(0, "too many registrations for this IP range")
-			}
-			return err
-		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIPRange, ratelimits.Allowed).Observe(elapsed.Seconds())
 	}
 
 	return nil
@@ -483,20 +431,6 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	err = ra.keyPolicy.GoodKey(ctx, key.Key)
 	if err != nil {
 		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
-	}
-
-	// Check IP address rate limits.
-	var ipAddr net.IP
-	err = ipAddr.UnmarshalText(request.InitialIP)
-	if err != nil {
-		return nil, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
-	}
-
-	if !features.Get().UseKvLimitsForNewAccount {
-		err = ra.checkRegistrationLimits(ctx, ipAddr)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// Check that contacts conform to our expectations.
@@ -664,7 +598,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	threshold, overrideKey := limit.GetThreshold(noKey, regID)
 	if count.Count >= threshold {
 		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
-		return berrors.FailedValidationError(0, "too many failed authorizations recently")
+		return berrors.FailedAuthorizationsPerDomainPerAccountError(0, "too many failed authorizations recently")
 	}
 	if overrideKey != "" {
 		utilization := float64(count.Count) / float64(threshold)
@@ -676,20 +610,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 // checkNewOrdersPerAccountLimit enforces the rlPolicies `NewOrdersPerAccount`
 // rate limit. This rate limit ensures a client can not create more than the
 // specified threshold of new orders within the specified time window.
-func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.Context, acctID int64, names []string, limit ratelimit.RateLimitPolicy) error {
-	// Check if there is already an existing certificate for the exact name set we
-	// are issuing for. If so bypass the newOrders limit.
-	//
-	// TODO(#7511): This check and early return should be removed, it's
-	// being performed at the WFE.
-	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names})
-	if err != nil {
-		return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
-	}
-	if exists.Exists {
-		return nil
-	}
-
+func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.Context, acctID int64, limit ratelimit.RateLimitPolicy) error {
 	now := ra.clk.Now()
 	count, err := ra.SA.CountOrders(ctx, &sapb.CountOrdersRequest{
 		AccountID: acctID,
@@ -705,7 +626,7 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	noKey := ""
 	threshold, overrideKey := limit.GetThreshold(noKey, acctID)
 	if count.Count >= threshold {
-		return berrors.RateLimitError(0, "too many new orders recently")
+		return berrors.NewOrdersPerAccountError(0, "too many new orders recently")
 	}
 	if overrideKey != "" {
 		utilization := float64(count.Count+1) / float64(threshold)
@@ -1533,21 +1454,7 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	// check if there is already an existing certificate for
-	// the exact name set we are issuing for. If so bypass the
-	// the certificatesPerName limit.
-	//
-	// TODO(#7511): This check and early return should be removed, it's
-	// being performed, once, at the WFE.
-	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names})
-	if err != nil {
-		return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
-	}
-	if exists.Exists {
-		return nil
-	}
-
-	tldNames := ratelimits.DomainsForRateLimiting(names)
+	tldNames := ratelimits.FQDNsToETLDsPlusOne(names)
 	namesOutOfLimit, earliest, err := ra.enforceNameCounts(ctx, tldNames, limit, regID)
 	if err != nil {
 		return fmt.Errorf("checking certificates per name limit for %q: %s",
@@ -1566,12 +1473,12 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 			for _, name := range namesOutOfLimit {
 				subErrors = append(subErrors, berrors.SubBoulderError{
 					Identifier:   identifier.NewDNS(name),
-					BoulderError: berrors.RateLimitError(retryAfter, "too many certificates already issued. Retry after %s", retryString).(*berrors.BoulderError),
+					BoulderError: berrors.NewOrdersPerAccountError(retryAfter, "too many certificates already issued. Retry after %s", retryString).(*berrors.BoulderError),
 				})
 			}
-			return berrors.RateLimitError(retryAfter, "too many certificates already issued for multiple names (%q and %d others). Retry after %s", namesOutOfLimit[0], len(namesOutOfLimit), retryString).(*berrors.BoulderError).WithSubErrors(subErrors)
+			return berrors.NewOrdersPerAccountError(retryAfter, "too many certificates already issued for multiple names (%q and %d others). Retry after %s", namesOutOfLimit[0], len(namesOutOfLimit), retryString).(*berrors.BoulderError).WithSubErrors(subErrors)
 		}
-		return berrors.RateLimitError(retryAfter, "too many certificates already issued for %q. Retry after %s", namesOutOfLimit[0], retryString)
+		return berrors.NewOrdersPerAccountError(retryAfter, "too many certificates already issued for %q. Retry after %s", namesOutOfLimit[0], retryString)
 	}
 
 	return nil
@@ -1628,7 +1535,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		}
 		retryTime := prevIssuances.Timestamps[0].AsTime().Add(time.Duration(nsPerToken))
 		retryAfter := retryTime.Sub(now)
-		return berrors.DuplicateCertificateError(
+		return berrors.CertificatesPerFQDNSetError(
 			retryAfter,
 			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s, retry after %s",
 			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","), retryTime.Format(time.RFC3339),
@@ -1638,11 +1545,9 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 
 func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, names []string, regID int64, isRenewal bool) error {
 	newOrdersPerAccountLimits := ra.rlPolicies.NewOrdersPerAccount()
-	// TODO(#7511): Remove the feature flag check.
-	skipCheck := features.Get().CheckRenewalExemptionAtWFE && isRenewal
-	if newOrdersPerAccountLimits.Enabled() && !skipCheck {
+	if newOrdersPerAccountLimits.Enabled() && !isRenewal {
 		started := ra.clk.Now()
-		err := ra.checkNewOrdersPerAccountLimit(ctx, regID, names, newOrdersPerAccountLimits)
+		err := ra.checkNewOrdersPerAccountLimit(ctx, regID, newOrdersPerAccountLimits)
 		elapsed := ra.clk.Since(started)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
@@ -1654,7 +1559,7 @@ func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, na
 	}
 
 	certNameLimits := ra.rlPolicies.CertificatesPerName()
-	if certNameLimits.Enabled() && !skipCheck {
+	if certNameLimits.Enabled() && !isRenewal {
 		started := ra.clk.Now()
 		err := ra.checkCertificatesPerNameLimit(ctx, names, certNameLimits, regID)
 		elapsed := ra.clk.Since(started)

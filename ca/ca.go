@@ -23,6 +23,10 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/ocsp"
@@ -126,12 +130,14 @@ type certificateAuthorityImpl struct {
 	issuers      issuerMaps
 	certProfiles certProfilesMaps
 
-	prefix    int // Prepended to the serial number
+	// The prefix is prepended to the serial number.
+	prefix    byte
 	maxNames  int
 	keyPolicy goodkey.KeyPolicy
 	clk       clock.Clock
 	log       blog.Logger
 	metrics   *caMetrics
+	tracer    trace.Tracer
 }
 
 var _ capb.CertificateAuthorityServer = (*certificateAuthorityImpl)(nil)
@@ -233,7 +239,7 @@ func NewCertificateAuthorityImpl(
 	boulderIssuers []*issuance.Issuer,
 	defaultCertProfileName string,
 	certificateProfiles map[string]*issuance.ProfileConfig,
-	serialPrefix int,
+	serialPrefix byte,
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
 	logger blog.Logger,
@@ -243,8 +249,8 @@ func NewCertificateAuthorityImpl(
 	var ca *certificateAuthorityImpl
 	var err error
 
-	if serialPrefix < 1 || serialPrefix > 127 {
-		err = errors.New("serial prefix must be between 1 and 127")
+	if serialPrefix < 0x01 || serialPrefix > 0x7f {
+		err = errors.New("serial prefix must be between 0x01 (1) and 0x7f (127)")
 		return nil, err
 	}
 
@@ -272,6 +278,7 @@ func NewCertificateAuthorityImpl(
 		keyPolicy:    keyPolicy,
 		log:          logger,
 		metrics:      metrics,
+		tracer:       otel.GetTracerProvider().Tracer("github.com/letsencrypt/boulder/ca"),
 		clk:          clk,
 	}
 
@@ -432,13 +439,22 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
 	}
 
+	_, span := ca.tracer.Start(ctx, "signing cert", trace.WithAttributes(
+		attribute.String("serial", serialHex),
+		attribute.String("issuer", issuer.Name()),
+		attribute.String("certProfileName", certProfile.name),
+		attribute.StringSlice("names", issuanceReq.DNSNames),
+	))
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.metrics.noteSignError(err)
 		ca.log.AuditErrf("Signing cert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
 			issuer.Name(), serialHex, req.RegistrationID, names, certProfile.name, certProfile.hash, err)
+		span.SetStatus(codes.Error, err.Error())
+		span.End()
 		return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
 	}
+	span.End()
 
 	err = tbsCertIsDeterministic(lintCertBytes, certDER)
 	if err != nil {
@@ -476,7 +492,7 @@ func (ca *certificateAuthorityImpl) generateSerialNumber() (*big.Int, error) {
 	// We want 136 bits of random number, plus an 8-bit instance id prefix.
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
-	serialBytes[0] = byte(ca.prefix)
+	serialBytes[0] = ca.prefix
 	_, err := rand.Read(serialBytes[1:])
 	if err != nil {
 		err = berrors.InternalServerError("failed to generate serial: %s", err)
@@ -550,9 +566,6 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 
 	serialHex := core.SerialToString(serialBigInt)
 
-	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
-		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw))
-
 	names := csrlib.NamesFromCSR(csr)
 	req := &issuance.IssuanceRequest{
 		PublicKey:         csr.PublicKey,
@@ -566,10 +579,13 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotAfter:          notAfter,
 	}
 
+	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
+		serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), hex.EncodeToString(csr.Raw))
+
 	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, req)
 	if err != nil {
 		ca.log.AuditErrf("Preparing precert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
-			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), certProfile.name, certProfile.hash, err)
+			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), certProfile.name, certProfile.hash, err)
 		if errors.Is(err, linter.ErrLinting) {
 			ca.metrics.lintErrorCount.Inc()
 		}
@@ -587,13 +603,22 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
+	_, span := ca.tracer.Start(ctx, "signing precert", trace.WithAttributes(
+		attribute.String("serial", serialHex),
+		attribute.String("issuer", issuer.Name()),
+		attribute.String("certProfileName", certProfile.name),
+		attribute.StringSlice("names", csr.DNSNames),
+	))
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.metrics.noteSignError(err)
 		ca.log.AuditErrf("Signing precert failed: issuer=[%s] serial=[%s] regID=[%d] names=[%s] certProfileName=[%s] certProfileHash=[%x] err=[%v]",
-			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), certProfile.name, certProfile.hash, err)
+			issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), certProfile.name, certProfile.hash, err)
+		span.SetStatus(codes.Error, err.Error())
+		span.End()
 		return nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
 	}
+	span.End()
 
 	err = tbsCertIsDeterministic(lintCertBytes, certDER)
 	if err != nil {
@@ -601,8 +626,8 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
-	ca.log.AuditInfof("Signing precert success: issuer=[%s] serial=[%s] regID=[%d] names=[%s] precertificate=[%s] certProfileName=[%s] certProfileHash=[%x]",
-		issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(certDER), certProfile.name, certProfile.hash)
+	ca.log.AuditInfof("Signing precert success: issuer=[%s] serial=[%s] regID=[%d] names=[%s] precert=[%s] certProfileName=[%s] certProfileHash=[%x]",
+		issuer.Name(), serialHex, issueReq.RegistrationID, strings.Join(req.DNSNames, ", "), hex.EncodeToString(certDER), certProfile.name, certProfile.hash)
 
 	return certDER, &certProfileWithID{certProfile.name, certProfile.hash, nil}, nil
 }

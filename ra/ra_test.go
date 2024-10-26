@@ -629,90 +629,6 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	test.AssertError(t, err, "Should have rejected authorization with short key")
 }
 
-func TestNewRegistrationRateLimit(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Specify a dummy rate limit policy that allows 1 registration per exact IP
-	// match, and 2 per range.
-	ra.rlPolicies = &dummyRateLimitConfig{
-		RegistrationsPerIPPolicy: ratelimit.RateLimitPolicy{
-			Threshold: 1,
-			Window:    config.Duration{Duration: 24 * 90 * time.Hour},
-		},
-		RegistrationsPerIPRangePolicy: ratelimit.RateLimitPolicy{
-			Threshold: 2,
-			Window:    config.Duration{Duration: 24 * 90 * time.Hour},
-		},
-	}
-
-	// Create one registration for an IPv4 address
-	mailto := "mailto:foo@letsencrypt.org"
-	reg := &corepb.Registration{
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Key:             newAcctKey(t),
-		InitialIP:       parseAndMarshalIP(t, "7.6.6.5"),
-	}
-	// There should be no errors - it is within the RegistrationsPerIP rate limit
-	_, err := ra.NewRegistration(ctx, reg)
-	test.AssertNotError(t, err, "Unexpected error adding new IPv4 registration")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": ratelimits.Allowed}, 1)
-	// There are no overrides for this IP, so the override usage gauge should
-	// contain 0 entries with labels matching it.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "override_key": "7.6.6.5"}, 0)
-
-	// Create another registration for the same IPv4 address by changing the key
-	reg.Key = newAcctKey(t)
-
-	// There should be an error since a 2nd registration will exceed the
-	// RegistrationsPerIP rate limit
-	_, err = ra.NewRegistration(ctx, reg)
-	test.AssertError(t, err, "No error adding duplicate IPv4 registration")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": ratelimits.Denied}, 1)
-
-	// Create a registration for an IPv6 address
-	reg.Key = newAcctKey(t)
-	reg.InitialIP = parseAndMarshalIP(t, "2001:cdba:1234:5678:9101:1121:3257:9652")
-
-	// There should be no errors - it is within the RegistrationsPerIP rate limit
-	_, err = ra.NewRegistration(ctx, reg)
-	test.AssertNotError(t, err, "Unexpected error adding a new IPv6 registration")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": ratelimits.Allowed}, 2)
-
-	// Create a 2nd registration for the IPv6 address by changing the key
-	reg.Key = newAcctKey(t)
-
-	// There should be an error since a 2nd reg for the same IPv6 address will
-	// exceed the RegistrationsPerIP rate limit
-	_, err = ra.NewRegistration(ctx, reg)
-	test.AssertError(t, err, "No error adding duplicate IPv6 registration")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": ratelimits.Denied}, 2)
-
-	// Create a registration for an IPv6 address in the same /48
-	reg.Key = newAcctKey(t)
-	reg.InitialIP = parseAndMarshalIP(t, "2001:cdba:1234:5678:9101:1121:3257:9653")
-
-	// There should be no errors since two IPv6 addresses in the same /48 is
-	// within the RegistrationsPerIPRange limit
-	_, err = ra.NewRegistration(ctx, reg)
-	test.AssertNotError(t, err, "Unexpected error adding second IPv6 registration in the same /48")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIPRange, "decision": ratelimits.Allowed}, 2)
-
-	// Create a registration for yet another IPv6 address in the same /48
-	reg.Key = newAcctKey(t)
-	reg.InitialIP = parseAndMarshalIP(t, "2001:cdba:1234:5678:9101:1121:3257:9654")
-
-	// There should be an error since three registrations within the same IPv6
-	// /48 is outside of the RegistrationsPerIPRange limit
-	_, err = ra.NewRegistration(ctx, reg)
-	test.AssertError(t, err, "No error adding a third IPv6 registration in the same /48")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP range: see https://letsencrypt.org/docs/rate-limits/")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIPRange, "decision": ratelimits.Denied}, 1)
-}
-
 func TestRegistrationsPerIPOverrideUsage(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -1005,7 +921,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 }
 
 func TestNewOrderRateLimiting(t *testing.T) {
-	_, sa, ra, fc, cleanUp := initAuthorities(t)
+	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.orderLifetime = 5 * 24 * time.Hour
@@ -1045,33 +961,6 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	// new pending order is produced.
 	_, err = ra.NewOrder(ctx, orderOne)
 	test.AssertNotError(t, err, "Reuse of orderOne failed")
-
-	// Insert a specific certificate into the database, then create an order for
-	// the same set of names. This order should succeed because it's a renewal.
-	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "generating test key")
-	fakeCert := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		DNSNames:     []string{"renewing.example.com"},
-		NotBefore:    fc.Now().Add(-time.Hour),
-		NotAfter:     fc.Now().Add(time.Hour),
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-	}
-	certDER, err := x509.CreateCertificate(rand.Reader, fakeCert, fakeCert, testKey.Public(), testKey)
-	test.AssertNotError(t, err, "generating test certificate")
-	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          certDER,
-		RegID:        Registration.Id,
-		Issued:       timestamppb.New(fc.Now().Add(-time.Hour)),
-		IssuerNameID: 1,
-	})
-	test.AssertNotError(t, err, "Adding test certificate")
-
-	_, err = ra.NewOrder(ctx, &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"renewing.example.com"},
-	})
-	test.AssertNotError(t, err, "Renewal of orderRenewal failed")
 
 	// Advancing the clock by 2 * the rate limit duration should allow orderTwo to
 	// succeed
@@ -1125,7 +1014,7 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 	test.AssertEquals(t, bErr.RetryAfter, rateLimitDuration)
 
 	// The err should be the expected rate limit error
-	expected := "too many certificates already issued for \"early-ratelimit-example.com\". Retry after 2020-03-04T05:05:00Z: see https://letsencrypt.org/docs/rate-limits/"
+	expected := "too many certificates already issued for \"early-ratelimit-example.com\". Retry after 2020-03-04T05:05:00Z: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account"
 	test.AssertEquals(t, bErr.Error(), expected)
 }
 
@@ -1160,7 +1049,7 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 	err := ra.checkInvalidAuthorizationLimits(ctx, Registration.Id,
 		[]string{"charlie.brown.com", "all.i.do.is.lose.com"}, limit)
 	test.AssertError(t, err, "checkInvalidAuthorizationLimits did not encounter expected rate limit error")
-	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/failed-validation-limit/")
+	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account")
 }
 
 type mockSAWithNameCounts struct {
@@ -1229,7 +1118,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	// should contain 0 entries with labels matching it.
 	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "example.com"}, 0)
 	// Verify it has no sub errors as there is only one bad name
-	test.AssertEquals(t, err.Error(), "too many certificates already issued for \"example.com\". Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/")
+	test.AssertEquals(t, err.Error(), "too many certificates already issued for \"example.com\". Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account")
 	var bErr *berrors.BoulderError
 	test.AssertErrorWraps(t, err, &bErr)
 	test.AssertEquals(t, len(bErr.SubErrors), 0)
@@ -1242,7 +1131,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com, other-example.com")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
 	// Verify it has two sub errors as there are two bad names
-	test.AssertEquals(t, err.Error(), "too many certificates already issued for multiple names (\"example.com\" and 2 others). Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/")
+	test.AssertEquals(t, err.Error(), "too many certificates already issued for multiple names (\"example.com\" and 2 others). Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account")
 	test.AssertErrorWraps(t, err, &bErr)
 	test.AssertEquals(t, len(bErr.SubErrors), 2)
 
@@ -1353,7 +1242,7 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 			Name:   "FQDN set issuances above limit NS",
 			Domain: "over.example.com",
 			ExpectedErr: fmt.Errorf(
-				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/duplicate-certificate-limit/",
+				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-exact-set-of-hostnames",
 				expectRetryAfterNS,
 			),
 		},
@@ -1361,7 +1250,7 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 			Name:   "FQDN set issuances above limit",
 			Domain: "over.example.com",
 			ExpectedErr: fmt.Errorf(
-				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/duplicate-certificate-limit/",
+				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-exact-set-of-hostnames",
 				expectRetryAfter,
 			),
 		},
@@ -1491,12 +1380,6 @@ func (m mockSAWithFQDNSet) hashNames(names []string) string {
 	return string(hash[:])
 }
 
-// Add a set of domain names to the FQDN set
-func (m mockSAWithFQDNSet) addFQDNSet(names []string) {
-	hash := m.hashNames(names)
-	m.fqdnSet[hash] = true
-}
-
 // Search for a set of domain names in the FQDN set map
 func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
 	hash := m.hashNames(req.DnsNames)
@@ -1535,51 +1418,6 @@ func (m mockSAWithFQDNSet) FQDNSetTimestampsForWindow(_ context.Context, req *sa
 	} else {
 		return nil, fmt.Errorf("FQDNSetTimestampsForWindow mock only supports a single domain")
 	}
-}
-
-// Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
-// properly honours the FQDNSet exemption. E.g. that if a set of domains has
-// reached the certificates per name rate limit policy threshold but the exact
-// same set of FQDN's was previously issued, then it should not be considered
-// over the certificates per name limit.
-//
-// [0] https://github.com/letsencrypt/boulder/issues/1925
-func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Simple policy that only allows 1 certificate per name.
-	certsPerNamePolicy := ratelimit.RateLimitPolicy{
-		Threshold: 1,
-		Window:    config.Duration{Duration: 24 * time.Hour},
-	}
-
-	// Create a mock SA that has both name counts and an FQDN set
-	ts := timestamppb.New(ra.clk.Now())
-	mockSA := &mockSAWithFQDNSet{
-		issuanceTimestamps: map[string]*sapb.Timestamps{
-			"example.com": {Timestamps: []*timestamppb.Timestamp{ts, ts}},
-			"zombo.com":   {Timestamps: []*timestamppb.Timestamp{ts, ts}},
-		},
-		fqdnSet: map[string]bool{},
-		t:       t,
-	}
-	ra.SA = mockSA
-
-	// First check that without a pre-existing FQDN set that the provided set of
-	// names is rate limited due to being over the certificates per name limit for
-	// "example.com" and "zombo.com"
-	err := ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
-	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
-
-	// Now add a FQDN set entry for these domains
-	mockSA.addFQDNSet([]string{"www.example.com", "example.com", "www.zombo.com"})
-
-	// A subsequent check against the certificates per name limit should now be OK
-	// - there exists a FQDN set and so the exemption to this particular limit
-	// comes into effect.
-	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "www.zombo.com"}, certsPerNamePolicy, 99)
-	test.AssertNotError(t, err, "FQDN set certificate per name exemption not applied correctly")
 }
 
 // TestExactPublicSuffixCertLimit tests the behaviour of issue #2681 with and
@@ -2317,7 +2155,7 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 	})
 
 	test.AssertError(t, err, "expected error for domain with too many failures")
-	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/failed-validation-limit/")
+	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account")
 }
 
 // mockSAWithAuthzs has a GetAuthorizations2 method that returns the protobuf
