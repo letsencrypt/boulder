@@ -160,7 +160,7 @@ const precertFields = "registrationID, serial, der, issued, expires"
 // SelectPrecertificate selects all fields of one precertificate object
 // identified by serial.
 func SelectPrecertificate(ctx context.Context, s db.OneSelector, serial string) (core.Certificate, error) {
-	var model precertificateModel
+	var model lintingCertModel
 	err := s.SelectOne(
 		ctx,
 		&model,
@@ -384,7 +384,7 @@ type recordedSerialModel struct {
 	Expires        time.Time
 }
 
-type precertificateModel struct {
+type lintingCertModel struct {
 	ID             int64
 	Serial         string
 	RegistrationID int64
