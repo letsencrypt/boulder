@@ -3401,9 +3401,11 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	// This modifies the authz in-place.
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 
-	// The ID and RegID should be empty, since they're not part of the ACME API object.
-	test.AssertEquals(t, authz.ID, "")
-	test.AssertEquals(t, authz.RegistrationID, int64(0))
+	// Ensure ID and RegID are omitted.
+	authzJSON, err := json.Marshal(authz)
+	test.AssertNotError(t, err, "Failed to marshal authz")
+	test.AssertNotContains(t, string(authzJSON), "\"id\":\"12345\"")
+	test.AssertNotContains(t, string(authzJSON), "\"registrationID\":\"1\"")
 }
 
 func TestPrepRevokedAuthzForDisplay(t *testing.T) {

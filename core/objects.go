@@ -297,13 +297,13 @@ func (ch Challenge) StringID() string {
 type Authorization struct {
 	// An identifier for this authorization, unique across
 	// authorizations and certificates within this instance.
-	ID string `json:"id,omitempty" db:"id"`
+	ID string `json:"-" db:"id"`
 
 	// The identifier for which authorization is being given
 	Identifier identifier.ACMEIdentifier `json:"identifier,omitempty" db:"identifier"`
 
 	// The registration ID associated with the authorization
-	RegistrationID int64 `json:"regId,omitempty" db:"registrationID"`
+	RegistrationID int64 `json:"-" db:"registrationID"`
 
 	// The status of the validation of this authorization
 	Status AcmeStatus `json:"status,omitempty" db:"status"`

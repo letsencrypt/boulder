@@ -283,7 +283,7 @@ func initTables(dbMap *borp.DbMap) {
 	dbMap.AddTableWithName(authzModel{}, "authz2").SetKeys(true, "ID")
 	dbMap.AddTableWithName(orderToAuthzModel{}, "orderToAuthz2").SetKeys(false, "OrderID", "AuthzID")
 	dbMap.AddTableWithName(recordedSerialModel{}, "serials").SetKeys(true, "ID")
-	dbMap.AddTableWithName(precertificateModel{}, "precertificates").SetKeys(true, "ID")
+	dbMap.AddTableWithName(lintingCertModel{}, "precertificates").SetKeys(true, "ID")
 	dbMap.AddTableWithName(keyHashModel{}, "keyHashToSerial").SetKeys(true, "ID")
 	dbMap.AddTableWithName(incidentModel{}, "incidents").SetKeys(true, "ID")
 	dbMap.AddTable(incidentSerialModel{})

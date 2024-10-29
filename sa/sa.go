@@ -206,7 +206,11 @@ func (ssa *SQLStorageAuthority) SetCertificateStatusReady(ctx context.Context, r
 	return &emptypb.Empty{}, nil
 }
 
-// AddPrecertificate writes a record of a precertificate generation to the DB.
+// AddPrecertificate writes a record of a linting certificate to the database.
+//
+// Note: The name "AddPrecertificate" is a historical artifact, and this is now
+// always called with a linting certificate. See #6807.
+//
 // Note: this is not idempotent: it does not protect against inserting the same
 // certificate multiple times. Calling code needs to first insert the cert's
 // serial into the Serials table to ensure uniqueness.
@@ -221,7 +225,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 	}
 	serialHex := core.SerialToString(parsed.SerialNumber)
 
-	preCertModel := &precertificateModel{
+	preCertModel := &lintingCertModel{
 		Serial:         serialHex,
 		RegistrationID: req.RegID,
 		DER:            req.Der,
