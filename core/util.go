@@ -27,9 +27,10 @@ import (
 	"unicode"
 
 	"github.com/go-jose/go-jose/v4"
-	"github.com/letsencrypt/boulder/identifier"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 const Unspecified = "Unspecified"

@@ -8,6 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"database/sql"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"math/big"
 	"net"
@@ -27,6 +28,59 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/test"
 )
+
+func TestNewRandomID(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		date         time.Time
+		expectPrefix uint8
+		expectError  string
+	}{
+		{
+			name:        "in the past",
+			date:        time.Date(2023, 01, 01, 00, 00, 00, 00, time.UTC),
+			expectError: "invalid epoch",
+		},
+		{
+			name:         "first epoch",
+			date:         time.Date(2024, 05, 01, 00, 00, 00, 00, time.UTC),
+			expectPrefix: 1,
+		},
+		{
+			name:         "last epoch",
+			date:         time.Date(2055, 07, 01, 00, 00, 00, 00, time.UTC),
+			expectPrefix: 127,
+		},
+		{
+			name:        "far future",
+			date:        time.Date(2056, 01, 01, 00, 00, 00, 00, time.UTC),
+			expectError: "invalid epoch",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			fc := clock.NewFake()
+			fc.Set(tc.date)
+			id, err := newRandomID(fc)
+
+			if tc.expectPrefix != 0 {
+				test.AssertNotError(t, err, "expected success")
+				buf := make([]byte, 8)
+				binary.BigEndian.PutUint64(buf, uint64(id))
+				test.AssertEquals(t, buf[0], tc.expectPrefix)
+			}
+
+			if tc.expectError != "" {
+				test.AssertError(t, err, "expected error")
+				test.AssertContains(t, err.Error(), tc.expectError)
+			}
+		})
+	}
+}
 
 func TestRegistrationModelToPb(t *testing.T) {
 	badCases := []struct {

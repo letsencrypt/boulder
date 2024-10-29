@@ -576,7 +576,83 @@ func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(ctx context.Context, select
 }
 
 // GetOrder is used to retrieve an already existing order object
+// TODO XXX TKTK Update this method
 func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
+	if !features.Get().ReadNewOrderSchema {
+		return ssa.deprecatedGetOrder(ctx, req)
+	}
+
+	if req == nil || req.Id == 0 {
+		return nil, errIncompleteRequest
+	}
+
+	if !looksLikeRandomID(req.Id, ssa.clk) {
+		return ssa.deprecatedGetOrder(ctx, req)
+	}
+
+	output, err := db.WithTransaction(ctx, ssa.dbReadOnlyMap, func(tx db.Executor) (interface{}, error) {
+		oi, err := tx.Get(ctx, orders2Model{}, req.Id)
+		if err != nil {
+			if db.IsNoRows(err) {
+				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
+			}
+			return nil, err
+		}
+		om := oi.(orders2Model)
+
+		if om.Expires.Before(ssa.clk.Now()) {
+			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
+		}
+
+		avis := make([]authzValidity, len(om.AuthorizationIDs))
+		dnsNames := make([]string, len(om.AuthorizationIDs))
+		for i, authzId := range om.AuthorizationIDs {
+			ai, err := tx.Get(ctx, authorizationsModel{}, authzId)
+			if err != nil {
+				if db.IsNoRows(err) {
+					return nil, berrors.NotFoundError("no authorization found for ID %d", authzId)
+				}
+				return nil, err
+			}
+			am := ai.(authorizationsModel)
+
+			avis[i] = authzValidity{
+				IdentifierType:  am.IdentifierType,
+				IdentifierValue: am.IdentifierValue,
+				Status:          am.Status,
+				Expires:         am.Expires,
+			}
+			dnsNames[i] = am.IdentifierValue
+		}
+
+		order := corepb.Order{
+			Id:                     om.ID,
+			RegistrationID:         om.RegistrationID,
+			Expires:                timestamppb.New(om.Expires),
+			DnsNames:               dnsNames,
+			Error:                  om.Error,
+			V2Authorizations:       om.AuthorizationIDs,
+			CertificateSerial:      om.CertificateSerial,
+			Created:                timestamppb.New(om.Created),
+			CertificateProfileName: om.Profile,
+			BeganProcessing:        om.BeganProcessing,
+		}
+
+		status, err := statusForOrder(&order, avis, ssa.clk.Now())
+		order.Status = status
+
+		return &order, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res := output.(*corepb.Order)
+	return res, nil
+}
+
+// deprecatedGetOrder retrieves an order from the old database schema.
+func (ssa *SQLStorageAuthorityRO) deprecatedGetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
 	if req == nil || req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
@@ -735,6 +811,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 
 // GetAuthorization2 returns the authz2 style authorization identified by the provided ID or an error.
 // If no authorization is found matching the ID a berrors.NotFound type error is returned.
+// TODO XXX TKTK Update this method
 func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*corepb.Authorization, error) {
 	if req.Id == 0 {
 		return nil, errIncompleteRequest

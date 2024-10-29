@@ -2,10 +2,12 @@ package sa
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +19,7 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+	"github.com/jmhodges/clock"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/core"
@@ -57,6 +60,54 @@ func badJSONError(msg string, jsonData []byte, err error) error {
 		json: jsonData,
 		err:  err,
 	}
+}
+
+// newRandomID creates a 64-bit mostly-random number to be used as the
+// unique ID column in a table which no longer uses auto_increment IDs. It takes
+// the clock as an argument so that it can include the current "epoch" as the
+// first byte of the ID, for the sake of easily dropping old data.
+func newRandomID(clk clock.Clock) (int64, error) {
+	idBytes := make([]byte, 8) // 8 bytes is 64 bits
+
+	// Read random bits into the lower 7 bytes of the id.
+	_, err := rand.Read(idBytes[1:])
+	if err != nil {
+		return 0, fmt.Errorf("while generating unique database id: %w", err)
+	}
+
+	// Epochs are arbitrarily chosen to be 90 day chunks counting from the start
+	// of 2024. This gives us 127 * 90 = ~31 years worth of epochs before we have
+	// to worry about a rollover.
+	epoch := uint8(clk.Now().Sub(time.Date(2024, 01, 01, 00, 00, 00, 00, time.UTC)) / (90 * 24 * time.Hour))
+	if epoch&0x80 != 0 {
+		// If the first bit is a 1, either the current date is before the epoch
+		// start date, or we've gone too far into the future. Error out before we
+		// accidentally generate a negative ID.
+		return 0, fmt.Errorf("invalid epoch: %d", epoch)
+	}
+	idBytes[0] = epoch
+
+	id := binary.BigEndian.Uint64(idBytes)
+	return int64(id), nil
+}
+
+// looksLikeRandomID returns true if the input ID looks like it might belong to
+// the new schema which uses epoch-prefixed random IDs instead of auto-increment
+// columns. This is only necessary during the migration period when we are
+// reading from both the old and new schemas simultaneously.
+func looksLikeRandomID(id int64, clk clock.Clock) bool {
+	// Compute the current and previous epochs. If the input ID starts with one of
+	// those two epochs, it's one of ours. Otherwise, it came from somewhere
+	// unknown and we should ask the old schema about it just in case.
+	currEpoch := uint8(clk.Now().Sub(time.Date(2024, 01, 01, 00, 00, 00, 00, time.UTC)) / (90 * 24 * time.Hour))
+	prevEpoch := uint8(clk.Now().Add(-90*24*time.Hour).Sub(time.Date(2024, 01, 01, 00, 00, 00, 00, time.UTC)) / (90 * 24 * time.Hour))
+
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, uint64(id))
+	if buf[0] == currEpoch || buf[0] == prevEpoch {
+		return true
+	}
+	return false
 }
 
 const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status"
@@ -1411,4 +1462,48 @@ type pausedModel struct {
 	RegistrationID int64      `db:"registrationID"`
 	PausedAt       time.Time  `db:"pausedAt"`
 	UnpausedAt     *time.Time `db:"unpausedAt"`
+}
+
+// orders2Model represents a row in the "orders2" table.
+type orders2Model struct {
+	ID                int64
+	RegistrationID    int64
+	Created           time.Time
+	Expires           time.Time
+	AuthorizationIDs  []int64 // Actually a JSON list of ints
+	Profile           string
+	BeganProcessing   bool
+	Error             []byte
+	CertificateSerial string
+}
+
+// authorizationsModel represents a row in the "authorizations" table.
+type authorizationsModel struct {
+	ID              int64
+	RegistrationID  int64
+	IdentifierType  uint8
+	IdentifierValue string
+	Created         time.Time
+	Expires         time.Time
+	Profile         string
+	Challenges      uint8
+	Token           []byte
+	Status          uint8
+	ValidationIDs   []int64 // Actually a JSON list of ints
+}
+
+// validationsModel represents a row in the "validations" table.
+type validationsModel struct {
+	ID          int64
+	Challenge   uint8
+	AttemptedAt time.Time
+	Status      uint8
+	Record      string
+}
+
+// authzReuseModel represents a row in the "authzReuse" table.
+type authzReuseModel struct {
+	ID      int64 `db:"accountID_identifier"`
+	AuthzID int64
+	Expires time.Time
 }
