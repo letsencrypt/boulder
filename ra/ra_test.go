@@ -217,14 +217,15 @@ var ctx = context.Background()
 // dummyRateLimitConfig satisfies the rl.RateLimitConfig interface while
 // allowing easy mocking of the individual RateLimitPolicy's
 type dummyRateLimitConfig struct {
-	CertificatesPerNamePolicy             ratelimit.RateLimitPolicy
-	RegistrationsPerIPPolicy              ratelimit.RateLimitPolicy
-	RegistrationsPerIPRangePolicy         ratelimit.RateLimitPolicy
-	PendingAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
-	NewOrdersPerAccountPolicy             ratelimit.RateLimitPolicy
-	InvalidAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
-	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
-	CertificatesPerFQDNSetFastPolicy      ratelimit.RateLimitPolicy
+	CertificatesPerNamePolicy                               ratelimit.RateLimitPolicy
+	RegistrationsPerIPPolicy                                ratelimit.RateLimitPolicy
+	RegistrationsPerIPRangePolicy                           ratelimit.RateLimitPolicy
+	PendingAuthorizationsPerAccountPolicy                   ratelimit.RateLimitPolicy
+	NewOrdersPerAccountPolicy                               ratelimit.RateLimitPolicy
+	InvalidAuthorizationsPerAccountPolicy                   ratelimit.RateLimitPolicy
+	CertificatesPerFQDNSetPolicy                            ratelimit.RateLimitPolicy
+	CertificatesPerFQDNSetFastPolicy                        ratelimit.RateLimitPolicy
+	FailedAuthorizationsForPausingPerDomainPerAccountPolicy ratelimit.RateLimitPolicy
 }
 
 func (r *dummyRateLimitConfig) CertificatesPerName() ratelimit.RateLimitPolicy {
@@ -878,6 +879,79 @@ func TestPerformValidationVAError(t *testing.T) {
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
+}
+
+func TestResetAccountPausingLimit(t *testing.T) {
+	va, sa, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.orderLifetime = 5 * 24 * time.Hour
+
+	// Set up a rate limit policy that allows 1 order every 5 minutes.
+	rateLimitDuration := 5 * time.Minute
+	ra.rlPolicies = &dummyRateLimitConfig{
+		FailedAuthorizationsForPausingPerDomainPerAccountPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 1,
+			Window:    config.Duration{Duration: rateLimitDuration},
+		},
+	}
+
+	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
+
+	va.PerformValidationRequestResultError = fmt.Errorf("Something went wrong")
+
+	challIdx := dnsChallIdx(t, authzPB.Challenges)
+	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: challIdx,
+	})
+
+	test.AssertNotError(t, err, "PerformValidation completely failed")
+
+	var vaRequest *vapb.PerformValidationRequest
+	select {
+	case r := <-va.performValidationRequest:
+		vaRequest = r
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+	}
+
+	// Verify that the VA got the request, and it's the same as the others
+	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
+	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
+
+	// Sleep so the RA has a chance to write to the SA
+	time.Sleep(100 * time.Millisecond)
+
+	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
+	t.Log("dbAuthz:", dbAuthzPB)
+
+	// Verify that the responses are reflected
+	challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
+	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
+	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
+	test.Assert(t, challenge.Status == core.StatusInvalid, "challenge was not marked as invalid")
+	test.AssertContains(t, challenge.Error.Error(), "Could not communicate with VA")
+	test.Assert(t, challenge.ValidationRecord == nil, "challenge had a ValidationRecord")
+
+	// Check that validated timestamp was recorded, stored, and retrieved
+	expectedValidated := fc.Now()
+	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
+
+	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: challIdx,
+	})
+
+	test.AssertNotError(t, err, "PerformValidation completely failed")
+
+	select {
+	case r := <-va.performValidationRequest:
+		vaRequest = r
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+	}
+
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {

@@ -172,7 +172,7 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 				}
 				limit.overrideKey = joinWithColon(name.EnumString(), id)
 				if name == CertificatesPerFQDNSet {
-					// FQDNSet hashes are not a nice thing to ask for in a
+					// FQDNSet hashs are not a nice thing to ask for in a
 					// config file, so we allow the user to specify a
 					// comma-separated list of FQDNs and compute the hash here.
 					id = fmt.Sprintf("%x", core.HashNames(strings.Split(id, ",")))
