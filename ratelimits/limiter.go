@@ -160,7 +160,7 @@ func (d *Decision) Result(now time.Time) error {
 			return berrors.InternalServerError("unrecognized bucket key while generating error")
 		}
 		domain := d.transaction.bucketKey[idx+1:]
-		return berrors.FailedValidationError(
+		return berrors.FailedAuthorizationsPerDomainPerAccountError(
 			retryAfter,
 			"too many failed validation attempts (%d) for %q in the last %s, retry after %s",
 			d.transaction.limit.Burst,
