@@ -62,16 +62,24 @@ type Config struct {
 	// DOH enables DNS-over-HTTPS queries for validation
 	DOH bool
 
-	// EnforceMultiCAA causes the VA to kick off remote CAA rechecks when true.
-	// When false, no remote CAA rechecks will be performed. The primary VA will
-	// make a valid/invalid decision with the results. The primary VA will
-	// return an early decision if MultiCAAFullResults is false.
+	// EnforceMultiCAA, when enabled, the primary VA dispatches CAA checks to
+	// remote VAs in addition to local CAA checks. The overall validation will
+	// pass only if both the local check and a sufficient number of remote
+	// checks succeed. If the number of remote CAA check failures exceeds
+	// `va.maxRemoteFailures`, the validation will fail, even if the local check
+	// passed.
+	//
+	// Note: This feature can be used independently or in combination with
+	// MultiCAAFullResults.
 	EnforceMultiCAA bool
 
-	// MultiCAAFullResults will cause the main VA to block and wait for all of
-	// the remote VA CAA recheck results instead of returning early if the
-	// number of failures is greater than the configured
-	// maxRemoteValidationFailures. Only used when EnforceMultiCAA is true.
+	// MultiCAAFullResults, when enabled alongside EnforceMultiCAA, forces the
+	// primary VA to wait for all remote VAs to respond before making a
+	// validation decision. This ensures that the validation decision considers
+	// the full set of remote results, not just enough to meet early success or
+	// failure thresholds.
+	//
+	// Note: Enable this feature only when EnforceMultiCAA is also enabled.
 	MultiCAAFullResults bool
 
 	// MultipleCertificateProfiles, when enabled, triggers the following

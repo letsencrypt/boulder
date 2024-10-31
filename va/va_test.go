@@ -686,34 +686,34 @@ func TestLogRemoteDifferentials(t *testing.T) {
 
 	testCases := []struct {
 		name        string
-		remoteProbs []*remoteVAResult
+		remoteProbs []*remoteCAAResult
 		expectedLog string
 	}{
 		{
 			name: "all results equal (nil)",
-			remoteProbs: []*remoteVAResult{
-				{Problem: nil, VAHostname: "remoteA"},
-				{Problem: nil, VAHostname: "remoteB"},
-				{Problem: nil, VAHostname: "remoteC"},
+			remoteProbs: []*remoteCAAResult{
+				{Problem: nil, Address: "remoteA"},
+				{Problem: nil, Address: "remoteB"},
+				{Problem: nil, Address: "remoteC"},
 			},
 		},
 		{
 			name: "all results equal (not nil)",
-			remoteProbs: []*remoteVAResult{
-				{Problem: egProbA, VAHostname: "remoteA"},
-				{Problem: egProbA, VAHostname: "remoteB"},
-				{Problem: egProbA, VAHostname: "remoteC"},
+			remoteProbs: []*remoteCAAResult{
+				{Problem: egProbA, Address: "remoteA"},
+				{Problem: egProbA, Address: "remoteB"},
+				{Problem: egProbA, Address: "remoteC"},
 			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteB","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteC","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}}]}`,
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":[{"RvaAddress":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"RvaAddress":"remoteB","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"RvaAddress":"remoteC","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}}]}`,
 		},
 		{
 			name: "differing results, some non-nil",
-			remoteProbs: []*remoteVAResult{
-				{Problem: nil, VAHostname: "remoteA"},
-				{Problem: egProbB, VAHostname: "remoteB"},
-				{Problem: nil, VAHostname: "remoteC"},
+			remoteProbs: []*remoteCAAResult{
+				{Problem: nil, Address: "remoteA"},
+				{Problem: egProbB, Address: "remoteB"},
+				{Problem: nil, Address: "remoteC"},
 			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":2,"RemoteFailures":[{"RvaAddress":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
 		},
 	}
 
@@ -721,7 +721,7 @@ func TestLogRemoteDifferentials(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mockLog.Clear()
 
-			localVA.logRemoteResults(
+			localVA.logRemoteCAAResults(
 				"example.com", 1999, "blorpus-01", tc.remoteProbs)
 
 			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")

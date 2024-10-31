@@ -18,6 +18,7 @@ message IsCAAValidRequest {
   string domain = 1;
   string validationMethod = 2;
   int64 accountURIID = 3;
+  string authzID = 4;
 }
 
 // If CAA is valid for the requested domain, the problem will be empty
@@ -25,16 +26,16 @@ message IsCAAValidResponse {
   core.ProblemDetails problem = 1;
 }
 
+message AuthzMeta {
+  string id = 1;
+  int64 regID = 2;
+}
+
 message PerformValidationRequest {
   string dnsName = 1;
   core.Challenge challenge = 2;
   AuthzMeta authz = 3;
   string expectedKeyAuthorization = 4;
-}
-
-message AuthzMeta {
-  string id = 1;
-  int64 regID = 2;
 }
 
 message ValidationResult {

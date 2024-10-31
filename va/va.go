@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -79,6 +78,7 @@ type RemoteClients struct {
 // extract this metadata which is useful for debugging gRPC connection issues.
 type RemoteVA struct {
 	RemoteClients
+	// Address is the address of the remote VA in the form <hostname|IP>:<port>.
 	Address string
 }
 
@@ -257,11 +257,14 @@ type ValidationAuthorityImpl struct {
 	remoteVAs          []RemoteVA
 	maxRemoteFailures  int
 	accountURIPrefixes []string
-	singleDialTimeout  time.Duration
-	perspective        string
-	rir                string
-
-	metrics *vaMetrics
+	// singleDialTimeout specifies how long an individual `DialContext`
+	// operation may take before timing out. This timeout ignores the base RPC
+	// timeout and is strictly used for the DialContext operations that take
+	// place during an HTTP-01 challenge validation.
+	singleDialTimeout time.Duration
+	perspective       string
+	rir               string
+	metrics           *vaMetrics
 }
 
 var _ vapb.VAServer = (*ValidationAuthorityImpl)(nil)
@@ -281,14 +284,13 @@ func NewValidationAuthorityImpl(
 	perspective string,
 	rir string,
 ) (*ValidationAuthorityImpl, error) {
-
 	if len(accountURIPrefixes) == 0 {
 		return nil, errors.New("no account URI prefixes configured")
 	}
 
 	pc := newDefaultPortConfig()
 
-	va := &ValidationAuthorityImpl{
+	return &ValidationAuthorityImpl{
 		log:                logger,
 		dnsClient:          resolver,
 		issuerDomain:       issuerDomain,
@@ -297,25 +299,19 @@ func NewValidationAuthorityImpl(
 		tlsPort:            pc.TLSPort,
 		userAgent:          userAgent,
 		clk:                clk,
-		metrics:            initMetrics(stats),
 		remoteVAs:          remoteVAs,
 		maxRemoteFailures:  maxRemoteFailures,
 		accountURIPrefixes: accountURIPrefixes,
-		// singleDialTimeout specifies how long an individual `DialContext` operation may take
-		// before timing out. This timeout ignores the base RPC timeout and is strictly
-		// used for the DialContext operations that take place during an
-		// HTTP-01 challenge validation.
-		singleDialTimeout: 10 * time.Second,
-		perspective:       perspective,
-		rir:               rir,
-	}
-
-	return va, nil
+		singleDialTimeout:  10 * time.Second,
+		perspective:        perspective,
+		rir:                rir,
+		metrics:            initMetrics(stats),
+	}, nil
 }
 
-// Used for audit logging
-type verificationRequestEvent struct {
-	ID                string         `json:",omitempty"`
+// validationRequestEvent is a struct used to audit log validation events.
+type validationRequestEvent struct {
+	AuthzID           string         `json:",omitempty"`
 	Requester         int64          `json:",omitempty"`
 	Hostname          string         `json:",omitempty"`
 	Challenge         core.Challenge `json:",omitempty"`
@@ -463,6 +459,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	if len(va.remoteVAs) == 0 {
 		return nil
 	}
+	totalRVAs := len(va.remoteVAs)
 
 	start := va.clk.Now()
 	defer func() {
@@ -471,27 +468,28 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		}).Observe(va.clk.Since(start).Seconds())
 	}()
 
-	type rvaResult struct {
-		hostname string
+	type remoteValidationResult struct {
+		// address is the address of the remote VA in the form
+		// <hostname|IP>:<port>.
+		address  string
 		response *vapb.ValidationResult
 		err      error
 	}
 
-	results := make(chan *rvaResult, len(va.remoteVAs))
+	results := make(chan *remoteValidationResult, totalRVAs)
 
-	for _, i := range rand.Perm(len(va.remoteVAs)) {
-		remoteVA := va.remoteVAs[i]
-		go func(rva RemoteVA, out chan<- *rvaResult) {
+	for _, i := range rand.Perm(totalRVAs) {
+		go func(rva RemoteVA, out chan<- *remoteValidationResult) {
 			res, err := rva.PerformValidation(ctx, req)
-			out <- &rvaResult{
-				hostname: rva.Address,
+			out <- &remoteValidationResult{
+				address:  rva.Address,
 				response: res,
 				err:      err,
 			}
-		}(remoteVA, results)
+		}(va.remoteVAs[i], results)
 	}
 
-	required := len(va.remoteVAs) - va.maxRemoteFailures
+	required := totalRVAs - va.maxRemoteFailures
 	good := 0
 	bad := 0
 	var firstProb *probs.ProblemDetails
@@ -505,7 +503,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			if canceled.Is(res.err) {
 				currProb = probs.ServerInternal("Remote PerformValidation RPC canceled")
 			} else {
-				va.log.Errf("Remote VA %q.PerformValidation failed: %s", res.hostname, res.err)
+				va.log.Errf("Remote VA %q.PerformValidation failed: %s", res.address, res.err)
 				currProb = probs.ServerInternal("Remote PerformValidation RPC failed")
 			}
 		} else if res.response.Problems != nil {
@@ -514,7 +512,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			var err error
 			currProb, err = bgrpc.PBToProblemDetails(res.response.Problems)
 			if err != nil {
-				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", res.hostname, err)
+				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", res.address, err)
 				currProb = probs.ServerInternal("Remote PerformValidation RPC returned malformed result")
 			}
 		} else {
@@ -525,11 +523,12 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			firstProb = currProb
 		}
 
-		// Return as soon as we have enough successes or failures for a definitive result.
 		if good >= required {
+			// We have enough good results to consider the challenge validated.
 			return nil
 		}
 		if bad > va.maxRemoteFailures {
+			// We have enough bad results to consider the challenge failed.
 			va.metrics.remoteValidationFailures.Inc()
 			firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
 			return firstProb
@@ -545,63 +544,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	// This condition should not occur - it indicates the good/bad counts neither
 	// met the required threshold nor the maxRemoteFailures threshold.
 	return probs.ServerInternal("Too few remote PerformValidation RPC results")
-}
-
-// logRemoteResults is called by `processRemoteCAAResults` when the
-// `MultiCAAFullResults` feature flag is enabled. It produces a JSON log line
-// that contains the results each remote VA returned.
-func (va *ValidationAuthorityImpl) logRemoteResults(
-	domain string,
-	acctID int64,
-	challengeType string,
-	remoteResults []*remoteVAResult) {
-
-	var successes, failures []*remoteVAResult
-
-	for _, result := range remoteResults {
-		if result.Problem != nil {
-			failures = append(failures, result)
-		} else {
-			successes = append(successes, result)
-		}
-	}
-	if len(failures) == 0 {
-		// There's no point logging a differential line if everything succeeded.
-		return
-	}
-
-	logOb := struct {
-		Domain          string
-		AccountID       int64
-		ChallengeType   string
-		RemoteSuccesses int
-		RemoteFailures  []*remoteVAResult
-	}{
-		Domain:          domain,
-		AccountID:       acctID,
-		ChallengeType:   challengeType,
-		RemoteSuccesses: len(successes),
-		RemoteFailures:  failures,
-	}
-
-	logJSON, err := json.Marshal(logOb)
-	if err != nil {
-		// log a warning - a marshaling failure isn't expected given the data
-		// isn't critical enough to break validation by returning an error the
-		// caller.
-		va.log.Warningf("Could not marshal log object in "+
-			"logRemoteDifferential: %s", err)
-		return
-	}
-
-	va.log.Infof("remoteVADifferentials JSON=%s", string(logJSON))
-}
-
-// remoteVAResult is a struct that combines a problem details instance (that may
-// be nil) with the remote VA hostname that produced it.
-type remoteVAResult struct {
-	VAHostname string
-	Problem    *probs.ProblemDetails
 }
 
 // performLocalValidation performs primary domain control validation and then
@@ -661,8 +603,8 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	var prob *probs.ProblemDetails
 	var localLatency time.Duration
 	vStart := va.clk.Now()
-	logEvent := verificationRequestEvent{
-		ID:        req.Authz.Id,
+	logEvent := validationRequestEvent{
+		AuthzID:   req.Authz.Id,
 		Requester: req.Authz.RegID,
 		Hostname:  req.DnsName,
 		Challenge: challenge,
@@ -723,7 +665,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	if err == nil && !logEvent.Challenge.RecordsSane() {
 		err = errors.New("records from local validation failed sanity check")
 	}
-
 	if err != nil {
 		logEvent.InternalError = err.Error()
 		prob = detailedError(err)
