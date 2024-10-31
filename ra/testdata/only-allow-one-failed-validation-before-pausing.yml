@@ -1,0 +1,4 @@
+FailedAuthorizationsForPausingPerDomainPerAccount:
+  count: 1
+  burst: 1
+  period: 24h

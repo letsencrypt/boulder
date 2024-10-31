@@ -217,15 +217,14 @@ var ctx = context.Background()
 // dummyRateLimitConfig satisfies the rl.RateLimitConfig interface while
 // allowing easy mocking of the individual RateLimitPolicy's
 type dummyRateLimitConfig struct {
-	CertificatesPerNamePolicy                               ratelimit.RateLimitPolicy
-	RegistrationsPerIPPolicy                                ratelimit.RateLimitPolicy
-	RegistrationsPerIPRangePolicy                           ratelimit.RateLimitPolicy
-	PendingAuthorizationsPerAccountPolicy                   ratelimit.RateLimitPolicy
-	NewOrdersPerAccountPolicy                               ratelimit.RateLimitPolicy
-	InvalidAuthorizationsPerAccountPolicy                   ratelimit.RateLimitPolicy
-	CertificatesPerFQDNSetPolicy                            ratelimit.RateLimitPolicy
-	CertificatesPerFQDNSetFastPolicy                        ratelimit.RateLimitPolicy
-	FailedAuthorizationsForPausingPerDomainPerAccountPolicy ratelimit.RateLimitPolicy
+	CertificatesPerNamePolicy             ratelimit.RateLimitPolicy
+	RegistrationsPerIPPolicy              ratelimit.RateLimitPolicy
+	RegistrationsPerIPRangePolicy         ratelimit.RateLimitPolicy
+	PendingAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
+	NewOrdersPerAccountPolicy             ratelimit.RateLimitPolicy
+	InvalidAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
+	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
+	CertificatesPerFQDNSetFastPolicy      ratelimit.RateLimitPolicy
 }
 
 func (r *dummyRateLimitConfig) CertificatesPerName() ratelimit.RateLimitPolicy {
@@ -834,6 +833,124 @@ func TestPerformValidationSuccess(t *testing.T) {
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
 }
 
+// mockSAPaused is a mock which always succeeds. It records the PauseRequest it
+// received, and returns the number of identifiers as a
+// PauseIdentifiersResponse. It does not maintain state of repaused identifiers.
+type mockSAPaused struct {
+	sapb.StorageAuthorityClient
+}
+
+func (msa *mockSAPaused) GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	fmt.Println("Here GetRegistration")
+	return Registration, nil
+}
+
+func (msa *mockSAPaused) PauseIdentifiers(ctx context.Context, in *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error) {
+	fmt.Println("Here PausedIdentifiers")
+	return &sapb.PauseIdentifiersResponse{Paused: int64(len(in.Identifiers))}, nil
+}
+
+func (msa *mockSAPaused) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	fmt.Println("Here FinalizeAuthorization2")
+	return &emptypb.Empty{}, nil
+}
+
+func TestResetAccountPausingLimit(t *testing.T) {
+	va, sa, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	mockSA := &mockSAPaused{}
+	ra.SA = mockSA
+
+	// Override the default ratelimits
+	txnBuilder, err := ratelimits.NewTransactionBuilder("testdata/only-allow-one-failed-validation-before-pausing.yml", "")
+	test.AssertNotError(t, err, "making transaction composer")
+	ra.txnBuilder = txnBuilder
+
+	// We know this is OK because of TestNewAuthorization
+	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
+
+	// TODO(Phil): Explain why this has a problem filled out
+	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
+		Records: []*corepb.ValidationRecord{
+			{
+				AddressUsed:   []byte("192.168.0.1"),
+				Hostname:      "example.com",
+				Port:          "8080",
+				Url:           "http://example.com/",
+				ResolverAddrs: []string{"rebound"},
+			},
+		},
+		Problems: &corepb.ProblemDetails{
+			Detail: "CAA invalid for example.com",
+		},
+	}
+
+	challIdx := dnsChallIdx(t, authzPB.Challenges)
+	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: challIdx,
+	})
+	test.AssertNotError(t, err, "PerformValidation failed")
+
+	var vaRequest *vapb.PerformValidationRequest
+	select {
+	case r := <-va.performValidationRequest:
+		vaRequest = r
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+	}
+
+	// Verify that the VA got the request, and it's the same as the others
+	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
+	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
+
+	// Sleep so the RA has a chance to write to the SA
+	time.Sleep(100 * time.Millisecond)
+
+	// A second failed validation should result in the identifier being paused
+	// due to the strict ratelimit.
+	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
+		Records: []*corepb.ValidationRecord{
+			{
+				AddressUsed:   []byte("192.168.0.1"),
+				Hostname:      "example.com",
+				Port:          "8080",
+				Url:           "http://example.com/",
+				ResolverAddrs: []string{"rebound"},
+			},
+		},
+		Problems: &corepb.ProblemDetails{
+			Detail: "CAA invalid for example.com",
+		},
+	}
+
+	challIdx = dnsChallIdx(t, authzPB.Challenges)
+	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: challIdx,
+	})
+	test.AssertNotError(t, err, "PerformValidation failed")
+
+	select {
+	case r := <-va.performValidationRequest:
+		vaRequest = r
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+	}
+
+	// Verify that the VA got the request, and it's the same as the others
+	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
+	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
+
+	// Sleep so the RA has a chance to write to the SA
+	time.Sleep(100 * time.Millisecond)
+
+	identifiers, err := ra.SA.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: 1}, nil)
+	test.AssertNotError(t, err, "Should not have errored getting paused identifiers")
+	test.AssertEquals(t, len(identifiers.Identifiers), 1)
+}
+
 func TestPerformValidationVAError(t *testing.T) {
 	va, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -879,79 +996,6 @@ func TestPerformValidationVAError(t *testing.T) {
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
-}
-
-func TestResetAccountPausingLimit(t *testing.T) {
-	va, sa, ra, fc, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ra.orderLifetime = 5 * 24 * time.Hour
-
-	// Set up a rate limit policy that allows 1 order every 5 minutes.
-	rateLimitDuration := 5 * time.Minute
-	ra.rlPolicies = &dummyRateLimitConfig{
-		FailedAuthorizationsForPausingPerDomainPerAccountPolicy: ratelimit.RateLimitPolicy{
-			Threshold: 1,
-			Window:    config.Duration{Duration: rateLimitDuration},
-		},
-	}
-
-	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
-
-	va.PerformValidationRequestResultError = fmt.Errorf("Something went wrong")
-
-	challIdx := dnsChallIdx(t, authzPB.Challenges)
-	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
-		Authz:          authzPB,
-		ChallengeIndex: challIdx,
-	})
-
-	test.AssertNotError(t, err, "PerformValidation completely failed")
-
-	var vaRequest *vapb.PerformValidationRequest
-	select {
-	case r := <-va.performValidationRequest:
-		vaRequest = r
-	case <-time.After(time.Second):
-		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
-	}
-
-	// Verify that the VA got the request, and it's the same as the others
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
-
-	// Sleep so the RA has a chance to write to the SA
-	time.Sleep(100 * time.Millisecond)
-
-	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
-	t.Log("dbAuthz:", dbAuthzPB)
-
-	// Verify that the responses are reflected
-	challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
-	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
-	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
-	test.Assert(t, challenge.Status == core.StatusInvalid, "challenge was not marked as invalid")
-	test.AssertContains(t, challenge.Error.Error(), "Could not communicate with VA")
-	test.Assert(t, challenge.ValidationRecord == nil, "challenge had a ValidationRecord")
-
-	// Check that validated timestamp was recorded, stored, and retrieved
-	expectedValidated := fc.Now()
-	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
-
-	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
-		Authz:          authzPB,
-		ChallengeIndex: challIdx,
-	})
-
-	test.AssertNotError(t, err, "PerformValidation completely failed")
-
-	select {
-	case r := <-va.performValidationRequest:
-		vaRequest = r
-	case <-time.After(time.Second):
-		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
-	}
-
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
