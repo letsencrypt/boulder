@@ -2,13 +2,16 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -116,4 +119,37 @@ func TestHostHeaderRewrite(t *testing.T) {
 	test.AssertNotError(t, err, "http.NewRequest failed")
 	req.Host = "localhost:123"
 	th.ServeHTTP(httptest.NewRecorder(), req)
+}
+
+type cancelHandler struct {
+	res chan string
+}
+
+func (ch cancelHandler) ServeHTTP(e *RequestEvent, w http.ResponseWriter, r *http.Request) {
+	select {
+	case <-r.Context().Done():
+		ch.res <- r.Context().Err().Error()
+	case <-time.After(300 * time.Millisecond):
+		ch.res <- "300 ms passed"
+	}
+}
+
+func TestPropagateCancel(t *testing.T) {
+	mockLog := blog.UseMock()
+	res := make(chan string)
+	features.Set(features.Config{PropagateCancels: true})
+	th := NewTopHandler(mockLog, cancelHandler{res})
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		req, err := http.NewRequestWithContext(ctx, "GET", "/thisisignored", &bytes.Reader{})
+		if err != nil {
+			t.Error(err)
+		}
+		th.ServeHTTP(httptest.NewRecorder(), req)
+	}()
+	cancel()
+	result := <-res
+	if result != "context canceled" {
+		t.Errorf("expected 'context canceled', got %q", result)
+	}
 }

@@ -127,6 +127,7 @@
 			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml"
 		},
 		"features": {
+      "PropagateCancels": true,
 			"ServeRenewalInfo": true,
 			"CheckIdentifiersPaused": true,
 			"UseKvLimitsForNewOrder": true
