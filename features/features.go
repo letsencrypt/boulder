@@ -109,6 +109,11 @@ type Config struct {
 	// get the AUTO_INCREMENT ID of each new authz without relying on MariaDB's
 	// unique "INSERT ... RETURNING" functionality.
 	InsertAuthzsIndividually bool
+
+	// IncrementRateLimits uses Redis' IncrBy, instead of Set, for rate limit
+	// accounting. This catches and denies spikes of requests much more
+	// reliably.
+	IncrementRateLimits bool
 }
 
 var fMu = new(sync.RWMutex)

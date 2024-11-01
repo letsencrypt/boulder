@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/rand/v2"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/letsencrypt/boulder/config"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -38,6 +40,12 @@ func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
 }
 
 func setup(t *testing.T) (context.Context, map[string]*Limiter, *TransactionBuilder, clock.FakeClock, string) {
+	// Because the config dir will not change during this process' life, we
+	// don't need to call features.Reset().
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		features.Set(features.Config{IncrementRateLimits: true})
+	}
+
 	testCtx := context.Background()
 	clk := clock.NewFake()
 

@@ -109,6 +109,33 @@ func (r *RedisSource) BatchSet(ctx context.Context, buckets map[string]time.Time
 	return nil
 }
 
+// BatchIncrement updates TATs for the specified bucketKeys using a pipelined
+// Redis Transaction in order to reduce the number of round-trips to each Redis
+// shard. An error is returned if the operation failed and nil otherwise.
+func (r *RedisSource) BatchIncrement(ctx context.Context, buckets map[string]increment) error {
+	start := r.clk.Now()
+
+	pipeline := r.client.Pipeline()
+	for bucketKey, incr := range buckets {
+		pipeline.IncrBy(ctx, bucketKey, incr.cost.Nanoseconds())
+		pipeline.Expire(ctx, bucketKey, incr.ttl)
+	}
+	_, err := pipeline.Exec(ctx)
+	if err != nil {
+		r.observeLatency("batchincrby", r.clk.Since(start), err)
+		return err
+	}
+
+	totalLatency := r.clk.Since(start)
+	perSetLatency := totalLatency / time.Duration(len(buckets))
+	for range buckets {
+		r.observeLatency("batchincrby_entry", perSetLatency, nil)
+	}
+
+	r.observeLatency("batchincrby", totalLatency, nil)
+	return nil
+}
+
 // Get retrieves the TAT at the specified bucketKey. An error is returned if the
 // operation failed and nil otherwise. If the bucketKey does not exist,
 // ErrBucketNotFound is returned.
