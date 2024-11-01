@@ -8,8 +8,6 @@
 		"authorizationLifetimeDays": 30,
 		"pendingAuthorizationLifetimeDays": 7,
 		"goodkey": {
-			"weakKeyFile": "test/example-weak-keys.json",
-			"blockedKeyFile": "test/example-blocked-keys.yaml",
 			"fermatRounds": 100
 		},
 		"orderLifetime": "168h",

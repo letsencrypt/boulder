@@ -25,13 +25,6 @@ func TestUnknownKeyType(t *testing.T) {
 	err := testingPolicy.GoodKey(context.Background(), notAKey)
 	test.AssertError(t, err, "Should have rejected a key of unknown type")
 	test.AssertEquals(t, err.Error(), "unsupported key type struct {}")
-
-	// Check for early rejection and that no error is seen from blockedKeys.blocked.
-	testingPolicyWithBlockedKeys := *testingPolicy
-	testingPolicyWithBlockedKeys.blockedList = &blockedKeys{}
-	err = testingPolicyWithBlockedKeys.GoodKey(context.Background(), notAKey)
-	test.AssertError(t, err, "Should have rejected a key of unknown type")
-	test.AssertEquals(t, err.Error(), "unsupported key type struct {}")
 }
 
 func TestNilKey(t *testing.T) {
