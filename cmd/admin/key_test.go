@@ -86,7 +86,9 @@ func TestCSR(t *testing.T) {
 	err := os.WriteFile(goodCSRFile, []byte(goodCSR), 0600)
 	test.AssertNotError(t, err, "writing good csr")
 
-	goodHash, err := spkiHashFromCSRPEM(goodCSRFile, true, "")
+	a := admin{log: blog.NewMock()}
+
+	goodHash, err := a.spkiHashFromCSRPEM(goodCSRFile, true, "")
 	test.AssertNotError(t, err, "expected to read CSR")
 
 	if len(goodHash) != 1 {
@@ -101,10 +103,10 @@ func TestCSR(t *testing.T) {
 	err = os.WriteFile(csrFile, []byte(badCSR), 0600)
 	test.AssertNotError(t, err, "writing bad csr")
 
-	_, err = spkiHashFromCSRPEM(csrFile, true, "")
+	_, err = a.spkiHashFromCSRPEM(csrFile, true, "")
 	test.AssertError(t, err, "expected invalid signature")
 
-	badHash, err := spkiHashFromCSRPEM(csrFile, false, "")
+	badHash, err := a.spkiHashFromCSRPEM(csrFile, false, "")
 	test.AssertNotError(t, err, "expected to read CSR with bad signature")
 
 	if len(badHash) != 1 {

@@ -88,7 +88,7 @@ func (s *subcommandBlockKey) Run(ctx context.Context, a *admin) error {
 	case "-cert-file":
 		spkiHashes, err = a.spkiHashesFromCertPEM(s.certFile)
 	case "-csr-file":
-		spkiHashes, err = spkiHashFromCSRPEM(s.csrFile, s.checkSignature, s.csrFileExpectedCN)
+		spkiHashes, err = a.spkiHashFromCSRPEM(s.csrFile, s.checkSignature, s.csrFileExpectedCN)
 	default:
 		return errors.New("no recognized input method flag set (this shouldn't happen)")
 	}
@@ -160,7 +160,7 @@ func (a *admin) spkiHashesFromCertPEM(filename string) ([][]byte, error) {
 	return [][]byte{spkiHash[:]}, nil
 }
 
-func spkiHashFromCSRPEM(filename string, checkSignature bool, expectedCN string) ([][]byte, error) {
+func (a *admin) spkiHashFromCSRPEM(filename string, checkSignature bool, expectedCN string) ([][]byte, error) {
 	csrFile, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("reading CSR file %q: %w", filename, err)
@@ -170,6 +170,8 @@ func spkiHashFromCSRPEM(filename string, checkSignature bool, expectedCN string)
 	if data == nil {
 		return nil, fmt.Errorf("no PEM data found in %q", filename)
 	}
+
+	a.log.AuditInfof("Parsing key to block from CSR PEM: %x", data)
 
 	csr, err := x509.ParseCertificateRequest(data.Bytes)
 	if err != nil {
