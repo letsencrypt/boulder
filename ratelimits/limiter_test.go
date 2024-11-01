@@ -312,8 +312,8 @@ func TestLimiter_InitializationViaCheckAndSpend(t *testing.T) {
 			test.AssertEquals(t, d.resetIn, time.Millisecond*50)
 			test.AssertEquals(t, d.retryIn, time.Duration(0))
 
-			// However, that cost should not be spent yet, a 0 cost check should
-			// tell us that we actually have 19 remaining.
+			// And that cost should have been spent; a 0 cost check should still
+			// tell us that we have 19 remaining.
 			d, err = l.Check(testCtx, txn0)
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.allowed, "should be allowed")

@@ -105,7 +105,7 @@ func (in *inmem) BatchGet(_ context.Context, bucketKeys []string) (map[string]ti
 	for _, k := range bucketKeys {
 		tat, ok := in.m[k]
 		if !ok {
-			tats[k] = time.Time{}
+			continue
 		}
 		tats[k] = tat
 	}
