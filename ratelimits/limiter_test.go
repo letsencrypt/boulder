@@ -40,8 +40,15 @@ func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
 }
 
 func setup(t *testing.T) (context.Context, map[string]*Limiter, *TransactionBuilder, clock.FakeClock, string) {
-	// Because the config dir will not change during this process' life, we
-	// don't need to call features.Reset().
+	// Because all test cases in this file are affected by this feature flag, we
+	// want to run them all both with and without the feature flag. This way, we
+	// get one set of runs with and one set without. It's difficult to defer
+	// features.Reset() from the setup func (these tests are parallel); as long
+	// as this code doesn't test any other features, we don't need to.
+	//
+	// N.b. This is fragile. If a test case does call features.Reset(), it will
+	// not be testing the intended code path. But we expect to clean this up
+	// quickly.
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		features.Set(features.Config{IncrementRateLimits: true})
 	}
