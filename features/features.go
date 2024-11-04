@@ -116,6 +116,11 @@ type Config struct {
 	// attempt. When disabled, only manually paused identifier:accountID:domain
 	// pairs will be rejected.
 	UseKvLimitsForZombieClientPausing bool
+
+	// IncrementRateLimits uses Redis' IncrBy, instead of Set, for rate limit
+	// accounting. This catches and denies spikes of requests much more
+	// reliably.
+	IncrementRateLimits bool
 }
 
 var fMu = new(sync.RWMutex)

@@ -131,7 +131,8 @@
 		"features": {
 			"AsyncFinalize": true,
 			"UseKvLimitsForNewOrder": true,
-			"UseKvLimitsForZombieClientPausing": true
+			"UseKvLimitsForZombieClientPausing": true,
+			"IncrementRateLimits": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

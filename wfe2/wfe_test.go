@@ -3821,6 +3821,15 @@ func Test_sendError(t *testing.T) {
 	test.AssertEquals(t, testResponse.Header().Get("Link"), "")
 }
 
+func Test_sendErrorInternalServerError(t *testing.T) {
+	features.Reset()
+	wfe, _, _ := setupWFE(t)
+	testResponse := httptest.NewRecorder()
+
+	wfe.sendError(testResponse, &web.RequestEvent{}, probs.ServerInternal("oh no"), nil)
+	test.AssertEquals(t, testResponse.Header().Get("Retry-After"), "60")
+}
+
 type mockSA struct {
 	sapb.StorageAuthorityReadOnlyClient
 	cert *corepb.Certificate
