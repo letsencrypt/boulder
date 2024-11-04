@@ -188,6 +188,14 @@ func httpSpan(endpoint string, children ...expectedSpans) expectedSpans {
 	}
 }
 
+func redisPipelineSpan(op, service string, children ...expectedSpans) expectedSpans {
+	return expectedSpans{
+		Operation: "redis.pipeline " + op,
+		Service:   service,
+		Children:  children,
+	}
+}
+
 // TestTraces tests that all the expected spans are present and properly connected
 func TestTraces(t *testing.T) {
 	t.Parallel()
@@ -211,7 +219,8 @@ func TestTraces(t *testing.T) {
 			{Operation: "/directory", Service: wfe},
 			{Operation: "/acme/new-nonce", Service: wfe, Children: []expectedSpans{
 				rpcSpan("nonce.NonceService/Nonce", wfe, "nonce-service")}},
-			httpSpan("/acme/new-acct"),
+			httpSpan("/acme/new-acct",
+				redisPipelineSpan("get", wfe)),
 			httpSpan("/acme/new-order"),
 			httpSpan("/acme/authz-v3/"),
 			httpSpan("/acme/chall-v3/"),

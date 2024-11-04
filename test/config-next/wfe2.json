@@ -129,7 +129,8 @@
 		"features": {
 			"ServeRenewalInfo": true,
 			"CheckIdentifiersPaused": true,
-			"UseKvLimitsForNewOrder": true
+			"UseKvLimitsForNewOrder": true,
+			"IncrementRateLimits": true
 		},
 		"certProfiles": {
 			"legacy": "The normal profile you know and love",
