@@ -206,10 +206,12 @@ func TestTraces(t *testing.T) {
 	traceID := traceIssuingTestCert(t)
 
 	wfe := "boulder-wfe2"
-	sa := "boulder-sa"
 	ra := "boulder-ra"
 	ca := "boulder-ca"
 
+	// A very stripped-down version of the expected call graph of a full issuance
+	// flow: just enough to ensure that our otel tracing is working without
+	// asserting too much about the exact set of RPCs we use under the hood.
 	expectedSpans := expectedSpans{
 		Operation: "TraceTest",
 		Service:   "integration.test",
@@ -218,42 +220,13 @@ func TestTraces(t *testing.T) {
 			{Operation: "/acme/new-nonce", Service: wfe, Children: []expectedSpans{
 				rpcSpan("nonce.NonceService/Nonce", wfe, "nonce-service")}},
 			httpSpan("/acme/new-acct",
-				redisPipelineSpan("get", wfe),
-				rpcSpan("sa.StorageAuthorityReadOnly/KeyBlocked", wfe, sa),
-				rpcSpan("sa.StorageAuthorityReadOnly/GetRegistrationByKey", wfe, sa),
-				rpcSpan("ra.RegistrationAuthority/NewRegistration", wfe, ra,
-					rpcSpan("sa.StorageAuthority/KeyBlocked", ra, sa),
-					rpcSpan("sa.StorageAuthority/NewRegistration", ra, sa))),
-			httpSpan("/acme/new-order",
-				rpcSpan("sa.StorageAuthorityReadOnly/GetRegistration", wfe, sa),
-				redisPipelineSpan("get", wfe),
-				rpcSpan("ra.RegistrationAuthority/NewOrder", wfe, ra,
-					rpcSpan("sa.StorageAuthority/GetOrderForNames", ra, sa),
-					rpcSpan("sa.StorageAuthority/NewOrderAndAuthzs", ra, sa))),
-			httpSpan("/acme/authz-v3/",
-				rpcSpan("ra.RegistrationAuthority/GetAuthorization", wfe, ra,
-					rpcSpan("sa.StorageAuthority/GetAuthorization2", ra, sa))),
-			httpSpan("/acme/chall-v3/",
-				rpcSpan("ra.RegistrationAuthority/GetAuthorization", wfe, ra,
-					rpcSpan("sa.StorageAuthority/GetAuthorization2", ra, sa)),
-				rpcSpan("ra.RegistrationAuthority/PerformValidation", wfe, ra,
-					rpcSpan("sa.StorageAuthority/GetRegistration", ra, sa))),
+				redisPipelineSpan("get", wfe)),
+			httpSpan("/acme/new-order"),
+			httpSpan("/acme/authz-v3/"),
+			httpSpan("/acme/chall-v3/"),
 			httpSpan("/acme/finalize/",
-				rpcSpan("sa.StorageAuthorityReadOnly/GetOrder", wfe, sa),
 				rpcSpan("ra.RegistrationAuthority/FinalizeOrder", wfe, ra,
-					rpcSpan("sa.StorageAuthority/KeyBlocked", ra, sa),
-					rpcSpan("sa.StorageAuthority/GetRegistration", ra, sa),
-					rpcSpan("sa.StorageAuthority/GetValidOrderAuthorizations2", ra, sa),
-					rpcSpan("sa.StorageAuthority/SetOrderProcessing", ra, sa),
-					rpcSpan("ca.CertificateAuthority/IssuePrecertificate", ra, ca),
-					redisPipelineSpan("get", ra),
-					rpcSpan("Publisher/SubmitToSingleCTWithResult", ra, "boulder-publisher"),
-					rpcSpan("ca.CertificateAuthority/IssueCertificateForPrecertificate", ra, ca),
-					rpcSpan("sa.StorageAuthority/FinalizeOrder", ra, sa))),
-			httpSpan("/acme/order/",
-				rpcSpan("sa.StorageAuthorityReadOnly/GetOrder", wfe, sa)),
-			httpSpan("/acme/cert/",
-				rpcSpan("sa.StorageAuthorityReadOnly/GetCertificate", wfe, sa)),
+					rpcSpan("ca.CertificateAuthority/IssueCertificateForPrecertificate", ra, ca))),
 		},
 	}
 
