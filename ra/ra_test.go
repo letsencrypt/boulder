@@ -277,7 +277,7 @@ func newAcctKey(t *testing.T) []byte {
 	return acctKey
 }
 
-func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAuthorityClient, *RegistrationAuthorityImpl, clock.FakeClock, func()) {
+func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAuthorityClient, *RegistrationAuthorityImpl, *ratelimits.RedisSource, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(AccountKeyJSONB, &AccountKeyB)
@@ -348,6 +348,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		},
 	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
+	var source *ratelimits.RedisSource
 	var limiter *ratelimits.Limiter
 	var txnBuilder *ratelimits.TransactionBuilder
 	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
@@ -394,11 +395,11 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra.CA = ca
 	ra.OCSP = &mocks.MockOCSPGenerator{}
 	ra.PA = pa
-	return va, sa, ra, fc, cleanUp
+	return va, sa, ra, source, fc, cleanUp
 }
 
 func TestValidateContacts(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ansible := "ansible:earth.sol.milkyway.laniakea/letsencrypt"
@@ -475,7 +476,7 @@ func TestValidateContacts(t *testing.T) {
 }
 
 func TestNewRegistration(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
+	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	mailto := "mailto:foo@letsencrypt.org"
 	acctKeyB, err := AccountKeyB.MarshalJSON()
@@ -502,7 +503,7 @@ func TestNewRegistration(t *testing.T) {
 }
 
 func TestNewRegistrationContactsPresent(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	testCases := []struct {
 		Name        string
@@ -574,7 +575,7 @@ func (sa *mockSAFailsNewRegistration) NewRegistration(_ context.Context, _ *core
 }
 
 func TestNewRegistrationSAFailure(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.SA = &mockSAFailsNewRegistration{}
 	acctKeyB, err := AccountKeyB.MarshalJSON()
@@ -592,7 +593,7 @@ func TestNewRegistrationSAFailure(t *testing.T) {
 }
 
 func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	mailto := "mailto:foo@letsencrypt.org"
 	acctKeyC, err := AccountKeyC.MarshalJSON()
@@ -614,7 +615,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 }
 
 func TestNewRegistrationBadKey(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	mailto := "mailto:foo@letsencrypt.org"
 	shortKey, err := ShortKey.MarshalJSON()
@@ -629,7 +630,7 @@ func TestNewRegistrationBadKey(t *testing.T) {
 }
 
 func TestRegistrationsPerIPOverrideUsage(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	regIP := net.ParseIP("4.5.6.7")
@@ -676,7 +677,7 @@ func (sa NoUpdateSA) UpdateRegistration(_ context.Context, _ *corepb.Registratio
 }
 
 func TestUpdateRegistrationSame(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	mailto := "mailto:foo@letsencrypt.org"
 
@@ -713,7 +714,7 @@ func TestUpdateRegistrationSame(t *testing.T) {
 }
 
 func TestPerformValidationExpired(t *testing.T) {
-	_, sa, ra, fc, cleanUp := initAuthorities(t)
+	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	authz := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(-2*time.Hour))
@@ -726,7 +727,7 @@ func TestPerformValidationExpired(t *testing.T) {
 }
 
 func TestPerformValidationAlreadyValid(t *testing.T) {
-	va, _, ra, _, cleanUp := initAuthorities(t)
+	va, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// Create a finalized authorization
@@ -771,7 +772,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 }
 
 func TestPerformValidationSuccess(t *testing.T) {
-	va, sa, ra, fc, cleanUp := initAuthorities(t)
+	va, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
@@ -877,15 +878,15 @@ func (msa *mockSAPaused) FinalizeAuthorization2(ctx context.Context, req *sapb.F
 	return &emptypb.Empty{}, nil
 }
 
-func TestPerformValidation_PauseIdentifiersRatelimit(t *testing.T) {
-	va, sa, ra, fc, cleanUp := initAuthorities(t)
+func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *testing.T) {
+	va, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	mockSA := &mockSAPaused{}
 	ra.SA = mockSA
 
 	// Override the default ratelimits to only allow one failed validation.
-	txnBuilder, err := ratelimits.NewTransactionBuilder("testdata/only-allow-one-failed-validation-before-pausing.yml", "")
+	txnBuilder, err := ratelimits.NewTransactionBuilder("testdata/one-failed-validation-before-pausing.yml", "")
 	test.AssertNotError(t, err, "making transaction composer")
 	ra.txnBuilder = txnBuilder
 
@@ -978,17 +979,79 @@ func TestPerformValidation_PauseIdentifiersRatelimit(t *testing.T) {
 	dbAuthzPB = getAuthorization(t, authzPB.Id, sa)
 	t.Log("dbAuthz:", dbAuthzPB)
 
-	// Ensure the account:domain we expect to be paused actually is.
+	// Ensure the identifier:account:domain we expect to be paused actually is.
 	got, err = ra.SA.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: authzPB.RegistrationID}, nil)
 	test.AssertNotError(t, err, "Should not have errored getting paused identifiers")
 	test.AssertEquals(t, len(got.Identifiers), 1)
 	test.AssertEquals(t, got.Identifiers[0].Value, Identifier)
+}
 
-	/////////////
-	///////////// A successful validation by the RegID for a non-paused identifier should return capacity to the ratelimit bucket and allow another failed validation. This is the successful validation.
-	/////////////
+func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersRatelimit(t *testing.T) {
+	va, sa, ra, redis, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	mockSA := &mockSAPaused{}
+	ra.SA = mockSA
+
+	// Override the default ratelimits to only allow one failed validation.
+	txnBuilder, err := ratelimits.NewTransactionBuilder("testdata/two-failed-validations-before-pausing.yml", "")
+	test.AssertNotError(t, err, "making transaction composer")
+	ra.txnBuilder = txnBuilder
+
 	// We know this is OK because of TestNewAuthorization
-	authzPB = createPendingAuthorization(t, sa, "example.com", fc.Now().Add(12*time.Hour))
+	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
+	mockSA.receivedRegID = authzPB.RegistrationID
+
+	// We induce the bad path by setting a problem. This will consume all
+	// available capacity in the rate limit bucket.
+	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
+		Records: []*corepb.ValidationRecord{
+			{
+				AddressUsed:   []byte("192.168.0.1"),
+				Hostname:      "example.net",
+				Port:          "8080",
+				Url:           "http://example.net/",
+				ResolverAddrs: []string{"rebound"},
+			},
+		},
+		Problems: &corepb.ProblemDetails{
+			Detail: "CAA invalid for example.net",
+		},
+	}
+
+	challIdx := dnsChallIdx(t, authzPB.Challenges)
+	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: challIdx,
+	})
+	test.AssertNotError(t, err, "PerformValidation failed")
+
+	var vaRequest *vapb.PerformValidationRequest
+	select {
+	case r := <-va.performValidationRequest:
+		vaRequest = r
+	case <-time.After(time.Second):
+		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+	}
+
+	// Verify that the VA got the request, and it's the same as the others
+	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
+	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
+
+	// Sleep so the RA has a chance to write to the SA
+	time.Sleep(100 * time.Millisecond)
+	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
+	t.Log("dbAuthz:", dbAuthzPB)
+
+	got, err := ra.SA.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: authzPB.RegistrationID}, nil)
+	test.AssertError(t, err, "Should not have any paused identifiers yet, but found some")
+	test.AssertBoxedNil(t, got, "Should have received nil response, but did not")
+
+	// Now the goal is to perform a successful validation which should reset the
+	// FailedAuthorizationsForPausingPerDomainPerAccount ratelimit.
+
+	// We know this is OK because of TestNewAuthorization
+	authzPB = createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
 
 	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
@@ -1003,6 +1066,7 @@ func TestPerformValidation_PauseIdentifiersRatelimit(t *testing.T) {
 		Problems: nil,
 	}
 
+	now := fc.Now()
 	challIdx = dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
@@ -1023,6 +1087,7 @@ func TestPerformValidation_PauseIdentifiersRatelimit(t *testing.T) {
 
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
+
 	dbAuthzPB = getAuthorization(t, authzPB.Id, sa)
 	t.Log("dbAuthz:", dbAuthzPB)
 
@@ -1036,15 +1101,27 @@ func TestPerformValidation_PauseIdentifiersRatelimit(t *testing.T) {
 
 	// The DB authz's expiry should be equal to the current time plus the
 	// configured authorization lifetime
-	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), fc.Now().Add(ra.authorizationLifetime))
+	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), now.Add(ra.authorizationLifetime))
 
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
+
+	// We need the bucket key to scan for in Redis
+	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsPerDomainPerAccount, authzPB.RegistrationID, Identifier)
+	test.AssertNotError(t, err, "Should have been able to construct bucket key, but could not")
+
+	// Verify that we receive a TAT for the current time. This indicates the
+	// identifier:accountID:domain bucket has regained capacity avoiding being
+	// inadvertently paused.
+	tat, err := redis.Get(ctx, bucketKey)
+	test.AssertNotError(t, err, "Could not retrieve TAT from source")
+	test.AssertEquals(t, tat, fc.Now())
+
 }
 
 func TestPerformValidationVAError(t *testing.T) {
-	va, sa, ra, fc, cleanUp := initAuthorities(t)
+	va, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
@@ -1091,7 +1168,7 @@ func TestPerformValidationVAError(t *testing.T) {
 }
 
 func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
+	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
@@ -1130,7 +1207,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 }
 
 func TestNewOrderRateLimiting(t *testing.T) {
-	_, _, ra, fc, cleanUp := initAuthorities(t)
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.orderLifetime = 5 * 24 * time.Hour
@@ -1181,7 +1258,7 @@ func TestNewOrderRateLimiting(t *testing.T) {
 // TestEarlyOrderRateLimiting tests that NewOrder applies the certificates per
 // name/per FQDN rate limits against the order names.
 func TestEarlyOrderRateLimiting(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = 5 * 24 * time.Hour
 
@@ -1243,7 +1320,7 @@ func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations2(ctx co
 }
 
 func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.rlPolicies = &dummyRateLimitConfig{
@@ -1293,7 +1370,7 @@ func (m *mockSAWithNameCounts) FQDNSetExists(ctx context.Context, req *sapb.FQDN
 }
 
 func TestCheckCertificatesPerNameLimit(t *testing.T) {
-	_, _, ra, fc, cleanUp := initAuthorities(t)
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	rlp := ratelimit.RateLimitPolicy{
@@ -1383,7 +1460,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 // TestCheckExactCertificateLimit tests that the duplicate certificate limit
 // applied to FQDN sets is respected.
 func TestCheckExactCertificateLimit(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// Create a rate limit with a small threshold
@@ -1633,7 +1710,7 @@ func (m mockSAWithFQDNSet) FQDNSetTimestampsForWindow(_ context.Context, req *sa
 // without the feature flag for the fix enabled.
 // See https://github.com/letsencrypt/boulder/issues/2681
 func TestExactPublicSuffixCertLimit(t *testing.T) {
-	_, _, ra, fc, cleanUp := initAuthorities(t)
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// Simple policy that only allows 2 certificates per name.
@@ -1684,7 +1761,7 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 }
 
 func TestDeactivateAuthorization(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
+	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
@@ -1698,7 +1775,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 }
 
 func TestDeactivateRegistration(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// Deactivate failure because incomplete registration provided
@@ -1753,7 +1830,7 @@ func (cr *caaRecorder) IsCAAValid(
 // Test that the right set of domain names have their CAA rechecked, based on
 // their `Validated` (attemptedAt in the database) timestamp.
 func TestRecheckCAADates(t *testing.T) {
-	_, _, ra, fc, cleanUp := initAuthorities(t)
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	recorder := &caaRecorder{names: make(map[string]bool)}
 	ra.caa = recorder
@@ -1943,7 +2020,7 @@ func (cf *caaFailer) IsCAAValid(
 }
 
 func TestRecheckCAAEmpty(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	err := ra.recheckCAA(context.Background(), nil)
 	test.AssertNotError(t, err, "expected nil")
@@ -1957,7 +2034,7 @@ func makeHTTP01Authorization(domain string) *core.Authorization {
 }
 
 func TestRecheckCAASuccess(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	authzs := []*core.Authorization{
 		makeHTTP01Authorization("a.com"),
@@ -1969,7 +2046,7 @@ func TestRecheckCAASuccess(t *testing.T) {
 }
 
 func TestRecheckCAAFail(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.caa = &caaFailer{}
 	authzs := []*core.Authorization{
@@ -2020,7 +2097,7 @@ func TestRecheckCAAFail(t *testing.T) {
 }
 
 func TestRecheckCAAInternalServerError(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.caa = &caaFailer{}
 	authzs := []*core.Authorization{
@@ -2034,7 +2111,7 @@ func TestRecheckCAAInternalServerError(t *testing.T) {
 }
 
 func TestNewOrder(t *testing.T) {
-	_, _, ra, fc, cleanUp := initAuthorities(t)
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
 
@@ -2103,7 +2180,7 @@ func TestNewOrder(t *testing.T) {
 // an identical order results in only one order being created & subsequently
 // reused.
 func TestNewOrderReuse(t *testing.T) {
-	_, _, ra, fc, cleanUp := initAuthorities(t)
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ctx := context.Background()
@@ -2212,7 +2289,7 @@ func TestNewOrderReuse(t *testing.T) {
 }
 
 func TestNewOrderReuseInvalidAuthz(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ctx := context.Background()
@@ -2273,7 +2350,7 @@ func (mock *mockSACountPendingFails) CountPendingAuthorizations2(ctx context.Con
 // Ensure that we don't bother to call the SA to count pending authorizations
 // when an "unlimited" limit is set.
 func TestPendingAuthorizationsUnlimited(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.rlPolicies = &dummyRateLimitConfig{
@@ -2310,7 +2387,7 @@ func (sa *mockInvalidPlusValidAuthzAuthority) CountInvalidAuthorizations2(ctx co
 
 // Test that the failed authorizations limit is checked before authz reuse.
 func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
-	_, _, ra, clk, cleanUp := initAuthorities(t)
+	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// Create an order (and thus a pending authz) for example.com
@@ -2437,7 +2514,7 @@ func (msa *mockSAWithAuthzs) NewOrderAndAuthzs(ctx context.Context, req *sapb.Ne
 // for background - this safety check was previously broken!
 // https://github.com/letsencrypt/boulder/issues/3420
 func TestNewOrderAuthzReuseSafety(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ctx := context.Background()
@@ -2513,7 +2590,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 }
 
 func TestNewOrderWildcard(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
 
@@ -2678,7 +2755,7 @@ func TestNewOrderWildcard(t *testing.T) {
 }
 
 func TestNewOrderExpiry(t *testing.T) {
-	_, _, ra, clk, cleanUp := initAuthorities(t)
+	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ctx := context.Background()
@@ -2746,7 +2823,7 @@ func TestNewOrderExpiry(t *testing.T) {
 }
 
 func TestFinalizeOrder(t *testing.T) {
-	_, sa, ra, fc, cleanUp := initAuthorities(t)
+	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
 
@@ -3032,7 +3109,7 @@ func TestFinalizeOrder(t *testing.T) {
 }
 
 func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
+	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
 
@@ -3094,7 +3171,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 }
 
 func TestFinalizeOrderWildcard(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
+	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// Pick an expiry in the future
@@ -3196,7 +3273,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 }
 
 func TestFinalizeOrderDisabledChallenge(t *testing.T) {
-	_, sa, ra, fc, cleanUp := initAuthorities(t)
+	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// Create a random domain
@@ -3251,7 +3328,7 @@ func TestFinalizeOrderDisabledChallenge(t *testing.T) {
 }
 
 func TestIssueCertificateAuditLog(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
+	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// Set up order and authz expiries
@@ -3374,7 +3451,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 }
 
 func TestIssueCertificateCAACheckLog(t *testing.T) {
-	_, sa, ra, fc, cleanUp := initAuthorities(t)
+	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	// Set up order and authz expiries.
@@ -3485,7 +3562,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 //
 // See https://github.com/letsencrypt/boulder/issues/3201
 func TestUpdateMissingAuthorization(t *testing.T) {
-	_, sa, ra, fc, cleanUp := initAuthorities(t)
+	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ctx := context.Background()
 
@@ -3505,7 +3582,7 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 }
 
 func TestPerformValidationBadChallengeType(t *testing.T) {
-	_, _, ra, fc, cleanUp := initAuthorities(t)
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	pa, err := policy.New(map[core.AcmeChallenge]bool{}, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
@@ -3545,7 +3622,7 @@ func (mp *timeoutPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Req
 }
 
 func TestCTPolicyMeasurements(t *testing.T) {
-	_, ssa, ra, _, cleanup := initAuthorities(t)
+	_, ssa, ra, _, _, cleanup := initAuthorities(t)
 	defer cleanup()
 
 	ra.ctpolicy = ctpolicy.New(&timeoutPub{}, loglist.List{
@@ -3678,7 +3755,7 @@ func (ca *mockCAFailCertForPrecert) IssueCertificateForPrecertificate(
 // `ra.issueCertificateInner` are propagated correctly, with the part of the
 // issuance process that failed prefixed on the error message.
 func TestIssueCertificateInnerErrs(t *testing.T) {
-	_, sa, ra, _, cleanUp := initAuthorities(t)
+	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.orderLifetime = 24 * time.Hour
@@ -3811,7 +3888,7 @@ func (sa *mockSAWithFinalize) FQDNSetExists(ctx context.Context, in *sapb.FQDNSe
 }
 
 func TestIssueCertificateInnerWithProfile(t *testing.T) {
-	_, _, ra, fc, cleanup := initAuthorities(t)
+	_, _, ra, _, fc, cleanup := initAuthorities(t)
 	defer cleanup()
 
 	// Generate a reasonable-looking CSR and cert to pass the matchesCSR check.
@@ -3847,7 +3924,7 @@ func TestIssueCertificateInnerWithProfile(t *testing.T) {
 }
 
 func TestIssueCertificateOuter(t *testing.T) {
-	_, sa, ra, fc, cleanup := initAuthorities(t)
+	_, sa, ra, _, fc, cleanup := initAuthorities(t)
 	defer cleanup()
 
 	ra.orderLifetime = 24 * time.Hour
@@ -3901,7 +3978,7 @@ func TestIssueCertificateOuter(t *testing.T) {
 }
 
 func TestNewOrderMaxNames(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.maxNames = 2
@@ -4096,7 +4173,7 @@ func (msgo *mockSAGenerateOCSP) GetCertificateStatus(_ context.Context, req *sap
 }
 
 func TestGenerateOCSP(t *testing.T) {
-	_, _, ra, clk, cleanUp := initAuthorities(t)
+	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.OCSP = &mockOCSPA{}
@@ -4136,7 +4213,7 @@ func (msgo *mockSALongExpiredSerial) GetSerialMetadata(_ context.Context, req *s
 }
 
 func TestGenerateOCSPLongExpiredSerial(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.OCSP = &mockOCSPA{}
@@ -4164,7 +4241,7 @@ func (msgo *mockSAUnknownSerial) GetSerialMetadata(_ context.Context, req *sapb.
 }
 
 func TestGenerateOCSPUnknownSerial(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.OCSP = &mockOCSPA{}
@@ -4182,7 +4259,7 @@ func TestGenerateOCSPUnknownSerial(t *testing.T) {
 }
 
 func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
-	_, _, ra, clk, cleanUp := initAuthorities(t)
+	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.OCSP = &mockOCSPA{}
@@ -4257,7 +4334,7 @@ func (msa *mockSARevocationWithAuthzs) GetValidAuthorizations2(ctx context.Conte
 }
 
 func TestRevokeCertByApplicant_Controller(t *testing.T) {
-	_, _, ra, clk, cleanUp := initAuthorities(t)
+	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.OCSP = &mockOCSPA{}
@@ -4298,7 +4375,7 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 }
 
 func TestRevokeCertByKey(t *testing.T) {
-	_, _, ra, clk, cleanUp := initAuthorities(t)
+	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.OCSP = &mockOCSPA{}
@@ -4350,7 +4427,7 @@ func TestRevokeCertByKey(t *testing.T) {
 }
 
 func TestAdministrativelyRevokeCertificate(t *testing.T) {
-	_, _, ra, clk, cleanUp := initAuthorities(t)
+	_, _, ra, _, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.OCSP = &mockOCSPA{}
@@ -4495,7 +4572,7 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 }
 
 func TestNewOrderRateLimitingExempt(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	ra.orderLifetime = 5 * 24 * time.Hour
@@ -4533,7 +4610,7 @@ func TestNewOrderRateLimitingExempt(t *testing.T) {
 }
 
 func TestNewOrderFailedAuthzRateLimitingExempt(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	exampleOrder := &rapb.NewOrderRequest{
@@ -4594,7 +4671,7 @@ func (sa *mockNewOrderMustBeReplacementAuthority) NewOrderAndAuthzs(ctx context.
 }
 
 func TestNewOrderReplacesSerialCarriesThroughToSA(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	exampleOrder := &rapb.NewOrderRequest{
@@ -4630,7 +4707,7 @@ func (sa *mockSAUnpauseAccount) UnpauseAccount(_ context.Context, req *sapb.Regi
 // the requested RegID to the SA, and correctly passes the SA's count back to
 // the caller.
 func TestUnpauseAccount(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	mockSA := mockSAUnpauseAccount{identsToUnpause: 0}
@@ -4652,7 +4729,7 @@ func TestUnpauseAccount(t *testing.T) {
 }
 
 func TestGetAuthorization(t *testing.T) {
-	_, _, ra, _, cleanup := initAuthorities(t)
+	_, _, ra, _, _, cleanup := initAuthorities(t)
 	defer cleanup()
 
 	ra.SA = &mockSAWithAuthzs{

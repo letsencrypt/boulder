@@ -1827,14 +1827,16 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 }
 
 // resetAccountPausingLimit resets bucket to maximum capacity for given account.
-// There is no reason to surface errors from this function to the Subscriber
+// There is no reason to surface errors from this function to the Subscriber.
 func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
 	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident.Value)
 	if err != nil {
-		ra.log.Warningf("Can't get domain bucket key for regID=[%d] authzID=[%s] err=[%s]",
-			regId, ident, err)
+		ra.log.Warningf("Can't get domain bucket key for regID=[%d] authzID=[%s] err=[%s]", regId, ident, err)
 	}
-	ra.limiter.Reset(ctx, bucketKey)
+	err = ra.limiter.Reset(ctx, bucketKey)
+	if err != nil {
+		ra.log.Warningf("Can't reset domain bucket key for regID=[%d] authzID=[%s] err=[%s]", regId, ident, err)
+	}
 }
 
 // PerformValidation initiates validation for a specific challenge associated
