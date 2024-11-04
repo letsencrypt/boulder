@@ -65,7 +65,8 @@ func newDomainBucketKey(name Name, orderName string) (string, error) {
 }
 
 // NewRegIdDomainBucketKey validates and returns a bucketKey for limits that use
-// the 'enum:regId:domain' bucket key format. This function is exported for use in ra.PerformValidation
+// the 'enum:regId:domain' bucket key format. This function is exported for use
+// in ra.resetAccountPausingLimit.
 func NewRegIdDomainBucketKey(name Name, regId int64, orderName string) (string, error) {
 	regIdStr := strconv.FormatInt(regId, 10)
 	err := validateIdForName(name, joinWithColon(regIdStr, orderName))
