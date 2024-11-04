@@ -1809,7 +1809,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 		}
 
 		if decision.Result(ra.clk.Now()) != nil {
-			ra.SA.PauseIdentifiers(ctx, &sapb.PauseRequest{
+			_, err := ra.SA.PauseIdentifiers(ctx, &sapb.PauseRequest{
 				RegistrationID: regId,
 				Identifiers: []*corepb.Identifier{
 					{
@@ -1818,6 +1818,9 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 					},
 				},
 			})
+			if err != nil {
+				ra.log.Warningf("pausing identifier for the %s rate limit: %s", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
+			}
 		}
 	}
 }
