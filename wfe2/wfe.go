@@ -624,6 +624,9 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *we
 			}
 		}
 	}
+	if prob.HTTPStatus == http.StatusInternalServerError {
+		response.Header().Add(headerRetryAfter, "60")
+	}
 	wfe.stats.httpErrorCount.With(prometheus.Labels{"type": string(prob.Type)}).Inc()
 	web.SendError(wfe.log, response, logEvent, prob, ierr)
 }
