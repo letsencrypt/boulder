@@ -251,7 +251,6 @@ func TestTraces(t *testing.T) {
 					redisPipelineSpan("get", ra),
 					rpcSpan("Publisher/SubmitToSingleCTWithResult", ra, "boulder-publisher"),
 					rpcSpan("ca.CertificateAuthority/IssueCertificateForPrecertificate", ra, ca),
-					redisPipelineSpan("set", ra),
 					rpcSpan("sa.StorageAuthority/FinalizeOrder", ra, sa))),
 			httpSpan("/acme/order/",
 				rpcSpan("sa.StorageAuthorityReadOnly/GetOrder", wfe, sa)),
