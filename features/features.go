@@ -109,6 +109,13 @@ type Config struct {
 	// get the AUTO_INCREMENT ID of each new authz without relying on MariaDB's
 	// unique "INSERT ... RETURNING" functionality.
 	InsertAuthzsIndividually bool
+
+	// UseKvLimitsForZombieClientPausing when enabled, causes the key-value rate
+	// limiter to be the authoritative source of rate limiting information for
+	// automatically pausing clients who systemically fail every validation
+	// attempt. When disabled, only manually paused identifier:accountID:domain
+	// pairs will be rejected.
+	UseKvLimitsForZombieClientPausing bool
 }
 
 var fMu = new(sync.RWMutex)

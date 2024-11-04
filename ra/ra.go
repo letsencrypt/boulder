@@ -1769,9 +1769,10 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 }
 
 // countFailedValidation increments the failed authorizations per domain per
-// account rate limit. It also increments the failed authorizations for pausing per
-// domain per account rate limit. There is no reason to surface errors from
-// this function to the Subscriber, spends against this limit are best effort.
+// account rate limit. If the UseKvLimitsForZombieClientPausing feature has been
+// enabled, it also increments the failed authorizations for pausing per domain
+// per account rate limit. There is no reason to surface errors from this
+// function to the Subscriber, spends against this limit are best effort.
 func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
 	var name = ident.Value
 
@@ -1780,7 +1781,6 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 		return
 	}
 
-	fmt.Println("countFailedValidation 1")
 	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, name)
 	if err != nil {
 		ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
@@ -1793,37 +1793,33 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 		}
 		ra.log.Warningf("spending against the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
-	fmt.Println("countFailedValidation 2")
 
-	// Increment ratelimit for IssuancePaused
-	txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, name)
-	if err != nil {
-		ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
-	}
-
-	fmt.Println("countFailedValidation 3")
-	decision, err := ra.limiter.Spend(ctx, txn)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return
+	if features.Get().UseKvLimitsForZombieClientPausing {
+		txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, name)
+		if err != nil {
+			ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
 		}
-		ra.log.Warningf("spending against the %s rate limit: %s", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
-	}
 
-	fmt.Printf("countFailedValidation 4, %v\n", ra.clk.Now())
-	if decision.Result(ra.clk.Now()) != nil {
-		fmt.Println("countFailedValidation 5")
-		ra.SA.PauseIdentifiers(ctx, &sapb.PauseRequest{
-			RegistrationID: regId,
-			Identifiers: []*corepb.Identifier{
-				{
-					Type:  string(ident.Type),
-					Value: ident.Value,
+		decision, err := ra.limiter.Spend(ctx, txn)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return
+			}
+			ra.log.Warningf("spending against the %s rate limit: %s", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
+		}
+
+		if decision.Result(ra.clk.Now()) != nil {
+			ra.SA.PauseIdentifiers(ctx, &sapb.PauseRequest{
+				RegistrationID: regId,
+				Identifiers: []*corepb.Identifier{
+					{
+						Type:  string(ident.Type),
+						Value: ident.Value,
+					},
 				},
-			},
-		})
+			})
+		}
 	}
-
 }
 
 // resetAccountPausingLimit resets bucket to maximum capacity for given account.
@@ -1963,7 +1959,9 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			go ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier)
 		} else {
 			challenge.Status = core.StatusValid
-			ra.resetAccountPausingLimit(vaCtx, authz.RegistrationID, authz.Identifier)
+			if features.Get().UseKvLimitsForZombieClientPausing {
+				ra.resetAccountPausingLimit(vaCtx, authz.RegistrationID, authz.Identifier)
+			}
 		}
 		challenge.Validated = &vStart
 		authz.Challenges[challIndex] = *challenge

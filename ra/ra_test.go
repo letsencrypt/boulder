@@ -372,8 +372,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		}
 		ring, err := bredis.NewRingFromConfig(rc, stats, log)
 		test.AssertNotError(t, err, "making redis ring client")
-		source := ratelimits.NewRedisSource(ring.Ring, fc, stats)
+		source = ratelimits.NewRedisSource(ring.Ring, fc, stats)
 		test.AssertNotNil(t, source, "source should not be nil")
+		err = source.Ping(context.Background())
+		test.AssertNotError(t, err, "Ping should not error")
 		limiter, err = ratelimits.NewLimiter(fc, source, stats)
 		test.AssertNotError(t, err, "making limiter")
 		txnBuilder, err = ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
@@ -862,7 +864,6 @@ func (msa *mockSAPaused) PauseIdentifiers(ctx context.Context, req *sapb.PauseRe
 }
 
 func (msa *mockSAPaused) GetPausedIdentifiers(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
-	fmt.Printf("%s, %s\n", msa.identType, msa.identValue)
 	if msa.identType != "" && msa.identValue != "" {
 		return &sapb.Identifiers{
 			Identifiers: []*corepb.Identifier{{
@@ -879,7 +880,11 @@ func (msa *mockSAPaused) FinalizeAuthorization2(ctx context.Context, req *sapb.F
 }
 
 func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *testing.T) {
-	va, sa, ra, _, fc, cleanUp := initAuthorities(t)
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		t.Skip()
+	}
+
+	va, sa, ra, redisSrc, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	mockSA := &mockSAPaused{}
@@ -891,7 +896,8 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	ra.txnBuilder = txnBuilder
 
 	// We know this is OK because of TestNewAuthorization
-	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
+	domain := "example.net"
+	authzPB := createPendingAuthorization(t, sa, domain, fc.Now().Add(12*time.Hour))
 	mockSA.receivedRegID = authzPB.RegistrationID
 
 	// We induce the bad path by setting a problem. This will consume all
@@ -900,14 +906,14 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed:   []byte("192.168.0.1"),
-				Hostname:      "example.net",
+				Hostname:      domain,
 				Port:          "8080",
-				Url:           "http://example.net/",
+				Url:           fmt.Sprintf("http://%s/", domain),
 				ResolverAddrs: []string{"rebound"},
 			},
 		},
 		Problems: &corepb.ProblemDetails{
-			Detail: "CAA invalid for example.net",
+			Detail: fmt.Sprintf("CAA invalid for %s", domain),
 		},
 	}
 
@@ -932,12 +938,24 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
-	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
-	t.Log("dbAuthz:", dbAuthzPB)
 
 	got, err := ra.SA.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: authzPB.RegistrationID}, nil)
 	test.AssertError(t, err, "Should not have any paused identifiers yet, but found some")
 	test.AssertBoxedNil(t, got, "Should have received nil response, but did not")
+
+	// We need the bucket key to scan for in Redis
+	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
+	test.AssertNotError(t, err, "Should have been able to construct bucket key, but could not")
+
+	// Verify that a redis entry exists for this identifier:accountID:domain
+	tat, err := redisSrc.Get(ctx, bucketKey)
+	test.AssertNotError(t, err, "Should not have errored, but did")
+
+	// There is no more capacity and the next failed validation will effectively
+	// pause issuance attempts. The ratelimit file is written to increment
+	// capacity every 24 hours, so we can check that the TAT states that, not
+	// that it particularly matters in this context.
+	test.AssertEquals(t, tat, fc.Now().Add(24*time.Hour))
 
 	// A second failed validation should result in the identifier being paused
 	// due to the strict ratelimit.
@@ -945,14 +963,14 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed:   []byte("192.168.0.1"),
-				Hostname:      "example.net",
+				Hostname:      domain,
 				Port:          "8080",
-				Url:           "http://example.net/",
+				Url:           fmt.Sprintf("http://%s/", domain),
 				ResolverAddrs: []string{"rebound"},
 			},
 		},
 		Problems: &corepb.ProblemDetails{
-			Detail: "CAA invalid for example.net",
+			Detail: fmt.Sprintf("CAA invalid for %s", domain),
 		},
 	}
 
@@ -975,21 +993,27 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
 
 	// Sleep so the RA has a chance to write to the SA
-	time.Sleep(100 * time.Millisecond)
-	dbAuthzPB = getAuthorization(t, authzPB.Id, sa)
-	t.Log("dbAuthz:", dbAuthzPB)
+	time.Sleep(200 * time.Millisecond)
 
 	// Ensure the identifier:account:domain we expect to be paused actually is.
 	got, err = ra.SA.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: authzPB.RegistrationID}, nil)
 	test.AssertNotError(t, err, "Should not have errored getting paused identifiers")
 	test.AssertEquals(t, len(got.Identifiers), 1)
-	test.AssertEquals(t, got.Identifiers[0].Value, Identifier)
+	test.AssertEquals(t, got.Identifiers[0].Value, domain)
+
+	err = ra.limiter.Reset(ctx, bucketKey)
+	test.AssertNotError(t, err, "Failed cleaning up redis")
 }
 
 func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersRatelimit(t *testing.T) {
-	va, sa, ra, redis, fc, cleanUp := initAuthorities(t)
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		t.Skip()
+	}
+
+	va, sa, ra, redisSrc, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
+	originalSA := sa
 	mockSA := &mockSAPaused{}
 	ra.SA = mockSA
 
@@ -999,7 +1023,8 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	ra.txnBuilder = txnBuilder
 
 	// We know this is OK because of TestNewAuthorization
-	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
+	domain := "example.net"
+	authzPB := createPendingAuthorization(t, sa, "example.net", fc.Now().Add(12*time.Hour))
 	mockSA.receivedRegID = authzPB.RegistrationID
 
 	// We induce the bad path by setting a problem. This will consume all
@@ -1008,14 +1033,14 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed:   []byte("192.168.0.1"),
-				Hostname:      "example.net",
+				Hostname:      domain,
 				Port:          "8080",
-				Url:           "http://example.net/",
+				Url:           fmt.Sprintf("http://%s/", domain),
 				ResolverAddrs: []string{"rebound"},
 			},
 		},
 		Problems: &corepb.ProblemDetails{
-			Detail: "CAA invalid for example.net",
+			Detail: fmt.Sprintf("CAA invalid for %s", domain),
 		},
 	}
 
@@ -1040,26 +1065,41 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
-	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
-	t.Log("dbAuthz:", dbAuthzPB)
 
 	got, err := ra.SA.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: authzPB.RegistrationID}, nil)
 	test.AssertError(t, err, "Should not have any paused identifiers yet, but found some")
 	test.AssertBoxedNil(t, got, "Should have received nil response, but did not")
+	// Avoid a datarace
+	time.Sleep(100 * time.Millisecond)
 
+	// We need the bucket key to scan for in Redis
+	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
+	test.AssertNotError(t, err, "Should have been able to construct bucket key, but could not")
+
+	// Verify that a redis entry exists for this identifier:accountID:domain
+	tat, err := redisSrc.Get(ctx, bucketKey)
+	test.AssertNotError(t, err, "Should not have errored, but did")
+
+	// We should have capacity for 1 more failed validation, the next TAT should
+	// be immediately (despite the fact that this clearly says now + 12 hours).
+	test.AssertEquals(t, tat, fc.Now().Add(12*time.Hour))
+
+	//
 	// Now the goal is to perform a successful validation which should reset the
 	// FailedAuthorizationsForPausingPerDomainPerAccount ratelimit.
+	//
+	ra.SA = originalSA
 
 	// We know this is OK because of TestNewAuthorization
-	authzPB = createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
+	authzPB = createPendingAuthorization(t, originalSA, domain, fc.Now().Add(12*time.Hour))
 
 	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed:   []byte("192.168.0.1"),
-				Hostname:      "example.com",
+				Hostname:      domain,
 				Port:          "8080",
-				Url:           "http://example.com/",
+				Url:           fmt.Sprintf("http://%s/", domain),
 				ResolverAddrs: []string{"rebound"},
 			},
 		},
@@ -1087,9 +1127,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
-
-	dbAuthzPB = getAuthorization(t, authzPB.Id, sa)
-	t.Log("dbAuthz:", dbAuthzPB)
+	dbAuthzPB := getAuthorization(t, authzPB.Id, originalSA)
 
 	// Verify that the responses are reflected
 	challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
@@ -1108,16 +1146,17 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
 
 	// We need the bucket key to scan for in Redis
-	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsPerDomainPerAccount, authzPB.RegistrationID, Identifier)
+	bucketKey, err = ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
 	test.AssertNotError(t, err, "Should have been able to construct bucket key, but could not")
 
-	// Verify that we receive a TAT for the current time. This indicates the
-	// identifier:accountID:domain bucket has regained capacity avoiding being
-	// inadvertently paused.
-	tat, err := redis.Get(ctx, bucketKey)
-	test.AssertNotError(t, err, "Could not retrieve TAT from source")
-	test.AssertEquals(t, tat, fc.Now())
+	// Verify that the bucket no longer exists (because the limiter reset has
+	// deleted it). This indicates the identifier:accountID:domain bucket has
+	// regained capacity avoiding being inadvertently paused.
+	_, err = redisSrc.Get(ctx, bucketKey)
+	test.AssertErrorIs(t, err, ratelimits.ErrBucketNotFound)
 
+	err = ra.limiter.Reset(ctx, bucketKey)
+	test.AssertNotError(t, err, "Failed cleaning up redis")
 }
 
 func TestPerformValidationVAError(t *testing.T) {
