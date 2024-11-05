@@ -404,7 +404,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 
 	threshold, overrideKey := limit.GetThreshold(ip.String(), noRegistrationID)
 	if count.Count >= threshold {
-		return berrors.RegistrationsPerIPError(0, "too many registrations for this IP")
+		return berrors.RegistrationsPerIPAddressError(0, "too many registrations for this IP")
 	}
 	if overrideKey != "" {
 		// We do not support overrides for the NewRegistrationsPerIPRange limit.
@@ -598,7 +598,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	threshold, overrideKey := limit.GetThreshold(noKey, regID)
 	if count.Count >= threshold {
 		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
-		return berrors.FailedValidationError(0, "too many failed authorizations recently")
+		return berrors.FailedAuthorizationsPerDomainPerAccountError(0, "too many failed authorizations recently")
 	}
 	if overrideKey != "" {
 		utilization := float64(count.Count) / float64(threshold)
@@ -626,7 +626,7 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	noKey := ""
 	threshold, overrideKey := limit.GetThreshold(noKey, acctID)
 	if count.Count >= threshold {
-		return berrors.RateLimitError(0, "too many new orders recently")
+		return berrors.NewOrdersPerAccountError(0, "too many new orders recently")
 	}
 	if overrideKey != "" {
 		utilization := float64(count.Count+1) / float64(threshold)
@@ -1473,12 +1473,12 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 			for _, name := range namesOutOfLimit {
 				subErrors = append(subErrors, berrors.SubBoulderError{
 					Identifier:   identifier.NewDNS(name),
-					BoulderError: berrors.RateLimitError(retryAfter, "too many certificates already issued. Retry after %s", retryString).(*berrors.BoulderError),
+					BoulderError: berrors.NewOrdersPerAccountError(retryAfter, "too many certificates already issued. Retry after %s", retryString).(*berrors.BoulderError),
 				})
 			}
-			return berrors.RateLimitError(retryAfter, "too many certificates already issued for multiple names (%q and %d others). Retry after %s", namesOutOfLimit[0], len(namesOutOfLimit), retryString).(*berrors.BoulderError).WithSubErrors(subErrors)
+			return berrors.NewOrdersPerAccountError(retryAfter, "too many certificates already issued for multiple names (%q and %d others). Retry after %s", namesOutOfLimit[0], len(namesOutOfLimit), retryString).(*berrors.BoulderError).WithSubErrors(subErrors)
 		}
-		return berrors.RateLimitError(retryAfter, "too many certificates already issued for %q. Retry after %s", namesOutOfLimit[0], retryString)
+		return berrors.NewOrdersPerAccountError(retryAfter, "too many certificates already issued for %q. Retry after %s", namesOutOfLimit[0], retryString)
 	}
 
 	return nil
@@ -1535,7 +1535,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		}
 		retryTime := prevIssuances.Timestamps[0].AsTime().Add(time.Duration(nsPerToken))
 		retryAfter := retryTime.Sub(now)
-		return berrors.DuplicateCertificateError(
+		return berrors.CertificatesPerFQDNSetError(
 			retryAfter,
 			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s, retry after %s",
 			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","), retryTime.Format(time.RFC3339),

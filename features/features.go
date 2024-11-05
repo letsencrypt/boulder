@@ -103,12 +103,26 @@ type Config struct {
 	// This flag should only be used in conjunction with UseKvLimitsForNewOrder.
 	DisableLegacyLimitWrites bool
 
+	// PropagateCancels controls whether the WFE and ocsp-responder allows
+	// cancellation of an inbound request to cancel downstream gRPC and other
+	// queries. In practice, cancellation of an inbound request is achieved by
+	// Nginx closing the connection on which the request was happening. This may
+	// help shed load in overcapacity situations. However, note that in-progress
+	// database queries (for instance, in the SA) are not cancelled. Database
+	// queries waiting for an available connection may be cancelled.
+	PropagateCancels bool
+
 	// InsertAuthzsIndividually causes the SA's NewOrderAndAuthzs method to
 	// create each new authz one at a time, rather than using MultiInserter.
 	// Although this is expected to be a performance penalty, it is necessary to
 	// get the AUTO_INCREMENT ID of each new authz without relying on MariaDB's
 	// unique "INSERT ... RETURNING" functionality.
 	InsertAuthzsIndividually bool
+
+	// IncrementRateLimits uses Redis' IncrBy, instead of Set, for rate limit
+	// accounting. This catches and denies spikes of requests much more
+	// reliably.
+	IncrementRateLimits bool
 }
 
 var fMu = new(sync.RWMutex)

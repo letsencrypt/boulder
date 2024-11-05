@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -127,11 +128,13 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Origin:    r.Header.Get("Origin"),
 		Extra:     make(map[string]interface{}),
 	}
-	// We specifically override the default r.Context() because we would prefer
-	// for clients to not be able to cancel our operations in arbitrary places.
-	// Instead we start a new context, and apply timeouts in our various RPCs.
-	ctx := context.WithoutCancel(r.Context())
-	r = r.WithContext(ctx)
+	if !features.Get().PropagateCancels {
+		// We specifically override the default r.Context() because we would prefer
+		// for clients to not be able to cancel our operations in arbitrary places.
+		// Instead we start a new context, and apply timeouts in our various RPCs.
+		ctx := context.WithoutCancel(r.Context())
+		r = r.WithContext(ctx)
+	}
 
 	// Some clients will send a HTTP Host header that includes the default port
 	// for the scheme that they are using. Previously when we were fronted by

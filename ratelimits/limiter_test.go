@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/rand/v2"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/letsencrypt/boulder/config"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -38,6 +40,19 @@ func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
 }
 
 func setup(t *testing.T) (context.Context, map[string]*Limiter, *TransactionBuilder, clock.FakeClock, string) {
+	// Because all test cases in this file are affected by this feature flag, we
+	// want to run them all both with and without the feature flag. This way, we
+	// get one set of runs with and one set without. It's difficult to defer
+	// features.Reset() from the setup func (these tests are parallel); as long
+	// as this code doesn't test any other features, we don't need to.
+	//
+	// N.b. This is fragile. If a test case does call features.Reset(), it will
+	// not be testing the intended code path. But we expect to clean this up
+	// quickly.
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		features.Set(features.Config{IncrementRateLimits: true})
+	}
+
 	testCtx := context.Background()
 	clk := clock.NewFake()
 
@@ -304,8 +319,8 @@ func TestLimiter_InitializationViaCheckAndSpend(t *testing.T) {
 			test.AssertEquals(t, d.resetIn, time.Millisecond*50)
 			test.AssertEquals(t, d.retryIn, time.Duration(0))
 
-			// However, that cost should not be spent yet, a 0 cost check should
-			// tell us that we actually have 19 remaining.
+			// And that cost should have been spent; a 0 cost check should still
+			// tell us that we have 19 remaining.
 			d, err = l.Check(testCtx, txn0)
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.allowed, "should be allowed")
@@ -489,7 +504,7 @@ func TestRateLimitError(t *testing.T) {
 					},
 				},
 			},
-			expectedErr:     "too many new registrations (10) from this IP address in the last 1h0m0s, retry after 1970-01-01 00:00:05 UTC",
+			expectedErr:     "too many new registrations (10) from this IP address in the last 1h0m0s, retry after 1970-01-01 00:00:05 UTC: see https://letsencrypt.org/docs/rate-limits/#new-registrations-per-ip-address",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -505,7 +520,23 @@ func TestRateLimitError(t *testing.T) {
 					},
 				},
 			},
-			expectedErr:     "too many new registrations (5) from this /48 block of IPv6 addresses in the last 1h0m0s, retry after 1970-01-01 00:00:10 UTC",
+			expectedErr:     "too many new registrations (5) from this /48 subnet of IPv6 addresses in the last 1h0m0s, retry after 1970-01-01 00:00:10 UTC: see https://letsencrypt.org/docs/rate-limits/#new-registrations-per-ipv6-range",
+			expectedErrType: berrors.RateLimit,
+		},
+		{
+			name: "NewOrdersPerAccount limit reached",
+			decision: &Decision{
+				allowed: false,
+				retryIn: 10 * time.Second,
+				transaction: Transaction{
+					limit: limit{
+						name:   NewOrdersPerAccount,
+						Burst:  2,
+						Period: config.Duration{Duration: time.Hour},
+					},
+				},
+			},
+			expectedErr:     "too many new orders (2) from this account in the last 1h0m0s, retry after 1970-01-01 00:00:10 UTC: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -522,7 +553,7 @@ func TestRateLimitError(t *testing.T) {
 					bucketKey: "4:12345:example.com",
 				},
 			},
-			expectedErr:     "too many failed authorizations (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01 00:00:15 UTC",
+			expectedErr:     "too many failed authorizations (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01 00:00:15 UTC: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -539,7 +570,7 @@ func TestRateLimitError(t *testing.T) {
 					bucketKey: "5:example.org",
 				},
 			},
-			expectedErr:     "too many certificates (3) already issued for \"example.org\" in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC",
+			expectedErr:     "too many certificates (3) already issued for \"example.org\" in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC: see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-registered-domain",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -556,7 +587,7 @@ func TestRateLimitError(t *testing.T) {
 					bucketKey: "6:12345678:example.net",
 				},
 			},
-			expectedErr:     "too many certificates (3) already issued for \"example.net\" in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC",
+			expectedErr:     "too many certificates (3) already issued for \"example.net\" in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC: see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-registered-domain",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -583,7 +614,7 @@ func TestRateLimitError(t *testing.T) {
 				test.AssertNotError(t, err, "expected no error")
 			} else {
 				test.AssertError(t, err, "expected an error")
-				test.AssertContains(t, err.Error(), tc.expectedErr)
+				test.AssertEquals(t, err.Error(), tc.expectedErr)
 				test.AssertErrorIs(t, err, tc.expectedErrType)
 			}
 		})
