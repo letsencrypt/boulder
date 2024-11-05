@@ -7,6 +7,7 @@ import "core/proto/core.proto";
 
 service VA {
   rpc PerformValidation(PerformValidationRequest) returns (ValidationResult) {}
+  rpc ValidateChallenge(ValidationRequest) returns (ValidationResult) {}
 }
 
 service CAA {
@@ -42,4 +43,12 @@ message ValidationResult {
   core.ProblemDetails problems = 2;
   string perspective = 3;
   string rir = 4;
+}
+
+message ValidationRequest {
+  core.Identifier identifier = 1;
+  core.Challenge challenge = 2;
+  int64 regID = 3;
+  string authzID = 4;
+  string keyAuthorization = 5;
 }

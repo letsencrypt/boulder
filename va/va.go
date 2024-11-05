@@ -31,8 +31,6 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
-const PrimaryPerspective = "Primary"
-
 var (
 	// badTLSHeader contains the string 'HTTP /' which is returned when
 	// we try to talk TLS to a server that only talks HTTP
@@ -79,6 +77,8 @@ type RemoteClients struct {
 // extract this metadata which is useful for debugging gRPC connection issues.
 type RemoteVA struct {
 	RemoteClients
+	// Address is the [hostname|IP]:port of the remote VA gRPC server. It is
+	// only used for logging and testing purposes.
 	Address string
 }
 
@@ -97,6 +97,15 @@ type vaMetrics struct {
 	http01Redirects                   prometheus.Counter
 	caaCounter                        *prometheus.CounterVec
 	ipv4FallbackCounter               prometheus.Counter
+
+	// validationLatency is a histogram of the latency to perform validations
+	// from the primary and remote VA perspectives. It's labelled by:
+	//   - operation: VA.ValidateChallenge or VA.CheckCAA as [challenge|caa]
+	//   - perspective: ValidationAuthorityImpl.perspective
+	//   - challenge_type: core.Challenge.Type
+	//   - problem_type: probs.ProblemType
+	//   - result: the result of the validation as [pass|fail]
+	validationLatency *prometheus.HistogramVec
 }
 
 func initMetrics(stats prometheus.Registerer) *vaMetrics {
@@ -196,6 +205,15 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		Help: "A counter of IPv4 fallbacks during TLS ALPN validation",
 	})
 	stats.MustRegister(ipv4FallbackCounter)
+	validationLatency := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "validation_latency",
+			Help:    "Histogram of the latency to perform validations from the primary and remote VA perspectives",
+			Buckets: metrics.InternetFacingBuckets,
+		},
+		[]string{"operation", "perspective", "challenge_type", "problem_type", "result"},
+	)
+	stats.MustRegister(validationLatency)
 
 	return &vaMetrics{
 		validationTime:                    validationTime,
@@ -212,6 +230,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		http01Redirects:                   http01Redirects,
 		caaCounter:                        caaCounter,
 		ipv4FallbackCounter:               ipv4FallbackCounter,
+		validationLatency:                 validationLatency,
 	}
 }
 
@@ -322,8 +341,6 @@ type verificationRequestEvent struct {
 	ValidationLatency float64
 	Error             string `json:",omitempty"`
 	InternalError     string `json:",omitempty"`
-	Perspective       string `json:",omitempty"`
-	RIR               string `json:",omitempty"`
 }
 
 // ipError is an error type used to pass though the IP address of the remote
@@ -678,18 +695,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 			logEvent.Challenge.Status = core.StatusValid
 		}
 
-		if va.perspective != "" && va.perspective != PrimaryPerspective {
-			// This validation was performed by a remote VA. According to the
-			// requirements in section 5.4.1 (2) vii of the BRs we need to log
-			// the perspective used. Additionally, we'll log the RIR where this
-			// RVA is located.
-			//
-			// TODO(#7615): Make these fields mandatory for non-Primary
-			// perspectives and remove the (va.perspective != "") check.
-			logEvent.Perspective = va.perspective
-			logEvent.RIR = va.rir
-		}
-
 		va.metrics.localValidationTime.With(prometheus.Labels{
 			"type":   string(logEvent.Challenge.Type),
 			"result": string(logEvent.Challenge.Status),
@@ -727,7 +732,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	if err != nil {
 		logEvent.InternalError = err.Error()
 		prob = detailedError(err)
-		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
+		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), "", "")
 	}
 
 	// Do remote validation. We do this after local validation is complete to
@@ -736,5 +741,5 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// own validation records, and it's not helpful to present multiple large
 	// errors to the end user.
 	prob = va.performRemoteValidation(ctx, req)
-	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
+	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), "", "")
 }

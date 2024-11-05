@@ -589,7 +589,7 @@ func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, s
 }
 
 func TestDisabledMultiCAARechecking(t *testing.T) {
-	brokenRVA, _ := setupRemote(nil, "broken", caaBrokenDNS{}, "", "")
+	brokenRVA, _ := setupRemote(nil, "broken", caaBrokenDNS{})
 	remoteVAs := []RemoteVA{{brokenRVA, "broken"}}
 	va, _ := setup(nil, 0, "local", remoteVAs, nil)
 
@@ -663,10 +663,10 @@ func TestMultiCAARechecking(t *testing.T) {
 		brokenUA   = "broken"
 		hijackedUA = "hijacked"
 	)
-	remoteVA, _ := setupRemote(nil, remoteUA, nil, "", "")
-	brokenVA, _ := setupRemote(nil, brokenUA, caaBrokenDNS{}, "", "")
+	remoteVA, _ := setupRemote(nil, remoteUA, nil)
+	brokenVA, _ := setupRemote(nil, brokenUA, caaBrokenDNS{})
 	// Returns incorrect results
-	hijackedVA, _ := setupRemote(nil, hijackedUA, caaHijackedDNS{}, "", "")
+	hijackedVA, _ := setupRemote(nil, hijackedUA, caaHijackedDNS{})
 
 	testCases := []struct {
 		name                     string

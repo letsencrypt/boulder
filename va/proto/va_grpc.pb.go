@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	VA_PerformValidation_FullMethodName = "/va.VA/PerformValidation"
+	VA_ValidateChallenge_FullMethodName = "/va.VA/ValidateChallenge"
 )
 
 // VAClient is the client API for VA service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type VAClient interface {
 	PerformValidation(ctx context.Context, in *PerformValidationRequest, opts ...grpc.CallOption) (*ValidationResult, error)
+	ValidateChallenge(ctx context.Context, in *ValidationRequest, opts ...grpc.CallOption) (*ValidationResult, error)
 }
 
 type vAClient struct {
@@ -47,11 +49,22 @@ func (c *vAClient) PerformValidation(ctx context.Context, in *PerformValidationR
 	return out, nil
 }
 
+func (c *vAClient) ValidateChallenge(ctx context.Context, in *ValidationRequest, opts ...grpc.CallOption) (*ValidationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ValidationResult)
+	err := c.cc.Invoke(ctx, VA_ValidateChallenge_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // VAServer is the server API for VA service.
 // All implementations must embed UnimplementedVAServer
 // for forward compatibility
 type VAServer interface {
 	PerformValidation(context.Context, *PerformValidationRequest) (*ValidationResult, error)
+	ValidateChallenge(context.Context, *ValidationRequest) (*ValidationResult, error)
 	mustEmbedUnimplementedVAServer()
 }
 
@@ -61,6 +74,9 @@ type UnimplementedVAServer struct {
 
 func (UnimplementedVAServer) PerformValidation(context.Context, *PerformValidationRequest) (*ValidationResult, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PerformValidation not implemented")
+}
+func (UnimplementedVAServer) ValidateChallenge(context.Context, *ValidationRequest) (*ValidationResult, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ValidateChallenge not implemented")
 }
 func (UnimplementedVAServer) mustEmbedUnimplementedVAServer() {}
 
@@ -93,6 +109,24 @@ func _VA_PerformValidation_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _VA_ValidateChallenge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ValidationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VAServer).ValidateChallenge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VA_ValidateChallenge_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VAServer).ValidateChallenge(ctx, req.(*ValidationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // VA_ServiceDesc is the grpc.ServiceDesc for VA service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -103,6 +137,10 @@ var VA_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PerformValidation",
 			Handler:    _VA_PerformValidation_Handler,
+		},
+		{
+			MethodName: "ValidateChallenge",
+			Handler:    _VA_ValidateChallenge_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
