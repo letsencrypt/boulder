@@ -110,7 +110,7 @@ type KeyPolicy struct {
 
 // NewPolicy returns a key policy based on the given configuration, with sane
 // defaults. If the config's AllowedKeys is nil, the LetsEncryptCPS AllowedKeys
-// is used. If the config's FermatRounds is 0, Fermat Factorization defaults to
+// is used. If the configured FermatRounds is 0, Fermat Factorization defaults to
 // attempting 110 rounds.
 func NewPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 	if config == nil {
