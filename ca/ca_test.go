@@ -332,7 +332,6 @@ func TestIssuePrecertificate(t *testing.T) {
 
 				var certDER []byte
 				response, err := ca.IssuePrecertificate(ctx, issueReq)
-
 				test.AssertNotError(t, err, "Failed to issue precertificate")
 				certDER = response.DER
 
