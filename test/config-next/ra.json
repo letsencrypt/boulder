@@ -130,7 +130,8 @@
 		},
 		"features": {
 			"AsyncFinalize": true,
-			"UseKvLimitsForNewOrder": true
+			"UseKvLimitsForNewOrder": true,
+			"IncrementRateLimits": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

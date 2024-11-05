@@ -83,7 +83,6 @@ func (r *RedisSource) observeLatency(call string, latency time.Duration, err err
 
 // BatchSet stores TATs at the specified bucketKeys using a pipelined Redis
 // Transaction in order to reduce the number of round-trips to each Redis shard.
-// An error is returned if the operation failed and nil otherwise.
 func (r *RedisSource) BatchSet(ctx context.Context, buckets map[string]time.Time) error {
 	start := r.clk.Now()
 
@@ -109,9 +108,35 @@ func (r *RedisSource) BatchSet(ctx context.Context, buckets map[string]time.Time
 	return nil
 }
 
-// Get retrieves the TAT at the specified bucketKey. An error is returned if the
-// operation failed and nil otherwise. If the bucketKey does not exist,
-// ErrBucketNotFound is returned.
+// BatchIncrement updates TATs for the specified bucketKeys using a pipelined
+// Redis Transaction in order to reduce the number of round-trips to each Redis
+// shard.
+func (r *RedisSource) BatchIncrement(ctx context.Context, buckets map[string]increment) error {
+	start := r.clk.Now()
+
+	pipeline := r.client.Pipeline()
+	for bucketKey, incr := range buckets {
+		pipeline.IncrBy(ctx, bucketKey, incr.cost.Nanoseconds())
+		pipeline.Expire(ctx, bucketKey, incr.ttl)
+	}
+	_, err := pipeline.Exec(ctx)
+	if err != nil {
+		r.observeLatency("batchincrby", r.clk.Since(start), err)
+		return err
+	}
+
+	totalLatency := r.clk.Since(start)
+	perSetLatency := totalLatency / time.Duration(len(buckets))
+	for range buckets {
+		r.observeLatency("batchincrby_entry", perSetLatency, nil)
+	}
+
+	r.observeLatency("batchincrby", totalLatency, nil)
+	return nil
+}
+
+// Get retrieves the TAT at the specified bucketKey. If the bucketKey does not
+// exist, ErrBucketNotFound is returned.
 func (r *RedisSource) Get(ctx context.Context, bucketKey string) (time.Time, error) {
 	start := r.clk.Now()
 
@@ -133,8 +158,8 @@ func (r *RedisSource) Get(ctx context.Context, bucketKey string) (time.Time, err
 
 // BatchGet retrieves the TATs at the specified bucketKeys using a pipelined
 // Redis Transaction in order to reduce the number of round-trips to each Redis
-// shard. An error is returned if the operation failed and nil otherwise. If a
-// bucketKey does not exist, it WILL NOT be included in the returned map.
+// shard. If a bucketKey does not exist, it WILL NOT be included in the returned
+// map.
 func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[string]time.Time, error) {
 	start := r.clk.Now()
 
@@ -184,9 +209,8 @@ func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[st
 	return tats, nil
 }
 
-// Delete deletes the TAT at the specified bucketKey ('name:id'). It returns an
-// error if the operation failed and nil otherwise. A nil return value does not
-// indicate that the bucketKey existed.
+// Delete deletes the TAT at the specified bucketKey ('name:id'). A nil return
+// value does not indicate that the bucketKey existed.
 func (r *RedisSource) Delete(ctx context.Context, bucketKey string) error {
 	start := r.clk.Now()
 
@@ -201,7 +225,7 @@ func (r *RedisSource) Delete(ctx context.Context, bucketKey string) error {
 }
 
 // Ping checks that each shard of the *redis.Ring is reachable using the PING
-// command. It returns an error if any shard is unreachable and nil otherwise.
+// command.
 func (r *RedisSource) Ping(ctx context.Context) error {
 	start := r.clk.Now()
 
