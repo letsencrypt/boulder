@@ -1109,8 +1109,6 @@ func (wfe *WebFrontEndImpl) ChallengeHandler(
 }
 
 // ChallengeHandlerWithAccount handles POST requests to challenge URLs of the form /acme/chall/{regID}/{authzID}/{challID}.
-//
-// [pattern]: https://pkg.go.dev/net/http#hdr-Patterns
 func (wfe *WebFrontEndImpl) ChallengeHandlerWithAccount(
 	ctx context.Context,
 	logEvent *web.RequestEvent,
@@ -1121,7 +1119,7 @@ func (wfe *WebFrontEndImpl) ChallengeHandlerWithAccount(
 		wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
 		return
 	}
-	// Note: the regID is currently ignored.
+	// TODO(#7683): the regID is currently ignored.
 	wfe.Challenge(ctx, logEvent, challengePathWithAcct, response, request, slug[1], slug[2])
 }
 
@@ -1563,6 +1561,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	return true
 }
 
+// AuthorizationHandler handles requests to authorization URLs of the form /acme/authz/{authzID}.
 func (wfe *WebFrontEndImpl) AuthorizationHandler(
 	ctx context.Context,
 	logEvent *web.RequestEvent,
@@ -1582,9 +1581,12 @@ func (wfe *WebFrontEndImpl) AuthorizationHandlerWithAccount(
 		wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 		return
 	}
+	// TODO(#7683): The regID is currently ignored.
 	wfe.Authorization(ctx, authzPathWithAcct, logEvent, response, request, slug[1])
 }
 
+// Authorization handles both `/acme/authz/{authzID}` and `/acme/authz/{regID}/{authzID}` requests,
+// after the calling function has parsed out the authzID.
 func (wfe *WebFrontEndImpl) Authorization(
 	ctx context.Context,
 	handlerPath string,
