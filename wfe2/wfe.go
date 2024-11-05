@@ -624,6 +624,9 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *we
 			}
 		}
 	}
+	if prob.HTTPStatus == http.StatusInternalServerError {
+		response.Header().Add(headerRetryAfter, "60")
+	}
 	wfe.stats.httpErrorCount.With(prometheus.Labels{"type": string(prob.Type)}).Inc()
 	web.SendError(wfe.log, response, logEvent, prob, ierr)
 }
@@ -1207,8 +1210,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 }
 
 // prepAuthorizationForDisplay takes a core.Authorization and prepares it for
-// display to the client by clearing its ID and RegistrationID fields, and
-// preparing all its challenges.
+// display to the client by preparing all its challenges.
 func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, authz *core.Authorization) {
 	for i := range authz.Challenges {
 		wfe.prepChallengeForDisplay(request, *authz, &authz.Challenges[i])
@@ -1218,9 +1220,6 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 	rand.Shuffle(len(authz.Challenges), func(i, j int) {
 		authz.Challenges[i], authz.Challenges[j] = authz.Challenges[j], authz.Challenges[i]
 	})
-
-	authz.ID = ""
-	authz.RegistrationID = 0
 
 	// The ACME spec forbids allowing "*" in authorization identifiers. Boulder
 	// allows this internally as a means of tracking when an authorization
