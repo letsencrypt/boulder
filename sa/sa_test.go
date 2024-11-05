@@ -4936,41 +4936,39 @@ func TestUpdateRegistrationContact(t *testing.T) {
 	exampleContact, _ := json.Marshal("test@example.com")
 	twoExampleContacts, _ := json.Marshal([]string{"test1@example.com", "test2@example.com"})
 
+	_, err := sa.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{})
+	test.AssertError(t, err, "should not have been able to update registration contact without a registration ID")
+	test.AssertContains(t, err.Error(), "incomplete gRPC request message")
+
 	tests := []struct {
 		name            string
 		oldContactsJSON []string
 		newContacts     []string
-		expectedError   error
 	}{
 		{
 			name:            "update a valid registration from no contacts to one email address",
 			oldContactsJSON: []string{string(noContact)},
 			newContacts:     []string{"mailto:test@example.com"},
-			expectedError:   nil,
 		},
 		{
 			name:            "update a valid registration from no contacts to two email addresses",
 			oldContactsJSON: []string{string(noContact)},
 			newContacts:     []string{"mailto:test1@example.com", "mailto:test2@example.com"},
-			expectedError:   nil,
 		},
 		{
 			name:            "update a valid registration from one email address to no contacts",
 			oldContactsJSON: []string{string(exampleContact)},
 			newContacts:     []string{},
-			expectedError:   nil,
 		},
 		{
 			name:            "update a valid registration from one email address to two email addresses",
 			oldContactsJSON: []string{string(exampleContact)},
 			newContacts:     []string{"mailto:test1@example.com", "mailto:test2@example.com"},
-			expectedError:   nil,
 		},
 		{
 			name:            "update a valid registration from two email addresses to no contacts",
 			oldContactsJSON: []string{string(twoExampleContacts)},
 			newContacts:     []string{},
-			expectedError:   nil,
 		},
 	}
 	for _, tt := range tests {
@@ -4984,13 +4982,19 @@ func TestUpdateRegistrationContact(t *testing.T) {
 			})
 			test.AssertNotError(t, err, "creating new registration")
 
-			reg, err = sa.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{
+			updatedReg, err := sa.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{
 				RegistrationID: reg.Id,
 				Contacts:       tt.newContacts,
 			})
-			test.AssertNotError(t, err, "Unexpected error for UpdateRegistrationContact()")
+			test.AssertNotError(t, err, "unexpected error for UpdateRegistrationContact()")
+			test.AssertEquals(t, updatedReg.Id, reg.Id)
+			test.AssertDeepEquals(t, updatedReg.Contact, tt.newContacts)
 
-			test.AssertDeepEquals(t, reg.Contact, tt.newContacts)
+			refetchedReg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{
+				Id: reg.Id,
+			})
+			test.AssertNotError(t, err, "retrieving registration")
+			test.AssertDeepEquals(t, refetchedReg.Contact, tt.newContacts)
 		})
 	}
 }
@@ -4999,19 +5003,65 @@ func TestUpdateRegistrationKey(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
+	_, err := sa.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{})
+	test.AssertError(t, err, "should not have been able to update registration key without a registration ID")
+	test.AssertContains(t, err.Error(), "incomplete gRPC request message")
+
 	initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
-	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+
+	existingReg, err := sa.NewRegistration(ctx, &corepb.Registration{
 		Key:       newAcctKey(t),
 		InitialIP: initialIP,
 	})
 	test.AssertNotError(t, err, "creating new registration")
 
-	newJwk := newAcctKey(t)
-	reg, err = sa.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{
-		RegistrationID: reg.Id,
-		Jwk:            newJwk,
-	})
-	test.AssertNotError(t, err, "Unexpected error for UpdateRegistrationKey()")
+	tests := []struct {
+		name          string
+		newJwk        []byte
+		expectedError string
+	}{
+		{
+			name:   "update a valid registration with a new account key",
+			newJwk: newAcctKey(t),
+		},
+		{
+			name:          "update a valid registration with a duplicate account key",
+			newJwk:        existingReg.Key,
+			expectedError: "key is already in use for a different account",
+		},
+		{
+			name:          "update a valid registration with a malformed account key",
+			newJwk:        []byte("Eat at Joe's"),
+			expectedError: "parsing JWK",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
+			reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+				Key:       newAcctKey(t),
+				InitialIP: initialIP,
+			})
+			test.AssertNotError(t, err, "creating new registration")
 
-	test.AssertDeepEquals(t, reg.Key, newJwk)
+			updatedReg, err := sa.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{
+				RegistrationID: reg.Id,
+				Jwk:            tt.newJwk,
+			})
+			if tt.expectedError != "" {
+				test.AssertError(t, err, "should have errored")
+				test.AssertContains(t, err.Error(), tt.expectedError)
+			} else {
+				test.AssertNotError(t, err, "unexpected error for UpdateRegistrationKey()")
+				test.AssertEquals(t, updatedReg.Id, reg.Id)
+				test.AssertDeepEquals(t, updatedReg.Key, tt.newJwk)
+
+				refetchedReg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{
+					Id: reg.Id,
+				})
+				test.AssertNotError(t, err, "retrieving registration")
+				test.AssertDeepEquals(t, refetchedReg.Key, tt.newJwk)
+			}
+		})
+	}
 }

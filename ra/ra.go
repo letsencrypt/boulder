@@ -1669,7 +1669,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Conte
 
 	err := ra.validateContacts(req.Contacts)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid contact: %w", err)
 	}
 
 	update, err := ra.SA.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{
@@ -1677,8 +1677,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Conte
 		Contacts:       req.Contacts,
 	})
 	if err != nil {
-		err = fmt.Errorf("failed to update registration contact: %w", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to update registration contact: %w", err)
 	}
 
 	return update, nil
@@ -1695,8 +1694,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationKey(ctx context.Context, 
 		Jwk:            req.Jwk,
 	})
 	if err != nil {
-		err = fmt.Errorf("failed to update registration key: %w", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to update registration key: %w", err)
 	}
 
 	return update, nil

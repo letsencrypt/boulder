@@ -674,15 +674,15 @@ type NoUpdateSA struct {
 // Deprecated: When this function is removed, the NoUpdateSA should be moved
 // down to join the other mocks and tests for UpdateRegistrationContact & Key,
 // where it's also used.
-func (sa NoUpdateSA) UpdateRegistration(_ context.Context, _ *corepb.Registration, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+func (sa *NoUpdateSA) UpdateRegistration(_ context.Context, _ *corepb.Registration, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, fmt.Errorf("UpdateRegistration() is mocked to always error")
 }
 
-func (sa NoUpdateSA) UpdateRegistrationContact(_ context.Context, _ *sapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+func (sa *NoUpdateSA) UpdateRegistrationContact(_ context.Context, _ *sapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return nil, fmt.Errorf("UpdateRegistrationContact() is mocked to always error")
 }
 
-func (sa NoUpdateSA) UpdateRegistrationKey(_ context.Context, _ *sapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+func (sa *NoUpdateSA) UpdateRegistrationKey(_ context.Context, _ *sapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return nil, fmt.Errorf("UpdateRegistrationKey() is mocked to always error")
 }
 
@@ -4495,25 +4495,31 @@ func TestGetAuthorization(t *testing.T) {
 	test.AssertEquals(t, len(authz.Challenges), 0)
 }
 
-// An authority for testing UpdateRegistrationContact and UpdateRegistrationKey.
-type mockSAWithRegistration struct {
+// mockSARecordingRegistration tests UpdateRegistrationContact and UpdateRegistrationKey.
+type mockSARecordingRegistration struct {
 	sapb.StorageAuthorityClient
-	expectRegistrationID int64
-	expectContacts       []string
-	expectJwk            []byte
+	providedRegistrationID int64
+	providedContacts       []string
+	providedJwk            []byte
 }
 
-// Mocked UpdateRegistrationContact returns the registration ID and updated
-// contacts (optional) provided.
-func (sa *mockSAWithRegistration) UpdateRegistrationContact(ctx context.Context, req *sapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+// UpdateRegistrationContact records the registration ID and updated contacts
+// (optional) provided.
+func (sa *mockSARecordingRegistration) UpdateRegistrationContact(ctx context.Context, req *sapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	sa.providedRegistrationID = req.RegistrationID
+	sa.providedContacts = req.Contacts
+
 	return &corepb.Registration{
 		Id:      req.RegistrationID,
 		Contact: req.Contacts,
 	}, nil
 }
 
-// Mocked UpdateRegistrationKey returns the updated key provided.
-func (sa *mockSAWithRegistration) UpdateRegistrationKey(ctx context.Context, req *sapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+// UpdateRegistrationKey records the registration ID and updated key provided.
+func (sa *mockSARecordingRegistration) UpdateRegistrationKey(ctx context.Context, req *sapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	sa.providedRegistrationID = req.RegistrationID
+	sa.providedJwk = req.Jwk
+
 	return &corepb.Registration{
 		Id:  req.RegistrationID,
 		Key: req.Jwk,
@@ -4531,34 +4537,38 @@ func TestUpdateRegistrationContact(t *testing.T) {
 
 	expectRegID := int64(1)
 	expectContacts := []string{"mailto:test@contoso.com"}
-	mockSA := mockSAWithRegistration{
-		expectRegistrationID: expectRegID,
-		expectContacts:       expectContacts,
-	}
+	mockSA := mockSARecordingRegistration{}
 	ra.SA = &mockSA
 
 	_, err := ra.UpdateRegistrationContact(context.Background(), &rapb.UpdateRegistrationContactRequest{})
-	test.AssertError(t, err, "Should not have been able to update registration contact without a registration ID")
+	test.AssertError(t, err, "should not have been able to update registration contact without a registration ID")
+	test.AssertContains(t, err.Error(), "incomplete gRPC request message")
 
 	_, err = ra.UpdateRegistrationContact(context.Background(), &rapb.UpdateRegistrationContactRequest{
 		RegistrationID: expectRegID,
 		Contacts:       []string{"tel:+44123"},
 	})
-	test.AssertError(t, err, "Should not have been able to update registration contact to an invalid contact")
+	test.AssertError(t, err, "should not have been able to update registration contact to an invalid contact")
+	test.AssertContains(t, err.Error(), "invalid contact")
 
 	res, err := ra.UpdateRegistrationContact(context.Background(), &rapb.UpdateRegistrationContactRequest{
 		RegistrationID: expectRegID,
 	})
-	test.AssertNotError(t, err, "Should have been able to update registration with a blank contact")
+	test.AssertNotError(t, err, "should have been able to update registration with a blank contact")
 	test.AssertEquals(t, res.Id, expectRegID)
+	test.AssertEquals(t, mockSA.providedRegistrationID, expectRegID)
+	test.AssertDeepEquals(t, res.Contact, []string(nil))
+	test.AssertDeepEquals(t, mockSA.providedContacts, []string(nil))
 
 	res, err = ra.UpdateRegistrationContact(context.Background(), &rapb.UpdateRegistrationContactRequest{
 		RegistrationID: expectRegID,
 		Contacts:       expectContacts,
 	})
-	test.AssertNotError(t, err, "Should have been able to update registration with a populated contact")
+	test.AssertNotError(t, err, "should have been able to update registration with a populated contact")
 	test.AssertEquals(t, res.Id, expectRegID)
+	test.AssertEquals(t, mockSA.providedRegistrationID, expectRegID)
 	test.AssertDeepEquals(t, res.Contact, expectContacts)
+	test.AssertDeepEquals(t, mockSA.providedContacts, expectContacts)
 
 	// Switch to a mock SA that will always error if UpdateRegistrationContact()
 	// is called.
@@ -4567,7 +4577,9 @@ func TestUpdateRegistrationContact(t *testing.T) {
 		RegistrationID: expectRegID,
 		Contacts:       expectContacts,
 	})
-	test.AssertError(t, err, "Should have received an error from the SA")
+	test.AssertError(t, err, "should have received an error from the SA")
+	test.AssertContains(t, err.Error(), "failed to update registration contact")
+	test.AssertContains(t, err.Error(), "mocked to always error")
 }
 
 // TestUpdateRegistrationKey tests that the RA's UpdateRegistrationKey method
@@ -4579,22 +4591,39 @@ func TestUpdateRegistrationKey(t *testing.T) {
 
 	expectRegID := int64(1)
 	expectJwk := AccountKeyJSONA
-	mockSA := mockSAWithRegistration{expectRegistrationID: expectRegID, expectJwk: expectJwk}
+	mockSA := mockSARecordingRegistration{}
 	ra.SA = &mockSA
 
 	_, err := ra.UpdateRegistrationKey(context.Background(), &rapb.UpdateRegistrationKeyRequest{})
-	test.AssertError(t, err, "Should not have been able to update registration key without a registration ID or key")
+	test.AssertError(t, err, "should not have been able to update registration key without a registration ID or key")
+	test.AssertContains(t, err.Error(), "incomplete gRPC request message")
 
-	_, err = ra.UpdateRegistrationKey(context.Background(), &rapb.UpdateRegistrationKeyRequest{RegistrationID: 1})
-	test.AssertError(t, err, "Should not have been able to update registration key without a key")
+	_, err = ra.UpdateRegistrationKey(context.Background(), &rapb.UpdateRegistrationKeyRequest{RegistrationID: expectRegID})
+	test.AssertError(t, err, "should not have been able to update registration key without a key")
+	test.AssertContains(t, err.Error(), "incomplete gRPC request message")
 
-	_, err = ra.UpdateRegistrationKey(context.Background(), &rapb.UpdateRegistrationKeyRequest{Jwk: AccountKeyJSONA})
-	test.AssertError(t, err, "Should not have been able to update registration key without a registration ID")
+	_, err = ra.UpdateRegistrationKey(context.Background(), &rapb.UpdateRegistrationKeyRequest{Jwk: expectJwk})
+	test.AssertError(t, err, "should not have been able to update registration key without a registration ID")
+	test.AssertContains(t, err.Error(), "incomplete gRPC request message")
 
 	res, err := ra.UpdateRegistrationKey(context.Background(), &rapb.UpdateRegistrationKeyRequest{
-		RegistrationID: 1,
-		Jwk:            AccountKeyJSONA,
+		RegistrationID: expectRegID,
+		Jwk:            expectJwk,
 	})
-	test.AssertNotError(t, err, "Should have been able to update registration key")
+	test.AssertNotError(t, err, "should have been able to update registration key")
+	test.AssertEquals(t, res.Id, expectRegID)
+	test.AssertEquals(t, mockSA.providedRegistrationID, expectRegID)
 	test.AssertDeepEquals(t, res.Key, expectJwk)
+	test.AssertDeepEquals(t, mockSA.providedJwk, expectJwk)
+
+	// Switch to a mock SA that will always error if UpdateRegistrationKey() is
+	// called.
+	ra.SA = &NoUpdateSA{}
+	_, err = ra.UpdateRegistrationKey(context.Background(), &rapb.UpdateRegistrationKeyRequest{
+		RegistrationID: expectRegID,
+		Jwk:            expectJwk,
+	})
+	test.AssertError(t, err, "should have received an error from the SA")
+	test.AssertContains(t, err.Error(), "failed to update registration key")
+	test.AssertContains(t, err.Error(), "mocked to always error")
 }

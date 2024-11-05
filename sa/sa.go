@@ -180,7 +180,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, r
 	if len(req.Contacts) != 0 {
 		jsonContact, err = json.Marshal(req.Contacts)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("serializing contacts: %w", err)
 		}
 	}
 
@@ -216,12 +216,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, r
 		return nil, overallError
 	}
 
-	updatedRegistration, ok := result.(*corepb.Registration)
-	if !ok {
-		return nil, fmt.Errorf("failed to assert result as *corepb.Registration in UpdateRegistrationContact")
-	}
-
-	return updatedRegistration, nil
+	return result.(*corepb.Registration), nil
 }
 
 // UpdateRegistrationKey stores an updated key in a Registration.
@@ -236,11 +231,11 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 	var jwk jose.JSONWebKey
 	err := jwk.UnmarshalJSON(req.Jwk)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing JWK: %w", err)
 	}
 	sha, err := core.KeyDigestB64(jwk.Key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("computing key digest: %w", err)
 	}
 
 	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
@@ -281,12 +276,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *
 		return nil, overallError
 	}
 
-	updatedRegistration, ok := result.(*corepb.Registration)
-	if !ok {
-		return nil, fmt.Errorf("failed to assert result as *corepb.Registration in UpdateRegistrationKey")
-	}
-
-	return updatedRegistration, nil
+	return result.(*corepb.Registration), nil
 }
 
 // AddSerial writes a record of a serial number generation to the DB.
