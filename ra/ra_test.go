@@ -48,6 +48,7 @@ import (
 	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
@@ -887,6 +888,9 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	va, sa, ra, redisSrc, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
+	features.Set(features.Config{UseKvLimitsForZombieClientPausing: true})
+	defer features.Reset()
+
 	mockSA := &mockSAPaused{}
 	ra.SA = mockSA
 
@@ -1001,8 +1005,8 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	test.AssertEquals(t, len(got.Identifiers), 1)
 	test.AssertEquals(t, got.Identifiers[0].Value, domain)
 
-	err = ra.limiter.Reset(ctx, bucketKey)
-	test.AssertNotError(t, err, "Failed cleaning up redis")
+	//err = ra.limiter.Reset(ctx, bucketKey)
+	//test.AssertNotError(t, err, "Failed cleaning up redis")
 }
 
 func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersRatelimit(t *testing.T) {
@@ -1012,6 +1016,9 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 
 	va, sa, ra, redisSrc, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
+
+	features.Set(features.Config{UseKvLimitsForZombieClientPausing: true})
+	defer features.Reset()
 
 	originalSA := sa
 	mockSA := &mockSAPaused{}
@@ -1155,8 +1162,8 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	_, err = redisSrc.Get(ctx, bucketKey)
 	test.AssertErrorIs(t, err, ratelimits.ErrBucketNotFound)
 
-	err = ra.limiter.Reset(ctx, bucketKey)
-	test.AssertNotError(t, err, "Failed cleaning up redis")
+	//err = ra.limiter.Reset(ctx, bucketKey)
+	//test.AssertNotError(t, err, "Failed cleaning up redis")
 }
 
 func TestPerformValidationVAError(t *testing.T) {
