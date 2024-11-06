@@ -10,6 +10,8 @@ import "google/protobuf/empty.proto";
 service RegistrationAuthority {
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
   rpc UpdateRegistration(UpdateRegistrationRequest) returns (core.Registration) {}
+  rpc UpdateRegistrationContact(UpdateRegistrationContactRequest) returns (core.Registration) {}
+  rpc UpdateRegistrationKey(UpdateRegistrationKeyRequest) returns (core.Registration) {}
   rpc PerformValidation(PerformValidationRequest) returns (core.Authorization) {}
   rpc DeactivateRegistration(core.Registration) returns (google.protobuf.Empty) {}
   rpc DeactivateAuthorization(core.Authorization) returns (google.protobuf.Empty) {}
@@ -31,6 +33,16 @@ message GenerateOCSPRequest {
 message UpdateRegistrationRequest {
   core.Registration base = 1;
   core.Registration update = 2;
+}
+
+message UpdateRegistrationContactRequest {
+  int64 registrationID = 1;
+  repeated string contacts = 2;
+}
+
+message UpdateRegistrationKeyRequest {
+  int64 registrationID = 1;
+  bytes jwk = 2;
 }
 
 message UpdateAuthorizationRequest {
