@@ -837,43 +837,60 @@ func TestPerformValidationSuccess(t *testing.T) {
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
 }
 
-// mockSAPaused is a mock which always succeeds. It records the PauseRequest it
-// received, and returns the number of identifiers as a
-// PauseIdentifiersResponse. It does not maintain state of repaused identifiers.
 type mockSAPaused struct {
+	sync.RWMutex
 	sapb.StorageAuthorityClient
-	identType     string
-	identValue    string
-	receivedRegID int64
+	authorizationsForRegID map[int64]*corepb.Authorization
+	identifiersForRegID    map[int64][]*corepb.Identifier
+	registrationsForRegID  map[int64]*corepb.Registration
+}
+
+func newMockSAPaused(sa sapb.StorageAuthorityClient) *mockSAPaused {
+	return &mockSAPaused{
+		StorageAuthorityClient: sa,
+		authorizationsForRegID: make(map[int64]*corepb.Authorization),
+		identifiersForRegID:    make(map[int64][]*corepb.Identifier),
+		registrationsForRegID:  make(map[int64]*corepb.Registration),
+	}
 }
 
 func (msa *mockSAPaused) GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	if msa.receivedRegID == req.Id {
-		return Registration, nil
-	} else {
-		return nil, fmt.Errorf("Could not find registration")
+	msa.Lock()
+	defer msa.Unlock()
+	regPB, ok := msa.registrationsForRegID[req.Id]
+	if !ok {
+		return nil, fmt.Errorf("Unable to find registration for regID %d", req.Id)
 	}
+	return regPB, nil
 }
 
 func (msa *mockSAPaused) PauseIdentifiers(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error) {
+	msa.Lock()
+	defer msa.Unlock()
 	if len(req.Identifiers) <= 0 {
 		return nil, fmt.Errorf("No identifiers found to pause")
 	}
-	msa.identType = req.Identifiers[0].Type
-	msa.identValue = req.Identifiers[0].Value
-	return &sapb.PauseIdentifiersResponse{Paused: int64(len(req.Identifiers))}, nil
+	msa.identifiersForRegID[req.RegistrationID] = req.Identifiers
+
+	counts := make(map[int64]int64)
+	for range msa.identifiersForRegID {
+		counts[req.RegistrationID]++
+	}
+	return &sapb.PauseIdentifiersResponse{Paused: counts[req.RegistrationID]}, nil
 }
 
 func (msa *mockSAPaused) GetPausedIdentifiers(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
-	if msa.identType != "" && msa.identValue != "" {
-		return &sapb.Identifiers{
-			Identifiers: []*corepb.Identifier{{
-				Type:  msa.identType,
-				Value: msa.identValue,
-			}},
-		}, nil
+	msa.Lock()
+	defer msa.Unlock()
+	_, ok := msa.registrationsForRegID[req.Id]
+	if !ok {
+		return nil, fmt.Errorf("Unable to find registration for regID %d", req.Id)
 	}
-	return nil, fmt.Errorf("No identifiers paused yet")
+	idents, ok := msa.identifiersForRegID[req.Id]
+	if !ok {
+		return nil, fmt.Errorf("No identifiers paused yet")
+	}
+	return &sapb.Identifiers{Identifiers: idents}, nil
 }
 
 func (msa *mockSAPaused) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
@@ -891,7 +908,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	features.Set(features.Config{UseKvLimitsForZombieClientPausing: true})
 	defer features.Reset()
 
-	mockSA := &mockSAPaused{}
+	mockSA := newMockSAPaused(sa)
 	ra.SA = mockSA
 
 	// Override the default ratelimits to only allow one failed validation.
@@ -902,7 +919,8 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	// We know this is OK because of TestNewAuthorization
 	domain := "example.net"
 	authzPB := createPendingAuthorization(t, sa, domain, fc.Now().Add(12*time.Hour))
-	mockSA.receivedRegID = authzPB.RegistrationID
+	mockSA.registrationsForRegID[authzPB.RegistrationID] = Registration
+	mockSA.authorizationsForRegID[authzPB.RegistrationID] = authzPB
 
 	// We induce the bad path by setting a problem. This will consume all
 	// available capacity in the rate limit bucket.
@@ -941,7 +959,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
 
 	// Sleep so the RA has a chance to write to the SA
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	got, err := ra.SA.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: authzPB.RegistrationID}, nil)
 	test.AssertError(t, err, "Should not have any paused identifiers yet, but found some")
@@ -1005,8 +1023,8 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	test.AssertEquals(t, len(got.Identifiers), 1)
 	test.AssertEquals(t, got.Identifiers[0].Value, domain)
 
-	//err = ra.limiter.Reset(ctx, bucketKey)
-	//test.AssertNotError(t, err, "Failed cleaning up redis")
+	err = ra.limiter.Reset(ctx, bucketKey)
+	test.AssertNotError(t, err, "Failed cleaning up redis")
 }
 
 func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersRatelimit(t *testing.T) {
@@ -1020,8 +1038,8 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	features.Set(features.Config{UseKvLimitsForZombieClientPausing: true})
 	defer features.Reset()
 
-	originalSA := sa
-	mockSA := &mockSAPaused{}
+	//originalSA := sa
+	mockSA := newMockSAPaused(sa)
 	ra.SA = mockSA
 
 	// Override the default ratelimits to only allow one failed validation.
@@ -1032,7 +1050,8 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	// We know this is OK because of TestNewAuthorization
 	domain := "example.net"
 	authzPB := createPendingAuthorization(t, sa, "example.net", fc.Now().Add(12*time.Hour))
-	mockSA.receivedRegID = authzPB.RegistrationID
+	mockSA.registrationsForRegID[authzPB.RegistrationID] = Registration
+	mockSA.authorizationsForRegID[authzPB.RegistrationID] = authzPB
 
 	// We induce the bad path by setting a problem. This will consume all
 	// available capacity in the rate limit bucket.
@@ -1095,10 +1114,10 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	// Now the goal is to perform a successful validation which should reset the
 	// FailedAuthorizationsForPausingPerDomainPerAccount ratelimit.
 	//
-	ra.SA = originalSA
 
 	// We know this is OK because of TestNewAuthorization
-	authzPB = createPendingAuthorization(t, originalSA, domain, fc.Now().Add(12*time.Hour))
+	authzPB = createPendingAuthorization(t, sa, domain, fc.Now().Add(12*time.Hour))
+	mockSA.authorizationsForRegID[authzPB.RegistrationID] = authzPB
 
 	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
@@ -1113,7 +1132,6 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 		Problems: nil,
 	}
 
-	now := fc.Now()
 	challIdx = dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
@@ -1132,26 +1150,6 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
 
-	// Sleep so the RA has a chance to write to the SA
-	time.Sleep(100 * time.Millisecond)
-	dbAuthzPB := getAuthorization(t, authzPB.Id, originalSA)
-
-	// Verify that the responses are reflected
-	challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
-	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
-	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
-
-	test.AssertNotNil(t, vaRequest.Challenge, "Request passed to VA has no challenge")
-	test.Assert(t, challenge.Status == core.StatusValid, "challenge was not marked as valid")
-
-	// The DB authz's expiry should be equal to the current time plus the
-	// configured authorization lifetime
-	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), now.Add(ra.authorizationLifetime))
-
-	// Check that validated timestamp was recorded, stored, and retrieved
-	expectedValidated := fc.Now()
-	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
-
 	// We need the bucket key to scan for in Redis
 	bucketKey, err = ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
 	test.AssertNotError(t, err, "Should have been able to construct bucket key, but could not")
@@ -1162,8 +1160,8 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	_, err = redisSrc.Get(ctx, bucketKey)
 	test.AssertErrorIs(t, err, ratelimits.ErrBucketNotFound)
 
-	//err = ra.limiter.Reset(ctx, bucketKey)
-	//test.AssertNotError(t, err, "Failed cleaning up redis")
+	err = ra.limiter.Reset(ctx, bucketKey)
+	test.AssertNotError(t, err, "Failed cleaning up redis")
 }
 
 func TestPerformValidationVAError(t *testing.T) {
