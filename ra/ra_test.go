@@ -1117,7 +1117,6 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 
 	// We know this is OK because of TestNewAuthorization
 	authzPB = createPendingAuthorization(t, sa, domain, fc.Now().Add(12*time.Hour))
-	mockSA.authorizationsForRegID[authzPB.RegistrationID] = authzPB
 
 	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
@@ -1138,6 +1137,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 		ChallengeIndex: challIdx,
 	})
 	test.AssertNotError(t, err, "PerformValidation failed")
+	mockSA.authorizationsForRegID[authzPB.RegistrationID] = authzPB
 
 	select {
 	case r := <-va.performValidationRequest:
