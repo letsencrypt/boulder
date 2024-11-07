@@ -31,12 +31,13 @@ func (r *responseWriterWithStatus) Write(body []byte) (int, error) {
 	return r.ResponseWriter.Write(body)
 }
 
-// serveMux is a partial interface wrapper for the method http.ServeMux
+// serveMux is a partial interface wrapper for the methods http.ServeMux
 // exposes that we use. This is needed so that we can replace the default
 // http.ServeMux in ocsp-responder where we don't want to use its path
 // canonicalization.
 type serveMux interface {
 	Handler(*http.Request) (http.Handler, string)
+	ServeHTTP(w http.ResponseWriter, r *http.Request)
 }
 
 // MeasuredHandler wraps an http.Handler and records prometheus stats
@@ -80,7 +81,7 @@ func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	begin := h.clk.Now()
 	rwws := &responseWriterWithStatus{w, 0}
 
-	subHandler, pattern := h.Handler(r)
+	_, pattern := h.serveMux.Handler(r)
 	h.inFlightRequestsGauge.WithLabelValues(pattern).Inc()
 	defer h.inFlightRequestsGauge.WithLabelValues(pattern).Dec()
 
@@ -104,5 +105,5 @@ func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}).Observe(h.clk.Since(begin).Seconds())
 	}()
 
-	subHandler.ServeHTTP(rwws, r)
+	h.serveMux.ServeHTTP(rwws, r)
 }

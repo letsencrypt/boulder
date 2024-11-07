@@ -276,6 +276,10 @@ func (om *ocspMux) Handler(_ *http.Request) (http.Handler, string) {
 	return om.handler, "/"
 }
 
+func (om *ocspMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	om.handler.ServeHTTP(w, r)
+}
+
 func mux(responderPath string, source responder.Source, timeout time.Duration, stats prometheus.Registerer, oTelHTTPOptions []otelhttp.Option, logger blog.Logger, sampleRate int) http.Handler {
 	stripPrefix := http.StripPrefix(responderPath, responder.NewResponder(source, timeout, stats, logger, sampleRate))
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
