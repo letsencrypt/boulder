@@ -4863,7 +4863,7 @@ func (sa *mockSARecordingRegistration) UpdateRegistrationKey(ctx context.Context
 // to the SA; passes the updated Registration back to the caller; and can return
 // an error.
 func TestUpdateRegistrationContact(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	expectRegID := int64(1)
@@ -4917,7 +4917,7 @@ func TestUpdateRegistrationContact(t *testing.T) {
 // correctly requires a registration ID and key, passes them to the SA, and
 // passes the updated Registration back to the caller.
 func TestUpdateRegistrationKey(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	expectRegID := int64(1)
