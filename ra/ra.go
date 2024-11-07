@@ -1815,14 +1815,12 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 // per account rate limit. There is no reason to surface errors from this
 // function to the Subscriber, spends against this limit are best effort.
 func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
-	var name = ident.Value
-
 	if ra.limiter == nil || ra.txnBuilder == nil {
 		// Limiter is disabled.
 		return
 	}
 
-	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, name)
+	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, ident.Value)
 	if err != nil {
 		ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
@@ -1836,7 +1834,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 	}
 
 	if features.Get().UseKvLimitsForZombieClientPausing {
-		txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, name)
+		txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, ident.Value)
 		if err != nil {
 			ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
 		}

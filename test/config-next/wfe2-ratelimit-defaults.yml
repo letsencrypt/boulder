@@ -14,9 +14,9 @@ FailedAuthorizationsPerDomainPerAccount:
   count: 3
   burst: 3
   period: 5m
-# The burst represents failing 40 times per day for 90 days. 
-# The count and period grant one "freebie" failure per day. 
-# In combination, these parameters mean that:
+# The burst represents failing 40 times per day for 90 days. The count and
+# period grant one "freebie" failure per day. In combination, these parameters
+# mean that:
 # - Failing 120 times per day results in being paused after 30.25 days
 # - Failing 40 times per day results in being paused after 92.3 days
 # - Failing 20 times per day results in being paused after 6.2 months

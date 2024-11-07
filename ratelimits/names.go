@@ -77,7 +77,14 @@ const (
 	// passed as a comma-separated list of domain names.
 	CertificatesPerFQDNSet
 
-	// TODO: <Add Description> @kruti-s
+	// FailedAuthorizationsForPausingPerDomainPerAccount is similar to
+	// FailedAuthorizationsPerDomainPerAccount in that it uses two different
+	// bucket keys depending on the context:
+	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
+	//    where regId is the ACME registration Id of the account.
+	//  - When referenced in a transaction: uses bucket key 'enum:regId:domain',
+	//    where regId is the ACME registration Id of the account and domain is a
+	//    domain name in the certificate.
 	FailedAuthorizationsForPausingPerDomainPerAccount
 )
 
