@@ -1340,63 +1340,6 @@ def test_ocsp_exp_unauth():
     else:
         raise(Exception("timed out waiting for unauthorized OCSP response for expired certificate. Last error: {}".format(last_error)))
 
-def test_blocked_key_account():
-    # Only config-next has a blocked keys file configured.
-    if not CONFIG_NEXT:
-        return
-
-    with open("test/hierarchy/int-r4.key.pem", "rb") as key_file:
-        key = serialization.load_pem_private_key(key_file.read(), password=None, backend=default_backend())
-
-    # Create a client with the JWK set to a blocked private key
-    jwk = josepy.JWKRSA(key=key)
-    client = chisel2.uninitialized_client(jwk)
-    email = "test@not-example.com"
-
-    # Try to create an account
-    testPass = False
-    try:
-        client.new_account(messages.NewRegistration.from_data(email=email,
-                terms_of_service_agreed=True))
-    except acme_errors.Error as e:
-        if e.typ != "urn:ietf:params:acme:error:badPublicKey":
-            raise(Exception("problem did not have correct error type, had {0}".format(e.typ)))
-        if e.detail != "public key is forbidden":
-            raise(Exception("problem did not have correct error detail, had {0}".format(e.detail)))
-        testPass = True
-
-    if testPass is False:
-        raise(Exception("expected account creation to fail with Error when using blocked key"))
-
-def test_blocked_key_cert():
-    # Only config-next has a blocked keys file configured.
-    if not CONFIG_NEXT:
-        return
-
-    with open("test/hierarchy/int-r4.key.pem", "r") as f:
-        pemBytes = f.read()
-
-    domains = [random_domain(), random_domain()]
-    csr = acme_crypto_util.make_csr(pemBytes, domains, False)
-
-    client = chisel2.make_client(None)
-    order = client.new_order(csr)
-    authzs = order.authorizations
-
-    testPass = False
-    cleanup = chisel2.do_http_challenges(client, authzs)
-    try:
-        order = client.poll_and_finalize(order)
-    except acme_errors.Error as e:
-        if e.typ != "urn:ietf:params:acme:error:badCSR":
-            raise(Exception("problem did not have correct error type, had {0}".format(e.typ)))
-        if e.detail != "Error finalizing order :: invalid public key in CSR: public key is forbidden":
-            raise(Exception("problem did not have correct error detail, had {0}".format(e.detail)))
-        testPass = True
-
-    if testPass is False:
-        raise(Exception("expected cert creation to fail with Error when using blocked key"))
-
 def test_expiration_mailer():
     email_addr = "integration.%x@letsencrypt.org" % random.randrange(2**16)
     order = chisel2.auth_and_issue([random_domain()], email=email_addr)

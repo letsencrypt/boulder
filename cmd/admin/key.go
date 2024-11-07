@@ -3,7 +3,9 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
@@ -26,9 +28,14 @@ import (
 type subcommandBlockKey struct {
 	parallelism uint
 	comment     string
-	privKey     string
-	spkiFile    string
-	certFile    string
+
+	privKey           string
+	spkiFile          string
+	certFile          string
+	csrFile           string
+	csrFileExpectedCN string
+
+	checkSignature bool
 }
 
 var _ subcommand = (*subcommandBlockKey)(nil)
@@ -46,6 +53,10 @@ func (s *subcommandBlockKey) Flags(flag *flag.FlagSet) {
 	flag.StringVar(&s.privKey, "private-key", "", "Block issuance for the pubkey corresponding to this private key")
 	flag.StringVar(&s.spkiFile, "spki-file", "", "Block issuance for all keys listed in this file as SHA256 hashes of SPKI, hex encoded, one per line")
 	flag.StringVar(&s.certFile, "cert-file", "", "Block issuance for the public key of the single PEM-formatted certificate in this file")
+	flag.StringVar(&s.csrFile, "csr-file", "", "Block issuance for the public key of the single PEM-formatted CSR in this file")
+	flag.StringVar(&s.csrFileExpectedCN, "csr-file-expected-cn", "The key that signed this CSR has been publicly disclosed. It should not be used for any purpose.", "The Subject CN of a CSR will be verified to match this before blocking")
+
+	flag.BoolVar(&s.checkSignature, "check-signature", true, "Check self-signature of CSR before revoking")
 }
 
 func (s *subcommandBlockKey) Run(ctx context.Context, a *admin) error {
@@ -56,6 +67,7 @@ func (s *subcommandBlockKey) Run(ctx context.Context, a *admin) error {
 		"-private-key": s.privKey != "",
 		"-spki-file":   s.spkiFile != "",
 		"-cert-file":   s.certFile != "",
+		"-csr-file":    s.csrFile != "",
 	}
 	maps.DeleteFunc(setInputs, func(_ string, v bool) bool { return !v })
 	if len(setInputs) == 0 {
@@ -75,6 +87,8 @@ func (s *subcommandBlockKey) Run(ctx context.Context, a *admin) error {
 		spkiHashes, err = a.spkiHashesFromFile(s.spkiFile)
 	case "-cert-file":
 		spkiHashes, err = a.spkiHashesFromCertPEM(s.certFile)
+	case "-csr-file":
+		spkiHashes, err = a.spkiHashFromCSRPEM(s.csrFile, s.checkSignature, s.csrFileExpectedCN)
 	default:
 		return errors.New("no recognized input method flag set (this shouldn't happen)")
 	}
@@ -139,6 +153,43 @@ func (a *admin) spkiHashesFromCertPEM(filename string) ([][]byte, error) {
 	}
 
 	spkiHash, err := core.KeyDigest(cert.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("computing SPKI hash: %w", err)
+	}
+
+	return [][]byte{spkiHash[:]}, nil
+}
+
+func (a *admin) spkiHashFromCSRPEM(filename string, checkSignature bool, expectedCN string) ([][]byte, error) {
+	csrFile, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("reading CSR file %q: %w", filename, err)
+	}
+
+	data, _ := pem.Decode(csrFile)
+	if data == nil {
+		return nil, fmt.Errorf("no PEM data found in %q", filename)
+	}
+
+	a.log.AuditInfof("Parsing key to block from CSR PEM: %x", data)
+
+	csr, err := x509.ParseCertificateRequest(data.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parsing CSR %q: %w", filename, err)
+	}
+
+	if checkSignature {
+		err = csr.CheckSignature()
+		if err != nil {
+			return nil, fmt.Errorf("checking CSR signature: %w", err)
+		}
+	}
+
+	if csr.Subject.CommonName != expectedCN {
+		return nil, fmt.Errorf("Got CSR CommonName %q, expected %q", csr.Subject.CommonName, expectedCN)
+	}
+
+	spkiHash, err := core.KeyDigest(csr.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("computing SPKI hash: %w", err)
 	}
