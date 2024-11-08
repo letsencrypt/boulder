@@ -1328,16 +1328,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return nil, nil, wrapError(err, "getting SCTs")
 	}
 
-	var isRenewal bool
-	if len(parsedPrecert.DNSNames) > 0 {
-		// This should never happen under normal operation, but it sometimes
-		// occurs under test.
-		exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: parsedPrecert.DNSNames})
-		if err != nil {
-			return nil, nil, wrapError(err, "checking if certificate is a renewal")
-		}
-		isRenewal = exists.Exists
+	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: parsedPrecert.DNSNames})
+	if err != nil {
+		return nil, nil, wrapError(err, "checking if certificate is a renewal")
 	}
+	isRenewal := exists.Exists
 
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:             precert.DER,

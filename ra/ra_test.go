@@ -3442,15 +3442,20 @@ type mockCAFailCertForPrecert struct {
 
 // IssuePrecertificate needs to be mocked for mockCAFailCertForPrecert's `IssueCertificateForPrecertificate` to get called.
 func (ca *mockCAFailCertForPrecert) IssuePrecertificate(
-	context.Context,
-	*capb.IssueCertificateRequest,
-	...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
+	ctx context.Context,
+	req *capb.IssueCertificateRequest,
+	opts ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	parsedCSR, err := x509.ParseCertificateRequest(req.Csr)
 	if err != nil {
 		return nil, err
 	}
 	tmpl := &ctx509.Certificate{
 		SerialNumber: big.NewInt(1),
+		DNSNames:     parsedCSR.DNSNames,
 		ExtraExtensions: []ctpkix.Extension{
 			{
 				Id:       ctx509.OIDExtensionCTPoison,
