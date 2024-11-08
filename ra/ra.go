@@ -1858,7 +1858,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 				},
 			})
 			if err != nil {
-				ra.log.Warningf("pausing identifier for the %s rate limit: %s", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
+				ra.log.Warningf("failed to auto-pause %d/%q: %s", regId, ident.Value, err)
 			}
 		}
 	}
