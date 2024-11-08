@@ -70,19 +70,29 @@ type mpicSummary struct {
 	QuorumResult string `json:"quorumResult"`
 }
 
+// newSummary returns a new mpicSummary with empty slices to avoid "null" in
+// JSON output.
+func newSummary() mpicSummary {
+	return mpicSummary{
+		Passed: []string{},
+		Failed: []string{},
+		RIRs:   []string{},
+	}
+}
+
 // prepareSummary prepares a summary of the validation results for logging
-// purposes.
+// purposes. Sets empty slices to []string{} to avoid "null" in JSON output.
 func prepareSummary(passed, failed []string, passedRIRs map[string]struct{}, remoteVACount int) mpicSummary {
 	summary := mpicSummary{
-		Passed:       append([]string{}, passed...),
-		Failed:       append([]string{}, failed...),
-		RIRs:         []string{},
-		QuorumResult: fmt.Sprintf("%d/%d", len(passed), remoteVACount),
+		Passed: append([]string{}, passed...),
+		Failed: append([]string{}, failed...),
+		RIRs:   []string{},
 	}
 	for rir := range maps.Keys(passedRIRs) {
 		summary.RIRs = append(summary.RIRs, rir)
 	}
 	slices.Sort(summary.RIRs)
+	summary.QuorumResult = fmt.Sprintf("%d/%d", len(passed), remoteVACount)
 
 	return summary
 }
@@ -247,7 +257,7 @@ func (va *ValidationAuthorityImpl) ValidateChallenge(ctx context.Context, req *v
 	var prob *probs.ProblemDetails
 	var localLatency time.Duration
 	var latency time.Duration
-	var summary mpicSummary
+	var summary = newSummary()
 	start := va.clk.Now()
 
 	auditLog := validateChallengeAuditLog{

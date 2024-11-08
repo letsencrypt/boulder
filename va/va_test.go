@@ -1166,9 +1166,7 @@ func TestValidateChallengeMPIC(t *testing.T) {
 				test.AssertNotError(t, mockLog.ExpectMatch(tc.expectLogContains), "Expected log line not found")
 			}
 			got := parseMPICSummary(t, mockLog.GetAll())
-			if tc.expectQuorumResult != "" {
-				test.AssertDeepEquals(t, tc.expectQuorumResult, got.QuorumResult)
-			}
+			test.AssertDeepEquals(t, tc.expectQuorumResult, got.QuorumResult)
 			if tc.expectPassedRIRs != nil {
 				test.AssertDeepEquals(t, tc.expectPassedRIRs, got.RIRs)
 			}
