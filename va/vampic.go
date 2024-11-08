@@ -52,7 +52,6 @@ func (va *ValidationAuthorityImpl) onPrimaryVA() bool {
 }
 
 // mpicSummary contains multiple fields that are exported for logging purposes.
-// Use newSummary() to create a new mpicSummary.
 type mpicSummary struct {
 	// Passed is the list of distinct perspectives that Passed validation.
 	Passed []string `json:"passedPerspectives"`
@@ -71,14 +70,21 @@ type mpicSummary struct {
 	QuorumResult string `json:"quorumResult"`
 }
 
-// newSummary returns a new mpicSummary with empty slices so that JSON output is
-// always an empty array instead of "null".
-func newSummary() mpicSummary {
-	return mpicSummary{
-		Passed: []string{},
-		Failed: []string{},
-		RIRs:   []string{},
+// prepareSummary prepares a summary of the validation results for logging
+// purposes.
+func prepareSummary(passed, failed []string, passedRIRs map[string]struct{}, remoteVACount int) mpicSummary {
+	summary := mpicSummary{
+		Passed:       append([]string{}, passed...),
+		Failed:       append([]string{}, failed...),
+		RIRs:         []string{},
+		QuorumResult: fmt.Sprintf("%d/%d", len(passed), remoteVACount),
 	}
+	for rir := range maps.Keys(passedRIRs) {
+		summary.RIRs = append(summary.RIRs, rir)
+	}
+	slices.Sort(summary.RIRs)
+
+	return summary
 }
 
 // validateChallengeAuditLog contains multiple fields that are exported for
@@ -190,15 +196,7 @@ func (va *ValidationAuthorityImpl) remoteValidateChallenge(ctx context.Context, 
 	}
 
 	// Prepare the summary, this MUST be returned even if the validation failed.
-	summary := mpicSummary{
-		Passed:       passed,
-		Failed:       failed,
-		QuorumResult: fmt.Sprintf("%d/%d", len(passed), remoteVACount),
-	}
-	for rir := range maps.Keys(passedRIRs) {
-		summary.RIRs = append(summary.RIRs, rir)
-	}
-	slices.Sort(summary.RIRs)
+	summary := prepareSummary(passed, failed, passedRIRs, remoteVACount)
 
 	if len(passed) >= required {
 		// We may have enough successful responses.
@@ -249,7 +247,7 @@ func (va *ValidationAuthorityImpl) ValidateChallenge(ctx context.Context, req *v
 	var prob *probs.ProblemDetails
 	var localLatency time.Duration
 	var latency time.Duration
-	summary := newSummary()
+	var summary mpicSummary
 	start := va.clk.Now()
 
 	auditLog := validateChallengeAuditLog{
