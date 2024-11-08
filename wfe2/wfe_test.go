@@ -397,7 +397,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	log := blog.NewMock()
 
 	// Use derived nonces.
-	noncePrefix := nonce.DerivePrefix("192.168.1.1:8080", "b8c758dd85e113ea340ce0b3a99f389d40a308548af94d1730a7692c1874f1f")
+	rncKey := []byte("b8c758dd85e113ea340ce0b3a99f3894")
+	noncePrefix := nonce.DerivePrefix("192.168.1.1:8080", rncKey)
 	nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
 	test.AssertNotError(t, err, "making nonceService")
 
@@ -458,7 +459,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		mockSA,
 		gnc,
 		rnc,
-		"rncKey",
+		rncKey,
 		mockSA,
 		limiter,
 		txnBuilder,
