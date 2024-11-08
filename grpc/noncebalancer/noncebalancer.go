@@ -84,7 +84,7 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		// This should never happen.
 		return balancer.PickResult{}, errMissingHMACKeyCtxKey
 	}
-	hmacKey, ok := hmacKeyVal.(string)
+	hmacKey, ok := hmacKeyVal.([]byte)
 	if !ok {
 		// This should never happen.
 		return balancer.PickResult{}, errInvalidHMACKeyCtxKeyType
