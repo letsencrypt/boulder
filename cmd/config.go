@@ -572,7 +572,7 @@ func (hc *HMACKeyConfig) Load() ([]byte, error) {
 
 	if len(trimmed) != 32 {
 		return nil, fmt.Errorf(
-			"validating unpauseHMACKey, length must be 32 alphanumeric characters, got %d",
+			"validating HMAC key, length must be 32 alphanumeric characters, got %d",
 			len(trimmed),
 		)
 	}

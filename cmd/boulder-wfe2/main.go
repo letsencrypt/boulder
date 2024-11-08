@@ -71,13 +71,23 @@ type Config struct {
 		// local and remote nonce-service instances.
 		RedeemNonceService *cmd.GRPCClientConfig `validate:"required"`
 
+		// NonceHMACKey is a path to a file containing an HMAC key which is a
+		// secret used for deriving the prefix of each nonce instance. It should
+		// contain 256 bits (32 bytes) of random data to be suitable as an
+		// HMAC-SHA256 key (e.g. the output of `openssl rand -hex 32`). In a
+		// multi-DC deployment this value should be the same across all
+		// boulder-wfe and nonce-service instances.
+		NonceHMACKey cmd.HMACKeyConfig `validate:"-"`
+
 		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
 		// instance. It should contain 256 bits of random data to be suitable as
 		// an HMAC-SHA256 key (e.g. the output of `openssl rand -hex 32`). In a
 		// multi-DC deployment this value should be the same across all
 		// boulder-wfe and nonce-service instances.
 		//
-		// TODO(#7632) Update this to use the new HMACKeyConfig.
+		// TODO(#7632): Remove this.
+		//
+		// Deprecated: Use NonceHMACKey instead.
 		NoncePrefixKey cmd.PasswordConfig `validate:"-"`
 
 		// Chains is a list of lists of certificate filenames. Each inner list is
@@ -295,9 +305,15 @@ func main() {
 	}
 
 	var noncePrefixKey string
-	if c.WFE.NoncePrefixKey.PasswordFile != "" {
+	if c.WFE.NonceHMACKey.KeyFile != "" {
+		keyByte, err := c.WFE.NonceHMACKey.Load()
+		cmd.FailOnError(err, "Failed to load nonceHMACKey file")
+		noncePrefixKey = string(keyByte)
+	} else if c.WFE.NoncePrefixKey.PasswordFile != "" {
 		noncePrefixKey, err = c.WFE.NoncePrefixKey.Pass()
-		cmd.FailOnError(err, "Failed to load noncePrefixKey")
+		cmd.FailOnError(err, "Failed to load noncePrefixKey file")
+	} else {
+		cmd.Fail("NonceHMACKey KeyFile or NoncePrefixKey PasswordFile must be set")
 	}
 
 	getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, stats, clk)

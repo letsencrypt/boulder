@@ -19,14 +19,13 @@ type Config struct {
 
 		MaxUsed int
 
-		// UseDerivablePrefix indicates whether to use a nonce prefix derived
-		// from the gRPC listening address. If this is false, the nonce prefix
-		// will be the value of the NoncePrefix field. If this is true, the
-		// NoncePrefixKey field is required.
-		// TODO(#6610): Remove this.
-		//
-		// Deprecated: this value is ignored, and treated as though it is always true.
-		UseDerivablePrefix bool `validate:"-"`
+		// NonceHMACKey is a path to a file containing an HMAC key which is a
+		// secret used for deriving the prefix of each nonce instance. It should
+		// contain 256 bits (32 bytes) of random data to be suitable as an
+		// HMAC-SHA256 key (e.g. the output of `openssl rand -hex 32`). In a
+		// multi-DC deployment this value should be the same across all
+		// boulder-wfe and nonce-service instances.
+		NonceHMACKey cmd.HMACKeyConfig `validate:"required_without_all=NoncePrefixKey,structonly"`
 
 		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
 		// instance. It should contain 256 bits (32 bytes) of random data to be
@@ -34,8 +33,11 @@ type Config struct {
 		// 32`). In a multi-DC deployment this value should be the same across
 		// all boulder-wfe and nonce-service instances.
 		//
-		// TODO(#7632) Update this to use the new HMACKeyConfig.
-		NoncePrefixKey cmd.PasswordConfig `validate:"required"`
+		// TODO(#7632): Remove this and change `NonceHMACKey`'s validation to
+		// just `required.`
+		//
+		// Deprecated: Use NonceHMACKey instead.
+		NoncePrefixKey cmd.PasswordConfig `validate:"required_without_all=NonceHMACKey,structonly"`
 
 		Syslog        cmd.SyslogConfig
 		OpenTelemetry cmd.OpenTelemetryConfig
@@ -84,12 +86,18 @@ func main() {
 		c.NonceService.DebugAddr = *debugAddr
 	}
 
-	if c.NonceService.NoncePrefixKey.PasswordFile == "" {
-		cmd.Fail("NoncePrefixKey PasswordFile must be set")
+	var key string
+	if c.NonceService.NonceHMACKey.KeyFile != "" {
+		keyByte, err := c.NonceService.NonceHMACKey.Load()
+		cmd.FailOnError(err, "Failed to load 'nonceHMACKey' file.")
+		key = string(keyByte)
+	} else if c.NonceService.NoncePrefixKey.PasswordFile != "" {
+		key, err = c.NonceService.NoncePrefixKey.Pass()
+		cmd.FailOnError(err, "Failed to load 'noncePrefixKey' file.")
+	} else {
+		cmd.Fail("NonceHMACKey KeyFile or NoncePrefixKey PasswordFile must be set")
 	}
 
-	key, err := c.NonceService.NoncePrefixKey.Pass()
-	cmd.FailOnError(err, "Failed to load 'noncePrefixKey' file.")
 	noncePrefix, err := derivePrefix(key, c.NonceService.GRPC.Address)
 	cmd.FailOnError(err, "Failed to derive nonce prefix")
 
