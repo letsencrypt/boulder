@@ -119,12 +119,12 @@ type Config struct {
 	// unique "INSERT ... RETURNING" functionality.
 	InsertAuthzsIndividually bool
 
-	// UseKvLimitsForZombieClientPausing when enabled, causes the key-value rate
+	// AutomaticallyPauseZombieClients configures the RA to automatically track
 	// limiter to be the authoritative source of rate limiting information for
 	// automatically pausing clients who systemically fail every validation
 	// attempt. When disabled, only manually paused identifier:accountID:domain
 	// pairs will be rejected.
-	UseKvLimitsForZombieClientPausing bool
+	AutomaticallyPauseZombieClients bool
 
 	// IncrementRateLimits uses Redis' IncrBy, instead of Set, for rate limit
 	// accounting. This catches and denies spikes of requests much more

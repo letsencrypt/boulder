@@ -122,6 +122,7 @@ type RegistrationAuthorityImpl struct {
 	orderAges               *prometheus.HistogramVec
 	inflightFinalizes       prometheus.Gauge
 	certCSRMismatch         prometheus.Counter
+	pauseCounter            *prometheus.CounterVec
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
@@ -241,6 +242,12 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(certCSRMismatch)
 
+	pauseCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "paused_pairs",
+		Help: "Number of times a pause operation is performed, labeled by paused=[bool], repaused=[bool], grace=[bool]",
+	}, []string{"paused", "repaused", "grace"})
+	stats.MustRegister(pauseCounter)
+
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
@@ -276,6 +283,7 @@ func NewRegistrationAuthorityImpl(
 		orderAges:                    orderAges,
 		inflightFinalizes:            inflightFinalizes,
 		certCSRMismatch:              certCSRMismatch,
+		pauseCounter:                 pauseCounter,
 	}
 	return ra
 }
@@ -1810,7 +1818,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 }
 
 // countFailedValidation increments the failed authorizations per domain per
-// account rate limit. If the UseKvLimitsForZombieClientPausing feature has been
+// account rate limit. If the AutomaticallyPauseZombieClients feature has been
 // enabled, it also increments the failed authorizations for pausing per domain
 // per account rate limit. There is no reason to surface errors from this
 // function to the Subscriber, spends against this limit are best effort.
@@ -1833,7 +1841,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 		ra.log.Warningf("spending against the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
 
-	if features.Get().UseKvLimitsForZombieClientPausing {
+	if features.Get().AutomaticallyPauseZombieClients {
 		txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, ident.Value)
 		if err != nil {
 			ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
@@ -1848,7 +1856,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 		}
 
 		if decision.Result(ra.clk.Now()) != nil {
-			_, err := ra.SA.PauseIdentifiers(ctx, &sapb.PauseRequest{
+			resp, err := ra.SA.PauseIdentifiers(ctx, &sapb.PauseRequest{
 				RegistrationID: regId,
 				Identifiers: []*corepb.Identifier{
 					{
@@ -1858,8 +1866,13 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 				},
 			})
 			if err != nil {
-				ra.log.Warningf("failed to auto-pause %d/%q: %s", regId, ident.Value, err)
+				ra.log.Warningf("failed to pause %d/%q: %s", regId, ident.Value, err)
 			}
+			ra.pauseCounter.With(prometheus.Labels{
+				"paused":   strconv.FormatBool(resp.Paused > 0),
+				"repaused": strconv.FormatBool(resp.Repaused > 0),
+				"grace":    strconv.FormatBool(resp.Paused <= 0 && resp.Repaused <= 0),
+			}).Inc()
 		}
 	}
 }
@@ -1869,11 +1882,11 @@ func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, 
 func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
 	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident.Value)
 	if err != nil {
-		ra.log.Warningf("Can't get domain bucket key for regID=[%d] authzID=[%s] err=[%s]", regId, ident, err)
+		ra.log.Warningf("creating bucket key for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
 	}
 	err = ra.limiter.Reset(ctx, bucketKey)
 	if err != nil {
-		ra.log.Warningf("Can't reset domain bucket key for regID=[%d] authzID=[%s] err=[%s]", regId, ident, err)
+		ra.log.Warningf("resetting bucket for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
 	}
 }
 
@@ -2001,7 +2014,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			go ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier)
 		} else {
 			challenge.Status = core.StatusValid
-			if features.Get().UseKvLimitsForZombieClientPausing {
+			if features.Get().AutomaticallyPauseZombieClients {
 				ra.resetAccountPausingLimit(vaCtx, authz.RegistrationID, authz.Identifier)
 			}
 		}

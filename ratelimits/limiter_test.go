@@ -557,23 +557,6 @@ func TestRateLimitError(t *testing.T) {
 			expectedErrType: berrors.RateLimit,
 		},
 		{
-			name: "FailedAuthorizationsForPausingPerDomainPerAccount limit reached",
-			decision: &Decision{
-				allowed: false,
-				retryIn: 15 * time.Second,
-				transaction: Transaction{
-					limit: limit{
-						name:   FailedAuthorizationsForPausingPerDomainPerAccount,
-						Burst:  7,
-						Period: config.Duration{Duration: time.Hour},
-					},
-					bucketKey: "8:12345:example.com",
-				},
-			},
-			expectedErr:     "too many failed validation attempts (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01 00:00:15 UTC: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account",
-			expectedErrType: berrors.RateLimit,
-		},
-		{
 			name: "CertificatesPerDomain limit reached",
 			decision: &Decision{
 				allowed: false,

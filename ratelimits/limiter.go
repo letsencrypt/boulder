@@ -111,6 +111,8 @@ func (d *Decision) Result(now time.Time) error {
 	retryAfter := d.retryIn + jitter
 	retryAfterTs := now.UTC().Add(retryAfter).Format("2006-01-02 15:04:05 MST")
 
+	// There is no case for FailedAuthorizationsForPausingPerDomainPerAccount
+	// because the RA will pause clients who exceed that ratelimit.
 	switch d.transaction.limit.name {
 	case NewRegistrationsPerIPAddress:
 		return berrors.RegistrationsPerIPAddressError(
@@ -148,22 +150,6 @@ func (d *Decision) Result(now time.Time) error {
 		return berrors.FailedAuthorizationsPerDomainPerAccountError(
 			retryAfter,
 			"too many failed authorizations (%d) for %q in the last %s, retry after %s",
-			d.transaction.limit.Burst,
-			domain,
-			d.transaction.limit.Period.Duration,
-			retryAfterTs,
-		)
-
-	case FailedAuthorizationsForPausingPerDomainPerAccount:
-		// Uses bucket key 'enum:regId:domain'.
-		idx := strings.LastIndex(d.transaction.bucketKey, ":")
-		if idx == -1 {
-			return berrors.InternalServerError("unrecognized bucket key while generating error")
-		}
-		domain := d.transaction.bucketKey[idx+1:]
-		return berrors.FailedAuthorizationsPerDomainPerAccountError(
-			retryAfter,
-			"too many failed validation attempts (%d) for %q in the last %s, retry after %s",
 			d.transaction.limit.Burst,
 			domain,
 			d.transaction.limit.Period.Duration,

@@ -916,7 +916,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	va, sa, ra, redisSrc, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	features.Set(features.Config{UseKvLimitsForZombieClientPausing: true})
+	features.Set(features.Config{AutomaticallyPauseZombieClients: true})
 	defer features.Reset()
 
 	mockSA := newMockSAPaused(sa)
@@ -975,6 +975,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	got, err := ra.SA.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: authzPB.RegistrationID}, nil)
 	test.AssertError(t, err, "Should not have any paused identifiers yet, but found some")
 	test.AssertBoxedNil(t, got, "Should have received nil response, but did not")
+	test.AssertMetricWithLabelsEquals(t, ra.pauseCounter, prometheus.Labels{"paused": "false", "repaused": "false", "grace": "false"}, 0)
 
 	// We need the bucket key to scan for in Redis
 	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
@@ -1033,6 +1034,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	test.AssertNotError(t, err, "Should not have errored getting paused identifiers")
 	test.AssertEquals(t, len(got.Identifiers), 1)
 	test.AssertEquals(t, got.Identifiers[0].Value, domain)
+	test.AssertMetricWithLabelsEquals(t, ra.pauseCounter, prometheus.Labels{"paused": "true", "repaused": "false", "grace": "false"}, 1)
 
 	err = ra.limiter.Reset(ctx, bucketKey)
 	test.AssertNotError(t, err, "Failed cleaning up redis")
@@ -1046,7 +1048,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	va, sa, ra, redisSrc, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	features.Set(features.Config{UseKvLimitsForZombieClientPausing: true})
+	features.Set(features.Config{AutomaticallyPauseZombieClients: true})
 	defer features.Reset()
 
 	//originalSA := sa
@@ -1106,8 +1108,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	got, err := ra.SA.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: authzPB.RegistrationID}, nil)
 	test.AssertError(t, err, "Should not have any paused identifiers yet, but found some")
 	test.AssertBoxedNil(t, got, "Should have received nil response, but did not")
-	// Avoid a datarace
-	time.Sleep(100 * time.Millisecond)
+	test.AssertMetricWithLabelsEquals(t, ra.pauseCounter, prometheus.Labels{"paused": "false", "repaused": "false", "grace": "false"}, 0)
 
 	// We need the bucket key to scan for in Redis
 	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
