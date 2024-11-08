@@ -84,7 +84,7 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		// This should never happen.
 		return balancer.PickResult{}, errMissingHMACKeyCtxKey
 	}
-	hmacKey, ok := hmacKeyVal.([]byte)
+	hmacKey, ok := hmacKeyVal.(string)
 	if !ok {
 		// This should never happen.
 		return balancer.PickResult{}, errInvalidHMACKeyCtxKeyType
@@ -94,7 +94,7 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		// First call to Pick with a new Picker.
 		prefixToBackend := make(map[string]balancer.SubConn)
 		for sc, scInfo := range p.backends {
-			scPrefix := nonce.DerivePrefix(scInfo.Address.Addr, hmacKey)
+			scPrefix := nonce.DerivePrefix(scInfo.Address.Addr, []byte(hmacKey))
 			prefixToBackend[scPrefix] = sc
 		}
 		p.prefixToBackend = prefixToBackend
