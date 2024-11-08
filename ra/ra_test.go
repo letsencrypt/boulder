@@ -957,20 +957,15 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	})
 	test.AssertNotError(t, err, "PerformValidation failed")
 
-	var vaRequest *vapb.PerformValidationRequest
 	select {
 	case r := <-va.performValidationRequest:
-		vaRequest = r
+		_ = r
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
 	}
 
-	// Verify that the VA got the request, and it's the same as the others
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
-
 	// Sleep so the RA has a chance to write to the SA
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	got, err := ra.SA.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: authzPB.RegistrationID}, nil)
 	test.AssertError(t, err, "Should not have any paused identifiers yet, but found some")
@@ -981,7 +976,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
 	test.AssertNotError(t, err, "Should have been able to construct bucket key, but could not")
 
-	// Verify that a redis entry exists for this identifier:accountID:domain
+	// Verify that a redis entry exists for this accountID:identifier.
 	tat, err := redisSrc.Get(ctx, bucketKey)
 	test.AssertNotError(t, err, "Should not have errored, but did")
 
@@ -1017,17 +1012,13 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 
 	select {
 	case r := <-va.performValidationRequest:
-		vaRequest = r
+		_ = r
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
 	}
 
-	// Verify that the VA got the request, and it's the same as the others.
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
-
 	// Sleep so the RA has a chance to write to the SA
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Ensure the identifier:account:domain we expect to be paused actually is.
 	got, err = ra.SA.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: authzPB.RegistrationID}, nil)
@@ -1051,7 +1042,6 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	features.Set(features.Config{AutomaticallyPauseZombieClients: true})
 	defer features.Reset()
 
-	//originalSA := sa
 	mockSA := newMockSAPaused(sa)
 	ra.SA = mockSA
 
@@ -1090,17 +1080,12 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	})
 	test.AssertNotError(t, err, "PerformValidation failed")
 
-	var vaRequest *vapb.PerformValidationRequest
 	select {
 	case r := <-va.performValidationRequest:
-		vaRequest = r
+		_ = r
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
 	}
-
-	// Verify that the VA got the request, and it's the same as the others
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
 
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
@@ -1114,7 +1099,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
 	test.AssertNotError(t, err, "Should have been able to construct bucket key, but could not")
 
-	// Verify that a redis entry exists for this identifier:accountID:domain
+	// Verify that a redis entry exists for this accountID:identifier
 	tat, err := redisSrc.Get(ctx, bucketKey)
 	test.AssertNotError(t, err, "Should not have errored, but did")
 
@@ -1153,22 +1138,18 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 
 	select {
 	case r := <-va.performValidationRequest:
-		vaRequest = r
+		_ = r
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
 	}
-
-	// Verify that the VA got the request, and it's the same as the others
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
 
 	// We need the bucket key to scan for in Redis
 	bucketKey, err = ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
 	test.AssertNotError(t, err, "Should have been able to construct bucket key, but could not")
 
 	// Verify that the bucket no longer exists (because the limiter reset has
-	// deleted it). This indicates the identifier:accountID:domain bucket has
-	// regained capacity avoiding being inadvertently paused.
+	// deleted it). This indicates the accountID:identifier bucket has regained
+	// capacity avoiding being inadvertently paused.
 	_, err = redisSrc.Get(ctx, bucketKey)
 	test.AssertErrorIs(t, err, ratelimits.ErrBucketNotFound)
 

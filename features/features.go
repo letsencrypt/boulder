@@ -122,8 +122,8 @@ type Config struct {
 	// AutomaticallyPauseZombieClients configures the RA to automatically track
 	// limiter to be the authoritative source of rate limiting information for
 	// automatically pausing clients who systemically fail every validation
-	// attempt. When disabled, only manually paused identifier:accountID:domain
-	// pairs will be rejected.
+	// attempt. When disabled, only manually paused accountID:identifier pairs
+	// will be rejected.
 	AutomaticallyPauseZombieClients bool
 
 	// IncrementRateLimits uses Redis' IncrBy, instead of Set, for rate limit
