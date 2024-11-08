@@ -44,7 +44,7 @@ type Config struct {
 	}
 }
 
-func derivePrefix(key string, grpcAddr string) (string, error) {
+func derivePrefix(key []byte, grpcAddr string) (string, error) {
 	host, port, err := net.SplitHostPort(grpcAddr)
 	if err != nil {
 		return "", fmt.Errorf("parsing gRPC listen address: %w", err)
@@ -86,14 +86,14 @@ func main() {
 		c.NonceService.DebugAddr = *debugAddr
 	}
 
-	var key string
+	var key []byte
 	if c.NonceService.NonceHMACKey.KeyFile != "" {
-		keyByte, err := c.NonceService.NonceHMACKey.Load()
+		key, err = c.NonceService.NonceHMACKey.Load()
 		cmd.FailOnError(err, "Failed to load 'nonceHMACKey' file.")
-		key = string(keyByte)
 	} else if c.NonceService.NoncePrefixKey.PasswordFile != "" {
-		key, err = c.NonceService.NoncePrefixKey.Pass()
+		keyString, err := c.NonceService.NoncePrefixKey.Pass()
 		cmd.FailOnError(err, "Failed to load 'noncePrefixKey' file.")
+		key = []byte(keyString)
 	} else {
 		cmd.Fail("NonceHMACKey KeyFile or NoncePrefixKey PasswordFile must be set")
 	}

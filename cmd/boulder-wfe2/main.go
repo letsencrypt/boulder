@@ -304,14 +304,14 @@ func main() {
 		cmd.Fail("'getNonceService' must be configured")
 	}
 
-	var noncePrefixKey string
+	var noncePrefixKey []byte
 	if c.WFE.NonceHMACKey.KeyFile != "" {
-		keyByte, err := c.WFE.NonceHMACKey.Load()
+		noncePrefixKey, err = c.WFE.NonceHMACKey.Load()
 		cmd.FailOnError(err, "Failed to load nonceHMACKey file")
-		noncePrefixKey = string(keyByte)
 	} else if c.WFE.NoncePrefixKey.PasswordFile != "" {
-		noncePrefixKey, err = c.WFE.NoncePrefixKey.Pass()
+		keyString, err := c.WFE.NoncePrefixKey.Pass()
 		cmd.FailOnError(err, "Failed to load noncePrefixKey file")
+		noncePrefixKey = []byte(keyString)
 	} else {
 		cmd.Fail("NonceHMACKey KeyFile or NoncePrefixKey PasswordFile must be set")
 	}
