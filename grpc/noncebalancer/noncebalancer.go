@@ -35,7 +35,7 @@ var ErrNoBackendsMatchPrefix = status.New(codes.Unavailable, "no backends match 
 var errMissingPrefixCtxKey = errors.New("nonce.PrefixCtxKey value required in RPC context")
 var errMissingHMACKeyCtxKey = errors.New("nonce.HMACKeyCtxKey value required in RPC context")
 var errInvalidPrefixCtxKeyType = errors.New("nonce.PrefixCtxKey value in RPC context must be a string")
-var errInvalidHMACKeyCtxKeyType = errors.New("nonce.HMACKeyCtxKey value in RPC context must be a byteslice")
+var errInvalidHMACKeyCtxKeyType = errors.New("nonce.HMACKeyCtxKey value in RPC context must be a byte slice")
 
 // Balancer implements the base.PickerBuilder interface. It's used to create new
 // balancer.Picker instances. It should only be used by nonce-service clients.
