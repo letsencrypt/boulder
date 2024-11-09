@@ -12,3 +12,10 @@
     ids:
       - id: 13371338
         comment: Used to test the TransactionBuilder
+- FailedAuthorizationsForPausingPerDomainPerAccount:
+    burst: 1337
+    count: 1
+    period: 24h
+    ids:
+      - id: 13371338
+        comment: Used to test the TransactionBuilder

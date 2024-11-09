@@ -119,6 +119,13 @@ type Config struct {
 	// unique "INSERT ... RETURNING" functionality.
 	InsertAuthzsIndividually bool
 
+	// AutomaticallyPauseZombieClients configures the RA to automatically track
+	// limiter to be the authoritative source of rate limiting information for
+	// automatically pausing clients who systemically fail every validation
+	// attempt. When disabled, only manually paused accountID:identifier pairs
+	// will be rejected.
+	AutomaticallyPauseZombieClients bool
+
 	// IncrementRateLimits uses Redis' IncrBy, instead of Set, for rate limit
 	// accounting. This catches and denies spikes of requests much more
 	// reliably.

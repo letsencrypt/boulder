@@ -111,6 +111,8 @@ func (d *Decision) Result(now time.Time) error {
 	retryAfter := d.retryIn + jitter
 	retryAfterTs := now.UTC().Add(retryAfter).Format("2006-01-02 15:04:05 MST")
 
+	// There is no case for FailedAuthorizationsForPausingPerDomainPerAccount
+	// because the RA will pause clients who exceed that ratelimit.
 	switch d.transaction.limit.name {
 	case NewRegistrationsPerIPAddress:
 		return berrors.RegistrationsPerIPAddressError(
