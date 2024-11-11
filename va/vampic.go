@@ -7,6 +7,7 @@ import (
 	"maps"
 	"math/rand/v2"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
@@ -19,13 +20,23 @@ import (
 )
 
 const (
-	PrimaryPerspective = "primary"
+	// requiredPerspectives is the minimum number of perspectives required to
+	// perform an MPIC-compliant validation.
+	//
+	// Timeline:
+	//  - Mar 15, 2026: MUST implement using at least 3 perspectives
+	//  - Jun 15, 2026: MUST implement using at least 4 perspectives
+	//  - Dec 15, 2026: MUST implement using at least 5 perspectives
+	requiredPerspectives = 3
 
-	challenge = "challenge"
-	caa       = "caa"
-	all       = "all"
-	pass      = "pass"
-	fail      = "fail"
+	PrimaryPerspective = "primary"
+	all                = "all"
+
+	opChallenge = "challenge"
+	opCAA       = "caa"
+
+	pass = "pass"
+	fail = "fail"
 )
 
 // observeLatency records entries in the validationLatency histogram of the
@@ -133,11 +144,8 @@ func determineMaxAllowedFailures(perspectiveCount int) int {
 // validation results and a problem if the validation failed. The summary is
 // mandatory and must be returned even if the validation failed.
 func (va *ValidationAuthorityImpl) remoteValidateChallenge(ctx context.Context, req *vapb.ValidationRequest) (mpicSummary, *probs.ProblemDetails) {
-	// Mar 15, 2026: MUST implement using at least 3 perspectives
-	// Jun 15, 2026: MUST implement using at least 4 perspectives
-	// Dec 15, 2026: MUST implement using at least 5 perspectives
 	remoteVACount := len(va.remoteVAs)
-	if remoteVACount < 3 {
+	if remoteVACount < requiredPerspectives {
 		return mpicSummary{}, probs.ServerInternal("Insufficient remote perspectives: need at least 3")
 	}
 
@@ -279,10 +287,10 @@ func (va *ValidationAuthorityImpl) ValidateChallenge(ctx context.Context, req *v
 			auditLog.Challenge.Status = core.StatusValid
 		}
 		// Observe local validation latency (primary|remote).
-		va.observeLatency(challenge, va.perspective, string(chall.Type), probType, outcome, localLatency)
+		va.observeLatency(opChallenge, va.perspective, string(chall.Type), probType, outcome, localLatency)
 		if va.isPrimaryVA() {
 			// Observe total validation latency (primary+remote).
-			va.observeLatency(challenge, all, string(chall.Type), probType, outcome, va.clk.Since(start))
+			va.observeLatency(opChallenge, all, string(chall.Type), probType, outcome, va.clk.Since(start))
 			auditLog.MPICSummary = summary
 		}
 		// Log the total validation latency.
@@ -317,4 +325,244 @@ func (va *ValidationAuthorityImpl) ValidateChallenge(ctx context.Context, req *v
 	}
 
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
+}
+
+// remoteValidateChallenge performs an MPIC-compliant remote validation of the
+// challenge using the configured remote VAs. It returns a summary of the
+// validation results and a problem if the validation failed. The summary is
+// mandatory and must be returned even if the validation failed.
+func (va *ValidationAuthorityImpl) remoteCheckCAA(ctx context.Context, req *vapb.CheckCAARequest) (mpicSummary, *probs.ProblemDetails) {
+	remoteVACount := len(va.remoteVAs)
+	if remoteVACount < requiredPerspectives {
+		return mpicSummary{}, probs.ServerInternal("Insufficient remote perspectives: need at least 3")
+	}
+
+	type response struct {
+		addr   string
+		result *vapb.CheckCAAResult
+		err    error
+	}
+
+	responses := make(chan *response, remoteVACount)
+	for _, i := range rand.Perm(remoteVACount) {
+		go func(rva RemoteVA) {
+			res, err := rva.CheckCAA(ctx, req)
+			responses <- &response{rva.Address, res, err}
+		}(va.remoteVAs[i])
+	}
+
+	var passed []string
+	var failed []string
+	passedRIRs := make(map[string]struct{})
+
+	var firstProb *probs.ProblemDetails
+	for i := 0; i < remoteVACount; i++ {
+		resp := <-responses
+
+		var currProb *probs.ProblemDetails
+		if resp.err != nil {
+			// Failed to communicate with the remote VA.
+			failed = append(failed, resp.addr)
+			if errors.Is(resp.err, context.Canceled) {
+				currProb = probs.ServerInternal("Secondary CAA check RPC canceled")
+			} else {
+				va.log.Errf("Remote VA %q.CheckCAA failed: %s", resp.addr, resp.err)
+				currProb = probs.ServerInternal("Secondary CAA check RPC failed")
+			}
+
+		} else if resp.result.Problem != nil {
+			// The remote VA returned a problem.
+			failed = append(failed, resp.result.Perspective)
+
+			var err error
+			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problem)
+			if err != nil {
+				va.log.Errf("Remote VA %q.CheckCAA returned a malformed problem: %s", resp.addr, err)
+				currProb = probs.ServerInternal("Secondary CAA check RPC returned malformed result")
+			}
+
+		} else {
+			// The remote VA returned a successful result.
+			passed = append(passed, resp.result.Perspective)
+			passedRIRs[resp.result.Rir] = struct{}{}
+		}
+
+		if firstProb == nil && currProb != nil {
+			// A problem was encountered for the first time.
+			firstProb = currProb
+		}
+	}
+
+	// Prepare the summary, this MUST be returned even if the check failed.
+	summary := prepareSummary(passed, failed, passedRIRs, remoteVACount)
+
+	maxRemoteFailures := determineMaxAllowedFailures(remoteVACount)
+	if len(failed) > maxRemoteFailures {
+		// Too many failures to reach quorum.
+		if firstProb != nil {
+			firstProb.Detail = fmt.Sprintf("During secondary CAA check: %s", firstProb.Detail)
+			return summary, firstProb
+		}
+		return summary, probs.ServerInternal("Secondary CAA check failed due to too many failures")
+	}
+
+	if len(passed) < (remoteVACount - maxRemoteFailures) {
+		// Too few successful responses to reach quorum.
+		if firstProb != nil {
+			firstProb.Detail = fmt.Sprintf("During secondary CAA check: %s", firstProb.Detail)
+			return summary, firstProb
+		}
+		return summary, probs.ServerInternal("Secondary CAA check failed due to insufficient successful responses")
+	}
+
+	if len(passedRIRs) < 2 {
+		// Too few successful responses from distinct RIRs to reach quorum.
+		if firstProb != nil {
+			firstProb.Detail = fmt.Sprintf("During secondary CAA check: %s", firstProb.Detail)
+			return summary, firstProb
+		}
+		return summary, probs.Unauthorized("Secondary CAA check failed to receive enough corroborations from distinct RIRs")
+	}
+
+	// Enough successful responses from distinct RIRs to reach quorum.
+	return summary, nil
+}
+
+// checkCAAAuditLog contains multiple fields that are exported for logging
+// purposes.
+type checkCAAAuditLog struct {
+	AuthzID       string             `json:",omitempty"`
+	Requester     int64              `json:",omitempty"`
+	Identifier    string             `json:",omitempty"`
+	ChallengeType core.AcmeChallenge `json:",omitempty"`
+	Error         string             `json:",omitempty"`
+	InternalError string             `json:",omitempty"`
+	Latency       float64            `json:",omitempty"`
+	MPICSummary   mpicSummary
+}
+
+func prepareCAACheckResult(prob *probs.ProblemDetails, perspective, rir string) (*vapb.CheckCAAResult, error) {
+	pbProb, err := bgrpc.ProblemDetailsToPB(prob)
+	if err != nil {
+		return &vapb.CheckCAAResult{}, errors.New("failed to serialize problem")
+	}
+	return &vapb.CheckCAAResult{Problem: pbProb, Perspective: perspective, Rir: rir}, nil
+}
+
+// CheckCAA performs a local CAA check using the configured local VA. If the
+// local CAA check passes, it will also perform an MPIC-compliant CAA check
+// using the configured remote VAs.
+//
+// Note: This method calls itself recursively to perform remote caa checks.
+func (va *ValidationAuthorityImpl) CheckCAA(ctx context.Context, req *vapb.CheckCAARequest) (*vapb.CheckCAAResult, error) {
+	if core.IsAnyNilOrZero(req, req.Identifier, req.ChallengeType, req.RegID, req.AuthzID) {
+		return nil, berrors.InternalServerError("Incomplete CAA check request")
+	}
+
+	acmeIdent := identifier.NewDNS(req.Identifier.Value)
+	challType := core.AcmeChallenge(req.ChallengeType)
+	if !challType.IsValid() {
+		return nil, berrors.InternalServerError("Invalid challenge type")
+	}
+
+	auditLog := checkCAAAuditLog{
+		AuthzID:       req.AuthzID,
+		Requester:     req.RegID,
+		Identifier:    req.Identifier.Value,
+		ChallengeType: challType,
+	}
+
+	var prob *probs.ProblemDetails
+	var localLatency time.Duration
+	var summary = newSummary()
+	start := va.clk.Now()
+
+	defer func() {
+		probType := ""
+		outcome := fail
+		if prob != nil {
+			// CAA check failed.
+			probType = string(prob.Type)
+			auditLog.Error = prob.Error()
+		} else {
+			// CAA check passed.
+			outcome = pass
+		}
+		// Observe local check latency (primary|remote).
+		va.observeLatency(opCAA, va.perspective, string(challType), probType, outcome, localLatency)
+		if va.isPrimaryVA() {
+			// Observe total check latency (primary+remote).
+			va.observeLatency(opCAA, all, string(challType), probType, outcome, va.clk.Since(start))
+			auditLog.MPICSummary = summary
+		}
+		// Log the total check latency.
+		auditLog.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
+
+		va.log.AuditObject("CAA check result", auditLog)
+	}()
+
+	var localErr error
+
+	if req.IsRecheck && va.isPrimaryVA() {
+		// Perform local and remote checks in parallel.
+		var localWG sync.WaitGroup
+		var remoteWG sync.WaitGroup
+		localWG.Add(1)
+		remoteWG.Add(1)
+
+		var remoteProb *probs.ProblemDetails
+		var remoteSummary mpicSummary
+
+		go func() {
+			defer localWG.Done()
+			localErr = va.checkCAA(ctx, acmeIdent, &caaParams{req.RegID, challType})
+		}()
+
+		go func() {
+			defer remoteWG.Done()
+			remoteSummary, remoteProb = va.remoteCheckCAA(ctx, req)
+		}()
+
+		// Wait for local check to complete.
+		localWG.Wait()
+
+		// Stop the clock for local check latency.
+		localLatency = va.clk.Since(start)
+
+		// Wait for remote check to complete.
+		remoteWG.Wait()
+
+		if localErr != nil {
+			// Local check failed.
+			auditLog.InternalError = localErr.Error()
+			prob = detailedError(localErr)
+			return prepareCAACheckResult(prob, va.perspective, va.rir)
+		}
+		summary = remoteSummary
+		if remoteProb != nil {
+			// Remote check failed.
+			prob = remoteProb
+		}
+
+	} else {
+		// Perform local check.
+		localErr = va.checkCAA(ctx, acmeIdent, &caaParams{req.RegID, challType})
+
+		// Stop the clock for local check latency.
+		localLatency = va.clk.Since(start)
+
+		if localErr != nil {
+			// Local check failed.
+			auditLog.InternalError = localErr.Error()
+			prob = detailedError(localErr)
+			return prepareCAACheckResult(prob, va.perspective, va.rir)
+		}
+
+		if va.isPrimaryVA() {
+			// Attempt to check CAA remotely.
+			summary, prob = va.remoteCheckCAA(ctx, req)
+		}
+	}
+
+	return prepareCAACheckResult(prob, va.perspective, va.rir)
 }

@@ -213,6 +213,10 @@ func (v canceledVA) ValidateChallenge(_ context.Context, _ *vapb.ValidationReque
 	return nil, context.Canceled
 }
 
+func (v canceledVA) CheckCAA(_ context.Context, _ *vapb.CheckCAARequest, _ ...grpc.CallOption) (*vapb.CheckCAAResult, error) {
+	return nil, context.Canceled
+}
+
 // brokenRemoteVA is a mock for the VAClient and CAAClient interfaces that always return
 // errors.
 type brokenRemoteVA struct{}
@@ -234,6 +238,10 @@ func (b brokenRemoteVA) ValidateChallenge(_ context.Context, _ *vapb.ValidationR
 	return nil, errBrokenRemoteVA
 }
 
+func (b brokenRemoteVA) CheckCAA(_ context.Context, _ *vapb.CheckCAARequest, _ ...grpc.CallOption) (*vapb.CheckCAAResult, error) {
+	return nil, errBrokenRemoteVA
+}
+
 // inMemVA is a wrapper which fulfills the VAClient and CAAClient
 // interfaces, but then forwards requests directly to its inner
 // ValidationAuthorityImpl rather than over the network. This lets a local
@@ -252,6 +260,10 @@ func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest
 
 func (inmem inMemVA) ValidateChallenge(_ context.Context, req *vapb.ValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return inmem.rva.ValidateChallenge(ctx, req)
+}
+
+func (inmem inMemVA) CheckCAA(_ context.Context, req *vapb.CheckCAARequest, _ ...grpc.CallOption) (*vapb.CheckCAAResult, error) {
+	return inmem.rva.CheckCAA(ctx, req)
 }
 
 func TestValidateMalformedChallenge(t *testing.T) {
@@ -737,19 +749,39 @@ func TestLogRemoteDifferentials(t *testing.T) {
 	}
 }
 
+const (
+	brokenDNS   = "broken-dns"
+	hijackedDNS = "hijacked-dns"
+)
+
+func dnsClientForUA(ua string, log blog.Logger) bdns.Client {
+	switch ua {
+	case brokenDNS:
+		return caaBrokenDNS{}
+	case hijackedDNS:
+		return caaHijackedDNS{}
+	default:
+		return &bdns.MockClient{Log: log}
+	}
+}
+
 // setup returns an in-memory VA and a mock logger. The default resolver client
 // is MockClient{}, but can be overridden.
-func setupVA(srv *httptest.Server, ua string, rvas []RemoteVA, mockDNSClient bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
+func setupVA(srv *httptest.Server, ua string, rvas []RemoteVA, dnsClientMock bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) { //nolint: unparam
 	features.Reset()
 	fc := clock.NewFake()
 
 	mockLog := blog.NewMock()
-	if ua == "" {
-		ua = "user agent 1.0"
+
+	var dnsClient bdns.Client
+	if dnsClientMock != nil {
+		dnsClient = dnsClientMock
+	} else {
+		dnsClient = dnsClientForUA(ua, mockLog)
 	}
 
 	va, err := NewValidationAuthorityImpl(
-		&bdns.MockClient{Log: mockLog},
+		dnsClient,
 		nil,
 		0,
 		ua,
@@ -761,10 +793,6 @@ func setupVA(srv *httptest.Server, ua string, rvas []RemoteVA, mockDNSClient bdn
 		PrimaryPerspective,
 		"ARIN",
 	)
-
-	if mockDNSClient != nil {
-		va.dnsClient = mockDNSClient
-	}
 
 	// Adjusting industry regulated ACME challenge port settings is fine during
 	// testing
@@ -784,29 +812,19 @@ func setupVA(srv *httptest.Server, ua string, rvas []RemoteVA, mockDNSClient bdn
 }
 
 type rvaConf struct {
-	// rir is the Regional Internet Registry for the remote VA.
 	rir string
-
-	// ua if set to pass, the remote VA will always pass validation. If set to
-	// fail, the remote VA will always fail validation with probs.Unauthorized.
-	// This is set to pass by default.
-	ua string
+	ua  string
 }
 
 // setupRVAs returns a slice of RemoteVA instances for testing. confs is a slice
 // of rir and user agent configurations for each RVA. mockDNSClient is optional,
 // it allows the DNS client to be overridden. srv is optional, it allows for a
 // test server to be specified.
-func setupRVAs(confs []rvaConf, mockDNSClient bdns.Client, srv *httptest.Server) []RemoteVA { //nolint: unparam
+func setupRVAs(confs []rvaConf, srv *httptest.Server) []RemoteVA {
 	remoteVAs := make([]RemoteVA, 0, len(confs))
 	for i, c := range confs {
-		ua := "user agent 1.0"
-		if c.ua != "" {
-			ua = c.ua
-		}
-
 		// Configure the remote VA.
-		rva, _ := setupVA(srv, ua, nil, mockDNSClient)
+		rva, _ := setupVA(srv, c.ua, nil, nil)
 		rva.perspective = fmt.Sprintf("dc-%d-%s", i, c.rir)
 		rva.rir = c.rir
 
@@ -839,197 +857,258 @@ func createValidationRequest(domain string, challengeType core.AcmeChallenge) *v
 	}
 }
 
-func TestValidateChallengeInvalid(t *testing.T) {
-	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
-	va, mockLog := setupVA(nil, "", rvas, nil)
-
-	req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
-
-	res, err := va.ValidateChallenge(context.Background(), req)
-	test.AssertNotError(t, err, "ValidateChallenge failed, expected success")
-	test.Assert(t, res.Problems != nil, "validation succeeded, expected failure")
-	resultLog := mockLog.GetAllMatching(`Challenge validation result`)
-	test.AssertNotNil(t, resultLog, "ValidateChallenge didn't log validation result.")
-	test.AssertContains(t, resultLog[0], `"Identifier":"foo.com"`)
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      "challenge",
-		"perspective":    "primary",
-		"challenge_type": string(core.ChallengeTypeDNS01),
-		"problem_type":   string(probs.UnauthorizedProblem),
-		"result":         fail,
-	}, 1)
-}
-
-func TestValidateChallengeInternalErrorLogged(t *testing.T) {
-	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
-	va, mockLog := setupVA(nil, "", rvas, nil)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
-	defer cancel()
-
-	req := createValidationRequest("nonexistent.com", core.ChallengeTypeHTTP01)
-
-	_, err := va.ValidateChallenge(ctx, req)
-	test.AssertNotError(t, err, "Failed validation should be a prob but not an error")
-	resultLog := mockLog.GetAllMatching(
-		`Challenge validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: context deadline exceeded`)
-	test.AssertEquals(t, len(resultLog), 1)
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      challenge,
-		"perspective":    PrimaryPerspective,
-		"challenge_type": string(core.ChallengeTypeHTTP01),
-		"problem_type":   string(probs.ConnectionProblem),
-		"result":         fail,
-	}, 1)
-}
-
-func TestValidateChallengeValid(t *testing.T) {
-	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
-	va, mockLog := setupVA(nil, "", rvas, nil)
-
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
-
-	res, err := va.ValidateChallenge(context.Background(), req)
-	test.AssertNotError(t, err, "validating challenge resulted in unexpected error")
-	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
-	resultLog := mockLog.GetAllMatching(`Challenge validation result`)
-	test.AssertNotNil(t, resultLog, "ValidateChallenge didn't log validation result.")
-	test.AssertContains(t, resultLog[0], `"Identifier":"good-dns01.com"`)
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      challenge,
-		"perspective":    PrimaryPerspective,
-		"challenge_type": string(core.ChallengeTypeDNS01),
-		"problem_type":   "",
-		"result":         pass,
-	}, 1)
-}
-
-// TestValidateChallengeWildcard tests that the VA properly strips the `*.`
-// prefix from a wildcard name provided to the ValidateChallenge function.
-func TestValidateChallengeWildcard(t *testing.T) {
-	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
-	va, mockLog := setupVA(nil, "", rvas, nil)
-
-	req := createValidationRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
-
-	res, _ := va.ValidateChallenge(context.Background(), req)
-	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
-	resultLog := mockLog.GetAllMatching(`Challenge validation result`)
-	test.AssertNotNil(t, resultLog, "ValidateChallenge didn't log validation result.")
-
-	// The top level Identifier will reflect the wildcard name.
-	test.AssertContains(t, resultLog[0], `"Identifier":"*.good-dns01.com"`)
-
-	// The ValidationRecord will contain the non-wildcard name.
-	test.AssertContains(t, resultLog[0], `"hostname":"good-dns01.com"`)
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      challenge,
-		"perspective":    PrimaryPerspective,
-		"challenge_type": string(core.ChallengeTypeDNS01),
-		"problem_type":   "",
-		"result":         pass,
-	}, 1)
-}
-
-func TestValidateChallengeValidWithBrokenRVA(t *testing.T) {
-	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}}, nil, nil)
-	brokenRVA := RemoteClients{VAClient: brokenRemoteVA{}, CAAClient: brokenRemoteVA{}}
-	rvas = append(rvas, RemoteVA{brokenRVA, "broken"})
-	va, _ := setupVA(nil, "", rvas, nil)
-
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
-
-	res, err := va.ValidateChallenge(context.Background(), req)
-	test.AssertNotError(t, err, "validating challenge resulted in unexpected error")
-	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
-}
-
-func TestValidateChallengeValidWithCancelledRVA(t *testing.T) {
-	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}}, nil, nil)
-	cancelledRVA := RemoteClients{VAClient: canceledVA{}, CAAClient: canceledVA{}}
-	rvas = append(rvas, RemoteVA{cancelledRVA, "cancelled"})
-	va, _ := setupVA(nil, "", rvas, nil)
-
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
-
-	res, err := va.ValidateChallenge(context.Background(), req)
-	test.AssertNotError(t, err, "validating challenge resulted in unexpected error")
-	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
-}
-
-func TestValidateChallengeFailsWithTooManyBrokenRVAs(t *testing.T) {
-	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}}, nil, nil)
-	brokenRVA := RemoteClients{VAClient: brokenRemoteVA{}, CAAClient: brokenRemoteVA{}}
-	rvas = append(rvas, RemoteVA{brokenRVA, "broken"}, RemoteVA{brokenRVA, "broken"})
-	va, _ := setupVA(nil, "", rvas, nil)
-
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
-
-	res, err := va.ValidateChallenge(context.Background(), req)
-	test.AssertNotError(t, err, "Failed validation should be a prob but not an error")
-	test.AssertContains(t, res.Problems.Detail, "During secondary domain validation: Secondary domain validation RPC failed")
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      challenge,
-		"perspective":    PrimaryPerspective,
-		"challenge_type": string(core.ChallengeTypeDNS01),
-		"problem_type":   string(probs.ServerInternalProblem),
-		"result":         fail,
-	}, 1)
-}
-
-func TestValidateChallengeFailsWithTooManyCanceledRVAs(t *testing.T) {
-	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}}, nil, nil)
-	canceledRVA := RemoteClients{VAClient: canceledVA{}, CAAClient: canceledVA{}}
-	rvas = append(rvas, RemoteVA{canceledRVA, "canceled"}, RemoteVA{canceledRVA, "canceled"})
-	va, _ := setupVA(nil, "", rvas, nil)
-
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
-
-	res, err := va.ValidateChallenge(context.Background(), req)
-	test.AssertNotError(t, err, "Failed validation should be a prob but not an error")
-	test.AssertContains(t, res.Problems.Detail, "During secondary domain validation: Secondary domain validation RPC canceled")
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      challenge,
-		"perspective":    PrimaryPerspective,
-		"challenge_type": string(core.ChallengeTypeDNS01),
-		"problem_type":   string(probs.ServerInternalProblem),
-		"result":         fail,
-	}, 1)
-}
-
-// parseMPICSummary extracts ... from "MPICSummary":{ ... } in a
-// ValidateChallenge log and returns it as an mpicSummary struct.
-func parseMPICSummary(t *testing.T, log []string) mpicSummary {
-	re := regexp.MustCompile(`"MPICSummary":\{.*\}`)
-
-	var summary mpicSummary
+// parseValidationAuditLog extracts ... from JSON={ ... } in a
+// ValidateChallenge or CheckCAA log and returns it as an auditLog struct.
+func parseValidationAuditLog(t *testing.T, log []string) validateChallengeAuditLog {
+	re := regexp.MustCompile(`JSON=\{.*\}`)
+	var audit validateChallengeAuditLog
 	for _, line := range log {
 		match := re.FindString(line)
 		if match != "" {
-			jsonStr := strings.TrimSuffix(match[len(`"MPICSummary":`):], "}")
-			if err := json.Unmarshal([]byte(jsonStr), &summary); err != nil {
-				t.Fatalf("Failed to parse MPICSummary: %v", err)
+			jsonStr := match[len(`JSON=`):]
+			if err := json.Unmarshal([]byte(jsonStr), &audit); err != nil {
+				t.Fatalf("Failed to parse JSON: %v", err)
 			}
-			return summary
+			return audit
 		}
 	}
+	t.Fatal("JSON not found in log")
+	return audit
+}
 
-	t.Fatal("MPICSummary JSON not found in log")
-	return summary
+func TestValidateChallenge(t *testing.T) {
+	t.Parallel()
+
+	brokenRVA := RemoteVA{RemoteClients{VAClient: brokenRemoteVA{}}, "broken"}
+	canceledRVA := RemoteVA{RemoteClients{VAClient: canceledVA{}}, "canceled"}
+
+	testCases := []struct {
+		name                          string
+		identifier                    string
+		challengeType                 core.AcmeChallenge
+		rvas                          []rvaConf
+		appendRemoteVAs               []RemoteVA
+		primaryUA                     string
+		ctxTimeout                    time.Duration
+		expectError                   bool
+		expectProbType                probs.ProblemType
+		expectProbContains            string
+		expectLogIdentifier           string
+		expectValidationRecordDnsName string
+		expectedMetricLabels          prometheus.Labels
+	}{
+		{
+			name:                          "UnauthorizedProblem",
+			identifier:                    "foo.com",
+			challengeType:                 core.ChallengeTypeDNS01,
+			rvas:                          []rvaConf{{"ARIN", pass}, {"RIPE", pass}, {"APNIC", pass}},
+			primaryUA:                     pass,
+			expectError:                   false,
+			expectProbType:                probs.UnauthorizedProblem,
+			expectProbContains:            "",
+			expectLogIdentifier:           "foo.com",
+			expectValidationRecordDnsName: "",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opChallenge,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.UnauthorizedProblem),
+				"result":         fail,
+			},
+		},
+		{
+			name:                          "ConnectionProblem",
+			identifier:                    "nonexistent.com",
+			challengeType:                 core.ChallengeTypeHTTP01,
+			rvas:                          []rvaConf{{"ARIN", pass}, {"RIPE", pass}, {"APNIC", pass}},
+			primaryUA:                     pass,
+			ctxTimeout:                    1 * time.Millisecond,
+			expectError:                   false,
+			expectProbType:                probs.ConnectionProblem,
+			expectProbContains:            "Timeout after connect",
+			expectLogIdentifier:           "nonexistent.com",
+			expectValidationRecordDnsName: "",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opChallenge,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeHTTP01),
+				"problem_type":   string(probs.ConnectionProblem),
+				"result":         fail,
+			},
+		},
+		{
+			name:                          "Valid",
+			identifier:                    "good-dns01.com",
+			challengeType:                 core.ChallengeTypeDNS01,
+			rvas:                          []rvaConf{{"ARIN", pass}, {"RIPE", pass}, {"APNIC", pass}},
+			primaryUA:                     pass,
+			expectError:                   false,
+			expectProbType:                "",
+			expectLogIdentifier:           "good-dns01.com",
+			expectValidationRecordDnsName: "good-dns01.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opChallenge,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   "",
+				"result":         pass,
+			},
+		},
+		{
+			name:                          "ValidWithWildcard",
+			identifier:                    "*.good-dns01.com",
+			challengeType:                 core.ChallengeTypeDNS01,
+			rvas:                          []rvaConf{{"ARIN", pass}, {"RIPE", pass}, {"APNIC", pass}},
+			primaryUA:                     pass,
+			expectError:                   false,
+			expectProbType:                "",
+			expectLogIdentifier:           "*.good-dns01.com",
+			expectValidationRecordDnsName: "good-dns01.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opChallenge,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   "",
+				"result":         pass,
+			},
+		},
+		{
+			name:                          "ValidWithBrokenRVA",
+			identifier:                    "good-dns01.com",
+			challengeType:                 core.ChallengeTypeDNS01,
+			rvas:                          []rvaConf{{"ARIN", pass}, {"RIPE", pass}},
+			appendRemoteVAs:               []RemoteVA{brokenRVA},
+			primaryUA:                     pass,
+			expectError:                   false,
+			expectProbType:                "",
+			expectLogIdentifier:           "good-dns01.com",
+			expectValidationRecordDnsName: "good-dns01.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opChallenge,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   "",
+				"result":         pass,
+			},
+		},
+		{
+			name:                          "ValidWithCanceledRVA",
+			identifier:                    "good-dns01.com",
+			challengeType:                 core.ChallengeTypeDNS01,
+			rvas:                          []rvaConf{{"ARIN", pass}, {"RIPE", pass}},
+			appendRemoteVAs:               []RemoteVA{canceledRVA},
+			primaryUA:                     pass,
+			expectError:                   false,
+			expectProbType:                "",
+			expectLogIdentifier:           "good-dns01.com",
+			expectValidationRecordDnsName: "good-dns01.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opChallenge,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   "",
+				"result":         pass,
+			},
+		},
+		{
+			name:                "InvalidWithTooManyBrokenRVAs",
+			identifier:          "good-dns01.com",
+			challengeType:       core.ChallengeTypeDNS01,
+			rvas:                []rvaConf{{"ARIN", pass}},
+			appendRemoteVAs:     []RemoteVA{brokenRVA, brokenRVA},
+			primaryUA:           pass,
+			expectError:         false,
+			expectProbType:      probs.ServerInternalProblem,
+			expectProbContains:  "During secondary domain validation: Secondary domain validation RPC failed",
+			expectLogIdentifier: "good-dns01.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opChallenge,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.ServerInternalProblem),
+				"result":         fail,
+			},
+		},
+		{
+			name:                "InvalidWithTooManyCanceledRVAs",
+			identifier:          "good-dns01.com",
+			challengeType:       core.ChallengeTypeDNS01,
+			rvas:                []rvaConf{{"ARIN", pass}},
+			appendRemoteVAs:     []RemoteVA{canceledRVA, canceledRVA},
+			primaryUA:           pass,
+			expectError:         false,
+			expectProbType:      probs.ServerInternalProblem,
+			expectProbContains:  "During secondary domain validation: Secondary domain validation RPC canceled",
+			expectLogIdentifier: "good-dns01.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opChallenge,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.ServerInternalProblem),
+				"result":         fail,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := httpMultiSrv(t, expectedToken, map[string]bool{"pass": true, "fail": false})
+			defer srv.Close()
+
+			rvas := setupRVAs(tc.rvas, srv.Server)
+			if len(tc.appendRemoteVAs) > 0 {
+				rvas = append(rvas, tc.appendRemoteVAs...)
+			}
+			va, mockLog := setupVA(srv.Server, tc.primaryUA, rvas, nil)
+			req := createValidationRequest(tc.identifier, tc.challengeType)
+
+			ctx := context.Background()
+			if tc.ctxTimeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(context.Background(), tc.ctxTimeout)
+				defer cancel()
+			}
+
+			res, err := va.ValidateChallenge(ctx, req)
+			if tc.expectError {
+				test.AssertError(t, err, "Expected an error but got none")
+			} else {
+				test.AssertNotError(t, err, "ValidateChallenge failed, expected success")
+			}
+
+			resultLog := mockLog.GetAllMatching("Challenge validation result")
+			test.AssertNotNil(t, resultLog, "ValidateChallenge didn't log validation result.")
+			auditLog := parseValidationAuditLog(t, resultLog)
+			if tc.expectLogIdentifier != "" {
+				test.AssertEquals(t, tc.expectLogIdentifier, auditLog.Identifier)
+			}
+			if tc.expectValidationRecordDnsName != "" {
+				if auditLog.Challenge.ValidationRecord == nil {
+					t.Fatalf("Expected ValidationRecord in audit log but got none")
+				}
+				test.AssertEquals(t, tc.expectValidationRecordDnsName, auditLog.Challenge.ValidationRecord[0].DnsName)
+			}
+
+			if tc.expectProbType != "" {
+				test.Assert(t, res.Problems != nil, "validation succeeded, expected failure")
+				test.AssertEquals(t, string(tc.expectProbType), res.Problems.ProblemType)
+				if tc.expectProbContains != "" {
+					test.AssertContains(t, res.Problems.Detail, tc.expectProbContains)
+				}
+			} else {
+				test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed unexpectedly: %#v", res.Problems))
+			}
+			test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, tc.expectedMetricLabels, 1)
+		})
+	}
 }
 
 func TestValidateChallengeMPIC(t *testing.T) {
-	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
+	t.Parallel()
 
-	// srv is used for the Primary VA and the Remote VAs. The srv.Server
-	// produced will be used to mock the challenge recipient. When a VA (primary
-	// or remote) with a user-agent (UA) of "pass" attempt to validate a
-	// challenge, it will succeed. When a VA with a UA of "fail" attempts to
-	// validate a challenge it will fail with probs.Unauthorized. By controlling
-	// which VA or Remote VA(s) are configured with which UA, we can control the
-	// conditions of each case.
-	srv := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
-	defer srv.Close()
+	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
 
 	testCases := []struct {
 		name               string
@@ -1112,7 +1191,7 @@ func TestValidateChallengeMPIC(t *testing.T) {
 		{
 			// If the primary passes and is configured with 6+ remote VAs which
 			// return 3 or more failures, the validation will fail.
-			name:      "VA: pass, rva1(ARIN): pass, rva2(APNIC): pass, rva3(ARIN): pass, rva4(ARIN): pass, rva5(ARIN): pass, rva6(ARIN): pass, rva7(ARIN): fail, rva8(ARIN): fail",
+			name:      "VA: pass, rva1(ARIN): pass, rva2(APNIC): pass, rva3(ARIN): pass, rva4(ARIN): pass, rva5(ARIN): pass, rva6(ARIN): fail, rva7(ARIN): fail, rva8(ARIN): fail",
 			primaryUA: pass,
 			rvas: []rvaConf{
 				{"ARIN", pass}, {"APNIC", pass}, {"ARIN", pass}, {"ARIN", pass},
@@ -1127,7 +1206,7 @@ func TestValidateChallengeMPIC(t *testing.T) {
 			// If the primary passes and is configured with 6+ remote VAs, then
 			// the validation can succeed with up to 2 remote VA failures unless
 			// one of the failed RVAs was the only one from a distinct RIR.
-			name:      "VA: pass, rva1(ARIN): pass, rva2(APNIC): pass, rva3(ARIN): pass, rva4(ARIN): pass, rva5(ARIN): pass, rva6(ARIN): pass, rva7(ARIN): fail, rva8(ARIN): fail",
+			name:      "VA: pass, rva1(ARIN): pass, rva2(APNIC): fail, rva3(ARIN): pass, rva4(ARIN): pass, rva5(ARIN): pass, rva6(ARIN): pass, rva7(ARIN): pass, rva8(ARIN): fail",
 			primaryUA: pass,
 			rvas: []rvaConf{
 				{"ARIN", pass}, {"APNIC", fail}, {"ARIN", pass}, {"ARIN", pass},
@@ -1142,7 +1221,15 @@ func TestValidateChallengeMPIC(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			rvas := setupRVAs(tc.rvas, nil, srv.Server)
+			t.Parallel()
+
+			// srv mocks the challenge recipient for the Primary and Remote VAs.
+			// A VA/RVA with a user-agent (UA) of pass succeeds, while fail
+			// triggers a failure with probs.Unauthorized.
+			srv := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
+			defer srv.Close()
+
+			rvas := setupRVAs(tc.rvas, srv.Server)
 			primaryVA, mockLog := setupVA(srv.Server, tc.primaryUA, rvas, nil)
 
 			res, err := primaryVA.ValidateChallenge(ctx, req)
@@ -1159,11 +1246,425 @@ func TestValidateChallengeMPIC(t *testing.T) {
 			if tc.expectLogContains != "" {
 				test.AssertNotError(t, mockLog.ExpectMatch(tc.expectLogContains), "Expected log line not found")
 			}
-			got := parseMPICSummary(t, mockLog.GetAll())
-			test.AssertDeepEquals(t, tc.expectQuorumResult, got.QuorumResult)
+			got := parseValidationAuditLog(t, mockLog.GetAll())
+			test.AssertDeepEquals(t, tc.expectQuorumResult, got.MPICSummary.QuorumResult)
 			if tc.expectPassedRIRs != nil {
-				test.AssertDeepEquals(t, tc.expectPassedRIRs, got.RIRs)
+				test.AssertDeepEquals(t, tc.expectPassedRIRs, got.MPICSummary.RIRs)
 			}
 		})
+	}
+}
+
+func createCheckCAARequest(domain string, challengeType core.AcmeChallenge, recheck bool) *vapb.CheckCAARequest {
+	return &vapb.CheckCAARequest{
+		Identifier: &corepb.Identifier{
+			Type:  string(identifier.TypeDNS),
+			Value: domain,
+		},
+		ChallengeType: string(challengeType),
+		RegID:         1,
+		AuthzID:       "1",
+		IsRecheck:     recheck,
+	}
+}
+
+// parseValidationAuditLog extracts ... from JSON={ ... } in a
+// ValidateChallenge or CheckCAA log and returns it as an auditLog struct.
+func parseCheckCAAAuditLog(t *testing.T, log []string) checkCAAAuditLog {
+	re := regexp.MustCompile(`JSON=\{.*\}`)
+	var audit checkCAAAuditLog
+	for _, line := range log {
+		match := re.FindString(line)
+		if match != "" {
+			jsonStr := match[len(`JSON=`):]
+			if err := json.Unmarshal([]byte(jsonStr), &audit); err != nil {
+				t.Fatalf("Failed to parse JSON: %v", err)
+			}
+			return audit
+		}
+	}
+	t.Fatal("JSON not found in log")
+	return audit
+}
+
+func TestCheckCAA(t *testing.T) {
+	t.Parallel()
+
+	brokenRVA := RemoteVA{RemoteClients{CAAClient: brokenRemoteVA{}}, "broken"}
+	canceledRVA := RemoteVA{RemoteClients{CAAClient: canceledVA{}}, "canceled"}
+
+	testCases := []struct {
+		name                 string
+		identifier           string
+		challengeType        core.AcmeChallenge
+		rvas                 []rvaConf
+		appendRemoteVAs      []RemoteVA
+		primaryUA            string
+		expectError          bool
+		expectProbType       probs.ProblemType
+		expectProbContains   string
+		expectLogIdentifier  string
+		expectedMetricLabels prometheus.Labels
+	}{
+		{
+			name:                "DNSProblem",
+			identifier:          "present.com",
+			challengeType:       core.ChallengeTypeDNS01,
+			rvas:                []rvaConf{{"ARIN", pass}, {"RIPE", pass}, {"APNIC", pass}},
+			primaryUA:           brokenDNS,
+			expectError:         false,
+			expectProbType:      probs.DNSProblem,
+			expectProbContains:  "",
+			expectLogIdentifier: "present.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.DNSProblem),
+				"result":         fail,
+			},
+		},
+		{
+			name:                "Valid",
+			identifier:          "good-dns01.com",
+			challengeType:       core.ChallengeTypeDNS01,
+			rvas:                []rvaConf{{"ARIN", pass}, {"RIPE", pass}, {"APNIC", pass}},
+			primaryUA:           pass,
+			expectError:         false,
+			expectProbType:      "",
+			expectLogIdentifier: "good-dns01.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   "",
+				"result":         pass,
+			},
+		},
+		{
+			name:                "ValidWithBrokenRVA",
+			identifier:          "good-dns01.com",
+			challengeType:       core.ChallengeTypeDNS01,
+			rvas:                []rvaConf{{"ARIN", pass}, {"RIPE", pass}},
+			appendRemoteVAs:     []RemoteVA{brokenRVA},
+			primaryUA:           pass,
+			expectError:         false,
+			expectProbType:      "",
+			expectLogIdentifier: "good-dns01.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   "",
+				"result":         pass,
+			},
+		},
+		{
+			name:                "ValidWithCanceledRVA",
+			identifier:          "good-dns01.com",
+			challengeType:       core.ChallengeTypeDNS01,
+			rvas:                []rvaConf{{"ARIN", pass}, {"RIPE", pass}},
+			appendRemoteVAs:     []RemoteVA{canceledRVA},
+			primaryUA:           pass,
+			expectError:         false,
+			expectProbType:      "",
+			expectLogIdentifier: "good-dns01.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   "",
+				"result":         pass,
+			},
+		},
+		{
+			name:                "InvalidWithTooManyBrokenRVAs",
+			identifier:          "good-dns01.com",
+			challengeType:       core.ChallengeTypeDNS01,
+			rvas:                []rvaConf{{"ARIN", pass}},
+			appendRemoteVAs:     []RemoteVA{brokenRVA, brokenRVA},
+			primaryUA:           pass,
+			expectError:         false,
+			expectProbType:      probs.ServerInternalProblem,
+			expectProbContains:  "During secondary CAA check: Secondary CAA check RPC failed",
+			expectLogIdentifier: "good-dns01.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.ServerInternalProblem),
+				"result":         fail,
+			},
+		},
+		{
+			name:                "InvalidWithTooManyCanceledRVAs",
+			identifier:          "good-dns01.com",
+			challengeType:       core.ChallengeTypeDNS01,
+			rvas:                []rvaConf{{"ARIN", pass}},
+			appendRemoteVAs:     []RemoteVA{canceledRVA, canceledRVA},
+			primaryUA:           opCAA,
+			expectError:         false,
+			expectProbType:      probs.ServerInternalProblem,
+			expectProbContains:  "During secondary CAA check: Secondary CAA check RPC canceled",
+			expectLogIdentifier: "good-dns01.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.ServerInternalProblem),
+				"result":         fail,
+			},
+		},
+		{
+			name:                "ValidWithOneConflictingRVA",
+			identifier:          "present.com",
+			challengeType:       core.ChallengeTypeDNS01,
+			rvas:                []rvaConf{{"ARIN", pass}, {"RIPE", pass}, {"APNIC", hijackedDNS}},
+			primaryUA:           pass,
+			expectError:         false,
+			expectProbType:      "",
+			expectLogIdentifier: "present.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   "",
+				"result":         pass,
+			},
+		},
+		{
+			name:                "RemoteCAAProblem",
+			identifier:          "present.com",
+			challengeType:       core.ChallengeTypeDNS01,
+			rvas:                []rvaConf{{"ARIN", pass}, {"RIPE", hijackedDNS}, {"APNIC", hijackedDNS}},
+			primaryUA:           pass,
+			expectError:         false,
+			expectProbType:      probs.CAAProblem,
+			expectProbContains:  "During secondary CAA check: CAA record for present.com prevents issuance",
+			expectLogIdentifier: "present.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.CAAProblem),
+				"result":         fail,
+			},
+		},
+		{
+			name:                "LocalCAAProblem",
+			identifier:          "present.com",
+			challengeType:       core.ChallengeTypeDNS01,
+			rvas:                []rvaConf{{"ARIN", pass}, {"RIPE", pass}, {"APNIC", pass}},
+			primaryUA:           hijackedDNS,
+			expectError:         false,
+			expectProbType:      probs.CAAProblem,
+			expectProbContains:  "CAA record for present.com prevents issuance",
+			expectLogIdentifier: "present.com",
+			expectedMetricLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    PrimaryPerspective,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.CAAProblem),
+				"result":         fail,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		for _, isRecheck := range []bool{false, true} {
+			if isRecheck {
+				tc.name = tc.name + "Recheck"
+			}
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				srv := httpMultiSrv(t, expectedToken, map[string]bool{"pass": true, "fail": false})
+				defer srv.Close()
+
+				rvas := setupRVAs(tc.rvas, srv.Server)
+				if len(tc.appendRemoteVAs) > 0 {
+					rvas = append(rvas, tc.appendRemoteVAs...)
+				}
+				va, mockLog := setupVA(srv.Server, tc.primaryUA, rvas, nil)
+				req := createCheckCAARequest(tc.identifier, tc.challengeType, isRecheck)
+
+				res, err := va.CheckCAA(ctx, req)
+				if tc.expectError {
+					test.AssertError(t, err, "Expected CheckCAA to error but got none")
+				} else {
+					test.AssertNotError(t, err, "CheckCAA failed, expected success")
+				}
+
+				resultLog := mockLog.GetAllMatching("CAA check result")
+				test.AssertNotNil(t, resultLog, "CheckCAA didn't log check result.")
+				auditLog := parseCheckCAAAuditLog(t, resultLog)
+				if tc.expectLogIdentifier != "" {
+					test.AssertEquals(t, tc.expectLogIdentifier, auditLog.Identifier)
+				}
+
+				if tc.expectProbType != "" {
+					fmt.Printf("\nauditLog:\n %#v\n", auditLog)
+					test.Assert(t, res.Problem != nil, "CheckCAA succeeded, expected failure")
+					test.AssertEquals(t, string(tc.expectProbType), res.Problem.ProblemType)
+					if tc.expectProbContains != "" {
+						test.AssertContains(t, res.Problem.Detail, tc.expectProbContains)
+					}
+				} else {
+					test.Assert(t, res.Problem == nil, fmt.Sprintf("CheckCAA failed unexpectedly: %#v", res.Problem))
+				}
+				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, tc.expectedMetricLabels, 1)
+			})
+		}
+	}
+}
+
+func TestCheckCAAMPIC(t *testing.T) {
+	t.Parallel()
+
+	req := createCheckCAARequest("localhost", core.ChallengeTypeHTTP01, false)
+	testCases := []struct {
+		name               string
+		primaryUA          string
+		rvas               []rvaConf
+		expectedProbType   probs.ProblemType
+		expectLogContains  string
+		expectQuorumResult string
+		expectPassedRIRs   []string
+	}{
+		{
+			// If the primary and all remote VAs pass, the CAA check will
+			// succeed.
+			name:               "VA: pass, remote1(ARIN): pass, remote2(RIPE): pass, remote3(APNIC): pass",
+			primaryUA:          pass,
+			rvas:               []rvaConf{{"ARIN", pass}, {"RIPE", pass}, {"APNIC", pass}},
+			expectedProbType:   "",
+			expectLogContains:  `Valid for issuance: true`,
+			expectQuorumResult: "3/3",
+			expectPassedRIRs:   []string{"APNIC", "ARIN", "RIPE"},
+		},
+		{
+			// If the primary passes and just one remote VA fails, the CAA check
+			// will succeed.
+			name:               "VA: pass, rva1(ARIN): pass, rva2(RIPE): pass, rva3(APNIC): brokenDNS",
+			primaryUA:          pass,
+			rvas:               []rvaConf{{"ARIN", pass}, {"RIPE", pass}, {"APNIC", brokenDNS}},
+			expectedProbType:   "",
+			expectLogContains:  `Valid for issuance: true`,
+			expectQuorumResult: "2/3",
+			expectPassedRIRs:   []string{"ARIN", "RIPE"},
+		},
+		{
+			// If the primary passes and two remote VAs fail, the CAA check will
+			// fail.
+			name:               "VA: pass, rva1(ARIN): pass, rva2(RIPE): brokenDNS, rva3(APNIC): brokenDNS",
+			primaryUA:          pass,
+			rvas:               []rvaConf{{"ARIN", pass}, {"RIPE", brokenDNS}, {"APNIC", brokenDNS}},
+			expectedProbType:   probs.DNSProblem,
+			expectLogContains:  "During secondary CAA check: " + errCAABrokenDNSClient.Error(),
+			expectQuorumResult: "1/3",
+			expectPassedRIRs:   []string{"ARIN"},
+		},
+		{
+			// If the primary fails, the remote VAs will not be queried, and the
+			// CAA check will fail.
+			name:               "VA: brokenDNS, rva1(ARIN): pass, rva2(RIPE): pass, rva3(APNIC): pass",
+			primaryUA:          brokenDNS,
+			rvas:               []rvaConf{{"ARIN", pass}, {"RIPE", pass}, {"APNIC", pass}},
+			expectedProbType:   probs.DNSProblem,
+			expectLogContains:  errCAABrokenDNSClient.Error(),
+			expectQuorumResult: "",
+			expectPassedRIRs:   nil,
+		},
+		{
+			// If the primary passes and all of the passing RVAs are from the
+			// same RIR, the CAA check will fail and the error message will
+			// indicate the problem.
+			name:               "VA: pass, rva1(ARIN): pass, rva2(ARIN): pass, rva3(APNIC): brokenDNS",
+			primaryUA:          pass,
+			rvas:               []rvaConf{{"ARIN", pass}, {"ARIN", pass}, {"APNIC", brokenDNS}},
+			expectedProbType:   probs.DNSProblem,
+			expectLogContains:  errCAABrokenDNSClient.Error(),
+			expectQuorumResult: "2/3",
+			expectPassedRIRs:   []string{"ARIN"},
+		},
+		{
+			// If the primary passes and is configured with 6+ remote VAs, then
+			// the CAA check can succeed with up to 2 remote VA failures and
+			// successes from at least 2 distinct RIRs.
+			name:      "VA: pass, rva1(ARIN): pass, rva2(APNIC): pass, rva3(ARIN): pass, rva4(ARIN): pass, rva5(ARIN): pass, rva6(ARIN): pass, rva7(ARIN): brokenDNS, rva8(ARIN): brokenDNS",
+			primaryUA: pass,
+			rvas: []rvaConf{
+				{"ARIN", pass}, {"APNIC", pass}, {"ARIN", pass}, {"ARIN", pass}, {"ARIN", brokenDNS}, {"ARIN", brokenDNS},
+			},
+			expectedProbType:   "",
+			expectLogContains:  `Valid for issuance: true`,
+			expectQuorumResult: "4/6",
+			expectPassedRIRs:   []string{"APNIC", "ARIN"},
+		},
+		{
+			// If the primary passes and is configured with 6+ remote VAs which
+			// return 3 or more failures, the CAA check will fail.
+			name:      "VA: pass, rva1(ARIN): pass, rva2(APNIC): pass, rva3(ARIN): pass, rva4(ARIN): pass, rva5(ARIN): pass, rva6(ARIN): brokenDNS, rva7(ARIN): brokenDNS, rva8(ARIN): brokenDNS",
+			primaryUA: pass,
+			rvas: []rvaConf{
+				{"ARIN", pass}, {"APNIC", pass}, {"ARIN", pass}, {"ARIN", pass},
+				{"ARIN", pass}, {"ARIN", brokenDNS}, {"ARIN", brokenDNS}, {"ARIN", brokenDNS},
+			},
+			expectedProbType:   probs.DNSProblem,
+			expectLogContains:  "During secondary CAA check: " + errCAABrokenDNSClient.Error(),
+			expectQuorumResult: "5/8",
+			expectPassedRIRs:   []string{"APNIC", "ARIN"},
+		},
+		{
+			// If the primary passes and is configured with 6+ remote VAs, then
+			// the CAA check can succeed with up to 2 remote VA failures unless
+			// one of the failed RVAs was the only one from a distinct RIR.
+			name:      "VA: pass, rva1(ARIN): pass, rva2(APNIC): brokenDNS, rva3(ARIN): pass, rva4(ARIN): pass, rva5(ARIN): pass, rva6(ARIN): pass, rva7(ARIN): pass, rva8(ARIN): brokenDNS",
+			primaryUA: pass,
+			rvas: []rvaConf{
+				{"ARIN", pass}, {"APNIC", brokenDNS}, {"ARIN", pass}, {"ARIN", pass},
+				{"ARIN", pass}, {"ARIN", pass}, {"ARIN", pass}, {"ARIN", brokenDNS},
+			},
+			expectedProbType:   probs.DNSProblem,
+			expectLogContains:  "During secondary CAA check: " + errCAABrokenDNSClient.Error(),
+			expectQuorumResult: "6/8",
+			expectPassedRIRs:   []string{"ARIN"},
+		},
+	}
+
+	for _, tc := range testCases {
+		for _, isRecheck := range []bool{false, true} {
+			req.IsRecheck = isRecheck
+			if isRecheck {
+				tc.name = tc.name + "Recheck"
+			}
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				rvas := setupRVAs(tc.rvas, nil)
+				primaryVA, mockLog := setupVA(nil, tc.primaryUA, rvas, nil)
+
+				res, err := primaryVA.CheckCAA(ctx, req)
+				test.AssertNotError(t, err, "These cases should only produce a probs, not errors")
+
+				if tc.expectedProbType == "" {
+					// We expect validation to succeed.
+					test.Assert(t, res.Problem == nil, fmt.Sprintf("Unexpected CAA check failure: %#v", res.Problem))
+				} else {
+					// We expect validation to fail.
+					test.AssertNotNil(t, res.Problem, "Expected CAA check failure but got success")
+					test.AssertEquals(t, string(tc.expectedProbType), res.Problem.ProblemType)
+				}
+				if tc.expectLogContains != "" {
+					test.AssertNotError(t, mockLog.ExpectMatch(tc.expectLogContains), "Expected log line not found")
+				}
+				got := parseCheckCAAAuditLog(t, mockLog.GetAll())
+				test.AssertDeepEquals(t, tc.expectQuorumResult, got.MPICSummary.QuorumResult)
+				if tc.expectPassedRIRs != nil {
+					test.AssertDeepEquals(t, tc.expectPassedRIRs, got.MPICSummary.RIRs)
+				}
+			})
+		}
+
 	}
 }

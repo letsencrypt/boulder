@@ -12,6 +12,7 @@ service VA {
 
 service CAA {
   rpc IsCAAValid(IsCAAValidRequest) returns (IsCAAValidResponse) {}
+  rpc CheckCAA(CheckCAARequest) returns (CheckCAAResult) {}
 }
 
 message IsCAAValidRequest {
@@ -51,4 +52,18 @@ message ValidationRequest {
   int64 regID = 3;
   string authzID = 4;
   string keyAuthorization = 5;
+}
+
+message CheckCAARequest {
+  core.Identifier identifier = 1;
+  string challengeType = 2;
+  int64 regID = 3;
+  string authzID = 4;
+  bool isRecheck = 5;
+}
+
+message CheckCAAResult {
+  core.ProblemDetails problem = 1;
+  string perspective = 3;
+  string rir = 4;
 }
