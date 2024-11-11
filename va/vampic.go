@@ -47,19 +47,23 @@ func (va *ValidationAuthorityImpl) observeLatency(op, perspective, challType, pr
 	va.metrics.validationLatency.With(labels).Observe(latency.Seconds())
 }
 
-func (va *ValidationAuthorityImpl) onPrimaryVA() bool {
+// isPrimaryVA returns true if the VA is the primary validation perspective.
+func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 	return va.perspective == PrimaryPerspective
 }
 
 // mpicSummary contains multiple fields that are exported for logging purposes.
+// To initialize an empty mpicSummary, use newSummary(). The prepare a final
+// summary, use prepareSummary().
 type mpicSummary struct {
-	// Passed is the list of distinct perspectives that Passed validation.
+	// Passed are the distinct perspectives that Passed validation.
 	Passed []string `json:"passedPerspectives"`
 
-	// Failed is the list of distinct perspectives that Failed validation.
+	// Failed are the disctint perspectives that Failed validation.
 	Failed []string `json:"failedPerspectives"`
 
-	// RIRs is the list of distinct RIRs that passing perspectives belonged to.
+	// RIRs are the distinct Regional Internet Registries that passing
+	// perspectives belonged to.
 	RIRs []string `json:"passedRIRs"`
 
 	// QuorumResult is the Multi-Perspective Issuance Corroboration quorum
@@ -70,14 +74,10 @@ type mpicSummary struct {
 	QuorumResult string `json:"quorumResult"`
 }
 
-// newSummary returns a new mpicSummary with empty slices to avoid "null" in
-// JSON output.
+// newSummary returns a new mpicSummary with empty slices to avoid "null" in the
+// JSON output. Fields are exported for logging purposes.
 func newSummary() mpicSummary {
-	return mpicSummary{
-		Passed: []string{},
-		Failed: []string{},
-		RIRs:   []string{},
-	}
+	return mpicSummary{[]string{}, []string{}, []string{}, ""}
 }
 
 // prepareSummary prepares a summary of the validation results for logging
@@ -107,7 +107,7 @@ type validateChallengeAuditLog struct {
 	Error         string         `json:",omitempty"`
 	InternalError string         `json:",omitempty"`
 	Latency       float64        `json:",omitempty"`
-	MPICSummary   mpicSummary    `json:",omitempty"`
+	MPICSummary   mpicSummary
 }
 
 // determineMaxAllowedFailures returns the maximum number of allowed failures
@@ -118,11 +118,11 @@ type validateChallengeAuditLog struct {
 //	| --- | --- |
 //	| 2-5 |  1  |
 //	| 6+  |  2  |
-func determineMaxAllowedFailures(perspectives int) int {
-	if perspectives < 2 {
+func determineMaxAllowedFailures(perspectiveCount int) int {
+	if perspectiveCount < 2 {
 		return 0
 	}
-	if perspectives < 6 {
+	if perspectiveCount < 6 {
 		return 1
 	}
 	return 2
@@ -133,70 +133,62 @@ func determineMaxAllowedFailures(perspectives int) int {
 // validation results and a problem if the validation failed. The summary is
 // mandatory and must be returned even if the validation failed.
 func (va *ValidationAuthorityImpl) remoteValidateChallenge(ctx context.Context, req *vapb.ValidationRequest) (mpicSummary, *probs.ProblemDetails) {
+	// Mar 15, 2026: MUST implement using at least 3 perspectives
+	// Jun 15, 2026: MUST implement using at least 4 perspectives
+	// Dec 15, 2026: MUST implement using at least 5 perspectives
 	remoteVACount := len(va.remoteVAs)
 	if remoteVACount < 3 {
 		return mpicSummary{}, probs.ServerInternal("Insufficient remote perspectives: need at least 3")
 	}
 
-	type remoteResult struct {
-		// rvaAddr is only used for logging.
-		rvaAddr  string
-		response *vapb.ValidationResult
-		err      error
+	type response struct {
+		addr   string
+		result *vapb.ValidationResult
+		err    error
 	}
 
-	responses := make(chan *remoteResult, remoteVACount)
+	responses := make(chan *response, remoteVACount)
 	for _, i := range rand.Perm(remoteVACount) {
-		rva := va.remoteVAs[i]
-
 		go func(rva RemoteVA) {
 			res, err := rva.ValidateChallenge(ctx, req)
-			responses <- &remoteResult{
-				rvaAddr:  rva.Address,
-				response: res,
-				err:      err,
-			}
-		}(rva)
+			responses <- &response{rva.Address, res, err}
+		}(va.remoteVAs[i])
 	}
 
-	passed := []string{}
-	failed := []string{}
+	var passed []string
+	var failed []string
 	passedRIRs := make(map[string]struct{})
-
-	maxRemoteFailures := determineMaxAllowedFailures(remoteVACount)
-	required := remoteVACount - maxRemoteFailures
 
 	var firstProb *probs.ProblemDetails
 	for i := 0; i < remoteVACount; i++ {
-		res := <-responses
+		resp := <-responses
 
 		var currProb *probs.ProblemDetails
-		if res.err != nil {
-			// The remote VA failed to respond. With no response, we cannot know
-			// the perspective name, so we use the remote VA address.
-			failed = append(failed, res.rvaAddr)
-			if errors.Is(res.err, context.Canceled) {
+		if resp.err != nil {
+			// Failed to communicate with the remote VA.
+			failed = append(failed, resp.addr)
+			if errors.Is(resp.err, context.Canceled) {
 				currProb = probs.ServerInternal("Secondary domain validation RPC canceled")
 			} else {
-				va.log.Errf("Remote VA %q.ValidateChallenge failed: %s", res.rvaAddr, res.err)
+				va.log.Errf("Remote VA %q.ValidateChallenge failed: %s", resp.addr, resp.err)
 				currProb = probs.ServerInternal("Secondary domain validation RPC failed")
 			}
 
-		} else if res.response.Problems != nil {
+		} else if resp.result.Problems != nil {
 			// The remote VA returned a problem.
-			failed = append(failed, res.response.Perspective)
+			failed = append(failed, resp.result.Perspective)
 
 			var err error
-			currProb, err = bgrpc.PBToProblemDetails(res.response.Problems)
+			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problems)
 			if err != nil {
-				va.log.Errf("Remote VA %q.ValidateChallenge returned malformed problem: %s", res.rvaAddr, err)
+				va.log.Errf("Remote VA %q.ValidateChallenge returned a malformed problem: %s", resp.addr, err)
 				currProb = probs.ServerInternal("Secondary domain validation RPC returned malformed result")
 			}
 
 		} else {
-			// The remote VA returned a successful response.
-			passed = append(passed, res.response.Perspective)
-			passedRIRs[res.response.Rir] = struct{}{}
+			// The remote VA returned a successful result.
+			passed = append(passed, resp.result.Perspective)
+			passedRIRs[resp.result.Rir] = struct{}{}
 		}
 
 		if firstProb == nil && currProb != nil {
@@ -208,30 +200,36 @@ func (va *ValidationAuthorityImpl) remoteValidateChallenge(ctx context.Context, 
 	// Prepare the summary, this MUST be returned even if the validation failed.
 	summary := prepareSummary(passed, failed, passedRIRs, remoteVACount)
 
-	if len(passed) >= required {
-		// We may have enough successful responses.
-		if len(passedRIRs) < 2 {
-			if firstProb != nil {
-				firstProb.Detail = fmt.Sprintf("During secondary domain validation: %s", firstProb.Detail)
-				return summary, firstProb
-			}
-			return summary, probs.Unauthorized("Secondary domain validation failed to receive enough responses from disctinct RIRs")
-		}
-		// We have enough successful responses from distinct perspectives.
-		return summary, nil
-	}
-
+	maxRemoteFailures := determineMaxAllowedFailures(remoteVACount)
 	if len(failed) > maxRemoteFailures {
-		// We have too many failed responses.
+		// Too many failures to reach quorum.
 		if firstProb != nil {
 			firstProb.Detail = fmt.Sprintf("During secondary domain validation: %s", firstProb.Detail)
 			return summary, firstProb
 		}
+		return summary, probs.ServerInternal("Secondary domain validation failed due to too many failures")
 	}
-	// This return is unreachable because for any number of remote VAs (n),
-	// either at least (n - maxFailures) perspectives pass, or more than
-	// maxFailures fail. Thus, one of the above conditions is always satisfied.
-	return summary, probs.ServerInternal("Secondary domain validation failed to receive all responses")
+
+	if len(passed) < (remoteVACount - maxRemoteFailures) {
+		// Too few successful responses to reach quorum.
+		if firstProb != nil {
+			firstProb.Detail = fmt.Sprintf("During secondary domain validation: %s", firstProb.Detail)
+			return summary, firstProb
+		}
+		return summary, probs.ServerInternal("Secondary domain validation failed due to insufficient successful responses")
+	}
+
+	if len(passedRIRs) < 2 {
+		// Too few successful responses from distinct RIRs to reach quorum.
+		if firstProb != nil {
+			firstProb.Detail = fmt.Sprintf("During secondary domain validation: %s", firstProb.Detail)
+			return summary, firstProb
+		}
+		return summary, probs.Unauthorized("Secondary domain validation failed to receive enough corroborations from distinct RIRs")
+	}
+
+	// Enough successful responses from distinct RIRs to reach quorum.
+	return summary, nil
 }
 
 // ValidateChallenge performs a local validation of a challenge using the
@@ -254,12 +252,6 @@ func (va *ValidationAuthorityImpl) ValidateChallenge(ctx context.Context, req *v
 		return nil, berrors.MalformedError("challenge failed consistency check: %s", err)
 	}
 
-	var prob *probs.ProblemDetails
-	var localLatency time.Duration
-	var latency time.Duration
-	var summary = newSummary()
-	start := va.clk.Now()
-
 	auditLog := validateChallengeAuditLog{
 		AuthzID:    req.AuthzID,
 		Requester:  req.RegID,
@@ -267,68 +259,62 @@ func (va *ValidationAuthorityImpl) ValidateChallenge(ctx context.Context, req *v
 		Challenge:  chall,
 	}
 
+	var prob *probs.ProblemDetails
+	var localLatency time.Duration
+	var summary = newSummary()
+	start := va.clk.Now()
+
 	defer func() {
 		probType := ""
 		outcome := fail
 		if prob != nil {
-			// Validation failed.
+			// Failed to validate the challenge.
 			probType = string(prob.Type)
 			auditLog.Error = prob.Error()
 			auditLog.Challenge.Error = prob
 			auditLog.Challenge.Status = core.StatusInvalid
-
 		} else {
-			// Validation passed.
+			// Successfully validated the challenge.
 			outcome = pass
 			auditLog.Challenge.Status = core.StatusValid
 		}
-		// Always observe local latency (primary|remote).
+		// Observe local validation latency (primary|remote).
 		va.observeLatency(challenge, va.perspective, string(chall.Type), probType, outcome, localLatency)
-		if va.onPrimaryVA() {
-			// Log the MPIC summary.
+		if va.isPrimaryVA() {
+			// Observe total validation latency (primary+remote).
+			va.observeLatency(challenge, all, string(chall.Type), probType, outcome, va.clk.Since(start))
 			auditLog.MPICSummary = summary
-
-			if latency > 0 {
-				// Observe total latency (primary+remote).
-				va.observeLatency(challenge, all, string(chall.Type), probType, outcome, va.clk.Since(start))
-			}
 		}
-
-		// No matter what, log the audit log.
+		// Log the total validation latency.
 		auditLog.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
 		va.log.AuditObject("Challenge validation result", auditLog)
 	}()
 
-	// Perform local validation.
+	// Validate the challenge locally.
 	records, localErr := va.validateChallenge(ctx, identifier, chall.Type, chall.Token, req.KeyAuthorization)
 
-	// Stop the clock for local validation latency (this may be remote).
+	// Stop the clock for local validation latency.
 	localLatency = va.clk.Since(start)
 
-	// Log the validation records, even if validation failed.
+	// The following checks are performed in a specific order to ensure that the
+	// most relevant problem is returned to the subscriber.
+
 	auditLog.Challenge.ValidationRecord = records
-
-	// The following checks are in a specific order to ensure that the most
-	// pertinent problems are returned first.
-
 	if localErr == nil && !auditLog.Challenge.RecordsSane() {
-		// Validation was successful, but the records failed sanity check.
 		localErr = errors.New("records from local validation failed sanity check")
 	}
 
 	if localErr != nil {
-		// Validation failed locally.
+		// Failed to validate the challenge locally.
 		auditLog.InternalError = localErr.Error()
 		prob = detailedError(localErr)
 		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 	}
 
-	if va.onPrimaryVA() {
-		// Perform remote validation.
+	if va.isPrimaryVA() {
+		// Attempt to validate the challenge remotely.
 		summary, prob = va.remoteValidateChallenge(ctx, req)
-
-		// Stop the clock for total validation latency.
-		latency = va.clk.Since(start)
 	}
+
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 }
