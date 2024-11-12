@@ -15,6 +15,10 @@ import (
 // currently configured.
 var errLimitDisabled = errors.New("limit disabled")
 
+// limit defines the configuration for a rate limit or a rate limit override.
+//
+// The zero value of this struct is invalid, because some of the fields must
+// be greater than zero.
 type limit struct {
 	// Burst specifies maximum concurrent allowed requests at any given time. It
 	// must be greater than zero.
