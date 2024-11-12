@@ -23,7 +23,6 @@ type nonceBalancerTestConfig struct {
 		TLS                cmd.TLSConfig
 		GetNonceService    *cmd.GRPCClientConfig
 		RedeemNonceService *cmd.GRPCClientConfig
-		NoncePrefixKey     cmd.PasswordConfig
 		NonceHMACKey       cmd.HMACKeyConfig
 	}
 }
@@ -42,13 +41,8 @@ func TestNonceBalancer_NoBackendMatchingPrefix(t *testing.T) {
 	tlsConfig, err := c.NotWFE.TLS.Load(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "Could not load TLS config")
 
-	var rncKey []byte
-	rncKey, err = c.NotWFE.NonceHMACKey.Load()
-	if err != nil {
-		rncKeyString, err := c.NotWFE.NoncePrefixKey.Pass()
-		test.AssertNotError(t, err, "Failed to load nonceHMACKey or noncePrefixKey")
-		rncKey = []byte(rncKeyString)
-	}
+	rncKey, err := c.NotWFE.NonceHMACKey.Load()
+	test.AssertNotError(t, err, "Failed to load nonceHMACKey")
 
 	clk := clock.New()
 
