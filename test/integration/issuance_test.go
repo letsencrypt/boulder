@@ -75,8 +75,7 @@ func TestFirstCSRSANHoistedToCN(t *testing.T) {
 }
 
 // TestCommonNameSANsTooLong tests that, when the names in an order and CSR are
-// too long to be hoisted into the CN, the correct behavior results (depending
-// on the state of the AllowNoCommonName feature flag).
+// too long to be hoisted into the CN, the correct behavior results.
 func TestCommonNameSANsTooLong(t *testing.T) {
 	t.Parallel()
 

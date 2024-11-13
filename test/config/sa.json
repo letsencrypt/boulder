@@ -46,9 +46,6 @@
 					]
 				}
 			}
-		},
-		"features": {
-			"TrackReplacementCertificatesARI": true
 		}
 	},
 	"syslog": {
