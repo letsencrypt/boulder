@@ -857,8 +857,8 @@ func createValidationRequest(domain string, challengeType core.AcmeChallenge) *v
 	}
 }
 
-// parseValidationAuditLog extracts ... from JSON={ ... } in a
-// ValidateChallenge or CheckCAA log and returns it as an auditLog struct.
+// parseValidationAuditLog extracts ... from JSON={ ... } in a ValidateChallenge
+// audit log and returns it as a validateChallengeAuditLog struct.
 func parseValidationAuditLog(t *testing.T, log []string) validateChallengeAuditLog {
 	re := regexp.MustCompile(`JSON=\{.*\}`)
 	var audit validateChallengeAuditLog
@@ -1268,8 +1268,8 @@ func createCheckCAARequest(domain string, challengeType core.AcmeChallenge, rech
 	}
 }
 
-// parseValidationAuditLog extracts ... from JSON={ ... } in a
-// ValidateChallenge or CheckCAA log and returns it as an auditLog struct.
+// parseCheckCAAAuditLog extracts ... from JSON={ ... } in a CheckCAA log and
+// returns it as a checkCAAAuditLog struct.
 func parseCheckCAAAuditLog(t *testing.T, log []string) checkCAAAuditLog {
 	re := regexp.MustCompile(`JSON=\{.*\}`)
 	var audit checkCAAAuditLog
