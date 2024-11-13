@@ -68,8 +68,8 @@
 			"noWaitForReady": true,
 			"hostOverride": "nonce.boulder"
 		},
-		"noncePrefixKey": {
-			"passwordFile": "test/secrets/nonce_prefix_key"
+		"nonceHMACKey": {
+			"keyFile": "test/secrets/nonce_prefix_key"
 		},
 		"chains": [
 			[

@@ -102,6 +102,9 @@ func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) { //nol
 //   - allow-only: when neither check nor spend are true, the transaction will
 //     be considered "allowed" regardless of the bucket's capacity. This is
 //     useful for limits that are disabled.
+//
+// The zero value of Transaction is an allow-only transaction and is valid even if
+// it would fail validateTransaction (for instance because cost and burst are zero).
 type Transaction struct {
 	bucketKey string
 	limit     *limit
@@ -125,6 +128,14 @@ func (txn Transaction) allowOnly() bool {
 func validateTransaction(txn Transaction) (Transaction, error) {
 	if txn.cost < 0 {
 		return Transaction{}, ErrInvalidCost
+	}
+	if txn.limit.Burst == 0 {
+		// This should never happen. If the limit was loaded from a file,
+		// Burst was validated then. If this is a zero-valued Transaction
+		// (that is, an allow-only transaction), then validateTransaction
+		// shouldn't be called because zero-valued transactions are automatically
+		// valid.
+		return Transaction{}, fmt.Errorf("invalid limit, burst must be > 0")
 	}
 	if txn.cost > txn.limit.Burst {
 		return Transaction{}, ErrInvalidCostOverLimit
@@ -160,9 +171,9 @@ func newSpendOnlyTransaction(limit *limit, bucketKey string, cost int64) (Transa
 	})
 }
 
-func newAllowOnlyTransaction() (Transaction, error) {
+func newAllowOnlyTransaction() Transaction {
 	// Zero values are sufficient.
-	return validateTransaction(Transaction{})
+	return Transaction{}
 }
 
 // TransactionBuilder is used to build Transactions for various rate limits.
@@ -194,7 +205,7 @@ func (builder *TransactionBuilder) registrationsPerIPAddressTransaction(ip net.I
 	limit, err := builder.getLimit(NewRegistrationsPerIPAddress, bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {
-			return newAllowOnlyTransaction()
+			return newAllowOnlyTransaction(), nil
 		}
 		return Transaction{}, err
 	}
@@ -212,7 +223,7 @@ func (builder *TransactionBuilder) registrationsPerIPv6RangeTransaction(ip net.I
 	limit, err := builder.getLimit(NewRegistrationsPerIPv6Range, bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {
-			return newAllowOnlyTransaction()
+			return newAllowOnlyTransaction(), nil
 		}
 		return Transaction{}, err
 	}
@@ -229,7 +240,7 @@ func (builder *TransactionBuilder) ordersPerAccountTransaction(regId int64) (Tra
 	limit, err := builder.getLimit(NewOrdersPerAccount, bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {
-			return newAllowOnlyTransaction()
+			return newAllowOnlyTransaction(), nil
 		}
 		return Transaction{}, err
 	}
@@ -250,7 +261,10 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckO
 		return nil, err
 	}
 	limit, err := builder.getLimit(FailedAuthorizationsPerDomainPerAccount, perAccountBucketKey)
-	if err != nil && !errors.Is(err, errLimitDisabled) {
+	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return []Transaction{newAllowOnlyTransaction()}, nil
+		}
 		return nil, err
 	}
 
@@ -287,7 +301,10 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendO
 		return Transaction{}, err
 	}
 	limit, err := builder.getLimit(FailedAuthorizationsPerDomainPerAccount, perAccountBucketKey)
-	if err != nil && !errors.Is(err, errLimitDisabled) {
+	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return newAllowOnlyTransaction(), nil
+		}
 		return Transaction{}, err
 	}
 
@@ -317,7 +334,10 @@ func (builder *TransactionBuilder) FailedAuthorizationsForPausingPerDomainPerAcc
 		return Transaction{}, err
 	}
 	limit, err := builder.getLimit(FailedAuthorizationsForPausingPerDomainPerAccount, perAccountBucketKey)
-	if err != nil && !errors.Is(err, errLimitDisabled) {
+	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return newAllowOnlyTransaction(), nil
+		}
 		return Transaction{}, err
 	}
 
@@ -351,9 +371,18 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 	if err != nil {
 		return nil, err
 	}
+	accountOverride := true
 	perAccountLimit, err := builder.getLimit(CertificatesPerDomainPerAccount, perAccountLimitBucketKey)
-	if err != nil && !errors.Is(err, errLimitDisabled) {
-		return nil, err
+	if err != nil {
+		// The CertificatesPerDomainPerAccount limit never has a default. If there is an override for it,
+		// the above call will return the override. But if there is none, it will return errLimitDisabled.
+		// In that case we want to continue, but make sure we don't reference `perAccountLimit` because it
+		// is not a valid limit.
+		if errors.Is(err, errLimitDisabled) {
+			accountOverride = false
+		} else {
+			return nil, err
+		}
 	}
 
 	var txns []Transaction
@@ -362,9 +391,10 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 		if err != nil {
 			return nil, err
 		}
-		if perAccountLimit.isOverride() {
-			// An override is configured for the CertificatesPerDomainPerAccount
-			// limit.
+		if accountOverride {
+			if !perAccountLimit.isOverride() {
+				return nil, fmt.Errorf("shouldn't happen: CertificatesPerDomainPerAccount limit is not an override")
+			}
 			perAccountPerDomainKey, err := NewRegIdDomainBucketKey(CertificatesPerDomainPerAccount, regId, name)
 			if err != nil {
 				return nil, err
@@ -373,6 +403,9 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 			// bucket.
 			txn, err := newCheckOnlyTransaction(perAccountLimit, perAccountPerDomainKey, 1)
 			if err != nil {
+				if errors.Is(err, errLimitDisabled) {
+					continue
+				}
 				return nil, err
 			}
 			txns = append(txns, txn)
@@ -380,11 +413,10 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 			// Use the per domain bucket key when no per account per domain override
 			// is configured.
 			perDomainLimit, err := builder.getLimit(CertificatesPerDomain, perDomainBucketKey)
-			if errors.Is(err, errLimitDisabled) {
-				// Skip disabled limit.
-				continue
-			}
 			if err != nil {
+				if errors.Is(err, errLimitDisabled) {
+					continue
+				}
 				return nil, err
 			}
 			// Add a check-only transaction for each per domain bucket.
@@ -417,9 +449,18 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 	if err != nil {
 		return nil, err
 	}
+	accountOverride := true
 	perAccountLimit, err := builder.getLimit(CertificatesPerDomainPerAccount, perAccountLimitBucketKey)
-	if err != nil && !errors.Is(err, errLimitDisabled) {
-		return nil, err
+	if err != nil {
+		// The CertificatesPerDomainPerAccount limit never has a default. If there is an override for it,
+		// the above call will return the override. But if there is none, it will return errLimitDisabled.
+		// In that case we want to continue, but make sure we don't reference `perAccountLimit` because it
+		// is not a valid limit.
+		if errors.Is(err, errLimitDisabled) {
+			accountOverride = false
+		} else {
+			return nil, err
+		}
 	}
 
 	var txns []Transaction
@@ -428,9 +469,10 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 		if err != nil {
 			return nil, err
 		}
-		if perAccountLimit.isOverride() {
-			// An override is configured for the CertificatesPerDomainPerAccount
-			// limit.
+		if accountOverride {
+			if !perAccountLimit.isOverride() {
+				return nil, fmt.Errorf("shouldn't happen: CertificatesPerDomainPerAccount limit is not an override")
+			}
 			perAccountPerDomainKey, err := NewRegIdDomainBucketKey(CertificatesPerDomainPerAccount, regId, name)
 			if err != nil {
 				return nil, err
@@ -444,11 +486,10 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 			txns = append(txns, txn)
 
 			perDomainLimit, err := builder.getLimit(CertificatesPerDomain, perDomainBucketKey)
-			if errors.Is(err, errLimitDisabled) {
-				// Skip disabled limit.
-				continue
-			}
 			if err != nil {
+				if errors.Is(err, errLimitDisabled) {
+					continue
+				}
 				return nil, err
 			}
 
@@ -462,11 +503,10 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 			// Use the per domain bucket key when no per account per domain
 			// override is configured.
 			perDomainLimit, err := builder.getLimit(CertificatesPerDomain, perDomainBucketKey)
-			if errors.Is(err, errLimitDisabled) {
-				// Skip disabled limit.
-				continue
-			}
 			if err != nil {
+				if errors.Is(err, errLimitDisabled) {
+					continue
+				}
 				return nil, err
 			}
 			// Add a spend-only transaction for each per domain bucket.
@@ -491,7 +531,7 @@ func (builder *TransactionBuilder) certificatesPerFQDNSetCheckOnlyTransaction(or
 	limit, err := builder.getLimit(CertificatesPerFQDNSet, bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {
-			return newAllowOnlyTransaction()
+			return newAllowOnlyTransaction(), nil
 		}
 		return Transaction{}, err
 	}
@@ -509,7 +549,7 @@ func (builder *TransactionBuilder) CertificatesPerFQDNSetSpendOnlyTransaction(or
 	limit, err := builder.getLimit(CertificatesPerFQDNSet, bucketKey)
 	if err != nil {
 		if errors.Is(err, errLimitDisabled) {
-			return newAllowOnlyTransaction()
+			return newAllowOnlyTransaction(), nil
 		}
 		return Transaction{}, err
 	}
