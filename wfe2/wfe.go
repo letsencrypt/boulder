@@ -109,7 +109,7 @@ type WebFrontEndImpl struct {
 	rnc nonce.Redeemer
 	// rncKey is the HMAC key used to derive the prefix of nonce backends used
 	// for nonce redemption.
-	rncKey        string
+	rncKey        []byte
 	accountGetter AccountGetter
 	log           blog.Logger
 	clk           clock.Clock
@@ -194,7 +194,7 @@ func NewWebFrontEndImpl(
 	sac sapb.StorageAuthorityReadOnlyClient,
 	gnc nonce.Getter,
 	rnc nonce.Redeemer,
-	rncKey string,
+	rncKey []byte,
 	accountGetter AccountGetter,
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,

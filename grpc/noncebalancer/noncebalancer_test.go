@@ -4,19 +4,20 @@ import (
 	"context"
 	"testing"
 
-	"github.com/letsencrypt/boulder/nonce"
-	"github.com/letsencrypt/boulder/test"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
 	"google.golang.org/grpc/resolver"
+
+	"github.com/letsencrypt/boulder/nonce"
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestPickerPicksCorrectBackend(t *testing.T) {
 	_, p, subConns := setupTest(false)
-	prefix := nonce.DerivePrefix(subConns[0].addrs[0].Addr, "Kala namak")
+	prefix := nonce.DerivePrefix(subConns[0].addrs[0].Addr, []byte("Kala namak"))
 
 	testCtx := context.WithValue(context.Background(), nonce.PrefixCtxKey{}, "HNmOnt8w")
-	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, prefix)
+	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, []byte(prefix))
 	info := balancer.PickInfo{Ctx: testCtx}
 
 	gotPick, err := p.Pick(info)
@@ -26,9 +27,9 @@ func TestPickerPicksCorrectBackend(t *testing.T) {
 
 func TestPickerMissingPrefixInCtx(t *testing.T) {
 	_, p, subConns := setupTest(false)
-	prefix := nonce.DerivePrefix(subConns[0].addrs[0].Addr, "Kala namak")
+	prefix := nonce.DerivePrefix(subConns[0].addrs[0].Addr, []byte("Kala namak"))
 
-	testCtx := context.WithValue(context.Background(), nonce.HMACKeyCtxKey{}, prefix)
+	testCtx := context.WithValue(context.Background(), nonce.HMACKeyCtxKey{}, []byte(prefix))
 	info := balancer.PickInfo{Ctx: testCtx}
 
 	gotPick, err := p.Pick(info)
@@ -40,7 +41,7 @@ func TestPickerInvalidPrefixInCtx(t *testing.T) {
 	_, p, _ := setupTest(false)
 
 	testCtx := context.WithValue(context.Background(), nonce.PrefixCtxKey{}, 9)
-	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, "foobar")
+	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, []byte("foobar"))
 	info := balancer.PickInfo{Ctx: testCtx}
 
 	gotPick, err := p.Pick(info)
@@ -73,10 +74,10 @@ func TestPickerInvalidHMACKeyInCtx(t *testing.T) {
 
 func TestPickerNoMatchingSubConnAvailable(t *testing.T) {
 	_, p, subConns := setupTest(false)
-	prefix := nonce.DerivePrefix(subConns[0].addrs[0].Addr, "Kala namak")
+	prefix := nonce.DerivePrefix(subConns[0].addrs[0].Addr, []byte("Kala namak"))
 
 	testCtx := context.WithValue(context.Background(), nonce.PrefixCtxKey{}, "rUsTrUin")
-	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, prefix)
+	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, []byte(prefix))
 	info := balancer.PickInfo{Ctx: testCtx}
 
 	gotPick, err := p.Pick(info)
