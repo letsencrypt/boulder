@@ -52,6 +52,11 @@
 				"serverAddress": "rva1.service.consul:9498",
 				"timeout": "15s",
 				"hostOverride": "rva1.boulder"
+			},
+			{
+				"serverAddress": "rva1.service.consul:9499",
+				"timeout": "15s",
+				"hostOverride": "rva1.boulder"
 			}
 		],
 		"accountURIPrefixes": [
