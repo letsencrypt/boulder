@@ -38,7 +38,7 @@ and
 as their config files.
 
 We require that almost all remote validation requests succeed; the exact number
-is controlled by the VA's `maxRemoteFailures` config variable. If the number of
+is controlled by the VA based on the thresholds required by MPIC. If the number of
 failing remote VAs exceeds that threshold, validation is terminated. If the
 number of successful remote VAs is high enough that it would be impossible for
 the outstanding remote VAs to exceed that threshold, validation immediately

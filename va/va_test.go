@@ -115,8 +115,7 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 
 	va, err := NewValidationAuthorityImpl(
 		&bdns.MockClient{Log: logger},
-		nil,
-		maxRemoteFailures,
+		remoteVAs,
 		userAgent,
 		"letsencrypt.org",
 		metrics.NoopRegisterer,
@@ -141,9 +140,6 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
-	}
-	if remoteVAs != nil {
-		va.remoteVAs = remoteVAs
 	}
 	return va, logger
 }
