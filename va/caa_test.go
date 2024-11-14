@@ -590,7 +590,11 @@ func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, s
 
 func TestDisabledMultiCAARechecking(t *testing.T) {
 	brokenRVA := setupRemote(nil, "broken", caaBrokenDNS{}, "", "")
-	remoteVAs := []RemoteVA{{brokenRVA, "broken"}}
+	remoteVAs := []RemoteVA{
+		{brokenRVA, "broken"},
+		{brokenRVA, "broken"},
+		{brokenRVA, "broken"},
+	}
 	va, _ := setup(nil, "local", remoteVAs, nil)
 
 	features.Set(features.Config{
