@@ -135,7 +135,6 @@ func main() {
 	vai, err := va.NewValidationAuthorityImpl(
 		resolver,
 		nil, // Our RVAs will never have RVAs of their own.
-		0,   // Only the VA is concerned with max validation failures
 		c.RVA.UserAgent,
 		c.RVA.IssuerDomain,
 		scope,

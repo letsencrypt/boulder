@@ -858,7 +858,6 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "1 hijacked RVA, CAA issuewild type present, 1 failure allowed",
 			domains:                  "satisfiable-wildcard.com",
-			maxLookupFailures:        1,
 			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []RemoteVA{
@@ -920,8 +919,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			test.AssertNotError(t, err, "Should not have errored, but did")
 
 			if tc.expectedProbSubstring != "" {
+				test.AssertNotNil(t, isValidRes.Problem, "IsCAAValidRequest returned nil problem, but should not have")
 				test.AssertContains(t, isValidRes.Problem.Detail, tc.expectedProbSubstring)
 			} else if isValidRes.Problem != nil {
+				t.Errorf("Problem: %v", isValidRes.Problem)
 				test.AssertBoxedNil(t, isValidRes.Problem, "IsCAAValidRequest returned a problem, but should not have")
 			}
 
