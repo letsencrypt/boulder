@@ -197,19 +197,19 @@ func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multi
 	return ms
 }
 
-// canceledVA is a mock that always returns context.Canceled for
+// cancelledVA is a mock that always returns context.Canceled for
 // PerformValidation calls
-type canceledVA struct{}
+type cancelledVA struct{}
 
-func (v canceledVA) PerformValidation(_ context.Context, _ *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+func (v cancelledVA) PerformValidation(_ context.Context, _ *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return nil, context.Canceled
 }
 
-func (v canceledVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+func (v cancelledVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
 	return nil, context.Canceled
 }
 
-func (v canceledVA) DoDCV(_ context.Context, _ *vapb.DCVRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+func (v cancelledVA) DoDCV(_ context.Context, _ *vapb.DCVRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return nil, context.Canceled
 }
 
@@ -396,8 +396,8 @@ func TestMultiVA(t *testing.T) {
 		CAAClient: brokenRemoteVA{},
 	}
 	cancelledVA := RemoteClients{
-		VAClient:  canceledVA{},
-		CAAClient: canceledVA{},
+		VAClient:  cancelledVA{},
+		CAAClient: cancelledVA{},
 	}
 
 	unauthorized := probs.Unauthorized(fmt.Sprintf(
@@ -822,7 +822,7 @@ func setupRVAs(confs []rvaConf, mockDNSClient bdns.Client, srv *httptest.Server)
 	return remoteVAs
 }
 
-func createValidationRequest(domain string, challengeType core.AcmeChallenge) *vapb.DCVRequest {
+func createDoDCVRequest(domain string, challengeType core.AcmeChallenge) *vapb.DCVRequest {
 	return &vapb.DCVRequest{
 		Identifier: &corepb.Identifier{
 			Type:  string(identifier.TypeDNS),
@@ -843,7 +843,7 @@ func TestDoDCVInvalid(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
 	va, mockLog := setupVA(nil, "", rvas, nil)
 
-	req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
+	req := createDoDCVRequest("foo.com", core.ChallengeTypeDNS01)
 
 	res, err := va.DoDCV(context.Background(), req)
 	test.AssertNotError(t, err, "DoDCV failed, expected success")
@@ -867,7 +867,7 @@ func TestDoDCVInternalErrorLogged(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
 
-	req := createValidationRequest("nonexistent.com", core.ChallengeTypeHTTP01)
+	req := createDoDCVRequest("nonexistent.com", core.ChallengeTypeHTTP01)
 
 	_, err := va.DoDCV(ctx, req)
 	test.AssertNotError(t, err, "Failed validation should be a prob but not an error")
@@ -887,7 +887,7 @@ func TestDoDCVValid(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
 	va, mockLog := setupVA(nil, "", rvas, nil)
 
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	req := createDoDCVRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
 	res, err := va.DoDCV(context.Background(), req)
 	test.AssertNotError(t, err, "validating challenge resulted in unexpected error")
@@ -910,7 +910,7 @@ func TestDoDCVWildcard(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
 	va, mockLog := setupVA(nil, "", rvas, nil)
 
-	req := createValidationRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
+	req := createDoDCVRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
 
 	res, _ := va.DoDCV(context.Background(), req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
@@ -937,7 +937,7 @@ func TestDoDCVValidWithBrokenRVA(t *testing.T) {
 	rvas = append(rvas, RemoteVA{brokenRVA, "broken"})
 	va, _ := setupVA(nil, "", rvas, nil)
 
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	req := createDoDCVRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
 	res, err := va.DoDCV(context.Background(), req)
 	test.AssertNotError(t, err, "validating challenge resulted in unexpected error")
@@ -946,11 +946,11 @@ func TestDoDCVValidWithBrokenRVA(t *testing.T) {
 
 func TestDoDCVValidWithCancelledRVA(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}}, nil, nil)
-	cancelledRVA := RemoteClients{VAClient: canceledVA{}, CAAClient: canceledVA{}}
+	cancelledRVA := RemoteClients{VAClient: cancelledVA{}, CAAClient: cancelledVA{}}
 	rvas = append(rvas, RemoteVA{cancelledRVA, "cancelled"})
 	va, _ := setupVA(nil, "", rvas, nil)
 
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	req := createDoDCVRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
 	res, err := va.DoDCV(context.Background(), req)
 	test.AssertNotError(t, err, "validating challenge resulted in unexpected error")
@@ -963,7 +963,7 @@ func TestDoDCVFailsWithTooManyBrokenRVAs(t *testing.T) {
 	rvas = append(rvas, RemoteVA{brokenRVA, "broken"}, RemoteVA{brokenRVA, "broken"})
 	va, _ := setupVA(nil, "", rvas, nil)
 
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	req := createDoDCVRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
 	res, err := va.DoDCV(context.Background(), req)
 	test.AssertNotError(t, err, "Failed validation should be a prob but not an error")
@@ -979,11 +979,11 @@ func TestDoDCVFailsWithTooManyBrokenRVAs(t *testing.T) {
 
 func TestDoDCVFailsWithTooManyCanceledRVAs(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}}, nil, nil)
-	canceledRVA := RemoteClients{VAClient: canceledVA{}, CAAClient: canceledVA{}}
-	rvas = append(rvas, RemoteVA{canceledRVA, "canceled"}, RemoteVA{canceledRVA, "canceled"})
+	canceledRVA := RemoteClients{VAClient: cancelledVA{}, CAAClient: cancelledVA{}}
+	rvas = append(rvas, RemoteVA{canceledRVA, "cancelled"}, RemoteVA{canceledRVA, "cancelled"})
 	va, _ := setupVA(nil, "", rvas, nil)
 
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	req := createDoDCVRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
 	res, err := va.DoDCV(context.Background(), req)
 	test.AssertNotError(t, err, "Failed validation should be a prob but not an error")
@@ -1019,7 +1019,7 @@ func parseMPICSummary(t *testing.T, log []string) mpicSummary {
 }
 
 func TestDoDCVMPIC(t *testing.T) {
-	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
+	req := createDoDCVRequest("localhost", core.ChallengeTypeHTTP01)
 
 	// srv is used for the Primary VA and the Remote VAs. The srv.Server
 	// produced will be used to mock the challenge recipient. When a VA (primary

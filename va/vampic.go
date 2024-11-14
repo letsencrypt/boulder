@@ -52,8 +52,8 @@ func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 	return va.perspective == PrimaryPerspective
 }
 
-// mpicSummary is returned by remoteValidateChallenge and contains a summary of
-// the validation results for logging purposes. Use prepareSummary() to create a
+// mpicSummary is returned by remoteDoDCV and contains a summary of the
+// validation results for logging purposes. Use prepareSummary() to create a
 // final summary to avoid "null" in JSON output.
 type mpicSummary struct {
 	// Passed are the distinct perspectives that Passed validation.
@@ -237,11 +237,11 @@ func (va *ValidationAuthorityImpl) remoteDoDCV(ctx context.Context, req *vapb.DC
 
 // DoDCV performs a local Domain Control Validation (DCV) for the provided
 // challenge. If called on the primary VA and local validation passes, it will
-// also perform an MPIC-compliant DCV using the configured remote VAs. The
-// method returns the validation result and an error if the validation failed.
-// The returned result will always contain a list of validation records, even
-// when it also contains a problem. This method does not check CAA records and
-// should not be used as a replacement for VA.PerformValidation.
+// also perform an MPIC-compliant DCV using the configured remote VAs. It
+// returns a validation result and an error if the validation failed. The
+// returned result will always contain a list of validation records, even when
+// it also contains a problem. This method does not check CAA records and should
+// not be used as a replacement for VA.PerformValidation.
 //
 // Note: When called on the primary VA, this method will also call itself over
 // gRPC on each remote VA.
