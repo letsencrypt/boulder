@@ -209,7 +209,7 @@ func (v canceledVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest, _ .
 	return nil, context.Canceled
 }
 
-func (v canceledVA) ValidateChallenge(_ context.Context, _ *vapb.ValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+func (v canceledVA) DoDCV(_ context.Context, _ *vapb.DCVRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return nil, context.Canceled
 }
 
@@ -230,7 +230,7 @@ func (b brokenRemoteVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest,
 	return nil, errBrokenRemoteVA
 }
 
-func (b brokenRemoteVA) ValidateChallenge(_ context.Context, _ *vapb.ValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+func (b brokenRemoteVA) DoDCV(_ context.Context, _ *vapb.DCVRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return nil, errBrokenRemoteVA
 }
 
@@ -250,8 +250,8 @@ func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest
 	return inmem.rva.IsCAAValid(ctx, req)
 }
 
-func (inmem inMemVA) ValidateChallenge(_ context.Context, req *vapb.ValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
-	return inmem.rva.ValidateChallenge(ctx, req)
+func (inmem inMemVA) DoDCV(_ context.Context, req *vapb.DCVRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+	return inmem.rva.DoDCV(ctx, req)
 }
 
 func TestValidateMalformedChallenge(t *testing.T) {
@@ -822,8 +822,8 @@ func setupRVAs(confs []rvaConf, mockDNSClient bdns.Client, srv *httptest.Server)
 	return remoteVAs
 }
 
-func createValidationRequest(domain string, challengeType core.AcmeChallenge) *vapb.ValidationRequest {
-	return &vapb.ValidationRequest{
+func createValidationRequest(domain string, challengeType core.AcmeChallenge) *vapb.DCVRequest {
+	return &vapb.DCVRequest{
 		Identifier: &corepb.Identifier{
 			Type:  string(identifier.TypeDNS),
 			Value: domain,
@@ -839,17 +839,17 @@ func createValidationRequest(domain string, challengeType core.AcmeChallenge) *v
 	}
 }
 
-func TestValidateChallengeInvalid(t *testing.T) {
+func TestDoDCVInvalid(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
 	va, mockLog := setupVA(nil, "", rvas, nil)
 
 	req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
 
-	res, err := va.ValidateChallenge(context.Background(), req)
-	test.AssertNotError(t, err, "ValidateChallenge failed, expected success")
+	res, err := va.DoDCV(context.Background(), req)
+	test.AssertNotError(t, err, "DoDCV failed, expected success")
 	test.Assert(t, res.Problems != nil, "validation succeeded, expected failure")
 	resultLog := mockLog.GetAllMatching(`Challenge validation result`)
-	test.AssertNotNil(t, resultLog, "ValidateChallenge didn't log validation result.")
+	test.AssertNotNil(t, resultLog, "DoDCV didn't log validation result.")
 	test.AssertContains(t, resultLog[0], `"Identifier":"foo.com"`)
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
 		"operation":      "challenge",
@@ -860,7 +860,7 @@ func TestValidateChallengeInvalid(t *testing.T) {
 	}, 1)
 }
 
-func TestValidateChallengeInternalErrorLogged(t *testing.T) {
+func TestDoDCVInternalErrorLogged(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
 	va, mockLog := setupVA(nil, "", rvas, nil)
 
@@ -869,7 +869,7 @@ func TestValidateChallengeInternalErrorLogged(t *testing.T) {
 
 	req := createValidationRequest("nonexistent.com", core.ChallengeTypeHTTP01)
 
-	_, err := va.ValidateChallenge(ctx, req)
+	_, err := va.DoDCV(ctx, req)
 	test.AssertNotError(t, err, "Failed validation should be a prob but not an error")
 	resultLog := mockLog.GetAllMatching(
 		`Challenge validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: context deadline exceeded`)
@@ -883,17 +883,17 @@ func TestValidateChallengeInternalErrorLogged(t *testing.T) {
 	}, 1)
 }
 
-func TestValidateChallengeValid(t *testing.T) {
+func TestDoDCVValid(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
 	va, mockLog := setupVA(nil, "", rvas, nil)
 
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
-	res, err := va.ValidateChallenge(context.Background(), req)
+	res, err := va.DoDCV(context.Background(), req)
 	test.AssertNotError(t, err, "validating challenge resulted in unexpected error")
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
 	resultLog := mockLog.GetAllMatching(`Challenge validation result`)
-	test.AssertNotNil(t, resultLog, "ValidateChallenge didn't log validation result.")
+	test.AssertNotNil(t, resultLog, "DoDCV didn't log validation result.")
 	test.AssertContains(t, resultLog[0], `"Identifier":"good-dns01.com"`)
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
 		"operation":      challenge,
@@ -904,18 +904,18 @@ func TestValidateChallengeValid(t *testing.T) {
 	}, 1)
 }
 
-// TestValidateChallengeWildcard tests that the VA properly strips the `*.`
-// prefix from a wildcard name provided to the ValidateChallenge function.
-func TestValidateChallengeWildcard(t *testing.T) {
+// TestDoDCVWildcard tests that the VA properly strips the `*.` prefix from a
+// wildcard name provided to the DoDCV function.
+func TestDoDCVWildcard(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
 	va, mockLog := setupVA(nil, "", rvas, nil)
 
 	req := createValidationRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
 
-	res, _ := va.ValidateChallenge(context.Background(), req)
+	res, _ := va.DoDCV(context.Background(), req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
 	resultLog := mockLog.GetAllMatching(`Challenge validation result`)
-	test.AssertNotNil(t, resultLog, "ValidateChallenge didn't log validation result.")
+	test.AssertNotNil(t, resultLog, "DoDCV didn't log validation result.")
 
 	// The top level Identifier will reflect the wildcard name.
 	test.AssertContains(t, resultLog[0], `"Identifier":"*.good-dns01.com"`)
@@ -931,7 +931,7 @@ func TestValidateChallengeWildcard(t *testing.T) {
 	}, 1)
 }
 
-func TestValidateChallengeValidWithBrokenRVA(t *testing.T) {
+func TestDoDCVValidWithBrokenRVA(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}}, nil, nil)
 	brokenRVA := RemoteClients{VAClient: brokenRemoteVA{}, CAAClient: brokenRemoteVA{}}
 	rvas = append(rvas, RemoteVA{brokenRVA, "broken"})
@@ -939,12 +939,12 @@ func TestValidateChallengeValidWithBrokenRVA(t *testing.T) {
 
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
-	res, err := va.ValidateChallenge(context.Background(), req)
+	res, err := va.DoDCV(context.Background(), req)
 	test.AssertNotError(t, err, "validating challenge resulted in unexpected error")
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
 }
 
-func TestValidateChallengeValidWithCancelledRVA(t *testing.T) {
+func TestDoDCVValidWithCancelledRVA(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}}, nil, nil)
 	cancelledRVA := RemoteClients{VAClient: canceledVA{}, CAAClient: canceledVA{}}
 	rvas = append(rvas, RemoteVA{cancelledRVA, "cancelled"})
@@ -952,12 +952,12 @@ func TestValidateChallengeValidWithCancelledRVA(t *testing.T) {
 
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
-	res, err := va.ValidateChallenge(context.Background(), req)
+	res, err := va.DoDCV(context.Background(), req)
 	test.AssertNotError(t, err, "validating challenge resulted in unexpected error")
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
 }
 
-func TestValidateChallengeFailsWithTooManyBrokenRVAs(t *testing.T) {
+func TestDoDCVFailsWithTooManyBrokenRVAs(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}}, nil, nil)
 	brokenRVA := RemoteClients{VAClient: brokenRemoteVA{}, CAAClient: brokenRemoteVA{}}
 	rvas = append(rvas, RemoteVA{brokenRVA, "broken"}, RemoteVA{brokenRVA, "broken"})
@@ -965,7 +965,7 @@ func TestValidateChallengeFailsWithTooManyBrokenRVAs(t *testing.T) {
 
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
-	res, err := va.ValidateChallenge(context.Background(), req)
+	res, err := va.DoDCV(context.Background(), req)
 	test.AssertNotError(t, err, "Failed validation should be a prob but not an error")
 	test.AssertContains(t, res.Problems.Detail, "During secondary domain validation: Secondary domain validation RPC failed")
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
@@ -977,7 +977,7 @@ func TestValidateChallengeFailsWithTooManyBrokenRVAs(t *testing.T) {
 	}, 1)
 }
 
-func TestValidateChallengeFailsWithTooManyCanceledRVAs(t *testing.T) {
+func TestDoDCVFailsWithTooManyCanceledRVAs(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}}, nil, nil)
 	canceledRVA := RemoteClients{VAClient: canceledVA{}, CAAClient: canceledVA{}}
 	rvas = append(rvas, RemoteVA{canceledRVA, "canceled"}, RemoteVA{canceledRVA, "canceled"})
@@ -985,7 +985,7 @@ func TestValidateChallengeFailsWithTooManyCanceledRVAs(t *testing.T) {
 
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
-	res, err := va.ValidateChallenge(context.Background(), req)
+	res, err := va.DoDCV(context.Background(), req)
 	test.AssertNotError(t, err, "Failed validation should be a prob but not an error")
 	test.AssertContains(t, res.Problems.Detail, "During secondary domain validation: Secondary domain validation RPC canceled")
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
@@ -998,7 +998,7 @@ func TestValidateChallengeFailsWithTooManyCanceledRVAs(t *testing.T) {
 }
 
 // parseMPICSummary extracts ... from "MPICSummary":{ ... } in a
-// ValidateChallenge log and returns it as an mpicSummary struct.
+// DoDCV log and returns it as an mpicSummary struct.
 func parseMPICSummary(t *testing.T, log []string) mpicSummary {
 	re := regexp.MustCompile(`"MPICSummary":\{.*\}`)
 
@@ -1018,7 +1018,7 @@ func parseMPICSummary(t *testing.T, log []string) mpicSummary {
 	return summary
 }
 
-func TestValidateChallengeMPIC(t *testing.T) {
+func TestDoDCVMPIC(t *testing.T) {
 	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
 
 	// srv is used for the Primary VA and the Remote VAs. The srv.Server
@@ -1112,7 +1112,7 @@ func TestValidateChallengeMPIC(t *testing.T) {
 		{
 			// If the primary passes and is configured with 6+ remote VAs which
 			// return 3 or more failures, the validation will fail.
-			name:      "VA: pass, rva1(ARIN): pass, rva2(APNIC): pass, rva3(ARIN): pass, rva4(ARIN): pass, rva5(ARIN): pass, rva6(ARIN): pass, rva7(ARIN): fail, rva8(ARIN): fail",
+			name:      "VA: pass, rva1(ARIN): pass, rva2(APNIC): pass, rva3(ARIN): pass, rva4(ARIN): pass, rva5(ARIN): pass, rva6(ARIN): fail, rva7(ARIN): fail, rva8(ARIN): fail",
 			primaryUA: pass,
 			rvas: []rvaConf{
 				{"ARIN", pass}, {"APNIC", pass}, {"ARIN", pass}, {"ARIN", pass},
@@ -1127,7 +1127,7 @@ func TestValidateChallengeMPIC(t *testing.T) {
 			// If the primary passes and is configured with 6+ remote VAs, then
 			// the validation can succeed with up to 2 remote VA failures unless
 			// one of the failed RVAs was the only one from a distinct RIR.
-			name:      "VA: pass, rva1(ARIN): pass, rva2(APNIC): pass, rva3(ARIN): pass, rva4(ARIN): pass, rva5(ARIN): pass, rva6(ARIN): pass, rva7(ARIN): fail, rva8(ARIN): fail",
+			name:      "VA: pass, rva1(ARIN): pass, rva2(APNIC): fail, rva3(ARIN): pass, rva4(ARIN): pass, rva5(ARIN): pass, rva6(ARIN): pass, rva7(ARIN): pass, rva8(ARIN): fail",
 			primaryUA: pass,
 			rvas: []rvaConf{
 				{"ARIN", pass}, {"APNIC", fail}, {"ARIN", pass}, {"ARIN", pass},
@@ -1145,7 +1145,7 @@ func TestValidateChallengeMPIC(t *testing.T) {
 			rvas := setupRVAs(tc.rvas, nil, srv.Server)
 			primaryVA, mockLog := setupVA(srv.Server, tc.primaryUA, rvas, nil)
 
-			res, err := primaryVA.ValidateChallenge(ctx, req)
+			res, err := primaryVA.DoDCV(ctx, req)
 			test.AssertNotError(t, err, "These cases should only produce a probs, not errors")
 
 			if tc.expectedProbType == "" {

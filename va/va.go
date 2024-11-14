@@ -654,9 +654,12 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 	return records, nil
 }
 
-// PerformValidation validates the challenge for the domain in the request.
-// The returned result will always contain a list of validation records, even
-// when it also contains a problem.
+// PerformValidation performs a local Domain Control Validation (DCV) and CAA
+// check for the provided challenge and dnsName. If called on the primary VA and
+// local validation passes, it will also perform DCV and CAA checks using the
+// configured remote VAs. The returned result will always contain a list of
+// validation records, even when it also contains a problem. This method is not
+// MPIC-compliant.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
 	if core.IsAnyNilOrZero(req, req.DnsName, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")

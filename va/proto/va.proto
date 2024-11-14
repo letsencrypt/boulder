@@ -6,8 +6,21 @@ option go_package = "github.com/letsencrypt/boulder/va/proto";
 import "core/proto/core.proto";
 
 service VA {
+  // PerformValidation performs a local Domain Control Validation (DCV) and CAA
+  // check for the provided challenge and dnsName. If called on the primary VA
+  // and local validation passes, it will also perform DCV and CAA checks using
+  // the configured remote VAs. The returned result will always contain a list
+  // of validation records, even when it also contains a problem. This method is
+  // not MPIC-compliant.  
   rpc PerformValidation(PerformValidationRequest) returns (ValidationResult) {}
-  rpc ValidateChallenge(ValidationRequest) returns (ValidationResult) {}
+  // DoDCV performs a local Domain Control Validation (DCV) for the provided
+  // challenge. If called on the primary VA and local validation passes, it will
+  // also perform an MPIC-compliant DCV using the configured remote VAs. The
+  // method returns the validation result and an error if the validation failed.
+  // The returned result will always contain a list of validation records, even
+  // when it also contains a problem. This method does not check CAA records and
+  // should not be used as a replacement for VA.PerformValidation.
+  rpc DoDCV(DCVRequest) returns (ValidationResult) {}
 }
 
 service CAA {
@@ -45,7 +58,7 @@ message ValidationResult {
   string rir = 4;
 }
 
-message ValidationRequest {
+message DCVRequest {
   core.Identifier identifier = 1;
   core.Challenge challenge = 2;
   int64 regID = 3;

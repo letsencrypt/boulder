@@ -52,9 +52,9 @@ func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 	return va.perspective == PrimaryPerspective
 }
 
-// mpicSummary contains multiple fields that are exported for logging purposes.
-// To initialize an empty mpicSummary, use newSummary(). The prepare a final
-// summary, use prepareSummary().
+// mpicSummary is returned by remoteValidateChallenge and contains a summary of
+// the validation results for logging purposes. Use prepareSummary() to create a
+// final summary to avoid "null" in JSON output.
 type mpicSummary struct {
 	// Passed are the distinct perspectives that Passed validation.
 	Passed []string `json:"passedPerspectives"`
@@ -74,51 +74,54 @@ type mpicSummary struct {
 	QuorumResult string `json:"quorumResult"`
 }
 
-// newSummary returns a new mpicSummary with empty slices to avoid "null" in the
-// JSON output. Fields are exported for logging purposes.
-func newSummary() mpicSummary {
-	return mpicSummary{[]string{}, []string{}, []string{}, ""}
-}
-
 // prepareSummary prepares a summary of the validation results for logging
 // purposes. Sets empty slices to []string{} to avoid "null" in JSON output.
 func prepareSummary(passed, failed []string, passedRIRs map[string]struct{}, remoteVACount int) mpicSummary {
-	summary := mpicSummary{
-		Passed: append([]string{}, passed...),
-		Failed: append([]string{}, failed...),
-		RIRs:   []string{},
+	if passed == nil {
+		passed = []string{}
 	}
-	for rir := range maps.Keys(passedRIRs) {
-		summary.RIRs = append(summary.RIRs, rir)
+	if failed == nil {
+		failed = []string{}
 	}
-	slices.Sort(summary.RIRs)
-	summary.QuorumResult = fmt.Sprintf("%d/%d", len(passed), remoteVACount)
 
-	return summary
+	rirs := []string{}
+	if passedRIRs != nil {
+		for rir := range maps.Keys(passedRIRs) {
+			rirs = append(rirs, rir)
+		}
+		slices.Sort(rirs)
+	}
+
+	return mpicSummary{
+		Passed:       passed,
+		Failed:       failed,
+		RIRs:         rirs,
+		QuorumResult: fmt.Sprintf("%d/%d", len(passed), remoteVACount),
+	}
 }
 
-// validateChallengeAuditLog contains multiple fields that are exported for
-// logging purposes.
-type validateChallengeAuditLog struct {
-	AuthzID       string         `json:",omitempty"`
-	Requester     int64          `json:",omitempty"`
-	Identifier    string         `json:",omitempty"`
-	Challenge     core.Challenge `json:",omitempty"`
-	Error         string         `json:",omitempty"`
-	InternalError string         `json:",omitempty"`
-	Latency       float64        `json:",omitempty"`
+// doDCVAuditLog is logged once for each validation attempt. Its
+// fields are exported for logging purposes.
+type doDCVAuditLog struct {
+	AuthzID       string
+	Requester     int64
+	Identifier    string
+	Challenge     core.Challenge
+	Error         string `json:",omitempty"`
+	InternalError string `json:",omitempty"`
+	Latency       float64
 	MPICSummary   mpicSummary
 }
 
-// determineMaxAllowedFailures returns the maximum number of allowed failures
-// for a given number of remote perspectives, according to the "Quorum
-// Requirements" table in BRs Section 3.2.2.9, as follows:
+// maxValidationFailures returns the maximum number of allowed failures for a
+// given number of remote perspectives, according to the "Quorum Requirements"
+// table in BRs Section 3.2.2.9, as follows:
 //
 //	| # of Distinct Remote Network Perspectives Used | # of Allowed non-Corroborations |
 //	| --- | --- |
 //	| 2-5 |  1  |
 //	| 6+  |  2  |
-func determineMaxAllowedFailures(perspectiveCount int) int {
+func maxValidationFailures(perspectiveCount int) int {
 	if perspectiveCount < 2 {
 		return 0
 	}
@@ -132,7 +135,7 @@ func determineMaxAllowedFailures(perspectiveCount int) int {
 // challenge using the configured remote VAs. It returns a summary of the
 // validation results and a problem if the validation failed. The summary is
 // mandatory and must be returned even if the validation failed.
-func (va *ValidationAuthorityImpl) remoteValidateChallenge(ctx context.Context, req *vapb.ValidationRequest) (mpicSummary, *probs.ProblemDetails) {
+func (va *ValidationAuthorityImpl) remoteDoDCV(ctx context.Context, req *vapb.DCVRequest) (mpicSummary, *probs.ProblemDetails) {
 	// Mar 15, 2026: MUST implement using at least 3 perspectives
 	// Jun 15, 2026: MUST implement using at least 4 perspectives
 	// Dec 15, 2026: MUST implement using at least 5 perspectives
@@ -150,7 +153,7 @@ func (va *ValidationAuthorityImpl) remoteValidateChallenge(ctx context.Context, 
 	responses := make(chan *response, remoteVACount)
 	for _, i := range rand.Perm(remoteVACount) {
 		go func(rva RemoteVA) {
-			res, err := rva.ValidateChallenge(ctx, req)
+			res, err := rva.DoDCV(ctx, req)
 			responses <- &response{rva.Address, res, err}
 		}(va.remoteVAs[i])
 	}
@@ -200,7 +203,7 @@ func (va *ValidationAuthorityImpl) remoteValidateChallenge(ctx context.Context, 
 	// Prepare the summary, this MUST be returned even if the validation failed.
 	summary := prepareSummary(passed, failed, passedRIRs, remoteVACount)
 
-	maxRemoteFailures := determineMaxAllowedFailures(remoteVACount)
+	maxRemoteFailures := maxValidationFailures(remoteVACount)
 	if len(failed) > maxRemoteFailures {
 		// Too many failures to reach quorum.
 		if firstProb != nil {
@@ -232,12 +235,17 @@ func (va *ValidationAuthorityImpl) remoteValidateChallenge(ctx context.Context, 
 	return summary, nil
 }
 
-// ValidateChallenge performs a local validation of a challenge using the
-// configured local VA. If the local validation passes, it will also perform an
-// MPIC-compliant validation of the challenge using the configured remote VAs.
+// DoDCV performs a local Domain Control Validation (DCV) for the provided
+// challenge. If called on the primary VA and local validation passes, it will
+// also perform an MPIC-compliant DCV using the configured remote VAs. The
+// method returns the validation result and an error if the validation failed.
+// The returned result will always contain a list of validation records, even
+// when it also contains a problem. This method does not check CAA records and
+// should not be used as a replacement for VA.PerformValidation.
 //
-// Note: This method calls itself recursively to perform remote validation.
-func (va *ValidationAuthorityImpl) ValidateChallenge(ctx context.Context, req *vapb.ValidationRequest) (*vapb.ValidationResult, error) {
+// Note: When called on the primary VA, this method will also call itself over
+// gRPC on each remote VA.
+func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.DCVRequest) (*vapb.ValidationResult, error) {
 	if core.IsAnyNilOrZero(req, req.Identifier, req.Challenge, req.AuthzID, req.RegID, req.KeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
@@ -252,7 +260,7 @@ func (va *ValidationAuthorityImpl) ValidateChallenge(ctx context.Context, req *v
 		return nil, berrors.MalformedError("challenge failed consistency check: %s", err)
 	}
 
-	auditLog := validateChallengeAuditLog{
+	auditLog := doDCVAuditLog{
 		AuthzID:    req.AuthzID,
 		Requester:  req.RegID,
 		Identifier: req.Identifier.Value,
@@ -261,7 +269,7 @@ func (va *ValidationAuthorityImpl) ValidateChallenge(ctx context.Context, req *v
 
 	var prob *probs.ProblemDetails
 	var localLatency time.Duration
-	var summary = newSummary()
+	summary := mpicSummary{[]string{}, []string{}, []string{}, ""}
 	start := va.clk.Now()
 
 	defer func() {
@@ -313,7 +321,7 @@ func (va *ValidationAuthorityImpl) ValidateChallenge(ctx context.Context, req *v
 
 	if va.isPrimaryVA() {
 		// Attempt to validate the challenge remotely.
-		summary, prob = va.remoteValidateChallenge(ctx, req)
+		summary, prob = va.remoteDoDCV(ctx, req)
 	}
 
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)

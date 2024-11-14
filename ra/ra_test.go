@@ -156,7 +156,7 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req 
 	return dva.PerformValidationRequestResultReturn, dva.PerformValidationRequestResultError
 }
 
-func (dva *DummyValidationAuthority) ValidateChallenge(ctx context.Context, req *vapb.ValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+func (dva *DummyValidationAuthority) DoDCV(ctx context.Context, req *vapb.DCVRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "not implemented")
 }
 
