@@ -1042,6 +1042,16 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	features.Set(features.Config{AutomaticallyPauseZombieClients: true})
 	defer features.Reset()
 
+	// Because we're testing with a real Redis backend, we choose a different account ID
+	// than other tests to make we don't get interference from other tests using the same
+	// registration ID.
+	registration, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       AccountKeyJSONC,
+		InitialIP: parseAndMarshalIP(t, "192.2.2.2"),
+		Status:    string(core.StatusValid),
+	})
+	test.AssertNotError(t, err, "Failed to create registration")
+
 	mockSA := newMockSAPaused(sa)
 	ra.SA = mockSA
 
@@ -1053,6 +1063,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	// We know this is OK because of TestNewAuthorization
 	domain := "example.net"
 	authzPB := createPendingAuthorization(t, sa, "example.net", fc.Now().Add(12*time.Hour))
+	authzPB.RegistrationID = registration.Id
 	mockSA.registrationsForRegID[authzPB.RegistrationID] = Registration
 	mockSA.authorizationsForRegID[authzPB.RegistrationID] = authzPB
 
@@ -1114,6 +1125,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 
 	// We know this is OK because of TestNewAuthorization
 	authzPB = createPendingAuthorization(t, sa, domain, fc.Now().Add(12*time.Hour))
+	authzPB.RegistrationID = registration.Id
 
 	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
