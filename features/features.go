@@ -53,8 +53,8 @@ type Config struct {
 
 	// MultiCAAFullResults will cause the main VA to block and wait for all of
 	// the remote VA CAA recheck results instead of returning early if the
-	// number of failures is greater than the configured
-	// maxRemoteValidationFailures. Only used when EnforceMultiCAA is true.
+	// number of failures is greater than the number allowed by MPIC.
+	// Only used when EnforceMultiCAA is true.
 	MultiCAAFullResults bool
 
 	// MultipleCertificateProfiles, when enabled, triggers the following
