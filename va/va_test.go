@@ -414,8 +414,17 @@ func TestMultiVA(t *testing.T) {
 			ExpectedProb: unauthorized,
 		},
 		{
-			// If a remote VA fails with an internal err it should succeed
-			Name: "Local VA ok, one remote VA internal err",
+			// If one out of two remote VAs fail with an internal err it should succeed
+			Name: "Local VA ok, 1/2 remote VA internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs: allowedUAs,
+		},
+		{
+			// If one out of three remote VAs fails with an internal err it should succeed
+			Name: "Local VA ok, 1/3 remote VA internal err",
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{remoteVA2, remoteUA2},
@@ -424,8 +433,8 @@ func TestMultiVA(t *testing.T) {
 			AllowedUAs: allowedUAs,
 		},
 		{
-			// If two remote VAs fail with an internal err it should fail
-			Name: "Local VA ok, 2 remote VAs internal err",
+			// If two out of three remote VAs fail with an internal err it should fail
+			Name: "Local VA ok, 2/3 remote VAs internal err",
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{brokenVA, "broken"},
