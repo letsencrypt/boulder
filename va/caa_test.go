@@ -190,7 +190,7 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 }
 
 func TestCAATimeout(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, caaMockDNS{})
+	va, _ := setup(nil, "", nil, caaMockDNS{})
 
 	params := &caaParams{
 		accountURIID:     12345,
@@ -407,7 +407,7 @@ func TestCAAChecking(t *testing.T) {
 	method := core.ChallengeTypeHTTP01
 	params := &caaParams{accountURIID: accountURIID, validationMethod: method}
 
-	va, _ := setup(nil, 0, "", nil, caaMockDNS{})
+	va, _ := setup(nil, "", nil, caaMockDNS{})
 	va.accountURIPrefixes = []string{"https://letsencrypt.org/acct/reg/"}
 
 	for _, caaTest := range testCases {
@@ -430,7 +430,7 @@ func TestCAAChecking(t *testing.T) {
 }
 
 func TestCAALogging(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, caaMockDNS{})
+	va, _ := setup(nil, "", nil, caaMockDNS{})
 
 	testCases := []struct {
 		Name            string
@@ -520,7 +520,7 @@ func TestCAALogging(t *testing.T) {
 // TestIsCAAValidErrMessage tests that an error result from `va.IsCAAValid`
 // includes the domain name that was being checked in the failure detail.
 func TestIsCAAValidErrMessage(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, caaMockDNS{})
+	va, _ := setup(nil, "", nil, caaMockDNS{})
 
 	// Call IsCAAValid with a domain we know fails with a generic error from the
 	// caaMockDNS.
@@ -545,7 +545,7 @@ func TestIsCAAValidErrMessage(t *testing.T) {
 // which do not have the necessary parameters to do CAA Account and Method
 // Binding checks.
 func TestIsCAAValidParams(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, caaMockDNS{})
+	va, _ := setup(nil, "", nil, caaMockDNS{})
 
 	// Calling IsCAAValid without a ValidationMethod should fail.
 	_, err := va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
@@ -591,7 +591,7 @@ func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, s
 func TestDisabledMultiCAARechecking(t *testing.T) {
 	brokenRVA, _ := setupRemote(nil, "broken", caaBrokenDNS{}, "", "")
 	remoteVAs := []RemoteVA{{brokenRVA, "broken"}}
-	va, _ := setup(nil, 0, "local", remoteVAs, nil)
+	va, _ := setup(nil, "local", remoteVAs, nil)
 
 	features.Set(features.Config{
 		EnforceMultiCAA:     false,
@@ -670,7 +670,6 @@ func TestMultiCAARechecking(t *testing.T) {
 
 	testCases := []struct {
 		name                     string
-		maxLookupFailures        int
 		domains                  string
 		remoteVAs                []RemoteVA
 		expectedProbSubstring    string
@@ -869,7 +868,6 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "2 hijacked RVAs, CAA issuewild type present, 1 failure allowed",
 			domains:                  "satisfiable-wildcard.com",
-			maxLookupFailures:        1,
 			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
@@ -883,7 +881,6 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "3 hijacked RVAs, CAA issuewild type present, 1 failure allowed",
 			domains:                  "satisfiable-wildcard.com",
-			maxLookupFailures:        1,
 			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
@@ -898,7 +895,7 @@ func TestMultiCAARechecking(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			va, mockLog := setup(nil, tc.maxLookupFailures, localUA, tc.remoteVAs, tc.localDNSClient)
+			va, mockLog := setup(nil, localUA, tc.remoteVAs, tc.localDNSClient)
 			defer mockLog.Clear()
 
 			// MultiCAAFullResults: false is inherently flaky because of the
@@ -922,7 +919,6 @@ func TestMultiCAARechecking(t *testing.T) {
 				test.AssertNotNil(t, isValidRes.Problem, "IsCAAValidRequest returned nil problem, but should not have")
 				test.AssertContains(t, isValidRes.Problem.Detail, tc.expectedProbSubstring)
 			} else if isValidRes.Problem != nil {
-				t.Errorf("Problem: %v", isValidRes.Problem)
 				test.AssertBoxedNil(t, isValidRes.Problem, "IsCAAValidRequest returned a problem, but should not have")
 			}
 
@@ -963,7 +959,7 @@ func TestCAAFailure(t *testing.T) {
 	hs := httpSrv(t, expectedToken)
 	defer hs.Close()
 
-	va, _ := setup(hs, 0, "", nil, caaMockDNS{})
+	va, _ := setup(hs, "", nil, caaMockDNS{})
 
 	err := va.checkCAA(ctx, dnsi("reserved.com"), &caaParams{1, core.ChallengeTypeHTTP01})
 	if err == nil {

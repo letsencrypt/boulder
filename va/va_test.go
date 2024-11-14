@@ -103,7 +103,7 @@ func createValidationRequest(domain string, challengeType core.AcmeChallenge) *v
 
 // setup returns an in-memory VA and a mock logger. The default resolver client
 // is MockClient{}, but can be overridden.
-func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remoteVAs []RemoteVA, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
+func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
 	features.Reset()
 	fc := clock.NewFake()
 
@@ -145,7 +145,7 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 }
 
 func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride bdns.Client, perspective, rir string) (RemoteClients, *blog.Mock) {
-	rva, log := setup(srv, 0, userAgent, nil, mockDNSClientOverride)
+	rva, log := setup(srv, userAgent, nil, mockDNSClientOverride)
 	rva.perspective = perspective
 	rva.rir = rir
 
@@ -239,7 +239,7 @@ func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest
 }
 
 func TestValidateMalformedChallenge(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, "", nil, nil)
 
 	_, err := va.validateChallenge(ctx, dnsi("example.com"), "fake-type-01", expectedToken, expectedKeyAuthorization)
 
@@ -248,7 +248,7 @@ func TestValidateMalformedChallenge(t *testing.T) {
 }
 
 func TestPerformValidationInvalid(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, "", nil, nil)
 
 	req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
@@ -262,7 +262,7 @@ func TestPerformValidationInvalid(t *testing.T) {
 }
 
 func TestInternalErrorLogged(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil, nil)
+	va, mockLog := setup(nil, "", nil, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
@@ -275,7 +275,7 @@ func TestInternalErrorLogged(t *testing.T) {
 }
 
 func TestPerformValidationValid(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil, nil)
+	va, mockLog := setup(nil, "", nil, nil)
 
 	// create a challenge with well known token
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
@@ -299,7 +299,7 @@ func TestPerformValidationValid(t *testing.T) {
 // TestPerformValidationWildcard tests that the VA properly strips the `*.`
 // prefix from a wildcard name provided to the PerformValidation function.
 func TestPerformValidationWildcard(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil, nil)
+	va, mockLog := setup(nil, "", nil, nil)
 
 	// create a challenge with well known token
 	req := createValidationRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
@@ -329,7 +329,7 @@ func TestPerformValidationWildcard(t *testing.T) {
 }
 
 func TestDCVAndCAASequencing(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil, nil)
+	va, mockLog := setup(nil, "", nil, nil)
 
 	// When validation succeeds, CAA should be checked.
 	mockLog.Clear()
@@ -468,7 +468,7 @@ func TestMultiVA(t *testing.T) {
 			ms.setAllowedUAs(tc.AllowedUAs)
 
 			// Configure a primary VA with testcase remote VAs.
-			localVA, mockLog := setup(ms.Server, 0, localUA, tc.RemoteVAs, nil)
+			localVA, mockLog := setup(ms.Server, localUA, tc.RemoteVAs, nil)
 
 			// Perform all validations
 			res, _ := localVA.PerformValidation(ctx, req)
@@ -516,7 +516,7 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	}
 
 	// Create a local test VA with the two remote VAs
-	localVA, _ := setup(ms.Server, 0, localUA, remoteVAs, nil)
+	localVA, _ := setup(ms.Server, localUA, remoteVAs, nil)
 
 	// Perform all validations
 	start := time.Now()
@@ -566,7 +566,7 @@ func TestMultiVAPolicy(t *testing.T) {
 	}
 
 	// Create a local test VA with the two remote VAs
-	localVA, _ := setup(ms.Server, 0, localUA, remoteVAs, nil)
+	localVA, _ := setup(ms.Server, localUA, remoteVAs, nil)
 
 	// Perform validation for a domain not in the disabledDomains list
 	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
@@ -594,7 +594,7 @@ func TestMultiVALogging(t *testing.T) {
 		{rva1, rva1UA},
 		{rva2, rva2UA},
 	}
-	va, vaLog := setup(ms.Server, 0, localUA, remoteVAs, nil)
+	va, vaLog := setup(ms.Server, localUA, remoteVAs, nil)
 	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
 	res, err := va.PerformValidation(ctx, req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed with: %#v", res.Problems))
@@ -683,14 +683,14 @@ func TestLogRemoteDifferentials(t *testing.T) {
 	remoteVA1, _ := setupRemote(nil, "remote 1", nil, "", "")
 	remoteVA2, _ := setupRemote(nil, "remote 2", nil, "", "")
 	remoteVA3, _ := setupRemote(nil, "remote 3", nil, "", "")
+	// The VA will allow a max of 1 remote failure based on MPIC.
 	remoteVAs := []RemoteVA{
 		{remoteVA1, "remote 1"},
 		{remoteVA2, "remote 2"},
 		{remoteVA3, "remote 3"},
 	}
 
-	// Set up a local VA that allows a max of 2 remote failures.
-	localVA, mockLog := setup(nil, 2, "local 1", remoteVAs, nil)
+	localVA, mockLog := setup(nil, "local 1", remoteVAs, nil)
 
 	egProbA := probs.DNS("root DNS servers closed at 4:30pm")
 	egProbB := probs.OrderNotReady("please take a number")

@@ -19,7 +19,7 @@ import (
 )
 
 func TestDNSValidationEmpty(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, "", nil, nil)
 
 	// This test calls PerformValidation directly, because that is where the
 	// metrics checked below are incremented.
@@ -36,7 +36,7 @@ func TestDNSValidationEmpty(t *testing.T) {
 }
 
 func TestDNSValidationWrong(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, "", nil, nil)
 	_, err := va.validateDNS01(context.Background(), dnsi("wrong-dns01.com"), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
@@ -46,7 +46,7 @@ func TestDNSValidationWrong(t *testing.T) {
 }
 
 func TestDNSValidationWrongMany(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, "", nil, nil)
 
 	_, err := va.validateDNS01(context.Background(), dnsi("wrong-many-dns01.com"), expectedKeyAuthorization)
 	if err == nil {
@@ -57,7 +57,7 @@ func TestDNSValidationWrongMany(t *testing.T) {
 }
 
 func TestDNSValidationWrongLong(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, "", nil, nil)
 
 	_, err := va.validateDNS01(context.Background(), dnsi("long-dns01.com"), expectedKeyAuthorization)
 	if err == nil {
@@ -68,7 +68,7 @@ func TestDNSValidationWrongLong(t *testing.T) {
 }
 
 func TestDNSValidationFailure(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, "", nil, nil)
 
 	_, err := va.validateDNS01(ctx, dnsi("localhost"), expectedKeyAuthorization)
 	prob := detailedError(err)
@@ -82,7 +82,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 		Value: "790DB180-A274-47A4-855F-31C428CB1072",
 	}
 
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, "", nil, nil)
 
 	_, err := va.validateDNS01(ctx, notDNS, expectedKeyAuthorization)
 	prob := detailedError(err)
@@ -91,7 +91,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 }
 
 func TestDNSValidationServFail(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, "", nil, nil)
 
 	_, err := va.validateDNS01(ctx, dnsi("servfail.com"), expectedKeyAuthorization)
 
@@ -100,7 +100,7 @@ func TestDNSValidationServFail(t *testing.T) {
 }
 
 func TestDNSValidationNoServer(t *testing.T) {
-	va, log := setup(nil, 0, "", nil, nil)
+	va, log := setup(nil, "", nil, nil)
 	staticProvider, err := bdns.NewStaticProvider([]string{})
 	test.AssertNotError(t, err, "Couldn't make new static provider")
 
@@ -119,7 +119,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 }
 
 func TestDNSValidationOK(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, "", nil, nil)
 
 	_, prob := va.validateDNS01(ctx, dnsi("good-dns01.com"), expectedKeyAuthorization)
 
@@ -127,7 +127,7 @@ func TestDNSValidationOK(t *testing.T) {
 }
 
 func TestDNSValidationNoAuthorityOK(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, "", nil, nil)
 
 	_, prob := va.validateDNS01(ctx, dnsi("no-authority-dns01.com"), expectedKeyAuthorization)
 
