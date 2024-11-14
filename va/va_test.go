@@ -357,6 +357,7 @@ func TestMultiVA(t *testing.T) {
 	const (
 		remoteUA1 = "remote 1"
 		remoteUA2 = "remote 2"
+		remoteUA3 = "remote 3"
 		localUA   = "local 1"
 	)
 	allowedUAs := map[string]bool{
@@ -371,9 +372,11 @@ func TestMultiVA(t *testing.T) {
 
 	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
 	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
+	remoteVA3 := setupRemote(ms.Server, remoteUA3, nil, "", "")
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
 		{remoteVA2, remoteUA2},
+		{remoteVA3, remoteUA3},
 	}
 	brokenVA := RemoteClients{
 		VAClient:  brokenRemoteVA{},
@@ -398,7 +401,7 @@ func TestMultiVA(t *testing.T) {
 		ExpectedLog  string
 	}{
 		{
-			// With local and both remote VAs working there should be no problem.
+			// With local and all remote VAs working there should be no problem.
 			Name:       "Local and remote VAs OK",
 			RemoteVAs:  remoteVAs,
 			AllowedUAs: allowedUAs,
@@ -411,10 +414,21 @@ func TestMultiVA(t *testing.T) {
 			ExpectedProb: unauthorized,
 		},
 		{
-			// If a remote VA fails with an internal err it should fail
-			Name: "Local VA ok, remote VA internal err",
+			// If a remote VA fails with an internal err it should succeed
+			Name: "Local VA ok, one remote VA internal err",
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs: allowedUAs,
+		},
+		{
+			// If two remote VAs fail with an internal err it should fail
+			Name: "Local VA ok, 2 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{brokenVA, "broken"},
 				{brokenVA, "broken"},
 			},
 			AllowedUAs:   allowedUAs,
@@ -437,6 +451,7 @@ func TestMultiVA(t *testing.T) {
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{cancelledVA, remoteUA2},
+				{remoteVA3, remoteUA3},
 			},
 			AllowedUAs:   allowedUAs,
 			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
@@ -484,8 +499,8 @@ func TestMultiVA(t *testing.T) {
 
 			if tc.ExpectedLog != "" {
 				lines := mockLog.GetAllMatching(tc.ExpectedLog)
-				if len(lines) != 1 {
-					t.Fatalf("Got log %v; expected %q", mockLog.GetAll(), tc.ExpectedLog)
+				if len(lines) < 1 {
+					t.Fatalf("Got log %v; expected %s", strings.Join(mockLog.GetAll(), "\n")+"\n", tc.ExpectedLog)
 				}
 			}
 		})
@@ -496,12 +511,14 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	const (
 		remoteUA1 = "remote 1"
 		remoteUA2 = "slow remote"
+		remoteUA3 = "remote 3"
 		localUA   = "local 1"
 	)
 	allowedUAs := map[string]bool{
 		localUA:   true,
-		remoteUA1: false, // forbid UA 1 to provoke early return
+		remoteUA1: false, // forbid UA 1 and 3 to provoke early return
 		remoteUA2: true,
+		remoteUA3: false,
 	}
 
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
@@ -509,10 +526,12 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 
 	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
 	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
+	remoteVA3 := setupRemote(ms.Server, remoteUA3, nil, "", "")
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
 		{remoteVA2, remoteUA2},
+		{remoteVA3, remoteUA3},
 	}
 
 	// Create a local test VA with the two remote VAs
