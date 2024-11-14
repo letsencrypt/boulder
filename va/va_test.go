@@ -103,6 +103,9 @@ func createValidationRequest(domain string, challengeType core.AcmeChallenge) *v
 
 // setup returns an in-memory VA and a mock logger. The default resolver client
 // is MockClient{}, but can be overridden.
+//
+// If remoteVAs is nil, this builds a VA that acts like a remote (and does not
+// perform multi-perspective validation). Otherwise it acts like a primary.
 func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
 	features.Reset()
 	fc := clock.NewFake()
@@ -111,6 +114,11 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 
 	if userAgent == "" {
 		userAgent = "user agent 1.0"
+	}
+
+	perspective := PrimaryPerspective
+	if len(remoteVAs) == 0 {
+		perspective = "example perspective"
 	}
 
 	va, err := NewValidationAuthorityImpl(
@@ -122,9 +130,12 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 		fc,
 		logger,
 		accountURIPrefixes,
-		PrimaryPerspective,
+		perspective,
 		"",
 	)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
+	}
 
 	if mockDNSClientOverride != nil {
 		va.dnsClient = mockDNSClientOverride
@@ -138,9 +149,6 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 		va.tlsPort = port
 	}
 
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
-	}
 	return va, logger
 }
 
@@ -414,15 +422,6 @@ func TestMultiVA(t *testing.T) {
 			ExpectedProb: unauthorized,
 		},
 		{
-			// If one out of two remote VAs fail with an internal err it should succeed
-			Name: "Local VA ok, 1/2 remote VA internal err",
-			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{brokenVA, "broken"},
-			},
-			AllowedUAs: allowedUAs,
-		},
-		{
 			// If one out of three remote VAs fails with an internal err it should succeed
 			Name: "Local VA ok, 1/3 remote VA internal err",
 			RemoteVAs: []RemoteVA{
@@ -467,10 +466,11 @@ func TestMultiVA(t *testing.T) {
 		},
 		{
 			// Any remote VA cancellations are a problem.
-			Name: "Local VA OK, two cancelled remote VAs",
+			Name: "Local VA OK, three cancelled remote VAs",
 			RemoteVAs: []RemoteVA{
 				{cancelledVA, remoteUA1},
 				{cancelledVA, remoteUA2},
+				{cancelledVA, remoteUA3},
 			},
 			AllowedUAs:   allowedUAs,
 			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
@@ -573,13 +573,15 @@ func TestMultiVAPolicy(t *testing.T) {
 	const (
 		remoteUA1 = "remote 1"
 		remoteUA2 = "remote 2"
+		remoteUA3 = "remote 3"
 		localUA   = "local 1"
 	)
-	// Forbid both remote UAs to ensure that multi-va fails
+	// Forbid all remote UAs to ensure that multi-va fails
 	allowedUAs := map[string]bool{
 		localUA:   true,
 		remoteUA1: false,
 		remoteUA2: false,
+		remoteUA3: false,
 	}
 
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
@@ -587,10 +589,12 @@ func TestMultiVAPolicy(t *testing.T) {
 
 	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
 	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
+	remoteVA3 := setupRemote(ms.Server, remoteUA3, nil, "", "")
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
 		{remoteVA2, remoteUA2},
+		{remoteVA3, remoteUA3},
 	}
 
 	// Create a local test VA with the two remote VAs
@@ -609,24 +613,63 @@ func TestMultiVALogging(t *testing.T) {
 	const (
 		rva1UA  = "remote 1"
 		rva2UA  = "remote 2"
+		rva3UA  = "remote 3"
 		localUA = "local 1"
 	)
 
 	ms := httpMultiSrv(t, expectedToken, map[string]bool{localUA: true, rva1UA: true, rva2UA: true})
 	defer ms.Close()
 
+<<<<<<< HEAD
 	rva1 := setupRemote(ms.Server, rva1UA, nil, "dev-arin", "ARIN")
 	rva2 := setupRemote(ms.Server, rva2UA, nil, "dev-ripe", "RIPE")
+=======
+	rva1, rva1Log := setupRemote(ms.Server, rva1UA, nil, "dev-arin", "ARIN")
+	rva2, rva2Log := setupRemote(ms.Server, rva2UA, nil, "dev-ripe", "RIPE")
+	rva3, rva3Log := setupRemote(ms.Server, rva3UA, nil, "dev-ripe", "RIPE")
+>>>>>>> 9085ab38f (Fix tests)
 
 	remoteVAs := []RemoteVA{
 		{rva1, rva1UA},
 		{rva2, rva2UA},
+		{rva3, rva3UA},
 	}
 	va, _ := setup(ms.Server, localUA, remoteVAs, nil)
 	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
 	res, err := va.PerformValidation(ctx, req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed with: %#v", res.Problems))
 	test.AssertNotError(t, err, "performing validation")
+<<<<<<< HEAD
+=======
+
+	// We do not log perspective or RIR for the local VAs.
+	// We expect these log lines to be available immediately.
+	test.Assert(t, len(vaLog.GetAllMatching(`"Perspective"`)) == 0, "expected no logged perspective for primary")
+	test.Assert(t, len(vaLog.GetAllMatching(`"RIR"`)) == 0, "expected no logged RIR for primary")
+
+	// We do log perspective and RIR for the remote VAs.
+	//
+	// Because the remote VAs are operating on different goroutines, we aren't guaranteed their
+	// log lines have arrived yet. Give it a few tries.
+	for i := 0; i < 10; i++ {
+		if len(rva1Log.GetAllMatching(`"Perspective":"dev-arin"`)) >= 1 &&
+			len(rva1Log.GetAllMatching(`"RIR":"ARIN"`)) >= 1 &&
+			len(rva2Log.GetAllMatching(`"Perspective":"dev-ripe"`)) >= 1 &&
+			len(rva2Log.GetAllMatching(`"RIR":"RIPE"`)) >= 1 {
+			len(rva3Log.GetAllMatching(`"Perspective":"dev-ripe"`)) >= 1 &&
+			len(rva3Log.GetAllMatching(`"RIR":"RIPE"`)) >= 1 {
+			break
+		}
+		if i == 9 {
+			t.Logf("VA:\n%s\n", strings.Join(vaLog.GetAll(), "\n"))
+			t.Logf("RVA 1:\n%s\n", strings.Join(rva1Log.GetAll(), "\n"))
+			t.Logf("RVA 2:\n%s\n", strings.Join(rva2Log.GetAll(), "\n"))
+			t.Logf("RVA 3:\n%s\n", strings.Join(rva3Log.GetAll(), "\n"))
+			t.Errorf("expected perspective and RIR logs for remote VAs, but they never arrived")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+>>>>>>> 9085ab38f (Fix tests)
 }
 
 func TestDetailedError(t *testing.T) {
