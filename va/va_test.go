@@ -833,9 +833,9 @@ func createDoDCVRequest(domain string, challengeType core.AcmeChallenge) *vapb.D
 			Status: string(core.StatusPending),
 			Token:  expectedToken,
 		},
-		RegID:            1,
-		AuthzID:          "1",
-		KeyAuthorization: expectedKeyAuthorization,
+		RegID:                    1,
+		AuthzID:                  "1",
+		ExpectedKeyAuthorization: expectedKeyAuthorization,
 	}
 }
 

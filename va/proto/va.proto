@@ -65,5 +65,5 @@ message DCVRequest {
   core.Challenge challenge = 2;
   int64 regID = 3;
   string authzID = 4;
-  string keyAuthorization = 5;
+  string expectedKeyAuthorization = 5;
 }

@@ -246,7 +246,7 @@ func (va *ValidationAuthorityImpl) remoteDoDCV(ctx context.Context, req *vapb.DC
 // Note: When called on the primary VA, this method will also call itself over
 // gRPC on each remote VA.
 func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.DCVRequest) (*vapb.ValidationResult, error) {
-	if core.IsAnyNilOrZero(req, req.Identifier, req.Challenge, req.AuthzID, req.RegID, req.KeyAuthorization) {
+	if core.IsAnyNilOrZero(req, req.Identifier, req.Challenge, req.AuthzID, req.RegID, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
@@ -299,7 +299,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.DCVReque
 	}()
 
 	// Validate the challenge locally.
-	records, localErr := va.validateChallenge(ctx, identifier, chall.Type, chall.Token, req.KeyAuthorization)
+	records, localErr := va.validateChallenge(ctx, identifier, chall.Type, chall.Token, req.ExpectedKeyAuthorization)
 
 	// Stop the clock for local validation latency.
 	localLatency = va.clk.Since(start)
