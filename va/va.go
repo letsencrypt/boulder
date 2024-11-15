@@ -499,7 +499,8 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		var currProb *probs.ProblemDetails
 
 		if resp.err != nil {
-			failed = append(failed, resp.result.Perspective)
+			// Failed to communicate with the remote VA.
+			failed = append(failed, resp.addr)
 
 			if canceled.Is(resp.err) {
 				currProb = probs.ServerInternal("Remote PerformValidation RPC canceled")
@@ -508,6 +509,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 				currProb = probs.ServerInternal("Remote PerformValidation RPC failed")
 			}
 		} else if resp.result.Problems != nil {
+			// The remote VA returned a problem.
 			failed = append(failed, resp.result.Perspective)
 
 			var err error
@@ -517,18 +519,21 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 				currProb = probs.ServerInternal("Remote PerformValidation RPC returned malformed result")
 			}
 		} else {
+			// The remote VA returned a successful result.
 			passed = append(passed, resp.result.Perspective)
 		}
 
 		if firstProb == nil && currProb != nil {
+			// A problem was encountered for the first time.
 			firstProb = currProb
 		}
 
-		// Return as soon as we have enough successes or failures for a definitive result.
 		if len(passed) >= required {
+			// Enough successful responses to reach quorum.
 			return nil
 		}
 		if len(failed) > va.maxRemoteFailures {
+			// Too many failed responses to reach quorum.
 			va.metrics.remoteValidationFailures.Inc()
 			firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
 			return firstProb
