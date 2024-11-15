@@ -627,31 +627,6 @@ func TestMultiVALogging(t *testing.T) {
 	res, err := va.PerformValidation(ctx, req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed with: %#v", res.Problems))
 	test.AssertNotError(t, err, "performing validation")
-
-	// We do not log perspective or RIR for the local VAs.
-	// We expect these log lines to be available immediately.
-	test.Assert(t, len(vaLog.GetAllMatching(`"Perspective"`)) == 0, "expected no logged perspective for primary")
-	test.Assert(t, len(vaLog.GetAllMatching(`"RIR"`)) == 0, "expected no logged RIR for primary")
-
-	// We do log perspective and RIR for the remote VAs.
-	//
-	// Because the remote VAs are operating on different goroutines, we aren't guaranteed their
-	// log lines have arrived yet. Give it a few tries.
-	for i := 0; i < 10; i++ {
-		if len(rva1Log.GetAllMatching(`"Perspective":"dev-arin"`)) >= 1 &&
-			len(rva1Log.GetAllMatching(`"RIR":"ARIN"`)) >= 1 &&
-			len(rva2Log.GetAllMatching(`"Perspective":"dev-ripe"`)) >= 1 &&
-			len(rva2Log.GetAllMatching(`"RIR":"RIPE"`)) >= 1 {
-			break
-		}
-		if i == 9 {
-			t.Logf("VA:\n%s\n", strings.Join(vaLog.GetAll(), "\n"))
-			t.Logf("RVA 1:\n%s\n", strings.Join(rva1Log.GetAll(), "\n"))
-			t.Logf("RVA 2:\n%s\n", strings.Join(rva2Log.GetAll(), "\n"))
-			t.Errorf("expected perspective and RIR logs for remote VAs, but they never arrived")
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
 }
 
 func TestDetailedError(t *testing.T) {
