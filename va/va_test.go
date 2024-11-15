@@ -655,7 +655,7 @@ func TestMultiVALogging(t *testing.T) {
 		if len(rva1Log.GetAllMatching(`"Perspective":"dev-arin"`)) >= 1 &&
 			len(rva1Log.GetAllMatching(`"RIR":"ARIN"`)) >= 1 &&
 			len(rva2Log.GetAllMatching(`"Perspective":"dev-ripe"`)) >= 1 &&
-			len(rva2Log.GetAllMatching(`"RIR":"RIPE"`)) >= 1 {
+			len(rva2Log.GetAllMatching(`"RIR":"RIPE"`)) >= 1 &&
 			len(rva3Log.GetAllMatching(`"Perspective":"dev-ripe"`)) >= 1 &&
 			len(rva3Log.GetAllMatching(`"RIR":"RIPE"`)) >= 1 {
 			break
