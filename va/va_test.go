@@ -253,11 +253,12 @@ func TestPerformValidationInvalid(t *testing.T) {
 	req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
 	test.Assert(t, res.Problems != nil, "validation succeeded")
-
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationTime, prometheus.Labels{
-		"type":         "dns-01",
-		"result":       "invalid",
-		"problem_type": "unauthorized",
+	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+		"operation":      opChallAndCAA,
+		"perspective":    PrimaryPerspective,
+		"challenge_type": string(core.ChallengeTypeDNS01),
+		"problem_type":   string(probs.UnauthorizedProblem),
+		"result":         fail,
 	}, 1)
 }
 
@@ -282,10 +283,12 @@ func TestPerformValidationValid(t *testing.T) {
 	res, _ := va.PerformValidation(context.Background(), req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
 
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationTime, prometheus.Labels{
-		"type":         "dns-01",
-		"result":       "valid",
-		"problem_type": "",
+	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+		"operation":      opChallAndCAA,
+		"perspective":    PrimaryPerspective,
+		"challenge_type": string(core.ChallengeTypeDNS01),
+		"problem_type":   "",
+		"result":         pass,
 	}, 1)
 	resultLog := mockLog.GetAllMatching(`Validation result`)
 	if len(resultLog) != 1 {
@@ -307,10 +310,12 @@ func TestPerformValidationWildcard(t *testing.T) {
 	res, _ := va.PerformValidation(context.Background(), req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
 
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationTime, prometheus.Labels{
-		"type":         "dns-01",
-		"result":       "valid",
-		"problem_type": "",
+	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+		"operation":      opChallAndCAA,
+		"perspective":    PrimaryPerspective,
+		"challenge_type": string(core.ChallengeTypeDNS01),
+		"problem_type":   "",
+		"result":         pass,
 	}, 1)
 	resultLog := mockLog.GetAllMatching(`Validation result`)
 	if len(resultLog) != 1 {
