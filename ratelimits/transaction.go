@@ -107,7 +107,7 @@ func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) { //nol
 // it would fail validateTransaction (for instance because cost and burst are zero).
 type Transaction struct {
 	bucketKey string
-	limit     limit
+	limit     *limit
 	cost      int64
 	check     bool
 	spend     bool
@@ -143,7 +143,7 @@ func validateTransaction(txn Transaction) (Transaction, error) {
 	return txn, nil
 }
 
-func newTransaction(limit limit, bucketKey string, cost int64) (Transaction, error) {
+func newTransaction(limit *limit, bucketKey string, cost int64) (Transaction, error) {
 	return validateTransaction(Transaction{
 		bucketKey: bucketKey,
 		limit:     limit,
@@ -153,7 +153,7 @@ func newTransaction(limit limit, bucketKey string, cost int64) (Transaction, err
 	})
 }
 
-func newCheckOnlyTransaction(limit limit, bucketKey string, cost int64) (Transaction, error) {
+func newCheckOnlyTransaction(limit *limit, bucketKey string, cost int64) (Transaction, error) {
 	return validateTransaction(Transaction{
 		bucketKey: bucketKey,
 		limit:     limit,
@@ -162,7 +162,7 @@ func newCheckOnlyTransaction(limit limit, bucketKey string, cost int64) (Transac
 	})
 }
 
-func newSpendOnlyTransaction(limit limit, bucketKey string, cost int64) (Transaction, error) {
+func newSpendOnlyTransaction(limit *limit, bucketKey string, cost int64) (Transaction, error) {
 	return validateTransaction(Transaction{
 		bucketKey: bucketKey,
 		limit:     limit,

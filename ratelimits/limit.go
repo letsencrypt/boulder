@@ -63,7 +63,7 @@ func (l *limit) precompute() {
 	l.burstOffset = l.emissionInterval * l.Burst
 }
 
-func validateLimit(l limit) error {
+func validateLimit(l *limit) error {
 	if l.Burst <= 0 {
 		return fmt.Errorf("invalid burst '%d', must be > 0", l.Burst)
 	}
@@ -76,7 +76,7 @@ func validateLimit(l limit) error {
 	return nil
 }
 
-type limits map[string]limit
+type limits map[string]*limit
 
 // loadDefaults marshals the defaults YAML file at path into a map of limits.
 func loadDefaults(path string) (limits, error) {
@@ -156,7 +156,8 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 
 	for _, ov := range fromFile {
 		for k, v := range ov {
-			err = validateLimit(v.limit)
+			limit := &v.limit
+			err = validateLimit(limit)
 			if err != nil {
 				return nil, fmt.Errorf("validating override limit %q: %w", k, err)
 			}
@@ -167,7 +168,6 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 			v.limit.name = name
 
 			for _, entry := range v.Ids {
-				limit := v.limit
 				id := entry.Id
 				err = validateIdForName(name, id)
 				if err != nil {
@@ -248,11 +248,11 @@ func newLimitRegistry(defaults, overrides string) (*limitRegistry, error) {
 // required, bucketKey is optional. If bucketkey is empty, the default for the
 // limit specified by name is returned. If no default limit exists for the
 // specified name, errLimitDisabled is returned.
-func (l *limitRegistry) getLimit(name Name, bucketKey string) (limit, error) {
+func (l *limitRegistry) getLimit(name Name, bucketKey string) (*limit, error) {
 	if !name.isValid() {
 		// This should never happen. Callers should only be specifying the limit
 		// Name enums defined in this package.
-		return limit{}, fmt.Errorf("specified name enum %q, is invalid", name)
+		return nil, fmt.Errorf("specified name enum %q, is invalid", name)
 	}
 	if bucketKey != "" {
 		// Check for override.
@@ -265,5 +265,5 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (limit, error) {
 	if ok {
 		return dl, nil
 	}
-	return limit{}, errLimitDisabled
+	return nil, errLimitDisabled
 }
