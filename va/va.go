@@ -264,6 +264,29 @@ func NewValidationAuthorityImpl(
 	return va, nil
 }
 
+// mpicSummary is returned by remoteDoDCV and contains a summary of the
+// validation results for logging purposes.
+type mpicSummary struct {
+	// PassedPerspectives are the perspectives that PassedPerspectives validation.
+	PassedPerspectives []string `json:"passedPerspectives"`
+
+	// FailedPerspectives are the perspectives that FailedPerspectives validation.
+	// Note: If the failure was based on a gRPC error like a timeout, this will
+	// contain a hostname instead of a perspective.
+	FailedPerspectives []string `json:"failedPerspectives"`
+
+	// PassedRIRs are the Regional Internet Registries that passing
+	// perspectives belonged to.
+	PassedRIRs []string `json:"passedRIRs"`
+
+	// QuorumResult is the Multi-Perspective Issuance Corroboration quorum
+	// result, per BRs Section 5.4.1, Requirement 2.7 (i.e., "3/4" which should
+	// be interpreted as "Three (3) out of four (4) attempted Network
+	// Perspectives corroborated the determinations made by the Primary Network
+	// Perspective).
+	QuorumResult string `json:"quorumResult"`
+}
+
 // Used for audit logging
 type verificationRequestEvent struct {
 	ID                string         `json:",omitempty"`
@@ -271,8 +294,9 @@ type verificationRequestEvent struct {
 	Hostname          string         `json:",omitempty"`
 	Challenge         core.Challenge `json:",omitempty"`
 	ValidationLatency float64
-	Error             string `json:",omitempty"`
-	InternalError     string `json:",omitempty"`
+	Error             string       `json:",omitempty"`
+	InternalError     string       `json:",omitempty"`
+	MPICSummary       *mpicSummary `json:",omitempty"`
 }
 
 // ipError is an error type used to pass though the IP address of the remote
@@ -429,13 +453,16 @@ func (va *ValidationAuthorityImpl) observeLatency(op, perspective, challType, pr
 // returns a problem if too many remote perspectives failed to corroborate
 // domain control, or nil if enough succeeded to surpass our corroboration
 // threshold.
+//
+// Returns an mpicSummary and a ProblemDetails. The mpicSummary will have
+// meaningful contents even if the ProblemDetails is non-nil.
 func (va *ValidationAuthorityImpl) performRemoteValidation(
 	ctx context.Context,
 	req *vapb.PerformValidationRequest,
-) *probs.ProblemDetails {
+) (*mpicSummary, *probs.ProblemDetails) {
 	remoteVACount := len(va.remoteVAs)
 	if remoteVACount == 0 {
-		return nil
+		return nil, nil
 	}
 
 	type response struct {
@@ -459,6 +486,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	required := remoteVACount - va.maxRemoteFailures
 	var passed []string
 	var failed []string
+	var passedRIRs []string
 	var firstProb *probs.ProblemDetails
 
 	for resp := range responses {
@@ -487,6 +515,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		} else {
 			// The remote VA returned a successful result.
 			passed = append(passed, resp.result.Perspective)
+			passedRIRs = append(passedRIRs, resp.result.Rir)
 		}
 
 		if firstProb == nil && currProb != nil {
@@ -496,12 +525,12 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 
 		if len(passed) >= required {
 			// Enough successful responses to reach quorum.
-			return nil
+			return va.summarizeMPIC(passed, failed, passedRIRs), nil
 		}
 		if len(failed) > va.maxRemoteFailures {
 			// Too many failed responses to reach quorum.
 			firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
-			return firstProb
+			return va.summarizeMPIC(passed, failed, passedRIRs), firstProb
 		}
 
 		// If we somehow haven't returned early, we need to break the loop once all
@@ -513,7 +542,25 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 
 	// This condition should not occur - it indicates the passed/failed counts
 	// neither met the required threshold nor the maxRemoteFailures threshold.
-	return probs.ServerInternal("Too few remote PerformValidation RPC results")
+	return va.summarizeMPIC(passed, failed, passedRIRs), probs.ServerInternal("Too few remote PerformValidation RPC results")
+}
+
+func (va *ValidationAuthorityImpl) summarizeMPIC(passed, failed, passedRIRs []string) *mpicSummary {
+	if passed == nil {
+		passed = []string{}
+	}
+	if failed == nil {
+		failed = []string{}
+	}
+	if passedRIRs == nil {
+		passedRIRs = []string{}
+	}
+
+	return &mpicSummary{
+		PassedPerspectives: passed,
+		FailedPerspectives: failed,
+		PassedRIRs:         passedRIRs,
+	}
 }
 
 // logRemoteResults is called by `processRemoteCAAResults` when the
@@ -692,6 +739,8 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// singular problem, because the remote VAs have already audit-logged their
 	// own validation records, and it's not helpful to present multiple large
 	// errors to the end user.
-	prob = va.performRemoteValidation(ctx, req)
+	mpicSummary, prob := va.performRemoteValidation(ctx, req)
+	logEvent.MPICSummary = mpicSummary
+
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
 }
