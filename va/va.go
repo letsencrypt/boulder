@@ -339,8 +339,6 @@ type verificationRequestEvent struct {
 	ValidationLatency float64
 	Error             string `json:",omitempty"`
 	InternalError     string `json:",omitempty"`
-	Perspective       string `json:",omitempty"`
-	RIR               string `json:",omitempty"`
 }
 
 // ipError is an error type used to pass though the IP address of the remote
@@ -693,18 +691,6 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 			logEvent.Challenge.Status = core.StatusInvalid
 		} else {
 			logEvent.Challenge.Status = core.StatusValid
-		}
-
-		if va.perspective != "" && va.perspective != PrimaryPerspective {
-			// This validation was performed by a remote VA. According to the
-			// requirements in section 5.4.1 (2) vii of the BRs we need to log
-			// the perspective used. Additionally, we'll log the RIR where this
-			// RVA is located.
-			//
-			// TODO(#7615): Make these fields mandatory for non-Primary
-			// perspectives and remove the (va.perspective != "") check.
-			logEvent.Perspective = va.perspective
-			logEvent.RIR = va.rir
 		}
 
 		va.metrics.localValidationTime.With(prometheus.Labels{

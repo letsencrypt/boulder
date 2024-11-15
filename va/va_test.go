@@ -144,12 +144,17 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 	return va, logger
 }
 
+<<<<<<< HEAD
 func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride bdns.Client, perspective, rir string) (RemoteClients, *blog.Mock) {
 	rva, log := setup(srv, userAgent, nil, mockDNSClientOverride)
+=======
+func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride bdns.Client, perspective, rir string) RemoteClients {
+	rva, _ := setup(srv, 0, userAgent, nil, mockDNSClientOverride)
+>>>>>>> 2502113ac38a36d1b5a7729f3cee58bf359dab4d
 	rva.perspective = perspective
 	rva.rir = rir
 
-	return RemoteClients{VAClient: &inMemVA{*rva}, CAAClient: &inMemVA{*rva}}, log
+	return RemoteClients{VAClient: &inMemVA{*rva}, CAAClient: &inMemVA{*rva}}
 }
 
 type multiSrv struct {
@@ -370,9 +375,14 @@ func TestMultiVA(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
+<<<<<<< HEAD
 	remoteVA1, _ := setupRemote(ms.Server, remoteUA1, nil, "", "")
 	remoteVA2, _ := setupRemote(ms.Server, remoteUA2, nil, "", "")
 	remoteVA3, _ := setupRemote(ms.Server, remoteUA3, nil, "", "")
+=======
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
+>>>>>>> 2502113ac38a36d1b5a7729f3cee58bf359dab4d
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
 		{remoteVA2, remoteUA2},
@@ -533,9 +543,14 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
+<<<<<<< HEAD
 	remoteVA1, _ := setupRemote(ms.Server, remoteUA1, nil, "", "")
 	remoteVA2, _ := setupRemote(ms.Server, remoteUA2, nil, "", "")
 	remoteVA3, _ := setupRemote(ms.Server, remoteUA3, nil, "", "")
+=======
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
+>>>>>>> 2502113ac38a36d1b5a7729f3cee58bf359dab4d
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -585,8 +600,8 @@ func TestMultiVAPolicy(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1, _ := setupRemote(ms.Server, remoteUA1, nil, "", "")
-	remoteVA2, _ := setupRemote(ms.Server, remoteUA2, nil, "", "")
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -615,8 +630,8 @@ func TestMultiVALogging(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, map[string]bool{localUA: true, rva1UA: true, rva2UA: true})
 	defer ms.Close()
 
-	rva1, _ := setupRemote(ms.Server, rva1UA, nil, "dev-arin", "ARIN")
-	rva2, _ := setupRemote(ms.Server, rva2UA, nil, "dev-ripe", "RIPE")
+	rva1 := setupRemote(ms.Server, rva1UA, nil, "dev-arin", "ARIN")
+	rva2 := setupRemote(ms.Server, rva2UA, nil, "dev-ripe", "RIPE")
 
 	remoteVAs := []RemoteVA{
 		{rva1, rva1UA},
@@ -683,10 +698,16 @@ func TestDetailedError(t *testing.T) {
 
 func TestLogRemoteDifferentials(t *testing.T) {
 	// Create some remote VAs
+<<<<<<< HEAD
 	remoteVA1, _ := setupRemote(nil, "remote 1", nil, "", "")
 	remoteVA2, _ := setupRemote(nil, "remote 2", nil, "", "")
 	remoteVA3, _ := setupRemote(nil, "remote 3", nil, "", "")
 	// The VA will allow a max of 1 remote failure based on MPIC.
+=======
+	remoteVA1 := setupRemote(nil, "remote 1", nil, "", "")
+	remoteVA2 := setupRemote(nil, "remote 2", nil, "", "")
+	remoteVA3 := setupRemote(nil, "remote 3", nil, "", "")
+>>>>>>> 2502113ac38a36d1b5a7729f3cee58bf359dab4d
 	remoteVAs := []RemoteVA{
 		{remoteVA1, "remote 1"},
 		{remoteVA2, "remote 2"},
