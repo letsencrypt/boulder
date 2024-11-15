@@ -615,14 +615,14 @@ func TestMultiVALogging(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, map[string]bool{localUA: true, rva1UA: true, rva2UA: true})
 	defer ms.Close()
 
-	rva1, rva1Log := setupRemote(ms.Server, rva1UA, nil, "dev-arin", "ARIN")
-	rva2, rva2Log := setupRemote(ms.Server, rva2UA, nil, "dev-ripe", "RIPE")
+	rva1, _ := setupRemote(ms.Server, rva1UA, nil, "dev-arin", "ARIN")
+	rva2, _ := setupRemote(ms.Server, rva2UA, nil, "dev-ripe", "RIPE")
 
 	remoteVAs := []RemoteVA{
 		{rva1, rva1UA},
 		{rva2, rva2UA},
 	}
-	va, vaLog := setup(ms.Server, localUA, remoteVAs, nil)
+	va, _ := setup(ms.Server, localUA, remoteVAs, nil)
 	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
 	res, err := va.PerformValidation(ctx, req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed with: %#v", res.Problems))
