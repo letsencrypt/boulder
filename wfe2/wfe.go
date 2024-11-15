@@ -2082,7 +2082,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		respObj.Error.Type = probs.ErrorNS + respObj.Error.Type
 	}
 	for _, v2ID := range order.V2Authorizations {
-		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%s%d", authzPath, v2ID)))
+		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%s%d/%d", authzPathWithAcct, order.RegistrationID, v2ID)))
 	}
 	if respObj.Status == core.StatusValid {
 		certURL := web.RelativeEndpoint(request,
