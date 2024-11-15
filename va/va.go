@@ -288,7 +288,7 @@ func NewValidationAuthorityImpl(
 
 	for i, va1 := range remoteVAs {
 		for j, va2 := range remoteVAs {
-			if i != j && va1.Perspective == va2.Perspective {
+			if i != j && va1.Perspective == va2.Perspective && va1.Perspective != "" {
 				return nil, fmt.Errorf("duplicate remote VA perspective %q", va1.Perspective)
 			}
 		}
@@ -515,9 +515,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	req *vapb.PerformValidationRequest,
 ) (*mpicSummary, *probs.ProblemDetails) {
 	remoteVACount := len(va.remoteVAs)
-	if remoteVACount == 0 {
-		return nil
-	}
 
 	start := va.clk.Now()
 	defer func() {
@@ -552,19 +549,19 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	for resp := range responses {
 		var currProb *probs.ProblemDetails
 
-		perspective := res.rva.Perspective
-		if res.err != nil {
-			failed = append(failed, res.rva)
+		perspective := resp.rva.Perspective
+		if resp.err != nil {
+			failed = append(failed, resp.rva)
 
 			if canceled.Is(resp.err) {
 				currProb = probs.ServerInternal("Remote PerformValidation RPC canceled")
 			} else {
-				va.log.Errf("Remote VA %q.PerformValidation failed: %s", perspective, res.err)
+				va.log.Errf("Remote VA %q.PerformValidation failed: %s", perspective, resp.err)
 				currProb = probs.ServerInternal("Remote PerformValidation RPC failed")
 			}
-		} else if res.response.Problems != nil {
+		} else if resp.result.Problems != nil {
 			// The remote VA returned a problem.
-			failed = append(failed, res.rva)
+			failed = append(failed, resp.rva)
 
 			var err error
 			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problems)
@@ -574,7 +571,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			}
 		} else {
 			// The remote VA returned a successful result.
-			passed = append(passed, res.rva)
+			passed = append(passed, resp.rva)
 		}
 
 		if firstProb == nil && currProb != nil {
