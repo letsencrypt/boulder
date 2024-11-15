@@ -733,8 +733,8 @@ func TestMultiCAARechecking(t *testing.T) {
 				"operation":      opCAA,
 				"perspective":    allPerspectives,
 				"challenge_type": string(core.ChallengeTypeDNS01),
-				"problem_type":   string(probs.DNSProblem),
-				"result":         fail,
+				"problem_type":   "",
+				"result":         pass,
 			},
 		},
 		{
@@ -748,6 +748,13 @@ func TestMultiCAARechecking(t *testing.T) {
 				{brokenVA, brokenUA},
 				{brokenVA, brokenUA},
 				{remoteVA, remoteUA},
+			},
+			expectedLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    allPerspectives,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.DNSProblem),
+				"result":         fail,
 			},
 		},
 		{
@@ -801,8 +808,8 @@ func TestMultiCAARechecking(t *testing.T) {
 				"operation":      opCAA,
 				"perspective":    allPerspectives,
 				"challenge_type": string(core.ChallengeTypeDNS01),
-				"problem_type":   string(probs.DNSProblem),
-				"result":         fail,
+				"problem_type":   "",
+				"result":         pass,
 			},
 		},
 		{
@@ -816,6 +823,13 @@ func TestMultiCAARechecking(t *testing.T) {
 				{brokenVA, brokenUA},
 				{brokenVA, brokenUA},
 				{remoteVA, remoteUA},
+			},
+			expectedLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    allPerspectives,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.DNSProblem),
+				"result":         fail,
 			},
 		},
 		{

@@ -497,7 +497,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 5 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   NewRegistrationsPerIPAddress,
 						Burst:  10,
 						Period: config.Duration{Duration: time.Hour},
@@ -513,7 +513,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 10 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   NewRegistrationsPerIPv6Range,
 						Burst:  5,
 						Period: config.Duration{Duration: time.Hour},
@@ -529,7 +529,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 10 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   NewOrdersPerAccount,
 						Burst:  2,
 						Period: config.Duration{Duration: time.Hour},
@@ -545,7 +545,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 15 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   FailedAuthorizationsPerDomainPerAccount,
 						Burst:  7,
 						Period: config.Duration{Duration: time.Hour},
@@ -562,7 +562,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 20 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   CertificatesPerDomain,
 						Burst:  3,
 						Period: config.Duration{Duration: time.Hour},
@@ -579,7 +579,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 20 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   CertificatesPerDomainPerAccount,
 						Burst:  3,
 						Period: config.Duration{Duration: time.Hour},
@@ -596,7 +596,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 30 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name: 9999999,
 					},
 				},
