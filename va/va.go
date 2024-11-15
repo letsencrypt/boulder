@@ -492,6 +492,8 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 
 	required := remoteVACount - va.maxRemoteFailures
 	var passed []string
+	// failed contains a list of perspectives that failed to validate the domain
+	// or the addresses of remote VAs that failed to respond.
 	var failed []string
 	var firstProb *probs.ProblemDetails
 
