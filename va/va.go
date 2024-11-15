@@ -458,7 +458,8 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	ctx context.Context,
 	req *vapb.PerformValidationRequest,
 ) *probs.ProblemDetails {
-	if len(va.remoteVAs) == 0 {
+	remoteVACount := len(va.remoteVAs)
+	if remoteVACount == 0 {
 		return nil
 	}
 
@@ -469,65 +470,70 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		}).Observe(va.clk.Since(start).Seconds())
 	}()
 
-	type rvaResult struct {
-		hostname string
-		response *vapb.ValidationResult
-		err      error
+	type response struct {
+		addr   string
+		result *vapb.ValidationResult
+		err    error
 	}
 
-	results := make(chan *rvaResult, len(va.remoteVAs))
-
-	for _, i := range rand.Perm(len(va.remoteVAs)) {
-		remoteVA := va.remoteVAs[i]
-		go func(rva RemoteVA, out chan<- *rvaResult) {
+	responses := make(chan *response, remoteVACount)
+	for _, i := range rand.Perm(remoteVACount) {
+		go func(rva RemoteVA, out chan<- *response) {
 			res, err := rva.PerformValidation(ctx, req)
-			out <- &rvaResult{
-				hostname: rva.Address,
-				response: res,
-				err:      err,
+			out <- &response{
+				addr:   rva.Address,
+				result: res,
+				err:    err,
 			}
-		}(remoteVA, results)
+		}(va.remoteVAs[i], responses)
 	}
 
-	required := len(va.remoteVAs) - va.maxRemoteFailures
-	good := 0
-	bad := 0
+	required := remoteVACount - va.maxRemoteFailures
+	var passed []string
+	// failed contains a list of perspectives that failed to validate the domain
+	// or the addresses of remote VAs that failed to respond.
+	var failed []string
 	var firstProb *probs.ProblemDetails
 
-	for res := range results {
+	for resp := range responses {
 		var currProb *probs.ProblemDetails
 
-		if res.err != nil {
-			bad++
+		if resp.err != nil {
+			// Failed to communicate with the remote VA.
+			failed = append(failed, resp.addr)
 
-			if canceled.Is(res.err) {
+			if canceled.Is(resp.err) {
 				currProb = probs.ServerInternal("Remote PerformValidation RPC canceled")
 			} else {
-				va.log.Errf("Remote VA %q.PerformValidation failed: %s", res.hostname, res.err)
+				va.log.Errf("Remote VA %q.PerformValidation failed: %s", resp.addr, resp.err)
 				currProb = probs.ServerInternal("Remote PerformValidation RPC failed")
 			}
-		} else if res.response.Problems != nil {
-			bad++
+		} else if resp.result.Problems != nil {
+			// The remote VA returned a problem.
+			failed = append(failed, resp.result.Perspective)
 
 			var err error
-			currProb, err = bgrpc.PBToProblemDetails(res.response.Problems)
+			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problems)
 			if err != nil {
-				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", res.hostname, err)
+				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", resp.addr, err)
 				currProb = probs.ServerInternal("Remote PerformValidation RPC returned malformed result")
 			}
 		} else {
-			good++
+			// The remote VA returned a successful result.
+			passed = append(passed, resp.result.Perspective)
 		}
 
 		if firstProb == nil && currProb != nil {
+			// A problem was encountered for the first time.
 			firstProb = currProb
 		}
 
-		// Return as soon as we have enough successes or failures for a definitive result.
-		if good >= required {
+		if len(passed) >= required {
+			// Enough successful responses to reach quorum.
 			return nil
 		}
-		if bad > va.maxRemoteFailures {
+		if len(failed) > va.maxRemoteFailures {
+			// Too many failed responses to reach quorum.
 			va.metrics.remoteValidationFailures.Inc()
 			firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
 			return firstProb
@@ -535,13 +541,13 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 
 		// If we somehow haven't returned early, we need to break the loop once all
 		// of the VAs have returned a result.
-		if good+bad >= len(va.remoteVAs) {
+		if len(passed)+len(failed) >= remoteVACount {
 			break
 		}
 	}
 
-	// This condition should not occur - it indicates the good/bad counts neither
-	// met the required threshold nor the maxRemoteFailures threshold.
+	// This condition should not occur - it indicates the passed/failed counts
+	// neither met the required threshold nor the maxRemoteFailures threshold.
 	return probs.ServerInternal("Too few remote PerformValidation RPC results")
 }
 
