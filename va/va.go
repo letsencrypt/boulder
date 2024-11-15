@@ -99,11 +99,7 @@ type vaMetrics struct {
 	//   - challenge_type: core.Challenge.Type
 	//   - problem_type: probs.ProblemType
 	//   - result: the result of the validation as [pass|fail]
-	validationLatency *prometheus.HistogramVec
-	// caaCheckTime                      *prometheus.HistogramVec
-	// localCAACheckTime                 *prometheus.HistogramVec
-	// remoteCAACheckTime                *prometheus.HistogramVec
-	// remoteCAACheckFailures            prometheus.Counter
+	validationLatency                 *prometheus.HistogramVec
 	prospectiveRemoteCAACheckFailures prometheus.Counter
 	tlsALPNOIDCounter                 *prometheus.CounterVec
 	http01Fallbacks                   prometheus.Counter
