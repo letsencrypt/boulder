@@ -28,10 +28,12 @@ func TestDNSValidationEmpty(t *testing.T) {
 	test.AssertEquals(t, res.Problems.ProblemType, "unauthorized")
 	test.AssertEquals(t, res.Problems.Detail, "No TXT record found at _acme-challenge.empty-txts.com")
 
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationTime, prometheus.Labels{
-		"type":         "dns-01",
-		"result":       "invalid",
-		"problem_type": "unauthorized",
+	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+		"operation":      opChallAndCAA,
+		"perspective":    PrimaryPerspective,
+		"challenge_type": string(core.ChallengeTypeDNS01),
+		"problem_type":   string(probs.UnauthorizedProblem),
+		"result":         fail,
 	}, 1)
 }
 
