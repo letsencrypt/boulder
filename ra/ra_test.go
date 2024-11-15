@@ -70,6 +70,18 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
+// randomDomain creates a random domain name for testing.
+//
+// panics if crypto/rand.Rand.Read fails.
+func randomDomain() string {
+	var bytes [4]byte
+	_, err := rand.Read(bytes[:])
+	if err != nil {
+		panic(err)
+	}
+	return fmt.Sprintf("%x.example.com", bytes[:])
+}
+
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
 	t.Helper()
 
@@ -928,7 +940,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	ra.txnBuilder = txnBuilder
 
 	// We know this is OK because of TestNewAuthorization
-	domain := "example.net"
+	domain := randomDomain()
 	authzPB := createPendingAuthorization(t, sa, domain, fc.Now().Add(12*time.Hour))
 	mockSA.registrationsForRegID[authzPB.RegistrationID] = Registration
 	mockSA.authorizationsForRegID[authzPB.RegistrationID] = authzPB
@@ -1042,6 +1054,16 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	features.Set(features.Config{AutomaticallyPauseZombieClients: true})
 	defer features.Reset()
 
+	// Because we're testing with a real Redis backend, we choose a different account ID
+	// than other tests to make we don't get interference from other tests using the same
+	// registration ID.
+	registration, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       AccountKeyJSONC,
+		InitialIP: parseAndMarshalIP(t, "192.2.2.2"),
+		Status:    string(core.StatusValid),
+	})
+	test.AssertNotError(t, err, "Failed to create registration")
+
 	mockSA := newMockSAPaused(sa)
 	ra.SA = mockSA
 
@@ -1051,8 +1073,9 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	ra.txnBuilder = txnBuilder
 
 	// We know this is OK because of TestNewAuthorization
-	domain := "example.net"
-	authzPB := createPendingAuthorization(t, sa, "example.net", fc.Now().Add(12*time.Hour))
+	domain := randomDomain()
+	authzPB := createPendingAuthorization(t, sa, domain, fc.Now().Add(12*time.Hour))
+	authzPB.RegistrationID = registration.Id
 	mockSA.registrationsForRegID[authzPB.RegistrationID] = Registration
 	mockSA.authorizationsForRegID[authzPB.RegistrationID] = authzPB
 
@@ -1114,6 +1137,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 
 	// We know this is OK because of TestNewAuthorization
 	authzPB = createPendingAuthorization(t, sa, domain, fc.Now().Add(12*time.Hour))
+	authzPB.RegistrationID = registration.Id
 
 	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
@@ -3313,11 +3337,7 @@ func TestFinalizeOrderDisabledChallenge(t *testing.T) {
 	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	// Create a random domain
-	var bytes [3]byte
-	_, err := rand.Read(bytes[:])
-	test.AssertNotError(t, err, "creating test domain name")
-	domain := fmt.Sprintf("%x.example.com", bytes[:])
+	domain := randomDomain()
 
 	// Create a finalized authorization for that domain
 	authzID := createFinalizedAuthorization(
