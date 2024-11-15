@@ -1,3 +1,15 @@
+# v1.24.5 (2024-11-07)
+
+* **Bug Fix**: Adds case-insensitive handling of error message fields in service responses
+
+# v1.24.4 (2024-11-06)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.24.3 (2024-10-28)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.24.2 (2024-10-08)
 
 * **Dependency Update**: Updated to the latest SDK module versions
