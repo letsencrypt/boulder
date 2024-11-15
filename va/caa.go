@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/canceled"
@@ -42,18 +41,48 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		Requester: req.AccountURIID,
 		Hostname:  req.Domain,
 	}
-	checkStartTime := va.clk.Now()
 
-	validationMethod := core.AcmeChallenge(req.ValidationMethod)
-	if !validationMethod.IsValid() {
+	challType := core.AcmeChallenge(req.ValidationMethod)
+	if !challType.IsValid() {
 		return nil, berrors.InternalServerError("unrecognized validation method %q", req.ValidationMethod)
 	}
 
 	acmeID := identifier.NewDNS(req.Domain)
 	params := &caaParams{
 		accountURIID:     req.AccountURIID,
-		validationMethod: validationMethod,
+		validationMethod: challType,
 	}
+
+	var prob *probs.ProblemDetails
+	var internalErr error
+	var localLatency time.Duration
+	start := va.clk.Now()
+
+	defer func() {
+		probType := ""
+		outcome := fail
+		if prob != nil {
+			// CAA check failed.
+			probType = string(prob.Type)
+			logEvent.Error = prob.Error()
+			if internalErr != nil {
+				logEvent.InternalError = internalErr.Error()
+			}
+		} else {
+			// CAA check passed.
+			outcome = pass
+		}
+		// Observe local check latency (primary|remote).
+		va.observeLatency(opCAA, va.perspective, string(challType), probType, outcome, localLatency)
+		if va.isPrimaryVA() {
+			// Observe total check latency (primary+remote).
+			va.observeLatency(opCAA, allPerspectives, string(challType), probType, outcome, va.clk.Since(start))
+		}
+		// Log the total check latency.
+		logEvent.ValidationLatency = va.clk.Since(start).Round(time.Millisecond).Seconds()
+
+		va.log.AuditObject("CAA check result", logEvent)
+	}()
 
 	var remoteCAAResults chan *remoteVAResult
 	if features.Get().EnforceMultiCAA {
@@ -63,16 +92,10 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		}
 	}
 
-	checkResult := "success"
-	err := va.checkCAA(ctx, acmeID, params)
-	localCheckLatency := time.Since(checkStartTime)
-	var prob *probs.ProblemDetails
-	if err != nil {
-		prob = detailedError(err)
-		logEvent.Error = prob.Error()
-		logEvent.InternalError = err.Error()
+	internalErr = va.checkCAA(ctx, acmeID, params)
+	if internalErr != nil {
+		prob = detailedError(internalErr)
 		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
-		checkResult = "failure"
 	} else if remoteCAAResults != nil {
 		if !features.Get().EnforceMultiCAA && features.Get().MultiCAAFullResults {
 			// If we're not going to enforce multi CAA but we are logging the
@@ -82,40 +105,24 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 				_ = va.processRemoteCAAResults(
 					req.Domain,
 					req.AccountURIID,
-					string(validationMethod),
+					string(challType),
 					remoteCAAResults)
 			}()
 		} else if features.Get().EnforceMultiCAA {
 			remoteProb := va.processRemoteCAAResults(
 				req.Domain,
 				req.AccountURIID,
-				string(validationMethod),
+				string(challType),
 				remoteCAAResults)
 
 			// If the remote result was a non-nil problem then fail the CAA check
 			if remoteProb != nil {
 				prob = remoteProb
-				// We only set .Error here, not InternalError, because the remote VA doesn't send
-				// us the internal error. But that's okay, because it got logged at the remote VA.
-				logEvent.Error = remoteProb.Error()
-				checkResult = "failure"
 				va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
-				va.metrics.remoteCAACheckFailures.Inc()
 			}
 		}
 	}
-	checkLatency := time.Since(checkStartTime)
-	logEvent.ValidationLatency = checkLatency.Round(time.Millisecond).Seconds()
-
-	va.metrics.localCAACheckTime.With(prometheus.Labels{
-		"result": checkResult,
-	}).Observe(localCheckLatency.Seconds())
-	va.metrics.caaCheckTime.With(prometheus.Labels{
-		"result": checkResult,
-	}).Observe(checkLatency.Seconds())
-
-	va.log.AuditObject("CAA check result", logEvent)
 
 	if prob != nil {
 		// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
@@ -154,15 +161,6 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 	challengeType string,
 	remoteResultsChan <-chan *remoteVAResult) *probs.ProblemDetails {
 
-	state := "failure"
-	start := va.clk.Now()
-
-	defer func() {
-		va.metrics.remoteCAACheckTime.With(prometheus.Labels{
-			"result": state,
-		}).Observe(va.clk.Since(start).Seconds())
-	}()
-
 	required := len(va.remoteVAs) - va.maxRemoteFailures
 	good := 0
 	bad := 0
@@ -190,7 +188,6 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 		// success or failure threshold is met.
 		if !features.Get().MultiCAAFullResults {
 			if good >= required {
-				state = "success"
 				return nil
 			} else if bad > va.maxRemoteFailures {
 				modifiedProblem := *result.Problem
@@ -217,7 +214,6 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 
 	// Based on the threshold of good/bad return nil or a problem.
 	if good >= required {
-		state = "success"
 		return nil
 	} else if bad > va.maxRemoteFailures {
 		modifiedProblem := *firstProb
