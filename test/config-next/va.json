@@ -44,16 +44,22 @@
 		},
 		"remoteVAs": [
 			{
+				"perspective": "cubist",
+				"rir": "ARIN",
 				"serverAddress": "rva1.service.consul:9397",
 				"timeout": "15s",
 				"hostOverride": "rva1.boulder"
 			},
 			{
+				"perspective": "realist",
+				"rir": "RIPE",
 				"serverAddress": "rva1.service.consul:9498",
 				"timeout": "15s",
 				"hostOverride": "rva1.boulder"
 			},
 			{
+				"perspective": "optimist",
+				"rir": "APNIC",
 				"serverAddress": "rva1.service.consul:9499",
 				"timeout": "15s",
 				"hostOverride": "rva1.boulder"

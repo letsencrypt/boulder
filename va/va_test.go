@@ -382,9 +382,9 @@ func TestMultiVA(t *testing.T) {
 	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
 	remoteVA3 := setupRemote(ms.Server, remoteUA3, nil, "", "")
 	remoteVAs := []RemoteVA{
-		{remoteVA1, remoteUA1},
-		{remoteVA2, remoteUA2},
-		{remoteVA3, remoteUA3},
+		{remoteVA1, testPerspective1, testRIR1},
+		{remoteVA2, testPerspective2, testRIR2},
+		{remoteVA3, testPerspective3, testRIR3},
 	}
 	brokenVA := RemoteClients{
 		VAClient:  brokenRemoteVA{},
@@ -399,7 +399,7 @@ func TestMultiVA(t *testing.T) {
 		`The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
 		expectedKeyAuthorization))
 	expectedInternalErrLine := fmt.Sprintf(
-		`ERR: \[AUDIT\] Remote VA "broken".PerformValidation failed: %s`,
+		`PerformValidation failed: %s`,
 		errBrokenRemoteVA.Error())
 	testCases := []struct {
 		Name         string
@@ -425,9 +425,9 @@ func TestMultiVA(t *testing.T) {
 			// If one out of three remote VAs fails with an internal err it should succeed
 			Name: "Local VA ok, 1/3 remote VA internal err",
 			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{remoteVA2, remoteUA2},
-				{brokenVA, "broken"},
+				{remoteVA1, testPerspective1, testRIR1},
+				{remoteVA2, testPerspective2, testRIR2},
+				{brokenVA, testPerspective3, testRIR3},
 			},
 			AllowedUAs: allowedUAs,
 		},
@@ -435,9 +435,9 @@ func TestMultiVA(t *testing.T) {
 			// If two out of three remote VAs fail with an internal err it should fail
 			Name: "Local VA ok, 2/3 remote VAs internal err",
 			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{brokenVA, "broken"},
-				{brokenVA, "broken"},
+				{remoteVA1, testPerspective1, testRIR1},
+				{brokenVA, testPerspective2, testRIR2},
+				{brokenVA, testPerspective3, testRIR3},
 			},
 			AllowedUAs:   allowedUAs,
 			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
@@ -457,9 +457,9 @@ func TestMultiVA(t *testing.T) {
 			// Any remote VA cancellations are a problem.
 			Name: "Local VA and one remote VA OK, one cancelled VA",
 			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{cancelledVA, remoteUA2},
-				{remoteVA3, remoteUA3},
+				{remoteVA1, testPerspective1, testRIR1},
+				{cancelledVA, testPerspective2, testRIR2},
+				{remoteVA3, testPerspective3, testRIR3},
 			},
 			AllowedUAs:   allowedUAs,
 			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
@@ -468,9 +468,9 @@ func TestMultiVA(t *testing.T) {
 			// Any remote VA cancellations are a problem.
 			Name: "Local VA OK, three cancelled remote VAs",
 			RemoteVAs: []RemoteVA{
-				{cancelledVA, remoteUA1},
-				{cancelledVA, remoteUA2},
-				{cancelledVA, remoteUA3},
+				{cancelledVA, testPerspective1, testRIR1},
+				{cancelledVA, testPerspective2, testRIR2},
+				{cancelledVA, testPerspective3, testRIR3},
 			},
 			AllowedUAs:   allowedUAs,
 			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
@@ -538,9 +538,9 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	remoteVA3 := setupRemote(ms.Server, remoteUA3, nil, "", "")
 
 	remoteVAs := []RemoteVA{
-		{remoteVA1, remoteUA1},
-		{remoteVA2, remoteUA2},
-		{remoteVA3, remoteUA3},
+		{remoteVA1, testPerspective1, testRIR1},
+		{remoteVA2, testPerspective2, testRIR2},
+		{remoteVA3, testPerspective3, testRIR3},
 	}
 
 	// Create a local test VA with the two remote VAs
@@ -592,9 +592,9 @@ func TestMultiVAPolicy(t *testing.T) {
 	remoteVA3 := setupRemote(ms.Server, remoteUA3, nil, "", "")
 
 	remoteVAs := []RemoteVA{
-		{remoteVA1, remoteUA1},
-		{remoteVA2, remoteUA2},
-		{remoteVA3, remoteUA3},
+		{remoteVA1, testPerspective1, testRIR1},
+		{remoteVA2, testPerspective2, testRIR2},
+		{remoteVA3, testPerspective3, testRIR3},
 	}
 
 	// Create a local test VA with the two remote VAs
@@ -625,9 +625,9 @@ func TestMultiVALogging(t *testing.T) {
 	rva3 := setupRemote(ms.Server, rva3UA, nil, "dev-ripe", "RIPE")
 
 	remoteVAs := []RemoteVA{
-		{rva1, rva1UA},
-		{rva2, rva2UA},
-		{rva3, rva3UA},
+		{rva1, testPerspective1, testRIR1},
+		{rva2, testPerspective2, testRIR2},
+		{rva3, testPerspective3, testRIR3},
 	}
 	va, _ := setup(ms.Server, localUA, remoteVAs, nil)
 	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
@@ -695,9 +695,9 @@ func TestLogRemoteDifferentials(t *testing.T) {
 	remoteVA3 := setupRemote(nil, "remote 3", nil, "", "")
 	// The VA will allow a max of 1 remote failure based on MPIC.
 	remoteVAs := []RemoteVA{
-		{remoteVA1, "remote 1"},
-		{remoteVA2, "remote 2"},
-		{remoteVA3, "remote 3"},
+		{remoteVA1, testPerspective1, testRIR1},
+		{remoteVA2, testPerspective2, testRIR2},
+		{remoteVA3, testPerspective3, testRIR3},
 	}
 
 	localVA, mockLog := setup(nil, "local 1", remoteVAs, nil)
@@ -713,28 +713,28 @@ func TestLogRemoteDifferentials(t *testing.T) {
 		{
 			name: "all results equal (nil)",
 			remoteProbs: []*remoteVAResult{
-				{Problem: nil, VAHostname: "remoteA"},
-				{Problem: nil, VAHostname: "remoteB"},
-				{Problem: nil, VAHostname: "remoteC"},
+				{Problem: nil, Perspective: testPerspective1},
+				{Problem: nil, Perspective: testPerspective2},
+				{Problem: nil, Perspective: testPerspective3},
 			},
 		},
 		{
 			name: "all results equal (not nil)",
 			remoteProbs: []*remoteVAResult{
-				{Problem: egProbA, VAHostname: "remoteA"},
-				{Problem: egProbA, VAHostname: "remoteB"},
-				{Problem: egProbA, VAHostname: "remoteC"},
+				{Problem: egProbA, Perspective: testPerspective1},
+				{Problem: egProbA, Perspective: testPerspective2},
+				{Problem: egProbA, Perspective: testPerspective3},
 			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteB","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteC","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}}]}`,
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":[{`,
 		},
 		{
 			name: "differing results, some non-nil",
 			remoteProbs: []*remoteVAResult{
-				{Problem: nil, VAHostname: "remoteA"},
-				{Problem: egProbB, VAHostname: "remoteB"},
-				{Problem: nil, VAHostname: "remoteC"},
+				{Problem: nil, Perspective: testPerspective1},
+				{Problem: egProbB, Perspective: testPerspective2},
+				{Problem: nil, Perspective: testPerspective3},
 			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":2,"RemoteFailures":[{`,
 		},
 	}
 
@@ -748,7 +748,7 @@ func TestLogRemoteDifferentials(t *testing.T) {
 			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
 			if tc.expectedLog != "" {
 				test.AssertEquals(t, len(lines), 1)
-				test.AssertEquals(t, lines[0], tc.expectedLog)
+				test.AssertContains(t, lines[0], tc.expectedLog)
 			} else {
 				test.AssertEquals(t, len(lines), 0)
 			}

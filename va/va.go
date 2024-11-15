@@ -79,7 +79,8 @@ type RemoteClients struct {
 // extract this metadata which is useful for debugging gRPC connection issues.
 type RemoteVA struct {
 	RemoteClients
-	Address string
+	Perspective string
+	RIR         string
 }
 
 type vaMetrics struct {
@@ -285,6 +286,14 @@ func NewValidationAuthorityImpl(
 		return nil, errors.New("no account URI prefixes configured")
 	}
 
+	for i, va1 := range remoteVAs {
+		for j, va2 := range remoteVAs {
+			if i != j && va1.Perspective == va2.Perspective {
+				return nil, fmt.Errorf("duplicate remote VA perspective %q", va1.Perspective)
+			}
+		}
+	}
+
 	pc := newDefaultPortConfig()
 
 	va := &ValidationAuthorityImpl{
@@ -330,6 +339,27 @@ func maxAllowedFailures(perspectiveCount int) int {
 	return 2
 }
 
+// mpicSummary is returned by remoteDoDCV and contains a summary of the
+// validation results for logging purposes.
+type mpicSummary struct {
+	// PassedPerspectives are the distinct perspectives that PassedPerspectives validation.
+	PassedPerspectives []string `json:"passedPerspectives"`
+
+	// FailedPerspectives are the disctint perspectives that FailedPerspectives validation.
+	FailedPerspectives []string `json:"failedPerspectives"`
+
+	// PassedRIRs are the distinct Regional Internet Registries that passing
+	// perspectives belonged to.
+	PassedRIRs []string `json:"passedRIRs"`
+
+	// QuorumResult is the Multi-Perspective Issuance Corroboration quorum
+	// result, per BRs Section 5.4.1, Requirement 2.7 (i.e., "3/4" which should
+	// be interpreted as "Three (3) out of four (4) attempted Network
+	// Perspectives corroborated the determinations made by the Primary Network
+	// Perspective).
+	QuorumResult string `json:"quorumResult"`
+}
+
 // Used for audit logging
 type verificationRequestEvent struct {
 	ID                string         `json:",omitempty"`
@@ -337,8 +367,11 @@ type verificationRequestEvent struct {
 	Hostname          string         `json:",omitempty"`
 	Challenge         core.Challenge `json:",omitempty"`
 	ValidationLatency float64
-	Error             string `json:",omitempty"`
-	InternalError     string `json:",omitempty"`
+	Error             string       `json:",omitempty"`
+	InternalError     string       `json:",omitempty"`
+	Perspective       string       `json:",omitempty"`
+	RIR               string       `json:",omitempty"`
+	MPICSummary       *mpicSummary `json:",omitempty"`
 }
 
 // ipError is an error type used to pass though the IP address of the remote
@@ -471,10 +504,16 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 // returns a problem if too many remote perspectives failed to corroborate
 // domain control, or nil if enough succeeded to surpass our corroboration
 // threshold.
+//
+// Returns an mpicSummary and a ProblemDetails. The mpicSummary will have
+// meaningful contents even if the ProblemDetails is non-nil. The number of
+// passed and failed perspectives will usually not be equal to the number of
+// remote VAs because we return early when we reach a quorum or get too many
+// failures.
 func (va *ValidationAuthorityImpl) performRemoteValidation(
 	ctx context.Context,
 	req *vapb.PerformValidationRequest,
-) *probs.ProblemDetails {
+) (*mpicSummary, *probs.ProblemDetails) {
 	remoteVACount := len(va.remoteVAs)
 	if remoteVACount == 0 {
 		return nil
@@ -488,7 +527,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	}()
 
 	type response struct {
-		addr   string
+		rva    RemoteVA
 		result *vapb.ValidationResult
 		err    error
 	}
@@ -498,7 +537,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		go func(rva RemoteVA, out chan<- *response) {
 			res, err := rva.PerformValidation(ctx, req)
 			out <- &response{
-				addr:   rva.Address,
+				rva:    rva,
 				result: res,
 				err:    err,
 			}
@@ -506,38 +545,36 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	}
 
 	required := remoteVACount - va.maxRemoteFailures
-	var passed []string
-	// failed contains a list of perspectives that failed to validate the domain
-	// or the addresses of remote VAs that failed to respond.
-	var failed []string
+	var passed []RemoteVA
+	var failed []RemoteVA
 	var firstProb *probs.ProblemDetails
 
 	for resp := range responses {
 		var currProb *probs.ProblemDetails
 
-		if resp.err != nil {
-			// Failed to communicate with the remote VA.
-			failed = append(failed, resp.addr)
+		perspective := res.rva.Perspective
+		if res.err != nil {
+			failed = append(failed, res.rva)
 
 			if canceled.Is(resp.err) {
 				currProb = probs.ServerInternal("Remote PerformValidation RPC canceled")
 			} else {
-				va.log.Errf("Remote VA %q.PerformValidation failed: %s", resp.addr, resp.err)
+				va.log.Errf("Remote VA %q.PerformValidation failed: %s", perspective, res.err)
 				currProb = probs.ServerInternal("Remote PerformValidation RPC failed")
 			}
-		} else if resp.result.Problems != nil {
+		} else if res.response.Problems != nil {
 			// The remote VA returned a problem.
-			failed = append(failed, resp.result.Perspective)
+			failed = append(failed, res.rva)
 
 			var err error
 			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problems)
 			if err != nil {
-				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", resp.addr, err)
+				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", perspective, err)
 				currProb = probs.ServerInternal("Remote PerformValidation RPC returned malformed result")
 			}
 		} else {
 			// The remote VA returned a successful result.
-			passed = append(passed, resp.result.Perspective)
+			passed = append(passed, res.rva)
 		}
 
 		if firstProb == nil && currProb != nil {
@@ -547,13 +584,13 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 
 		if len(passed) >= required {
 			// Enough successful responses to reach quorum.
-			return nil
+			return va.summarizeMPIC(passed, failed), nil
 		}
 		if len(failed) > va.maxRemoteFailures {
 			// Too many failed responses to reach quorum.
 			va.metrics.remoteValidationFailures.Inc()
 			firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
-			return firstProb
+			return va.summarizeMPIC(passed, failed), firstProb
 		}
 
 		// If we somehow haven't returned early, we need to break the loop once all
@@ -565,7 +602,40 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 
 	// This condition should not occur - it indicates the passed/failed counts
 	// neither met the required threshold nor the maxRemoteFailures threshold.
-	return probs.ServerInternal("Too few remote PerformValidation RPC results")
+	return va.summarizeMPIC(passed, failed), probs.ServerInternal("Too few remote PerformValidation RPC results")
+}
+
+func (va *ValidationAuthorityImpl) summarizeMPIC(passed, failed []RemoteVA) *mpicSummary {
+	var passedPerspectives []string
+	var failedPerspectives []string
+	var passedRIRs []string
+	for _, rva := range passed {
+		passedPerspectives = append(passedPerspectives, rva.Perspective)
+		passedRIRs = append(passedRIRs, rva.RIR)
+	}
+	for _, rva := range failed {
+		failedPerspectives = append(failedPerspectives, rva.Perspective)
+		passedRIRs = append(passedRIRs, rva.RIR)
+	}
+
+	if passedPerspectives == nil {
+		passedPerspectives = []string{}
+	}
+	if failedPerspectives == nil {
+		failedPerspectives = []string{}
+	}
+	if passedRIRs == nil {
+		passedRIRs = []string{}
+	}
+
+	return &mpicSummary{
+		PassedPerspectives: passedPerspectives,
+		FailedPerspectives: failedPerspectives,
+		PassedRIRs:         passedRIRs,
+		// Note: len(va.remoteVAs) is greater than len(passed) + len(failed) because some
+		// are canceled on reaching quorum.
+		QuorumResult: fmt.Sprintf("%d/%d", len(passed), len(va.remoteVAs)),
+	}
 }
 
 // logRemoteResults is called by `processRemoteCAAResults` when the
@@ -619,10 +689,10 @@ func (va *ValidationAuthorityImpl) logRemoteResults(
 }
 
 // remoteVAResult is a struct that combines a problem details instance (that may
-// be nil) with the remote VA hostname that produced it.
+// be nil) with the perspective name of the remote VA that returned it.
 type remoteVAResult struct {
-	VAHostname string
-	Problem    *probs.ProblemDetails
+	Perspective string
+	Problem     *probs.ProblemDetails
 }
 
 // performLocalValidation performs primary domain control validation and then
@@ -739,11 +809,18 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
 	}
 
+	// If this is a remote VA (indicated by no backends), we can return now.
+	if len(va.remoteVAs) == 0 {
+		return bgrpc.ValidationResultToPB(records, nil)
+	}
+
 	// Do remote validation. We do this after local validation is complete to
 	// avoid wasting work when validation will fail anyway. This only returns a
 	// singular problem, because the remote VAs have already audit-logged their
 	// own validation records, and it's not helpful to present multiple large
 	// errors to the end user.
-	prob = va.performRemoteValidation(ctx, req)
+	mpicSummary, prob := va.performRemoteValidation(ctx, req)
+	logEvent.MPICSummary = mpicSummary
+
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
 }

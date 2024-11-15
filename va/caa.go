@@ -245,8 +245,9 @@ func (va *ValidationAuthorityImpl) performRemoteCAACheck(
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA) {
+			perspective := rva.Perspective
 			result := &remoteVAResult{
-				VAHostname: rva.Address,
+				Perspective: perspective,
 			}
 			res, err := rva.IsCAAValid(ctx, req)
 			if err != nil {
@@ -255,17 +256,17 @@ func (va *ValidationAuthorityImpl) performRemoteCAACheck(
 					result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC cancelled")
 				} else {
 					// Handle validation error.
-					va.log.Errf("Remote VA %q.IsCAAValid failed: %s", rva.Address, err)
+					va.log.Errf("Remote VA %q.IsCAAValid failed: %s", perspective, err)
 					result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC failed")
 				}
 			} else if res.Problem != nil {
 				prob, err := bgrpc.PBToProblemDetails(res.Problem)
 				if err != nil {
-					va.log.Infof("Remote VA %q.IsCAAValid returned malformed problem: %s", rva.Address, err)
+					va.log.Infof("Remote VA %q.IsCAAValid returned malformed problem: %s", perspective, err)
 					result.Problem = probs.ServerInternal(
 						fmt.Sprintf("Remote VA IsCAAValid RPC returned malformed result: %s", err))
 				} else {
-					va.log.Infof("Remote VA %q.IsCAAValid returned problem: %s", rva.Address, prob)
+					va.log.Infof("Remote VA %q.IsCAAValid returned problem: %s", perspective, prob)
 					result.Problem = prob
 				}
 			}
