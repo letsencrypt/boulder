@@ -1358,7 +1358,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return nil, nil, wrapError(err, "parsing final certificate")
 	}
 
-	go ra.countCertificateIssued(ctx, int64(acctID), slices.Clone(parsedCertificate.DNSNames), isRenewal)
+	ra.countCertificateIssued(ctx, int64(acctID), slices.Clone(parsedCertificate.DNSNames), isRenewal)
 
 	// Asynchronously submit the final certificate to any configured logs
 	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
@@ -1998,12 +1998,10 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		if prob != nil {
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
-			go func() {
-				err := ra.countFailedValidations(vaCtx, authz.RegistrationID, authz.Identifier)
-				if err != nil {
-					ra.log.Warningf("incrementing failed validations: %s", err)
-				}
-			}()
+			err := ra.countFailedValidations(vaCtx, authz.RegistrationID, authz.Identifier)
+			if err != nil {
+				ra.log.Warningf("incrementing failed validations: %s", err)
+			}
 		} else {
 			challenge.Status = core.StatusValid
 			if features.Get().AutomaticallyPauseZombieClients {
