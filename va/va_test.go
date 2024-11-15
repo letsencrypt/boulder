@@ -118,7 +118,9 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 
 	perspective := PrimaryPerspective
 	if len(remoteVAs) == 0 {
-		perspective = "example perspective"
+		// We're being set up as a remote. Use a distinct perspective from other remotes
+		// to better simulate what prod will be like.
+		perspective = "example perspective " + core.RandomString(4)
 	}
 
 	va, err := NewValidationAuthorityImpl(
