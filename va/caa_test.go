@@ -745,6 +745,13 @@ func TestMultiCAARechecking(t *testing.T) {
 				{brokenVA, brokenUA},
 				{remoteVA, remoteUA},
 			},
+			expectedLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    allPerspectives,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.DNSProblem),
+				"result":         fail,
+			},
 		},
 		{
 			name:                     "functional localVA, all broken RVAs, no CAA records",
@@ -812,6 +819,13 @@ func TestMultiCAARechecking(t *testing.T) {
 				{brokenVA, brokenUA},
 				{brokenVA, brokenUA},
 				{remoteVA, remoteUA},
+			},
+			expectedLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    allPerspectives,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.DNSProblem),
+				"result":         fail,
 			},
 		},
 		{
