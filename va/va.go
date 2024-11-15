@@ -36,7 +36,7 @@ const (
 	allPerspectives    = "all"
 
 	opChallAndCAA = "challenge+caa"
-	opCAA
+	opCAA         = "caa"
 
 	pass = "pass"
 	fail = "fail"

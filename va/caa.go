@@ -65,9 +65,6 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			// CAA check failed.
 			probType = string(prob.Type)
 			logEvent.Error = prob.Error()
-			if internalErr != nil {
-				logEvent.InternalError = internalErr.Error()
-			}
 		} else {
 			// CAA check passed.
 			outcome = pass
