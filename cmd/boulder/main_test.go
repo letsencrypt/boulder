@@ -40,11 +40,7 @@ func TestConfigValidation(t *testing.T) {
 		case "boulder-sa":
 			fileNames = []string{"sa.json"}
 		case "boulder-va":
-			fileNames = []string{
-				"va.json",
-				"va-remote-a.json",
-				"va-remote-b.json",
-			}
+			fileNames = []string{"va.json"}
 		case "remoteva":
 			fileNames = []string{
 				"remoteva-a.json",

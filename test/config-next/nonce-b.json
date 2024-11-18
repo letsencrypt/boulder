@@ -1,8 +1,8 @@
 {
 	"NonceService": {
 		"maxUsed": 131072,
-		"noncePrefixKey": {
-			"passwordFile": "test/secrets/nonce_prefix_key"
+		"nonceHMACKey": {
+			"keyFile": "test/secrets/nonce_prefix_key"
 		},
 		"syslog": {
 			"stdoutLevel": 6,

@@ -122,6 +122,7 @@ type RegistrationAuthorityImpl struct {
 	orderAges               *prometheus.HistogramVec
 	inflightFinalizes       prometheus.Gauge
 	certCSRMismatch         prometheus.Counter
+	pauseCounter            *prometheus.CounterVec
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
@@ -241,6 +242,12 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(certCSRMismatch)
 
+	pauseCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "paused_pairs",
+		Help: "Number of times a pause operation is performed, labeled by paused=[bool], repaused=[bool], grace=[bool]",
+	}, []string{"paused", "repaused", "grace"})
+	stats.MustRegister(pauseCounter)
+
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
@@ -276,6 +283,7 @@ func NewRegistrationAuthorityImpl(
 		orderAges:                    orderAges,
 		inflightFinalizes:            inflightFinalizes,
 		certCSRMismatch:              certCSRMismatch,
+		pauseCounter:                 pauseCounter,
 	}
 	return ra
 }
@@ -560,7 +568,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	threshold, overrideKey := limit.GetThreshold(noKey, regID)
 	if count.Count >= threshold {
 		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
-		return berrors.FailedValidationError(0, "too many failed authorizations recently")
+		return berrors.FailedAuthorizationsPerDomainPerAccountError(0, "too many failed authorizations recently")
 	}
 	if overrideKey != "" {
 		utilization := float64(count.Count) / float64(threshold)
@@ -588,7 +596,7 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	noKey := ""
 	threshold, overrideKey := limit.GetThreshold(noKey, acctID)
 	if count.Count >= threshold {
-		return berrors.RateLimitError(0, "too many new orders recently")
+		return berrors.NewOrdersPerAccountError(0, "too many new orders recently")
 	}
 	if overrideKey != "" {
 		utilization := float64(count.Count+1) / float64(threshold)
@@ -1290,16 +1298,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return nil, nil, wrapError(err, "getting SCTs")
 	}
 
-	var isRenewal bool
-	if len(parsedPrecert.DNSNames) > 0 {
-		// This should never happen under normal operation, but it sometimes
-		// occurs under test.
-		exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: parsedPrecert.DNSNames})
-		if err != nil {
-			return nil, nil, wrapError(err, "checking if certificate is a renewal")
-		}
-		isRenewal = exists.Exists
+	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: parsedPrecert.DNSNames})
+	if err != nil {
+		return nil, nil, wrapError(err, "checking if certificate is a renewal")
 	}
+	isRenewal := exists.Exists
 
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:             precert.DER,
@@ -1317,7 +1320,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return nil, nil, wrapError(err, "parsing final certificate")
 	}
 
-	go ra.countCertificateIssued(ctx, int64(acctID), slices.Clone(parsedCertificate.DNSNames), isRenewal)
+	ra.countCertificateIssued(ctx, int64(acctID), slices.Clone(parsedCertificate.DNSNames), isRenewal)
 
 	// Asynchronously submit the final certificate to any configured logs
 	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
@@ -1435,12 +1438,12 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 			for _, name := range namesOutOfLimit {
 				subErrors = append(subErrors, berrors.SubBoulderError{
 					Identifier:   identifier.NewDNS(name),
-					BoulderError: berrors.RateLimitError(retryAfter, "too many certificates already issued. Retry after %s", retryString).(*berrors.BoulderError),
+					BoulderError: berrors.NewOrdersPerAccountError(retryAfter, "too many certificates already issued. Retry after %s", retryString).(*berrors.BoulderError),
 				})
 			}
-			return berrors.RateLimitError(retryAfter, "too many certificates already issued for multiple names (%q and %d others). Retry after %s", namesOutOfLimit[0], len(namesOutOfLimit), retryString).(*berrors.BoulderError).WithSubErrors(subErrors)
+			return berrors.NewOrdersPerAccountError(retryAfter, "too many certificates already issued for multiple names (%q and %d others). Retry after %s", namesOutOfLimit[0], len(namesOutOfLimit), retryString).(*berrors.BoulderError).WithSubErrors(subErrors)
 		}
-		return berrors.RateLimitError(retryAfter, "too many certificates already issued for %q. Retry after %s", namesOutOfLimit[0], retryString)
+		return berrors.NewOrdersPerAccountError(retryAfter, "too many certificates already issued for %q. Retry after %s", namesOutOfLimit[0], retryString)
 	}
 
 	return nil
@@ -1497,7 +1500,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		}
 		retryTime := prevIssuances.Timestamps[0].AsTime().Add(time.Duration(nsPerToken))
 		retryAfter := retryTime.Sub(now)
-		return berrors.DuplicateCertificateError(
+		return berrors.CertificatesPerFQDNSetError(
 			retryAfter,
 			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s, retry after %s",
 			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","), retryTime.Format(time.RFC3339),
@@ -1582,7 +1585,8 @@ func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, na
 // UpdateRegistration updates an existing Registration with new values. Caller
 // is responsible for making sure that update.Key is only different from base.Key
 // if it is being called from the WFE key change endpoint.
-// TODO(#5554): Split this into separate methods for updating Contacts vs Key.
+//
+// Deprecated: Use UpdateRegistrationContact or UpdateRegistrationKey instead.
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
 	// Error if the request is nil, there is no account key or IP address
 	if req.Base == nil || len(req.Base.Key) == 0 || req.Base.Id == 0 {
@@ -1616,6 +1620,46 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req
 		// passed to the SA.
 		err = berrors.InternalServerError("Could not update registration: %s", err)
 		return nil, err
+	}
+
+	return update, nil
+}
+
+// UpdateRegistrationContact updates an existing Registration's contact.
+// The updated contacts field may be empty.
+func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Context, req *rapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID) {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	err := ra.validateContacts(req.Contacts)
+	if err != nil {
+		return nil, fmt.Errorf("invalid contact: %w", err)
+	}
+
+	update, err := ra.SA.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{
+		RegistrationID: req.RegistrationID,
+		Contacts:       req.Contacts,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update registration contact: %w", err)
+	}
+
+	return update, nil
+}
+
+// UpdateRegistrationKey updates an existing Registration's key.
+func (ra *RegistrationAuthorityImpl) UpdateRegistrationKey(ctx context.Context, req *rapb.UpdateRegistrationKeyRequest) (*corepb.Registration, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.Jwk) {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	update, err := ra.SA.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{
+		RegistrationID: req.RegistrationID,
+		Jwk:            req.Jwk,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to update registration key: %w", err)
 	}
 
 	return update, nil
@@ -1729,26 +1773,68 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	return err
 }
 
-// countFailedValidation increments the failed authorizations per domain per
-// account rate limit. There is no reason to surface errors from this function
-// to the Subscriber, spends against this limit are best effort.
-func (ra *RegistrationAuthorityImpl) countFailedValidation(ctx context.Context, regId int64, name string) {
+// countFailedValidations increments the FailedAuthorizationsPerDomainPerAccount limit.
+// and the FailedAuthorizationsForPausingPerDomainPerAccountTransaction limit.
+func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) error {
 	if ra.limiter == nil || ra.txnBuilder == nil {
 		// Limiter is disabled.
-		return
+		return nil
 	}
 
-	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, name)
+	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, ident.Value)
 	if err != nil {
-		ra.log.Warningf("building rate limit transaction for the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+		return fmt.Errorf("building rate limit transaction for the %s rate limit: %w", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
 
 	_, err = ra.limiter.Spend(ctx, txn)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return
+		return fmt.Errorf("spending against the %s rate limit: %w", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+	}
+
+	if features.Get().AutomaticallyPauseZombieClients {
+		txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, ident.Value)
+		if err != nil {
+			return fmt.Errorf("building rate limit transaction for the %s rate limit: %w", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
 		}
-		ra.log.Warningf("spending against the %s rate limit: %s", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
+
+		decision, err := ra.limiter.Spend(ctx, txn)
+		if err != nil {
+			return fmt.Errorf("spending against the %s rate limit: %s", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
+		}
+
+		if decision.Result(ra.clk.Now()) != nil {
+			resp, err := ra.SA.PauseIdentifiers(ctx, &sapb.PauseRequest{
+				RegistrationID: regId,
+				Identifiers: []*corepb.Identifier{
+					{
+						Type:  string(ident.Type),
+						Value: ident.Value,
+					},
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to pause %d/%q: %w", regId, ident.Value, err)
+			}
+			ra.pauseCounter.With(prometheus.Labels{
+				"paused":   strconv.FormatBool(resp.Paused > 0),
+				"repaused": strconv.FormatBool(resp.Repaused > 0),
+				"grace":    strconv.FormatBool(resp.Paused <= 0 && resp.Repaused <= 0),
+			}).Inc()
+		}
+	}
+	return nil
+}
+
+// resetAccountPausingLimit resets bucket to maximum capacity for given account.
+// There is no reason to surface errors from this function to the Subscriber.
+func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
+	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident.Value)
+	if err != nil {
+		ra.log.Warningf("creating bucket key for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
+	}
+	err = ra.limiter.Reset(ctx, bucketKey)
+	if err != nil {
+		ra.log.Warningf("resetting bucket for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
 	}
 }
 
@@ -1873,9 +1959,15 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		if prob != nil {
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
-			go ra.countFailedValidation(vaCtx, authz.RegistrationID, authz.Identifier.Value)
+			err := ra.countFailedValidations(vaCtx, authz.RegistrationID, authz.Identifier)
+			if err != nil {
+				ra.log.Warningf("incrementing failed validations: %s", err)
+			}
 		} else {
 			challenge.Status = core.StatusValid
+			if features.Get().AutomaticallyPauseZombieClients {
+				ra.resetAccountPausingLimit(vaCtx, authz.RegistrationID, authz.Identifier)
+			}
 		}
 		challenge.Validated = &vStart
 		authz.Challenges[challIndex] = *challenge

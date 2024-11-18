@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
@@ -125,6 +126,8 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb
 }
 
 // UpdateRegistration stores an updated Registration
+//
+// Deprecated: Use UpdateRegistrationContact or UpdateRegistrationKey instead.
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *corepb.Registration) (*emptypb.Empty, error) {
 	if req == nil || req.Id == 0 || len(req.Key) == 0 {
 		return nil, errIncompleteRequest
@@ -160,6 +163,120 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+// UpdateRegistrationContact stores an updated contact in a Registration.
+// The updated contacts field may be empty.
+func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, req *sapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID) {
+		return nil, errIncompleteRequest
+	}
+
+	// We don't want to write literal JSON "null" strings into the database if the
+	// list of contact addresses is empty. Replace any possibly-`nil` slice with
+	// an empty JSON array.
+	jsonContact := []byte("[]")
+	var err error
+	if len(req.Contacts) != 0 {
+		jsonContact, err = json.Marshal(req.Contacts)
+		if err != nil {
+			return nil, fmt.Errorf("serializing contacts: %w", err)
+		}
+	}
+
+	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		result, err := tx.ExecContext(ctx,
+			"UPDATE registrations SET contact = ? WHERE id = ? LIMIT 1",
+			jsonContact,
+			req.RegistrationID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil || rowsAffected != 1 {
+			return nil, berrors.InternalServerError("no registration ID '%d' updated with new contact field", req.RegistrationID)
+		}
+
+		updatedRegistrationModel, err := selectRegistration(ctx, tx, "id", req.RegistrationID)
+		if err != nil {
+			if db.IsNoRows(err) {
+				return nil, berrors.NotFoundError("registration with ID '%d' not found", req.RegistrationID)
+			}
+			return nil, err
+		}
+		updatedRegistration, err := registrationModelToPb(updatedRegistrationModel)
+		if err != nil {
+			return nil, err
+		}
+
+		return updatedRegistration, nil
+	})
+	if overallError != nil {
+		return nil, overallError
+	}
+
+	return result.(*corepb.Registration), nil
+}
+
+// UpdateRegistrationKey stores an updated key in a Registration.
+func (ssa *SQLStorageAuthority) UpdateRegistrationKey(ctx context.Context, req *sapb.UpdateRegistrationKeyRequest) (*corepb.Registration, error) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.Jwk) {
+		return nil, errIncompleteRequest
+	}
+
+	// Even though we don't need to convert from JSON to an in-memory JSONWebKey
+	// for the sake of the `Key` field, we do need to do the conversion in order
+	// to compute the SHA256 key digest.
+	var jwk jose.JSONWebKey
+	err := jwk.UnmarshalJSON(req.Jwk)
+	if err != nil {
+		return nil, fmt.Errorf("parsing JWK: %w", err)
+	}
+	sha, err := core.KeyDigestB64(jwk.Key)
+	if err != nil {
+		return nil, fmt.Errorf("computing key digest: %w", err)
+	}
+
+	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		result, err := tx.ExecContext(ctx,
+			"UPDATE registrations SET jwk = ?, jwk_sha256 = ? WHERE id = ? LIMIT 1",
+			req.Jwk,
+			sha,
+			req.RegistrationID,
+		)
+		if err != nil {
+			if db.IsDuplicate(err) {
+				// duplicate entry error can only happen when jwk_sha256 collides, indicate
+				// to caller that the provided key is already in use
+				return nil, berrors.DuplicateError("key is already in use for a different account")
+			}
+			return nil, err
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil || rowsAffected != 1 {
+			return nil, berrors.InternalServerError("no registration ID '%d' updated with new jwk", req.RegistrationID)
+		}
+
+		updatedRegistrationModel, err := selectRegistration(ctx, tx, "id", req.RegistrationID)
+		if err != nil {
+			if db.IsNoRows(err) {
+				return nil, berrors.NotFoundError("registration with ID '%d' not found", req.RegistrationID)
+			}
+			return nil, err
+		}
+		updatedRegistration, err := registrationModelToPb(updatedRegistrationModel)
+		if err != nil {
+			return nil, err
+		}
+
+		return updatedRegistration, nil
+	})
+	if overallError != nil {
+		return nil, overallError
+	}
+
+	return result.(*corepb.Registration), nil
 }
 
 // AddSerial writes a record of a serial number generation to the DB.
@@ -206,7 +323,11 @@ func (ssa *SQLStorageAuthority) SetCertificateStatusReady(ctx context.Context, r
 	return &emptypb.Empty{}, nil
 }
 
-// AddPrecertificate writes a record of a precertificate generation to the DB.
+// AddPrecertificate writes a record of a linting certificate to the database.
+//
+// Note: The name "AddPrecertificate" is a historical artifact, and this is now
+// always called with a linting certificate. See #6807.
+//
 // Note: this is not idempotent: it does not protect against inserting the same
 // certificate multiple times. Calling code needs to first insert the cert's
 // serial into the Serials table to ensure uniqueness.
@@ -221,7 +342,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 	}
 	serialHex := core.SerialToString(parsed.SerialNumber)
 
-	preCertModel := &precertificateModel{
+	preCertModel := &lintingCertModel{
 		Serial:         serialHex,
 		RegistrationID: req.RegID,
 		DER:            req.Der,
@@ -414,13 +535,13 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	return &emptypb.Empty{}, nil
 }
 
-// DeactivateRegistration deactivates a currently valid registration
+// DeactivateRegistration deactivates a currently valid registration and removes its contact field
 func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error) {
 	if req == nil || req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
 	_, err := ssa.dbMap.ExecContext(ctx,
-		"UPDATE registrations SET status = ? WHERE status = ? AND id = ?",
+		"UPDATE registrations SET status = ?, contact = '[]' WHERE status = ? AND id = ? LIMIT 1",
 		string(core.StatusDeactivated),
 		string(core.StatusValid),
 		req.Id,
@@ -739,11 +860,9 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 			return nil, err
 		}
 
-		if features.Get().TrackReplacementCertificatesARI {
-			err = setReplacementOrderFinalized(ctx, tx, req.Id)
-			if err != nil {
-				return nil, err
-			}
+		err = setReplacementOrderFinalized(ctx, tx, req.Id)
+		if err != nil {
+			return nil, err
 		}
 
 		return nil, nil

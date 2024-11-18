@@ -294,13 +294,13 @@ func (ch Challenge) StringID() string {
 type Authorization struct {
 	// An identifier for this authorization, unique across
 	// authorizations and certificates within this instance.
-	ID string `json:"id,omitempty" db:"id"`
+	ID string `json:"-" db:"id"`
 
 	// The identifier for which authorization is being given
 	Identifier identifier.ACMEIdentifier `json:"identifier,omitempty" db:"identifier"`
 
 	// The registration ID associated with the authorization
-	RegistrationID int64 `json:"regId,omitempty" db:"registrationID"`
+	RegistrationID int64 `json:"-" db:"registrationID"`
 
 	// The status of the validation of this authorization
 	Status AcmeStatus `json:"status,omitempty" db:"status"`
@@ -486,8 +486,8 @@ func RenewalInfoSimple(issued time.Time, expires time.Time) RenewalInfo {
 	idealRenewal := expires.Add(-renewalOffset)
 	return RenewalInfo{
 		SuggestedWindow: SuggestedWindow{
-			Start: idealRenewal.Add(-24 * time.Hour),
-			End:   idealRenewal.Add(24 * time.Hour),
+			Start: idealRenewal.Add(-24 * time.Hour).Truncate(time.Second),
+			End:   idealRenewal.Add(24 * time.Hour).Truncate(time.Second),
 		},
 	}
 }
@@ -502,8 +502,8 @@ func RenewalInfoImmediate(now time.Time, explanationURL string) RenewalInfo {
 	oneHourAgo := now.Add(-1 * time.Hour)
 	return RenewalInfo{
 		SuggestedWindow: SuggestedWindow{
-			Start: oneHourAgo,
-			End:   oneHourAgo.Add(time.Minute * 30),
+			Start: oneHourAgo.Truncate(time.Second),
+			End:   oneHourAgo.Add(time.Minute * 30).Truncate(time.Second),
 		},
 		ExplanationURL: explanationURL,
 	}

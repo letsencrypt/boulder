@@ -18,7 +18,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/db"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -450,9 +449,6 @@ func TestAddReplacementOrder(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	features.Set(features.Config{TrackReplacementCertificatesARI: true})
-	defer features.Reset()
-
 	oldCertSerial := "1234567890"
 	orderId := int64(1337)
 	orderExpires := time.Now().Add(24 * time.Hour).UTC().Truncate(time.Second)
@@ -501,9 +497,6 @@ func TestSetReplacementOrderFinalized(t *testing.T) {
 
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
-
-	features.Set(features.Config{TrackReplacementCertificatesARI: true})
-	defer features.Reset()
 
 	oldCertSerial := "1234567890"
 	orderId := int64(1337)

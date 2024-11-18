@@ -31,7 +31,16 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
-const PrimaryPerspective = "Primary"
+const (
+	PrimaryPerspective = "Primary"
+	allPerspectives    = "all"
+
+	opChallAndCAA = "challenge+caa"
+	opCAA         = "caa"
+
+	pass = "pass"
+	fail = "fail"
+)
 
 var (
 	// badTLSHeader contains the string 'HTTP /' which is returned when
@@ -83,14 +92,14 @@ type RemoteVA struct {
 }
 
 type vaMetrics struct {
-	validationTime                    *prometheus.HistogramVec
-	localValidationTime               *prometheus.HistogramVec
-	remoteValidationTime              *prometheus.HistogramVec
-	remoteValidationFailures          prometheus.Counter
-	caaCheckTime                      *prometheus.HistogramVec
-	localCAACheckTime                 *prometheus.HistogramVec
-	remoteCAACheckTime                *prometheus.HistogramVec
-	remoteCAACheckFailures            prometheus.Counter
+	// validationLatency is a histogram of the latency to perform validations
+	// from the primary and remote VA perspectives. It's labelled by:
+	//   - operation: VA.ValidateChallenge or VA.CheckCAA as [challenge|caa|challenge+caa]
+	//   - perspective: ValidationAuthorityImpl.perspective
+	//   - challenge_type: core.Challenge.Type
+	//   - problem_type: probs.ProblemType
+	//   - result: the result of the validation as [pass|fail]
+	validationLatency                 *prometheus.HistogramVec
 	prospectiveRemoteCAACheckFailures prometheus.Counter
 	tlsALPNOIDCounter                 *prometheus.CounterVec
 	http01Fallbacks                   prometheus.Counter
@@ -100,66 +109,15 @@ type vaMetrics struct {
 }
 
 func initMetrics(stats prometheus.Registerer) *vaMetrics {
-	validationTime := prometheus.NewHistogramVec(
+	validationLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "validation_time",
-			Help:    "Total time taken to validate a challenge and aggregate results",
+			Name:    "validation_latency",
+			Help:    "Histogram of the latency to perform validations from the primary and remote VA perspectives",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"type", "result", "problem_type"})
-	stats.MustRegister(validationTime)
-	localValidationTime := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "local_validation_time",
-			Help:    "Time taken to locally validate a challenge",
-			Buckets: metrics.InternetFacingBuckets,
-		},
-		[]string{"type", "result"})
-	stats.MustRegister(localValidationTime)
-	remoteValidationTime := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "remote_validation_time",
-			Help:    "Time taken to remotely validate a challenge",
-			Buckets: metrics.InternetFacingBuckets,
-		},
-		[]string{"type"})
-	stats.MustRegister(remoteValidationTime)
-	remoteValidationFailures := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "remote_validation_failures",
-			Help: "Number of validations failed due to remote VAs returning failure when consensus is enforced",
-		})
-	stats.MustRegister(remoteValidationFailures)
-	caaCheckTime := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "caa_check_time",
-			Help:    "Total time taken to check CAA records and aggregate results",
-			Buckets: metrics.InternetFacingBuckets,
-		},
-		[]string{"result"})
-	stats.MustRegister(caaCheckTime)
-	localCAACheckTime := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "caa_check_time_local",
-			Help:    "Time taken to locally check CAA records",
-			Buckets: metrics.InternetFacingBuckets,
-		},
-		[]string{"result"})
-	stats.MustRegister(localCAACheckTime)
-	remoteCAACheckTime := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "caa_check_time_remote",
-			Help:    "Time taken to remotely check CAA records",
-			Buckets: metrics.InternetFacingBuckets,
-		},
-		[]string{"result"})
-	stats.MustRegister(remoteCAACheckTime)
-	remoteCAACheckFailures := prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Name: "remote_caa_check_failures",
-			Help: "Number of CAA checks failed due to remote VAs returning failure when consensus is enforced",
-		})
-	stats.MustRegister(remoteCAACheckFailures)
+		[]string{"operation", "perspective", "challenge_type", "problem_type", "result"},
+	)
+	stats.MustRegister(validationLatency)
 	prospectiveRemoteCAACheckFailures := prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "prospective_remote_caa_check_failures",
@@ -198,14 +156,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 	stats.MustRegister(ipv4FallbackCounter)
 
 	return &vaMetrics{
-		validationTime:                    validationTime,
-		remoteValidationTime:              remoteValidationTime,
-		localValidationTime:               localValidationTime,
-		remoteValidationFailures:          remoteValidationFailures,
-		caaCheckTime:                      caaCheckTime,
-		localCAACheckTime:                 localCAACheckTime,
-		remoteCAACheckTime:                remoteCAACheckTime,
-		remoteCAACheckFailures:            remoteCAACheckFailures,
+		validationLatency:                 validationLatency,
 		prospectiveRemoteCAACheckFailures: prospectiveRemoteCAACheckFailures,
 		tlsALPNOIDCounter:                 tlsALPNOIDCounter,
 		http01Fallbacks:                   http01Fallbacks,
@@ -322,8 +273,6 @@ type verificationRequestEvent struct {
 	ValidationLatency float64
 	Error             string `json:",omitempty"`
 	InternalError     string `json:",omitempty"`
-	Perspective       string `json:",omitempty"`
-	RIR               string `json:",omitempty"`
 }
 
 // ipError is an error type used to pass though the IP address of the remote
@@ -428,6 +377,11 @@ func detailedError(err error) *probs.ProblemDetails {
 	return probs.Connection("Error getting validation data")
 }
 
+// isPrimaryVA returns true if the VA is the primary validation perspective.
+func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
+	return va.perspective == PrimaryPerspective
+}
+
 // validateChallenge simply passes through to the appropriate validation method
 // depending on the challenge type.
 func (va *ValidationAuthorityImpl) validateChallenge(
@@ -451,6 +405,25 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	return nil, berrors.MalformedError("invalid challenge type %s", kind)
 }
 
+// observeLatency records entries in the validationLatency histogram of the
+// latency to perform validations from the primary and remote VA perspectives.
+// The labels are:
+//   - operation: VA.ValidateChallenge or VA.CheckCAA as [challenge|caa]
+//   - perspective: [ValidationAuthorityImpl.perspective|all]
+//   - challenge_type: core.Challenge.Type
+//   - problem_type: probs.ProblemType
+//   - result: the result of the validation as [pass|fail]
+func (va *ValidationAuthorityImpl) observeLatency(op, perspective, challType, probType, result string, latency time.Duration) {
+	labels := prometheus.Labels{
+		"operation":      op,
+		"perspective":    perspective,
+		"challenge_type": challType,
+		"problem_type":   probType,
+		"result":         result,
+	}
+	va.metrics.validationLatency.With(labels).Observe(latency.Seconds())
+}
+
 // performRemoteValidation coordinates the whole process of kicking off and
 // collecting results from calls to remote VAs' PerformValidation function. It
 // returns a problem if too many remote perspectives failed to corroborate
@@ -460,90 +433,86 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	ctx context.Context,
 	req *vapb.PerformValidationRequest,
 ) *probs.ProblemDetails {
-	if len(va.remoteVAs) == 0 {
+	remoteVACount := len(va.remoteVAs)
+	if remoteVACount == 0 {
 		return nil
 	}
 
-	start := va.clk.Now()
-	defer func() {
-		va.metrics.remoteValidationTime.With(prometheus.Labels{
-			"type": req.Challenge.Type,
-		}).Observe(va.clk.Since(start).Seconds())
-	}()
-
-	type rvaResult struct {
-		hostname string
-		response *vapb.ValidationResult
-		err      error
+	type response struct {
+		addr   string
+		result *vapb.ValidationResult
+		err    error
 	}
 
-	results := make(chan *rvaResult, len(va.remoteVAs))
-
-	for _, i := range rand.Perm(len(va.remoteVAs)) {
-		remoteVA := va.remoteVAs[i]
-		go func(rva RemoteVA, out chan<- *rvaResult) {
+	responses := make(chan *response, remoteVACount)
+	for _, i := range rand.Perm(remoteVACount) {
+		go func(rva RemoteVA, out chan<- *response) {
 			res, err := rva.PerformValidation(ctx, req)
-			out <- &rvaResult{
-				hostname: rva.Address,
-				response: res,
-				err:      err,
+			out <- &response{
+				addr:   rva.Address,
+				result: res,
+				err:    err,
 			}
-		}(remoteVA, results)
+		}(va.remoteVAs[i], responses)
 	}
 
-	required := len(va.remoteVAs) - va.maxRemoteFailures
-	good := 0
-	bad := 0
+	required := remoteVACount - va.maxRemoteFailures
+	var passed []string
+	var failed []string
 	var firstProb *probs.ProblemDetails
 
-	for res := range results {
+	for resp := range responses {
 		var currProb *probs.ProblemDetails
 
-		if res.err != nil {
-			bad++
+		if resp.err != nil {
+			// Failed to communicate with the remote VA.
+			failed = append(failed, resp.addr)
 
-			if canceled.Is(res.err) {
+			if canceled.Is(resp.err) {
 				currProb = probs.ServerInternal("Remote PerformValidation RPC canceled")
 			} else {
-				va.log.Errf("Remote VA %q.PerformValidation failed: %s", res.hostname, res.err)
+				va.log.Errf("Remote VA %q.PerformValidation failed: %s", resp.addr, resp.err)
 				currProb = probs.ServerInternal("Remote PerformValidation RPC failed")
 			}
-		} else if res.response.Problems != nil {
-			bad++
+		} else if resp.result.Problems != nil {
+			// The remote VA returned a problem.
+			failed = append(failed, resp.result.Perspective)
 
 			var err error
-			currProb, err = bgrpc.PBToProblemDetails(res.response.Problems)
+			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problems)
 			if err != nil {
-				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", res.hostname, err)
+				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", resp.addr, err)
 				currProb = probs.ServerInternal("Remote PerformValidation RPC returned malformed result")
 			}
 		} else {
-			good++
+			// The remote VA returned a successful result.
+			passed = append(passed, resp.result.Perspective)
 		}
 
 		if firstProb == nil && currProb != nil {
+			// A problem was encountered for the first time.
 			firstProb = currProb
 		}
 
-		// Return as soon as we have enough successes or failures for a definitive result.
-		if good >= required {
+		if len(passed) >= required {
+			// Enough successful responses to reach quorum.
 			return nil
 		}
-		if bad > va.maxRemoteFailures {
-			va.metrics.remoteValidationFailures.Inc()
+		if len(failed) > va.maxRemoteFailures {
+			// Too many failed responses to reach quorum.
 			firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
 			return firstProb
 		}
 
 		// If we somehow haven't returned early, we need to break the loop once all
 		// of the VAs have returned a result.
-		if good+bad >= len(va.remoteVAs) {
+		if len(passed)+len(failed) >= remoteVACount {
 			break
 		}
 	}
 
-	// This condition should not occur - it indicates the good/bad counts neither
-	// met the required threshold nor the maxRemoteFailures threshold.
+	// This condition should not occur - it indicates the passed/failed counts
+	// neither met the required threshold nor the maxRemoteFailures threshold.
 	return probs.ServerInternal("Too few remote PerformValidation RPC results")
 }
 
@@ -645,12 +614,12 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
-	challenge, err := bgrpc.PBToChallenge(req.Challenge)
+	chall, err := bgrpc.PBToChallenge(req.Challenge)
 	if err != nil {
 		return nil, errors.New("challenge failed to deserialize")
 	}
 
-	err = challenge.CheckPending()
+	err = chall.CheckPending()
 	if err != nil {
 		return nil, berrors.MalformedError("challenge failed consistency check: %s", err)
 	}
@@ -660,48 +629,34 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// `prob`, or this will fail.
 	var prob *probs.ProblemDetails
 	var localLatency time.Duration
-	vStart := va.clk.Now()
+	start := va.clk.Now()
 	logEvent := verificationRequestEvent{
 		ID:        req.Authz.Id,
 		Requester: req.Authz.RegID,
 		Hostname:  req.DnsName,
-		Challenge: challenge,
+		Challenge: chall,
 	}
 	defer func() {
-		problemType := ""
+		probType := ""
+		outcome := fail
 		if prob != nil {
-			problemType = string(prob.Type)
+			probType = string(prob.Type)
 			logEvent.Error = prob.Error()
 			logEvent.Challenge.Error = prob
 			logEvent.Challenge.Status = core.StatusInvalid
 		} else {
 			logEvent.Challenge.Status = core.StatusValid
+			outcome = pass
+		}
+		// Observe local validation latency (primary|remote).
+		va.observeLatency(opChallAndCAA, va.perspective, string(chall.Type), probType, outcome, localLatency)
+		if va.isPrimaryVA() {
+			// Observe total validation latency (primary+remote).
+			va.observeLatency(opChallAndCAA, allPerspectives, string(chall.Type), probType, outcome, va.clk.Since(start))
 		}
 
-		if va.perspective != "" && va.perspective != PrimaryPerspective {
-			// This validation was performed by a remote VA. According to the
-			// requirements in section 5.4.1 (2) vii of the BRs we need to log
-			// the perspective used. Additionally, we'll log the RIR where this
-			// RVA is located.
-			//
-			// TODO(#7615): Make these fields mandatory for non-Primary
-			// perspectives and remove the (va.perspective != "") check.
-			logEvent.Perspective = va.perspective
-			logEvent.RIR = va.rir
-		}
-
-		va.metrics.localValidationTime.With(prometheus.Labels{
-			"type":   string(logEvent.Challenge.Type),
-			"result": string(logEvent.Challenge.Status),
-		}).Observe(localLatency.Seconds())
-
-		va.metrics.validationTime.With(prometheus.Labels{
-			"type":         string(logEvent.Challenge.Type),
-			"result":       string(logEvent.Challenge.Status),
-			"problem_type": problemType,
-		}).Observe(time.Since(vStart).Seconds())
-
-		logEvent.ValidationLatency = time.Since(vStart).Round(time.Millisecond).Seconds()
+		// Log the total validation latency.
+		logEvent.ValidationLatency = time.Since(start).Round(time.Millisecond).Seconds()
 		va.log.AuditObject("Validation result", logEvent)
 	}()
 
@@ -713,10 +668,12 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		ctx,
 		identifier.NewDNS(req.DnsName),
 		req.Authz.RegID,
-		challenge.Type,
-		challenge.Token,
+		chall.Type,
+		chall.Token,
 		req.ExpectedKeyAuthorization)
-	localLatency = time.Since(vStart)
+
+	// Stop the clock for local validation latency.
+	localLatency = va.clk.Since(start)
 
 	// Check for malformed ValidationRecords
 	logEvent.Challenge.ValidationRecord = records

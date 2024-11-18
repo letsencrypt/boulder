@@ -173,6 +173,9 @@ CREATE TABLE `orders` (
  PARTITION BY RANGE(id)
 (PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
+-- Note: This table's name is a historical artifact and it is now
+-- used to store linting certificates, not precertificates.
+-- See #6807.
 CREATE TABLE `precertificates` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `registrationID` bigint(20) NOT NULL,

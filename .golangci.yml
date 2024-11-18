@@ -12,7 +12,7 @@ linters:
     - unconvert
     - unparam
     - unused
-    # TODO(#6202): Re-enable 'wastedassign' linter
+    - wastedassign
 linters-settings:
   errcheck:
     exclude-functions:

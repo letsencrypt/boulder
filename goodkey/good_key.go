@@ -42,17 +42,6 @@ type Config struct {
 	// AllowedKeys enables or disables specific key algorithms and sizes. If
 	// nil, defaults to just those keys allowed by the Let's Encrypt CPS.
 	AllowedKeys *AllowedKeys
-	// WeakKeyFile is the path to a JSON file containing truncated modulus hashes
-	// of known weak RSA keys. If this config value is empty, then RSA modulus
-	// hash checking will be disabled.
-	WeakKeyFile string
-	// BlockedKeyFile is the path to a YAML file containing base64-encoded SHA256
-	// hashes of PKIX Subject Public Keys that should be blocked. If this config
-	// value is empty, then blocked key checking will be disabled.
-	//
-	// Deprecated: This functionality is better performed by the blockedKeys database
-	// table, and will be removed in a future release.
-	BlockedKeyFile string
 	// FermatRounds is an integer number of rounds of Fermat's factorization
 	// method that should be performed to attempt to detect keys whose modulus can
 	// be trivially factored because the two factors are very close to each other.
@@ -115,17 +104,14 @@ type BlockedKeyCheckFunc func(ctx context.Context, keyHash []byte) (bool, error)
 // operations.
 type KeyPolicy struct {
 	allowedKeys  AllowedKeys
-	weakRSAList  *WeakRSAKeys
-	blockedList  *blockedKeys
 	fermatRounds int
 	blockedCheck BlockedKeyCheckFunc
 }
 
 // NewPolicy returns a key policy based on the given configuration, with sane
 // defaults. If the config's AllowedKeys is nil, the LetsEncryptCPS AllowedKeys
-// is used. If the config's WeakKeyFile or BlockedKeyFile paths are empty, those
-// checks are disabled. If the config's FermatRounds is 0, Fermat Factorization
-// defaults to attempting 110 rounds.
+// is used. If the configured FermatRounds is 0, Fermat Factorization defaults to
+// attempting 110 rounds.
 func NewPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 	if config == nil {
 		config = &Config{}
@@ -137,20 +123,6 @@ func NewPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 		kp.allowedKeys = LetsEncryptCPS()
 	} else {
 		kp.allowedKeys = *config.AllowedKeys
-	}
-	if config.WeakKeyFile != "" {
-		keyList, err := LoadWeakRSASuffixes(config.WeakKeyFile)
-		if err != nil {
-			return KeyPolicy{}, err
-		}
-		kp.weakRSAList = keyList
-	}
-	if config.BlockedKeyFile != "" {
-		blocked, err := loadBlockedKeysList(config.BlockedKeyFile)
-		if err != nil {
-			return KeyPolicy{}, err
-		}
-		kp.blockedList = blocked
 	}
 	if config.FermatRounds == 0 {
 		// The BRs require 100 rounds, so give ourselves a margin above that.
@@ -175,15 +147,6 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 		break
 	default:
 		return badKey("unsupported key type %T", t)
-	}
-	// If there is a blocked list configured then check if the public key is one
-	// that has been administratively blocked.
-	if policy.blockedList != nil {
-		if blocked, err := policy.blockedList.blocked(key); err != nil {
-			return fmt.Errorf("error checking blocklist for key: %v", key)
-		} else if blocked {
-			return badKey("public key is forbidden")
-		}
 	}
 	if policy.blockedCheck != nil {
 		digest, err := core.KeyDigest(key)
@@ -327,10 +290,6 @@ func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) error {
 	err := policy.goodRSABitLen(key)
 	if err != nil {
 		return err
-	}
-
-	if policy.weakRSAList != nil && policy.weakRSAList.Known(key) {
-		return badKey("key is on a known weak RSA key list")
 	}
 
 	// Rather than support arbitrary exponents, which significantly increases

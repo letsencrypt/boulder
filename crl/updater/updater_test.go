@@ -396,6 +396,6 @@ func TestGetChunkAtTime(t *testing.T) {
 	// the time twice, since the whole point of "very far in the future" is that
 	// it isn't representable by a time.Duration.
 	atTime = anchorTime().Add(200 * 365 * 24 * time.Hour).Add(200 * 365 * 24 * time.Hour)
-	c, err = GetChunkAtTime(shardWidth, numShards, atTime)
+	_, err = GetChunkAtTime(shardWidth, numShards, atTime)
 	test.AssertError(t, err, "getting far-future chunk")
 }
