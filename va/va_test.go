@@ -363,12 +363,15 @@ func TestMultiVA(t *testing.T) {
 		remoteUA1 = "remote 1"
 		remoteUA2 = "remote 2"
 		remoteUA3 = "remote 3"
+		remoteUA4 = "remote 4"
 		localUA   = "local 1"
 	)
 	allowedUAs := map[string]bool{
 		localUA:   true,
 		remoteUA1: true,
 		remoteUA2: true,
+		remoteUA3: true,
+		remoteUA4: true,
 	}
 
 	// Create an IPv4 test server
@@ -378,6 +381,7 @@ func TestMultiVA(t *testing.T) {
 	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
 	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
 	remoteVA3 := setupRemote(ms.Server, remoteUA3, nil, "", "")
+	remoteVA4 := setupRemote(ms.Server, remoteUA4, nil, "", "")
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
 		{remoteVA2, remoteUA2},
@@ -451,6 +455,62 @@ func TestMultiVA(t *testing.T) {
 			ExpectedLog: expectedInternalErrLine,
 		},
 		{
+			// If one out of five remote VAs fail with an internal err it should succeed
+			Name: "Local VA ok, 1/5 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{remoteVA3, remoteUA3},
+				{remoteVA4, remoteUA4},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs: allowedUAs,
+		},
+		{
+			// If two out of five remote VAs fail with an internal err it should fail
+			Name: "Local VA ok, 2/5 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{remoteVA3, remoteUA3},
+				{brokenVA, "broken"},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs:   allowedUAs,
+			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			// The real failure cause should be logged
+			ExpectedLog: expectedInternalErrLine,
+		},
+		{
+			// If two out of six remote VAs fail with an internal err it should succeed
+			Name: "Local VA ok, 2/6 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{remoteVA3, remoteUA3},
+				{remoteVA4, remoteUA4},
+				{brokenVA, "broken"},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs: allowedUAs,
+		},
+		{
+			// If three out of six remote VAs fail with an internal err it should fail
+			Name: "Local VA ok, 4/6 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{remoteVA3, remoteUA3},
+				{brokenVA, "broken"},
+				{brokenVA, "broken"},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs:   allowedUAs,
+			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			// The real failure cause should be logged
+			ExpectedLog: expectedInternalErrLine,
+		},
+		{
 			// With only one working remote VA there should be a validation failure
 			Name:       "Local VA and one remote VA OK",
 			RemoteVAs:  remoteVAs,
@@ -460,20 +520,20 @@ func TestMultiVA(t *testing.T) {
 				expectedKeyAuthorization)),
 		},
 		{
-			// Any remote VA cancellations are a problem.
+			// If one remote VA cancels, it should succeed
 			Name: "Local VA and one remote VA OK, one cancelled VA",
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{cancelledVA, remoteUA2},
 				{remoteVA3, remoteUA3},
 			},
-			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
+			AllowedUAs: allowedUAs,
 		},
 		{
-			// Any remote VA cancellations are a problem.
+			// If two remote VA cancels, it should fail
 			Name: "Local VA OK, two cancelled remote VAs",
 			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
 				{cancelledVA, remoteUA1},
 				{cancelledVA, remoteUA2},
 			},
