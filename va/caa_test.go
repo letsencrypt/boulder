@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -676,6 +677,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		expectedProbSubstring    string
 		expectedProbType         probs.ProblemType
 		expectedDiffLogSubstring string
+		expectedLabels           prometheus.Labels
 		localDNSClient           bdns.Client
 	}{
 		{
@@ -686,6 +688,13 @@ func TestMultiCAARechecking(t *testing.T) {
 				{remoteVA, remoteUA},
 				{remoteVA, remoteUA},
 				{remoteVA, remoteUA},
+			},
+			expectedLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    allPerspectives,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   "",
+				"result":         pass,
 			},
 		},
 		{
@@ -698,6 +707,13 @@ func TestMultiCAARechecking(t *testing.T) {
 				{remoteVA, remoteUA},
 				{remoteVA, remoteUA},
 				{remoteVA, remoteUA},
+			},
+			expectedLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    allPerspectives,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.DNSProblem),
+				"result":         fail,
 			},
 		},
 		{
@@ -712,6 +728,13 @@ func TestMultiCAARechecking(t *testing.T) {
 				{remoteVA, remoteUA},
 				{remoteVA, remoteUA},
 			},
+			expectedLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    allPerspectives,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.DNSProblem),
+				"result":         fail,
+			},
 		},
 		{
 			name:                     "functional localVA, all broken RVAs, no CAA records",
@@ -725,6 +748,13 @@ func TestMultiCAARechecking(t *testing.T) {
 				{brokenVA, brokenUA},
 				{brokenVA, brokenUA},
 			},
+			expectedLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    allPerspectives,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.DNSProblem),
+				"result":         fail,
+			},
 		},
 		{
 			name:           "all VAs functional, CAA issue type present",
@@ -734,6 +764,13 @@ func TestMultiCAARechecking(t *testing.T) {
 				{remoteVA, remoteUA},
 				{remoteVA, remoteUA},
 				{remoteVA, remoteUA},
+			},
+			expectedLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    allPerspectives,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   "",
+				"result":         pass,
 			},
 		},
 		{
@@ -748,6 +785,13 @@ func TestMultiCAARechecking(t *testing.T) {
 				{remoteVA, remoteUA},
 				{remoteVA, remoteUA},
 			},
+			expectedLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    allPerspectives,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.DNSProblem),
+				"result":         fail,
+			},
 		},
 		{
 			name:                     "functional localVA, all broken RVAs, CAA issue type present",
@@ -760,6 +804,13 @@ func TestMultiCAARechecking(t *testing.T) {
 				{brokenVA, brokenUA},
 				{brokenVA, brokenUA},
 				{brokenVA, brokenUA},
+			},
+			expectedLabels: prometheus.Labels{
+				"operation":      opCAA,
+				"perspective":    allPerspectives,
+				"challenge_type": string(core.ChallengeTypeDNS01),
+				"problem_type":   string(probs.DNSProblem),
+				"result":         fail,
 			},
 		},
 		{
@@ -953,6 +1004,10 @@ func TestMultiCAARechecking(t *testing.T) {
 				test.AssertEquals(t, len(gotAnyRemoteFailures), 1)
 			} else {
 				test.AssertEquals(t, len(gotAnyRemoteFailures), 0)
+			}
+
+			if tc.expectedLabels != nil {
+				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, tc.expectedLabels, 1)
 			}
 		})
 	}

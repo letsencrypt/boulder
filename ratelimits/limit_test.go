@@ -42,11 +42,11 @@ func TestParseOverrideNameId(t *testing.T) {
 }
 
 func TestValidateLimit(t *testing.T) {
-	err := validateLimit(limit{Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}})
+	err := validateLimit(&limit{Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}})
 	test.AssertNotError(t, err, "valid limit")
 
 	// All of the following are invalid.
-	for _, l := range []limit{
+	for _, l := range []*limit{
 		{Burst: 0, Count: 1, Period: config.Duration{Duration: time.Second}},
 		{Burst: 1, Count: 0, Period: config.Duration{Duration: time.Second}},
 		{Burst: 1, Count: 1, Period: config.Duration{Duration: 0}},
