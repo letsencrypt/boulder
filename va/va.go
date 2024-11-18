@@ -222,7 +222,6 @@ var _ vapb.CAAServer = (*ValidationAuthorityImpl)(nil)
 func NewValidationAuthorityImpl(
 	resolver bdns.Client,
 	remoteVAs []RemoteVA,
-	maxRemoteFailures int,
 	userAgent string,
 	issuerDomain string,
 	stats prometheus.Registerer,
@@ -250,7 +249,7 @@ func NewValidationAuthorityImpl(
 		clk:                clk,
 		metrics:            initMetrics(stats),
 		remoteVAs:          remoteVAs,
-		maxRemoteFailures:  maxRemoteFailures,
+		maxRemoteFailures:  maxAllowedFailures(len(remoteVAs)),
 		accountURIPrefixes: accountURIPrefixes,
 		// singleDialTimeout specifies how long an individual `DialContext` operation may take
 		// before timing out. This timeout ignores the base RPC timeout and is strictly
@@ -262,6 +261,24 @@ func NewValidationAuthorityImpl(
 	}
 
 	return va, nil
+}
+
+// maxAllowedFailures returns the maximum number of allowed failures
+// for a given number of remote perspectives, according to the "Quorum
+// Requirements" table in BRs Section 3.2.2.9, as follows:
+//
+//	| # of Distinct Remote Network Perspectives Used | # of Allowed non-Corroborations |
+//	| --- | --- |
+//	| 2-5 |  1  |
+//	| 6+  |  2  |
+func maxAllowedFailures(perspectiveCount int) int {
+	if perspectiveCount < 2 {
+		return 0
+	}
+	if perspectiveCount < 6 {
+		return 1
+	}
+	return 2
 }
 
 // Used for audit logging

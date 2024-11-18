@@ -18,8 +18,9 @@ import (
 type Config struct {
 	VA struct {
 		vaConfig.Common
-		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
-		MaxRemoteValidationFailures int                    `validate:"omitempty,min=0,required_with=RemoteVAs"`
+		RemoteVAs []cmd.GRPCClientConfig `validate:"omitempty,dive"`
+		// Deprecated and ignored
+		MaxRemoteValidationFailures int `validate:"omitempty,min=0,required_with=RemoteVAs"`
 		Features                    features.Config
 	}
 
@@ -109,7 +110,6 @@ func main() {
 	vai, err := va.NewValidationAuthorityImpl(
 		resolver,
 		remotes,
-		c.VA.MaxRemoteValidationFailures,
 		c.VA.UserAgent,
 		c.VA.IssuerDomain,
 		scope,
