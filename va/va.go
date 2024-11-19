@@ -487,10 +487,10 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			failed = append(failed, resp.addr)
 
 			if canceled.Is(resp.err) {
-				currProb = probs.ServerInternal("Remote PerformValidation RPC canceled")
+				currProb = probs.ServerInternal("Secondary domain validation RPC canceled")
 			} else {
 				va.log.Errf("Remote VA %q.PerformValidation failed: %s", resp.addr, resp.err)
-				currProb = probs.ServerInternal("Remote PerformValidation RPC failed")
+				currProb = probs.ServerInternal("Secondary domain validation RPC failed")
 			}
 		} else if resp.result.Problems != nil {
 			// The remote VA returned a problem.
@@ -500,7 +500,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problems)
 			if err != nil {
 				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", resp.addr, err)
-				currProb = probs.ServerInternal("Remote PerformValidation RPC returned malformed result")
+				currProb = probs.ServerInternal("Secondary domain validation RPC returned malformed result")
 			}
 		} else {
 			// The remote VA returned a successful result.
@@ -518,7 +518,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		}
 		if len(failed) > va.maxRemoteFailures {
 			// Too many failed responses to reach quorum.
-			firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
+			firstProb.Detail = fmt.Sprintf("During secondary domain validation: %s", firstProb.Detail)
 			return firstProb
 		}
 
