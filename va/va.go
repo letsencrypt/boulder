@@ -701,7 +701,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	if err != nil {
 		logEvent.InternalError = err.Error()
 		prob = detailedError(err)
-		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
+		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 	}
 
 	// Do remote validation. We do this after local validation is complete to
@@ -710,5 +710,5 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// own validation records, and it's not helpful to present multiple large
 	// errors to the end user.
 	prob = va.performRemoteValidation(ctx, req)
-	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
+	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 }

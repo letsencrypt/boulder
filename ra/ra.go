@@ -1792,7 +1792,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	} else {
 		expires = ra.clk.Now().Add(ra.authorizationLifetime)
 	}
-	vr, err := bgrpc.ValidationResultToPB(challenge.ValidationRecord, challenge.Error)
+	vr, err := bgrpc.ValidationResultToPB(challenge.ValidationRecord, challenge.Error, "", "")
 	if err != nil {
 		return err
 	}
