@@ -734,7 +734,7 @@ func TestMultiCAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:                     "functional localVA, 2 broken RVAs, no CAA records",
+			name:                     "functional localVA, 2 broken RVA, no CAA records",
 			domains:                  "present-dns-only.com",
 			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
@@ -938,7 +938,7 @@ func TestMultiCAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:                     "1 hijacked RVA, CAA issuewild type present",
+			name:                     "1 hijacked RVA, CAA issuewild type present, 1 failure allowed",
 			domains:                  "satisfiable-wildcard.com",
 			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
@@ -949,7 +949,7 @@ func TestMultiCAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:                     "2 hijacked RVAs, CAA issuewild type present",
+			name:                     "2 hijacked RVAs, CAA issuewild type present, 1 failure allowed",
 			domains:                  "satisfiable-wildcard.com",
 			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
@@ -962,7 +962,7 @@ func TestMultiCAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:                     "3 hijacked RVAs, CAA issuewild type present",
+			name:                     "3 hijacked RVAs, CAA issuewild type present, 1 failure allowed",
 			domains:                  "satisfiable-wildcard.com",
 			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
