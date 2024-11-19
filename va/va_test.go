@@ -304,8 +304,8 @@ func TestPerformValidationValid(t *testing.T) {
 	if len(resultLog) != 1 {
 		t.Fatalf("Wrong number of matching lines for 'Validation result'")
 	}
-	if !strings.Contains(resultLog[0], `"Hostname":"good-dns01.com"`) {
-		t.Error("PerformValidation didn't log validation hostname.")
+	if !strings.Contains(resultLog[0], `"Identifier":"good-dns01.com"`) {
+		t.Error("PerformValidation didn't log validation identifier.")
 	}
 }
 
@@ -332,9 +332,9 @@ func TestPerformValidationWildcard(t *testing.T) {
 		t.Fatalf("Wrong number of matching lines for 'Validation result'")
 	}
 
-	// We expect that the top level Hostname reflect the wildcard name
-	if !strings.Contains(resultLog[0], `"Hostname":"*.good-dns01.com"`) {
-		t.Errorf("PerformValidation didn't log correct validation hostname.")
+	// We expect that the top level Identifier reflect the wildcard name
+	if !strings.Contains(resultLog[0], `"Identifier":"*.good-dns01.com"`) {
+		t.Errorf("PerformValidation didn't log correct validation identifier.")
 	}
 	// We expect that the ValidationRecord contain the correct non-wildcard
 	// hostname that was validated

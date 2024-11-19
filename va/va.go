@@ -281,15 +281,16 @@ func maxAllowedFailures(perspectiveCount int) int {
 	return 2
 }
 
-// Used for audit logging
+// verificationRequestEvent is logged once for each validation attempt. Its
+// fields are exported for logging purposes.
 type verificationRequestEvent struct {
-	ID                string         `json:",omitempty"`
-	Requester         int64          `json:",omitempty"`
-	Hostname          string         `json:",omitempty"`
-	Challenge         core.Challenge `json:",omitempty"`
-	ValidationLatency float64
-	Error             string `json:",omitempty"`
-	InternalError     string `json:",omitempty"`
+	AuthzID       string
+	Requester     int64
+	Identifier    string
+	Challenge     core.Challenge
+	Error         string `json:",omitempty"`
+	InternalError string `json:",omitempty"`
+	Latency       float64
 }
 
 // ipError is an error type used to pass though the IP address of the remote
@@ -653,10 +654,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	var localLatency time.Duration
 	start := va.clk.Now()
 	logEvent := verificationRequestEvent{
-		ID:        req.Authz.Id,
-		Requester: req.Authz.RegID,
-		Hostname:  req.DnsName,
-		Challenge: chall,
+		AuthzID:    req.Authz.Id,
+		Requester:  req.Authz.RegID,
+		Identifier: req.DnsName,
+		Challenge:  chall,
 	}
 	defer func() {
 		probType := ""
@@ -678,7 +679,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		}
 
 		// Log the total validation latency.
-		logEvent.ValidationLatency = time.Since(start).Round(time.Millisecond).Seconds()
+		logEvent.Latency = time.Since(start).Round(time.Millisecond).Seconds()
 		va.log.AuditObject("Validation result", logEvent)
 	}()
 

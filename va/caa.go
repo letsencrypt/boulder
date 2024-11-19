@@ -36,10 +36,10 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
 	logEvent := verificationRequestEvent{
-		// TODO(#7061) Plumb req.Authz.Id as "ID:" through from the RA to
+		// TODO(#7061) Plumb req.Authz.Id as "AuthzID:" through from the RA to
 		// correlate which authz triggered this request.
-		Requester: req.AccountURIID,
-		Hostname:  req.Domain,
+		Requester:  req.AccountURIID,
+		Identifier: req.Domain,
 	}
 
 	challType := core.AcmeChallenge(req.ValidationMethod)
@@ -76,7 +76,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			va.observeLatency(opCAA, allPerspectives, string(challType), probType, outcome, va.clk.Since(start))
 		}
 		// Log the total check latency.
-		logEvent.ValidationLatency = va.clk.Since(start).Round(time.Millisecond).Seconds()
+		logEvent.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
 
 		va.log.AuditObject("CAA check result", logEvent)
 	}()
