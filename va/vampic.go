@@ -78,24 +78,6 @@ type doDCVAuditLog struct {
 	MPICSummary   mpicSummary
 }
 
-// maxValidationFailures returns the maximum number of allowed failures for a
-// given number of remote perspectives, according to the "Quorum Requirements"
-// table in BRs Section 3.2.2.9, as follows:
-//
-//	| # of Distinct Remote Network Perspectives Used | # of Allowed non-Corroborations |
-//	| --- | --- |
-//	| 2-5 |  1  |
-//	| 6+  |  2  |
-func maxValidationFailures(perspectiveCount int) int {
-	if perspectiveCount < 2 {
-		return 0
-	}
-	if perspectiveCount < 6 {
-		return 1
-	}
-	return 2
-}
-
 // remoteValidateChallenge performs an MPIC-compliant remote validation of the
 // challenge using the configured remote VAs. It returns a summary of the
 // validation results and a problem if the validation failed. The summary is
@@ -168,7 +150,7 @@ func (va *ValidationAuthorityImpl) remoteDoDCV(ctx context.Context, req *vapb.DC
 	// Prepare the summary, this MUST be returned even if the validation failed.
 	summary := prepareSummary(passed, failed, passedRIRs, remoteVACount)
 
-	maxRemoteFailures := maxValidationFailures(remoteVACount)
+	maxRemoteFailures := maxAllowedFailures(remoteVACount)
 	if len(failed) > maxRemoteFailures {
 		// Too many failures to reach quorum.
 		if firstProb != nil {
