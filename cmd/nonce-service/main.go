@@ -25,19 +25,7 @@ type Config struct {
 		// HMAC-SHA256 key (e.g. the output of `openssl rand -hex 32`). In a
 		// multi-DC deployment this value should be the same across all
 		// boulder-wfe and nonce-service instances.
-		NonceHMACKey cmd.HMACKeyConfig `validate:"required_without_all=NoncePrefixKey,structonly"`
-
-		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
-		// instance. It should contain 256 bits (32 bytes) of random data to be
-		// suitable as an HMAC-SHA256 key (e.g. the output of `openssl rand -hex
-		// 32`). In a multi-DC deployment this value should be the same across
-		// all boulder-wfe and nonce-service instances.
-		//
-		// TODO(#7632): Remove this and change `NonceHMACKey`'s validation to
-		// just `required.`
-		//
-		// Deprecated: Use NonceHMACKey instead.
-		NoncePrefixKey cmd.PasswordConfig `validate:"required_without_all=NonceHMACKey,structonly"`
+		NonceHMACKey cmd.HMACKeyConfig `validate:"required"`
 
 		Syslog        cmd.SyslogConfig
 		OpenTelemetry cmd.OpenTelemetryConfig
@@ -89,13 +77,9 @@ func main() {
 	var key []byte
 	if c.NonceService.NonceHMACKey.KeyFile != "" {
 		key, err = c.NonceService.NonceHMACKey.Load()
-		cmd.FailOnError(err, "Failed to load 'nonceHMACKey' file.")
-	} else if c.NonceService.NoncePrefixKey.PasswordFile != "" {
-		keyString, err := c.NonceService.NoncePrefixKey.Pass()
-		cmd.FailOnError(err, "Failed to load 'noncePrefixKey' file.")
-		key = []byte(keyString)
+		cmd.FailOnError(err, "Failed to load nonceHMACKey file.")
 	} else {
-		cmd.Fail("NonceHMACKey KeyFile or NoncePrefixKey PasswordFile must be set")
+		cmd.Fail("NonceHMACKey KeyFile must be set")
 	}
 
 	noncePrefix, err := derivePrefix(key, c.NonceService.GRPC.Address)
