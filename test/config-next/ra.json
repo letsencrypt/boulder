@@ -30,10 +30,7 @@
 		"maxNames": 100,
 		"authorizationLifetimeDays": 30,
 		"pendingAuthorizationLifetimeDays": 7,
-		"goodkey": {
-			"weakKeyFile": "test/example-weak-keys.json",
-			"blockedKeyFile": "test/example-blocked-keys.yaml"
-		},
+		"goodkey": {},
 		"orderLifetime": "168h",
 		"finalizeTimeout": "30s",
 		"issuerCerts": [
@@ -130,7 +127,9 @@
 		},
 		"features": {
 			"AsyncFinalize": true,
-			"UseKvLimitsForNewOrder": true
+			"UseKvLimitsForNewOrder": true,
+			"AutomaticallyPauseZombieClients": true,
+			"IncrementRateLimits": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

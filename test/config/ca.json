@@ -138,8 +138,6 @@
 		"lifespanOCSP": "96h",
 		"lifespanCRL": "216h",
 		"goodkey": {
-			"weakKeyFile": "test/example-weak-keys.json",
-			"blockedKeyFile": "test/example-blocked-keys.yaml",
 			"fermatRounds": 100
 		},
 		"ocspLogMaxLength": 4000,

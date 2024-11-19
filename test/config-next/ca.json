@@ -145,10 +145,7 @@
 		"serialPrefixHex": "7f",
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
-		"goodkey": {
-			"weakKeyFile": "test/example-weak-keys.json",
-			"blockedKeyFile": "test/example-blocked-keys.yaml"
-		},
+		"goodkey": {},
 		"ocspLogMaxLength": 4000,
 		"ocspLogPeriod": "500ms",
 		"ctLogListFile": "test/ct-test-srv/log_list.json",

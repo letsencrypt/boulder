@@ -547,12 +547,6 @@ func main() {
 	// Validate PA config and set defaults if needed.
 	cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
 
-	if config.CertChecker.GoodKey.WeakKeyFile != "" {
-		cmd.Fail("cert-checker does not support checking against weak key files")
-	}
-	if config.CertChecker.GoodKey.BlockedKeyFile != "" {
-		cmd.Fail("cert-checker does not support checking against blocked key files")
-	}
 	kp, err := sagoodkey.NewPolicy(&config.CertChecker.GoodKey, nil)
 	cmd.FailOnError(err, "Unable to create key policy")
 

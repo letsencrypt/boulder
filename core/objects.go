@@ -471,8 +471,8 @@ func RenewalInfoSimple(issued time.Time, expires time.Time) RenewalInfo {
 	idealRenewal := expires.Add(-renewalOffset)
 	return RenewalInfo{
 		SuggestedWindow: SuggestedWindow{
-			Start: idealRenewal.Add(-24 * time.Hour),
-			End:   idealRenewal.Add(24 * time.Hour),
+			Start: idealRenewal.Add(-24 * time.Hour).Truncate(time.Second),
+			End:   idealRenewal.Add(24 * time.Hour).Truncate(time.Second),
 		},
 	}
 }
@@ -487,8 +487,8 @@ func RenewalInfoImmediate(now time.Time, explanationURL string) RenewalInfo {
 	oneHourAgo := now.Add(-1 * time.Hour)
 	return RenewalInfo{
 		SuggestedWindow: SuggestedWindow{
-			Start: oneHourAgo,
-			End:   oneHourAgo.Add(time.Minute * 30),
+			Start: oneHourAgo.Truncate(time.Second),
+			End:   oneHourAgo.Add(time.Minute * 30).Truncate(time.Second),
 		},
 		ExplanationURL: explanationURL,
 	}

@@ -105,7 +105,7 @@ func createPerformValidationRequest(domain string, challengeType core.AcmeChalle
 
 // setup returns an in-memory VA and a mock logger. The default resolver client
 // is MockClient{}, but can be overridden.
-func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remoteVAs []RemoteVA, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
+func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
 	features.Reset()
 	fc := clock.NewFake()
 
@@ -117,8 +117,7 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 
 	va, err := NewValidationAuthorityImpl(
 		&bdns.MockClient{Log: logger},
-		nil,
-		maxRemoteFailures,
+		remoteVAs,
 		userAgent,
 		"letsencrypt.org",
 		metrics.NoopRegisterer,
@@ -144,16 +143,15 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
 	}
-	if remoteVAs != nil {
-		va.remoteVAs = remoteVAs
-	}
 	return va, logger
 }
 
-func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride bdns.Client) (RemoteClients, *blog.Mock) { //nolint: unparam
-	rva, log := setup(srv, 0, userAgent, nil, mockDNSClientOverride)
+func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride bdns.Client, perspective, rir string) RemoteClients {
+	rva, _ := setup(srv, userAgent, nil, mockDNSClientOverride)
+	rva.perspective = perspective
+	rva.rir = rir
 
-	return RemoteClients{VAClient: &inMemVA{*rva}, CAAClient: &inMemVA{*rva}}, log
+	return RemoteClients{VAClient: &inMemVA{*rva}, CAAClient: &inMemVA{*rva}}
 }
 
 type multiSrv struct {
@@ -255,7 +253,7 @@ func (inmem inMemVA) DoDCV(_ context.Context, req *vapb.DCVRequest, _ ...grpc.Ca
 }
 
 func TestValidateMalformedChallenge(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, "", nil, nil)
 
 	_, err := va.validateChallenge(ctx, dnsi("example.com"), "fake-type-01", expectedToken, expectedKeyAuthorization)
 
@@ -264,21 +262,22 @@ func TestValidateMalformedChallenge(t *testing.T) {
 }
 
 func TestPerformValidationInvalid(t *testing.T) {
-	va, _ := setup(nil, 0, "", nil, nil)
+	va, _ := setup(nil, "", nil, nil)
 
 	req := createPerformValidationRequest("foo.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
 	test.Assert(t, res.Problems != nil, "validation succeeded")
-
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationTime, prometheus.Labels{
-		"type":         "dns-01",
-		"result":       "invalid",
-		"problem_type": "unauthorized",
+	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+		"operation":      opChallAndCAA,
+		"perspective":    PrimaryPerspective,
+		"challenge_type": string(core.ChallengeTypeDNS01),
+		"problem_type":   string(probs.UnauthorizedProblem),
+		"result":         fail,
 	}, 1)
 }
 
 func TestInternalErrorLogged(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil, nil)
+	va, mockLog := setup(nil, "", nil, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
@@ -291,17 +290,19 @@ func TestInternalErrorLogged(t *testing.T) {
 }
 
 func TestPerformValidationValid(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil, nil)
+	va, mockLog := setup(nil, "", nil, nil)
 
 	// create a challenge with well known token
 	req := createPerformValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
 
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationTime, prometheus.Labels{
-		"type":         "dns-01",
-		"result":       "valid",
-		"problem_type": "",
+	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+		"operation":      opChallAndCAA,
+		"perspective":    PrimaryPerspective,
+		"challenge_type": string(core.ChallengeTypeDNS01),
+		"problem_type":   "",
+		"result":         pass,
 	}, 1)
 	resultLog := mockLog.GetAllMatching(`Validation result`)
 	if len(resultLog) != 1 {
@@ -315,7 +316,7 @@ func TestPerformValidationValid(t *testing.T) {
 // TestPerformValidationWildcard tests that the VA properly strips the `*.`
 // prefix from a wildcard name provided to the PerformValidation function.
 func TestPerformValidationWildcard(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil, nil)
+	va, mockLog := setup(nil, "", nil, nil)
 
 	// create a challenge with well known token
 	req := createPerformValidationRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
@@ -323,10 +324,12 @@ func TestPerformValidationWildcard(t *testing.T) {
 	res, _ := va.PerformValidation(context.Background(), req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
 
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationTime, prometheus.Labels{
-		"type":         "dns-01",
-		"result":       "valid",
-		"problem_type": "",
+	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+		"operation":      opChallAndCAA,
+		"perspective":    PrimaryPerspective,
+		"challenge_type": string(core.ChallengeTypeDNS01),
+		"problem_type":   "",
+		"result":         pass,
 	}, 1)
 	resultLog := mockLog.GetAllMatching(`Validation result`)
 	if len(resultLog) != 1 {
@@ -345,7 +348,7 @@ func TestPerformValidationWildcard(t *testing.T) {
 }
 
 func TestDCVAndCAASequencing(t *testing.T) {
-	va, mockLog := setup(nil, 0, "", nil, nil)
+	va, mockLog := setup(nil, "", nil, nil)
 
 	// When validation succeeds, CAA should be checked.
 	mockLog.Clear()
@@ -373,23 +376,30 @@ func TestMultiVA(t *testing.T) {
 	const (
 		remoteUA1 = "remote 1"
 		remoteUA2 = "remote 2"
+		remoteUA3 = "remote 3"
+		remoteUA4 = "remote 4"
 		localUA   = "local 1"
 	)
 	allowedUAs := map[string]bool{
 		localUA:   true,
 		remoteUA1: true,
 		remoteUA2: true,
+		remoteUA3: true,
+		remoteUA4: true,
 	}
 
 	// Create an IPv4 test server
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1, _ := setupRemote(ms.Server, remoteUA1, nil)
-	remoteVA2, _ := setupRemote(ms.Server, remoteUA2, nil)
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
+	remoteVA3 := setupRemote(ms.Server, remoteUA3, nil, "", "")
+	remoteVA4 := setupRemote(ms.Server, remoteUA4, nil, "", "")
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
 		{remoteVA2, remoteUA2},
+		{remoteVA3, remoteUA3},
 	}
 	brokenVA := RemoteClients{
 		VAClient:  brokenRemoteVA{},
@@ -414,7 +424,7 @@ func TestMultiVA(t *testing.T) {
 		ExpectedLog  string
 	}{
 		{
-			// With local and both remote VAs working there should be no problem.
+			// With local and all remote VAs working there should be no problem.
 			Name:       "Local and remote VAs OK",
 			RemoteVAs:  remoteVAs,
 			AllowedUAs: allowedUAs,
@@ -427,10 +437,86 @@ func TestMultiVA(t *testing.T) {
 			ExpectedProb: unauthorized,
 		},
 		{
-			// If a remote VA fails with an internal err it should fail
-			Name: "Local VA ok, remote VA internal err",
+			// If one out of two remote VAs fail with an internal err it should succeed
+			Name: "Local VA ok, 1/2 remote VA internal err",
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs: allowedUAs,
+		},
+		{
+			// If one out of three remote VAs fails with an internal err it should succeed
+			Name: "Local VA ok, 1/3 remote VA internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs: allowedUAs,
+		},
+		{
+			// If two out of three remote VAs fail with an internal err it should fail
+			Name: "Local VA ok, 2/3 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{brokenVA, "broken"},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs:   allowedUAs,
+			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			// The real failure cause should be logged
+			ExpectedLog: expectedInternalErrLine,
+		},
+		{
+			// If one out of five remote VAs fail with an internal err it should succeed
+			Name: "Local VA ok, 1/5 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{remoteVA3, remoteUA3},
+				{remoteVA4, remoteUA4},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs: allowedUAs,
+		},
+		{
+			// If two out of five remote VAs fail with an internal err it should fail
+			Name: "Local VA ok, 2/5 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{remoteVA3, remoteUA3},
+				{brokenVA, "broken"},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs:   allowedUAs,
+			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			// The real failure cause should be logged
+			ExpectedLog: expectedInternalErrLine,
+		},
+		{
+			// If two out of six remote VAs fail with an internal err it should succeed
+			Name: "Local VA ok, 2/6 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{remoteVA3, remoteUA3},
+				{remoteVA4, remoteUA4},
+				{brokenVA, "broken"},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs: allowedUAs,
+		},
+		{
+			// If three out of six remote VAs fail with an internal err it should fail
+			Name: "Local VA ok, 4/6 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{remoteVA3, remoteUA3},
+				{brokenVA, "broken"},
+				{brokenVA, "broken"},
 				{brokenVA, "broken"},
 			},
 			AllowedUAs:   allowedUAs,
@@ -448,19 +534,20 @@ func TestMultiVA(t *testing.T) {
 				expectedKeyAuthorization)),
 		},
 		{
-			// Any remote VA cancellations are a problem.
+			// If one remote VA cancels, it should succeed
 			Name: "Local VA and one remote VA OK, one cancelled VA",
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{cancelledVA, remoteUA2},
+				{remoteVA3, remoteUA3},
 			},
-			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
+			AllowedUAs: allowedUAs,
 		},
 		{
-			// Any remote VA cancellations are a problem.
+			// If two remote VA cancels, it should fail
 			Name: "Local VA OK, two cancelled remote VAs",
 			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
 				{cancelledVA, remoteUA1},
 				{cancelledVA, remoteUA2},
 			},
@@ -484,7 +571,7 @@ func TestMultiVA(t *testing.T) {
 			ms.setAllowedUAs(tc.AllowedUAs)
 
 			// Configure a primary VA with testcase remote VAs.
-			localVA, mockLog := setup(ms.Server, 0, localUA, tc.RemoteVAs, nil)
+			localVA, mockLog := setup(ms.Server, localUA, tc.RemoteVAs, nil)
 
 			// Perform all validations
 			res, _ := localVA.PerformValidation(ctx, req)
@@ -500,7 +587,7 @@ func TestMultiVA(t *testing.T) {
 
 			if tc.ExpectedLog != "" {
 				lines := mockLog.GetAllMatching(tc.ExpectedLog)
-				if len(lines) != 1 {
+				if len(lines) == 0 {
 					t.Fatalf("Got log %v; expected %q", mockLog.GetAll(), tc.ExpectedLog)
 				}
 			}
@@ -509,51 +596,62 @@ func TestMultiVA(t *testing.T) {
 }
 
 func TestMultiVAEarlyReturn(t *testing.T) {
-	const (
-		remoteUA1 = "remote 1"
-		remoteUA2 = "slow remote"
-		localUA   = "local 1"
-	)
+	const passUA = "pass"
+	const failUA = "fail"
+	// httpMultiSrv handles this specially by being slow
+	const slowRemoteUA = "slow remote"
 	allowedUAs := map[string]bool{
-		localUA:   true,
-		remoteUA1: false, // forbid UA 1 to provoke early return
-		remoteUA2: true,
+		passUA: true,
 	}
 
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1, _ := setupRemote(ms.Server, remoteUA1, nil)
-	remoteVA2, _ := setupRemote(ms.Server, remoteUA2, nil)
-
-	remoteVAs := []RemoteVA{
-		{remoteVA1, remoteUA1},
-		{remoteVA2, remoteUA2},
+	makeRemotes := func(userAgent ...string) []RemoteVA {
+		var rvas []RemoteVA
+		for i, ua := range userAgent {
+			clients := setupRemote(ms.Server, ua, nil, "", "")
+			rva := RemoteVA{clients, fmt.Sprintf("remote VA %d hostname", i)}
+			rvas = append(rvas, rva)
+		}
+		return rvas
 	}
 
-	// Create a local test VA with the two remote VAs
-	localVA, _ := setup(ms.Server, 0, localUA, remoteVAs, nil)
-
-	// Perform all validations
-	start := time.Now()
-	req := createPerformValidationRequest("localhost", core.ChallengeTypeHTTP01)
-	res, _ := localVA.PerformValidation(ctx, req)
-
-	// It should always fail
-	if res.Problems == nil {
-		t.Error("expected prob from PerformValidation, got nil")
+	testCases := []struct {
+		remoteUserAgents []string
+	}{
+		{remoteUserAgents: []string{slowRemoteUA, passUA, failUA}},
+		{remoteUserAgents: []string{slowRemoteUA, slowRemoteUA, passUA, passUA, failUA}},
+		{remoteUserAgents: []string{slowRemoteUA, slowRemoteUA, passUA, passUA, failUA, failUA}},
 	}
 
-	elapsed := time.Since(start).Round(time.Millisecond).Milliseconds()
+	for i, tc := range testCases {
+		t.Run(fmt.Sprintf("case %d", i), func(t *testing.T) {
+			rvas := makeRemotes(tc.remoteUserAgents...)
+			localVA, _ := setup(ms.Server, pass, rvas, nil)
 
-	// The slow UA should sleep for `slowRemoteSleepMillis`. But the first remote
-	// VA should fail quickly and the early-return code should cause the overall
-	// overall validation to return a prob quickly (i.e. in less than half of
-	// `slowRemoteSleepMillis`).
-	if elapsed > slowRemoteSleepMillis/2 {
-		t.Errorf(
-			"Expected an early return from PerformValidation in < %d ms, took %d ms",
-			slowRemoteSleepMillis/2, elapsed)
+			// Perform all validations
+			start := time.Now()
+			req := createPerformValidationRequest("localhost", core.ChallengeTypeHTTP01)
+			res, _ := localVA.PerformValidation(ctx, req)
+
+			// It should always fail
+			if res.Problems == nil {
+				t.Error("expected prob from PerformValidation, got nil")
+			}
+
+			elapsed := time.Since(start).Round(time.Millisecond).Milliseconds()
+
+			// The slow UA should sleep for `slowRemoteSleepMillis`. But the first remote
+			// VA should fail quickly and the early-return code should cause the overall
+			// overall validation to return a prob quickly (i.e. in less than half of
+			// `slowRemoteSleepMillis`).
+			if elapsed > slowRemoteSleepMillis/2 {
+				t.Errorf(
+					"Expected an early return from PerformValidation in < %d ms, took %d ms",
+					slowRemoteSleepMillis/2, elapsed)
+			}
+		})
 	}
 }
 
@@ -573,8 +671,8 @@ func TestMultiVAPolicy(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1, _ := setupRemote(ms.Server, remoteUA1, nil)
-	remoteVA2, _ := setupRemote(ms.Server, remoteUA2, nil)
+	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
+	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -582,7 +680,7 @@ func TestMultiVAPolicy(t *testing.T) {
 	}
 
 	// Create a local test VA with the two remote VAs
-	localVA, _ := setup(ms.Server, 0, localUA, remoteVAs, nil)
+	localVA, _ := setup(ms.Server, localUA, remoteVAs, nil)
 
 	// Perform validation for a domain not in the disabledDomains list
 	req := createPerformValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
@@ -603,14 +701,14 @@ func TestMultiVALogging(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, map[string]bool{localUA: true, rva1UA: true, rva2UA: true})
 	defer ms.Close()
 
-	rva1, _ := setupRemote(ms.Server, rva1UA, nil)
-	rva2, _ := setupRemote(ms.Server, rva2UA, nil)
+	rva1 := setupRemote(ms.Server, rva1UA, nil, "dev-arin", "ARIN")
+	rva2 := setupRemote(ms.Server, rva2UA, nil, "dev-ripe", "RIPE")
 
 	remoteVAs := []RemoteVA{
 		{rva1, rva1UA},
 		{rva2, rva2UA},
 	}
-	va, _ := setup(ms.Server, 0, localUA, remoteVAs, nil)
+	va, _ := setup(ms.Server, localUA, remoteVAs, nil)
 	req := createPerformValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
 	res, err := va.PerformValidation(ctx, req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed with: %#v", res.Problems))
@@ -671,17 +769,17 @@ func TestDetailedError(t *testing.T) {
 
 func TestLogRemoteDifferentials(t *testing.T) {
 	// Create some remote VAs
-	remoteVA1, _ := setupRemote(nil, "remote 1", nil)
-	remoteVA2, _ := setupRemote(nil, "remote 2", nil)
-	remoteVA3, _ := setupRemote(nil, "remote 3", nil)
+	remoteVA1 := setupRemote(nil, "remote 1", nil, "", "")
+	remoteVA2 := setupRemote(nil, "remote 2", nil, "", "")
+	remoteVA3 := setupRemote(nil, "remote 3", nil, "", "")
+	// The VA will allow a max of 1 remote failure based on MPIC.
 	remoteVAs := []RemoteVA{
 		{remoteVA1, "remote 1"},
 		{remoteVA2, "remote 2"},
 		{remoteVA3, "remote 3"},
 	}
 
-	// Set up a local VA that allows a max of 2 remote failures.
-	localVA, mockLog := setup(nil, 2, "local 1", remoteVAs, nil)
+	localVA, mockLog := setup(nil, "local 1", remoteVAs, nil)
 
 	egProbA := probs.DNS("root DNS servers closed at 4:30pm")
 	egProbB := probs.OrderNotReady("please take a number")
@@ -751,7 +849,6 @@ func setupVA(srv *httptest.Server, ua string, rvas []RemoteVA, mockDNSClient bdn
 	va, err := NewValidationAuthorityImpl(
 		&bdns.MockClient{Log: mockLog},
 		nil,
-		0,
 		ua,
 		"letsencrypt.org",
 		metrics.NoopRegisterer,
@@ -852,8 +949,8 @@ func TestDoDCVInvalid(t *testing.T) {
 	test.AssertNotNil(t, resultLog, "DoDCV didn't log validation result.")
 	test.AssertContains(t, resultLog[0], `"Identifier":"foo.com"`)
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      "challenge",
-		"perspective":    "primary",
+		"operation":      opChall,
+		"perspective":    PrimaryPerspective,
 		"challenge_type": string(core.ChallengeTypeDNS01),
 		"problem_type":   string(probs.UnauthorizedProblem),
 		"result":         fail,
@@ -875,7 +972,7 @@ func TestDoDCVInternalErrorLogged(t *testing.T) {
 		`Challenge validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: context deadline exceeded`)
 	test.AssertEquals(t, len(resultLog), 1)
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      challenge,
+		"operation":      opChall,
 		"perspective":    PrimaryPerspective,
 		"challenge_type": string(core.ChallengeTypeHTTP01),
 		"problem_type":   string(probs.ConnectionProblem),
@@ -896,7 +993,7 @@ func TestDoDCVValid(t *testing.T) {
 	test.AssertNotNil(t, resultLog, "DoDCV didn't log validation result.")
 	test.AssertContains(t, resultLog[0], `"Identifier":"good-dns01.com"`)
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      challenge,
+		"operation":      opChall,
 		"perspective":    PrimaryPerspective,
 		"challenge_type": string(core.ChallengeTypeDNS01),
 		"problem_type":   "",
@@ -923,7 +1020,7 @@ func TestDoDCVWildcard(t *testing.T) {
 	// The ValidationRecord will contain the non-wildcard name.
 	test.AssertContains(t, resultLog[0], `"hostname":"good-dns01.com"`)
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      challenge,
+		"operation":      opChall,
 		"perspective":    PrimaryPerspective,
 		"challenge_type": string(core.ChallengeTypeDNS01),
 		"problem_type":   "",
@@ -969,7 +1066,7 @@ func TestDoDCVFailsWithTooManyBrokenRVAs(t *testing.T) {
 	test.AssertNotError(t, err, "Failed validation should be a prob but not an error")
 	test.AssertContains(t, res.Problems.Detail, "During secondary domain validation: Secondary domain validation RPC failed")
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      challenge,
+		"operation":      opChall,
 		"perspective":    PrimaryPerspective,
 		"challenge_type": string(core.ChallengeTypeDNS01),
 		"problem_type":   string(probs.ServerInternalProblem),
@@ -989,7 +1086,7 @@ func TestDoDCVFailsWithTooManyCanceledRVAs(t *testing.T) {
 	test.AssertNotError(t, err, "Failed validation should be a prob but not an error")
 	test.AssertContains(t, res.Problems.Detail, "During secondary domain validation: Secondary domain validation RPC canceled")
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      challenge,
+		"operation":      opChall,
 		"perspective":    PrimaryPerspective,
 		"challenge_type": string(core.ChallengeTypeDNS01),
 		"problem_type":   string(probs.ServerInternalProblem),
@@ -1024,7 +1121,7 @@ func TestDoDCVMPIC(t *testing.T) {
 	// srv is used for the Primary VA and the Remote VAs. The srv.Server
 	// produced will be used to mock the challenge recipient. When a VA (primary
 	// or remote) with a user-agent (UA) of "pass" attempt to validate a
-	// challenge, it will succeed. When a VA with a UA of "fail" attempts to
+	// opChall, it will succeed. When a VA with a UA of "fail" attempts to
 	// validate a challenge it will fail with probs.Unauthorized. By controlling
 	// which VA or Remote VA(s) are configured with which UA, we can control the
 	// conditions of each case.

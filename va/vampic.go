@@ -15,42 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/prometheus/client_golang/prometheus"
 )
-
-const (
-	PrimaryPerspective = "primary"
-
-	challenge = "challenge"
-	caa       = "caa"
-	all       = "all"
-	pass      = "pass"
-	fail      = "fail"
-)
-
-// observeLatency records entries in the validationLatency histogram of the
-// latency to perform validations from the primary and remote VA perspectives.
-// The labels are:
-//   - operation: VA.ValidateChallenge or VA.CheckCAA as [challenge|caa]
-//   - perspective: [ValidationAuthorityImpl.perspective|all]
-//   - challenge_type: core.Challenge.Type
-//   - problem_type: probs.ProblemType
-//   - result: the result of the validation as [pass|fail]
-func (va *ValidationAuthorityImpl) observeLatency(op, perspective, challType, probType, result string, latency time.Duration) {
-	labels := prometheus.Labels{
-		"operation":      op,
-		"perspective":    perspective,
-		"challenge_type": challType,
-		"problem_type":   probType,
-		"result":         result,
-	}
-	va.metrics.validationLatency.With(labels).Observe(latency.Seconds())
-}
-
-// isPrimaryVA returns true if the VA is the primary validation perspective.
-func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
-	return va.perspective == PrimaryPerspective
-}
 
 // mpicSummary is returned by remoteDoDCV and contains a summary of the
 // validation results for logging purposes. Use prepareSummary() to create a
@@ -287,10 +252,10 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.DCVReque
 			auditLog.Challenge.Status = core.StatusValid
 		}
 		// Observe local validation latency (primary|remote).
-		va.observeLatency(challenge, va.perspective, string(chall.Type), probType, outcome, localLatency)
+		va.observeLatency(opChall, va.perspective, string(chall.Type), probType, outcome, localLatency)
 		if va.isPrimaryVA() {
 			// Observe total validation latency (primary+remote).
-			va.observeLatency(challenge, all, string(chall.Type), probType, outcome, va.clk.Since(start))
+			va.observeLatency(opChall, allPerspectives, string(chall.Type), probType, outcome, va.clk.Since(start))
 			auditLog.MPICSummary = summary
 		}
 		// Log the total validation latency.

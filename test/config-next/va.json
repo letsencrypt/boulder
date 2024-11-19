@@ -52,19 +52,8 @@
 				"serverAddress": "rva1.service.consul:9498",
 				"timeout": "15s",
 				"hostOverride": "rva1.boulder"
-			},
-			{
-				"serverAddress": "rva2.service.consul:9897",
-				"timeout": "15s",
-				"hostOverride": "rva2.boulder"
-			},
-			{
-				"serverAddress": "rva2.service.consul:9998",
-				"timeout": "15s",
-				"hostOverride": "rva2.boulder"
 			}
 		],
-		"maxRemoteValidationFailures": 1,
 		"accountURIPrefixes": [
 			"http://boulder.service.consul:4000/acme/reg/",
 			"http://boulder.service.consul:4001/acme/acct/"

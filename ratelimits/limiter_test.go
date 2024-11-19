@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/rand/v2"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/letsencrypt/boulder/config"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -38,6 +40,19 @@ func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
 }
 
 func setup(t *testing.T) (context.Context, map[string]*Limiter, *TransactionBuilder, clock.FakeClock, string) {
+	// Because all test cases in this file are affected by this feature flag, we
+	// want to run them all both with and without the feature flag. This way, we
+	// get one set of runs with and one set without. It's difficult to defer
+	// features.Reset() from the setup func (these tests are parallel); as long
+	// as this code doesn't test any other features, we don't need to.
+	//
+	// N.b. This is fragile. If a test case does call features.Reset(), it will
+	// not be testing the intended code path. But we expect to clean this up
+	// quickly.
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		features.Set(features.Config{IncrementRateLimits: true})
+	}
+
 	testCtx := context.Background()
 	clk := clock.NewFake()
 
@@ -304,8 +319,8 @@ func TestLimiter_InitializationViaCheckAndSpend(t *testing.T) {
 			test.AssertEquals(t, d.resetIn, time.Millisecond*50)
 			test.AssertEquals(t, d.retryIn, time.Duration(0))
 
-			// However, that cost should not be spent yet, a 0 cost check should
-			// tell us that we actually have 19 remaining.
+			// And that cost should have been spent; a 0 cost check should still
+			// tell us that we have 19 remaining.
 			d, err = l.Check(testCtx, txn0)
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.allowed, "should be allowed")
@@ -482,7 +497,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 5 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   NewRegistrationsPerIPAddress,
 						Burst:  10,
 						Period: config.Duration{Duration: time.Hour},
@@ -498,7 +513,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 10 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   NewRegistrationsPerIPv6Range,
 						Burst:  5,
 						Period: config.Duration{Duration: time.Hour},
@@ -514,7 +529,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 10 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   NewOrdersPerAccount,
 						Burst:  2,
 						Period: config.Duration{Duration: time.Hour},
@@ -530,7 +545,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 15 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   FailedAuthorizationsPerDomainPerAccount,
 						Burst:  7,
 						Period: config.Duration{Duration: time.Hour},
@@ -547,7 +562,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 20 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   CertificatesPerDomain,
 						Burst:  3,
 						Period: config.Duration{Duration: time.Hour},
@@ -564,7 +579,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 20 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   CertificatesPerDomainPerAccount,
 						Burst:  3,
 						Period: config.Duration{Duration: time.Hour},
@@ -581,7 +596,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 30 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name: 9999999,
 					},
 				},

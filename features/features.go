@@ -15,23 +15,6 @@ import (
 // then call features.Set(parsedConfig) to load the parsed struct into this
 // package's global Config.
 type Config struct {
-	// Deprecated features. These features have no effect. Removing them from
-	// configuration is safe.
-	//
-	// Once all references to them have been removed from deployed configuration,
-	// they can be deleted from this struct, after which Boulder will fail to
-	// start if they are present in configuration.
-	CAAAfterValidation                bool
-	AllowNoCommonName                 bool
-	SHA256SubjectKeyIdentifier        bool
-	EnforceMultiVA                    bool
-	MultiVAFullResults                bool
-	CertCheckerRequiresCorrespondence bool
-	ECDSAForAll                       bool
-	CheckRenewalExemptionAtWFE        bool
-	TrackReplacementCertificatesARI   bool
-	UseKvLimitsForNewAccount          bool
-
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
 	ServeRenewalInfo bool
@@ -70,8 +53,8 @@ type Config struct {
 
 	// MultiCAAFullResults will cause the main VA to block and wait for all of
 	// the remote VA CAA recheck results instead of returning early if the
-	// number of failures is greater than the configured
-	// maxRemoteValidationFailures. Only used when EnforceMultiCAA is true.
+	// number of failures is greater than the number allowed by MPIC.
+	// Only used when EnforceMultiCAA is true.
 	MultiCAAFullResults bool
 
 	// MultipleCertificateProfiles, when enabled, triggers the following
@@ -103,12 +86,31 @@ type Config struct {
 	// This flag should only be used in conjunction with UseKvLimitsForNewOrder.
 	DisableLegacyLimitWrites bool
 
+	// PropagateCancels controls whether the WFE and ocsp-responder allows
+	// cancellation of an inbound request to cancel downstream gRPC and other
+	// queries. In practice, cancellation of an inbound request is achieved by
+	// Nginx closing the connection on which the request was happening. This may
+	// help shed load in overcapacity situations. However, note that in-progress
+	// database queries (for instance, in the SA) are not cancelled. Database
+	// queries waiting for an available connection may be cancelled.
+	PropagateCancels bool
+
 	// InsertAuthzsIndividually causes the SA's NewOrderAndAuthzs method to
 	// create each new authz one at a time, rather than using MultiInserter.
 	// Although this is expected to be a performance penalty, it is necessary to
 	// get the AUTO_INCREMENT ID of each new authz without relying on MariaDB's
 	// unique "INSERT ... RETURNING" functionality.
 	InsertAuthzsIndividually bool
+
+	// AutomaticallyPauseZombieClients configures the RA to automatically track
+	// and pause issuance for each (account, hostname) pair that repeatedly
+	// fails validation.
+	AutomaticallyPauseZombieClients bool
+
+	// IncrementRateLimits uses Redis' IncrBy, instead of Set, for rate limit
+	// accounting. This catches and denies spikes of requests much more
+	// reliably.
+	IncrementRateLimits bool
 }
 
 var fMu = new(sync.RWMutex)

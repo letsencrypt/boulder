@@ -13,9 +13,7 @@
 		"directoryCAAIdentity": "happy-hacker-ca.invalid",
 		"directoryWebsite": "https://github.com/letsencrypt/boulder",
 		"legacyKeyIDPrefix": "http://boulder.service.consul:4000/reg/",
-		"goodkey": {
-			"blockedKeyFile": "test/example-blocked-keys.yaml"
-		},
+		"goodkey": {},
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/wfe.boulder/cert.pem",
@@ -105,10 +103,7 @@
 		"authorizationLifetimeDays": 30,
 		"pendingAuthorizationLifetimeDays": 7,
 		"features": {
-			"ServeRenewalInfo": true,
-			"TrackReplacementCertificatesARI": true,
-			"CheckRenewalExemptionAtWFE": true,
-			"UseKvLimitsForNewAccount": true
+			"ServeRenewalInfo": true
 		}
 	},
 	"syslog": {

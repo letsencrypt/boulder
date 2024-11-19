@@ -22,3 +22,12 @@
       - id: 5678
         comment: Foo
 
+- FailedAuthorizationsForPausingPerDomainPerAccount:
+    burst: 60
+    count: 60
+    period: 3s
+    ids:
+      - id: 1234
+        comment: Foo
+      - id: 5678
+        comment: Foo
