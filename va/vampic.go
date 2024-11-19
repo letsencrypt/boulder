@@ -101,7 +101,11 @@ func (va *ValidationAuthorityImpl) remoteDoDCV(ctx context.Context, req *vapb.DC
 	for _, i := range rand.Perm(remoteVACount) {
 		go func(rva RemoteVA) {
 			res, err := rva.DoDCV(ctx, req)
-			responses <- &response{rva.Address, res, err}
+			responses <- &response{
+				addr:   rva.Address,
+				result: res,
+				err:    err,
+			}
 		}(va.remoteVAs[i])
 	}
 
@@ -110,9 +114,7 @@ func (va *ValidationAuthorityImpl) remoteDoDCV(ctx context.Context, req *vapb.DC
 	passedRIRs := make(map[string]struct{})
 
 	var firstProb *probs.ProblemDetails
-	for i := 0; i < remoteVACount; i++ {
-		resp := <-responses
-
+	for resp := range responses {
 		var currProb *probs.ProblemDetails
 		if resp.err != nil {
 			// Failed to communicate with the remote VA.
