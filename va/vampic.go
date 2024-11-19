@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -97,7 +98,7 @@ func (va *ValidationAuthorityImpl) remoteDoDCV(ctx context.Context, req *vapb.DC
 		err    error
 	}
 
-	responses := make(chan *response, remoteVACount)
+	var responses = make(chan *response, remoteVACount)
 	for _, i := range rand.Perm(remoteVACount) {
 		go func(rva RemoteVA) {
 			res, err := rva.DoDCV(ctx, req)
@@ -109,20 +110,22 @@ func (va *ValidationAuthorityImpl) remoteDoDCV(ctx context.Context, req *vapb.DC
 		}(va.remoteVAs[i])
 	}
 
+	required := remoteVACount - va.maxRemoteFailures
 	var passed []string
 	var failed []string
 	passedRIRs := make(map[string]struct{})
 
 	var firstProb *probs.ProblemDetails
-	for resp := range responses {
+	for i := 0; i < remoteVACount; i++ {
+		resp := <-responses
 		var currProb *probs.ProblemDetails
 		if resp.err != nil {
 			// Failed to communicate with the remote VA.
 			failed = append(failed, resp.addr)
-			if errors.Is(resp.err, context.Canceled) {
+			if canceled.Is(resp.err) {
 				currProb = probs.ServerInternal("Secondary domain validation RPC canceled")
 			} else {
-				va.log.Errf("Remote VA %q.ValidateChallenge failed: %s", resp.addr, resp.err)
+				va.log.Errf("Remote VA %q.DoDCV failed: %s", resp.addr, resp.err)
 				currProb = probs.ServerInternal("Secondary domain validation RPC failed")
 			}
 
@@ -133,7 +136,7 @@ func (va *ValidationAuthorityImpl) remoteDoDCV(ctx context.Context, req *vapb.DC
 			var err error
 			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problems)
 			if err != nil {
-				va.log.Errf("Remote VA %q.ValidateChallenge returned a malformed problem: %s", resp.addr, err)
+				va.log.Errf("Remote VA %q.DoDCV returned malformed problem: %s", resp.addr, err)
 				currProb = probs.ServerInternal("Secondary domain validation RPC returned malformed result")
 			}
 
@@ -152,8 +155,7 @@ func (va *ValidationAuthorityImpl) remoteDoDCV(ctx context.Context, req *vapb.DC
 	// Prepare the summary, this MUST be returned even if the validation failed.
 	summary := prepareSummary(passed, failed, passedRIRs, remoteVACount)
 
-	maxRemoteFailures := maxAllowedFailures(remoteVACount)
-	if len(failed) > maxRemoteFailures {
+	if len(failed) > va.maxRemoteFailures {
 		// Too many failures to reach quorum.
 		if firstProb != nil {
 			firstProb.Detail = fmt.Sprintf("During secondary domain validation: %s", firstProb.Detail)
@@ -162,7 +164,7 @@ func (va *ValidationAuthorityImpl) remoteDoDCV(ctx context.Context, req *vapb.DC
 		return summary, probs.ServerInternal("Secondary domain validation failed due to too many failures")
 	}
 
-	if len(passed) < (remoteVACount - maxRemoteFailures) {
+	if len(passed) < required {
 		// Too few successful responses to reach quorum.
 		if firstProb != nil {
 			firstProb.Detail = fmt.Sprintf("During secondary domain validation: %s", firstProb.Detail)

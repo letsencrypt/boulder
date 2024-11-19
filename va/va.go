@@ -97,7 +97,7 @@ type RemoteVA struct {
 type vaMetrics struct {
 	// validationLatency is a histogram of the latency to perform validations
 	// from the primary and remote VA perspectives. It's labelled by:
-	//   - operation: VA.ValidateChallenge or VA.CheckCAA as [challenge|caa|challenge+caa]
+	//   - operation: VA.DoDCV or VA.CheckCAA as [challenge|caa|challenge+caa]
 	//   - perspective: ValidationAuthorityImpl.perspective
 	//   - challenge_type: core.Challenge.Type
 	//   - problem_type: probs.ProblemType
@@ -428,7 +428,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 // observeLatency records entries in the validationLatency histogram of the
 // latency to perform validations from the primary and remote VA perspectives.
 // The labels are:
-//   - operation: VA.ValidateChallenge or VA.CheckCAA as [challenge|caa]
+//   - operation: VA.DoDCV or VA.CheckCAA as [challenge|caa]
 //   - perspective: [ValidationAuthorityImpl.perspective|all]
 //   - challenge_type: core.Challenge.Type
 //   - problem_type: probs.ProblemType
@@ -468,11 +468,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	for _, i := range rand.Perm(remoteVACount) {
 		go func(rva RemoteVA, out chan<- *response) {
 			res, err := rva.PerformValidation(ctx, req)
-			out <- &response{
-				addr:   rva.Address,
-				result: res,
-				err:    err,
-			}
+			out <- &response{rva.Address, res, err}
 		}(va.remoteVAs[i], responses)
 	}
 
@@ -626,13 +622,9 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 	return records, nil
 }
 
-// PerformValidation performs a local Domain Control Validation (DCV) and CAA
-// check for the provided challenge and dnsName. If called on the primary VA and
-// local validation passes, it will also perform DCV and CAA checks using the
-// configured remote VAs. It returns a validation result and an error if the
-// validation failed. The returned result will always contain a list of
-// validation records, even when it also contains a problem. This method is not
-// MPIC-compliant.
+// PerformValidation validates the challenge for the domain in the request.
+// The returned result will always contain a list of validation records, even
+// when it also contains a problem.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
 	if core.IsAnyNilOrZero(req, req.DnsName, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
