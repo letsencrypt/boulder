@@ -627,11 +627,12 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 // PerformValidation conducts a local Domain Control Validation (DCV) and CAA
 // check for the specified challenge and dnsName. When invoked on the primary
 // Validation Authority (VA) and the local validation succeeds, it also performs
-// DCV and CAA checks using the configured remote VAs. An error is only returned
-// in cases of internal error (e.g., network failure). When a requester fails a
-// DCV or CAA check, a corresponding problem is included in the ValidationResult.
-// The ValidationResult always includes a list of ValidationRecords, even when
-// it also contains a Problem. This method does NOT implement Multi-Perspective
+// DCV and CAA checks using the configured remote VAs. Failed validations are
+// indicated by a non-nil Problems in the returned ValidationResult.
+// PerformValidation returns error only for internal logic errors (and the
+// client may receive errors from gRPC in the event of a communication problem).
+// ValidationResult always includes a list of ValidationRecords, even when it
+// also contains Problems. This method does NOT implement Multi-Perspective
 // Issuance Corroboration as defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
 	if core.IsAnyNilOrZero(req, req.DnsName, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
