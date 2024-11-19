@@ -787,7 +787,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		Agreement:       wfe.SubscriberAgreementURL,
 		Key:             keyBytes,
 		// TODO(#7671): This must remain until InitialIP is removed from
-		// core.Registration.
+		// corepb.Registration.
 		InitialIP: net.ParseIP("0.0.0.0").To16(),
 	}
 
