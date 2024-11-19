@@ -1444,8 +1444,8 @@ func (wfe *WebFrontEndImpl) Account(
 
 // updateAccount unmarshals an account update request from the provided
 // requestBody to update the given registration. Important: It is assumed the
-// request has already been authenticated by the caller. If the request is
-// a valid update the resulting updated account is returned, otherwise a problem
+// request has already been authenticated by the caller. If the request is a
+// valid update the resulting updated account is returned, otherwise a problem
 // is returned.
 func (wfe *WebFrontEndImpl) updateAccount(
 	ctx context.Context,
@@ -1463,61 +1463,45 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		return nil, probs.Malformed("Error unmarshaling account")
 	}
 
-	// Convert existing account to corepb.Registration
-	basePb, err := bgrpc.RegistrationToPB(*currAcct)
-	if err != nil {
-		return nil, probs.ServerInternal("Error updating account")
-	}
-
-	var contacts []string
-	var contactsPresent bool
-	if accountUpdateRequest.Contact != nil {
-		contactsPresent = true
-		contacts = *accountUpdateRequest.Contact
-	}
-
-	// Copy over the fields from the request to the registration object used for
-	// the RA updates.
-	// Create corepb.Registration from provided account information
-	updatePb := &corepb.Registration{
-		Contact:         contacts,
-		ContactsPresent: contactsPresent,
-		Status:          string(accountUpdateRequest.Status),
-	}
-
-	// People *will* POST their full accounts to this endpoint, including
-	// the 'valid' status, to avoid always failing out when that happens only
-	// attempt to deactivate if the provided status is different from their current
-	// status.
+	// People *will* POST their full accounts to this endpoint, including the
+	// 'valid' status. To avoid always failing out when that happens, only
+	// attempt to deactivate if the provided status is different from their
+	// current status.
 	//
-	// If a user tries to send both a deactivation request and an update to their
-	// contacts or subscriber agreement URL the deactivation will take place and
-	// return before an update would be performed.
-	if updatePb.Status != "" && updatePb.Status != basePb.Status {
-		if updatePb.Status != string(core.StatusDeactivated) {
+	// If a user tries to send both a deactivation request and an update to
+	// their contacts or subscriber agreement URL, the deactivation will take
+	// place and return before an update would be performed.
+	if accountUpdateRequest.Status != "" && accountUpdateRequest.Status != currAcct.Status {
+		if accountUpdateRequest.Status != core.StatusDeactivated {
 			return nil, probs.Malformed("Invalid value provided for status field")
 		}
-		_, err := wfe.ra.DeactivateRegistration(ctx, basePb)
+
+		// Convert existing account to corepb.Registration
+		basePb, err := bgrpc.RegistrationToPB(*currAcct)
+		if err != nil {
+			return nil, probs.ServerInternal("Error deactivating account")
+		}
+
+		_, err = wfe.ra.DeactivateRegistration(ctx, basePb)
 		if err != nil {
 			return nil, web.ProblemDetailsForError(err, "Unable to deactivate account")
 		}
+
 		currAcct.Status = core.StatusDeactivated
 		return currAcct, nil
 	}
 
-	// Account objects contain a JWK object which are merged in UpdateRegistration
-	// if it is different from the existing account key. Since this isn't how you
-	// update the key we just copy the existing one into the update object here. This
-	// ensures the key isn't changed and that we can cleanly serialize the update as
-	// JSON to send via RPC to the RA.
-	updatePb.Key = basePb.Key
+	var contacts []string
+	if accountUpdateRequest.Contact != nil {
+		contacts = *accountUpdateRequest.Contact
+	}
 
-	updatedAcct, err := wfe.ra.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: basePb, Update: updatePb})
+	updatedAcct, err := wfe.ra.UpdateRegistrationContact(ctx, &rapb.UpdateRegistrationContactRequest{RegistrationID: currAcct.ID, Contacts: contacts})
 	if err != nil {
 		return nil, web.ProblemDetailsForError(err, "Unable to update account")
 	}
 
-	// Convert proto to core.Registration for return
+	// Convert proto to core.Registration for return.
 	updatedReg, err := bgrpc.PbToRegistration(updatedAcct)
 	if err != nil {
 		return nil, probs.ServerInternal("Error updating account")
@@ -1995,18 +1979,9 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to lookup existing keys"), err)
 		return
 	}
-	// Convert account to proto for grpc
-	regPb, err := bgrpc.RegistrationToPB(*acct)
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling Registration to proto"), err)
-		return
-	}
-
-	// Copy new key into an empty registration to provide as the update
-	updatePb := &corepb.Registration{Key: newKeyBytes}
 
 	// Update the account key to the new key
-	updatedAcctPb, err := wfe.ra.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: regPb, Update: updatePb})
+	updatedAcctPb, err := wfe.ra.UpdateRegistrationKey(ctx, &rapb.UpdateRegistrationKeyRequest{RegistrationID: acct.ID, Jwk: newKeyBytes})
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
 			// It is possible that between checking for the existing key, and performing the update
