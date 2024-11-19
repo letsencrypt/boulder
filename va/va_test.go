@@ -451,7 +451,7 @@ func TestMultiVA(t *testing.T) {
 				{brokenVA, "broken"},
 			},
 			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC failed"),
 			// The real failure cause should be logged
 			ExpectedLog: expectedInternalErrLine,
 		},
@@ -478,7 +478,7 @@ func TestMultiVA(t *testing.T) {
 				{brokenVA, "broken"},
 			},
 			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC failed"),
 			// The real failure cause should be logged
 			ExpectedLog: expectedInternalErrLine,
 		},
@@ -507,7 +507,7 @@ func TestMultiVA(t *testing.T) {
 				{brokenVA, "broken"},
 			},
 			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC failed"),
 			// The real failure cause should be logged
 			ExpectedLog: expectedInternalErrLine,
 		},
@@ -517,7 +517,7 @@ func TestMultiVA(t *testing.T) {
 			RemoteVAs:  remoteVAs,
 			AllowedUAs: map[string]bool{localUA: true, remoteUA2: true},
 			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
-				`During secondary validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
+				`During secondary domain validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
 				expectedKeyAuthorization)),
 		},
 		{
@@ -539,7 +539,7 @@ func TestMultiVA(t *testing.T) {
 				{cancelledVA, remoteUA3},
 			},
 			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
+			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC canceled"),
 		},
 		{
 			// With the local and remote VAs seeing diff problems, we expect a problem.
@@ -547,7 +547,7 @@ func TestMultiVA(t *testing.T) {
 			RemoteVAs:  remoteVAs,
 			AllowedUAs: map[string]bool{localUA: true},
 			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
-				`During secondary validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
+				`During secondary domain validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
 				expectedKeyAuthorization)),
 		},
 	}
