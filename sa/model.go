@@ -282,14 +282,14 @@ type regModel struct {
 	// InitialIP is stored as sixteen binary bytes, regardless of whether it
 	// represents a v4 or v6 IP address.
 	//
-	// Deprecated: This field is no longer used and will be removed in a future.
+	// Deprecated: This field is no longer used and will be removed from the
+	// database schema in a future release. For now, it is still used inside
+	// registrationPBToModel, and therefore inside NewRegistration.
 	InitialIP []byte    `db:"initialIp"`
 	CreatedAt time.Time `db:"createdAt"`
 	LockCol   int64
 	Status    string `db:"status"`
 }
-
-var defaultInitialIP = net.ParseIP("0.0.0.0").To16()
 
 func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 	// Even though we don't need to convert from JSON to an in-memory JSONWebKey
@@ -328,7 +328,9 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		KeySHA256: sha,
 		Contact:   string(jsonContact),
 		Agreement: reg.Agreement,
-		InitialIP: defaultInitialIP,
+		// Although deprecated, this column remains NOT NULL in the database, so
+		// a value must still be provided.
+		InitialIP: net.ParseIP("0.0.0.0").To16(),
 		CreatedAt: createdAt,
 		Status:    reg.Status,
 	}, nil
