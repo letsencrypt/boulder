@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -27,9 +28,12 @@ import (
 	"unicode"
 
 	"github.com/go-jose/go-jose/v4"
-	"github.com/letsencrypt/boulder/identifier"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 const Unspecified = "Unspecified"
@@ -393,6 +397,15 @@ func IsASCII(str string) bool {
 		}
 	}
 	return true
+}
+
+// IsCanceled returns true if err is non-nil and is either context.Canceled, or
+// has a grpc code of Canceled. This is useful because cancelations propagate
+// through gRPC boundaries, and if we choose to treat in-process cancelations a
+// certain way, we usually want to treat cross-process cancelations the same
+// way.
+func IsCanceled(err error) bool {
+	return errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled
 }
 
 func Command() string {
