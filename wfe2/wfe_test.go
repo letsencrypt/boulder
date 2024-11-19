@@ -1543,7 +1543,6 @@ func TestNewECDSAAccount(t *testing.T) {
 	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
 	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
 	test.AssertEquals(t, acct.Agreement, "")
-	test.AssertEquals(t, acct.InitialIP.String(), "1.1.1.1")
 
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/1")
 
@@ -1566,7 +1565,6 @@ func TestNewECDSAAccount(t *testing.T) {
 			"x": "FwvSZpu06i3frSk_mz9HcD9nETn4wf3mQ-zDtG21Gao",
 			"y": "S8rR-0dWa8nAcw1fbunF_ajS3PQZ-QwLps-2adgLgPk"
 		},
-		"initialIp": "",
 		"status": ""
 		}`)
 	test.AssertEquals(t, responseWriter.Header().Get("Location"), "http://localhost/acme/acct/3")
@@ -1712,7 +1710,6 @@ func TestNewAccount(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
 	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
 	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, acct.InitialIP.String(), "1.1.1.1")
 	// Agreement is an ACMEv1 field and should not be present
 	test.AssertEquals(t, acct.Agreement, "")
 
@@ -1747,7 +1744,6 @@ func TestNewAccount(t *testing.T) {
 		"contact": [
 			"mailto:person@mail.com"
 		],
-		"initialIp": "",
 		"status": "valid"
 	}`)
 }
@@ -1795,7 +1791,6 @@ func TestNewAccountNoID(t *testing.T) {
 		"contact": [
 			"mailto:person@mail.com"
 		],
-		"initialIp": "1.1.1.1",
 		"createdAt": "2021-01-01T00:00:00Z",
 		"status": ""
 	}`)
@@ -2757,7 +2752,6 @@ func TestDeactivateAccount(t *testing.T) {
 		  "contact": [
 		    "mailto:person@mail.com"
 		  ],
-		  "initialIp": "",
 		  "status": "deactivated"
 		}`)
 
@@ -2777,7 +2771,6 @@ func TestDeactivateAccount(t *testing.T) {
 		  "contact": [
 		    "mailto:person@mail.com"
 		  ],
-		  "initialIp": "",
 		  "status": "deactivated"
 		}`)
 
@@ -3218,7 +3211,6 @@ func TestKeyRollover(t *testing.T) {
 		     "contact": [
 		       "mailto:person@mail.com"
 		     ],
-		     "initialIp": "",
 		     "status": "valid"
 		   }`,
 			NewKey: newKeyPriv,

@@ -102,7 +102,7 @@ func NewSQLStorageAuthority(
 
 // NewRegistration stores a new Registration
 func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb.Registration) (*corepb.Registration, error) {
-	if len(req.Key) == 0 || len(req.InitialIP) == 0 {
+	if len(req.Key) == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -129,7 +129,7 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb
 //
 // Deprecated: Use UpdateRegistrationContact or UpdateRegistrationKey instead.
 func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *corepb.Registration) (*emptypb.Empty, error) {
-	if req == nil || req.Id == 0 || len(req.Key) == 0 || len(req.InitialIP) == 0 {
+	if req == nil || req.Id == 0 || len(req.Key) == 0 {
 		return nil, errIncompleteRequest
 	}
 

@@ -10,7 +10,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math/big"
-	"net"
 	"os"
 	"testing"
 	"time"
@@ -35,19 +34,11 @@ func TestRegistrationModelToPb(t *testing.T) {
 	}{
 		{
 			name:  "No ID",
-			input: regModel{ID: 0, Key: []byte("foo"), InitialIP: []byte("foo")},
+			input: regModel{ID: 0, Key: []byte("foo")},
 		},
 		{
 			name:  "No Key",
-			input: regModel{ID: 1, Key: nil, InitialIP: []byte("foo")},
-		},
-		{
-			name:  "No IP",
-			input: regModel{ID: 1, Key: []byte("foo"), InitialIP: nil},
-		},
-		{
-			name:  "Bad IP",
-			input: regModel{ID: 1, Key: []byte("foo"), InitialIP: []byte("foo")},
+			input: regModel{ID: 1, Key: nil},
 		},
 	}
 	for _, tc := range badCases {
@@ -57,9 +48,7 @@ func TestRegistrationModelToPb(t *testing.T) {
 		})
 	}
 
-	_, err := registrationModelToPb(&regModel{
-		ID: 1, Key: []byte("foo"), InitialIP: net.ParseIP("1.2.3.4"),
-	})
+	_, err := registrationModelToPb(&regModel{ID: 1, Key: []byte("foo")})
 	test.AssertNotError(t, err, "Should pass")
 }
 
