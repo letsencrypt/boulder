@@ -373,12 +373,15 @@ func TestMultiVA(t *testing.T) {
 		remoteUA1 = "remote 1"
 		remoteUA2 = "remote 2"
 		remoteUA3 = "remote 3"
+		remoteUA4 = "remote 4"
 		localUA   = "local 1"
 	)
 	allowedUAs := map[string]bool{
 		localUA:   true,
 		remoteUA1: true,
 		remoteUA2: true,
+		remoteUA3: true,
+		remoteUA4: true,
 	}
 
 	// Create an IPv4 test server
@@ -388,6 +391,7 @@ func TestMultiVA(t *testing.T) {
 	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
 	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
 	remoteVA3 := setupRemote(ms.Server, remoteUA3, nil, "", "")
+	remoteVA4 := setupRemote(ms.Server, remoteUA4, nil, "", "")
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
 		{remoteVA2, remoteUA2},
@@ -452,6 +456,62 @@ func TestMultiVA(t *testing.T) {
 			ExpectedLog: expectedInternalErrLine,
 		},
 		{
+			// If one out of five remote VAs fail with an internal err it should succeed
+			Name: "Local VA ok, 1/5 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{remoteVA3, remoteUA3},
+				{remoteVA4, remoteUA4},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs: allowedUAs,
+		},
+		{
+			// If two out of five remote VAs fail with an internal err it should fail
+			Name: "Local VA ok, 2/5 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{remoteVA3, remoteUA3},
+				{brokenVA, "broken"},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs:   allowedUAs,
+			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			// The real failure cause should be logged
+			ExpectedLog: expectedInternalErrLine,
+		},
+		{
+			// If two out of six remote VAs fail with an internal err it should succeed
+			Name: "Local VA ok, 2/6 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{remoteVA3, remoteUA3},
+				{remoteVA4, remoteUA4},
+				{brokenVA, "broken"},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs: allowedUAs,
+		},
+		{
+			// If three out of six remote VAs fail with an internal err it should fail
+			Name: "Local VA ok, 4/6 remote VAs internal err",
+			RemoteVAs: []RemoteVA{
+				{remoteVA1, remoteUA1},
+				{remoteVA2, remoteUA2},
+				{remoteVA3, remoteUA3},
+				{brokenVA, "broken"},
+				{brokenVA, "broken"},
+				{brokenVA, "broken"},
+			},
+			AllowedUAs:   allowedUAs,
+			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			// The real failure cause should be logged
+			ExpectedLog: expectedInternalErrLine,
+		},
+		{
 			// With only one working remote VA there should be a validation failure
 			Name:       "Local VA and one remote VA OK",
 			RemoteVAs:  remoteVAs,
@@ -461,18 +521,17 @@ func TestMultiVA(t *testing.T) {
 				expectedKeyAuthorization)),
 		},
 		{
-			// Any remote VA cancellations are a problem.
+			// If one remote VA cancels, it should succeed
 			Name: "Local VA and one remote VA OK, one cancelled VA",
 			RemoteVAs: []RemoteVA{
 				{remoteVA1, remoteUA1},
 				{cancelledVA, remoteUA2},
 				{remoteVA3, remoteUA3},
 			},
-			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
+			AllowedUAs: allowedUAs,
 		},
 		{
-			// Any remote VA cancellations are a problem.
+			// If all remote VAs cancel, it should fail
 			Name: "Local VA OK, three cancelled remote VAs",
 			RemoteVAs: []RemoteVA{
 				{cancelledVA, remoteUA1},
@@ -524,55 +583,62 @@ func TestMultiVA(t *testing.T) {
 }
 
 func TestMultiVAEarlyReturn(t *testing.T) {
-	const (
-		remoteUA1 = "remote 1"
-		remoteUA2 = "slow remote"
-		remoteUA3 = "remote 3"
-		localUA   = "local 1"
-	)
+	const passUA = "pass"
+	const failUA = "fail"
+	// httpMultiSrv handles this specially by being slow
+	const slowRemoteUA = "slow remote"
 	allowedUAs := map[string]bool{
-		localUA:   true,
-		remoteUA1: false, // forbid UA 1 and 3 to provoke early return
-		remoteUA2: true,
-		remoteUA3: false,
+		passUA: true,
 	}
 
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
-	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
-	remoteVA3 := setupRemote(ms.Server, remoteUA3, nil, "", "")
-
-	remoteVAs := []RemoteVA{
-		{remoteVA1, remoteUA1},
-		{remoteVA2, remoteUA2},
-		{remoteVA3, remoteUA3},
+	makeRemotes := func(userAgent ...string) []RemoteVA {
+		var rvas []RemoteVA
+		for i, ua := range userAgent {
+			clients := setupRemote(ms.Server, ua, nil, "", "")
+			rva := RemoteVA{clients, fmt.Sprintf("remote VA %d hostname", i)}
+			rvas = append(rvas, rva)
+		}
+		return rvas
 	}
 
-	// Create a local test VA with the two remote VAs
-	localVA, _ := setup(ms.Server, localUA, remoteVAs, nil)
-
-	// Perform all validations
-	start := time.Now()
-	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
-	res, _ := localVA.PerformValidation(ctx, req)
-
-	// It should always fail
-	if res.Problems == nil {
-		t.Error("expected prob from PerformValidation, got nil")
+	testCases := []struct {
+		remoteUserAgents []string
+	}{
+		{remoteUserAgents: []string{slowRemoteUA, passUA, failUA}},
+		{remoteUserAgents: []string{slowRemoteUA, slowRemoteUA, passUA, passUA, failUA}},
+		{remoteUserAgents: []string{slowRemoteUA, slowRemoteUA, passUA, passUA, failUA, failUA}},
 	}
 
-	elapsed := time.Since(start).Round(time.Millisecond).Milliseconds()
+	for i, tc := range testCases {
+		t.Run(fmt.Sprintf("case %d", i), func(t *testing.T) {
+			rvas := makeRemotes(tc.remoteUserAgents...)
+			localVA, _ := setup(ms.Server, pass, rvas, nil)
 
-	// The slow UA should sleep for `slowRemoteSleepMillis`. But the first remote
-	// VA should fail quickly and the early-return code should cause the overall
-	// overall validation to return a prob quickly (i.e. in less than half of
-	// `slowRemoteSleepMillis`).
-	if elapsed > slowRemoteSleepMillis/2 {
-		t.Errorf(
-			"Expected an early return from PerformValidation in < %d ms, took %d ms",
-			slowRemoteSleepMillis/2, elapsed)
+			// Perform all validations
+			start := time.Now()
+			req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
+			res, _ := localVA.PerformValidation(ctx, req)
+
+			// It should always fail
+			if res.Problems == nil {
+				t.Error("expected prob from PerformValidation, got nil")
+			}
+
+			elapsed := time.Since(start).Round(time.Millisecond).Milliseconds()
+
+			// The slow UA should sleep for `slowRemoteSleepMillis`. But the first remote
+			// VA should fail quickly and the early-return code should cause the overall
+			// overall validation to return a prob quickly (i.e. in less than half of
+			// `slowRemoteSleepMillis`).
+			if elapsed > slowRemoteSleepMillis/2 {
+				t.Errorf(
+					"Expected an early return from PerformValidation in < %d ms, took %d ms",
+					slowRemoteSleepMillis/2, elapsed)
+			}
+		})
 	}
 }
 

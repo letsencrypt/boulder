@@ -591,11 +591,7 @@ func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, s
 
 func TestDisabledMultiCAARechecking(t *testing.T) {
 	brokenRVA := setupRemote(nil, "broken", caaBrokenDNS{}, "", "")
-	remoteVAs := []RemoteVA{
-		{brokenRVA, "broken"},
-		{brokenRVA, "broken"},
-		{brokenRVA, "broken"},
-	}
+	remoteVAs := []RemoteVA{{brokenRVA, "broken"}}
 	va, _ := setup(nil, "local", remoteVAs, nil)
 
 	features.Set(features.Config{
@@ -738,7 +734,7 @@ func TestMultiCAARechecking(t *testing.T) {
 			},
 		},
 		{
-			name:                     "functional localVA, 2 broken RVAs, no CAA records",
+			name:                     "functional localVA, 2 broken RVA, no CAA records",
 			domains:                  "present-dns-only.com",
 			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
