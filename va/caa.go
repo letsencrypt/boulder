@@ -90,7 +90,12 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	}
 
 	internalErr = va.checkCAA(ctx, acmeID, params)
+
+	// Stop the clock for local check latency.
+	localLatency = va.clk.Since(start)
+
 	if internalErr != nil {
+		logEvent.InternalError = internalErr.Error()
 		prob = detailedError(internalErr)
 		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
 	} else if remoteCAAResults != nil {
