@@ -283,8 +283,8 @@ type regModel struct {
 	// represents a v4 or v6 IP address.
 	//
 	// Deprecated: This field is no longer used and will be removed from the
-	// database schema in a future release. For now, it is still used inside
-	// registrationPBToModel, and therefore inside NewRegistration.
+	// database schema in a future release. Although deprecated, this column
+	// remains NOT NULL in the database, so a value must still be provided.
 	InitialIP []byte    `db:"initialIp"`
 	CreatedAt time.Time `db:"createdAt"`
 	LockCol   int64
