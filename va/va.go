@@ -466,11 +466,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	for _, i := range rand.Perm(remoteVACount) {
 		go func(rva RemoteVA, out chan<- *response) {
 			res, err := rva.PerformValidation(ctx, req)
-			out <- &response{
-				addr:   rva.Address,
-				result: res,
-				err:    err,
-			}
+			out <- &response{rva.Address, res, err}
 		}(va.remoteVAs[i], responses)
 	}
 
