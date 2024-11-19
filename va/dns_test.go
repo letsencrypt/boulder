@@ -30,7 +30,7 @@ func TestDNSValidationEmpty(t *testing.T) {
 
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
 		"operation":      opChallAndCAA,
-		"perspective":    PrimaryPerspective,
+		"perspective":    va.perspective,
 		"challenge_type": string(core.ChallengeTypeDNS01),
 		"problem_type":   string(probs.UnauthorizedProblem),
 		"result":         fail,
