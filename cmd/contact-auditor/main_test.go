@@ -3,7 +3,6 @@ package notmain
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"strings"
 	"testing"
@@ -133,37 +132,31 @@ func (tc testCtx) addRegistrations(t *testing.T) {
   "e":"AQAB"
 }`)
 
-	initialIP, err := net.ParseIP("127.0.0.1").MarshalText()
-	test.AssertNotError(t, err, "Couldn't create initialIP")
-
 	regA = &corepb.Registration{
-		Id:        1,
-		Contact:   []string{emailA},
-		Key:       jsonKeyA,
-		InitialIP: initialIP,
+		Id:      1,
+		Contact: []string{emailA},
+		Key:     jsonKeyA,
 	}
 	regB = &corepb.Registration{
-		Id:        2,
-		Contact:   []string{emailB},
-		Key:       jsonKeyB,
-		InitialIP: initialIP,
+		Id:      2,
+		Contact: []string{emailB},
+		Key:     jsonKeyB,
 	}
 	regC = &corepb.Registration{
-		Id:        3,
-		Contact:   []string{emailC},
-		Key:       jsonKeyC,
-		InitialIP: initialIP,
+		Id:      3,
+		Contact: []string{emailC},
+		Key:     jsonKeyC,
 	}
 	// Reg D has a `tel:` contact ACME URL
 	regD = &corepb.Registration{
-		Id:        4,
-		Contact:   []string{tel},
-		Key:       jsonKeyD,
-		InitialIP: initialIP,
+		Id:      4,
+		Contact: []string{tel},
+		Key:     jsonKeyD,
 	}
 
 	// Add the four test registrations
 	ctx := context.Background()
+	var err error
 	regA, err = tc.ssa.NewRegistration(ctx, regA)
 	test.AssertNotError(t, err, "Couldn't store regA")
 	regB, err = tc.ssa.NewRegistration(ctx, regB)

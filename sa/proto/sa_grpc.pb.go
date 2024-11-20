@@ -27,8 +27,6 @@ const (
 	StorageAuthorityReadOnly_CountInvalidAuthorizations2_FullMethodName  = "/sa.StorageAuthorityReadOnly/CountInvalidAuthorizations2"
 	StorageAuthorityReadOnly_CountOrders_FullMethodName                  = "/sa.StorageAuthorityReadOnly/CountOrders"
 	StorageAuthorityReadOnly_CountPendingAuthorizations2_FullMethodName  = "/sa.StorageAuthorityReadOnly/CountPendingAuthorizations2"
-	StorageAuthorityReadOnly_CountRegistrationsByIP_FullMethodName       = "/sa.StorageAuthorityReadOnly/CountRegistrationsByIP"
-	StorageAuthorityReadOnly_CountRegistrationsByIPRange_FullMethodName  = "/sa.StorageAuthorityReadOnly/CountRegistrationsByIPRange"
 	StorageAuthorityReadOnly_FQDNSetExists_FullMethodName                = "/sa.StorageAuthorityReadOnly/FQDNSetExists"
 	StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_FullMethodName   = "/sa.StorageAuthorityReadOnly/FQDNSetTimestampsForWindow"
 	StorageAuthorityReadOnly_GetAuthorization2_FullMethodName            = "/sa.StorageAuthorityReadOnly/GetAuthorization2"
@@ -65,8 +63,6 @@ type StorageAuthorityReadOnlyClient interface {
 	CountInvalidAuthorizations2(ctx context.Context, in *CountInvalidAuthorizationsRequest, opts ...grpc.CallOption) (*Count, error)
 	CountOrders(ctx context.Context, in *CountOrdersRequest, opts ...grpc.CallOption) (*Count, error)
 	CountPendingAuthorizations2(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Count, error)
-	CountRegistrationsByIP(ctx context.Context, in *CountRegistrationsByIPRequest, opts ...grpc.CallOption) (*Count, error)
-	CountRegistrationsByIPRange(ctx context.Context, in *CountRegistrationsByIPRequest, opts ...grpc.CallOption) (*Count, error)
 	FQDNSetExists(ctx context.Context, in *FQDNSetExistsRequest, opts ...grpc.CallOption) (*Exists, error)
 	FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error)
 	GetAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto.Authorization, error)
@@ -146,26 +142,6 @@ func (c *storageAuthorityReadOnlyClient) CountPendingAuthorizations2(ctx context
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Count)
 	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_CountPendingAuthorizations2_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityReadOnlyClient) CountRegistrationsByIP(ctx context.Context, in *CountRegistrationsByIPRequest, opts ...grpc.CallOption) (*Count, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Count)
-	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_CountRegistrationsByIP_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityReadOnlyClient) CountRegistrationsByIPRange(ctx context.Context, in *CountRegistrationsByIPRequest, opts ...grpc.CallOption) (*Count, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Count)
-	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_CountRegistrationsByIPRange_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -467,8 +443,6 @@ type StorageAuthorityReadOnlyServer interface {
 	CountInvalidAuthorizations2(context.Context, *CountInvalidAuthorizationsRequest) (*Count, error)
 	CountOrders(context.Context, *CountOrdersRequest) (*Count, error)
 	CountPendingAuthorizations2(context.Context, *RegistrationID) (*Count, error)
-	CountRegistrationsByIP(context.Context, *CountRegistrationsByIPRequest) (*Count, error)
-	CountRegistrationsByIPRange(context.Context, *CountRegistrationsByIPRequest) (*Count, error)
 	FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error)
 	FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error)
 	GetAuthorization2(context.Context, *AuthorizationID2) (*proto.Authorization, error)
@@ -515,12 +489,6 @@ func (UnimplementedStorageAuthorityReadOnlyServer) CountOrders(context.Context, 
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) CountPendingAuthorizations2(context.Context, *RegistrationID) (*Count, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CountPendingAuthorizations2 not implemented")
-}
-func (UnimplementedStorageAuthorityReadOnlyServer) CountRegistrationsByIP(context.Context, *CountRegistrationsByIPRequest) (*Count, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CountRegistrationsByIP not implemented")
-}
-func (UnimplementedStorageAuthorityReadOnlyServer) CountRegistrationsByIPRange(context.Context, *CountRegistrationsByIPRequest) (*Count, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CountRegistrationsByIPRange not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FQDNSetExists not implemented")
@@ -697,42 +665,6 @@ func _StorageAuthorityReadOnly_CountPendingAuthorizations2_Handler(srv interface
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityReadOnlyServer).CountPendingAuthorizations2(ctx, req.(*RegistrationID))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageAuthorityReadOnly_CountRegistrationsByIP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CountRegistrationsByIPRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityReadOnlyServer).CountRegistrationsByIP(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthorityReadOnly_CountRegistrationsByIP_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityReadOnlyServer).CountRegistrationsByIP(ctx, req.(*CountRegistrationsByIPRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageAuthorityReadOnly_CountRegistrationsByIPRange_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CountRegistrationsByIPRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityReadOnlyServer).CountRegistrationsByIPRange(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthorityReadOnly_CountRegistrationsByIPRange_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityReadOnlyServer).CountRegistrationsByIPRange(ctx, req.(*CountRegistrationsByIPRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1187,14 +1119,6 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthorityReadOnly_CountPendingAuthorizations2_Handler,
 		},
 		{
-			MethodName: "CountRegistrationsByIP",
-			Handler:    _StorageAuthorityReadOnly_CountRegistrationsByIP_Handler,
-		},
-		{
-			MethodName: "CountRegistrationsByIPRange",
-			Handler:    _StorageAuthorityReadOnly_CountRegistrationsByIPRange_Handler,
-		},
-		{
 			MethodName: "FQDNSetExists",
 			Handler:    _StorageAuthorityReadOnly_FQDNSetExists_Handler,
 		},
@@ -1310,8 +1234,6 @@ const (
 	StorageAuthority_CountInvalidAuthorizations2_FullMethodName  = "/sa.StorageAuthority/CountInvalidAuthorizations2"
 	StorageAuthority_CountOrders_FullMethodName                  = "/sa.StorageAuthority/CountOrders"
 	StorageAuthority_CountPendingAuthorizations2_FullMethodName  = "/sa.StorageAuthority/CountPendingAuthorizations2"
-	StorageAuthority_CountRegistrationsByIP_FullMethodName       = "/sa.StorageAuthority/CountRegistrationsByIP"
-	StorageAuthority_CountRegistrationsByIPRange_FullMethodName  = "/sa.StorageAuthority/CountRegistrationsByIPRange"
 	StorageAuthority_FQDNSetExists_FullMethodName                = "/sa.StorageAuthority/FQDNSetExists"
 	StorageAuthority_FQDNSetTimestampsForWindow_FullMethodName   = "/sa.StorageAuthority/FQDNSetTimestampsForWindow"
 	StorageAuthority_GetAuthorization2_FullMethodName            = "/sa.StorageAuthority/GetAuthorization2"
@@ -1371,8 +1293,6 @@ type StorageAuthorityClient interface {
 	CountInvalidAuthorizations2(ctx context.Context, in *CountInvalidAuthorizationsRequest, opts ...grpc.CallOption) (*Count, error)
 	CountOrders(ctx context.Context, in *CountOrdersRequest, opts ...grpc.CallOption) (*Count, error)
 	CountPendingAuthorizations2(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Count, error)
-	CountRegistrationsByIP(ctx context.Context, in *CountRegistrationsByIPRequest, opts ...grpc.CallOption) (*Count, error)
-	CountRegistrationsByIPRange(ctx context.Context, in *CountRegistrationsByIPRequest, opts ...grpc.CallOption) (*Count, error)
 	FQDNSetExists(ctx context.Context, in *FQDNSetExistsRequest, opts ...grpc.CallOption) (*Exists, error)
 	FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error)
 	GetAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto.Authorization, error)
@@ -1475,26 +1395,6 @@ func (c *storageAuthorityClient) CountPendingAuthorizations2(ctx context.Context
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Count)
 	err := c.cc.Invoke(ctx, StorageAuthority_CountPendingAuthorizations2_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityClient) CountRegistrationsByIP(ctx context.Context, in *CountRegistrationsByIPRequest, opts ...grpc.CallOption) (*Count, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Count)
-	err := c.cc.Invoke(ctx, StorageAuthority_CountRegistrationsByIP_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityClient) CountRegistrationsByIPRange(ctx context.Context, in *CountRegistrationsByIPRequest, opts ...grpc.CallOption) (*Count, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Count)
-	err := c.cc.Invoke(ctx, StorageAuthority_CountRegistrationsByIPRange_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2017,8 +1917,6 @@ type StorageAuthorityServer interface {
 	CountInvalidAuthorizations2(context.Context, *CountInvalidAuthorizationsRequest) (*Count, error)
 	CountOrders(context.Context, *CountOrdersRequest) (*Count, error)
 	CountPendingAuthorizations2(context.Context, *RegistrationID) (*Count, error)
-	CountRegistrationsByIP(context.Context, *CountRegistrationsByIPRequest) (*Count, error)
-	CountRegistrationsByIPRange(context.Context, *CountRegistrationsByIPRequest) (*Count, error)
 	FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error)
 	FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error)
 	GetAuthorization2(context.Context, *AuthorizationID2) (*proto.Authorization, error)
@@ -2088,12 +1986,6 @@ func (UnimplementedStorageAuthorityServer) CountOrders(context.Context, *CountOr
 }
 func (UnimplementedStorageAuthorityServer) CountPendingAuthorizations2(context.Context, *RegistrationID) (*Count, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CountPendingAuthorizations2 not implemented")
-}
-func (UnimplementedStorageAuthorityServer) CountRegistrationsByIP(context.Context, *CountRegistrationsByIPRequest) (*Count, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CountRegistrationsByIP not implemented")
-}
-func (UnimplementedStorageAuthorityServer) CountRegistrationsByIPRange(context.Context, *CountRegistrationsByIPRequest) (*Count, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CountRegistrationsByIPRange not implemented")
 }
 func (UnimplementedStorageAuthorityServer) FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FQDNSetExists not implemented")
@@ -2335,42 +2227,6 @@ func _StorageAuthority_CountPendingAuthorizations2_Handler(srv interface{}, ctx 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityServer).CountPendingAuthorizations2(ctx, req.(*RegistrationID))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageAuthority_CountRegistrationsByIP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CountRegistrationsByIPRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityServer).CountRegistrationsByIP(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthority_CountRegistrationsByIP_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).CountRegistrationsByIP(ctx, req.(*CountRegistrationsByIPRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageAuthority_CountRegistrationsByIPRange_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CountRegistrationsByIPRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityServer).CountRegistrationsByIPRange(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthority_CountRegistrationsByIPRange_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).CountRegistrationsByIPRange(ctx, req.(*CountRegistrationsByIPRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3219,14 +3075,6 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CountPendingAuthorizations2",
 			Handler:    _StorageAuthority_CountPendingAuthorizations2_Handler,
-		},
-		{
-			MethodName: "CountRegistrationsByIP",
-			Handler:    _StorageAuthority_CountRegistrationsByIP_Handler,
-		},
-		{
-			MethodName: "CountRegistrationsByIPRange",
-			Handler:    _StorageAuthority_CountRegistrationsByIPRange_Handler,
 		},
 		{
 			MethodName: "FQDNSetExists",

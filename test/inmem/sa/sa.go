@@ -29,14 +29,6 @@ func (sa SA) GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ..
 	return sa.Impl.GetRegistration(ctx, req)
 }
 
-func (sa SA) CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return sa.Impl.CountRegistrationsByIP(ctx, req)
-}
-
-func (sa SA) CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return sa.Impl.CountRegistrationsByIPRange(ctx, req)
-}
-
 func (sa SA) DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.DeactivateRegistration(ctx, req)
 }

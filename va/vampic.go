@@ -9,7 +9,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -122,7 +121,7 @@ func (va *ValidationAuthorityImpl) remoteDoDCV(ctx context.Context, req *vapb.DC
 		if resp.err != nil {
 			// Failed to communicate with the remote VA.
 			failed = append(failed, resp.addr)
-			if canceled.Is(resp.err) {
+			if core.IsCanceled(resp.err) {
 				currProb = probs.ServerInternal("Secondary domain validation RPC canceled")
 			} else {
 				va.log.Errf("Remote VA %q.DoDCV failed: %s", resp.addr, resp.err)
