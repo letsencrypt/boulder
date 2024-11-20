@@ -25,7 +25,6 @@ import (
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -261,7 +260,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 
 	sct, err := pub.singleLogSubmit(ctx, chain, req.Kind, ctLog)
 	if err != nil {
-		if canceled.Is(err) {
+		if core.IsCanceled(err) {
 			return nil, err
 		}
 		var body string
@@ -297,7 +296,7 @@ func (pub *Impl) singleLogSubmit(
 	took := time.Since(start).Seconds()
 	if err != nil {
 		status := "error"
-		if canceled.Is(err) {
+		if core.IsCanceled(err) {
 			status = "canceled"
 		}
 		httpStatus := ""
