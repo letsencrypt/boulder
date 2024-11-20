@@ -109,9 +109,6 @@ type Registration struct {
 	// Agreement with terms of service
 	Agreement string `json:"agreement,omitempty"`
 
-	// InitialIP is the IP address from which the registration was created
-	InitialIP net.IP `json:"initialIp"`
-
 	// CreatedAt is the time the registration was created.
 	CreatedAt *time.Time `json:"createdAt,omitempty"`
 
@@ -150,24 +147,6 @@ type ValidationRecord struct {
 	// lookup for AddressUsed. During recursive A and AAAA lookups, a record may
 	// instead look like A:host:port or AAAA:host:port
 	ResolverAddrs []string `json:"resolverAddrs,omitempty"`
-
-	// Perspective uniquely identifies the Network Perspective used to perform
-	// the validation, as specified in BRs Section 5.4.1, Requirement 2.7
-	// ("Multi-Perspective Issuance Corroboration attempts from each Network
-	// Perspective"). It should uniquely identify either the Primary Perspective
-	// (VA) or a group of RVAs deployed in the same datacenter.
-	Perspective string `json:"perspective,omitempty"`
-
-	// RIR indicates the Regional Internet Registry where this RVA is located.
-	// This field is used to identify the RIR region from which a given
-	// validation was performed, as specified in the "Phased Implementation
-	// Timeline" in BRs Section 3.2.2.9. It must be one of the following values:
-	//   - ARIN
-	//   - RIPE
-	//   - APNIC
-	//   - LACNIC
-	//   - AfriNIC
-	RIR string `json:"rir,omitempty"`
 }
 
 // Challenge is an aggregate of all data needed for any challenges.

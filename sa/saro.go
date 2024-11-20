@@ -211,67 +211,6 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 	return begin, end
 }
 
-// CountRegistrationsByIP returns the number of registrations created in the
-// time range for a single IP address.
-func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if len(req.Ip) == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
-		return nil, errIncompleteRequest
-	}
-
-	var count int64
-	err := ssa.dbReadOnlyMap.SelectOne(
-		ctx,
-		&count,
-		`SELECT COUNT(*) FROM registrations
-		 WHERE
-		 initialIP = :ip AND
-		 :earliest < createdAt AND
-		 createdAt <= :latest`,
-		map[string]interface{}{
-			"ip":       req.Ip,
-			"earliest": req.Range.Earliest.AsTime(),
-			"latest":   req.Range.Latest.AsTime(),
-		})
-	if err != nil {
-		return nil, err
-	}
-	return &sapb.Count{Count: count}, nil
-}
-
-// CountRegistrationsByIPRange returns the number of registrations created in
-// the time range in an IP range. For IPv4 addresses, that range is limited to
-// the single IP. For IPv6 addresses, that range is a /48, since it's not
-// uncommon for one person to have a /48 to themselves.
-func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if len(req.Ip) == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
-		return nil, errIncompleteRequest
-	}
-
-	var count int64
-	beginIP, endIP := ipRange(req.Ip)
-	err := ssa.dbReadOnlyMap.SelectOne(
-		ctx,
-		&count,
-		`SELECT COUNT(*) FROM registrations
-		 WHERE
-		 :beginIP <= initialIP AND
-		 initialIP < :endIP AND
-		 :earliest < createdAt AND
-		 createdAt <= :latest`,
-		map[string]interface{}{
-			"earliest": req.Range.Earliest.AsTime(),
-			"latest":   req.Range.Latest.AsTime(),
-			"beginIP":  beginIP,
-			"endIP":    endIP,
-		})
-	if err != nil {
-		return nil, err
-	}
-	return &sapb.Count{Count: count}, nil
-}
-
 // CountCertificatesByNames counts, for each input domain, the number of
 // certificates issued in the given time range for that domain and its
 // subdomains. It returns a map from domains to counts and a timestamp. The map

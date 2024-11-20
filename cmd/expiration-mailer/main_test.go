@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"net"
 	"strings"
 	"testing"
 	"text/template"
@@ -462,20 +461,10 @@ func TestFindExpiringCertificates(t *testing.T) {
 }
 
 func makeRegistration(sac sapb.StorageAuthorityClient, id int64, jsonKey []byte, contacts []string) (*corepb.Registration, error) {
-	var ip [4]byte
-	_, err := rand.Reader.Read(ip[:])
-	if err != nil {
-		return nil, err
-	}
-	ipText, err := net.IP(ip[:]).MarshalText()
-	if err != nil {
-		return nil, fmt.Errorf("formatting IP address: %s", err)
-	}
 	reg, err := sac.NewRegistration(context.Background(), &corepb.Registration{
-		Id:        id,
-		Contact:   contacts,
-		Key:       jsonKey,
-		InitialIP: ipText,
+		Id:      id,
+		Contact: contacts,
+		Key:     jsonKey,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("storing registration: %s", err)

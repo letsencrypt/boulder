@@ -1083,8 +1083,8 @@ def test_http_multiva_threshold_fail():
         raise(Exception("no HTTP-01 challenge in failed authz"))
     if httpChall.error.typ != "urn:ietf:params:acme:error:unauthorized":
         raise(Exception("expected unauthorized prob, found {0}".format(httpChall.error.typ)))
-    if not httpChall.error.detail.startswith("During secondary validation: "):
-        raise(Exception("expected 'During secondary validation' problem detail, found {0}".format(httpChall.error.detail)))
+    if not httpChall.error.detail.startswith("During secondary domain validation: "):
+        raise(Exception("expected 'During secondary domain validation' problem detail, found {0}".format(httpChall.error.detail)))
 
 class FakeH2ServerHandler(socketserver.BaseRequestHandler):
     """
