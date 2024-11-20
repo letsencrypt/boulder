@@ -304,8 +304,8 @@ func TestPerformValidationValid(t *testing.T) {
 	if len(resultLog) != 1 {
 		t.Fatalf("Wrong number of matching lines for 'Validation result'")
 	}
-	if !strings.Contains(resultLog[0], `"Hostname":"good-dns01.com"`) {
-		t.Error("PerformValidation didn't log validation hostname.")
+	if !strings.Contains(resultLog[0], `"Identifier":"good-dns01.com"`) {
+		t.Error("PerformValidation didn't log validation identifier.")
 	}
 }
 
@@ -332,9 +332,9 @@ func TestPerformValidationWildcard(t *testing.T) {
 		t.Fatalf("Wrong number of matching lines for 'Validation result'")
 	}
 
-	// We expect that the top level Hostname reflect the wildcard name
-	if !strings.Contains(resultLog[0], `"Hostname":"*.good-dns01.com"`) {
-		t.Errorf("PerformValidation didn't log correct validation hostname.")
+	// We expect that the top level Identifier reflect the wildcard name
+	if !strings.Contains(resultLog[0], `"Identifier":"*.good-dns01.com"`) {
+		t.Errorf("PerformValidation didn't log correct validation identifier.")
 	}
 	// We expect that the ValidationRecord contain the correct non-wildcard
 	// hostname that was validated
@@ -451,7 +451,7 @@ func TestMultiVA(t *testing.T) {
 				{brokenVA, "broken"},
 			},
 			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC failed"),
 			// The real failure cause should be logged
 			ExpectedLog: expectedInternalErrLine,
 		},
@@ -478,7 +478,7 @@ func TestMultiVA(t *testing.T) {
 				{brokenVA, "broken"},
 			},
 			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC failed"),
 			// The real failure cause should be logged
 			ExpectedLog: expectedInternalErrLine,
 		},
@@ -507,7 +507,7 @@ func TestMultiVA(t *testing.T) {
 				{brokenVA, "broken"},
 			},
 			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC failed"),
 			// The real failure cause should be logged
 			ExpectedLog: expectedInternalErrLine,
 		},
@@ -517,7 +517,7 @@ func TestMultiVA(t *testing.T) {
 			RemoteVAs:  remoteVAs,
 			AllowedUAs: map[string]bool{localUA: true, remoteUA2: true},
 			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
-				`During secondary validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
+				`During secondary domain validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
 				expectedKeyAuthorization)),
 		},
 		{
@@ -539,7 +539,7 @@ func TestMultiVA(t *testing.T) {
 				{cancelledVA, remoteUA3},
 			},
 			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
+			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC canceled"),
 		},
 		{
 			// With the local and remote VAs seeing diff problems, we expect a problem.
@@ -547,7 +547,7 @@ func TestMultiVA(t *testing.T) {
 			RemoteVAs:  remoteVAs,
 			AllowedUAs: map[string]bool{localUA: true},
 			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
-				`During secondary validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
+				`During secondary domain validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
 				expectedKeyAuthorization)),
 		},
 	}

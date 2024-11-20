@@ -179,7 +179,7 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 	}, nil
 }
 
-func ValidationResultToPB(records []core.ValidationRecord, prob *probs.ProblemDetails) (*vapb.ValidationResult, error) {
+func ValidationResultToPB(records []core.ValidationRecord, prob *probs.ProblemDetails, perspective, rir string) (*vapb.ValidationResult, error) {
 	recordAry := make([]*corepb.ValidationRecord, len(records))
 	var err error
 	for i, v := range records {
@@ -193,8 +193,10 @@ func ValidationResultToPB(records []core.ValidationRecord, prob *probs.ProblemDe
 		return nil, err
 	}
 	return &vapb.ValidationResult{
-		Records:  recordAry,
-		Problems: marshalledProbs,
+		Records:     recordAry,
+		Problems:    marshalledProbs,
+		Perspective: perspective,
+		Rir:         rir,
 	}, nil
 }
 
