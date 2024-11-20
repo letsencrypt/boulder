@@ -25,7 +25,6 @@ extend-ignore-re = [
 "ede" = "ede"
 # Alternative spelling
 "unmarshaling" = "unmarshaling"
-"cancelations" = "cancelations"
 
 [default.extend-identifiers]
 "caaFailer" = "caaFailer"

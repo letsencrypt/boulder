@@ -372,7 +372,7 @@ func TestIsCanceled(t *testing.T) {
 		t.Errorf("Expected context.Canceled to be canceled, but wasn't.")
 	}
 	if !IsCanceled(status.Errorf(codes.Canceled, "hi")) {
-		t.Errorf("Expected gRPC cancelation to be canceled, but wasn't.")
+		t.Errorf("Expected gRPC cancellation to be canceled, but wasn't.")
 	}
 	if IsCanceled(errors.New("hi")) {
 		t.Errorf("Expected random error to not be canceled, but was.")

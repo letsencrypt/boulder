@@ -400,10 +400,9 @@ func IsASCII(str string) bool {
 }
 
 // IsCanceled returns true if err is non-nil and is either context.Canceled, or
-// has a grpc code of Canceled. This is useful because cancelations propagate
-// through gRPC boundaries, and if we choose to treat in-process cancelations a
-// certain way, we usually want to treat cross-process cancelations the same
-// way.
+// has a grpc code of Canceled. This is useful because cancellations propagate
+// through gRPC boundaries, and if we choose to treat in-process cancellations a
+// certain way, we usually want to treat cross-process cancellations the same way.
 func IsCanceled(err error) bool {
 	return errors.Is(err, context.Canceled) || status.Code(err) == codes.Canceled
 }
