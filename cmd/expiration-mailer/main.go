@@ -106,7 +106,7 @@ func (lim *limiter) check(address string) error {
 
 	lim.maybeBumpDay()
 	if lim.counts[address] >= lim.limit {
-		return fmt.Errorf("daily mail limit exceeded for %q", address)
+		return errors.New("daily mail limit exceeded")
 	}
 	return nil
 }
@@ -155,7 +155,7 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 	for _, contact := range contacts {
 		parsed, err := url.Parse(contact)
 		if err != nil {
-			m.log.Errf("parsing contact email %s: %s", contact, err)
+			m.log.Errf("parsing contact email: %s", err)
 			continue
 		}
 		if parsed.Scheme != "mailto" {
@@ -164,7 +164,7 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 		address := parsed.Opaque
 		err = policy.ValidEmail(address)
 		if err != nil {
-			m.log.Debugf("skipping invalid email %q: %s", address, err)
+			m.log.Debugf("skipping invalid email: %s", err)
 			continue
 		}
 		err = m.addressLimiter.check(address)
@@ -249,28 +249,24 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 	}
 
 	logItem := struct {
-		Rcpt              []string
 		DaysToExpiration  int
 		TruncatedDNSNames []string
 		TruncatedSerials  []string
 	}{
-		Rcpt:              emails,
 		DaysToExpiration:  email.DaysToExpiration,
 		TruncatedDNSNames: truncatedDomains,
 		TruncatedSerials:  truncatedSerials,
 	}
 	logStr, err := json.Marshal(logItem)
 	if err != nil {
-		m.log.Errf("logItem could not be serialized to JSON. Raw: %+v", logItem)
-		return err
+		return fmt.Errorf("failed to serialize log line: %w", err)
 	}
-	m.log.Infof("attempting send JSON=%s", string(logStr))
+	m.log.Infof("attempting send for JSON=%s", string(logStr))
 
 	startSending := m.clk.Now()
 	err = conn.SendMail(emails, subjBuf.String(), msgBuf.String())
 	if err != nil {
-		m.log.Errf("failed send JSON=%s err=%s", string(logStr), err)
-		return err
+		return fmt.Errorf("failed send for %s: %w", string(logStr), err)
 	}
 	finishSending := m.clk.Now()
 	elapsed := finishSending.Sub(startSending)

@@ -284,7 +284,7 @@ func (bkr *badKeyRevoker) revokeCerts(revokerEmails []string, emailToCerts map[s
 		err := bkr.sendMessage(email, revokedSerials)
 		if err != nil {
 			mailErrors.Inc()
-			bkr.logger.Errf("failed to send message to %q: %s", email, err)
+			bkr.logger.Errf("failed to send message: %s", err)
 			continue
 		}
 	}
@@ -370,9 +370,11 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 		}
 	}
 
-	revokerEmails := idToEmails[unchecked.RevokedBy]
-	bkr.logger.AuditInfo(fmt.Sprintf("revoking certs. revoked emails=%v, emailsToCerts=%s",
-		revokerEmails, emailsToCerts))
+	serials := make([]string, 0, len(unrevokedCerts))
+	for _, cert := range unrevokedCerts {
+		serials = append(serials, cert.Serial)
+	}
+	bkr.logger.AuditInfo(fmt.Sprintf("revoking serials %v for key with hash %s", serials, unchecked.KeyHash))
 
 	// revoke each certificate and send emails to their owners
 	err = bkr.revokeCerts(idToEmails[unchecked.RevokedBy], emailsToCerts)
