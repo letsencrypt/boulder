@@ -13,7 +13,6 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -234,7 +233,7 @@ func (va *ValidationAuthorityImpl) processRemoteCAAResults(
 // the number of remote VAs. The CAA checks will be performed in separate
 // go-routines. If the result `error` from a remote `isCAAValid` RPC is nil or a
 // nil `ProblemDetails` instance it is written directly to the `results` chan.
-// If the err is a cancelled error it is treated as a nil error. Otherwise the
+// If the err is a canceled error it is treated as a nil error. Otherwise the
 // error/problem is written to the results channel as-is.
 func (va *ValidationAuthorityImpl) performRemoteCAACheck(
 	ctx context.Context,
@@ -248,9 +247,9 @@ func (va *ValidationAuthorityImpl) performRemoteCAACheck(
 			}
 			res, err := rva.IsCAAValid(ctx, req)
 			if err != nil {
-				if canceled.Is(err) {
+				if core.IsCanceled(err) {
 					// Handle the cancellation error.
-					result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC cancelled")
+					result.Problem = probs.ServerInternal("Remote VA IsCAAValid RPC canceled")
 				} else {
 					// Handle validation error.
 					va.log.Errf("Remote VA %q.IsCAAValid failed: %s", rva.Address, err)

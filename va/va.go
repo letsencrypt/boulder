@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -485,7 +484,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			// Failed to communicate with the remote VA.
 			failed = append(failed, resp.addr)
 
-			if canceled.Is(resp.err) {
+			if core.IsCanceled(resp.err) {
 				currProb = probs.ServerInternal("Remote PerformValidation RPC canceled")
 			} else {
 				va.log.Errf("Remote VA %q.PerformValidation failed: %s", resp.addr, resp.err)
