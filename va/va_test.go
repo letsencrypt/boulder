@@ -843,51 +843,6 @@ func TestLogRemoteDifferentials(t *testing.T) {
 	}
 }
 
-// setup returns an in-memory VA and a mock logger. The default resolver client
-// is MockClient{}, but can be overridden.
-func setupVA(srv *httptest.Server, ua string, rvas []RemoteVA, mockDNSClient bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
-	features.Reset()
-	fc := clock.NewFake()
-
-	mockLog := blog.NewMock()
-	if ua == "" {
-		ua = "user agent 1.0"
-	}
-
-	va, err := NewValidationAuthorityImpl(
-		&bdns.MockClient{Log: mockLog},
-		nil,
-		ua,
-		"letsencrypt.org",
-		metrics.NoopRegisterer,
-		fc,
-		mockLog,
-		accountURIPrefixes,
-		PrimaryPerspective,
-		"ARIN",
-	)
-
-	if mockDNSClient != nil {
-		va.dnsClient = mockDNSClient
-	}
-
-	// Adjusting industry regulated ACME challenge port settings is fine during
-	// testing
-	if srv != nil {
-		port := getPort(srv)
-		va.httpPort = port
-		va.tlsPort = port
-	}
-
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
-	}
-	if rvas != nil {
-		va.remoteVAs = rvas
-	}
-	return va, mockLog
-}
-
 type rvaConf struct {
 	// rir is the Regional Internet Registry for the remote VA.
 	rir string
@@ -911,7 +866,7 @@ func setupRVAs(confs []rvaConf, mockDNSClient bdns.Client, srv *httptest.Server)
 		}
 
 		// Configure the remote VA.
-		rva, _ := setupVA(srv, ua, nil, mockDNSClient)
+		rva, _ := setup(srv, ua, nil, mockDNSClient)
 		rva.perspective = fmt.Sprintf("dc-%d-%s", i, c.rir)
 		rva.rir = c.rir
 
@@ -946,7 +901,7 @@ func createDoDCVRequest(domain string, challengeType core.AcmeChallenge) *vapb.D
 
 func TestDoDCVInvalid(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
-	va, mockLog := setupVA(nil, "", rvas, nil)
+	va, mockLog := setup(nil, "", rvas, nil)
 
 	req := createDoDCVRequest("foo.com", core.ChallengeTypeDNS01)
 
@@ -967,7 +922,7 @@ func TestDoDCVInvalid(t *testing.T) {
 
 func TestDoDCVInternalErrorLogged(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
-	va, mockLog := setupVA(nil, "", rvas, nil)
+	va, mockLog := setup(nil, "", rvas, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
@@ -990,7 +945,7 @@ func TestDoDCVInternalErrorLogged(t *testing.T) {
 
 func TestDoDCVValid(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
-	va, mockLog := setupVA(nil, "", rvas, nil)
+	va, mockLog := setup(nil, "", rvas, nil)
 
 	req := createDoDCVRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
@@ -1013,7 +968,7 @@ func TestDoDCVValid(t *testing.T) {
 // wildcard name provided to the DoDCV function.
 func TestDoDCVWildcard(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}, {rir: "APNIC"}}, nil, nil)
-	va, mockLog := setupVA(nil, "", rvas, nil)
+	va, mockLog := setup(nil, "", rvas, nil)
 
 	req := createDoDCVRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
 
@@ -1040,7 +995,7 @@ func TestDoDCVValidWithBrokenRVA(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}}, nil, nil)
 	brokenRVA := RemoteClients{VAClient: brokenRemoteVA{}, CAAClient: brokenRemoteVA{}}
 	rvas = append(rvas, RemoteVA{brokenRVA, "broken"})
-	va, _ := setupVA(nil, "", rvas, nil)
+	va, _ := setup(nil, "", rvas, nil)
 
 	req := createDoDCVRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
@@ -1053,7 +1008,7 @@ func TestDoDCVValidWithCancelledRVA(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}, {rir: "RIPE"}}, nil, nil)
 	cancelledRVA := RemoteClients{VAClient: cancelledVA{}, CAAClient: cancelledVA{}}
 	rvas = append(rvas, RemoteVA{cancelledRVA, "cancelled"})
-	va, _ := setupVA(nil, "", rvas, nil)
+	va, _ := setup(nil, "", rvas, nil)
 
 	req := createDoDCVRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
@@ -1066,13 +1021,13 @@ func TestDoDCVFailsWithTooManyBrokenRVAs(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}}, nil, nil)
 	brokenRVA := RemoteClients{VAClient: brokenRemoteVA{}, CAAClient: brokenRemoteVA{}}
 	rvas = append(rvas, RemoteVA{brokenRVA, "broken"}, RemoteVA{brokenRVA, "broken"})
-	va, _ := setupVA(nil, "", rvas, nil)
+	va, _ := setup(nil, "", rvas, nil)
 
 	req := createDoDCVRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
 	res, err := va.DoDCV(context.Background(), req)
 	test.AssertNotError(t, err, "Failed validation should be a prob but not an error")
-	test.AssertContains(t, res.Problems.Detail, "During secondary domain validation: Secondary domain validation RPC failed")
+	test.AssertContains(t, res.Problems.GetDetail(), "During secondary domain validation: Secondary domain validation RPC failed")
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
 		"operation":      opChall,
 		"perspective":    PrimaryPerspective,
@@ -1086,7 +1041,7 @@ func TestDoDCVFailsWithTooManyCanceledRVAs(t *testing.T) {
 	rvas := setupRVAs([]rvaConf{{rir: "ARIN"}}, nil, nil)
 	canceledRVA := RemoteClients{VAClient: cancelledVA{}, CAAClient: cancelledVA{}}
 	rvas = append(rvas, RemoteVA{canceledRVA, "cancelled"}, RemoteVA{canceledRVA, "cancelled"})
-	va, _ := setupVA(nil, "", rvas, nil)
+	va, _ := setup(nil, "", rvas, nil)
 
 	req := createDoDCVRequest("good-dns01.com", core.ChallengeTypeDNS01)
 
@@ -1248,7 +1203,7 @@ func TestDoDCVMPIC(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			rvas := setupRVAs(tc.rvas, nil, srv.Server)
-			primaryVA, mockLog := setupVA(srv.Server, tc.primaryUA, rvas, nil)
+			primaryVA, mockLog := setup(srv.Server, tc.primaryUA, rvas, nil)
 
 			res, err := primaryVA.DoDCV(ctx, req)
 			test.AssertNotError(t, err, "These cases should only produce a probs, not errors")
