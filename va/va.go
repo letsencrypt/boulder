@@ -461,10 +461,13 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		err    error
 	}
 
+	subCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	responses := make(chan *response, remoteVACount)
 	for _, i := range rand.Perm(remoteVACount) {
 		go func(rva RemoteVA) {
-			res, err := rva.PerformValidation(ctx, req)
+			res, err := rva.PerformValidation(subCtx, req)
 			responses <- &response{rva.Address, res, err}
 		}(va.remoteVAs[i])
 	}
@@ -507,26 +510,32 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			firstProb = currProb
 		}
 
+		// To respond faster, if we get enough successes or too many failures, we cancel remaining RPCs.
+		// Finish the loop to collect remaining responses into `failed` so we can rely on having a response
+		// for every request we made.
 		if len(passed) >= required {
-			// Enough successful responses to reach quorum.
-			return nil
+			cancel()
 		}
 		if len(failed) > va.maxRemoteFailures {
-			// Too many failed responses to reach quorum.
-			firstProb.Detail = fmt.Sprintf("During secondary domain validation: %s", firstProb.Detail)
-			return firstProb
+			cancel()
 		}
 
-		// If we somehow haven't returned early, we need to break the loop once all
-		// of the VAs have returned a result.
+		// Once all the VAs have returned a result, break the loop.
 		if len(passed)+len(failed) >= remoteVACount {
 			break
 		}
 	}
 
-	// This condition should not occur - it indicates the passed/failed counts
-	// neither met the required threshold nor the maxRemoteFailures threshold.
-	return probs.ServerInternal("Too few remote PerformValidation RPC results")
+	if len(passed) >= required {
+		return nil
+	} else if len(failed) > va.maxRemoteFailures {
+		firstProb.Detail = fmt.Sprintf("During secondary domain validation: %s", firstProb.Detail)
+		return firstProb
+	} else {
+		// This condition should not occur - it indicates the passed/failed counts
+		// neither met the required threshold nor the maxRemoteFailures threshold.
+		return probs.ServerInternal("Too few remote PerformValidation RPC results")
+	}
 }
 
 // logRemoteResults is called by `processRemoteCAAResults` when the
