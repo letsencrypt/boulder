@@ -464,10 +464,10 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 
 	responses := make(chan *response, remoteVACount)
 	for _, i := range rand.Perm(remoteVACount) {
-		go func(rva RemoteVA, out chan<- *response) {
+		go func(rva RemoteVA) {
 			res, err := rva.PerformValidation(ctx, req)
-			out <- &response{rva.Address, res, err}
-		}(va.remoteVAs[i], responses)
+			responses <- &response{rva.Address, res, err}
+		}(va.remoteVAs[i])
 	}
 
 	required := remoteVACount - va.maxRemoteFailures
