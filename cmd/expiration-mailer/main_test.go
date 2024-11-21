@@ -180,12 +180,9 @@ func TestSendNags(t *testing.T) {
 	test.AssertErrorIs(t, err, errNoValidEmail)
 	test.AssertEquals(t, len(mc.Messages), 0)
 
-	sendLogs := log.GetAllMatching("INFO: attempting send JSON=.*")
+	sendLogs := log.GetAllMatching("INFO: attempting send for JSON=.*")
 	if len(sendLogs) != 2 {
 		t.Errorf("expected 2 'attempting send' log line, got %d: %s", len(sendLogs), strings.Join(sendLogs, "\n"))
-	}
-	if !strings.Contains(sendLogs[0], `"Rcpt":["rolandshoemaker@gmail.com"]`) {
-		t.Errorf("expected first 'attempting send' log line to have one address, got %q", sendLogs[0])
 	}
 	if !strings.Contains(sendLogs[0], `"TruncatedSerials":["000000000000000000000000000000000304"]`) {
 		t.Errorf("expected first 'attempting send' log line to have one serial, got %q", sendLogs[0])
@@ -195,6 +192,9 @@ func TestSendNags(t *testing.T) {
 	}
 	if !strings.Contains(sendLogs[0], `"TruncatedDNSNames":["example.com"]`) {
 		t.Errorf("expected first 'attempting send' log line to have 1 domain, 'example.com', got %q", sendLogs[0])
+	}
+	if strings.Contains(sendLogs[0], `"@gmail.com"`) {
+		t.Errorf("log line should not contain email address, got %q", sendLogs[0])
 	}
 }
 

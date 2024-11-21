@@ -336,7 +336,7 @@ var forbiddenMailDomains = map[string]bool{
 func ValidEmail(address string) error {
 	email, err := mail.ParseAddress(address)
 	if err != nil {
-		return berrors.InvalidEmailError("unable to parse e-mail address")
+		return berrors.InvalidEmailError("unable to parse email address")
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])

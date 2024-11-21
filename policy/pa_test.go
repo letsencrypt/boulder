@@ -473,10 +473,10 @@ func TestMalformedExactBlocklist(t *testing.T) {
 
 func TestValidEmailError(t *testing.T) {
 	err := ValidEmail("(๑•́ ω •̀๑)")
-	test.AssertEquals(t, err.Error(), "unable to parse e-mail address")
+	test.AssertEquals(t, err.Error(), "unable to parse email address")
 
 	err = ValidEmail("john.smith@gmail.com #replace with real email")
-	test.AssertEquals(t, err.Error(), "unable to parse e-mail address")
+	test.AssertEquals(t, err.Error(), "unable to parse email address")
 
 	err = ValidEmail("example@example.com")
 	test.AssertEquals(t, err.Error(), "contact email has forbidden domain")
