@@ -1460,7 +1460,7 @@ func (wfe *WebFrontEndImpl) updateAccount(
 
 	// If a user tries to send both a deactivation request and an update to
 	// their contacts, the deactivation will take place and return before an
-	// update would be performed. Deactivations delete the contacts field.
+	// update would be performed. Deactivation deletes the contacts field.
 	if accountUpdateRequest.Status == core.StatusDeactivated {
 		_, err = wfe.ra.DeactivateRegistration(ctx, &corepb.Registration{Id: currAcct.ID, Status: string(core.StatusDeactivated)})
 		if err != nil {
@@ -1485,7 +1485,7 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		return nil, web.ProblemDetailsForError(err, "Unable to update account")
 	}
 
-	// Convert proto to core.Registration for return.
+	// Convert proto to core.Registration for return
 	updatedReg, err := bgrpc.PbToRegistration(updatedAcct)
 	if err != nil {
 		return nil, probs.ServerInternal("Error updating account")

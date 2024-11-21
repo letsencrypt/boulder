@@ -196,7 +196,10 @@ func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *co
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistrationContact(ctx context.Context, in *rapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	return &corepb.Registration{Contact: in.Contacts}, nil
+	return &corepb.Registration{
+		Contact: in.Contacts,
+		Key:     []byte(test1KeyPublicJSON),
+	}, nil
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistrationKey(ctx context.Context, in *rapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
@@ -3209,7 +3212,6 @@ func TestKeyRollover(t *testing.T) {
 			Payload: `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "key": ` + string(newJWKJSON) + `,
-		     "initialIp": "",
 		     "status": ""
 		   }`,
 			NewKey: newKeyPriv,
