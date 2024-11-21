@@ -1463,32 +1463,21 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		return nil, probs.Malformed("Error unmarshaling account")
 	}
 
-	// People *will* POST their full accounts to this endpoint, including the
-	// 'valid' status. To avoid always failing out when that happens, only
-	// attempt to deactivate if the provided status is different from their
-	// current status.
-	//
 	// If a user tries to send both a deactivation request and an update to
-	// their contacts or subscriber agreement URL, the deactivation will take
-	// place and return before an update would be performed.
-	if accountUpdateRequest.Status != "" && accountUpdateRequest.Status != currAcct.Status {
-		if accountUpdateRequest.Status != core.StatusDeactivated {
-			return nil, probs.Malformed("Invalid value provided for status field")
-		}
-
-		// Convert existing account to corepb.Registration
-		basePb, err := bgrpc.RegistrationToPB(*currAcct)
-		if err != nil {
-			return nil, probs.ServerInternal("Error deactivating account")
-		}
-
-		_, err = wfe.ra.DeactivateRegistration(ctx, basePb)
+	// their contacts, the deactivation will take place and return before an
+	// update would be performed. Deactivations delete the contacts field.
+	if accountUpdateRequest.Status == core.StatusDeactivated {
+		_, err = wfe.ra.DeactivateRegistration(ctx, &corepb.Registration{Id: currAcct.ID, Status: string(core.StatusDeactivated)})
 		if err != nil {
 			return nil, web.ProblemDetailsForError(err, "Unable to deactivate account")
 		}
 
 		currAcct.Status = core.StatusDeactivated
 		return currAcct, nil
+	}
+
+	if accountUpdateRequest.Status != core.StatusValid && accountUpdateRequest.Status != "" {
+		return nil, probs.Malformed("Invalid value provided for status field")
 	}
 
 	var contacts []string
