@@ -386,47 +386,10 @@ type finalizationCAACheckEvent struct {
 	Rechecked int `json:",omitempty"`
 }
 
-// noRegistrationID is used for the regID parameter to GetThreshold when no
-// registration-based overrides are necessary.
-const noRegistrationID = -1
-
-// registrationCounter is a type to abstract the use of `CountRegistrationsByIP`
-// or `CountRegistrationsByIPRange` SA methods.
-type registrationCounter func(context.Context, *sapb.CountRegistrationsByIPRequest, ...grpc.CallOption) (*sapb.Count, error)
-
-// checkRegistrationIPLimit checks a specific registraton limit by using the
-// provided registrationCounter function to determine if the limit has been
-// exceeded for a given IP or IP range
-func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Context, limit ratelimit.RateLimitPolicy, ip net.IP, counter registrationCounter) error {
-	now := ra.clk.Now()
-	count, err := counter(ctx, &sapb.CountRegistrationsByIPRequest{
-		Ip: ip,
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(limit.WindowBegin(now)),
-			Latest:   timestamppb.New(now),
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	threshold, overrideKey := limit.GetThreshold(ip.String(), noRegistrationID)
-	if count.Count >= threshold {
-		return berrors.RegistrationsPerIPAddressError(0, "too many registrations for this IP")
-	}
-	if overrideKey != "" {
-		// We do not support overrides for the NewRegistrationsPerIPRange limit.
-		utilization := float64(count.Count+1) / float64(threshold)
-		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.RegistrationsPerIP, overrideKey).Set(utilization)
-	}
-
-	return nil
-}
-
 // NewRegistration constructs a new Registration from a request.
 func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, request *corepb.Registration) (*corepb.Registration, error) {
 	// Error if the request is nil, there is no account key or IP address
-	if request == nil || len(request.Key) == 0 || len(request.InitialIP) == 0 {
+	if request == nil || len(request.Key) == 0 {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -457,7 +420,6 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 		Contact:         request.Contact,
 		ContactsPresent: request.ContactsPresent,
 		Agreement:       request.Agreement,
-		InitialIP:       request.InitialIP,
 		Status:          string(core.StatusValid),
 	}
 
@@ -1627,7 +1589,7 @@ func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, na
 // Deprecated: Use UpdateRegistrationContact or UpdateRegistrationKey instead.
 func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
 	// Error if the request is nil, there is no account key or IP address
-	if req.Base == nil || len(req.Base.Key) == 0 || len(req.Base.InitialIP) == 0 || req.Base.Id == 0 {
+	if req.Base == nil || len(req.Base.Key) == 0 || req.Base.Id == 0 {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -1741,7 +1703,6 @@ func mergeUpdate(base *corepb.Registration, update *corepb.Registration) (*corep
 		Contact:         base.Contact,
 		ContactsPresent: base.ContactsPresent,
 		Agreement:       base.Agreement,
-		InitialIP:       base.InitialIP,
 		CreatedAt:       base.CreatedAt,
 		Status:          base.Status,
 	}
@@ -1792,7 +1753,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	} else {
 		expires = ra.clk.Now().Add(ra.authorizationLifetime)
 	}
-	vr, err := bgrpc.ValidationResultToPB(challenge.ValidationRecord, challenge.Error)
+	vr, err := bgrpc.ValidationResultToPB(challenge.ValidationRecord, challenge.Error, "", "")
 	if err != nil {
 		return err
 	}

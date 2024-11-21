@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -281,15 +280,16 @@ func maxAllowedFailures(perspectiveCount int) int {
 	return 2
 }
 
-// Used for audit logging
+// verificationRequestEvent is logged once for each validation attempt. Its
+// fields are exported for logging purposes.
 type verificationRequestEvent struct {
-	ID                string         `json:",omitempty"`
-	Requester         int64          `json:",omitempty"`
-	Hostname          string         `json:",omitempty"`
-	Challenge         core.Challenge `json:",omitempty"`
-	ValidationLatency float64
-	Error             string `json:",omitempty"`
-	InternalError     string `json:",omitempty"`
+	AuthzID       string
+	Requester     int64
+	Identifier    string
+	Challenge     core.Challenge
+	Error         string `json:",omitempty"`
+	InternalError string `json:",omitempty"`
+	Latency       float64
 }
 
 // ipError is an error type used to pass though the IP address of the remote
@@ -461,16 +461,15 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		err    error
 	}
 
+	subCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	responses := make(chan *response, remoteVACount)
 	for _, i := range rand.Perm(remoteVACount) {
-		go func(rva RemoteVA, out chan<- *response) {
-			res, err := rva.PerformValidation(ctx, req)
-			out <- &response{
-				addr:   rva.Address,
-				result: res,
-				err:    err,
-			}
-		}(va.remoteVAs[i], responses)
+		go func(rva RemoteVA) {
+			res, err := rva.PerformValidation(subCtx, req)
+			responses <- &response{rva.Address, res, err}
+		}(va.remoteVAs[i])
 	}
 
 	required := remoteVACount - va.maxRemoteFailures
@@ -485,11 +484,11 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			// Failed to communicate with the remote VA.
 			failed = append(failed, resp.addr)
 
-			if canceled.Is(resp.err) {
-				currProb = probs.ServerInternal("Remote PerformValidation RPC canceled")
+			if core.IsCanceled(resp.err) {
+				currProb = probs.ServerInternal("Secondary domain validation RPC canceled")
 			} else {
 				va.log.Errf("Remote VA %q.PerformValidation failed: %s", resp.addr, resp.err)
-				currProb = probs.ServerInternal("Remote PerformValidation RPC failed")
+				currProb = probs.ServerInternal("Secondary domain validation RPC failed")
 			}
 		} else if resp.result.Problems != nil {
 			// The remote VA returned a problem.
@@ -499,7 +498,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problems)
 			if err != nil {
 				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", resp.addr, err)
-				currProb = probs.ServerInternal("Remote PerformValidation RPC returned malformed result")
+				currProb = probs.ServerInternal("Secondary domain validation RPC returned malformed result")
 			}
 		} else {
 			// The remote VA returned a successful result.
@@ -511,26 +510,32 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			firstProb = currProb
 		}
 
+		// To respond faster, if we get enough successes or too many failures, we cancel remaining RPCs.
+		// Finish the loop to collect remaining responses into `failed` so we can rely on having a response
+		// for every request we made.
 		if len(passed) >= required {
-			// Enough successful responses to reach quorum.
-			return nil
+			cancel()
 		}
 		if len(failed) > va.maxRemoteFailures {
-			// Too many failed responses to reach quorum.
-			firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
-			return firstProb
+			cancel()
 		}
 
-		// If we somehow haven't returned early, we need to break the loop once all
-		// of the VAs have returned a result.
+		// Once all the VAs have returned a result, break the loop.
 		if len(passed)+len(failed) >= remoteVACount {
 			break
 		}
 	}
 
-	// This condition should not occur - it indicates the passed/failed counts
-	// neither met the required threshold nor the maxRemoteFailures threshold.
-	return probs.ServerInternal("Too few remote PerformValidation RPC results")
+	if len(passed) >= required {
+		return nil
+	} else if len(failed) > va.maxRemoteFailures {
+		firstProb.Detail = fmt.Sprintf("During secondary domain validation: %s", firstProb.Detail)
+		return firstProb
+	} else {
+		// This condition should not occur - it indicates the passed/failed counts
+		// neither met the required threshold nor the maxRemoteFailures threshold.
+		return probs.ServerInternal("Too few remote PerformValidation RPC results")
+	}
 }
 
 // logRemoteResults is called by `processRemoteCAAResults` when the
@@ -623,9 +628,16 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 	return records, nil
 }
 
-// PerformValidation validates the challenge for the domain in the request.
-// The returned result will always contain a list of validation records, even
-// when it also contains a problem.
+// PerformValidation conducts a local Domain Control Validation (DCV) and CAA
+// check for the specified challenge and dnsName. When invoked on the primary
+// Validation Authority (VA) and the local validation succeeds, it also performs
+// DCV and CAA checks using the configured remote VAs. Failed validations are
+// indicated by a non-nil Problems in the returned ValidationResult.
+// PerformValidation returns error only for internal logic errors (and the
+// client may receive errors from gRPC in the event of a communication problem).
+// ValidationResult always includes a list of ValidationRecords, even when it
+// also contains Problems. This method does NOT implement Multi-Perspective
+// Issuance Corroboration as defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
 	if core.IsAnyNilOrZero(req, req.DnsName, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
@@ -648,10 +660,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	var localLatency time.Duration
 	start := va.clk.Now()
 	logEvent := verificationRequestEvent{
-		ID:        req.Authz.Id,
-		Requester: req.Authz.RegID,
-		Hostname:  req.DnsName,
-		Challenge: chall,
+		AuthzID:    req.Authz.Id,
+		Requester:  req.Authz.RegID,
+		Identifier: req.DnsName,
+		Challenge:  chall,
 	}
 	defer func() {
 		probType := ""
@@ -673,7 +685,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		}
 
 		// Log the total validation latency.
-		logEvent.ValidationLatency = time.Since(start).Round(time.Millisecond).Seconds()
+		logEvent.Latency = time.Since(start).Round(time.Millisecond).Seconds()
 		va.log.AuditObject("Validation result", logEvent)
 	}()
 
@@ -701,7 +713,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	if err != nil {
 		logEvent.InternalError = err.Error()
 		prob = detailedError(err)
-		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
+		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 	}
 
 	// Do remote validation. We do this after local validation is complete to
@@ -710,5 +722,5 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// own validation records, and it's not helpful to present multiple large
 	// errors to the end user.
 	prob = va.performRemoteValidation(ctx, req)
-	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob))
+	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 }

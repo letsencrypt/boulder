@@ -103,6 +103,9 @@ func createValidationRequest(domain string, challengeType core.AcmeChallenge) *v
 
 // setup returns an in-memory VA and a mock logger. The default resolver client
 // is MockClient{}, but can be overridden.
+//
+// If remoteVAs is nil, this builds a VA that acts like a remote (and does not
+// perform multi-perspective validation). Otherwise it acts like a primary.
 func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
 	features.Reset()
 	fc := clock.NewFake()
@@ -111,6 +114,13 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 
 	if userAgent == "" {
 		userAgent = "user agent 1.0"
+	}
+
+	perspective := PrimaryPerspective
+	if len(remoteVAs) == 0 {
+		// We're being set up as a remote. Use a distinct perspective from other remotes
+		// to better simulate what prod will be like.
+		perspective = "example perspective " + core.RandomString(4)
 	}
 
 	va, err := NewValidationAuthorityImpl(
@@ -122,9 +132,12 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 		fc,
 		logger,
 		accountURIPrefixes,
-		PrimaryPerspective,
+		perspective,
 		"",
 	)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
+	}
 
 	if mockDNSClientOverride != nil {
 		va.dnsClient = mockDNSClientOverride
@@ -138,9 +151,6 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 		va.tlsPort = port
 	}
 
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
-	}
 	return va, logger
 }
 
@@ -255,7 +265,7 @@ func TestPerformValidationInvalid(t *testing.T) {
 	test.Assert(t, res.Problems != nil, "validation succeeded")
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
 		"operation":      opChallAndCAA,
-		"perspective":    PrimaryPerspective,
+		"perspective":    va.perspective,
 		"challenge_type": string(core.ChallengeTypeDNS01),
 		"problem_type":   string(probs.UnauthorizedProblem),
 		"result":         fail,
@@ -285,7 +295,7 @@ func TestPerformValidationValid(t *testing.T) {
 
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
 		"operation":      opChallAndCAA,
-		"perspective":    PrimaryPerspective,
+		"perspective":    va.perspective,
 		"challenge_type": string(core.ChallengeTypeDNS01),
 		"problem_type":   "",
 		"result":         pass,
@@ -294,8 +304,8 @@ func TestPerformValidationValid(t *testing.T) {
 	if len(resultLog) != 1 {
 		t.Fatalf("Wrong number of matching lines for 'Validation result'")
 	}
-	if !strings.Contains(resultLog[0], `"Hostname":"good-dns01.com"`) {
-		t.Error("PerformValidation didn't log validation hostname.")
+	if !strings.Contains(resultLog[0], `"Identifier":"good-dns01.com"`) {
+		t.Error("PerformValidation didn't log validation identifier.")
 	}
 }
 
@@ -312,7 +322,7 @@ func TestPerformValidationWildcard(t *testing.T) {
 
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
 		"operation":      opChallAndCAA,
-		"perspective":    PrimaryPerspective,
+		"perspective":    va.perspective,
 		"challenge_type": string(core.ChallengeTypeDNS01),
 		"problem_type":   "",
 		"result":         pass,
@@ -322,9 +332,9 @@ func TestPerformValidationWildcard(t *testing.T) {
 		t.Fatalf("Wrong number of matching lines for 'Validation result'")
 	}
 
-	// We expect that the top level Hostname reflect the wildcard name
-	if !strings.Contains(resultLog[0], `"Hostname":"*.good-dns01.com"`) {
-		t.Errorf("PerformValidation didn't log correct validation hostname.")
+	// We expect that the top level Identifier reflect the wildcard name
+	if !strings.Contains(resultLog[0], `"Identifier":"*.good-dns01.com"`) {
+		t.Errorf("PerformValidation didn't log correct validation identifier.")
 	}
 	// We expect that the ValidationRecord contain the correct non-wildcard
 	// hostname that was validated
@@ -423,15 +433,6 @@ func TestMultiVA(t *testing.T) {
 			ExpectedProb: unauthorized,
 		},
 		{
-			// If one out of two remote VAs fail with an internal err it should succeed
-			Name: "Local VA ok, 1/2 remote VA internal err",
-			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{brokenVA, "broken"},
-			},
-			AllowedUAs: allowedUAs,
-		},
-		{
 			// If one out of three remote VAs fails with an internal err it should succeed
 			Name: "Local VA ok, 1/3 remote VA internal err",
 			RemoteVAs: []RemoteVA{
@@ -450,7 +451,7 @@ func TestMultiVA(t *testing.T) {
 				{brokenVA, "broken"},
 			},
 			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC failed"),
 			// The real failure cause should be logged
 			ExpectedLog: expectedInternalErrLine,
 		},
@@ -477,7 +478,7 @@ func TestMultiVA(t *testing.T) {
 				{brokenVA, "broken"},
 			},
 			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC failed"),
 			// The real failure cause should be logged
 			ExpectedLog: expectedInternalErrLine,
 		},
@@ -506,7 +507,7 @@ func TestMultiVA(t *testing.T) {
 				{brokenVA, "broken"},
 			},
 			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC failed"),
+			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC failed"),
 			// The real failure cause should be logged
 			ExpectedLog: expectedInternalErrLine,
 		},
@@ -516,7 +517,7 @@ func TestMultiVA(t *testing.T) {
 			RemoteVAs:  remoteVAs,
 			AllowedUAs: map[string]bool{localUA: true, remoteUA2: true},
 			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
-				`During secondary validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
+				`During secondary domain validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
 				expectedKeyAuthorization)),
 		},
 		{
@@ -530,15 +531,15 @@ func TestMultiVA(t *testing.T) {
 			AllowedUAs: allowedUAs,
 		},
 		{
-			// If two remote VA cancels, it should fail
-			Name: "Local VA OK, two cancelled remote VAs",
+			// If all remote VAs cancel, it should fail
+			Name: "Local VA OK, three cancelled remote VAs",
 			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
 				{cancelledVA, remoteUA1},
 				{cancelledVA, remoteUA2},
+				{cancelledVA, remoteUA3},
 			},
 			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary validation: Remote PerformValidation RPC canceled"),
+			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC canceled"),
 		},
 		{
 			// With the local and remote VAs seeing diff problems, we expect a problem.
@@ -546,7 +547,7 @@ func TestMultiVA(t *testing.T) {
 			RemoteVAs:  remoteVAs,
 			AllowedUAs: map[string]bool{localUA: true},
 			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
-				`During secondary validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
+				`During secondary domain validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
 				expectedKeyAuthorization)),
 		},
 	}
@@ -645,13 +646,15 @@ func TestMultiVAPolicy(t *testing.T) {
 	const (
 		remoteUA1 = "remote 1"
 		remoteUA2 = "remote 2"
+		remoteUA3 = "remote 3"
 		localUA   = "local 1"
 	)
-	// Forbid both remote UAs to ensure that multi-va fails
+	// Forbid all remote UAs to ensure that multi-va fails
 	allowedUAs := map[string]bool{
 		localUA:   true,
 		remoteUA1: false,
 		remoteUA2: false,
+		remoteUA3: false,
 	}
 
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
@@ -659,10 +662,12 @@ func TestMultiVAPolicy(t *testing.T) {
 
 	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
 	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
+	remoteVA3 := setupRemote(ms.Server, remoteUA3, nil, "", "")
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
 		{remoteVA2, remoteUA2},
+		{remoteVA3, remoteUA3},
 	}
 
 	// Create a local test VA with the two remote VAs
@@ -681,6 +686,7 @@ func TestMultiVALogging(t *testing.T) {
 	const (
 		rva1UA  = "remote 1"
 		rva2UA  = "remote 2"
+		rva3UA  = "remote 3"
 		localUA = "local 1"
 	)
 
@@ -689,10 +695,12 @@ func TestMultiVALogging(t *testing.T) {
 
 	rva1 := setupRemote(ms.Server, rva1UA, nil, "dev-arin", "ARIN")
 	rva2 := setupRemote(ms.Server, rva2UA, nil, "dev-ripe", "RIPE")
+	rva3 := setupRemote(ms.Server, rva3UA, nil, "dev-ripe", "RIPE")
 
 	remoteVAs := []RemoteVA{
 		{rva1, rva1UA},
 		{rva2, rva2UA},
+		{rva3, rva3UA},
 	}
 	va, _ := setup(ms.Server, localUA, remoteVAs, nil)
 	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
