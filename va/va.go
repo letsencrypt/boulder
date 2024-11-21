@@ -87,7 +87,9 @@ type RemoteClients struct {
 // extract this metadata which is useful for debugging gRPC connection issues.
 type RemoteVA struct {
 	RemoteClients
-	Address string
+	Address     string
+	Perspective string
+	RIR         string
 }
 
 type vaMetrics struct {
@@ -233,6 +235,15 @@ func NewValidationAuthorityImpl(
 
 	if len(accountURIPrefixes) == 0 {
 		return nil, errors.New("no account URI prefixes configured")
+	}
+
+	for i, va1 := range remoteVAs {
+		for j, va2 := range remoteVAs {
+			// TODO(#7615): Remove the != "" check once perspective is required.
+			if i != j && va1.Perspective == va2.Perspective && va1.Perspective != "" {
+				return nil, fmt.Errorf("duplicate remote VA perspective %q", va1.Perspective)
+			}
+		}
 	}
 
 	pc := newDefaultPortConfig()
@@ -456,9 +467,11 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	}
 
 	type response struct {
-		addr   string
-		result *vapb.ValidationResult
-		err    error
+		addr        string
+		perspective string
+		rir         string
+		result      *vapb.ValidationResult
+		err         error
 	}
 
 	subCtx, cancel := context.WithCancel(ctx)
@@ -468,7 +481,17 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	for _, i := range rand.Perm(remoteVACount) {
 		go func(rva RemoteVA) {
 			res, err := rva.PerformValidation(subCtx, req)
-			responses <- &response{rva.Address, res, err}
+			if res == nil {
+				responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
+				return
+			}
+			if rva.Perspective != res.Perspective || rva.RIR != res.Rir {
+				err = fmt.Errorf(
+					"Remote VA %q.PerformValidation result included mismatched Perspective result=[%q] configured=[%q] and/or RIR result=[%q] configured=[%q]",
+					rva.Perspective, res.Perspective, rva.Perspective, res.Rir, rva.RIR,
+				)
+			}
+			responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
 		}(va.remoteVAs[i])
 	}
 
@@ -482,7 +505,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 
 		if resp.err != nil {
 			// Failed to communicate with the remote VA.
-			failed = append(failed, resp.addr)
+			failed = append(failed, resp.perspective)
 
 			if core.IsCanceled(resp.err) {
 				currProb = probs.ServerInternal("Secondary domain validation RPC canceled")
@@ -492,7 +515,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			}
 		} else if resp.result.Problems != nil {
 			// The remote VA returned a problem.
-			failed = append(failed, resp.result.Perspective)
+			failed = append(failed, resp.perspective)
 
 			var err error
 			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problems)
@@ -502,7 +525,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			}
 		} else {
 			// The remote VA returned a successful result.
-			passed = append(passed, resp.result.Perspective)
+			passed = append(passed, resp.perspective)
 		}
 
 		if firstProb == nil && currProb != nil {

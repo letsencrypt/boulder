@@ -590,9 +590,8 @@ func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, s
 }
 
 func TestDisabledMultiCAARechecking(t *testing.T) {
-	brokenRVA := setupRemote(nil, "broken", caaBrokenDNS{}, "", "")
-	remoteVAs := []RemoteVA{{brokenRVA, "broken"}}
-	va, _ := setup(nil, "local", remoteVAs, nil)
+	remoteVAs := []remoteConf{{ua: "broken", rir: arin, dns: caaBrokenDNS{}}}
+	va, _ := setupWithRemotes(nil, "local", remoteVAs, nil)
 
 	features.Set(features.Config{
 		EnforceMultiCAA:     false,
@@ -664,15 +663,11 @@ func TestMultiCAARechecking(t *testing.T) {
 		brokenUA   = "broken"
 		hijackedUA = "hijacked"
 	)
-	remoteVA := setupRemote(nil, remoteUA, nil, "", "")
-	brokenVA := setupRemote(nil, brokenUA, caaBrokenDNS{}, "", "")
-	// Returns incorrect results
-	hijackedVA := setupRemote(nil, hijackedUA, caaHijackedDNS{}, "", "")
 
 	testCases := []struct {
 		name                     string
 		domains                  string
-		remoteVAs                []RemoteVA
+		remoteVAs                []remoteConf
 		expectedProbSubstring    string
 		expectedProbType         probs.ProblemType
 		expectedDiffLogSubstring string
@@ -683,10 +678,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			name:           "all VAs functional, no CAA records",
 			domains:        "present-dns-only.com",
 			localDNSClient: caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{remoteVA, remoteUA},
-				{remoteVA, remoteUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: remoteUA, rir: arin},
+				{ua: remoteUA, rir: ripe},
+				{ua: remoteUA, rir: apnic},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -702,10 +697,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			localDNSClient:        caaBrokenDNS{},
 			expectedProbSubstring: "While processing CAA for present-dns-only.com: dnsClient is broken",
 			expectedProbType:      probs.DNSProblem,
-			remoteVAs: []RemoteVA{
-				{remoteVA, remoteUA},
-				{remoteVA, remoteUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: remoteUA, rir: arin},
+				{ua: remoteUA, rir: ripe},
+				{ua: remoteUA, rir: apnic},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -720,10 +715,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			domains:                  "present-dns-only.com",
 			localDNSClient:           caaMockDNS{},
 			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for`,
-			remoteVAs: []RemoteVA{
-				{brokenVA, brokenUA},
-				{remoteVA, remoteUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
+				{ua: remoteUA, rir: ripe},
+				{ua: remoteUA, rir: apnic},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -740,10 +735,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbType:         probs.DNSProblem,
 			expectedDiffLogSubstring: `RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{brokenVA, brokenUA},
-				{brokenVA, brokenUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
+				{ua: brokenUA, rir: ripe, dns: caaBrokenDNS{}},
+				{ua: remoteUA, rir: apnic},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -760,10 +755,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbType:         probs.DNSProblem,
 			expectedDiffLogSubstring: `RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{brokenVA, brokenUA},
-				{brokenVA, brokenUA},
-				{brokenVA, brokenUA},
+			remoteVAs: []remoteConf{
+				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
+				{ua: brokenUA, rir: ripe, dns: caaBrokenDNS{}},
+				{ua: brokenUA, rir: apnic, dns: caaBrokenDNS{}},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -777,10 +772,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			name:           "all VAs functional, CAA issue type present",
 			domains:        "present.com",
 			localDNSClient: caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{remoteVA, remoteUA},
-				{remoteVA, remoteUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: remoteUA, rir: arin},
+				{ua: remoteUA, rir: ripe},
+				{ua: remoteUA, rir: apnic},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -795,10 +790,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			domains:                  "present.com",
 			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{brokenVA, brokenUA},
-				{remoteVA, remoteUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
+				{ua: remoteUA, rir: ripe},
+				{ua: remoteUA, rir: apnic},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -815,10 +810,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbType:         probs.DNSProblem,
 			expectedDiffLogSubstring: `RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{brokenVA, brokenUA},
-				{brokenVA, brokenUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
+				{ua: brokenUA, rir: ripe, dns: caaBrokenDNS{}},
+				{ua: remoteUA, rir: apnic},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -835,10 +830,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbType:         probs.DNSProblem,
 			expectedDiffLogSubstring: `RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{brokenVA, brokenUA},
-				{brokenVA, brokenUA},
-				{brokenVA, brokenUA},
+			remoteVAs: []remoteConf{
+				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
+				{ua: brokenUA, rir: ripe, dns: caaBrokenDNS{}},
+				{ua: brokenUA, rir: apnic, dns: caaBrokenDNS{}},
 			},
 			expectedLabels: prometheus.Labels{
 				"operation":      opCAA,
@@ -857,10 +852,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbSubstring: "CAA record for unsatisfiable.com prevents issuance",
 			expectedProbType:      probs.CAAProblem,
 			localDNSClient:        caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{remoteVA, remoteUA},
-				{remoteVA, remoteUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: remoteUA, rir: arin},
+				{ua: remoteUA, rir: ripe},
+				{ua: remoteUA, rir: apnic},
 			},
 		},
 		{
@@ -868,10 +863,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			domains:                  "present.com",
 			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{hijackedVA, hijackedUA},
-				{remoteVA, remoteUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
+				{ua: remoteUA, rir: ripe},
+				{ua: remoteUA, rir: apnic},
 			},
 		},
 		{
@@ -881,10 +876,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{hijackedVA, hijackedUA},
-				{hijackedVA, hijackedUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
+				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
+				{ua: remoteUA, rir: apnic},
 			},
 		},
 		{
@@ -894,10 +889,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{hijackedVA, hijackedUA},
-				{hijackedVA, hijackedUA},
-				{hijackedVA, hijackedUA},
+			remoteVAs: []remoteConf{
+				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
+				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
+				{ua: hijackedUA, rir: apnic, dns: caaHijackedDNS{}},
 			},
 		},
 		{
@@ -905,10 +900,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			domains:                  "satisfiable-wildcard.com",
 			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{hijackedVA, hijackedUA},
-				{remoteVA, remoteUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
+				{ua: remoteUA, rir: ripe},
+				{ua: remoteUA, rir: apnic},
 			},
 		},
 		{
@@ -918,10 +913,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{hijackedVA, hijackedUA},
-				{hijackedVA, hijackedUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
+				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
+				{ua: remoteUA, rir: apnic},
 			},
 		},
 		{
@@ -931,10 +926,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{hijackedVA, hijackedUA},
-				{hijackedVA, hijackedUA},
-				{hijackedVA, hijackedUA},
+			remoteVAs: []remoteConf{
+				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
+				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
+				{ua: hijackedUA, rir: apnic, dns: caaHijackedDNS{}},
 			},
 		},
 		{
@@ -942,10 +937,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			domains:                  "satisfiable-wildcard.com",
 			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{hijackedVA, hijackedUA},
-				{remoteVA, remoteUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
+				{ua: remoteUA, rir: ripe},
+				{ua: remoteUA, rir: apnic},
 			},
 		},
 		{
@@ -955,10 +950,10 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{hijackedVA, hijackedUA},
-				{hijackedVA, hijackedUA},
-				{remoteVA, remoteUA},
+			remoteVAs: []remoteConf{
+				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
+				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
+				{ua: remoteUA, rir: apnic},
 			},
 		},
 		{
@@ -968,17 +963,17 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
 			localDNSClient:           caaMockDNS{},
-			remoteVAs: []RemoteVA{
-				{hijackedVA, hijackedUA},
-				{hijackedVA, hijackedUA},
-				{hijackedVA, hijackedUA},
+			remoteVAs: []remoteConf{
+				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
+				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
+				{ua: hijackedUA, rir: apnic, dns: caaHijackedDNS{}},
 			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			va, mockLog := setup(nil, localUA, tc.remoteVAs, tc.localDNSClient)
+			va, mockLog := setupWithRemotes(nil, localUA, tc.remoteVAs, tc.localDNSClient)
 			defer mockLog.Clear()
 
 			// MultiCAAFullResults: false is inherently flaky because of the
@@ -1011,8 +1006,8 @@ func TestMultiCAARechecking(t *testing.T) {
 			}
 
 			var invalidRVACount int
-			for _, x := range va.remoteVAs {
-				if x.Address == "broken" || x.Address == "hijacked" {
+			for _, x := range tc.remoteVAs {
+				if x.ua == brokenUA || x.ua == hijackedUA {
 					invalidRVACount++
 				}
 			}

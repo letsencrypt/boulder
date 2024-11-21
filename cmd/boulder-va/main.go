@@ -18,7 +18,7 @@ import (
 type Config struct {
 	VA struct {
 		vaConfig.Common
-		RemoteVAs []cmd.GRPCClientConfig `validate:"omitempty,dive"`
+		RemoteVAs []cmd.RemoteVAGRPCClientConfig `validate:"omitempty,dive"`
 		// Deprecated and ignored
 		MaxRemoteValidationFailures int `validate:"omitempty,min=0,required_with=RemoteVAs"`
 		Features                    features.Config
@@ -92,7 +92,7 @@ func main() {
 	if len(c.VA.RemoteVAs) > 0 {
 		for _, rva := range c.VA.RemoteVAs {
 			rva := rva
-			vaConn, err := bgrpc.ClientSetup(&rva, tlsConfig, scope, clk)
+			vaConn, err := bgrpc.ClientSetup(&rva.GRPCClientConfig, tlsConfig, scope, clk)
 			cmd.FailOnError(err, "Unable to create remote VA client")
 			remotes = append(
 				remotes,
@@ -101,7 +101,9 @@ func main() {
 						VAClient:  vapb.NewVAClient(vaConn),
 						CAAClient: vapb.NewCAAClient(vaConn),
 					},
-					Address: rva.ServerAddress,
+					Address:     rva.ServerAddress,
+					Perspective: rva.Perspective,
+					RIR:         rva.RIR,
 				},
 			)
 		}
