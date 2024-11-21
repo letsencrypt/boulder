@@ -2554,12 +2554,22 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// from expiring.
 	authzExpiryCutoff := ra.clk.Now().AddDate(0, 0, 1)
 
-	getAuthReq := &sapb.GetAuthorizationsRequest{
-		RegistrationID: newOrder.RegistrationID,
-		ValidUntil:     timestamppb.New(authzExpiryCutoff),
-		DnsNames:       newOrder.DnsNames,
+	var existingAuthz *sapb.Authorizations
+	if features.Get().NoPendingAuthzReuse {
+		getAuthReq := &sapb.GetValidAuthorizationsRequest{
+			RegistrationID: newOrder.RegistrationID,
+			ValidUntil:     timestamppb.New(authzExpiryCutoff),
+			DnsNames:       newOrder.DnsNames,
+		}
+		existingAuthz, err = ra.SA.GetValidAuthorizations2(ctx, getAuthReq)
+	} else {
+		getAuthReq := &sapb.GetAuthorizationsRequest{
+			RegistrationID: newOrder.RegistrationID,
+			ValidUntil:     timestamppb.New(authzExpiryCutoff),
+			DnsNames:       newOrder.DnsNames,
+		}
+		existingAuthz, err = ra.SA.GetAuthorizations2(ctx, getAuthReq)
 	}
-	existingAuthz, err := ra.SA.GetAuthorizations2(ctx, getAuthReq)
 	if err != nil {
 		return nil, err
 	}
