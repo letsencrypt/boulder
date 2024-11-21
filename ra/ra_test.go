@@ -865,12 +865,12 @@ func (msa *mockSAPaused) FinalizeAuthorization2(ctx context.Context, req *sapb.F
 }
 
 func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *testing.T) {
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		t.Skip()
-	}
-
 	va, sa, ra, redisSrc, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
+
+	if ra.limiter == nil {
+		t.Skip("no redis limiter configured")
+	}
 
 	features.Set(features.Config{AutomaticallyPauseZombieClients: true})
 	defer features.Reset()
@@ -988,12 +988,12 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 }
 
 func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersRatelimit(t *testing.T) {
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		t.Skip()
-	}
-
 	va, sa, ra, redisSrc, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
+
+	if ra.limiter == nil {
+		t.Skip("no redis limiter configured")
+	}
 
 	features.Set(features.Config{AutomaticallyPauseZombieClients: true})
 	defer features.Reset()
@@ -1776,6 +1776,74 @@ func TestDeactivateAuthorization(t *testing.T) {
 	deact, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "Could not get deactivated authorization with ID "+dbAuthzPB.Id)
 	test.AssertEquals(t, deact.Status, string(core.StatusDeactivated))
+}
+
+type mockSARecordingPauses struct {
+	sapb.StorageAuthorityClient
+	recv *sapb.PauseRequest
+}
+
+func (sa *mockSARecordingPauses) PauseIdentifiers(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error) {
+	sa.recv = req
+	return &sapb.PauseIdentifiersResponse{Paused: int64(len(req.Identifiers))}, nil
+}
+
+func (sa *mockSARecordingPauses) DeactivateAuthorization2(_ context.Context, _ *sapb.AuthorizationID2, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, nil
+}
+
+func TestDeactivateAuthorization_Pausing(t *testing.T) {
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	if ra.limiter == nil {
+		t.Skip("no redis limiter configured")
+	}
+
+	msa := mockSARecordingPauses{}
+	ra.SA = &msa
+
+	features.Set(features.Config{AutomaticallyPauseZombieClients: true})
+	defer features.Reset()
+
+	// Override the default ratelimits to only allow one failed validation.
+	txnBuilder, err := ratelimits.NewTransactionBuilder("testdata/one-failed-validation-before-pausing.yml", "")
+	test.AssertNotError(t, err, "making transaction composer")
+	ra.txnBuilder = txnBuilder
+
+	// The first deactivation of a pending authz should work and nothing should
+	// get paused.
+	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
+		Id:             "1",
+		RegistrationID: 1,
+		DnsName:        "example.com",
+		Status:         string(core.StatusPending),
+	})
+	test.AssertNotError(t, err, "mock deactivation should work")
+	test.AssertBoxedNil(t, msa.recv, "shouldn't be a pause request yet")
+
+	// Deactivating a valid authz shouldn't increment any limits or pause anything.
+	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
+		Id:             "2",
+		RegistrationID: 1,
+		DnsName:        "example.com",
+		Status:         string(core.StatusValid),
+	})
+	test.AssertNotError(t, err, "mock deactivation should work")
+	test.AssertBoxedNil(t, msa.recv, "deactivating valid authz should never pause")
+
+	// Deactivating a second pending authz should surpass the limit and result
+	// in a pause request.
+	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
+		Id:             "3",
+		RegistrationID: 1,
+		DnsName:        "example.com",
+		Status:         string(core.StatusPending),
+	})
+	test.AssertNotError(t, err, "mock deactivation should work")
+	test.AssertNotNil(t, msa.recv, "should have recorded a pause request")
+	test.AssertEquals(t, msa.recv.RegistrationID, int64(1))
+	test.AssertEquals(t, msa.recv.Identifiers[0].Value, "example.com")
 }
 
 func TestDeactivateRegistration(t *testing.T) {

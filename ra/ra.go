@@ -2425,7 +2425,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
-	if req == nil || req.Id == "" || req.Status == "" {
+	if core.IsAnyNilOrZero(req, req.Id, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
 	}
 	authzID, err := strconv.ParseInt(req.Id, 10, 64)
@@ -2434,6 +2434,16 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	}
 	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID}); err != nil {
 		return nil, err
+	}
+	if req.Status == string(core.StatusPending) {
+		// Deactivating a pending authz has no security benefits and prevents us
+		// from reusing it and any orders associated with it. Some clients appear to
+		// accidentally abuse this behavior, so treat deactivating a pending authz
+		// the same as failing validation.
+		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.NewDNS(req.DnsName))
+		if err != nil {
+			ra.log.Warningf("incrementing failed validations: %s", err)
+		}
 	}
 	return &emptypb.Empty{}, nil
 }
