@@ -2436,13 +2436,14 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		return nil, err
 	}
 	if req.Status == string(core.StatusPending) {
-		// Deactivating a pending authz has no security benefits and prevents us
-		// from reusing it and any orders associated with it. Some clients appear to
-		// accidentally abuse this behavior, so treat deactivating a pending authz
-		// the same as failing validation.
+		// Some clients deactivate pending authorizations without attempting them.
+		// We're not sure exactly when this happens but it's most likely due to
+		// internal errors in the client. From our perspective this uses storage
+		// resources similar to how failed authorizations do, so we increment the
+		// failed authorizations limit.
 		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.NewDNS(req.DnsName))
 		if err != nil {
-			ra.log.Warningf("incrementing failed validations: %s", err)
+			return nil, fmt.Errorf("failed to update rate limits: %w", err)
 		}
 	}
 	return &emptypb.Empty{}, nil
