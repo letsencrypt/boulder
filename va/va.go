@@ -239,8 +239,7 @@ func NewValidationAuthorityImpl(
 
 	for i, va1 := range remoteVAs {
 		for j, va2 := range remoteVAs {
-			// TODO(#7819): Remove the != "" check once perspective is required.
-			if i != j && va1.Perspective == va2.Perspective && va1.Perspective != "" {
+			if i != j && va1.Perspective == va2.Perspective {
 				return nil, fmt.Errorf("duplicate remote VA perspective %q", va1.Perspective)
 			}
 		}
@@ -481,6 +480,16 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	for _, i := range rand.Perm(remoteVACount) {
 		go func(rva RemoteVA) {
 			res, err := rva.PerformValidation(subCtx, req)
+			if res == nil {
+				responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
+				return
+			}
+			if res.Perspective != rva.Perspective || res.Rir != rva.RIR {
+				err = fmt.Errorf(
+					"Remote VA %q.PerformValidation result included mismatched Perspective remote=[%q] local=[%q] and/or RIR remote=[%q] local=[%q]",
+					rva.Perspective, res.Perspective, rva.Perspective, res.Rir, rva.RIR,
+				)
+			}
 			responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
 		}(va.remoteVAs[i])
 	}
