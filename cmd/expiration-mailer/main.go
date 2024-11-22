@@ -106,7 +106,7 @@ func (lim *limiter) check(address string) error {
 
 	lim.maybeBumpDay()
 	if lim.counts[address] >= lim.limit {
-		return errors.New("daily mail limit exceeded")
+		return errors.New("daily mail limit exceeded for this email address")
 	}
 	return nil
 }

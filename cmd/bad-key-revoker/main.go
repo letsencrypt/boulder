@@ -370,7 +370,7 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 		}
 	}
 
-	serials := make([]string, 0, len(unrevokedCerts))
+	serials := make([]string, 0)
 	for _, cert := range unrevokedCerts {
 		serials = append(serials, cert.Serial)
 	}

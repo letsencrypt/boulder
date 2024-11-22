@@ -96,7 +96,7 @@ func TestAccountEmailError(t *testing.T) {
 			name:               "forbidden contact domain",
 			contacts:           []string{"mailto:valid@valid.com", "mailto:a@example.com"},
 			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
-			expectedProbDetail: "contact email has forbidden domain",
+			expectedProbDetail: "contact email has forbidden domain \"example.com\"",
 		},
 		{
 			name:               "contact domain invalid TLD",

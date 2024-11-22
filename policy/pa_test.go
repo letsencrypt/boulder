@@ -479,7 +479,7 @@ func TestValidEmailError(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "unable to parse email address")
 
 	err = ValidEmail("example@example.com")
-	test.AssertEquals(t, err.Error(), "contact email has forbidden domain")
+	test.AssertEquals(t, err.Error(), "contact email has forbidden domain \"example.com\"")
 
 	err = ValidEmail("example@-foobar.com")
 	test.AssertEquals(t, err.Error(), "contact email has invalid domain: Domain name contains an invalid character")

@@ -345,7 +345,9 @@ func ValidEmail(address string) error {
 		return berrors.InvalidEmailError("contact email has invalid domain: %s", err)
 	}
 	if forbiddenMailDomains[domain] {
-		return berrors.InvalidEmailError("contact email has forbidden domain")
+		// We're okay including the domain in the error message here because this
+		// case occurs only for a small block-list of domains listed above.
+		return berrors.InvalidEmailError("contact email has forbidden domain %q", domain)
 	}
 	return nil
 }
