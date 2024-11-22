@@ -239,7 +239,7 @@ func NewValidationAuthorityImpl(
 
 	for i, va1 := range remoteVAs {
 		for j, va2 := range remoteVAs {
-			// TODO(#7615): Remove the != "" check once perspective is required.
+			// TODO(#7819): Remove the != "" check once perspective is required.
 			if i != j && va1.Perspective == va2.Perspective && va1.Perspective != "" {
 				return nil, fmt.Errorf("duplicate remote VA perspective %q", va1.Perspective)
 			}
