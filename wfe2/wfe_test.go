@@ -1067,13 +1067,13 @@ func TestHTTPMethods(t *testing.T) {
 		// TODO(@cpu): Remove GET authz support, support only POST-as-GET
 		{
 			Name:    "Authz path should be GET or POST only",
-			Path:    authzPath,
+			Path:    deprecatedAuthzPath,
 			Allowed: getOrPost,
 		},
 		// TODO(@cpu): Remove GET challenge support, support only POST-as-GET
 		{
 			Name:    "Challenge path should be GET or POST only",
-			Path:    challengePath,
+			Path:    deprecatedChallengePath,
 			Allowed: getOrPost,
 		},
 		// TODO(@cpu): Remove GET certificate support, support only POST-as-GET
@@ -1182,7 +1182,7 @@ func TestGetChallengeHandler(t *testing.T) {
 		test.AssertNotError(t, err, "Could not make NewRequest")
 		req.URL.Path = fmt.Sprintf("1/%s", challSlug)
 
-		wfe.ChallengeHandler(ctx, newRequestEvent(), resp, req)
+		wfe.DeprecatedChallengeHandler(ctx, newRequestEvent(), resp, req)
 		test.AssertEquals(t, resp.Code, http.StatusOK)
 		test.AssertEquals(t, resp.Header().Get("Location"), challengeURL)
 		test.AssertEquals(t, resp.Header().Get("Content-Type"), "application/json")
@@ -1216,7 +1216,7 @@ func TestGetChallengeHandlerWithAccount(t *testing.T) {
 		test.AssertNotError(t, err, "Could not make NewRequest")
 		req.URL.Path = fmt.Sprintf("1/1/%s", challSlug)
 
-		wfe.ChallengeHandlerWithAccount(ctx, newRequestEvent(), resp, req)
+		wfe.ChallengeHandler(ctx, newRequestEvent(), resp, req)
 		test.AssertEquals(t, resp.Code, http.StatusOK)
 		test.AssertEquals(t, resp.Header().Get("Location"), challengeURL)
 		test.AssertEquals(t, resp.Header().Get("Content-Type"), "application/json")
@@ -1299,7 +1299,7 @@ func TestChallengeHandler(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
-			wfe.ChallengeHandler(ctx, newRequestEvent(), responseWriter, tc.Request)
+			wfe.DeprecatedChallengeHandler(ctx, newRequestEvent(), responseWriter, tc.Request)
 			// Check the response code, headers and body match expected
 			headers := responseWriter.Header()
 			body := responseWriter.Body.String()
@@ -1378,7 +1378,7 @@ func TestChallengeHandlerWithAccount(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
-			wfe.ChallengeHandlerWithAccount(ctx, newRequestEvent(), responseWriter, tc.Request)
+			wfe.ChallengeHandler(ctx, newRequestEvent(), responseWriter, tc.Request)
 			// Check the response code, headers and body match expected
 			headers := responseWriter.Header()
 			body := responseWriter.Body.String()
@@ -1412,7 +1412,7 @@ func TestUpdateChallengeHandlerFinalizedAuthz(t *testing.T) {
 	signedURL := "http://localhost/1/7TyhFQ"
 	_, _, jwsBody := signer.byKeyID(1, nil, signedURL, `{}`)
 	request := makePostRequestWithPath("1/7TyhFQ", jwsBody)
-	wfe.ChallengeHandler(ctx, newRequestEvent(), responseWriter, request)
+	wfe.DeprecatedChallengeHandler(ctx, newRequestEvent(), responseWriter, request)
 
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
@@ -1434,7 +1434,7 @@ func TestUpdateChallengeHandlerWithAccountFinalizedAuthz(t *testing.T) {
 	signedURL := "http://localhost/1/1/7TyhFQ"
 	_, _, jwsBody := signer.byKeyID(1, nil, signedURL, `{}`)
 	request := makePostRequestWithPath("1/1/7TyhFQ", jwsBody)
-	wfe.ChallengeHandlerWithAccount(ctx, newRequestEvent(), responseWriter, request)
+	wfe.ChallengeHandler(ctx, newRequestEvent(), responseWriter, request)
 
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
@@ -1459,7 +1459,7 @@ func TestUpdateChallengeHandlerRAError(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	request := makePostRequestWithPath("2/7TyhFQ", jwsBody)
 
-	wfe.ChallengeHandler(ctx, newRequestEvent(), responseWriter, request)
+	wfe.DeprecatedChallengeHandler(ctx, newRequestEvent(), responseWriter, request)
 
 	// The result should be an internal server error problem.
 	body := responseWriter.Body.String()
@@ -1484,7 +1484,7 @@ func TestUpdateChallengeHandlerWithAccountRAError(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	request := makePostRequestWithPath("1/2/7TyhFQ", jwsBody)
 
-	wfe.ChallengeHandlerWithAccount(ctx, newRequestEvent(), responseWriter, request)
+	wfe.ChallengeHandler(ctx, newRequestEvent(), responseWriter, request)
 
 	// The result should be an internal server error problem.
 	body := responseWriter.Body.String()
@@ -1802,7 +1802,7 @@ func TestGetAuthorizationHandler(t *testing.T) {
 	// Expired authorizations should be inaccessible
 	authzURL := "3"
 	responseWriter := httptest.NewRecorder()
-	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL(authzURL),
 	})
@@ -1812,7 +1812,7 @@ func TestGetAuthorizationHandler(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Ensure that a valid authorization can't be reached with an invalid URL
-	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		URL:    mustParseURL("1d"),
 		Method: "GET",
 	})
@@ -1824,7 +1824,7 @@ func TestGetAuthorizationHandler(t *testing.T) {
 
 	responseWriter = httptest.NewRecorder()
 	// Ensure that a POST-as-GET to an authorization works
-	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, postAsGet)
+	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, postAsGet)
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `
@@ -1852,7 +1852,7 @@ func TestGetAuthorizationHandlerWithAccount(t *testing.T) {
 	// Expired authorizations should be inaccessible
 	authzURL := "1/3"
 	responseWriter := httptest.NewRecorder()
-	wfe.AuthorizationHandlerWithAccount(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL(authzURL),
 	})
@@ -1862,7 +1862,7 @@ func TestGetAuthorizationHandlerWithAccount(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	// Ensure that a valid authorization can't be reached with an invalid URL
-	wfe.AuthorizationHandlerWithAccount(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		URL:    mustParseURL("1/1d"),
 		Method: "GET",
 	})
@@ -1874,7 +1874,7 @@ func TestGetAuthorizationHandlerWithAccount(t *testing.T) {
 
 	responseWriter = httptest.NewRecorder()
 	// Ensure that a POST-as-GET to an authorization works
-	wfe.AuthorizationHandlerWithAccount(ctx, newRequestEvent(), responseWriter, postAsGet)
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, postAsGet)
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	body := responseWriter.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `
@@ -1902,7 +1902,7 @@ func TestAuthorizationHandler500(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	responseWriter := httptest.NewRecorder()
-	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL("4"),
 	})
@@ -1920,7 +1920,7 @@ func TestAuthorizationHandlerWithAccount500(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	responseWriter := httptest.NewRecorder()
-	wfe.AuthorizationHandlerWithAccount(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL("1/4"),
 	})
@@ -1969,7 +1969,7 @@ func TestAuthorizationChallengeHandlerNamespace(t *testing.T) {
 	wfe.ra = &RAWithFailedChallenge{clk: clk}
 
 	responseWriter := httptest.NewRecorder()
-	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL("6"),
 	})
@@ -1990,7 +1990,7 @@ func TestAuthorizationChallengeHandlerWithAccountNamespace(t *testing.T) {
 	wfe.ra = &RAWithFailedChallenge{clk: clk}
 
 	responseWriter := httptest.NewRecorder()
-	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL("6"),
 	})
@@ -2647,7 +2647,7 @@ func TestDeactivateAuthorizationHandler(t *testing.T) {
 	_, _, body := signer.byKeyID(1, nil, "http://localhost/1", payload)
 	request := makePostRequestWithPath("1", body)
 
-	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
+	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type": "`+probs.ErrorNS+`malformed","detail": "Invalid status value","status": 400}`)
@@ -2657,7 +2657,7 @@ func TestDeactivateAuthorizationHandler(t *testing.T) {
 	_, _, body = signer.byKeyID(1, nil, "http://localhost/1", payload)
 	request = makePostRequestWithPath("1", body)
 
-	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
+	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
@@ -2688,7 +2688,7 @@ func TestDeactivateAuthorizationHandlerWithAccount(t *testing.T) {
 	_, _, body := signer.byKeyID(1, nil, "http://localhost/1", payload)
 	request := makePostRequestWithPath("1", body)
 
-	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
+	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type": "`+probs.ErrorNS+`malformed","detail": "Invalid status value","status": 400}`)
@@ -2698,7 +2698,7 @@ func TestDeactivateAuthorizationHandlerWithAccount(t *testing.T) {
 	_, _, body = signer.byKeyID(1, nil, "http://localhost/1", payload)
 	request = makePostRequestWithPath("1", body)
 
-	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
+	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
@@ -3682,7 +3682,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	}
 
 	// This modifies the authz in-place.
-	wfe.prepAuthorizationForDisplay(authzPath, &http.Request{Host: "localhost"}, authz)
+	wfe.prepAuthorizationForDisplay(deprecatedAuthzPath, &http.Request{Host: "localhost"}, authz)
 
 	// Ensure ID and RegID are omitted.
 	authzJSON, err := json.Marshal(authz)
@@ -3734,7 +3734,7 @@ func TestPrepRevokedAuthzForDisplay(t *testing.T) {
 	}
 
 	// This modifies the authz in-place.
-	wfe.prepAuthorizationForDisplay(authzPath, &http.Request{Host: "localhost"}, authz)
+	wfe.prepAuthorizationForDisplay(deprecatedAuthzPath, &http.Request{Host: "localhost"}, authz)
 
 	// All of the challenges should be revoked as well.
 	for _, chall := range authz.Challenges {
@@ -3782,7 +3782,7 @@ func TestPrepWildcardAuthzForDisplay(t *testing.T) {
 	}
 
 	// This modifies the authz in-place.
-	wfe.prepAuthorizationForDisplay(authzPath, &http.Request{Host: "localhost"}, authz)
+	wfe.prepAuthorizationForDisplay(deprecatedAuthzPath, &http.Request{Host: "localhost"}, authz)
 
 	// The identifier should not start with a star, but the authz should be marked
 	// as a wildcard.
@@ -3841,7 +3841,7 @@ func TestPrepAuthzForDisplayShuffle(t *testing.T) {
 	// Prep the authz 100 times, and count where each challenge ended up each time.
 	for range 100 {
 		// This modifies the authz in place
-		wfe.prepAuthorizationForDisplay(challengePath, &http.Request{Host: "localhost"}, authz)
+		wfe.prepAuthorizationForDisplay(deprecatedChallengePath, &http.Request{Host: "localhost"}, authz)
 		for i, chall := range authz.Challenges {
 			counts[chall.Type][i] += 1
 		}
@@ -3952,7 +3952,7 @@ func TestGETAPIAuthorizationHandler(t *testing.T) {
 	for _, tc := range testCases {
 		responseWriter := httptest.NewRecorder()
 		req, logEvent := makeGet(tc.path, getAuthzPath)
-		wfe.AuthorizationHandler(context.Background(), logEvent, responseWriter, req)
+		wfe.DeprecatedAuthorizationHandler(context.Background(), logEvent, responseWriter, req)
 
 		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
 			t.Errorf("expected too fresh error, got http.StatusOK")
@@ -3991,7 +3991,7 @@ func TestGETAPIAuthorizationHandlerWitAccount(t *testing.T) {
 	for _, tc := range testCases {
 		responseWriter := httptest.NewRecorder()
 		req, logEvent := makeGet(tc.path, getAuthzPath)
-		wfe.AuthorizationHandlerWithAccount(context.Background(), logEvent, responseWriter, req)
+		wfe.AuthorizationHandler(context.Background(), logEvent, responseWriter, req)
 
 		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
 			t.Errorf("expected too fresh error, got http.StatusOK")
@@ -4030,7 +4030,7 @@ func TestGETAPIChallenge(t *testing.T) {
 	for _, tc := range testCases {
 		responseWriter := httptest.NewRecorder()
 		req, logEvent := makeGet(tc.path, getAuthzPath)
-		wfe.ChallengeHandler(context.Background(), logEvent, responseWriter, req)
+		wfe.DeprecatedChallengeHandler(context.Background(), logEvent, responseWriter, req)
 
 		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
 			t.Errorf("expected too fresh error, got http.StatusOK")
