@@ -480,7 +480,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	for _, i := range rand.Perm(remoteVACount) {
 		go func(rva RemoteVA) {
 			res, err := rva.PerformValidation(subCtx, req)
-			if res == nil {
+			if err != nil {
 				responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
 				return
 			}
@@ -489,6 +489,8 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 					"Remote VA %q.PerformValidation result included mismatched Perspective remote=[%q] local=[%q] and/or RIR remote=[%q] local=[%q]",
 					rva.Perspective, res.Perspective, rva.Perspective, res.Rir, rva.RIR,
 				)
+				responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
+				return
 			}
 			responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
 		}(va.remoteVAs[i])
