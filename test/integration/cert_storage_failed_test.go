@@ -155,6 +155,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 		"revoke-cert",
 		"-serial", core.SerialToString(cert.SerialNumber),
 		"-reason", "unspecified",
+		"-debug-addr", ":18014",
 	).CombinedOutput()
 	test.AssertNotError(t, err, fmt.Sprintf("revoking via admin-revoker: %s", string(output)))
 

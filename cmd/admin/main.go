@@ -92,6 +92,7 @@ func main() {
 	// they're present.
 	configFile := flag.String("config", "", "Path to the configuration file for this service (required)")
 	dryRun := flag.Bool("dry-run", true, "Print actions instead of mutating the database")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	flag.Parse()
 
 	// Figure out which subcommand they want us to run.
@@ -127,7 +128,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	a, err := newAdmin(*configFile, *dryRun)
+	a, err := newAdmin(*configFile, *dryRun, *debugAddr)
 	cmd.FailOnError(err, "creating admin object")
 
 	// Finally, run the selected subcommand.
