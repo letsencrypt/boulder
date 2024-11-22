@@ -1413,8 +1413,10 @@ func (wfe *WebFrontEndImpl) Account(
 		return
 	}
 
-	// If the body was not empty, then this is an account update request.
-	if string(body) != "" {
+	// If the body was not either completely empty or an empty JSON object, then
+	// this is an account update request. Treating the empty JSON object like a
+	// POST-as-GET is a holdover from ACMEv1.
+	if string(body) != "" && string(body) != "{}" {
 		currAcct, prob = wfe.updateAccount(ctx, body, currAcct)
 		if prob != nil {
 			wfe.sendError(response, logEvent, prob, nil)
