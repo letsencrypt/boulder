@@ -49,7 +49,6 @@
 		},
 		"healthCheckInterval": "4s",
 		"features": {
-			"MultipleCertificateProfiles": true,
 			"DisableLegacyLimitWrites": true,
 			"InsertAuthzsIndividually": true
 		}

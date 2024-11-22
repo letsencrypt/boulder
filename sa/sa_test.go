@@ -1359,72 +1359,7 @@ func TestFinalizeOrder(t *testing.T) {
 	test.AssertEquals(t, updatedOrder.Status, string(core.StatusValid))
 }
 
-func TestOrderWithOrderModelv1(t *testing.T) {
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
-
-	reg := createWorkingRegistration(t, sa)
-	authzExpires := fc.Now().Add(time.Hour)
-	authzID := createPendingAuthorization(t, sa, "example.com", authzExpires)
-
-	// Set the order to expire in two hours
-	expires := fc.Now().Add(2 * time.Hour)
-
-	inputOrder := &corepb.Order{
-		RegistrationID:   reg.Id,
-		Expires:          timestamppb.New(expires),
-		DnsNames:         []string{"example.com"},
-		V2Authorizations: []int64{authzID},
-	}
-
-	// Create the order
-	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:   inputOrder.RegistrationID,
-			Expires:          inputOrder.Expires,
-			DnsNames:         inputOrder.DnsNames,
-			V2Authorizations: inputOrder.V2Authorizations,
-		},
-	})
-	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
-
-	// The Order from GetOrder should match the following expected order
-	created := sa.clk.Now()
-	expectedOrder := &corepb.Order{
-		// The registration ID, authorizations, expiry, and names should match the
-		// input to NewOrderAndAuthzs
-		RegistrationID:   inputOrder.RegistrationID,
-		V2Authorizations: inputOrder.V2Authorizations,
-		DnsNames:         inputOrder.DnsNames,
-		Expires:          inputOrder.Expires,
-		// The ID should have been set to 1 by the SA
-		Id: 1,
-		// The status should be pending
-		Status: string(core.StatusPending),
-		// The serial should be empty since this is a pending order
-		CertificateSerial: "",
-		// We should not be processing it
-		BeganProcessing: false,
-		// The created timestamp should have been set to the current time
-		Created: timestamppb.New(created),
-	}
-
-	// Fetch the order by its ID and make sure it matches the expected
-	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
-	test.AssertNotError(t, err, "sa.GetOrder failed")
-	test.AssertDeepEquals(t, storedOrder, expectedOrder)
-}
-
-func TestOrderWithOrderModelv2(t *testing.T) {
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		t.Skip()
-	}
-
-	// The feature must be set before the SA is constructed because of a
-	// conditional on this feature in //sa/database.go.
-	features.Set(features.Config{MultipleCertificateProfiles: true})
-	defer features.Reset()
-
+func TestOrder(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
@@ -1493,11 +1428,7 @@ func TestOrderWithOrderModelv2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.GetOrder failed")
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
 
-	//
-	// Test that an order without a certificate profile name, but with the
-	// MultipleCertificateProfiles feature flag enabled works as expected.
-	//
-
+	// Test that an order without a certificate profile name works as expected.
 	inputOrderNoName := &corepb.Order{
 		RegistrationID:   reg.Id,
 		Expires:          timestamppb.New(expires),
