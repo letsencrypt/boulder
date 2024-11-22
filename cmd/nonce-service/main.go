@@ -74,13 +74,8 @@ func main() {
 		c.NonceService.DebugAddr = *debugAddr
 	}
 
-	var key []byte
-	if c.NonceService.NonceHMACKey.KeyFile != "" {
-		key, err = c.NonceService.NonceHMACKey.Load()
-		cmd.FailOnError(err, "Failed to load nonceHMACKey file.")
-	} else {
-		cmd.Fail("NonceHMACKey KeyFile must be set")
-	}
+	key, err := c.NonceService.NonceHMACKey.Load()
+	cmd.FailOnError(err, "Failed to load nonceHMACKey file.")
 
 	noncePrefix, err := derivePrefix(key, c.NonceService.GRPC.Address)
 	cmd.FailOnError(err, "Failed to derive nonce prefix")

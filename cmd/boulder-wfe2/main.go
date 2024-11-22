@@ -293,13 +293,8 @@ func main() {
 		cmd.Fail("'getNonceService' must be configured")
 	}
 
-	var noncePrefixKey []byte
-	if c.WFE.NonceHMACKey.KeyFile != "" {
-		noncePrefixKey, err = c.WFE.NonceHMACKey.Load()
-		cmd.FailOnError(err, "Failed to load nonceHMACKey file")
-	} else {
-		cmd.Fail("NonceHMACKey KeyFile must be set")
-	}
+	noncePrefixKey, err := c.WFE.NonceHMACKey.Load()
+	cmd.FailOnError(err, "Failed to load nonceHMACKey file")
 
 	getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, stats, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
