@@ -231,7 +231,7 @@ type multiSrv struct {
 }
 
 const (
-	slow                  = "slow remote"
+	slowUA                = "slow remote"
 	slowRemoteSleepMillis = 1000
 )
 
@@ -243,7 +243,7 @@ func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multi
 	ms := &multiSrv{server, sync.Mutex{}, allowedUAs}
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.UserAgent() == slow {
+		if r.UserAgent() == slowUA {
 			time.Sleep(slowRemoteSleepMillis)
 		}
 		ms.mu.Lock()
@@ -659,15 +659,15 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	}{
 		{
 			remoteConfs: []remoteConf{
-				{ua: slow, rir: arin},
+				{ua: slowUA, rir: arin},
 				{ua: pass, rir: ripe},
 				{ua: fail, rir: apnic},
 			},
 		},
 		{
 			remoteConfs: []remoteConf{
-				{ua: slow, rir: arin},
-				{ua: slow, rir: ripe},
+				{ua: slowUA, rir: arin},
+				{ua: slowUA, rir: ripe},
 				{ua: pass, rir: apnic},
 				{ua: pass, rir: arin},
 				{ua: fail, rir: ripe},
@@ -675,8 +675,8 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 		},
 		{
 			remoteConfs: []remoteConf{
-				{ua: slow, rir: arin},
-				{ua: slow, rir: ripe},
+				{ua: slowUA, rir: arin},
+				{ua: slowUA, rir: ripe},
 				{ua: pass, rir: apnic},
 				{ua: pass, rir: arin},
 				{ua: fail, rir: ripe},
