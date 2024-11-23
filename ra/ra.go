@@ -2425,7 +2425,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
-	if req == nil || req.Id == "" || req.Status == "" {
+	if core.IsAnyNilOrZero(req, req.Id, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
 	}
 	authzID, err := strconv.ParseInt(req.Id, 10, 64)
@@ -2434,6 +2434,17 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	}
 	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID}); err != nil {
 		return nil, err
+	}
+	if req.Status == string(core.StatusPending) {
+		// Some clients deactivate pending authorizations without attempting them.
+		// We're not sure exactly when this happens but it's most likely due to
+		// internal errors in the client. From our perspective this uses storage
+		// resources similar to how failed authorizations do, so we increment the
+		// failed authorizations limit.
+		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.NewDNS(req.DnsName))
+		if err != nil {
+			return nil, fmt.Errorf("failed to update rate limits: %w", err)
+		}
 	}
 	return &emptypb.Empty{}, nil
 }
