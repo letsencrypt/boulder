@@ -31,7 +31,8 @@ type Config struct {
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
 
-		DebugAddr string
+		// For future use if the admin tool's config actually gets validated.
+		DebugAddr string `validate:"omitempty,hostname_port"`
 
 		Features features.Config
 	}
