@@ -7,7 +7,10 @@ import (
 	"math/rand/v2"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
@@ -20,8 +23,9 @@ import (
 // returns a problem if too many remote perspectives failed to corroborate
 // domain control, or nil if enough succeeded to surpass our corroboration
 // threshold.
-func (va *ValidationAuthorityImpl) performRemoteValidation(
+func (va *ValidationAuthorityImpl) performRemoteValidation2(
 	ctx context.Context,
+	op remoteOperation,
 	req *vapb.PerformValidationRequest,
 ) *probs.ProblemDetails {
 	remoteVACount := len(va.remoteVAs)
@@ -33,7 +37,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		addr        string
 		perspective string
 		rir         string
-		result      *vapb.ValidationResult
+		result      remoteResult
 		err         error
 	}
 
@@ -43,15 +47,15 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	responses := make(chan *response, remoteVACount)
 	for _, i := range rand.Perm(remoteVACount) {
 		go func(rva RemoteVA) {
-			res, err := rva.PerformValidation(subCtx, req)
+			res, err := op(subCtx, rva, req)
 			if err != nil {
 				responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
 				return
 			}
-			if res.Perspective != rva.Perspective || res.Rir != rva.RIR {
+			if res.GetPerspective() != rva.Perspective || res.GetRir() != rva.RIR {
 				err = fmt.Errorf(
 					"Remote VA %q.PerformValidation result included mismatched Perspective remote=[%q] local=[%q] and/or RIR remote=[%q] local=[%q]",
-					rva.Perspective, res.Perspective, rva.Perspective, res.Rir, rva.RIR,
+					rva.Perspective, res.GetPerspective(), rva.Perspective, res.GetRir(), rva.RIR,
 				)
 				responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
 				return
@@ -78,12 +82,12 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 				va.log.Errf("Remote VA %q.PerformValidation failed: %s", resp.addr, resp.err)
 				currProb = probs.ServerInternal("Secondary domain validation RPC failed")
 			}
-		} else if resp.result.Problems != nil {
+		} else if resp.result.GetProblem() != nil {
 			// The remote VA returned a problem.
 			failed = append(failed, resp.perspective)
 
 			var err error
-			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problems)
+			currProb, err = bgrpc.PBToProblemDetails(resp.result.GetProblem())
 			if err != nil {
 				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", resp.addr, err)
 				currProb = probs.ServerInternal("Secondary domain validation RPC returned malformed result")
@@ -126,39 +130,6 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	}
 }
 
-// performLocalValidation performs primary domain control validation and then
-// checks CAA. If either step fails, it immediately returns a bare error so
-// that our audit logging can include the underlying error.
-func (va *ValidationAuthorityImpl) performLocalValidation(
-	ctx context.Context,
-	ident identifier.ACMEIdentifier,
-	regid int64,
-	kind core.AcmeChallenge,
-	token string,
-	keyAuthorization string,
-) ([]core.ValidationRecord, error) {
-	// Do primary domain control validation. Any kind of error returned by this
-	// counts as a validation error, and will be converted into an appropriate
-	// probs.ProblemDetails by the calling function.
-	records, err := va.validateChallenge(ctx, ident, kind, token, keyAuthorization)
-	if err != nil {
-		return records, err
-	}
-
-	// Do primary CAA checks. Any kind of error returned by this counts as not
-	// receiving permission to issue, and will be converted into an appropriate
-	// probs.ProblemDetails by the calling function.
-	err = va.checkCAA(ctx, ident, &caaParams{
-		accountURIID:     regid,
-		validationMethod: kind,
-	})
-	if err != nil {
-		return records, err
-	}
-
-	return records, nil
-}
-
 // PerformValidation conducts a local Domain Control Validation (DCV) and CAA
 // check for the specified challenge and dnsName. When invoked on the primary
 // Validation Authority (VA) and the local validation succeeds, it also performs
@@ -169,7 +140,7 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 // ValidationResult always includes a list of ValidationRecords, even when it
 // also contains Problems. This method does NOT implement Multi-Perspective
 // Issuance Corroboration as defined in BRs Sections 3.2.2.9 and 5.4.1.
-func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
+func (va *ValidationAuthorityImpl) PerformValidation2(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
 	if core.IsAnyNilOrZero(req, req.DnsName, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
@@ -252,6 +223,30 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// singular problem, because the remote VAs have already audit-logged their
 	// own validation records, and it's not helpful to present multiple large
 	// errors to the end user.
-	prob = va.performRemoteValidation(ctx, req)
+	op := func(ctx context.Context, remoteva RemoteVA, req proto.Message) (remoteResult, error) {
+		validationRequest, ok := req.(*vapb.PerformValidationRequest)
+		if !ok {
+			return nil, fmt.Errorf("got type %T, want *vapb.PerformValidationRequest", req)
+		}
+		result, err := remoteva.PerformValidation(ctx, validationRequest)
+		return result, err
+	}
+	prob = va.performRemoteValidation2(ctx, op, req)
+	op = func(ctx context.Context, remoteva RemoteVA, req proto.Message) (remoteResult, error) {
+		validationRequest, ok := req.(*vapb.IsCAAValidRequest)
+		if !ok {
+			return nil, fmt.Errorf("got type %T, want *vapb.IsCAAValidRequest", req)
+		}
+		result, err := remoteva.IsCAAValid(ctx, validationRequest)
+		return result, err
+	}
+	prob = va.performRemoteValidation2(ctx, op, req)
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
+}
+
+type remoteOperation = func(context.Context, RemoteVA, proto.Message) (remoteResult, error)
+type remoteResult interface {
+	GetProblem() *corepb.ProblemDetails
+	GetPerspective() string
+	GetRir() string
 }

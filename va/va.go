@@ -514,12 +514,12 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 				va.log.Errf("Remote VA %q.PerformValidation failed: %s", resp.addr, resp.err)
 				currProb = probs.ServerInternal("Secondary domain validation RPC failed")
 			}
-		} else if resp.result.Problems != nil {
+		} else if resp.result.Problem != nil {
 			// The remote VA returned a problem.
 			failed = append(failed, resp.perspective)
 
 			var err error
-			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problems)
+			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problem)
 			if err != nil {
 				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", resp.addr, err)
 				currProb = probs.ServerInternal("Secondary domain validation RPC returned malformed result")
