@@ -464,19 +464,16 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 			return berrors.InvalidEmailError("invalid contact")
 		}
 		if parsed.Scheme != "mailto" {
-			return berrors.UnsupportedContactError("contact method %q is not supported", parsed.Scheme)
+			return berrors.UnsupportedContactError("only contact scheme 'mailto:' is supported")
 		}
 		if parsed.RawQuery != "" || contact[len(contact)-1] == '?' {
-			return berrors.InvalidEmailError("contact email %q contains a question mark", contact)
+			return berrors.InvalidEmailError("contact email contains a question mark")
 		}
 		if parsed.Fragment != "" || contact[len(contact)-1] == '#' {
-			return berrors.InvalidEmailError("contact email %q contains a '#'", contact)
+			return berrors.InvalidEmailError("contact email contains a '#'")
 		}
 		if !core.IsASCII(contact) {
-			return berrors.InvalidEmailError(
-				"contact email [%q] contains non-ASCII characters",
-				contact,
-			)
+			return berrors.InvalidEmailError("contact email contains non-ASCII characters")
 		}
 		err = policy.ValidEmail(parsed.Opaque)
 		if err != nil {
@@ -490,10 +487,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 	// That means the largest marshalled JSON value we can store is 191 bytes.
 	const maxContactBytes = 191
 	if jsonBytes, err := json.Marshal(contacts); err != nil {
-		// This shouldn't happen with a simple []string but if it does we want the
-		// error to be logged internally but served as a 500 to the user so we
-		// return a bare error and not a berror here.
-		return fmt.Errorf("failed to marshal reg.Contact to JSON: %#v", contacts)
+		return fmt.Errorf("failed to marshal reg.Contact to JSON: %w", err)
 	} else if len(jsonBytes) >= maxContactBytes {
 		return berrors.InvalidEmailError(
 			"too many/too long contact(s). Please use shorter or fewer email addresses")

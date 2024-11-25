@@ -336,23 +336,18 @@ var forbiddenMailDomains = map[string]bool{
 func ValidEmail(address string) error {
 	email, err := mail.ParseAddress(address)
 	if err != nil {
-		if len(address) > 254 {
-			address = address[:254] + "..."
-		}
-		return berrors.InvalidEmailError("%q is not a valid e-mail address", address)
+		return berrors.InvalidEmailError("unable to parse email address")
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
 	err = validNonWildcardDomain(domain)
 	if err != nil {
-		return berrors.InvalidEmailError(
-			"contact email %q has invalid domain : %s",
-			email.Address, err)
+		return berrors.InvalidEmailError("contact email has invalid domain: %s", err)
 	}
 	if forbiddenMailDomains[domain] {
-		return berrors.InvalidEmailError(
-			"invalid contact domain. Contact emails @%s are forbidden",
-			domain)
+		// We're okay including the domain in the error message here because this
+		// case occurs only for a small block-list of domains listed above.
+		return berrors.InvalidEmailError("contact email has forbidden domain %q", domain)
 	}
 	return nil
 }
