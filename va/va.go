@@ -486,8 +486,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			}
 			if res.Perspective != rva.Perspective || res.Rir != rva.RIR {
 				err = fmt.Errorf(
-					"Remote VA %q.PerformValidation result included mismatched Perspective remote=[%q] local=[%q] and/or RIR remote=[%q] local=[%q]",
-					rva.Perspective, res.Perspective, rva.Perspective, res.Rir, rva.RIR,
+					"Expected perspective %q (%q) but got reply from %q (%q) - misconfiguration likely", rva.Perspective, rva.RIR, res.Perspective, res.Rir,
 				)
 				responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
 				return
