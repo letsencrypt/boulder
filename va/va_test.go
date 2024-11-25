@@ -350,7 +350,7 @@ func TestPerformValidationWithMismatchedRemoteVAPerspectives(t *testing.T) {
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
 	test.AssertNotNil(t, res.Problems, "validation succeeded with mismatched remote VA perspectives")
-	test.AssertEquals(t, len(mockLog.GetAllMatching("result included mismatched")), 2)
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Expected perspective")), 2)
 }
 
 func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
@@ -371,7 +371,7 @@ func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
 	test.AssertNotNil(t, res.Problems, "validation succeeded with mismatched remote VA perspectives")
-	test.AssertEquals(t, len(mockLog.GetAllMatching("result included mismatched")), 2)
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Expected perspective")), 2)
 }
 
 func TestValidateMalformedChallenge(t *testing.T) {
