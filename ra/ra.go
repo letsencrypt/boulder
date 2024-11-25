@@ -1762,7 +1762,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 		Attempted:         string(challenge.Type),
 		AttemptedAt:       validated,
 		ValidationRecords: vr.Records,
-		ValidationError:   vr.Problems,
+		ValidationError:   vr.Problem,
 	})
 	return err
 }
@@ -1929,8 +1929,8 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			prob = probs.ServerInternal("Could not communicate with VA")
 			ra.log.AuditErrf("Could not communicate with VA: %s", err)
 		} else {
-			if res.Problems != nil {
-				prob, err = bgrpc.PBToProblemDetails(res.Problems)
+			if res.Problem != nil {
+				prob, err = bgrpc.PBToProblemDetails(res.Problem)
 				if err != nil {
 					prob = probs.ServerInternal("Could not communicate with VA")
 					ra.log.AuditErrf("Could not communicate with VA: %s", err)

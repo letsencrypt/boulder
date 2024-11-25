@@ -188,13 +188,13 @@ func ValidationResultToPB(records []core.ValidationRecord, prob *probs.ProblemDe
 			return nil, err
 		}
 	}
-	marshalledProbs, err := ProblemDetailsToPB(prob)
+	marshalledProb, err := ProblemDetailsToPB(prob)
 	if err != nil {
 		return nil, err
 	}
 	return &vapb.ValidationResult{
 		Records:     recordAry,
-		Problems:    marshalledProbs,
+		Problem:     marshalledProb,
 		Perspective: perspective,
 		Rir:         rir,
 	}, nil
@@ -212,7 +212,7 @@ func pbToValidationResult(in *vapb.ValidationResult) ([]core.ValidationRecord, *
 			return nil, nil, err
 		}
 	}
-	prob, err := PBToProblemDetails(in.Problems)
+	prob, err := PBToProblemDetails(in.Problem)
 	if err != nil {
 		return nil, nil, err
 	}
