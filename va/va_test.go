@@ -162,6 +162,67 @@ func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride b
 	return RemoteClients{VAClient: &inMemVA{*rva}, CAAClient: &inMemVA{*rva}}
 }
 
+// RIRs
+const (
+	arin    = "ARIN"
+	ripe    = "RIPE"
+	apnic   = "APNIC"
+	lacnic  = "LACNIC"
+	afrinic = "AFRINIC"
+)
+
+// remoteConf is used in conjunction with setupRemotes/withRemotes to configure
+// a remote VA.
+type remoteConf struct {
+	// ua is optional, will default to "user agent 1.0". When set to "broken" or
+	// "hijacked", the Address field of the resulting RemoteVA will be set to
+	// match. This is a bit hacky, but it's the easiest way to satisfy some of
+	// our existing TestMultiCAARechecking tests.
+	ua string
+	// rir is required.
+	rir string
+	// dns is optional.
+	dns bdns.Client
+	// impl is optional.
+	impl RemoteClients
+}
+
+func setupRemotes(confs []remoteConf, srv *httptest.Server) []RemoteVA {
+	remoteVAs := make([]RemoteVA, 0, len(confs))
+	for i, c := range confs {
+		if c.rir == "" {
+			panic("rir is required")
+		}
+		// perspective MUST be unique for each remote VA, otherwise the VA will
+		// fail to start.
+		perspective := fmt.Sprintf("dc-%d-%s", i, c.rir)
+		clients := setupRemote(srv, c.ua, c.dns, perspective, c.rir)
+		if c.impl != (RemoteClients{}) {
+			clients = c.impl
+		}
+		var address string
+		if c.ua == "broken" {
+			address = "broken"
+		}
+		if c.ua == "hijacked" {
+			address = "hijacked"
+		}
+		remoteVAs = append(remoteVAs, RemoteVA{
+			Address:       address,
+			RemoteClients: clients,
+			Perspective:   perspective,
+			RIR:           c.rir,
+		})
+	}
+
+	return remoteVAs
+}
+
+func setupWithRemotes(srv *httptest.Server, userAgent string, remotes []remoteConf, mockDNSClientOverride bdns.Client) (*ValidationAuthorityImpl, *blog.Mock) {
+	remoteVAs := setupRemotes(remotes, srv)
+	return setup(srv, userAgent, remoteVAs, mockDNSClientOverride)
+}
+
 type multiSrv struct {
 	*httptest.Server
 
@@ -169,13 +230,10 @@ type multiSrv struct {
 	allowedUAs map[string]bool
 }
 
-func (s *multiSrv) setAllowedUAs(allowedUAs map[string]bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.allowedUAs = allowedUAs
-}
-
-const slowRemoteSleepMillis = 1000
+const (
+	slowUA                = "slow remote"
+	slowRemoteSleepMillis = 1000
+)
 
 func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multiSrv {
 	t.Helper()
@@ -185,7 +243,7 @@ func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multi
 	ms := &multiSrv{server, sync.Mutex{}, allowedUAs}
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.UserAgent() == "slow remote" {
+		if r.UserAgent() == slowUA {
 			time.Sleep(slowRemoteSleepMillis)
 		}
 		ms.mu.Lock()
@@ -246,6 +304,32 @@ func (inmem inMemVA) PerformValidation(ctx context.Context, req *vapb.PerformVal
 
 func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
 	return inmem.rva.IsCAAValid(ctx, req)
+}
+
+func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
+	var remoteVAs []RemoteVA
+	for i := 0; i < 3; i++ {
+		remoteVAs = append(remoteVAs, RemoteVA{
+			RemoteClients: setupRemote(nil, "", nil, "dadaist", arin),
+			Perspective:   "dadaist",
+			RIR:           arin,
+		})
+	}
+
+	_, err := NewValidationAuthorityImpl(
+		&bdns.MockClient{Log: blog.NewMock()},
+		remoteVAs,
+		"user agent 1.0",
+		"letsencrypt.org",
+		metrics.NoopRegisterer,
+		clock.NewFake(),
+		blog.NewMock(),
+		accountURIPrefixes,
+		"example perspective",
+		"",
+	)
+	test.AssertError(t, err, "NewValidationAuthorityImpl allowed duplicate remote perspectives")
+	test.AssertContains(t, err.Error(), "duplicate remote VA perspective \"dadaist\"")
 }
 
 func TestValidateMalformedChallenge(t *testing.T) {
@@ -366,37 +450,11 @@ func TestDCVAndCAASequencing(t *testing.T) {
 }
 
 func TestMultiVA(t *testing.T) {
+	t.Parallel()
+
 	// Create a new challenge to use for the httpSrv
 	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
 
-	const (
-		remoteUA1 = "remote 1"
-		remoteUA2 = "remote 2"
-		remoteUA3 = "remote 3"
-		remoteUA4 = "remote 4"
-		localUA   = "local 1"
-	)
-	allowedUAs := map[string]bool{
-		localUA:   true,
-		remoteUA1: true,
-		remoteUA2: true,
-		remoteUA3: true,
-		remoteUA4: true,
-	}
-
-	// Create an IPv4 test server
-	ms := httpMultiSrv(t, expectedToken, allowedUAs)
-	defer ms.Close()
-
-	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
-	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
-	remoteVA3 := setupRemote(ms.Server, remoteUA3, nil, "", "")
-	remoteVA4 := setupRemote(ms.Server, remoteUA4, nil, "", "")
-	remoteVAs := []RemoteVA{
-		{remoteVA1, remoteUA1},
-		{remoteVA2, remoteUA2},
-		{remoteVA3, remoteUA3},
-	}
 	brokenVA := RemoteClients{
 		VAClient:  brokenRemoteVA{},
 		CAAClient: brokenRemoteVA{},
@@ -406,176 +464,187 @@ func TestMultiVA(t *testing.T) {
 		CAAClient: cancelledVA{},
 	}
 
-	unauthorized := probs.Unauthorized(fmt.Sprintf(
-		`The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
-		expectedKeyAuthorization))
-	expectedInternalErrLine := fmt.Sprintf(
-		`ERR: \[AUDIT\] Remote VA "broken".PerformValidation failed: %s`,
-		errBrokenRemoteVA.Error())
 	testCases := []struct {
-		Name         string
-		RemoteVAs    []RemoteVA
-		AllowedUAs   map[string]bool
-		ExpectedProb *probs.ProblemDetails
-		ExpectedLog  string
+		Name                string
+		Remotes             []remoteConf
+		PrimaryUA           string
+		ExpectedProbType    string
+		ExpectedLogContains string
 	}{
 		{
 			// With local and all remote VAs working there should be no problem.
-			Name:       "Local and remote VAs OK",
-			RemoteVAs:  remoteVAs,
-			AllowedUAs: allowedUAs,
+			Name: "Local and remote VAs OK",
+			Remotes: []remoteConf{
+				{ua: pass, rir: arin},
+				{ua: pass, rir: ripe},
+				{ua: pass, rir: apnic},
+			},
+			PrimaryUA: pass,
 		},
 		{
 			// If the local VA fails everything should fail
-			Name:         "Local VA bad, remote VAs OK",
-			RemoteVAs:    remoteVAs,
-			AllowedUAs:   map[string]bool{remoteUA1: true, remoteUA2: true},
-			ExpectedProb: unauthorized,
+			Name: "Local VA bad, remote VAs OK",
+			Remotes: []remoteConf{
+				{ua: pass, rir: arin},
+				{ua: pass, rir: ripe},
+				{ua: pass, rir: apnic},
+			},
+			PrimaryUA:        fail,
+			ExpectedProbType: string(probs.UnauthorizedProblem),
 		},
 		{
 			// If one out of three remote VAs fails with an internal err it should succeed
 			Name: "Local VA ok, 1/3 remote VA internal err",
-			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{remoteVA2, remoteUA2},
-				{brokenVA, "broken"},
+			Remotes: []remoteConf{
+				{ua: pass, rir: arin},
+				{ua: pass, rir: ripe},
+				{ua: pass, rir: apnic, impl: brokenVA},
 			},
-			AllowedUAs: allowedUAs,
+			PrimaryUA: pass,
 		},
 		{
 			// If two out of three remote VAs fail with an internal err it should fail
 			Name: "Local VA ok, 2/3 remote VAs internal err",
-			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{brokenVA, "broken"},
-				{brokenVA, "broken"},
+			Remotes: []remoteConf{
+				{ua: pass, rir: arin},
+				{ua: pass, rir: ripe, impl: brokenVA},
+				{ua: pass, rir: apnic, impl: brokenVA},
 			},
-			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC failed"),
+			PrimaryUA:        pass,
+			ExpectedProbType: string(probs.ServerInternalProblem),
 			// The real failure cause should be logged
-			ExpectedLog: expectedInternalErrLine,
+			ExpectedLogContains: errBrokenRemoteVA.Error(),
 		},
 		{
 			// If one out of five remote VAs fail with an internal err it should succeed
 			Name: "Local VA ok, 1/5 remote VAs internal err",
-			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{remoteVA2, remoteUA2},
-				{remoteVA3, remoteUA3},
-				{remoteVA4, remoteUA4},
-				{brokenVA, "broken"},
+			Remotes: []remoteConf{
+				{ua: pass, rir: arin},
+				{ua: pass, rir: ripe},
+				{ua: pass, rir: apnic},
+				{ua: pass, rir: lacnic},
+				{ua: pass, rir: afrinic, impl: brokenVA},
 			},
-			AllowedUAs: allowedUAs,
+			PrimaryUA: pass,
 		},
 		{
 			// If two out of five remote VAs fail with an internal err it should fail
 			Name: "Local VA ok, 2/5 remote VAs internal err",
-			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{remoteVA2, remoteUA2},
-				{remoteVA3, remoteUA3},
-				{brokenVA, "broken"},
-				{brokenVA, "broken"},
+			Remotes: []remoteConf{
+				{ua: pass, rir: arin},
+				{ua: pass, rir: ripe},
+				{ua: pass, rir: apnic},
+				{ua: pass, rir: arin, impl: brokenVA},
+				{ua: pass, rir: ripe, impl: brokenVA},
 			},
-			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC failed"),
+			PrimaryUA:        pass,
+			ExpectedProbType: string(probs.ServerInternalProblem),
 			// The real failure cause should be logged
-			ExpectedLog: expectedInternalErrLine,
+			ExpectedLogContains: errBrokenRemoteVA.Error(),
 		},
 		{
 			// If two out of six remote VAs fail with an internal err it should succeed
 			Name: "Local VA ok, 2/6 remote VAs internal err",
-			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{remoteVA2, remoteUA2},
-				{remoteVA3, remoteUA3},
-				{remoteVA4, remoteUA4},
-				{brokenVA, "broken"},
-				{brokenVA, "broken"},
+			Remotes: []remoteConf{
+				{ua: pass, rir: arin},
+				{ua: pass, rir: ripe},
+				{ua: pass, rir: apnic},
+				{ua: pass, rir: lacnic},
+				{ua: pass, rir: afrinic, impl: brokenVA},
+				{ua: pass, rir: arin, impl: brokenVA},
 			},
-			AllowedUAs: allowedUAs,
+			PrimaryUA: pass,
 		},
 		{
 			// If three out of six remote VAs fail with an internal err it should fail
 			Name: "Local VA ok, 4/6 remote VAs internal err",
-			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{remoteVA2, remoteUA2},
-				{remoteVA3, remoteUA3},
-				{brokenVA, "broken"},
-				{brokenVA, "broken"},
-				{brokenVA, "broken"},
+			Remotes: []remoteConf{
+				{ua: pass, rir: arin},
+				{ua: pass, rir: ripe},
+				{ua: pass, rir: apnic},
+				{ua: pass, rir: lacnic, impl: brokenVA},
+				{ua: pass, rir: afrinic, impl: brokenVA},
+				{ua: pass, rir: arin, impl: brokenVA},
 			},
-			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC failed"),
+			PrimaryUA:        pass,
+			ExpectedProbType: string(probs.ServerInternalProblem),
 			// The real failure cause should be logged
-			ExpectedLog: expectedInternalErrLine,
+			ExpectedLogContains: errBrokenRemoteVA.Error(),
 		},
 		{
 			// With only one working remote VA there should be a validation failure
-			Name:       "Local VA and one remote VA OK",
-			RemoteVAs:  remoteVAs,
-			AllowedUAs: map[string]bool{localUA: true, remoteUA2: true},
-			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
-				`During secondary domain validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
-				expectedKeyAuthorization)),
+			Name: "Local VA and one remote VA OK",
+			Remotes: []remoteConf{
+				{ua: pass, rir: arin},
+				{ua: fail, rir: ripe},
+				{ua: fail, rir: apnic},
+			},
+			PrimaryUA:           pass,
+			ExpectedProbType:    string(probs.UnauthorizedProblem),
+			ExpectedLogContains: "During secondary domain validation: The key authorization file from the server",
 		},
 		{
 			// If one remote VA cancels, it should succeed
 			Name: "Local VA and one remote VA OK, one cancelled VA",
-			RemoteVAs: []RemoteVA{
-				{remoteVA1, remoteUA1},
-				{cancelledVA, remoteUA2},
-				{remoteVA3, remoteUA3},
+			Remotes: []remoteConf{
+				{ua: pass, rir: arin},
+				{ua: pass, rir: ripe, impl: cancelledVA},
+				{ua: pass, rir: apnic},
 			},
-			AllowedUAs: allowedUAs,
+			PrimaryUA: pass,
 		},
 		{
 			// If all remote VAs cancel, it should fail
 			Name: "Local VA OK, three cancelled remote VAs",
-			RemoteVAs: []RemoteVA{
-				{cancelledVA, remoteUA1},
-				{cancelledVA, remoteUA2},
-				{cancelledVA, remoteUA3},
+			Remotes: []remoteConf{
+				{ua: pass, rir: arin, impl: cancelledVA},
+				{ua: pass, rir: ripe, impl: cancelledVA},
+				{ua: pass, rir: apnic, impl: cancelledVA},
 			},
-			AllowedUAs:   allowedUAs,
-			ExpectedProb: probs.ServerInternal("During secondary domain validation: Secondary domain validation RPC canceled"),
+			PrimaryUA:           pass,
+			ExpectedProbType:    string(probs.ServerInternalProblem),
+			ExpectedLogContains: "During secondary domain validation: Secondary domain validation RPC canceled",
 		},
 		{
 			// With the local and remote VAs seeing diff problems, we expect a problem.
-			Name:       "Local and remote VA differential, full results, enforce multi VA",
-			RemoteVAs:  remoteVAs,
-			AllowedUAs: map[string]bool{localUA: true},
-			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
-				`During secondary domain validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
-				expectedKeyAuthorization)),
+			Name: "Local and remote VA differential, full results, enforce multi VA",
+			Remotes: []remoteConf{
+				{ua: fail, rir: arin},
+				{ua: fail, rir: ripe},
+				{ua: fail, rir: apnic},
+			},
+			PrimaryUA:           pass,
+			ExpectedProbType:    string(probs.UnauthorizedProblem),
+			ExpectedLogContains: "During secondary domain validation: The key authorization file from the server",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			// Configure the test server with the testcase allowed UAs.
-			ms.setAllowedUAs(tc.AllowedUAs)
+			t.Parallel()
+
+			// Configure one test server per test case so that all tests can run in parallel.
+			ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
+			defer ms.Close()
 
 			// Configure a primary VA with testcase remote VAs.
-			localVA, mockLog := setup(ms.Server, localUA, tc.RemoteVAs, nil)
+			localVA, mockLog := setupWithRemotes(ms.Server, tc.PrimaryUA, tc.Remotes, nil)
 
 			// Perform all validations
 			res, _ := localVA.PerformValidation(ctx, req)
-			if res.Problems == nil && tc.ExpectedProb != nil {
-				t.Errorf("expected prob %v, got nil", tc.ExpectedProb)
-			} else if res.Problems != nil && tc.ExpectedProb == nil {
+			if res.Problems == nil && tc.ExpectedProbType != "" {
+				t.Errorf("expected prob %v, got nil", tc.ExpectedProbType)
+			} else if res.Problems != nil && tc.ExpectedProbType == "" {
 				t.Errorf("expected no prob, got %v", res.Problems)
-			} else if res.Problems != nil && tc.ExpectedProb != nil {
+			} else if res.Problems != nil && tc.ExpectedProbType != "" {
 				// That result should match expected.
-				test.AssertEquals(t, res.Problems.ProblemType, string(tc.ExpectedProb.Type))
-				test.AssertEquals(t, res.Problems.Detail, tc.ExpectedProb.Detail)
+				test.AssertEquals(t, res.Problems.ProblemType, tc.ExpectedProbType)
 			}
 
-			if tc.ExpectedLog != "" {
-				lines := mockLog.GetAllMatching(tc.ExpectedLog)
+			if tc.ExpectedLogContains != "" {
+				lines := mockLog.GetAllMatching(tc.ExpectedLogContains)
 				if len(lines) == 0 {
-					t.Fatalf("Got log %v; expected %q", mockLog.GetAll(), tc.ExpectedLog)
+					t.Fatalf("Got log %v; expected %q", mockLog.GetAll(), tc.ExpectedLogContains)
 				}
 			}
 		})
@@ -583,39 +652,48 @@ func TestMultiVA(t *testing.T) {
 }
 
 func TestMultiVAEarlyReturn(t *testing.T) {
-	const passUA = "pass"
-	const failUA = "fail"
-	// httpMultiSrv handles this specially by being slow
-	const slowRemoteUA = "slow remote"
-	allowedUAs := map[string]bool{
-		passUA: true,
-	}
-
-	ms := httpMultiSrv(t, expectedToken, allowedUAs)
-	defer ms.Close()
-
-	makeRemotes := func(userAgent ...string) []RemoteVA {
-		var rvas []RemoteVA
-		for i, ua := range userAgent {
-			clients := setupRemote(ms.Server, ua, nil, "", "")
-			rva := RemoteVA{clients, fmt.Sprintf("remote VA %d hostname", i)}
-			rvas = append(rvas, rva)
-		}
-		return rvas
-	}
+	t.Parallel()
 
 	testCases := []struct {
-		remoteUserAgents []string
+		remoteConfs []remoteConf
 	}{
-		{remoteUserAgents: []string{slowRemoteUA, passUA, failUA}},
-		{remoteUserAgents: []string{slowRemoteUA, slowRemoteUA, passUA, passUA, failUA}},
-		{remoteUserAgents: []string{slowRemoteUA, slowRemoteUA, passUA, passUA, failUA, failUA}},
+		{
+			remoteConfs: []remoteConf{
+				{ua: slowUA, rir: arin},
+				{ua: pass, rir: ripe},
+				{ua: fail, rir: apnic},
+			},
+		},
+		{
+			remoteConfs: []remoteConf{
+				{ua: slowUA, rir: arin},
+				{ua: slowUA, rir: ripe},
+				{ua: pass, rir: apnic},
+				{ua: pass, rir: arin},
+				{ua: fail, rir: ripe},
+			},
+		},
+		{
+			remoteConfs: []remoteConf{
+				{ua: slowUA, rir: arin},
+				{ua: slowUA, rir: ripe},
+				{ua: pass, rir: apnic},
+				{ua: pass, rir: arin},
+				{ua: fail, rir: ripe},
+				{ua: fail, rir: apnic},
+			},
+		},
 	}
 
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("case %d", i), func(t *testing.T) {
-			rvas := makeRemotes(tc.remoteUserAgents...)
-			localVA, _ := setup(ms.Server, pass, rvas, nil)
+			t.Parallel()
+
+			// Configure one test server per test case so that all tests can run in parallel.
+			ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
+			defer ms.Close()
+
+			localVA, _ := setupWithRemotes(ms.Server, pass, tc.remoteConfs, nil)
 
 			// Perform all validations
 			start := time.Now()
@@ -643,35 +721,19 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 }
 
 func TestMultiVAPolicy(t *testing.T) {
-	const (
-		remoteUA1 = "remote 1"
-		remoteUA2 = "remote 2"
-		remoteUA3 = "remote 3"
-		localUA   = "local 1"
-	)
-	// Forbid all remote UAs to ensure that multi-va fails
-	allowedUAs := map[string]bool{
-		localUA:   true,
-		remoteUA1: false,
-		remoteUA2: false,
-		remoteUA3: false,
-	}
+	t.Parallel()
 
-	ms := httpMultiSrv(t, expectedToken, allowedUAs)
+	ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
 	defer ms.Close()
 
-	remoteVA1 := setupRemote(ms.Server, remoteUA1, nil, "", "")
-	remoteVA2 := setupRemote(ms.Server, remoteUA2, nil, "", "")
-	remoteVA3 := setupRemote(ms.Server, remoteUA3, nil, "", "")
-
-	remoteVAs := []RemoteVA{
-		{remoteVA1, remoteUA1},
-		{remoteVA2, remoteUA2},
-		{remoteVA3, remoteUA3},
+	remoteConfs := []remoteConf{
+		{ua: fail, rir: arin},
+		{ua: fail, rir: ripe},
+		{ua: fail, rir: apnic},
 	}
 
-	// Create a local test VA with the two remote VAs
-	localVA, _ := setup(ms.Server, localUA, remoteVAs, nil)
+	// Create a local test VA with the remote VAs
+	localVA, _ := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
 
 	// Perform validation for a domain not in the disabledDomains list
 	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
@@ -681,28 +743,19 @@ func TestMultiVAPolicy(t *testing.T) {
 		t.Error("expected prob from PerformValidation, got nil")
 	}
 }
-
 func TestMultiVALogging(t *testing.T) {
-	const (
-		rva1UA  = "remote 1"
-		rva2UA  = "remote 2"
-		rva3UA  = "remote 3"
-		localUA = "local 1"
-	)
+	t.Parallel()
 
-	ms := httpMultiSrv(t, expectedToken, map[string]bool{localUA: true, rva1UA: true, rva2UA: true})
+	ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
 	defer ms.Close()
 
-	rva1 := setupRemote(ms.Server, rva1UA, nil, "dev-arin", "ARIN")
-	rva2 := setupRemote(ms.Server, rva2UA, nil, "dev-ripe", "RIPE")
-	rva3 := setupRemote(ms.Server, rva3UA, nil, "dev-ripe", "RIPE")
-
-	remoteVAs := []RemoteVA{
-		{rva1, rva1UA},
-		{rva2, rva2UA},
-		{rva3, rva3UA},
+	remoteConfs := []remoteConf{
+		{ua: pass, rir: arin},
+		{ua: pass, rir: ripe},
+		{ua: pass, rir: apnic},
 	}
-	va, _ := setup(ms.Server, localUA, remoteVAs, nil)
+
+	va, _ := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
 	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
 	res, err := va.PerformValidation(ctx, req)
 	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed with: %#v", res.Problems))
@@ -762,18 +815,11 @@ func TestDetailedError(t *testing.T) {
 }
 
 func TestLogRemoteDifferentials(t *testing.T) {
-	// Create some remote VAs
-	remoteVA1 := setupRemote(nil, "remote 1", nil, "", "")
-	remoteVA2 := setupRemote(nil, "remote 2", nil, "", "")
-	remoteVA3 := setupRemote(nil, "remote 3", nil, "", "")
-	// The VA will allow a max of 1 remote failure based on MPIC.
-	remoteVAs := []RemoteVA{
-		{remoteVA1, "remote 1"},
-		{remoteVA2, "remote 2"},
-		{remoteVA3, "remote 3"},
+	remoteConfs := []remoteConf{
+		{ua: pass, rir: arin},
+		{ua: pass, rir: ripe},
+		{ua: pass, rir: apnic},
 	}
-
-	localVA, mockLog := setup(nil, "local 1", remoteVAs, nil)
 
 	egProbA := probs.DNS("root DNS servers closed at 4:30pm")
 	egProbB := probs.OrderNotReady("please take a number")
@@ -813,7 +859,13 @@ func TestLogRemoteDifferentials(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			mockLog.Clear()
+			t.Parallel()
+
+			// Configure one test server per test case so that all tests can run in parallel.
+			ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
+			defer ms.Close()
+
+			localVA, mockLog := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
 
 			localVA.logRemoteResults(
 				"example.com", 1999, "blorpus-01", tc.remoteProbs)
