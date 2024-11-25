@@ -36,8 +36,8 @@ type Config struct {
 		//   - RIPE
 		//   - APNIC
 		//   - LACNIC
-		//   - AfriNIC
-		RIR string `validate:"required,oneof=ARIN RIPE APNIC LACNIC AfriNIC"`
+		//   - AFRINIC
+		RIR string `validate:"required,oneof=ARIN RIPE APNIC LACNIC AFRINIC"`
 
 		// SkipGRPCClientCertVerification, when disabled as it should typically
 		// be, will cause the remoteva server (which receives gRPCs from a
