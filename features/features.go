@@ -47,15 +47,8 @@ type Config struct {
 
 	// EnforceMultiCAA causes the VA to kick off remote CAA rechecks when true.
 	// When false, no remote CAA rechecks will be performed. The primary VA will
-	// make a valid/invalid decision with the results. The primary VA will
-	// return an early decision if MultiCAAFullResults is false.
+	// make a valid/invalid decision with the results.
 	EnforceMultiCAA bool
-
-	// MultiCAAFullResults will cause the main VA to block and wait for all of
-	// the remote VA CAA recheck results instead of returning early if the
-	// number of failures is greater than the number allowed by MPIC.
-	// Only used when EnforceMultiCAA is true.
-	MultiCAAFullResults bool
 
 	// MultipleCertificateProfiles, when enabled, triggers the following
 	// behavior:

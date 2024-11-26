@@ -594,8 +594,7 @@ func TestDisabledMultiCAARechecking(t *testing.T) {
 	va, _ := setupWithRemotes(nil, "local", remoteVAs, nil)
 
 	features.Set(features.Config{
-		EnforceMultiCAA:     false,
-		MultiCAAFullResults: false,
+		EnforceMultiCAA: false,
 	})
 	defer features.Reset()
 
@@ -714,7 +713,7 @@ func TestMultiCAARechecking(t *testing.T) {
 			name:                     "functional localVA, 1 broken RVA, no CAA records",
 			domains:                  "present-dns-only.com",
 			localDNSClient:           caaMockDNS{},
-			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
 				{ua: remoteUA, rir: ripe},
@@ -731,9 +730,9 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "functional localVA, 2 broken RVA, no CAA records",
 			domains:                  "present-dns-only.com",
-			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
+			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
-			expectedDiffLogSubstring: `RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
@@ -751,9 +750,9 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "functional localVA, all broken RVAs, no CAA records",
 			domains:                  "present-dns-only.com",
-			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
+			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
-			expectedDiffLogSubstring: `RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
@@ -788,7 +787,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "functional localVA, 1 broken RVA, CAA issue type present",
 			domains:                  "present.com",
-			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
@@ -806,9 +805,9 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "functional localVA, 2 broken RVA, CAA issue type present",
 			domains:                  "present.com",
-			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
+			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
-			expectedDiffLogSubstring: `RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
@@ -826,9 +825,9 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "functional localVA, all broken RVAs, CAA issue type present",
 			domains:                  "present.com",
-			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
+			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
-			expectedDiffLogSubstring: `RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"broken","Problem":{"type":"dns","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
@@ -844,9 +843,8 @@ func TestMultiCAARechecking(t *testing.T) {
 			},
 		},
 		{
-			// The localVA kicks off the background goroutines before doing its
-			// own check. But if its own check fails, it doesn't wait for their
-			// results.
+			// The localVA returns early with a problem before kicking off the
+			// remote checks.
 			name:                  "all VAs functional, CAA issue type forbids issuance",
 			domains:               "unsatisfiable.com",
 			expectedProbSubstring: "CAA record for unsatisfiable.com prevents issuance",
@@ -861,7 +859,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "1 hijacked RVA, CAA issue type present",
 			domains:                  "present.com",
-			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
@@ -872,9 +870,9 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "2 hijacked RVAs, CAA issue type present",
 			domains:                  "present.com",
-			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
+			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
-			expectedDiffLogSubstring: `RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
@@ -885,9 +883,9 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "3 hijacked RVAs, CAA issue type present",
 			domains:                  "present.com",
-			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
+			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
-			expectedDiffLogSubstring: `RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
@@ -898,7 +896,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "1 hijacked RVA, CAA issuewild type present",
 			domains:                  "satisfiable-wildcard.com",
-			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
@@ -909,9 +907,9 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "2 hijacked RVAs, CAA issuewild type present",
 			domains:                  "satisfiable-wildcard.com",
-			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
+			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
-			expectedDiffLogSubstring: `RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
@@ -922,9 +920,9 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "3 hijacked RVAs, CAA issuewild type present",
 			domains:                  "satisfiable-wildcard.com",
-			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
+			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
-			expectedDiffLogSubstring: `RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
@@ -935,7 +933,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "1 hijacked RVA, CAA issuewild type present, 1 failure allowed",
 			domains:                  "satisfiable-wildcard.com",
-			expectedDiffLogSubstring: `RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
@@ -946,9 +944,9 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "2 hijacked RVAs, CAA issuewild type present, 1 failure allowed",
 			domains:                  "satisfiable-wildcard.com",
-			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
+			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
-			expectedDiffLogSubstring: `RemoteSuccesses":1,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
@@ -959,9 +957,9 @@ func TestMultiCAARechecking(t *testing.T) {
 		{
 			name:                     "3 hijacked RVAs, CAA issuewild type present, 1 failure allowed",
 			domains:                  "satisfiable-wildcard.com",
-			expectedProbSubstring:    "During secondary CAA checking: While processing CAA",
+			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
-			expectedDiffLogSubstring: `RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"hijacked","Problem":{"type":"caa","detail":"While processing CAA for`,
+			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
 			localDNSClient:           caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
@@ -976,13 +974,8 @@ func TestMultiCAARechecking(t *testing.T) {
 			va, mockLog := setupWithRemotes(nil, localUA, tc.remoteVAs, tc.localDNSClient)
 			defer mockLog.Clear()
 
-			// MultiCAAFullResults: false is inherently flaky because of the
-			// non-deterministic nature of concurrent goroutine returns. We,
-			// boulder dev, made a decision to skip testing that path and
-			// eventually make MultiCAAFullResults: true the default.
 			features.Set(features.Config{
-				EnforceMultiCAA:     true,
-				MultiCAAFullResults: true,
+				EnforceMultiCAA: true,
 			})
 			defer features.Reset()
 
@@ -1012,11 +1005,11 @@ func TestMultiCAARechecking(t *testing.T) {
 				}
 			}
 
-			gotRequestProbs := mockLog.GetAllMatching(".IsCAAValid returned problem: ")
+			gotRequestProbs := mockLog.GetAllMatching(" returned a problem: ")
 			test.AssertEquals(t, len(gotRequestProbs), invalidRVACount)
 
 			gotDifferential := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
-			if features.Get().MultiCAAFullResults && tc.expectedDiffLogSubstring != "" {
+			if tc.expectedDiffLogSubstring != "" {
 				test.AssertEquals(t, len(gotDifferential), 1)
 				test.AssertContains(t, gotDifferential[0], tc.expectedDiffLogSubstring)
 			} else {

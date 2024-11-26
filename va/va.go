@@ -472,12 +472,13 @@ var _ remoteResult = (*vapb.IsCAAValidResponse)(nil)
 func (va *ValidationAuthorityImpl) performRemoteValidation(
 	ctx context.Context,
 	op remoteOperation,
-	req *vapb.PerformValidationRequest,
+	req proto.Message,
 ) *probs.ProblemDetails {
 	remoteVACount := len(va.remoteVAs)
 	if remoteVACount == 0 {
 		return nil
 	}
+	isCAAValidReq, isCAACheck := req.(*vapb.IsCAAValidRequest)
 
 	type response struct {
 		addr        string
@@ -526,6 +527,10 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 				va.log.Errf("Operation on Remote VA (%s) returned malformed problem: %s", resp.addr, err)
 				currProb = probs.ServerInternal("Secondary validation RPC returned malformed result")
 			}
+			if isCAACheck {
+				// We're checking CAA, log the problem.
+				va.log.Errf("Operation on Remote VA (%s) returned a problem: %s", resp.addr, err)
+			}
 		} else {
 			// The remote VA returned a successful result.
 			passed = append(passed, resp.perspective)
@@ -552,6 +557,11 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		}
 	}
 
+	if isCAACheck {
+		// We're checking CAA, log the results.
+		va.logRemoteResults(isCAAValidReq, len(passed), len(failed))
+	}
+
 	if len(passed) >= required {
 		return nil
 	} else if len(failed) > va.maxRemoteFailures {
@@ -564,25 +574,10 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	}
 }
 
-// logRemoteResults is called by `processRemoteCAAResults` when the
-// `MultiCAAFullResults` feature flag is enabled. It produces a JSON log line
-// that contains the results each remote VA returned.
-func (va *ValidationAuthorityImpl) logRemoteResults(
-	domain string,
-	acctID int64,
-	challengeType string,
-	remoteResults []*remoteVAResult) {
-
-	var successes, failures []*remoteVAResult
-
-	for _, result := range remoteResults {
-		if result.Problem != nil {
-			failures = append(failures, result)
-		} else {
-			successes = append(successes, result)
-		}
-	}
-	if len(failures) == 0 {
+// logRemoteResults is called by performRemoteValidation when the request passed
+// is *vapb.IsCAAValidRequest.
+func (va *ValidationAuthorityImpl) logRemoteResults(req *vapb.IsCAAValidRequest, passed int, failed int) {
+	if failed == 0 {
 		// There's no point logging a differential line if everything succeeded.
 		return
 	}
@@ -592,13 +587,13 @@ func (va *ValidationAuthorityImpl) logRemoteResults(
 		AccountID       int64
 		ChallengeType   string
 		RemoteSuccesses int
-		RemoteFailures  []*remoteVAResult
+		RemoteFailures  int
 	}{
-		Domain:          domain,
-		AccountID:       acctID,
-		ChallengeType:   challengeType,
-		RemoteSuccesses: len(successes),
-		RemoteFailures:  failures,
+		Domain:          req.Domain,
+		AccountID:       req.AccountURIID,
+		ChallengeType:   req.ValidationMethod,
+		RemoteSuccesses: passed,
+		RemoteFailures:  failed,
 	}
 
 	logJSON, err := json.Marshal(logOb)
@@ -612,13 +607,6 @@ func (va *ValidationAuthorityImpl) logRemoteResults(
 	}
 
 	va.log.Infof("remoteVADifferentials JSON=%s", string(logJSON))
-}
-
-// remoteVAResult is a struct that combines a problem details instance (that may
-// be nil) with the remote VA hostname that produced it.
-type remoteVAResult struct {
-	VAHostname string
-	Problem    *probs.ProblemDetails
 }
 
 // performLocalValidation performs primary domain control validation and then
@@ -711,7 +699,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		}
 
 		// Log the total validation latency.
-		logEvent.Latency = time.Since(start).Round(time.Millisecond).Seconds()
+		logEvent.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
 		va.log.AuditObject("Validation result", logEvent)
 	}()
 
