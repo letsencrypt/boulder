@@ -13,7 +13,6 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -22,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/core"
@@ -2273,7 +2271,7 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 		// No profile name is specified.
 		return nil
 	}
-	if !slices.Contains(maps.Keys(wfe.certProfiles), profile) {
+	if _, ok := wfe.certProfiles[profile]; !ok {
 		// The profile name is not in the list of configured profiles.
 		return errors.New("not a recognized profile name")
 	}

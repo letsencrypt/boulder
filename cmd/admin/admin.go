@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jmhodges/clock"
@@ -93,4 +94,24 @@ func newAdmin(configFile string, dryRun bool) (*admin, error) {
 		clk:    clk,
 		log:    logger,
 	}, nil
+}
+
+// findActiveInputMethodFlag returns the single input method flag that was set
+// to a non-default value in setInputs map. If no flags or multiple flags are
+// set, it returns an error.
+func findActiveInputMethodFlag(setInputs map[string]bool) (string, error) {
+	activeFlags := make([]string, 0, len(setInputs))
+	for flag, isSet := range setInputs {
+		if isSet {
+			activeFlags = append(activeFlags, flag)
+		}
+	}
+
+	if len(activeFlags) == 0 {
+		return "", errors.New("at least one input method flag must be specified")
+	} else if len(activeFlags) > 1 {
+		return "", fmt.Errorf("more than one input method flag specified: %v", activeFlags)
+	}
+
+	return activeFlags[0], nil
 }
