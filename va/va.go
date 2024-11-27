@@ -18,9 +18,11 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
@@ -452,15 +454,35 @@ func (va *ValidationAuthorityImpl) observeLatency(op, perspective, challType, pr
 	va.metrics.validationLatency.With(labels).Observe(latency.Seconds())
 }
 
-// performRemoteValidation coordinates the whole process of kicking off and
-// collecting results from calls to remote VAs' PerformValidation function. It
-// returns a problem if too many remote perspectives failed to corroborate
-// domain control, or nil if enough succeeded to surpass our corroboration
-// threshold.
-func (va *ValidationAuthorityImpl) performRemoteValidation(
-	ctx context.Context,
-	req *vapb.PerformValidationRequest,
-) *probs.ProblemDetails {
+// remoteOperation is a func type that encapsulates the operation and request
+// passed to va.performRemoteOperation. The operation must be a method on
+// vapb.VAClient or vapb.CAAClient, and the request must be the corresponding
+// proto.Message passed to that method.
+type remoteOperation = func(context.Context, RemoteVA, proto.Message) (remoteResult, error)
+
+// remoteResult is an interface that must be implemented by the results of a
+// remoteOperation, such as *vapb.ValidationResult and *vapb.IsCAAValidResponse.
+// It provides methods to access problem details, the associated perspective,
+// and the RIR.
+type remoteResult interface {
+	proto.Message
+	GetProblem() *corepb.ProblemDetails
+	GetPerspective() string
+	GetRir() string
+}
+
+var _ remoteResult = (*vapb.ValidationResult)(nil)
+var _ remoteResult = (*vapb.IsCAAValidResponse)(nil)
+
+// performRemoteOperation concurrently calls the provided operation with `req` and a
+// RemoteVA once for each configured RemoteVA. It cancels remaining operations and returns
+// early if either the required number of successful results is obtained or the number of
+// failures exceeds va.maxRemoteFailures.
+//
+// Internal logic errors are logged. If the number of operation failures exceeds
+// va.maxRemoteFailures, the first encountered problem is returned as a
+// *probs.ProblemDetails.
+func (va *ValidationAuthorityImpl) performRemoteOperation(ctx context.Context, op remoteOperation, req proto.Message) *probs.ProblemDetails {
 	remoteVACount := len(va.remoteVAs)
 	if remoteVACount == 0 {
 		return nil
@@ -470,7 +492,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 		addr        string
 		perspective string
 		rir         string
-		result      *vapb.ValidationResult
+		result      remoteResult
 		err         error
 	}
 
@@ -480,7 +502,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	responses := make(chan *response, remoteVACount)
 	for _, i := range rand.Perm(remoteVACount) {
 		go func(rva RemoteVA) {
-			res, err := rva.PerformValidation(subCtx, req)
+			res, err := op(subCtx, rva, req)
 			responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
 		}(va.remoteVAs[i])
 	}
@@ -498,20 +520,20 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 			failed = append(failed, resp.perspective)
 
 			if core.IsCanceled(resp.err) {
-				currProb = probs.ServerInternal("Secondary domain validation RPC canceled")
+				currProb = probs.ServerInternal("Secondary validation RPC canceled")
 			} else {
-				va.log.Errf("Remote VA %q.PerformValidation failed: %s", resp.addr, resp.err)
-				currProb = probs.ServerInternal("Secondary domain validation RPC failed")
+				va.log.Errf("Operation on remote VA (%s) failed: %s", resp.addr, resp.err)
+				currProb = probs.ServerInternal("Secondary validation RPC failed")
 			}
-		} else if resp.result.Problems != nil {
+		} else if resp.result.GetProblem() != nil {
 			// The remote VA returned a problem.
 			failed = append(failed, resp.perspective)
 
 			var err error
-			currProb, err = bgrpc.PBToProblemDetails(resp.result.Problems)
+			currProb, err = bgrpc.PBToProblemDetails(resp.result.GetProblem())
 			if err != nil {
-				va.log.Errf("Remote VA %q.PerformValidation returned malformed problem: %s", resp.addr, err)
-				currProb = probs.ServerInternal("Secondary domain validation RPC returned malformed result")
+				va.log.Errf("Operation on Remote VA (%s) returned malformed problem: %s", resp.addr, err)
+				currProb = probs.ServerInternal("Secondary validation RPC returned malformed result")
 			}
 		} else {
 			// The remote VA returned a successful result.
@@ -542,12 +564,12 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	if len(passed) >= required {
 		return nil
 	} else if len(failed) > va.maxRemoteFailures {
-		firstProb.Detail = fmt.Sprintf("During secondary domain validation: %s", firstProb.Detail)
+		firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
 		return firstProb
 	} else {
 		// This condition should not occur - it indicates the passed/failed counts
 		// neither met the required threshold nor the maxRemoteFailures threshold.
-		return probs.ServerInternal("Too few remote PerformValidation RPC results")
+		return probs.ServerInternal("Too few remote RPC results")
 	}
 }
 
@@ -734,6 +756,13 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// singular problem, because the remote VAs have already audit-logged their
 	// own validation records, and it's not helpful to present multiple large
 	// errors to the end user.
-	prob = va.performRemoteValidation(ctx, req)
+	op := func(ctx context.Context, remoteva RemoteVA, req proto.Message) (remoteResult, error) {
+		validationRequest, ok := req.(*vapb.PerformValidationRequest)
+		if !ok {
+			return nil, fmt.Errorf("got type %T, want *vapb.PerformValidationRequest", req)
+		}
+		return remoteva.PerformValidation(ctx, validationRequest)
+	}
+	prob = va.performRemoteOperation(ctx, op, req)
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 }
