@@ -474,10 +474,10 @@ type remoteResult interface {
 var _ remoteResult = (*vapb.ValidationResult)(nil)
 var _ remoteResult = (*vapb.IsCAAValidResponse)(nil)
 
-// performRemoteOperation performs the provided operation and request on all
-// remote VAs. It cancels the operation and returns early if either the required
-// number of successful results is obtained or the number of failures exceeds
-// va.maxRemoteFailures.
+// performRemoteOperation concurrently calls the provided operation with `req` and a
+// RemoteVA once for each configured RemoteVA. It cancels remaining operations and returns
+// early if either the required number of successful results is obtained or the number of
+// failures exceeds va.maxRemoteFailures.
 //
 // Internal logic errors are logged. If the number of operation failures exceeds
 // va.maxRemoteFailures, the first encountered problem is returned as a

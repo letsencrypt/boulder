@@ -474,7 +474,7 @@ func TestPerformRemoteOperation(t *testing.T) {
 					ProblemType: string(probs.BadNonceProblem),
 					Detail:      "quite surprising",
 				}
-				return &vapb.ValidationResult{Problem: prob, Perspective: rva.Perspective}, nil
+				return &vapb.ValidationResult{Problem: prob, Perspective: rva.Perspective, Rir: rva.RIR}, nil
 			},
 		},
 		{
@@ -487,7 +487,7 @@ func TestPerformRemoteOperation(t *testing.T) {
 					ProblemType: string(probs.PausedProblem),
 					Detail:      "quite surprising, indeed",
 				}
-				return &vapb.IsCAAValidResponse{Problem: prob, Perspective: rva.Perspective}, nil
+				return &vapb.IsCAAValidResponse{Problem: prob, Perspective: rva.Perspective, Rir: rva.RIR}, nil
 			},
 		},
 		{
@@ -500,7 +500,7 @@ func TestPerformRemoteOperation(t *testing.T) {
 					ProblemType: string(probs.BadPublicKeyProblem),
 					Detail:      "a shocking result",
 				}
-				return &vapb.ValidationResult{Problem: prob, Perspective: rva.Perspective}, nil
+				return &vapb.ValidationResult{Problem: prob, Perspective: rva.Perspective, Rir: rva.RIR}, nil
 			},
 		},
 	}
