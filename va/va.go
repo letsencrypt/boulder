@@ -454,8 +454,18 @@ func (va *ValidationAuthorityImpl) observeLatency(op, perspective, challType, pr
 	va.metrics.validationLatency.With(labels).Observe(latency.Seconds())
 }
 
+// remoteOperation is a func type that encapsulates the operation and request
+// passed to va.performRemoteOperation. The operation must be a method on
+// vapb.VAClient or vapb.CAAClient, and the request must be the corresponding
+// proto.Message passed to that method.
 type remoteOperation = func(context.Context, RemoteVA, proto.Message) (remoteResult, error)
+
+// remoteResult is an interface that must be implemented by the results of a
+// remoteOperation, such as *vapb.ValidationResult and *vapb.IsCAAValidResponse.
+// It provides methods to access problem details, the associated perspective,
+// and the RIR.
 type remoteResult interface {
+	proto.Message
 	GetProblem() *corepb.ProblemDetails
 	GetPerspective() string
 	GetRir() string
@@ -464,16 +474,15 @@ type remoteResult interface {
 var _ remoteResult = (*vapb.ValidationResult)(nil)
 var _ remoteResult = (*vapb.IsCAAValidResponse)(nil)
 
-// performRemoteValidation coordinates the whole process of kicking off and
-// collecting results from calls to remote VAs' PerformValidation function. It
-// returns a problem if too many remote perspectives failed to corroborate
-// domain control, or nil if enough succeeded to surpass our corroboration
-// threshold.
-func (va *ValidationAuthorityImpl) performRemoteValidation(
-	ctx context.Context,
-	op remoteOperation,
-	req proto.Message,
-) *probs.ProblemDetails {
+// performRemoteOperation concurrently calls the provided operation with `req` and a
+// RemoteVA once for each configured RemoteVA. It cancels remaining operations and returns
+// early if either the required number of successful results is obtained or the number of
+// failures exceeds va.maxRemoteFailures.
+//
+// Internal logic errors are logged. If the number of operation failures exceeds
+// va.maxRemoteFailures, the first encountered problem is returned as a
+// *probs.ProblemDetails.
+func (va *ValidationAuthorityImpl) performRemoteOperation(ctx context.Context, op remoteOperation, req proto.Message) *probs.ProblemDetails {
 	remoteVACount := len(va.remoteVAs)
 	if remoteVACount == 0 {
 		return nil
@@ -574,7 +583,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	}
 }
 
-// logRemoteResults is called by performRemoteValidation when the request passed
+// logRemoteResults is called by performRemoteOperation when the request passed
 // is *vapb.IsCAAValidRequest.
 func (va *ValidationAuthorityImpl) logRemoteResults(req *vapb.IsCAAValidRequest, passed int, failed int) {
 	if failed == 0 {
@@ -740,9 +749,8 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		if !ok {
 			return nil, fmt.Errorf("got type %T, want *vapb.PerformValidationRequest", req)
 		}
-		result, err := remoteva.PerformValidation(ctx, validationRequest)
-		return result, err
+		return remoteva.PerformValidation(ctx, validationRequest)
 	}
-	prob = va.performRemoteValidation(ctx, op, req)
+	prob = va.performRemoteOperation(ctx, op, req)
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 }

@@ -450,19 +450,68 @@ func TestDCVAndCAASequencing(t *testing.T) {
 	test.AssertEquals(t, len(caaLog), 0)
 }
 
-func TestPerformRemoteValidationWithKnownOperation(t *testing.T) {
-	va, _ := setupWithRemotes(nil, "", []remoteConf{{ua: pass, rir: arin}, {ua: pass, rir: ripe}, {ua: pass, rir: apnic}}, nil)
-	op := func(ctx context.Context, rva RemoteVA, req proto.Message) (remoteResult, error) {
-		prob := &corepb.ProblemDetails{
-			ProblemType: string(probs.BadNonceProblem),
-			Detail:      "quite surprising",
-		}
-		return &vapb.ValidationResult{Problem: prob, Perspective: rva.Perspective}, nil
+func TestPerformRemoteOperation(t *testing.T) {
+	va, _ := setupWithRemotes(nil, "", []remoteConf{
+		{ua: pass, rir: arin},
+		{ua: pass, rir: ripe},
+		{ua: pass, rir: apnic},
+	}, nil)
+
+	testCases := []struct {
+		name           string
+		req            proto.Message
+		expectedType   string
+		expectedDetail string
+		op             func(ctx context.Context, rva RemoteVA, req proto.Message) (remoteResult, error)
+	}{
+		{
+			name:           "ValidationResult",
+			req:            &vapb.PerformValidationRequest{},
+			expectedType:   string(probs.BadNonceProblem),
+			expectedDetail: "quite surprising",
+			op: func(ctx context.Context, rva RemoteVA, req proto.Message) (remoteResult, error) {
+				prob := &corepb.ProblemDetails{
+					ProblemType: string(probs.BadNonceProblem),
+					Detail:      "quite surprising",
+				}
+				return &vapb.ValidationResult{Problem: prob, Perspective: rva.Perspective, Rir: rva.RIR}, nil
+			},
+		},
+		{
+			name:           "IsCAAValidResponse",
+			req:            &vapb.IsCAAValidRequest{},
+			expectedType:   string(probs.PausedProblem),
+			expectedDetail: "quite surprising, indeed",
+			op: func(ctx context.Context, rva RemoteVA, req proto.Message) (remoteResult, error) {
+				prob := &corepb.ProblemDetails{
+					ProblemType: string(probs.PausedProblem),
+					Detail:      "quite surprising, indeed",
+				}
+				return &vapb.IsCAAValidResponse{Problem: prob, Perspective: rva.Perspective, Rir: rva.RIR}, nil
+			},
+		},
+		{
+			name:           "IsCAAValidRequestWithValidationResult",
+			req:            &vapb.IsCAAValidRequest{},
+			expectedType:   string(probs.BadPublicKeyProblem),
+			expectedDetail: "a shocking result",
+			op: func(ctx context.Context, rva RemoteVA, req proto.Message) (remoteResult, error) {
+				prob := &corepb.ProblemDetails{
+					ProblemType: string(probs.BadPublicKeyProblem),
+					Detail:      "a shocking result",
+				}
+				return &vapb.ValidationResult{Problem: prob, Perspective: rva.Perspective, Rir: rva.RIR}, nil
+			},
+		},
 	}
-	req := &vapb.PerformValidationRequest{}
-	prob := va.performRemoteValidation(context.Background(), op, req)
-	test.AssertEquals(t, prob.Type, probs.BadNonceProblem)
-	test.AssertContains(t, prob.Detail, "quite surprising")
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			prob := va.performRemoteOperation(context.Background(), tc.op, tc.req)
+			test.AssertEquals(t, string(prob.Type), tc.expectedType)
+			test.AssertContains(t, prob.Detail, tc.expectedDetail)
+		})
+	}
 }
 
 func TestMultiVA(t *testing.T) {
