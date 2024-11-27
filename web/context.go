@@ -16,6 +16,22 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+type userAgentContextKey struct{}
+
+func UserAgent(ctx context.Context) string {
+	// The below type assertion is safe because this context key can only be
+	// set by this package and is only set to a string.
+	val, ok := ctx.Value(userAgentContextKey{}).(string)
+	if !ok {
+		return ""
+	}
+	return val
+}
+
+func WithUserAgent(ctx context.Context, ua string) context.Context {
+	return context.WithValue(ctx, userAgentContextKey{}, ua)
+}
+
 // RequestEvent is a structured record of the metadata we care about for a
 // single web request. It is generated when a request is received, passed to
 // the request handler which can populate its fields as appropriate, and then
@@ -121,13 +137,19 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		realIP = "0.0.0.0"
 	}
 
+	userAgent := r.Header.Get("User-Agent")
+
 	logEvent := &RequestEvent{
 		RealIP:    realIP,
 		Method:    r.Method,
-		UserAgent: r.Header.Get("User-Agent"),
+		UserAgent: userAgent,
 		Origin:    r.Header.Get("Origin"),
 		Extra:     make(map[string]interface{}),
 	}
+
+	ctx := WithUserAgent(r.Context(), userAgent)
+	r = r.WithContext(ctx)
+
 	if !features.Get().PropagateCancels {
 		// We specifically override the default r.Context() because we would prefer
 		// for clients to not be able to cancel our operations in arbitrary places.
