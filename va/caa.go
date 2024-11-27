@@ -96,8 +96,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 			if !ok {
 				return nil, fmt.Errorf("got type %T, want *vapb.IsCAAValidRequest", req)
 			}
-			result, err := remoteva.IsCAAValid(ctx, checkRequest)
-			return result, err
+			return remoteva.IsCAAValid(ctx, checkRequest)
 		}
 		remoteProb := va.performRemoteOperation(ctx, op, req)
 		// If the remote result was a non-nil problem then fail the CAA check
