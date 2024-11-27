@@ -7,13 +7,14 @@ import (
 )
 
 func Test_findActiveInputMethodFlag(t *testing.T) {
-	tests := map[string]struct {
+	tests := []struct {
 		name      string
 		setInputs map[string]bool
 		expected  string
 		wantErr   bool
 	}{
-		"No active flags": {
+		{
+			name: "No active flags",
 			setInputs: map[string]bool{
 				"-private-key": false,
 				"-spki-file":   false,
@@ -22,7 +23,8 @@ func Test_findActiveInputMethodFlag(t *testing.T) {
 			expected: "",
 			wantErr:  true,
 		},
-		"Multiple active flags": {
+		{
+			name: "Multiple active flags",
 			setInputs: map[string]bool{
 				"-private-key": true,
 				"-spki-file":   true,
@@ -31,7 +33,8 @@ func Test_findActiveInputMethodFlag(t *testing.T) {
 			expected: "",
 			wantErr:  true,
 		},
-		"Single active flag": {
+		{
+			name: "Single active flag",
 			setInputs: map[string]bool{
 				"-private-key": true,
 				"-spki-file":   false,
