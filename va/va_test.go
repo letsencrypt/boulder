@@ -896,34 +896,19 @@ func TestLogRemoteDifferentials(t *testing.T) {
 		expectedLog string
 	}{
 		{
-			name: "all results equal (nil)",
-			req: &vapb.IsCAAValidRequest{
-				Domain:           "example.com",
-				AccountURIID:     1999,
-				ValidationMethod: "blorpus-01",
-			},
+			name:        "all results equal (nil)",
 			passed:      0,
 			failed:      3,
 			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":3}`,
 		},
 		{
-			name: "all results equal (not nil)",
-			req: &vapb.IsCAAValidRequest{
-				Domain:           "example.com",
-				AccountURIID:     1999,
-				ValidationMethod: "blorpus-01",
-			},
+			name:        "all results equal (not nil)",
 			passed:      0,
 			failed:      3,
 			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":3}`,
 		},
 		{
-			name: "differing results, some non-nil",
-			req: &vapb.IsCAAValidRequest{
-				Domain:           "example.com",
-				AccountURIID:     1999,
-				ValidationMethod: "blorpus-01",
-			},
+			name:        "differing results, some non-nil",
 			passed:      2,
 			failed:      1,
 			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":2,"RemoteFailures":1}`,
@@ -940,7 +925,11 @@ func TestLogRemoteDifferentials(t *testing.T) {
 
 			localVA, mockLog := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
 
-			localVA.logRemoteResults(tc.req, tc.passed, tc.failed)
+			localVA.logRemoteResults(&vapb.IsCAAValidRequest{
+				Domain:           "example.com",
+				AccountURIID:     1999,
+				ValidationMethod: "blorpus-01",
+			}, tc.passed, tc.failed)
 
 			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
 			if tc.expectedLog != "" {
