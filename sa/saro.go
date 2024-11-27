@@ -22,7 +22,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -523,11 +522,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 	txn := func(tx db.Executor) (interface{}, error) {
 		var omObj interface{}
 		var err error
-		if features.Get().MultipleCertificateProfiles {
-			omObj, err = tx.Get(ctx, orderModelv2{}, req.Id)
-		} else {
-			omObj, err = tx.Get(ctx, orderModelv1{}, req.Id)
-		}
+		omObj, err = tx.Get(ctx, orderModel{}, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
 				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
@@ -539,11 +534,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		}
 
 		var order *corepb.Order
-		if features.Get().MultipleCertificateProfiles {
-			order, err = modelToOrderv2(omObj.(*orderModelv2))
-		} else {
-			order, err = modelToOrderv1(omObj.(*orderModelv1))
-		}
+		order, err = modelToOrder(omObj.(*orderModel))
 		if err != nil {
 			return nil, err
 		}

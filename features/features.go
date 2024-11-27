@@ -15,6 +15,9 @@ import (
 // then call features.Set(parsedConfig) to load the parsed struct into this
 // package's global Config.
 type Config struct {
+	// Deprecated features. Delete once removed from all production configs.
+	MultipleCertificateProfiles bool
+
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
 	ServeRenewalInfo bool
@@ -56,14 +59,6 @@ type Config struct {
 	// number of failures is greater than the number allowed by MPIC.
 	// Only used when EnforceMultiCAA is true.
 	MultiCAAFullResults bool
-
-	// MultipleCertificateProfiles, when enabled, triggers the following
-	// behavior:
-	//   - SA.NewOrderAndAuthzs: upon receiving a NewOrderRequest with a
-	//     `certificateProfileName` value, will add that value to the database's
-	//     `orders.certificateProfileName` column. Values in this column are
-	//     allowed to be empty.
-	MultipleCertificateProfiles bool
 
 	// CheckIdentifiersPaused checks if any of the identifiers in the order are
 	// currently paused at NewOrder time. If any are paused, an error is

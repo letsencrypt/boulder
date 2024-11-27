@@ -644,27 +644,13 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Second, insert the new order.
-		var orderID int64
-		var err error
-		created := ssa.clk.Now()
-		if features.Get().MultipleCertificateProfiles {
-			omv2 := orderModelv2{
-				RegistrationID:         req.NewOrder.RegistrationID,
-				Expires:                req.NewOrder.Expires.AsTime(),
-				Created:                created,
-				CertificateProfileName: req.NewOrder.CertificateProfileName,
-			}
-			err = tx.Insert(ctx, &omv2)
-			orderID = omv2.ID
-		} else {
-			omv1 := orderModelv1{
-				RegistrationID: req.NewOrder.RegistrationID,
-				Expires:        req.NewOrder.Expires.AsTime(),
-				Created:        created,
-			}
-			err = tx.Insert(ctx, &omv1)
-			orderID = omv1.ID
+		om := orderModel{
+			RegistrationID:         req.NewOrder.RegistrationID,
+			Expires:                req.NewOrder.Expires.AsTime(),
+			Created:                ssa.clk.Now(),
+			CertificateProfileName: req.NewOrder.CertificateProfileName,
 		}
+		err := tx.Insert(ctx, &om)
 		if err != nil {
 			return nil, err
 		}
@@ -677,7 +663,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			return nil, err
 		}
 		for _, id := range allAuthzIds {
-			err := inserter.Add([]interface{}{orderID, id})
+			err := inserter.Add([]interface{}{om.ID, id})
 			if err != nil {
 				return nil, err
 			}
@@ -688,7 +674,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fourth, insert the FQDNSet entry for the order.
-		err = addOrderFQDNSet(ctx, tx, req.NewOrder.DnsNames, orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
+		err = addOrderFQDNSet(ctx, tx, req.NewOrder.DnsNames, om.ID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {
 			return nil, err
 		}
@@ -696,7 +682,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		if req.NewOrder.ReplacesSerial != "" {
 			// Update the replacementOrders table to indicate that this order
 			// replaces the provided certificate serial.
-			err := addReplacementOrder(ctx, tx, req.NewOrder.ReplacesSerial, orderID, req.NewOrder.Expires.AsTime())
+			err := addReplacementOrder(ctx, tx, req.NewOrder.ReplacesSerial, om.ID, req.NewOrder.Expires.AsTime())
 			if err != nil {
 				return nil, err
 			}
@@ -712,8 +698,8 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// Finally, build the overall Order PB.
 		res := &corepb.Order{
 			// ID and Created were auto-populated on the order model when it was inserted.
-			Id:      orderID,
-			Created: timestamppb.New(created),
+			Id:      om.ID,
+			Created: timestamppb.New(om.Created),
 			// These are carried over from the original request unchanged.
 			RegistrationID: req.NewOrder.RegistrationID,
 			Expires:        req.NewOrder.Expires,
@@ -797,7 +783,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 		return nil, errIncompleteRequest
 	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		om, err := orderToModelv2(&corepb.Order{
+		om, err := orderToModel(&corepb.Order{
 			Id:    req.Id,
 			Error: req.Error,
 		})
