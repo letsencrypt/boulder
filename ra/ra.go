@@ -103,7 +103,7 @@ type RegistrationAuthorityImpl struct {
 	maxNames                     int
 	orderLifetime                time.Duration
 	finalizeTimeout              time.Duration
-	finalizeWG                   sync.WaitGroup
+	drainWG                      sync.WaitGroup
 
 	issuersByNameID map[issuance.NameID]*issuance.Certificate
 	purger          akamaipb.AkamaiPurgerClient
@@ -1010,7 +1010,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		//
 		// We track this goroutine's lifetime in a waitgroup global to this RA, so
 		// that it can wait for all goroutines to drain during shutdown.
-		ra.finalizeWG.Add(1)
+		ra.drainWG.Add(1)
 		go func() {
 			_, err := ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, logEvent)
 			if err != nil {
@@ -1018,7 +1018,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 				// no parent goroutine waiting for it to receive the error.
 				ra.log.AuditErrf("Asynchronous finalization failed: %s", err.Error())
 			}
-			ra.finalizeWG.Done()
+			ra.drainWG.Done()
 		}()
 		return order, nil
 	} else {
@@ -1904,8 +1904,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	}
 
 	// Dispatch to the VA for service
+	ra.drainWG.Add(1)
 	vaCtx := context.Background()
 	go func(authz core.Authorization) {
+		defer ra.drainWG.Done()
+
 		// We will mutate challenges later in this goroutine to change status and
 		// add error, but we also return a copy of authz immediately. To avoid a
 		// data race, make a copy of the challenges slice here for mutation.
@@ -2803,6 +2806,13 @@ func (ra *RegistrationAuthorityImpl) GetAuthorization(ctx context.Context, req *
 	return authz, nil
 }
 
-func (ra *RegistrationAuthorityImpl) DrainFinalize() {
-	ra.finalizeWG.Wait()
+// Drain blocks until all detached goroutines are done.
+//
+// The RA runs detached goroutines for challenge validation and finalization,
+// so that ACME responses can be returned to the user promptly while work continues.
+//
+// The main goroutine should call this before exiting to avoid canceling the work
+// being done in detached goroutines.
+func (ra *RegistrationAuthorityImpl) Drain() {
+	ra.drainWG.Wait()
 }
