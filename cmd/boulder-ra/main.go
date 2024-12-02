@@ -295,7 +295,7 @@ func main() {
 		apc,
 		issuerCerts,
 	)
-	defer rai.DrainFinalize()
+	defer rai.Drain()
 
 	policyErr := rai.LoadRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
 	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
