@@ -103,7 +103,8 @@
 		"authorizationLifetimeDays": 30,
 		"pendingAuthorizationLifetimeDays": 7,
 		"features": {
-			"ServeRenewalInfo": true
+			"ServeRenewalInfo": true,
+			"IncrementRateLimits": true
 		}
 	},
 	"syslog": {
