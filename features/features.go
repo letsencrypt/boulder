@@ -15,6 +15,9 @@ import (
 // then call features.Set(parsedConfig) to load the parsed struct into this
 // package's global Config.
 type Config struct {
+	// Deprecated flags.
+	IncrementRateLimits bool
+
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
 	ServeRenewalInfo bool
@@ -99,11 +102,6 @@ type Config struct {
 	// and pause issuance for each (account, hostname) pair that repeatedly
 	// fails validation.
 	AutomaticallyPauseZombieClients bool
-
-	// IncrementRateLimits uses Redis' IncrBy, instead of Set, for rate limit
-	// accounting. This catches and denies spikes of requests much more
-	// reliably.
-	IncrementRateLimits bool
 }
 
 var fMu = new(sync.RWMutex)
