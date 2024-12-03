@@ -2269,7 +2269,6 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			t.Parallel()
 			// Add the order for the test request
 			order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 				RegistrationID: tc.RegistrationID,
