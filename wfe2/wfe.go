@@ -1416,10 +1416,9 @@ func (wfe *WebFrontEndImpl) Account(
 		return
 	}
 
-	// If the body was not either completely empty or an empty JSON object, then
-	// this is an account update request. Treating the empty JSON object like a
-	// POST-as-GET is a holdover from ACMEv1.
-	if string(body) != "" && string(body) != "{}" {
+	// An empty string means POST-as-GET (i.e. no update). A body of "{}" means
+	// an update of zero fields, returning the unchanged object. This was the
+	// recommended way to fetch the account object in ACMEv1.
 		currAcct, prob = wfe.updateAccount(ctx, body, currAcct)
 		if prob != nil {
 			wfe.sendError(response, logEvent, prob, nil)
