@@ -394,7 +394,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		1, testKeyPolicy, limiter, txnBuilder, 100,
 		300*24*time.Hour, 7*24*time.Hour,
 		nil, noopCAA{},
-		0, 5*time.Minute,
+		7*24*time.Hour, 5*time.Minute,
 		ctp, nil, nil)
 	ra.SA = sa
 	ra.VA = va
@@ -1214,8 +1214,6 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.orderLifetime = 5 * 24 * time.Hour
-
 	// Create a dummy rate limit config that sets a NewOrdersPerAccount rate
 	// limit with a very low threshold/short window
 	rateLimitDuration := 5 * time.Minute
@@ -1264,7 +1262,6 @@ func TestNewOrderRateLimiting(t *testing.T) {
 func TestEarlyOrderRateLimiting(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = 5 * 24 * time.Hour
 
 	rateLimitDuration := 5 * time.Minute
 
@@ -2117,7 +2114,6 @@ func TestRecheckCAAInternalServerError(t *testing.T) {
 func TestNewOrder(t *testing.T) {
 	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = time.Hour
 
 	now := fc.Now()
 	orderA, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
@@ -2127,7 +2123,7 @@ func TestNewOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderA.RegistrationID, int64(1))
-	test.AssertEquals(t, orderA.Expires.AsTime(), now.Add(time.Hour))
+	test.AssertEquals(t, orderA.Expires.AsTime(), now.Add(ra.orderLifetime))
 	test.AssertEquals(t, len(orderA.DnsNames), 3)
 	test.AssertEquals(t, orderA.CertificateProfileName, "test")
 	// We expect the order names to have been sorted, deduped, and lowercased
@@ -2146,7 +2142,7 @@ func TestNewOrder(t *testing.T) {
 // TestNewOrderReuse tests that subsequent requests by an ACME account to create
 // an identical order results in only one order being created & subsequently
 // reused.
-func TestNewOrder_OrderReuse(t *testing.T) {
+func TestNewOrder_OrderReusex(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -2239,7 +2235,6 @@ func TestNewOrder_OrderReuse_Profile(t *testing.T) {
 
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = time.Hour
 
 	features.Set(features.Config{MultipleCertificateProfiles: true})
 	defer features.Reset()
@@ -2278,6 +2273,8 @@ func TestNewOrder_OrderReuse_Profile(t *testing.T) {
 func TestNewOrder_OrderReuse_Expired(t *testing.T) {
 	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
+
+	// Set the order lifetime to something short and known.
 	ra.orderLifetime = time.Hour
 
 	// Create an initial order.
@@ -2289,7 +2286,7 @@ func TestNewOrder_OrderReuse_Expired(t *testing.T) {
 
 	// Transition the original order to status invalid by jumping forward in time
 	// to when it has expired.
-	fc.Set(extant.Expires.AsTime().Add(time.Hour))
+	fc.Set(extant.Expires.AsTime().Add(2 * time.Hour))
 
 	// Now a new order for the same names should not reuse the first one.
 	new, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
@@ -2306,7 +2303,6 @@ func TestNewOrder_OrderReuse_Expired(t *testing.T) {
 func TestNewOrder_OrderReuse_Invalid(t *testing.T) {
 	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = time.Hour
 
 	// Create an initial order.
 	extant, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
@@ -2432,7 +2428,6 @@ func TestNewOrder_AuthzReuse_NoPending(t *testing.T) {
 	// TODO(#7715): Integrate these cases into TestNewOrder_AuthzReuse.
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = time.Hour
 
 	features.Set(features.Config{NoPendingAuthzReuse: true})
 	defer features.Reset()
@@ -2718,7 +2713,6 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 func TestNewOrderWildcard(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = time.Hour
 
 	orderNames := []string{"example.com", "*.welcome.zombo.com"}
 	wildcardOrderRequest := &rapb.NewOrderRequest{
@@ -2949,9 +2943,8 @@ func TestNewOrderExpiry(t *testing.T) {
 }
 
 func TestFinalizeOrder(t *testing.T) {
-	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
+	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = time.Hour
 
 	// Create one finalized authorization for not-example.com and one finalized
 	// authorization for www.not-example.org
@@ -2996,7 +2989,7 @@ func TestFinalizeOrder(t *testing.T) {
 		Subject:               pkix.Name{CommonName: "not-example.com"},
 		DNSNames:              []string{"not-example.com", "www.not-example.com"},
 		PublicKey:             testKey.Public(),
-		NotBefore:             fc.Now(),
+		NotBefore:             now,
 		BasicConstraintsValid: true,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 	}
@@ -3237,7 +3230,6 @@ func TestFinalizeOrder(t *testing.T) {
 func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = time.Hour
 
 	// Pick an expiry in the future
 	now := ra.clk.Now()
@@ -3453,12 +3445,9 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	// Set up order and authz expiries
-	ra.orderLifetime = 24 * time.Hour
-	exp := ra.clk.Now().Add(24 * time.Hour)
-
 	// Make some valid authorizations for some names using different challenge types
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
+	exp := ra.clk.Now().Add(ra.orderLifetime)
 	challs := []core.AcmeChallenge{core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01}
 	var authzIDs []int64
 	for i, name := range names {
@@ -3575,10 +3564,6 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 func TestIssueCertificateCAACheckLog(t *testing.T) {
 	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	// Set up order and authz expiries.
-	ra.orderLifetime = 24 * time.Hour
-	ra.authorizationLifetime = 15 * time.Hour
 
 	exp := fc.Now().Add(24 * time.Hour)
 	recent := fc.Now().Add(-1 * time.Hour)
@@ -3885,11 +3870,9 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.orderLifetime = 24 * time.Hour
-	exp := ra.clk.Now().Add(24 * time.Hour)
-
 	// Make some valid authorizations for some names
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
+	exp := ra.clk.Now().Add(ra.orderLifetime)
 	var authzIDs []int64
 	for _, name := range names {
 		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, ra.clk.Now()))
@@ -4054,11 +4037,9 @@ func TestIssueCertificateOuter(t *testing.T) {
 	_, sa, ra, _, fc, cleanup := initAuthorities(t)
 	defer cleanup()
 
-	ra.orderLifetime = 24 * time.Hour
-	exp := ra.clk.Now().Add(24 * time.Hour)
-
 	// Make some valid authorizations for some names
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
+	exp := ra.clk.Now().Add(ra.orderLifetime)
 	var authzIDs []int64
 	for _, name := range names {
 		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, ra.clk.Now()))
@@ -4701,8 +4682,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 func TestNewOrderRateLimitingExempt(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	ra.orderLifetime = 5 * 24 * time.Hour
 
 	// Set up a rate limit policy that allows 1 order every 5 minutes.
 	rateLimitDuration := 5 * time.Minute
