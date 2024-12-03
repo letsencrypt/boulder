@@ -37,7 +37,6 @@ import (
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -57,7 +56,6 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/ratelimits"
-	bredis "github.com/letsencrypt/boulder/redis"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -280,7 +278,7 @@ func newAcctKey(t *testing.T) []byte {
 	return acctKey
 }
 
-func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAuthorityClient, *RegistrationAuthorityImpl, *ratelimits.RedisSource, clock.FakeClock, func()) {
+func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAuthorityClient, *RegistrationAuthorityImpl, ratelimits.Source, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(AccountKeyJSONB, &AccountKeyB)
@@ -349,36 +347,10 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		},
 	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
-	var source *ratelimits.RedisSource
-	var limiter *ratelimits.Limiter
-	var txnBuilder *ratelimits.TransactionBuilder
-	rc := bredis.Config{
-		Username: "unittest-rw",
-		TLS: cmd.TLSConfig{
-			CACertFile: "../test/certs/ipki/minica.pem",
-			CertFile:   "../test/certs/ipki/localhost/cert.pem",
-			KeyFile:    "../test/certs/ipki/localhost/key.pem",
-		},
-		Lookups: []cmd.ServiceDomain{
-			{
-				Service: "redisratelimits",
-				Domain:  "service.consul",
-			},
-		},
-		LookupDNSAuthority: "consul.service.consul",
-	}
-	rc.PasswordConfig = cmd.PasswordConfig{
-		PasswordFile: "../test/secrets/ratelimits_redis_password",
-	}
-	ring, err := bredis.NewRingFromConfig(rc, stats, log)
-	test.AssertNotError(t, err, "making redis ring client")
-	source = ratelimits.NewRedisSource(ring.Ring, fc, stats)
-	test.AssertNotNil(t, source, "source should not be nil")
-	err = source.Ping(context.Background())
-	test.AssertNotError(t, err, "Ping should not error")
-	limiter, err = ratelimits.NewLimiter(fc, source, stats)
+	rlSource := ratelimits.NewInmemSource()
+	limiter, err := ratelimits.NewLimiter(fc, rlSource, stats)
 	test.AssertNotError(t, err, "making limiter")
-	txnBuilder, err = ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	txnBuilder, err := ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
 	test.AssertNotError(t, err, "making transaction composer")
 
 	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
@@ -396,7 +368,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra.CA = ca
 	ra.OCSP = &mocks.MockOCSPGenerator{}
 	ra.PA = pa
-	return va, sa, ra, source, fc, cleanUp
+	return va, sa, ra, rlSource, fc, cleanUp
 }
 
 func TestValidateContacts(t *testing.T) {
