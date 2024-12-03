@@ -47,11 +47,7 @@ func newAdmin(configFile string, dryRun bool, debugAddr string) (*admin, error) 
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
-	if debugAddr != "" {
-		c.Admin.DebugAddr = debugAddr
-	}
-
-	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Admin.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, debugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 

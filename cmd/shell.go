@@ -261,6 +261,12 @@ func newVersionCollector() prometheus.Collector {
 
 func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	registry := prometheus.NewRegistry()
+
+	if addr == "" {
+		logger.Infof("No debug listen address specified")
+		return registry
+	}
+
 	registry.MustRegister(collectors.NewGoCollector())
 	registry.MustRegister(collectors.NewProcessCollector(
 		collectors.ProcessCollectorOpts{}))
@@ -287,24 +293,20 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 		ErrorLog: promLogger{logger},
 	}))
 
-	if addr == "" {
-		logger.Infof("No debug server specified")
-	} else {
-		logger.Infof("Debug server listening on %s", addr)
+	logger.Infof("Debug server listening on %s", addr)
 
-		server := http.Server{
-			Addr:        addr,
-			Handler:     mux,
-			ReadTimeout: time.Minute,
-		}
-		go func() {
-			err := server.ListenAndServe()
-			if err != nil {
-				logger.Errf("unable to boot debug server on %s: %v", addr, err)
-				os.Exit(1)
-			}
-		}()
+	server := http.Server{
+		Addr:        addr,
+		Handler:     mux,
+		ReadTimeout: time.Minute,
 	}
+	go func() {
+		err := server.ListenAndServe()
+		if err != nil {
+			logger.Errf("unable to boot debug server on %s: %v", addr, err)
+			os.Exit(1)
+		}
+	}()
 	return registry
 }
 
