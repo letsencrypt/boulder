@@ -152,7 +152,6 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 		"./bin/admin",
 		"-config", config,
 		"-dry-run=false",
-		"-debug-addr", ":18014",
 		"revoke-cert",
 		"-serial", core.SerialToString(cert.SerialNumber),
 		"-reason", "unspecified",
