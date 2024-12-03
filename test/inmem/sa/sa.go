@@ -93,10 +93,6 @@ func (sa SA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest
 	return sa.Impl.AddCertificate(ctx, req)
 }
 
-func (sa SA) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
-	return sa.Impl.CountCertificatesByNames(ctx, req)
-}
-
 func (sa SA) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.RevokeCertificate(ctx, req)
 }

@@ -6,7 +6,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
@@ -23,7 +22,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -603,138 +601,6 @@ func TestAddCertificateDuplicate(t *testing.T) {
 	})
 	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
 
-}
-
-func TestCountCertificatesByNamesTimeRange(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
-
-	reg := createWorkingRegistration(t, sa)
-	_, testCert := test.ThrowAwayCert(t, clk)
-	_, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    testCert.Raw,
-		RegID:  reg.Id,
-		Issued: timestamppb.New(testCert.NotBefore),
-	})
-	test.AssertNotError(t, err, "Couldn't add test cert")
-	name := testCert.DNSNames[0]
-
-	// Move time forward, so the cert was issued slightly in the past.
-	clk.Add(time.Hour)
-	now := clk.Now()
-	yesterday := clk.Now().Add(-24 * time.Hour)
-	twoDaysAgo := clk.Now().Add(-48 * time.Hour)
-	tomorrow := clk.Now().Add(24 * time.Hour)
-
-	// Count for a name that doesn't have any certs
-	counts, err := sa.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
-		DnsNames: []string{"does.not.exist"},
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(yesterday),
-			Latest:   timestamppb.New(now),
-		},
-	})
-	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts.Counts), 1)
-	test.AssertEquals(t, counts.Counts["does.not.exist"], int64(0))
-
-	// Time range including now should find the cert.
-	counts, err = sa.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
-		DnsNames: testCert.DNSNames,
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(yesterday),
-			Latest:   timestamppb.New(now),
-		},
-	})
-	test.AssertNotError(t, err, "sa.CountCertificatesByName failed")
-	test.AssertEquals(t, len(counts.Counts), 1)
-	test.AssertEquals(t, counts.Counts[name], int64(1))
-
-	// Time range between two days ago and yesterday should not find the cert.
-	counts, err = sa.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
-		DnsNames: testCert.DNSNames,
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(twoDaysAgo),
-			Latest:   timestamppb.New(yesterday),
-		},
-	})
-	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts.Counts), 1)
-	test.AssertEquals(t, counts.Counts[name], int64(0))
-
-	// Time range between now and tomorrow also should not (time ranges are
-	// inclusive at the tail end, but not the beginning end).
-	counts, err = sa.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
-		DnsNames: testCert.DNSNames,
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(now),
-			Latest:   timestamppb.New(tomorrow),
-		},
-	})
-	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts.Counts), 1)
-	test.AssertEquals(t, counts.Counts[name], int64(0))
-}
-
-func TestCountCertificatesByNamesParallel(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
-	defer cleanUp()
-
-	// Create two certs with different names and add them both to the database.
-	reg := createWorkingRegistration(t, sa)
-
-	_, testCert := test.ThrowAwayCert(t, clk)
-	_, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    testCert.Raw,
-		RegID:  reg.Id,
-		Issued: timestamppb.New(testCert.NotBefore),
-	})
-	test.AssertNotError(t, err, "Couldn't add test cert")
-
-	_, testCert2 := test.ThrowAwayCert(t, clk)
-	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    testCert2.Raw,
-		RegID:  reg.Id,
-		Issued: timestamppb.New(testCert2.NotBefore),
-	})
-	test.AssertNotError(t, err, "Couldn't add test cert")
-
-	// Override countCertificatesByName with an implementation of certCountFunc
-	// that will block forever if it's called in serial, but will succeed if
-	// called in parallel.
-	names := []string{"does.not.exist", testCert.DNSNames[0], testCert2.DNSNames[0]}
-
-	var interlocker sync.WaitGroup
-	interlocker.Add(len(names))
-	sa.parallelismPerRPC = len(names)
-	oldCertCountFunc := sa.countCertificatesByName
-	sa.countCertificatesByName = func(ctx context.Context, sel db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error) {
-		interlocker.Done()
-		interlocker.Wait()
-		return oldCertCountFunc(ctx, sel, domain, timeRange)
-	}
-
-	counts, err := sa.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
-		DnsNames: names,
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(clk.Now().Add(-time.Hour)),
-			Latest:   timestamppb.New(clk.Now().Add(time.Hour)),
-		},
-	})
-	test.AssertNotError(t, err, "Error counting certs.")
-	test.AssertEquals(t, len(counts.Counts), 3)
-
-	// We expect there to be two of each of the names that do exist, because
-	// test.ThrowAwayCert creates certs for subdomains of example.com, and
-	// CountCertificatesByNames counts all certs under the same registered domain.
-	expected := map[string]int64{
-		"does.not.exist":      0,
-		testCert.DNSNames[0]:  2,
-		testCert2.DNSNames[0]: 2,
-	}
-	for name, count := range expected {
-		test.AssertEquals(t, count, counts.Counts[name])
-	}
 }
 
 func TestFQDNSets(t *testing.T) {
@@ -2385,104 +2251,6 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	for _, name := range testCert.DNSNames {
 		assertIsRenewal(t, name, true)
 	}
-}
-
-func TestCountCertificatesRenewalBit(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
-
-	// Create a test registration
-	reg := createWorkingRegistration(t, sa)
-
-	// Create a small throw away key for the test certificates.
-	testKey, err := rsa.GenerateKey(rand.Reader, 512)
-	test.AssertNotError(t, err, "error generating test key")
-
-	// Create an initial test certificate for a set of domain names, issued an
-	// hour ago.
-	template := &x509.Certificate{
-		SerialNumber:          big.NewInt(1337),
-		DNSNames:              []string{"www.not-example.com", "not-example.com", "admin.not-example.com"},
-		NotBefore:             fc.Now().Add(-time.Hour),
-		BasicConstraintsValid: true,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-	}
-	certADER, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
-	test.AssertNotError(t, err, "Failed to create test cert A")
-	certA, _ := x509.ParseCertificate(certADER)
-
-	// Update the template with a new serial number and a not before of now and
-	// create a second test cert for the same names. This will be a renewal.
-	template.SerialNumber = big.NewInt(7331)
-	template.NotBefore = fc.Now()
-	certBDER, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
-	test.AssertNotError(t, err, "Failed to create test cert B")
-	certB, _ := x509.ParseCertificate(certBDER)
-
-	// Update the template with a third serial number and a partially overlapping
-	// set of names. This will not be a renewal but will help test the exact name
-	// counts.
-	template.SerialNumber = big.NewInt(0xC0FFEE)
-	template.DNSNames = []string{"www.not-example.com"}
-	certCDER, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
-	test.AssertNotError(t, err, "Failed to create test cert C")
-
-	countName := func(t *testing.T, expectedName string) int64 {
-		earliest := fc.Now().Add(-5 * time.Hour)
-		latest := fc.Now().Add(5 * time.Hour)
-		req := &sapb.CountCertificatesByNamesRequest{
-			DnsNames: []string{expectedName},
-			Range: &sapb.Range{
-				Earliest: timestamppb.New(earliest),
-				Latest:   timestamppb.New(latest),
-			},
-		}
-		counts, err := sa.CountCertificatesByNames(context.Background(), req)
-		test.AssertNotError(t, err, "Unexpected err from CountCertificatesByNames")
-		for name, count := range counts.Counts {
-			if name == expectedName {
-				return count
-			}
-		}
-		return 0
-	}
-
-	// Add the first certificate - it won't be considered a renewal.
-	issued := certA.NotBefore
-	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certADER,
-		RegID:  reg.Id,
-		Issued: timestamppb.New(issued),
-	})
-	test.AssertNotError(t, err, "Failed to add CertA test certificate")
-
-	// The count for the base domain should be 1 - just certA has been added.
-	test.AssertEquals(t, countName(t, "not-example.com"), int64(1))
-
-	// Add the second certificate - it should be considered a renewal
-	issued = certB.NotBefore
-	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certBDER,
-		RegID:  reg.Id,
-		Issued: timestamppb.New(issued),
-	})
-	test.AssertNotError(t, err, "Failed to add CertB test certificate")
-
-	// The count for the base domain should still be 1, just certA. CertB should
-	// be ignored.
-	test.AssertEquals(t, countName(t, "not-example.com"), int64(1))
-
-	// Add the third certificate - it should not be considered a renewal
-	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certCDER,
-		RegID:  reg.Id,
-		Issued: timestamppb.New(issued),
-	})
-	test.AssertNotError(t, err, "Failed to add CertC test certificate")
-
-	// The count for the base domain should be 2 now: certA and certC.
-	// CertB should be ignored.
-	test.AssertEquals(t, countName(t, "not-example.com"), int64(2))
 }
 
 func TestFinalizeAuthorization2(t *testing.T) {

@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"math/big"
 	mrand "math/rand/v2"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -353,36 +352,34 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	var source *ratelimits.RedisSource
 	var limiter *ratelimits.Limiter
 	var txnBuilder *ratelimits.TransactionBuilder
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		rc := bredis.Config{
-			Username: "unittest-rw",
-			TLS: cmd.TLSConfig{
-				CACertFile: "../test/certs/ipki/minica.pem",
-				CertFile:   "../test/certs/ipki/localhost/cert.pem",
-				KeyFile:    "../test/certs/ipki/localhost/key.pem",
+	rc := bredis.Config{
+		Username: "unittest-rw",
+		TLS: cmd.TLSConfig{
+			CACertFile: "../test/certs/ipki/minica.pem",
+			CertFile:   "../test/certs/ipki/localhost/cert.pem",
+			KeyFile:    "../test/certs/ipki/localhost/key.pem",
+		},
+		Lookups: []cmd.ServiceDomain{
+			{
+				Service: "redisratelimits",
+				Domain:  "service.consul",
 			},
-			Lookups: []cmd.ServiceDomain{
-				{
-					Service: "redisratelimits",
-					Domain:  "service.consul",
-				},
-			},
-			LookupDNSAuthority: "consul.service.consul",
-		}
-		rc.PasswordConfig = cmd.PasswordConfig{
-			PasswordFile: "../test/secrets/ratelimits_redis_password",
-		}
-		ring, err := bredis.NewRingFromConfig(rc, stats, log)
-		test.AssertNotError(t, err, "making redis ring client")
-		source = ratelimits.NewRedisSource(ring.Ring, fc, stats)
-		test.AssertNotNil(t, source, "source should not be nil")
-		err = source.Ping(context.Background())
-		test.AssertNotError(t, err, "Ping should not error")
-		limiter, err = ratelimits.NewLimiter(fc, source, stats)
-		test.AssertNotError(t, err, "making limiter")
-		txnBuilder, err = ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
-		test.AssertNotError(t, err, "making transaction composer")
+		},
+		LookupDNSAuthority: "consul.service.consul",
 	}
+	rc.PasswordConfig = cmd.PasswordConfig{
+		PasswordFile: "../test/secrets/ratelimits_redis_password",
+	}
+	ring, err := bredis.NewRingFromConfig(rc, stats, log)
+	test.AssertNotError(t, err, "making redis ring client")
+	source = ratelimits.NewRedisSource(ring.Ring, fc, stats)
+	test.AssertNotNil(t, source, "source should not be nil")
+	err = source.Ping(context.Background())
+	test.AssertNotError(t, err, "Ping should not error")
+	limiter, err = ratelimits.NewLimiter(fc, source, stats)
+	test.AssertNotError(t, err, "making limiter")
+	txnBuilder, err = ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	test.AssertNotError(t, err, "making transaction composer")
 
 	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "making keypolicy")

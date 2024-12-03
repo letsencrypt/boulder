@@ -10,7 +10,6 @@ import "google/protobuf/duration.proto";
 
 // StorageAuthorityReadOnly exposes only those SA methods which are read-only.
 service StorageAuthorityReadOnly {
-  rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
   rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
   rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
   rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
@@ -44,7 +43,6 @@ service StorageAuthorityReadOnly {
 // StorageAuthority provides full read/write access to the database.
 service StorageAuthority {
   // Getters: this list must be identical to the StorageAuthorityReadOnly rpcs.
-  rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
   rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
   rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
   rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
@@ -148,11 +146,6 @@ message Timestamps {
   // Next unused field number: 3
 	reserved 1; // Previously repeated timestampsNS
   repeated google.protobuf.Timestamp timestamps = 2;
-}
-
-message CountCertificatesByNamesRequest {
-  Range range = 1;
-  repeated string dnsNames = 2;
 }
 
 message CountByNames {
