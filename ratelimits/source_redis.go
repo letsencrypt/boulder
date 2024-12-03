@@ -12,7 +12,7 @@ import (
 )
 
 // Compile-time check that RedisSource implements the source interface.
-var _ source = (*RedisSource)(nil)
+var _ Source = (*RedisSource)(nil)
 
 // RedisSource is a ratelimits source backed by sharded Redis.
 type RedisSource struct {

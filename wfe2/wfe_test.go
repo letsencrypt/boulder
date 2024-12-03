@@ -52,7 +52,6 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimits"
-	bredis "github.com/letsencrypt/boulder/redis"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -394,8 +393,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 
 	mockSA := mocks.NewStorageAuthorityReadOnly(fc)
 
-	log := blog.NewMock()
-
 	// Use derived nonces.
 	rncKey := []byte("b8c758dd85e113ea340ce0b3a99f389d40a308548af94d1730a7692c1874f1f")
 	noncePrefix := nonce.DerivePrefix("192.168.1.1:8080", rncKey)
@@ -407,29 +404,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	rnc := inmemNonceService
 
 	// Setup rate limiting.
-	rc := bredis.Config{
-		Username: "unittest-rw",
-		TLS: cmd.TLSConfig{
-			CACertFile: "../test/certs/ipki/minica.pem",
-			CertFile:   "../test/certs/ipki/localhost/cert.pem",
-			KeyFile:    "../test/certs/ipki/localhost/key.pem",
-		},
-		Lookups: []cmd.ServiceDomain{
-			{
-				Service: "redisratelimits",
-				Domain:  "service.consul",
-			},
-		},
-		LookupDNSAuthority: "consul.service.consul",
-	}
-	rc.PasswordConfig = cmd.PasswordConfig{
-		PasswordFile: "../test/secrets/ratelimits_redis_password",
-	}
-	ring, err := bredis.NewRingFromConfig(rc, stats, log)
-	test.AssertNotError(t, err, "making redis ring client")
-	source := ratelimits.NewRedisSource(ring.Ring, fc, stats)
-	test.AssertNotNil(t, source, "source should not be nil")
-	limiter, err := ratelimits.NewLimiter(fc, source, stats)
+	limiter, err := ratelimits.NewLimiter(fc, ratelimits.NewInmemSource(), stats)
 	test.AssertNotError(t, err, "making limiter")
 	txnBuilder, err := ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
 	test.AssertNotError(t, err, "making transaction composer")

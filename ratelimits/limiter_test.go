@@ -21,7 +21,7 @@ import (
 const tenZeroZeroTwo = "10.0.0.2"
 
 // newTestLimiter constructs a new limiter.
-func newTestLimiter(t *testing.T, s source, clk clock.FakeClock) *Limiter {
+func newTestLimiter(t *testing.T, s Source, clk clock.FakeClock) *Limiter {
 	l, err := NewLimiter(clk, s, metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "should not error")
 	return l
