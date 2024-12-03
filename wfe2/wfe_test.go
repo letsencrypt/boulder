@@ -1594,7 +1594,6 @@ func TestNewECDSAAccount(t *testing.T) {
 // a populated acct object will be returned.
 func TestEmptyAccount(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
 
 	// Test Key 1 is mocked in the mock StorageAuthority used in setupWFE to
 	// return a populated account for GetRegistrationByKey when test key 1 is
@@ -1603,31 +1602,54 @@ func TestEmptyAccount(t *testing.T) {
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
-	payload := `{}`
-	path := "1"
-	signedURL := "http://localhost/1"
-	_, _, body := signer.byKeyID(1, key, signedURL, payload)
-	request := makePostRequestWithPath(path, body)
+	testCases := []struct {
+		Name      string
+		payload   string
+		path      string
+		signedURL string
+	}{
+		{
+			Name:      "POST empty string to acct",
+			payload:   "",
+			path:      "1",
+			signedURL: "http://localhost/1",
+		},
+		{
+			Name:      "POST empty JSON object to acct",
+			payload:   "{}",
+			path:      "1",
+			signedURL: "http://localhost/1",
+		},
+	}
 
-	// Send an account update with the trivial body
-	wfe.Account(
-		ctx,
-		newRequestEvent(),
-		responseWriter,
-		request)
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			responseWriter := httptest.NewRecorder()
 
-	responseBody := responseWriter.Body.String()
-	// There should be no error
-	test.AssertNotContains(t, responseBody, probs.ErrorNS)
+			_, _, body := signer.byKeyID(1, key, tc.signedURL, tc.payload)
+			request := makePostRequestWithPath(tc.path, body)
 
-	// We should get back a populated Account
-	var acct core.Registration
-	err := json.Unmarshal([]byte(responseBody), &acct)
-	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
-	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
-	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, acct.Agreement, "")
-	responseWriter.Body.Reset()
+			// Send an account update with the trivial body
+			wfe.Account(
+				ctx,
+				newRequestEvent(),
+				responseWriter,
+				request)
+
+			responseBody := responseWriter.Body.String()
+			// There should be no error
+			test.AssertNotContains(t, responseBody, probs.ErrorNS)
+
+			// We should get back a populated Account
+			var acct core.Registration
+			err := json.Unmarshal([]byte(responseBody), &acct)
+			test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
+			test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
+			test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
+			test.AssertEquals(t, acct.Agreement, "")
+			responseWriter.Body.Reset()
+		})
+	}
 }
 
 func TestNewAccount(t *testing.T) {
