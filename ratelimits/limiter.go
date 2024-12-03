@@ -34,7 +34,7 @@ var allowedDecision = &Decision{allowed: true, remaining: math.MaxInt64}
 // utilizing a leaky bucket-style approach.
 type Limiter struct {
 	// source is used to store buckets. It must be safe for concurrent use.
-	source source
+	source Source
 	clk    clock.Clock
 
 	spendLatency       *prometheus.HistogramVec
@@ -43,7 +43,7 @@ type Limiter struct {
 
 // NewLimiter returns a new *Limiter. The provided source must be safe for
 // concurrent use.
-func NewLimiter(clk clock.Clock, source source, stats prometheus.Registerer) (*Limiter, error) {
+func NewLimiter(clk clock.Clock, source Source, stats prometheus.Registerer) (*Limiter, error) {
 	spendLatency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "ratelimits_spend_latency",
 		Help: fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", Allowed, Denied),
