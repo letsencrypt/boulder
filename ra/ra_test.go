@@ -728,7 +728,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 				Url:         "http://example.com/",
 			},
 		},
-		Problems: nil,
+		Problem: nil,
 	}
 
 	// A subsequent call to perform validation should return nil due
@@ -758,7 +758,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 				ResolverAddrs: []string{"rebound"},
 			},
 		},
-		Problems: nil,
+		Problem: nil,
 	}
 
 	now := fc.Now()
@@ -901,7 +901,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 				ResolverAddrs: []string{"rebound"},
 			},
 		},
-		Problems: &corepb.ProblemDetails{
+		Problem: &corepb.ProblemDetails{
 			Detail: fmt.Sprintf("CAA invalid for %s", domain),
 		},
 	}
@@ -954,7 +954,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 				ResolverAddrs: []string{"rebound"},
 			},
 		},
-		Problems: &corepb.ProblemDetails{
+		Problem: &corepb.ProblemDetails{
 			Detail: fmt.Sprintf("CAA invalid for %s", domain),
 		},
 	}
@@ -1034,7 +1034,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 				ResolverAddrs: []string{"rebound"},
 			},
 		},
-		Problems: &corepb.ProblemDetails{
+		Problem: &corepb.ProblemDetails{
 			Detail: fmt.Sprintf("CAA invalid for %s", domain),
 		},
 	}
@@ -1092,7 +1092,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 				ResolverAddrs: []string{"rebound"},
 			},
 		},
-		Problems: nil,
+		Problem: nil,
 	}
 
 	challIdx = dnsChallIdx(t, authzPB.Challenges)
