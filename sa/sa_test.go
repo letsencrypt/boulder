@@ -1622,58 +1622,6 @@ func TestGetAuthorizations2(t *testing.T) {
 	test.AssertEquals(t, len(authz.Authzs), 2)
 }
 
-func TestCountOrders(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
-
-	reg := createWorkingRegistration(t, sa)
-	now := sa.clk.Now()
-	expires := now.Add(24 * time.Hour)
-
-	req := &sapb.CountOrdersRequest{
-		AccountID: 12345,
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(now.Add(-time.Hour)),
-			Latest:   timestamppb.New(now.Add(time.Second)),
-		},
-	}
-
-	// Counting new orders for a reg ID that doesn't exist should return 0
-	count, err := sa.CountOrders(ctx, req)
-	test.AssertNotError(t, err, "Couldn't count new orders for fake reg ID")
-	test.AssertEquals(t, count.Count, int64(0))
-
-	// Add a pending authorization
-	authzID := createPendingAuthorization(t, sa, "example.com", expires)
-
-	// Add one pending order
-	order, err := sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:   reg.Id,
-			Expires:          timestamppb.New(expires),
-			DnsNames:         []string{"example.com"},
-			V2Authorizations: []int64{authzID},
-		},
-	})
-	test.AssertNotError(t, err, "Couldn't create new pending order")
-
-	// Counting new orders for the reg ID should now yield 1
-	req.AccountID = reg.Id
-	count, err = sa.CountOrders(ctx, req)
-	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
-	test.AssertEquals(t, count.Count, int64(1))
-
-	// Moving the count window to after the order was created should return the
-	// count to 0
-	earliest := order.Created.AsTime().Add(time.Minute)
-	latest := earliest.Add(time.Hour)
-	req.Range.Earliest = timestamppb.New(earliest)
-	req.Range.Latest = timestamppb.New(latest)
-	count, err = sa.CountOrders(ctx, req)
-	test.AssertNotError(t, err, "Couldn't count new orders for reg ID")
-	test.AssertEquals(t, count.Count, int64(0))
-}
-
 func TestFasterGetOrderForNames(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()

@@ -73,10 +73,6 @@ func (sa SA) GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesReq
 	return sa.Impl.GetOrderForNames(ctx, req)
 }
 
-func (sa SA) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return sa.Impl.CountOrders(ctx, req)
-}
-
 func (sa SA) SetOrderError(ctx context.Context, req *sapb.SetOrderErrorRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.SetOrderError(ctx, req)
 }

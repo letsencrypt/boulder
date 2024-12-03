@@ -321,11 +321,6 @@ func (sa *StorageAuthorityReadOnly) CountCertificatesByNames(_ context.Context, 
 	return &sapb.CountByNames{}, nil
 }
 
-// CountOrders is a mock
-func (sa *StorageAuthorityReadOnly) CountOrders(_ context.Context, _ *sapb.CountOrdersRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return &sapb.Count{}, nil
-}
-
 // DeactivateRegistration is a mock
 func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil

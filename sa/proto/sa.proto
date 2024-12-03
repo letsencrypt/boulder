@@ -13,7 +13,6 @@ service StorageAuthorityReadOnly {
   rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
   rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
   rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
-  rpc CountOrders(CountOrdersRequest) returns (Count) {}
   rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
   rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
@@ -48,7 +47,6 @@ service StorageAuthority {
   rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
   rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
   rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
-  rpc CountOrders(CountOrdersRequest) returns (Count) {}
   rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
   rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
@@ -167,11 +165,6 @@ message CountInvalidAuthorizationsRequest {
   string dnsName = 2;
   // Count authorizations that expire in this range.
   Range range = 3;
-}
-
-message CountOrdersRequest {
-  int64 accountID = 1;
-  Range range = 2;
 }
 
 message CountFQDNSetsRequest {

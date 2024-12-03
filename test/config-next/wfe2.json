@@ -127,8 +127,7 @@
 		"features": {
 			"PropagateCancels": true,
 			"ServeRenewalInfo": true,
-			"CheckIdentifiersPaused": true,
-			"UseKvLimitsForNewOrder": true
+			"CheckIdentifiersPaused": true
 		},
 		"certProfiles": {
 			"legacy": "The normal profile you know and love",

@@ -100,8 +100,6 @@ func NewSQLStorageAuthorityRO(
 		lagFactorCounter:  lagFactorCounter,
 	}
 
-	ssaro.countCertificatesByName = ssaro.countCertificates
-
 	return ssaro, nil
 }
 
@@ -420,15 +418,6 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 	}
 
 	return status, nil
-}
-
-func (ssa *SQLStorageAuthorityRO) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if req.AccountID == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
-		return nil, errIncompleteRequest
-	}
-
-	return countNewOrders(ctx, ssa.dbReadOnlyMap, req)
 }
 
 // CountFQDNSets counts the total number of issuances, for a set of domains,
