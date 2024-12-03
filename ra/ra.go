@@ -103,7 +103,7 @@ type RegistrationAuthorityImpl struct {
 	maxNames                     int
 	orderLifetime                time.Duration
 	finalizeTimeout              time.Duration
-	finalizeWG                   sync.WaitGroup
+	drainWG                      sync.WaitGroup
 
 	issuersByNameID map[issuance.NameID]*issuance.Certificate
 	purger          akamaipb.AkamaiPurgerClient
@@ -464,19 +464,16 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 			return berrors.InvalidEmailError("invalid contact")
 		}
 		if parsed.Scheme != "mailto" {
-			return berrors.UnsupportedContactError("contact method %q is not supported", parsed.Scheme)
+			return berrors.UnsupportedContactError("only contact scheme 'mailto:' is supported")
 		}
 		if parsed.RawQuery != "" || contact[len(contact)-1] == '?' {
-			return berrors.InvalidEmailError("contact email %q contains a question mark", contact)
+			return berrors.InvalidEmailError("contact email contains a question mark")
 		}
 		if parsed.Fragment != "" || contact[len(contact)-1] == '#' {
-			return berrors.InvalidEmailError("contact email %q contains a '#'", contact)
+			return berrors.InvalidEmailError("contact email contains a '#'")
 		}
 		if !core.IsASCII(contact) {
-			return berrors.InvalidEmailError(
-				"contact email [%q] contains non-ASCII characters",
-				contact,
-			)
+			return berrors.InvalidEmailError("contact email contains non-ASCII characters")
 		}
 		err = policy.ValidEmail(parsed.Opaque)
 		if err != nil {
@@ -490,10 +487,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 	// That means the largest marshalled JSON value we can store is 191 bytes.
 	const maxContactBytes = 191
 	if jsonBytes, err := json.Marshal(contacts); err != nil {
-		// This shouldn't happen with a simple []string but if it does we want the
-		// error to be logged internally but served as a 500 to the user so we
-		// return a bare error and not a berror here.
-		return fmt.Errorf("failed to marshal reg.Contact to JSON: %#v", contacts)
+		return fmt.Errorf("failed to marshal reg.Contact to JSON: %w", err)
 	} else if len(jsonBytes) >= maxContactBytes {
 		return berrors.InvalidEmailError(
 			"too many/too long contact(s). Please use shorter or fewer email addresses")
@@ -1016,7 +1010,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		//
 		// We track this goroutine's lifetime in a waitgroup global to this RA, so
 		// that it can wait for all goroutines to drain during shutdown.
-		ra.finalizeWG.Add(1)
+		ra.drainWG.Add(1)
 		go func() {
 			_, err := ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, logEvent)
 			if err != nil {
@@ -1024,7 +1018,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 				// no parent goroutine waiting for it to receive the error.
 				ra.log.AuditErrf("Asynchronous finalization failed: %s", err.Error())
 			}
-			ra.finalizeWG.Done()
+			ra.drainWG.Done()
 		}()
 		return order, nil
 	} else {
@@ -1768,7 +1762,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 		Attempted:         string(challenge.Type),
 		AttemptedAt:       validated,
 		ValidationRecords: vr.Records,
-		ValidationError:   vr.Problems,
+		ValidationError:   vr.Problem,
 	})
 	return err
 }
@@ -1910,8 +1904,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	}
 
 	// Dispatch to the VA for service
+	ra.drainWG.Add(1)
 	vaCtx := context.Background()
 	go func(authz core.Authorization) {
+		defer ra.drainWG.Done()
+
 		// We will mutate challenges later in this goroutine to change status and
 		// add error, but we also return a copy of authz immediately. To avoid a
 		// data race, make a copy of the challenges slice here for mutation.
@@ -1935,8 +1932,8 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			prob = probs.ServerInternal("Could not communicate with VA")
 			ra.log.AuditErrf("Could not communicate with VA: %s", err)
 		} else {
-			if res.Problems != nil {
-				prob, err = bgrpc.PBToProblemDetails(res.Problems)
+			if res.Problem != nil {
+				prob, err = bgrpc.PBToProblemDetails(res.Problem)
 				if err != nil {
 					prob = probs.ServerInternal("Could not communicate with VA")
 					ra.log.AuditErrf("Could not communicate with VA: %s", err)
@@ -2425,7 +2422,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
-	if req == nil || req.Id == "" || req.Status == "" {
+	if core.IsAnyNilOrZero(req, req.Id, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
 	}
 	authzID, err := strconv.ParseInt(req.Id, 10, 64)
@@ -2434,6 +2431,17 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 	}
 	if _, err := ra.SA.DeactivateAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID}); err != nil {
 		return nil, err
+	}
+	if req.Status == string(core.StatusPending) {
+		// Some clients deactivate pending authorizations without attempting them.
+		// We're not sure exactly when this happens but it's most likely due to
+		// internal errors in the client. From our perspective this uses storage
+		// resources similar to how failed authorizations do, so we increment the
+		// failed authorizations limit.
+		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.NewDNS(req.DnsName))
+		if err != nil {
+			return nil, fmt.Errorf("failed to update rate limits: %w", err)
+		}
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -2808,6 +2816,13 @@ func (ra *RegistrationAuthorityImpl) GetAuthorization(ctx context.Context, req *
 	return authz, nil
 }
 
-func (ra *RegistrationAuthorityImpl) DrainFinalize() {
-	ra.finalizeWG.Wait()
+// Drain blocks until all detached goroutines are done.
+//
+// The RA runs detached goroutines for challenge validation and finalization,
+// so that ACME responses can be returned to the user promptly while work continues.
+//
+// The main goroutine should call this before exiting to avoid canceling the work
+// being done in detached goroutines.
+func (ra *RegistrationAuthorityImpl) Drain() {
+	ra.drainWG.Wait()
 }

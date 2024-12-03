@@ -129,7 +129,6 @@
 			"AsyncFinalize": true,
 			"UseKvLimitsForNewOrder": true,
 			"AutomaticallyPauseZombieClients": true,
-			"IncrementRateLimits": true,
 			"NoPendingAuthzReuse": true
 		},
 		"ctLogs": {

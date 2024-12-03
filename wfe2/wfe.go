@@ -56,19 +56,22 @@ const (
 	newAcctPath   = "/acme/new-acct"
 	acctPath      = "/acme/acct/"
 	// When we moved to authzv2, we used a "-v3" suffix to avoid confusion
-	// regarding ACMEv2.
-	authzPath             = "/acme/authz-v3/"
-	authzPathWithAcct     = "/acme/authz/"
-	challengePath         = "/acme/chall-v3/"
-	challengePathWithAcct = "/acme/chall/"
-	certPath              = "/acme/cert/"
-	revokeCertPath        = "/acme/revoke-cert"
-	buildIDPath           = "/build"
-	rolloverPath          = "/acme/key-change"
-	newNoncePath          = "/acme/new-nonce"
-	newOrderPath          = "/acme/new-order"
-	orderPath             = "/acme/order/"
-	finalizeOrderPath     = "/acme/finalize/"
+	// regarding ACMEv2. More recently we moved back to using plain `/acme/authz/`
+	// and `/acme/chall/`, so the `-v3` paths are deprecated.
+	// TODO(#7683): Remove authz-v3 and chall-v3 once the new paths have been
+	// the default in prod for 30 days.
+	deprecatedAuthzPath     = "/acme/authz-v3/"
+	authzPathWithAcct       = "/acme/authz/"
+	deprecatedChallengePath = "/acme/chall-v3/"
+	challengePathWithAcct   = "/acme/chall/"
+	certPath                = "/acme/cert/"
+	revokeCertPath          = "/acme/revoke-cert"
+	buildIDPath             = "/build"
+	rolloverPath            = "/acme/key-change"
+	newNoncePath            = "/acme/new-nonce"
+	newOrderPath            = "/acme/new-order"
+	orderPath               = "/acme/order/"
+	finalizeOrderPath       = "/acme/finalize/"
 
 	getAPIPrefix     = "/get/"
 	getOrderPath     = getAPIPrefix + "order/"
@@ -434,15 +437,15 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	// TODO(@cpu): After November 1st, 2020 support for "GET" to the following
 	// endpoints will be removed, leaving only POST-as-GET support.
 	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET", "POST")
-	wfe.HandleFunc(m, authzPath, wfe.AuthorizationHandler, "GET", "POST")
-	wfe.HandleFunc(m, authzPathWithAcct, wfe.AuthorizationHandlerWithAccount, "GET", "POST")
-	wfe.HandleFunc(m, challengePath, wfe.ChallengeHandler, "GET", "POST")
-	wfe.HandleFunc(m, challengePathWithAcct, wfe.ChallengeHandlerWithAccount, "GET", "POST")
+	wfe.HandleFunc(m, deprecatedAuthzPath, wfe.DeprecatedAuthorizationHandler, "GET", "POST")
+	wfe.HandleFunc(m, authzPathWithAcct, wfe.AuthorizationHandler, "GET", "POST")
+	wfe.HandleFunc(m, deprecatedChallengePath, wfe.DeprecatedChallengeHandler, "GET", "POST")
+	wfe.HandleFunc(m, challengePathWithAcct, wfe.ChallengeHandler, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
 	// Boulder-specific GET-able resource endpoints
 	wfe.HandleFunc(m, getOrderPath, wfe.GetOrder, "GET")
-	wfe.HandleFunc(m, getAuthzPath, wfe.AuthorizationHandler, "GET")
-	wfe.HandleFunc(m, getChallengePath, wfe.ChallengeHandler, "GET")
+	wfe.HandleFunc(m, getAuthzPath, wfe.DeprecatedAuthorizationHandler, "GET")
+	wfe.HandleFunc(m, getChallengePath, wfe.DeprecatedChallengeHandler, "GET")
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
 
 	// Endpoint for draft-ietf-acme-ari
@@ -1087,9 +1090,9 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 	response.WriteHeader(http.StatusOK)
 }
 
-// ChallengeHandler handles POST requests to challenge URLs of the form /acme/chall-v3/<authorizationID>/<challengeID>.
+// DeprecatedChallengeHandler handles POST requests to challenge URLs of the form /acme/chall-v3/<authorizationID>/<challengeID>.
 // Such requests are clients' responses to the server's challenges.
-func (wfe *WebFrontEndImpl) ChallengeHandler(
+func (wfe *WebFrontEndImpl) DeprecatedChallengeHandler(
 	ctx context.Context,
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
@@ -1100,11 +1103,11 @@ func (wfe *WebFrontEndImpl) ChallengeHandler(
 		return
 	}
 
-	wfe.Challenge(ctx, logEvent, challengePath, response, request, slug[0], slug[1])
+	wfe.Challenge(ctx, logEvent, deprecatedChallengePath, response, request, slug[0], slug[1])
 }
 
-// ChallengeHandlerWithAccount handles POST requests to challenge URLs of the form /acme/chall/{regID}/{authzID}/{challID}.
-func (wfe *WebFrontEndImpl) ChallengeHandlerWithAccount(
+// ChallengeHandler handles POST requests to challenge URLs of the form /acme/chall/{regID}/{authzID}/{challID}.
+func (wfe *WebFrontEndImpl) ChallengeHandler(
 	ctx context.Context,
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
@@ -1216,7 +1219,7 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(
 	challenge *core.Challenge,
 ) {
 	// Update the challenge URL to be relative to the HTTP request Host
-	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", challengePath, authz.ID, challenge.StringID()))
+	challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%s/%s", deprecatedChallengePath, authz.ID, challenge.StringID()))
 	if handlerPath == challengePathWithAcct || handlerPath == authzPathWithAcct {
 		challenge.URL = web.RelativeEndpoint(request, fmt.Sprintf("%s%d/%s/%s", challengePathWithAcct, authz.RegistrationID, authz.ID, challenge.StringID()))
 	}
@@ -1556,17 +1559,17 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 	return true
 }
 
-// AuthorizationHandler handles requests to authorization URLs of the form /acme/authz/{authzID}.
-func (wfe *WebFrontEndImpl) AuthorizationHandler(
+// DeprecatedAuthorizationHandler handles requests to authorization URLs of the form /acme/authz/{authzID}.
+func (wfe *WebFrontEndImpl) DeprecatedAuthorizationHandler(
 	ctx context.Context,
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	wfe.Authorization(ctx, authzPath, logEvent, response, request, request.URL.Path)
+	wfe.Authorization(ctx, deprecatedAuthzPath, logEvent, response, request, request.URL.Path)
 }
 
-// AuthorizationHandlerWithAccount handles requests to authorization URLs of the form /acme/authz/{regID}/{authzID}.
-func (wfe *WebFrontEndImpl) AuthorizationHandlerWithAccount(
+// AuthorizationHandler handles requests to authorization URLs of the form /acme/authz/{regID}/{authzID}.
+func (wfe *WebFrontEndImpl) AuthorizationHandler(
 	ctx context.Context,
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
@@ -2796,5 +2799,5 @@ func urlForAuthz(handlerPath string, authz core.Authorization, request *http.Req
 		return web.RelativeEndpoint(request, fmt.Sprintf("%s%d/%s", authzPathWithAcct, authz.RegistrationID, authz.ID))
 	}
 
-	return web.RelativeEndpoint(request, authzPath+authz.ID)
+	return web.RelativeEndpoint(request, deprecatedAuthzPath+authz.ID)
 }
