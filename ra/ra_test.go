@@ -773,64 +773,18 @@ func TestPerformValidationSuccess(t *testing.T) {
 	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
 }
 
-type mockSAPaused struct {
-	sync.RWMutex
+// mockSAWithSyncPause is a mock sapb.StorageAuthorityClient that forwards all
+// method calls to an inner SA, but also performs a blocking write to a channel
+// when PauseIdentifiers is called to allow the tests to synchronize.
+type mockSAWithSyncPause struct {
 	sapb.StorageAuthorityClient
-	authorizationsForRegID map[int64]*corepb.Authorization
-	identifiersForRegID    map[int64][]*corepb.Identifier
-	registrationsForRegID  map[int64]*corepb.Registration
+	out chan<- *sapb.PauseRequest
 }
 
-func newMockSAPaused(sa sapb.StorageAuthorityClient) *mockSAPaused {
-	return &mockSAPaused{
-		StorageAuthorityClient: sa,
-		authorizationsForRegID: make(map[int64]*corepb.Authorization),
-		identifiersForRegID:    make(map[int64][]*corepb.Identifier),
-		registrationsForRegID:  make(map[int64]*corepb.Registration),
-	}
-}
-
-func (msa *mockSAPaused) GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	msa.Lock()
-	defer msa.Unlock()
-	regPB, ok := msa.registrationsForRegID[req.Id]
-	if !ok {
-		return nil, fmt.Errorf("Unable to find registration for regID %d", req.Id)
-	}
-	return regPB, nil
-}
-
-func (msa *mockSAPaused) PauseIdentifiers(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error) {
-	msa.Lock()
-	defer msa.Unlock()
-	if len(req.Identifiers) <= 0 {
-		return nil, fmt.Errorf("No identifiers found to pause")
-	}
-	msa.identifiersForRegID[req.RegistrationID] = req.Identifiers
-
-	counts := make(map[int64]int64)
-	for range msa.identifiersForRegID {
-		counts[req.RegistrationID]++
-	}
-	return &sapb.PauseIdentifiersResponse{Paused: counts[req.RegistrationID]}, nil
-}
-
-func (msa *mockSAPaused) GetPausedIdentifiers(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Identifiers, error) {
-	msa.Lock()
-	defer msa.Unlock()
-	_, ok := msa.registrationsForRegID[req.Id]
-	if !ok {
-		return nil, fmt.Errorf("Unable to find registration for regID %d", req.Id)
-	}
-	idents, ok := msa.identifiersForRegID[req.Id]
-	if !ok {
-		return nil, fmt.Errorf("No identifiers paused yet")
-	}
-	return &sapb.Identifiers{Identifiers: idents}, nil
-}
-
-func (msa *mockSAPaused) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, nil
+func (msa mockSAWithSyncPause) PauseIdentifiers(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error) {
+	res, err := msa.StorageAuthorityClient.PauseIdentifiers(ctx, req)
+	msa.out <- req
+	return res, err
 }
 
 func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *testing.T) {
@@ -840,22 +794,25 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	features.Set(features.Config{AutomaticallyPauseZombieClients: true})
 	defer features.Reset()
 
-	// Set up a fake domain and authz.
-	domain := randomDomain()
-	authzPB := createPendingAuthorization(t, sa, domain, fc.Now().Add(12*time.Hour))
-	mockSA := newMockSAPaused(sa)
-	mockSA.registrationsForRegID[authzPB.RegistrationID] = Registration
-	mockSA.authorizationsForRegID[authzPB.RegistrationID] = authzPB
-	ra.SA = mockSA
+	// Replace the SA with one that will block when PauseIdentifiers is called.
+	pauseChan := make(chan *sapb.PauseRequest)
+	ra.SA = mockSAWithSyncPause{
+		StorageAuthorityClient: ra.SA,
+		out:                    pauseChan,
+	}
 
 	// Override the default ratelimits to only allow one failed validation per 24 hours.
 	txnBuilder, err := ratelimits.NewTransactionBuilder("testdata/one-failed-validation-before-pausing.yml", "")
 	test.AssertNotError(t, err, "making transaction composer")
 	ra.txnBuilder = txnBuilder
 
-	// Set the stored TAT to indicate that this bucket has exhausted its quota.
+	// Set up a fake domain, authz, and bucket key to care about.
+	domain := randomDomain()
+	authzPB := createPendingAuthorization(t, sa, domain, fc.Now().Add(12*time.Hour))
 	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
 	test.AssertNotError(t, err, "constructing test bucket key")
+
+	// Set the stored TAT to indicate that this bucket has exhausted its quota.
 	err = rl.BatchSet(context.Background(), map[string]time.Time{
 		bucketKey: fc.Now().Add(25 * time.Hour),
 	})
@@ -878,28 +835,32 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 		},
 	}
 
-	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: dnsChallIdx(t, authzPB.Challenges),
 	})
 	test.AssertNotError(t, err, "PerformValidation failed")
 
-	select {
-	case r := <-va.performValidationRequest:
-		_ = r
-	case <-time.After(time.Second):
-		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
-	}
+	// Wait for the RA to finish processing the validation, and ensure that the paused
+	// account+identifier is what we expect.
+	paused := <-pauseChan
+	t.Log(paused)
+	test.AssertEquals(t, len(paused.Identifiers), 1)
+	test.AssertEquals(t, paused.Identifiers[0].Value, domain)
+}
 
-	// Sleep so the RA has a chance to write to the SA
-	time.Sleep(100 * time.Millisecond)
+// mockRLSouceWithSyncDelete is a mock ratelimits.Source that forwards all
+// method calls to an inner Source, but also performs a blocking write to a
+// channel when Delete is called to allow the tests to synchronize.
+type mockRLSourceWithSyncDelete struct {
+	ratelimits.Source
+	out chan<- string
+}
 
-	// Ensure the identifier:account:domain we expect to be paused actually is.
-	got, err := ra.SA.GetPausedIdentifiers(ctx, &sapb.RegistrationID{Id: authzPB.RegistrationID}, nil)
-	test.AssertNotError(t, err, "Should not have errored getting paused identifiers")
-	test.AssertEquals(t, len(got.Identifiers), 1)
-	test.AssertEquals(t, got.Identifiers[0].Value, domain)
-	test.AssertMetricWithLabelsEquals(t, ra.pauseCounter, prometheus.Labels{"paused": "true", "repaused": "false", "grace": "false"}, 1)
+func (rl mockRLSourceWithSyncDelete) Delete(ctx context.Context, bucketKey string) error {
+	err := rl.Source.Delete(ctx, bucketKey)
+	rl.out <- bucketKey
+	return err
 }
 
 func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersRatelimit(t *testing.T) {
@@ -909,17 +870,22 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	features.Set(features.Config{AutomaticallyPauseZombieClients: true})
 	defer features.Reset()
 
-	// Set up a fake domain and authz.
+	// Replace the rate limit source with one that will block when Delete is called.
+	keyChan := make(chan string)
+	limiter, err := ratelimits.NewLimiter(fc, mockRLSourceWithSyncDelete{
+		Source: rl,
+		out:    keyChan,
+	}, metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating mock limiter")
+	ra.limiter = limiter
+
+	// Set up a fake domain, authz, and bucket key to care about.
 	domain := randomDomain()
 	authzPB := createPendingAuthorization(t, sa, domain, fc.Now().Add(12*time.Hour))
-	mockSA := newMockSAPaused(sa)
-	mockSA.registrationsForRegID[authzPB.RegistrationID] = Registration
-	mockSA.authorizationsForRegID[authzPB.RegistrationID] = authzPB
-	ra.SA = mockSA
-
-	// Set a stored TAT so that we can tell when it's been reset.
 	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
 	test.AssertNotError(t, err, "constructing test bucket key")
+
+	// Set a stored TAT so that we can tell when it's been reset.
 	err = rl.BatchSet(context.Background(), map[string]time.Time{
 		bucketKey: fc.Now().Add(25 * time.Hour),
 	})
@@ -939,19 +905,16 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 		Problem: nil,
 	}
 
-	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: dnsChallIdx(t, authzPB.Challenges),
 	})
 	test.AssertNotError(t, err, "PerformValidation failed")
-	mockSA.authorizationsForRegID[authzPB.RegistrationID] = authzPB
 
-	select {
-	case r := <-va.performValidationRequest:
-		_ = r
-	case <-time.After(time.Second):
-		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
-	}
+	// Wait for the RA to finish processesing the validation, and ensure that
+	// the reset bucket key is what we expect.
+	reset := <-keyChan
+	test.AssertEquals(t, reset, bucketKey)
 
 	// Verify that the bucket no longer exists (because the limiter reset has
 	// deleted it). This indicates the accountID:identifier bucket has regained
