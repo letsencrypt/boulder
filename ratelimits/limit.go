@@ -142,22 +142,27 @@ func parseOverrideNameId(key string) (Name, string, error) {
 	return name, id, nil
 }
 
-// loadAndParseOverrideLimits loads override limits from YAML. The YAML file
-// must be formatted as a list of maps, where each map has a single key
-// representing the limit name and a value that is a map containing the limit
-// fields and an additional 'ids' field that is a list of ids that this override
-// applies to.
+// loadAndParseOverrideLimits loads and parses override limits from a YAML file.
 func loadAndParseOverrideLimits(path string) (limits, error) {
 	fromFile, err := loadOverrides(path)
 	if err != nil {
 		return nil, err
 	}
+
+	return parseOverrideLimits(fromFile)
+}
+
+// parseOverrideLimits validates a YAML list of override limits. It must be
+// formatted as a list of maps, where each map has a single key representing the
+// limit name and a value that is a map containing the limit fields and an
+// additional 'ids' field that is a list of ids that this override applies to.
+func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 	parsed := make(limits)
 
-	for _, ov := range fromFile {
+	for _, ov := range newOverridesYAML {
 		for k, v := range ov {
 			limit := &v.limit
-			err = validateLimit(limit)
+			err := validateLimit(limit)
 			if err != nil {
 				return nil, fmt.Errorf("validating override limit %q: %w", k, err)
 			}
@@ -189,16 +194,21 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 	return parsed, nil
 }
 
-// loadAndParseDefaultLimits loads default limits from YAML, validates them, and
-// parses them into a map of limits keyed by 'Name'.
+// loadAndParseDefaultLimits loads and parses default limits from a YAML file.
 func loadAndParseDefaultLimits(path string) (limits, error) {
 	fromFile, err := loadDefaults(path)
 	if err != nil {
 		return nil, err
 	}
-	parsed := make(limits, len(fromFile))
 
-	for k, v := range fromFile {
+	return parseDefaultLimits(fromFile)
+}
+
+// parseDefaultLimits validates a map of default limits and rekeys it by 'Name'.
+func parseDefaultLimits(newDefaultLimits limits) (limits, error) {
+	parsed := make(limits, len(newDefaultLimits))
+
+	for k, v := range newDefaultLimits {
 		err := validateLimit(v)
 		if err != nil {
 			return nil, fmt.Errorf("parsing default limit %q: %w", k, err)
@@ -237,6 +247,30 @@ func newLimitRegistry(defaults, overrides string) (*limitRegistry, error) {
 	}
 
 	registry.overrides, err = loadAndParseOverrideLimits(overrides)
+	if err != nil {
+		return nil, err
+	}
+
+	return registry, nil
+}
+
+// newLimitRegistryWithData takes maps that are already populated with limit
+// data, instead of filenames from which to load limit data.
+func newLimitRegistryWithData(defaults limits, overrides overridesYAML) (*limitRegistry, error) {
+	var err error
+	registry := &limitRegistry{}
+	registry.defaults, err = parseDefaultLimits(defaults)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(overrides) == 0 {
+		// No overrides specified, initialize an empty map.
+		registry.overrides = make(limits)
+		return registry, nil
+	}
+
+	registry.overrides, err = parseOverrideLimits(overrides)
 	if err != nil {
 		return nil, err
 	}

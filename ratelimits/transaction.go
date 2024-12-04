@@ -195,6 +195,18 @@ func NewTransactionBuilder(defaults, overrides string) (*TransactionBuilder, err
 	return &TransactionBuilder{registry}, nil
 }
 
+// NewTransactionBuilderWithLimits returns a new *TransactionBuilder. The
+// provided defaults and overrides maps are expected to contain pre-populated
+// default and override limit data, respectively. Overrides is optional,
+// defaults is required.
+func NewTransactionBuilderWithLimits(defaults limits, overrides overridesYAML) (*TransactionBuilder, error) {
+	registry, err := newLimitRegistryWithData(defaults, overrides)
+	if err != nil {
+		return nil, err
+	}
+	return &TransactionBuilder{registry}, nil
+}
+
 // registrationsPerIPAddressTransaction returns a Transaction for the
 // NewRegistrationsPerIPAddress limit for the provided IP address.
 func (builder *TransactionBuilder) registrationsPerIPAddressTransaction(ip net.IP) (Transaction, error) {
