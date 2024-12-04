@@ -272,7 +272,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 	ctx = context.WithoutCancel(ctx)
 	tats, err := l.source.BatchGet(ctx, bucketKeys)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("batch get for %d keys: %w", len(bucketKeys), err)
 	}
 	batchDecision := allowedDecision
 	newBuckets := make(map[string]time.Time)
@@ -321,14 +321,14 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		if len(newBuckets) > 0 {
 			err = l.source.BatchSet(ctx, newBuckets)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("batch set for %d keys: %w", len(newBuckets), err)
 			}
 		}
 
 		if len(incrBuckets) > 0 {
 			err = l.source.BatchIncrement(ctx, incrBuckets)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("batch increment for %d keys: %w", len(incrBuckets), err)
 			}
 		}
 	}
@@ -379,7 +379,7 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 	ctx = context.WithoutCancel(ctx)
 	tats, err := l.source.BatchGet(ctx, bucketKeys)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("batch get for %d keys: %w", len(bucketKeys), err)
 	}
 
 	batchDecision := allowedDecision
@@ -410,7 +410,7 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 	if len(incrBuckets) > 0 {
 		err = l.source.BatchIncrement(ctx, incrBuckets)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("batch increment for %d keys: %w", len(incrBuckets), err)
 		}
 	}
 	return batchDecision, nil
