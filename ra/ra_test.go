@@ -796,6 +796,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 
 	// Replace the SA with one that will block when PauseIdentifiers is called.
 	pauseChan := make(chan *sapb.PauseRequest)
+	defer close(pauseChan)
 	ra.SA = mockSAWithSyncPause{
 		StorageAuthorityClient: ra.SA,
 		out:                    pauseChan,
@@ -844,12 +845,11 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	// Wait for the RA to finish processing the validation, and ensure that the paused
 	// account+identifier is what we expect.
 	paused := <-pauseChan
-	t.Log(paused)
 	test.AssertEquals(t, len(paused.Identifiers), 1)
 	test.AssertEquals(t, paused.Identifiers[0].Value, domain)
 }
 
-// mockRLSouceWithSyncDelete is a mock ratelimits.Source that forwards all
+// mockRLSourceWithSyncDelete is a mock ratelimits.Source that forwards all
 // method calls to an inner Source, but also performs a blocking write to a
 // channel when Delete is called to allow the tests to synchronize.
 type mockRLSourceWithSyncDelete struct {
@@ -872,6 +872,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 
 	// Replace the rate limit source with one that will block when Delete is called.
 	keyChan := make(chan string)
+	defer close(keyChan)
 	limiter, err := ratelimits.NewLimiter(fc, mockRLSourceWithSyncDelete{
 		Source: rl,
 		out:    keyChan,
