@@ -800,7 +800,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 			return
 		} else {
-			wfe.log.Warning(err.Error())
+			logEvent.IgnoredRateLimitError = err.Error()
 		}
 	}
 
@@ -2444,7 +2444,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 				return
 			}
 		} else {
-			wfe.log.Warning(err.Error())
+			logEvent.IgnoredRateLimitError = err.Error()
 		}
 	}
 
