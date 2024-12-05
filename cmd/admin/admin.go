@@ -96,11 +96,10 @@ func newAdmin(configFile string, dryRun bool) (*admin, error) {
 	}, nil
 }
 
-// findActiveInputMethodFlag returns the single input method flag that was set
-// to a non-default value in setInputs map. If no flags or multiple flags are
-// set, it returns an error.
+// findActiveInputMethodFlag returns a single key from setInputs with a value of `true`,
+// if exactly one exists. Otherwise it returns an error.
 func findActiveInputMethodFlag(setInputs map[string]bool) (string, error) {
-	activeFlags := make([]string, 0, len(setInputs))
+	var activeFlags []string
 	for flag, isSet := range setInputs {
 		if isSet {
 			activeFlags = append(activeFlags, flag)
