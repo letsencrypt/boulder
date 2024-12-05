@@ -102,6 +102,10 @@ type Config struct {
 	// and pause issuance for each (account, hostname) pair that repeatedly
 	// fails validation.
 	AutomaticallyPauseZombieClients bool
+
+	// SeparateDCVAndCAAChecks causes the VA to perform DCV checks and CAA checks
+	// in separate steps, using separate VA methods DoDCV and DoCAA.
+	SeparateDCVAndCAAChecks bool
 }
 
 var fMu = new(sync.RWMutex)

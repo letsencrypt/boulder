@@ -25,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/ratelimits"
 	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/letsencrypt/boulder/va"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -301,7 +302,10 @@ func main() {
 	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
 	rai.PA = pa
 
-	rai.VA = vac
+	rai.VA = va.RemoteClients{
+		VAClient:  vac,
+		CAAClient: caaClient,
+	}
 	rai.CA = cac
 	rai.OCSP = ocspc
 	rai.SA = sac

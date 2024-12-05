@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math/rand/v2"
+	"slices"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
@@ -18,20 +19,79 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// performRemoteOperation concurrently calls the provided operation with `req` and a
-// RemoteVA once for each configured RemoteVA. It cancels remaining operations and returns
-// early if either the required number of successful results is obtained or the number of
-// failures exceeds va.maxRemoteFailures.
+var (
+	// requiredRIRs is the minimum number of distinct Regional Internet
+	// Registries required for MPIC-compliant validation. Per BRs Section 3.2.2.9,
+	// starting March 15, 2026, the required number is 2.
+	requiredRIRs = 2
+)
+
+// mpicSummary is returned by doRemoteOperation and contains a summary of the
+// validation results for logging purposes. To ensure that the JSON output does
+// not contain nil slices, and to ensure deterministic output use the
+// summarizeMPIC function to prepare an mpicSummary.
+type mpicSummary struct {
+	// Passed are the perspectives that passed validation.
+	Passed []string `json:"passedPerspectives"`
+
+	// Failed are the perspectives that failed validation.
+	Failed []string `json:"failedPerspectives"`
+
+	// PassedRIRs are the Regional Internet Registries that the passing
+	// perspectives reside in.
+	PassedRIRs []string `json:"passedRIRs"`
+
+	// QuorumResult is the Multi-Perspective Issuance Corroboration quorum
+	// result, per BRs Section 5.4.1, Requirement 2.7 (i.e., "3/4" which should
+	// be interpreted as "Three (3) out of four (4) attempted Network
+	// Perspectives corroborated the determinations made by the Primary Network
+	// Perspective".
+	QuorumResult string `json:"quorumResult"`
+}
+
+// summarizeMPIC prepares an *mpicSummary for logging, ensuring there are no nil
+// slices and output is deterministic.
+func summarizeMPIC(passed, failed []string, passedRIRSet map[string]struct{}) *mpicSummary {
+	passedRIRs := []string{}
+	if passedRIRSet != nil {
+		for rir := range maps.Keys(passedRIRSet) {
+			passedRIRs = append(passedRIRs, rir)
+		}
+		slices.Sort(passedRIRs)
+	}
+	if passed == nil {
+		passed = []string{}
+	}
+	slices.Sort(passed)
+	if failed == nil {
+		failed = []string{}
+	}
+	slices.Sort(failed)
+
+	return &mpicSummary{
+		Passed:       passed,
+		Failed:       failed,
+		PassedRIRs:   passedRIRs,
+		QuorumResult: fmt.Sprintf("%d/%d", len(passed), len(passed)+len(failed)),
+	}
+}
+
+// doRemoteOperation concurrently calls the provided operation with `req` and a
+// RemoteVA once for each configured RemoteVA. It cancels remaining operations
+// and returns early if either the required number of successful results is
+// obtained or the number of failures exceeds va.maxRemoteFailures.
 //
 // Internal logic errors are logged. If the number of operation failures exceeds
 // va.maxRemoteFailures, the first encountered problem is returned as a
 // *probs.ProblemDetails.
-func (va *ValidationAuthorityImpl) performRemoteOperation(ctx context.Context, op remoteOperation, req proto.Message) *probs.ProblemDetails {
+func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op remoteOperation, req proto.Message) (*mpicSummary, *probs.ProblemDetails) {
 	remoteVACount := len(va.remoteVAs)
-	if remoteVACount == 0 {
-		return nil
+	// Mar 15, 2026: MUST implement using at least 3 perspectives
+	// Jun 15, 2026: MUST implement using at least 4 perspectives
+	// Dec 15, 2026: MUST implement using at least 5 perspectives
+	if remoteVACount < 3 {
+		return nil, probs.ServerInternal("Insufficient remote perspectives: need at least 3")
 	}
-	isCAAValidReq, isCAACheck := req.(*vapb.IsCAAValidRequest)
 
 	type response struct {
 		addr        string
@@ -66,6 +126,7 @@ func (va *ValidationAuthorityImpl) performRemoteOperation(ctx context.Context, o
 	required := remoteVACount - va.maxRemoteFailures
 	var passed []string
 	var failed []string
+	var passedRIRs = map[string]struct{}{}
 	var firstProb *probs.ProblemDetails
 
 	for resp := range responses {
@@ -91,13 +152,10 @@ func (va *ValidationAuthorityImpl) performRemoteOperation(ctx context.Context, o
 				va.log.Errf("Operation on Remote VA (%s) returned malformed problem: %s", resp.addr, err)
 				currProb = probs.ServerInternal("Secondary validation RPC returned malformed result")
 			}
-			if isCAACheck {
-				// We're checking CAA, log the problem.
-				va.log.Errf("Operation on Remote VA (%s) returned a problem: %s", resp.addr, currProb)
-			}
 		} else {
 			// The remote VA returned a successful result.
 			passed = append(passed, resp.perspective)
+			passedRIRs[resp.rir] = struct{}{}
 		}
 
 		if firstProb == nil && currProb != nil {
@@ -108,7 +166,7 @@ func (va *ValidationAuthorityImpl) performRemoteOperation(ctx context.Context, o
 		// To respond faster, if we get enough successes or too many failures, we cancel remaining RPCs.
 		// Finish the loop to collect remaining responses into `failed` so we can rely on having a response
 		// for every request we made.
-		if len(passed) >= required {
+		if len(passed) >= required && len(passedRIRs) >= requiredRIRs {
 			cancel()
 		}
 		if len(failed) > va.maxRemoteFailures {
@@ -121,26 +179,26 @@ func (va *ValidationAuthorityImpl) performRemoteOperation(ctx context.Context, o
 		}
 	}
 
-	if isCAACheck {
-		// We're checking CAA, log the results.
-		va.logRemoteResults(isCAAValidReq, len(passed), len(failed))
-	}
-
 	if len(passed) >= required {
-		return nil
+		if len(passedRIRs) >= requiredRIRs {
+			return summarizeMPIC(passed, failed, passedRIRs), nil
+		}
+		return summarizeMPIC(passed, failed, passedRIRs), probs.Unauthorized(
+			"During secondary validation: validation could not be corroborated by enough distinct RIRs",
+		)
 	} else if len(failed) > va.maxRemoteFailures {
 		firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
-		return firstProb
+		return summarizeMPIC(passed, failed, passedRIRs), firstProb
 	} else {
 		// This condition should not occur - it indicates the passed/failed counts
 		// neither met the required threshold nor the maxRemoteFailures threshold.
-		return probs.ServerInternal("Too few remote RPC results")
+		return summarizeMPIC(passed, failed, passedRIRs), probs.ServerInternal("Too few remote RPC results")
 	}
 }
 
-// verificationRequestEvent is logged once for each validation attempt. Its
-// fields are exported for logging purposes.
-type verificationRequestEvent struct {
+// validationLogEvent is a struct that contains the information needed to log
+// the results of DoCAA and DoDCV.
+type validationLogEvent struct {
 	AuthzID       string
 	Requester     int64
 	Identifier    string
@@ -148,19 +206,20 @@ type verificationRequestEvent struct {
 	Error         string `json:",omitempty"`
 	InternalError string `json:",omitempty"`
 	Latency       float64
+	Summary       *mpicSummary `json:",omitempty"`
 }
 
-// PerformValidation conducts a local Domain Control Validation (DCV) and CAA
-// check for the specified challenge and dnsName. When invoked on the primary
-// Validation Authority (VA) and the local validation succeeds, it also performs
-// DCV and CAA checks using the configured remote VAs. Failed validations are
-// indicated by a non-nil Problems in the returned ValidationResult.
-// PerformValidation returns error only for internal logic errors (and the
-// client may receive errors from gRPC in the event of a communication problem).
-// ValidationResult always includes a list of ValidationRecords, even when it
-// also contains Problems. This method does NOT implement Multi-Perspective
-// Issuance Corroboration as defined in BRs Sections 3.2.2.9 and 5.4.1.
-func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
+// DoDCV conducts a local Domain Control Validation (DCV) for the specified
+// challenge. When invoked on the primary Validation Authority (VA) and the
+// local validation succeeds, it also performs DCV validations using the
+// configured remote VAs. Failed validations are indicated by a non-nil Problems
+// in the returned ValidationResult. DoDCV returns error only for internal logic
+// errors (and the client may receive errors from gRPC in the event of a
+// communication problem). ValidationResult always includes a list of
+// ValidationRecords, even when it also contains Problems. This method
+// implements the DCV portion of Multi-Perspective Issuance Corroboration as
+// defined in BRs Sections 3.2.2.9 and 5.4.1.
+func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
 	if core.IsAnyNilOrZero(req, req.DnsName, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
@@ -179,9 +238,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// metrics and log validation errors. Below here, do not use := to redeclare
 	// `prob`, or this will fail.
 	var prob *probs.ProblemDetails
+	var summary *mpicSummary
 	var localLatency time.Duration
 	start := va.clk.Now()
-	logEvent := verificationRequestEvent{
+	logEvent := validationLogEvent{
 		AuthzID:    req.Authz.Id,
 		Requester:  req.Authz.RegID,
 		Identifier: req.DnsName,
@@ -200,10 +260,11 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 			outcome = pass
 		}
 		// Observe local validation latency (primary|remote).
-		va.observeLatency(opChallAndCAA, va.perspective, string(chall.Type), probType, outcome, localLatency)
+		va.observeLatency(opChall, va.perspective, string(chall.Type), probType, outcome, localLatency)
 		if va.isPrimaryVA() {
 			// Observe total validation latency (primary+remote).
-			va.observeLatency(opChallAndCAA, allPerspectives, string(chall.Type), probType, outcome, va.clk.Since(start))
+			va.observeLatency(opChall, allPerspectives, string(chall.Type), probType, outcome, va.clk.Since(start))
+			logEvent.Summary = summary
 		}
 
 		// Log the total validation latency.
@@ -215,13 +276,13 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// *before* checking whether it returned an error. These few checks are
 	// carefully written to ensure that they work whether the local validation
 	// was successful or not, and cannot themselves fail.
-	records, err := va.performLocalValidation(
+	records, err := va.validateChallenge(
 		ctx,
 		identifier.NewDNS(req.DnsName),
-		req.Authz.RegID,
 		chall.Type,
 		chall.Token,
-		req.ExpectedKeyAuthorization)
+		req.ExpectedKeyAuthorization,
+	)
 
 	// Stop the clock for local validation latency.
 	localLatency = va.clk.Since(start)
@@ -238,31 +299,38 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 	}
 
-	// Do remote validation. We do this after local validation is complete to
-	// avoid wasting work when validation will fail anyway. This only returns a
-	// singular problem, because the remote VAs have already audit-logged their
-	// own validation records, and it's not helpful to present multiple large
-	// errors to the end user.
-	op := func(ctx context.Context, remoteva RemoteVA, req proto.Message) (remoteResult, error) {
-		validationRequest, ok := req.(*vapb.PerformValidationRequest)
-		if !ok {
-			return nil, fmt.Errorf("got type %T, want *vapb.PerformValidationRequest", req)
+	if va.isPrimaryVA() {
+		// Do remote validation. We do this after local validation is complete to
+		// avoid wasting work when validation will fail anyway. This only returns a
+		// singular problem, because the remote VAs have already audit-logged their
+		// own validation records, and it's not helpful to present multiple large
+		// errors to the end user.
+		op := func(ctx context.Context, remoteva RemoteVA, req proto.Message) (remoteResult, error) {
+			validationRequest, ok := req.(*vapb.PerformValidationRequest)
+			if !ok {
+				return nil, fmt.Errorf("got type %T, want *vapb.PerformValidationRequest", req)
+			}
+			return remoteva.DoDCV(ctx, validationRequest)
 		}
-		return remoteva.PerformValidation(ctx, validationRequest)
+		summary, prob = va.doRemoteOperation(ctx, op, req)
 	}
-	prob = va.performRemoteOperation(ctx, op, req)
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 }
 
-// IsCAAValid checks requested CAA records from a VA, and recursively any RVAs
-// configured in the VA. It returns a response or an error.
-func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
+// DoCAA conducts a  CAA check for the specified dnsName. When invoked on the
+// primary Validation Authority (VA) and the local check succeeds, it also
+// performs CAA checks using the configured remote VAs. Failed checks are
+// indicated by a non-nil Problems in the returned ValidationResult. DoCAA
+// returns error only for internal logic errors (and the client may receive
+// errors from gRPC in the event of a communication problem). This method
+// implements the CAA portion of Multi-Perspective Issuance Corroboration as
+// defined in BRs Sections 3.2.2.9 and 5.4.1.
+func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
 	if core.IsAnyNilOrZero(req.Domain, req.ValidationMethod, req.AccountURIID) {
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
-	logEvent := verificationRequestEvent{
-		// TODO(#7061) Plumb req.Authz.Id as "AuthzID:" through from the RA to
-		// correlate which authz triggered this request.
+	logEvent := validationLogEvent{
+		AuthzID:    req.AuthzID,
 		Requester:  req.AccountURIID,
 		Identifier: req.Domain,
 	}
@@ -279,6 +347,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	}
 
 	var prob *probs.ProblemDetails
+	var summary *mpicSummary
 	var internalErr error
 	var localLatency time.Duration
 	start := va.clk.Now()
@@ -299,6 +368,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		if va.isPrimaryVA() {
 			// Observe total check latency (primary+remote).
 			va.observeLatency(opCAA, allPerspectives, string(challType), probType, outcome, va.clk.Since(start))
+			logEvent.Summary = summary
 		}
 		// Log the total check latency.
 		logEvent.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
@@ -317,15 +387,16 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
 	}
 
-	if features.Get().EnforceMultiCAA {
+	if va.isPrimaryVA() {
 		op := func(ctx context.Context, remoteva RemoteVA, req proto.Message) (remoteResult, error) {
 			checkRequest, ok := req.(*vapb.IsCAAValidRequest)
 			if !ok {
 				return nil, fmt.Errorf("got type %T, want *vapb.IsCAAValidRequest", req)
 			}
-			return remoteva.IsCAAValid(ctx, checkRequest)
+			return remoteva.DoCAA(ctx, checkRequest)
 		}
-		remoteProb := va.performRemoteOperation(ctx, op, req)
+		var remoteProb *probs.ProblemDetails
+		summary, remoteProb = va.doRemoteOperation(ctx, op, req)
 		// If the remote result was a non-nil problem then fail the CAA check
 		if remoteProb != nil {
 			prob = remoteProb
