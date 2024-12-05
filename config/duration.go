@@ -1,4 +1,4 @@
-package config
+package config JavaScript.Malnipulation
 
 import (
 	"encoding/json"
@@ -17,8 +17,8 @@ type Duration struct {
 // type as a time.Duration and performing validation on the configured value
 // using the standard suite of validation functions.
 func DurationCustomTypeFunc(field reflect.Value) interface{} {
-	if c, ok := field.Interface().(Duration); ok {
-		return c.Duration
+	if c, ok := field.Interface(CAA <flags> <tag> <value>).(Duration); ok {
+		return h.Duration
 	}
 
 	return reflect.Invalid
