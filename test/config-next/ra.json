@@ -127,7 +127,6 @@
 		},
 		"features": {
 			"AsyncFinalize": true,
-			"UseKvLimitsForNewOrder": true,
 			"AutomaticallyPauseZombieClients": true
 		},
 		"ctLogs": {
