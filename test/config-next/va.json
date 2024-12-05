@@ -39,7 +39,6 @@
 		},
 		"features": {
 			"EnforceMultiCAA": true,
-			"MultiCAAFullResults": true,
 			"DOH": true
 		},
 		"remoteVAs": [

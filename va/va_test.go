@@ -21,6 +21,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -349,7 +350,7 @@ func TestPerformValidationWithMismatchedRemoteVAPerspectives(t *testing.T) {
 
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
-	test.AssertNotNil(t, res.Problems, "validation succeeded with mismatched remote VA perspectives")
+	test.AssertNotNil(t, res.GetProblem(), "validation succeeded with mismatched remote VA perspectives")
 	test.AssertEquals(t, len(mockLog.GetAllMatching("Expected perspective")), 2)
 }
 
@@ -370,7 +371,7 @@ func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
 
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
-	test.AssertNotNil(t, res.Problems, "validation succeeded with mismatched remote VA perspectives")
+	test.AssertNotNil(t, res.GetProblem(), "validation succeeded with mismatched remote VA perspectives")
 	test.AssertEquals(t, len(mockLog.GetAllMatching("Expected perspective")), 2)
 }
 
@@ -388,7 +389,7 @@ func TestPerformValidationInvalid(t *testing.T) {
 
 	req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
-	test.Assert(t, res.Problems != nil, "validation succeeded")
+	test.Assert(t, res.Problem != nil, "validation succeeded")
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
 		"operation":      opChallAndCAA,
 		"perspective":    va.perspective,
@@ -417,7 +418,7 @@ func TestPerformValidationValid(t *testing.T) {
 	// create a challenge with well known token
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
-	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
+	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
 
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
 		"operation":      opChallAndCAA,
@@ -444,7 +445,7 @@ func TestPerformValidationWildcard(t *testing.T) {
 	req := createValidationRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
 	// perform a validation for a wildcard name
 	res, _ := va.PerformValidation(context.Background(), req)
-	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
+	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
 
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
 		"operation":      opChallAndCAA,
@@ -477,7 +478,7 @@ func TestDCVAndCAASequencing(t *testing.T) {
 	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
 	res, err := va.PerformValidation(context.Background(), req)
 	test.AssertNotError(t, err, "performing validation")
-	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
+	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
 	caaLog := mockLog.GetAllMatching(`Checked CAA records for`)
 	test.AssertEquals(t, len(caaLog), 1)
 
@@ -486,9 +487,73 @@ func TestDCVAndCAASequencing(t *testing.T) {
 	req = createValidationRequest("bad-dns01.com", core.ChallengeTypeDNS01)
 	res, err = va.PerformValidation(context.Background(), req)
 	test.AssertNotError(t, err, "performing validation")
-	test.Assert(t, res.Problems != nil, "validation succeeded")
+	test.Assert(t, res.Problem != nil, "validation succeeded")
 	caaLog = mockLog.GetAllMatching(`Checked CAA records for`)
 	test.AssertEquals(t, len(caaLog), 0)
+}
+
+func TestPerformRemoteOperation(t *testing.T) {
+	va, _ := setupWithRemotes(nil, "", []remoteConf{
+		{ua: pass, rir: arin},
+		{ua: pass, rir: ripe},
+		{ua: pass, rir: apnic},
+	}, nil)
+
+	testCases := []struct {
+		name           string
+		req            proto.Message
+		expectedType   string
+		expectedDetail string
+		op             func(ctx context.Context, rva RemoteVA, req proto.Message) (remoteResult, error)
+	}{
+		{
+			name:           "ValidationResult",
+			req:            &vapb.PerformValidationRequest{},
+			expectedType:   string(probs.BadNonceProblem),
+			expectedDetail: "quite surprising",
+			op: func(ctx context.Context, rva RemoteVA, req proto.Message) (remoteResult, error) {
+				prob := &corepb.ProblemDetails{
+					ProblemType: string(probs.BadNonceProblem),
+					Detail:      "quite surprising",
+				}
+				return &vapb.ValidationResult{Problem: prob, Perspective: rva.Perspective, Rir: rva.RIR}, nil
+			},
+		},
+		{
+			name:           "IsCAAValidResponse",
+			req:            &vapb.IsCAAValidRequest{},
+			expectedType:   string(probs.PausedProblem),
+			expectedDetail: "quite surprising, indeed",
+			op: func(ctx context.Context, rva RemoteVA, req proto.Message) (remoteResult, error) {
+				prob := &corepb.ProblemDetails{
+					ProblemType: string(probs.PausedProblem),
+					Detail:      "quite surprising, indeed",
+				}
+				return &vapb.IsCAAValidResponse{Problem: prob, Perspective: rva.Perspective, Rir: rva.RIR}, nil
+			},
+		},
+		{
+			name:           "IsCAAValidRequestWithValidationResult",
+			req:            &vapb.IsCAAValidRequest{},
+			expectedType:   string(probs.BadPublicKeyProblem),
+			expectedDetail: "a shocking result",
+			op: func(ctx context.Context, rva RemoteVA, req proto.Message) (remoteResult, error) {
+				prob := &corepb.ProblemDetails{
+					ProblemType: string(probs.BadPublicKeyProblem),
+					Detail:      "a shocking result",
+				}
+				return &vapb.ValidationResult{Problem: prob, Perspective: rva.Perspective, Rir: rva.RIR}, nil
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			prob := va.performRemoteOperation(context.Background(), tc.op, tc.req)
+			test.AssertEquals(t, string(prob.Type), tc.expectedType)
+			test.AssertContains(t, prob.Detail, tc.expectedDetail)
+		})
+	}
 }
 
 func TestMultiVA(t *testing.T) {
@@ -623,7 +688,7 @@ func TestMultiVA(t *testing.T) {
 			},
 			PrimaryUA:           pass,
 			ExpectedProbType:    string(probs.UnauthorizedProblem),
-			ExpectedLogContains: "During secondary domain validation: The key authorization file from the server",
+			ExpectedLogContains: "During secondary validation: The key authorization file from the server",
 		},
 		{
 			// If one remote VA cancels, it should succeed
@@ -645,7 +710,7 @@ func TestMultiVA(t *testing.T) {
 			},
 			PrimaryUA:           pass,
 			ExpectedProbType:    string(probs.ServerInternalProblem),
-			ExpectedLogContains: "During secondary domain validation: Secondary domain validation RPC canceled",
+			ExpectedLogContains: "During secondary validation: Secondary validation RPC canceled",
 		},
 		{
 			// With the local and remote VAs seeing diff problems, we expect a problem.
@@ -657,7 +722,7 @@ func TestMultiVA(t *testing.T) {
 			},
 			PrimaryUA:           pass,
 			ExpectedProbType:    string(probs.UnauthorizedProblem),
-			ExpectedLogContains: "During secondary domain validation: The key authorization file from the server",
+			ExpectedLogContains: "During secondary validation: The key authorization file from the server",
 		},
 	}
 
@@ -674,13 +739,13 @@ func TestMultiVA(t *testing.T) {
 
 			// Perform all validations
 			res, _ := localVA.PerformValidation(ctx, req)
-			if res.Problems == nil && tc.ExpectedProbType != "" {
+			if res.Problem == nil && tc.ExpectedProbType != "" {
 				t.Errorf("expected prob %v, got nil", tc.ExpectedProbType)
-			} else if res.Problems != nil && tc.ExpectedProbType == "" {
-				t.Errorf("expected no prob, got %v", res.Problems)
-			} else if res.Problems != nil && tc.ExpectedProbType != "" {
+			} else if res.Problem != nil && tc.ExpectedProbType == "" {
+				t.Errorf("expected no prob, got %v", res.Problem)
+			} else if res.Problem != nil && tc.ExpectedProbType != "" {
 				// That result should match expected.
-				test.AssertEquals(t, res.Problems.ProblemType, tc.ExpectedProbType)
+				test.AssertEquals(t, res.Problem.ProblemType, tc.ExpectedProbType)
 			}
 
 			if tc.ExpectedLogContains != "" {
@@ -743,7 +808,7 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 			res, _ := localVA.PerformValidation(ctx, req)
 
 			// It should always fail
-			if res.Problems == nil {
+			if res.Problem == nil {
 				t.Error("expected prob from PerformValidation, got nil")
 			}
 
@@ -781,7 +846,7 @@ func TestMultiVAPolicy(t *testing.T) {
 	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
 	res, _ := localVA.PerformValidation(ctx, req)
 	// It should fail
-	if res.Problems == nil {
+	if res.Problem == nil {
 		t.Error("expected prob from PerformValidation, got nil")
 	}
 }
@@ -800,7 +865,7 @@ func TestMultiVALogging(t *testing.T) {
 	va, _ := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
 	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
 	res, err := va.PerformValidation(ctx, req)
-	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed with: %#v", res.Problems))
+	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed with: %#v", res.Problem))
 	test.AssertNotError(t, err, "performing validation")
 }
 
@@ -857,45 +922,38 @@ func TestDetailedError(t *testing.T) {
 }
 
 func TestLogRemoteDifferentials(t *testing.T) {
+	t.Parallel()
+
 	remoteConfs := []remoteConf{
 		{ua: pass, rir: arin},
 		{ua: pass, rir: ripe},
 		{ua: pass, rir: apnic},
 	}
 
-	egProbA := probs.DNS("root DNS servers closed at 4:30pm")
-	egProbB := probs.OrderNotReady("please take a number")
-
 	testCases := []struct {
 		name        string
-		remoteProbs []*remoteVAResult
+		req         *vapb.IsCAAValidRequest
+		passed      int
+		failed      int
 		expectedLog string
 	}{
 		{
-			name: "all results equal (nil)",
-			remoteProbs: []*remoteVAResult{
-				{Problem: nil, VAHostname: "remoteA"},
-				{Problem: nil, VAHostname: "remoteB"},
-				{Problem: nil, VAHostname: "remoteC"},
-			},
+			name:        "all results equal (nil)",
+			passed:      0,
+			failed:      3,
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":3}`,
 		},
 		{
-			name: "all results equal (not nil)",
-			remoteProbs: []*remoteVAResult{
-				{Problem: egProbA, VAHostname: "remoteA"},
-				{Problem: egProbA, VAHostname: "remoteB"},
-				{Problem: egProbA, VAHostname: "remoteC"},
-			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":[{"VAHostname":"remoteA","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteB","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}},{"VAHostname":"remoteC","Problem":{"type":"dns","detail":"root DNS servers closed at 4:30pm","status":400}}]}`,
+			name:        "all results equal (not nil)",
+			passed:      0,
+			failed:      3,
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":3}`,
 		},
 		{
-			name: "differing results, some non-nil",
-			remoteProbs: []*remoteVAResult{
-				{Problem: nil, VAHostname: "remoteA"},
-				{Problem: egProbB, VAHostname: "remoteB"},
-				{Problem: nil, VAHostname: "remoteC"},
-			},
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":2,"RemoteFailures":[{"VAHostname":"remoteB","Problem":{"type":"orderNotReady","detail":"please take a number","status":403}}]}`,
+			name:        "differing results, some non-nil",
+			passed:      2,
+			failed:      1,
+			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":2,"RemoteFailures":1}`,
 		},
 	}
 
@@ -909,8 +967,11 @@ func TestLogRemoteDifferentials(t *testing.T) {
 
 			localVA, mockLog := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
 
-			localVA.logRemoteResults(
-				"example.com", 1999, "blorpus-01", tc.remoteProbs)
+			localVA.logRemoteResults(&vapb.IsCAAValidRequest{
+				Domain:           "example.com",
+				AccountURIID:     1999,
+				ValidationMethod: "blorpus-01",
+			}, tc.passed, tc.failed)
 
 			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
 			if tc.expectedLog != "" {

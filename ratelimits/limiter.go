@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 )
 
 const (
@@ -35,7 +34,7 @@ var allowedDecision = &Decision{allowed: true, remaining: math.MaxInt64}
 // utilizing a leaky bucket-style approach.
 type Limiter struct {
 	// source is used to store buckets. It must be safe for concurrent use.
-	source source
+	source Source
 	clk    clock.Clock
 
 	spendLatency       *prometheus.HistogramVec
@@ -44,7 +43,7 @@ type Limiter struct {
 
 // NewLimiter returns a new *Limiter. The provided source must be safe for
 // concurrent use.
-func NewLimiter(clk clock.Clock, source source, stats prometheus.Registerer) (*Limiter, error) {
+func NewLimiter(clk clock.Clock, source Source, stats prometheus.Registerer) (*Limiter, error) {
 	spendLatency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "ratelimits_spend_latency",
 		Help: fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", Allowed, Denied),
@@ -276,7 +275,6 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		return nil, err
 	}
 	batchDecision := allowedDecision
-	newTATs := make(map[string]time.Time)
 	newBuckets := make(map[string]time.Time)
 	incrBuckets := make(map[string]increment)
 	txnOutcomes := make(map[Transaction]string)
@@ -297,8 +295,6 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 
 		if d.allowed && (tat != d.newTAT) && txn.spend {
 			// New bucket state should be persisted.
-			newTATs[txn.bucketKey] = d.newTAT
-
 			if bucketExists {
 				incrBuckets[txn.bucketKey] = increment{
 					cost: time.Duration(txn.cost * txn.limit.emissionInterval),
@@ -321,25 +317,16 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		}
 	}
 
-	if features.Get().IncrementRateLimits {
-		if batchDecision.allowed {
-			if len(newBuckets) > 0 {
-				err = l.source.BatchSet(ctx, newBuckets)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			if len(incrBuckets) > 0 {
-				err = l.source.BatchIncrement(ctx, incrBuckets)
-				if err != nil {
-					return nil, err
-				}
+	if batchDecision.allowed {
+		if len(newBuckets) > 0 {
+			err = l.source.BatchSet(ctx, newBuckets)
+			if err != nil {
+				return nil, err
 			}
 		}
-	} else {
-		if batchDecision.allowed && len(newTATs) > 0 {
-			err = l.source.BatchSet(ctx, newTATs)
+
+		if len(incrBuckets) > 0 {
+			err = l.source.BatchIncrement(ctx, incrBuckets)
 			if err != nil {
 				return nil, err
 			}
@@ -396,7 +383,6 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 	}
 
 	batchDecision := allowedDecision
-	newTATs := make(map[string]time.Time)
 	incrBuckets := make(map[string]increment)
 
 	for _, txn := range batch {
@@ -414,7 +400,6 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 		batchDecision = stricter(batchDecision, d)
 		if d.allowed && tat != d.newTAT {
 			// New bucket state should be persisted.
-			newTATs[txn.bucketKey] = d.newTAT
 			incrBuckets[txn.bucketKey] = increment{
 				cost: time.Duration(-txn.cost * txn.limit.emissionInterval),
 				ttl:  time.Duration(txn.limit.burstOffset),
@@ -422,19 +407,10 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 		}
 	}
 
-	if features.Get().IncrementRateLimits {
-		if len(incrBuckets) > 0 {
-			err = l.source.BatchIncrement(ctx, incrBuckets)
-			if err != nil {
-				return nil, err
-			}
-		}
-	} else {
-		if len(newTATs) > 0 {
-			err = l.source.BatchSet(ctx, newTATs)
-			if err != nil {
-				return nil, err
-			}
+	if len(incrBuckets) > 0 {
+		err = l.source.BatchIncrement(ctx, incrBuckets)
+		if err != nil {
+			return nil, err
 		}
 	}
 	return batchDecision, nil
