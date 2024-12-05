@@ -160,7 +160,7 @@ func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride b
 	rva.perspective = perspective
 	rva.rir = rir
 
-	return RemoteClients{VAClient: &inMemVA{*rva}, CAAClient: &inMemVA{*rva}}
+	return RemoteClients{VAClient: &inMemVA{rva}, CAAClient: &inMemVA{rva}}
 }
 
 // RIRs
@@ -296,14 +296,14 @@ func (b brokenRemoteVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest,
 // ValidationAuthorityImpl rather than over the network. This lets a local
 // in-memory mock VA act like a remote VA.
 type inMemVA struct {
-	rva ValidationAuthorityImpl
+	rva *ValidationAuthorityImpl
 }
 
-func (inmem inMemVA) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+func (inmem *inMemVA) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return inmem.rva.PerformValidation(ctx, req)
 }
 
-func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+func (inmem *inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
 	return inmem.rva.IsCAAValid(ctx, req)
 }
 
