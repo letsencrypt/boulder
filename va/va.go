@@ -548,7 +548,7 @@ func (va *ValidationAuthorityImpl) performRemoteOperation(ctx context.Context, o
 			}
 			if isCAACheck {
 				// We're checking CAA, log the problem.
-				va.log.Errf("Operation on Remote VA (%s) returned a problem: %s", resp.addr, err)
+				va.log.Errf("Operation on Remote VA (%s) returned a problem: %s", resp.addr, currProb)
 			}
 		} else {
 			// The remote VA returned a successful result.
