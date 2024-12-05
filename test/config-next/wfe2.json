@@ -128,7 +128,8 @@
 			"PropagateCancels": true,
 			"ServeRenewalInfo": true,
 			"CheckIdentifiersPaused": true,
-			"UseKvLimitsForNewOrder": true
+			"UseKvLimitsForNewOrder": true,
+			"SeparateDCVAndCAAChecks": true
 		},
 		"certProfiles": {
 			"legacy": "The normal profile you know and love",

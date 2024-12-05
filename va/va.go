@@ -37,6 +37,7 @@ const (
 	allPerspectives    = "all"
 
 	opChallAndCAA = "challenge+caa"
+	opChall       = "challenge"
 	opCAA         = "caa"
 
 	pass = "pass"
@@ -97,7 +98,7 @@ type RemoteVA struct {
 type vaMetrics struct {
 	// validationLatency is a histogram of the latency to perform validations
 	// from the primary and remote VA perspectives. It's labelled by:
-	//   - operation: VA.ValidateChallenge or VA.CheckCAA as [challenge|caa|challenge+caa]
+	//   - operation: VA.DoDCV or VA.DoCAA as [challenge|caa|challenge+caa]
 	//   - perspective: ValidationAuthorityImpl.perspective
 	//   - challenge_type: core.Challenge.Type
 	//   - problem_type: probs.ProblemType
@@ -437,7 +438,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 // observeLatency records entries in the validationLatency histogram of the
 // latency to perform validations from the primary and remote VA perspectives.
 // The labels are:
-//   - operation: VA.ValidateChallenge or VA.CheckCAA as [challenge|caa]
+//   - operation: VA.DoDCV or VA.DoCAA as [challenge|caa]
 //   - perspective: [ValidationAuthorityImpl.perspective|all]
 //   - challenge_type: core.Challenge.Type
 //   - problem_type: probs.ProblemType
