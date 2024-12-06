@@ -183,20 +183,15 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 	}
 	if len(passed) >= required && len(passedRIRs) >= requiredRIRs {
 		return summarizeMPIC(passed, failed, passedRIRs), nil
-	} else if len(passed) >= required && firstProb == nil {
+	}
+	if firstProb == nil {
 		// This should never happen. If we didn't meet the thresholds above we
 		// should have seen at least one error.
-		return summarizeMPIC(passed, failed, passedRIRs), probs.Unauthorized(
-			"During secondary validation: validation could not be corroborated by enough distinct RIRs",
-		)
-	} else if len(failed) > va.maxRemoteFailures {
-		firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
-		return summarizeMPIC(passed, failed, passedRIRs), firstProb
-	} else {
-		// This condition should not occur - it indicates the passed/failed counts
-		// neither met the required threshold nor the maxRemoteFailures threshold.
-		return summarizeMPIC(passed, failed, passedRIRs), probs.ServerInternal("Too few remote RPC results")
+		return summarizeMPIC(passed, failed, passedRIRs), probs.ServerInternal(
+			"During secondary validation: validation failed but the problem is unavailable")
 	}
+	firstProb.Detail = fmt.Sprintf("During secondary validation: %s", firstProb.Detail)
+	return summarizeMPIC(passed, failed, passedRIRs), firstProb
 }
 
 // validationLogEvent is a struct that contains the information needed to log
