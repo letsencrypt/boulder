@@ -102,6 +102,12 @@ type Config struct {
 	// and pause issuance for each (account, hostname) pair that repeatedly
 	// fails validation.
 	AutomaticallyPauseZombieClients bool
+
+	// NoPendingAuthzReuse causes the RA to only select already-validated authzs
+	// to attach to a newly created order. This preserves important client-facing
+	// functionality (valid authz reuse) while letting us simplify our code by
+	// removing pending authz reuse.
+	NoPendingAuthzReuse bool
 }
 
 var fMu = new(sync.RWMutex)

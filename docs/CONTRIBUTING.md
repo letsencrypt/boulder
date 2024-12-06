@@ -33,6 +33,19 @@ guidelines for Boulder contributions.
 * Are there new RPCs or config fields? Make sure the patch meets the
   Deployability rules below.
 
+# Merge Requirements
+
+We have a bot that will comment on some PRs indicating there are:
+
+ 1. configuration changes
+ 2. SQL schema changes
+ 3. feature flag changes
+
+These may require either a CP/CPS review or filing of a ticket to make matching changes
+in production. It is the responsibility of the person merging the PR to make sure
+the required action has been performed before merging. Usually this will be confirmed
+in a comment or in the PR description.
+
 # Patch Guidelines
 
 * Please include helpful comments. No need to gratuitously comment clear code,
@@ -139,11 +152,12 @@ separate deploy-triggered problems from config-triggered problems.
 
 When adding significant new features or replacing existing RPCs the
 `boulder/features` package should be used to gate its usage. To add a flag, a
-new `const FeatureFlag` should be added and its default value specified in
-`features.features` in `features/features.go`. In order to test if the flag
-is enabled elsewhere in the codebase you can use
-`features.Enabled(features.ExampleFeatureName)` which returns a `bool`
-indicating if the flag is enabled or not.
+new field of the `features.Config` struct should be added. All flags default
+to false.
+
+In order to test if the flag is enabled elsewhere in the codebase you can use
+`features.Get().ExampleFeatureName` which gets the `bool` value from a global
+config.
 
 Each service should include a `map[string]bool` named `Features` in its
 configuration object at the top level and call `features.Set` with that map
@@ -160,13 +174,24 @@ immediately after parsing the configuration. For example to enable
 }
 ```
 
-Avoid negative flag names such as `"DontCancelRequest": false` because such
-names are difficult to reason about.
-
 Feature flags are meant to be used temporarily and should not be used for
-permanent boolean configuration options. Once a feature has been enabled in
-both staging and production the flag should be removed making the previously
-gated functionality the default in future deployments.
+permanent boolean configuration options.
+
+### Deprecating a feature flag
+
+Once a feature has been enabled in both staging and production, someone on the
+team should deprecate it:
+
+ - Remove any instances of `features.Get().ExampleFeatureName`, adjusting code
+   as needed.
+ - Move the field to the top of the `features.Config` struct, under a comment
+   saying it's deprecated.
+ - Remove all references to the feature flag from `test/config-next`.
+ - Add the feature flag to `test/config`. This serves to check that we still
+   tolerate parsing the flag at startup, even though it is ineffective.
+ - File a ticket to remove the feature flag in staging and production.
+ - Once the feature flag is removed in staging and production, delete it from
+   `test/config` and `features.Config`.
 
 ### Gating RPCs
 

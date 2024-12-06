@@ -13,7 +13,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	boulderDB "github.com/letsencrypt/boulder/db"
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -273,11 +272,8 @@ func initTables(dbMap *borp.DbMap) {
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(true, "ID")
 	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(true, "ID")
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
-	if features.Get().MultipleCertificateProfiles {
-		dbMap.AddTableWithName(orderModelv2{}, "orders").SetKeys(true, "ID")
-	} else {
-		dbMap.AddTableWithName(orderModelv1{}, "orders").SetKeys(true, "ID")
-	}
+	dbMap.AddTableWithName(orderModelv2{}, "orders").SetKeys(true, "ID")
+	dbMap.AddTableWithName(orderModelv1{}, "orders").SetKeys(true, "ID")
 	dbMap.AddTableWithName(orderToAuthzModel{}, "orderToAuthz").SetKeys(false, "OrderID", "AuthzID")
 	dbMap.AddTableWithName(orderFQDNSet{}, "orderFqdnSets").SetKeys(true, "ID")
 	dbMap.AddTableWithName(authzModel{}, "authz2").SetKeys(true, "ID")

@@ -10,8 +10,8 @@ import (
 // ErrBucketNotFound indicates that the bucket was not found.
 var ErrBucketNotFound = fmt.Errorf("bucket not found")
 
-// source is an interface for creating and modifying TATs.
-type source interface {
+// Source is an interface for creating and modifying TATs.
+type Source interface {
 	// BatchSet stores the TATs at the specified bucketKeys (formatted as
 	// 'name:id'). Implementations MUST ensure non-blocking operations by
 	// either:
@@ -64,9 +64,9 @@ type inmem struct {
 	m map[string]time.Time
 }
 
-var _ source = (*inmem)(nil)
+var _ Source = (*inmem)(nil)
 
-func newInmem() *inmem {
+func NewInmemSource() *inmem {
 	return &inmem{m: make(map[string]time.Time)}
 }
 
