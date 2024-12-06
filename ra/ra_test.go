@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"math/big"
 	mrand "math/rand/v2"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1058,8 +1059,6 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.orderLifetime = 5 * 24 * time.Hour
-
 	// Create a dummy rate limit config that sets a NewOrdersPerAccount rate
 	// limit with a very low threshold/short window
 	rateLimitDuration := 5 * time.Minute
@@ -1108,7 +1107,6 @@ func TestNewOrderRateLimiting(t *testing.T) {
 func TestEarlyOrderRateLimiting(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = 5 * 24 * time.Hour
 
 	rateLimitDuration := 5 * time.Minute
 
@@ -2070,7 +2068,6 @@ func TestRecheckCAAInternalServerError(t *testing.T) {
 func TestNewOrder(t *testing.T) {
 	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = time.Hour
 
 	now := fc.Now()
 	orderA, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
@@ -2080,50 +2077,13 @@ func TestNewOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderA.RegistrationID, int64(1))
-	test.AssertEquals(t, orderA.Expires.AsTime(), now.Add(time.Hour))
+	test.AssertEquals(t, orderA.Expires.AsTime(), now.Add(ra.orderLifetime))
 	test.AssertEquals(t, len(orderA.DnsNames), 3)
 	test.AssertEquals(t, orderA.CertificateProfileName, "test")
 	// We expect the order names to have been sorted, deduped, and lowercased
 	test.AssertDeepEquals(t, orderA.DnsNames, []string{"a.com", "b.com", "c.com"})
 	test.AssertEquals(t, orderA.Id, int64(1))
 	test.AssertEquals(t, numAuthorizations(orderA), 3)
-
-	// Reuse all existing authorizations
-	now = fc.Now()
-	orderB, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"b.com", "a.com", "C.COM"},
-	})
-	test.AssertNotError(t, err, "ra.NewOrder failed")
-	test.AssertEquals(t, orderB.RegistrationID, int64(1))
-	test.AssertEquals(t, orderB.Expires.AsTime(), now.Add(time.Hour))
-	// We expect orderB's ID to match orderA's because of pending order reuse
-	test.AssertEquals(t, orderB.Id, orderA.Id)
-	test.AssertEquals(t, len(orderB.DnsNames), 3)
-	test.AssertDeepEquals(t, orderB.DnsNames, []string{"a.com", "b.com", "c.com"})
-	test.AssertEquals(t, numAuthorizations(orderB), 3)
-	test.AssertDeepEquals(t, orderB.V2Authorizations, orderA.V2Authorizations)
-
-	// Reuse all of the existing authorizations from the previous order and
-	// add a new one
-	orderA.DnsNames = append(orderA.DnsNames, "d.com")
-	now = fc.Now()
-	orderC, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       orderA.DnsNames,
-	})
-	test.AssertNotError(t, err, "ra.NewOrder failed")
-	test.AssertEquals(t, orderC.RegistrationID, int64(1))
-	test.AssertEquals(t, orderC.Expires.AsTime(), now.Add(time.Hour))
-	test.AssertEquals(t, len(orderC.DnsNames), 4)
-	test.AssertDeepEquals(t, orderC.DnsNames, []string{"a.com", "b.com", "c.com", "d.com"})
-	// We expect orderC's ID to not match orderA/orderB's because it is for
-	// a different set of names
-	test.AssertNotEquals(t, orderC.Id, orderA.Id)
-	test.AssertEquals(t, numAuthorizations(orderC), 4)
-	// Abuse the order of the queries used to extract the reused authorizations
-	existing := orderC.V2Authorizations[:3]
-	test.AssertDeepEquals(t, existing, orderA.V2Authorizations)
 
 	_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
@@ -2136,161 +2096,311 @@ func TestNewOrder(t *testing.T) {
 // TestNewOrderReuse tests that subsequent requests by an ACME account to create
 // an identical order results in only one order being created & subsequently
 // reused.
-func TestNewOrderReuse(t *testing.T) {
-	_, _, ra, _, fc, cleanUp := initAuthorities(t)
+func TestNewOrder_OrderReusex(t *testing.T) {
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ctx := context.Background()
+	// Create an initial order with regA and names
 	names := []string{"zombo.com", "welcome.to.zombo.com"}
-
-	// Configure the RA to use a short order lifetime
-	ra.orderLifetime = time.Hour
-	// Create a var with two times the order lifetime to reference later
-	doubleLifetime := ra.orderLifetime * 2
-
-	// Create an initial request with regA and names
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       names,
 	}
+	firstOrder, err := ra.NewOrder(context.Background(), orderReq)
+	test.AssertNotError(t, err, "Adding an initial order for regA failed")
 
 	// Create a second registration to reference
 	acctKeyB, err := AccountKeyB.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
-	input := &corepb.Registration{
-		Key: acctKeyB,
-	}
-	secondReg, err := ra.NewRegistration(ctx, input)
+	input := &corepb.Registration{Key: acctKeyB}
+	secondReg, err := ra.NewRegistration(context.Background(), input)
 	test.AssertNotError(t, err, "Error creating a second test registration")
-	// First, add an order with `names` for regA
-	firstOrder, err := ra.NewOrder(context.Background(), orderReq)
-	// It shouldn't fail
-	test.AssertNotError(t, err, "Adding an initial order for regA failed")
-	// It should have an ID
-	test.AssertNotNil(t, firstOrder.Id, "Initial order had a nil ID")
 
 	testCases := []struct {
-		Name         string
-		OrderReq     *rapb.NewOrderRequest
-		ExpectReuse  bool
-		AdvanceClock *time.Duration
+		Name           string
+		RegistrationID int64
+		DnsNames       []string
+		ExpectReuse    bool
 	}{
 		{
-			Name:     "Duplicate order, same regID",
-			OrderReq: orderReq,
+			Name:           "Duplicate order, same regID",
+			RegistrationID: Registration.Id,
+			DnsNames:       names,
 			// We expect reuse since the order matches firstOrder
 			ExpectReuse: true,
 		},
 		{
-			Name: "Subset of order names, same regID",
-			OrderReq: &rapb.NewOrderRequest{
-				RegistrationID: Registration.Id,
-				DnsNames:       []string{names[1]},
-			},
+			Name:           "Subset of order names, same regID",
+			RegistrationID: Registration.Id,
+			DnsNames:       names[:1],
 			// We do not expect reuse because the order names don't match firstOrder
 			ExpectReuse: false,
 		},
 		{
-			Name: "Duplicate order, different regID",
-			OrderReq: &rapb.NewOrderRequest{
-				RegistrationID: secondReg.Id,
-				DnsNames:       names,
-			},
+			Name:           "Superset of order names, same regID",
+			RegistrationID: Registration.Id,
+			DnsNames:       append(names, "blog.zombo.com"),
+			// We do not expect reuse because the order names don't match firstOrder
+			ExpectReuse: false,
+		},
+		{
+			Name:           "Duplicate order, different regID",
+			RegistrationID: secondReg.Id,
+			DnsNames:       names,
 			// We do not expect reuse because the order regID differs from firstOrder
 			ExpectReuse: false,
 		},
-		{
-			Name: "Duplicate order, different profile",
-			OrderReq: &rapb.NewOrderRequest{
-				RegistrationID:         Registration.Id,
-				CertificateProfileName: "different",
-				DnsNames:               names,
-			},
-			// We do not expect reuse because the profile name differs from firstOrder
-			ExpectReuse: false,
-		},
-		{
-			Name:         "Duplicate order, same regID, first expired",
-			OrderReq:     orderReq,
-			AdvanceClock: &doubleLifetime,
-			// We do not expect reuse because firstOrder has expired
-			ExpectReuse: true,
-		},
+		// TODO(#7324): Integrate certificate profile variance into this test.
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			// If the testcase specifies, advance the clock before adding the order
-			if tc.AdvanceClock != nil {
-				_ = fc.Now().Add(*tc.AdvanceClock)
-			}
 			// Add the order for the test request
-			order, err := ra.NewOrder(ctx, tc.OrderReq)
-			// It shouldn't fail
+			order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+				RegistrationID: tc.RegistrationID,
+				DnsNames:       tc.DnsNames,
+			})
 			test.AssertNotError(t, err, "NewOrder returned an unexpected error")
-			// The order should not have a nil ID
 			test.AssertNotNil(t, order.Id, "NewOrder returned an order with a nil Id")
 
 			if tc.ExpectReuse {
 				// If we expected order reuse for this testcase assert that the order
 				// has the same ID as the firstOrder
-				test.AssertEquals(t, firstOrder.Id, order.Id)
+				test.AssertEquals(t, order.Id, firstOrder.Id)
 			} else {
 				// Otherwise assert that the order doesn't have the same ID as the
 				// firstOrder
-				test.AssertNotEquals(t, firstOrder.Id, order.Id)
+				test.AssertNotEquals(t, order.Id, firstOrder.Id)
 			}
 		})
 	}
 }
 
-func TestNewOrderReuseInvalidAuthz(t *testing.T) {
+// TestNewOrder_OrderReuse_Profile tests that order reuse respects profiles.
+// This is not simply a test case in TestNewOrder_OrderReuse because it relies
+// on feature-flag gated behavior. It should be unified with that function when
+// the feature flag is removed.
+func TestNewOrder_OrderReuse_Profile(t *testing.T) {
+	// TODO(#7324): Integrate these cases into TestNewOrder_OrderReuse.
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		t.Skip("this test requires the db to have the certificateProfileName column in the orders table")
+	}
+
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ctx := context.Background()
-	names := []string{"zombo.com"}
+	features.Set(features.Config{MultipleCertificateProfiles: true})
+	defer features.Reset()
 
-	// Create an initial request with regA and names
-	orderReq := &rapb.NewOrderRequest{
+	// Create an initial order with a profile name.
+	extant, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID:         Registration.Id,
+		CertificateProfileName: "test",
+		DnsNames:               []string{"a.com", "b.com"},
+	})
+	test.AssertNotError(t, err, "creating test order")
+
+	// Creating an identical order should reuse the first one.
+	new, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID:         Registration.Id,
+		CertificateProfileName: "test",
+		DnsNames:               []string{"a.com", "b.com"},
+	})
+	test.AssertNotError(t, err, "creating test order")
+	test.AssertEquals(t, new.Id, extant.Id)
+
+	// Creating a new order for the same names but a different profile should not
+	// reuse the first one.
+	new, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID:         Registration.Id,
+		CertificateProfileName: "test2",
+		DnsNames:               []string{"a.com", "b.com"},
+	})
+	test.AssertNotError(t, err, "creating test order")
+	test.AssertNotEquals(t, new.Id, extant.Id)
+}
+
+// TestNewOrder_OrderReuse_Expired tests that expired orders are not reused.
+// This is not simply a test case in TestNewOrder_OrderReuse because it has
+// side effects.
+func TestNewOrder_OrderReuse_Expired(t *testing.T) {
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Set the order lifetime to something short and known.
+	ra.orderLifetime = time.Hour
+
+	// Create an initial order.
+	extant, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
-		DnsNames:       names,
+		DnsNames:       []string{"a.com", "b.com"},
+	})
+	test.AssertNotError(t, err, "creating test order")
+
+	// Transition the original order to status invalid by jumping forward in time
+	// to when it has expired.
+	fc.Set(extant.Expires.AsTime().Add(2 * time.Hour))
+
+	// Now a new order for the same names should not reuse the first one.
+	new, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		DnsNames:       []string{"a.com", "b.com"},
+	})
+	test.AssertNotError(t, err, "creating test order")
+	test.AssertNotEquals(t, new.Id, extant.Id)
+}
+
+// TestNewOrder_OrderReuse_Invalid tests that invalid orders are not reused.
+// This is not simply a test case in TestNewOrder_OrderReuse because it has
+// side effects.
+func TestNewOrder_OrderReuse_Invalid(t *testing.T) {
+	_, sa, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Create an initial order.
+	extant, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		DnsNames:       []string{"a.com", "b.com"},
+	})
+	test.AssertNotError(t, err, "creating test order")
+
+	// Transition the original order to status invalid by invalidating one of its
+	// authorizations.
+	_, err = sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{
+		Id: extant.V2Authorizations[0],
+	})
+	test.AssertNotError(t, err, "deactivating test authorization")
+
+	// Now a new order for the same names should not reuse the first one.
+	new, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		DnsNames:       []string{"a.com", "b.com"},
+	})
+	test.AssertNotError(t, err, "creating test order")
+	test.AssertNotEquals(t, new.Id, extant.Id)
+}
+
+func TestNewOrder_AuthzReuse(t *testing.T) {
+	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Create three initial authzs by creating an initial order, then updating
+	// the individual authz statuses.
+	const (
+		pending = "a-pending.com"
+		valid   = "b-valid.com"
+		invalid = "c-invalid.com"
+	)
+	extant, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		DnsNames:       []string{pending, valid, invalid},
+	})
+	test.AssertNotError(t, err, "creating test order")
+	extantAuthzs := map[string]int64{
+		// Take advantage of the fact that authz IDs are returned in the same order
+		// as the lexicographically-sorted identifiers.
+		pending: extant.V2Authorizations[0],
+		valid:   extant.V2Authorizations[1],
+		invalid: extant.V2Authorizations[2],
+	}
+	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id:        extantAuthzs[valid],
+		Status:    string(core.StatusValid),
+		Attempted: "hello",
+		Expires:   timestamppb.New(fc.Now().Add(48 * time.Hour)),
+	})
+	test.AssertNotError(t, err, "marking test authz as valid")
+	_, err = sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{
+		Id: extantAuthzs[invalid],
+	})
+	test.AssertNotError(t, err, "marking test authz as invalid")
+
+	// Create a second registration to reference later.
+	acctKeyB, err := AccountKeyB.MarshalJSON()
+	test.AssertNotError(t, err, "failed to marshal account key")
+	input := &corepb.Registration{Key: acctKeyB}
+	secondReg, err := ra.NewRegistration(context.Background(), input)
+	test.AssertNotError(t, err, "Error creating a second test registration")
+
+	testCases := []struct {
+		Name           string
+		RegistrationID int64
+		DnsName        string
+		ExpectReuse    bool
+	}{
+		{
+			Name:           "Reuse pending authz",
+			RegistrationID: Registration.Id,
+			DnsName:        pending,
+			ExpectReuse:    true, // TODO(#7715): Invert this.
+		},
+		{
+			Name:           "Reuse valid authz",
+			RegistrationID: Registration.Id,
+			DnsName:        valid,
+			ExpectReuse:    true,
+		},
+		{
+			Name:           "Don't reuse invalid authz",
+			RegistrationID: Registration.Id,
+			DnsName:        invalid,
+			ExpectReuse:    false,
+		},
+		{
+			Name:           "Don't reuse valid authz from other acct",
+			RegistrationID: secondReg.Id,
+			DnsName:        valid,
+			ExpectReuse:    false,
+		},
 	}
 
-	// First, add an order with `names` for regA
-	order, err := ra.NewOrder(ctx, orderReq)
-	// It shouldn't fail
-	test.AssertNotError(t, err, "Adding an initial order for regA failed")
-	// It should have an ID
-	test.AssertNotNil(t, order.Id, "Initial order had a nil ID")
-	// It should have one authorization
-	test.AssertEquals(t, numAuthorizations(order), 1)
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			new, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+				RegistrationID: tc.RegistrationID,
+				DnsNames:       []string{tc.DnsName},
+			})
+			test.AssertNotError(t, err, "creating test order")
+			test.AssertNotEquals(t, new.Id, extant.Id)
 
-	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:          order.V2Authorizations[0],
-		Status:      string(core.StatusInvalid),
-		Expires:     order.Expires,
-		Attempted:   string(core.ChallengeTypeDNS01),
-		AttemptedAt: timestamppb.New(ra.clk.Now()),
+			if tc.ExpectReuse {
+				test.AssertEquals(t, new.V2Authorizations[0], extantAuthzs[tc.DnsName])
+			} else {
+				test.AssertNotEquals(t, new.V2Authorizations[0], extantAuthzs[tc.DnsName])
+			}
+		})
+	}
+}
+
+// TestNewOrder_AuthzReuse_NoPending tests that authz reuse doesn't reuse
+// pending authzs when a feature flag is set.
+// This is not simply a test case in TestNewOrder_OrderReuse because it relies
+// on feature-flag gated behavior. It should be unified with that function when
+// the feature flag is removed.
+func TestNewOrder_AuthzReuse_NoPending(t *testing.T) {
+	// TODO(#7715): Integrate these cases into TestNewOrder_AuthzReuse.
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	features.Set(features.Config{NoPendingAuthzReuse: true})
+	defer features.Reset()
+
+	// Create an initial order and two pending authzs.
+	extant, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		DnsNames:       []string{"a.com", "b.com"},
 	})
-	test.AssertNotError(t, err, "FinalizeAuthorization2 failed")
+	test.AssertNotError(t, err, "creating test order")
 
-	// The order associated with the authz should now be invalid
-	updatedOrder, err := ra.SA.GetOrder(ctx, &sapb.OrderRequest{Id: order.Id})
-	test.AssertNotError(t, err, "Error getting order to check status")
-	test.AssertEquals(t, updatedOrder.Status, "invalid")
-
-	// Create a second order for the same names/regID
-	secondOrder, err := ra.NewOrder(ctx, orderReq)
-	// It shouldn't fail
-	test.AssertNotError(t, err, "Adding an initial order for regA failed")
-	// It should have a different ID than the first now-invalid order
-	test.AssertNotEquals(t, secondOrder.Id, order.Id)
-	// It should be status pending
-	test.AssertEquals(t, secondOrder.Status, "pending")
-	test.AssertEquals(t, numAuthorizations(secondOrder), 1)
-	// It should have a different authorization than the first order's now-invalid authorization
-	test.AssertNotEquals(t, secondOrder.V2Authorizations[0], order.V2Authorizations[0])
+	// With the feature flag enabled, creating a new order for one of these names
+	// should not reuse the existing pending authz.
+	new, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		DnsNames:       []string{"a.com"},
+	})
+	test.AssertNotError(t, err, "creating test order")
+	test.AssertNotEquals(t, new.Id, extant.Id)
+	test.AssertNotEquals(t, new.V2Authorizations[0], extant.V2Authorizations[0])
 }
 
 // mockSACountPendingFails has a CountPendingAuthorizations2 implementation
@@ -2415,11 +2525,11 @@ func (msa *mockSAWithAuthzs) GetOrderForNames(ctx context.Context, req *sapb.Get
 	return nil, berrors.NotFoundError("no such order")
 }
 
-// GetAuthorizations2 returns a _bizarre_ authorization for "*.zombo.com" that
+// GetValidAuthorizations2 returns a _bizarre_ authorization for "*.zombo.com" that
 // was validated by HTTP-01. This should never happen in real life since the
 // name is a wildcard. We use this mock to test that we reject this bizarre
 // situation correctly.
-func (msa *mockSAWithAuthzs) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
+func (msa *mockSAWithAuthzs) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	resp := &sapb.Authorizations{}
 	for _, v := range msa.authzs {
 		authzPB, err := bgrpc.AuthzToPB(*v)
@@ -2429,6 +2539,14 @@ func (msa *mockSAWithAuthzs) GetAuthorizations2(ctx context.Context, req *sapb.G
 		resp.Authzs = append(resp.Authzs, authzPB)
 	}
 	return resp, nil
+}
+
+func (msa *mockSAWithAuthzs) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
+	return msa.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+		RegistrationID: req.RegistrationID,
+		DnsNames:       req.DnsNames,
+		ValidUntil:     req.ValidUntil,
+	})
 }
 
 func (msa *mockSAWithAuthzs) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2, _ ...grpc.CallOption) (*corepb.Authorization, error) {
@@ -2548,7 +2666,6 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 func TestNewOrderWildcard(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = time.Hour
 
 	orderNames := []string{"example.com", "*.welcome.zombo.com"}
 	wildcardOrderRequest := &rapb.NewOrderRequest{
@@ -2779,9 +2896,8 @@ func TestNewOrderExpiry(t *testing.T) {
 }
 
 func TestFinalizeOrder(t *testing.T) {
-	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
+	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = time.Hour
 
 	// Create one finalized authorization for not-example.com and one finalized
 	// authorization for www.not-example.org
@@ -2826,7 +2942,7 @@ func TestFinalizeOrder(t *testing.T) {
 		Subject:               pkix.Name{CommonName: "not-example.com"},
 		DNSNames:              []string{"not-example.com", "www.not-example.com"},
 		PublicKey:             testKey.Public(),
-		NotBefore:             fc.Now(),
+		NotBefore:             now,
 		BasicConstraintsValid: true,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 	}
@@ -3067,7 +3183,6 @@ func TestFinalizeOrder(t *testing.T) {
 func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.orderLifetime = time.Hour
 
 	// Pick an expiry in the future
 	now := ra.clk.Now()
@@ -3283,12 +3398,9 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	// Set up order and authz expiries
-	ra.orderLifetime = 24 * time.Hour
-	exp := ra.clk.Now().Add(24 * time.Hour)
-
 	// Make some valid authorizations for some names using different challenge types
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
+	exp := ra.clk.Now().Add(ra.orderLifetime)
 	challs := []core.AcmeChallenge{core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01}
 	var authzIDs []int64
 	for i, name := range names {
@@ -3406,10 +3518,6 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.VA = va.RemoteClients{CAAClient: &noopCAA{}}
-
-	// Set up order and authz expiries.
-	ra.orderLifetime = 24 * time.Hour
-	ra.authorizationLifetime = 15 * time.Hour
 
 	exp := fc.Now().Add(24 * time.Hour)
 	recent := fc.Now().Add(-1 * time.Hour)
@@ -3716,11 +3824,9 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.orderLifetime = 24 * time.Hour
-	exp := ra.clk.Now().Add(24 * time.Hour)
-
 	// Make some valid authorizations for some names
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
+	exp := ra.clk.Now().Add(ra.orderLifetime)
 	var authzIDs []int64
 	for _, name := range names {
 		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, ra.clk.Now()))
@@ -3885,11 +3991,9 @@ func TestIssueCertificateOuter(t *testing.T) {
 	_, sa, ra, _, fc, cleanup := initAuthorities(t)
 	defer cleanup()
 
-	ra.orderLifetime = 24 * time.Hour
-	exp := ra.clk.Now().Add(24 * time.Hour)
-
 	// Make some valid authorizations for some names
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
+	exp := ra.clk.Now().Add(ra.orderLifetime)
 	var authzIDs []int64
 	for _, name := range names {
 		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, ra.clk.Now()))
@@ -4532,8 +4636,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 func TestNewOrderRateLimitingExempt(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-
-	ra.orderLifetime = 5 * 24 * time.Hour
 
 	// Set up a rate limit policy that allows 1 order every 5 minutes.
 	rateLimitDuration := 5 * time.Minute

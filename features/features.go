@@ -103,6 +103,12 @@ type Config struct {
 	// fails validation.
 	AutomaticallyPauseZombieClients bool
 
+	// NoPendingAuthzReuse causes the RA to only select already-validated authzs
+	// to attach to a newly created order. This preserves important client-facing
+	// functionality (valid authz reuse) while letting us simplify our code by
+	// removing pending authz reuse.
+	NoPendingAuthzReuse bool
+
 	// EnforceMPIC enforces SC-067 V3: Require Multi-Perspective Issuance
 	// Corroboration by:
 	//  - Requiring at least three distinct perspectives, as outlined in the
