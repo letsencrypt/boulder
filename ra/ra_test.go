@@ -1714,7 +1714,7 @@ func TestDeactivateRegistration(t *testing.T) {
 	test.AssertEquals(t, dbReg.Status, string(core.StatusDeactivated))
 }
 
-// noopCAA implements *vapb.VAClient, always returning nil
+// noopCAA implements vapb.CAAClient, always returning nil
 type noopCAA struct{}
 
 func (cr noopCAA) IsCAAValid(
@@ -1733,7 +1733,7 @@ func (cr noopCAA) DoCAA(
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
-// caaRecorder implements *vapb.VAClient, always returning nil, but recording
+// caaRecorder implements vapb.CAAClient, always returning nil, but recording
 // the names it was called for.
 type caaRecorder struct {
 	sync.Mutex
