@@ -166,7 +166,6 @@ type DummyValidationAuthority struct {
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
-	dva.doDCVRequest <- req
 	dcvRes, err := dva.DoDCV(ctx, req)
 	if err != nil {
 		return nil, err
@@ -349,8 +348,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	saDBCleanUp := test.ResetBoulderTestDatabase(t)
 
 	dummyVA := &DummyValidationAuthority{
-		doDCVRequest: make(chan *vapb.PerformValidationRequest, 2),
-		doCAARequest: make(chan *vapb.IsCAAValidRequest, 2),
+		doDCVRequest: make(chan *vapb.PerformValidationRequest, 1),
+		doCAARequest: make(chan *vapb.IsCAAValidRequest, 1),
 	}
 	va := va.RemoteClients{VAClient: dummyVA, CAAClient: dummyVA}
 
@@ -402,7 +401,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		fc, log, stats,
 		1, testKeyPolicy, limiter, txnBuilder, 100,
 		300*24*time.Hour, 7*24*time.Hour,
-		nil, noopCAA{},
+		nil,
 		0, 5*time.Minute,
 		ctp, nil, nil)
 	ra.SA = sa
@@ -1769,7 +1768,7 @@ func TestRecheckCAADates(t *testing.T) {
 	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	recorder := &caaRecorder{names: make(map[string]bool)}
-	ra.caa = recorder
+	ra.VA = va.RemoteClients{CAAClient: recorder}
 	ra.authorizationLifetime = 15 * time.Hour
 
 	recentValidated := fc.Now().Add(-1 * time.Hour)
@@ -1993,6 +1992,7 @@ func makeHTTP01Authorization(domain string) *core.Authorization {
 func TestRecheckCAASuccess(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
+	ra.VA = va.RemoteClients{CAAClient: &noopCAA{}}
 	authzs := []*core.Authorization{
 		makeHTTP01Authorization("a.com"),
 		makeHTTP01Authorization("b.com"),
@@ -2005,7 +2005,7 @@ func TestRecheckCAASuccess(t *testing.T) {
 func TestRecheckCAAFail(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.caa = &caaFailer{}
+	ra.VA = va.RemoteClients{CAAClient: &caaFailer{}}
 	authzs := []*core.Authorization{
 		makeHTTP01Authorization("a.com"),
 		makeHTTP01Authorization("b.com"),
@@ -2056,7 +2056,7 @@ func TestRecheckCAAFail(t *testing.T) {
 func TestRecheckCAAInternalServerError(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.caa = &caaFailer{}
+	ra.VA = va.RemoteClients{CAAClient: &caaFailer{}}
 	authzs := []*core.Authorization{
 		makeHTTP01Authorization("a.com"),
 		makeHTTP01Authorization("b.com"),
@@ -3405,6 +3405,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 func TestIssueCertificateCAACheckLog(t *testing.T) {
 	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
+	ra.VA = va.RemoteClients{CAAClient: &noopCAA{}}
 
 	// Set up order and authz expiries.
 	ra.orderLifetime = 24 * time.Hour

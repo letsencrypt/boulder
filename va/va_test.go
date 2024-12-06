@@ -295,7 +295,7 @@ func (b brokenRemoteVA) PerformValidation(_ context.Context, _ *vapb.PerformVali
 	return nil, errBrokenRemoteVA
 }
 
-// PerformValidation returns errBrokenRemoteVA unconditionally
+// DoDCV returns errBrokenRemoteVA unconditionally
 func (b brokenRemoteVA) DoDCV(_ context.Context, _ *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return nil, errBrokenRemoteVA
 }
@@ -489,7 +489,7 @@ func TestPerformValidationInvalid(t *testing.T) {
 			test.Assert(t, res.Problem != nil, "validation succeeded")
 			if tc.validationFuncName == "PerformValidation" {
 				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-					"operation":      opChallAndCAA,
+					"operation":      opDCVAndCAA,
 					"perspective":    va.perspective,
 					"challenge_type": string(core.ChallengeTypeDNS01),
 					"problem_type":   string(probs.UnauthorizedProblem),
@@ -497,7 +497,7 @@ func TestPerformValidationInvalid(t *testing.T) {
 				}, 1)
 			} else {
 				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-					"operation":      opChall,
+					"operation":      opDCV,
 					"perspective":    va.perspective,
 					"challenge_type": string(core.ChallengeTypeDNS01),
 					"problem_type":   string(probs.UnauthorizedProblem),
@@ -572,7 +572,7 @@ func TestPerformValidationValid(t *testing.T) {
 			test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
 			if tc.validationFuncName == "PerformValidation" {
 				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-					"operation":      opChallAndCAA,
+					"operation":      opDCVAndCAA,
 					"perspective":    va.perspective,
 					"challenge_type": string(core.ChallengeTypeDNS01),
 					"problem_type":   "",
@@ -580,7 +580,7 @@ func TestPerformValidationValid(t *testing.T) {
 				}, 1)
 			} else {
 				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-					"operation":      opChall,
+					"operation":      opDCV,
 					"perspective":    va.perspective,
 					"challenge_type": string(core.ChallengeTypeDNS01),
 					"problem_type":   "",
@@ -630,7 +630,7 @@ func TestPerformValidationWildcard(t *testing.T) {
 			test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
 			if tc.validationFuncName == "PerformValidation" {
 				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-					"operation":      opChallAndCAA,
+					"operation":      opDCVAndCAA,
 					"perspective":    va.perspective,
 					"challenge_type": string(core.ChallengeTypeDNS01),
 					"problem_type":   "",
@@ -638,7 +638,7 @@ func TestPerformValidationWildcard(t *testing.T) {
 				}, 1)
 			} else {
 				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-					"operation":      opChall,
+					"operation":      opDCV,
 					"perspective":    va.perspective,
 					"challenge_type": string(core.ChallengeTypeDNS01),
 					"problem_type":   "",

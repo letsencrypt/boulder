@@ -19,10 +19,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var (
+const (
 	// requiredRIRs is the minimum number of distinct Regional Internet
-	// Registries required for MPIC-compliant validation. Per BRs Section 3.2.2.9,
-	// starting March 15, 2026, the required number is 2.
+	// Registries required for MPIC-compliant validation. Per BRs Section
+	// 3.2.2.9, starting March 15, 2026, the required number is 2.
 	requiredRIRs = 2
 )
 
@@ -52,13 +52,6 @@ type mpicSummary struct {
 // summarizeMPIC prepares an *mpicSummary for logging, ensuring there are no nil
 // slices and output is deterministic.
 func summarizeMPIC(passed, failed []string, passedRIRSet map[string]struct{}) *mpicSummary {
-	passedRIRs := []string{}
-	if passedRIRSet != nil {
-		for rir := range maps.Keys(passedRIRSet) {
-			passedRIRs = append(passedRIRs, rir)
-		}
-		slices.Sort(passedRIRs)
-	}
 	if passed == nil {
 		passed = []string{}
 	}
@@ -67,6 +60,14 @@ func summarizeMPIC(passed, failed []string, passedRIRSet map[string]struct{}) *m
 		failed = []string{}
 	}
 	slices.Sort(failed)
+
+	passedRIRs := []string{}
+	if passedRIRSet != nil {
+		for rir := range maps.Keys(passedRIRSet) {
+			passedRIRs = append(passedRIRs, rir)
+		}
+	}
+	slices.Sort(passedRIRs)
 
 	return &mpicSummary{
 		Passed:       passed,
@@ -86,9 +87,11 @@ func summarizeMPIC(passed, failed []string, passedRIRSet map[string]struct{}) *m
 // *probs.ProblemDetails.
 func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op remoteOperation, req proto.Message) (*mpicSummary, *probs.ProblemDetails) {
 	remoteVACount := len(va.remoteVAs)
-	// Mar 15, 2026: MUST implement using at least 3 perspectives
-	// Jun 15, 2026: MUST implement using at least 4 perspectives
-	// Dec 15, 2026: MUST implement using at least 5 perspectives
+	//  - Mar 15, 2026: MUST implement using at least 3 perspectives
+	//  - Jun 15, 2026: MUST implement using at least 4 perspectives
+	//  - Dec 15, 2026: MUST implement using at least 5 perspectives
+	// See "Phased Implementation Timeline" in
+	// https://github.com/cabforum/servercert/blob/main/docs/BR.md#3229-multi-perspective-issuance-corroboration
 	if remoteVACount < 3 {
 		return nil, probs.ServerInternal("Insufficient remote perspectives: need at least 3")
 	}
@@ -178,11 +181,11 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			break
 		}
 	}
-
-	if len(passed) >= required {
-		if len(passedRIRs) >= requiredRIRs {
-			return summarizeMPIC(passed, failed, passedRIRs), nil
-		}
+	if len(passed) >= required && len(passedRIRs) >= requiredRIRs {
+		return summarizeMPIC(passed, failed, passedRIRs), nil
+	} else if len(passed) >= required && firstProb == nil {
+		// This should never happen. If we didn't meet the thresholds above we
+		// should have seen at least one error.
 		return summarizeMPIC(passed, failed, passedRIRs), probs.Unauthorized(
 			"During secondary validation: validation could not be corroborated by enough distinct RIRs",
 		)
@@ -234,9 +237,9 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		return nil, berrors.MalformedError("challenge failed consistency check: %s", err)
 	}
 
-	// Set up variables and a deferred closure to report validation latency
-	// metrics and log validation errors. Below here, do not use := to redeclare
-	// `prob`, or this will fail.
+	// Initialize variables and a deferred function to handle validation latency
+	// metrics, log validation errors, and log an MPIC summary. Avoid using :=
+	// to redeclare `prob`, `localLatency`, or `summary` below this point.
 	var prob *probs.ProblemDetails
 	var summary *mpicSummary
 	var localLatency time.Duration
@@ -260,10 +263,10 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 			outcome = pass
 		}
 		// Observe local validation latency (primary|remote).
-		va.observeLatency(opChall, va.perspective, string(chall.Type), probType, outcome, localLatency)
+		va.observeLatency(opDCV, va.perspective, string(chall.Type), probType, outcome, localLatency)
 		if va.isPrimaryVA() {
 			// Observe total validation latency (primary+remote).
-			va.observeLatency(opChall, allPerspectives, string(chall.Type), probType, outcome, va.clk.Since(start))
+			va.observeLatency(opDCV, allPerspectives, string(chall.Type), probType, outcome, va.clk.Since(start))
 			logEvent.Summary = summary
 		}
 
@@ -300,11 +303,11 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	}
 
 	if va.isPrimaryVA() {
-		// Do remote validation. We do this after local validation is complete to
-		// avoid wasting work when validation will fail anyway. This only returns a
-		// singular problem, because the remote VAs have already audit-logged their
-		// own validation records, and it's not helpful to present multiple large
-		// errors to the end user.
+		// Do remote validation. We do this after local validation is complete
+		// to avoid wasting work when validation will fail anyway. This only
+		// returns a singular problem, because the remote VAs have already
+		// logged their own validationLogEvent, and it's not helpful to present
+		// multiple large errors to the end user.
 		op := func(ctx context.Context, remoteva RemoteVA, req proto.Message) (remoteResult, error) {
 			validationRequest, ok := req.(*vapb.PerformValidationRequest)
 			if !ok {
@@ -317,7 +320,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	return bgrpc.ValidationResultToPB(records, filterProblemDetails(prob), va.perspective, va.rir)
 }
 
-// DoCAA conducts a  CAA check for the specified dnsName. When invoked on the
+// DoCAA conducts a CAA check for the specified dnsName. When invoked on the
 // primary Validation Authority (VA) and the local check succeeds, it also
 // performs CAA checks using the configured remote VAs. Failed checks are
 // indicated by a non-nil Problems in the returned ValidationResult. DoCAA
@@ -346,6 +349,9 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		validationMethod: challType,
 	}
 
+	// Initialize variables and a deferred function to handle check latency
+	// metrics, log check errors, and log an MPIC summary. Avoid using := to
+	// redeclare `prob`, `localLatency`, or `summary` below this point.
 	var prob *probs.ProblemDetails
 	var summary *mpicSummary
 	var internalErr error

@@ -129,7 +129,7 @@
 			"AsyncFinalize": true,
 			"UseKvLimitsForNewOrder": true,
 			"AutomaticallyPauseZombieClients": true,
-			"SeparateDCVAndCAAChecks": true
+			"EnforceMPIC": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

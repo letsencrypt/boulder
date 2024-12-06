@@ -94,7 +94,6 @@ type RegistrationAuthorityImpl struct {
 	SA        sapb.StorageAuthorityClient
 	PA        core.PolicyAuthority
 	publisher pubpb.PublisherClient
-	caa       caaChecker
 
 	clk       clock.Clock
 	log       blog.Logger
@@ -146,7 +145,6 @@ func NewRegistrationAuthorityImpl(
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
 	pubc pubpb.PublisherClient,
-	caaClient caaChecker,
 	orderLifetime time.Duration,
 	finalizeTimeout time.Duration,
 	ctp *ctpolicy.CTPolicy,
@@ -271,7 +269,6 @@ func NewRegistrationAuthorityImpl(
 		txnBuilder:                   txnBuilder,
 		maxNames:                     maxNames,
 		publisher:                    pubc,
-		caa:                          caaClient,
 		orderLifetime:                orderLifetime,
 		finalizeTimeout:              finalizeTimeout,
 		ctpolicy:                     ctp,
@@ -857,14 +854,14 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			}
 			var resp *vapb.IsCAAValidResponse
 			var err error
-			if !features.Get().SeparateDCVAndCAAChecks {
-				resp, err = ra.caa.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
+			if !features.Get().EnforceMPIC {
+				resp, err = ra.VA.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
 					Domain:           name,
 					ValidationMethod: method,
 					AccountURIID:     authz.RegistrationID,
 				})
 			} else {
-				resp, err = ra.caa.DoCAA(ctx, &vapb.IsCAAValidRequest{
+				resp, err = ra.VA.DoCAA(ctx, &vapb.IsCAAValidRequest{
 					Domain:           name,
 					ValidationMethod: method,
 					AccountURIID:     authz.RegistrationID,
@@ -1847,8 +1844,13 @@ func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Contex
 	}
 }
 
+// doDCVAndCAA performs DCV and CAA checks. When EnforceMPIC is enabled, the
+// checks are executed sequentially: DCV is performed first and CAA is only
+// checked if DCV is successful. Validation records from the DCV check are
+// returned even if the CAA check fails. When EnforceMPIC is disabled, DCV and
+// CAA checks are performed in the same request.
 func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq *vapb.PerformValidationRequest, caaReq *vapb.IsCAAValidRequest) (*corepb.ProblemDetails, []*corepb.ValidationRecord, error) {
-	if !features.Get().SeparateDCVAndCAAChecks {
+	if !features.Get().EnforceMPIC {
 		performValidationRes, err := ra.VA.PerformValidation(ctx, dcvReq)
 		if err != nil {
 			return nil, nil, err

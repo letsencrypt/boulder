@@ -289,7 +289,6 @@ func main() {
 		authorizationLifetime,
 		pendingAuthorizationLifetime,
 		pubc,
-		caaClient,
 		c.RA.OrderLifetime.Duration,
 		c.RA.FinalizeTimeout.Duration,
 		ctp,

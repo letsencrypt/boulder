@@ -103,9 +103,23 @@ type Config struct {
 	// fails validation.
 	AutomaticallyPauseZombieClients bool
 
-	// SeparateDCVAndCAAChecks causes the VA to perform DCV checks and CAA checks
-	// in separate steps, using separate VA methods DoDCV and DoCAA.
-	SeparateDCVAndCAAChecks bool
+	// EnforceMPIC enforces SC-067 V3: Require Multi-Perspective Issuance
+	// Corroboration by:
+	//  - Requiring at least three distinct perspectives, as outlined in the
+	//    "Phased Implementation Timeline" in BRs section 3.2.2.9 ("Effective
+	//    March 15, 2025").
+	//  - Ensuring that corroborating (passing) perspectives reside in at least
+	//    2 distinct Regional Internet Registries (RIRs) per the "Phased
+	//    Implementation Timeline" in BRs section 3.2.2.9 ("Effective March 15,
+	//    2026").
+	//  - Including an MPIC summary consisting of: passing perspectives, failing
+	//    perspectives, passing RIRs, and a quorum met for issuance (e.g., 2/3
+	//    or 3/3) in each validation audit log event, per BRs Section 5.4.1,
+	//    Requirement 2.8.
+	//
+	// This feature flag also causes CAA checks to happen after all remote VAs
+	// have passed DCV.
+	EnforceMPIC bool
 }
 
 var fMu = new(sync.RWMutex)
