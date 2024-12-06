@@ -403,7 +403,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		1, testKeyPolicy, limiter, txnBuilder, 100,
 		300*24*time.Hour, 7*24*time.Hour,
 		nil,
-		0, 5*time.Minute,
+		7*24*time.Hour, 5*time.Minute,
 		ctp, nil, nil)
 	ra.SA = sa
 	ra.VA = va
