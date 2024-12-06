@@ -43,10 +43,10 @@ type RemoteVAGRPCClientConfig struct {
 	//   - RIPE
 	//   - APNIC
 	//   - LACNIC
-	//   - AfriNIC
+	//   - AFRINIC
 	//
 	// TODO(#7615): Make mandatory.
-	RIR string `validate:"omitempty,oneof=ARIN RIPE APNIC LACNIC AfriNIC"`
+	RIR string `validate:"omitempty,oneof=ARIN RIPE APNIC LACNIC AFRINIC"`
 }
 
 type Config struct {

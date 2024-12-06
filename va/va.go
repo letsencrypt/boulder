@@ -241,7 +241,7 @@ func NewValidationAuthorityImpl(
 
 	for i, va1 := range remoteVAs {
 		for j, va2 := range remoteVAs {
-			// TODO(#7819): Remove the != "" check once perspective is required.
+			// TODO(#7615): Remove the != "" check once perspective is required.
 			if i != j && va1.Perspective == va2.Perspective && va1.Perspective != "" {
 				return nil, fmt.Errorf("duplicate remote VA perspective %q", va1.Perspective)
 			}
@@ -504,6 +504,19 @@ func (va *ValidationAuthorityImpl) performRemoteOperation(ctx context.Context, o
 	for _, i := range rand.Perm(remoteVACount) {
 		go func(rva RemoteVA) {
 			res, err := op(subCtx, rva, req)
+			if err != nil {
+				responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
+				return
+			}
+			// TODO(#7615): Remove the != "" checks once perspective and rir are required.
+			if (rva.Perspective != "" && res.GetPerspective() != "" && res.GetPerspective() != rva.Perspective) ||
+				(rva.RIR != "" && res.GetRir() != "" && res.GetRir() != rva.RIR) {
+				err = fmt.Errorf(
+					"Expected perspective %q (%q) but got reply from %q (%q) - misconfiguration likely", rva.Perspective, rva.RIR, res.GetPerspective(), res.GetRir(),
+				)
+				responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
+				return
+			}
 			responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
 		}(va.remoteVAs[i])
 	}
@@ -538,7 +551,7 @@ func (va *ValidationAuthorityImpl) performRemoteOperation(ctx context.Context, o
 			}
 			if isCAACheck {
 				// We're checking CAA, log the problem.
-				va.log.Errf("Operation on Remote VA (%s) returned a problem: %s", resp.addr, err)
+				va.log.Errf("Operation on Remote VA (%s) returned a problem: %s", resp.addr, currProb)
 			}
 		} else {
 			// The remote VA returned a successful result.
