@@ -23,7 +23,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -68,19 +67,6 @@ var (
 	// stay on the safe side.
 	caaRecheckDuration = -7 * time.Hour
 )
-
-type caaChecker interface {
-	IsCAAValid(
-		ctx context.Context,
-		in *vapb.IsCAAValidRequest,
-		opts ...grpc.CallOption,
-	) (*vapb.IsCAAValidResponse, error)
-	DoCAA(
-		ctx context.Context,
-		in *vapb.IsCAAValidRequest,
-		opts ...grpc.CallOption,
-	) (*vapb.IsCAAValidResponse, error)
-}
 
 // RegistrationAuthorityImpl defines an RA.
 //

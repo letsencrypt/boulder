@@ -1714,7 +1714,7 @@ func TestDeactivateRegistration(t *testing.T) {
 	test.AssertEquals(t, dbReg.Status, string(core.StatusDeactivated))
 }
 
-// noopCAA implements caaChecker, always returning nil
+// noopCAA implements *vapb.VAClient, always returning nil
 type noopCAA struct{}
 
 func (cr noopCAA) IsCAAValid(
