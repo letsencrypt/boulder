@@ -1733,8 +1733,8 @@ func (cr noopCAA) DoCAA(
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
-// caaRecorder implements caaChecker, always returning nil, but recording the
-// names it was called for.
+// caaRecorder implements *vapb.VAClient, always returning nil, but recording
+// the names it was called for.
 type caaRecorder struct {
 	sync.Mutex
 	names map[string]bool
