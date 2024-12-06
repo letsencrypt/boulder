@@ -508,8 +508,9 @@ func (va *ValidationAuthorityImpl) performRemoteOperation(ctx context.Context, o
 				responses <- &response{rva.Address, rva.Perspective, rva.RIR, res, err}
 				return
 			}
-			// TODO(#7615): Remove the != "" check once perspective and rir is required.
-			if (rva.Perspective != "" && res.GetPerspective() != rva.Perspective) || (rva.RIR != "" && res.GetRir() != rva.RIR) {
+			// TODO(#7615): Remove the != "" checks once perspective and rir are required.
+			if (rva.Perspective != "" && res.GetPerspective() != "" && res.GetPerspective() != rva.Perspective) ||
+				(rva.RIR != "" && res.GetRir() != "" && res.GetRir() != rva.RIR) {
 				err = fmt.Errorf(
 					"Expected perspective %q (%q) but got reply from %q (%q) - misconfiguration likely", rva.Perspective, rva.RIR, res.GetPerspective(), res.GetRir(),
 				)
