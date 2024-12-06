@@ -1577,23 +1577,33 @@ func TestEmptyAccount(t *testing.T) {
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
+	path := "1"
+	signedURL := "http://localhost/1"
+
 	testCases := []struct {
-		Name      string
-		payload   string
-		path      string
-		signedURL string
+		Name           string
+		Payload        string
+		ExpectedStatus int
 	}{
 		{
-			Name:      "POST empty string to acct",
-			payload:   "",
-			path:      "1",
-			signedURL: "http://localhost/1",
+			Name:           "POST empty string to acct",
+			Payload:        "",
+			ExpectedStatus: http.StatusOK,
 		},
 		{
-			Name:      "POST empty JSON object to acct",
-			payload:   "{}",
-			path:      "1",
-			signedURL: "http://localhost/1",
+			Name:           "POST empty JSON object to acct",
+			Payload:        "{}",
+			ExpectedStatus: http.StatusOK,
+		},
+		{
+			Name:           "POST invalid empty JSON string to acct",
+			Payload:        "\"\"",
+			ExpectedStatus: http.StatusBadRequest,
+		},
+		{
+			Name:           "POST invalid empty JSON array to acct",
+			Payload:        "[]",
+			ExpectedStatus: http.StatusBadRequest,
 		},
 	}
 
@@ -1601,8 +1611,8 @@ func TestEmptyAccount(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
 
-			_, _, body := signer.byKeyID(1, key, tc.signedURL, tc.payload)
-			request := makePostRequestWithPath(tc.path, body)
+			_, _, body := signer.byKeyID(1, key, signedURL, tc.Payload)
+			request := makePostRequestWithPath(path, body)
 
 			// Send an account update with the trivial body
 			wfe.Account(
@@ -1612,16 +1622,18 @@ func TestEmptyAccount(t *testing.T) {
 				request)
 
 			responseBody := responseWriter.Body.String()
-			// There should be no error
-			test.AssertNotContains(t, responseBody, probs.ErrorNS)
+			test.AssertEquals(t, responseWriter.Code, tc.ExpectedStatus)
 
-			// We should get back a populated Account
-			var acct core.Registration
-			err := json.Unmarshal([]byte(responseBody), &acct)
-			test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
-			test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
-			test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
-			test.AssertEquals(t, acct.Agreement, "")
+			// If success is expected, we should get back a populated Account
+			if tc.ExpectedStatus == http.StatusOK {
+				var acct core.Registration
+				err := json.Unmarshal([]byte(responseBody), &acct)
+				test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
+				test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
+				test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
+				test.AssertEquals(t, acct.Agreement, "")
+			}
+
 			responseWriter.Body.Reset()
 		})
 	}
