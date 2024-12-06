@@ -32,7 +32,7 @@ type RemoteVAGRPCClientConfig struct {
 	// of RVAs deployed in the same datacenter.
 	//
 	// TODO(#7615): Make mandatory.
-	Perspective string `validate:"required"`
+	Perspective string `validate:"omitempty"`
 
 	// RIR indicates the Regional Internet Registry where this RVA is
 	// located. This field is used to identify the RIR region from which a
