@@ -201,9 +201,11 @@ func NewTransactionBuilder(defaults, overrides string) (*TransactionBuilder, err
 func NewTransactionBuilderWithLimits(defaults LimitConfigs) (*TransactionBuilder, error) {
 	defaultsImported := make(limits, len(defaults))
 	for k, v := range defaults {
-		defaultsImported[k].Burst = v.Burst
-		defaultsImported[k].Count = v.Count
-		defaultsImported[k].Period = v.Period
+		defaultsImported[k] = &limit{
+			Burst:  v.Burst,
+			Count:  v.Count,
+			Period: v.Period,
+		}
 	}
 
 	registry, err := newLimitRegistryWithData(defaultsImported)

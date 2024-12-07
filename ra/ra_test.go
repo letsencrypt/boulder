@@ -976,7 +976,7 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	// 5 minutes.
 	rateLimitDuration := time.Minute * 5
 	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"NewOrdersPerAccountPolicy": &ratelimits.LimitConfig{
+		"NewOrdersPerAccount": &ratelimits.LimitConfig{
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: rateLimitDuration}},
@@ -1027,14 +1027,18 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 
 	domain := "early-ratelimit-example.com"
 
-	// Override the default ratelimits with a CertificatesPerName threshold for the domain
-	// name so low if it were enforced it would prevent a new order for any names.
+	// Override the default ratelimits with a CertificatesPerName threshold for
+	// the domain name so low if it were enforced it would prevent a new order
+	// for any names.
+	//
+	// FIXME: The prior version added an override setting the threshold for
+	// `domain` to 0...
 	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"CertificatesPerNamePolicy": &ratelimits.LimitConfig{
+		"CertificatesPerName": &ratelimits.LimitConfig{
 			Burst:  10,
 			Count:  10,
 			Period: config.Duration{Duration: rateLimitDuration}},
-		"NewOrdersPerAccountPolicy": &ratelimits.LimitConfig{
+		"NewOrdersPerAccount": &ratelimits.LimitConfig{
 			Burst:  10,
 			Count:  10,
 			Period: config.Duration{Duration: rateLimitDuration}},
@@ -1082,7 +1086,7 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 	defer cleanUp()
 
 	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"InvalidAuthorizationsPerAccountPolicy": &ratelimits.LimitConfig{
+		"InvalidAuthorizationsPerAccount": &ratelimits.LimitConfig{
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Hour * 1}},
@@ -2300,7 +2304,7 @@ func TestPendingAuthorizationsUnlimited(t *testing.T) {
 
 	// FIXME: regID 13 needs an override to -1 for this test. Overrides are not implemented yet...
 	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"PendingAuthorizationsPerAccountPolicy": &ratelimits.LimitConfig{
+		"PendingAuthorizationsPerAccount": &ratelimits.LimitConfig{
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Hour * 24}},
@@ -2372,7 +2376,7 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 	// Set a very restrictive police for invalid authorizations - one failure
 	// and you're done for a day.
 	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"InvalidAuthorizationsPerAccountPolicy": &ratelimits.LimitConfig{
+		"InvalidAuthorizationsPerAccount": &ratelimits.LimitConfig{
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Hour * 24}},
@@ -4519,7 +4523,7 @@ func TestNewOrderRateLimitingExempt(t *testing.T) {
 
 	// Set up a rate limit policy that allows 1 order every 5 minutes.
 	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"NewOrdersPerAccountPolicy": &ratelimits.LimitConfig{
+		"NewOrdersPerAccount": &ratelimits.LimitConfig{
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Minute * 5}},
@@ -4574,7 +4578,7 @@ func TestNewOrderFailedAuthzRateLimitingExempt(t *testing.T) {
 
 	// Set up a rate limit policy that allows 1 order every 24 hours.
 	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"InvalidAuthorizationsPerAccountPolicy": &ratelimits.LimitConfig{
+		"InvalidAuthorizationsPerAccount": &ratelimits.LimitConfig{
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Hour * 24}},
