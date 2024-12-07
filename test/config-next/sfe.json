@@ -1,7 +1,6 @@
 {
 	"sfe": {
 		"listenAddress": "0.0.0.0:4003",
-		"debugAddr": ":8015",
 		"timeout": "30s",
 		"shutdownStopTimeout": "10s",
 		"tls": {

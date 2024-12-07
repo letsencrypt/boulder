@@ -23,6 +23,9 @@ import (
 
 type Config struct {
 	Admin struct {
+		// Deprecated: DebugAddr is now a CLI flag only.
+		DebugAddr string
+
 		// DB controls the admin tool's direct connection to the database.
 		DB cmd.DBConfig
 		// TLS controls the TLS client the admin tool uses for gRPC connections.
@@ -30,8 +33,6 @@ type Config struct {
 
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
-
-		DebugAddr string
 
 		Features features.Config
 	}
@@ -92,6 +93,7 @@ func main() {
 	// they're present.
 	configFile := flag.String("config", "", "Path to the configuration file for this service (required)")
 	dryRun := flag.Bool("dry-run", true, "Print actions instead of mutating the database")
+	debugAddr := flag.String("debug-addr", "", "Debug server address")
 	flag.Parse()
 
 	// Figure out which subcommand they want us to run.
@@ -127,7 +129,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	a, err := newAdmin(*configFile, *dryRun)
+	a, err := newAdmin(*configFile, *dryRun, *debugAddr)
 	cmd.FailOnError(err, "creating admin object")
 
 	// Finally, run the selected subcommand.
