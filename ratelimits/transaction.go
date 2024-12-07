@@ -196,8 +196,8 @@ func NewTransactionBuilder(defaults, overrides string) (*TransactionBuilder, err
 }
 
 // NewTransactionBuilderWithLimits returns a new *TransactionBuilder. The
-// provided defaults map is expected to contain default limit data,
-// respectively. Overrides are not supported. Defaults is required.
+// provided defaults map is expected to contain default limit data. Overrides
+// are not supported. Defaults is required.
 func NewTransactionBuilderWithLimits(defaults LimitConfigs) (*TransactionBuilder, error) {
 	defaultsImported := make(limits, len(defaults))
 	for k, v := range defaults {
