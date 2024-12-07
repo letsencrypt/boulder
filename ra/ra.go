@@ -23,7 +23,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
-	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -52,6 +51,7 @@ import (
 	"github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/letsencrypt/boulder/va"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 
 	"github.com/letsencrypt/boulder/web"
@@ -68,14 +68,6 @@ var (
 	caaRecheckDuration = -7 * time.Hour
 )
 
-type caaChecker interface {
-	IsCAAValid(
-		ctx context.Context,
-		in *vapb.IsCAAValidRequest,
-		opts ...grpc.CallOption,
-	) (*vapb.IsCAAValidResponse, error)
-}
-
 // RegistrationAuthorityImpl defines an RA.
 //
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
@@ -84,11 +76,10 @@ type RegistrationAuthorityImpl struct {
 	rapb.UnsafeRegistrationAuthorityServer
 	CA        capb.CertificateAuthorityClient
 	OCSP      capb.OCSPGeneratorClient
-	VA        vapb.VAClient
+	VA        va.RemoteClients
 	SA        sapb.StorageAuthorityClient
 	PA        core.PolicyAuthority
 	publisher pubpb.PublisherClient
-	caa       caaChecker
 
 	clk       clock.Clock
 	log       blog.Logger
@@ -140,7 +131,6 @@ func NewRegistrationAuthorityImpl(
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
 	pubc pubpb.PublisherClient,
-	caaClient caaChecker,
 	orderLifetime time.Duration,
 	finalizeTimeout time.Duration,
 	ctp *ctpolicy.CTPolicy,
@@ -265,7 +255,6 @@ func NewRegistrationAuthorityImpl(
 		txnBuilder:                   txnBuilder,
 		maxNames:                     maxNames,
 		publisher:                    pubc,
-		caa:                          caaClient,
 		orderLifetime:                orderLifetime,
 		finalizeTimeout:              finalizeTimeout,
 		ctpolicy:                     ctp,
@@ -849,12 +838,21 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				}
 				return
 			}
-
-			resp, err := ra.caa.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-				Domain:           name,
-				ValidationMethod: method,
-				AccountURIID:     authz.RegistrationID,
-			})
+			var resp *vapb.IsCAAValidResponse
+			var err error
+			if !features.Get().EnforceMPIC {
+				resp, err = ra.VA.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
+					Domain:           name,
+					ValidationMethod: method,
+					AccountURIID:     authz.RegistrationID,
+				})
+			} else {
+				resp, err = ra.VA.DoCAA(ctx, &vapb.IsCAAValidRequest{
+					Domain:           name,
+					ValidationMethod: method,
+					AccountURIID:     authz.RegistrationID,
+				})
+			}
 			if err != nil {
 				ra.log.AuditErrf("Rechecking CAA: %s", err)
 				err = berrors.InternalServerError(
@@ -1832,6 +1830,35 @@ func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Contex
 	}
 }
 
+// doDCVAndCAA performs DCV and CAA checks. When EnforceMPIC is enabled, the
+// checks are executed sequentially: DCV is performed first and CAA is only
+// checked if DCV is successful. Validation records from the DCV check are
+// returned even if the CAA check fails. When EnforceMPIC is disabled, DCV and
+// CAA checks are performed in the same request.
+func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq *vapb.PerformValidationRequest, caaReq *vapb.IsCAAValidRequest) (*corepb.ProblemDetails, []*corepb.ValidationRecord, error) {
+	if !features.Get().EnforceMPIC {
+		performValidationRes, err := ra.VA.PerformValidation(ctx, dcvReq)
+		if err != nil {
+			return nil, nil, err
+		}
+		return performValidationRes.Problem, performValidationRes.Records, nil
+	} else {
+		doDCVRes, err := ra.VA.DoDCV(ctx, dcvReq)
+		if err != nil {
+			return nil, nil, err
+		}
+		if doDCVRes.Problem != nil {
+			return doDCVRes.Problem, doDCVRes.Records, nil
+		}
+
+		doCAAResp, err := ra.VA.IsCAAValid(ctx, caaReq)
+		if err != nil {
+			return nil, nil, err
+		}
+		return doCAAResp.Problem, doDCVRes.Records, nil
+	}
+}
+
 // PerformValidation initiates validation for a specific challenge associated
 // with the given base authorization. The authorization and challenge are
 // updated based on the results.
@@ -1916,32 +1943,37 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		copy(challenges, authz.Challenges)
 		authz.Challenges = challenges
 		chall, _ := bgrpc.ChallengeToPB(authz.Challenges[challIndex])
-		req := vapb.PerformValidationRequest{
-			DnsName:   authz.Identifier.Value,
-			Challenge: chall,
-			Authz: &vapb.AuthzMeta{
-				Id:    authz.ID,
-				RegID: authz.RegistrationID,
+		checkProb, checkRecords, err := ra.checkDCVAndCAA(
+			vaCtx,
+			&vapb.PerformValidationRequest{
+				DnsName:                  authz.Identifier.Value,
+				Challenge:                chall,
+				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
+				ExpectedKeyAuthorization: expectedKeyAuthorization,
 			},
-			ExpectedKeyAuthorization: expectedKeyAuthorization,
-		}
-		res, err := ra.VA.PerformValidation(vaCtx, &req)
+			&vapb.IsCAAValidRequest{
+				Domain:           authz.Identifier.Value,
+				ValidationMethod: chall.Type,
+				AccountURIID:     authz.RegistrationID,
+				AuthzID:          authz.ID,
+			},
+		)
 		challenge := &authz.Challenges[challIndex]
 		var prob *probs.ProblemDetails
 		if err != nil {
 			prob = probs.ServerInternal("Could not communicate with VA")
 			ra.log.AuditErrf("Could not communicate with VA: %s", err)
 		} else {
-			if res.Problem != nil {
-				prob, err = bgrpc.PBToProblemDetails(res.Problem)
+			if checkProb != nil {
+				prob, err = bgrpc.PBToProblemDetails(checkProb)
 				if err != nil {
 					prob = probs.ServerInternal("Could not communicate with VA")
 					ra.log.AuditErrf("Could not communicate with VA: %s", err)
 				}
 			}
 			// Save the updated records
-			records := make([]core.ValidationRecord, len(res.Records))
-			for i, r := range res.Records {
+			records := make([]core.ValidationRecord, len(checkRecords))
+			for i, r := range checkRecords {
 				records[i], err = bgrpc.PBToValidationRecord(r)
 				if err != nil {
 					prob = probs.ServerInternal("Records for validation corrupt")

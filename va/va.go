@@ -36,8 +36,9 @@ const (
 	PrimaryPerspective = "Primary"
 	allPerspectives    = "all"
 
-	opChallAndCAA = "challenge+caa"
-	opCAA         = "caa"
+	opDCVAndCAA = "dcv+caa"
+	opDCV       = "dcv"
+	opCAA       = "caa"
 
 	pass = "pass"
 	fail = "fail"
@@ -97,7 +98,7 @@ type RemoteVA struct {
 type vaMetrics struct {
 	// validationLatency is a histogram of the latency to perform validations
 	// from the primary and remote VA perspectives. It's labelled by:
-	//   - operation: VA.ValidateChallenge or VA.CheckCAA as [challenge|caa|challenge+caa]
+	//   - operation: VA.DoDCV or VA.DoCAA as [dcv|caa|dcv+caa]
 	//   - perspective: ValidationAuthorityImpl.perspective
 	//   - challenge_type: core.Challenge.Type
 	//   - problem_type: probs.ProblemType
@@ -438,7 +439,7 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 // observeLatency records entries in the validationLatency histogram of the
 // latency to perform validations from the primary and remote VA perspectives.
 // The labels are:
-//   - operation: VA.ValidateChallenge or VA.CheckCAA as [challenge|caa]
+//   - operation: VA.DoDCV or VA.DoCAA as [dcv|caa]
 //   - perspective: [ValidationAuthorityImpl.perspective|all]
 //   - challenge_type: core.Challenge.Type
 //   - problem_type: probs.ProblemType
@@ -714,10 +715,10 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 			outcome = pass
 		}
 		// Observe local validation latency (primary|remote).
-		va.observeLatency(opChallAndCAA, va.perspective, string(chall.Type), probType, outcome, localLatency)
+		va.observeLatency(opDCVAndCAA, va.perspective, string(chall.Type), probType, outcome, localLatency)
 		if va.isPrimaryVA() {
 			// Observe total validation latency (primary+remote).
-			va.observeLatency(opChallAndCAA, allPerspectives, string(chall.Type), probType, outcome, va.clk.Since(start))
+			va.observeLatency(opDCVAndCAA, allPerspectives, string(chall.Type), probType, outcome, va.clk.Since(start))
 		}
 
 		// Log the total validation latency.

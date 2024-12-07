@@ -7,10 +7,12 @@ import "core/proto/core.proto";
 
 service VA {
   rpc PerformValidation(PerformValidationRequest) returns (ValidationResult) {}
+  rpc DoDCV(PerformValidationRequest) returns (ValidationResult) {}
 }
 
 service CAA {
   rpc IsCAAValid(IsCAAValidRequest) returns (IsCAAValidResponse) {}
+  rpc DoCAA(IsCAAValidRequest) returns (IsCAAValidResponse) {}
 }
 
 message IsCAAValidRequest {
@@ -18,6 +20,7 @@ message IsCAAValidRequest {
   string domain = 1;
   string validationMethod = 2;
   int64 accountURIID = 3;
+  string authzID = 4;
 }
 
 // If CAA is valid for the requested domain, the problem will be empty

@@ -64,6 +64,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	isa "github.com/letsencrypt/boulder/test/inmem/sa"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/letsencrypt/boulder/va"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -156,14 +157,50 @@ func numAuthorizations(o *corepb.Order) int {
 }
 
 type DummyValidationAuthority struct {
-	performValidationRequest             chan *vapb.PerformValidationRequest
-	PerformValidationRequestResultError  error
-	PerformValidationRequestResultReturn *vapb.ValidationResult
+	doDCVRequest chan *vapb.PerformValidationRequest
+	doDCVError   error
+	doDCVResult  *vapb.ValidationResult
+
+	doCAARequest  chan *vapb.IsCAAValidRequest
+	doCAAError    error
+	doCAAResponse *vapb.IsCAAValidResponse
 }
 
 func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
-	dva.performValidationRequest <- req
-	return dva.PerformValidationRequestResultReturn, dva.PerformValidationRequestResultError
+	dcvRes, err := dva.DoDCV(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if dcvRes.Problem != nil {
+		return dcvRes, nil
+	}
+	caaResp, err := dva.DoCAA(ctx, &vapb.IsCAAValidRequest{
+		Domain:           req.DnsName,
+		ValidationMethod: req.Challenge.Type,
+		AccountURIID:     req.Authz.RegID,
+		AuthzID:          req.Authz.Id,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &vapb.ValidationResult{
+		Records: dcvRes.Records,
+		Problem: caaResp.Problem,
+	}, nil
+}
+
+func (dva *DummyValidationAuthority) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "IsCAAValid not implemented")
+}
+
+func (dva *DummyValidationAuthority) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+	dva.doDCVRequest <- req
+	return dva.doDCVResult, dva.doDCVError
+}
+
+func (dva *DummyValidationAuthority) DoCAA(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	dva.doCAARequest <- req
+	return dva.doCAAResponse, dva.doCAAError
 }
 
 var (
@@ -311,9 +348,11 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 
 	saDBCleanUp := test.ResetBoulderTestDatabase(t)
 
-	va := &DummyValidationAuthority{
-		performValidationRequest: make(chan *vapb.PerformValidationRequest, 1),
+	dummyVA := &DummyValidationAuthority{
+		doDCVRequest: make(chan *vapb.PerformValidationRequest, 1),
+		doCAARequest: make(chan *vapb.IsCAAValidRequest, 1),
 	}
+	va := va.RemoteClients{VAClient: dummyVA, CAAClient: dummyVA}
 
 	pa, err := policy.New(map[core.AcmeChallenge]bool{
 		core.ChallengeTypeHTTP01: true,
@@ -363,7 +402,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		fc, log, stats,
 		1, testKeyPolicy, limiter, txnBuilder, 100,
 		300*24*time.Hour, 7*24*time.Hour,
-		nil, noopCAA{},
+		nil,
 		7*24*time.Hour, 5*time.Minute,
 		ctp, nil, nil)
 	ra.SA = sa
@@ -371,7 +410,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra.CA = ca
 	ra.OCSP = &mocks.MockOCSPGenerator{}
 	ra.PA = pa
-	return va, sa, ra, rlSource, fc, cleanUp
+	return dummyVA, sa, ra, rlSource, fc, cleanUp
 }
 
 func TestValidateContacts(t *testing.T) {
@@ -689,7 +728,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 	authzPB, err := bgrpc.AuthzToPB(authz)
 	test.AssertNotError(t, err, "bgrpc.AuthzToPB failed")
 
-	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
+	va.doDCVResult = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed: []byte("192.168.0.1"),
@@ -700,6 +739,7 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 		},
 		Problem: nil,
 	}
+	va.doCAAResponse = &vapb.IsCAAValidResponse{Problem: nil}
 
 	// A subsequent call to perform validation should return nil due
 	// to being short-circuited because of valid authz reuse.
@@ -718,7 +758,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 	// We know this is OK because of TestNewAuthorization
 	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
 
-	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
+	va.doDCVResult = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed:   []byte("192.168.0.1"),
@@ -730,6 +770,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 		},
 		Problem: nil,
 	}
+	va.doCAAResponse = &vapb.IsCAAValidResponse{Problem: nil}
 
 	now := fc.Now()
 	challIdx := dnsChallIdx(t, authzPB.Challenges)
@@ -741,7 +782,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 	var vaRequest *vapb.PerformValidationRequest
 	select {
-	case r := <-va.performValidationRequest:
+	case r := <-va.doDCVRequest:
 		vaRequest = r
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
@@ -822,7 +863,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 
 	// Now a failed validation should result in the identifier being paused
 	// due to the strict ratelimit.
-	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
+	va.doDCVResult = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed:   []byte("192.168.0.1"),
@@ -832,6 +873,9 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 				ResolverAddrs: []string{"rebound"},
 			},
 		},
+		Problem: nil,
+	}
+	va.doCAAResponse = &vapb.IsCAAValidResponse{
 		Problem: &corepb.ProblemDetails{
 			Detail: fmt.Sprintf("CAA invalid for %s", domain),
 		},
@@ -893,8 +937,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 	})
 	test.AssertNotError(t, err, "updating rate limit bucket")
 
-	// Now a successful validation should reset the rate limit bucket.
-	va.PerformValidationRequestResultReturn = &vapb.ValidationResult{
+	va.doDCVResult = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
 			{
 				AddressUsed:   []byte("192.168.0.1"),
@@ -906,6 +949,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 		},
 		Problem: nil,
 	}
+	va.doCAAResponse = &vapb.IsCAAValidResponse{Problem: nil}
 
 	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
@@ -931,7 +975,7 @@ func TestPerformValidationVAError(t *testing.T) {
 
 	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
 
-	va.PerformValidationRequestResultError = fmt.Errorf("Something went wrong")
+	va.doDCVError = fmt.Errorf("Something went wrong")
 
 	challIdx := dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
@@ -943,7 +987,7 @@ func TestPerformValidationVAError(t *testing.T) {
 
 	var vaRequest *vapb.PerformValidationRequest
 	select {
-	case r := <-va.performValidationRequest:
+	case r := <-va.doDCVRequest:
 		vaRequest = r
 	case <-time.After(time.Second):
 		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
@@ -1668,7 +1712,7 @@ func TestDeactivateRegistration(t *testing.T) {
 	test.AssertEquals(t, dbReg.Status, string(core.StatusDeactivated))
 }
 
-// noopCAA implements caaChecker, always returning nil
+// noopCAA implements vapb.CAAClient, always returning nil
 type noopCAA struct{}
 
 func (cr noopCAA) IsCAAValid(
@@ -1679,8 +1723,16 @@ func (cr noopCAA) IsCAAValid(
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
-// caaRecorder implements caaChecker, always returning nil, but recording the
-// names it was called for.
+func (cr noopCAA) DoCAA(
+	ctx context.Context,
+	in *vapb.IsCAAValidRequest,
+	opts ...grpc.CallOption,
+) (*vapb.IsCAAValidResponse, error) {
+	return &vapb.IsCAAValidResponse{}, nil
+}
+
+// caaRecorder implements vapb.CAAClient, always returning nil, but recording
+// the names it was called for.
 type caaRecorder struct {
 	sync.Mutex
 	names map[string]bool
@@ -1697,13 +1749,24 @@ func (cr *caaRecorder) IsCAAValid(
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
+func (cr *caaRecorder) DoCAA(
+	ctx context.Context,
+	in *vapb.IsCAAValidRequest,
+	opts ...grpc.CallOption,
+) (*vapb.IsCAAValidResponse, error) {
+	cr.Lock()
+	defer cr.Unlock()
+	cr.names[in.Domain] = true
+	return &vapb.IsCAAValidResponse{}, nil
+}
+
 // Test that the right set of domain names have their CAA rechecked, based on
 // their `Validated` (attemptedAt in the database) timestamp.
 func TestRecheckCAADates(t *testing.T) {
 	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	recorder := &caaRecorder{names: make(map[string]bool)}
-	ra.caa = recorder
+	ra.VA = va.RemoteClients{CAAClient: recorder}
 	ra.authorizationLifetime = 15 * time.Hour
 
 	recentValidated := fc.Now().Add(-1 * time.Hour)
@@ -1889,6 +1952,27 @@ func (cf *caaFailer) IsCAAValid(
 	return cvrpb, nil
 }
 
+func (cf *caaFailer) DoCAA(
+	ctx context.Context,
+	in *vapb.IsCAAValidRequest,
+	opts ...grpc.CallOption,
+) (*vapb.IsCAAValidResponse, error) {
+	cvrpb := &vapb.IsCAAValidResponse{}
+	switch in.Domain {
+	case "a.com":
+		cvrpb.Problem = &corepb.ProblemDetails{
+			Detail: "CAA invalid for a.com",
+		}
+	case "c.com":
+		cvrpb.Problem = &corepb.ProblemDetails{
+			Detail: "CAA invalid for c.com",
+		}
+	case "d.com":
+		return nil, fmt.Errorf("Error checking CAA for d.com")
+	}
+	return cvrpb, nil
+}
+
 func TestRecheckCAAEmpty(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -1906,6 +1990,7 @@ func makeHTTP01Authorization(domain string) *core.Authorization {
 func TestRecheckCAASuccess(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
+	ra.VA = va.RemoteClients{CAAClient: &noopCAA{}}
 	authzs := []*core.Authorization{
 		makeHTTP01Authorization("a.com"),
 		makeHTTP01Authorization("b.com"),
@@ -1918,7 +2003,7 @@ func TestRecheckCAASuccess(t *testing.T) {
 func TestRecheckCAAFail(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.caa = &caaFailer{}
+	ra.VA = va.RemoteClients{CAAClient: &caaFailer{}}
 	authzs := []*core.Authorization{
 		makeHTTP01Authorization("a.com"),
 		makeHTTP01Authorization("b.com"),
@@ -1969,7 +2054,7 @@ func TestRecheckCAAFail(t *testing.T) {
 func TestRecheckCAAInternalServerError(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.caa = &caaFailer{}
+	ra.VA = va.RemoteClients{CAAClient: &caaFailer{}}
 	authzs := []*core.Authorization{
 		makeHTTP01Authorization("a.com"),
 		makeHTTP01Authorization("b.com"),
@@ -3432,6 +3517,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 func TestIssueCertificateCAACheckLog(t *testing.T) {
 	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
+	ra.VA = va.RemoteClients{CAAClient: &noopCAA{}}
 
 	exp := fc.Now().Add(24 * time.Hour)
 	recent := fc.Now().Add(-1 * time.Hour)
