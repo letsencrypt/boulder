@@ -196,11 +196,17 @@ func NewTransactionBuilder(defaults, overrides string) (*TransactionBuilder, err
 }
 
 // NewTransactionBuilderWithLimits returns a new *TransactionBuilder. The
-// provided defaults and overrides maps are expected to contain pre-populated
-// default and override limit data, respectively. Overrides is optional,
-// defaults is required.
-func NewTransactionBuilderWithLimits(defaults limits, overrides overridesYAML) (*TransactionBuilder, error) {
-	registry, err := newLimitRegistryWithData(defaults, overrides)
+// provided defaults map is expected to contain default limit data,
+// respectively. Overrides are not supported. Defaults is required.
+func NewTransactionBuilderWithLimits(defaults LimitConfigs) (*TransactionBuilder, error) {
+	defaultsImported := make(limits, len(defaults))
+	for k, v := range defaults {
+		defaultsImported[k].Burst = v.Burst
+		defaultsImported[k].Count = v.Count
+		defaultsImported[k].Period = v.Period
+	}
+
+	registry, err := newLimitRegistryWithData(defaultsImported)
 	if err != nil {
 		return nil, err
 	}

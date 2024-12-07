@@ -52,6 +52,25 @@ type limit struct {
 	overrideKey string
 }
 
+// LimitConfig defines the exportable configuration for a rate limit or a rate
+// limit override, without a `limit`'s internal fields.
+//
+// The zero value of this struct is invalid, because some of the fields must be
+// greater than zero.
+type LimitConfig struct {
+	// Burst specifies maximum concurrent allowed requests at any given time. It
+	// must be greater than zero.
+	Burst int64
+
+	// Count is the number of requests allowed per period. It must be greater
+	// than zero.
+	Count int64
+
+	// Period is the duration of time in which the count (of requests) is
+	// allowed. It must be greater than zero.
+	Period config.Duration
+}
+
 // isOverride returns true if the limit is an override.
 func (l *limit) isOverride() bool {
 	return l.overrideKey != ""
@@ -77,6 +96,7 @@ func validateLimit(l *limit) error {
 }
 
 type limits map[string]*limit
+type LimitConfigs map[string]*LimitConfig
 
 // loadDefaults marshals the defaults YAML file at path into a map of limits.
 func loadDefaults(path string) (limits, error) {
@@ -254,23 +274,13 @@ func newLimitRegistry(defaults, overrides string) (*limitRegistry, error) {
 	return registry, nil
 }
 
-// newLimitRegistryWithData takes maps that are already populated with limit
-// data, instead of filenames from which to load limit data.
-func newLimitRegistryWithData(defaults limits, overrides overridesYAML) (*limitRegistry, error) {
+// newLimitRegistryWithData takes a map that is already populated with limit
+// data, instead of a filename from which to load limit data. Overrides are not
+// supported.
+func newLimitRegistryWithData(defaults limits) (*limitRegistry, error) {
 	var err error
 	registry := &limitRegistry{}
 	registry.defaults, err = parseDefaultLimits(defaults)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(overrides) == 0 {
-		// No overrides specified, initialize an empty map.
-		registry.overrides = make(limits)
-		return registry, nil
-	}
-
-	registry.overrides, err = parseOverrideLimits(overrides)
 	if err != nil {
 		return nil, err
 	}
