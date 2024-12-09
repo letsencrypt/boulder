@@ -127,7 +127,8 @@
 		},
 		"features": {
 			"AsyncFinalize": true,
-			"AutomaticallyPauseZombieClients": true
+			"AutomaticallyPauseZombieClients": true,
+			"NoPendingAuthzReuse": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

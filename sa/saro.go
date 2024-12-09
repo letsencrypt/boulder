@@ -622,6 +622,8 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 // the given account for all given identifiers. If both a valid and pending
 // authorization exist only the valid one will be returned. Currently only dns
 // identifiers are supported.
+//
+// Deprecated: Use GetValidAuthorizations2, as we stop pending authz reuse.
 func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	if core.IsAnyNilOrZero(req, req.RegistrationID, req.DnsNames, req.ValidUntil) {
 		return nil, errIncompleteRequest

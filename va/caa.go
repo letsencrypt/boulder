@@ -112,12 +112,19 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		// It will also later be serialized in JSON, which defaults to UTF-8. Make
 		// sure it is UTF-8 clean now.
 		prob = filterProblemDetails(prob)
-		return &vapb.IsCAAValidResponse{Problem: &corepb.ProblemDetails{
-			ProblemType: string(prob.Type),
-			Detail:      replaceInvalidUTF8([]byte(prob.Detail)),
-		}}, nil
+		return &vapb.IsCAAValidResponse{
+			Problem: &corepb.ProblemDetails{
+				ProblemType: string(prob.Type),
+				Detail:      replaceInvalidUTF8([]byte(prob.Detail)),
+			},
+			Perspective: va.perspective,
+			Rir:         va.rir,
+		}, nil
 	} else {
-		return &vapb.IsCAAValidResponse{}, nil
+		return &vapb.IsCAAValidResponse{
+			Perspective: va.perspective,
+			Rir:         va.rir,
+		}, nil
 	}
 }
 

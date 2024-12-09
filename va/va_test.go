@@ -160,7 +160,7 @@ func setupRemote(srv *httptest.Server, userAgent string, mockDNSClientOverride b
 	rva.perspective = perspective
 	rva.rir = rir
 
-	return RemoteClients{VAClient: &inMemVA{*rva}, CAAClient: &inMemVA{*rva}}
+	return RemoteClients{VAClient: &inMemVA{rva}, CAAClient: &inMemVA{rva}}
 }
 
 // RIRs
@@ -296,14 +296,14 @@ func (b brokenRemoteVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest,
 // ValidationAuthorityImpl rather than over the network. This lets a local
 // in-memory mock VA act like a remote VA.
 type inMemVA struct {
-	rva ValidationAuthorityImpl
+	rva *ValidationAuthorityImpl
 }
 
-func (inmem inMemVA) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+func (inmem *inMemVA) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return inmem.rva.PerformValidation(ctx, req)
 }
 
-func (inmem inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+func (inmem *inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
 	return inmem.rva.IsCAAValid(ctx, req)
 }
 
@@ -331,6 +331,48 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 	)
 	test.AssertError(t, err, "NewValidationAuthorityImpl allowed duplicate remote perspectives")
 	test.AssertContains(t, err.Error(), "duplicate remote VA perspective \"dadaist\"")
+}
+
+func TestPerformValidationWithMismatchedRemoteVAPerspectives(t *testing.T) {
+	mismatched1 := RemoteVA{
+		RemoteClients: setupRemote(nil, "", nil, "dadaist", arin),
+		Perspective:   "baroque",
+		RIR:           arin,
+	}
+	mismatched2 := RemoteVA{
+		RemoteClients: setupRemote(nil, "", nil, "impressionist", ripe),
+		Perspective:   "minimalist",
+		RIR:           ripe,
+	}
+	remoteVAs := setupRemotes([]remoteConf{{rir: ripe}}, nil)
+	remoteVAs = append(remoteVAs, mismatched1, mismatched2)
+	va, mockLog := setup(nil, "", remoteVAs, nil)
+
+	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	res, _ := va.PerformValidation(context.Background(), req)
+	test.AssertNotNil(t, res.GetProblem(), "validation succeeded with mismatched remote VA perspectives")
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Expected perspective")), 2)
+}
+
+func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
+	mismatched1 := RemoteVA{
+		RemoteClients: setupRemote(nil, "", nil, "dadaist", arin),
+		Perspective:   "dadaist",
+		RIR:           ripe,
+	}
+	mismatched2 := RemoteVA{
+		RemoteClients: setupRemote(nil, "", nil, "impressionist", ripe),
+		Perspective:   "impressionist",
+		RIR:           arin,
+	}
+	remoteVAs := setupRemotes([]remoteConf{{rir: ripe}}, nil)
+	remoteVAs = append(remoteVAs, mismatched1, mismatched2)
+	va, mockLog := setup(nil, "", remoteVAs, nil)
+
+	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	res, _ := va.PerformValidation(context.Background(), req)
+	test.AssertNotNil(t, res.GetProblem(), "validation succeeded with mismatched remote VA perspectives")
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Expected perspective")), 2)
 }
 
 func TestValidateMalformedChallenge(t *testing.T) {

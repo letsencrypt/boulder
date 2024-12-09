@@ -14,7 +14,6 @@ import (
 
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/unpause"
-	"golang.org/x/exp/maps"
 )
 
 // subcommandUnpauseAccount encapsulates the "admin unpause-account" command.
@@ -44,16 +43,13 @@ func (u *subcommandUnpauseAccount) Run(ctx context.Context, a *admin) error {
 		"-account":    u.accountID != 0,
 		"-batch-file": u.batchFile != "",
 	}
-	maps.DeleteFunc(setInputs, func(_ string, v bool) bool { return !v })
-	if len(setInputs) == 0 {
-		return errors.New("at least one input method flag must be specified")
-	} else if len(setInputs) > 1 {
-		return fmt.Errorf("more than one input method flag specified: %v", maps.Keys(setInputs))
+	activeFlag, err := findActiveInputMethodFlag(setInputs)
+	if err != nil {
+		return err
 	}
 
 	var regIDs []int64
-	var err error
-	switch maps.Keys(setInputs)[0] {
+	switch activeFlag {
 	case "-account":
 		regIDs = []int64{u.accountID}
 	case "-batch-file":
