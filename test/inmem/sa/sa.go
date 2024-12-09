@@ -73,10 +73,6 @@ func (sa SA) GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesReq
 	return sa.Impl.GetOrderForNames(ctx, req)
 }
 
-func (sa SA) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return sa.Impl.CountOrders(ctx, req)
-}
-
 func (sa SA) SetOrderError(ctx context.Context, req *sapb.SetOrderErrorRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.SetOrderError(ctx, req)
 }
@@ -95,10 +91,6 @@ func (sa SA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequ
 
 func (sa SA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.AddCertificate(ctx, req)
-}
-
-func (sa SA) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
-	return sa.Impl.CountCertificatesByNames(ctx, req)
 }
 
 func (sa SA) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
