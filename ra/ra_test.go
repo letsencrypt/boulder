@@ -757,7 +757,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 	// Override the default ratelimits to only allow one failed validation per
 	// 24 hours before pausing.
 	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"FailedAuthorizationsForPausingPerDomainPerAccount": &ratelimits.LimitConfig{
+		ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount.String(): &ratelimits.LimitConfig{
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Hour * 24}},
@@ -968,104 +968,6 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "certificate public key must be different than account key")
 }
 
-func TestNewOrderRateLimiting(t *testing.T) {
-	_, _, ra, _, fc, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Override the default ratelimits to only allow one new order per
-	// 5 minutes.
-	rateLimitDuration := time.Minute * 5
-	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"NewOrdersPerAccount": &ratelimits.LimitConfig{
-			Burst:  1,
-			Count:  1,
-			Period: config.Duration{Duration: rateLimitDuration}},
-	})
-	test.AssertNotError(t, err, "making transaction composer")
-	ra.txnBuilder = txnBuilder
-
-	orderOne := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"first.example.com"},
-	}
-	orderTwo := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"second.example.com"},
-	}
-
-	// To start, it should be possible to create a new order
-	_, err = ra.NewOrder(ctx, orderOne)
-	test.AssertNotError(t, err, "NewOrder for orderOne failed")
-
-	// Advance the clock 1s to separate the orders in time
-	fc.Add(time.Second)
-
-	// Creating an order immediately after the first with different names
-	// should fail
-	_, err = ra.NewOrder(ctx, orderTwo)
-	test.AssertError(t, err, "NewOrder for orderTwo succeeded, should have been ratelimited")
-
-	// Creating the first order again should succeed because of order reuse, no
-	// new pending order is produced.
-	_, err = ra.NewOrder(ctx, orderOne)
-	test.AssertNotError(t, err, "Reuse of orderOne failed")
-
-	// Advancing the clock by 2 * the rate limit duration should allow orderTwo to
-	// succeed
-	fc.Add(2 * rateLimitDuration)
-	_, err = ra.NewOrder(ctx, orderTwo)
-	test.AssertNotError(t, err, "NewOrder for orderTwo failed after advancing clock")
-}
-
-// TestEarlyOrderRateLimiting tests that NewOrder applies the certificates per
-// name/per FQDN rate limits against the order names.
-func TestEarlyOrderRateLimiting(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	rateLimitDuration := 5 * time.Minute
-
-	domain := "early-ratelimit-example.com"
-
-	// Override the default ratelimits with a CertificatesPerName threshold for
-	// the domain name so low if it were enforced it would prevent a new order
-	// for any names.
-	//
-	// FIXME: The prior version added an override setting the threshold for
-	// `domain` to 0...
-	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"CertificatesPerDomain": &ratelimits.LimitConfig{
-			Burst:  10,
-			Count:  10,
-			Period: config.Duration{Duration: rateLimitDuration}},
-		"NewOrdersPerAccount": &ratelimits.LimitConfig{
-			Burst:  10,
-			Count:  10,
-			Period: config.Duration{Duration: rateLimitDuration}},
-	})
-	test.AssertNotError(t, err, "making transaction composer")
-	ra.txnBuilder = txnBuilder
-
-	// Request an order for the test domain
-	newOrder := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{domain},
-	}
-
-	// The NewOrder request should fail because of the low CertificatesPerDomain
-	// count.
-	_, err = ra.NewOrder(ctx, newOrder)
-	test.AssertError(t, err, "NewOrder did not apply cert rate limits")
-
-	var bErr *berrors.BoulderError
-	test.Assert(t, errors.As(err, &bErr), "NewOrder did not return a boulder error")
-	test.AssertEquals(t, bErr.RetryAfter, rateLimitDuration)
-
-	// The err should be the expected rate limit error
-	expected := "too many certificates already issued for \"early-ratelimit-example.com\". Retry after 2020-03-04T05:05:00Z: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account"
-	test.AssertEquals(t, bErr.Error(), expected)
-}
-
 // mockInvalidAuthorizationsAuthority is a mock which claims that the given
 // domain has one invalid authorization.
 type mockInvalidAuthorizationsAuthority struct {
@@ -1079,6 +981,28 @@ func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations2(ctx co
 	} else {
 		return &sapb.Count{}, nil
 	}
+}
+
+func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
+		ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount.String(): &ratelimits.LimitConfig{
+			Burst:  1,
+			Count:  1,
+			Period: config.Duration{Duration: time.Hour * 1}},
+	})
+	test.AssertNotError(t, err, "making transaction composer")
+	ra.txnBuilder = txnBuilder
+
+	// FIXME: Call countFailedValidations instead, it will increment this limit.
+	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
+	ra.SA = &mockInvalidAuthorizationsAuthority{domainWithFailures: "all.i.do.is.lose.com"}
+	err = ra.checkInvalidAuthorizationLimits(ctx, Registration.Id,
+		[]string{"charlie.brown.com", "all.i.do.is.lose.com"}, limit)
+	test.AssertError(t, err, "checkInvalidAuthorizationLimits did not encounter expected rate limit error")
+	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account")
 }
 
 type mockSAWithNameCounts struct {
@@ -1547,7 +1471,7 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	// Override the default ratelimits to only allow one failed validation per
 	// 24 hours before pausing.
 	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"FailedAuthorizationsForPausingPerDomainPerAccount": &ratelimits.LimitConfig{
+		ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount.String(): &ratelimits.LimitConfig{
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Hour * 24}},
@@ -2262,92 +2186,6 @@ func TestNewOrder_AuthzReuse_NoPending(t *testing.T) {
 	test.AssertNotError(t, err, "creating test order")
 	test.AssertNotEquals(t, new.Id, extant.Id)
 	test.AssertNotEquals(t, new.V2Authorizations[0], extant.V2Authorizations[0])
-}
-
-// mockSACountPendingFails has a CountPendingAuthorizations2 implementation
-// that always returns error
-type mockSACountPendingFails struct {
-	sapb.StorageAuthorityClient
-}
-
-func (mock *mockSACountPendingFails) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return nil, errors.New("counting is slow and boring")
-}
-
-// An authority that returns nonzero failures for CountInvalidAuthorizations2,
-// and also returns existing authzs for the same domain from GetAuthorizations2
-type mockInvalidPlusValidAuthzAuthority struct {
-	mockSAWithAuthzs
-	domainWithFailures string
-}
-
-func (sa *mockInvalidPlusValidAuthzAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	if req.DnsName == sa.domainWithFailures {
-		return &sapb.Count{Count: 1}, nil
-	} else {
-		return &sapb.Count{}, nil
-	}
-}
-
-// Test that the failed authorizations limit is checked before authz reuse.
-func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
-	_, _, ra, _, clk, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Create an order (and thus a pending authz) for example.com
-	ctx := context.Background()
-	order, err := ra.NewOrder(ctx, &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"example.com"},
-	})
-	test.AssertNotError(t, err, "adding an initial order for regA")
-	test.AssertNotNil(t, order.Id, "initial order had a nil ID")
-	test.AssertEquals(t, numAuthorizations(order), 1)
-
-	// Now treat example.com as if it had a recent failure, but also a valid authz.
-	expires := clk.Now().Add(24 * time.Hour)
-	ra.SA = &mockInvalidPlusValidAuthzAuthority{
-		mockSAWithAuthzs: mockSAWithAuthzs{
-			authzs: []*core.Authorization{
-				{
-					ID:             "1",
-					Identifier:     identifier.NewDNS("example.com"),
-					RegistrationID: Registration.Id,
-					Expires:        &expires,
-					Status:         "valid",
-					Challenges: []core.Challenge{
-						{
-							Type:   core.ChallengeTypeHTTP01,
-							Status: core.StatusValid,
-							Token:  core.NewToken(),
-						},
-					},
-				},
-			},
-		},
-		domainWithFailures: "example.com",
-	}
-
-	// Set a very restrictive police for invalid authorizations - one failure
-	// and you're done for a day.
-	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"FailedAuthorizationsPerDomainPerAccount": &ratelimits.LimitConfig{
-			Burst:  1,
-			Count:  1,
-			Period: config.Duration{Duration: time.Hour * 24}},
-	})
-	test.AssertNotError(t, err, "making transaction composer")
-	ra.txnBuilder = txnBuilder
-
-	// Creating an order for example.com should error with the "too many failed
-	// authorizations recently" error.
-	_, err = ra.NewOrder(ctx, &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"example.com"},
-	})
-
-	test.AssertError(t, err, "expected error for domain with too many failures")
-	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account")
 }
 
 // mockSAWithAuthzs has a GetAuthorizations2 method that returns the protobuf
@@ -4470,86 +4308,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 		Malformed: true,
 	})
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with just serial for keyCompromise")
-}
-
-func TestNewOrderRateLimitingExempt(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Set up a rate limit policy that allows 1 order every 5 minutes.
-	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"NewOrdersPerAccount": &ratelimits.LimitConfig{
-			Burst:  1,
-			Count:  1,
-			Period: config.Duration{Duration: time.Minute * 5}},
-	})
-	test.AssertNotError(t, err, "making transaction composer")
-	ra.txnBuilder = txnBuilder
-
-	exampleOrderOne := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"first.example.com", "second.example.com"},
-	}
-	exampleOrderTwo := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"first.example.com", "third.example.com"},
-	}
-
-	// Create an order immediately.
-	_, err = ra.NewOrder(ctx, exampleOrderOne)
-	test.AssertNotError(t, err, "orderOne should have succeeded")
-
-	// Create another order immediately. This should fail.
-	_, err = ra.NewOrder(ctx, exampleOrderTwo)
-	test.AssertError(t, err, "orderTwo should have failed")
-
-	// Exempt orderTwo from rate limiting.
-	exampleOrderTwo.IsARIRenewal = true
-	_, err = ra.NewOrder(ctx, exampleOrderTwo)
-	test.AssertNotError(t, err, "orderTwo should have succeeded")
-}
-
-func TestNewOrderFailedAuthzRateLimitingExempt(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	exampleOrder := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"example.com"},
-	}
-
-	// Create an order, and thus a pending authz, for "example.com".
-	ctx := context.Background()
-	order, err := ra.NewOrder(ctx, exampleOrder)
-	test.AssertNotError(t, err, "adding an initial order for regA")
-	test.AssertNotNil(t, order.Id, "initial order had a nil ID")
-	test.AssertEquals(t, numAuthorizations(order), 1)
-
-	// Mock SA that has a failed authorization for "example.com".
-	ra.SA = &mockInvalidPlusValidAuthzAuthority{
-		mockSAWithAuthzs{authzs: []*core.Authorization{}},
-		"example.com",
-	}
-
-	// Set up a rate limit policy that allows 1 order every 24 hours.
-	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
-		"FailedAuthorizationsPerDomainPerAccount": &ratelimits.LimitConfig{
-			Burst:  1,
-			Count:  1,
-			Period: config.Duration{Duration: time.Hour * 24}},
-	})
-	test.AssertNotError(t, err, "making transaction composer")
-	ra.txnBuilder = txnBuilder
-
-	// Requesting a new order for "example.com" should fail due to too many
-	// failed authorizations.
-	_, err = ra.NewOrder(ctx, exampleOrder)
-	test.AssertError(t, err, "expected error for domain with too many failures")
-
-	// Exempt the order from rate limiting.
-	exampleOrder.IsARIRenewal = true
-	_, err = ra.NewOrder(ctx, exampleOrder)
-	test.AssertNotError(t, err, "limit exempt order should have succeeded")
 }
 
 // An authority that returns an error from NewOrderAndAuthzs if the

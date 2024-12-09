@@ -5,7 +5,9 @@ import (
 	"net"
 	"sort"
 	"testing"
+	"time"
 
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -201,4 +203,26 @@ func TestCertificatesPerFQDNSetTransactions(t *testing.T) {
 	test.AssertEquals(t, txn.bucketKey, "7:"+namesHash)
 	test.Assert(t, txn.checkOnly(), "should be check-only")
 	test.Assert(t, !txn.limit.isOverride(), "should not be an override")
+}
+
+func TestNewTransactionBuilderWithLimits(t *testing.T) {
+	t.Parallel()
+
+	expectedBurst := int64(10000)
+	expectedCount := int64(10000)
+	expectedPeriod := config.Duration{Duration: time.Hour * 168}
+
+	tb, err := NewTransactionBuilderWithLimits(LimitConfigs{
+		NewRegistrationsPerIPAddress.String(): &LimitConfig{
+			Burst:  expectedBurst,
+			Count:  expectedCount,
+			Period: expectedPeriod},
+	})
+	test.AssertNotError(t, err, "creating TransactionBuilder")
+
+	newRegDefault, ok := tb.limitRegistry.defaults[NewRegistrationsPerIPAddress.EnumString()]
+	test.Assert(t, ok, "NewRegistrationsPerIPAddress was not populated in registry")
+	test.AssertEquals(t, newRegDefault.Burst, expectedBurst)
+	test.AssertEquals(t, newRegDefault.Count, expectedCount)
+	test.AssertEquals(t, newRegDefault.Period, expectedPeriod)
 }

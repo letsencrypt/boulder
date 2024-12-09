@@ -212,6 +212,7 @@ func NewTransactionBuilderWithLimits(defaults LimitConfigs) (*TransactionBuilder
 	if err != nil {
 		return nil, err
 	}
+
 	return &TransactionBuilder{registry}, nil
 }
 

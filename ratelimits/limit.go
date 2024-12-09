@@ -285,6 +285,9 @@ func newLimitRegistryWithData(defaults limits) (*limitRegistry, error) {
 		return nil, err
 	}
 
+	// No overrides specified, initialize an empty map.
+	registry.overrides = make(limits)
+
 	return registry, nil
 }
 
