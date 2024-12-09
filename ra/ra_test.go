@@ -996,7 +996,6 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 	test.AssertNotError(t, err, "making transaction composer")
 	ra.txnBuilder = txnBuilder
 
-	// FIXME: Call countFailedValidations instead, it will increment this limit.
 	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
 	ra.SA = &mockInvalidAuthorizationsAuthority{domainWithFailures: "all.i.do.is.lose.com"}
 	err = ra.checkInvalidAuthorizationLimits(ctx, Registration.Id,
