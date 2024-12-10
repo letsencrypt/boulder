@@ -31,7 +31,7 @@ const (
 var allowedDecision = &Decision{allowed: true, remaining: math.MaxInt64}
 
 // Limiter provides a high-level interface for rate limiting requests by
-// utilizing a leaky bucket-style approach.
+// utilizing a token bucket-style approach.
 type Limiter struct {
 	// source is used to store buckets. It must be safe for concurrent use.
 	source Source

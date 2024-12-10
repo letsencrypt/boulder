@@ -1471,7 +1471,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		}
 		return nil
 	} else {
-		// Evaluate the rate limit using a leaky bucket algorithm. The bucket
+		// Evaluate the rate limit using a token bucket algorithm. The bucket
 		// has a capacity of threshold and is refilled at a rate of 1 token per
 		// limit.Window/threshold from the time of each issuance timestamp. The
 		// timestamps start from the most recent issuance and go back in time.
