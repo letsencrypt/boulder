@@ -263,7 +263,7 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	registry := prometheus.NewRegistry()
 
 	if addr == "" {
-		logger.Infof("No debug listen address specified")
+		logger.Info("No debug listen address specified")
 		return registry
 	}
 
