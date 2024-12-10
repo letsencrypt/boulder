@@ -37,7 +37,7 @@ type admin struct {
 
 // newAdmin constructs a new admin object on the heap and returns a pointer to
 // it.
-func newAdmin(configFile string, dryRun bool, debugAddr string) (*admin, error) {
+func newAdmin(configFile string, dryRun bool) (*admin, error) {
 	// Unlike most boulder service constructors, this does all of its own config
 	// parsing and dependency setup. If this is broken out into its own package
 	// (outside the //cmd/ directory) those pieces of setup should stay behind
@@ -48,7 +48,7 @@ func newAdmin(configFile string, dryRun bool, debugAddr string) (*admin, error) 
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
-	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, debugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, "")
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 

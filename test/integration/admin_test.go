@@ -36,7 +36,6 @@ func TestAdminClearEmail(t *testing.T) {
 		"./bin/admin",
 		"-config", config,
 		"-dry-run=false",
-		"-debug-addr", ":8014",
 		"update-email",
 		"-address", deleteMe,
 		"-clear",
