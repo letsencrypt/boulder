@@ -270,7 +270,15 @@ func (v cancelledVA) PerformValidation(_ context.Context, _ *vapb.PerformValidat
 	return nil, context.Canceled
 }
 
+func (v cancelledVA) DoDCV(_ context.Context, _ *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+	return nil, context.Canceled
+}
+
 func (v cancelledVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return nil, context.Canceled
+}
+
+func (v cancelledVA) DoCAA(_ context.Context, _ *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
 	return nil, context.Canceled
 }
 
@@ -287,7 +295,16 @@ func (b brokenRemoteVA) PerformValidation(_ context.Context, _ *vapb.PerformVali
 	return nil, errBrokenRemoteVA
 }
 
+// DoDCV returns errBrokenRemoteVA unconditionally
+func (b brokenRemoteVA) DoDCV(_ context.Context, _ *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+	return nil, errBrokenRemoteVA
+}
+
 func (b brokenRemoteVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return nil, errBrokenRemoteVA
+}
+
+func (b brokenRemoteVA) DoCAA(_ context.Context, _ *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
 	return nil, errBrokenRemoteVA
 }
 
@@ -303,8 +320,16 @@ func (inmem *inMemVA) PerformValidation(ctx context.Context, req *vapb.PerformVa
 	return inmem.rva.PerformValidation(ctx, req)
 }
 
+func (inmem *inMemVA) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
+	return inmem.rva.DoDCV(ctx, req)
+}
+
 func (inmem *inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
 	return inmem.rva.IsCAAValid(ctx, req)
+}
+
+func (inmem *inMemVA) DoCAA(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return inmem.rva.DoCAA(ctx, req)
 }
 
 func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
@@ -333,7 +358,19 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 	test.AssertContains(t, err.Error(), "duplicate remote VA perspective \"dadaist\"")
 }
 
+type validationFuncRunner func(context.Context, *ValidationAuthorityImpl, *vapb.PerformValidationRequest) (*vapb.ValidationResult, error)
+
+var runPerformValidation = func(ctx context.Context, va *ValidationAuthorityImpl, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
+	return va.PerformValidation(ctx, req)
+}
+
+var runDoDCV = func(ctx context.Context, va *ValidationAuthorityImpl, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
+	return va.DoDCV(ctx, req)
+}
+
 func TestPerformValidationWithMismatchedRemoteVAPerspectives(t *testing.T) {
+	t.Parallel()
+
 	mismatched1 := RemoteVA{
 		RemoteClients: setupRemote(nil, "", nil, "dadaist", arin),
 		Perspective:   "baroque",
@@ -346,15 +383,36 @@ func TestPerformValidationWithMismatchedRemoteVAPerspectives(t *testing.T) {
 	}
 	remoteVAs := setupRemotes([]remoteConf{{rir: ripe}}, nil)
 	remoteVAs = append(remoteVAs, mismatched1, mismatched2)
-	va, mockLog := setup(nil, "", remoteVAs, nil)
 
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
-	res, _ := va.PerformValidation(context.Background(), req)
-	test.AssertNotNil(t, res.GetProblem(), "validation succeeded with mismatched remote VA perspectives")
-	test.AssertEquals(t, len(mockLog.GetAllMatching("Expected perspective")), 2)
+	testCases := []struct {
+		validationFuncName string
+		validationFunc     validationFuncRunner
+	}{
+		{
+			validationFuncName: "PerformValidation",
+			validationFunc:     runPerformValidation,
+		},
+		{
+			validationFuncName: "DoDCV",
+			validationFunc:     runDoDCV,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.validationFuncName, func(t *testing.T) {
+			t.Parallel()
+
+			va, mockLog := setup(nil, "", remoteVAs, nil)
+			req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+			res, _ := tc.validationFunc(context.Background(), va, req)
+			test.AssertNotNil(t, res.GetProblem(), "validation succeeded with mismatched remote VA perspectives")
+			test.AssertEquals(t, len(mockLog.GetAllMatching("Expected perspective")), 2)
+		})
+	}
 }
 
 func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
+	t.Parallel()
+
 	mismatched1 := RemoteVA{
 		RemoteClients: setupRemote(nil, "", nil, "dadaist", arin),
 		Perspective:   "dadaist",
@@ -367,12 +425,32 @@ func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
 	}
 	remoteVAs := setupRemotes([]remoteConf{{rir: ripe}}, nil)
 	remoteVAs = append(remoteVAs, mismatched1, mismatched2)
-	va, mockLog := setup(nil, "", remoteVAs, nil)
 
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
-	res, _ := va.PerformValidation(context.Background(), req)
-	test.AssertNotNil(t, res.GetProblem(), "validation succeeded with mismatched remote VA perspectives")
-	test.AssertEquals(t, len(mockLog.GetAllMatching("Expected perspective")), 2)
+	testCases := []struct {
+		validationFuncName string
+		validationFunc     validationFuncRunner
+	}{
+		{
+			validationFuncName: "PerformValidation",
+			validationFunc:     runPerformValidation,
+		},
+		{
+			validationFuncName: "DoDCV",
+			validationFunc:     runDoDCV,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.validationFuncName, func(t *testing.T) {
+			t.Parallel()
+
+			va, mockLog := setup(nil, "", remoteVAs, nil)
+			req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+			res, _ := tc.validationFunc(context.Background(), va, req)
+			test.AssertNotNil(t, res.GetProblem(), "validation succeeded with mismatched remote VA perspectives")
+			test.AssertEquals(t, len(mockLog.GetAllMatching("Expected perspective")), 2)
+		})
+	}
 }
 
 func TestValidateMalformedChallenge(t *testing.T) {
@@ -385,88 +463,203 @@ func TestValidateMalformedChallenge(t *testing.T) {
 }
 
 func TestPerformValidationInvalid(t *testing.T) {
+	t.Parallel()
 	va, _ := setup(nil, "", nil, nil)
 
-	req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
-	res, _ := va.PerformValidation(context.Background(), req)
-	test.Assert(t, res.Problem != nil, "validation succeeded")
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      opChallAndCAA,
-		"perspective":    va.perspective,
-		"challenge_type": string(core.ChallengeTypeDNS01),
-		"problem_type":   string(probs.UnauthorizedProblem),
-		"result":         fail,
-	}, 1)
+	testCases := []struct {
+		validationFuncName string
+		validationFunc     validationFuncRunner
+	}{
+		{
+			validationFuncName: "PerformValidation",
+			validationFunc:     runPerformValidation,
+		},
+		{
+			validationFuncName: "DoDCV",
+			validationFunc:     runDoDCV,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.validationFuncName, func(t *testing.T) {
+			t.Parallel()
+
+			req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
+			res, _ := tc.validationFunc(context.Background(), va, req)
+			test.Assert(t, res.Problem != nil, "validation succeeded")
+			if tc.validationFuncName == "PerformValidation" {
+				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+					"operation":      opDCVAndCAA,
+					"perspective":    va.perspective,
+					"challenge_type": string(core.ChallengeTypeDNS01),
+					"problem_type":   string(probs.UnauthorizedProblem),
+					"result":         fail,
+				}, 1)
+			} else {
+				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+					"operation":      opDCV,
+					"perspective":    va.perspective,
+					"challenge_type": string(core.ChallengeTypeDNS01),
+					"problem_type":   string(probs.UnauthorizedProblem),
+					"result":         fail,
+				}, 1)
+			}
+		})
+	}
 }
 
 func TestInternalErrorLogged(t *testing.T) {
-	va, mockLog := setup(nil, "", nil, nil)
+	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
-	defer cancel()
-	req := createValidationRequest("nonexistent.com", core.ChallengeTypeHTTP01)
-	_, err := va.PerformValidation(ctx, req)
-	test.AssertNotError(t, err, "failed validation should not be an error")
-	matchingLogs := mockLog.GetAllMatching(
-		`Validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: context deadline exceeded`)
-	test.AssertEquals(t, len(matchingLogs), 1)
+	testCases := []struct {
+		validationFuncName string
+		validationFunc     validationFuncRunner
+	}{
+		{
+			validationFuncName: "PerformValidation",
+			validationFunc:     runPerformValidation,
+		},
+		{
+			validationFuncName: "DoDCV",
+			validationFunc:     runDoDCV,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.validationFuncName, func(t *testing.T) {
+			t.Parallel()
+
+			va, mockLog := setup(nil, "", nil, nil)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+			defer cancel()
+			req := createValidationRequest("nonexistent.com", core.ChallengeTypeHTTP01)
+			_, err := tc.validationFunc(ctx, va, req)
+			test.AssertNotError(t, err, "failed validation should not be an error")
+			matchingLogs := mockLog.GetAllMatching(
+				`Validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: context deadline exceeded`)
+			test.AssertEquals(t, len(matchingLogs), 1)
+		})
+	}
 }
 
 func TestPerformValidationValid(t *testing.T) {
-	va, mockLog := setup(nil, "", nil, nil)
+	t.Parallel()
 
-	// create a challenge with well known token
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
-	res, _ := va.PerformValidation(context.Background(), req)
-	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
-
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      opChallAndCAA,
-		"perspective":    va.perspective,
-		"challenge_type": string(core.ChallengeTypeDNS01),
-		"problem_type":   "",
-		"result":         pass,
-	}, 1)
-	resultLog := mockLog.GetAllMatching(`Validation result`)
-	if len(resultLog) != 1 {
-		t.Fatalf("Wrong number of matching lines for 'Validation result'")
+	testCases := []struct {
+		validationFuncName string
+		validationFunc     validationFuncRunner
+	}{
+		{
+			validationFuncName: "PerformValidation",
+			validationFunc:     runPerformValidation,
+		},
+		{
+			validationFuncName: "DoDCV",
+			validationFunc:     runDoDCV,
+		},
 	}
-	if !strings.Contains(resultLog[0], `"Identifier":"good-dns01.com"`) {
-		t.Error("PerformValidation didn't log validation identifier.")
+
+	for _, tc := range testCases {
+		t.Run(tc.validationFuncName, func(t *testing.T) {
+			t.Parallel()
+
+			va, mockLog := setup(nil, "", nil, nil)
+
+			// create a challenge with well known token
+			req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+			res, _ := tc.validationFunc(context.Background(), va, req)
+			test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
+			if tc.validationFuncName == "PerformValidation" {
+				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+					"operation":      opDCVAndCAA,
+					"perspective":    va.perspective,
+					"challenge_type": string(core.ChallengeTypeDNS01),
+					"problem_type":   "",
+					"result":         pass,
+				}, 1)
+			} else {
+				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+					"operation":      opDCV,
+					"perspective":    va.perspective,
+					"challenge_type": string(core.ChallengeTypeDNS01),
+					"problem_type":   "",
+					"result":         pass,
+				}, 1)
+			}
+			resultLog := mockLog.GetAllMatching(`Validation result`)
+			if len(resultLog) != 1 {
+				t.Fatalf("Wrong number of matching lines for 'Validation result'")
+			}
+			if !strings.Contains(resultLog[0], `"Identifier":"good-dns01.com"`) {
+				t.Error("PerformValidation didn't log validation identifier.")
+			}
+		})
 	}
 }
 
 // TestPerformValidationWildcard tests that the VA properly strips the `*.`
 // prefix from a wildcard name provided to the PerformValidation function.
 func TestPerformValidationWildcard(t *testing.T) {
-	va, mockLog := setup(nil, "", nil, nil)
+	t.Parallel()
 
-	// create a challenge with well known token
-	req := createValidationRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
-	// perform a validation for a wildcard name
-	res, _ := va.PerformValidation(context.Background(), req)
-	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
-
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      opChallAndCAA,
-		"perspective":    va.perspective,
-		"challenge_type": string(core.ChallengeTypeDNS01),
-		"problem_type":   "",
-		"result":         pass,
-	}, 1)
-	resultLog := mockLog.GetAllMatching(`Validation result`)
-	if len(resultLog) != 1 {
-		t.Fatalf("Wrong number of matching lines for 'Validation result'")
+	testCases := []struct {
+		validationFuncName string
+		validationFunc     validationFuncRunner
+	}{
+		{
+			validationFuncName: "PerformValidation",
+			validationFunc:     runPerformValidation,
+		},
+		{
+			validationFuncName: "DoDCV",
+			validationFunc:     runDoDCV,
+		},
 	}
 
-	// We expect that the top level Identifier reflect the wildcard name
-	if !strings.Contains(resultLog[0], `"Identifier":"*.good-dns01.com"`) {
-		t.Errorf("PerformValidation didn't log correct validation identifier.")
-	}
-	// We expect that the ValidationRecord contain the correct non-wildcard
-	// hostname that was validated
-	if !strings.Contains(resultLog[0], `"hostname":"good-dns01.com"`) {
-		t.Errorf("PerformValidation didn't log correct validation record hostname.")
+	for _, tc := range testCases {
+		t.Run(tc.validationFuncName, func(t *testing.T) {
+			t.Parallel()
+
+			va, mockLog := setup(nil, "", nil, nil)
+
+			// create a challenge with well known token
+			req := createValidationRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
+			// perform a validation for a wildcard name
+			res, _ := tc.validationFunc(context.Background(), va, req)
+			test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
+			if tc.validationFuncName == "PerformValidation" {
+				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+					"operation":      opDCVAndCAA,
+					"perspective":    va.perspective,
+					"challenge_type": string(core.ChallengeTypeDNS01),
+					"problem_type":   "",
+					"result":         pass,
+				}, 1)
+			} else {
+				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
+					"operation":      opDCV,
+					"perspective":    va.perspective,
+					"challenge_type": string(core.ChallengeTypeDNS01),
+					"problem_type":   "",
+					"result":         pass,
+				}, 1)
+			}
+			resultLog := mockLog.GetAllMatching(`Validation result`)
+			if len(resultLog) != 1 {
+				t.Fatalf("Wrong number of matching lines for 'Validation result'")
+			}
+
+			// We expect that the top level Identifier reflect the wildcard name
+			if !strings.Contains(resultLog[0], `"Identifier":"*.good-dns01.com"`) {
+				t.Errorf("PerformValidation didn't log correct validation identifier.")
+			}
+			// We expect that the ValidationRecord contain the correct non-wildcard
+			// hostname that was validated
+			if !strings.Contains(resultLog[0], `"hostname":"good-dns01.com"`) {
+				t.Errorf("PerformValidation didn't log correct validation record hostname.")
+			}
+		})
 	}
 }
 
@@ -569,6 +762,22 @@ func TestMultiVA(t *testing.T) {
 	cancelledVA := RemoteClients{
 		VAClient:  cancelledVA{},
 		CAAClient: cancelledVA{},
+	}
+
+	type testFunc struct {
+		name string
+		impl validationFuncRunner
+	}
+
+	testFuncs := []testFunc{
+		{
+			name: "PerformValidation",
+			impl: runPerformValidation,
+		},
+		{
+			name: "DoDCV",
+			impl: runDoDCV,
+		},
 	}
 
 	testCases := []struct {
@@ -727,39 +936,57 @@ func TestMultiVA(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			t.Parallel()
+		for _, testFunc := range testFuncs {
+			t.Run(tc.Name+"_"+testFunc.name, func(t *testing.T) {
+				t.Parallel()
 
-			// Configure one test server per test case so that all tests can run in parallel.
-			ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
-			defer ms.Close()
+				// Configure one test server per test case so that all tests can run in parallel.
+				ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
+				defer ms.Close()
 
-			// Configure a primary VA with testcase remote VAs.
-			localVA, mockLog := setupWithRemotes(ms.Server, tc.PrimaryUA, tc.Remotes, nil)
+				// Configure a primary VA with testcase remote VAs.
+				localVA, mockLog := setupWithRemotes(ms.Server, tc.PrimaryUA, tc.Remotes, nil)
 
-			// Perform all validations
-			res, _ := localVA.PerformValidation(ctx, req)
-			if res.Problem == nil && tc.ExpectedProbType != "" {
-				t.Errorf("expected prob %v, got nil", tc.ExpectedProbType)
-			} else if res.Problem != nil && tc.ExpectedProbType == "" {
-				t.Errorf("expected no prob, got %v", res.Problem)
-			} else if res.Problem != nil && tc.ExpectedProbType != "" {
-				// That result should match expected.
-				test.AssertEquals(t, res.Problem.ProblemType, tc.ExpectedProbType)
-			}
-
-			if tc.ExpectedLogContains != "" {
-				lines := mockLog.GetAllMatching(tc.ExpectedLogContains)
-				if len(lines) == 0 {
-					t.Fatalf("Got log %v; expected %q", mockLog.GetAll(), tc.ExpectedLogContains)
+				// Perform all validations
+				res, _ := testFunc.impl(ctx, localVA, req)
+				if res.Problem == nil && tc.ExpectedProbType != "" {
+					t.Errorf("expected prob %v, got nil", tc.ExpectedProbType)
+				} else if res.Problem != nil && tc.ExpectedProbType == "" {
+					t.Errorf("expected no prob, got %v", res.Problem)
+				} else if res.Problem != nil && tc.ExpectedProbType != "" {
+					// That result should match expected.
+					test.AssertEquals(t, res.Problem.ProblemType, tc.ExpectedProbType)
 				}
-			}
-		})
+
+				if tc.ExpectedLogContains != "" {
+					lines := mockLog.GetAllMatching(tc.ExpectedLogContains)
+					if len(lines) == 0 {
+						t.Fatalf("Got log %v; expected %q", mockLog.GetAll(), tc.ExpectedLogContains)
+					}
+				}
+			})
+		}
 	}
 }
 
 func TestMultiVAEarlyReturn(t *testing.T) {
 	t.Parallel()
+
+	type testFunc struct {
+		name string
+		impl validationFuncRunner
+	}
+
+	testFuncs := []testFunc{
+		{
+			name: "PerformValidation",
+			impl: runPerformValidation,
+		},
+		{
+			name: "DoDCV",
+			impl: runDoDCV,
+		},
+	}
 
 	testCases := []struct {
 		remoteConfs []remoteConf
@@ -793,45 +1020,44 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	}
 
 	for i, tc := range testCases {
-		t.Run(fmt.Sprintf("case %d", i), func(t *testing.T) {
-			t.Parallel()
+		for _, testFunc := range testFuncs {
+			t.Run(fmt.Sprintf("case %d"+"_"+testFunc.name, i), func(t *testing.T) {
+				t.Parallel()
 
-			// Configure one test server per test case so that all tests can run in parallel.
-			ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
-			defer ms.Close()
+				// Configure one test server per test case so that all tests can run in parallel.
+				ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
+				defer ms.Close()
 
-			localVA, _ := setupWithRemotes(ms.Server, pass, tc.remoteConfs, nil)
+				localVA, _ := setupWithRemotes(ms.Server, pass, tc.remoteConfs, nil)
 
-			// Perform all validations
-			start := time.Now()
-			req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
-			res, _ := localVA.PerformValidation(ctx, req)
+				// Perform all validations
+				start := time.Now()
+				req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
+				res, _ := testFunc.impl(ctx, localVA, req)
 
-			// It should always fail
-			if res.Problem == nil {
-				t.Error("expected prob from PerformValidation, got nil")
-			}
+				// It should always fail
+				if res.Problem == nil {
+					t.Error("expected prob from PerformValidation, got nil")
+				}
 
-			elapsed := time.Since(start).Round(time.Millisecond).Milliseconds()
+				elapsed := time.Since(start).Round(time.Millisecond).Milliseconds()
 
-			// The slow UA should sleep for `slowRemoteSleepMillis`. But the first remote
-			// VA should fail quickly and the early-return code should cause the overall
-			// overall validation to return a prob quickly (i.e. in less than half of
-			// `slowRemoteSleepMillis`).
-			if elapsed > slowRemoteSleepMillis/2 {
-				t.Errorf(
-					"Expected an early return from PerformValidation in < %d ms, took %d ms",
-					slowRemoteSleepMillis/2, elapsed)
-			}
-		})
+				// The slow UA should sleep for `slowRemoteSleepMillis`. But the first remote
+				// VA should fail quickly and the early-return code should cause the overall
+				// overall validation to return a prob quickly (i.e. in less than half of
+				// `slowRemoteSleepMillis`).
+				if elapsed > slowRemoteSleepMillis/2 {
+					t.Errorf(
+						"Expected an early return from PerformValidation in < %d ms, took %d ms",
+						slowRemoteSleepMillis/2, elapsed)
+				}
+			})
+		}
 	}
 }
 
 func TestMultiVAPolicy(t *testing.T) {
 	t.Parallel()
-
-	ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
-	defer ms.Close()
 
 	remoteConfs := []remoteConf{
 		{ua: fail, rir: arin},
@@ -839,22 +1065,43 @@ func TestMultiVAPolicy(t *testing.T) {
 		{ua: fail, rir: apnic},
 	}
 
-	// Create a local test VA with the remote VAs
-	localVA, _ := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
+	testCases := []struct {
+		validationFuncName string
+		validationFunc     validationFuncRunner
+	}{
+		{
+			validationFuncName: "PerformValidation",
+			validationFunc:     runPerformValidation,
+		},
+		{
+			validationFuncName: "DoDCV",
+			validationFunc:     runDoDCV,
+		},
+	}
 
-	// Perform validation for a domain not in the disabledDomains list
-	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
-	res, _ := localVA.PerformValidation(ctx, req)
-	// It should fail
-	if res.Problem == nil {
-		t.Error("expected prob from PerformValidation, got nil")
+	for _, tc := range testCases {
+		t.Run(tc.validationFuncName, func(t *testing.T) {
+			t.Parallel()
+
+			ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
+			defer ms.Close()
+
+			// Create a local test VA with the remote VAs
+			localVA, _ := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
+
+			// Perform validation for a domain not in the disabledDomains list
+			req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
+			res, _ := tc.validationFunc(ctx, localVA, req)
+			// It should fail
+			if res.Problem == nil {
+				t.Error("expected prob from PerformValidation, got nil")
+			}
+		})
 	}
 }
+
 func TestMultiVALogging(t *testing.T) {
 	t.Parallel()
-
-	ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
-	defer ms.Close()
 
 	remoteConfs := []remoteConf{
 		{ua: pass, rir: arin},
@@ -862,11 +1109,34 @@ func TestMultiVALogging(t *testing.T) {
 		{ua: pass, rir: apnic},
 	}
 
-	va, _ := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
-	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
-	res, err := va.PerformValidation(ctx, req)
-	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed with: %#v", res.Problem))
-	test.AssertNotError(t, err, "performing validation")
+	testCases := []struct {
+		validationFuncName string
+		validationFunc     validationFuncRunner
+	}{
+		{
+			validationFuncName: "PerformValidation",
+			validationFunc:     runPerformValidation,
+		},
+		{
+			validationFuncName: "DoDCV",
+			validationFunc:     runDoDCV,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.validationFuncName, func(t *testing.T) {
+			t.Parallel()
+
+			ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
+			defer ms.Close()
+
+			va, _ := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
+			req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
+			res, err := tc.validationFunc(ctx, va, req)
+			test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed with: %#v", res.Problem))
+			test.AssertNotError(t, err, "performing validation")
+		})
+	}
 }
 
 func TestDetailedError(t *testing.T) {

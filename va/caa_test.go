@@ -2,9 +2,12 @@ package va
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -518,57 +521,107 @@ func TestCAALogging(t *testing.T) {
 	}
 }
 
+type caaCheckFuncRunner func(context.Context, *ValidationAuthorityImpl, *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error)
+
+var runIsCAAValid = func(ctx context.Context, va *ValidationAuthorityImpl, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
+	return va.IsCAAValid(ctx, req)
+}
+
+var runDoCAA = func(ctx context.Context, va *ValidationAuthorityImpl, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
+	return va.DoCAA(ctx, req)
+}
+
 // TestIsCAAValidErrMessage tests that an error result from `va.IsCAAValid`
 // includes the domain name that was being checked in the failure detail.
 func TestIsCAAValidErrMessage(t *testing.T) {
+	t.Parallel()
 	va, _ := setup(nil, "", nil, caaMockDNS{})
 
-	// Call IsCAAValid with a domain we know fails with a generic error from the
-	// caaMockDNS.
-	domain := "caa-timeout.com"
-	resp, err := va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-		Domain:           domain,
-		ValidationMethod: string(core.ChallengeTypeHTTP01),
-		AccountURIID:     12345,
-	})
+	testCases := []struct {
+		name         string
+		caaCheckFunc caaCheckFuncRunner
+	}{
+		{
+			name:         "IsCAAValid",
+			caaCheckFunc: runIsCAAValid,
+		},
+		{
+			name:         "DoCAA",
+			caaCheckFunc: runDoCAA,
+		},
+	}
 
-	// The lookup itself should not return an error
-	test.AssertNotError(t, err, "Unexpected error calling IsCAAValidRequest")
-	// The result should not be nil
-	test.AssertNotNil(t, resp, "Response to IsCAAValidRequest was nil")
-	// The result's Problem should not be nil
-	test.AssertNotNil(t, resp.Problem, "Response Problem was nil")
-	// The result's Problem should be an error message that includes the domain.
-	test.AssertEquals(t, resp.Problem.Detail, fmt.Sprintf("While processing CAA for %s: error", domain))
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// Call the operation with a domain we know fails with a generic error from the
+			// caaMockDNS.
+			domain := "caa-timeout.com"
+			resp, err := tc.caaCheckFunc(ctx, va, &vapb.IsCAAValidRequest{
+				Domain:           domain,
+				ValidationMethod: string(core.ChallengeTypeHTTP01),
+				AccountURIID:     12345,
+			})
+
+			// The lookup itself should not return an error
+			test.AssertNotError(t, err, "Unexpected error calling IsCAAValidRequest")
+			// The result should not be nil
+			test.AssertNotNil(t, resp, "Response to IsCAAValidRequest was nil")
+			// The result's Problem should not be nil
+			test.AssertNotNil(t, resp.Problem, "Response Problem was nil")
+			// The result's Problem should be an error message that includes the domain.
+			test.AssertEquals(t, resp.Problem.Detail, fmt.Sprintf("While processing CAA for %s: error", domain))
+		})
+	}
 }
 
 // TestIsCAAValidParams tests that the IsCAAValid method rejects any requests
 // which do not have the necessary parameters to do CAA Account and Method
 // Binding checks.
 func TestIsCAAValidParams(t *testing.T) {
+	t.Parallel()
 	va, _ := setup(nil, "", nil, caaMockDNS{})
+	testCases := []struct {
+		name         string
+		caaCheckFunc caaCheckFuncRunner
+	}{
+		{
+			name:         "IsCAAValid",
+			caaCheckFunc: runIsCAAValid,
+		},
+		{
+			name:         "DoCAA",
+			caaCheckFunc: runDoCAA,
+		},
+	}
 
-	// Calling IsCAAValid without a ValidationMethod should fail.
-	_, err := va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-		Domain:       "present.com",
-		AccountURIID: 12345,
-	})
-	test.AssertError(t, err, "calling IsCAAValid without a ValidationMethod")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Calling IsCAAValid with an invalid ValidationMethod should fail.
-	_, err = va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-		Domain:           "present.com",
-		ValidationMethod: "tls-sni-01",
-		AccountURIID:     12345,
-	})
-	test.AssertError(t, err, "calling IsCAAValid with a bad ValidationMethod")
+			// Calling IsCAAValid without a ValidationMethod should fail.
+			_, err := tc.caaCheckFunc(ctx, va, &vapb.IsCAAValidRequest{
+				Domain:       "present.com",
+				AccountURIID: 12345,
+			})
+			test.AssertError(t, err, "calling IsCAAValid without a ValidationMethod")
 
-	// Calling IsCAAValid without an AccountURIID should fail.
-	_, err = va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-		Domain:           "present.com",
-		ValidationMethod: string(core.ChallengeTypeHTTP01),
-	})
-	test.AssertError(t, err, "calling IsCAAValid without an AccountURIID")
+			// Calling IsCAAValid with an invalid ValidationMethod should fail.
+			_, err = tc.caaCheckFunc(ctx, va, &vapb.IsCAAValidRequest{
+				Domain:           "present.com",
+				ValidationMethod: "tls-sni-01",
+				AccountURIID:     12345,
+			})
+			test.AssertError(t, err, "calling IsCAAValid with a bad ValidationMethod")
+
+			// Calling IsCAAValid without an AccountURIID should fail.
+			_, err = tc.caaCheckFunc(ctx, va, &vapb.IsCAAValidRequest{
+				Domain:           "present.com",
+				ValidationMethod: string(core.ChallengeTypeHTTP01),
+			})
+			test.AssertError(t, err, "calling IsCAAValid without an AccountURIID")
+		})
+	}
 }
 
 var errCAABrokenDNSClient = errors.New("dnsClient is broken")
@@ -653,6 +706,25 @@ func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA,
 	return results, response, bdns.ResolverAddrs{"caaHijackedDNS"}, nil
 }
 
+// parseValidationLogEvent extracts ... from JSON={ ... } in a ValidateChallenge
+// audit log and returns it as a validationLogEvent struct.
+func parseValidationLogEvent(t *testing.T, log []string) validationLogEvent {
+	re := regexp.MustCompile(`JSON=\{.*\}`)
+	var audit validationLogEvent
+	for _, line := range log {
+		match := re.FindString(line)
+		if match != "" {
+			jsonStr := match[len(`JSON=`):]
+			if err := json.Unmarshal([]byte(jsonStr), &audit); err != nil {
+				t.Fatalf("Failed to parse JSON: %v", err)
+			}
+			return audit
+		}
+	}
+	t.Fatal("JSON not found in log")
+	return audit
+}
+
 func TestMultiCAARechecking(t *testing.T) {
 	// The remote differential log order is non-deterministic, so let's use
 	// the same UA for all applicable RVAs.
@@ -663,13 +735,32 @@ func TestMultiCAARechecking(t *testing.T) {
 		hijackedUA = "hijacked"
 	)
 
+	type testFunc struct {
+		name string
+		impl caaCheckFuncRunner
+	}
+
+	testFuncs := []testFunc{
+		{
+			name: "IsCAAValid",
+			impl: runIsCAAValid,
+		},
+		{
+			name: "DoCAA",
+			impl: runDoCAA,
+		},
+	}
+
 	testCases := []struct {
-		name                     string
+		name string
+		// method is only set inside of the test loop.
+		methodName               string
 		domains                  string
 		remoteVAs                []remoteConf
 		expectedProbSubstring    string
 		expectedProbType         probs.ProblemType
 		expectedDiffLogSubstring string
+		expectedSummary          *mpicSummary
 		expectedLabels           prometheus.Labels
 		localDNSClient           bdns.Client
 	}{
@@ -714,6 +805,12 @@ func TestMultiCAARechecking(t *testing.T) {
 			domains:                  "present-dns-only.com",
 			localDNSClient:           caaMockDNS{},
 			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
+			expectedSummary: &mpicSummary{
+				Passed:       []string{"dc-1-RIPE", "dc-2-APNIC"},
+				Failed:       []string{"dc-0-ARIN"},
+				PassedRIRs:   []string{ripe, apnic},
+				QuorumResult: "2/3",
+			},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
 				{ua: remoteUA, rir: ripe},
@@ -733,7 +830,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{"dc-2-APNIC"},
+				Failed:       []string{"dc-0-ARIN", "dc-1-RIPE"},
+				PassedRIRs:   []string{apnic},
+				QuorumResult: "1/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
 				{ua: brokenUA, rir: ripe, dns: caaBrokenDNS{}},
@@ -753,7 +856,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{},
+				Failed:       []string{"dc-0-ARIN", "dc-1-RIPE", "dc-2-APNIC"},
+				PassedRIRs:   []string{},
+				QuorumResult: "0/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
 				{ua: brokenUA, rir: ripe, dns: caaBrokenDNS{}},
@@ -788,7 +897,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			name:                     "functional localVA, 1 broken RVA, CAA issue type present",
 			domains:                  "present.com",
 			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{"dc-1-RIPE", "dc-2-APNIC"},
+				Failed:       []string{"dc-0-ARIN"},
+				PassedRIRs:   []string{ripe, apnic},
+				QuorumResult: "2/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
 				{ua: remoteUA, rir: ripe},
@@ -808,7 +923,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{"dc-2-APNIC"},
+				Failed:       []string{"dc-0-ARIN", "dc-1-RIPE"},
+				PassedRIRs:   []string{apnic},
+				QuorumResult: "1/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
 				{ua: brokenUA, rir: ripe, dns: caaBrokenDNS{}},
@@ -828,7 +949,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{},
+				Failed:       []string{"dc-0-ARIN", "dc-1-RIPE", "dc-2-APNIC"},
+				PassedRIRs:   []string{},
+				QuorumResult: "0/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: brokenUA, rir: arin, dns: caaBrokenDNS{}},
 				{ua: brokenUA, rir: ripe, dns: caaBrokenDNS{}},
@@ -860,7 +987,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			name:                     "1 hijacked RVA, CAA issue type present",
 			domains:                  "present.com",
 			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{"dc-1-RIPE", "dc-2-APNIC"},
+				Failed:       []string{"dc-0-ARIN"},
+				PassedRIRs:   []string{ripe, apnic},
+				QuorumResult: "2/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: remoteUA, rir: ripe},
@@ -873,7 +1006,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{"dc-2-APNIC"},
+				Failed:       []string{"dc-0-ARIN", "dc-1-RIPE"},
+				PassedRIRs:   []string{apnic},
+				QuorumResult: "1/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
@@ -886,7 +1025,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{},
+				Failed:       []string{"dc-0-ARIN", "dc-1-RIPE", "dc-2-APNIC"},
+				PassedRIRs:   []string{},
+				QuorumResult: "0/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
@@ -897,7 +1042,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			name:                     "1 hijacked RVA, CAA issuewild type present",
 			domains:                  "satisfiable-wildcard.com",
 			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{"dc-1-RIPE", "dc-2-APNIC"},
+				Failed:       []string{"dc-0-ARIN"},
+				PassedRIRs:   []string{ripe, apnic},
+				QuorumResult: "2/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: remoteUA, rir: ripe},
@@ -910,7 +1061,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{"dc-2-APNIC"},
+				Failed:       []string{"dc-0-ARIN", "dc-1-RIPE"},
+				PassedRIRs:   []string{apnic},
+				QuorumResult: "1/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
@@ -923,7 +1080,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{},
+				Failed:       []string{"dc-0-ARIN", "dc-1-RIPE", "dc-2-APNIC"},
+				PassedRIRs:   []string{},
+				QuorumResult: "0/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
@@ -934,7 +1097,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			name:                     "1 hijacked RVA, CAA issuewild type present, 1 failure allowed",
 			domains:                  "satisfiable-wildcard.com",
 			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{"dc-1-RIPE", "dc-2-APNIC"},
+				Failed:       []string{"dc-0-ARIN"},
+				PassedRIRs:   []string{ripe, apnic},
+				QuorumResult: "2/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: remoteUA, rir: ripe},
@@ -947,7 +1116,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{"dc-2-APNIC"},
+				Failed:       []string{"dc-0-ARIN", "dc-1-RIPE"},
+				PassedRIRs:   []string{apnic},
+				QuorumResult: "1/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
@@ -960,7 +1135,13 @@ func TestMultiCAARechecking(t *testing.T) {
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
-			localDNSClient:           caaMockDNS{},
+			expectedSummary: &mpicSummary{
+				Passed:       []string{},
+				Failed:       []string{"dc-0-ARIN", "dc-1-RIPE", "dc-2-APNIC"},
+				PassedRIRs:   []string{},
+				QuorumResult: "0/3",
+			},
+			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: hijackedUA, rir: arin, dns: caaHijackedDNS{}},
 				{ua: hijackedUA, rir: ripe, dns: caaHijackedDNS{}},
@@ -970,64 +1151,77 @@ func TestMultiCAARechecking(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			va, mockLog := setupWithRemotes(nil, localUA, tc.remoteVAs, tc.localDNSClient)
-			defer mockLog.Clear()
+		for _, testFunc := range testFuncs {
+			t.Run(tc.name+"_"+testFunc.name, func(t *testing.T) {
+				va, mockLog := setupWithRemotes(nil, localUA, tc.remoteVAs, tc.localDNSClient)
+				defer mockLog.Clear()
 
-			features.Set(features.Config{
-				EnforceMultiCAA: true,
-			})
-			defer features.Reset()
+				features.Set(features.Config{
+					EnforceMultiCAA: true,
+				})
+				defer features.Reset()
 
-			isValidRes, err := va.IsCAAValid(context.TODO(), &vapb.IsCAAValidRequest{
-				Domain:           tc.domains,
-				ValidationMethod: string(core.ChallengeTypeDNS01),
-				AccountURIID:     1,
-			})
-			test.AssertNotError(t, err, "Should not have errored, but did")
+				isValidRes, err := testFunc.impl(context.TODO(), va, &vapb.IsCAAValidRequest{
+					Domain:           tc.domains,
+					ValidationMethod: string(core.ChallengeTypeDNS01),
+					AccountURIID:     1,
+				})
+				test.AssertNotError(t, err, "Should not have errored, but did")
 
-			if tc.expectedProbSubstring != "" {
-				test.AssertNotNil(t, isValidRes.Problem, "IsCAAValidRequest returned nil problem, but should not have")
-				test.AssertContains(t, isValidRes.Problem.Detail, tc.expectedProbSubstring)
-			} else if isValidRes.Problem != nil {
-				test.AssertBoxedNil(t, isValidRes.Problem, "IsCAAValidRequest returned a problem, but should not have")
-			}
-
-			if tc.expectedProbType != "" {
-				test.AssertNotNil(t, isValidRes.Problem, "IsCAAValidRequest returned nil problem, but should not have")
-				test.AssertEquals(t, string(tc.expectedProbType), isValidRes.Problem.ProblemType)
-			}
-
-			var invalidRVACount int
-			for _, x := range tc.remoteVAs {
-				if x.ua == brokenUA || x.ua == hijackedUA {
-					invalidRVACount++
+				if tc.expectedProbSubstring != "" {
+					test.AssertNotNil(t, isValidRes.Problem, "IsCAAValidRequest returned nil problem, but should not have")
+					test.AssertContains(t, isValidRes.Problem.Detail, tc.expectedProbSubstring)
+				} else if isValidRes.Problem != nil {
+					test.AssertBoxedNil(t, isValidRes.Problem, "IsCAAValidRequest returned a problem, but should not have")
 				}
-			}
 
-			gotRequestProbs := mockLog.GetAllMatching(" returned a problem: ")
-			test.AssertEquals(t, len(gotRequestProbs), invalidRVACount)
+				if tc.expectedProbType != "" {
+					test.AssertNotNil(t, isValidRes.Problem, "IsCAAValidRequest returned nil problem, but should not have")
+					test.AssertEquals(t, string(tc.expectedProbType), isValidRes.Problem.ProblemType)
+				}
 
-			gotDifferential := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
-			if tc.expectedDiffLogSubstring != "" {
-				test.AssertEquals(t, len(gotDifferential), 1)
-				test.AssertContains(t, gotDifferential[0], tc.expectedDiffLogSubstring)
-			} else {
-				test.AssertEquals(t, len(gotDifferential), 0)
-			}
+				if testFunc.name == "IsCAAValid" {
+					var invalidRVACount int
+					for _, x := range tc.remoteVAs {
+						if x.ua == brokenUA || x.ua == hijackedUA {
+							invalidRVACount++
+						}
+					}
 
-			gotAnyRemoteFailures := mockLog.GetAllMatching("CAA check failed due to remote failures:")
-			if len(gotAnyRemoteFailures) >= 1 {
-				// The primary VA only emits this line once.
-				test.AssertEquals(t, len(gotAnyRemoteFailures), 1)
-			} else {
-				test.AssertEquals(t, len(gotAnyRemoteFailures), 0)
-			}
+					gotRequestProbs := mockLog.GetAllMatching(" returned a problem: ")
+					test.AssertEquals(t, len(gotRequestProbs), invalidRVACount)
 
-			if tc.expectedLabels != nil {
-				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, tc.expectedLabels, 1)
-			}
-		})
+					gotDifferential := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
+					if tc.expectedDiffLogSubstring != "" {
+						test.AssertEquals(t, len(gotDifferential), 1)
+						test.AssertContains(t, gotDifferential[0], tc.expectedDiffLogSubstring)
+					} else {
+						test.AssertEquals(t, len(gotDifferential), 0)
+					}
+				}
+
+				if testFunc.name == "DoCAA" && tc.expectedSummary != nil {
+					gotAuditLog := parseValidationLogEvent(t, mockLog.GetAllMatching("JSON=.*"))
+					slices.Sort(tc.expectedSummary.Passed)
+					slices.Sort(tc.expectedSummary.Failed)
+					slices.Sort(tc.expectedSummary.PassedRIRs)
+					test.AssertDeepEquals(t, gotAuditLog.Summary, tc.expectedSummary)
+				}
+
+				gotAnyRemoteFailures := mockLog.GetAllMatching("CAA check failed due to remote failures:")
+				if len(gotAnyRemoteFailures) >= 1 {
+					// The primary VA only emits this line once.
+					test.AssertEquals(t, len(gotAnyRemoteFailures), 1)
+				} else {
+					test.AssertEquals(t, len(gotAnyRemoteFailures), 0)
+				}
+
+				if tc.expectedLabels != nil {
+					test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, tc.expectedLabels, 1)
+				}
+
+			})
+		}
 	}
 }
 

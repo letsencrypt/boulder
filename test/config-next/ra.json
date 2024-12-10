@@ -128,7 +128,8 @@
 		"features": {
 			"AsyncFinalize": true,
 			"AutomaticallyPauseZombieClients": true,
-			"NoPendingAuthzReuse": true
+			"NoPendingAuthzReuse": true,
+			"EnforceMPIC": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",
