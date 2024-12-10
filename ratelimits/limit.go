@@ -52,6 +52,25 @@ type limit struct {
 	overrideKey string
 }
 
+// LimitConfig defines the exportable configuration for a rate limit or a rate
+// limit override, without a `limit`'s internal fields.
+//
+// The zero value of this struct is invalid, because some of the fields must be
+// greater than zero.
+type LimitConfig struct {
+	// Burst specifies maximum concurrent allowed requests at any given time. It
+	// must be greater than zero.
+	Burst int64
+
+	// Count is the number of requests allowed per period. It must be greater
+	// than zero.
+	Count int64
+
+	// Period is the duration of time in which the count (of requests) is
+	// allowed. It must be greater than zero.
+	Period config.Duration
+}
+
 // isOverride returns true if the limit is an override.
 func (l *limit) isOverride() bool {
 	return l.overrideKey != ""
@@ -77,6 +96,7 @@ func validateLimit(l *limit) error {
 }
 
 type limits map[string]*limit
+type LimitConfigs map[string]*LimitConfig
 
 // loadDefaults marshals the defaults YAML file at path into a map of limits.
 func loadDefaults(path string) (limits, error) {
@@ -142,22 +162,27 @@ func parseOverrideNameId(key string) (Name, string, error) {
 	return name, id, nil
 }
 
-// loadAndParseOverrideLimits loads override limits from YAML. The YAML file
-// must be formatted as a list of maps, where each map has a single key
-// representing the limit name and a value that is a map containing the limit
-// fields and an additional 'ids' field that is a list of ids that this override
-// applies to.
+// loadAndParseOverrideLimits loads and parses override limits from a YAML file.
 func loadAndParseOverrideLimits(path string) (limits, error) {
 	fromFile, err := loadOverrides(path)
 	if err != nil {
 		return nil, err
 	}
+
+	return parseOverrideLimits(fromFile)
+}
+
+// parseOverrideLimits validates a YAML list of override limits. It must be
+// formatted as a list of maps, where each map has a single key representing the
+// limit name and a value that is a map containing the limit fields and an
+// additional 'ids' field that is a list of ids that this override applies to.
+func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 	parsed := make(limits)
 
-	for _, ov := range fromFile {
+	for _, ov := range newOverridesYAML {
 		for k, v := range ov {
 			limit := &v.limit
-			err = validateLimit(limit)
+			err := validateLimit(limit)
 			if err != nil {
 				return nil, fmt.Errorf("validating override limit %q: %w", k, err)
 			}
@@ -189,16 +214,21 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 	return parsed, nil
 }
 
-// loadAndParseDefaultLimits loads default limits from YAML, validates them, and
-// parses them into a map of limits keyed by 'Name'.
+// loadAndParseDefaultLimits loads and parses default limits from a YAML file.
 func loadAndParseDefaultLimits(path string) (limits, error) {
 	fromFile, err := loadDefaults(path)
 	if err != nil {
 		return nil, err
 	}
-	parsed := make(limits, len(fromFile))
 
-	for k, v := range fromFile {
+	return parseDefaultLimits(fromFile)
+}
+
+// parseDefaultLimits validates a map of default limits and rekeys it by 'Name'.
+func parseDefaultLimits(newDefaultLimits limits) (limits, error) {
+	parsed := make(limits)
+
+	for k, v := range newDefaultLimits {
 		err := validateLimit(v)
 		if err != nil {
 			return nil, fmt.Errorf("parsing default limit %q: %w", k, err)
@@ -240,6 +270,23 @@ func newLimitRegistry(defaults, overrides string) (*limitRegistry, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return registry, nil
+}
+
+// newLimitRegistryWithData takes a map that is already populated with limit
+// data, instead of a filename from which to load limit data. Overrides are not
+// supported.
+func newLimitRegistryWithData(defaults limits) (*limitRegistry, error) {
+	var err error
+	registry := &limitRegistry{}
+	registry.defaults, err = parseDefaultLimits(defaults)
+	if err != nil {
+		return nil, err
+	}
+
+	// No overrides specified, initialize an empty map.
+	registry.overrides = make(limits)
 
 	return registry, nil
 }

@@ -195,6 +195,27 @@ func NewTransactionBuilder(defaults, overrides string) (*TransactionBuilder, err
 	return &TransactionBuilder{registry}, nil
 }
 
+// NewTransactionBuilderWithLimits returns a new *TransactionBuilder. The
+// provided defaults map is expected to contain default limit data. Overrides
+// are not supported. Defaults is required.
+func NewTransactionBuilderWithLimits(defaults LimitConfigs) (*TransactionBuilder, error) {
+	defaultsImported := make(limits, len(defaults))
+	for k, v := range defaults {
+		defaultsImported[k] = &limit{
+			Burst:  v.Burst,
+			Count:  v.Count,
+			Period: v.Period,
+		}
+	}
+
+	registry, err := newLimitRegistryWithData(defaultsImported)
+	if err != nil {
+		return nil, err
+	}
+
+	return &TransactionBuilder{registry}, nil
+}
+
 // registrationsPerIPAddressTransaction returns a Transaction for the
 // NewRegistrationsPerIPAddress limit for the provided IP address.
 func (builder *TransactionBuilder) registrationsPerIPAddressTransaction(ip net.IP) (Transaction, error) {
