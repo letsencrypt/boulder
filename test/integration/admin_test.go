@@ -38,8 +38,7 @@ func TestAdminClearEmail(t *testing.T) {
 		"-dry-run=false",
 		"update-email",
 		"-address", deleteMe,
-		"-clear",
-	)
+		"-clear")
 	output, err := cmd.CombinedOutput()
 	test.AssertNotError(t, err, fmt.Sprintf("clearing email via admin tool (%s): %s", cmd, string(output)))
 	t.Logf("clear-email output: %s\n", string(output))
