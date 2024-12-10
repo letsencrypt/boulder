@@ -226,7 +226,7 @@ func loadAndParseDefaultLimits(path string) (limits, error) {
 
 // parseDefaultLimits validates a map of default limits and rekeys it by 'Name'.
 func parseDefaultLimits(newDefaultLimits limits) (limits, error) {
-	parsed := make(limits, len(newDefaultLimits))
+	parsed := make(limits)
 
 	for k, v := range newDefaultLimits {
 		err := validateLimit(v)
