@@ -304,7 +304,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	rlSource := ratelimits.NewInmemSource()
 	limiter, err := ratelimits.NewLimiter(fc, rlSource, stats)
 	test.AssertNotError(t, err, "making limiter")
-	txnBuilder, err := ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "")
 	test.AssertNotError(t, err, "making transaction composer")
 
 	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
@@ -756,7 +756,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 
 	// Override the default ratelimits to only allow one failed validation per
 	// 24 hours before pausing.
-	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
+	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
 		ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount.String(): &ratelimits.LimitConfig{
 			Burst:  1,
 			Count:  1,
@@ -987,7 +987,7 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
+	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
 		ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount.String(): &ratelimits.LimitConfig{
 			Burst:  1,
 			Count:  1,
@@ -1469,7 +1469,7 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 
 	// Override the default ratelimits to only allow one failed validation per
 	// 24 hours before pausing.
-	txnBuilder, err := ratelimits.NewTransactionBuilderWithLimits(ratelimits.LimitConfigs{
+	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
 		ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount.String(): &ratelimits.LimitConfig{
 			Burst:  1,
 			Count:  1,
