@@ -4,7 +4,6 @@
 			"dbConnectFile": "test/secrets/revoker_dburl",
 			"maxOpenConns": 1
 		},
-		"debugAddr": ":8014",
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/admin-revoker.boulder/cert.pem",
