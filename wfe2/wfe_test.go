@@ -52,7 +52,6 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimits"
-	bredis "github.com/letsencrypt/boulder/redis"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -398,8 +397,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 
 	mockSA := mocks.NewStorageAuthorityReadOnly(fc)
 
-	log := blog.NewMock()
-
 	// Use derived nonces.
 	rncKey := []byte("b8c758dd85e113ea340ce0b3a99f389d40a308548af94d1730a7692c1874f1f")
 	noncePrefix := nonce.DerivePrefix("192.168.1.1:8080", rncKey)
@@ -411,29 +408,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	rnc := inmemNonceService
 
 	// Setup rate limiting.
-	rc := bredis.Config{
-		Username: "unittest-rw",
-		TLS: cmd.TLSConfig{
-			CACertFile: "../test/certs/ipki/minica.pem",
-			CertFile:   "../test/certs/ipki/localhost/cert.pem",
-			KeyFile:    "../test/certs/ipki/localhost/key.pem",
-		},
-		Lookups: []cmd.ServiceDomain{
-			{
-				Service: "redisratelimits",
-				Domain:  "service.consul",
-			},
-		},
-		LookupDNSAuthority: "consul.service.consul",
-	}
-	rc.PasswordConfig = cmd.PasswordConfig{
-		PasswordFile: "../test/secrets/ratelimits_redis_password",
-	}
-	ring, err := bredis.NewRingFromConfig(rc, stats, log)
-	test.AssertNotError(t, err, "making redis ring client")
-	source := ratelimits.NewRedisSource(ring.Ring, fc, stats)
-	test.AssertNotNil(t, source, "source should not be nil")
-	limiter, err := ratelimits.NewLimiter(fc, source, stats)
+	limiter, err := ratelimits.NewLimiter(fc, ratelimits.NewInmemSource(), stats)
 	test.AssertNotError(t, err, "making limiter")
 	txnBuilder, err := ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
 	test.AssertNotError(t, err, "making transaction composer")
@@ -1598,7 +1573,6 @@ func TestNewECDSAAccount(t *testing.T) {
 // a populated acct object will be returned.
 func TestEmptyAccount(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
 
 	// Test Key 1 is mocked in the mock StorageAuthority used in setupWFE to
 	// return a populated account for GetRegistrationByKey when test key 1 is
@@ -1607,31 +1581,66 @@ func TestEmptyAccount(t *testing.T) {
 	_, ok := key.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
-	payload := `{}`
 	path := "1"
 	signedURL := "http://localhost/1"
-	_, _, body := signer.byKeyID(1, key, signedURL, payload)
-	request := makePostRequestWithPath(path, body)
 
-	// Send an account update with the trivial body
-	wfe.Account(
-		ctx,
-		newRequestEvent(),
-		responseWriter,
-		request)
+	testCases := []struct {
+		Name           string
+		Payload        string
+		ExpectedStatus int
+	}{
+		{
+			Name:           "POST empty string to acct",
+			Payload:        "",
+			ExpectedStatus: http.StatusOK,
+		},
+		{
+			Name:           "POST empty JSON object to acct",
+			Payload:        "{}",
+			ExpectedStatus: http.StatusOK,
+		},
+		{
+			Name:           "POST invalid empty JSON string to acct",
+			Payload:        "\"\"",
+			ExpectedStatus: http.StatusBadRequest,
+		},
+		{
+			Name:           "POST invalid empty JSON array to acct",
+			Payload:        "[]",
+			ExpectedStatus: http.StatusBadRequest,
+		},
+	}
 
-	responseBody := responseWriter.Body.String()
-	// There should be no error
-	test.AssertNotContains(t, responseBody, probs.ErrorNS)
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			responseWriter := httptest.NewRecorder()
 
-	// We should get back a populated Account
-	var acct core.Registration
-	err := json.Unmarshal([]byte(responseBody), &acct)
-	test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
-	test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
-	test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
-	test.AssertEquals(t, acct.Agreement, "")
-	responseWriter.Body.Reset()
+			_, _, body := signer.byKeyID(1, key, signedURL, tc.Payload)
+			request := makePostRequestWithPath(path, body)
+
+			// Send an account update with the trivial body
+			wfe.Account(
+				ctx,
+				newRequestEvent(),
+				responseWriter,
+				request)
+
+			responseBody := responseWriter.Body.String()
+			test.AssertEquals(t, responseWriter.Code, tc.ExpectedStatus)
+
+			// If success is expected, we should get back a populated Account
+			if tc.ExpectedStatus == http.StatusOK {
+				var acct core.Registration
+				err := json.Unmarshal([]byte(responseBody), &acct)
+				test.AssertNotError(t, err, "Couldn't unmarshal returned account object")
+				test.Assert(t, len(*acct.Contact) >= 1, "No contact field in account")
+				test.AssertEquals(t, (*acct.Contact)[0], "mailto:person@mail.com")
+				test.AssertEquals(t, acct.Agreement, "")
+			}
+
+			responseWriter.Body.Reset()
+		})
+	}
 }
 
 func TestNewAccount(t *testing.T) {

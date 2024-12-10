@@ -4,7 +4,6 @@ import (
 	"context"
 	"math/rand/v2"
 	"net"
-	"os"
 	"testing"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 
 	"github.com/letsencrypt/boulder/config"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -23,7 +21,7 @@ import (
 const tenZeroZeroTwo = "10.0.0.2"
 
 // newTestLimiter constructs a new limiter.
-func newTestLimiter(t *testing.T, s source, clk clock.FakeClock) *Limiter {
+func newTestLimiter(t *testing.T, s Source, clk clock.FakeClock) *Limiter {
 	l, err := NewLimiter(clk, s, metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "should not error")
 	return l
@@ -40,19 +38,6 @@ func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
 }
 
 func setup(t *testing.T) (context.Context, map[string]*Limiter, *TransactionBuilder, clock.FakeClock, string) {
-	// Because all test cases in this file are affected by this feature flag, we
-	// want to run them all both with and without the feature flag. This way, we
-	// get one set of runs with and one set without. It's difficult to defer
-	// features.Reset() from the setup func (these tests are parallel); as long
-	// as this code doesn't test any other features, we don't need to.
-	//
-	// N.b. This is fragile. If a test case does call features.Reset(), it will
-	// not be testing the intended code path. But we expect to clean this up
-	// quickly.
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		features.Set(features.Config{IncrementRateLimits: true})
-	}
-
 	testCtx := context.Background()
 	clk := clock.NewFake()
 

@@ -15,6 +15,9 @@ import (
 // then call features.Set(parsedConfig) to load the parsed struct into this
 // package's global Config.
 type Config struct {
+	// Deprecated flags.
+	IncrementRateLimits bool
+
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
 	ServeRenewalInfo bool
@@ -47,15 +50,8 @@ type Config struct {
 
 	// EnforceMultiCAA causes the VA to kick off remote CAA rechecks when true.
 	// When false, no remote CAA rechecks will be performed. The primary VA will
-	// make a valid/invalid decision with the results. The primary VA will
-	// return an early decision if MultiCAAFullResults is false.
+	// make a valid/invalid decision with the results.
 	EnforceMultiCAA bool
-
-	// MultiCAAFullResults will cause the main VA to block and wait for all of
-	// the remote VA CAA recheck results instead of returning early if the
-	// number of failures is greater than the number allowed by MPIC.
-	// Only used when EnforceMultiCAA is true.
-	MultiCAAFullResults bool
 
 	// MultipleCertificateProfiles, when enabled, triggers the following
 	// behavior:
@@ -107,10 +103,11 @@ type Config struct {
 	// fails validation.
 	AutomaticallyPauseZombieClients bool
 
-	// IncrementRateLimits uses Redis' IncrBy, instead of Set, for rate limit
-	// accounting. This catches and denies spikes of requests much more
-	// reliably.
-	IncrementRateLimits bool
+	// NoPendingAuthzReuse causes the RA to only select already-validated authzs
+	// to attach to a newly created order. This preserves important client-facing
+	// functionality (valid authz reuse) while letting us simplify our code by
+	// removing pending authz reuse.
+	NoPendingAuthzReuse bool
 }
 
 var fMu = new(sync.RWMutex)

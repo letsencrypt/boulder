@@ -27,7 +27,7 @@ type Config struct {
 		// of RVAs deployed in the same datacenter.
 		//
 		// TODO(#7615): Make mandatory.
-		Perspective string `validate:"omitempty"`
+		Perspective string `omitempty:"omitempty"`
 
 		// RIR indicates the Regional Internet Registry where this RVA is
 		// located. This field is used to identify the RIR region from which a
@@ -38,10 +38,10 @@ type Config struct {
 		//   - RIPE
 		//   - APNIC
 		//   - LACNIC
-		//   - AfriNIC
+		//   - AFRINIC
 		//
 		// TODO(#7615): Make mandatory.
-		RIR string `validate:"omitempty,oneof=ARIN RIPE APNIC LACNIC AfriNIC"`
+		RIR string `validate:"omitempty,oneof=ARIN RIPE APNIC LACNIC AFRINIC"`
 
 		// SkipGRPCClientCertVerification, when disabled as it should typically
 		// be, will cause the remoteva server (which receives gRPCs from a

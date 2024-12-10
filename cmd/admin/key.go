@@ -15,7 +15,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/core"
@@ -69,16 +68,13 @@ func (s *subcommandBlockKey) Run(ctx context.Context, a *admin) error {
 		"-cert-file":   s.certFile != "",
 		"-csr-file":    s.csrFile != "",
 	}
-	maps.DeleteFunc(setInputs, func(_ string, v bool) bool { return !v })
-	if len(setInputs) == 0 {
-		return errors.New("at least one input method flag must be specified")
-	} else if len(setInputs) > 1 {
-		return fmt.Errorf("more than one input method flag specified: %v", maps.Keys(setInputs))
+	activeFlag, err := findActiveInputMethodFlag(setInputs)
+	if err != nil {
+		return err
 	}
 
 	var spkiHashes [][]byte
-	var err error
-	switch maps.Keys(setInputs)[0] {
+	switch activeFlag {
 	case "-private-key":
 		var spkiHash []byte
 		spkiHash, err = a.spkiHashFromPrivateKey(s.privKey)
