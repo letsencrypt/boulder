@@ -13,7 +13,6 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -22,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/maps"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/core"
@@ -800,7 +798,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 			return
 		} else {
-			wfe.log.Warning(err.Error())
+			logEvent.IgnoredRateLimitError = err.Error()
 		}
 	}
 
@@ -1416,8 +1414,10 @@ func (wfe *WebFrontEndImpl) Account(
 		return
 	}
 
-	// If the body was not empty, then this is an account update request.
-	if string(body) != "" {
+	// An empty string means POST-as-GET (i.e. no update). A body of "{}" means
+	// an update of zero fields, returning the unchanged object. This was the
+	// recommended way to fetch the account object in ACMEv1.
+	if string(body) != "" && string(body) != "{}" {
 		currAcct, prob = wfe.updateAccount(ctx, body, currAcct)
 		if prob != nil {
 			wfe.sendError(response, logEvent, prob, nil)
@@ -2273,7 +2273,7 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 		// No profile name is specified.
 		return nil
 	}
-	if !slices.Contains(maps.Keys(wfe.certProfiles), profile) {
+	if _, ok := wfe.certProfiles[profile]; !ok {
 		// The profile name is not in the list of configured profiles.
 		return errors.New("not a recognized profile name")
 	}
@@ -2444,7 +2444,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 				return
 			}
 		} else {
-			wfe.log.Warning(err.Error())
+			logEvent.IgnoredRateLimitError = err.Error()
 		}
 	}
 

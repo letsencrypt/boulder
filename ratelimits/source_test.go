@@ -7,5 +7,5 @@ import (
 )
 
 func newInmemTestLimiter(t *testing.T, clk clock.FakeClock) *Limiter {
-	return newTestLimiter(t, newInmem(), clk)
+	return newTestLimiter(t, NewInmemSource(), clk)
 }

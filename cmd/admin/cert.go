@@ -15,7 +15,6 @@ import (
 	"unicode"
 
 	"golang.org/x/crypto/ocsp"
-	"golang.org/x/exp/maps"
 
 	core "github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -109,16 +108,13 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 		"-reg-id":         s.regID != 0,
 		"-cert-file":      s.certFile != "",
 	}
-	maps.DeleteFunc(setInputs, func(_ string, v bool) bool { return !v })
-	if len(setInputs) == 0 {
-		return errors.New("at least one input method flag must be specified")
-	} else if len(setInputs) > 1 {
-		return fmt.Errorf("more than one input method flag specified: %v", maps.Keys(setInputs))
+	activeFlag, err := findActiveInputMethodFlag(setInputs)
+	if err != nil {
+		return err
 	}
 
 	var serials []string
-	var err error
-	switch maps.Keys(setInputs)[0] {
+	switch activeFlag {
 	case "-serial":
 		serials, err = []string{s.serial}, nil
 	case "-incident-table":
