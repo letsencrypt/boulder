@@ -12,7 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestNewTransactionBuilder_WithBadLimitsPath(t *testing.T) {
+func TestNewTransactionBuilderFromFiles_WithBadLimitsPath(t *testing.T) {
 	t.Parallel()
 	_, err := NewTransactionBuilderFromFiles("testdata/does-not-exist.yml", "")
 	test.AssertError(t, err, "should error")
@@ -205,7 +205,7 @@ func TestCertificatesPerFQDNSetTransactions(t *testing.T) {
 	test.Assert(t, !txn.limit.isOverride(), "should not be an override")
 }
 
-func TestNewTransactionBuilderWithLimits(t *testing.T) {
+func TestNewTransactionBuilder(t *testing.T) {
 	t.Parallel()
 
 	expectedBurst := int64(10000)
