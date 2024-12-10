@@ -31,6 +31,7 @@ type Config struct {
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
 
+		// Deprecated: DebugAddr is no longer used.
 		DebugAddr string
 
 		Features features.Config
