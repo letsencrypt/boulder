@@ -144,9 +144,10 @@ being made, and never decreases[^1].
 [^1]: In the case of certain internal errors, we do "refund" limits, decreasing the TAT.
 
 For each relevant key (e.g. requester id, registered domain, or IP address) we track
-the Theoretical Arrival Time (TAT) of the next request, if all requests arrived
-at the steady allowed rate. The TAT can be either in the past or in the future.
-When a request is accepted, we increase its stored TAT.
+the Theoretical Arrival Time (TAT). It's the time the next request would arrive,
+in the theoretical world where requests arrive at exactly the steady allowed
+rate. The TAT can be either in the past or in the future.  When a request is accepted,
+we increase the stored TAT.
 
 If the TAT is in the past, a request right now would be accepted. If the TAT is
 slightly in the future (by less than an tolerated burstiness τ seconds), a request right
