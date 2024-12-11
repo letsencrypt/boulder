@@ -133,13 +133,15 @@ Although rate limit buckets are configured in terms of tokens, we do not
 actually keep track of the number of tokens in each bucket, because that would
 require constantly updating many buckets.
 
-Instead, we use the [Generic Cell Rate Algorithm (GCRA)][GCRA]. "Cell" is a term of
-art from the obsolete ATM networking standard, equivalent to a "request" for us.
-This algorithm has the significant advantage that it only requires keeping track
-of a single number which only increases when there are actual requests being
-made, and never decreases.
+Instead, we use the [Generic Cell Rate Algorithm (GCRA)][GCRA]. "Cell" is a term
+of art from the obsolete ATM networking standard, equivalent to a "request" for
+us.  This algorithm is equivalent to the token bucket metaphor, but in
+implementation it has the significant advantage that it only requires keeping
+track of a single number which only increases when there are actual requests
+being made, and never decreases[^1].
 
 [GCRA]: https://en.wikipedia.org/wiki/Generic_cell_rate_algorithm)
+[^1]: In the case of certain internal errors, we do "refund" limits, decreasing the TAT.
 
 For each relevant key (e.g. requester id, registered domain, or IP address) we track
 the Theoretical Arrival Time (TAT) of the next request, if all requests arrived
