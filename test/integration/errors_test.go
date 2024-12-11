@@ -48,7 +48,7 @@ func TestAccountEmailError(t *testing.T) {
 	longStringBuf.WriteString("@a.com")
 
 	createErrorPrefix := "Error creating new account :: "
-	updateErrorPrefix := "Unable to update account :: "
+	updateErrorPrefix := "Unable to update account :: invalid contact: "
 
 	testCases := []struct {
 		name               string
