@@ -9,6 +9,9 @@ import (
 // maybeSpend uses the GCRA algorithm to decide whether to allow a request. It
 // returns a Decision struct with the result of the decision and the updated
 // TAT. The cost must be 0 or greater and <= the burst capacity of the limit.
+// This function does not update any data store. The caller is responsible for
+// updating storage with the returned `Decision.newTAT`, if the caller is trying
+// to spend against the limit (as opposed to just checking it).
 func maybeSpend(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
 	if txn.cost < 0 || txn.cost > txn.limit.Burst {
 		// The condition above is the union of the conditions checked in Check
@@ -66,6 +69,7 @@ func maybeSpend(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
 // the cost of a request which was previously spent. The refund cost must be 0
 // or greater. A cost will only be refunded up to the burst capacity of the
 // limit. A partial refund is still considered successful.
+// The caller is responsible for updating storage with the returned `Decision.newTAT`.
 func maybeRefund(clk clock.Clock, txn Transaction, tat time.Time) *Decision {
 	if txn.cost < 0 || txn.cost > txn.limit.Burst {
 		// The condition above is checked in the Refund method of Limiter. If

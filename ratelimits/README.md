@@ -130,21 +130,47 @@ default/override limit.
 ## How Limits are Applied
 
 Although rate limit buckets are configured in terms of tokens, we do not
-actually keep track of the number of tokens in each bucket. Instead, we track
-the Theoretical Arrival Time (TAT) at which the bucket will be full again. If
-the TAT is in the past, the bucket is full. If the TAT is in the future, some
-number of tokens have been spent and the bucket is slowly refilling. If the TAT
-is far enough in the future (specifically, more than `burst * (period / count)`)
-in the future), then the bucket is completely empty and requests will be denied.
+actually keep track of the number of tokens in each bucket, because that would
+require constantly updating many buckets.
+
+Instead, we use the [Generic Cell Rate Algorithm (GCRA)][GCRA]. "Cell" is a term
+of art from the obsolete ATM networking standard, equivalent to a "request" for
+us.  This algorithm is equivalent to the token bucket metaphor, but in
+implementation it has the significant advantage that it only requires keeping
+track of a single number which only increases when there are actual requests
+being made, and never decreases[^1].
+
+[GCRA]: https://en.wikipedia.org/wiki/Generic_cell_rate_algorithm)
+[^1]: In the case of certain internal errors, we do "refund" limits, decreasing the TAT.
+
+For each relevant key (e.g. requester id, registered domain, or IP address) we track
+the Theoretical Arrival Time (TAT). It's the time the next request would arrive,
+in the theoretical world where requests arrive at exactly the steady allowed
+rate. The TAT can be either in the past or in the future.  When a request is accepted,
+we increase the stored TAT.
+
+A TAT in the past is equivalent to a TAT of "now".
+
+If the TAT is "now" or somewhat in the future (by less than an tolerated burstiness τ
+seconds), a request right now would also be accepted. If the TAT is more than τ seconds
+in the future, a request right now would be rejected.
+
+```
+TAT: -------------------------^------------------------^-----------------
+      accept and set to "now" |    accept (burst)      |      reject
+                              |                        |
+                             now                     now + τ
+```
 
 Additional terminology:
 
-  - **burst offset** is the duration of time it takes for a bucket to go from
-    empty to full (`burst * (period / count)`).
-  - **emission interval** is the interval at which tokens are added to a bucket
-    (`period / count`). This is also the steady-state rate at which requests can
-    be made without being denied even once the burst has been exhausted.
-  - **cost** is the number of tokens removed from a bucket for a single request.
+  - **emission period** is the period at which requests can be made without
+    being denied even once the burst has been exhausted.
+    Equal to `period / count`.
+  - **tolerance** (τ) is how far in the future the TAT can be before a request
+    is denied. Equal to `burst * (period / count)`.
+  - **cost** for a specific request is a positive integer indicating how
+    expensive a request is, with most requests having a cost of 1.
   - **cost increment** is the duration of time the TAT is advanced to account
     for the cost of the request (`cost * emission interval`).
 
@@ -168,32 +194,50 @@ A subscriber calls the newFoo endpoint for the first time with an IP address of
    'NewFoosPerIPAddress:172.23.45.22'.
 
 2. The request is approved and the 'NewFoosPerIPAddress:172.23.45.22' bucket is
-   initialized with 19 tokens, as 1 token has been removed to account for the
-   cost of the current request. To accomplish this, the initial TAT is set to
-   the current time plus the _cost increment_ (which is 1/20th of a second if we
-   are limiting to 20 requests per second).
+   initialized with a TAT of the current time (t₀) plus the _cost increment_. We
+   happen to treat the request as having a cost of 1, and the _emission period_
+   is 1/20th of a second, so the _cost increment_ is 1/20th of a second.
 
 3. Bucket 'NewFoosPerIPAddress:172.23.45.22':
-    - will reset to full in 50ms (1/20th of a second),
     - will allow another newFoo request immediately,
-    - will allow between 1 and 19 more requests in the next 50ms,
+    - will allow 19 more requests in the next 50ms,
     - will reject the 20th request made in the next 50ms,
     - and will allow 1 request every 50ms, indefinitely.
+    - will act like an uninitialized bucket (allowing the full 20 request burst)
+      if 50ms pass with no more requests.
 
 The subscriber makes another request 5ms later:
 
 4. The TAT at bucket key 'NewFoosPerIPAddress:172.23.45.22' is compared against
-   the current time and the _burst offset_. The current time is greater than the
-   TAT minus the cost increment. Therefore, the request is approved.
+   the current time and the _tolerance_ of 1000ms. The TAT is less than current
+   time plus the tolerance. Therefore, the request is approved.
 
-5. The TAT at bucket key 'NewFoosPerIPAddress:172.23.45.22' is advanced by the
-   cost increment to account for the cost of the request.
+5. The TAT at bucket key 'NewFoosPerIPAddress:172.23.45.22' is again advanced by the
+   _cost increment_ to account for the cost of the request.
 
-The subscriber makes a total of 18 requests over the next 44ms:
+The subscriber makes a total of 19 more requests over the next 44ms:
 
-6. The current time is less than the TAT at bucket key
-   'NewFoosPerIPAddress:172.23.45.22' minus the burst offset, thus the request
-   is rejected.
+6. The TAT has now been advanced by the _cost increment_ a total of 21 times,
+   for a total of 1050ms. The current time is t₀+49ms, and the TAT is
+   t₀+1050ms.
+
+The subscriber makes another request with no delay:
+
+7. The current time plus the tolerance (1000ms) is t₀+1049ms. The TAT of t₀+1050
+   is greater than that, so the request is denied. The TAT is not modified.
+
+The subscriber makes another request 2ms later:
+
+8. The current time plus the tolerance (1000ms) is t₀+1051 ms. The TAT of
+   t₀+1050 is now _less_ than that, so the request is accepted and the TAT is
+   increased by the _cost increment_ again.
+
+The subscriber shuts down their server and takes a vacation. Two weeks later,
+they boot it back up and make another request:
+
+9. The TAT is less than the current time. If we simply increased the TAT by the
+   _cost increment_, it would be as if the subscriber saved up a huge burst.
+   Instead, we set the TAT to the current time plus the _cost increment_.
 
 This mechanism allows for bursts of traffic but also ensures that the average
 rate of requests stays within the prescribed limits over time.
