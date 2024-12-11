@@ -85,9 +85,9 @@ type Decision struct {
 	// capacity, assuming no further requests are made.
 	resetIn time.Duration
 
-	// newTAT indicates the time at which the bucket will be full. It is the
-	// theoretical arrival time (TAT) of next request. It must be no more than
-	// (burst * (period / count)) in the future at any single point in time.
+	// newTAT indicates an updated Theoretical Arrival Time (TAT) that should
+	// be persisted for this request. See README.md in this directory for
+	// the definition of TAT.
 	newTAT time.Time
 
 	// transaction is the Transaction that resulted in this Decision. It is
@@ -203,8 +203,7 @@ func (l *Limiter) Check(ctx context.Context, txn Transaction) (*Decision, error)
 			return nil, err
 		}
 		// First request from this client. No need to initialize the bucket
-		// because this is a check, not a spend. A TAT of "now" is equivalent to
-		// a full bucket.
+		// because this is a check, not a spend.
 		return maybeSpend(l.clk, txn, l.clk.Now()), nil
 	}
 	return maybeSpend(l.clk, txn, tat), nil
