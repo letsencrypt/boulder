@@ -409,16 +409,10 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	txnBuilder, err := ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
 	test.AssertNotError(t, err, "making transaction composer")
 
-	var unpauseSigner unpause.JWTSigner
-	var unpauseLifetime time.Duration
-	var unpauseURL string
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		unpauseSigner, err = unpause.NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})
-		test.AssertNotError(t, err, "making unpause signer")
-		unpauseLifetime = time.Hour * 24 * 14
-		unpauseURL = "https://boulder.service.consul:4003"
-	}
-
+	unpauseSigner, err := unpause.NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})
+	test.AssertNotError(t, err, "making unpause signer")
+	unpauseLifetime := time.Hour * 24 * 14
+	unpauseURL := "https://boulder.service.consul:4003"
 	wfe, err := NewWebFrontEndImpl(
 		stats,
 		fc,
