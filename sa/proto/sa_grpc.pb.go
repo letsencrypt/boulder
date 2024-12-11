@@ -23,12 +23,10 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	StorageAuthorityReadOnly_CountCertificatesByNames_FullMethodName     = "/sa.StorageAuthorityReadOnly/CountCertificatesByNames"
-	StorageAuthorityReadOnly_CountFQDNSets_FullMethodName                = "/sa.StorageAuthorityReadOnly/CountFQDNSets"
 	StorageAuthorityReadOnly_CountInvalidAuthorizations2_FullMethodName  = "/sa.StorageAuthorityReadOnly/CountInvalidAuthorizations2"
 	StorageAuthorityReadOnly_CountOrders_FullMethodName                  = "/sa.StorageAuthorityReadOnly/CountOrders"
 	StorageAuthorityReadOnly_CountPendingAuthorizations2_FullMethodName  = "/sa.StorageAuthorityReadOnly/CountPendingAuthorizations2"
 	StorageAuthorityReadOnly_FQDNSetExists_FullMethodName                = "/sa.StorageAuthorityReadOnly/FQDNSetExists"
-	StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_FullMethodName   = "/sa.StorageAuthorityReadOnly/FQDNSetTimestampsForWindow"
 	StorageAuthorityReadOnly_GetAuthorization2_FullMethodName            = "/sa.StorageAuthorityReadOnly/GetAuthorization2"
 	StorageAuthorityReadOnly_GetAuthorizations2_FullMethodName           = "/sa.StorageAuthorityReadOnly/GetAuthorizations2"
 	StorageAuthorityReadOnly_GetCertificate_FullMethodName               = "/sa.StorageAuthorityReadOnly/GetCertificate"
@@ -59,12 +57,10 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type StorageAuthorityReadOnlyClient interface {
 	CountCertificatesByNames(ctx context.Context, in *CountCertificatesByNamesRequest, opts ...grpc.CallOption) (*CountByNames, error)
-	CountFQDNSets(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Count, error)
 	CountInvalidAuthorizations2(ctx context.Context, in *CountInvalidAuthorizationsRequest, opts ...grpc.CallOption) (*Count, error)
 	CountOrders(ctx context.Context, in *CountOrdersRequest, opts ...grpc.CallOption) (*Count, error)
 	CountPendingAuthorizations2(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Count, error)
 	FQDNSetExists(ctx context.Context, in *FQDNSetExistsRequest, opts ...grpc.CallOption) (*Exists, error)
-	FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error)
 	GetAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto.Authorization, error)
 	GetAuthorizations2(ctx context.Context, in *GetAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
@@ -108,16 +104,6 @@ func (c *storageAuthorityReadOnlyClient) CountCertificatesByNames(ctx context.Co
 	return out, nil
 }
 
-func (c *storageAuthorityReadOnlyClient) CountFQDNSets(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Count, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Count)
-	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_CountFQDNSets_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *storageAuthorityReadOnlyClient) CountInvalidAuthorizations2(ctx context.Context, in *CountInvalidAuthorizationsRequest, opts ...grpc.CallOption) (*Count, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Count)
@@ -152,16 +138,6 @@ func (c *storageAuthorityReadOnlyClient) FQDNSetExists(ctx context.Context, in *
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Exists)
 	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_FQDNSetExists_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityReadOnlyClient) FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Timestamps)
-	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -439,12 +415,10 @@ func (c *storageAuthorityReadOnlyClient) GetPausedIdentifiers(ctx context.Contex
 // for forward compatibility
 type StorageAuthorityReadOnlyServer interface {
 	CountCertificatesByNames(context.Context, *CountCertificatesByNamesRequest) (*CountByNames, error)
-	CountFQDNSets(context.Context, *CountFQDNSetsRequest) (*Count, error)
 	CountInvalidAuthorizations2(context.Context, *CountInvalidAuthorizationsRequest) (*Count, error)
 	CountOrders(context.Context, *CountOrdersRequest) (*Count, error)
 	CountPendingAuthorizations2(context.Context, *RegistrationID) (*Count, error)
 	FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error)
-	FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error)
 	GetAuthorization2(context.Context, *AuthorizationID2) (*proto.Authorization, error)
 	GetAuthorizations2(context.Context, *GetAuthorizationsRequest) (*Authorizations, error)
 	GetCertificate(context.Context, *Serial) (*proto.Certificate, error)
@@ -478,9 +452,6 @@ type UnimplementedStorageAuthorityReadOnlyServer struct {
 func (UnimplementedStorageAuthorityReadOnlyServer) CountCertificatesByNames(context.Context, *CountCertificatesByNamesRequest) (*CountByNames, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CountCertificatesByNames not implemented")
 }
-func (UnimplementedStorageAuthorityReadOnlyServer) CountFQDNSets(context.Context, *CountFQDNSetsRequest) (*Count, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CountFQDNSets not implemented")
-}
 func (UnimplementedStorageAuthorityReadOnlyServer) CountInvalidAuthorizations2(context.Context, *CountInvalidAuthorizationsRequest) (*Count, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CountInvalidAuthorizations2 not implemented")
 }
@@ -492,9 +463,6 @@ func (UnimplementedStorageAuthorityReadOnlyServer) CountPendingAuthorizations2(c
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FQDNSetExists not implemented")
-}
-func (UnimplementedStorageAuthorityReadOnlyServer) FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method FQDNSetTimestampsForWindow not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetAuthorization2(context.Context, *AuthorizationID2) (*proto.Authorization, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAuthorization2 not implemented")
@@ -597,24 +565,6 @@ func _StorageAuthorityReadOnly_CountCertificatesByNames_Handler(srv interface{},
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StorageAuthorityReadOnly_CountFQDNSets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CountFQDNSetsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityReadOnlyServer).CountFQDNSets(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthorityReadOnly_CountFQDNSets_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityReadOnlyServer).CountFQDNSets(ctx, req.(*CountFQDNSetsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _StorageAuthorityReadOnly_CountInvalidAuthorizations2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CountInvalidAuthorizationsRequest)
 	if err := dec(in); err != nil {
@@ -683,24 +633,6 @@ func _StorageAuthorityReadOnly_FQDNSetExists_Handler(srv interface{}, ctx contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityReadOnlyServer).FQDNSetExists(ctx, req.(*FQDNSetExistsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CountFQDNSetsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityReadOnlyServer).FQDNSetTimestampsForWindow(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityReadOnlyServer).FQDNSetTimestampsForWindow(ctx, req.(*CountFQDNSetsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1103,10 +1035,6 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthorityReadOnly_CountCertificatesByNames_Handler,
 		},
 		{
-			MethodName: "CountFQDNSets",
-			Handler:    _StorageAuthorityReadOnly_CountFQDNSets_Handler,
-		},
-		{
 			MethodName: "CountInvalidAuthorizations2",
 			Handler:    _StorageAuthorityReadOnly_CountInvalidAuthorizations2_Handler,
 		},
@@ -1121,10 +1049,6 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FQDNSetExists",
 			Handler:    _StorageAuthorityReadOnly_FQDNSetExists_Handler,
-		},
-		{
-			MethodName: "FQDNSetTimestampsForWindow",
-			Handler:    _StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_Handler,
 		},
 		{
 			MethodName: "GetAuthorization2",
@@ -1230,7 +1154,6 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 
 const (
 	StorageAuthority_CountCertificatesByNames_FullMethodName     = "/sa.StorageAuthority/CountCertificatesByNames"
-	StorageAuthority_CountFQDNSets_FullMethodName                = "/sa.StorageAuthority/CountFQDNSets"
 	StorageAuthority_CountInvalidAuthorizations2_FullMethodName  = "/sa.StorageAuthority/CountInvalidAuthorizations2"
 	StorageAuthority_CountOrders_FullMethodName                  = "/sa.StorageAuthority/CountOrders"
 	StorageAuthority_CountPendingAuthorizations2_FullMethodName  = "/sa.StorageAuthority/CountPendingAuthorizations2"
@@ -1289,7 +1212,6 @@ const (
 type StorageAuthorityClient interface {
 	// Getters: this list must be identical to the StorageAuthorityReadOnly rpcs.
 	CountCertificatesByNames(ctx context.Context, in *CountCertificatesByNamesRequest, opts ...grpc.CallOption) (*CountByNames, error)
-	CountFQDNSets(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Count, error)
 	CountInvalidAuthorizations2(ctx context.Context, in *CountInvalidAuthorizationsRequest, opts ...grpc.CallOption) (*Count, error)
 	CountOrders(ctx context.Context, in *CountOrdersRequest, opts ...grpc.CallOption) (*Count, error)
 	CountPendingAuthorizations2(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Count, error)
@@ -1355,16 +1277,6 @@ func (c *storageAuthorityClient) CountCertificatesByNames(ctx context.Context, i
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CountByNames)
 	err := c.cc.Invoke(ctx, StorageAuthority_CountCertificatesByNames_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *storageAuthorityClient) CountFQDNSets(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Count, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Count)
-	err := c.cc.Invoke(ctx, StorageAuthority_CountFQDNSets_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1913,7 +1825,6 @@ func (c *storageAuthorityClient) UnpauseAccount(ctx context.Context, in *Registr
 type StorageAuthorityServer interface {
 	// Getters: this list must be identical to the StorageAuthorityReadOnly rpcs.
 	CountCertificatesByNames(context.Context, *CountCertificatesByNamesRequest) (*CountByNames, error)
-	CountFQDNSets(context.Context, *CountFQDNSetsRequest) (*Count, error)
 	CountInvalidAuthorizations2(context.Context, *CountInvalidAuthorizationsRequest) (*Count, error)
 	CountOrders(context.Context, *CountOrdersRequest) (*Count, error)
 	CountPendingAuthorizations2(context.Context, *RegistrationID) (*Count, error)
@@ -1974,9 +1885,6 @@ type UnimplementedStorageAuthorityServer struct {
 
 func (UnimplementedStorageAuthorityServer) CountCertificatesByNames(context.Context, *CountCertificatesByNamesRequest) (*CountByNames, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CountCertificatesByNames not implemented")
-}
-func (UnimplementedStorageAuthorityServer) CountFQDNSets(context.Context, *CountFQDNSetsRequest) (*Count, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CountFQDNSets not implemented")
 }
 func (UnimplementedStorageAuthorityServer) CountInvalidAuthorizations2(context.Context, *CountInvalidAuthorizationsRequest) (*Count, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CountInvalidAuthorizations2 not implemented")
@@ -2155,24 +2063,6 @@ func _StorageAuthority_CountCertificatesByNames_Handler(srv interface{}, ctx con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityServer).CountCertificatesByNames(ctx, req.(*CountCertificatesByNamesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _StorageAuthority_CountFQDNSets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CountFQDNSetsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(StorageAuthorityServer).CountFQDNSets(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: StorageAuthority_CountFQDNSets_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).CountFQDNSets(ctx, req.(*CountFQDNSetsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -3059,10 +2949,6 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CountCertificatesByNames",
 			Handler:    _StorageAuthority_CountCertificatesByNames_Handler,
-		},
-		{
-			MethodName: "CountFQDNSets",
-			Handler:    _StorageAuthority_CountFQDNSets_Handler,
 		},
 		{
 			MethodName: "CountInvalidAuthorizations2",

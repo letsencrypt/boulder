@@ -301,11 +301,6 @@ func (sa *StorageAuthority) UpdateRegistration(_ context.Context, _ *corepb.Regi
 	return &emptypb.Empty{}, nil
 }
 
-// CountFQDNSets is a mock
-func (sa *StorageAuthorityReadOnly) CountFQDNSets(_ context.Context, _ *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return &sapb.Count{}, nil
-}
-
 // FQDNSetTimestampsForWindow is a mock
 func (sa *StorageAuthorityReadOnly) FQDNSetTimestampsForWindow(_ context.Context, _ *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Timestamps, error) {
 	return &sapb.Timestamps{}, nil
