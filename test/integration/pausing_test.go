@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -24,10 +23,6 @@ import (
 
 func TestIdentifiersPausedForAccount(t *testing.T) {
 	t.Parallel()
-
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		t.Skip("Skipping test as it requires the next configuration")
-	}
 
 	tlsCerts := &cmd.TLSConfig{
 		CACertFile: "test/certs/ipki/minica.pem",
