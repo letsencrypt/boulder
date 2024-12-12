@@ -27,6 +27,7 @@ const (
 	StorageAuthorityReadOnly_CountOrders_FullMethodName                  = "/sa.StorageAuthorityReadOnly/CountOrders"
 	StorageAuthorityReadOnly_CountPendingAuthorizations2_FullMethodName  = "/sa.StorageAuthorityReadOnly/CountPendingAuthorizations2"
 	StorageAuthorityReadOnly_FQDNSetExists_FullMethodName                = "/sa.StorageAuthorityReadOnly/FQDNSetExists"
+	StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_FullMethodName   = "/sa.StorageAuthorityReadOnly/FQDNSetTimestampsForWindow"
 	StorageAuthorityReadOnly_GetAuthorization2_FullMethodName            = "/sa.StorageAuthorityReadOnly/GetAuthorization2"
 	StorageAuthorityReadOnly_GetAuthorizations2_FullMethodName           = "/sa.StorageAuthorityReadOnly/GetAuthorizations2"
 	StorageAuthorityReadOnly_GetCertificate_FullMethodName               = "/sa.StorageAuthorityReadOnly/GetCertificate"
@@ -61,6 +62,7 @@ type StorageAuthorityReadOnlyClient interface {
 	CountOrders(ctx context.Context, in *CountOrdersRequest, opts ...grpc.CallOption) (*Count, error)
 	CountPendingAuthorizations2(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Count, error)
 	FQDNSetExists(ctx context.Context, in *FQDNSetExistsRequest, opts ...grpc.CallOption) (*Exists, error)
+	FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error)
 	GetAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto.Authorization, error)
 	GetAuthorizations2(ctx context.Context, in *GetAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
@@ -138,6 +140,16 @@ func (c *storageAuthorityReadOnlyClient) FQDNSetExists(ctx context.Context, in *
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Exists)
 	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_FQDNSetExists_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityReadOnlyClient) FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Timestamps)
+	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -419,6 +431,7 @@ type StorageAuthorityReadOnlyServer interface {
 	CountOrders(context.Context, *CountOrdersRequest) (*Count, error)
 	CountPendingAuthorizations2(context.Context, *RegistrationID) (*Count, error)
 	FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error)
+	FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error)
 	GetAuthorization2(context.Context, *AuthorizationID2) (*proto.Authorization, error)
 	GetAuthorizations2(context.Context, *GetAuthorizationsRequest) (*Authorizations, error)
 	GetCertificate(context.Context, *Serial) (*proto.Certificate, error)
@@ -463,6 +476,9 @@ func (UnimplementedStorageAuthorityReadOnlyServer) CountPendingAuthorizations2(c
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FQDNSetExists not implemented")
+}
+func (UnimplementedStorageAuthorityReadOnlyServer) FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FQDNSetTimestampsForWindow not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetAuthorization2(context.Context, *AuthorizationID2) (*proto.Authorization, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAuthorization2 not implemented")
@@ -633,6 +649,24 @@ func _StorageAuthorityReadOnly_FQDNSetExists_Handler(srv interface{}, ctx contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityReadOnlyServer).FQDNSetExists(ctx, req.(*FQDNSetExistsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CountFQDNSetsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityReadOnlyServer).FQDNSetTimestampsForWindow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityReadOnlyServer).FQDNSetTimestampsForWindow(ctx, req.(*CountFQDNSetsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1049,6 +1083,10 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FQDNSetExists",
 			Handler:    _StorageAuthorityReadOnly_FQDNSetExists_Handler,
+		},
+		{
+			MethodName: "FQDNSetTimestampsForWindow",
+			Handler:    _StorageAuthorityReadOnly_FQDNSetTimestampsForWindow_Handler,
 		},
 		{
 			MethodName: "GetAuthorization2",

@@ -15,6 +15,7 @@ service StorageAuthorityReadOnly {
   rpc CountOrders(CountOrdersRequest) returns (Count) {}
   rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
   rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
+  rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
   rpc GetAuthorizations2(GetAuthorizationsRequest) returns (Authorizations) {}
   rpc GetCertificate(Serial) returns (core.Certificate) {}
