@@ -277,7 +277,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 	batchDecision := allowedDecision
 	newBuckets := make(map[string]time.Time)
 	incrBuckets := make(map[string]increment)
-	expiredBuckets := make(map[string]time.Time)
+	staleBuckets := make(map[string]time.Time)
 	txnOutcomes := make(map[Transaction]string)
 
 	for _, txn := range batch {
@@ -301,7 +301,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 				newBuckets[txn.bucketKey] = d.newTAT
 			} else if originalTAT.Before(l.clk.Now()) {
 				// A bucket exists, with a TAT in the past, update it with BatchSet.
-				expiredBuckets[txn.bucketKey] = d.newTAT
+				staleBuckets[txn.bucketKey] = d.newTAT
 			} else {
 				// A bucket exists, with a TAT in the future, update it with BatchIncrement.
 				incrBuckets[txn.bucketKey] = increment{
@@ -333,15 +333,15 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 				if !created {
 					// A bucket was created by another request, fall back to
 					// BatchSet.
-					expiredBuckets[k] = newBuckets[k]
+					staleBuckets[k] = newBuckets[k]
 				}
 			}
 		}
 
-		if len(expiredBuckets) > 0 {
-			err := l.source.BatchSet(ctx, expiredBuckets)
+		if len(staleBuckets) > 0 {
+			err := l.source.BatchSet(ctx, staleBuckets)
 			if err != nil {
-				return nil, fmt.Errorf("batch set for %d keys: %w", len(expiredBuckets), err)
+				return nil, fmt.Errorf("batch set for %d keys: %w", len(staleBuckets), err)
 			}
 		}
 
