@@ -81,10 +81,6 @@ func main() {
 	_ = blog.Set(blog.StdoutLogger(6))
 	defer cmd.AuditPanic()
 
-	// Compile the ceremony binary for easy re-use.
-	_, err := exec.Command("make", "build").CombinedOutput()
-	cmd.FailOnError(err, "compiling ceremony tool")
-
 	// Create SoftHSM slots for the root signing keys
 	rsaRootKeySlot, err := createSlot("Root RSA")
 	cmd.FailOnError(err, "failed creating softhsm2 slot for RSA root key")
