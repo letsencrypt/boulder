@@ -3698,8 +3698,12 @@ func (sa *mockSAWithFinalize) FinalizeOrder(ctx context.Context, req *sapb.Final
 	return &emptypb.Empty{}, nil
 }
 
-func (sa *mockSAWithFinalize) FQDNSetExists(ctx context.Context, in *sapb.FQDNSetExistsRequest, opts ...grpc.CallOption) (*sapb.Exists, error) {
-	return &sapb.Exists{}, nil
+func (sa *mockSAWithFinalize) FQDNSetTimestampsForWindow(ctx context.Context, in *sapb.CountFQDNSetsRequest, opts ...grpc.CallOption) (*sapb.Timestamps, error) {
+	return &sapb.Timestamps{
+		Timestamps: []*timestamppb.Timestamp{
+			timestamppb.Now(),
+		},
+	}, nil
 }
 
 func TestIssueCertificateInnerWithProfile(t *testing.T) {

@@ -1290,11 +1290,15 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return nil, nil, wrapError(err, "getting SCTs")
 	}
 
-	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: parsedPrecert.DNSNames})
+	timestamps, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
+		DnsNames: parsedPrecert.DNSNames,
+		Window:   durationpb.New(120 * 24 * time.Hour),
+		Limit:    1,
+	})
 	if err != nil {
 		return nil, nil, wrapError(err, "checking if certificate is a renewal")
 	}
-	isRenewal := exists.Exists
+	isRenewal := len(timestamps.Timestamps) > 0
 
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:             precert.DER,

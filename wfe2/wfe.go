@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/core"
@@ -2349,12 +2350,16 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		// The Subscriber does not have an ARI exemption. However, we can check
 		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount
 		// and CertificatesPerDomain limits.
-		exists, err := wfe.sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names})
+		timestamps, err := wfe.sa.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
+			DnsNames: names,
+			Window:   durationpb.New(120 * 24 * time.Hour),
+			Limit:    1,
+		})
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While checking renewal exemption status"), err)
 			return
 		}
-		isRenewal = exists.Exists
+		isRenewal = len(timestamps.Timestamps) > 0
 	}
 
 	err = wfe.validateCertificateProfileName(newOrderRequest.Profile)
