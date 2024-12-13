@@ -811,6 +811,15 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, len(resp.Timestamps), 2)
 	test.AssertEquals(t, firstIssued, resp.Timestamps[len(resp.Timestamps)-1].AsTime())
+
+	resp, err = sa.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
+		DnsNames: names,
+		Window:   durationpb.New(window),
+		Limit:    1,
+	})
+	test.AssertNotError(t, err, "Failed to count name sets")
+	test.AssertEquals(t, len(resp.Timestamps), 1)
+	test.AssertEquals(t, firstIssued, resp.Timestamps[len(resp.Timestamps)-1].AsTime())
 }
 
 func TestFQDNSetsExists(t *testing.T) {
