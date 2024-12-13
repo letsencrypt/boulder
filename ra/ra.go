@@ -337,6 +337,10 @@ type certificateRequestEvent struct {
 	// CertProfileHash is SHA256 sum over every exported field of an
 	// issuance.ProfileConfig, represented here as a hexadecimal string.
 	CertProfileHash string `json:",omitempty"`
+	// PreviousCertificateIssued is present when this certificate uses the same set
+	// of FQDNs as a previous certificate (from any account) and contains the
+	// notBefore of the most recent such certificate.
+	PreviousCertificateIssued time.Time `json:",omitempty"`
 }
 
 // certificateRevocationEvent is a struct for holding information that is logged
@@ -1135,9 +1139,23 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ra.inflightFinalizes.Inc()
 	defer ra.inflightFinalizes.Dec()
 
+	isRenewal := false
+	timestamps, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
+		DnsNames: order.DnsNames,
+		Window:   durationpb.New(120 * 24 * time.Hour),
+		Limit:    1,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("checking if certificate is a renewal: %w", err)
+	}
+	if len(timestamps.Timestamps) > 0 {
+		isRenewal = true
+		logEvent.PreviousCertificateIssued = timestamps.Timestamps[0].AsTime()
+	}
+
 	// Step 3: Issue the Certificate
 	cert, cpId, err := ra.issueCertificateInner(
-		ctx, csr, order.CertificateProfileName, accountID(order.RegistrationID), orderID(order.Id))
+		ctx, csr, isRenewal, order.CertificateProfileName, accountID(order.RegistrationID), orderID(order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
 	var result string
@@ -1245,6 +1263,7 @@ type certProfileID struct {
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	csr *x509.CertificateRequest,
+	isRenewal bool,
 	profileName string,
 	acctID accountID,
 	oID orderID) (*x509.Certificate, *certProfileID, error) {
@@ -1289,16 +1308,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return nil, nil, wrapError(err, "getting SCTs")
 	}
-
-	timestamps, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
-		DnsNames: parsedPrecert.DNSNames,
-		Window:   durationpb.New(120 * 24 * time.Hour),
-		Limit:    1,
-	})
-	if err != nil {
-		return nil, nil, wrapError(err, "checking if certificate is a renewal")
-	}
-	isRenewal := len(timestamps.Timestamps) > 0
 
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:             precert.DER,

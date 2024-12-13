@@ -86,6 +86,8 @@ CREATE TABLE `fqdnSets` (
   `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   `setHash` binary(32) NOT NULL,
   `serial` varchar(255) NOT NULL,
+  -- Note: This should actually be called "notBefore" since it is set
+  -- based on the certificate's notBefore field, not the issuance time.
   `issued` datetime NOT NULL,
   `expires` datetime NOT NULL,
   PRIMARY KEY (`id`),
