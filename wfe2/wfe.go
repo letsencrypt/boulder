@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/core"
@@ -1442,8 +1443,8 @@ func (wfe *WebFrontEndImpl) Account(
 
 // updateAccount unmarshals an account update request from the provided
 // requestBody to update the given registration. Important: It is assumed the
-// request has already been authenticated by the caller. If the request is a
-// valid update the resulting updated account is returned, otherwise a problem
+// request has already been authenticated by the caller. If the request is
+// a valid update the resulting updated account is returned, otherwise a problem
 // is returned.
 func (wfe *WebFrontEndImpl) updateAccount(
 	ctx context.Context,
@@ -1466,9 +1467,9 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	// update would be performed. Deactivation deletes the contacts field.
 	if accountUpdateRequest.Status == core.StatusDeactivated {
 		_, err = wfe.ra.DeactivateRegistration(ctx, &corepb.Registration{Id: currAcct.ID, Status: string(core.StatusDeactivated)})
-		if err != nil {
+	if err != nil {
 			return nil, web.ProblemDetailsForError(err, "Unable to deactivate account")
-		}
+	}
 
 		currAcct.Status = core.StatusDeactivated
 		return currAcct, nil
@@ -1481,7 +1482,7 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	var contacts []string
 	if accountUpdateRequest.Contact != nil {
 		contacts = *accountUpdateRequest.Contact
-	}
+		}
 
 	updatedAcct, err := wfe.ra.UpdateRegistrationContact(ctx, &rapb.UpdateRegistrationContactRequest{RegistrationID: currAcct.ID, Contacts: contacts})
 	if err != nil {
@@ -2385,12 +2386,16 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		// The Subscriber does not have an ARI exemption. However, we can check
 		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount
 		// and CertificatesPerDomain limits.
-		exists, err := wfe.sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names})
+		timestamps, err := wfe.sa.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
+			DnsNames: names,
+			Window:   durationpb.New(120 * 24 * time.Hour),
+			Limit:    1,
+		})
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While checking renewal exemption status"), err)
 			return
 		}
-		isRenewal = exists.Exists
+		isRenewal = len(timestamps.Timestamps) > 0
 	}
 
 	err = wfe.validateCertificateProfileName(newOrderRequest.Profile)

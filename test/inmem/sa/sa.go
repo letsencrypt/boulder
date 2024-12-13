@@ -121,6 +121,10 @@ func (sa SA) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest, 
 	return sa.Impl.FQDNSetExists(ctx, req)
 }
 
+func (sa SA) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Timestamps, error) {
+	return sa.Impl.FQDNSetTimestampsForWindow(ctx, req)
+}
+
 func (sa SA) PauseIdentifiers(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error) {
 	return sa.Impl.PauseIdentifiers(ctx, req)
 }
