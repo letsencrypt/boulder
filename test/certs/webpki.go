@@ -82,8 +82,8 @@ func main() {
 	defer cmd.AuditPanic()
 
 	// Compile the ceremony binary for easy re-use.
-	output, err := exec.Command("make", "build").CombinedOutput()
-	cmd.FailOnError(err, fmt.Sprintf("compiling ceremony tool: %s", string(output)))
+	_, err := exec.Command("make", "build").CombinedOutput()
+	cmd.FailOnError(err, "compiling ceremony tool")
 
 	// Create SoftHSM slots for the root signing keys
 	rsaRootKeySlot, err := createSlot("Root RSA")
