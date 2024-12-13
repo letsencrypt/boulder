@@ -277,10 +277,12 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 	batchDecision := allowedDecision
 	newBuckets := make(map[string]time.Time)
 	incrBuckets := make(map[string]increment)
+	expiredBuckets := make(map[string]time.Time)
 	txnOutcomes := make(map[Transaction]string)
 
 	for _, txn := range batch {
 		tat, bucketExists := tats[txn.bucketKey]
+		originalTAT := tat
 		if !bucketExists {
 			// First request from this client.
 			tat = l.clk.Now()
@@ -294,14 +296,18 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		}
 
 		if d.allowed && (tat != d.newTAT) && txn.spend {
-			// New bucket state should be persisted.
-			if bucketExists {
+			if !bucketExists {
+				// No bucket exists, initialize a new bucket with BatchSetNotExist.
+				newBuckets[txn.bucketKey] = d.newTAT
+			} else if originalTAT.Before(l.clk.Now()) {
+				// A bucket exists, with a TAT in the past, update it with BatchSet.
+				expiredBuckets[txn.bucketKey] = d.newTAT
+			} else {
+				// A bucket exists, with a TAT in the future, update it with BatchIncrement.
 				incrBuckets[txn.bucketKey] = increment{
 					cost: time.Duration(txn.cost * txn.limit.emissionInterval),
 					ttl:  time.Duration(txn.limit.burstOffset),
 				}
-			} else {
-				newBuckets[txn.bucketKey] = d.newTAT
 			}
 		}
 
@@ -319,14 +325,28 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 
 	if batchDecision.allowed {
 		if len(newBuckets) > 0 {
-			err = l.source.BatchSet(ctx, newBuckets)
+			createdBuckets, err := l.source.BatchSetNotExisting(ctx, newBuckets)
 			if err != nil {
 				return nil, fmt.Errorf("batch set for %d keys: %w", len(newBuckets), err)
+			}
+			for k, created := range createdBuckets {
+				if !created {
+					// A bucket was created by another request, fall back to
+					// BatchSet.
+					expiredBuckets[k] = newBuckets[k]
+				}
+			}
+		}
+
+		if len(expiredBuckets) > 0 {
+			err := l.source.BatchSet(ctx, expiredBuckets)
+			if err != nil {
+				return nil, fmt.Errorf("batch set for %d keys: %w", len(expiredBuckets), err)
 			}
 		}
 
 		if len(incrBuckets) > 0 {
-			err = l.source.BatchIncrement(ctx, incrBuckets)
+			err := l.source.BatchIncrement(ctx, incrBuckets)
 			if err != nil {
 				return nil, fmt.Errorf("batch increment for %d keys: %w", len(incrBuckets), err)
 			}
