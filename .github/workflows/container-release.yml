@@ -1,0 +1,37 @@
+# Build and publish containers for this release
+# see also container-build.yml
+
+name: Container Release
+
+on:
+  push:
+    tags:
+      - release-*
+
+jobs:
+  push-container:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: TBD
+            image: ghcr.io/mcpherrinm/boulder
+          - dockerfile: test/ct-test-srv/Dockerfile
+            image: ghcr.io/mcpherrinm/ct-test-srv
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build
+        run: docker buildx . -f "${{ matrix.image }}" -t "${{ image }}"
+
+      - name: login
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push
+        run: docker push "${{ image }}:${{ github.ref_name }}"
