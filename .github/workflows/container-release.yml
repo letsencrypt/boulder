@@ -28,7 +28,7 @@ jobs:
           persist-credentials: false
 
       - name: Build
-        run: docker buildx . -f "${{ matrix.dockerfile }}" -t "${{ matrix.image }}"
+        run: docker buildx build . -f "${{ matrix.dockerfile }}" -t "${{ matrix.image }}"
 
       - name: login
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
