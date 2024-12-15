@@ -28,10 +28,10 @@ jobs:
           persist-credentials: false
 
       - name: Build
-        run: docker buildx . -f "${{ matrix.image }}" -t "${{ image }}"
+        run: docker buildx . -f "${{ matrix.dockerfile }}" -t "${{ matrix.image }}"
 
       - name: login
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Push
-        run: docker push "${{ image }}:${{ github.ref_name }}"
+        run: docker push "${{ matrix.image }}:${{ github.ref_name }}"
