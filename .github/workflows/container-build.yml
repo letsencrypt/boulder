@@ -1,0 +1,31 @@
+# Build containers on every PR
+# See also container-release.yml
+
+name: Container Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-container:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: test/ct-test-srv/Dockerfile
+            image: ghcr.io/letsencrypt/ct-test-srv
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build
+        run: docker buildx build . -f "${{ matrix.dockerfile }}" -t "${{ matrix.image }}:${{ github.sha }}"
