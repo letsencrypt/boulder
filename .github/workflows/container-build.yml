@@ -28,4 +28,4 @@ jobs:
           persist-credentials: false
 
       - name: Build
-        run: docker buildx . -f "${{ matrix.image }}" -t "${{ image }}"
+        run: docker buildx build . -f "${{ matrix.dockerfile }}" -t "${{ matrix.image }}"
