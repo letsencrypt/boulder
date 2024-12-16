@@ -42,3 +42,6 @@ jobs:
       - name: Show checksums
         id: check
         run: cat boulder*.checksums.txt
+
+      - name: Build Container
+        run: docker buildx build .  --build-arg "GO_VERSION=${{ matrix.GO_VERSION }}" -f "${{ matrix.dockerfile }}" -t "${{ matrix.image }}:${{ github.sha }}"
