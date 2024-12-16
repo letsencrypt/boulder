@@ -298,13 +298,13 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		if d.allowed && (effectiveTAT != d.newTAT) && txn.spend {
 			if !bucketExists {
 				newBuckets[txn.bucketKey] = d.newTAT
-			} else if storedTAT.Before(l.clk.Now()) {
-				staleBuckets[txn.bucketKey] = d.newTAT
-			} else {
+			} else if storedTAT.After(l.clk.Now()) {
 				incrBuckets[txn.bucketKey] = increment{
 					cost: time.Duration(txn.cost * txn.limit.emissionInterval),
 					ttl:  time.Duration(txn.limit.burstOffset),
 				}
+			} else {
+				staleBuckets[txn.bucketKey] = d.newTAT
 			}
 		}
 
@@ -342,6 +342,13 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 			}
 		}
 
+		if len(incrBuckets) > 0 {
+			err := l.source.BatchIncrement(ctx, incrBuckets)
+			if err != nil {
+				return nil, fmt.Errorf("batch increment for %d keys: %w", len(incrBuckets), err)
+			}
+		}
+
 		if len(staleBuckets) > 0 {
 			// Incrementing a TAT in the past grants unintended burst capacity.
 			// So instead we overwrite it with a TAT of now + increment. This
@@ -350,13 +357,6 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 			err := l.source.BatchSet(ctx, staleBuckets)
 			if err != nil {
 				return nil, fmt.Errorf("batch set for %d keys: %w", len(staleBuckets), err)
-			}
-		}
-
-		if len(incrBuckets) > 0 {
-			err := l.source.BatchIncrement(ctx, incrBuckets)
-			if err != nil {
-				return nil, fmt.Errorf("batch increment for %d keys: %w", len(incrBuckets), err)
 			}
 		}
 	}
