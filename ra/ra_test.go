@@ -1397,17 +1397,6 @@ func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sa
 	return &sapb.CountByNames{Counts: counts}, nil
 }
 
-func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	var total int64
-	for _, name := range req.DnsNames {
-		entry, ok := m.issuanceTimestamps[name]
-		if ok {
-			total += int64(len(entry.Timestamps))
-		}
-	}
-	return &sapb.Count{Count: total}, nil
-}
-
 func (m mockSAWithFQDNSet) FQDNSetTimestampsForWindow(_ context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Timestamps, error) {
 	if len(req.DnsNames) == 1 {
 		return m.issuanceTimestamps[req.DnsNames[0]], nil

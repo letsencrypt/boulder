@@ -11,7 +11,6 @@ import "google/protobuf/duration.proto";
 // StorageAuthorityReadOnly exposes only those SA methods which are read-only.
 service StorageAuthorityReadOnly {
   rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
-  rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
   rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
   rpc CountOrders(CountOrdersRequest) returns (Count) {}
   rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
@@ -46,7 +45,6 @@ service StorageAuthorityReadOnly {
 service StorageAuthority {
   // Getters: this list must be identical to the StorageAuthorityReadOnly rpcs.
   rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
-  rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
   rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
   rpc CountOrders(CountOrdersRequest) returns (Count) {}
   rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
