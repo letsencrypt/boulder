@@ -281,29 +281,26 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 	txnOutcomes := make(map[Transaction]string)
 
 	for _, txn := range batch {
-		tat, bucketExists := tats[txn.bucketKey]
-		originalTAT := tat
+		storedTAT, bucketExists := tats[txn.bucketKey]
+		effectiveTAT := storedTAT
 		if !bucketExists {
 			// First request from this client.
-			tat = l.clk.Now()
+			effectiveTAT = l.clk.Now()
 		}
 
-		d := maybeSpend(l.clk, txn, tat)
+		d := maybeSpend(l.clk, txn, effectiveTAT)
 
 		if txn.limit.isOverride() {
 			utilization := float64(txn.limit.Burst-d.remaining) / float64(txn.limit.Burst)
 			l.overrideUsageGauge.WithLabelValues(txn.limit.name.String(), txn.limit.overrideKey).Set(utilization)
 		}
 
-		if d.allowed && (tat != d.newTAT) && txn.spend {
+		if d.allowed && (effectiveTAT != d.newTAT) && txn.spend {
 			if !bucketExists {
-				// No bucket exists, initialize a new bucket with BatchSetNotExist.
 				newBuckets[txn.bucketKey] = d.newTAT
-			} else if originalTAT.Before(l.clk.Now()) {
-				// A bucket exists, with a TAT in the past, update it with BatchSet.
+			} else if storedTAT.Before(l.clk.Now()) {
 				staleBuckets[txn.bucketKey] = d.newTAT
 			} else {
-				// A bucket exists, with a TAT in the future, update it with BatchIncrement.
 				incrBuckets[txn.bucketKey] = increment{
 					cost: time.Duration(txn.cost * txn.limit.emissionInterval),
 					ttl:  time.Duration(txn.limit.burstOffset),
@@ -325,15 +322,27 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 
 	if batchDecision.allowed {
 		if len(newBuckets) > 0 {
-			createdBuckets, err := l.source.BatchSetNotExisting(ctx, newBuckets)
+			// Use BatchSetNotExisting to initialize new buckets so that we
+			// detect if concurrent requests have created this bucket at the
+			// same time, which would result in overwriting if we used a plain
+			// "SET" command. If that happens, fall back to incrementing.
+			initializationResults, err := l.source.BatchSetNotExisting(ctx, newBuckets)
 			if err != nil {
 				return nil, fmt.Errorf("batch set for %d keys: %w", len(newBuckets), err)
 			}
-			for k, created := range createdBuckets {
-				if !created {
-					// A bucket was created by another request, fall back to
-					// BatchSet.
-					staleBuckets[k] = newBuckets[k]
+			existingBuckets := make(map[string]struct{})
+			for k, initialized := range initializationResults {
+				if !initialized {
+					existingBuckets[k] = struct{}{}
+				}
+			}
+			for _, v := range txns {
+				_, bucketExists := existingBuckets[v.bucketKey]
+				if bucketExists {
+					incrBuckets[v.bucketKey] = increment{
+						cost: time.Duration(v.cost * v.limit.emissionInterval),
+						ttl:  time.Duration(v.limit.burstOffset),
+					}
 				}
 			}
 		}

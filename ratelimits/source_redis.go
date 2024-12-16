@@ -120,18 +120,21 @@ func (r *RedisSource) BatchSetNotExisting(ctx context.Context, buckets map[strin
 		ttl := tat.UTC().Sub(r.clk.Now()) + 10*time.Minute
 		cmds[bucketKey] = pipeline.SetNX(ctx, bucketKey, tat.UTC().UnixNano(), ttl)
 	}
-
 	_, err := pipeline.Exec(ctx)
-	totalLatency := r.clk.Since(start)
-	perSetLatency := totalLatency / time.Duration(len(buckets))
 	if err != nil {
-		r.observeLatency("batchsetnotexisting", totalLatency, err)
+		r.observeLatency("batchsetnotexisting", r.clk.Since(start), err)
 		return nil, err
 	}
 
 	results := make(map[string]bool, len(buckets))
+	totalLatency := r.clk.Since(start)
+	perSetLatency := totalLatency / time.Duration(len(buckets))
 	for bucketKey, cmd := range cmds {
-		success, _ := cmd.Result()
+		success, err := cmd.Result()
+		if err != nil {
+			r.observeLatency("batchsetnotexisting_entry", perSetLatency, err)
+			return nil, err
+		}
 		results[bucketKey] = success
 		r.observeLatency("batchsetnotexisting_entry", perSetLatency, nil)
 	}
