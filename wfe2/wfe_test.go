@@ -194,11 +194,15 @@ func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *co
 	return in, nil
 }
 
-func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, in *rapb.UpdateRegistrationRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	if !bytes.Equal(in.Base.Key, in.Update.Key) {
-		in.Base.Key = in.Update.Key
-	}
-	return in.Base, nil
+func (ra *MockRegistrationAuthority) UpdateRegistrationContact(ctx context.Context, in *rapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	return &corepb.Registration{
+		Contact: in.Contacts,
+		Key:     []byte(test1KeyPublicJSON),
+	}, nil
+}
+
+func (ra *MockRegistrationAuthority) UpdateRegistrationKey(ctx context.Context, in *rapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	return &corepb.Registration{Key: in.Jwk}, nil
 }
 
 func (ra *MockRegistrationAuthority) PerformValidation(context.Context, *rapb.PerformValidationRequest, ...grpc.CallOption) (*corepb.Authorization, error) {
@@ -409,16 +413,10 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "")
 	test.AssertNotError(t, err, "making transaction composer")
 
-	var unpauseSigner unpause.JWTSigner
-	var unpauseLifetime time.Duration
-	var unpauseURL string
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		unpauseSigner, err = unpause.NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})
-		test.AssertNotError(t, err, "making unpause signer")
-		unpauseLifetime = time.Hour * 24 * 14
-		unpauseURL = "https://boulder.service.consul:4003"
-	}
-
+	unpauseSigner, err := unpause.NewJWTSigner(cmd.HMACKeyConfig{KeyFile: "../test/secrets/sfe_unpause_key"})
+	test.AssertNotError(t, err, "making unpause signer")
+	unpauseLifetime := time.Hour * 24 * 14
+	unpauseURL := "https://boulder.service.consul:4003"
 	wfe, err := NewWebFrontEndImpl(
 		stats,
 		fc,
@@ -3217,10 +3215,7 @@ func TestKeyRollover(t *testing.T) {
 			Payload: `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "key": ` + string(newJWKJSON) + `,
-		     "contact": [
-		       "mailto:person@mail.com"
-		     ],
-		     "status": "valid"
+		     "status": ""
 		   }`,
 			NewKey: newKeyPriv,
 		},
