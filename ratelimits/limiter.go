@@ -322,32 +322,31 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 
 	if batchDecision.allowed {
 		if len(newBuckets) > 0 {
-			// Use BatchSetNotExisting to initialize new buckets so that we
-			// detect if concurrent requests have created this bucket at the
-			// same time, which would result in overwriting if we used a plain
-			// "SET" command. If that happens, fall back to incrementing.
-			initializationResults, err := l.source.BatchSetNotExisting(ctx, newBuckets)
+			// Use BatchSetNotExisting to create new buckets so that we detect
+			// if concurrent requests have created this bucket at the same time,
+			// which would result in overwriting if we used a plain "SET"
+			// command. If that happens, fall back to incrementing.
+			created, err := l.source.BatchSetNotExisting(ctx, newBuckets)
 			if err != nil {
 				return nil, fmt.Errorf("batch set for %d keys: %w", len(newBuckets), err)
 			}
-			existingBuckets := make(map[string]struct{})
-			for k, initialized := range initializationResults {
-				if !initialized {
-					existingBuckets[k] = struct{}{}
-				}
-			}
-			for _, v := range txns {
-				_, bucketExists := existingBuckets[v.bucketKey]
-				if bucketExists {
-					incrBuckets[v.bucketKey] = increment{
-						cost: time.Duration(v.cost * v.limit.emissionInterval),
-						ttl:  time.Duration(v.limit.burstOffset),
+			// Find the original transaction in order to compute the increment
+			// and set the TTL.
+			for _, txn := range batch {
+				if !created[txn.bucketKey] {
+					incrBuckets[txn.bucketKey] = increment{
+						cost: time.Duration(txn.cost * txn.limit.emissionInterval),
+						ttl:  time.Duration(txn.limit.burstOffset),
 					}
 				}
 			}
 		}
 
 		if len(staleBuckets) > 0 {
+			// Incrementing a TAT in the past grants unintended burst capacity.
+			// So instead we overwrite it with a TAT of now + increment. This
+			// approach may cause a race condition where only the last spend is
+			// saved, but it's preferable to the alternative.
 			err := l.source.BatchSet(ctx, staleBuckets)
 			if err != nil {
 				return nil, fmt.Errorf("batch set for %d keys: %w", len(staleBuckets), err)
