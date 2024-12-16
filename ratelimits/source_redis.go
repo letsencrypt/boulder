@@ -109,7 +109,7 @@ func (r *RedisSource) BatchSet(ctx context.Context, buckets map[string]time.Time
 }
 
 // BatchSetNotExisting attempts to set TATs for the specified bucketKeys if they
-// do not already exist. Returns a map indicating which keys were set successfully.
+// do not already exist. Returns a map indicating which keys already existed.
 func (r *RedisSource) BatchSetNotExisting(ctx context.Context, buckets map[string]time.Time) (map[string]bool, error) {
 	start := r.clk.Now()
 
@@ -126,7 +126,7 @@ func (r *RedisSource) BatchSetNotExisting(ctx context.Context, buckets map[strin
 		return nil, err
 	}
 
-	results := make(map[string]bool, len(buckets))
+	alreadyExists := make(map[string]bool, len(buckets))
 	totalLatency := r.clk.Since(start)
 	perSetLatency := totalLatency / time.Duration(len(buckets))
 	for bucketKey, cmd := range cmds {
@@ -135,12 +135,14 @@ func (r *RedisSource) BatchSetNotExisting(ctx context.Context, buckets map[strin
 			r.observeLatency("batchsetnotexisting_entry", perSetLatency, err)
 			return nil, err
 		}
-		results[bucketKey] = success
+		if !success {
+			alreadyExists[bucketKey] = true
+		}
 		r.observeLatency("batchsetnotexisting_entry", perSetLatency, nil)
 	}
 
 	r.observeLatency("batchsetnotexisting", totalLatency, nil)
-	return results, nil
+	return alreadyExists, nil
 }
 
 // BatchIncrement updates TATs for the specified bucketKeys using a pipelined

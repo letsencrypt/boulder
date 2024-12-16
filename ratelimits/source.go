@@ -21,8 +21,8 @@ type Source interface {
 	BatchSet(ctx context.Context, bucketKeys map[string]time.Time) error
 
 	// BatchSetNotExisting attempts to set TATs for the specified bucketKeys if
-	// they do not already exist. Returns a map indicating which keys were set
-	// successfully.
+	// they do not already exist. Returns a map indicating which keys already
+	// exist.
 	BatchSetNotExisting(ctx context.Context, buckets map[string]time.Time) (map[string]bool, error)
 
 	// BatchIncrement updates the TATs for the specified bucketKeys, similar to
@@ -87,15 +87,16 @@ func (in *inmem) BatchSet(_ context.Context, bucketKeys map[string]time.Time) er
 func (in *inmem) BatchSetNotExisting(_ context.Context, bucketKeys map[string]time.Time) (map[string]bool, error) {
 	in.Lock()
 	defer in.Unlock()
-	results := make(map[string]bool, len(bucketKeys))
+	alreadyExists := make(map[string]bool, len(bucketKeys))
 	for k, v := range bucketKeys {
 		_, ok := in.m[k]
-		if !ok {
+		if ok {
+			alreadyExists[k] = true
+		} else {
 			in.m[k] = v
-			results[k] = true
 		}
 	}
-	return results, nil
+	return alreadyExists, nil
 }
 
 func (in *inmem) BatchIncrement(_ context.Context, bucketKeys map[string]increment) error {

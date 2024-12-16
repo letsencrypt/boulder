@@ -326,14 +326,14 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 			// if concurrent requests have created this bucket at the same time,
 			// which would result in overwriting if we used a plain "SET"
 			// command. If that happens, fall back to incrementing.
-			created, err := l.source.BatchSetNotExisting(ctx, newBuckets)
+			alreadyExists, err := l.source.BatchSetNotExisting(ctx, newBuckets)
 			if err != nil {
 				return nil, fmt.Errorf("batch set for %d keys: %w", len(newBuckets), err)
 			}
 			// Find the original transaction in order to compute the increment
 			// and set the TTL.
 			for _, txn := range batch {
-				if !created[txn.bucketKey] {
+				if alreadyExists[txn.bucketKey] {
 					incrBuckets[txn.bucketKey] = increment{
 						cost: time.Duration(txn.cost * txn.limit.emissionInterval),
 						ttl:  time.Duration(txn.limit.burstOffset),
