@@ -36,6 +36,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -4461,4 +4462,120 @@ func TestCountNewOrderWithReplaces(t *testing.T) {
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
 	test.AssertMetricWithLabelsEquals(t, wfe.stats.ariReplacementOrders, prometheus.Labels{"isReplacement": "true", "limitsExempt": "true"}, 1)
+}
+
+type mockSAWithRateLimits struct {
+	sapb.StorageAuthorityReadOnlyClient
+	cert *corepb.Certificate
+}
+
+func (sa *mockSAWithRateLimits) FQDNSetExists(ctx context.Context, in *sapb.FQDNSetExistsRequest, opts ...grpc.CallOption) (*sapb.Exists, error) {
+	return &sapb.Exists{Exists: false}, nil
+}
+
+func (sa *mockSAWithRateLimits) ReplacementOrderExists(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*sapb.Exists, error) {
+	return &sapb.Exists{Exists: false}, nil
+}
+
+// GetCertificate returns the inner certificate if it matches the given serial.
+func (sa *mockSAWithRateLimits) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	if req.Serial == sa.cert.Serial {
+		return sa.cert, nil
+	}
+	return nil, berrors.NotFoundError("certificate with serial %q not found", req.Serial)
+}
+
+func (sa *mockSAWithRateLimits) IncidentsForSerial(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Incidents, error) {
+	return &sapb.Incidents{}, nil
+}
+
+func (sa *mockSAWithRateLimits) GetCertificateStatus(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*corepb.CertificateStatus, error) {
+	return &corepb.CertificateStatus{Serial: in.Serial, Status: string(core.OCSPStatusGood)}, nil
+}
+
+func TestNewOrderRateLimits(t *testing.T) {
+	wfe, fc, signer := setupWFE(t)
+
+	// Override the default ratelimits to only allow one certificate per domain
+	// per 24 hours.
+	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
+		ratelimits.CertificatesPerDomain.String(): &ratelimits.LimitConfig{
+			Burst:  1,
+			Count:  1,
+			Period: config.Duration{Duration: time.Hour * 24}},
+	})
+	test.AssertNotError(t, err, "making transaction composer")
+	wfe.txnBuilder = txnBuilder
+
+	expectExpiry := time.Now().AddDate(0, 0, 1)
+	var expectAKID []byte
+	for _, v := range wfe.issuerCertificates {
+		expectAKID = v.SubjectKeyId
+		break
+	}
+	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
+	expectSerial := big.NewInt(1337)
+	expectCert := &x509.Certificate{
+		NotAfter:       expectExpiry,
+		DNSNames:       []string{"example.com"},
+		SerialNumber:   expectSerial,
+		AuthorityKeyId: expectAKID,
+	}
+	expectCertId, err := makeARICertID(expectCert)
+	test.AssertNotError(t, err, "failed to create test cert id")
+	expectDer, err := x509.CreateCertificate(rand.Reader, expectCert, expectCert, &testKey.PublicKey, testKey)
+	test.AssertNotError(t, err, "failed to create test certificate")
+
+	// Mock SA that returns the certificate with the expected serial.
+	wfe.sa = &mockSAWithRateLimits{
+		cert: &corepb.Certificate{
+			RegistrationID: 1,
+			Serial:         core.SerialToString(expectSerial),
+			Der:            expectDer,
+		},
+	}
+	mux := wfe.Handler(metrics.NoopRegisterer)
+	responseWriter := httptest.NewRecorder()
+
+	// Request the certificate for the first time.
+	body := `
+	{
+		"Identifiers": [
+		  {"type": "dns", "value": "example.com"}
+		]
+	}`
+
+	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
+	mux.ServeHTTP(responseWriter, r)
+	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
+
+	// Set the fake clock forward to the suggested renewal window.
+	var ri core.RenewalInfo
+	err = json.Unmarshal(responseWriter.Body.Bytes(), &ri)
+	test.AssertNotError(t, err, "unmarshalling renewal info")
+	fc.Set(ri.SuggestedWindow.Start)
+
+	// Request two more identical certificates. The second should fail for
+	// violating the CertificatesPerDomain rate limit.
+	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
+	mux.ServeHTTP(responseWriter, r)
+	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
+
+	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
+	mux.ServeHTTP(responseWriter, r)
+	test.AssertEquals(t, responseWriter.Code, http.StatusTooManyRequests)
+
+	// Make a request with the "Replaces" field, which should satisfy ARI checks
+	// and therefore bypass the rate limit.
+	body = fmt.Sprintf(`
+	{
+		"Identifiers": [
+		  {"type": "dns", "value": "example.com"}
+		],
+		"Replaces": %q
+	}`, expectCertId)
+
+	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
+	mux.ServeHTTP(responseWriter, r)
+	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
 }
