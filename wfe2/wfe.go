@@ -2767,7 +2767,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	renewalInfo, err := wfe.determineARIWindow(ctx, decodedSerial)
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound("Certificate replaced by this order was not found"), nil)
+			wfe.sendError(response, logEvent, probs.NotFound("Requested certificate was not found"), nil)
 			return
 		}
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error determining renewal window"), err)
