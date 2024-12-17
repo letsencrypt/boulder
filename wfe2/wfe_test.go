@@ -4558,7 +4558,8 @@ func TestNewOrderRateLimits(t *testing.T) {
 		]
 	}`
 
-	// FIXME: make this into an internal func, give it the desired HTTP status code and URL/serial it should replace (or nil)
+	// FIXME: make this into an internal func, give it the desired HTTP status
+	// code and URL/serial it should replace (or nil)
 	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
@@ -4569,14 +4570,12 @@ func TestNewOrderRateLimits(t *testing.T) {
 
 	// Set the fake clock forward to the suggested renewal window.
 	var ri core.RenewalInfo
-	rbb := responseWriter.Body.Bytes()
-	fmt.Printf("fc time: %s, notAfter: %s, rW bytes: %s\n", fc.Now(), expectCert.NotAfter, string(rbb))
 	err = json.Unmarshal(responseWriter.Body.Bytes(), &ri)
 	test.AssertNotError(t, err, "unmarshalling renewal info")
 	fc.Set(ri.SuggestedWindow.Start)
 
 	// Request two more identical certificates. The second should fail for
-	// violating the CertificatesPerDomain rate limit.
+	// violating the NewOrdersPerAccount rate limit.
 	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
 	responseWriter = httptest.NewRecorder()
 	mux.ServeHTTP(responseWriter, r)

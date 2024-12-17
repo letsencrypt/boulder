@@ -2380,7 +2380,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	isRenewal := isARIRenewal
+	var isRenewal bool
 	if !isARIRenewal {
 		// The Subscriber does not have an ARI exemption. However, we can check
 		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount
@@ -2400,7 +2400,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	refundLimits, err := wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal)
+	refundLimits, err := wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal || isARIRenewal)
 	if err != nil {
 		if errors.Is(err, berrors.RateLimit) {
 			if features.Get().UseKvLimitsForNewOrder {
