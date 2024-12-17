@@ -277,31 +277,28 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 	batchDecision := allowedDecision
 	newBuckets := make(map[string]time.Time)
 	incrBuckets := make(map[string]increment)
+	staleBuckets := make(map[string]time.Time)
 	txnOutcomes := make(map[Transaction]string)
 
 	for _, txn := range batch {
-		tat, bucketExists := tats[txn.bucketKey]
-		if !bucketExists {
-			// First request from this client.
-			tat = l.clk.Now()
-		}
-
-		d := maybeSpend(l.clk, txn, tat)
+		storedTAT, bucketExists := tats[txn.bucketKey]
+		d := maybeSpend(l.clk, txn, storedTAT)
 
 		if txn.limit.isOverride() {
 			utilization := float64(txn.limit.Burst-d.remaining) / float64(txn.limit.Burst)
 			l.overrideUsageGauge.WithLabelValues(txn.limit.name.String(), txn.limit.overrideKey).Set(utilization)
 		}
 
-		if d.allowed && (tat != d.newTAT) && txn.spend {
-			// New bucket state should be persisted.
-			if bucketExists {
+		if d.allowed && (storedTAT != d.newTAT) && txn.spend {
+			if !bucketExists {
+				newBuckets[txn.bucketKey] = d.newTAT
+			} else if storedTAT.After(l.clk.Now()) {
 				incrBuckets[txn.bucketKey] = increment{
 					cost: time.Duration(txn.cost * txn.limit.emissionInterval),
 					ttl:  time.Duration(txn.limit.burstOffset),
 				}
 			} else {
-				newBuckets[txn.bucketKey] = d.newTAT
+				staleBuckets[txn.bucketKey] = d.newTAT
 			}
 		}
 
@@ -319,9 +316,23 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 
 	if batchDecision.allowed {
 		if len(newBuckets) > 0 {
-			err = l.source.BatchSet(ctx, newBuckets)
+			// Use BatchSetNotExisting to create new buckets so that we detect
+			// if concurrent requests have created this bucket at the same time,
+			// which would result in overwriting if we used a plain "SET"
+			// command. If that happens, fall back to incrementing.
+			alreadyExists, err := l.source.BatchSetNotExisting(ctx, newBuckets)
 			if err != nil {
 				return nil, fmt.Errorf("batch set for %d keys: %w", len(newBuckets), err)
+			}
+			// Find the original transaction in order to compute the increment
+			// and set the TTL.
+			for _, txn := range batch {
+				if alreadyExists[txn.bucketKey] {
+					incrBuckets[txn.bucketKey] = increment{
+						cost: time.Duration(txn.cost * txn.limit.emissionInterval),
+						ttl:  time.Duration(txn.limit.burstOffset),
+					}
+				}
 			}
 		}
 
@@ -329,6 +340,17 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 			err = l.source.BatchIncrement(ctx, incrBuckets)
 			if err != nil {
 				return nil, fmt.Errorf("batch increment for %d keys: %w", len(incrBuckets), err)
+			}
+		}
+
+		if len(staleBuckets) > 0 {
+			// Incrementing a TAT in the past grants unintended burst capacity.
+			// So instead we overwrite it with a TAT of now + increment. This
+			// approach may cause a race condition where only the last spend is
+			// saved, but it's preferable to the alternative.
+			err = l.source.BatchSet(ctx, staleBuckets)
+			if err != nil {
+				return nil, fmt.Errorf("batch set for %d keys: %w", len(staleBuckets), err)
 			}
 		}
 	}
