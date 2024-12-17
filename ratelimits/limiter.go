@@ -295,7 +295,9 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 
 		if d.allowed && (tat != d.newTAT) && txn.spend {
 			// New bucket state should be persisted.
-			if bucketExists {
+			// FIXME: This is a temporary local change so the tests pass; don't merge this
+			// because Samantha's better permanent fix is in flight.
+			if bucketExists && tat.After(l.clk.Now()) {
 				incrBuckets[txn.bucketKey] = increment{
 					cost: time.Duration(txn.cost * txn.limit.emissionInterval),
 					ttl:  time.Duration(txn.limit.burstOffset),

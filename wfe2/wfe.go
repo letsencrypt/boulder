@@ -2380,7 +2380,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	var isRenewal bool
+	isRenewal := isARIRenewal
 	if !isARIRenewal {
 		// The Subscriber does not have an ARI exemption. However, we can check
 		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount

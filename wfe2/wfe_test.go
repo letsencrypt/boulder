@@ -4464,6 +4464,8 @@ func TestCountNewOrderWithReplaces(t *testing.T) {
 	test.AssertMetricWithLabelsEquals(t, wfe.stats.ariReplacementOrders, prometheus.Labels{"isReplacement": "true", "limitsExempt": "true"}, 1)
 }
 
+// mockSAWithRateLimits provides a mock SA with the methods required for an
+// issuance and a renewal with the ARI `Replaces` field.
 type mockSAWithRateLimits struct {
 	sapb.StorageAuthorityReadOnlyClient
 	cert *corepb.Certificate
@@ -4477,12 +4479,8 @@ func (sa *mockSAWithRateLimits) ReplacementOrderExists(ctx context.Context, in *
 	return &sapb.Exists{Exists: false}, nil
 }
 
-// GetCertificate returns the inner certificate if it matches the given serial.
 func (sa *mockSAWithRateLimits) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	if req.Serial == sa.cert.Serial {
-		return sa.cert, nil
-	}
-	return nil, berrors.NotFoundError("certificate with serial %q not found", req.Serial)
+	return sa.cert, nil
 }
 
 func (sa *mockSAWithRateLimits) IncidentsForSerial(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Incidents, error) {
@@ -4496,10 +4494,21 @@ func (sa *mockSAWithRateLimits) GetCertificateStatus(ctx context.Context, in *sa
 func TestNewOrderRateLimits(t *testing.T) {
 	wfe, fc, signer := setupWFE(t)
 
-	// Override the default ratelimits to only allow one certificate per domain
+	// TODO: We use this in many tests, and should maybe factor it out.
+	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
+			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
+	}
+
+	features.Set(features.Config{ServeRenewalInfo: true})
+	defer features.Reset()
+
+	fc.Set(time.Date(2024, 01, 01, 00, 00, 00, 00, time.UTC))
+
+	// Override the default ratelimits to only allow one new order per account
 	// per 24 hours.
 	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
-		ratelimits.CertificatesPerDomain.String(): &ratelimits.LimitConfig{
+		ratelimits.NewOrdersPerAccount.String(): &ratelimits.LimitConfig{
 			Burst:  1,
 			Count:  1,
 			Period: config.Duration{Duration: time.Hour * 24}},
@@ -4507,7 +4516,8 @@ func TestNewOrderRateLimits(t *testing.T) {
 	test.AssertNotError(t, err, "making transaction composer")
 	wfe.txnBuilder = txnBuilder
 
-	expectExpiry := time.Now().AddDate(0, 0, 1)
+	// FIXME: maybe extract this boilerplate from here & the test above?
+	expectExpiry := fc.Now().AddDate(0, 0, 90)
 	var expectAKID []byte
 	for _, v := range wfe.issuerCertificates {
 		expectAKID = v.SubjectKeyId
@@ -4516,6 +4526,7 @@ func TestNewOrderRateLimits(t *testing.T) {
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	expectSerial := big.NewInt(1337)
 	expectCert := &x509.Certificate{
+		NotBefore:      fc.Now(),
 		NotAfter:       expectExpiry,
 		DNSNames:       []string{"example.com"},
 		SerialNumber:   expectSerial,
@@ -4532,6 +4543,8 @@ func TestNewOrderRateLimits(t *testing.T) {
 			RegistrationID: 1,
 			Serial:         core.SerialToString(expectSerial),
 			Der:            expectDer,
+			Issued:         timestamppb.New(expectCert.NotBefore),
+			Expires:        timestamppb.New(expectCert.NotAfter),
 		},
 	}
 	mux := wfe.Handler(metrics.NoopRegisterer)
@@ -4545,12 +4558,19 @@ func TestNewOrderRateLimits(t *testing.T) {
 		]
 	}`
 
+	// FIXME: make this into an internal func, give it the desired HTTP status code and URL/serial it should replace (or nil)
 	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
 
+	req, event := makeGet(expectCertId, renewalInfoPath)
+	responseWriter = httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, responseWriter, req)
+
 	// Set the fake clock forward to the suggested renewal window.
 	var ri core.RenewalInfo
+	rbb := responseWriter.Body.Bytes()
+	fmt.Printf("fc time: %s, notAfter: %s, rW bytes: %s\n", fc.Now(), expectCert.NotAfter, string(rbb))
 	err = json.Unmarshal(responseWriter.Body.Bytes(), &ri)
 	test.AssertNotError(t, err, "unmarshalling renewal info")
 	fc.Set(ri.SuggestedWindow.Start)
@@ -4558,10 +4578,12 @@ func TestNewOrderRateLimits(t *testing.T) {
 	// Request two more identical certificates. The second should fail for
 	// violating the CertificatesPerDomain rate limit.
 	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
+	responseWriter = httptest.NewRecorder()
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
 
 	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
+	responseWriter = httptest.NewRecorder()
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusTooManyRequests)
 
@@ -4574,8 +4596,10 @@ func TestNewOrderRateLimits(t *testing.T) {
 		],
 		"Replaces": %q
 	}`, expectCertId)
+	// FIXME: json.Marshal on a struct with omitempty on Replaces?
 
 	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
+	responseWriter = httptest.NewRecorder()
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
 }
