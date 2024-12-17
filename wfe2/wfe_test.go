@@ -4464,30 +4464,30 @@ func TestCountNewOrderWithReplaces(t *testing.T) {
 	test.AssertMetricWithLabelsEquals(t, wfe.stats.ariReplacementOrders, prometheus.Labels{"isReplacement": "true", "limitsExempt": "true"}, 1)
 }
 
-// mockSAWithRateLimits provides a mock SA with the methods required for an
-// issuance and a renewal with the ARI `Replaces` field.
-type mockSAWithRateLimits struct {
+// mockSAWithCertToBeReplaced provides a mock SA with the methods required for
+// an issuance and a renewal with the ARI `Replaces` field.
+type mockSAWithCertToBeReplaced struct {
 	sapb.StorageAuthorityReadOnlyClient
 	cert *corepb.Certificate
 }
 
-func (sa *mockSAWithRateLimits) FQDNSetExists(ctx context.Context, in *sapb.FQDNSetExistsRequest, opts ...grpc.CallOption) (*sapb.Exists, error) {
+func (sa *mockSAWithCertToBeReplaced) FQDNSetExists(ctx context.Context, in *sapb.FQDNSetExistsRequest, opts ...grpc.CallOption) (*sapb.Exists, error) {
 	return &sapb.Exists{Exists: false}, nil
 }
 
-func (sa *mockSAWithRateLimits) ReplacementOrderExists(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*sapb.Exists, error) {
+func (sa *mockSAWithCertToBeReplaced) ReplacementOrderExists(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*sapb.Exists, error) {
 	return &sapb.Exists{Exists: false}, nil
 }
 
-func (sa *mockSAWithRateLimits) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+func (sa *mockSAWithCertToBeReplaced) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	return sa.cert, nil
 }
 
-func (sa *mockSAWithRateLimits) IncidentsForSerial(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Incidents, error) {
+func (sa *mockSAWithCertToBeReplaced) IncidentsForSerial(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Incidents, error) {
 	return &sapb.Incidents{}, nil
 }
 
-func (sa *mockSAWithRateLimits) GetCertificateStatus(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*corepb.CertificateStatus, error) {
+func (sa *mockSAWithCertToBeReplaced) GetCertificateStatus(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*corepb.CertificateStatus, error) {
 	return &corepb.CertificateStatus{Serial: in.Serial, Status: string(core.OCSPStatusGood)}, nil
 }
 
@@ -4495,6 +4495,7 @@ func TestNewOrderRateLimits(t *testing.T) {
 	wfe, fc, signer := setupWFE(t)
 
 	features.Set(features.Config{ServeRenewalInfo: true})
+	features.Set(features.Config{UseKvLimitsForNewOrder: true})
 	defer features.Reset()
 
 	// Override the default ratelimits to only allow one new order per account
@@ -4509,7 +4510,6 @@ func TestNewOrderRateLimits(t *testing.T) {
 	wfe.txnBuilder = txnBuilder
 
 	// FIXME: maybe extract this boilerplate from here & the test above?
-	expectExpiry := fc.Now().AddDate(0, 0, 90)
 	var expectAKID []byte
 	for _, v := range wfe.issuerCertificates {
 		expectAKID = v.SubjectKeyId
@@ -4519,7 +4519,7 @@ func TestNewOrderRateLimits(t *testing.T) {
 	expectSerial := big.NewInt(1337)
 	expectCert := &x509.Certificate{
 		NotBefore:      fc.Now(),
-		NotAfter:       expectExpiry,
+		NotAfter:       fc.Now().AddDate(0, 0, 90),
 		DNSNames:       []string{"example.com"},
 		SerialNumber:   expectSerial,
 		AuthorityKeyId: expectAKID,
@@ -4530,7 +4530,7 @@ func TestNewOrderRateLimits(t *testing.T) {
 	test.AssertNotError(t, err, "failed to create test certificate")
 
 	// Mock SA that returns the certificate with the expected serial.
-	wfe.sa = &mockSAWithRateLimits{
+	wfe.sa = &mockSAWithCertToBeReplaced{
 		cert: &corepb.Certificate{
 			RegistrationID: 1,
 			Serial:         core.SerialToString(expectSerial),
