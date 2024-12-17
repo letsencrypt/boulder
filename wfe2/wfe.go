@@ -1467,9 +1467,9 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	// update would be performed. Deactivation deletes the contacts field.
 	if accountUpdateRequest.Status == core.StatusDeactivated {
 		_, err = wfe.ra.DeactivateRegistration(ctx, &corepb.Registration{Id: currAcct.ID, Status: string(core.StatusDeactivated)})
-	if err != nil {
+		if err != nil {
 			return nil, web.ProblemDetailsForError(err, "Unable to deactivate account")
-	}
+		}
 
 		currAcct.Status = core.StatusDeactivated
 		return currAcct, nil
@@ -1482,7 +1482,7 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	var contacts []string
 	if accountUpdateRequest.Contact != nil {
 		contacts = *accountUpdateRequest.Contact
-		}
+	}
 
 	updatedAcct, err := wfe.ra.UpdateRegistrationContact(ctx, &rapb.UpdateRegistrationContactRequest{RegistrationID: currAcct.ID, Contacts: contacts})
 	if err != nil {
