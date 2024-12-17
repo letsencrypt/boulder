@@ -282,20 +282,14 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 
 	for _, txn := range batch {
 		storedTAT, bucketExists := tats[txn.bucketKey]
-		effectiveTAT := storedTAT
-		if !bucketExists {
-			// First request from this client.
-			effectiveTAT = l.clk.Now()
-		}
-
-		d := maybeSpend(l.clk, txn, effectiveTAT)
+		d := maybeSpend(l.clk, txn, storedTAT)
 
 		if txn.limit.isOverride() {
 			utilization := float64(txn.limit.Burst-d.remaining) / float64(txn.limit.Burst)
 			l.overrideUsageGauge.WithLabelValues(txn.limit.name.String(), txn.limit.overrideKey).Set(utilization)
 		}
 
-		if d.allowed && (effectiveTAT != d.newTAT) && txn.spend {
+		if d.allowed && (storedTAT != d.newTAT) && txn.spend {
 			if !bucketExists {
 				newBuckets[txn.bucketKey] = d.newTAT
 			} else if storedTAT.After(l.clk.Now()) {
@@ -343,7 +337,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		}
 
 		if len(incrBuckets) > 0 {
-			err := l.source.BatchIncrement(ctx, incrBuckets)
+			err = l.source.BatchIncrement(ctx, incrBuckets)
 			if err != nil {
 				return nil, fmt.Errorf("batch increment for %d keys: %w", len(incrBuckets), err)
 			}
@@ -354,7 +348,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 			// So instead we overwrite it with a TAT of now + increment. This
 			// approach may cause a race condition where only the last spend is
 			// saved, but it's preferable to the alternative.
-			err := l.source.BatchSet(ctx, staleBuckets)
+			err = l.source.BatchSet(ctx, staleBuckets)
 			if err != nil {
 				return nil, fmt.Errorf("batch set for %d keys: %w", len(staleBuckets), err)
 			}
