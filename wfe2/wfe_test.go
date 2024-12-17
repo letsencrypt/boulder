@@ -4494,16 +4494,8 @@ func (sa *mockSAWithRateLimits) GetCertificateStatus(ctx context.Context, in *sa
 func TestNewOrderRateLimits(t *testing.T) {
 	wfe, fc, signer := setupWFE(t)
 
-	// TODO: We use this in many tests, and should maybe factor it out.
-	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
-		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
-			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
-	}
-
 	features.Set(features.Config{ServeRenewalInfo: true})
 	defer features.Reset()
-
-	fc.Set(time.Date(2024, 01, 01, 00, 00, 00, 00, time.UTC))
 
 	// Override the default ratelimits to only allow one new order per account
 	// per 24 hours.
@@ -4550,7 +4542,11 @@ func TestNewOrderRateLimits(t *testing.T) {
 	mux := wfe.Handler(metrics.NoopRegisterer)
 	responseWriter := httptest.NewRecorder()
 
-	// Request the certificate for the first time.
+	// Set the fake clock forward to the suggested renewal window.
+	fc.Set(core.RenewalInfoSimple(expectCert.NotBefore, expectCert.NotAfter).SuggestedWindow.Start.Add(time.Second))
+
+	// Request the certificate for the first time. Because we mocked together
+	// the certificate, it will have been issued 60 days ago.
 	body := `
 	{
 		"Identifiers": [
@@ -4564,23 +4560,8 @@ func TestNewOrderRateLimits(t *testing.T) {
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
 
-	req, event := makeGet(expectCertId, renewalInfoPath)
-	responseWriter = httptest.NewRecorder()
-	wfe.RenewalInfo(context.Background(), event, responseWriter, req)
-
-	// Set the fake clock forward to the suggested renewal window.
-	var ri core.RenewalInfo
-	err = json.Unmarshal(responseWriter.Body.Bytes(), &ri)
-	test.AssertNotError(t, err, "unmarshalling renewal info")
-	fc.Set(ri.SuggestedWindow.Start)
-
-	// Request two more identical certificates. The second should fail for
-	// violating the NewOrdersPerAccount rate limit.
-	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
-	responseWriter = httptest.NewRecorder()
-	mux.ServeHTTP(responseWriter, r)
-	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
-
+	// Request another, identical certificate. This should fail for violating
+	// the NewOrdersPerAccount rate limit.
 	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
 	responseWriter = httptest.NewRecorder()
 	mux.ServeHTTP(responseWriter, r)
