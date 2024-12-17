@@ -4231,20 +4231,26 @@ func Test_sendErrorInternalServerError(t *testing.T) {
 	test.AssertEquals(t, testResponse.Header().Get("Retry-After"), "60")
 }
 
-type mockSA struct {
+// mockSAForARI provides a mock SA with the methods required for an issuance and
+// a renewal with the ARI `Replaces` field.
+type mockSAForARI struct {
 	sapb.StorageAuthorityReadOnlyClient
 	cert *corepb.Certificate
 }
 
+func (sa *mockSAForARI) FQDNSetExists(ctx context.Context, in *sapb.FQDNSetExistsRequest, opts ...grpc.CallOption) (*sapb.Exists, error) {
+	return &sapb.Exists{Exists: false}, nil
+}
+
 // GetCertificate returns the inner certificate if it matches the given serial.
-func (sa *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+func (sa *mockSAForARI) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	if req.Serial == sa.cert.Serial {
 		return sa.cert, nil
 	}
 	return nil, berrors.NotFoundError("certificate with serial %q not found", req.Serial)
 }
 
-func (sa *mockSA) ReplacementOrderExists(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*sapb.Exists, error) {
+func (sa *mockSAForARI) ReplacementOrderExists(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*sapb.Exists, error) {
 	if in.Serial == sa.cert.Serial {
 		return &sapb.Exists{Exists: false}, nil
 
@@ -4252,11 +4258,11 @@ func (sa *mockSA) ReplacementOrderExists(ctx context.Context, in *sapb.Serial, o
 	return &sapb.Exists{Exists: true}, nil
 }
 
-func (sa *mockSA) IncidentsForSerial(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*sapb.Incidents, error) {
+func (sa *mockSAForARI) IncidentsForSerial(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*sapb.Incidents, error) {
 	return &sapb.Incidents{}, nil
 }
 
-func (sa *mockSA) GetCertificateStatus(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*corepb.CertificateStatus, error) {
+func (sa *mockSAForARI) GetCertificateStatus(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*corepb.CertificateStatus, error) {
 	return &corepb.CertificateStatus{Serial: in.Serial, Status: string(core.OCSPStatusGood)}, nil
 }
 
@@ -4274,7 +4280,7 @@ func TestOrderMatchesReplacement(t *testing.T) {
 	mockDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 	test.AssertNotError(t, err, "failed to create test certificate")
 
-	wfe.sa = &mockSA{
+	wfe.sa = &mockSAForARI{
 		cert: &corepb.Certificate{
 			RegistrationID: 1,
 			Serial:         expectSerial.String(),
@@ -4440,7 +4446,7 @@ func TestCountNewOrderWithReplaces(t *testing.T) {
 	test.AssertNotError(t, err, "failed to create test certificate")
 
 	// MockSA that returns the certificate with the expected serial.
-	wfe.sa = &mockSA{
+	wfe.sa = &mockSAForARI{
 		cert: &corepb.Certificate{
 			RegistrationID: 1,
 			Serial:         core.SerialToString(expectSerial),
@@ -4464,37 +4470,9 @@ func TestCountNewOrderWithReplaces(t *testing.T) {
 	test.AssertMetricWithLabelsEquals(t, wfe.stats.ariReplacementOrders, prometheus.Labels{"isReplacement": "true", "limitsExempt": "true"}, 1)
 }
 
-// mockSAWithCertToBeReplaced provides a mock SA with the methods required for
-// an issuance and a renewal with the ARI `Replaces` field.
-type mockSAWithCertToBeReplaced struct {
-	sapb.StorageAuthorityReadOnlyClient
-	cert *corepb.Certificate
-}
-
-func (sa *mockSAWithCertToBeReplaced) FQDNSetExists(ctx context.Context, in *sapb.FQDNSetExistsRequest, opts ...grpc.CallOption) (*sapb.Exists, error) {
-	return &sapb.Exists{Exists: false}, nil
-}
-
-func (sa *mockSAWithCertToBeReplaced) ReplacementOrderExists(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*sapb.Exists, error) {
-	return &sapb.Exists{Exists: false}, nil
-}
-
-func (sa *mockSAWithCertToBeReplaced) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return sa.cert, nil
-}
-
-func (sa *mockSAWithCertToBeReplaced) IncidentsForSerial(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Incidents, error) {
-	return &sapb.Incidents{}, nil
-}
-
-func (sa *mockSAWithCertToBeReplaced) GetCertificateStatus(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*corepb.CertificateStatus, error) {
-	return &corepb.CertificateStatus{Serial: in.Serial, Status: string(core.OCSPStatusGood)}, nil
-}
-
 func TestNewOrderRateLimits(t *testing.T) {
 	wfe, fc, signer := setupWFE(t)
 
-	features.Set(features.Config{ServeRenewalInfo: true})
 	features.Set(features.Config{UseKvLimitsForNewOrder: true})
 	defer features.Reset()
 
@@ -4509,76 +4487,61 @@ func TestNewOrderRateLimits(t *testing.T) {
 	test.AssertNotError(t, err, "making transaction composer")
 	wfe.txnBuilder = txnBuilder
 
-	// FIXME: maybe extract this boilerplate from here & the test above?
-	var expectAKID []byte
+	var extantAKID []byte
 	for _, v := range wfe.issuerCertificates {
-		expectAKID = v.SubjectKeyId
+		extantAKID = v.SubjectKeyId
 		break
 	}
-	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
-	expectSerial := big.NewInt(1337)
-	expectCert := &x509.Certificate{
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to create test key")
+	extantCert := &x509.Certificate{
 		NotBefore:      fc.Now(),
 		NotAfter:       fc.Now().AddDate(0, 0, 90),
 		DNSNames:       []string{"example.com"},
-		SerialNumber:   expectSerial,
-		AuthorityKeyId: expectAKID,
+		SerialNumber:   big.NewInt(1337),
+		AuthorityKeyId: extantAKID,
 	}
-	expectCertId, err := makeARICertID(expectCert)
+	extantCertId, err := makeARICertID(extantCert)
 	test.AssertNotError(t, err, "failed to create test cert id")
-	expectDer, err := x509.CreateCertificate(rand.Reader, expectCert, expectCert, &testKey.PublicKey, testKey)
+	extantDer, err := x509.CreateCertificate(rand.Reader, extantCert, extantCert, &testKey.PublicKey, testKey)
 	test.AssertNotError(t, err, "failed to create test certificate")
 
 	// Mock SA that returns the certificate with the expected serial.
-	wfe.sa = &mockSAWithCertToBeReplaced{
+	wfe.sa = &mockSAForARI{
 		cert: &corepb.Certificate{
 			RegistrationID: 1,
-			Serial:         core.SerialToString(expectSerial),
-			Der:            expectDer,
-			Issued:         timestamppb.New(expectCert.NotBefore),
-			Expires:        timestamppb.New(expectCert.NotAfter),
+			Serial:         core.SerialToString(extantCert.SerialNumber),
+			Der:            extantDer,
+			Issued:         timestamppb.New(extantCert.NotBefore),
+			Expires:        timestamppb.New(extantCert.NotAfter),
 		},
 	}
-	mux := wfe.Handler(metrics.NoopRegisterer)
-	responseWriter := httptest.NewRecorder()
 
 	// Set the fake clock forward to the suggested renewal window.
-	fc.Set(core.RenewalInfoSimple(expectCert.NotBefore, expectCert.NotAfter).SuggestedWindow.Start.Add(time.Second))
+	fc.Set(core.RenewalInfoSimple(extantCert.NotBefore, extantCert.NotAfter).SuggestedWindow.Start.Add(time.Second))
+
+	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	// Request the certificate for the first time. Because we mocked together
 	// the certificate, it will have been issued 60 days ago.
-	body := `
-	{
-		"Identifiers": [
-		  {"type": "dns", "value": "example.com"}
-		]
-	}`
-
-	// FIXME: make this into an internal func, give it the desired HTTP status
-	// code and URL/serial it should replace (or nil)
-	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
+	r := signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath,
+		`{"Identifiers": [{"type": "dns", "value": "example.com"}]}`)
+	responseWriter := httptest.NewRecorder()
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
 
 	// Request another, identical certificate. This should fail for violating
 	// the NewOrdersPerAccount rate limit.
-	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
+	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath,
+		`{"Identifiers": [{"type": "dns", "value": "example.com"}]}`)
 	responseWriter = httptest.NewRecorder()
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusTooManyRequests)
 
 	// Make a request with the "Replaces" field, which should satisfy ARI checks
 	// and therefore bypass the rate limit.
-	body = fmt.Sprintf(`
-	{
-		"Identifiers": [
-		  {"type": "dns", "value": "example.com"}
-		],
-		"Replaces": %q
-	}`, expectCertId)
-	// FIXME: json.Marshal on a struct with omitempty on Replaces?
-
-	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath, body)
+	r = signAndPost(signer, newOrderPath, "http://localhost"+newOrderPath,
+		fmt.Sprintf(`{"Identifiers": [{"type": "dns", "value": "example.com"}],	"Replaces": %q}`, extantCertId))
 	responseWriter = httptest.NewRecorder()
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
