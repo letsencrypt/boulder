@@ -267,8 +267,8 @@ github.com/zmap/zcrypto v0.0.0-20201211161100-e54a5822fb7e/go.mod h1:aPM7r+JOkfL
 github.com/zmap/zcrypto v0.0.0-20231219022726-a1f61fb1661c h1:U1b4THKcgOpJ+kILupuznNwPiURtwVW3e9alJvji9+s=
 github.com/zmap/zcrypto v0.0.0-20231219022726-a1f61fb1661c/go.mod h1:GSDpFDD4TASObxvfZfvpZZ3OWHIUHMlhVWlkOe4ewVk=
 github.com/zmap/zlint/v3 v3.0.0/go.mod h1:paGwFySdHIBEMJ61YjoqT4h7Ge+fdYG4sUQhnTb1lJ8=
-github.com/zmap/zlint/v3 v3.6.0 h1:vTEaDRtYN0d/1Ax60T+ypvbLQUHwHxbvYRnUMVr35ug=
-github.com/zmap/zlint/v3 v3.6.0/go.mod h1:NVgiIWssgzp0bNl8P4Gz94NHV2ep/4Jyj9V69uTmZyg=
+github.com/zmap/zlint/v3 v3.6.4 h1:r2kHfRF7mIsxW0IH4Og2iZnrlpCLTZBFjnXy1x/ZnZI=
+github.com/zmap/zlint/v3 v3.6.4/go.mod h1:KQLVUquVaO5YJDl5a4k/7RPIbIW2v66+sRoBPNZusI8=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.55.0 h1:hCq2hNMwsegUvPzI7sPOvtO9cqyy5GbWt/Ybp2xrx8Q=
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.55.0/go.mod h1:LqaApwGx/oUmzsbqxkzuBvyoPpkxk3JQWnqfVrJ3wCA=
