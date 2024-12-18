@@ -795,8 +795,8 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 		out:                    pauseChan,
 	}
 
-	// Override the default ratelimits to only allow one failed validation per
-	// 24 hours before pausing.
+	// Set the default ratelimits to only allow one failed validation per 24
+	// hours before pausing.
 	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
 		ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount.String(): &ratelimits.LimitConfig{
 			Burst:  1,
@@ -1500,8 +1500,8 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	features.Set(features.Config{AutomaticallyPauseZombieClients: true})
 	defer features.Reset()
 
-	// Override the default ratelimits to only allow one failed validation per
-	// 24 hours before pausing.
+	// Set the default ratelimits to only allow one failed validation per 24
+	// hours before pausing.
 	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
 		ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount.String(): &ratelimits.LimitConfig{
 			Burst:  1,

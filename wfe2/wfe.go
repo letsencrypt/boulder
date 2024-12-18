@@ -2401,7 +2401,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	var refundLimits func()
+	refundLimits := func() {}
 	if !isARIRenewal {
 		refundLimits, err = wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal || isARIRenewal)
 		if err != nil && features.Get().UseKvLimitsForNewOrder {

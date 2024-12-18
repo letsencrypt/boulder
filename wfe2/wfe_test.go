@@ -4427,9 +4427,10 @@ func TestCountNewOrderWithReplaces(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 
 	expectExpiry := time.Now().AddDate(0, 0, 1)
-	var expectAKID []byte
+	// Pick a random issuer to "issue" expectCert.
+	var issuer *issuance.Certificate
 	for _, v := range wfe.issuerCertificates {
-		expectAKID = v.SubjectKeyId
+		issuer = v
 		break
 	}
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
@@ -4438,7 +4439,7 @@ func TestCountNewOrderWithReplaces(t *testing.T) {
 		NotAfter:       expectExpiry,
 		DNSNames:       []string{"example.com"},
 		SerialNumber:   expectSerial,
-		AuthorityKeyId: expectAKID,
+		AuthorityKeyId: issuer.SubjectKeyId,
 	}
 	expectCertId, err := makeARICertID(expectCert)
 	test.AssertNotError(t, err, "failed to create test cert id")
@@ -4476,8 +4477,8 @@ func TestNewOrderRateLimits(t *testing.T) {
 	features.Set(features.Config{UseKvLimitsForNewOrder: true})
 	defer features.Reset()
 
-	// Override the default ratelimits to only allow one new order per account
-	// per 24 hours.
+	// Set the default ratelimits to only allow one new order per account per 24
+	// hours.
 	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
 		ratelimits.NewOrdersPerAccount.String(): &ratelimits.LimitConfig{
 			Burst:  1,
@@ -4487,9 +4488,10 @@ func TestNewOrderRateLimits(t *testing.T) {
 	test.AssertNotError(t, err, "making transaction composer")
 	wfe.txnBuilder = txnBuilder
 
-	var extantAKID []byte
+	// Pick a random issuer to "issue" extantCert.
+	var issuer *issuance.Certificate
 	for _, v := range wfe.issuerCertificates {
-		extantAKID = v.SubjectKeyId
+		issuer = v
 		break
 	}
 	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -4499,7 +4501,7 @@ func TestNewOrderRateLimits(t *testing.T) {
 		NotAfter:       fc.Now().AddDate(0, 0, 90),
 		DNSNames:       []string{"example.com"},
 		SerialNumber:   big.NewInt(1337),
-		AuthorityKeyId: extantAKID,
+		AuthorityKeyId: issuer.SubjectKeyId,
 	}
 	extantCertId, err := makeARICertID(extantCert)
 	test.AssertNotError(t, err, "failed to create test cert id")
@@ -4517,8 +4519,10 @@ func TestNewOrderRateLimits(t *testing.T) {
 		},
 	}
 
-	// Set the fake clock forward to the suggested renewal window.
-	fc.Set(core.RenewalInfoSimple(extantCert.NotBefore, extantCert.NotAfter).SuggestedWindow.Start.Add(time.Second))
+	// Set the fake clock forward to 1s past the suggested renewal window start
+	// time.
+	renewalWindowStart := core.RenewalInfoSimple(extantCert.NotBefore, extantCert.NotAfter).SuggestedWindow.Start
+	fc.Set(renewalWindowStart.Add(time.Second))
 
 	mux := wfe.Handler(metrics.NoopRegisterer)
 
