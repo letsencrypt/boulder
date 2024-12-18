@@ -43,7 +43,8 @@ func TestAccountDeactivate(t *testing.T) {
 		t.Errorf("account deactivation should have set status to %q, instead got %q", core.StatusDeactivated, got.Status)
 	}
 
-	if len(got.Contact) != 0 {
-		t.Errorf("account deactivation should have cleared contacts field, instead got %+v", got.Contact)
-	}
+	// TODO(#5554): Check that the contacts have been cleared. We can't do this
+	// today because eggsampler/acme unmarshals the WFE's response into the same
+	// account object as it used to make the request, and a wholly missing
+	// contacts field doesn't overwrite whatever eggsampler was holding in memory.
 }
