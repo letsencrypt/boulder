@@ -798,7 +798,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 			return
 		} else {
-			logEvent.IgnoredRateLimitError = err.Error()
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While checking rate limits"), err)
+			return
 		}
 	}
 
@@ -2401,14 +2402,13 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	refundLimits, err := wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal)
-	if err != nil {
+	if err != nil && features.Get().UseKvLimitsForNewOrder {
 		if errors.Is(err, berrors.RateLimit) {
-			if features.Get().UseKvLimitsForNewOrder {
-				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
-				return
-			}
+			wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
+			return
 		} else {
-			logEvent.IgnoredRateLimitError = err.Error()
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While checking rate limits"), err)
+			return
 		}
 	}
 
