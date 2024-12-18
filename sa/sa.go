@@ -549,6 +549,8 @@ func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req 
 	if err != nil {
 		return nil, err
 	}
+
+	// TODO(#5554): Return the updated account object.
 	return &emptypb.Empty{}, nil
 }
 
