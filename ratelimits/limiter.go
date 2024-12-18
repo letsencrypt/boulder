@@ -117,8 +117,8 @@ func (d *Decision) Result(now time.Time) error {
 		return berrors.RegistrationsPerIPAddressError(
 			retryAfter,
 			"too many new registrations (%d) from this IP address in the last %s, retry after %s",
-			d.transaction.limit.Burst,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.burst,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
@@ -126,16 +126,16 @@ func (d *Decision) Result(now time.Time) error {
 		return berrors.RegistrationsPerIPv6RangeError(
 			retryAfter,
 			"too many new registrations (%d) from this /48 subnet of IPv6 addresses in the last %s, retry after %s",
-			d.transaction.limit.Burst,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.burst,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 	case NewOrdersPerAccount:
 		return berrors.NewOrdersPerAccountError(
 			retryAfter,
 			"too many new orders (%d) from this account in the last %s, retry after %s",
-			d.transaction.limit.Burst,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.burst,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
@@ -149,9 +149,9 @@ func (d *Decision) Result(now time.Time) error {
 		return berrors.FailedAuthorizationsPerDomainPerAccountError(
 			retryAfter,
 			"too many failed authorizations (%d) for %q in the last %s, retry after %s",
-			d.transaction.limit.Burst,
+			d.transaction.limit.burst,
 			domain,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
@@ -165,9 +165,9 @@ func (d *Decision) Result(now time.Time) error {
 		return berrors.CertificatesPerDomainError(
 			retryAfter,
 			"too many certificates (%d) already issued for %q in the last %s, retry after %s",
-			d.transaction.limit.Burst,
+			d.transaction.limit.burst,
 			domain,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
@@ -175,8 +175,8 @@ func (d *Decision) Result(now time.Time) error {
 		return berrors.CertificatesPerFQDNSetError(
 			retryAfter,
 			"too many certificates (%d) already issued for this exact set of domains in the last %s, retry after %s",
-			d.transaction.limit.Burst,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.burst,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
@@ -285,7 +285,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		d := maybeSpend(l.clk, txn, storedTAT)
 
 		if txn.limit.isOverride() {
-			utilization := float64(txn.limit.Burst-d.remaining) / float64(txn.limit.Burst)
+			utilization := float64(txn.limit.burst-d.remaining) / float64(txn.limit.burst)
 			l.overrideUsageGauge.WithLabelValues(txn.limit.name.String(), txn.limit.overrideKey).Set(utilization)
 		}
 
