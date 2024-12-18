@@ -31,7 +31,7 @@ func newTestLimiter(t *testing.T, s Source, clk clock.FakeClock) *Limiter {
 //   - 'NewRegistrationsPerIPAddress' burst: 20 count: 20 period: 1s
 //   - 'NewRegistrationsPerIPAddress:10.0.0.2' burst: 40 count: 40 period: 1s
 func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
-	c, err := NewTransactionBuilder("testdata/working_default.yml", "testdata/working_override.yml")
+	c, err := NewTransactionBuilderFromFiles("testdata/working_default.yml", "testdata/working_override.yml")
 	test.AssertNotError(t, err, "should not error")
 	return c
 }
@@ -471,8 +471,8 @@ func TestRateLimitError(t *testing.T) {
 				transaction: Transaction{
 					limit: &limit{
 						name:   NewRegistrationsPerIPAddress,
-						Burst:  10,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  10,
+						period: config.Duration{Duration: time.Hour},
 					},
 				},
 			},
@@ -487,8 +487,8 @@ func TestRateLimitError(t *testing.T) {
 				transaction: Transaction{
 					limit: &limit{
 						name:   NewRegistrationsPerIPv6Range,
-						Burst:  5,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  5,
+						period: config.Duration{Duration: time.Hour},
 					},
 				},
 			},
@@ -503,8 +503,8 @@ func TestRateLimitError(t *testing.T) {
 				transaction: Transaction{
 					limit: &limit{
 						name:   NewOrdersPerAccount,
-						Burst:  2,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  2,
+						period: config.Duration{Duration: time.Hour},
 					},
 				},
 			},
@@ -519,8 +519,8 @@ func TestRateLimitError(t *testing.T) {
 				transaction: Transaction{
 					limit: &limit{
 						name:   FailedAuthorizationsPerDomainPerAccount,
-						Burst:  7,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  7,
+						period: config.Duration{Duration: time.Hour},
 					},
 					bucketKey: "4:12345:example.com",
 				},
@@ -536,8 +536,8 @@ func TestRateLimitError(t *testing.T) {
 				transaction: Transaction{
 					limit: &limit{
 						name:   CertificatesPerDomain,
-						Burst:  3,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  3,
+						period: config.Duration{Duration: time.Hour},
 					},
 					bucketKey: "5:example.org",
 				},
@@ -553,8 +553,8 @@ func TestRateLimitError(t *testing.T) {
 				transaction: Transaction{
 					limit: &limit{
 						name:   CertificatesPerDomainPerAccount,
-						Burst:  3,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  3,
+						period: config.Duration{Duration: time.Hour},
 					},
 					bucketKey: "6:12345678:example.net",
 				},
