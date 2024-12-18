@@ -387,11 +387,7 @@ func TestIssueCommonName(t *testing.T) {
 	fc.Set(time.Now())
 
 	prof := defaultProfileConfig()
-	prof.IgnoredLints = []string{
-		"w_subject_common_name_included",
-		"w_ct_sct_policy_count_unsatisfied",
-		"e_scts_from_same_operator",
-	}
+	prof.IgnoredLints = append(prof.IgnoredLints, "w_subject_common_name_included")
 	cnProfile, err := NewProfile(prof)
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
@@ -450,9 +446,12 @@ func TestIssueOmissions(t *testing.T) {
 	pc.OmitClientAuth = true
 	pc.OmitSKID = true
 	pc.IgnoredLints = []string{
-		"w_ext_subject_key_identifier_missing_sub_cert",
+		// Reduce the lint ignores to just the minimal (SCT-related) set.
 		"w_ct_sct_policy_count_unsatisfied",
 		"e_scts_from_same_operator",
+		// Ignore the warning about *not* including the SubjectKeyIdentifier extension:
+		// zlint has both lints (one enforcing RFC5280, the other the BRs).
+		"w_ext_subject_key_identifier_missing_sub_cert",
 	}
 	prof, err := NewProfile(pc)
 	test.AssertNotError(t, err, "building test profile")
@@ -529,7 +528,10 @@ func TestIssueSCTList(t *testing.T) {
 	test.AssertNotError(t, err, "failed to load log list")
 
 	pc := defaultProfileConfig()
-	pc.IgnoredLints = []string{}
+	pc.IgnoredLints = []string{
+		// Only ignore the SKID lint, i.e., don't ignore the "missing SCT" lints.
+		"w_ext_subject_key_identifier_not_recommended_subscriber",
+	}
 	enforceSCTsProfile, err := NewProfile(pc)
 	test.AssertNotError(t, err, "NewProfile failed")
 	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
@@ -754,11 +756,7 @@ func TestMismatchedProfiles(t *testing.T) {
 	test.AssertNotError(t, err, "NewIssuer failed")
 
 	pc := defaultProfileConfig()
-	pc.IgnoredLints = []string{
-		"w_subject_common_name_included",
-		"w_ct_sct_policy_count_unsatisfied",
-		"e_scts_from_same_operator",
-	}
+	pc.IgnoredLints = append(pc.IgnoredLints, "w_subject_common_name_included")
 	cnProfile, err := NewProfile(pc)
 	test.AssertNotError(t, err, "NewProfile failed")
 
@@ -782,10 +780,6 @@ func TestMismatchedProfiles(t *testing.T) {
 	// Create a new profile that differs slightly (no common name)
 	pc = defaultProfileConfig()
 	pc.AllowCommonName = false
-	pc.IgnoredLints = []string{
-		"w_ct_sct_policy_count_unsatisfied",
-		"e_scts_from_same_operator",
-	}
 	test.AssertNotError(t, err, "building test lint registry")
 	noCNProfile, err := NewProfile(pc)
 	test.AssertNotError(t, err, "NewProfile failed")

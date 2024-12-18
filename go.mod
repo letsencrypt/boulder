@@ -29,7 +29,7 @@ require (
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 	github.com/weppos/publicsuffix-go v0.40.3-0.20240815124645-a8ed110559c9
 	github.com/zmap/zcrypto v0.0.0-20231219022726-a1f61fb1661c
-	github.com/zmap/zlint/v3 v3.6.0
+	github.com/zmap/zlint/v3 v3.6.4
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.55.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.55.0
 	go.opentelemetry.io/otel v1.30.0

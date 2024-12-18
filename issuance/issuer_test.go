@@ -28,8 +28,12 @@ func defaultProfileConfig() *ProfileConfig {
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 		IgnoredLints: []string{
+			// Ignore the two SCT lints because these tests don't get SCTs.
 			"w_ct_sct_policy_count_unsatisfied",
 			"e_scts_from_same_operator",
+			// Ignore the warning about including the SubjectKeyIdentifier extension:
+			// we include it on purpose, but plan to remove it soon.
+			"w_ext_subject_key_identifier_not_recommended_subscriber",
 		},
 	}
 }
