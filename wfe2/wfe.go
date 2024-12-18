@@ -1465,12 +1465,17 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	// their contacts, the deactivation will take place and return before an
 	// update would be performed. Deactivation deletes the contacts field.
 	if accountUpdateRequest.Status == core.StatusDeactivated {
-		_, err = wfe.ra.DeactivateRegistration(ctx, &corepb.Registration{Id: currAcct.ID, Status: string(core.StatusDeactivated)})
+		// TODO(#5554): Remove the need to pass Status here: we wouldn't have reached
+		// this point unless the requesting account was valid.
+		_, err = wfe.ra.DeactivateRegistration(ctx, &corepb.Registration{Id: currAcct.ID, Status: string(currAcct.Status)})
 		if err != nil {
 			return nil, web.ProblemDetailsForError(err, "Unable to deactivate account")
 		}
 
+		// TODO(#5554): Have DeactivateRegistration return the updated account
+		// object, so we don't have to modify it ourselves.
 		currAcct.Status = core.StatusDeactivated
+		currAcct.Contact = nil
 		return currAcct, nil
 	}
 
