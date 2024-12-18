@@ -11,7 +11,6 @@ import (
 	"math/big"
 	"net"
 	"net/url"
-	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -46,7 +45,6 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
-	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -86,7 +84,6 @@ type RegistrationAuthorityImpl struct {
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
-	rlPolicies                   ratelimit.Limits
 	maxContactsPerReg            int
 	limiter                      *ratelimits.Limiter
 	txnBuilder                   *ratelimits.TransactionBuilder
@@ -247,7 +244,6 @@ func NewRegistrationAuthorityImpl(
 		log:                          logger,
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
-		rlPolicies:                   ratelimit.New(),
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		limiter:                      limiter,
@@ -274,19 +270,6 @@ func NewRegistrationAuthorityImpl(
 		pauseCounter:                 pauseCounter,
 	}
 	return ra
-}
-
-func (ra *RegistrationAuthorityImpl) LoadRateLimitPoliciesFile(filename string) error {
-	configBytes, err := os.ReadFile(filename)
-	if err != nil {
-		return err
-	}
-	err = ra.rlPolicies.LoadPolicies(configBytes)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // certificateRequestAuthz is a struct for holding information about a valid

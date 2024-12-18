@@ -331,15 +331,6 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 	return status, nil
 }
 
-func (ssa *SQLStorageAuthorityRO) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if req.AccountID == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
-		return nil, errIncompleteRequest
-	}
-
-	return countNewOrders(ctx, ssa.dbReadOnlyMap, req)
-}
-
 // FQDNSetTimestampsForWindow returns the issuance timestamps for each
 // certificate, issued for a set of domains, during a given window of time,
 // starting from the most recent issuance.

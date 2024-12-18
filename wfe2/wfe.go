@@ -2409,7 +2409,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	refundLimits := func() {}
 	if !isARIRenewal {
 		refundLimits, err = wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal || isARIRenewal)
-		if err != nil && features.Get().UseKvLimitsForNewOrder {
+		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 				return

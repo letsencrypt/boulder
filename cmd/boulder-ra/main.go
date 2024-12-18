@@ -31,10 +31,11 @@ import (
 
 type Config struct {
 	RA struct {
+		// RateLimitPoliciesFilename is deprecated.
+		RateLimitPoliciesFilename string
+
 		cmd.ServiceConfig
 		cmd.HostnamePolicyConfig
-
-		RateLimitPoliciesFilename string `validate:"required"`
 
 		MaxContactsPerRegistration int
 
@@ -297,8 +298,6 @@ func main() {
 	)
 	defer rai.Drain()
 
-	policyErr := rai.LoadRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
-	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
 	rai.PA = pa
 
 	rai.VA = va.RemoteClients{

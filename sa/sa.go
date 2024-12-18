@@ -469,13 +469,13 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		return nil, overallError
 	}
 
-	// In a separate transaction perform the work required to update tables used
-	// for rate limits. Since the effects of failing these writes is slight
-	// miscalculation of rate limits we choose to not fail the AddCertificate
-	// operation if the rate limit update transaction fails.
-	_, rlTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		// Update the FQDN sets now that there is a final certificate to ensure rate
-		// limits are calculated correctly.
+	// In a separate transaction, perform the work required to update the table
+	// used for order reuse. Since the effect of failing the write is just a
+	// missed opportunity to reuse an order, we choose to not fail the
+	// AddCertificate operation if this update transaction fails.
+	_, fqdnTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		// Update the FQDN sets now that there is a final certificate to ensure
+		// reuse is determined correctly.
 		err = addFQDNSet(
 			ctx,
 			tx,
@@ -490,11 +490,11 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 
 		return nil, nil
 	})
-	// If the ratelimit transaction failed increment a stat and log a warning
+	// If the FQDN sets transaction failed, increment a stat and log a warning
 	// but don't return an error from AddCertificate.
-	if rlTransactionErr != nil {
+	if fqdnTransactionErr != nil {
 		ssa.rateLimitWriteErrors.Inc()
-		ssa.log.AuditErrf("failed AddCertificate ratelimit update transaction: %v", rlTransactionErr)
+		ssa.log.AuditErrf("failed AddCertificate FQDN sets update transaction: %v", fqdnTransactionErr)
 	}
 
 	return &emptypb.Empty{}, nil
