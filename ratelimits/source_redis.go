@@ -117,7 +117,6 @@ func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[st
 	}
 
 	tats := make(map[string]time.Time, len(bucketKeys))
-	notFoundCount := 0
 	for i, result := range results {
 		tatNano, err := result.(*redis.StringCmd).Int64()
 		if err != nil {
@@ -127,7 +126,6 @@ func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[st
 				return nil, err
 			}
 			// Bucket key does not exist.
-			notFoundCount++
 			continue
 		}
 		tats[bucketKeys[i]] = time.Unix(0, tatNano).UTC()
