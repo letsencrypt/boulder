@@ -1014,6 +1014,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		// that it can wait for all goroutines to drain during shutdown.
 		ra.drainWG.Add(1)
 		go func() {
+			// The original context will be canceled in the RPC layer when FinalizeOrder returns,
+			// so split off a context that won't be canceled (and has its own timeout).
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ra.finalizeTimeout)
+			defer cancel()
 			_, err := ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, logEvent)
 			if err != nil {
 				// We only log here, because this is in a background goroutine with
@@ -1267,13 +1271,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	profileName string,
 	acctID accountID,
 	oID orderID) (*x509.Certificate, *certProfileID, error) {
-	if features.Get().AsyncFinalize {
-		// If we're in async mode, use a context with a much longer timeout.
-		var cancel func()
-		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), ra.finalizeTimeout)
-		defer cancel()
-	}
-
 	// wrapError adds a prefix to an error. If the error is a boulder error then
 	// the problem detail is updated with the prefix. Otherwise a new error is
 	// returned with the message prefixed using `fmt.Errorf`
