@@ -108,6 +108,43 @@ func (r *RedisSource) BatchSet(ctx context.Context, buckets map[string]time.Time
 	return nil
 }
 
+// BatchSetNotExisting attempts to set TATs for the specified bucketKeys if they
+// do not already exist. Returns a map indicating which keys already existed.
+func (r *RedisSource) BatchSetNotExisting(ctx context.Context, buckets map[string]time.Time) (map[string]bool, error) {
+	start := r.clk.Now()
+
+	pipeline := r.client.Pipeline()
+	cmds := make(map[string]*redis.BoolCmd, len(buckets))
+	for bucketKey, tat := range buckets {
+		// Set a TTL of TAT + 10 minutes to account for clock skew.
+		ttl := tat.UTC().Sub(r.clk.Now()) + 10*time.Minute
+		cmds[bucketKey] = pipeline.SetNX(ctx, bucketKey, tat.UTC().UnixNano(), ttl)
+	}
+	_, err := pipeline.Exec(ctx)
+	if err != nil {
+		r.observeLatency("batchsetnotexisting", r.clk.Since(start), err)
+		return nil, err
+	}
+
+	alreadyExists := make(map[string]bool, len(buckets))
+	totalLatency := r.clk.Since(start)
+	perSetLatency := totalLatency / time.Duration(len(buckets))
+	for bucketKey, cmd := range cmds {
+		success, err := cmd.Result()
+		if err != nil {
+			r.observeLatency("batchsetnotexisting_entry", perSetLatency, err)
+			return nil, err
+		}
+		if !success {
+			alreadyExists[bucketKey] = true
+		}
+		r.observeLatency("batchsetnotexisting_entry", perSetLatency, nil)
+	}
+
+	r.observeLatency("batchsetnotexisting", totalLatency, nil)
+	return alreadyExists, nil
+}
+
 // BatchIncrement updates TATs for the specified bucketKeys using a pipelined
 // Redis Transaction in order to reduce the number of round-trips to each Redis
 // shard.

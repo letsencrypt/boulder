@@ -63,6 +63,7 @@ webpki() (
   # This function executes in a subshell, so this cd does not affect the parent
   # script.
   cd ../..
+  make build
   mkdir ./test/certs/webpki
   go run ./test/certs/webpki.go
 )

@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -603,75 +604,136 @@ func TestAddCertificateDuplicate(t *testing.T) {
 
 }
 
-func TestFQDNSets(t *testing.T) {
-	ctx := context.Background()
-	sa, fc, cleanUp := initSA(t)
+func TestCountCertificatesByNamesTimeRange(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
-	tx, err := sa.dbMap.BeginTx(ctx)
-	test.AssertNotError(t, err, "Failed to open transaction")
-	names := []string{"a.example.com", "B.example.com"}
-	expires := fc.Now().Add(time.Hour * 2).UTC()
-	issued := fc.Now()
-	err = addFQDNSet(ctx, tx, names, "serial", issued, expires)
-	test.AssertNotError(t, err, "Failed to add name set")
-	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
+	reg := createWorkingRegistration(t, sa)
+	_, testCert := test.ThrowAwayCert(t, clk)
+	_, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(testCert.NotBefore),
+	})
+	test.AssertNotError(t, err, "Couldn't add test cert")
+	name := testCert.DNSNames[0]
 
-	// Invalid Window
-	req := &sapb.CountFQDNSetsRequest{
-		DnsNames: names,
-		Window:   nil,
+	// Move time forward, so the cert was issued slightly in the past.
+	clk.Add(time.Hour)
+	now := clk.Now()
+	yesterday := clk.Now().Add(-24 * time.Hour)
+	twoDaysAgo := clk.Now().Add(-48 * time.Hour)
+	tomorrow := clk.Now().Add(24 * time.Hour)
+
+	// Count for a name that doesn't have any certs
+	counts, err := sa.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
+		DnsNames: []string{"does.not.exist"},
+		Range: &sapb.Range{
+			Earliest: timestamppb.New(yesterday),
+			Latest:   timestamppb.New(now),
+		},
+	})
+	test.AssertNotError(t, err, "Error counting certs.")
+	test.AssertEquals(t, len(counts.Counts), 1)
+	test.AssertEquals(t, counts.Counts["does.not.exist"], int64(0))
+
+	// Time range including now should find the cert.
+	counts, err = sa.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
+		DnsNames: testCert.DNSNames,
+		Range: &sapb.Range{
+			Earliest: timestamppb.New(yesterday),
+			Latest:   timestamppb.New(now),
+		},
+	})
+	test.AssertNotError(t, err, "sa.CountCertificatesByName failed")
+	test.AssertEquals(t, len(counts.Counts), 1)
+	test.AssertEquals(t, counts.Counts[name], int64(1))
+
+	// Time range between two days ago and yesterday should not find the cert.
+	counts, err = sa.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
+		DnsNames: testCert.DNSNames,
+		Range: &sapb.Range{
+			Earliest: timestamppb.New(twoDaysAgo),
+			Latest:   timestamppb.New(yesterday),
+		},
+	})
+	test.AssertNotError(t, err, "Error counting certs.")
+	test.AssertEquals(t, len(counts.Counts), 1)
+	test.AssertEquals(t, counts.Counts[name], int64(0))
+
+	// Time range between now and tomorrow also should not (time ranges are
+	// inclusive at the tail end, but not the beginning end).
+	counts, err = sa.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
+		DnsNames: testCert.DNSNames,
+		Range: &sapb.Range{
+			Earliest: timestamppb.New(now),
+			Latest:   timestamppb.New(tomorrow),
+		},
+	})
+	test.AssertNotError(t, err, "Error counting certs.")
+	test.AssertEquals(t, len(counts.Counts), 1)
+	test.AssertEquals(t, counts.Counts[name], int64(0))
+}
+
+func TestCountCertificatesByNamesParallel(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Create two certs with different names and add them both to the database.
+	reg := createWorkingRegistration(t, sa)
+
+	_, testCert := test.ThrowAwayCert(t, clk)
+	_, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(testCert.NotBefore),
+	})
+	test.AssertNotError(t, err, "Couldn't add test cert")
+
+	_, testCert2 := test.ThrowAwayCert(t, clk)
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert2.Raw,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(testCert2.NotBefore),
+	})
+	test.AssertNotError(t, err, "Couldn't add test cert")
+
+	// Override countCertificatesByName with an implementation of certCountFunc
+	// that will block forever if it's called in serial, but will succeed if
+	// called in parallel.
+	names := []string{"does.not.exist", testCert.DNSNames[0], testCert2.DNSNames[0]}
+
+	var interlocker sync.WaitGroup
+	interlocker.Add(len(names))
+	sa.parallelismPerRPC = len(names)
+	oldCertCountFunc := sa.countCertificatesByName
+	sa.countCertificatesByName = func(ctx context.Context, sel db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error) {
+		interlocker.Done()
+		interlocker.Wait()
+		return oldCertCountFunc(ctx, sel, domain, timeRange)
 	}
-	_, err = sa.CountFQDNSets(ctx, req)
-	test.AssertErrorIs(t, err, errIncompleteRequest)
 
-	threeHours := time.Hour * 3
-	req = &sapb.CountFQDNSetsRequest{
+	counts, err := sa.CountCertificatesByNames(ctx, &sapb.CountCertificatesByNamesRequest{
 		DnsNames: names,
-		Window:   durationpb.New(threeHours),
+		Range: &sapb.Range{
+			Earliest: timestamppb.New(clk.Now().Add(-time.Hour)),
+			Latest:   timestamppb.New(clk.Now().Add(time.Hour)),
+		},
+	})
+	test.AssertNotError(t, err, "Error counting certs.")
+	test.AssertEquals(t, len(counts.Counts), 3)
+
+	// We expect there to be two of each of the names that do exist, because
+	// test.ThrowAwayCert creates certs for subdomains of example.com, and
+	// CountCertificatesByNames counts all certs under the same registered domain.
+	expected := map[string]int64{
+		"does.not.exist":      0,
+		testCert.DNSNames[0]:  2,
+		testCert2.DNSNames[0]: 2,
 	}
-	// only one valid
-	count, err := sa.CountFQDNSets(ctx, req)
-	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, count.Count, int64(1))
-
-	// check hash isn't affected by changing name order/casing
-	req.DnsNames = []string{"b.example.com", "A.example.COM"}
-	count, err = sa.CountFQDNSets(ctx, req)
-	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, count.Count, int64(1))
-
-	// add another valid set
-	tx, err = sa.dbMap.BeginTx(ctx)
-	test.AssertNotError(t, err, "Failed to open transaction")
-	err = addFQDNSet(ctx, tx, names, "anotherSerial", issued, expires)
-	test.AssertNotError(t, err, "Failed to add name set")
-	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
-
-	// only two valid
-	req.DnsNames = names
-	count, err = sa.CountFQDNSets(ctx, req)
-	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, count.Count, int64(2))
-
-	// add an expired set
-	tx, err = sa.dbMap.BeginTx(ctx)
-	test.AssertNotError(t, err, "Failed to open transaction")
-	err = addFQDNSet(
-		ctx,
-		tx,
-		names,
-		"yetAnotherSerial",
-		issued.Add(-threeHours),
-		expires.Add(-threeHours),
-	)
-	test.AssertNotError(t, err, "Failed to add name set")
-	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
-
-	// only two valid
-	count, err = sa.CountFQDNSets(ctx, req)
-	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, count.Count, int64(2))
+	for name, count := range expected {
+		test.AssertEquals(t, count, counts.Counts[name])
+	}
 }
 
 func TestFQDNSetTimestampsForWindow(t *testing.T) {

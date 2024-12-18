@@ -105,18 +105,7 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
 	}
 
-	// TODO(#7756): These lint names don't yet exist in our current zlint v3.6.0 but exist in v3.6.2.
-	// In order to upgrade without throwing errors, we need to add these to our ignored lints.
-	// However, v3.6.0 will error if it sees ignored lints it doesn't recognize. Solution: filter
-	// out these specific lints. As part of the PR that updates to v3.6.2, we will remove this code.
-	var ignoredLints []string
-	for _, lintName := range profileConfig.IgnoredLints {
-		if lintName != "e_cab_dv_subject_invalid_values" && lintName != "w_ext_subject_key_identifier_not_recommended_subscriber" {
-			ignoredLints = append(ignoredLints, lintName)
-		}
-	}
-
-	lints, err := linter.NewRegistry(ignoredLints)
+	lints, err := linter.NewRegistry(profileConfig.IgnoredLints)
 	cmd.FailOnError(err, "Failed to create zlint registry")
 	if profileConfig.LintConfig != "" {
 		lintconfig, err := lint.NewConfigFromFile(profileConfig.LintConfig)

@@ -7,6 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
@@ -259,55 +260,6 @@ var (
 
 var ctx = context.Background()
 
-// dummyRateLimitConfig satisfies the rl.RateLimitConfig interface while
-// allowing easy mocking of the individual RateLimitPolicy's
-type dummyRateLimitConfig struct {
-	CertificatesPerNamePolicy             ratelimit.RateLimitPolicy
-	RegistrationsPerIPPolicy              ratelimit.RateLimitPolicy
-	RegistrationsPerIPRangePolicy         ratelimit.RateLimitPolicy
-	PendingAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
-	NewOrdersPerAccountPolicy             ratelimit.RateLimitPolicy
-	InvalidAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
-	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
-	CertificatesPerFQDNSetFastPolicy      ratelimit.RateLimitPolicy
-}
-
-func (r *dummyRateLimitConfig) CertificatesPerName() ratelimit.RateLimitPolicy {
-	return r.CertificatesPerNamePolicy
-}
-
-func (r *dummyRateLimitConfig) RegistrationsPerIP() ratelimit.RateLimitPolicy {
-	return r.RegistrationsPerIPPolicy
-}
-
-func (r *dummyRateLimitConfig) RegistrationsPerIPRange() ratelimit.RateLimitPolicy {
-	return r.RegistrationsPerIPRangePolicy
-}
-
-func (r *dummyRateLimitConfig) PendingAuthorizationsPerAccount() ratelimit.RateLimitPolicy {
-	return r.PendingAuthorizationsPerAccountPolicy
-}
-
-func (r *dummyRateLimitConfig) NewOrdersPerAccount() ratelimit.RateLimitPolicy {
-	return r.NewOrdersPerAccountPolicy
-}
-
-func (r *dummyRateLimitConfig) InvalidAuthorizationsPerAccount() ratelimit.RateLimitPolicy {
-	return r.InvalidAuthorizationsPerAccountPolicy
-}
-
-func (r *dummyRateLimitConfig) CertificatesPerFQDNSet() ratelimit.RateLimitPolicy {
-	return r.CertificatesPerFQDNSetPolicy
-}
-
-func (r *dummyRateLimitConfig) CertificatesPerFQDNSetFast() ratelimit.RateLimitPolicy {
-	return r.CertificatesPerFQDNSetFastPolicy
-}
-
-func (r *dummyRateLimitConfig) LoadPolicies(contents []byte) error {
-	return nil // NOP - unrequired behaviour for this mock
-}
-
 func newAcctKey(t *testing.T) []byte {
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	jwk := &jose.JSONWebKey{Key: key.Public()}
@@ -390,7 +342,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	rlSource := ratelimits.NewInmemSource()
 	limiter, err := ratelimits.NewLimiter(fc, rlSource, stats)
 	test.AssertNotError(t, err, "making limiter")
-	txnBuilder, err := ratelimits.NewTransactionBuilder("../test/config-next/wfe2-ratelimit-defaults.yml", "")
+	txnBuilder, err := ratelimits.NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "")
 	test.AssertNotError(t, err, "making transaction composer")
 
 	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
@@ -842,8 +794,14 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 		out:                    pauseChan,
 	}
 
-	// Override the default ratelimits to only allow one failed validation per 24 hours.
-	txnBuilder, err := ratelimits.NewTransactionBuilder("testdata/one-failed-validation-before-pausing.yml", "")
+	// Set the default ratelimits to only allow one failed validation per 24
+	// hours before pausing.
+	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
+		ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount.String(): &ratelimits.LimitConfig{
+			Burst:  1,
+			Count:  1,
+			Period: config.Duration{Duration: time.Hour * 24}},
+	})
 	test.AssertNotError(t, err, "making transaction composer")
 	ra.txnBuilder = txnBuilder
 
@@ -1053,99 +1011,259 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "certificate public key must be different than account key")
 }
 
-func TestNewOrderRateLimiting(t *testing.T) {
-	_, _, ra, _, fc, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Create a dummy rate limit config that sets a NewOrdersPerAccount rate
-	// limit with a very low threshold/short window
-	rateLimitDuration := 5 * time.Minute
-	ra.rlPolicies = &dummyRateLimitConfig{
-		NewOrdersPerAccountPolicy: ratelimit.RateLimitPolicy{
-			Threshold: 1,
-			Window:    config.Duration{Duration: rateLimitDuration},
-		},
-	}
-
-	orderOne := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"first.example.com"},
-	}
-	orderTwo := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"second.example.com"},
-	}
-
-	// To start, it should be possible to create a new order
-	_, err := ra.NewOrder(ctx, orderOne)
-	test.AssertNotError(t, err, "NewOrder for orderOne failed")
-
-	// Advance the clock 1s to separate the orders in time
-	fc.Add(time.Second)
-
-	// Creating an order immediately after the first with different names
-	// should fail
-	_, err = ra.NewOrder(ctx, orderTwo)
-	test.AssertError(t, err, "NewOrder for orderTwo succeeded, should have been ratelimited")
-
-	// Creating the first order again should succeed because of order reuse, no
-	// new pending order is produced.
-	_, err = ra.NewOrder(ctx, orderOne)
-	test.AssertNotError(t, err, "Reuse of orderOne failed")
-
-	// Advancing the clock by 2 * the rate limit duration should allow orderTwo to
-	// succeed
-	fc.Add(2 * rateLimitDuration)
-	_, err = ra.NewOrder(ctx, orderTwo)
-	test.AssertNotError(t, err, "NewOrder for orderTwo failed after advancing clock")
+// mockInvalidAuthorizationsAuthority is a mock which claims that the given
+// domain has one invalid authorization.
+type mockInvalidAuthorizationsAuthority struct {
+	sapb.StorageAuthorityClient
+	domainWithFailures string
 }
 
-// TestEarlyOrderRateLimiting tests that NewOrder applies the certificates per
-// name/per FQDN rate limits against the order names.
-func TestEarlyOrderRateLimiting(t *testing.T) {
+func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
+	if req.DnsName == sa.domainWithFailures {
+		return &sapb.Count{Count: 1}, nil
+	} else {
+		return &sapb.Count{}, nil
+	}
+}
+
+func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	rateLimitDuration := 5 * time.Minute
+	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
+		ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount.String(): &ratelimits.LimitConfig{
+			Burst:  1,
+			Count:  1,
+			Period: config.Duration{Duration: time.Hour * 1}},
+	})
+	test.AssertNotError(t, err, "making transaction composer")
+	ra.txnBuilder = txnBuilder
 
-	domain := "early-ratelimit-example.com"
+	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
+	ra.SA = &mockInvalidAuthorizationsAuthority{domainWithFailures: "all.i.do.is.lose.com"}
+	err = ra.checkInvalidAuthorizationLimits(ctx, Registration.Id,
+		[]string{"charlie.brown.com", "all.i.do.is.lose.com"}, limit)
+	test.AssertError(t, err, "checkInvalidAuthorizationLimits did not encounter expected rate limit error")
+	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account")
+}
 
-	// Set a mock RL policy with a CertificatesPerName threshold for the domain
-	// name so low if it were enforced it would prevent a new order for any names.
-	ra.rlPolicies = &dummyRateLimitConfig{
-		CertificatesPerNamePolicy: ratelimit.RateLimitPolicy{
-			Threshold: 10,
-			Window:    config.Duration{Duration: rateLimitDuration},
-			// Setting the Threshold to 0 skips applying the rate limit. Setting an
-			// override to 0 does the trick.
-			Overrides: map[string]int64{
-				domain: 0,
-			},
-		},
-		NewOrdersPerAccountPolicy: ratelimit.RateLimitPolicy{
-			Threshold: 10,
-			Window:    config.Duration{Duration: rateLimitDuration},
+type mockSAWithNameCounts struct {
+	sapb.StorageAuthorityClient
+	nameCounts *sapb.CountByNames
+	t          *testing.T
+	clk        clock.FakeClock
+}
+
+func (m *mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
+	expectedLatest := m.clk.Now()
+	if req.Range.Latest.AsTime() != expectedLatest {
+		m.t.Errorf("incorrect latest: got '%v', expected '%v'", req.Range.Latest.AsTime(), expectedLatest)
+	}
+	expectedEarliest := m.clk.Now().Add(-23 * time.Hour)
+	if req.Range.Earliest.AsTime() != expectedEarliest {
+		m.t.Errorf("incorrect earliest: got '%v', expected '%v'", req.Range.Earliest.AsTime(), expectedEarliest)
+	}
+	counts := make(map[string]int64)
+	for _, name := range req.DnsNames {
+		if count, ok := m.nameCounts.Counts[name]; ok {
+			counts[name] = count
+		}
+	}
+	return &sapb.CountByNames{Counts: counts}, nil
+}
+
+// FQDNSetExists is a mock which always returns false, so the test requests
+// aren't considered to be renewals.
+func (m *mockSAWithNameCounts) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
+	return &sapb.Exists{Exists: false}, nil
+}
+
+func TestCheckCertificatesPerNameLimit(t *testing.T) {
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	rlp := ratelimit.RateLimitPolicy{
+		Threshold: 3,
+		Window:    config.Duration{Duration: 23 * time.Hour},
+		Overrides: map[string]int64{
+			"bigissuer.com":     100,
+			"smallissuer.co.uk": 1,
 		},
 	}
 
-	// Request an order for the test domain
-	newOrder := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{domain},
+	mockSA := &mockSAWithNameCounts{
+		nameCounts: &sapb.CountByNames{Counts: map[string]int64{"example.com": 1}},
+		clk:        fc,
+		t:          t,
 	}
 
-	// With the feature flag enabled the NewOrder request should fail because of
-	// the CertificatesPerNamePolicy.
-	_, err := ra.NewOrder(ctx, newOrder)
-	test.AssertError(t, err, "NewOrder did not apply cert rate limits with feature flag enabled")
+	ra.SA = mockSA
 
+	// One base domain, below threshold
+	err := ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com"}, rlp, 99)
+	test.AssertNotError(t, err, "rate limited example.com incorrectly")
+
+	// Two base domains, one above threshold, one below
+	mockSA.nameCounts.Counts["example.com"] = 10
+	mockSA.nameCounts.Counts["good-example.com"] = 1
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "good-example.com"}, rlp, 99)
+	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
+	test.AssertErrorIs(t, err, berrors.RateLimit)
+	// There are no overrides for "example.com", so the override usage gauge
+	// should contain 0 entries with labels matching it.
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "example.com"}, 0)
+	// Verify it has no sub errors as there is only one bad name
+	test.AssertEquals(t, err.Error(), "too many certificates already issued for \"example.com\". Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account")
 	var bErr *berrors.BoulderError
-	test.Assert(t, errors.As(err, &bErr), "NewOrder did not return a boulder error")
-	test.AssertEquals(t, bErr.RetryAfter, rateLimitDuration)
+	test.AssertErrorWraps(t, err, &bErr)
+	test.AssertEquals(t, len(bErr.SubErrors), 0)
 
-	// The err should be the expected rate limit error
-	expected := "too many certificates already issued for \"early-ratelimit-example.com\". Retry after 2020-03-04T05:05:00Z: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account"
-	test.AssertEquals(t, bErr.Error(), expected)
+	// Three base domains, two above threshold, one below
+	mockSA.nameCounts.Counts["example.com"] = 10
+	mockSA.nameCounts.Counts["other-example.com"] = 10
+	mockSA.nameCounts.Counts["good-example.com"] = 1
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"example.com", "other-example.com", "good-example.com"}, rlp, 99)
+	test.AssertError(t, err, "incorrectly failed to rate limit example.com, other-example.com")
+	test.AssertErrorIs(t, err, berrors.RateLimit)
+	// Verify it has two sub errors as there are two bad names
+	test.AssertEquals(t, err.Error(), "too many certificates already issued for multiple names (\"example.com\" and 2 others). Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account")
+	test.AssertErrorWraps(t, err, &bErr)
+	test.AssertEquals(t, len(bErr.SubErrors), 2)
+
+	// SA misbehaved and didn't send back a count for every input name
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"zombo.com", "www.example.com", "example.com"}, rlp, 99)
+	test.AssertError(t, err, "incorrectly failed to error on misbehaving SA")
+
+	// Two base domains, one above threshold but with an override.
+	mockSA.nameCounts.Counts["example.com"] = 0
+	mockSA.nameCounts.Counts["bigissuer.com"] = 50
+	ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, "bigissuer.com").Set(.5)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
+	test.AssertNotError(t, err, "incorrectly rate limited bigissuer")
+	// "bigissuer.com" has an override of 100 and they've issued 50. Accounting
+	// for the anticipated issuance, we expect to see 51% utilization.
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "bigissuer.com"}, .51)
+
+	// Two base domains, one above its override
+	mockSA.nameCounts.Counts["example.com"] = 10
+	mockSA.nameCounts.Counts["bigissuer.com"] = 100
+	ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, "bigissuer.com").Set(1)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
+	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
+	test.AssertErrorIs(t, err, berrors.RateLimit)
+	// "bigissuer.com" has an override of 100 and they've issued 100. They're
+	// already at 100% utilization, so we expect to see 100% utilization.
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "bigissuer.com"}, 1)
+
+	// One base domain, above its override (which is below threshold)
+	mockSA.nameCounts.Counts["smallissuer.co.uk"] = 1
+	ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, "smallissuer.co.uk").Set(1)
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.smallissuer.co.uk"}, rlp, 99)
+	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
+	test.AssertErrorIs(t, err, berrors.RateLimit)
+	// "smallissuer.co.uk" has an override of 1 and they've issued 1. They're
+	// already at 100% utilization, so we expect to see 100% utilization.
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "smallissuer.co.uk"}, 1)
+}
+
+// TestCheckExactCertificateLimit tests that the duplicate certificate limit
+// applied to FQDN sets is respected.
+func TestCheckExactCertificateLimit(t *testing.T) {
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Create a rate limit with a small threshold
+	const dupeCertLimit = 3
+	rlp := ratelimit.RateLimitPolicy{
+		Threshold: dupeCertLimit,
+		Window:    config.Duration{Duration: 24 * time.Hour},
+	}
+
+	// Create a mock SA that has a count of already issued certificates for some
+	// test names
+	firstIssuanceTimestamp := ra.clk.Now().Add(-rlp.Window.Duration)
+	fITS2 := firstIssuanceTimestamp.Add(time.Hour * 23)
+	fITS3 := firstIssuanceTimestamp.Add(time.Hour * 16)
+	fITS4 := firstIssuanceTimestamp.Add(time.Hour * 8)
+	issuanceTimestampsNS := []int64{
+		fITS2.UnixNano(),
+		fITS3.UnixNano(),
+		fITS4.UnixNano(),
+		firstIssuanceTimestamp.UnixNano(),
+	}
+	issuanceTimestamps := []*timestamppb.Timestamp{
+		timestamppb.New(fITS2),
+		timestamppb.New(fITS3),
+		timestamppb.New(fITS4),
+		timestamppb.New(firstIssuanceTimestamp),
+	}
+	// Our window is 24 hours and our threshold is 3 issuance. If our most
+	// recent issuance was 1 hour ago, we expect the next token to be available
+	// 8 hours from issuance time or 7 hours from now.
+	expectRetryAfterNS := time.Unix(0, issuanceTimestampsNS[0]).Add(time.Hour * 8).Format(time.RFC3339)
+	expectRetryAfter := issuanceTimestamps[0].AsTime().Add(time.Hour * 8).Format(time.RFC3339)
+	test.AssertEquals(t, expectRetryAfterNS, expectRetryAfter)
+	ra.SA = &mockSAWithFQDNSet{
+		issuanceTimestamps: map[string]*sapb.Timestamps{
+			"none.example.com":          {Timestamps: []*timestamppb.Timestamp{}},
+			"under.example.com":         {Timestamps: issuanceTimestamps[3:3]},
+			"equalbutvalid.example.com": {Timestamps: issuanceTimestamps[1:3]},
+			"over.example.com":          {Timestamps: issuanceTimestamps[0:3]},
+		},
+		t: t,
+	}
+
+	testCases := []struct {
+		Name        string
+		Domain      string
+		ExpectedErr error
+	}{
+		{
+			Name:        "FQDN set issuances none",
+			Domain:      "none.example.com",
+			ExpectedErr: nil,
+		},
+		{
+			Name:        "FQDN set issuances less than limit",
+			Domain:      "under.example.com",
+			ExpectedErr: nil,
+		},
+		{
+			Name:        "FQDN set issuances equal to limit",
+			Domain:      "equalbutvalid.example.com",
+			ExpectedErr: nil,
+		},
+		{
+			Name:   "FQDN set issuances above limit NS",
+			Domain: "over.example.com",
+			ExpectedErr: fmt.Errorf(
+				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-exact-set-of-hostnames",
+				expectRetryAfterNS,
+			),
+		},
+		{
+			Name:   "FQDN set issuances above limit",
+			Domain: "over.example.com",
+			ExpectedErr: fmt.Errorf(
+				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-exact-set-of-hostnames",
+				expectRetryAfter,
+			),
+		},
+	}
+
+	// For each test case we check that the certificatesPerFQDNSetLimit is applied
+	// as we expect
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			result := ra.checkCertificatesPerFQDNSetLimit(ctx, []string{tc.Domain}, rlp, 0)
+			if tc.ExpectedErr == nil {
+				test.AssertNotError(t, result, fmt.Sprintf("Expected no error for %q", tc.Domain))
+			} else {
+				test.AssertError(t, result, fmt.Sprintf("Expected error for %q", tc.Domain))
+				test.AssertEquals(t, result.Error(), tc.ExpectedErr.Error())
+			}
+		})
+	}
 }
 
 func TestRegistrationUpdate(t *testing.T) {
@@ -1237,6 +1355,108 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 	test.AssertByteEquals(t, res.Key, update.Key)
 }
 
+// A mockSAWithFQDNSet is a mock StorageAuthority that supports
+// CountCertificatesByName as well as FQDNSetExists. This allows testing
+// checkCertificatesPerNameRateLimit's FQDN exemption logic.
+type mockSAWithFQDNSet struct {
+	sapb.StorageAuthorityClient
+	fqdnSet            map[string]bool
+	issuanceTimestamps map[string]*sapb.Timestamps
+
+	t *testing.T
+}
+
+// Construct the FQDN Set key the same way as the SA (by using
+// `core.UniqueLowerNames`, joining the names with a `,` and hashing them)
+// but return a string so it can be used as a key in m.fqdnSet.
+func (m mockSAWithFQDNSet) hashNames(names []string) string {
+	names = core.UniqueLowerNames(names)
+	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
+	return string(hash[:])
+}
+
+// Search for a set of domain names in the FQDN set map
+func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
+	hash := m.hashNames(req.DnsNames)
+	if _, exists := m.fqdnSet[hash]; exists {
+		return &sapb.Exists{Exists: true}, nil
+	}
+	return &sapb.Exists{Exists: false}, nil
+}
+
+// Return a map of domain -> certificate count.
+func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
+	counts := make(map[string]int64)
+	for _, name := range req.DnsNames {
+		entry, ok := m.issuanceTimestamps[name]
+		if ok {
+			counts[name] = int64(len(entry.Timestamps))
+		}
+	}
+	return &sapb.CountByNames{Counts: counts}, nil
+}
+
+func (m mockSAWithFQDNSet) FQDNSetTimestampsForWindow(_ context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Timestamps, error) {
+	if len(req.DnsNames) == 1 {
+		return m.issuanceTimestamps[req.DnsNames[0]], nil
+	} else {
+		return nil, fmt.Errorf("FQDNSetTimestampsForWindow mock only supports a single domain")
+	}
+}
+
+// TestExactPublicSuffixCertLimit tests the behaviour of issue #2681.
+// See https://github.com/letsencrypt/boulder/issues/2681
+func TestExactPublicSuffixCertLimit(t *testing.T) {
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Simple policy that only allows 2 certificates per name.
+	certsPerNamePolicy := ratelimit.RateLimitPolicy{
+		Threshold: 2,
+		Window:    config.Duration{Duration: 23 * time.Hour},
+	}
+
+	// We use "dedyn.io" and "dynv6.net" domains for the test on the implicit
+	// assumption that both domains are present on the public suffix list.
+	// Quickly verify that this is true before continuing with the rest of the test.
+	_, err := publicsuffix.Domain("dedyn.io")
+	test.AssertError(t, err, "dedyn.io was not on the public suffix list, invaliding the test")
+	_, err = publicsuffix.Domain("dynv6.net")
+	test.AssertError(t, err, "dynv6.net was not on the public suffix list, invaliding the test")
+
+	// Back the mock SA with counts as if so far we have issued the following
+	// certificates for the following domains:
+	//   - test.dedyn.io (once)
+	//   - test2.dedyn.io (once)
+	//   - dynv6.net (twice)
+	mockSA := &mockSAWithNameCounts{
+		nameCounts: &sapb.CountByNames{
+			Counts: map[string]int64{
+				"test.dedyn.io":  1,
+				"test2.dedyn.io": 1,
+				"test3.dedyn.io": 0,
+				"dedyn.io":       0,
+				"dynv6.net":      2,
+			},
+		},
+		clk: fc,
+		t:   t,
+	}
+	ra.SA = mockSA
+
+	// Trying to issue for "test3.dedyn.io" and "dedyn.io" should succeed because
+	// test3.dedyn.io has no certificates and "dedyn.io" is an exact public suffix
+	// match with no certificates issued for it.
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dedyn.io"}, certsPerNamePolicy, 99)
+	test.AssertNotError(t, err, "certificate per name rate limit not applied correctly")
+
+	// Trying to issue for "test3.dedyn.io" and "dynv6.net" should fail because
+	// "dynv6.net" is an exact public suffix match with 2 certificates issued for
+	// it.
+	err = ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dynv6.net"}, certsPerNamePolicy, 99)
+	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
+}
+
 func TestDeactivateAuthorization(t *testing.T) {
 	_, sa, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -1279,8 +1499,14 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	features.Set(features.Config{AutomaticallyPauseZombieClients: true})
 	defer features.Reset()
 
-	// Override the default ratelimits to only allow one failed validation.
-	txnBuilder, err := ratelimits.NewTransactionBuilder("testdata/one-failed-validation-before-pausing.yml", "")
+	// Set the default ratelimits to only allow one failed validation per 24
+	// hours before pausing.
+	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
+		ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount.String(): &ratelimits.LimitConfig{
+			Burst:  1,
+			Count:  1,
+			Period: config.Duration{Duration: time.Hour * 24}},
+	})
 	test.AssertNotError(t, err, "making transaction composer")
 	ra.txnBuilder = txnBuilder
 
@@ -4229,83 +4455,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 		Malformed: true,
 	})
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with just serial for keyCompromise")
-}
-
-func TestNewOrderRateLimitingExempt(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Set up a rate limit policy that allows 1 order every 5 minutes.
-	rateLimitDuration := 5 * time.Minute
-	ra.rlPolicies = &dummyRateLimitConfig{
-		NewOrdersPerAccountPolicy: ratelimit.RateLimitPolicy{
-			Threshold: 1,
-			Window:    config.Duration{Duration: rateLimitDuration},
-		},
-	}
-
-	exampleOrderOne := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"first.example.com", "second.example.com"},
-	}
-	exampleOrderTwo := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"first.example.com", "third.example.com"},
-	}
-
-	// Create an order immediately.
-	_, err := ra.NewOrder(ctx, exampleOrderOne)
-	test.AssertNotError(t, err, "orderOne should have succeeded")
-
-	// Create another order immediately. This should fail.
-	_, err = ra.NewOrder(ctx, exampleOrderTwo)
-	test.AssertError(t, err, "orderTwo should have failed")
-
-	// Exempt orderTwo from rate limiting.
-	exampleOrderTwo.IsARIRenewal = true
-	_, err = ra.NewOrder(ctx, exampleOrderTwo)
-	test.AssertNotError(t, err, "orderTwo should have succeeded")
-}
-
-func TestNewOrderFailedAuthzRateLimitingExempt(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	exampleOrder := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       []string{"example.com"},
-	}
-
-	// Create an order, and thus a pending authz, for "example.com".
-	ctx := context.Background()
-	order, err := ra.NewOrder(ctx, exampleOrder)
-	test.AssertNotError(t, err, "adding an initial order for regA")
-	test.AssertNotNil(t, order.Id, "initial order had a nil ID")
-	test.AssertEquals(t, numAuthorizations(order), 1)
-
-	// Mock SA that has a failed authorization for "example.com".
-	ra.SA = &mockInvalidPlusValidAuthzAuthority{
-		mockSAWithAuthzs{authzs: []*core.Authorization{}},
-		"example.com",
-	}
-
-	// Set up a rate limit policy that allows 1 order every 24 hours.
-	ra.rlPolicies = &dummyRateLimitConfig{
-		InvalidAuthorizationsPerAccountPolicy: ratelimit.RateLimitPolicy{
-			Threshold: 1,
-			Window:    config.Duration{Duration: 24 * time.Hour},
-		},
-	}
-
-	// Requesting a new order for "example.com" should fail due to too many
-	// failed authorizations.
-	_, err = ra.NewOrder(ctx, exampleOrder)
-	test.AssertError(t, err, "expected error for domain with too many failures")
-
-	// Exempt the order from rate limiting.
-	exampleOrder.IsARIRenewal = true
-	_, err = ra.NewOrder(ctx, exampleOrder)
-	test.AssertNotError(t, err, "limit exempt order should have succeeded")
 }
 
 // An authority that returns an error from NewOrderAndAuthzs if the

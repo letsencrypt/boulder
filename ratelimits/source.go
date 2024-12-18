@@ -20,6 +20,11 @@ type Source interface {
 	//    the underlying storage client implementation).
 	BatchSet(ctx context.Context, bucketKeys map[string]time.Time) error
 
+	// BatchSetNotExisting attempts to set TATs for the specified bucketKeys if
+	// they do not already exist. Returns a map indicating which keys already
+	// exist.
+	BatchSetNotExisting(ctx context.Context, buckets map[string]time.Time) (map[string]bool, error)
+
 	// BatchIncrement updates the TATs for the specified bucketKeys, similar to
 	// BatchSet. Implementations MUST ensure non-blocking operations by either:
 	//   a) applying a deadline or timeout to the context WITHIN the method, or
@@ -77,6 +82,21 @@ func (in *inmem) BatchSet(_ context.Context, bucketKeys map[string]time.Time) er
 		in.m[k] = v
 	}
 	return nil
+}
+
+func (in *inmem) BatchSetNotExisting(_ context.Context, bucketKeys map[string]time.Time) (map[string]bool, error) {
+	in.Lock()
+	defer in.Unlock()
+	alreadyExists := make(map[string]bool, len(bucketKeys))
+	for k, v := range bucketKeys {
+		_, ok := in.m[k]
+		if ok {
+			alreadyExists[k] = true
+		} else {
+			in.m[k] = v
+		}
+	}
+	return alreadyExists, nil
 }
 
 func (in *inmem) BatchIncrement(_ context.Context, bucketKeys map[string]increment) error {

@@ -2118,6 +2118,9 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 	if reg == nil || reg.Id == 0 {
 		return nil, errIncompleteGRPCRequest
 	}
+	// TODO(#5554): Remove this check: this is only enforcing that the WFE has
+	// told us the correct status. The SA will enforce that the current status is
+	// valid during its database update.
 	if reg.Status != string(core.StatusValid) {
 		return nil, berrors.MalformedError("only valid registrations can be deactivated")
 	}
@@ -2125,6 +2128,8 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+
+	// TODO(#5554): Return the updated account object.
 	return &emptypb.Empty{}, nil
 }
 

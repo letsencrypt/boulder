@@ -127,7 +127,16 @@
 			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml"
 		},
 		"features": {
-			"ServeRenewalInfo": true
+			"ServeRenewalInfo": true,
+			"IncrementRateLimits": true,
+			"CheckIdentifiersPaused": true
+		},
+		"unpause": {
+			"hmacKey": {
+				"keyFile": "test/secrets/sfe_unpause_key"
+			},
+			"jwtLifetime": "336h",
+			"url": "https://boulder.service.consul:4003"
 		}
 	},
 	"syslog": {

@@ -236,8 +236,8 @@ func runPersonality(p Personality) {
 		Handler: m,
 	}
 	logID := sha256.Sum256(pubKeyBytes)
-	log.Printf("ct-test-srv on %s with pubkey %s and log ID %s", p.Addr,
-		base64.StdEncoding.EncodeToString(pubKeyBytes), base64.StdEncoding.EncodeToString(logID[:]))
+	log.Printf("ct-test-srv on %s with pubkey: %s, log ID: %s, flakiness: %d%%", p.Addr,
+		base64.StdEncoding.EncodeToString(pubKeyBytes), base64.StdEncoding.EncodeToString(logID[:]), p.FlakinessRate)
 	log.Fatal(srv.ListenAndServe())
 }
 

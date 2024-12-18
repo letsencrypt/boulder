@@ -331,24 +331,13 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 	return status, nil
 }
 
-// CountFQDNSets counts the total number of issuances, for a set of domains,
-// that occurred during a given window of time.
-func (ssa *SQLStorageAuthorityRO) CountFQDNSets(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
-	if core.IsAnyNilOrZero(req.Window) || len(req.DnsNames) == 0 {
+func (ssa *SQLStorageAuthorityRO) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
+	if req.AccountID == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 
-	var count int64
-	err := ssa.dbReadOnlyMap.SelectOne(
-		ctx,
-		&count,
-		`SELECT COUNT(*) FROM fqdnSets
-		WHERE setHash = ?
-		AND issued > ?`,
-		core.HashNames(req.DnsNames),
-		ssa.clk.Now().Add(-req.Window.AsDuration()),
-	)
-	return &sapb.Count{Count: count}, err
+	return countNewOrders(ctx, ssa.dbReadOnlyMap, req)
 }
 
 // FQDNSetTimestampsForWindow returns the issuance timestamps for each

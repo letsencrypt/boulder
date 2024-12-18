@@ -9,10 +9,6 @@ Presently, Boulder diverges from the [RFC 8555] ACME spec in the following ways:
 Boulder supports POST-as-GET but does not mandate it for requests
 that simply fetch a resource (certificate, order, authorization, or challenge).
 
-## [Section 6.6](https://tools.ietf.org/html/rfc8555#section-6.6)
-
-For all rate-limits, Boulder includes a `Link` header to additional documentation on rate-limiting. Only rate-limits on `duplicate certificates` and `certificates per registered domain` are accompanied by a `Retry-After` header.
-
 ## [Section 7.1.2](https://tools.ietf.org/html/rfc8555#section-7.1.2)
 
 Boulder does not supply the `orders` field on account objects. We intend to
