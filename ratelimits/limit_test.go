@@ -12,7 +12,7 @@ import (
 // loadAndParseDefaultLimits is a helper that calls both loadDefaults and
 // parseDefaultLimits to handle a YAML file.
 //
-// TODO: Update the tests to test these functions individually.
+// TODO(#7901): Update the tests to test these functions individually.
 func loadAndParseDefaultLimits(path string) (limits, error) {
 	fromFile, err := loadDefaults(path)
 	if err != nil {
@@ -25,7 +25,7 @@ func loadAndParseDefaultLimits(path string) (limits, error) {
 // loadAndParseOverrideLimits is a helper that calls both loadOverrides and
 // parseOverrideLimits to handle a YAML file.
 //
-// TODO: Update the tests to test these functions individually.
+// TODO(#7901): Update the tests to test these functions individually.
 func loadAndParseOverrideLimits(path string) (limits, error) {
 	fromFile, err := loadOverrides(path)
 	if err != nil {
