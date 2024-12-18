@@ -165,6 +165,11 @@ func NewRingFromConfig(c Config, stats prometheus.Registerer, log blog.Logger) (
 		lookup.start()
 	}
 
+	err = redisotel.InstrumentMetrics(inner)
+	if err != nil {
+		return nil, err
+	}
+
 	err = redisotel.InstrumentTracing(inner)
 	if err != nil {
 		return nil, err

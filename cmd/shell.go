@@ -28,7 +28,9 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	otel_prom "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/propagation"
+	otel_sdk_metric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
@@ -266,6 +268,13 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 		logger.Info("No debug listen address specified")
 		return registry
 	}
+
+	op, err := otel_prom.New(otel_prom.WithRegisterer(registry))
+	if err != nil {
+		panic(fmt.Sprintf("creating opentelemetry Prometheus exporter: %s", err))
+	}
+	osmm := otel_sdk_metric.NewMeterProvider(otel_sdk_metric.WithReader(op))
+	otel.SetMeterProvider(osmm)
 
 	registry.MustRegister(collectors.NewGoCollector())
 	registry.MustRegister(collectors.NewProcessCollector(
