@@ -1041,13 +1041,13 @@ func TestHTTPMethods(t *testing.T) {
 		// TODO(@cpu): Remove GET authz support, support only POST-as-GET
 		{
 			Name:    "Authz path should be GET or POST only",
-			Path:    deprecatedAuthzPath,
+			Path:    authzPath,
 			Allowed: getOrPost,
 		},
 		// TODO(@cpu): Remove GET challenge support, support only POST-as-GET
 		{
 			Name:    "Challenge path should be GET or POST only",
-			Path:    deprecatedChallengePath,
+			Path:    challengePath,
 			Allowed: getOrPost,
 		},
 		// TODO(@cpu): Remove GET certificate support, support only POST-as-GET
@@ -1151,40 +1151,6 @@ func TestGetChallengeHandler(t *testing.T) {
 
 		// We set req.URL.Path separately to emulate the path-stripping that
 		// Boulder's request handler does.
-		challengeURL := fmt.Sprintf("http://localhost/acme/chall-v3/1/%s", challSlug)
-		req, err := http.NewRequest(method, challengeURL, nil)
-		test.AssertNotError(t, err, "Could not make NewRequest")
-		req.URL.Path = fmt.Sprintf("1/%s", challSlug)
-
-		wfe.DeprecatedChallengeHandler(ctx, newRequestEvent(), resp, req)
-		test.AssertEquals(t, resp.Code, http.StatusOK)
-		test.AssertEquals(t, resp.Header().Get("Location"), challengeURL)
-		test.AssertEquals(t, resp.Header().Get("Content-Type"), "application/json")
-		test.AssertEquals(t, resp.Header().Get("Link"), `<http://localhost/acme/authz-v3/1>;rel="up"`)
-
-		// Body is only relevant for GET. For HEAD, body will
-		// be discarded by HandleFunc() anyway, so it doesn't
-		// matter what Challenge() writes to it.
-		if method == "GET" {
-			test.AssertUnmarshaledEquals(
-				t, resp.Body.String(),
-				`{"status": "valid", "type":"http-01","token":"token","url":"http://localhost/acme/chall-v3/1/7TyhFQ"}`)
-		}
-	}
-}
-
-func TestGetChallengeHandlerWithAccount(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-
-	// The slug "7TyhFQ" is the StringID of a challenge with type "http-01" and
-	// token "token".
-	challSlug := "7TyhFQ"
-
-	for _, method := range []string{"GET", "HEAD"} {
-		resp := httptest.NewRecorder()
-
-		// We set req.URL.Path separately to emulate the path-stripping that
-		// Boulder's request handler does.
 		challengeURL := fmt.Sprintf("http://localhost/acme/chall/1/1/%s", challSlug)
 		req, err := http.NewRequest(method, challengeURL, nil)
 		test.AssertNotError(t, err, "Could not make NewRequest")
@@ -1208,85 +1174,6 @@ func TestGetChallengeHandlerWithAccount(t *testing.T) {
 }
 
 func TestChallengeHandler(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-
-	post := func(path string) *http.Request {
-		signedURL := fmt.Sprintf("http://localhost/%s", path)
-		_, _, jwsBody := signer.byKeyID(1, nil, signedURL, `{}`)
-		return makePostRequestWithPath(path, jwsBody)
-	}
-	postAsGet := func(keyID int64, path, body string) *http.Request {
-		_, _, jwsBody := signer.byKeyID(keyID, nil, fmt.Sprintf("http://localhost/%s", path), body)
-		return makePostRequestWithPath(path, jwsBody)
-	}
-
-	testCases := []struct {
-		Name            string
-		Request         *http.Request
-		ExpectedStatus  int
-		ExpectedHeaders map[string]string
-		ExpectedBody    string
-	}{
-		{
-			Name:           "Valid challenge",
-			Request:        post("1/7TyhFQ"),
-			ExpectedStatus: http.StatusOK,
-			ExpectedHeaders: map[string]string{
-				"Content-Type": "application/json",
-				"Location":     "http://localhost/acme/chall-v3/1/7TyhFQ",
-				"Link":         `<http://localhost/acme/authz-v3/1>;rel="up"`,
-			},
-			ExpectedBody: `{"status": "valid", "type":"http-01","token":"token","url":"http://localhost/acme/chall-v3/1/7TyhFQ"}`,
-		},
-		{
-			Name:           "Expired challenge",
-			Request:        post("3/7TyhFQ"),
-			ExpectedStatus: http.StatusNotFound,
-			ExpectedBody:   `{"type":"` + probs.ErrorNS + `malformed","detail":"Expired authorization","status":404}`,
-		},
-		{
-			Name:           "Missing challenge",
-			Request:        post("1/"),
-			ExpectedStatus: http.StatusNotFound,
-			ExpectedBody:   `{"type":"` + probs.ErrorNS + `malformed","detail":"No such challenge","status":404}`,
-		},
-		{
-			Name:           "Unspecified database error",
-			Request:        post("4/7TyhFQ"),
-			ExpectedStatus: http.StatusInternalServerError,
-			ExpectedBody:   `{"type":"` + probs.ErrorNS + `serverInternal","detail":"Problem getting authorization","status":500}`,
-		},
-		{
-			Name:           "POST-as-GET, wrong owner",
-			Request:        postAsGet(1, "5/7TyhFQ", ""),
-			ExpectedStatus: http.StatusForbidden,
-			ExpectedBody:   `{"type":"` + probs.ErrorNS + `unauthorized","detail":"User account ID doesn't match account ID in authorization","status":403}`,
-		},
-		{
-			Name:           "Valid POST-as-GET",
-			Request:        postAsGet(1, "1/7TyhFQ", ""),
-			ExpectedStatus: http.StatusOK,
-			ExpectedBody:   `{"status": "valid", "type":"http-01", "token":"token", "url": "http://localhost/acme/chall-v3/1/7TyhFQ"}`,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			responseWriter := httptest.NewRecorder()
-			wfe.DeprecatedChallengeHandler(ctx, newRequestEvent(), responseWriter, tc.Request)
-			// Check the response code, headers and body match expected
-			headers := responseWriter.Header()
-			body := responseWriter.Body.String()
-			test.AssertEquals(t, responseWriter.Code, tc.ExpectedStatus)
-			for h, v := range tc.ExpectedHeaders {
-				test.AssertEquals(t, headers.Get(h), v)
-			}
-			test.AssertUnmarshaledEquals(t, body, tc.ExpectedBody)
-		})
-	}
-}
-
-func TestChallengeHandlerWithAccount(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 
 	post := func(path string) *http.Request {
@@ -1383,28 +1270,6 @@ func TestUpdateChallengeHandlerFinalizedAuthz(t *testing.T) {
 	wfe.ra = &MockRAPerformValidationError{MockRegistrationAuthority{clk: fc}}
 	responseWriter := httptest.NewRecorder()
 
-	signedURL := "http://localhost/1/7TyhFQ"
-	_, _, jwsBody := signer.byKeyID(1, nil, signedURL, `{}`)
-	request := makePostRequestWithPath("1/7TyhFQ", jwsBody)
-	wfe.DeprecatedChallengeHandler(ctx, newRequestEvent(), responseWriter, request)
-
-	body := responseWriter.Body.String()
-	test.AssertUnmarshaledEquals(t, body, `{
-	  "status": "valid",
-		"type": "http-01",
-		"token": "token",
-		"url": "http://localhost/acme/chall-v3/1/7TyhFQ"
-	  }`)
-}
-
-// TestUpdateChallengeHandlerWithAccountFinalizedAuthz tests that POSTing a challenge associated
-// with an already valid authorization just returns the challenge without calling
-// the RA.
-func TestUpdateChallengeHandlerWithAccountFinalizedAuthz(t *testing.T) {
-	wfe, fc, signer := setupWFE(t)
-	wfe.ra = &MockRAPerformValidationError{MockRegistrationAuthority{clk: fc}}
-	responseWriter := httptest.NewRecorder()
-
 	signedURL := "http://localhost/1/1/7TyhFQ"
 	_, _, jwsBody := signer.byKeyID(1, nil, signedURL, `{}`)
 	request := makePostRequestWithPath("1/1/7TyhFQ", jwsBody)
@@ -1423,31 +1288,6 @@ func TestUpdateChallengeHandlerWithAccountFinalizedAuthz(t *testing.T) {
 // PerformValidation that the WFE returns an internal server error as expected
 // and does not panic or otherwise bug out.
 func TestUpdateChallengeHandlerRAError(t *testing.T) {
-	wfe, fc, signer := setupWFE(t)
-	// Mock the RA to always fail PerformValidation
-	wfe.ra = &MockRAPerformValidationError{MockRegistrationAuthority{clk: fc}}
-
-	// Update a pending challenge
-	signedURL := "http://localhost/2/7TyhFQ"
-	_, _, jwsBody := signer.byKeyID(1, nil, signedURL, `{}`)
-	responseWriter := httptest.NewRecorder()
-	request := makePostRequestWithPath("2/7TyhFQ", jwsBody)
-
-	wfe.DeprecatedChallengeHandler(ctx, newRequestEvent(), responseWriter, request)
-
-	// The result should be an internal server error problem.
-	body := responseWriter.Body.String()
-	test.AssertUnmarshaledEquals(t, body, `{
-		"type": "urn:ietf:params:acme:error:serverInternal",
-	  "detail": "Unable to update challenge",
-		"status": 500
-	}`)
-}
-
-// TestUpdateChallengeHandlerWithAccountRAError tests that when the RA returns an error from
-// PerformValidation that the WFE returns an internal server error as expected
-// and does not panic or otherwise bug out.
-func TestUpdateChallengeHandlerWithAccountRAError(t *testing.T) {
 	wfe, fc, signer := setupWFE(t)
 	// Mock the RA to always fail PerformValidation
 	wfe.ra = &MockRAPerformValidationError{MockRegistrationAuthority{clk: fc}}
@@ -1808,56 +1648,6 @@ func TestGetAuthorizationHandler(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 
 	// Expired authorizations should be inaccessible
-	authzURL := "3"
-	responseWriter := httptest.NewRecorder()
-	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "GET",
-		URL:    mustParseURL(authzURL),
-	})
-	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.ErrorNS+`malformed","detail":"Expired authorization","status":404}`)
-	responseWriter.Body.Reset()
-
-	// Ensure that a valid authorization can't be reached with an invalid URL
-	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
-		URL:    mustParseURL("1d"),
-		Method: "GET",
-	})
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.ErrorNS+`malformed","detail":"Invalid authorization ID","status":400}`)
-
-	_, _, jwsBody := signer.byKeyID(1, nil, "http://localhost/1", "")
-	postAsGet := makePostRequestWithPath("1", jwsBody)
-
-	responseWriter = httptest.NewRecorder()
-	// Ensure that a POST-as-GET to an authorization works
-	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, postAsGet)
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-	body := responseWriter.Body.String()
-	test.AssertUnmarshaledEquals(t, body, `
-	{
-		"identifier": {
-			"type": "dns",
-			"value": "not-an-example.com"
-		},
-		"status": "valid",
-		"expires": "2070-01-01T00:00:00Z",
-		"challenges": [
-			{
-			  "status": "valid",
-				"type": "http-01",
-				"token":"token",
-				"url": "http://localhost/acme/chall-v3/1/7TyhFQ"
-			}
-		]
-	}`)
-}
-
-func TestGetAuthorizationHandlerWithAccount(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-
-	// Expired authorizations should be inaccessible
 	authzURL := "1/3"
 	responseWriter := httptest.NewRecorder()
 	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
@@ -1910,24 +1700,6 @@ func TestAuthorizationHandler500(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
 	responseWriter := httptest.NewRecorder()
-	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "GET",
-		URL:    mustParseURL("4"),
-	})
-	expected := `{
-         "type": "urn:ietf:params:acme:error:serverInternal",
-				 "detail": "Problem getting authorization",
-				 "status": 500
-  }`
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), expected)
-}
-
-// TestAuthorizationHandlerWithAccount500 tests that internal errors on GetAuthorization result in
-// a 500.
-func TestAuthorizationHandlerWithAccount500(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-
-	responseWriter := httptest.NewRecorder()
 	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
 		URL:    mustParseURL("1/4"),
@@ -1977,30 +1749,9 @@ func TestAuthorizationChallengeHandlerNamespace(t *testing.T) {
 	wfe.ra = &RAWithFailedChallenge{clk: clk}
 
 	responseWriter := httptest.NewRecorder()
-	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
-		URL:    mustParseURL("6"),
-	})
-
-	var authz core.Authorization
-	err := json.Unmarshal(responseWriter.Body.Bytes(), &authz)
-	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
-	test.AssertEquals(t, len(authz.Challenges), 1)
-	// The Challenge Error Type should have had the probs.ErrorNS prefix added
-	test.AssertEquals(t, string(authz.Challenges[0].Error.Type), probs.ErrorNS+"things:are:whack")
-	responseWriter.Body.Reset()
-}
-
-// TestAuthorizationChallengeHandlerWithAccountNamespace tests that the runtime prefixing of
-// Challenge Problem Types works as expected
-func TestAuthorizationChallengeHandlerWithAccountNamespace(t *testing.T) {
-	wfe, clk, _ := setupWFE(t)
-	wfe.ra = &RAWithFailedChallenge{clk: clk}
-
-	responseWriter := httptest.NewRecorder()
-	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "GET",
-		URL:    mustParseURL("6"),
+		URL:    mustParseURL("1/6"),
 	})
 
 	var authz core.Authorization
@@ -2652,20 +2403,20 @@ func TestDeactivateAuthorizationHandler(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	payload := `{"status":""}`
-	_, _, body := signer.byKeyID(1, nil, "http://localhost/1", payload)
-	request := makePostRequestWithPath("1", body)
+	_, _, body := signer.byKeyID(1, nil, "http://localhost/1/1", payload)
+	request := makePostRequestWithPath("1/1", body)
 
-	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{"type": "`+probs.ErrorNS+`malformed","detail": "Invalid status value","status": 400}`)
 
 	responseWriter.Body.Reset()
 	payload = `{"status":"deactivated"}`
-	_, _, body = signer.byKeyID(1, nil, "http://localhost/1", payload)
-	request = makePostRequestWithPath("1", body)
+	_, _, body = signer.byKeyID(1, nil, "http://localhost/1/1", payload)
+	request = makePostRequestWithPath("1/1", body)
 
-	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
+	wfe.AuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
@@ -2680,48 +2431,7 @@ func TestDeactivateAuthorizationHandler(t *testing.T) {
 					"status": "valid",
 					"type": "http-01",
 					"token": "token",
-					"url": "http://localhost/acme/chall-v3/1/7TyhFQ"
-		    }
-		  ]
-		}`)
-}
-
-func TestDeactivateAuthorizationHandlerWithAccount(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
-
-	responseWriter.Body.Reset()
-
-	payload := `{"status":""}`
-	_, _, body := signer.byKeyID(1, nil, "http://localhost/1", payload)
-	request := makePostRequestWithPath("1", body)
-
-	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type": "`+probs.ErrorNS+`malformed","detail": "Invalid status value","status": 400}`)
-
-	responseWriter.Body.Reset()
-	payload = `{"status":"deactivated"}`
-	_, _, body = signer.byKeyID(1, nil, "http://localhost/1", payload)
-	request = makePostRequestWithPath("1", body)
-
-	wfe.DeprecatedAuthorizationHandler(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{
-		  "identifier": {
-		    "type": "dns",
-		    "value": "not-an-example.com"
-		  },
-		  "status": "deactivated",
-		  "expires": "2070-01-01T00:00:00Z",
-		  "challenges": [
-		    {
-					"status": "valid",
-					"type": "http-01",
-					"token": "token",
-					"url": "http://localhost/acme/chall-v3/1/7TyhFQ"
+					"url": "http://localhost/acme/chall/1/1/7TyhFQ"
 		    }
 		  ]
 		}`)
@@ -3681,33 +3391,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	}
 
 	// This modifies the authz in-place.
-	wfe.prepAuthorizationForDisplay(deprecatedAuthzPath, &http.Request{Host: "localhost"}, authz)
-
-	// Ensure ID and RegID are omitted.
-	authzJSON, err := json.Marshal(authz)
-	test.AssertNotError(t, err, "Failed to marshal authz")
-	test.AssertNotContains(t, string(authzJSON), "\"id\":\"12345\"")
-	test.AssertNotContains(t, string(authzJSON), "\"registrationID\":\"1\"")
-}
-
-func TestPrepAuthzWithAccountForDisplay(t *testing.T) {
-	t.Parallel()
-	wfe, _, _ := setupWFE(t)
-
-	authz := &core.Authorization{
-		ID:             "12345",
-		Status:         core.StatusPending,
-		RegistrationID: 1,
-		Identifier:     identifier.NewDNS("example.com"),
-		Challenges: []core.Challenge{
-			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
-			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
-			{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusPending, Token: "token"},
-		},
-	}
-
-	// This modifies the authz in-place.
-	wfe.prepAuthorizationForDisplay(authzPathWithAcct, &http.Request{Host: "localhost"}, authz)
+	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 
 	// Ensure ID and RegID are omitted.
 	authzJSON, err := json.Marshal(authz)
@@ -3733,32 +3417,7 @@ func TestPrepRevokedAuthzForDisplay(t *testing.T) {
 	}
 
 	// This modifies the authz in-place.
-	wfe.prepAuthorizationForDisplay(deprecatedAuthzPath, &http.Request{Host: "localhost"}, authz)
-
-	// All of the challenges should be revoked as well.
-	for _, chall := range authz.Challenges {
-		test.AssertEquals(t, chall.Status, core.StatusInvalid)
-	}
-}
-
-func TestPrepRevokedAuthzWithAccountForDisplay(t *testing.T) {
-	t.Parallel()
-	wfe, _, _ := setupWFE(t)
-
-	authz := &core.Authorization{
-		ID:             "12345",
-		Status:         core.StatusInvalid,
-		RegistrationID: 1,
-		Identifier:     identifier.NewDNS("example.com"),
-		Challenges: []core.Challenge{
-			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
-			{Type: core.ChallengeTypeHTTP01, Status: core.StatusPending, Token: "token"},
-			{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusPending, Token: "token"},
-		},
-	}
-
-	// This modifies the authz in-place.
-	wfe.prepAuthorizationForDisplay(authzPathWithAcct, &http.Request{Host: "localhost"}, authz)
+	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 
 	// All of the challenges should be revoked as well.
 	for _, chall := range authz.Challenges {
@@ -3781,30 +3440,7 @@ func TestPrepWildcardAuthzForDisplay(t *testing.T) {
 	}
 
 	// This modifies the authz in-place.
-	wfe.prepAuthorizationForDisplay(deprecatedAuthzPath, &http.Request{Host: "localhost"}, authz)
-
-	// The identifier should not start with a star, but the authz should be marked
-	// as a wildcard.
-	test.AssertEquals(t, strings.HasPrefix(authz.Identifier.Value, "*."), false)
-	test.AssertEquals(t, authz.Wildcard, true)
-}
-
-func TestPrepWildcardAuthzWithAcountForDisplay(t *testing.T) {
-	t.Parallel()
-	wfe, _, _ := setupWFE(t)
-
-	authz := &core.Authorization{
-		ID:             "12345",
-		Status:         core.StatusPending,
-		RegistrationID: 1,
-		Identifier:     identifier.NewDNS("*.example.com"),
-		Challenges: []core.Challenge{
-			{Type: core.ChallengeTypeDNS01, Status: core.StatusPending, Token: "token"},
-		},
-	}
-
-	// This modifies the authz in-place.
-	wfe.prepAuthorizationForDisplay(authzPathWithAcct, &http.Request{Host: "localhost"}, authz)
+	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 
 	// The identifier should not start with a star, but the authz should be marked
 	// as a wildcard.
@@ -3840,7 +3476,7 @@ func TestPrepAuthzForDisplayShuffle(t *testing.T) {
 	// Prep the authz 100 times, and count where each challenge ended up each time.
 	for range 100 {
 		// This modifies the authz in place
-		wfe.prepAuthorizationForDisplay(deprecatedChallengePath, &http.Request{Host: "localhost"}, authz)
+		wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
 		for i, chall := range authz.Challenges {
 			counts[chall.Type][i] += 1
 		}
@@ -3937,12 +3573,12 @@ func TestGETAPIAuthorizationHandler(t *testing.T) {
 	}{
 		{
 			name:              "fresh authz",
-			path:              "1",
+			path:              "1/1",
 			expectTooFreshErr: true,
 		},
 		{
 			name:              "old authz",
-			path:              "2",
+			path:              "1/2",
 			expectTooFreshErr: false,
 		},
 	}
@@ -3951,7 +3587,7 @@ func TestGETAPIAuthorizationHandler(t *testing.T) {
 	for _, tc := range testCases {
 		responseWriter := httptest.NewRecorder()
 		req, logEvent := makeGet(tc.path, getAuthzPath)
-		wfe.DeprecatedAuthorizationHandler(context.Background(), logEvent, responseWriter, req)
+		wfe.AuthorizationHandler(context.Background(), logEvent, responseWriter, req)
 
 		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
 			t.Errorf("expected too fresh error, got http.StatusOK")
@@ -4015,12 +3651,12 @@ func TestGETAPIChallenge(t *testing.T) {
 	}{
 		{
 			name:              "fresh authz challenge",
-			path:              "1/7TyhFQ",
+			path:              "1/1/7TyhFQ",
 			expectTooFreshErr: true,
 		},
 		{
 			name:              "old authz challenge",
-			path:              "2/7TyhFQ",
+			path:              "1/2/7TyhFQ",
 			expectTooFreshErr: false,
 		},
 	}
@@ -4029,7 +3665,7 @@ func TestGETAPIChallenge(t *testing.T) {
 	for _, tc := range testCases {
 		responseWriter := httptest.NewRecorder()
 		req, logEvent := makeGet(tc.path, getAuthzPath)
-		wfe.DeprecatedChallengeHandler(context.Background(), logEvent, responseWriter, req)
+		wfe.ChallengeHandler(context.Background(), logEvent, responseWriter, req)
 
 		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
 			t.Errorf("expected too fresh error, got http.StatusOK")
