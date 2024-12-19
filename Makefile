@@ -6,9 +6,8 @@ VERSION ?= 1.0.0
 EPOCH ?= 1
 MAINTAINER ?= "Community"
 
-CMDS = $(shell find ./cmd -maxdepth 1 -mindepth 1 -type d | grep -v testdata)
-CMD_BASENAMES = $(shell echo $(CMDS) | xargs -n1 basename)
-CMD_BINS = $(addprefix bin/, $(CMD_BASENAMES) )
+CMDS = admin boulder ceremony ct-test-srv
+CMD_BINS = $(addprefix bin/, $(CMDS) )
 OBJECTS = $(CMD_BINS)
 
 # Build environment variables (referencing core/util.go)
@@ -38,7 +37,7 @@ $(CMD_BINS): build_cmds
 build_cmds: | $(OBJDIR)
 	echo $(OBJECTS)
 	GOBIN=$(OBJDIR) GO111MODULE=on go install -mod=vendor $(GO_BUILD_FLAGS) ./...
-	./link.sh
+
 
 # Building an RPM requires `fpm` from https://github.com/jordansissel/fpm
 # which you can install with `gem install fpm`.
@@ -64,10 +63,10 @@ deb: build
 		--package "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).x86_64.deb" \
 		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
 		--maintainer "$(MAINTAINER)" \
-		test/config/ sa/db data/ $(OBJECTS) bin/ct-test-srv
+		test/config/ sa/db data/ $(OBJECTS)
 
 tar: build
 	fpm -f -s dir -t tar --name "boulder" --prefix=/opt/boulder \
 		--package "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).amd64.tar" \
-		test/config/ sa/db data/ $(OBJECTS) bin/ct-test-srv
+		test/config/ sa/db data/ $(OBJECTS)
 	gzip -f "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).amd64.tar"
