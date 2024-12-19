@@ -1068,11 +1068,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 // errors from this function to the Subscriber, spends against these limit are
 // best effort.
 func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderDomains []string, isRenewal bool) {
-	if ra.limiter == nil || ra.txnBuilder == nil {
-		// Limiter is disabled.
-		return
-	}
-
 	var transactions []ratelimits.Transaction
 	if !isRenewal {
 		txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderDomains)
@@ -1427,11 +1422,6 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 // countFailedValidations increments the FailedAuthorizationsPerDomainPerAccount limit.
 // and the FailedAuthorizationsForPausingPerDomainPerAccountTransaction limit.
 func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) error {
-	if ra.limiter == nil || ra.txnBuilder == nil {
-		// Limiter is disabled.
-		return nil
-	}
-
 	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, ident.Value)
 	if err != nil {
 		return fmt.Errorf("building rate limit transaction for the %s rate limit: %w", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
