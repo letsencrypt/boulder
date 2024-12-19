@@ -69,13 +69,8 @@ type limit struct {
 	// precomputed to avoid doing the same calculation on every request.
 	burstOffset int64
 
-	// overrideKey is the key used to look up this limit in the overrides map.
-	overrideKey string
-}
-
-// isOverride returns true if the limit is an override.
-func (l *limit) isOverride() bool {
-	return l.overrideKey != ""
+	// isOverride is true if the limit is an override.
+	isOverride bool
 }
 
 // precompute calculates the emissionInterval and burstOffset for the limit.
@@ -196,7 +191,7 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 					return nil, fmt.Errorf(
 						"validating name %s and id %q for override limit %q: %w", name, id, k, err)
 				}
-				lim.overrideKey = joinWithColon(name.EnumString(), id)
+				lim.isOverride = true
 				if name == CertificatesPerFQDNSet {
 					// FQDNSet hashes are not a nice thing to ask for in a
 					// config file, so we allow the user to specify a
