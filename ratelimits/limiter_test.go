@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/config"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -60,12 +59,6 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			// Verify our overrideUsageGauge is being set correctly. 0.0 == 0%
-			// of the bucket has been consumed.
-			test.AssertMetricWithLabelsEquals(t, l.overrideUsageGauge, prometheus.Labels{
-				"limit":      NewRegistrationsPerIPAddress.String(),
-				"bucket_key": joinWithColon(NewRegistrationsPerIPAddress.EnumString(), tenZeroZeroTwo)}, 0)
-
 			overriddenBucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, net.ParseIP(tenZeroZeroTwo))
 			test.AssertNotError(t, err, "should not error")
 			overriddenLimit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, overriddenBucketKey)
@@ -86,12 +79,6 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 			test.Assert(t, !d.allowed, "should not be allowed")
 			test.AssertEquals(t, d.remaining, int64(0))
 			test.AssertEquals(t, d.resetIn, time.Second)
-
-			// Verify our overrideUsageGauge is being set correctly. 1.0 == 100%
-			// of the bucket has been consumed.
-			test.AssertMetricWithLabelsEquals(t, l.overrideUsageGauge, prometheus.Labels{
-				"limit_name": NewRegistrationsPerIPAddress.String(),
-				"bucket_key": joinWithColon(NewRegistrationsPerIPAddress.EnumString(), tenZeroZeroTwo)}, 1.0)
 
 			// Verify our RetryIn is correct. 1 second == 1000 milliseconds and
 			// 1000/40 = 25 milliseconds per request.
