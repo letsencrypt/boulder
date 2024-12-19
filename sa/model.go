@@ -400,7 +400,7 @@ type orderModelv2 struct {
 	Error                  []byte
 	CertificateSerial      string
 	BeganProcessing        bool
-	CertificateProfileName string
+	CertificateProfileName *string
 }
 
 type orderToAuthzModel struct {
@@ -464,7 +464,7 @@ func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
 		Created:                order.Created.AsTime(),
 		BeganProcessing:        order.BeganProcessing,
 		CertificateSerial:      order.CertificateSerial,
-		CertificateProfileName: order.CertificateProfileName,
+		CertificateProfileName: &order.CertificateProfileName,
 	}
 
 	if order.Error != nil {
@@ -481,6 +481,10 @@ func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
 }
 
 func modelToOrderv2(om *orderModelv2) (*corepb.Order, error) {
+	profile := ""
+	if om.CertificateProfileName != nil {
+		profile = *om.CertificateProfileName
+	}
 	order := &corepb.Order{
 		Id:                     om.ID,
 		RegistrationID:         om.RegistrationID,
@@ -488,7 +492,7 @@ func modelToOrderv2(om *orderModelv2) (*corepb.Order, error) {
 		Created:                timestamppb.New(om.Created),
 		CertificateSerial:      om.CertificateSerial,
 		BeganProcessing:        om.BeganProcessing,
-		CertificateProfileName: om.CertificateProfileName,
+		CertificateProfileName: profile,
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails
