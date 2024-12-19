@@ -173,11 +173,13 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 			}
 
 			lim := &limit{
-				burst:  v.Burst,
-				count:  v.Count,
-				period: v.Period,
-				name:   name,
+				burst:      v.Burst,
+				count:      v.Count,
+				period:     v.Period,
+				name:       name,
+				isOverride: true,
 			}
+			lim.precompute()
 
 			err := validateLimit(lim)
 			if err != nil {
@@ -191,14 +193,12 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 					return nil, fmt.Errorf(
 						"validating name %s and id %q for override limit %q: %w", name, id, k, err)
 				}
-				lim.isOverride = true
 				if name == CertificatesPerFQDNSet {
 					// FQDNSet hashes are not a nice thing to ask for in a
 					// config file, so we allow the user to specify a
 					// comma-separated list of FQDNs and compute the hash here.
 					id = fmt.Sprintf("%x", core.HashNames(strings.Split(id, ",")))
 				}
-				lim.precompute()
 				parsed[joinWithColon(name.EnumString(), id)] = lim
 			}
 		}
