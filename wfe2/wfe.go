@@ -647,11 +647,6 @@ func link(url, relation string) string {
 // creation fails, the func will be nil if any error was encountered during the
 // check.
 func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) (func(), error) {
-	if wfe.limiter == nil && wfe.txnBuilder == nil {
-		// Key-value rate limiting is disabled.
-		return nil, nil
-	}
-
 	txns, err := wfe.txnBuilder.NewAccountLimitTransactions(ip)
 	if err != nil {
 		return nil, fmt.Errorf("building new account limit transactions: %w", err)
@@ -2056,11 +2051,6 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 // function is returned that can be used to refund the quota if the order is not
 // created, the func will be nil if any error was encountered during the check.
 func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, names []string, isRenewal bool) (func(), error) {
-	if wfe.limiter == nil && wfe.txnBuilder == nil {
-		// Key-value rate limiting is disabled.
-		return nil, nil
-	}
-
 	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, isRenewal)
 	if err != nil {
 		return nil, fmt.Errorf("building new order limit transactions: %w", err)
