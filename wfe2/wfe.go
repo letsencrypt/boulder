@@ -804,9 +804,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	var newRegistrationSuccessful bool
-	var errIsRateLimit bool
 	defer func() {
-		if !newRegistrationSuccessful && !errIsRateLimit && refundLimits != nil {
+		if !newRegistrationSuccessful && refundLimits != nil {
 			go refundLimits()
 		}
 	}()
@@ -814,15 +813,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	// Send the registration to the RA via grpc
 	acctPB, err := wfe.ra.NewRegistration(ctx, &reg)
 	if err != nil {
-		if errors.Is(err, berrors.RateLimit) {
-			// Request was denied by a legacy rate limit. In this error case we
-			// do not want to refund the quota consumed by the request because
-			// repeated requests would result in unearned refunds.
-			//
-			// TODO(#5545): Once key-value rate limits are authoritative this
-			// can be removed.
-			errIsRateLimit = true
-		}
 		if errors.Is(err, berrors.Duplicate) {
 			existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
 			if err == nil {
@@ -2421,14 +2411,13 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	var newOrderSuccessful bool
-	var errIsRateLimit bool
 	defer func() {
 		wfe.stats.ariReplacementOrders.With(prometheus.Labels{
 			"isReplacement": fmt.Sprintf("%t", replaces != ""),
 			"limitsExempt":  fmt.Sprintf("%t", isARIRenewal),
 		}).Inc()
 
-		if !newOrderSuccessful && !errIsRateLimit && refundLimits != nil {
+		if !newOrderSuccessful && refundLimits != nil {
 			go refundLimits()
 		}
 	}()
@@ -2444,15 +2433,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.DnsNames) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
-		if errors.Is(err, berrors.RateLimit) {
-			// Request was denied by a legacy rate limit. In this error case we
-			// do not want to refund the quota consumed by the request because
-			// repeated requests would result in unearned refunds.
-			//
-			// TODO(#5545): Once key-value rate limits are authoritative this
-			// can be removed.
-			errIsRateLimit = true
-		}
 		return
 	}
 	logEvent.Created = fmt.Sprintf("%d", order.Id)
