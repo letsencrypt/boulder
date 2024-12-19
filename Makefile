@@ -24,7 +24,7 @@ BUILD_TIME_VAR = github.com/letsencrypt/boulder/core.BuildTime
 
 GO_BUILD_FLAGS = -ldflags "-X \"$(BUILD_ID_VAR)=$(BUILD_ID)\" -X \"$(BUILD_TIME_VAR)=$(BUILD_TIME)\" -X \"$(BUILD_HOST_VAR)=$(BUILD_HOST)\""
 
-.PHONY: all build build_cmds rpm deb tar
+.PHONY: all build build_cmds deb tar
 all: build
 
 build: $(OBJECTS)
@@ -39,22 +39,12 @@ build_cmds: | $(OBJDIR)
 	GOBIN=$(OBJDIR) GO111MODULE=on go install -mod=vendor $(GO_BUILD_FLAGS) ./...
 
 
-# Building an RPM requires `fpm` from https://github.com/jordansissel/fpm
+# Building a .deb requires `fpm` from https://github.com/jordansissel/fpm
 # which you can install with `gem install fpm`.
 # It is recommended that maintainers use environment overrides to specify
 # Version and Epoch, such as:
 #
-# VERSION=0.1.9 EPOCH=52 MAINTAINER="$(whoami)" ARCHIVEDIR=/tmp make build rpm
-rpm: build
-	fpm -f -s dir -t rpm --rpm-digest sha256 --name "boulder" \
-		--license "Mozilla Public License v2.0" --vendor "ISRG" \
-		--url "https://github.com/letsencrypt/boulder" --prefix=/opt/boulder \
-		--version "$(VERSION)" --iteration "$(COMMIT_ID)" --epoch "$(EPOCH)" \
-		--package "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).x86_64.rpm" \
-		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
-		--maintainer "$(MAINTAINER)" \
-		test/config/ sa/db data/ $(OBJECTS)
-
+# VERSION=0.1.9 EPOCH=52 MAINTAINER="$(whoami)" ARCHIVEDIR=/tmp make build deb
 deb: build
 	fpm -f -s dir -t deb --name "boulder" \
 		--license "Mozilla Public License v2.0" --vendor "ISRG" \
