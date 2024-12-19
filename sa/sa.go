@@ -1145,7 +1145,7 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 	if !ok {
 		return nil, errors.New("unknown source")
 	}
-	/*  */ cols, qs := blockedKeysColumns, "?, ?, ?, ?"
+	cols, qs := blockedKeysColumns, "?, ?, ?, ?"
 	vals := []interface{}{
 		req.KeyHash,
 		req.Added.AsTime(),
