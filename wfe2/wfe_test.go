@@ -4468,9 +4468,6 @@ func TestCountNewOrderWithReplaces(t *testing.T) {
 func TestNewOrderRateLimits(t *testing.T) {
 	wfe, fc, signer := setupWFE(t)
 
-	features.Set(features.Config{UseKvLimitsForNewOrder: true})
-	defer features.Reset()
-
 	// Set the default ratelimits to only allow one new order per account per 24
 	// hours.
 	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
