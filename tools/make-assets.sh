@@ -24,7 +24,7 @@ $(dirname -- "${0}")/fetch-and-verify-go.sh "${GO_VERSION}"
 sudo tar -C /usr/local -xzf go.tar.gz
 export PATH=/usr/local/go/bin:$PATH
 
-# Install fpm, this is used in our Makefile to package Boulder as a deb or rpm.
+# Install fpm, this is used in our Makefile to package Boulder as a deb.
 sudo gem install --no-document -v 1.14.0 fpm
 
 #
@@ -38,5 +38,5 @@ export ARCHIVEDIR="${PWD}"
 # Set $VERSION to be a simulacrum of what is set in other build environments.
 export VERSION="${GO_VERSION}.$(date +%s)"
 
-# Build Boulder and produce an RPM, a .deb, and a tar.gz file in $PWD.
-make rpm deb tar
+# Build Boulder and produce a .deb and a tar.gz file in $PWD.
+make deb tar

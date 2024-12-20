@@ -85,36 +85,30 @@ var boulderUsage = fmt.Sprintf(`Usage: %s <subcommand> [flags]
 
 func main() {
 	defer cmd.AuditPanic()
-	var command string
-	if core.Command() == "boulder" {
-		// Operator passed the boulder component as a subcommand.
-		if len(os.Args) <= 1 {
-			// No arguments passed.
-			fmt.Fprint(os.Stderr, boulderUsage)
-			return
-		}
 
-		if os.Args[1] == "--help" || os.Args[1] == "-help" {
-			// Help flag passed.
-			fmt.Fprint(os.Stderr, boulderUsage)
-			return
-		}
-
-		if os.Args[1] == "--list" || os.Args[1] == "-list" {
-			// List flag passed.
-			for _, c := range cmd.AvailableCommands() {
-				fmt.Println(c)
-			}
-			return
-		}
-		command = os.Args[1]
-
-		// Remove the subcommand from the arguments.
-		os.Args = os.Args[1:]
-	} else {
-		// Operator ran a boulder component using a symlink.
-		command = core.Command()
+	if len(os.Args) <= 1 {
+		// No arguments passed.
+		fmt.Fprint(os.Stderr, boulderUsage)
+		return
 	}
+
+	if os.Args[1] == "--help" || os.Args[1] == "-help" {
+		// Help flag passed.
+		fmt.Fprint(os.Stderr, boulderUsage)
+		return
+	}
+
+	if os.Args[1] == "--list" || os.Args[1] == "-list" {
+		// List flag passed.
+		for _, c := range cmd.AvailableCommands() {
+			fmt.Println(c)
+		}
+		return
+	}
+
+	// Remove the subcommand from the arguments.
+	command := os.Args[1]
+	os.Args = os.Args[1:]
 
 	config := getConfigPath()
 	if config != "" {

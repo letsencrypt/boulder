@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"net"
 	"regexp"
@@ -334,9 +335,15 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 // FQDNSetTimestampsForWindow returns the issuance timestamps for each
 // certificate, issued for a set of domains, during a given window of time,
 // starting from the most recent issuance.
+//
+// If req.Limit is nonzero, it returns only the most recent `Limit` results
 func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
 	if core.IsAnyNilOrZero(req.Window) || len(req.DnsNames) == 0 {
 		return nil, errIncompleteRequest
+	}
+	limit := req.Limit
+	if limit == 0 {
+		limit = math.MaxInt64
 	}
 	type row struct {
 		Issued time.Time
@@ -348,9 +355,11 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 		`SELECT issued FROM fqdnSets 
 		WHERE setHash = ?
 		AND issued > ?
-		ORDER BY issued DESC`,
+		ORDER BY issued DESC
+		LIMIT ?`,
 		core.HashNames(req.DnsNames),
 		ssa.clk.Now().Add(-req.Window.AsDuration()),
+		limit,
 	)
 	if err != nil {
 		return nil, err

@@ -163,6 +163,7 @@ message CountFQDNSetsRequest {
   reserved 1; // Previously windowNS
   repeated string dnsNames = 2;
   google.protobuf.Duration window = 3;
+  int64 limit = 4;
 }
 
 message FQDNSetExistsRequest {
