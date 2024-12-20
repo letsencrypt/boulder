@@ -22,8 +22,8 @@
 					"keyFile": "test/certs/ipki/wfe.boulder/key.pem"
 				}
 			},
-			"Defaults": "test/config-next/wfe2-ratelimit-defaults.yml",
-			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml"
+			"Defaults": "test/config/wfe2-ratelimit-defaults.yml",
+			"Overrides": "test/config/wfe2-ratelimit-overrides.yml"
 		},
 		"maxContactsPerRegistration": 3,
 		"debugAddr": ":8002",
@@ -129,6 +129,7 @@
 			}
 		},
 		"features": {
+			"UseKvLimitsForNewOrder": true,
 			"IncrementRateLimits": true
 		},
 		"ctLogs": {

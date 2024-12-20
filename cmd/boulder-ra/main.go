@@ -31,11 +31,11 @@ import (
 
 type Config struct {
 	RA struct {
-		// RateLimitPoliciesFilename is deprecated.
-		RateLimitPoliciesFilename string
-
 		cmd.ServiceConfig
 		cmd.HostnamePolicyConfig
+
+		// RateLimitPoliciesFilename is deprecated.
+		RateLimitPoliciesFilename string
 
 		MaxContactsPerRegistration int
 

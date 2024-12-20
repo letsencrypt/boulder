@@ -146,11 +146,6 @@ message Timestamps {
   repeated google.protobuf.Timestamp timestamps = 2;
 }
 
-message CountByNames {
-  map<string, int64> counts = 1;
-  google.protobuf.Timestamp earliest = 2; // Unix timestamp (nanoseconds)
-}
-
 message CountInvalidAuthorizationsRequest {
   int64 registrationID = 1;
   string dnsName = 2;

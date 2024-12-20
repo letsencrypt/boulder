@@ -494,7 +494,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	// but don't return an error from AddCertificate.
 	if fqdnTransactionErr != nil {
 		ssa.rateLimitWriteErrors.Inc()
-		ssa.log.AuditErrf("failed AddCertificate FQDN sets update transaction: %v", fqdnTransactionErr)
+		ssa.log.AuditErrf("failed AddCertificate FQDN sets insert transaction: %v", fqdnTransactionErr)
 	}
 
 	return &emptypb.Empty{}, nil
