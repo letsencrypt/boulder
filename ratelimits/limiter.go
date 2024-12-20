@@ -37,8 +37,7 @@ type Limiter struct {
 	source Source
 	clk    clock.Clock
 
-	spendLatency       *prometheus.HistogramVec
-	overrideUsageGauge *prometheus.GaugeVec
+	spendLatency *prometheus.HistogramVec
 }
 
 // NewLimiter returns a new *Limiter. The provided source must be safe for
@@ -52,17 +51,10 @@ func NewLimiter(clk clock.Clock, source Source, stats prometheus.Registerer) (*L
 	}, []string{"limit", "decision"})
 	stats.MustRegister(spendLatency)
 
-	overrideUsageGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "ratelimits_override_usage",
-		Help: "Proportion of override limit used, by limit name and bucket key.",
-	}, []string{"limit", "bucket_key"})
-	stats.MustRegister(overrideUsageGauge)
-
 	return &Limiter{
-		source:             source,
-		clk:                clk,
-		spendLatency:       spendLatency,
-		overrideUsageGauge: overrideUsageGauge,
+		source:       source,
+		clk:          clk,
+		spendLatency: spendLatency,
 	}, nil
 }
 
@@ -117,8 +109,8 @@ func (d *Decision) Result(now time.Time) error {
 		return berrors.RegistrationsPerIPAddressError(
 			retryAfter,
 			"too many new registrations (%d) from this IP address in the last %s, retry after %s",
-			d.transaction.limit.Burst,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.burst,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
@@ -126,16 +118,16 @@ func (d *Decision) Result(now time.Time) error {
 		return berrors.RegistrationsPerIPv6RangeError(
 			retryAfter,
 			"too many new registrations (%d) from this /48 subnet of IPv6 addresses in the last %s, retry after %s",
-			d.transaction.limit.Burst,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.burst,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 	case NewOrdersPerAccount:
 		return berrors.NewOrdersPerAccountError(
 			retryAfter,
 			"too many new orders (%d) from this account in the last %s, retry after %s",
-			d.transaction.limit.Burst,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.burst,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
@@ -149,9 +141,9 @@ func (d *Decision) Result(now time.Time) error {
 		return berrors.FailedAuthorizationsPerDomainPerAccountError(
 			retryAfter,
 			"too many failed authorizations (%d) for %q in the last %s, retry after %s",
-			d.transaction.limit.Burst,
+			d.transaction.limit.burst,
 			domain,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
@@ -165,9 +157,9 @@ func (d *Decision) Result(now time.Time) error {
 		return berrors.CertificatesPerDomainError(
 			retryAfter,
 			"too many certificates (%d) already issued for %q in the last %s, retry after %s",
-			d.transaction.limit.Burst,
+			d.transaction.limit.burst,
 			domain,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
@@ -175,8 +167,8 @@ func (d *Decision) Result(now time.Time) error {
 		return berrors.CertificatesPerFQDNSetError(
 			retryAfter,
 			"too many certificates (%d) already issued for this exact set of domains in the last %s, retry after %s",
-			d.transaction.limit.Burst,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.burst,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
@@ -283,11 +275,6 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 	for _, txn := range batch {
 		storedTAT, bucketExists := tats[txn.bucketKey]
 		d := maybeSpend(l.clk, txn, storedTAT)
-
-		if txn.limit.isOverride() {
-			utilization := float64(txn.limit.Burst-d.remaining) / float64(txn.limit.Burst)
-			l.overrideUsageGauge.WithLabelValues(txn.limit.name.String(), txn.limit.overrideKey).Set(utilization)
-		}
 
 		if d.allowed && (storedTAT != d.newTAT) && txn.spend {
 			if !bucketExists {

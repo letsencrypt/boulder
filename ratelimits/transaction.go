@@ -129,7 +129,7 @@ func validateTransaction(txn Transaction) (Transaction, error) {
 	if txn.cost < 0 {
 		return Transaction{}, ErrInvalidCost
 	}
-	if txn.limit.Burst == 0 {
+	if txn.limit.burst == 0 {
 		// This should never happen. If the limit was loaded from a file,
 		// Burst was validated then. If this is a zero-valued Transaction
 		// (that is, an allow-only transaction), then validateTransaction
@@ -137,7 +137,7 @@ func validateTransaction(txn Transaction) (Transaction, error) {
 		// valid.
 		return Transaction{}, fmt.Errorf("invalid limit, burst must be > 0")
 	}
-	if txn.cost > txn.limit.Burst {
+	if txn.cost > txn.limit.burst {
 		return Transaction{}, ErrInvalidCostOverLimit
 	}
 	return txn, nil
@@ -183,12 +183,23 @@ type TransactionBuilder struct {
 	*limitRegistry
 }
 
+// NewTransactionBuilderFromFiles returns a new *TransactionBuilder. The
+// provided defaults and overrides paths are expected to be paths to YAML files
+// that contain the default and override limits, respectively. Overrides is
+// optional, defaults is required.
+func NewTransactionBuilderFromFiles(defaults, overrides string) (*TransactionBuilder, error) {
+	registry, err := newLimitRegistryFromFiles(defaults, overrides)
+	if err != nil {
+		return nil, err
+	}
+	return &TransactionBuilder{registry}, nil
+}
+
 // NewTransactionBuilder returns a new *TransactionBuilder. The provided
-// defaults and overrides paths are expected to be paths to YAML files that
-// contain the default and override limits, respectively. Overrides is optional,
-// defaults is required.
-func NewTransactionBuilder(defaults, overrides string) (*TransactionBuilder, error) {
-	registry, err := newLimitRegistry(defaults, overrides)
+// defaults map is expected to contain default limit data. Overrides are not
+// supported. Defaults is required.
+func NewTransactionBuilder(defaults LimitConfigs) (*TransactionBuilder, error) {
+	registry, err := newLimitRegistry(defaults, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +403,7 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 			return nil, err
 		}
 		if accountOverride {
-			if !perAccountLimit.isOverride() {
+			if !perAccountLimit.isOverride {
 				return nil, fmt.Errorf("shouldn't happen: CertificatesPerDomainPerAccount limit is not an override")
 			}
 			perAccountPerDomainKey, err := NewRegIdDomainBucketKey(CertificatesPerDomainPerAccount, regId, name)
@@ -470,7 +481,7 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 			return nil, err
 		}
 		if accountOverride {
-			if !perAccountLimit.isOverride() {
+			if !perAccountLimit.isOverride {
 				return nil, fmt.Errorf("shouldn't happen: CertificatesPerDomainPerAccount limit is not an override")
 			}
 			perAccountPerDomainKey, err := NewRegIdDomainBucketKey(CertificatesPerDomainPerAccount, regId, name)

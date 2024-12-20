@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/config"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -32,7 +31,7 @@ func newTestLimiter(t *testing.T, s Source, clk clock.FakeClock) *Limiter {
 //   - 'NewRegistrationsPerIPAddress' burst: 20 count: 20 period: 1s
 //   - 'NewRegistrationsPerIPAddress:10.0.0.2' burst: 40 count: 40 period: 1s
 func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
-	c, err := NewTransactionBuilder("testdata/working_default.yml", "testdata/working_override.yml")
+	c, err := NewTransactionBuilderFromFiles("testdata/working_default.yml", "testdata/working_override.yml")
 	test.AssertNotError(t, err, "should not error")
 	return c
 }
@@ -60,12 +59,6 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			// Verify our overrideUsageGauge is being set correctly. 0.0 == 0%
-			// of the bucket has been consumed.
-			test.AssertMetricWithLabelsEquals(t, l.overrideUsageGauge, prometheus.Labels{
-				"limit":      NewRegistrationsPerIPAddress.String(),
-				"bucket_key": joinWithColon(NewRegistrationsPerIPAddress.EnumString(), tenZeroZeroTwo)}, 0)
-
 			overriddenBucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, net.ParseIP(tenZeroZeroTwo))
 			test.AssertNotError(t, err, "should not error")
 			overriddenLimit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, overriddenBucketKey)
@@ -86,12 +79,6 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 			test.Assert(t, !d.allowed, "should not be allowed")
 			test.AssertEquals(t, d.remaining, int64(0))
 			test.AssertEquals(t, d.resetIn, time.Second)
-
-			// Verify our overrideUsageGauge is being set correctly. 1.0 == 100%
-			// of the bucket has been consumed.
-			test.AssertMetricWithLabelsEquals(t, l.overrideUsageGauge, prometheus.Labels{
-				"limit_name": NewRegistrationsPerIPAddress.String(),
-				"bucket_key": joinWithColon(NewRegistrationsPerIPAddress.EnumString(), tenZeroZeroTwo)}, 1.0)
 
 			// Verify our RetryIn is correct. 1 second == 1000 milliseconds and
 			// 1000/40 = 25 milliseconds per request.
@@ -484,8 +471,8 @@ func TestRateLimitError(t *testing.T) {
 				transaction: Transaction{
 					limit: &limit{
 						name:   NewRegistrationsPerIPAddress,
-						Burst:  10,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  10,
+						period: config.Duration{Duration: time.Hour},
 					},
 				},
 			},
@@ -500,8 +487,8 @@ func TestRateLimitError(t *testing.T) {
 				transaction: Transaction{
 					limit: &limit{
 						name:   NewRegistrationsPerIPv6Range,
-						Burst:  5,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  5,
+						period: config.Duration{Duration: time.Hour},
 					},
 				},
 			},
@@ -516,8 +503,8 @@ func TestRateLimitError(t *testing.T) {
 				transaction: Transaction{
 					limit: &limit{
 						name:   NewOrdersPerAccount,
-						Burst:  2,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  2,
+						period: config.Duration{Duration: time.Hour},
 					},
 				},
 			},
@@ -532,8 +519,8 @@ func TestRateLimitError(t *testing.T) {
 				transaction: Transaction{
 					limit: &limit{
 						name:   FailedAuthorizationsPerDomainPerAccount,
-						Burst:  7,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  7,
+						period: config.Duration{Duration: time.Hour},
 					},
 					bucketKey: "4:12345:example.com",
 				},
@@ -549,8 +536,8 @@ func TestRateLimitError(t *testing.T) {
 				transaction: Transaction{
 					limit: &limit{
 						name:   CertificatesPerDomain,
-						Burst:  3,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  3,
+						period: config.Duration{Duration: time.Hour},
 					},
 					bucketKey: "5:example.org",
 				},
@@ -566,8 +553,8 @@ func TestRateLimitError(t *testing.T) {
 				transaction: Transaction{
 					limit: &limit{
 						name:   CertificatesPerDomainPerAccount,
-						Burst:  3,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  3,
+						period: config.Duration{Duration: time.Hour},
 					},
 					bucketKey: "6:12345678:example.net",
 				},
