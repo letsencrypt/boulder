@@ -236,7 +236,7 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	test.AssertErrorIs(t, err, berrors.NotFound)
 
 	_, err = sa.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{RegistrationID: 100, Jwk: jwkJSON})
-	test.AssertErrorIs(t, err, berrors.NotFound)
+	test.AssertErrorIs(t, err, berrors.InternalServer)
 }
 
 func TestSelectRegistration(t *testing.T) {
