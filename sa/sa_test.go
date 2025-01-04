@@ -202,19 +202,15 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertByteEquals(t, dbReg.Key, jwkJSON)
 	test.AssertDeepEquals(t, dbReg.CreatedAt.AsTime(), createdAt)
 
-	newReg := &corepb.Registration{
-		Id:        reg.Id,
-		Key:       jwkJSON,
-		Contact:   []string{"test.com"},
-		Agreement: "yes",
+	newReg := &sapb.UpdateRegistrationContactRequest{
+		RegistrationID: reg.Id,
+		Contacts:       []string{"test.com"},
 	}
-	_, err = sa.UpdateRegistration(ctx, newReg)
-	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.Id))
-	dbReg, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
-	test.AssertNotError(t, err, "Couldn't get registration by key")
+	_, err = sa.UpdateRegistrationContact(ctx, newReg)
+	test.AssertNotError(t, err, fmt.Sprintf("Couldn't update registration with ID %v", reg.Id))
 
-	test.AssertEquals(t, dbReg.Id, newReg.Id)
-	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
+	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
+	test.AssertNotError(t, err, "Couldn't get registration by key")
 
 	anotherKey := `{
 		"kty":"RSA",
@@ -239,7 +235,7 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
 	test.AssertErrorIs(t, err, berrors.NotFound)
 
-	_, err = sa.UpdateRegistration(ctx, &corepb.Registration{Id: 100, Key: jwkJSON})
+	_, err = sa.UpdateRegistrationKey(ctx, &sapb.UpdateRegistrationKeyRequest{RegistrationID: 100, Jwk: jwkJSON})
 	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
