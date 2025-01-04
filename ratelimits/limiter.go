@@ -37,8 +37,7 @@ type Limiter struct {
 	source Source
 	clk    clock.Clock
 
-	spendLatency       *prometheus.HistogramVec
-	overrideUsageGauge *prometheus.GaugeVec
+	spendLatency *prometheus.HistogramVec
 }
 
 // NewLimiter returns a new *Limiter. The provided source must be safe for
@@ -52,17 +51,10 @@ func NewLimiter(clk clock.Clock, source Source, stats prometheus.Registerer) (*L
 	}, []string{"limit", "decision"})
 	stats.MustRegister(spendLatency)
 
-	overrideUsageGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "ratelimits_override_usage",
-		Help: "Proportion of override limit used, by limit name and bucket key.",
-	}, []string{"limit", "bucket_key"})
-	stats.MustRegister(overrideUsageGauge)
-
 	return &Limiter{
-		source:             source,
-		clk:                clk,
-		spendLatency:       spendLatency,
-		overrideUsageGauge: overrideUsageGauge,
+		source:       source,
+		clk:          clk,
+		spendLatency: spendLatency,
 	}, nil
 }
 
@@ -283,11 +275,6 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 	for _, txn := range batch {
 		storedTAT, bucketExists := tats[txn.bucketKey]
 		d := maybeSpend(l.clk, txn, storedTAT)
-
-		if txn.limit.isOverride() {
-			utilization := float64(txn.limit.burst-d.remaining) / float64(txn.limit.burst)
-			l.overrideUsageGauge.WithLabelValues(txn.limit.name.String(), txn.limit.overrideKey).Set(utilization)
-		}
 
 		if d.allowed && (storedTAT != d.newTAT) && txn.spend {
 			if !bucketExists {

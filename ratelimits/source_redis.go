@@ -99,10 +99,6 @@ func (r *RedisSource) BatchSet(ctx context.Context, buckets map[string]time.Time
 	}
 
 	totalLatency := r.clk.Since(start)
-	perSetLatency := totalLatency / time.Duration(len(buckets))
-	for range buckets {
-		r.observeLatency("batchset_entry", perSetLatency, nil)
-	}
 
 	r.observeLatency("batchset", totalLatency, nil)
 	return nil
@@ -128,17 +124,14 @@ func (r *RedisSource) BatchSetNotExisting(ctx context.Context, buckets map[strin
 
 	alreadyExists := make(map[string]bool, len(buckets))
 	totalLatency := r.clk.Since(start)
-	perSetLatency := totalLatency / time.Duration(len(buckets))
 	for bucketKey, cmd := range cmds {
 		success, err := cmd.Result()
 		if err != nil {
-			r.observeLatency("batchsetnotexisting_entry", perSetLatency, err)
 			return nil, err
 		}
 		if !success {
 			alreadyExists[bucketKey] = true
 		}
-		r.observeLatency("batchsetnotexisting_entry", perSetLatency, nil)
 	}
 
 	r.observeLatency("batchsetnotexisting", totalLatency, nil)
@@ -163,11 +156,6 @@ func (r *RedisSource) BatchIncrement(ctx context.Context, buckets map[string]inc
 	}
 
 	totalLatency := r.clk.Since(start)
-	perSetLatency := totalLatency / time.Duration(len(buckets))
-	for range buckets {
-		r.observeLatency("batchincrby_entry", perSetLatency, nil)
-	}
-
 	r.observeLatency("batchincrby", totalLatency, nil)
 	return nil
 }
@@ -211,7 +199,6 @@ func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[st
 	}
 
 	totalLatency := r.clk.Since(start)
-	perEntryLatency := totalLatency / time.Duration(len(bucketKeys))
 
 	tats := make(map[string]time.Time, len(bucketKeys))
 	notFoundCount := 0
@@ -224,13 +211,10 @@ func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[st
 				r.observeLatency("batchget", r.clk.Since(start), err)
 				return nil, err
 			}
-			// Bucket key does not exist.
-			r.observeLatency("batchget_entry", perEntryLatency, err)
 			notFoundCount++
 			continue
 		}
 		tats[bucketKeys[i]] = time.Unix(0, tatNano).UTC()
-		r.observeLatency("batchget_entry", perEntryLatency, nil)
 	}
 
 	var batchErr error

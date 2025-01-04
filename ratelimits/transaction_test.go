@@ -79,14 +79,14 @@ func TestFailedAuthorizationsPerDomainPerAccountTransactions(t *testing.T) {
 	test.AssertEquals(t, len(txns), 1)
 	test.AssertEquals(t, txns[0].bucketKey, "4:123456789:so.many.labels.here.example.com")
 	test.Assert(t, txns[0].checkOnly(), "should be check-only")
-	test.Assert(t, !txns[0].limit.isOverride(), "should not be an override")
+	test.Assert(t, !txns[0].limit.isOverride, "should not be an override")
 
 	// A spend-only transaction for the default per-account limit.
 	txn, err := tb.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(123456789, "so.many.labels.here.example.com")
 	test.AssertNotError(t, err, "creating transaction")
 	test.AssertEquals(t, txn.bucketKey, "4:123456789:so.many.labels.here.example.com")
 	test.Assert(t, txn.spendOnly(), "should be spend-only")
-	test.Assert(t, !txn.limit.isOverride(), "should not be an override")
+	test.Assert(t, !txn.limit.isOverride, "should not be an override")
 
 	// A check-only transaction for the per-account limit override.
 	txns, err = tb.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(13371338, []string{"so.many.labels.here.example.com"})
@@ -94,14 +94,14 @@ func TestFailedAuthorizationsPerDomainPerAccountTransactions(t *testing.T) {
 	test.AssertEquals(t, len(txns), 1)
 	test.AssertEquals(t, txns[0].bucketKey, "4:13371338:so.many.labels.here.example.com")
 	test.Assert(t, txns[0].checkOnly(), "should be check-only")
-	test.Assert(t, txns[0].limit.isOverride(), "should be an override")
+	test.Assert(t, txns[0].limit.isOverride, "should be an override")
 
 	// A spend-only transaction for the per-account limit override.
 	txn, err = tb.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(13371338, "so.many.labels.here.example.com")
 	test.AssertNotError(t, err, "creating transaction")
 	test.AssertEquals(t, txn.bucketKey, "4:13371338:so.many.labels.here.example.com")
 	test.Assert(t, txn.spendOnly(), "should be spend-only")
-	test.Assert(t, txn.limit.isOverride(), "should be an override")
+	test.Assert(t, txn.limit.isOverride, "should be an override")
 }
 
 func TestFailedAuthorizationsForPausingPerDomainPerAccountTransactions(t *testing.T) {
@@ -115,7 +115,7 @@ func TestFailedAuthorizationsForPausingPerDomainPerAccountTransactions(t *testin
 	test.AssertNotError(t, err, "creating transaction")
 	test.AssertEquals(t, txn.bucketKey, "8:13371338:so.many.labels.here.example.com")
 	test.Assert(t, txn.check && txn.spend, "should be check and spend")
-	test.Assert(t, txn.limit.isOverride(), "should be an override")
+	test.Assert(t, txn.limit.isOverride, "should be an override")
 }
 
 func TestCertificatesPerDomainTransactions(t *testing.T) {
@@ -153,7 +153,7 @@ func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 	test.AssertEquals(t, len(txns), 1)
 	test.AssertEquals(t, txns[0].bucketKey, "6:13371338:example.com")
 	test.Assert(t, txns[0].checkOnly(), "should be check-only")
-	test.Assert(t, txns[0].limit.isOverride(), "should be an override")
+	test.Assert(t, txns[0].limit.isOverride, "should be an override")
 
 	// Same as above, but with multiple example.com domains.
 	txns, err = tb.certificatesPerDomainCheckOnlyTransactions(13371338, []string{"so.many.labels.here.example.com", "z.example.com"})
@@ -161,7 +161,7 @@ func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 	test.AssertEquals(t, len(txns), 1)
 	test.AssertEquals(t, txns[0].bucketKey, "6:13371338:example.com")
 	test.Assert(t, txns[0].checkOnly(), "should be check-only")
-	test.Assert(t, txns[0].limit.isOverride(), "should be an override")
+	test.Assert(t, txns[0].limit.isOverride, "should be an override")
 
 	// Same as above, but with different domains.
 	txns, err = tb.certificatesPerDomainCheckOnlyTransactions(13371338, []string{"so.many.labels.here.example.com", "z.example.net"})
@@ -170,10 +170,10 @@ func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 	test.AssertEquals(t, len(txns), 2)
 	test.AssertEquals(t, txns[0].bucketKey, "6:13371338:example.com")
 	test.Assert(t, txns[0].checkOnly(), "should be check-only")
-	test.Assert(t, txns[0].limit.isOverride(), "should be an override")
+	test.Assert(t, txns[0].limit.isOverride, "should be an override")
 	test.AssertEquals(t, txns[1].bucketKey, "6:13371338:example.net")
 	test.Assert(t, txns[1].checkOnly(), "should be check-only")
-	test.Assert(t, txns[1].limit.isOverride(), "should be an override")
+	test.Assert(t, txns[1].limit.isOverride, "should be an override")
 
 	// Two spend-only transactions, one for the global limit and one for the
 	// per-account limit override.
@@ -183,11 +183,11 @@ func TestCertificatesPerDomainPerAccountTransactions(t *testing.T) {
 	txns = sortTransactions(txns)
 	test.AssertEquals(t, txns[0].bucketKey, "5:example.com")
 	test.Assert(t, txns[0].spendOnly(), "should be spend-only")
-	test.Assert(t, !txns[0].limit.isOverride(), "should not be an override")
+	test.Assert(t, !txns[0].limit.isOverride, "should not be an override")
 
 	test.AssertEquals(t, txns[1].bucketKey, "6:13371338:example.com")
 	test.Assert(t, txns[1].spendOnly(), "should be spend-only")
-	test.Assert(t, txns[1].limit.isOverride(), "should be an override")
+	test.Assert(t, txns[1].limit.isOverride, "should be an override")
 }
 
 func TestCertificatesPerFQDNSetTransactions(t *testing.T) {
@@ -202,7 +202,7 @@ func TestCertificatesPerFQDNSetTransactions(t *testing.T) {
 	namesHash := fmt.Sprintf("%x", core.HashNames([]string{"example.com", "example.net", "example.org"}))
 	test.AssertEquals(t, txn.bucketKey, "7:"+namesHash)
 	test.Assert(t, txn.checkOnly(), "should be check-only")
-	test.Assert(t, !txn.limit.isOverride(), "should not be an override")
+	test.Assert(t, !txn.limit.isOverride, "should not be an override")
 }
 
 func TestNewTransactionBuilder(t *testing.T) {

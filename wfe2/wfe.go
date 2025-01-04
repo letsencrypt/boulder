@@ -784,8 +784,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 			return
 		} else {
-			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While checking rate limits"), err)
-			return
+			logEvent.IgnoredRateLimitError = err.Error()
 		}
 	}
 
@@ -2352,7 +2351,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 				return
 			} else {
-				wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While checking rate limits"), err)
+				logEvent.IgnoredRateLimitError = err.Error()
 				return
 			}
 		}
