@@ -392,6 +392,8 @@ type orderModelv1 struct {
 	BeganProcessing   bool
 }
 
+// orderModelv2 represents one row in the orders table. The
+// CertificateProfileName column is a pointer because the column is NULL-able.
 type orderModelv2 struct {
 	ID                     int64
 	RegistrationID         int64
@@ -400,7 +402,7 @@ type orderModelv2 struct {
 	Error                  []byte
 	CertificateSerial      string
 	BeganProcessing        bool
-	CertificateProfileName string
+	CertificateProfileName *string
 }
 
 type orderToAuthzModel struct {
@@ -457,6 +459,9 @@ func modelToOrderv1(om *orderModelv1) (*corepb.Order, error) {
 }
 
 func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
+	// Make a local copy so we can take a reference to it below.
+	profile := order.CertificateProfileName
+
 	om := &orderModelv2{
 		ID:                     order.Id,
 		RegistrationID:         order.RegistrationID,
@@ -464,7 +469,7 @@ func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
 		Created:                order.Created.AsTime(),
 		BeganProcessing:        order.BeganProcessing,
 		CertificateSerial:      order.CertificateSerial,
-		CertificateProfileName: order.CertificateProfileName,
+		CertificateProfileName: &profile,
 	}
 
 	if order.Error != nil {
@@ -481,6 +486,10 @@ func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
 }
 
 func modelToOrderv2(om *orderModelv2) (*corepb.Order, error) {
+	profile := ""
+	if om.CertificateProfileName != nil {
+		profile = *om.CertificateProfileName
+	}
 	order := &corepb.Order{
 		Id:                     om.ID,
 		RegistrationID:         om.RegistrationID,
@@ -488,7 +497,7 @@ func modelToOrderv2(om *orderModelv2) (*corepb.Order, error) {
 		Created:                timestamppb.New(om.Created),
 		CertificateSerial:      om.CertificateSerial,
 		BeganProcessing:        om.BeganProcessing,
-		CertificateProfileName: om.CertificateProfileName,
+		CertificateProfileName: profile,
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails
