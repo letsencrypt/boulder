@@ -30,7 +30,7 @@ jobs:
         run: ./tools/make-assets.sh
 
       - name: Build .deb (new)
-        id: build
+        id: build-new
         env:
           GO_VERSION: ${{ matrix.GO_VERSION }}
         run: ./tools/make-assets-v2.sh
