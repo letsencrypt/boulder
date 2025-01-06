@@ -16,6 +16,8 @@ set -eu
 sudo apt-get install -y --no-install-recommends \
   ruby \
   ruby-dev \
+  gnupg2 \
+  curl \
   gcc
 
 # Download and unpack our production go version. Ensure that $GO_VERSION is
@@ -25,7 +27,7 @@ sudo tar -C /usr/local -xzf go.tar.gz
 export PATH=/usr/local/go/bin:$PATH
 
 # Install fpm, this is used in our Makefile to package Boulder as a deb.
-sudo gem install --no-document -v 1.14.0 fpm
+sudo gem install --no-document -v 1.15.1 fpm
 
 #
 # Build
