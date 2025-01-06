@@ -6,6 +6,8 @@
 
 set -feuxo pipefail
 
+cd "$(realpath -- $(dirname -- "$0")../ )"
+
 sudo apt-get install -y --no-install-recommends \
   make \
   gnupg \
@@ -14,16 +16,16 @@ sudo apt-get install -y --no-install-recommends \
 
 # Download and unpack our production go version. Ensure that $GO_VERSION is
 # already set in the environment (e.g. by the github actions release workflow).
-$(dirname -- "${0}")/fetch-and-verify-go.sh "${GO_VERSION}"
+./tools/fetch-and-verify-go.sh "${GO_VERSION}"
 sudo tar -C /usr/local -xzf go.tar.gz
 export PATH=/usr/local/go/bin:$PATH
 
 make
 
 ARCHIVEDIR="${PWD}"
+BOULDER="${PWD}"
 BUILD="$(mktemp -d)"
 
-BOULDER=/boulder
 TARGET="${BUILD}"/opt/boulder
 
 mkdir -p "${TARGET}/bin"
