@@ -35,7 +35,12 @@ type RequestEvent struct {
 	Slug           string   `json:",omitempty"`
 	InternalErrors []string `json:",omitempty"`
 	Error          string   `json:",omitempty"`
-	UserAgent      string   `json:"ua,omitempty"`
+	// If there is an error checking the data store for our rate limits
+	// we ignore it, but attach the error to the log event for analysis.
+	// TODO(#7796): Treat errors from the rate limit system as normal
+	// errors and put them into InternalErrors.
+	IgnoredRateLimitError string `json:",omitempty"`
+	UserAgent             string `json:"ua,omitempty"`
 	// Origin is sent by the browser from XHR-based clients.
 	Origin string                 `json:",omitempty"`
 	Extra  map[string]interface{} `json:",omitempty"`
