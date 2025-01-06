@@ -337,6 +337,10 @@ type certificateRequestEvent struct {
 	// CertProfileHash is SHA256 sum over every exported field of an
 	// issuance.ProfileConfig, represented here as a hexadecimal string.
 	CertProfileHash string `json:",omitempty"`
+	// PreviousCertificateIssued is present when this certificate uses the same set
+	// of FQDNs as a previous certificate (from any account) and contains the
+	// notBefore of the most recent such certificate.
+	PreviousCertificateIssued time.Time `json:",omitempty"`
 }
 
 // certificateRevocationEvent is a struct for holding information that is logged
@@ -1010,6 +1014,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		// that it can wait for all goroutines to drain during shutdown.
 		ra.drainWG.Add(1)
 		go func() {
+			// The original context will be canceled in the RPC layer when FinalizeOrder returns,
+			// so split off a context that won't be canceled (and has its own timeout).
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ra.finalizeTimeout)
+			defer cancel()
 			_, err := ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, logEvent)
 			if err != nil {
 				// We only log here, because this is in a background goroutine with
@@ -1135,9 +1143,23 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ra.inflightFinalizes.Inc()
 	defer ra.inflightFinalizes.Dec()
 
+	isRenewal := false
+	timestamps, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
+		DnsNames: order.DnsNames,
+		Window:   durationpb.New(120 * 24 * time.Hour),
+		Limit:    1,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("checking if certificate is a renewal: %w", err)
+	}
+	if len(timestamps.Timestamps) > 0 {
+		isRenewal = true
+		logEvent.PreviousCertificateIssued = timestamps.Timestamps[0].AsTime()
+	}
+
 	// Step 3: Issue the Certificate
 	cert, cpId, err := ra.issueCertificateInner(
-		ctx, csr, order.CertificateProfileName, accountID(order.RegistrationID), orderID(order.Id))
+		ctx, csr, isRenewal, order.CertificateProfileName, accountID(order.RegistrationID), orderID(order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
 	var result string
@@ -1245,16 +1267,10 @@ type certProfileID struct {
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	csr *x509.CertificateRequest,
+	isRenewal bool,
 	profileName string,
 	acctID accountID,
 	oID orderID) (*x509.Certificate, *certProfileID, error) {
-	if features.Get().AsyncFinalize {
-		// If we're in async mode, use a context with a much longer timeout.
-		var cancel func()
-		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), ra.finalizeTimeout)
-		defer cancel()
-	}
-
 	// wrapError adds a prefix to an error. If the error is a boulder error then
 	// the problem detail is updated with the prefix. Otherwise a new error is
 	// returned with the message prefixed using `fmt.Errorf`
@@ -1289,12 +1305,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return nil, nil, wrapError(err, "getting SCTs")
 	}
-
-	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: parsedPrecert.DNSNames})
-	if err != nil {
-		return nil, nil, wrapError(err, "checking if certificate is a renewal")
-	}
-	isRenewal := exists.Exists
 
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:             precert.DER,
