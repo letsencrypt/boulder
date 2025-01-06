@@ -29,6 +29,12 @@ jobs:
           GO_VERSION: ${{ matrix.GO_VERSION }}
         run: ./tools/make-assets.sh
 
+      - name: Build .deb (new)
+        id: build
+        env:
+          GO_VERSION: ${{ matrix.GO_VERSION }}
+        run: ./tools/make-assets-v2.sh
+
       - name: Compute checksums
         id: checksums
         # The files listed on this line must be identical to the files uploaded
