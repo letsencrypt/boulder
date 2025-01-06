@@ -50,7 +50,7 @@ make deb tar
 BOULDER="${PWD}"
 BUILD="$(mktemp -d)"
 
-TARGET="${BUILD}"/opt/boulder
+TARGET="${BUILD}/opt/boulder"
 
 mkdir -p "${TARGET}/bin"
 for NAME in admin boulder ceremony ct-test-srv ; do
@@ -69,8 +69,8 @@ cp -a "${BOULDER}/data/" "${TARGET}/data/"
 export VERSION="${GO_VERSION}.$(date +%s)"
 COMMIT_ID="$(git rev-parse --short=8 HEAD)"
 
-mkdir "${BUILD}"/DEBIAN
-cat > "${BUILD}"/DEBIAN/control <<-EOF
+mkdir "${BUILD}/DEBIAN"
+cat > "${BUILD}/DEBIAN/control" <<-EOF
 Package: boulder
 Version: 1:${VERSION}
 License: Mozilla Public License v2.0
