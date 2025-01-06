@@ -24,7 +24,12 @@ $(dirname -- "${0}")/fetch-and-verify-go.sh "${GO_VERSION}"
 sudo tar -C /usr/local -xzf go.tar.gz
 export PATH=/usr/local/go/bin:$PATH
 
-# Install fpm, this is used in our Makefile to package Boulder as a deb.
+# Install fpm. This is used in our Makefile to package Boulder as a deb.
+# We install specific versions of some dependencies because these are the last versions
+# supported by the Ruby / RubyGems that ships on ubuntu-20.04, which this script runs on in CI.
+sudo gem install --no-document -v 1.8.0 rchardet
+sudo gem install --no-document -v 5.1.1 public_suffix
+sudo gem install --no-document -v 2.8.1 dotenv
 sudo gem install --no-document -v 1.14.0 fpm
 
 #
