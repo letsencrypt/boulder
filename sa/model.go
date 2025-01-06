@@ -393,7 +393,7 @@ type orderModelv1 struct {
 }
 
 // orderModelv2 represents one row in the orders table. The
-// CertificateProfileName column is a pointer because the column is NULLable.
+// CertificateProfileName column is a pointer because the column is NULL-able.
 type orderModelv2 struct {
 	ID                     int64
 	RegistrationID         int64
