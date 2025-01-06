@@ -6,7 +6,7 @@
 
 set -feuxo pipefail
 
-cd "$(realpath -- $(dirname -- "$0")../ )"
+cd "$(realpath -- $(dirname -- "$0")/../ )"
 
 sudo apt-get install -y --no-install-recommends \
   make \
