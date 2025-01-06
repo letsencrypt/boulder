@@ -29,15 +29,9 @@ BUILD="$(mktemp -d)"
 TARGET="${BUILD}"/opt/boulder
 
 mkdir -p "${TARGET}/bin"
-cp -a bin/admin "${TARGET}/bin/"
-cp -a bin/boulder "${TARGET}/bin/"
-cp -a bin/ceremony "${TARGET}/bin/"
-cp -a bin/ct-test-srv "${TARGET}/bin/"
-
-copydir () {
-    mkdir -p "${TARGET}/$1"
-    cp -a "${BOULDER}/$1" "${TARGET}/$1"
-}
+for NAME in admin boulder ceremony ct-test-srv ; do
+  cp -a "bin/${NAME}" "${TARGET}/bin/"
+done
 
 mkdir -p "${TARGET}/test"
 cp -a "${BOULDER}/test/config/" "${TARGET}/test/config/"
