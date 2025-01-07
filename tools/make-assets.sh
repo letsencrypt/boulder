@@ -49,7 +49,7 @@ make deb tar
 # will be used to produce the regular `boulder-*` packages.
 BOULDER="${PWD}"
 BUILD="$(mktemp -d)"
-TARGET="${BUILD}"/opt/boulder
+TARGET="${BUILD}/opt/boulder"
 
 COMMIT_ID="$(git rev-parse --short=8 HEAD)"
 
@@ -66,8 +66,8 @@ cp -a "${BOULDER}/sa/db/" "${TARGET}/sa/db/"
 
 cp -a "${BOULDER}/data/" "${TARGET}/data/"
 
-mkdir "${BUILD}"/DEBIAN
-cat > "${BUILD}"/DEBIAN/control <<-EOF
+mkdir "${BUILD}/DEBIAN"
+cat > "${BUILD}/DEBIAN/control" <<-EOF
 Package: boulder
 Version: 1:${VERSION}
 License: Mozilla Public License v2.0
