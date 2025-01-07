@@ -1354,9 +1354,8 @@ func TestOrderWithOrderModelv1(t *testing.T) {
 }
 
 func TestOrderWithOrderModelv2(t *testing.T) {
-	// This test requires the config-next db schema to run.
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		t.Skip()
+		t.Skip("Test requires 20240304000000_CertificateProfiles.sql migration to have run")
 	}
 
 	sa, fc, cleanup := initSA(t)
@@ -1471,9 +1470,8 @@ func TestOrderWithOrderModelv2(t *testing.T) {
 }
 
 func TestOrderModelMigration(t *testing.T) {
-	// This test requires the config-next db schema to run.
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		t.Skip()
+		t.Skip("Test requires 20240304000000_CertificateProfiles.sql migration to have run")
 	}
 
 	sa, fc, cleanup := initSA(t)
@@ -1508,9 +1506,8 @@ func TestOrderModelMigration(t *testing.T) {
 }
 
 func TestOrderModelMigrationRollback(t *testing.T) {
-	// This test requires the config-next db schema to run.
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		t.Skip()
+		t.Skip("Test requires 20240304000000_CertificateProfiles.sql migration to have run")
 	}
 
 	sa, fc, cleanup := initSA(t)
@@ -2076,10 +2073,6 @@ func TestRevokeCertificate(t *testing.T) {
 }
 
 func TestRevokeCertificateWithShard(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires revokedCertificates database table")
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -2241,10 +2234,6 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 }
 
 func TestUpdateRevokedCertificateWithShard(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires revokedCertificates database table")
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -2302,10 +2291,6 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 }
 
 func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires revokedCertificates database table")
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3372,10 +3357,6 @@ func TestGetRevokedCerts(t *testing.T) {
 }
 
 func TestGetRevokedCertsByShard(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires revokedCertificates database table")
-	}
-
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3893,10 +3874,6 @@ func TestUpdateCRLShard(t *testing.T) {
 }
 
 func TestReplacementOrderExists(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires replacementOrders database table")
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -4120,9 +4097,6 @@ func TestGetSerialsByAccount(t *testing.T) {
 }
 
 func TestUnpauseAccount(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -4249,10 +4223,6 @@ func bulkInsertPausedIdentifiers(ctx context.Context, sa *SQLStorageAuthority, c
 }
 
 func TestUnpauseAccountWithTwoLoops(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
-
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -4265,10 +4235,6 @@ func TestUnpauseAccountWithTwoLoops(t *testing.T) {
 }
 
 func TestUnpauseAccountWithMaxLoops(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
-
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -4281,9 +4247,6 @@ func TestUnpauseAccountWithMaxLoops(t *testing.T) {
 }
 
 func TestPauseIdentifiers(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -4465,9 +4428,6 @@ func TestPauseIdentifiers(t *testing.T) {
 }
 
 func TestCheckIdentifiersPaused(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -4609,9 +4569,6 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 }
 
 func TestGetPausedIdentifiers(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -4721,9 +4678,6 @@ func TestGetPausedIdentifiers(t *testing.T) {
 }
 
 func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
