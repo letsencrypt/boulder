@@ -1057,7 +1057,9 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 //
 // If ShardIdx is nonzero, GetRevokedCerts calculates shard membership based
 // on temporal sharding _and_ explicit sharding (that is, sharding based on
-// the shardIdx field of the revokedCertificates table).
+// the shardIdx field of the revokedCertificates table). Most revoked certificates
+// will be present in two shards: one based on explicit sharding and one based
+// on temporal sharding (a few will have the same shard for both).
 //
 // The starting timestamp is treated as inclusive (certs with exactly that
 // notAfter date are included), but the ending timestamp is exclusive (certs
