@@ -1119,8 +1119,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Ensure gRPC response is complete.
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if authzPB.Id == "" || authzPB.DnsName == "" || authzPB.Status == "" || core.IsAnyNilOrZero(authzPB.Expires) {
+	if core.IsAnyNilOrZero(authzPB.Id, authzPB.DnsName, authzPB.Status, authzPB.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -1322,8 +1321,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
 		})
-		// TODO(#7153): Check each value via core.IsAnyNilOrZero
-		if err != nil || authzPB == nil || authzPB.Id == "" || authzPB.DnsName == "" || authzPB.Status == "" || core.IsAnyNilOrZero(authzPB.Expires) {
+		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, authzPB.DnsName, authzPB.Status, authzPB.Expires) {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
 		}
@@ -1565,8 +1563,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 	}
 
 	// Ensure gRPC response is complete.
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if authzPB.Id == "" || authzPB.DnsName == "" || authzPB.Status == "" || core.IsAnyNilOrZero(authzPB.Expires) {
+	if core.IsAnyNilOrZero(authzPB.Id, authzPB.DnsName, authzPB.Status, authzPB.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -2403,8 +2400,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		IsARIRenewal:           isARIRenewal,
 		IsRenewal:              isRenewal,
 	})
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if err != nil || order == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.DnsNames) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
+	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		if errors.Is(err, berrors.RateLimit) {
 			// Request was denied by a legacy rate limit. In this error case we
@@ -2474,8 +2470,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if order.Id == 0 || order.Status == "" || order.RegistrationID == 0 || len(order.DnsNames) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
+	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2555,8 +2550,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if order.Id == 0 || order.Status == "" || order.RegistrationID == 0 || len(order.DnsNames) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
+	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2613,8 +2607,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error finalizing order"), err)
 		return
 	}
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if updatedOrder == nil || order.Id == 0 || order.RegistrationID == 0 || len(order.DnsNames) == 0 || core.IsAnyNilOrZero(order.Created, order.Expires) {
+	if core.IsAnyNilOrZero(order.Id, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}

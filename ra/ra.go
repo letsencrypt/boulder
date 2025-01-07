@@ -1761,8 +1761,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if req.Authz == nil || req.Authz.Id == "" || req.Authz.DnsName == "" || req.Authz.Status == "" || core.IsAnyNilOrZero(req.Authz.Expires) {
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, req.Authz.DnsName, req.Authz.Status, req.Authz.Expires) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -2459,8 +2458,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Error if an incomplete order is returned.
 	if existingOrder != nil {
 		// Check to see if the expected fields of the existing order are set.
-		// TODO(#7153): Check each value via core.IsAnyNilOrZero
-		if existingOrder.Id == 0 || existingOrder.Status == "" || existingOrder.RegistrationID == 0 || len(existingOrder.DnsNames) == 0 || core.IsAnyNilOrZero(existingOrder.Created, existingOrder.Expires) {
+		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, existingOrder.DnsNames, existingOrder.Created, existingOrder.Expires) {
 			return nil, errIncompleteGRPCResponse
 		}
 
