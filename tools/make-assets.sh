@@ -49,8 +49,9 @@ make deb tar
 # will be used to produce the regular `boulder-*` packages.
 BOULDER="${PWD}"
 BUILD="$(mktemp -d)"
-
 TARGET="${BUILD}"/opt/boulder
+
+COMMIT_ID="$(git rev-parse --short=8 HEAD)"
 
 mkdir -p "${TARGET}/bin"
 for NAME in admin boulder ceremony ct-test-srv ; do
@@ -64,10 +65,6 @@ mkdir -p "${TARGET}/sa"
 cp -a "${BOULDER}/sa/db/" "${TARGET}/sa/db/"
 
 cp -a "${BOULDER}/data/" "${TARGET}/data/"
-
-# Set $VERSION to be a simulacrum of what is set in other build environments.
-export VERSION="${GO_VERSION}.$(date +%s)"
-COMMIT_ID="$(git rev-parse --short=8 HEAD)"
 
 mkdir "${BUILD}"/DEBIAN
 cat > "${BUILD}"/DEBIAN/control <<-EOF
