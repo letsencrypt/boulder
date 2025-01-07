@@ -1050,18 +1050,26 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 	})
 }
 
-// GetRevokedCerts gets a request specifying an issuer and a period of time,
-// and writes to the output stream the set of all certificates issued by that
-// issuer which expire during that period of time and which have been revoked.
+// GetRevokedCerts returns a stream of revoked certificates for a single CRL shard.
+//
+// If ShardIdx is zero, GetRevokedCerts calculates shard membership based
+// solely on temporal sharding.
+//
+// If ShardIdx is nonzero, GetRevokedCerts calculates shard membership based
+// on temporal sharding _and_ explicit sharding (that is, sharding based on
+// the shardIdx field of the revokedCertificates table).
+//
 // The starting timestamp is treated as inclusive (certs with exactly that
 // notAfter date are included), but the ending timestamp is exclusive (certs
 // with exactly that notAfter date are *not* included).
 func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
 	if req.ShardIdx != 0 {
-		return ssa.getRevokedCertsFromRevokedCertificatesTable(req, stream)
-	} else {
-		return ssa.getRevokedCertsFromCertificateStatusTable(req, stream)
+		err := ssa.getRevokedCertsFromRevokedCertificatesTable(req, stream)
+		if err != nil {
+			return err
+		}
 	}
+	return ssa.getRevokedCertsFromCertificateStatusTable(req, stream)
 }
 
 // getRevokedCertsFromRevokedCertificatesTable uses the new revokedCertificates
