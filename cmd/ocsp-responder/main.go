@@ -51,9 +51,14 @@ type Config struct {
 		// OCSP requests. This has a default value of ":80".
 		ListenAddress string `validate:"omitempty,hostname_port"`
 
-		// When to timeout a request. This should be slightly lower than the
-		// upstream's timeout when making request to ocsp-responder.
+		// Timeout is the per-request overall timeout. This should be slightly
+		// lower than the upstream's timeout when making requests to this service.
 		Timeout config.Duration `validate:"-"`
+
+		// ShutdownStopTimeout determines the maximum amount of time to wait
+		// for extant request handlers to complete before exiting. It should be
+		// greater than Timeout.
+		ShutdownStopTimeout config.Duration
 
 		// How often a response should be signed when using Redis/live-signing
 		// path. This has a default value of 60h.
@@ -79,8 +84,6 @@ type Config struct {
 		// and we have MaxInflightSignings = 40, we can expect to process
 		// 40 * 5 / 0.02 = 10,000 requests before the oldest request times out.
 		MaxSigningWaiters int `validate:"min=0"`
-
-		ShutdownStopTimeout config.Duration
 
 		RequiredSerialPrefixes []string `validate:"omitempty,dive,hexadecimal"`
 
