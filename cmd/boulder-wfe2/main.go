@@ -42,15 +42,18 @@ type Config struct {
 		TLSListenAddress string `validate:"omitempty,hostname_port"`
 
 		// Timeout is the per-request overall timeout. This should be slightly
-		// lower than the upstream's timeout when making requests to the WFE.
+		// lower than the upstream's timeout when making requests to this service.
 		Timeout config.Duration `validate:"-"`
+
+		// ShutdownStopTimeout determines the maximum amount of time to wait
+		// for extant request handlers to complete before exiting. It should be
+		// greater than Timeout.
+		ShutdownStopTimeout config.Duration
 
 		ServerCertificatePath string `validate:"required_with=TLSListenAddress"`
 		ServerKeyPath         string `validate:"required_with=TLSListenAddress"`
 
 		AllowOrigins []string
-
-		ShutdownStopTimeout config.Duration
 
 		SubscriberAgreementURL string
 
