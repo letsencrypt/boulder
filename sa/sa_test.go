@@ -1350,29 +1350,17 @@ func TestOrderWithOrderModelv1(t *testing.T) {
 }
 
 func TestOrderWithOrderModelv2(t *testing.T) {
+	// This test requires the config-next db schema to run.
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		t.Skip()
 	}
 
-	// The feature must be set before the SA is constructed because of a
-	// conditional on this feature in //sa/database.go.
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
 	features.Set(features.Config{MultipleCertificateProfiles: true})
 	defer features.Reset()
 
-	fc := clock.NewFake()
-	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
-
-	dbMap, err := DBMapForTest(vars.DBConnSA)
-	test.AssertNotError(t, err, "Couldn't create dbMap")
-
-	saro, err := NewSQLStorageAuthorityRO(dbMap, nil, metrics.NoopRegisterer, 1, 0, fc, log)
-	test.AssertNotError(t, err, "Couldn't create SARO")
-
-	sa, err := NewSQLStorageAuthorityWrapping(saro, dbMap, metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "Couldn't create SA")
-	defer test.ResetBoulderTestDatabase(t)
-
-	// Create a test registration to reference
 	reg := createWorkingRegistration(t, sa)
 	authzExpires := fc.Now().Add(time.Hour)
 	authzID := createPendingAuthorization(t, sa, "example.com", authzExpires)
@@ -1476,6 +1464,82 @@ func TestOrderWithOrderModelv2(t *testing.T) {
 	storedOrderNoName, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: orderNoName.Id})
 	test.AssertNotError(t, err, "sa.GetOrder failed")
 	test.AssertDeepEquals(t, storedOrderNoName, expectedOrderNoName)
+}
+
+func TestOrderModelMigration(t *testing.T) {
+	// This test requires the config-next db schema to run.
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		t.Skip()
+	}
+
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := createWorkingRegistration(t, sa)
+
+	// Create an order using the v1 model
+	authzID := createPendingAuthorization(t, sa, "example.com", fc.Now().Add(time.Hour))
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:   reg.Id,
+			Expires:          timestamppb.New(fc.Now().Add(2 * time.Hour)),
+			DnsNames:         []string{"example.com"},
+			V2Authorizations: []int64{authzID},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to insert order using orderModelv1: %s", err)
+	}
+
+	// Retrieve that order using the v2 model
+	features.Set(features.Config{MultipleCertificateProfiles: true})
+	defer features.Reset()
+	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	if err != nil {
+		t.Fatalf("failed to retrieve order using orderModelv2: %s", err)
+	}
+	if storedOrder.CertificateProfileName != "" {
+		t.Errorf("order inserted with v1 schema should have empty profilename, instead got %q", storedOrder.CertificateProfileName)
+	}
+}
+
+func TestOrderModelMigrationRollback(t *testing.T) {
+	// This test requires the config-next db schema to run.
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		t.Skip()
+	}
+
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := createWorkingRegistration(t, sa)
+
+	// Create an order using the v2 model
+	features.Set(features.Config{MultipleCertificateProfiles: true})
+	defer features.Reset()
+	authzID := createPendingAuthorization(t, sa, "example.com", fc.Now().Add(time.Hour))
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:         reg.Id,
+			Expires:                timestamppb.New(fc.Now().Add(2 * time.Hour)),
+			DnsNames:               []string{"example.com"},
+			V2Authorizations:       []int64{authzID},
+			CertificateProfileName: "asdf",
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to insert order using orderModelv2: %s", err)
+	}
+
+	// Retrieve that order using the v1 model
+	features.Reset()
+	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	if err != nil {
+		t.Fatalf("failed to retrieve order using orderModelv1: %s", err)
+	}
+	if storedOrder.CertificateProfileName != "" {
+		t.Errorf("order retrieved with v1 schema should have empty profilename, instead got %q", storedOrder.CertificateProfileName)
+	}
 }
 
 // TestGetAuthorization2NoRows ensures that the GetAuthorization2 function returns
