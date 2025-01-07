@@ -220,8 +220,7 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 // issued for any of the domains during the provided range of time. Queries will
 // be run in parallel. If any of them error, only one error will be returned.
 func (ssa *SQLStorageAuthorityRO) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if len(req.DnsNames) == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
+	if core.IsAnyNilOrZero(req.DnsNames, req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 
@@ -424,8 +423,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 }
 
 func (ssa *SQLStorageAuthorityRO) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if req.AccountID == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
+	if core.IsAnyNilOrZero(req.AccountID, req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 
@@ -854,8 +852,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
 // in a given time range. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if req.RegistrationID == 0 || req.DnsName == "" || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.DnsName, req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 
