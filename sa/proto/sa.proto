@@ -375,20 +375,12 @@ message GetRevokedCertsRequest {
   // Next unused field number: 9
   int64 issuerNameID = 1;
   reserved 2; // Previously expiresAfterNS
-  // Return certificates from the certificateStatus table
-  // with an expiration after this. Inclusive.
-  google.protobuf.Timestamp expiresAfter = 6;
+  google.protobuf.Timestamp expiresAfter = 6; // inclusive
   reserved 3; // Previously expiresBeforeNS
-  // Return certificates from the certificateStatus table
-  // with an expiration before this. Exclusive.
   google.protobuf.Timestamp expiresBefore = 7; // exclusive
   reserved 4; // Previously revokedBeforeNS
-  // Omit certificates that were revoked after this timestamp
-  // (since we're trying to capture a specific point in time).
   google.protobuf.Timestamp revokedBefore = 8;
-  // If nonzero, additionally return certificates with this shardIdx from
-  // the revokedCertificates table.
-  int64 shardIdx = 5;
+  int64 shardIdx = 5; // Must not be set until the revokedCertificates table has 90+ days of entries.
 }
 
 message RevocationStatus {
