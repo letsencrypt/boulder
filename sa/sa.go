@@ -838,29 +838,22 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sap
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		result, err := tx.ExecContext(ctx, `
-		UPDATE orders
-		SET beganProcessing = ?
-		WHERE id = ?
-		AND beganProcessing = ?`,
-			true,
-			req.Id,
-			false)
-		if err != nil {
-			return nil, berrors.InternalServerError("error updating order to beganProcessing status")
-		}
 
-		n, err := result.RowsAffected()
-		if err != nil || n == 0 {
-			return nil, berrors.OrderNotReadyError("Order was already processing. This may indicate your client finalized the same order multiple times, possibly due to a client bug.")
-		}
-
-		return nil, nil
-	})
-	if overallError != nil {
-		return nil, overallError
+	query := `UPDATE orders SET beganProcessing = ? WHERE id = ? AND beganProcessing = ?`
+	if features.Get().WriteNewOrderSchema && looksLikeRandomID(req.Id, ssa.clk.Now()) {
+		query = `UPDATE orders2 SET beganProcessing = ? WHERE id = ? AND beganProcessing = ?`
 	}
+
+	result, err := ssa.dbMap.ExecContext(ctx, query, true, req.Id, false)
+	if err != nil {
+		return nil, berrors.InternalServerError("error updating order to beganProcessing status")
+	}
+
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		return nil, berrors.OrderNotReadyError("Order was already processing. This may indicate your client finalized the same order multiple times, possibly due to a client bug.")
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
