@@ -897,14 +897,14 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 	if req.Id == 0 || req.CertificateSerial == "" {
 		return nil, errIncompleteRequest
 	}
+
+	query := `UPDATE orders SET certificateSerial = ? WHERE id = ? AND beganProcessing = true`
+	if features.Get().WriteNewOrderSchema && looksLikeRandomID(req.Id, ssa.clk.Now()) {
+		query = `UPDATE orders2 SET certificateSerial = ? WHERE id = ? AND beganProcessing = true`
+	}
+
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		result, err := tx.ExecContext(ctx, `
-		UPDATE orders
-		SET certificateSerial = ?
-		WHERE id = ? AND
-		beganProcessing = true`,
-			req.CertificateSerial,
-			req.Id)
+		result, err := tx.ExecContext(ctx, query, req.CertificateSerial, req.Id)
 		if err != nil {
 			return nil, berrors.InternalServerError("error updating order for finalization")
 		}
@@ -931,6 +931,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 	if overallError != nil {
 		return nil, overallError
 	}
+
 	return &emptypb.Empty{}, nil
 }
 
