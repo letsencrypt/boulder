@@ -9,7 +9,7 @@
 # -u Treat unset variables as an error and exit immediately.
 set -eu
 
-ARCH=amd64
+ARCH=x86_64
 if [ "$(uname -m)" != "${ARCH}" ]; then
   echo "Expected ARCH=${ARCH}, got $(uname -m)"
   exit 1
