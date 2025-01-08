@@ -9,9 +9,9 @@
 # -u Treat unset variables as an error and exit immediately.
 set -eu
 
-ARCH=x86_64
-if [ "$(uname -m)" != "${ARCH}" ]; then
-  echo "Expected ARCH=${ARCH}, got $(uname -m)"
+ARCH="$(uname -m)"
+if [ "${ARCH}" != "x86_64" && "${ARCH}" != "amd64" ]; then
+  echo "Expected ARCH=x86_64 or amd64, got ${ARCH}"
   exit 1
 fi
 
@@ -59,7 +59,7 @@ Package: boulder
 Version: 1:${VERSION}
 License: Mozilla Public License v2.0
 Vendor: ISRG
-Architecture: $ARCH
+Architecture: amd64
 Maintainer: Community
 Section: default
 Priority: extra
