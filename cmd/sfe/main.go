@@ -25,11 +25,12 @@ type Config struct {
 		ListenAddress string `validate:"omitempty,hostname_port"`
 
 		// Timeout is the per-request overall timeout. This should be slightly
-		// lower than the upstream's timeout when making requests to the SFE.
+		// lower than the upstream's timeout when making requests to this service.
 		Timeout config.Duration `validate:"-"`
 
-		// ShutdownStopTimeout is the duration that the SFE will wait before
-		// shutting down any listening servers.
+		// ShutdownStopTimeout determines the maximum amount of time to wait
+		// for extant request handlers to complete before exiting. It should be
+		// greater than Timeout.
 		ShutdownStopTimeout config.Duration
 
 		TLS cmd.TLSConfig

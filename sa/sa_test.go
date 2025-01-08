@@ -62,6 +62,18 @@ var (
 }`
 )
 
+func mustTime(s string) time.Time {
+	t, err := time.Parse("2006-01-02 15:04", s)
+	if err != nil {
+		panic(fmt.Sprintf("parsing %q: %s", s, err))
+	}
+	return t.UTC()
+}
+
+func mustTimestamp(s string) *timestamppb.Timestamp {
+	return timestamppb.New(mustTime(s))
+}
+
 type fakeServerStream[T any] struct {
 	grpc.ServerStream
 	output chan<- *T
@@ -93,7 +105,7 @@ func initSA(t testing.TB) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	}
 
 	fc := clock.NewFake()
-	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
+	fc.Set(mustTime("2015-03-04 05:00"))
 
 	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, metrics.NoopRegisterer, 1, 0, fc, log)
 	if err != nil {
@@ -114,7 +126,7 @@ func createWorkingRegistration(t testing.TB, sa *SQLStorageAuthority) *corepb.Re
 	reg, err := sa.NewRegistration(context.Background(), &corepb.Registration{
 		Key:       []byte(theKey),
 		Contact:   []string{"mailto:foo@example.com"},
-		CreatedAt: timestamppb.New(time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC)),
+		CreatedAt: mustTimestamp("2003-05-10 00:00"),
 		Status:    string(core.StatusValid),
 	})
 	if err != nil {
@@ -406,11 +418,11 @@ func TestAddPrecertificate(t *testing.T) {
 
 	// Add the cert as a precertificate
 	regID := reg.Id
-	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
+	issuedTime := mustTimestamp("2018-04-01 07:00")
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        regID,
-		Issued:       timestamppb.New(issuedTime),
+		Issued:       issuedTime,
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test cert")
@@ -433,7 +445,7 @@ func TestAddPrecertificate(t *testing.T) {
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    testCert.Raw,
 		RegID:  regID,
-		Issued: timestamppb.New(issuedTime),
+		Issued: issuedTime,
 	})
 	test.AssertNotError(t, err, "unexpected err adding final cert after precert")
 }
@@ -446,11 +458,11 @@ func TestAddPrecertificateNoOCSP(t *testing.T) {
 	_, testCert := test.ThrowAwayCert(t, clk)
 
 	regID := reg.Id
-	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
+	issuedTime := mustTimestamp("2018-04-01 07:00")
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        regID,
-		Issued:       timestamppb.New(issuedTime),
+		Issued:       issuedTime,
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test cert")
@@ -494,11 +506,10 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 
 	// Add the cert as a precertificate
 	regID := reg.Id
-	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    testCert.Raw,
 		RegID:  regID,
-		Issued: timestamppb.New(issuedTime),
+		Issued: mustTimestamp("2018-04-01 07:00"),
 		// Leaving out IssuerNameID
 	})
 
@@ -724,7 +735,7 @@ func (e *queryRecorder) QueryContext(ctx context.Context, query string, args ...
 func TestAddIssuedNames(t *testing.T) {
 	serial := big.NewInt(1)
 	expectedSerial := "000000000000000000000000000000000001"
-	notBefore := time.Date(2018, 2, 14, 12, 0, 0, 0, time.UTC)
+	notBefore := mustTime("2018-02-14 12:00")
 	expectedNotBefore := notBefore.Truncate(24 * time.Hour)
 	placeholdersPerName := "(?,?,?,?)"
 	baseQuery := "INSERT INTO issuedNames (reversedName,serial,notBefore,renewal) VALUES"
@@ -1221,28 +1232,15 @@ func TestOrderWithOrderModelv1(t *testing.T) {
 
 func TestOrderWithOrderModelv2(t *testing.T) {
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		t.Skip()
+		t.Skip("Test requires 20240304000000_CertificateProfiles.sql migration to have run")
 	}
 
-	// The feature must be set before the SA is constructed because of a
-	// conditional on this feature in //sa/database.go.
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
 	features.Set(features.Config{MultipleCertificateProfiles: true})
 	defer features.Reset()
 
-	fc := clock.NewFake()
-	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
-
-	dbMap, err := DBMapForTest(vars.DBConnSA)
-	test.AssertNotError(t, err, "Couldn't create dbMap")
-
-	saro, err := NewSQLStorageAuthorityRO(dbMap, nil, metrics.NoopRegisterer, 1, 0, fc, log)
-	test.AssertNotError(t, err, "Couldn't create SARO")
-
-	sa, err := NewSQLStorageAuthorityWrapping(saro, dbMap, metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "Couldn't create SA")
-	defer test.ResetBoulderTestDatabase(t)
-
-	// Create a test registration to reference
 	reg := createWorkingRegistration(t, sa)
 	authzExpires := fc.Now().Add(time.Hour)
 	authzID := createPendingAuthorization(t, sa, "example.com", authzExpires)
@@ -1346,6 +1344,80 @@ func TestOrderWithOrderModelv2(t *testing.T) {
 	storedOrderNoName, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: orderNoName.Id})
 	test.AssertNotError(t, err, "sa.GetOrder failed")
 	test.AssertDeepEquals(t, storedOrderNoName, expectedOrderNoName)
+}
+
+func TestOrderModelMigration(t *testing.T) {
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		t.Skip("Test requires 20240304000000_CertificateProfiles.sql migration to have run")
+	}
+
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := createWorkingRegistration(t, sa)
+
+	// Create an order using the v1 model
+	authzID := createPendingAuthorization(t, sa, "example.com", fc.Now().Add(time.Hour))
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:   reg.Id,
+			Expires:          timestamppb.New(fc.Now().Add(2 * time.Hour)),
+			DnsNames:         []string{"example.com"},
+			V2Authorizations: []int64{authzID},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to insert order using orderModelv1: %s", err)
+	}
+
+	// Retrieve that order using the v2 model
+	features.Set(features.Config{MultipleCertificateProfiles: true})
+	defer features.Reset()
+	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	if err != nil {
+		t.Fatalf("failed to retrieve order using orderModelv2: %s", err)
+	}
+	if storedOrder.CertificateProfileName != "" {
+		t.Errorf("order inserted with v1 schema should have empty profilename, instead got %q", storedOrder.CertificateProfileName)
+	}
+}
+
+func TestOrderModelMigrationRollback(t *testing.T) {
+	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		t.Skip("Test requires 20240304000000_CertificateProfiles.sql migration to have run")
+	}
+
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := createWorkingRegistration(t, sa)
+
+	// Create an order using the v2 model
+	features.Set(features.Config{MultipleCertificateProfiles: true})
+	defer features.Reset()
+	authzID := createPendingAuthorization(t, sa, "example.com", fc.Now().Add(time.Hour))
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:         reg.Id,
+			Expires:                timestamppb.New(fc.Now().Add(2 * time.Hour)),
+			DnsNames:               []string{"example.com"},
+			V2Authorizations:       []int64{authzID},
+			CertificateProfileName: "asdf",
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to insert order using orderModelv2: %s", err)
+	}
+
+	// Retrieve that order using the v1 model
+	features.Reset()
+	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	if err != nil {
+		t.Fatalf("failed to retrieve order using orderModelv1: %s", err)
+	}
+	if storedOrder.CertificateProfileName != "" {
+		t.Errorf("order retrieved with v1 schema should have empty profilename, instead got %q", storedOrder.CertificateProfileName)
+	}
 }
 
 // TestGetAuthorization2NoRows ensures that the GetAuthorization2 function returns
@@ -1826,10 +1898,6 @@ func TestRevokeCertificate(t *testing.T) {
 }
 
 func TestRevokeCertificateWithShard(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires revokedCertificates database table")
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -1991,10 +2059,6 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 }
 
 func TestUpdateRevokedCertificateWithShard(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires revokedCertificates database table")
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -2052,10 +2116,6 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 }
 
 func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires revokedCertificates database table")
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -2195,7 +2255,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	fc.Set(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC))
+	fc.Set(mustTime("2021-01-01 00:00"))
 
 	authzID := createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
 	expires := fc.Now().Add(time.Hour * 2).UTC()
@@ -2267,7 +2327,7 @@ func TestRehydrateHostPort(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	fc.Set(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC))
+	fc.Set(mustTime("2021-01-01 00:00"))
 
 	expires := fc.Now().Add(time.Hour * 2).UTC()
 	attemptedAt := fc.Now()
@@ -2951,83 +3011,65 @@ func TestGetRevokedCerts(t *testing.T) {
 		return entriesReceived, err
 	}
 
-	// Asking for revoked certs now should return no results.
-	expiresAfter := time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
-	expiresBefore := time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
-	revokedBefore := time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
-	count, err := countRevokedCerts(&sapb.GetRevokedCertsRequest{
+	// The basic request covers a time range that should include this certificate.
+	basicRequest := &sapb.GetRevokedCertsRequest{
 		IssuerNameID:  1,
-		ExpiresAfter:  timestamppb.New(expiresAfter),
-		ExpiresBefore: timestamppb.New(expiresBefore),
-		RevokedBefore: timestamppb.New(revokedBefore),
-	})
+		ExpiresAfter:  mustTimestamp("2023-03-01 00:00"),
+		ExpiresBefore: mustTimestamp("2023-04-01 00:00"),
+		RevokedBefore: mustTimestamp("2023-04-01 00:00"),
+	}
+	count, err := countRevokedCerts(basicRequest)
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
 	// Revoke the certificate.
-	date := time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		Serial:   core.SerialToString(eeCert.SerialNumber),
-		Date:     timestamppb.New(date),
+		Date:     mustTimestamp("2023-01-01 00:00"),
 		Reason:   1,
 		Response: []byte{1, 2, 3},
 	})
 	test.AssertNotError(t, err, "failed to revoke test cert")
 
 	// Asking for revoked certs now should return one result.
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:  1,
-		ExpiresAfter:  timestamppb.New(expiresAfter),
-		ExpiresBefore: timestamppb.New(expiresBefore),
-		RevokedBefore: timestamppb.New(revokedBefore),
-	})
+	count, err = countRevokedCerts(basicRequest)
 	test.AssertNotError(t, err, "normal usage shouldn't result in error")
 	test.AssertEquals(t, count, 1)
 
 	// Asking for revoked certs with an old RevokedBefore should return no results.
-	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
-	expiresBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
-	revokedBefore = time.Date(2020, time.March, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:  1,
-		ExpiresAfter:  timestamppb.New(expiresAfter),
-		ExpiresBefore: timestamppb.New(expiresBefore),
-		RevokedBefore: timestamppb.New(revokedBefore),
+		ExpiresAfter:  basicRequest.ExpiresAfter,
+		ExpiresBefore: basicRequest.ExpiresBefore,
+		RevokedBefore: mustTimestamp("2020-03-01 00:00"),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs in a time period that does not cover this cert's
 	// notAfter timestamp should return zero results.
-	expiresAfter = time.Date(2022, time.March, 1, 0, 0, 0, 0, time.UTC)
-	expiresBefore = time.Date(2022, time.April, 1, 0, 0, 0, 0, time.UTC)
-	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:  1,
-		ExpiresAfter:  timestamppb.New(expiresAfter),
-		ExpiresBefore: timestamppb.New(expiresBefore),
-		RevokedBefore: timestamppb.New(revokedBefore),
+		ExpiresAfter:  mustTimestamp("2022-03-01 00:00"),
+		ExpiresBefore: mustTimestamp("2022-04-01 00:00"),
+		RevokedBefore: mustTimestamp("2023-04-01 00:00"),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs from a different issuer should return zero results.
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:  1,
-		ExpiresAfter:  timestamppb.New(time.Date(2022, time.March, 1, 0, 0, 0, 0, time.UTC)),
-		ExpiresBefore: timestamppb.New(time.Date(2022, time.April, 1, 0, 0, 0, 0, time.UTC)),
-		RevokedBefore: timestamppb.New(time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)),
+		IssuerNameID:  5678,
+		ExpiresAfter:  basicRequest.ExpiresAfter,
+		ExpiresBefore: basicRequest.ExpiresBefore,
+		RevokedBefore: basicRequest.RevokedBefore,
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 }
 
 func TestGetRevokedCertsByShard(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires revokedCertificates database table")
-	}
-
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3075,25 +3117,25 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 		return entriesReceived, err
 	}
 
-	// Asking for revoked certs now should return no results.
-	expiresAfter := time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
-	revokedBefore := time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
-	count, err := countRevokedCerts(&sapb.GetRevokedCertsRequest{
+	// The basic request covers a time range and shard that should include this certificate.
+	basicRequest := &sapb.GetRevokedCertsRequest{
 		IssuerNameID:  1,
 		ShardIdx:      9,
-		ExpiresAfter:  timestamppb.New(expiresAfter),
-		RevokedBefore: timestamppb.New(revokedBefore),
-	})
+		ExpiresAfter:  mustTimestamp("2023-03-01 00:00"),
+		RevokedBefore: mustTimestamp("2023-04-01 00:00"),
+	}
+
+	// Nothing's been revoked yet. Count should be zero.
+	count, err := countRevokedCerts(basicRequest)
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
 	// Revoke the certificate, providing the ShardIdx so it gets written into
 	// both the certificateStatus and revokedCertificates tables.
-	date := time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		Serial:   core.SerialToString(eeCert.SerialNumber),
-		Date:     timestamppb.New(date),
+		Date:     mustTimestamp("2023-01-01 00:00"),
 		Reason:   1,
 		Response: []byte{1, 2, 3},
 		ShardIdx: 9,
@@ -3108,49 +3150,36 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertEquals(t, c.Int64, int64(1))
 
 	// Asking for revoked certs now should return one result.
-	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
-	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:  1,
-		ShardIdx:      9,
-		ExpiresAfter:  timestamppb.New(expiresAfter),
-		RevokedBefore: timestamppb.New(revokedBefore),
-	})
+	count, err = countRevokedCerts(basicRequest)
 	test.AssertNotError(t, err, "normal usage shouldn't result in error")
 	test.AssertEquals(t, count, 1)
 
 	// Asking for revoked certs from a different issuer should return zero results.
-	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
-	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:  2,
-		ShardIdx:      9,
-		ExpiresAfter:  timestamppb.New(expiresAfter),
-		RevokedBefore: timestamppb.New(revokedBefore),
+		IssuerNameID:  5678,
+		ShardIdx:      basicRequest.ShardIdx,
+		ExpiresAfter:  basicRequest.ExpiresAfter,
+		RevokedBefore: basicRequest.RevokedBefore,
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs from a different shard should return zero results.
-	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
-	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:  1,
+		IssuerNameID:  basicRequest.IssuerNameID,
 		ShardIdx:      8,
-		ExpiresAfter:  timestamppb.New(expiresAfter),
-		RevokedBefore: timestamppb.New(revokedBefore),
+		ExpiresAfter:  basicRequest.ExpiresAfter,
+		RevokedBefore: basicRequest.RevokedBefore,
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs with an old RevokedBefore should return no results.
-	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
-	revokedBefore = time.Date(2020, time.March, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:  1,
-		ShardIdx:      9,
-		ExpiresAfter:  timestamppb.New(expiresAfter),
-		RevokedBefore: timestamppb.New(revokedBefore),
+		IssuerNameID:  basicRequest.IssuerNameID,
+		ShardIdx:      basicRequest.ShardIdx,
+		ExpiresAfter:  basicRequest.ExpiresAfter,
+		RevokedBefore: mustTimestamp("2020-03-01 00:00"),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
@@ -3545,10 +3574,6 @@ func TestUpdateCRLShard(t *testing.T) {
 }
 
 func TestReplacementOrderExists(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires replacementOrders database table")
-	}
-
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3772,9 +3797,6 @@ func TestGetSerialsByAccount(t *testing.T) {
 }
 
 func TestUnpauseAccount(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3901,10 +3923,6 @@ func bulkInsertPausedIdentifiers(ctx context.Context, sa *SQLStorageAuthority, c
 }
 
 func TestUnpauseAccountWithTwoLoops(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
-
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3917,10 +3935,6 @@ func TestUnpauseAccountWithTwoLoops(t *testing.T) {
 }
 
 func TestUnpauseAccountWithMaxLoops(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
-
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3933,9 +3947,6 @@ func TestUnpauseAccountWithMaxLoops(t *testing.T) {
 }
 
 func TestPauseIdentifiers(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -4117,9 +4128,6 @@ func TestPauseIdentifiers(t *testing.T) {
 }
 
 func TestCheckIdentifiersPaused(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -4261,9 +4269,6 @@ func TestCheckIdentifiersPaused(t *testing.T) {
 }
 
 func TestGetPausedIdentifiers(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -4373,9 +4378,6 @@ func TestGetPausedIdentifiers(t *testing.T) {
 }
 
 func TestGetPausedIdentifiersOnlyUnpausesOneAccount(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires paused database table")
-	}
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 

@@ -754,8 +754,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
 // in a given time range. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if req.RegistrationID == 0 || req.DnsName == "" || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
+	if core.IsAnyNilOrZero(req.RegistrationID, req.DnsName, req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 

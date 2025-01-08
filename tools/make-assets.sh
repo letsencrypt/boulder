@@ -24,7 +24,12 @@ $(dirname -- "${0}")/fetch-and-verify-go.sh "${GO_VERSION}"
 sudo tar -C /usr/local -xzf go.tar.gz
 export PATH=/usr/local/go/bin:$PATH
 
-# Install fpm, this is used in our Makefile to package Boulder as a deb.
+# Install fpm. This is used in our Makefile to package Boulder as a deb.
+# We install specific versions of some dependencies because these are the last versions
+# supported by the Ruby / RubyGems that ships on ubuntu-20.04, which this script runs on in CI.
+sudo gem install --no-document -v 1.8.0 rchardet
+sudo gem install --no-document -v 5.1.1 public_suffix
+sudo gem install --no-document -v 2.8.1 dotenv
 sudo gem install --no-document -v 1.14.0 fpm
 
 #
@@ -38,5 +43,47 @@ export ARCHIVEDIR="${PWD}"
 # Set $VERSION to be a simulacrum of what is set in other build environments.
 export VERSION="${GO_VERSION}.$(date +%s)"
 
-# Build Boulder and produce a .deb and a tar.gz file in $PWD.
+# Build Boulder.
+make
+
+# Produce a .deb and a tar.gz file in $PWD.
 make deb tar
+
+# Produce a .deb and .tar.gz in $PWD without using `make` or `fpm`. The
+# resulting files will be named `boulder-newpkg-*`. Eventually this code
+# will be used to produce the regular `boulder-*` packages.
+BOULDER="${PWD}"
+BUILD="$(mktemp -d)"
+TARGET="${BUILD}/opt/boulder"
+
+COMMIT_ID="$(git rev-parse --short=8 HEAD)"
+
+mkdir -p "${TARGET}/bin"
+for NAME in admin boulder ceremony ct-test-srv ; do
+  cp -a "bin/${NAME}" "${TARGET}/bin/"
+done
+
+mkdir -p "${TARGET}/test"
+cp -a "${BOULDER}/test/config/" "${TARGET}/test/config/"
+
+mkdir -p "${TARGET}/sa"
+cp -a "${BOULDER}/sa/db/" "${TARGET}/sa/db/"
+
+cp -a "${BOULDER}/data/" "${TARGET}/data/"
+
+mkdir "${BUILD}/DEBIAN"
+cat > "${BUILD}/DEBIAN/control" <<-EOF
+Package: boulder
+Version: 1:${VERSION}
+License: Mozilla Public License v2.0
+Vendor: ISRG
+Architecture: arm64
+Maintainer: Community
+Section: default
+Priority: extra
+Homepage: https://github.com/letsencrypt/boulder
+Description: Boulder is an ACME-compatible X.509 Certificate Authority
+EOF
+
+dpkg-deb -Zgzip -b "${BUILD}" "${ARCHIVEDIR}/boulder-newpkg-${VERSION}-${COMMIT_ID}.x86_64.deb"
+tar -C "${TARGET}" -cpzf "${ARCHIVEDIR}/boulder-newpkg-${VERSION}-${COMMIT_ID}.amd64.tar.gz" .
