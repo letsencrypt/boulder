@@ -862,35 +862,30 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 	if req.Id == 0 || req.Error == nil {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		om, err := orderToModelv2(&corepb.Order{
-			Id:    req.Id,
-			Error: req.Error,
-		})
-		if err != nil {
-			return nil, err
-		}
 
-		result, err := tx.ExecContext(ctx, `
-		UPDATE orders
-		SET error = ?
-		WHERE id = ?`,
-			om.Error,
-			om.ID)
-		if err != nil {
-			return nil, berrors.InternalServerError("error updating order error field")
-		}
-
-		n, err := result.RowsAffected()
-		if err != nil || n == 0 {
-			return nil, berrors.InternalServerError("no order updated with new error field")
-		}
-
-		return nil, nil
+	om, err := orderToModelv2(&corepb.Order{
+		Id:    req.Id,
+		Error: req.Error,
 	})
-	if overallError != nil {
-		return nil, overallError
+	if err != nil {
+		return nil, err
 	}
+
+	query := `UPDATE orders SET error = ? WHERE id = ?`
+	if features.Get().WriteNewOrderSchema && looksLikeRandomID(req.Id, ssa.clk.Now()) {
+		query = `UPDATE orders2 SET error = ? WHERE id = ?`
+	}
+
+	result, err := ssa.dbMap.ExecContext(ctx, query, om.Error, om.ID)
+	if err != nil {
+		return nil, berrors.InternalServerError("error updating order error field")
+	}
+
+	n, err := result.RowsAffected()
+	if err != nil || n == 0 {
+		return nil, berrors.InternalServerError("no order updated with new error field")
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
