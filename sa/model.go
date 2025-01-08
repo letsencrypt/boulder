@@ -25,6 +25,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
@@ -1258,24 +1259,47 @@ type authzValidity struct {
 
 // getAuthorizationStatuses takes a sequence of authz IDs, and returns the
 // status and expiration date of each of them.
-func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) ([]authzValidity, error) {
-	var params []interface{}
+func getAuthorizationStatuses(ctx context.Context, s db.Selector, now time.Time, ids []int64) ([]authzValidity, error) {
+	var oldIDs, newIDs []interface{}
 	for _, id := range ids {
-		params = append(params, id)
-	}
-	var validities []authzValidity
-	_, err := s.Select(
-		ctx,
-		&validities,
-		fmt.Sprintf("SELECT identifierType, identifierValue, status, expires FROM authz2 WHERE id IN (%s)",
-			db.QuestionMarks(len(ids))),
-		params...,
-	)
-	if err != nil {
-		return nil, err
+		if features.Get().ReadNewOrderSchema && looksLikeRandomID(id, now) {
+			newIDs = append(newIDs, id)
+		} else {
+			oldIDs = append(oldIDs, id)
+		}
 	}
 
-	return validities, nil
+	var oldValidities []authzValidity
+	if len(oldIDs) > 0 {
+		_, err := s.Select(
+			ctx,
+			&oldValidities,
+			fmt.Sprintf(
+				"SELECT identifierType, identifierValue, status, expires FROM authz2 WHERE id IN (%s)",
+				db.QuestionMarks(len(ids))),
+			oldIDs...,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var newValidities []authzValidity
+	if len(newIDs) > 0 {
+		_, err := s.Select(
+			ctx,
+			&newValidities,
+			fmt.Sprintf(
+				"SELECT identifierType, identifierValue, status, expires FROM authorizations WHERE id IN (%s)",
+				db.QuestionMarks(len(ids))),
+			newIDs...,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return append(oldValidities, newValidities...), nil
 }
 
 // authzForOrder retrieves the authorization IDs for an order.

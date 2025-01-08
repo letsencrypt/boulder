@@ -549,7 +549,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		order.V2Authorizations = v2AuthzIDs
 
 		// Get the partial Authorization objects for the order
-		authzValidityInfo, err := getAuthorizationStatuses(ctx, tx, order.V2Authorizations)
+		authzValidityInfo, err := getAuthorizationStatuses(ctx, tx, ssa.clk.Now(), order.V2Authorizations)
 		// If there was an error getting the authorizations, return it immediately
 		if err != nil {
 			return nil, err
