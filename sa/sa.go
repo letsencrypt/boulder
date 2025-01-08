@@ -561,18 +561,22 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 		return nil, errIncompleteRequest
 	}
 
-	_, err := ssa.dbMap.ExecContext(ctx,
-		`UPDATE authz2 SET status = :deactivated WHERE id = :id and status IN (:valid,:pending)`,
-		map[string]interface{}{
-			"deactivated": statusUint(core.StatusDeactivated),
-			"id":          req.Id,
-			"valid":       statusUint(core.StatusValid),
-			"pending":     statusUint(core.StatusPending),
-		},
+	query := `UPDATE authz2 SET status = :deactivated WHERE id = :id and status IN (:valid,:pending)`
+	if features.Get().WriteNewOrderSchema && looksLikeRandomID(req.Id, ssa.clk.Now()) {
+		query = `UPDATE authorizations SET status = :deactivated WHERE id = :id and status IN (:valid,:pending)`
+	}
+
+	_, err := ssa.dbMap.ExecContext(ctx, query, map[string]interface{}{
+		"deactivated": statusUint(core.StatusDeactivated),
+		"id":          req.Id,
+		"valid":       statusUint(core.StatusValid),
+		"pending":     statusUint(core.StatusPending),
+	},
 	)
 	if err != nil {
 		return nil, err
 	}
+
 	return &emptypb.Empty{}, nil
 }
 
