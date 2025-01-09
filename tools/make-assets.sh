@@ -1,22 +1,19 @@
 #!/usr/bin/env bash
 #
-# This script expects to run on Ubuntu. It installs the dependencies necessary
-# to build Boulder and produce a Debian Package. The actual build and packaging
-# is handled by a call to Make.
+# Build Boulder and produce a .deb and a .tar.gz.
 #
-
+# This script expects to run on Ubuntu, as configured on GitHub Actions runners
+# (with curl, make, and git installed).
+#
 # -e Stops execution in the instance of a command or pipeline error.
 # -u Treat unset variables as an error and exit immediately.
 set -eu
 
-#
-# Setup Dependencies
-#
-
-sudo apt-get install -y --no-install-recommends \
-  ruby \
-  ruby-dev \
-  gcc
+ARCH="$(uname -m)"
+if [ "${ARCH}" != "x86_64" && "${ARCH}" != "amd64" ]; then
+  echo "Expected ARCH=x86_64 or amd64, got ${ARCH}"
+  exit 1
+fi
 
 # Download and unpack our production go version. Ensure that $GO_VERSION is
 # already set in the environment (e.g. by the github actions release workflow).
@@ -24,30 +21,15 @@ $(dirname -- "${0}")/fetch-and-verify-go.sh "${GO_VERSION}"
 sudo tar -C /usr/local -xzf go.tar.gz
 export PATH=/usr/local/go/bin:$PATH
 
-# Install fpm. This is used in our Makefile to package Boulder as a deb.
-# We install specific versions of some dependencies because these are the last versions
-# supported by the Ruby / RubyGems that ships on ubuntu-20.04, which this script runs on in CI.
-sudo gem install --no-document -v 1.8.0 rchardet
-sudo gem install --no-document -v 5.1.1 public_suffix
-sudo gem install --no-document -v 2.8.1 dotenv
-sudo gem install --no-document -v 1.14.0 fpm
-
 #
 # Build
 #
 
-# Set $ARCHIVEDIR to our current directory. If left unset our Makefile will set
-# it to /tmp.
-export ARCHIVEDIR="${PWD}"
-
 # Set $VERSION to be a simulacrum of what is set in other build environments.
-export VERSION="${GO_VERSION}.$(date +%s)"
+VERSION="${GO_VERSION}.$(date +%s)"
 
 # Build Boulder.
 make
-
-# Produce a .deb and a tar.gz file in $PWD.
-make deb tar
 
 # Produce a .deb and .tar.gz in $PWD without using `make` or `fpm`. The
 # resulting files will be named `boulder-newpkg-*`. Eventually this code
@@ -77,7 +59,7 @@ Package: boulder
 Version: 1:${VERSION}
 License: Mozilla Public License v2.0
 Vendor: ISRG
-Architecture: arm64
+Architecture: amd64
 Maintainer: Community
 Section: default
 Priority: extra
@@ -85,5 +67,5 @@ Homepage: https://github.com/letsencrypt/boulder
 Description: Boulder is an ACME-compatible X.509 Certificate Authority
 EOF
 
-dpkg-deb -Zgzip -b "${BUILD}" "${ARCHIVEDIR}/boulder-newpkg-${VERSION}-${COMMIT_ID}.x86_64.deb"
-tar -C "${TARGET}" -cpzf "${ARCHIVEDIR}/boulder-newpkg-${VERSION}-${COMMIT_ID}.amd64.tar.gz" .
+dpkg-deb -Zgzip -b "${BUILD}" "./boulder-${VERSION}-${COMMIT_ID}.x86_64.deb"
+tar -C "${TARGET}" -cpzf "./boulder-${VERSION}-${COMMIT_ID}.amd64.tar.gz" .
