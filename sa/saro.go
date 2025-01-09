@@ -1084,6 +1084,9 @@ func (cd crlDeduper) Send(crl *corepb.CRLEntry) error {
 // notAfter date are included), but the ending timestamp is exclusive (certs
 // with exactly that notAfter date are *not* included).
 func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
+	if core.IsAnyNilOrZero(req.IssuerNameID, req.ExpiresAfter, req.ExpiresBefore, req.RevokedBefore) {
+		return errors.New("incomplete request for GetRevokedCerts")
+	}
 	crlDeduper := crlDeduper{
 		ServerStreamingServer: stream,
 		seen:                  make(map[string]bool),
