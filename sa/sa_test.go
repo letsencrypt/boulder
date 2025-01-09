@@ -3354,51 +3354,70 @@ func TestGetRevokedCerts(t *testing.T) {
 	test.AssertEquals(t, count, 0)
 }
 
-func TestGetRevokedCertsByShard(t *testing.T) {
+func TestGetRevokedCertsWithShard(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
 	reg := createWorkingRegistration(t, sa)
 
-	// Add two certs to the DB to test with. We use AddPrecertificate because it sets
-	// up the certificateStatus row we need. These certs have a notAfter
-	// date of Mar 7 2023, and we lie about their IssuerNameID to make things easy.
 	fc.Set(mustTime("2023-03-01 00:00"))
+
+	// Make up an IssuerNameID to make things simpler.
+	issuerNameID := int64(834)
 
 	// Create a certificate and add it to the tables we need.
 	makeCert := func() *x509.Certificate {
 		_, cert := test.ThrowAwayCert(t, fc)
+		// We depend on specifics of the lifetime set by test.ThrowAwayCert, so verify.
+		lifetime := cert.NotAfter.Sub(cert.NotBefore)
+		if lifetime != 6*24*time.Hour {
+			t.Fatalf("cert lifetime: got %s, want 6 days", lifetime)
+		}
 		_, err := sa.AddSerial(ctx, &sapb.AddSerialRequest{
 			RegID:   reg.Id,
 			Serial:  core.SerialToString(cert.SerialNumber),
 			Created: timestamppb.New(cert.NotBefore),
 			Expires: timestamppb.New(cert.NotAfter),
 		})
-		test.AssertNotError(t, err, "failed to add test serial")
+		if err != nil {
+			t.Fatalf("adding serial: %s", err)
+		}
 		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:          cert.Raw,
 			RegID:        reg.Id,
 			Issued:       timestamppb.New(cert.NotBefore),
-			IssuerNameID: 1,
+			IssuerNameID: int64(issuerNameID),
 		})
-		test.AssertNotError(t, err, "failed to add test cert")
+		if err != nil {
+			t.Fatalf("adding cert: %s", err)
+		}
 		return cert
 	}
 
+	// Two certs issued at the same time, with the same expiration.
+	// eeCert1 will be revoked without an explicit ShardIdx.
+	// eeCert2 will be revoked _with_ an explicit ShardIdx.
 	eeCert1 := makeCert()
 	eeCert2 := makeCert()
-	t.Logf("eeCert1: %x", eeCert1.SerialNumber)
-	t.Logf("eeCert2: %x", eeCert2.SerialNumber)
+
+	// eeCert3 is issued two days after the others and will be revoked
+	// with the same explicit ShardIdx. It will show up in a different
+	// temporal shard than eeCert1 and eeCert2, because we are querying
+	// as if the shard width for CRLs is one day.
+	fc.Add(2 * 24 * time.Hour)
+	eeCert3 := makeCert()
 
 	// Check that it worked.
-	status, err := sa.GetCertificateStatus(
-		ctx, &sapb.Serial{Serial: core.SerialToString(eeCert1.SerialNumber)})
-	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
-	status, err = sa.GetCertificateStatus(
-		ctx, &sapb.Serial{Serial: core.SerialToString(eeCert2.SerialNumber)})
-	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
+	for _, c := range []*x509.Certificate{eeCert1, eeCert2, eeCert3} {
+		status, err := sa.GetCertificateStatus(
+			ctx, &sapb.Serial{Serial: core.SerialToString(c.SerialNumber)})
+		if err != nil {
+			t.Fatalf("GetCertificateStatus: %s", err)
+		}
+		if status.Status != string(core.OCSPStatusGood) {
+			t.Fatalf("GetCertificateStatus for new cert: got %s, want %s", status.Status, core.OCSPStatusGood)
+		}
+	}
 
 	// Here's a little helper func we'll use to call GetRevokedCerts and return
 	// a sorted list of serials.
@@ -3415,86 +3434,114 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 			serials = append(serials, e.Serial)
 		}
 		if err != nil {
-			t.Fatalf("getting revoked certs: %s", err)
+			t.Fatalf("GetRevokedCerts(%+v): %s", req, err)
 		}
 		sort.Strings(serials)
 		return serials
 	}
 
 	// The basic request covers a time range and shard that should include both certificates.
+	// The ExpiresBefore field is set based on the 6-day lifetime of certs from test.ThrowAwayCert
 	basicRequest := &sapb.GetRevokedCertsRequest{
-		IssuerNameID:  1,
+		IssuerNameID:  issuerNameID,
 		ShardIdx:      97,
 		ExpiresAfter:  mustTimestamp("2023-03-01 00:00"),
-		ExpiresBefore: mustTimestamp("2023-04-01 00:00"),
+		ExpiresBefore: mustTimestamp("2023-03-08 00:00"),
 		RevokedBefore: mustTimestamp("2023-04-01 00:00"),
 	}
-
-	t.Logf("expires : %s, basicRequest: %+v", eeCert1.NotAfter, basicRequest)
 
 	// Nothing's been revoked yet. Count should be zero.
 	serials := getRevokedCerts(basicRequest)
 	if len(serials) > 0 {
-		t.Errorf("before revoking, GetRevokedCerts(%+v) = %s, want []", basicRequest, serials)
+		t.Errorf("GetRevokedCerts (before revocations) = %s, want []", serials)
 	}
 
-	revoke := func(serial *big.Int, shardIdx int64) {
-		_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-			IssuerID: 1,
-			Serial:   core.SerialToString(serial),
+	revoke := func(cert *x509.Certificate, shardIdx int64) {
+		t.Logf("revoking %x with shardIdx %d", cert.SerialNumber, shardIdx)
+		_, err := sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+			IssuerID: issuerNameID,
+			Serial:   core.SerialToString(cert.SerialNumber),
 			Date:     mustTimestamp("2023-03-04 00:00"),
 			Reason:   1,
 			Response: []byte{1, 2, 3},
 			ShardIdx: shardIdx,
 		})
-		test.AssertNotError(t, err, "failed to revoke test cert")
+		if err != nil {
+			t.Fatalf("sa.RevokeCertificate %s", err)
+		}
 	}
 
 	// First certificate: revoke without ShardIdx
-	revoke(eeCert1.SerialNumber, 0)
+	revoke(eeCert1, 0)
 	// Second certificate: revoke with ShardIdx = 97.
-	revoke(eeCert2.SerialNumber, 97)
+	revoke(eeCert2, 97)
+	// Third certificate: revoke with ShardIdx = 97.
+	// But note that the temporal shard is different from the other two.
+	revoke(eeCert3, 97)
 
 	// Check that it worked in the most basic way.
-	c, err := sa.dbMap.SelectNullInt(
-		ctx, "SELECT count(*) FROM revokedCertificates where shardIdx = 97;")
-	test.AssertNotError(t, err, "SELECT from revokedCertificates failed")
-	test.Assert(t, c.Valid, "SELECT from revokedCertificates got no result")
-	test.AssertEquals(t, c.Int64, int64(1))
-
-	// Asking for revoked certs now should return two results.
-	serials = getRevokedCerts(basicRequest)
-	if len(serials) != 2 {
-		t.Errorf("GetRevokedCerts(%+v) = %d, want %d", basicRequest, len(serials), 2)
+	query := "SELECT count(*) FROM revokedCertificates where shardIdx = 97;"
+	c, err := sa.dbMap.SelectNullInt(ctx, query)
+	if err != nil {
+		t.Fatalf("query %q: %s", query, err)
+	}
+	if !c.Valid {
+		t.Fatalf("query %q: no results", query)
+	}
+	if c.Int64 != 2 {
+		t.Fatalf("query %q: got %d results, want %d", query, c.Int64, 2)
 	}
 
-	// Asking for revoked certs from a different issuer should return zero results.
-	count := len(getRevokedCerts(&sapb.GetRevokedCertsRequest{
+	expectSerials := func(message string, serials []string, certs ...*x509.Certificate) {
+		t.Helper()
+		var expectedSerials []string
+		for _, c := range certs {
+			expectedSerials = append(expectedSerials, core.SerialToString(c.SerialNumber))
+		}
+		sort.Strings(expectedSerials)
+		if !reflect.DeepEqual(serials, expectedSerials) {
+			t.Errorf("%s: want %s, got %s", message, expectedSerials, serials)
+		}
+	}
+	serials = getRevokedCerts(basicRequest)
+	expectSerials("GetRevokedCerts (after revocations)", serials, eeCert1, eeCert2, eeCert3)
+
+	serials = getRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:  5678,
 		ShardIdx:      basicRequest.ShardIdx,
 		ExpiresAfter:  basicRequest.ExpiresAfter,
 		ExpiresBefore: basicRequest.ExpiresBefore,
 		RevokedBefore: basicRequest.RevokedBefore,
-	}))
-	test.AssertEquals(t, count, 0)
+	})
+	expectSerials("GetRevokedCerts with nonexistent issuer", serials)
 
-	// Asking for revoked certs from a different shard should return zero results.
-	count = len(getRevokedCerts(&sapb.GetRevokedCertsRequest{
+	serials = getRevokedCerts(&sapb.GetRevokedCertsRequest{
+		IssuerNameID:  basicRequest.IssuerNameID,
+		ShardIdx:      0,
+		ExpiresAfter:  basicRequest.ExpiresAfter,
+		ExpiresBefore: basicRequest.ExpiresBefore,
+		RevokedBefore: basicRequest.RevokedBefore,
+	})
+	expectSerials("GetRevokedCerts with no shardIdx specified (temporal sharding only)", serials, eeCert1, eeCert2)
+
+	serials = getRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:  basicRequest.IssuerNameID,
 		ShardIdx:      8,
 		ExpiresAfter:  basicRequest.ExpiresAfter,
+		ExpiresBefore: basicRequest.ExpiresBefore,
 		RevokedBefore: basicRequest.RevokedBefore,
-	}))
-	test.AssertEquals(t, count, 0)
+	})
+	expectSerials("GetRevokedCerts for explicit shard with no revocations (temporal sharding only)", serials, eeCert1, eeCert2)
 
 	// Asking for revoked certs with an old RevokedBefore should return no results.
-	count = len(getRevokedCerts(&sapb.GetRevokedCertsRequest{
+	serials = getRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:  basicRequest.IssuerNameID,
 		ShardIdx:      basicRequest.ShardIdx,
 		ExpiresAfter:  basicRequest.ExpiresAfter,
+		ExpiresBefore: basicRequest.ExpiresBefore,
 		RevokedBefore: mustTimestamp("2020-03-01 00:00"),
-	}))
-	test.AssertEquals(t, count, 0)
+	})
+	expectSerials("GetRevokedCerts for old RevokedBefore", serials)
 }
 
 func TestGetMaxExpiration(t *testing.T) {

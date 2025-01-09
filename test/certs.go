@@ -64,14 +64,18 @@ func LoadSigner(filename string) (crypto.Signer, error) {
 // ThrowAwayCert is a small test helper function that creates a self-signed
 // certificate with one SAN. It returns the parsed certificate and its serial
 // in string form for convenience.
+//
 // The certificate returned from this function is the bare minimum needed for
 // most tests and isn't a robust example of a complete end entity certificate.
+//
+// Returned certificates have NotBefore == clk.Now(), and NotBefore 6 days in the
+// future.
 func ThrowAwayCert(t *testing.T, clk clock.Clock) (string, *x509.Certificate) {
 	var nameBytes [3]byte
 	_, _ = rand.Read(nameBytes[:])
 	name := fmt.Sprintf("%s.example.com", hex.EncodeToString(nameBytes[:]))
 
-	var serialBytes [16]byte
+	var serialBytes [18]byte
 	_, _ = rand.Read(serialBytes[:])
 	serial := big.NewInt(0).SetBytes(serialBytes[:])
 
