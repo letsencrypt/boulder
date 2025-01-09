@@ -1065,19 +1065,53 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 // notAfter date are included), but the ending timestamp is exclusive (certs
 // with exactly that notAfter date are *not* included).
 func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
+	// The two different methods of finding certs may return the same serial.
+	// We'd like to deduplicate them.
+	seen := make(map[string]bool)
+	send := func(e *corepb.CRLEntry) error {
+		if !seen[e.Serial] {
+			seen[e.Serial] = true
+			return stream.Send(e)
+		}
+		return nil
+	}
+
+	// getterFunc is one of getRevokedCertsFromRevokedCertificatesTable or getRevokedCertsFromCertificateStatusTable.
+	// We assume that getterfunc closes the channel once it is done.
+	type getterFunc func(context.Context, *sapb.GetRevokedCertsRequest, chan<- *corepb.CRLEntry) error
+
+	// Collect a bunch of CRLEntries, deduplicate them, and send them out on the stream.
+	sendAll := func(f getterFunc) error {
+		ch := make(chan *corepb.CRLEntry)
+		var err error
+		go func() {
+			err = f(stream.Context(), req, ch)
+		}()
+		for crlEntry := range ch {
+			err2 := send(crlEntry)
+			if err2 != nil {
+				return err2
+			}
+		}
+		return err
+	}
+
+	// If a shard index was specified, get entries by that explicit shard in addition
+	// to getting by temporal shard.
 	if req.ShardIdx != 0 {
-		err := ssa.getRevokedCertsFromRevokedCertificatesTable(req, stream)
+		err := sendAll(ssa.getRevokedCertsFromRevokedCertificatesTable)
 		if err != nil {
 			return err
 		}
 	}
-	return ssa.getRevokedCertsFromCertificateStatusTable(req, stream)
+
+	return sendAll(ssa.getRevokedCertsFromCertificateStatusTable)
 }
 
 // getRevokedCertsFromRevokedCertificatesTable uses the new revokedCertificates
 // table to implement GetRevokedCerts. It must only be called when the request
 // contains a non-zero ShardIdx.
-func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
+func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(ctx context.Context, req *sapb.GetRevokedCertsRequest, stream chan<- *corepb.CRLEntry) error {
 	if req.ShardIdx == 0 {
 		return errors.New("can't select shard 0 from revokedCertificates table")
 	}
@@ -1101,12 +1135,12 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(re
 		return fmt.Errorf("initializing db map: %w", err)
 	}
 
-	rows, err := selector.QueryContext(stream.Context(), clauses, params...)
+	rows, err := selector.QueryContext(ctx, clauses, params...)
 	if err != nil {
 		return fmt.Errorf("reading db: %w", err)
 	}
 
-	return rows.ForEach(func(row *revokedCertModel) error {
+	err = rows.ForEach(func(row *revokedCertModel) error {
 		// Double-check that the cert wasn't revoked between the time at which we're
 		// constructing this snapshot CRL and right now. If the cert was revoked
 		// at-or-after the "atTime", we'll just include it in the next generation
@@ -1115,17 +1149,25 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(re
 			return nil
 		}
 
-		return stream.Send(&corepb.CRLEntry{
+		stream <- &corepb.CRLEntry{
 			Serial:    row.Serial,
 			Reason:    int32(row.RevokedReason),
 			RevokedAt: timestamppb.New(row.RevokedDate),
-		})
+		}
+
+		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	close(stream)
+	return nil
 }
 
 // getRevokedCertsFromCertificateStatusTable uses the old certificateStatus
 // table to implement GetRevokedCerts.
-func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
+func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(ctx context.Context, req *sapb.GetRevokedCertsRequest, stream chan<- *corepb.CRLEntry) error {
 	atTime := req.RevokedBefore.AsTime()
 
 	clauses := `
@@ -1145,12 +1187,13 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req 
 		return fmt.Errorf("initializing db map: %w", err)
 	}
 
-	rows, err := selector.QueryContext(stream.Context(), clauses, params...)
+	rows, err := selector.QueryContext(ctx, clauses, params...)
 	if err != nil {
 		return fmt.Errorf("reading db: %w", err)
 	}
 
-	return rows.ForEach(func(row *crlEntryModel) error {
+	fmt.Printf("querying for notAfter >= %s, notAfter < %s\n", req.ExpiresAfter.AsTime(), req.ExpiresBefore.AsTime())
+	err = rows.ForEach(func(row *crlEntryModel) error {
 		// Double-check that the cert wasn't revoked between the time at which we're
 		// constructing this snapshot CRL and right now. If the cert was revoked
 		// at-or-after the "atTime", we'll just include it in the next generation
@@ -1159,12 +1202,20 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req 
 			return nil
 		}
 
-		return stream.Send(&corepb.CRLEntry{
+		stream <- &corepb.CRLEntry{
 			Serial:    row.Serial,
 			Reason:    int32(row.RevokedReason),
 			RevokedAt: timestamppb.New(row.RevokedDate),
-		})
+		}
+
+		return nil
 	})
+	if err != nil {
+		return nil
+	}
+
+	close(stream)
+	return nil
 }
 
 // GetMaxExpiration returns the timestamp of the farthest-future notAfter date

@@ -22,6 +22,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -3354,39 +3355,54 @@ func TestGetRevokedCerts(t *testing.T) {
 }
 
 func TestGetRevokedCertsByShard(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
+	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	// Add a cert to the DB to test with. We use AddPrecertificate because it sets
-	// up the certificateStatus row we need. This particular cert has a notAfter
-	// date of Mar 6 2023, and we lie about its IssuerNameID to make things easy.
 	reg := createWorkingRegistration(t, sa)
-	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
-	test.AssertNotError(t, err, "failed to load test cert")
-	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		RegID:   reg.Id,
-		Serial:  core.SerialToString(eeCert.SerialNumber),
-		Created: timestamppb.New(eeCert.NotBefore),
-		Expires: timestamppb.New(eeCert.NotAfter),
-	})
-	test.AssertNotError(t, err, "failed to add test serial")
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          eeCert.Raw,
-		RegID:        reg.Id,
-		Issued:       timestamppb.New(eeCert.NotBefore),
-		IssuerNameID: 1,
-	})
-	test.AssertNotError(t, err, "failed to add test cert")
+
+	// Add two certs to the DB to test with. We use AddPrecertificate because it sets
+	// up the certificateStatus row we need. These certs have a notAfter
+	// date of Mar 7 2023, and we lie about their IssuerNameID to make things easy.
+	fc.Set(mustTime("2023-03-01 00:00"))
+
+	// Create a certificate and add it to the tables we need.
+	makeCert := func() *x509.Certificate {
+		_, cert := test.ThrowAwayCert(t, fc)
+		_, err := sa.AddSerial(ctx, &sapb.AddSerialRequest{
+			RegID:   reg.Id,
+			Serial:  core.SerialToString(cert.SerialNumber),
+			Created: timestamppb.New(cert.NotBefore),
+			Expires: timestamppb.New(cert.NotAfter),
+		})
+		test.AssertNotError(t, err, "failed to add test serial")
+		_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+			Der:          cert.Raw,
+			RegID:        reg.Id,
+			Issued:       timestamppb.New(cert.NotBefore),
+			IssuerNameID: 1,
+		})
+		test.AssertNotError(t, err, "failed to add test cert")
+		return cert
+	}
+
+	eeCert1 := makeCert()
+	eeCert2 := makeCert()
+	t.Logf("eeCert1: %x", eeCert1.SerialNumber)
+	t.Logf("eeCert2: %x", eeCert2.SerialNumber)
 
 	// Check that it worked.
 	status, err := sa.GetCertificateStatus(
-		ctx, &sapb.Serial{Serial: core.SerialToString(eeCert.SerialNumber)})
+		ctx, &sapb.Serial{Serial: core.SerialToString(eeCert1.SerialNumber)})
+	test.AssertNotError(t, err, "GetCertificateStatus failed")
+	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
+	status, err = sa.GetCertificateStatus(
+		ctx, &sapb.Serial{Serial: core.SerialToString(eeCert2.SerialNumber)})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
 	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
 
-	// Here's a little helper func we'll use to call GetRevokedCerts and count
-	// how many results it returned.
-	countRevokedCerts := func(req *sapb.GetRevokedCertsRequest) (int, error) {
+	// Here's a little helper func we'll use to call GetRevokedCerts and return
+	// a sorted list of serials.
+	getRevokedCerts := func(req *sapb.GetRevokedCertsRequest) []string {
 		stream := make(chan *corepb.CRLEntry)
 		mockServerStream := &fakeServerStream[corepb.CRLEntry]{output: stream}
 		var err error
@@ -3394,78 +3410,90 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 			err = sa.GetRevokedCerts(req, mockServerStream)
 			close(stream)
 		}()
-		entriesReceived := 0
-		for range stream {
-			entriesReceived++
+		var serials []string
+		for e := range stream {
+			serials = append(serials, e.Serial)
 		}
-		return entriesReceived, err
+		if err != nil {
+			t.Fatalf("getting revoked certs: %s", err)
+		}
+		sort.Strings(serials)
+		return serials
 	}
 
-	// The basic request covers a time range and shard that should include this certificate.
+	// The basic request covers a time range and shard that should include both certificates.
 	basicRequest := &sapb.GetRevokedCertsRequest{
 		IssuerNameID:  1,
-		ShardIdx:      9,
+		ShardIdx:      97,
 		ExpiresAfter:  mustTimestamp("2023-03-01 00:00"),
+		ExpiresBefore: mustTimestamp("2023-04-01 00:00"),
 		RevokedBefore: mustTimestamp("2023-04-01 00:00"),
 	}
 
-	// Nothing's been revoked yet. Count should be zero.
-	count, err := countRevokedCerts(basicRequest)
-	test.AssertNotError(t, err, "zero rows shouldn't result in error")
-	test.AssertEquals(t, count, 0)
+	t.Logf("expires : %s, basicRequest: %+v", eeCert1.NotAfter, basicRequest)
 
-	// Revoke the certificate, providing the ShardIdx so it gets written into
-	// both the certificateStatus and revokedCertificates tables.
-	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID: 1,
-		Serial:   core.SerialToString(eeCert.SerialNumber),
-		Date:     mustTimestamp("2023-01-01 00:00"),
-		Reason:   1,
-		Response: []byte{1, 2, 3},
-		ShardIdx: 9,
-	})
-	test.AssertNotError(t, err, "failed to revoke test cert")
+	// Nothing's been revoked yet. Count should be zero.
+	serials := getRevokedCerts(basicRequest)
+	if len(serials) > 0 {
+		t.Errorf("before revoking, GetRevokedCerts(%+v) = %s, want []", basicRequest, serials)
+	}
+
+	revoke := func(serial *big.Int, shardIdx int64) {
+		_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+			IssuerID: 1,
+			Serial:   core.SerialToString(serial),
+			Date:     mustTimestamp("2023-03-04 00:00"),
+			Reason:   1,
+			Response: []byte{1, 2, 3},
+			ShardIdx: shardIdx,
+		})
+		test.AssertNotError(t, err, "failed to revoke test cert")
+	}
+
+	// First certificate: revoke without ShardIdx
+	revoke(eeCert1.SerialNumber, 0)
+	// Second certificate: revoke with ShardIdx = 97.
+	revoke(eeCert2.SerialNumber, 97)
 
 	// Check that it worked in the most basic way.
 	c, err := sa.dbMap.SelectNullInt(
-		ctx, "SELECT count(*) FROM revokedCertificates")
+		ctx, "SELECT count(*) FROM revokedCertificates where shardIdx = 97;")
 	test.AssertNotError(t, err, "SELECT from revokedCertificates failed")
 	test.Assert(t, c.Valid, "SELECT from revokedCertificates got no result")
 	test.AssertEquals(t, c.Int64, int64(1))
 
-	// Asking for revoked certs now should return one result.
-	count, err = countRevokedCerts(basicRequest)
-	test.AssertNotError(t, err, "normal usage shouldn't result in error")
-	test.AssertEquals(t, count, 1)
+	// Asking for revoked certs now should return two results.
+	serials = getRevokedCerts(basicRequest)
+	if len(serials) != 2 {
+		t.Errorf("GetRevokedCerts(%+v) = %d, want %d", basicRequest, len(serials), 2)
+	}
 
 	// Asking for revoked certs from a different issuer should return zero results.
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+	count := len(getRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:  5678,
 		ShardIdx:      basicRequest.ShardIdx,
 		ExpiresAfter:  basicRequest.ExpiresAfter,
+		ExpiresBefore: basicRequest.ExpiresBefore,
 		RevokedBefore: basicRequest.RevokedBefore,
-	})
-	test.AssertNotError(t, err, "zero rows shouldn't result in error")
+	}))
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs from a different shard should return zero results.
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+	count = len(getRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:  basicRequest.IssuerNameID,
 		ShardIdx:      8,
 		ExpiresAfter:  basicRequest.ExpiresAfter,
 		RevokedBefore: basicRequest.RevokedBefore,
-	})
-	test.AssertNotError(t, err, "zero rows shouldn't result in error")
+	}))
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs with an old RevokedBefore should return no results.
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+	count = len(getRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:  basicRequest.IssuerNameID,
 		ShardIdx:      basicRequest.ShardIdx,
 		ExpiresAfter:  basicRequest.ExpiresAfter,
 		RevokedBefore: mustTimestamp("2020-03-01 00:00"),
-	})
-	test.AssertNotError(t, err, "zero rows shouldn't result in error")
+	}))
 	test.AssertEquals(t, count, 0)
 }
 
