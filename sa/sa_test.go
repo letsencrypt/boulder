@@ -214,12 +214,15 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertByteEquals(t, dbReg.Key, jwkJSON)
 	test.AssertDeepEquals(t, dbReg.CreatedAt.AsTime(), createdAt)
 
-	newReg := &sapb.UpdateRegistrationContactRequest{
+	regUpdate := &sapb.UpdateRegistrationContactRequest{
 		RegistrationID: reg.Id,
 		Contacts:       []string{"test.com"},
 	}
-	_, err = sa.UpdateRegistrationContact(ctx, newReg)
+	newReg, err := sa.UpdateRegistrationContact(ctx, regUpdate)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't update registration with ID %v", reg.Id))
+
+	test.AssertEquals(t, dbReg.Id, newReg.Id)
+	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
 
 	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
 	test.AssertNotError(t, err, "Couldn't get registration by key")
