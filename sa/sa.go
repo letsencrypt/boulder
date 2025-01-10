@@ -954,6 +954,9 @@ func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.Revoke
 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
+//
+// If ShardIdx is non-zero, RevokeCertificate also writes an entry for this certificate to
+// the revokedCertificates table, with the provided shard number.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req.Serial, req.IssuerID, req.Date) {
 		return nil, errIncompleteRequest

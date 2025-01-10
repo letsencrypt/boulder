@@ -79,6 +79,10 @@ message AdministrativelyRevokeCertificateRequest {
   // certificate in question. In this case, the keyCompromise reason cannot be
   // specified, because the key cannot be blocked.
   bool malformed = 6;
+  // The CRL shard to store the revocation in. This must match
+  // the CRL shard in the certificate's crlDistributionPoint,
+  // if present.
+  int64 crlShard = 7;
 }
 
 message NewOrderRequest {
