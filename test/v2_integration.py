@@ -180,7 +180,7 @@ def test_failed_validation_limit():
     """
     Fail a challenge repeatedly for the same domain, with the same account. Once
     we reach the rate limit we should get a rateLimitedError. Note that this
-    depends on the specific threshold configured in rate-limit-policies.yml.
+    depends on the specific threshold configured.
 
     This also incidentally tests a fix for
     https://github.com/letsencrypt/boulder/issues/4329. We expect to get
@@ -1502,17 +1502,6 @@ def test_renewal_exemption():
     # Final, failed issuance, for another different cert
     chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
         lambda: chisel2.auth_and_issue(["mail." + base_domain]))
-
-# TODO(#5545) Remove this test once key-value rate limits are authoritative in
-# production.
-def test_certificates_per_name():
-    if CONFIG_NEXT:
-        # This test is replaced by TestCertificatesPerDomain in the Go
-        # integration tests because key-value rate limits does not support
-        # override limits of 0.
-        return
-    chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
-        lambda: chisel2.auth_and_issue([random_domain() + ".lim.it"]))
 
 def test_oversized_csr():
     # Number of names is chosen to be one greater than the configured RA/CA maxNames

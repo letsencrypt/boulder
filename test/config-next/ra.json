@@ -1,6 +1,5 @@
 {
 	"ra": {
-		"rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
 		"limiter": {
 			"redis": {
 				"username": "boulder-wfe",
@@ -127,7 +126,6 @@
 		},
 		"features": {
 			"AsyncFinalize": true,
-			"UseKvLimitsForNewOrder": true,
 			"AutomaticallyPauseZombieClients": true,
 			"NoPendingAuthzReuse": true,
 			"EnforceMPIC": true

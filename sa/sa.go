@@ -441,7 +441,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	isRenewalRaw, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		// Select to see if cert exists
 		var row struct {
 			Count int64
@@ -460,54 +460,19 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 			return nil, err
 		}
 
-		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
-		// that it is a renewal) we use just the DNSNames from the certificate and
-		// ignore the Subject Common Name (if any). This is a safe assumption because
-		// if a certificate we issued were to have a Subj. CN not present as a SAN it
-		// would be a misissuance and miscalculating whether the cert is a renewal or
-		// not for the purpose of rate limiting is the least of our troubles.
-		isRenewal, err := ssa.checkFQDNSetExists(
-			ctx,
-			tx.SelectOne,
-			parsedCertificate.DNSNames)
-		if err != nil {
-			return nil, err
-		}
-
-		return isRenewal, err
+		return nil, err
 	})
 	if overallError != nil {
 		return nil, overallError
 	}
 
-	// Recast the interface{} return from db.WithTransaction as a bool, returning
-	// an error if we can't.
-	var isRenewal bool
-	if boolVal, ok := isRenewalRaw.(bool); !ok {
-		return nil, fmt.Errorf(
-			"AddCertificate db.WithTransaction returned %T out var, expected bool",
-			isRenewalRaw)
-	} else {
-		isRenewal = boolVal
-	}
-
-	// In a separate transaction perform the work required to update tables used
-	// for rate limits. Since the effects of failing these writes is slight
-	// miscalculation of rate limits we choose to not fail the AddCertificate
-	// operation if the rate limit update transaction fails.
-	_, rlTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		// Add to the rate limit table, but only for new certificates. Renewals
-		// don't count against the certificatesPerName limit.
-		if !isRenewal && !features.Get().DisableLegacyLimitWrites {
-			timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
-			err := ssa.addCertificatesPerName(ctx, tx, parsedCertificate.DNSNames, timeToTheHour)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		// Update the FQDN sets now that there is a final certificate to ensure rate
-		// limits are calculated correctly.
+	// In a separate transaction, perform the work required to update the table
+	// used for order reuse. Since the effect of failing the write is just a
+	// missed opportunity to reuse an order, we choose to not fail the
+	// AddCertificate operation if this update transaction fails.
+	_, fqdnTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		// Update the FQDN sets now that there is a final certificate to ensure
+		// reuse is determined correctly.
 		err = addFQDNSet(
 			ctx,
 			tx,
@@ -522,11 +487,11 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 
 		return nil, nil
 	})
-	// If the ratelimit transaction failed increment a stat and log a warning
+	// If the FQDN sets transaction failed, increment a stat and log a warning
 	// but don't return an error from AddCertificate.
-	if rlTransactionErr != nil {
+	if fqdnTransactionErr != nil {
 		ssa.rateLimitWriteErrors.Inc()
-		ssa.log.AuditErrf("failed AddCertificate ratelimit update transaction: %v", rlTransactionErr)
+		ssa.log.AuditErrf("failed AddCertificate FQDN sets insert transaction: %v", fqdnTransactionErr)
 	}
 
 	return &emptypb.Empty{}, nil
@@ -744,14 +709,6 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 	order, ok := output.(*corepb.Order)
 	if !ok {
 		return nil, fmt.Errorf("casting error in NewOrderAndAuthzs")
-	}
-
-	if !features.Get().DisableLegacyLimitWrites {
-		// Increment the order creation count
-		err = addNewOrdersRateLimit(ctx, ssa.dbMap, req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	return order, nil

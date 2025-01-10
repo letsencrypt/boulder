@@ -10,6 +10,7 @@ import (
 	"github.com/letsencrypt/borp"
 
 	"github.com/go-sql-driver/mysql"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -184,10 +185,6 @@ func TestTableFromQuery(t *testing.T) {
 		{
 			query:         "insert into `certificates` (`registrationID`,`serial`,`digest`,`der`,`issued`,`expires`) values (?,?,?,?,?,?);",
 			expectedTable: "`certificates`",
-		},
-		{
-			query:         "INSERT INTO certificatesPerName (eTLDPlusOne, time, count) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE count=count+1;",
-			expectedTable: "certificatesPerName",
 		},
 		{
 			query:         "insert into `fqdnSets` (`ID`,`SetHash`,`Serial`,`Issued`,`Expires`) values (null,?,?,?,?);",

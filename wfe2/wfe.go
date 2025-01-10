@@ -639,11 +639,6 @@ func link(url, relation string) string {
 // creation fails, the func will be nil if any error was encountered during the
 // check.
 func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) (func(), error) {
-	if wfe.limiter == nil && wfe.txnBuilder == nil {
-		// Key-value rate limiting is disabled.
-		return nil, nil
-	}
-
 	txns, err := wfe.txnBuilder.NewAccountLimitTransactions(ip)
 	if err != nil {
 		return nil, fmt.Errorf("building new account limit transactions: %w", err)
@@ -795,9 +790,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	var newRegistrationSuccessful bool
-	var errIsRateLimit bool
 	defer func() {
-		if !newRegistrationSuccessful && !errIsRateLimit && refundLimits != nil {
+		if !newRegistrationSuccessful && refundLimits != nil {
 			go refundLimits()
 		}
 	}()
@@ -805,15 +799,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	// Send the registration to the RA via grpc
 	acctPB, err := wfe.ra.NewRegistration(ctx, &reg)
 	if err != nil {
-		if errors.Is(err, berrors.RateLimit) {
-			// Request was denied by a legacy rate limit. In this error case we
-			// do not want to refund the quota consumed by the request because
-			// repeated requests would result in unearned refunds.
-			//
-			// TODO(#5545): Once key-value rate limits are authoritative this
-			// can be removed.
-			errIsRateLimit = true
-		}
 		if errors.Is(err, berrors.Duplicate) {
 			existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
 			if err == nil {
@@ -2021,11 +2006,6 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 // function is returned that can be used to refund the quota if the order is not
 // created, the func will be nil if any error was encountered during the check.
 func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, names []string, isRenewal bool) (func(), error) {
-	if wfe.limiter == nil && wfe.txnBuilder == nil {
-		// Key-value rate limiting is disabled.
-		return nil, nil
-	}
-
 	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, isRenewal)
 	if err != nil {
 		return nil, fmt.Errorf("building new order limit transactions: %w", err)
@@ -2368,7 +2348,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	refundLimits := func() {}
 	if !isARIRenewal {
 		refundLimits, err = wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal || isARIRenewal)
-		if err != nil && features.Get().UseKvLimitsForNewOrder {
+		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 				return
@@ -2380,14 +2360,13 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	var newOrderSuccessful bool
-	var errIsRateLimit bool
 	defer func() {
 		wfe.stats.ariReplacementOrders.With(prometheus.Labels{
 			"isReplacement": fmt.Sprintf("%t", replaces != ""),
 			"limitsExempt":  fmt.Sprintf("%t", isARIRenewal),
 		}).Inc()
 
-		if !newOrderSuccessful && !errIsRateLimit && refundLimits != nil {
+		if !newOrderSuccessful && refundLimits != nil {
 			go refundLimits()
 		}
 	}()
@@ -2402,15 +2381,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	})
 	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
-		if errors.Is(err, berrors.RateLimit) {
-			// Request was denied by a legacy rate limit. In this error case we
-			// do not want to refund the quota consumed by the request because
-			// repeated requests would result in unearned refunds.
-			//
-			// TODO(#5545): Once key-value rate limits are authoritative this
-			// can be removed.
-			errIsRateLimit = true
-		}
 		return
 	}
 	logEvent.Created = fmt.Sprintf("%d", order.Id)

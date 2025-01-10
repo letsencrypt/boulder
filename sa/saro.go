@@ -9,7 +9,6 @@ import (
 	"net"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -34,8 +33,6 @@ var (
 	validIncidentTableRegexp = regexp.MustCompile(`^incident_[0-9a-zA-Z_]{1,100}$`)
 )
 
-type certCountFunc func(ctx context.Context, db db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error)
-
 // SQLStorageAuthorityRO defines a read-only subset of a Storage Authority
 type SQLStorageAuthorityRO struct {
 	sapb.UnsafeStorageAuthorityReadOnlyServer
@@ -56,10 +53,6 @@ type SQLStorageAuthorityRO struct {
 	// yet. This value should be less than, but about the same order of magnitude
 	// as, the observed database replication lag.
 	lagFactor time.Duration
-
-	// We use function types here so we can mock out this internal function in
-	// unittests.
-	countCertificatesByName certCountFunc
 
 	clk clock.Clock
 	log blog.Logger
@@ -100,8 +93,6 @@ func NewSQLStorageAuthorityRO(
 		log:               logger,
 		lagFactorCounter:  lagFactorCounter,
 	}
-
-	ssaro.countCertificatesByName = ssaro.countCertificates
 
 	return ssaro, nil
 }
@@ -210,87 +201,6 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 	end := incrementIP(begin, maskLength)
 
 	return begin, end
-}
-
-// CountCertificatesByNames counts, for each input domain, the number of
-// certificates issued in the given time range for that domain and its
-// subdomains. It returns a map from domains to counts and a timestamp. The map
-// of domains to counts is guaranteed to contain an entry for each input domain,
-// so long as err is nil. The timestamp is the earliest time a certificate was
-// issued for any of the domains during the provided range of time. Queries will
-// be run in parallel. If any of them error, only one error will be returned.
-func (ssa *SQLStorageAuthorityRO) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
-	if core.IsAnyNilOrZero(req.DnsNames, req.Range.Earliest, req.Range.Latest) {
-		return nil, errIncompleteRequest
-	}
-
-	work := make(chan string, len(req.DnsNames))
-	type result struct {
-		err      error
-		count    int64
-		earliest time.Time
-		domain   string
-	}
-	results := make(chan result, len(req.DnsNames))
-	for _, domain := range req.DnsNames {
-		work <- domain
-	}
-	close(work)
-	var wg sync.WaitGroup
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	// We may perform up to 100 queries, depending on what's in the certificate
-	// request. Parallelize them so we don't hit our timeout, but limit the
-	// parallelism so we don't consume too many threads on the database.
-	for range ssa.parallelismPerRPC {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for domain := range work {
-				select {
-				case <-ctx.Done():
-					results <- result{err: ctx.Err()}
-					return
-				default:
-				}
-				count, earliest, err := ssa.countCertificatesByName(ctx, ssa.dbReadOnlyMap, domain, req.Range)
-				if err != nil {
-					results <- result{err: err}
-					// Skip any further work
-					cancel()
-					return
-				}
-				results <- result{
-					count:    count,
-					earliest: earliest,
-					domain:   domain,
-				}
-			}
-		}()
-	}
-	wg.Wait()
-	close(results)
-
-	// Set earliest to the latest possible time, so that we can find the
-	// earliest certificate in the results.
-	earliest := req.Range.Latest
-	counts := make(map[string]int64)
-	for r := range results {
-		if r.err != nil {
-			return nil, r.err
-		}
-		counts[r.domain] = r.count
-		if !r.earliest.IsZero() && r.earliest.Before(earliest.AsTime()) {
-			earliest = timestamppb.New(r.earliest)
-		}
-	}
-
-	// If we didn't find any certificates in the range, earliest should be set
-	// to a zero value.
-	if len(counts) == 0 {
-		earliest = &timestamppb.Timestamp{}
-	}
-	return &sapb.CountByNames{Counts: counts, Earliest: earliest}, nil
 }
 
 func ReverseName(domain string) string {
@@ -420,14 +330,6 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 	}
 
 	return status, nil
-}
-
-func (ssa *SQLStorageAuthorityRO) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
-	if core.IsAnyNilOrZero(req.AccountID, req.Range.Earliest, req.Range.Latest) {
-		return nil, errIncompleteRequest
-	}
-
-	return countNewOrders(ctx, ssa.dbReadOnlyMap, req)
 }
 
 // FQDNSetTimestampsForWindow returns the issuance timestamps for each

@@ -311,16 +311,6 @@ func (sa *StorageAuthorityReadOnly) FQDNSetExists(_ context.Context, _ *sapb.FQD
 	return &sapb.Exists{Exists: false}, nil
 }
 
-// CountCertificatesByNames is a mock
-func (sa *StorageAuthorityReadOnly) CountCertificatesByNames(_ context.Context, _ *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
-	return &sapb.CountByNames{}, nil
-}
-
-// CountOrders is a mock
-func (sa *StorageAuthorityReadOnly) CountOrders(_ context.Context, _ *sapb.CountOrdersRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return &sapb.Count{}, nil
-}
-
 // DeactivateRegistration is a mock
 func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ *sapb.RegistrationID, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
