@@ -2018,7 +2018,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				// parallel-validation race: a different validation attempt has already
 				// updated this authz, so we failed to find a *pending* authz with the
 				// given ID to update.
-				ra.log.Infof("Failed to record validation: regID=[%d] authzID=[%s] err=[%s]",
+				ra.log.Infof("Failed to record validation (likely parallel validation race): regID=[%d] authzID=[%s] err=[%s]",
 					authz.RegistrationID, authz.ID, err)
 			} else {
 				ra.log.AuditErrf("Failed to record validation: regID=[%d] authzID=[%s] err=[%s]",
