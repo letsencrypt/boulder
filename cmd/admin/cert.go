@@ -44,6 +44,7 @@ type subcommandRevokeCert struct {
 	privKey       string
 	regID         uint
 	certFile      string
+	crlShard      int64
 }
 
 var _ subcommand = (*subcommandRevokeCert)(nil)
@@ -58,6 +59,7 @@ func (s *subcommandRevokeCert) Flags(flag *flag.FlagSet) {
 	flag.StringVar(&s.reasonStr, "reason", "unspecified", "Revocation reason (unspecified, keyCompromise, superseded, cessationOfOperation, or privilegeWithdrawn)")
 	flag.BoolVar(&s.skipBlock, "skip-block-key", false, "Skip blocking the key, if revoked for keyCompromise - use with extreme caution")
 	flag.BoolVar(&s.malformed, "malformed", false, "Indicates that the cert cannot be parsed - use with caution")
+	flag.Int64Var(&s.crlShard, "crl-shard", 0, "For malformed certs, the CRL shard the certificate belongs to")
 
 	// Flags specifying the input method for the certificates to be revoked.
 	flag.StringVar(&s.serial, "serial", "", "Revoke the certificate with this hex serial")
@@ -139,7 +141,7 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 	}
 	a.log.Infof("Found %d certificates to revoke", len(serials))
 
-	err = a.revokeSerials(ctx, serials, reasonCode, s.malformed, s.skipBlock, s.parallelism)
+	err = a.revokeSerials(ctx, serials, reasonCode, s.malformed, s.crlShard, s.skipBlock, s.parallelism)
 	if err != nil {
 		return fmt.Errorf("revoking serials: %w", err)
 	}
@@ -265,7 +267,7 @@ func cleanSerial(serial string) (string, error) {
 	return strippedSerial, nil
 }
 
-func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revocation.Reason, malformed bool, skipBlockKey bool, parallelism uint) error {
+func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revocation.Reason, malformed bool, crlShard int64, skipBlockKey bool, parallelism uint) error {
 	u, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("getting admin username: %w", err)
@@ -292,6 +294,7 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 						AdminName:    u.Username,
 						SkipBlockKey: skipBlockKey,
 						Malformed:    malformed,
+						CrlShard:     crlShard,
 					},
 				)
 				if err != nil {

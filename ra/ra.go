@@ -340,6 +340,7 @@ type certificateRevocationEvent struct {
 	// RequesterID is the account ID of the requester.
 	// Will be zero for admin revocations.
 	RequesterID int64 `json:",omitempty"`
+	CRLShard    int64
 	// AdminName is the name of the admin requester.
 	// Will be zero for subscriber revocations.
 	AdminName string `json:",omitempty"`
@@ -1890,6 +1891,10 @@ func crlShard(cert *x509.Certificate) (int64, error) {
 		return 0, fmt.Errorf("parsing CRLDistributionPoint: %s", err)
 	}
 
+	if shardIdx <= 0 {
+		return 0, fmt.Errorf("invalid shard in CRLDistributionPoint: %d", shardIdx)
+	}
+
 	return int64(shardIdx), nil
 }
 
@@ -2013,6 +2018,9 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	if req.Serial == "" {
 		return nil, errIncompleteGRPCRequest
 	}
+	if req.CrlShard != 0 && !req.Malformed {
+		return nil, errors.New("non-zero CRLShard is only allowed for malformed certificates (shard is automatic for well formed certificates)")
+	}
 
 	reasonCode := revocation.Reason(req.Code)
 	if _, present := revocation.AdminAllowedReasons[reasonCode]; !present {
@@ -2029,6 +2037,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		ID:           core.NewToken(),
 		SerialNumber: req.Serial,
 		Reason:       req.Code,
+		CRLShard:     req.CrlShard,
 		Method:       "admin",
 		AdminName:    req.AdminName,
 	}
@@ -2046,6 +2055,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 
 	var cert *x509.Certificate
 	var issuerID issuance.NameID
+	var shard int64
 	if req.Cert != nil {
 		// If the incoming request includes a certificate body, just use that and
 		// avoid doing any database queries. This code path is deprecated and will
@@ -2055,6 +2065,10 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 			return nil, err
 		}
 		issuerID = issuance.IssuerNameID(cert)
+		shard, err = crlShard(cert)
+		if err != nil {
+			return nil, err
+		}
 	} else if !req.Malformed {
 		// As long as we don't believe the cert will be malformed, we should
 		// get the precertificate so we can block its pubkey if necessary and purge
@@ -2072,6 +2086,10 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 			return nil, err
 		}
 		issuerID = issuance.IssuerNameID(cert)
+		shard, err = crlShard(cert)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		// But if the cert is malformed, we at least still need its IssuerID.
 		var status *corepb.CertificateStatus
@@ -2080,6 +2098,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 			return nil, fmt.Errorf("unable to confirm that serial %q was ever issued: %w", req.Serial, err)
 		}
 		issuerID = issuance.NameID(status.IssuerID)
+		shard = req.CrlShard
 	}
 
 	_, err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
@@ -2087,7 +2106,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		Reason:   req.Code,
 		Date:     timestamppb.New(ra.clk.Now()),
 		IssuerID: int64(issuerID),
-		ShardIdx: req.CrlShard,
+		ShardIdx: shard,
 	})
 	// Perform an Akamai cache purge to handle occurrences of a client
 	// successfully revoking a certificate, but the initial cache purge failing.

@@ -4303,6 +4303,14 @@ func TestCRLShard(t *testing.T) {
 	}
 
 	cdp = []string{
+		"https://example.com/abc/-77.crl",
+	}
+	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err == nil {
+		t.Errorf("crlShard(%+v) = %d, %s, want 0, some error", cdp, n, err)
+	}
+
+	cdp = []string{
 		"https://example.com/abc/123",
 	}
 	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})

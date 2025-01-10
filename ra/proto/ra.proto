@@ -82,6 +82,8 @@ message AdministrativelyRevokeCertificateRequest {
   // The CRL shard to store the revocation in. This must match
   // the CRL shard in the certificate's crlDistributionPoint,
   // if present.
+  // This is only valid when `malformed` is true; otherwise the shard is
+  // determined by parsing the certificate.
   int64 crlShard = 7;
 }
 
