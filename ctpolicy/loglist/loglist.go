@@ -2,7 +2,7 @@ package loglist
 
 import (
 	_ "embed"
-	"encoding/json"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/letsencrypt/boulder/ctpolicy/loglist/schema"
+	"github.com/google/certificate-transparency-go/loglist3"
 )
 
 // purpose is the use to which a log list will be put. This type exists to allow
@@ -52,53 +52,19 @@ type Log struct {
 	Key            string
 	StartInclusive time.Time
 	EndExclusive   time.Time
-	State          state
-}
-
-// State is an enum representing the various states a CT log can be in. Only
-// pending, qualified, and usable logs can be submitted to. Only usable and
-// readonly logs are trusted by Chrome.
-type state int
-
-const (
-	unknown state = iota
-	pending
-	qualified
-	usable
-	readonly
-	retired
-	rejected
-)
-
-func stateFromState(s *schema.LogListSchemaJsonOperatorsElemLogsElemState) state {
-	if s == nil {
-		return unknown
-	} else if s.Rejected != nil {
-		return rejected
-	} else if s.Retired != nil {
-		return retired
-	} else if s.Readonly != nil {
-		return readonly
-	} else if s.Pending != nil {
-		return pending
-	} else if s.Qualified != nil {
-		return qualified
-	} else if s.Usable != nil {
-		return usable
-	}
-	return unknown
+	State          loglist3.LogStatus
 }
 
 // usableForPurpose returns true if the log state is acceptable for the given
 // log list purpose, and false otherwise.
-func usableForPurpose(s state, p purpose) bool {
+func usableForPurpose(s loglist3.LogStatus, p purpose) bool {
 	switch p {
 	case Issuance:
-		return s == usable
+		return s == loglist3.UsableLogStatus
 	case Informational:
-		return s == usable || s == qualified || s == pending
+		return s == loglist3.UsableLogStatus || s == loglist3.QualifiedLogStatus || s == loglist3.PendingLogStatus
 	case Validation:
-		return s == usable || s == readonly
+		return s == loglist3.UsableLogStatus || s == loglist3.ReadOnlyLogStatus
 	}
 	return false
 }
@@ -118,8 +84,7 @@ func New(path string) (List, error) {
 // newHelper is a helper to allow the core logic of `New()` to be unit tested
 // without having to write files to disk.
 func newHelper(file []byte) (List, error) {
-	var parsed schema.LogListSchemaJson
-	err := json.Unmarshal(file, &parsed)
+	parsed, err := loglist3.NewFromJSON(file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse CT Log List: %w", err)
 	}
@@ -128,34 +93,19 @@ func newHelper(file []byte) (List, error) {
 	for _, op := range parsed.Operators {
 		group := make(OperatorGroup)
 		for _, log := range op.Logs {
-			var name string
-			if log.Description != nil {
-				name = *log.Description
-			}
-
 			info := Log{
-				Name:  name,
-				Url:   log.Url,
-				Key:   log.Key,
-				State: stateFromState(log.State),
+				Name:  log.Description,
+				Url:   log.URL,
+				Key:   base64.StdEncoding.EncodeToString(log.Key),
+				State: log.State.LogStatus(),
 			}
 
 			if log.TemporalInterval != nil {
-				startInclusive, err := time.Parse(time.RFC3339, log.TemporalInterval.StartInclusive)
-				if err != nil {
-					return nil, fmt.Errorf("failed to parse log %q start timestamp: %w", log.Url, err)
-				}
-
-				endExclusive, err := time.Parse(time.RFC3339, log.TemporalInterval.EndExclusive)
-				if err != nil {
-					return nil, fmt.Errorf("failed to parse log %q end timestamp: %w", log.Url, err)
-				}
-
-				info.StartInclusive = startInclusive
-				info.EndExclusive = endExclusive
+				info.StartInclusive = log.TemporalInterval.StartInclusive
+				info.EndExclusive = log.TemporalInterval.EndExclusive
 			}
 
-			group[log.LogId] = info
+			group[base64.StdEncoding.EncodeToString(log.LogID)] = info
 		}
 		result[op.Name] = group
 	}

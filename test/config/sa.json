@@ -46,6 +46,9 @@
 					]
 				}
 			}
+		},
+		"features": {
+			"UseKvLimitsForNewOrder": true
 		}
 	},
 	"syslog": {

@@ -6,8 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -27,13 +25,7 @@ func TestDuplicateFQDNRateLimit(t *testing.T) {
 	_, err = authAndIssue(nil, nil, []string{domain}, true)
 	test.AssertError(t, err, "Somehow managed to issue third certificate")
 
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		// Error should be served from key-value rate limits implementation.
-		test.AssertContains(t, err.Error(), "too many certificates (2) already issued for this exact set of domains in the last 3h0m0s")
-	} else {
-		// Error should be served from legacy rate limits implementation.
-		test.AssertContains(t, err.Error(), "too many certificates (2) already issued for this exact set of domains in the last 3 hours")
-	}
+	test.AssertContains(t, err.Error(), "too many certificates (2) already issued for this exact set of domains in the last 3h0m0s")
 }
 
 func TestCertificatesPerDomain(t *testing.T) {
@@ -56,13 +48,7 @@ func TestCertificatesPerDomain(t *testing.T) {
 	_, err = authAndIssue(nil, nil, []string{randomSubDomain()}, true)
 	test.AssertError(t, err, "Somehow managed to issue third certificate")
 
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		// Error should be served from key-value rate limits implementation.
-		test.AssertContains(t, err.Error(), fmt.Sprintf("too many certificates (2) already issued for %q in the last 2160h0m0s", randomDomain))
-	} else {
-		// Error should be served from legacy rate limits implementation.
-		test.AssertContains(t, err.Error(), fmt.Sprintf("too many certificates already issued for %q", randomDomain))
-	}
+	test.AssertContains(t, err.Error(), fmt.Sprintf("too many certificates (2) already issued for %q in the last 2160h0m0s", randomDomain))
 
 	// Issue a certificate for the first subdomain, which should succeed because
 	// it's a renewal.

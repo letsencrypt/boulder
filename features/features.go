@@ -16,7 +16,9 @@ import (
 // package's global Config.
 type Config struct {
 	// Deprecated flags.
-	IncrementRateLimits bool
+	IncrementRateLimits      bool
+	UseKvLimitsForNewOrder   bool
+	DisableLegacyLimitWrites bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -66,21 +68,6 @@ type Config struct {
 	// returned to the Subscriber indicating that the order cannot be processed
 	// until the paused identifiers are unpaused and the order is resubmitted.
 	CheckIdentifiersPaused bool
-
-	// UseKvLimitsForNewOrder when enabled, causes the key-value rate limiter to
-	// be the authoritative source of rate limiting information for new-order
-	// callers and disables the legacy rate limiting checks.
-	//
-	// Note: this flag does not disable writes to the certificatesPerName or
-	// fqdnSets tables at Finalize time.
-	UseKvLimitsForNewOrder bool
-
-	// DisableLegacyLimitWrites when enabled, disables writes to:
-	//   - the newOrdersRL table at new-order time, and
-	//   - the certificatesPerName table at finalize time.
-	//
-	// This flag should only be used in conjunction with UseKvLimitsForNewOrder.
-	DisableLegacyLimitWrites bool
 
 	// PropagateCancels controls whether the WFE and ocsp-responder allows
 	// cancellation of an inbound request to cancel downstream gRPC and other
