@@ -3386,7 +3386,7 @@ func TestGetRevokedCertsWithShard(t *testing.T) {
 			Der:          cert.Raw,
 			RegID:        reg.Id,
 			Issued:       timestamppb.New(cert.NotBefore),
-			IssuerNameID: int64(issuerNameID),
+			IssuerNameID: issuerNameID,
 		})
 		if err != nil {
 			t.Fatalf("adding cert: %s", err)
@@ -3475,7 +3475,7 @@ func TestGetRevokedCertsWithShard(t *testing.T) {
 	revoke(eeCert3, 97)
 
 	// expectSerials registers an error if the provided serials don't match the serials
-	// of the provded certs (after sorting).
+	// of the provided certs (after sorting).
 	expectSerials := func(message string, serials []string, certs ...*x509.Certificate) {
 		t.Helper()
 		var expectedSerials []string
