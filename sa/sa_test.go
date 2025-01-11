@@ -218,12 +218,14 @@ func TestAddRegistration(t *testing.T) {
 	}
 	newReg, err := sa.UpdateRegistrationContact(ctx, regUpdate)
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't update registration with ID %v", reg.Id))
-
 	test.AssertEquals(t, dbReg.Id, newReg.Id)
 	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
 
-	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
+	// Reconfirm that the updated registration was persisted to the database.
+	newReg, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
 	test.AssertNotError(t, err, "Couldn't get registration by key")
+	test.AssertEquals(t, dbReg.Id, newReg.Id)
+	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
 
 	anotherKey := `{
 		"kty":"RSA",
