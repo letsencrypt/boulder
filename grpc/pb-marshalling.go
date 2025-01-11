@@ -8,6 +8,7 @@ package grpc
 import (
 	"fmt"
 	"net"
+	"reflect"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -263,15 +264,13 @@ func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 		createdAt = &c
 	}
 	var contacts *[]string
-	if pb.ContactsPresent {
+	if !reflect.DeepEqual(pb.Contact, []string{}) {
 		if len(pb.Contact) != 0 {
 			contacts = &pb.Contact
 		} else {
 			// When gRPC creates an empty slice it is actually a nil slice. Since
 			// certain things boulder uses, like encoding/json, differentiate between
-			// these we need to de-nil these slices. Without this we are unable to
-			// properly do registration updates as contacts would always be removed
-			// as we use the difference between a nil and empty slice in ra.mergeUpdate.
+			// these we need to de-nil these slices.
 			empty := []string{}
 			contacts = &empty
 		}
