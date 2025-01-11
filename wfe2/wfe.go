@@ -2376,8 +2376,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		DnsNames:               names,
 		ReplacesSerial:         replaces,
 		CertificateProfileName: newOrderRequest.Profile,
-		IsARIRenewal:           isARIRenewal,
-		IsRenewal:              isRenewal,
 	})
 	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
