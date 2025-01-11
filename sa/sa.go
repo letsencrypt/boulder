@@ -25,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/unpause"
@@ -947,6 +948,11 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 	if req.Status != string(core.StatusValid) && req.Status != string(core.StatusInvalid) {
 		return nil, berrors.InternalServerError("authorization must have status valid or invalid")
 	}
+
+	if features.Get().WriteNewOrderSchema && looksLikeRandomID(req.Id, ssa.clk.Now()) {
+		return ssa.finalizeAuthorization(ctx, req)
+	}
+
 	query := `UPDATE authz2 SET
 		status = :status,
 		attempted = :attempted,
@@ -1019,6 +1025,107 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 	} else if rows > 1 {
 		return nil, berrors.InternalServerError("multiple rows updated for authorization id %d", req.Id)
 	}
+	return &emptypb.Empty{}, nil
+}
+
+// finalizeAuthorization inserts a new validation record into the validations
+// table, and then updates the identified authorizations row to point to the
+// newly-inserted validation.
+func (ssa *SQLStorageAuthority) finalizeAuthorization(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*emptypb.Empty, error) {
+	// Convert the validation records and error to a json blob for storage in
+	// the validations table.
+	type recordJSON struct {
+		Records []core.ValidationRecord
+		Err     *probs.ProblemDetails
+	}
+
+	var records []core.ValidationRecord
+	for _, recPB := range req.ValidationRecords {
+		rec, err := bgrpc.PBToValidationRecord(recPB)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, rec)
+	}
+
+	var verr *probs.ProblemDetails
+	if req.ValidationError != nil {
+		verrShadow, err := bgrpc.PBToProblemDetails(req.ValidationError)
+		if err != nil {
+			return nil, err
+		}
+		verr = verrShadow
+	}
+
+	record, err := json.Marshal(recordJSON{Records: records, Err: verr})
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert validation record to json: %w", err)
+	}
+
+	id, err := newRandomID(ssa.clk.Now())
+	if err != nil {
+		return nil, err
+	}
+
+	vm := validationsModel{
+		ID:          id,
+		Challenge:   challTypeToUint[req.Attempted],
+		AttemptedAt: req.AttemptedAt.AsTime(),
+		Status:      statusUint(core.AcmeStatus(req.Status)),
+		Record:      record,
+	}
+
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		// Read the authz row to get its current status and list of validation IDs.
+		var authz authorizationsModel
+		err := tx.SelectOne(ctx, &authz, "SELECT status, validationIDs FROM authorizations WHERE id = ?", req.Id)
+		if err != nil {
+			return nil, fmt.Errorf("retrieving authz: %w", err)
+		}
+
+		if authz.Status != statusUint(core.StatusPending) {
+			return nil, fmt.Errorf("cannot finalize authz with status %q", uintToStatus[authz.Status])
+		}
+
+		// Insert the validation record.
+		err = tx.Insert(ctx, vm)
+		if err != nil {
+			return nil, fmt.Errorf("inserting new validation: %w", err)
+		}
+
+		// Update the authz row.
+		res, err := tx.ExecContext(
+			ctx, "UPDATE authorizations SET validationIDs = ? WHERE id = ? AND validationIDs = ?",
+			append(authz.ValidationIDs[:], vm.ID), req.Id, authz.ValidationIDs)
+		if err != nil {
+			return nil, fmt.Errorf("updating authz: %w", err)
+		}
+		rows, err := res.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		if rows != 1 {
+			return nil, fmt.Errorf("unexpected number of rows affected (%d)", rows)
+		}
+
+		// Delete the orderFQDNSet row for the order now that it has been finalized.
+		// We use this table for order reuse and should not reuse a finalized order.
+		err = deleteOrderFQDNSet(ctx, tx, req.Id)
+		if err != nil {
+			return nil, err
+		}
+
+		err = setReplacementOrderFinalized(ctx, tx, req.Id)
+		if err != nil {
+			return nil, err
+		}
+
+		return nil, nil
+	})
+	if overallError != nil {
+		return nil, overallError
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
