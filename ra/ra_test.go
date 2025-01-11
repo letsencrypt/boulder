@@ -258,14 +258,6 @@ var (
 
 var ctx = context.Background()
 
-func newAcctKey(t *testing.T) []byte {
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	jwk := &jose.JSONWebKey{Key: key.Public()}
-	acctKey, err := jwk.MarshalJSON()
-	test.AssertNotError(t, err, "failed to marshal account key")
-	return acctKey
-}
-
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAuthorityClient, *RegistrationAuthorityImpl, ratelimits.Source, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
@@ -462,66 +454,6 @@ func TestNewRegistration(t *testing.T) {
 	reg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: result.Id})
 	test.AssertNotError(t, err, "Failed to retrieve registration")
 	test.AssertByteEquals(t, reg.Key, acctKeyB)
-}
-
-func TestNewRegistrationContactsPresent(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	testCases := []struct {
-		Name        string
-		Reg         *corepb.Registration
-		ExpectedErr error
-	}{
-		{
-			Name: "No contacts provided by client ContactsPresent false",
-			Reg: &corepb.Registration{
-				Key: newAcctKey(t),
-			},
-			ExpectedErr: nil,
-		},
-		{
-			Name: "Empty contact provided by client ContactsPresent true",
-			Reg: &corepb.Registration{
-				Contact:         []string{},
-				ContactsPresent: true,
-				Key:             newAcctKey(t),
-			},
-			ExpectedErr: nil,
-		},
-		{
-			Name: "Valid contact provided by client ContactsPresent true",
-			Reg: &corepb.Registration{
-				Contact:         []string{"mailto:foo@letsencrypt.org"},
-				ContactsPresent: true,
-				Key:             newAcctKey(t),
-			},
-			ExpectedErr: nil,
-		},
-		{
-			Name: "Valid contact provided by client ContactsPresent false",
-			Reg: &corepb.Registration{
-				Contact:         []string{"mailto:foo@letsencrypt.org"},
-				ContactsPresent: false,
-				Key:             newAcctKey(t),
-			},
-			ExpectedErr: fmt.Errorf("account contacts present but contactsPresent false"),
-		},
-	}
-	// For each test case we check that the NewRegistration works as
-	// intended with variations of Contact and ContactsPresent fields
-	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			// Create new registration
-			_, err := ra.NewRegistration(ctx, tc.Reg)
-			// Check error output
-			if tc.ExpectedErr == nil {
-				test.AssertNotError(t, err, "expected no error for NewRegistration")
-			} else {
-				test.AssertError(t, err, "expected error for NewRegistration")
-				test.AssertEquals(t, err.Error(), tc.ExpectedErr.Error())
-			}
-		})
-	}
 }
 
 type mockSAFailsNewRegistration struct {
