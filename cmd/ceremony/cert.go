@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -171,6 +173,21 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 	return nil
 }
 
+func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
+	var oid asn1.ObjectIdentifier
+	for _, a := range strings.Split(oidStr, ".") {
+		i, err := strconv.Atoi(a)
+		if err != nil {
+			return nil, err
+		}
+		if i <= 0 {
+			return nil, errors.New("OID components must be >= 1")
+		}
+		oid = append(oid, i)
+	}
+	return oid, nil
+}
+
 var stringToKeyUsage = map[string]x509.KeyUsage{
 	"Digital Signature": x509.KeyUsageDigitalSignature,
 	"CRL Sign":          x509.KeyUsageCRLSign,
@@ -301,11 +318,17 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 	}
 
 	for _, policyConfig := range profile.Policies {
-		oid, err := x509.ParseOID(policyConfig.OID)
+		asnOID, err := parseOID(policyConfig.OID)
 		if err != nil {
 			return nil, err
 		}
-		cert.Policies = append(cert.Policies, oid)
+		cert.PolicyIdentifiers = append(cert.PolicyIdentifiers, asnOID)
+
+		x509OID, err := x509.ParseOID(policyConfig.OID)
+		if err != nil {
+			return nil, err
+		}
+		cert.Policies = append(cert.Policies, x509OID)
 	}
 
 	return cert, nil
