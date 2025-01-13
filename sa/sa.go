@@ -1004,7 +1004,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 			// the "UPDATE certificateStatus SET revokedReason..." above if this
 			// query ever becomes the first or only query in this transaction. We are
 			// currently relying on the query above to exit early if the certificate
-			// does not have an appropriate status.
+			// does not have an appropriate status and revocation reason.
 			err = tx.SelectOne(
 				ctx, &rcm, `SELECT * FROM revokedCertificates WHERE serial = ?`, req.Serial)
 			if db.IsNoRows(err) {
