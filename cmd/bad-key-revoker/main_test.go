@@ -96,7 +96,7 @@ func insertRegistration(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, addr
 	}
 	res, err := dbMap.ExecContext(
 		context.Background(),
-		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 		[]byte{},
 		fmt.Sprintf("%x", jwkHash),
 		contactStr,

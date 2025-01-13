@@ -774,9 +774,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		ContactsPresent: contactsPresent,
 		Agreement:       wfe.SubscriberAgreementURL,
 		Key:             keyBytes,
-		// TODO(#7671): This must remain until InitialIP is removed from
-		// corepb.Registration.
-		InitialIP: net.ParseIP("0.0.0.0").To16(),
 	}
 
 	refundLimits, err := wfe.checkNewAccountLimits(ctx, ip)
