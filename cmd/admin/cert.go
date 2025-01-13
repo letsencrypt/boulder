@@ -136,17 +136,52 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 		return fmt.Errorf("collecting serials to revoke: %w", err)
 	}
 
+	serials, err = cleanSerials(serials)
+	if err != nil {
+		return err
+	}
+
 	if len(serials) == 0 {
 		return errors.New("no serials to revoke found")
 	}
+
 	a.log.Infof("Found %d certificates to revoke", len(serials))
 
-	err = a.revokeSerials(ctx, serials, reasonCode, s.malformed, s.crlShard, s.skipBlock, s.parallelism)
+	if s.malformed {
+		return s.revokeMalformed(ctx, a, serials, reasonCode)
+	}
+
+	err = a.revokeSerials(ctx, serials, reasonCode, s.skipBlock, s.parallelism)
 	if err != nil {
 		return fmt.Errorf("revoking serials: %w", err)
 	}
 
 	return nil
+}
+
+func (s *subcommandRevokeCert) revokeMalformed(ctx context.Context, a *admin, serials []string, reasonCode revocation.Reason) error {
+	u, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("getting admin username: %w", err)
+	}
+	if s.crlShard == 0 {
+		return errors.New("when revoking malformed certificates, a nonzero CRL shard must be specified")
+	}
+	if len(serials) > 1 {
+		return errors.New("when revoking malformed certificates, only one cert at a time is allowed")
+	}
+	_, err = a.rac.AdministrativelyRevokeCertificate(
+		ctx,
+		&rapb.AdministrativelyRevokeCertificateRequest{
+			Serial:       serials[0],
+			Code:         int64(reasonCode),
+			AdminName:    u.Username,
+			SkipBlockKey: s.skipBlock,
+			Malformed:    true,
+			CrlShard:     s.crlShard,
+		},
+	)
+	return err
 }
 
 func (a *admin) serialsFromIncidentTable(ctx context.Context, tableName string) ([]string, error) {
@@ -250,6 +285,18 @@ func (a *admin) serialsFromCertPEM(_ context.Context, filename string) ([]string
 	return []string{core.SerialToString(cert.SerialNumber)}, nil
 }
 
+func cleanSerials(serials []string) ([]string, error) {
+	var ret []string
+	for _, s := range serials {
+		cleaned, err := cleanSerial(s)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, cleaned)
+	}
+	return ret, nil
+}
+
 func cleanSerial(serial string) (string, error) {
 	serialStrip := func(r rune) rune {
 		switch {
@@ -267,7 +314,7 @@ func cleanSerial(serial string) (string, error) {
 	return strippedSerial, nil
 }
 
-func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revocation.Reason, malformed bool, crlShard int64, skipBlockKey bool, parallelism uint) error {
+func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revocation.Reason, skipBlockKey bool, parallelism uint) error {
 	u, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("getting admin username: %w", err)
@@ -281,20 +328,17 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 		go func() {
 			defer wg.Done()
 			for serial := range work {
-				cleanedSerial, err := cleanSerial(serial)
-				if err != nil {
-					a.log.Errf("skipping serial %q: %s", serial, err)
-					continue
-				}
 				_, err = a.rac.AdministrativelyRevokeCertificate(
 					ctx,
 					&rapb.AdministrativelyRevokeCertificateRequest{
-						Serial:       cleanedSerial,
+						Serial:       serial,
 						Code:         int64(reason),
 						AdminName:    u.Username,
 						SkipBlockKey: skipBlockKey,
-						Malformed:    malformed,
-						CrlShard:     crlShard,
+						// This is a well-formed ceritificate so send CrlShard 0
+						// to let the RA figure out the right shard from the cer.
+						Malformed: false,
+						CrlShard:  0,
 					},
 				)
 				if err != nil {

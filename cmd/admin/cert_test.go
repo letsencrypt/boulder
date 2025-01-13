@@ -219,7 +219,7 @@ func TestRevokeSerials(t *testing.T) {
 	mra.reset()
 	log.Clear()
 	a.dryRun = false
-	err := a.revokeSerials(context.Background(), serials, 0, false, false, 1)
+	err := a.revokeSerials(context.Background(), serials, 0, false, 1)
 	test.AssertEquals(t, len(log.GetAllMatching("invalid serial format")), 0)
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(log.GetAll()), 0)
@@ -230,7 +230,7 @@ func TestRevokeSerials(t *testing.T) {
 	mra.reset()
 	log.Clear()
 	mra.alreadyRevoked = []string{"048c3f6388afb7695dd4d6bbe3d264f1e5e5"}
-	err = a.revokeSerials(context.Background(), serials, 0, false, false, 1)
+	err = a.revokeSerials(context.Background(), serials, 0, false, 1)
 	test.AssertError(t, err, "already-revoked should result in error")
 	test.AssertEquals(t, len(log.GetAllMatching("not revoking")), 1)
 	test.AssertEquals(t, len(mra.revocationRequests), 3)
@@ -240,7 +240,7 @@ func TestRevokeSerials(t *testing.T) {
 	mra.reset()
 	log.Clear()
 	mra.doomedToFail = []string{"048c3f6388afb7695dd4d6bbe3d264f1e5e5"}
-	err = a.revokeSerials(context.Background(), serials, 0, false, false, 1)
+	err = a.revokeSerials(context.Background(), serials, 0, false, 1)
 	test.AssertError(t, err, "gRPC error should result in error")
 	test.AssertEquals(t, len(log.GetAllMatching("failed to revoke")), 1)
 	test.AssertEquals(t, len(mra.revocationRequests), 3)
@@ -249,7 +249,7 @@ func TestRevokeSerials(t *testing.T) {
 	// Revoking with other parameters should get carried through.
 	mra.reset()
 	log.Clear()
-	err = a.revokeSerials(context.Background(), serials, 1, true, true, 3)
+	err = a.revokeSerials(context.Background(), serials, 1, true, 3)
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(mra.revocationRequests), 3)
 	assertRequestsContain(mra.revocationRequests, 1, true, true)
@@ -259,7 +259,7 @@ func TestRevokeSerials(t *testing.T) {
 	log.Clear()
 	a.dryRun = true
 	a.rac = dryRunRAC{log: log}
-	err = a.revokeSerials(context.Background(), serials, 0, false, false, 1)
+	err = a.revokeSerials(context.Background(), serials, 0, false, 1)
 	test.AssertNotError(t, err, "")
 	test.AssertEquals(t, len(log.GetAllMatching("dry-run:")), 3)
 	test.AssertEquals(t, len(mra.revocationRequests), 0)
