@@ -8,7 +8,6 @@ package grpc
 import (
 	"fmt"
 	"net"
-	"reflect"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -263,22 +262,10 @@ func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 		c := pb.CreatedAt.AsTime()
 		createdAt = &c
 	}
-	var contacts *[]string
-	if !reflect.DeepEqual(pb.Contact, []string{}) {
-		if len(pb.Contact) != 0 {
-			contacts = &pb.Contact
-		} else {
-			// When gRPC creates an empty slice it is actually a nil slice. Since
-			// certain things boulder uses, like encoding/json, differentiate between
-			// these we need to de-nil these slices.
-			empty := []string{}
-			contacts = &empty
-		}
-	}
 	return core.Registration{
 		ID:        pb.Id,
 		Key:       &key,
-		Contact:   contacts,
+		Contact:   &pb.Contact,
 		Agreement: pb.Agreement,
 		CreatedAt: createdAt,
 		Status:    core.AcmeStatus(pb.Status),
