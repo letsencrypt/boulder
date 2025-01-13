@@ -482,6 +482,8 @@ type AdministrativelyRevokeCertificateRequest struct {
 	// The CRL shard to store the revocation in. This must match
 	// the CRL shard in the certificate's crlDistributionPoint,
 	// if present.
+	// This is only valid when `malformed` is true; otherwise the shard is
+	// determined by parsing the certificate.
 	CrlShard int64 `protobuf:"varint,7,opt,name=crlShard,proto3" json:"crlShard,omitempty"`
 }
 
