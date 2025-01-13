@@ -285,19 +285,9 @@ func (a *admin) serialsFromCertPEM(_ context.Context, filename string) ([]string
 	return []string{core.SerialToString(cert.SerialNumber)}, nil
 }
 
+// cleanSerials removes non-alphanumeric characters from the serials and checks
+// that all resulting serials are valid (hex encoded, and the correct length).
 func cleanSerials(serials []string) ([]string, error) {
-	var ret []string
-	for _, s := range serials {
-		cleaned, err := cleanSerial(s)
-		if err != nil {
-			return nil, err
-		}
-		ret = append(ret, cleaned)
-	}
-	return ret, nil
-}
-
-func cleanSerial(serial string) (string, error) {
 	serialStrip := func(r rune) rune {
 		switch {
 		case unicode.IsLetter(r):
@@ -307,11 +297,16 @@ func cleanSerial(serial string) (string, error) {
 		}
 		return rune(-1)
 	}
-	strippedSerial := strings.Map(serialStrip, serial)
-	if !core.ValidSerial(strippedSerial) {
-		return "", fmt.Errorf("cleaned serial %q is not valid", strippedSerial)
+
+	var ret []string
+	for _, s := range serials {
+		cleaned := strings.Map(serialStrip, s)
+		if !core.ValidSerial(cleaned) {
+			return nil, fmt.Errorf("cleaned serial %q is not valid", cleaned)
+		}
+		ret = append(ret, cleaned)
 	}
-	return strippedSerial, nil
+	return ret, nil
 }
 
 func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revocation.Reason, skipBlockKey bool, parallelism uint) error {
