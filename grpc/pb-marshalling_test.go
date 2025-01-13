@@ -206,7 +206,9 @@ func TestRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "registrationToPB failed")
 	outReg, err = PbToRegistration(pbReg)
 	test.AssertNotError(t, err, "PbToRegistration failed")
-	test.Assert(t, *outReg.Contact != nil, "Empty slice was converted to a nil slice")
+	if outReg.Contact != nil {
+		t.Errorf("Empty contacts should be a nil slice")
+	}
 
 	inRegNilCreatedAt := core.Registration{
 		ID:        1,

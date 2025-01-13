@@ -262,10 +262,14 @@ func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 		c := pb.CreatedAt.AsTime()
 		createdAt = &c
 	}
+	var contacts *[]string
+	if len(pb.Contact) != 0 {
+		contacts = &pb.Contact
+	}
 	return core.Registration{
 		ID:        pb.Id,
 		Key:       &key,
-		Contact:   &pb.Contact,
+		Contact:   contacts,
 		Agreement: pb.Agreement,
 		CreatedAt: createdAt,
 		Status:    core.AcmeStatus(pb.Status),
