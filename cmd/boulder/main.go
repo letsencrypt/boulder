@@ -38,14 +38,14 @@ import (
 // readAndValidateConfigFile uses the ConfigValidator registered for the given
 // command to validate the provided config file. If the command does not have a
 // registered ConfigValidator, this function does nothing.
-func readAndValidateConfigFile(name, filename string) error {
+func readAndValidateConfigFile(name, filename string) (interface{}, error) {
 	cv := cmd.LookupConfigValidator(name)
 	if cv == nil {
-		return nil
+		return nil, fmt.Errorf("config loader for %s not found", name)
 	}
 	file, err := os.Open(filename)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer file.Close()
 	if name == "boulder-observer" {
@@ -111,9 +111,11 @@ func main() {
 	os.Args = os.Args[1:]
 
 	config := getConfigPath()
+	var loadedCfg interface{}
 	if config != "" {
 		// Config flag passed.
-		err := readAndValidateConfigFile(command, config)
+		var err error
+		loadedCfg, err = readAndValidateConfigFile(command, config)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error validating config file %q for command %q: %s\n", config, command, err)
 			os.Exit(1)
@@ -125,5 +127,5 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Unknown subcommand %q.\n", command)
 		os.Exit(1)
 	}
-	commandFunc()
+	commandFunc(loadedCfg)
 }

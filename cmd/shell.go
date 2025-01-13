@@ -439,9 +439,9 @@ func ReadConfigFile(filename string, out interface{}) error {
 // 'validate' tags for on each field. Callers can use cmd.LookupConfigValidator
 // to get a *ConfigValidator for a given Boulder component. This is exported for
 // use in SRE CI tooling.
-func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
+func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) (interface{}, error) {
 	if cv == nil {
-		return errors.New("config validator cannot be nil")
+		return nil, errors.New("config validator cannot be nil")
 	}
 
 	// Initialize the validator and load any custom tags.
@@ -449,7 +449,7 @@ func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
 	for tag, v := range cv.Validators {
 		err := validate.RegisterValidation(tag, v)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -458,24 +458,24 @@ func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
 
 	err := decodeJSONStrict(in, cv.Config)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = validate.Struct(cv.Config)
 	if err != nil {
 		errs, ok := err.(validator.ValidationErrors)
 		if !ok {
 			// This should never happen.
-			return err
+			return nil, err
 		}
 		if len(errs) > 0 {
 			allErrs := []string{}
 			for _, e := range errs {
 				allErrs = append(allErrs, e.Error())
 			}
-			return errors.New(strings.Join(allErrs, ", "))
+			return nil, errors.New(strings.Join(allErrs, ", "))
 		}
 	}
-	return nil
+	return cv.Config, nil
 }
 
 // ValidateYAMLConfig takes a *ConfigValidator and an io.Reader containing a
@@ -484,9 +484,9 @@ func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
 // 'validate' tags for on each field. Callers can use cmd.LookupConfigValidator
 // to get a *ConfigValidator for a given Boulder component. This is exported for
 // use in SRE CI tooling.
-func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
+func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) (interface{}, error) {
 	if cv == nil {
-		return errors.New("config validator cannot be nil")
+		return nil, errors.New("config validator cannot be nil")
 	}
 
 	// Initialize the validator and load any custom tags.
@@ -494,7 +494,7 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 	for tag, v := range cv.Validators {
 		err := validate.RegisterValidation(tag, v)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -503,28 +503,28 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 
 	inBytes, err := io.ReadAll(in)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = strictyaml.Unmarshal(inBytes, cv.Config)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = validate.Struct(cv.Config)
 	if err != nil {
 		errs, ok := err.(validator.ValidationErrors)
 		if !ok {
 			// This should never happen.
-			return err
+			return nil, err
 		}
 		if len(errs) > 0 {
 			allErrs := []string{}
 			for _, e := range errs {
 				allErrs = append(allErrs, e.Error())
 			}
-			return errors.New(strings.Join(allErrs, ", "))
+			return nil, errors.New(strings.Join(allErrs, ", "))
 		}
 	}
-	return nil
+	return cv.Config, nil
 }
 
 // VersionString produces a friendly Application version string.

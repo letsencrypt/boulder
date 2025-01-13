@@ -3,7 +3,6 @@ package notmain
 import (
 	"context"
 	"flag"
-	"os"
 	"reflect"
 	"strconv"
 	"time"
@@ -141,19 +140,11 @@ type Config struct {
 	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
-func main() {
+func main(cfg interface{}) {
+	c := cfg.(Config)
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
-	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
-	if *configFile == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	var c Config
-	err := cmd.ReadConfigFile(*configFile, &c)
-	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	features.Set(c.CA.Features)
 

@@ -16,7 +16,7 @@ type ConfigValidator struct {
 
 var registry struct {
 	sync.Mutex
-	commands map[string]func()
+	commands map[string]func(cfg interface{})
 	configs  map[string]*ConfigValidator
 }
 
@@ -24,12 +24,12 @@ var registry struct {
 // validator. The provided func() is called when the subcommand is invoked on
 // the command line. The ConfigValidator is optional and used to validate the
 // config file for the subcommand.
-func RegisterCommand(name string, f func(), cv *ConfigValidator) {
+func RegisterCommand(name string, f func(interface{}), cv *ConfigValidator) {
 	registry.Lock()
 	defer registry.Unlock()
 
 	if registry.commands == nil {
-		registry.commands = make(map[string]func())
+		registry.commands = make(map[string]func(interface{}))
 	}
 
 	if registry.commands[name] != nil {
@@ -51,7 +51,7 @@ func RegisterCommand(name string, f func(), cv *ConfigValidator) {
 	registry.configs[name] = cv
 }
 
-func LookupCommand(name string) func() {
+func LookupCommand(name string) func(cfg interface{}) {
 	registry.Lock()
 	defer registry.Unlock()
 	return registry.commands[name]
