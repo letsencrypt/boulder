@@ -86,11 +86,9 @@ message NewOrderRequest {
   int64 registrationID = 1;
   repeated string dnsNames = 2;
   string replacesSerial = 3;
-  // TODO(#7512): Remove this field.
-  bool isARIRenewal = 4;
+  reserved 4; // previously isARIRenewal
   string certificateProfileName = 5;
-  // TODO(#7512): Remove this field.
-  bool isRenewal = 6;
+  reserved 6; // previously isRenewal
 }
 
 message GetAuthorizationRequest {
