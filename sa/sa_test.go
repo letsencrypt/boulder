@@ -3101,14 +3101,14 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
 	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
 
-	// Here's a little helper func we'll use to call GetRevokedCerts and count
+	// Here's a little helper func we'll use to call GetRevokedCertsByShard and count
 	// how many results it returned.
-	countRevokedCerts := func(req *sapb.GetRevokedCertsRequest) (int, error) {
+	countRevokedCerts := func(req *sapb.GetRevokedCertsByShardRequest) (int, error) {
 		stream := make(chan *corepb.CRLEntry)
 		mockServerStream := &fakeServerStream[corepb.CRLEntry]{output: stream}
 		var err error
 		go func() {
-			err = sa.GetRevokedCerts(req, mockServerStream)
+			err = sa.GetRevokedCertsByShard(req, mockServerStream)
 			close(stream)
 		}()
 		entriesReceived := 0
@@ -3119,7 +3119,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	}
 
 	// The basic request covers a time range and shard that should include this certificate.
-	basicRequest := &sapb.GetRevokedCertsRequest{
+	basicRequest := &sapb.GetRevokedCertsByShardRequest{
 		IssuerNameID:  1,
 		ShardIdx:      9,
 		ExpiresAfter:  mustTimestamp("2023-03-01 00:00"),
@@ -3156,7 +3156,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertEquals(t, count, 1)
 
 	// Asking for revoked certs from a different issuer should return zero results.
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsByShardRequest{
 		IssuerNameID:  5678,
 		ShardIdx:      basicRequest.ShardIdx,
 		ExpiresAfter:  basicRequest.ExpiresAfter,
@@ -3166,7 +3166,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs from a different shard should return zero results.
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsByShardRequest{
 		IssuerNameID:  basicRequest.IssuerNameID,
 		ShardIdx:      8,
 		ExpiresAfter:  basicRequest.ExpiresAfter,
@@ -3176,7 +3176,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs with an old RevokedBefore should return no results.
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsByShardRequest{
 		IssuerNameID:  basicRequest.IssuerNameID,
 		ShardIdx:      basicRequest.ShardIdx,
 		ExpiresAfter:  basicRequest.ExpiresAfter,
