@@ -26,6 +26,7 @@ service StorageAuthorityReadOnly {
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
   rpc GetRevokedCerts(GetRevokedCertsRequest) returns (stream core.CRLEntry) {}
+  rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
   rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
@@ -350,6 +351,12 @@ message IncidentSerial {
   int64 orderID = 3; // May be 0 (NULL)
   reserved 4; // Previously lastNoticeSentNS
   google.protobuf.Timestamp lastNoticeSent = 5;
+}
+
+message GetRevokedCertsByShardRequest {
+  int64 issuerNameID = 1;
+  google.protobuf.Timestamp revokedBefore = 2;
+  int64 shardIdx = 3;
 }
 
 message GetRevokedCertsRequest {

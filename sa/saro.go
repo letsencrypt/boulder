@@ -961,8 +961,6 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
 	if req.ShardIdx != 0 {
 		return ssa.getRevokedCertsFromRevokedCertificatesTable(req, stream)
-	} else {
-		return ssa.getRevokedCertsFromCertificateStatusTable(req, stream)
 	}
 }
 
@@ -1015,9 +1013,7 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(re
 	})
 }
 
-// getRevokedCertsFromCertificateStatusTable uses the old certificateStatus
-// table to implement GetRevokedCerts.
-func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
+func (ssa *SQLStorageAuthorityRO) TestGetRevokedCertsByShard(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
 	atTime := req.RevokedBefore.AsTime()
 
 	clauses := `
