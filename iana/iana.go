@@ -25,7 +25,7 @@ func ExtractSuffix(name string) (string, error) {
 	suffix := rule.Decompose(name)[1]
 
 	if !zlintutil.IsInTLDMap(suffix) {
-		return "", fmt.Errorf("Domain %s has an invalid TLD %s", name, suffix)
+		return "", fmt.Errorf("Domain %s has an unknown TLD %s", name, suffix)
 	}
 
 	// If the TLD is empty, it means name is actually a suffix.
