@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	mathrand "math/rand"
 	"sync"
 	"time"
 
@@ -381,6 +382,12 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 
 	if req.IncludeMustStaple {
 		template.ExtraExtensions = append(template.ExtraExtensions, mustStapleExt)
+	}
+
+	if i.crlShards > 0 {
+		template.CRLDistributionPoints = []string{
+			i.crlURL(mathrand.Intn(i.crlShards)),
+		}
 	}
 
 	// check that the tbsCertificate is properly formed by signing it

@@ -59,6 +59,10 @@ type CRLRequest struct {
 	Entries []x509.RevocationListEntry
 }
 
+func (i *Issuer) crlURL(shard int) string {
+	return fmt.Sprintf("%s%d.crl", i.crlURLBase, shard)
+}
+
 func (i *Issuer) IssueCRL(prof *CRLProfile, req *CRLRequest) ([]byte, error) {
 	backdatedBy := i.clk.Now().Sub(req.ThisUpdate)
 	if backdatedBy > prof.maxBackdate {
@@ -82,7 +86,7 @@ func (i *Issuer) IssueCRL(prof *CRLProfile, req *CRLRequest) ([]byte, error) {
 	// Concat the base with the shard directly, since we require that the base
 	// end with a single trailing slash.
 	idp, err := idp.MakeUserCertsExt([]string{
-		fmt.Sprintf("%s%d.crl", i.crlURLBase, req.Shard),
+		i.crlURL(int(req.Shard)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating IDP extension: %w", err)

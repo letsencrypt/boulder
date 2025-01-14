@@ -78,6 +78,7 @@
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-a",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/ecdsa-a/",
+					"crlShards": 2,
 					"location": {
 						"configFile": "test/certs/webpki/int-ecdsa-a.pkcs11.json",
 						"certFile": "test/certs/webpki/int-ecdsa-a.cert.pem",
@@ -89,6 +90,7 @@
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-b",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/ecdsa-b/",
+					"crlShards": 300,
 					"location": {
 						"configFile": "test/certs/webpki/int-ecdsa-b.pkcs11.json",
 						"certFile": "test/certs/webpki/int-ecdsa-b.cert.pem",
@@ -100,6 +102,7 @@
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-c",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/ecdsa-c/",
+					"crlShards": 2,
 					"location": {
 						"configFile": "test/certs/webpki/int-ecdsa-c.pkcs11.json",
 						"certFile": "test/certs/webpki/int-ecdsa-c.cert.pem",
@@ -111,6 +114,7 @@
 					"issuerURL": "http://ca.example.org:4502/int-rsa-a",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/rsa-a/",
+					"crlShards": 2,
 					"location": {
 						"configFile": "test/certs/webpki/int-rsa-a.pkcs11.json",
 						"certFile": "test/certs/webpki/int-rsa-a.cert.pem",
@@ -122,6 +126,7 @@
 					"issuerURL": "http://ca.example.org:4502/int-rsa-b",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/rsa-b/",
+					"crlShards": 2,
 					"location": {
 						"configFile": "test/certs/webpki/int-rsa-b.pkcs11.json",
 						"certFile": "test/certs/webpki/int-rsa-b.cert.pem",
@@ -133,6 +138,7 @@
 					"issuerURL": "http://ca.example.org:4502/int-rsa-c",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/rsa-c/",
+					"crlShards": 2,
 					"location": {
 						"configFile": "test/certs/webpki/int-rsa-c.pkcs11.json",
 						"certFile": "test/certs/webpki/int-rsa-c.cert.pem",
