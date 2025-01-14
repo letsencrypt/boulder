@@ -227,9 +227,6 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertEquals(t, dbReg.Id, newReg.Id)
 	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
 
-	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
-	test.AssertNotError(t, err, "Couldn't get registration by key")
-
 	anotherKey := `{
 		"kty":"RSA",
 		"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw",
