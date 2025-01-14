@@ -774,9 +774,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		ContactsPresent: contactsPresent,
 		Agreement:       wfe.SubscriberAgreementURL,
 		Key:             keyBytes,
-		// TODO(#7671): This must remain until InitialIP is removed from
-		// corepb.Registration.
-		InitialIP: net.ParseIP("0.0.0.0").To16(),
 	}
 
 	refundLimits, err := wfe.checkNewAccountLimits(ctx, ip)
@@ -2376,8 +2373,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		DnsNames:               names,
 		ReplacesSerial:         replaces,
 		CertificateProfileName: newOrderRequest.Profile,
-		IsARIRenewal:           isARIRenewal,
-		IsRenewal:              isRenewal,
 	})
 	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)

@@ -585,61 +585,6 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	test.AssertError(t, err, "Should have rejected authorization with short key")
 }
 
-type NoUpdateSA struct {
-	sapb.StorageAuthorityClient
-}
-
-// Deprecated: When this function is removed, the NoUpdateSA should be moved
-// down to join the other mocks and tests for UpdateRegistrationContact & Key,
-// where it's also used.
-func (sa *NoUpdateSA) UpdateRegistration(_ context.Context, _ *corepb.Registration, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return nil, fmt.Errorf("UpdateRegistration() is mocked to always error")
-}
-
-func (sa *NoUpdateSA) UpdateRegistrationContact(_ context.Context, _ *sapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	return nil, fmt.Errorf("UpdateRegistrationContact() is mocked to always error")
-}
-
-func (sa *NoUpdateSA) UpdateRegistrationKey(_ context.Context, _ *sapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	return nil, fmt.Errorf("UpdateRegistrationKey() is mocked to always error")
-}
-
-func TestUpdateRegistrationSame(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	mailto := "mailto:foo@letsencrypt.org"
-
-	// Make a new registration with AccountKeyC and a Contact
-	acctKeyC, err := AccountKeyC.MarshalJSON()
-	test.AssertNotError(t, err, "failed to marshal account key")
-	reg := &corepb.Registration{
-		Key:             acctKeyC,
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Agreement:       "I agreed",
-	}
-	result, err := ra.NewRegistration(ctx, reg)
-	test.AssertNotError(t, err, "Could not create new registration")
-
-	// Switch to a mock SA that will always error if UpdateRegistration() is called
-	ra.SA = &NoUpdateSA{}
-
-	// Make an update to the registration with the same Contact & Agreement values.
-	updateSame := &corepb.Registration{
-		Id:              result.Id,
-		Key:             acctKeyC,
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Agreement:       "I agreed",
-	}
-
-	// The update operation should *not* error, even with the NoUpdateSA because
-	// UpdateRegistration() should not be called when the update content doesn't
-	// actually differ from the existing content
-	_, err = ra.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: result, Update: updateSame})
-	test.AssertNotError(t, err, "Error updating registration")
-}
-
 func TestPerformValidationExpired(t *testing.T) {
 	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -1007,95 +952,6 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	})
 	test.AssertError(t, err, "Should have rejected cert with key = account key")
 	test.AssertEquals(t, err.Error(), "certificate public key must be different than account key")
-}
-
-func TestRegistrationUpdate(t *testing.T) {
-	oldURL := "http://old.invalid"
-	newURL := "http://new.invalid"
-	base := &corepb.Registration{
-		Id:        1,
-		Contact:   []string{oldURL},
-		Agreement: "",
-	}
-	update := &corepb.Registration{
-		Contact:         []string{newURL},
-		ContactsPresent: true,
-		Agreement:       "totally!",
-	}
-
-	res, changed := mergeUpdate(base, update)
-	test.AssertEquals(t, changed, true)
-	test.AssertEquals(t, res.Contact[0], update.Contact[0])
-	test.AssertEquals(t, res.Agreement, update.Agreement)
-
-	// Make sure that a `MergeUpdate` call with an empty string doesn't produce an
-	// error and results in a change to the base reg.
-	emptyUpdate := &corepb.Registration{
-		Contact:         []string{""},
-		ContactsPresent: true,
-		Agreement:       "totally!",
-	}
-	_, changed = mergeUpdate(res, emptyUpdate)
-	test.AssertEquals(t, changed, true)
-}
-
-func TestRegistrationContactUpdate(t *testing.T) {
-	contactURL := "mailto://example@example.com"
-
-	// Test that a registration contact can be removed by updating with an empty
-	// Contact slice.
-	base := &corepb.Registration{
-		Id:        1,
-		Contact:   []string{contactURL},
-		Agreement: "totally!",
-	}
-	update := &corepb.Registration{
-		Id:              1,
-		Contact:         []string{},
-		ContactsPresent: true,
-		Agreement:       "totally!",
-	}
-	res, changed := mergeUpdate(base, update)
-	test.AssertEquals(t, changed, true)
-	test.Assert(t, len(res.Contact) == 0, "Contact was not deleted in update")
-
-	// Test that a registration contact isn't changed when an update is performed
-	// with no Contact field
-	base = &corepb.Registration{
-		Id:        1,
-		Contact:   []string{contactURL},
-		Agreement: "totally!",
-	}
-	update = &corepb.Registration{
-		Id:        1,
-		Agreement: "totally!",
-	}
-	res, changed = mergeUpdate(base, update)
-	test.AssertEquals(t, changed, false)
-	test.Assert(t, len(res.Contact) == 1, "len(Contact) was updated unexpectedly")
-	test.Assert(t, (res.Contact)[0] == contactURL, "Contact was changed unexpectedly")
-}
-
-func TestRegistrationKeyUpdate(t *testing.T) {
-	oldKey, err := rsa.GenerateKey(rand.Reader, 512)
-	test.AssertNotError(t, err, "rsa.GenerateKey() for oldKey failed")
-	oldKeyJSON, err := jose.JSONWebKey{Key: oldKey}.MarshalJSON()
-	test.AssertNotError(t, err, "MarshalJSON for oldKey failed")
-
-	base := &corepb.Registration{Key: oldKeyJSON}
-	update := &corepb.Registration{}
-	_, changed := mergeUpdate(base, update)
-	test.Assert(t, !changed, "mergeUpdate changed the key with empty update")
-
-	newKey, err := rsa.GenerateKey(rand.Reader, 1024)
-	test.AssertNotError(t, err, "rsa.GenerateKey() for newKey failed")
-	newKeyJSON, err := jose.JSONWebKey{Key: newKey}.MarshalJSON()
-	test.AssertNotError(t, err, "MarshalJSON for newKey failed")
-
-	update = &corepb.Registration{Key: newKeyJSON}
-	res, changed := mergeUpdate(base, update)
-	test.Assert(t, changed, "mergeUpdate didn't change the key with non-empty update")
-	test.AssertByteEquals(t, res.Key, update.Key)
 }
 
 func TestDeactivateAuthorization(t *testing.T) {
@@ -4147,6 +4003,18 @@ func TestGetAuthorization(t *testing.T) {
 	authz, err = ra.GetAuthorization(context.Background(), &rapb.GetAuthorizationRequest{Id: 1})
 	test.AssertNotError(t, err, "should not fail")
 	test.AssertEquals(t, len(authz.Challenges), 0)
+}
+
+type NoUpdateSA struct {
+	sapb.StorageAuthorityClient
+}
+
+func (sa *NoUpdateSA) UpdateRegistrationContact(_ context.Context, _ *sapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	return nil, fmt.Errorf("UpdateRegistrationContact() is mocked to always error")
+}
+
+func (sa *NoUpdateSA) UpdateRegistrationKey(_ context.Context, _ *sapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	return nil, fmt.Errorf("UpdateRegistrationKey() is mocked to always error")
 }
 
 // mockSARecordingRegistration tests UpdateRegistrationContact and UpdateRegistrationKey.

@@ -9,7 +9,6 @@ import "google/protobuf/empty.proto";
 
 service RegistrationAuthority {
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
-  rpc UpdateRegistration(UpdateRegistrationRequest) returns (core.Registration) {}
   rpc UpdateRegistrationContact(UpdateRegistrationContactRequest) returns (core.Registration) {}
   rpc UpdateRegistrationKey(UpdateRegistrationKeyRequest) returns (core.Registration) {}
   rpc PerformValidation(PerformValidationRequest) returns (core.Authorization) {}
@@ -28,11 +27,6 @@ service RegistrationAuthority {
 
 message GenerateOCSPRequest {
   string serial = 1;
-}
-
-message UpdateRegistrationRequest {
-  core.Registration base = 1;
-  core.Registration update = 2;
 }
 
 message UpdateRegistrationContactRequest {
@@ -86,11 +80,9 @@ message NewOrderRequest {
   int64 registrationID = 1;
   repeated string dnsNames = 2;
   string replacesSerial = 3;
-  // TODO(#7512): Remove this field.
-  bool isARIRenewal = 4;
+  reserved 4; // previously isARIRenewal
   string certificateProfileName = 5;
-  // TODO(#7512): Remove this field.
-  bool isRenewal = 6;
+  reserved 6; // previously isRenewal
 }
 
 message GetAuthorizationRequest {
