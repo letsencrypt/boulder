@@ -324,6 +324,9 @@ type certificateRequestEvent struct {
 	// of FQDNs as a previous certificate (from any account) and contains the
 	// notBefore of the most recent such certificate.
 	PreviousCertificateIssued time.Time `json:",omitempty"`
+	// UserAgent is the User-Agent header from the ACME client (provided to the
+	// RA via gRPC metadata).
+	UserAgent string
 }
 
 // certificateRevocationEvent is a struct for holding information that is logged
@@ -847,6 +850,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		OrderID:     req.Order.Id,
 		Requester:   req.Order.RegistrationID,
 		RequestTime: ra.clk.Now(),
+		UserAgent:   web.UserAgent(ctx),
 	}
 	csr, err := ra.validateFinalizeRequest(ctx, req, &logEvent)
 	if err != nil {
