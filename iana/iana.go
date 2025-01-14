@@ -2,6 +2,7 @@ package iana
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	zlintutil "github.com/zmap/zlint/v3/util"
@@ -17,6 +18,10 @@ func ExtractSuffix(name string) (string, error) {
 		return "", fmt.Errorf("Blank name argument passed to ExtractSuffix")
 	}
 
+	if !zlintutil.HasValidTLD(name, time.Now()) {
+		return "", fmt.Errorf("%s has an unknown TLD", name)
+	}
+
 	rule := publicsuffix.DefaultList.Find(name, &publicsuffix.FindOptions{IgnorePrivate: true, DefaultRule: nil})
 	if rule == nil {
 		return "", fmt.Errorf("Domain %s has no IANA TLD", name)
@@ -28,10 +33,6 @@ func ExtractSuffix(name string) (string, error) {
 	// In fact, decompose returns an array of empty strings in this case.
 	if suffix == "" {
 		suffix = name
-	}
-
-	if !zlintutil.IsInTLDMap(suffix) {
-		return "", fmt.Errorf("Domain %s has an unknown TLD %s", name, suffix)
 	}
 
 	return suffix, nil
