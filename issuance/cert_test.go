@@ -22,9 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-var (
-	goodSKID = []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-)
+var goodSKID = []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 
 func defaultProfile() *Profile {
 	p, _ := NewProfile(defaultProfileConfig())
@@ -33,7 +31,7 @@ func defaultProfile() *Profile {
 
 func TestGenerateValidity(t *testing.T) {
 	fc := clock.NewFake()
-	fc.Set(time.Date(2015, time.June, 04, 11, 04, 38, 0, time.UTC))
+	fc.Set(time.Date(2015, time.June, 0o4, 11, 0o4, 38, 0, time.UTC))
 
 	tests := []struct {
 		name      string
@@ -46,15 +44,15 @@ func TestGenerateValidity(t *testing.T) {
 			name:      "normal usage",
 			backdate:  time.Hour, // 90% of one hour is 54 minutes
 			validity:  7 * 24 * time.Hour,
-			notBefore: time.Date(2015, time.June, 04, 10, 10, 38, 0, time.UTC),
+			notBefore: time.Date(2015, time.June, 0o4, 10, 10, 38, 0, time.UTC),
 			notAfter:  time.Date(2015, time.June, 11, 10, 10, 37, 0, time.UTC),
 		},
 		{
 			name:      "zero backdate",
 			backdate:  0,
 			validity:  7 * 24 * time.Hour,
-			notBefore: time.Date(2015, time.June, 04, 11, 04, 38, 0, time.UTC),
-			notAfter:  time.Date(2015, time.June, 11, 11, 04, 37, 0, time.UTC),
+			notBefore: time.Date(2015, time.June, 0o4, 11, 0o4, 38, 0, time.UTC),
+			notAfter:  time.Date(2015, time.June, 11, 11, 0o4, 37, 0, time.UTC),
 		},
 	}
 
@@ -315,6 +313,9 @@ func TestGenerateTemplate(t *testing.T) {
 
 	actual := issuer.generateTemplate()
 
+	x509OID, err := x509.OIDFromInts([]uint64{2, 23, 140, 1, 2, 1})
+	test.AssertNotError(t, err, "failed to create x509.OID")
+
 	expected := &x509.Certificate{
 		BasicConstraintsValid: true,
 		SignatureAlgorithm:    x509.SHA256WithRSA,
@@ -322,6 +323,7 @@ func TestGenerateTemplate(t *testing.T) {
 		OCSPServer:            []string{"http://ocsp"},
 		CRLDistributionPoints: nil,
 		PolicyIdentifiers:     []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
+		Policies:              []x509.OID{x509OID},
 	}
 
 	test.AssertDeepEquals(t, actual, expected)
