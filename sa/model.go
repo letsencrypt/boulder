@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net"
 	"net/url"
 	"slices"
 	"strconv"
@@ -274,18 +273,11 @@ type issuedNameModel struct {
 
 // regModel is the description of a core.Registration in the database before
 type regModel struct {
-	ID        int64  `db:"id"`
-	Key       []byte `db:"jwk"`
-	KeySHA256 string `db:"jwk_sha256"`
-	Contact   string `db:"contact"`
-	Agreement string `db:"agreement"`
-	// InitialIP is stored as sixteen binary bytes, regardless of whether it
-	// represents a v4 or v6 IP address.
-	//
-	// Deprecated: This field is no longer used and will be removed from the
-	// database schema in a future release. Although deprecated, this column
-	// remains NOT NULL in the database, so a value must still be provided.
-	InitialIP []byte    `db:"initialIp"`
+	ID        int64     `db:"id"`
+	Key       []byte    `db:"jwk"`
+	KeySHA256 string    `db:"jwk_sha256"`
+	Contact   string    `db:"contact"`
+	Agreement string    `db:"agreement"`
 	CreatedAt time.Time `db:"createdAt"`
 	LockCol   int64
 	Status    string `db:"status"`
@@ -328,9 +320,6 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		KeySHA256: sha,
 		Contact:   string(jsonContact),
 		Agreement: reg.Agreement,
-		// Although deprecated, this column remains NOT NULL in the database, so
-		// a value must still be provided.
-		InitialIP: net.ParseIP("0.0.0.0").To16(),
 		CreatedAt: createdAt,
 		Status:    reg.Status,
 	}, nil

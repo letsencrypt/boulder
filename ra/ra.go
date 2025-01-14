@@ -324,6 +324,9 @@ type certificateRequestEvent struct {
 	// of FQDNs as a previous certificate (from any account) and contains the
 	// notBefore of the most recent such certificate.
 	PreviousCertificateIssued time.Time `json:",omitempty"`
+	// UserAgent is the User-Agent header from the ACME client (provided to the
+	// RA via gRPC metadata).
+	UserAgent string
 }
 
 // certificateRevocationEvent is a struct for holding information that is logged
@@ -842,6 +845,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		OrderID:     req.Order.Id,
 		Requester:   req.Order.RegistrationID,
 		RequestTime: ra.clk.Now(),
+		UserAgent:   web.UserAgent(ctx),
 	}
 	csr, err := ra.validateFinalizeRequest(ctx, req, &logEvent)
 	if err != nil {
@@ -1846,7 +1850,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 
 // AdministrativelyRevokeCertificate terminates trust in the certificate
 // provided and does not require the registration ID of the requester since this
-// method is only called from the admin-revoker tool. It trusts that the admin
+// method is only called from the `admin` tool. It trusts that the admin
 // is doing the right thing, so if the requested reason is keyCompromise, it
 // blocks the key from future issuance even though compromise has not been
 // demonstrated here. It purges the certificate from the Akamai cache, and

@@ -422,7 +422,9 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 			}
 		}
 		// Check the cert has the correct key usage extensions
-		if !slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth, zX509.ExtKeyUsageClientAuth}) {
+		serverAndClient := slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth, zX509.ExtKeyUsageClientAuth})
+		serverOnly := slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth})
+		if !(serverAndClient || serverOnly) {
 			problems = append(problems, "Certificate has incorrect key usage extensions")
 		}
 
