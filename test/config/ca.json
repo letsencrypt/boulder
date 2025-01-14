@@ -44,18 +44,35 @@
 			"hostOverride": "sa.boulder"
 		},
 		"issuance": {
-			"profile": {
-				"allowMustStaple": true,
-				"allowCTPoison": true,
-				"allowSCTList": true,
-				"allowCommonName": true,
-				"policies": [
-					{
-						"oid": "2.23.140.1.2.1"
-					}
-				],
-				"maxValidityPeriod": "7776000s",
-				"maxValidityBackdate": "1h5m"
+			"defaultCertificateProfileName": "legacy",
+			"certProfiles": {
+				"legacy": {
+					"allowMustStaple": true,
+					"maxValidityPeriod": "7776000s",
+					"maxValidityBackdate": "1h5m",
+					"lintConfig": "test/config-next/zlint.toml",
+					"ignoredLints": [
+						"w_subject_common_name_included",
+						"w_ext_subject_key_identifier_not_recommended_subscriber"
+					]
+				},
+				"modern": {
+					"allowMustStaple": true,
+					"omitCommonName": true,
+					"omitKeyEncipherment": true,
+					"omitClientAuth": true,
+					"omitSKID": true,
+					"maxValidityPeriod": "583200s",
+					"maxValidityBackdate": "1h5m",
+					"lintConfig": "test/config-next/zlint.toml",
+					"ignoredLints": [
+						"w_ext_subject_key_identifier_missing_sub_cert"
+					]
+				}
+			},
+			"crlProfile": {
+				"validityInterval": "216h",
+				"maxBackdate": "1h5m"
 			},
 			"issuers": [
 				{
@@ -124,19 +141,11 @@
 						"numSessions": 2
 					}
 				}
-			],
-			"lintConfig": "test/config/zlint.toml",
-			"ignoredLints": [
-				"w_subject_common_name_included",
-				"w_ext_subject_key_identifier_not_recommended_subscriber"
 			]
 		},
-		"expiry": "7776000s",
-		"backdate": "1h",
 		"serialPrefix": 127,
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
-		"lifespanCRL": "216h",
 		"goodkey": {
 			"fermatRounds": 100
 		},
