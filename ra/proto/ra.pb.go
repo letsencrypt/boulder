@@ -479,11 +479,13 @@ type AdministrativelyRevokeCertificateRequest struct {
 	// certificate in question. In this case, the keyCompromise reason cannot be
 	// specified, because the key cannot be blocked.
 	Malformed bool `protobuf:"varint,6,opt,name=malformed,proto3" json:"malformed,omitempty"`
-	// The CRL shard to store the revocation in. This must match
-	// the CRL shard in the certificate's crlDistributionPoint,
-	// if present.
-	// This is only valid when `malformed` is true; otherwise the shard is
-	// determined by parsing the certificate.
+	// The CRL shard to store the revocation in.
+	//
+	// This is used when revoking malformed certificates, to allow human judgement
+	// in setting the CRL shard instead of automatically determining it by parsing
+	// the certificate.
+	//
+	// Passing a nonzero crlShard with malformed=false returns error.
 	CrlShard int64 `protobuf:"varint,7,opt,name=crlShard,proto3" json:"crlShard,omitempty"`
 }
 
