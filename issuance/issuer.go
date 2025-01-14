@@ -164,6 +164,16 @@ type IssuerConfig struct {
 	OCSPURL    string `validate:"required,url"`
 	CRLURLBase string `validate:"omitempty,url,startswith=http://,endswith=/"`
 
+	// Number of CRL shards.
+	// If this is zero, no CRLDP will be added to issued certs.
+	// If this is nonzero, enable explicit sharding: a CRLDP based on CRLURLBase
+	// will be added to all issued certs.
+	// A shard will be selected between 1 and CRLShards, inclusive.
+	// Enabling explicit sharding enables writing to the `revokedCertificates`
+	// table at revocation time, which in turn allows the the crl-updater to
+	// find certificates by their explicit shard.
+	CRLShards int
+
 	Location IssuerLoc
 }
 
@@ -204,8 +214,10 @@ type Issuer struct {
 	// certificates.
 	ocspURL string
 	// Used to set the Issuing Distribution Point extension in issued CRLs
-	// *and* (eventually) the CRL Distribution Point extension in issued certs.
+	// and the CRL Distribution Point extension in issued certs.
 	crlURLBase string
+
+	crlShards int
 
 	clk clock.Clock
 }
@@ -276,6 +288,7 @@ func newIssuer(config IssuerConfig, cert *Certificate, signer crypto.Signer, clk
 		issuerURL:  config.IssuerURL,
 		ocspURL:    config.OCSPURL,
 		crlURLBase: config.CRLURLBase,
+		crlShards:  config.CRLShards,
 		clk:        clk,
 	}
 	return i, nil
