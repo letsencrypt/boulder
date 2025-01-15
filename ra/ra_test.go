@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"math/big"
 	mrand "math/rand/v2"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1389,8 +1388,9 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 	// Create an initial order with regA and names
 	names := []string{"zombo.com", "welcome.to.zombo.com"}
 	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		DnsNames:       names,
+		RegistrationID:         Registration.Id,
+		DnsNames:               names,
+		CertificateProfileName: "test",
 	}
 	firstOrder, err := ra.NewOrder(context.Background(), orderReq)
 	test.AssertNotError(t, err, "Adding an initial order for regA failed")
@@ -1406,12 +1406,14 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 		Name           string
 		RegistrationID int64
 		DnsNames       []string
+		Profile        string
 		ExpectReuse    bool
 	}{
 		{
 			Name:           "Duplicate order, same regID",
 			RegistrationID: Registration.Id,
 			DnsNames:       names,
+			Profile:        "test",
 			// We expect reuse since the order matches firstOrder
 			ExpectReuse: true,
 		},
@@ -1419,6 +1421,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 			Name:           "Subset of order names, same regID",
 			RegistrationID: Registration.Id,
 			DnsNames:       names[:1],
+			Profile:        "test",
 			// We do not expect reuse because the order names don't match firstOrder
 			ExpectReuse: false,
 		},
@@ -1426,13 +1429,30 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 			Name:           "Superset of order names, same regID",
 			RegistrationID: Registration.Id,
 			DnsNames:       append(names, "blog.zombo.com"),
+			Profile:        "test",
 			// We do not expect reuse because the order names don't match firstOrder
+			ExpectReuse: false,
+		},
+		{
+			Name:           "Missing profile, same regID",
+			RegistrationID: Registration.Id,
+			DnsNames:       append(names, "blog.zombo.com"),
+			// We do not expect reuse because the profile is missing
+			ExpectReuse: false,
+		},
+		{
+			Name:           "Missing profile, same regID",
+			RegistrationID: Registration.Id,
+			DnsNames:       append(names, "blog.zombo.com"),
+			Profile:        "different",
+			// We do not expect reuse because a different profile is specified
 			ExpectReuse: false,
 		},
 		{
 			Name:           "Duplicate order, different regID",
 			RegistrationID: secondReg.Id,
 			DnsNames:       names,
+			Profile:        "test",
 			// We do not expect reuse because the order regID differs from firstOrder
 			ExpectReuse: false,
 		},
@@ -1443,8 +1463,9 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			// Add the order for the test request
 			order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-				RegistrationID: tc.RegistrationID,
-				DnsNames:       tc.DnsNames,
+				RegistrationID:         tc.RegistrationID,
+				DnsNames:               tc.DnsNames,
+				CertificateProfileName: tc.Profile,
 			})
 			test.AssertNotError(t, err, "NewOrder returned an unexpected error")
 			test.AssertNotNil(t, order.Id, "NewOrder returned an order with a nil Id")
@@ -1460,50 +1481,6 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestNewOrder_OrderReuse_Profile tests that order reuse respects profiles.
-// This is not simply a test case in TestNewOrder_OrderReuse because it relies
-// on feature-flag gated behavior. It should be unified with that function when
-// the feature flag is removed.
-func TestNewOrder_OrderReuse_Profile(t *testing.T) {
-	// TODO(#7324): Integrate these cases into TestNewOrder_OrderReuse.
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		t.Skip("this test requires the db to have the certificateProfileName column in the orders table")
-	}
-
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	features.Set(features.Config{MultipleCertificateProfiles: true})
-	defer features.Reset()
-
-	// Create an initial order with a profile name.
-	extant, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID:         Registration.Id,
-		CertificateProfileName: "test",
-		DnsNames:               []string{"a.com", "b.com"},
-	})
-	test.AssertNotError(t, err, "creating test order")
-
-	// Creating an identical order should reuse the first one.
-	new, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID:         Registration.Id,
-		CertificateProfileName: "test",
-		DnsNames:               []string{"a.com", "b.com"},
-	})
-	test.AssertNotError(t, err, "creating test order")
-	test.AssertEquals(t, new.Id, extant.Id)
-
-	// Creating a new order for the same names but a different profile should not
-	// reuse the first one.
-	new, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID:         Registration.Id,
-		CertificateProfileName: "test2",
-		DnsNames:               []string{"a.com", "b.com"},
-	})
-	test.AssertNotError(t, err, "creating test order")
-	test.AssertNotEquals(t, new.Id, extant.Id)
 }
 
 // TestNewOrder_OrderReuse_Expired tests that expired orders are not reused.

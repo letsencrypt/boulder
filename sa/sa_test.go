@@ -18,7 +18,6 @@ import (
 	"math/bits"
 	mrand "math/rand/v2"
 	"net"
-	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -1175,7 +1174,7 @@ func TestFinalizeOrder(t *testing.T) {
 	test.AssertEquals(t, updatedOrder.Status, string(core.StatusValid))
 }
 
-func TestOrderWithOrderModelv1(t *testing.T) {
+func TestOrder(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1231,16 +1230,9 @@ func TestOrderWithOrderModelv1(t *testing.T) {
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
 }
 
-func TestOrderWithOrderModelv2(t *testing.T) {
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		t.Skip("Test requires 20240304000000_CertificateProfiles.sql migration to have run")
-	}
-
+func TestOrderWithProfile(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
-
-	features.Set(features.Config{MultipleCertificateProfiles: true})
-	defer features.Reset()
 
 	reg := createWorkingRegistration(t, sa)
 	authzExpires := fc.Now().Add(time.Hour)
@@ -1295,130 +1287,6 @@ func TestOrderWithOrderModelv2(t *testing.T) {
 	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "sa.GetOrder failed")
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
-
-	//
-	// Test that an order without a certificate profile name, but with the
-	// MultipleCertificateProfiles feature flag enabled works as expected.
-	//
-
-	inputOrderNoName := &corepb.Order{
-		RegistrationID:   reg.Id,
-		Expires:          timestamppb.New(expires),
-		DnsNames:         []string{"example.com"},
-		V2Authorizations: []int64{authzID},
-	}
-
-	// Create the order
-	orderNoName, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:         inputOrderNoName.RegistrationID,
-			Expires:                inputOrderNoName.Expires,
-			DnsNames:               inputOrderNoName.DnsNames,
-			V2Authorizations:       inputOrderNoName.V2Authorizations,
-			CertificateProfileName: inputOrderNoName.CertificateProfileName,
-		},
-	})
-	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
-
-	// The Order from GetOrder should match the following expected order
-	created = sa.clk.Now()
-	expectedOrderNoName := &corepb.Order{
-		// The registration ID, authorizations, expiry, and names should match the
-		// input to NewOrderAndAuthzs
-		RegistrationID:   inputOrderNoName.RegistrationID,
-		V2Authorizations: inputOrderNoName.V2Authorizations,
-		DnsNames:         inputOrderNoName.DnsNames,
-		Expires:          inputOrderNoName.Expires,
-		// The ID should have been set to 2 by the SA
-		Id: 2,
-		// The status should be pending
-		Status: string(core.StatusPending),
-		// The serial should be empty since this is a pending order
-		CertificateSerial: "",
-		// We should not be processing it
-		BeganProcessing: false,
-		// The created timestamp should have been set to the current time
-		Created: timestamppb.New(created),
-	}
-
-	// Fetch the order by its ID and make sure it matches the expected
-	storedOrderNoName, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: orderNoName.Id})
-	test.AssertNotError(t, err, "sa.GetOrder failed")
-	test.AssertDeepEquals(t, storedOrderNoName, expectedOrderNoName)
-}
-
-func TestOrderModelMigration(t *testing.T) {
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		t.Skip("Test requires 20240304000000_CertificateProfiles.sql migration to have run")
-	}
-
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
-
-	reg := createWorkingRegistration(t, sa)
-
-	// Create an order using the v1 model
-	authzID := createPendingAuthorization(t, sa, "example.com", fc.Now().Add(time.Hour))
-	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:   reg.Id,
-			Expires:          timestamppb.New(fc.Now().Add(2 * time.Hour)),
-			DnsNames:         []string{"example.com"},
-			V2Authorizations: []int64{authzID},
-		},
-	})
-	if err != nil {
-		t.Fatalf("failed to insert order using orderModelv1: %s", err)
-	}
-
-	// Retrieve that order using the v2 model
-	features.Set(features.Config{MultipleCertificateProfiles: true})
-	defer features.Reset()
-	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
-	if err != nil {
-		t.Fatalf("failed to retrieve order using orderModelv2: %s", err)
-	}
-	if storedOrder.CertificateProfileName != "" {
-		t.Errorf("order inserted with v1 schema should have empty profilename, instead got %q", storedOrder.CertificateProfileName)
-	}
-}
-
-func TestOrderModelMigrationRollback(t *testing.T) {
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		t.Skip("Test requires 20240304000000_CertificateProfiles.sql migration to have run")
-	}
-
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
-
-	reg := createWorkingRegistration(t, sa)
-
-	// Create an order using the v2 model
-	features.Set(features.Config{MultipleCertificateProfiles: true})
-	defer features.Reset()
-	authzID := createPendingAuthorization(t, sa, "example.com", fc.Now().Add(time.Hour))
-	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:         reg.Id,
-			Expires:                timestamppb.New(fc.Now().Add(2 * time.Hour)),
-			DnsNames:               []string{"example.com"},
-			V2Authorizations:       []int64{authzID},
-			CertificateProfileName: "asdf",
-		},
-	})
-	if err != nil {
-		t.Fatalf("failed to insert order using orderModelv2: %s", err)
-	}
-
-	// Retrieve that order using the v1 model
-	features.Reset()
-	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
-	if err != nil {
-		t.Fatalf("failed to retrieve order using orderModelv1: %s", err)
-	}
-	if storedOrder.CertificateProfileName != "" {
-		t.Errorf("order retrieved with v1 schema should have empty profilename, instead got %q", storedOrder.CertificateProfileName)
-	}
 }
 
 // TestGetAuthorization2NoRows ensures that the GetAuthorization2 function returns
