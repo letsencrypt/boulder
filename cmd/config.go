@@ -577,7 +577,10 @@ func (hc *HMACKeyConfig) Load() ([]byte, error) {
 	}
 
 	if len(decoded) != 32 {
-		return nil, errors.New("validating HMAC key, must be exactly 256 bits (32 bytes) after decoding")
+		return nil, fmt.Errorf(
+			"validating HMAC key, must be exactly 256 bits (32 bytes) after decoding, got %d",
+			len(decoded),
+		)
 	}
 	return decoded, nil
 }
