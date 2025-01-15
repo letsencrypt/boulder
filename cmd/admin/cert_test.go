@@ -269,6 +269,48 @@ func TestRevokeSerials(t *testing.T) {
 	assertRequestsContain(mra.revocationRequests, 0, false)
 }
 
+func TestRevokeMalformed(t *testing.T) {
+	t.Parallel()
+	mra := mockRARecordingRevocations{}
+	log := blog.NewMock()
+	a := &admin{
+		rac:    &mra,
+		log:    log,
+		dryRun: false,
+	}
+
+	s := subcommandRevokeCert{
+		crlShard: 623,
+	}
+	serial := "0379c3dfdd518be45948f2dbfa6ea3e9b209"
+	err := s.revokeMalformed(context.Background(), a, []string{serial}, 1)
+	if err != nil {
+		t.Errorf("revokedMalformed with crlShard 623: want success, got %s", err)
+	}
+	if len(mra.revocationRequests) != 1 {
+		t.Errorf("revokeMalformed: want 1 revocation request to SA, got %v", mra.revocationRequests)
+	}
+	if mra.revocationRequests[0].Serial != serial {
+		t.Errorf("revokeMalformed: want %s to be revoked, got %s", serial, mra.revocationRequests[0])
+	}
+
+	s = subcommandRevokeCert{
+		crlShard: 0,
+	}
+	err = s.revokeMalformed(context.Background(), a, []string{"038c3f6388afb7695dd4d6bbe3d264f1e4e2"}, 1)
+	if err == nil {
+		t.Errorf("revokedMalformed with crlShard 0: want error, got none")
+	}
+
+	s = subcommandRevokeCert{
+		crlShard: 623,
+	}
+	err = s.revokeMalformed(context.Background(), a, []string{"038c3f6388afb7695dd4d6bbe3d264f1e4e2", "28a94f966eae14e525777188512ddf5a0a3b"}, 1)
+	if err == nil {
+		t.Errorf("revokedMalformed with multiple serials: want error, got none")
+	}
+}
+
 func TestCleanSerials(t *testing.T) {
 	input := []string{
 		"2a:18:59:2b:7f:4b:f5:96:fb:1a:1d:f1:35:56:7a:cd:82:5a",
