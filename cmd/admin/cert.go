@@ -331,7 +331,7 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 						AdminName:    u.Username,
 						SkipBlockKey: skipBlockKey,
 						// This is a well-formed certificate so send CrlShard 0
-						// to let the RA figure out the right shard from the cer.
+						// to let the RA figure out the right shard from the cert.
 						Malformed: false,
 						CrlShard:  0,
 					},

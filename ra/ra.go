@@ -1872,6 +1872,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 //
 // Assumes the shard number is represented in the URL as an integer that
 // occurs in the last path component, optionally followed by ".crl".
+//
+// Note: This assumes (a) the CA is generating well-formed, correct
+// CRLDistributionPoints and (b) an earlier component has verified the signature
+// on this certificate comes from one of our issuers.
 func crlShard(cert *x509.Certificate) (int64, error) {
 	if len(cert.CRLDistributionPoints) == 0 {
 		return 0, nil
