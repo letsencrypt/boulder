@@ -136,3 +136,58 @@ func TestTLSConfigLoad(t *testing.T) {
 		})
 	}
 }
+
+func TestHMACKeyConfigLoad(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		content     string
+		expectedErr bool
+	}{
+		{
+			name:        "Valid key",
+			content:     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			expectedErr: false,
+		},
+		{
+			name:        "Empty file",
+			content:     "",
+			expectedErr: true,
+		},
+		{
+			name:        "Just under 256-bit",
+			content:     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab",
+			expectedErr: true,
+		},
+		{
+			name:        "Just over 256-bit",
+			content:     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef01",
+			expectedErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tempKeyFile, err := os.CreateTemp("", "*")
+			if err != nil {
+				t.Fatalf("failed to create temp file: %v", err)
+			}
+			defer os.Remove(tempKeyFile.Name())
+
+			_, err = tempKeyFile.WriteString(tt.content)
+			if err != nil {
+				t.Fatalf("failed to write to temp file: %v", err)
+			}
+			tempKeyFile.Close()
+
+			hmacKeyConfig := HMACKeyConfig{KeyFile: tempKeyFile.Name()}
+			_, err = hmacKeyConfig.Load()
+			if (err != nil) != tt.expectedErr {
+				t.Errorf("expected error: %v, got: %v", tt.expectedErr, err)
+			}
+		})
+	}
+}
