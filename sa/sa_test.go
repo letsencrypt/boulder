@@ -1043,6 +1043,55 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	test.AssertBoxedNil(t, am.ValidationRecord, "am.ValidationRecord should be nil")
 }
 
+func TestNewOrderAndAuthzs_Profile(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := createWorkingRegistration(t, sa)
+	expires := fc.Now().Add(time.Hour)
+
+	// Create and order and authz while specifying a profile.
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:         reg.Id,
+			Expires:                timestamppb.New(expires),
+			DnsNames:               []string{"example.com"},
+			CertificateProfileName: "test",
+		},
+		NewAuthzs: []*sapb.NewAuthzRequest{
+			{
+				Identifier:     &corepb.Identifier{Type: "dns", Value: "example.com"},
+				RegistrationID: reg.Id,
+				Expires:        timestamppb.New(expires),
+				ChallengeTypes: []string{string(core.ChallengeTypeHTTP01)},
+				Token:          core.NewToken(),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to insert order and authzs: %s", err)
+	}
+
+	// Retrieve the order and check that the profile is correct.
+	gotOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	if err != nil {
+		t.Fatalf("failed to retrieve inserted order: %s", err)
+	}
+	if gotOrder.CertificateProfileName != "test" {
+		t.Errorf("order retrieved with wrong profile: got %q, expected %q", gotOrder.CertificateProfileName, "test")
+	}
+
+	// Retrieve the authz and check that the profile is correct.
+	// Safely get the authz for the order we created above.
+	gotAuthz, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: order.V2Authorizations[0]})
+	if err != nil {
+		t.Fatalf("failed to retrieve inserted authz: %s", err)
+	}
+	if gotAuthz.CertificateProfileName != "test" {
+		t.Errorf("authz retrieved with wrong profile: got %q, expected %q", gotAuthz.CertificateProfileName, "test")
+	}
+}
+
 func BenchmarkNewOrderAndAuthzs(b *testing.B) {
 	for _, flag := range []bool{false, true} {
 		for _, numIdents := range []int{1, 2, 5, 10, 20, 50, 100} {
@@ -1174,7 +1223,9 @@ func TestFinalizeOrder(t *testing.T) {
 	test.AssertEquals(t, updatedOrder.Status, string(core.StatusValid))
 }
 
-func TestOrder(t *testing.T) {
+// TestGetOrder tests that round-tripping a simple order through
+// NewOrderAndAuthzs and GetOrder has the expected result.
+func TestGetOrder(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1230,7 +1281,9 @@ func TestOrder(t *testing.T) {
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
 }
 
-func TestOrderWithProfile(t *testing.T) {
+// TestGetOrderWithProfile tests that round-tripping a simple order through
+// NewOrderAndAuthzs and GetOrder has the expected result.
+func TestGetOrderWithProfile(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
