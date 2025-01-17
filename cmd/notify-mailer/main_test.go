@@ -55,7 +55,9 @@ func setupMakeRecipientList(t *testing.T, contents string) string {
 func TestReadRecipientList(t *testing.T) {
 	contents := `id, domainName, date
 10,example.com,2018-11-21
-23,example.net,2018-11-22`
+23,example.net,2018-11-22
+66,"example.net
+example.com",2025-01-17`
 
 	entryFile := setupMakeRecipientList(t, contents)
 	defer os.Remove(entryFile)
@@ -66,6 +68,7 @@ func TestReadRecipientList(t *testing.T) {
 	expected := []recipient{
 		{id: 10, Data: map[string]string{"date": "2018-11-21", "domainName": "example.com"}},
 		{id: 23, Data: map[string]string{"date": "2018-11-22", "domainName": "example.net"}},
+		{id: 66, Data: map[string]string{"date": "2025-01-17", "domainName": "example.net example.com"}},
 	}
 	test.AssertDeepEquals(t, list, expected)
 
