@@ -8,16 +8,23 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/hex"
+	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/eggsampler/acme/v3"
 	"golang.org/x/crypto/ocsp"
 
+	"github.com/letsencrypt/boulder/crl/idp"
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 )
@@ -31,6 +38,120 @@ func isPrecert(cert *x509.Certificate) bool {
 		}
 	}
 	return false
+}
+
+// getALLCRLs fetches and parses each certificate for each configured CA.
+// Returns a map from issuer SKID (hex) to a list of that issuer's CRLs.
+func getAllCRLs(t *testing.T) map[string][]*x509.RevocationList {
+	b, err := os.ReadFile(path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "ca.json"))
+	if err != nil {
+		t.Fatalf("reading CA config: %s", err)
+	}
+
+	var conf struct {
+		CA struct {
+			Issuance struct {
+				Issuers []struct {
+					CRLURLBase string
+					CRLShards  int
+					Location   struct {
+						CertFile string
+					}
+				}
+			}
+		}
+	}
+
+	err = json.Unmarshal(b, &conf)
+	if err != nil {
+		t.Fatalf("unmarshaling CA config: %s", err)
+	}
+
+	ret := make(map[string][]*x509.RevocationList)
+
+	for _, issuer := range conf.CA.Issuance.Issuers {
+		issuerPEMBytes, err := os.ReadFile(issuer.Location.CertFile)
+		if err != nil {
+			t.Fatalf("reading CRL issuer: %s", err)
+		}
+
+		block, _ := pem.Decode(issuerPEMBytes)
+		issuerCert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			t.Fatalf("parsing CRL issuer: %s", err)
+		}
+
+		issuerSKID := hex.EncodeToString(issuerCert.SubjectKeyId)
+
+		// 10 is the number of shards configured in test/config*/crl-updater.json
+		for i := range 10 {
+			crlURL := fmt.Sprintf("%s%d.crl", issuer.CRLURLBase, i+1)
+			resp, err := http.Get(crlURL)
+			if err != nil {
+				t.Fatalf("getting CRL from %s: %s", crlURL, err)
+			}
+			// When there's nothing in a shard, I guess it doesn't get created?
+			if resp.StatusCode == 404 {
+				continue
+			}
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("reading CRL from %s: %s", crlURL, err)
+			}
+
+			list, err := x509.ParseRevocationList(body)
+			if err != nil {
+				t.Fatalf("parsing CRL from %s: %s (bytes: %x)", crlURL, err, string(body))
+			}
+
+			err = list.CheckSignatureFrom(issuerCert)
+			if err != nil {
+				t.Errorf("checking CRL signature on %s from %s: %s",
+					crlURL, issuerCert.Subject, err)
+			}
+
+			idpURIs, err := idp.GetIDPURIs(list.Extensions)
+			if err != nil {
+				t.Fatalf("getting IDP URIs: %s", err)
+			}
+			if len(idpURIs) != 1 {
+				t.Errorf("CRL at %s: expected 1 IDP URI, got %s", crlURL, idpURIs)
+			}
+			if idpURIs[0] != crlURL {
+				t.Errorf("fetched CRL from %s, got IDP of %s (should be same)", crlURL, idpURIs[0])
+			}
+
+			ret[issuerSKID] = append(ret[issuerSKID], list)
+		}
+	}
+	return ret
+}
+
+func checkRevoked(t *testing.T, revocations map[string][]*x509.RevocationList, cert *x509.Certificate, reason int) {
+	akid := hex.EncodeToString(cert.AuthorityKeyId)
+	if len(revocations[akid]) == 0 {
+		t.Errorf("no CRLs found for authorityKeyID %s", akid)
+	}
+	var matches []x509.RevocationListEntry
+	var count int
+	for _, list := range revocations[akid] {
+		for _, entry := range list.RevokedCertificateEntries {
+			count++
+			if entry.SerialNumber.Cmp(cert.SerialNumber) == 0 {
+				matches = append(matches, entry)
+			}
+		}
+	}
+	if len(matches) == 0 {
+		t.Errorf("didn't find matching entry on combined CRLs of length %d", count)
+
+	}
+	for _, match := range matches {
+		if match.ReasonCode != reason {
+			t.Errorf("revoked certificate %x: got reason %d, want %d", cert.SerialNumber, match.ReasonCode, reason)
+		}
+		return
+	}
 }
 
 // TestRevocation tests that a certificate can be revoked using all of the
@@ -79,9 +200,21 @@ func TestRevocation(t *testing.T) {
 		}
 	}
 
+	type expectedRevocation struct {
+		tc     testCase
+		cert   *x509.Certificate
+		reason int
+	}
+
+	var wg sync.WaitGroup
+	var once sync.Once
+	var revocations map[string][]*x509.RevocationList
+
 	for _, tc := range testCases {
 		name := fmt.Sprintf("%s_%d_%s", tc.kind, tc.reason, tc.method)
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			wg.Add(1)
 			issueClient, err := makeClient()
 			test.AssertNotError(t, err, "creating acme client")
 
@@ -176,17 +309,31 @@ func TestRevocation(t *testing.T) {
 			// names, the reason should be overwritten to CessationOfOperation (5),
 			// and if the request was made by key, then the reason should be set to
 			// KeyCompromise (1).
-			ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked)
+			var expectedReason int
 			switch tc.method {
 			case byAuth:
-				ocspConfig = ocspConfig.WithExpectReason(ocsp.CessationOfOperation)
+				expectedReason = ocsp.CessationOfOperation
 			case byKey:
-				ocspConfig = ocspConfig.WithExpectReason(ocsp.KeyCompromise)
+				expectedReason = ocsp.KeyCompromise
 			default:
-				ocspConfig = ocspConfig.WithExpectReason(tc.reason)
+				expectedReason = tc.reason
 			}
-			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocsp_helper.
+				DefaultConfig.
+				WithExpectStatus(ocsp.Revoked).
+				WithExpectReason(expectedReason))
 			test.AssertNotError(t, err, "requesting OCSP for revoked cert")
+
+			// For CRLs, wait till everyone's done before running the updater and
+			// fetching all the CRLs.
+			wg.Done()
+			wg.Wait()
+			once.Do(func() {
+				runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
+				revocations = getAllCRLs(t)
+			})
+
+			checkRevoked(t, revocations, cert, expectedReason)
 		})
 	}
 }
