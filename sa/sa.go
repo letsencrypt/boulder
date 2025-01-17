@@ -521,7 +521,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		newAuthzIDs := make([]int64, 0)
 		if features.Get().InsertAuthzsIndividually {
 			for _, authz := range req.NewAuthzs {
-				am, err := newAuthzReqToModel(authz)
+				am, err := newAuthzReqToModel(authz, req.NewOrder.CertificateProfileName)
 				if err != nil {
 					return nil, err
 				}
@@ -538,7 +538,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 					return nil, err
 				}
 				for _, authz := range req.NewAuthzs {
-					am, err := newAuthzReqToModel(authz)
+					am, err := newAuthzReqToModel(authz, req.NewOrder.CertificateProfileName)
 					if err != nil {
 						return nil, err
 					}
@@ -547,6 +547,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 						am.IdentifierType,
 						am.IdentifierValue,
 						am.RegistrationID,
+						am.CertificateProfileName,
 						statusToUint[core.StatusPending],
 						am.Expires,
 						am.Challenges,
