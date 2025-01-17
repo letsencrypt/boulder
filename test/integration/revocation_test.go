@@ -206,7 +206,7 @@ func TestRevocation(t *testing.T) {
 		reason int
 	}
 
-	var wg sync.WaitGroup
+	wg := new(sync.WaitGroup)
 	var once sync.Once
 	var revocations map[string][]*x509.RevocationList
 
