@@ -206,15 +206,15 @@ func TestRevocation(t *testing.T) {
 		reason int
 	}
 
-	wg := new(sync.WaitGroup)
+	var wg sync.WaitGroup
 	var once sync.Once
 	var revocations map[string][]*x509.RevocationList
 
 	for _, tc := range testCases {
 		name := fmt.Sprintf("%s_%d_%s", tc.kind, tc.reason, tc.method)
+		wg.Add(1)
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			wg.Add(1)
 			issueClient, err := makeClient()
 			test.AssertNotError(t, err, "creating acme client")
 
