@@ -291,7 +291,7 @@ func TestCheckCert(t *testing.T) {
 				delete(problemsMap, p)
 			}
 			for k := range problemsMap {
-				t.Errorf("Expected problem but didn't find it: '%s'.", k)
+				t.Errorf("Expected problem but didn't find '%s' in problems: %q.", k, problems)
 			}
 
 			// Same settings as above, but the stored serial number in the DB is invalid.

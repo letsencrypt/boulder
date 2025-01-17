@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/certificate-transparency-go/loglist3"
+
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -56,24 +58,24 @@ func TestSubset(t *testing.T) {
 func TestForPurpose(t *testing.T) {
 	input := List{
 		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: usable},
-			"ID A2": Log{Name: "Log A2", State: rejected},
+			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
+			"ID A2": Log{Name: "Log A2", State: loglist3.RejectedLogStatus},
 		},
 		"Operator B": {
-			"ID B1": Log{Name: "Log B1", State: usable},
-			"ID B2": Log{Name: "Log B2", State: retired},
+			"ID B1": Log{Name: "Log B1", State: loglist3.UsableLogStatus},
+			"ID B2": Log{Name: "Log B2", State: loglist3.RetiredLogStatus},
 		},
 		"Operator C": {
-			"ID C1": Log{Name: "Log C1", State: pending},
-			"ID C2": Log{Name: "Log C2", State: readonly},
+			"ID C1": Log{Name: "Log C1", State: loglist3.PendingLogStatus},
+			"ID C2": Log{Name: "Log C2", State: loglist3.ReadOnlyLogStatus},
 		},
 	}
 	expected := List{
 		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: usable},
+			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
 		},
 		"Operator B": {
-			"ID B1": Log{Name: "Log B1", State: usable},
+			"ID B1": Log{Name: "Log B1", State: loglist3.UsableLogStatus},
 		},
 	}
 	actual, err := input.forPurpose(Issuance)
@@ -82,16 +84,16 @@ func TestForPurpose(t *testing.T) {
 
 	input = List{
 		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: usable},
-			"ID A2": Log{Name: "Log A2", State: rejected},
+			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
+			"ID A2": Log{Name: "Log A2", State: loglist3.RejectedLogStatus},
 		},
 		"Operator B": {
-			"ID B1": Log{Name: "Log B1", State: qualified},
-			"ID B2": Log{Name: "Log B2", State: retired},
+			"ID B1": Log{Name: "Log B1", State: loglist3.QualifiedLogStatus},
+			"ID B2": Log{Name: "Log B2", State: loglist3.RetiredLogStatus},
 		},
 		"Operator C": {
-			"ID C1": Log{Name: "Log C1", State: pending},
-			"ID C2": Log{Name: "Log C2", State: readonly},
+			"ID C1": Log{Name: "Log C1", State: loglist3.PendingLogStatus},
+			"ID C2": Log{Name: "Log C2", State: loglist3.ReadOnlyLogStatus},
 		},
 	}
 	_, err = input.forPurpose(Issuance)
@@ -99,10 +101,10 @@ func TestForPurpose(t *testing.T) {
 
 	expected = List{
 		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: usable},
+			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
 		},
 		"Operator C": {
-			"ID C2": Log{Name: "Log C2", State: readonly},
+			"ID C2": Log{Name: "Log C2", State: loglist3.ReadOnlyLogStatus},
 		},
 	}
 	actual, err = input.forPurpose(Validation)
@@ -111,13 +113,13 @@ func TestForPurpose(t *testing.T) {
 
 	expected = List{
 		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: usable},
+			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
 		},
 		"Operator B": {
-			"ID B1": Log{Name: "Log B1", State: qualified},
+			"ID B1": Log{Name: "Log B1", State: loglist3.QualifiedLogStatus},
 		},
 		"Operator C": {
-			"ID C1": Log{Name: "Log C1", State: pending},
+			"ID C1": Log{Name: "Log C1", State: loglist3.PendingLogStatus},
 		},
 	}
 	actual, err = input.forPurpose(Informational)
@@ -128,10 +130,10 @@ func TestForPurpose(t *testing.T) {
 func TestOperatorForLogID(t *testing.T) {
 	input := List{
 		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: usable},
+			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
 		},
 		"Operator B": {
-			"ID B1": Log{Name: "Log B1", State: qualified},
+			"ID B1": Log{Name: "Log B1", State: loglist3.QualifiedLogStatus},
 		},
 	}
 
@@ -146,16 +148,16 @@ func TestOperatorForLogID(t *testing.T) {
 func TestPermute(t *testing.T) {
 	input := List{
 		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: usable},
-			"ID A2": Log{Name: "Log A2", State: rejected},
+			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
+			"ID A2": Log{Name: "Log A2", State: loglist3.RejectedLogStatus},
 		},
 		"Operator B": {
-			"ID B1": Log{Name: "Log B1", State: qualified},
-			"ID B2": Log{Name: "Log B2", State: retired},
+			"ID B1": Log{Name: "Log B1", State: loglist3.QualifiedLogStatus},
+			"ID B2": Log{Name: "Log B2", State: loglist3.RetiredLogStatus},
 		},
 		"Operator C": {
-			"ID C1": Log{Name: "Log C1", State: pending},
-			"ID C2": Log{Name: "Log C2", State: readonly},
+			"ID C1": Log{Name: "Log C1", State: loglist3.PendingLogStatus},
+			"ID C2": Log{Name: "Log C2", State: loglist3.ReadOnlyLogStatus},
 		},
 	}
 

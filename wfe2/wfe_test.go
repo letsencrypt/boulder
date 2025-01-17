@@ -3863,13 +3863,17 @@ func Test_sendErrorInternalServerError(t *testing.T) {
 
 // mockSAForARI provides a mock SA with the methods required for an issuance and
 // a renewal with the ARI `Replaces` field.
+//
+// Note that FQDNSetTimestampsForWindow always return an empty list, which allows us to act
+// as if a certificate is not getting the renewal exemption, even when we are repeatedly
+// issuing for the same names.
 type mockSAForARI struct {
 	sapb.StorageAuthorityReadOnlyClient
 	cert *corepb.Certificate
 }
 
-func (sa *mockSAForARI) FQDNSetExists(ctx context.Context, in *sapb.FQDNSetExistsRequest, opts ...grpc.CallOption) (*sapb.Exists, error) {
-	return &sapb.Exists{Exists: false}, nil
+func (sa *mockSAForARI) FQDNSetTimestampsForWindow(ctx context.Context, in *sapb.CountFQDNSetsRequest, opts ...grpc.CallOption) (*sapb.Timestamps, error) {
+	return &sapb.Timestamps{Timestamps: nil}, nil
 }
 
 // GetCertificate returns the inner certificate if it matches the given serial.
@@ -4104,9 +4108,6 @@ func TestCountNewOrderWithReplaces(t *testing.T) {
 func TestNewOrderRateLimits(t *testing.T) {
 	wfe, fc, signer := setupWFE(t)
 
-	features.Set(features.Config{UseKvLimitsForNewOrder: true})
-	defer features.Reset()
-
 	// Set the default ratelimits to only allow one new order per account per 24
 	// hours.
 	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
@@ -4170,6 +4171,9 @@ func TestNewOrderRateLimits(t *testing.T) {
 		`{"Identifiers": [{"type": "dns", "value": "example.com"}]}`)
 	responseWriter = httptest.NewRecorder()
 	mux.ServeHTTP(responseWriter, r)
+	features.Set(features.Config{
+		UseKvLimitsForNewOrder: true,
+	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusTooManyRequests)
 
 	// Make a request with the "Replaces" field, which should satisfy ARI checks

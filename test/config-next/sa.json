@@ -24,7 +24,7 @@
 			"services": {
 				"sa.StorageAuthority": {
 					"clientNames": [
-						"admin-revoker.boulder",
+						"admin.boulder",
 						"ca.boulder",
 						"crl-updater.boulder",
 						"expiration-mailer.boulder",
@@ -33,7 +33,7 @@
 				},
 				"sa.StorageAuthorityReadOnly": {
 					"clientNames": [
-						"admin-revoker.boulder",
+						"admin.boulder",
 						"ocsp-responder.boulder",
 						"wfe.boulder",
 						"sfe.boulder"
@@ -50,7 +50,6 @@
 		"healthCheckInterval": "4s",
 		"features": {
 			"MultipleCertificateProfiles": true,
-			"DisableLegacyLimitWrites": true,
 			"InsertAuthzsIndividually": true
 		}
 	},

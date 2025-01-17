@@ -1,6 +1,5 @@
 {
 	"ra": {
-		"rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
 		"limiter": {
 			"redis": {
 				"username": "boulder-wfe",
@@ -111,7 +110,7 @@
 			"services": {
 				"ra.RegistrationAuthority": {
 					"clientNames": [
-						"admin-revoker.boulder",
+						"admin.boulder",
 						"bad-key-revoker.boulder",
 						"ocsp-responder.boulder",
 						"wfe.boulder",
@@ -127,7 +126,6 @@
 		},
 		"features": {
 			"AsyncFinalize": true,
-			"UseKvLimitsForNewOrder": true,
 			"AutomaticallyPauseZombieClients": true,
 			"NoPendingAuthzReuse": true,
 			"EnforceMPIC": true

@@ -7,7 +7,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
@@ -30,7 +29,6 @@ import (
 	ctpkix "github.com/google/certificate-transparency-go/x509/pkix"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -57,7 +55,6 @@ import (
 	"github.com/letsencrypt/boulder/policy"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
-	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -261,14 +258,6 @@ var (
 
 var ctx = context.Background()
 
-func newAcctKey(t *testing.T) []byte {
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	jwk := &jose.JSONWebKey{Key: key.Public()}
-	acctKey, err := jwk.MarshalJSON()
-	test.AssertNotError(t, err, "failed to marshal account key")
-	return acctKey
-}
-
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAuthorityClient, *RegistrationAuthorityImpl, ratelimits.Source, clock.FakeClock, func()) {
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
@@ -467,66 +456,6 @@ func TestNewRegistration(t *testing.T) {
 	test.AssertByteEquals(t, reg.Key, acctKeyB)
 }
 
-func TestNewRegistrationContactsPresent(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	testCases := []struct {
-		Name        string
-		Reg         *corepb.Registration
-		ExpectedErr error
-	}{
-		{
-			Name: "No contacts provided by client ContactsPresent false",
-			Reg: &corepb.Registration{
-				Key: newAcctKey(t),
-			},
-			ExpectedErr: nil,
-		},
-		{
-			Name: "Empty contact provided by client ContactsPresent true",
-			Reg: &corepb.Registration{
-				Contact:         []string{},
-				ContactsPresent: true,
-				Key:             newAcctKey(t),
-			},
-			ExpectedErr: nil,
-		},
-		{
-			Name: "Valid contact provided by client ContactsPresent true",
-			Reg: &corepb.Registration{
-				Contact:         []string{"mailto:foo@letsencrypt.org"},
-				ContactsPresent: true,
-				Key:             newAcctKey(t),
-			},
-			ExpectedErr: nil,
-		},
-		{
-			Name: "Valid contact provided by client ContactsPresent false",
-			Reg: &corepb.Registration{
-				Contact:         []string{"mailto:foo@letsencrypt.org"},
-				ContactsPresent: false,
-				Key:             newAcctKey(t),
-			},
-			ExpectedErr: fmt.Errorf("account contacts present but contactsPresent false"),
-		},
-	}
-	// For each test case we check that the NewRegistration works as
-	// intended with variations of Contact and ContactsPresent fields
-	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			// Create new registration
-			_, err := ra.NewRegistration(ctx, tc.Reg)
-			// Check error output
-			if tc.ExpectedErr == nil {
-				test.AssertNotError(t, err, "expected no error for NewRegistration")
-			} else {
-				test.AssertError(t, err, "expected error for NewRegistration")
-				test.AssertEquals(t, err.Error(), tc.ExpectedErr.Error())
-			}
-		})
-	}
-}
-
 type mockSAFailsNewRegistration struct {
 	sapb.StorageAuthorityClient
 }
@@ -586,61 +515,6 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	}
 	_, err = ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
-}
-
-type NoUpdateSA struct {
-	sapb.StorageAuthorityClient
-}
-
-// Deprecated: When this function is removed, the NoUpdateSA should be moved
-// down to join the other mocks and tests for UpdateRegistrationContact & Key,
-// where it's also used.
-func (sa *NoUpdateSA) UpdateRegistration(_ context.Context, _ *corepb.Registration, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return nil, fmt.Errorf("UpdateRegistration() is mocked to always error")
-}
-
-func (sa *NoUpdateSA) UpdateRegistrationContact(_ context.Context, _ *sapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	return nil, fmt.Errorf("UpdateRegistrationContact() is mocked to always error")
-}
-
-func (sa *NoUpdateSA) UpdateRegistrationKey(_ context.Context, _ *sapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	return nil, fmt.Errorf("UpdateRegistrationKey() is mocked to always error")
-}
-
-func TestUpdateRegistrationSame(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	mailto := "mailto:foo@letsencrypt.org"
-
-	// Make a new registration with AccountKeyC and a Contact
-	acctKeyC, err := AccountKeyC.MarshalJSON()
-	test.AssertNotError(t, err, "failed to marshal account key")
-	reg := &corepb.Registration{
-		Key:             acctKeyC,
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Agreement:       "I agreed",
-	}
-	result, err := ra.NewRegistration(ctx, reg)
-	test.AssertNotError(t, err, "Could not create new registration")
-
-	// Switch to a mock SA that will always error if UpdateRegistration() is called
-	ra.SA = &NoUpdateSA{}
-
-	// Make an update to the registration with the same Contact & Agreement values.
-	updateSame := &corepb.Registration{
-		Id:              result.Id,
-		Key:             acctKeyC,
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Agreement:       "I agreed",
-	}
-
-	// The update operation should *not* error, even with the NoUpdateSA because
-	// UpdateRegistration() should not be called when the update content doesn't
-	// actually differ from the existing content
-	_, err = ra.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: result, Update: updateSame})
-	test.AssertNotError(t, err, "Error updating registration")
 }
 
 func TestPerformValidationExpired(t *testing.T) {
@@ -1010,452 +884,6 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	})
 	test.AssertError(t, err, "Should have rejected cert with key = account key")
 	test.AssertEquals(t, err.Error(), "certificate public key must be different than account key")
-}
-
-// mockInvalidAuthorizationsAuthority is a mock which claims that the given
-// domain has one invalid authorization.
-type mockInvalidAuthorizationsAuthority struct {
-	sapb.StorageAuthorityClient
-	domainWithFailures string
-}
-
-func (sa *mockInvalidAuthorizationsAuthority) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	if req.DnsName == sa.domainWithFailures {
-		return &sapb.Count{Count: 1}, nil
-	} else {
-		return &sapb.Count{}, nil
-	}
-}
-
-func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	txnBuilder, err := ratelimits.NewTransactionBuilder(ratelimits.LimitConfigs{
-		ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount.String(): &ratelimits.LimitConfig{
-			Burst:  1,
-			Count:  1,
-			Period: config.Duration{Duration: time.Hour * 1}},
-	})
-	test.AssertNotError(t, err, "making transaction composer")
-	ra.txnBuilder = txnBuilder
-
-	limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
-	ra.SA = &mockInvalidAuthorizationsAuthority{domainWithFailures: "all.i.do.is.lose.com"}
-	err = ra.checkInvalidAuthorizationLimits(ctx, Registration.Id,
-		[]string{"charlie.brown.com", "all.i.do.is.lose.com"}, limit)
-	test.AssertError(t, err, "checkInvalidAuthorizationLimits did not encounter expected rate limit error")
-	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account")
-}
-
-type mockSAWithNameCounts struct {
-	sapb.StorageAuthorityClient
-	nameCounts *sapb.CountByNames
-	t          *testing.T
-	clk        clock.FakeClock
-}
-
-func (m *mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
-	expectedLatest := m.clk.Now()
-	if req.Range.Latest.AsTime() != expectedLatest {
-		m.t.Errorf("incorrect latest: got '%v', expected '%v'", req.Range.Latest.AsTime(), expectedLatest)
-	}
-	expectedEarliest := m.clk.Now().Add(-23 * time.Hour)
-	if req.Range.Earliest.AsTime() != expectedEarliest {
-		m.t.Errorf("incorrect earliest: got '%v', expected '%v'", req.Range.Earliest.AsTime(), expectedEarliest)
-	}
-	counts := make(map[string]int64)
-	for _, name := range req.DnsNames {
-		if count, ok := m.nameCounts.Counts[name]; ok {
-			counts[name] = count
-		}
-	}
-	return &sapb.CountByNames{Counts: counts}, nil
-}
-
-// FQDNSetExists is a mock which always returns false, so the test requests
-// aren't considered to be renewals.
-func (m *mockSAWithNameCounts) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
-	return &sapb.Exists{Exists: false}, nil
-}
-
-func TestCheckCertificatesPerNameLimit(t *testing.T) {
-	_, _, ra, _, fc, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	rlp := ratelimit.RateLimitPolicy{
-		Threshold: 3,
-		Window:    config.Duration{Duration: 23 * time.Hour},
-		Overrides: map[string]int64{
-			"bigissuer.com":     100,
-			"smallissuer.co.uk": 1,
-		},
-	}
-
-	mockSA := &mockSAWithNameCounts{
-		nameCounts: &sapb.CountByNames{Counts: map[string]int64{"example.com": 1}},
-		clk:        fc,
-		t:          t,
-	}
-
-	ra.SA = mockSA
-
-	// One base domain, below threshold
-	err := ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com"}, rlp, 99)
-	test.AssertNotError(t, err, "rate limited example.com incorrectly")
-
-	// Two base domains, one above threshold, one below
-	mockSA.nameCounts.Counts["example.com"] = 10
-	mockSA.nameCounts.Counts["good-example.com"] = 1
-	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "good-example.com"}, rlp, 99)
-	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
-	test.AssertErrorIs(t, err, berrors.RateLimit)
-	// There are no overrides for "example.com", so the override usage gauge
-	// should contain 0 entries with labels matching it.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "example.com"}, 0)
-	// Verify it has no sub errors as there is only one bad name
-	test.AssertEquals(t, err.Error(), "too many certificates already issued for \"example.com\". Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account")
-	var bErr *berrors.BoulderError
-	test.AssertErrorWraps(t, err, &bErr)
-	test.AssertEquals(t, len(bErr.SubErrors), 0)
-
-	// Three base domains, two above threshold, one below
-	mockSA.nameCounts.Counts["example.com"] = 10
-	mockSA.nameCounts.Counts["other-example.com"] = 10
-	mockSA.nameCounts.Counts["good-example.com"] = 1
-	err = ra.checkCertificatesPerNameLimit(ctx, []string{"example.com", "other-example.com", "good-example.com"}, rlp, 99)
-	test.AssertError(t, err, "incorrectly failed to rate limit example.com, other-example.com")
-	test.AssertErrorIs(t, err, berrors.RateLimit)
-	// Verify it has two sub errors as there are two bad names
-	test.AssertEquals(t, err.Error(), "too many certificates already issued for multiple names (\"example.com\" and 2 others). Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account")
-	test.AssertErrorWraps(t, err, &bErr)
-	test.AssertEquals(t, len(bErr.SubErrors), 2)
-
-	// SA misbehaved and didn't send back a count for every input name
-	err = ra.checkCertificatesPerNameLimit(ctx, []string{"zombo.com", "www.example.com", "example.com"}, rlp, 99)
-	test.AssertError(t, err, "incorrectly failed to error on misbehaving SA")
-
-	// Two base domains, one above threshold but with an override.
-	mockSA.nameCounts.Counts["example.com"] = 0
-	mockSA.nameCounts.Counts["bigissuer.com"] = 50
-	ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, "bigissuer.com").Set(.5)
-	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
-	test.AssertNotError(t, err, "incorrectly rate limited bigissuer")
-	// "bigissuer.com" has an override of 100 and they've issued 50. Accounting
-	// for the anticipated issuance, we expect to see 51% utilization.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "bigissuer.com"}, .51)
-
-	// Two base domains, one above its override
-	mockSA.nameCounts.Counts["example.com"] = 10
-	mockSA.nameCounts.Counts["bigissuer.com"] = 100
-	ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, "bigissuer.com").Set(1)
-	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
-	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
-	test.AssertErrorIs(t, err, berrors.RateLimit)
-	// "bigissuer.com" has an override of 100 and they've issued 100. They're
-	// already at 100% utilization, so we expect to see 100% utilization.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "bigissuer.com"}, 1)
-
-	// One base domain, above its override (which is below threshold)
-	mockSA.nameCounts.Counts["smallissuer.co.uk"] = 1
-	ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, "smallissuer.co.uk").Set(1)
-	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.smallissuer.co.uk"}, rlp, 99)
-	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
-	test.AssertErrorIs(t, err, berrors.RateLimit)
-	// "smallissuer.co.uk" has an override of 1 and they've issued 1. They're
-	// already at 100% utilization, so we expect to see 100% utilization.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "smallissuer.co.uk"}, 1)
-}
-
-// TestCheckExactCertificateLimit tests that the duplicate certificate limit
-// applied to FQDN sets is respected.
-func TestCheckExactCertificateLimit(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Create a rate limit with a small threshold
-	const dupeCertLimit = 3
-	rlp := ratelimit.RateLimitPolicy{
-		Threshold: dupeCertLimit,
-		Window:    config.Duration{Duration: 24 * time.Hour},
-	}
-
-	// Create a mock SA that has a count of already issued certificates for some
-	// test names
-	firstIssuanceTimestamp := ra.clk.Now().Add(-rlp.Window.Duration)
-	fITS2 := firstIssuanceTimestamp.Add(time.Hour * 23)
-	fITS3 := firstIssuanceTimestamp.Add(time.Hour * 16)
-	fITS4 := firstIssuanceTimestamp.Add(time.Hour * 8)
-	issuanceTimestampsNS := []int64{
-		fITS2.UnixNano(),
-		fITS3.UnixNano(),
-		fITS4.UnixNano(),
-		firstIssuanceTimestamp.UnixNano(),
-	}
-	issuanceTimestamps := []*timestamppb.Timestamp{
-		timestamppb.New(fITS2),
-		timestamppb.New(fITS3),
-		timestamppb.New(fITS4),
-		timestamppb.New(firstIssuanceTimestamp),
-	}
-	// Our window is 24 hours and our threshold is 3 issuance. If our most
-	// recent issuance was 1 hour ago, we expect the next token to be available
-	// 8 hours from issuance time or 7 hours from now.
-	expectRetryAfterNS := time.Unix(0, issuanceTimestampsNS[0]).Add(time.Hour * 8).Format(time.RFC3339)
-	expectRetryAfter := issuanceTimestamps[0].AsTime().Add(time.Hour * 8).Format(time.RFC3339)
-	test.AssertEquals(t, expectRetryAfterNS, expectRetryAfter)
-	ra.SA = &mockSAWithFQDNSet{
-		issuanceTimestamps: map[string]*sapb.Timestamps{
-			"none.example.com":          {Timestamps: []*timestamppb.Timestamp{}},
-			"under.example.com":         {Timestamps: issuanceTimestamps[3:3]},
-			"equalbutvalid.example.com": {Timestamps: issuanceTimestamps[1:3]},
-			"over.example.com":          {Timestamps: issuanceTimestamps[0:3]},
-		},
-		t: t,
-	}
-
-	testCases := []struct {
-		Name        string
-		Domain      string
-		ExpectedErr error
-	}{
-		{
-			Name:        "FQDN set issuances none",
-			Domain:      "none.example.com",
-			ExpectedErr: nil,
-		},
-		{
-			Name:        "FQDN set issuances less than limit",
-			Domain:      "under.example.com",
-			ExpectedErr: nil,
-		},
-		{
-			Name:        "FQDN set issuances equal to limit",
-			Domain:      "equalbutvalid.example.com",
-			ExpectedErr: nil,
-		},
-		{
-			Name:   "FQDN set issuances above limit NS",
-			Domain: "over.example.com",
-			ExpectedErr: fmt.Errorf(
-				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-exact-set-of-hostnames",
-				expectRetryAfterNS,
-			),
-		},
-		{
-			Name:   "FQDN set issuances above limit",
-			Domain: "over.example.com",
-			ExpectedErr: fmt.Errorf(
-				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-exact-set-of-hostnames",
-				expectRetryAfter,
-			),
-		},
-	}
-
-	// For each test case we check that the certificatesPerFQDNSetLimit is applied
-	// as we expect
-	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			result := ra.checkCertificatesPerFQDNSetLimit(ctx, []string{tc.Domain}, rlp, 0)
-			if tc.ExpectedErr == nil {
-				test.AssertNotError(t, result, fmt.Sprintf("Expected no error for %q", tc.Domain))
-			} else {
-				test.AssertError(t, result, fmt.Sprintf("Expected error for %q", tc.Domain))
-				test.AssertEquals(t, result.Error(), tc.ExpectedErr.Error())
-			}
-		})
-	}
-}
-
-func TestRegistrationUpdate(t *testing.T) {
-	oldURL := "http://old.invalid"
-	newURL := "http://new.invalid"
-	base := &corepb.Registration{
-		Id:        1,
-		Contact:   []string{oldURL},
-		Agreement: "",
-	}
-	update := &corepb.Registration{
-		Contact:         []string{newURL},
-		ContactsPresent: true,
-		Agreement:       "totally!",
-	}
-
-	res, changed := mergeUpdate(base, update)
-	test.AssertEquals(t, changed, true)
-	test.AssertEquals(t, res.Contact[0], update.Contact[0])
-	test.AssertEquals(t, res.Agreement, update.Agreement)
-
-	// Make sure that a `MergeUpdate` call with an empty string doesn't produce an
-	// error and results in a change to the base reg.
-	emptyUpdate := &corepb.Registration{
-		Contact:         []string{""},
-		ContactsPresent: true,
-		Agreement:       "totally!",
-	}
-	_, changed = mergeUpdate(res, emptyUpdate)
-	test.AssertEquals(t, changed, true)
-}
-
-func TestRegistrationContactUpdate(t *testing.T) {
-	contactURL := "mailto://example@example.com"
-
-	// Test that a registration contact can be removed by updating with an empty
-	// Contact slice.
-	base := &corepb.Registration{
-		Id:        1,
-		Contact:   []string{contactURL},
-		Agreement: "totally!",
-	}
-	update := &corepb.Registration{
-		Id:              1,
-		Contact:         []string{},
-		ContactsPresent: true,
-		Agreement:       "totally!",
-	}
-	res, changed := mergeUpdate(base, update)
-	test.AssertEquals(t, changed, true)
-	test.Assert(t, len(res.Contact) == 0, "Contact was not deleted in update")
-
-	// Test that a registration contact isn't changed when an update is performed
-	// with no Contact field
-	base = &corepb.Registration{
-		Id:        1,
-		Contact:   []string{contactURL},
-		Agreement: "totally!",
-	}
-	update = &corepb.Registration{
-		Id:        1,
-		Agreement: "totally!",
-	}
-	res, changed = mergeUpdate(base, update)
-	test.AssertEquals(t, changed, false)
-	test.Assert(t, len(res.Contact) == 1, "len(Contact) was updated unexpectedly")
-	test.Assert(t, (res.Contact)[0] == contactURL, "Contact was changed unexpectedly")
-}
-
-func TestRegistrationKeyUpdate(t *testing.T) {
-	oldKey, err := rsa.GenerateKey(rand.Reader, 512)
-	test.AssertNotError(t, err, "rsa.GenerateKey() for oldKey failed")
-	oldKeyJSON, err := jose.JSONWebKey{Key: oldKey}.MarshalJSON()
-	test.AssertNotError(t, err, "MarshalJSON for oldKey failed")
-
-	base := &corepb.Registration{Key: oldKeyJSON}
-	update := &corepb.Registration{}
-	_, changed := mergeUpdate(base, update)
-	test.Assert(t, !changed, "mergeUpdate changed the key with empty update")
-
-	newKey, err := rsa.GenerateKey(rand.Reader, 1024)
-	test.AssertNotError(t, err, "rsa.GenerateKey() for newKey failed")
-	newKeyJSON, err := jose.JSONWebKey{Key: newKey}.MarshalJSON()
-	test.AssertNotError(t, err, "MarshalJSON for newKey failed")
-
-	update = &corepb.Registration{Key: newKeyJSON}
-	res, changed := mergeUpdate(base, update)
-	test.Assert(t, changed, "mergeUpdate didn't change the key with non-empty update")
-	test.AssertByteEquals(t, res.Key, update.Key)
-}
-
-// A mockSAWithFQDNSet is a mock StorageAuthority that supports
-// CountCertificatesByName as well as FQDNSetExists. This allows testing
-// checkCertificatesPerNameRateLimit's FQDN exemption logic.
-type mockSAWithFQDNSet struct {
-	sapb.StorageAuthorityClient
-	fqdnSet            map[string]bool
-	issuanceTimestamps map[string]*sapb.Timestamps
-
-	t *testing.T
-}
-
-// Construct the FQDN Set key the same way as the SA (by using
-// `core.UniqueLowerNames`, joining the names with a `,` and hashing them)
-// but return a string so it can be used as a key in m.fqdnSet.
-func (m mockSAWithFQDNSet) hashNames(names []string) string {
-	names = core.UniqueLowerNames(names)
-	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
-	return string(hash[:])
-}
-
-// Search for a set of domain names in the FQDN set map
-func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
-	hash := m.hashNames(req.DnsNames)
-	if _, exists := m.fqdnSet[hash]; exists {
-		return &sapb.Exists{Exists: true}, nil
-	}
-	return &sapb.Exists{Exists: false}, nil
-}
-
-// Return a map of domain -> certificate count.
-func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
-	counts := make(map[string]int64)
-	for _, name := range req.DnsNames {
-		entry, ok := m.issuanceTimestamps[name]
-		if ok {
-			counts[name] = int64(len(entry.Timestamps))
-		}
-	}
-	return &sapb.CountByNames{Counts: counts}, nil
-}
-
-func (m mockSAWithFQDNSet) FQDNSetTimestampsForWindow(_ context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Timestamps, error) {
-	if len(req.DnsNames) == 1 {
-		return m.issuanceTimestamps[req.DnsNames[0]], nil
-	} else {
-		return nil, fmt.Errorf("FQDNSetTimestampsForWindow mock only supports a single domain")
-	}
-}
-
-// TestExactPublicSuffixCertLimit tests the behaviour of issue #2681.
-// See https://github.com/letsencrypt/boulder/issues/2681
-func TestExactPublicSuffixCertLimit(t *testing.T) {
-	_, _, ra, _, fc, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Simple policy that only allows 2 certificates per name.
-	certsPerNamePolicy := ratelimit.RateLimitPolicy{
-		Threshold: 2,
-		Window:    config.Duration{Duration: 23 * time.Hour},
-	}
-
-	// We use "dedyn.io" and "dynv6.net" domains for the test on the implicit
-	// assumption that both domains are present on the public suffix list.
-	// Quickly verify that this is true before continuing with the rest of the test.
-	_, err := publicsuffix.Domain("dedyn.io")
-	test.AssertError(t, err, "dedyn.io was not on the public suffix list, invaliding the test")
-	_, err = publicsuffix.Domain("dynv6.net")
-	test.AssertError(t, err, "dynv6.net was not on the public suffix list, invaliding the test")
-
-	// Back the mock SA with counts as if so far we have issued the following
-	// certificates for the following domains:
-	//   - test.dedyn.io (once)
-	//   - test2.dedyn.io (once)
-	//   - dynv6.net (twice)
-	mockSA := &mockSAWithNameCounts{
-		nameCounts: &sapb.CountByNames{
-			Counts: map[string]int64{
-				"test.dedyn.io":  1,
-				"test2.dedyn.io": 1,
-				"test3.dedyn.io": 0,
-				"dedyn.io":       0,
-				"dynv6.net":      2,
-			},
-		},
-		clk: fc,
-		t:   t,
-	}
-	ra.SA = mockSA
-
-	// Trying to issue for "test3.dedyn.io" and "dedyn.io" should succeed because
-	// test3.dedyn.io has no certificates and "dedyn.io" is an exact public suffix
-	// match with no certificates issued for it.
-	err = ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dedyn.io"}, certsPerNamePolicy, 99)
-	test.AssertNotError(t, err, "certificate per name rate limit not applied correctly")
-
-	// Trying to issue for "test3.dedyn.io" and "dynv6.net" should fail because
-	// "dynv6.net" is an exact public suffix match with 2 certificates issued for
-	// it.
-	err = ra.checkCertificatesPerNameLimit(ctx, []string{"test3.dedyn.io", "dynv6.net"}, certsPerNamePolicy, 99)
-	test.AssertError(t, err, "certificate per name rate limit not applied correctly")
 }
 
 func TestDeactivateAuthorization(t *testing.T) {
@@ -3655,7 +3083,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
 			// Attempt issuance
-			_, _, err = ra.issueCertificateInner(ctx, csrOb, order.CertificateProfileName, accountID(Registration.Id), orderID(order.Id))
+			_, _, err = ra.issueCertificateInner(ctx, csrOb, false, order.CertificateProfileName, accountID(Registration.Id), orderID(order.Id))
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
 			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
 			// If there is an expected `error` then match the error message
@@ -3698,8 +3126,12 @@ func (sa *mockSAWithFinalize) FinalizeOrder(ctx context.Context, req *sapb.Final
 	return &emptypb.Empty{}, nil
 }
 
-func (sa *mockSAWithFinalize) FQDNSetExists(ctx context.Context, in *sapb.FQDNSetExistsRequest, opts ...grpc.CallOption) (*sapb.Exists, error) {
-	return &sapb.Exists{}, nil
+func (sa *mockSAWithFinalize) FQDNSetTimestampsForWindow(ctx context.Context, in *sapb.CountFQDNSetsRequest, opts ...grpc.CallOption) (*sapb.Timestamps, error) {
+	return &sapb.Timestamps{
+		Timestamps: []*timestamppb.Timestamp{
+			timestamppb.Now(),
+		},
+	}, nil
 }
 
 func TestIssueCertificateInnerWithProfile(t *testing.T) {
@@ -3732,7 +3164,7 @@ func TestIssueCertificateInnerWithProfile(t *testing.T) {
 
 	// Call issueCertificateInner with the CSR generated above and the profile
 	// name "default", which will cause the mockCA to return a specific hash.
-	_, cpId, err := ra.issueCertificateInner(context.Background(), csr, "default", 1, 1)
+	_, cpId, err := ra.issueCertificateInner(context.Background(), csr, false, "default", 1, 1)
 	test.AssertNotError(t, err, "issuing cert with profile name")
 	test.AssertEquals(t, mockCA.profileName, cpId.name)
 	test.AssertByteEquals(t, mockCA.profileHash, cpId.hash)
@@ -4503,6 +3935,18 @@ func TestGetAuthorization(t *testing.T) {
 	authz, err = ra.GetAuthorization(context.Background(), &rapb.GetAuthorizationRequest{Id: 1})
 	test.AssertNotError(t, err, "should not fail")
 	test.AssertEquals(t, len(authz.Challenges), 0)
+}
+
+type NoUpdateSA struct {
+	sapb.StorageAuthorityClient
+}
+
+func (sa *NoUpdateSA) UpdateRegistrationContact(_ context.Context, _ *sapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	return nil, fmt.Errorf("UpdateRegistrationContact() is mocked to always error")
+}
+
+func (sa *NoUpdateSA) UpdateRegistrationKey(_ context.Context, _ *sapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	return nil, fmt.Errorf("UpdateRegistrationKey() is mocked to always error")
 }
 
 // mockSARecordingRegistration tests UpdateRegistrationContact and UpdateRegistrationKey.

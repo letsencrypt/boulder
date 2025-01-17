@@ -28,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/grpc/test_proto"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/web"
 )
 
 var fc = clock.NewFake()
@@ -410,6 +411,37 @@ func TestServiceAuthChecker(t *testing.T) {
 	})
 	err = ac.checkContextAuth(ctx, "/package.ServiceName/Method/")
 	test.AssertNotError(t, err, "checking allowed cert")
+}
+
+// testUserAgentServer stores the last value it saw in the user agent field of its context.
+type testUserAgentServer struct {
+	test_proto.UnimplementedChillerServer
+
+	lastSeenUA string
+}
+
+// Chill implements ChillerServer.Chill
+func (s *testUserAgentServer) Chill(ctx context.Context, in *test_proto.Time) (*test_proto.Time, error) {
+	s.lastSeenUA = web.UserAgent(ctx)
+	return nil, nil
+}
+
+func TestUserAgentMetadata(t *testing.T) {
+	server := new(testUserAgentServer)
+	client, _, stop := setup(t, server)
+	defer stop()
+
+	testUA := "test UA"
+	ctx := web.WithUserAgent(context.Background(), testUA)
+
+	_, err := client.Chill(ctx, &test_proto.Time{})
+	if err != nil {
+		t.Fatalf("calling c.Chill: %s", err)
+	}
+
+	if server.lastSeenUA != testUA {
+		t.Errorf("last seen User-Agent on server side was %q, want %q", server.lastSeenUA, testUA)
+	}
 }
 
 // setup creates a server and client, returning the created client, the running server's port, and a stop function.

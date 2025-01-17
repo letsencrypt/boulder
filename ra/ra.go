@@ -11,7 +11,6 @@ import (
 	"math/big"
 	"net"
 	"net/url"
-	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -47,7 +46,6 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
-	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -87,7 +85,6 @@ type RegistrationAuthorityImpl struct {
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
-	rlPolicies                   ratelimit.Limits
 	maxContactsPerReg            int
 	limiter                      *ratelimits.Limiter
 	txnBuilder                   *ratelimits.TransactionBuilder
@@ -248,7 +245,6 @@ func NewRegistrationAuthorityImpl(
 		log:                          logger,
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
-		rlPolicies:                   ratelimit.New(),
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		limiter:                      limiter,
@@ -275,19 +271,6 @@ func NewRegistrationAuthorityImpl(
 		pauseCounter:                 pauseCounter,
 	}
 	return ra
-}
-
-func (ra *RegistrationAuthorityImpl) LoadRateLimitPoliciesFile(filename string) error {
-	configBytes, err := os.ReadFile(filename)
-	if err != nil {
-		return err
-	}
-	err = ra.rlPolicies.LoadPolicies(configBytes)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // certificateRequestAuthz is a struct for holding information about a valid
@@ -337,6 +320,13 @@ type certificateRequestEvent struct {
 	// CertProfileHash is SHA256 sum over every exported field of an
 	// issuance.ProfileConfig, represented here as a hexadecimal string.
 	CertProfileHash string `json:",omitempty"`
+	// PreviousCertificateIssued is present when this certificate uses the same set
+	// of FQDNs as a previous certificate (from any account) and contains the
+	// notBefore of the most recent such certificate.
+	PreviousCertificateIssued time.Time `json:",omitempty"`
+	// UserAgent is the User-Agent header from the ACME client (provided to the
+	// RA via gRPC metadata).
+	UserAgent string
 }
 
 // certificateRevocationEvent is a struct for holding information that is logged
@@ -394,10 +384,6 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	}
 
 	// Check that contacts conform to our expectations.
-	err = validateContactsPresent(request.Contact, request.ContactsPresent)
-	if err != nil {
-		return nil, err
-	}
 	err = ra.validateContacts(request.Contact)
 	if err != nil {
 		return nil, err
@@ -405,11 +391,10 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 
 	// Don't populate ID or CreatedAt because those will be set by the SA.
 	req := &corepb.Registration{
-		Key:             request.Key,
-		Contact:         request.Contact,
-		ContactsPresent: request.ContactsPresent,
-		Agreement:       request.Agreement,
-		Status:          string(core.StatusValid),
+		Key:       request.Key,
+		Contact:   request.Contact,
+		Agreement: request.Agreement,
+		Status:    string(core.StatusValid),
 	}
 
 	// Store the registration object, then return the version that got stored.
@@ -482,109 +467,6 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 			"too many/too long contact(s). Please use shorter or fewer email addresses")
 	}
 
-	return nil
-}
-
-func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64, limit ratelimit.RateLimitPolicy) error {
-	// This rate limit's threshold can only be overridden on a per-regID basis,
-	// not based on any other key.
-	threshold, overrideKey := limit.GetThreshold("", regID)
-	if threshold == -1 {
-		return nil
-	}
-	countPB, err := ra.SA.CountPendingAuthorizations2(ctx, &sapb.RegistrationID{
-		Id: regID,
-	})
-	if err != nil {
-		return err
-	}
-	if countPB.Count >= threshold {
-		ra.log.Infof("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID)
-		return berrors.RateLimitError(0, "too many currently pending authorizations: %d", countPB.Count)
-	}
-	if overrideKey != "" {
-		utilization := float64(countPB.Count) / float64(threshold)
-		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.PendingAuthorizationsPerAccount, overrideKey).Set(utilization)
-	}
-	return nil
-}
-
-// checkInvalidAuthorizationLimits checks the failed validation limit for each
-// of the provided hostnames. It returns the first error.
-func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimits(ctx context.Context, regID int64, hostnames []string, limits ratelimit.RateLimitPolicy) error {
-	results := make(chan error, len(hostnames))
-	for _, hostname := range hostnames {
-		go func(hostname string) {
-			results <- ra.checkInvalidAuthorizationLimit(ctx, regID, hostname, limits)
-		}(hostname)
-	}
-	// We don't have to wait for all of the goroutines to finish because there's
-	// enough capacity in the chan for them all to write their result even if
-	// nothing is reading off the chan anymore.
-	for range len(hostnames) {
-		err := <-results
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64, hostname string, limit ratelimit.RateLimitPolicy) error {
-	latest := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
-	earliest := latest.Add(-limit.Window.Duration)
-	req := &sapb.CountInvalidAuthorizationsRequest{
-		RegistrationID: regID,
-		DnsName:        hostname,
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(earliest),
-			Latest:   timestamppb.New(latest),
-		},
-	}
-	count, err := ra.SA.CountInvalidAuthorizations2(ctx, req)
-	if err != nil {
-		return err
-	}
-	// Most rate limits have a key for overrides, but there is no meaningful key
-	// here.
-	noKey := ""
-	threshold, overrideKey := limit.GetThreshold(noKey, regID)
-	if count.Count >= threshold {
-		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
-		return berrors.FailedAuthorizationsPerDomainPerAccountError(0, "too many failed authorizations recently")
-	}
-	if overrideKey != "" {
-		utilization := float64(count.Count) / float64(threshold)
-		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.InvalidAuthorizationsPerAccount, overrideKey).Set(utilization)
-	}
-	return nil
-}
-
-// checkNewOrdersPerAccountLimit enforces the rlPolicies `NewOrdersPerAccount`
-// rate limit. This rate limit ensures a client can not create more than the
-// specified threshold of new orders within the specified time window.
-func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.Context, acctID int64, limit ratelimit.RateLimitPolicy) error {
-	now := ra.clk.Now()
-	count, err := ra.SA.CountOrders(ctx, &sapb.CountOrdersRequest{
-		AccountID: acctID,
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(now.Add(-limit.Window.Duration)),
-			Latest:   timestamppb.New(now),
-		},
-	})
-	if err != nil {
-		return err
-	}
-	// There is no meaningful override key to use for this rate limit
-	noKey := ""
-	threshold, overrideKey := limit.GetThreshold(noKey, acctID)
-	if count.Count >= threshold {
-		return berrors.NewOrdersPerAccountError(0, "too many new orders recently")
-	}
-	if overrideKey != "" {
-		utilization := float64(count.Count+1) / float64(threshold)
-		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.NewOrdersPerAccount, overrideKey).Set(utilization)
-	}
 	return nil
 }
 
@@ -963,6 +845,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		OrderID:     req.Order.Id,
 		Requester:   req.Order.RegistrationID,
 		RequestTime: ra.clk.Now(),
+		UserAgent:   web.UserAgent(ctx),
 	}
 	csr, err := ra.validateFinalizeRequest(ctx, req, &logEvent)
 	if err != nil {
@@ -1010,6 +893,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		// that it can wait for all goroutines to drain during shutdown.
 		ra.drainWG.Add(1)
 		go func() {
+			// The original context will be canceled in the RPC layer when FinalizeOrder returns,
+			// so split off a context that won't be canceled (and has its own timeout).
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ra.finalizeTimeout)
+			defer cancel()
 			_, err := ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, logEvent)
 			if err != nil {
 				// We only log here, because this is in a background goroutine with
@@ -1135,9 +1022,23 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ra.inflightFinalizes.Inc()
 	defer ra.inflightFinalizes.Dec()
 
+	isRenewal := false
+	timestamps, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
+		DnsNames: order.DnsNames,
+		Window:   durationpb.New(120 * 24 * time.Hour),
+		Limit:    1,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("checking if certificate is a renewal: %w", err)
+	}
+	if len(timestamps.Timestamps) > 0 {
+		isRenewal = true
+		logEvent.PreviousCertificateIssued = timestamps.Timestamps[0].AsTime()
+	}
+
 	// Step 3: Issue the Certificate
 	cert, cpId, err := ra.issueCertificateInner(
-		ctx, csr, order.CertificateProfileName, accountID(order.RegistrationID), orderID(order.Id))
+		ctx, csr, isRenewal, order.CertificateProfileName, accountID(order.RegistrationID), orderID(order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
 	var result string
@@ -1189,11 +1090,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 // errors from this function to the Subscriber, spends against these limit are
 // best effort.
 func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderDomains []string, isRenewal bool) {
-	if ra.limiter == nil || ra.txnBuilder == nil {
-		// Limiter is disabled.
-		return
-	}
-
 	var transactions []ratelimits.Transaction
 	if !isRenewal {
 		txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderDomains)
@@ -1245,16 +1141,10 @@ type certProfileID struct {
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	csr *x509.CertificateRequest,
+	isRenewal bool,
 	profileName string,
 	acctID accountID,
 	oID orderID) (*x509.Certificate, *certProfileID, error) {
-	if features.Get().AsyncFinalize {
-		// If we're in async mode, use a context with a much longer timeout.
-		var cancel func()
-		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), ra.finalizeTimeout)
-		defer cancel()
-	}
-
 	// wrapError adds a prefix to an error. If the error is a boulder error then
 	// the problem detail is updated with the prefix. Otherwise a new error is
 	// returned with the message prefixed using `fmt.Errorf`
@@ -1289,12 +1179,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return nil, nil, wrapError(err, "getting SCTs")
 	}
-
-	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: parsedPrecert.DNSNames})
-	if err != nil {
-		return nil, nil, wrapError(err, "checking if certificate is a renewal")
-	}
-	isRenewal := exists.Exists
 
 	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:             precert.DER,
@@ -1354,269 +1238,6 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, e
 	return scts, nil
 }
 
-// enforceNameCounts uses the provided count RPC to find a count of certificates
-// for each of the names. If the count for any of the names exceeds the limit
-// for the given registration then the names out of policy are returned to be
-// used for a rate limit error.
-func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) ([]string, time.Time, error) {
-	now := ra.clk.Now()
-	req := &sapb.CountCertificatesByNamesRequest{
-		DnsNames: names,
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(limit.WindowBegin(now)),
-			Latest:   timestamppb.New(now),
-		},
-	}
-
-	response, err := ra.SA.CountCertificatesByNames(ctx, req)
-	if err != nil {
-		return nil, time.Time{}, err
-	}
-
-	if len(response.Counts) == 0 {
-		return nil, time.Time{}, errIncompleteGRPCResponse
-	}
-
-	var badNames []string
-	var metricsData []struct {
-		overrideKey string
-		utilization float64
-	}
-
-	// Find the names that have counts at or over the threshold. Range
-	// over the names slice input to ensure the order of badNames will
-	// return the badNames in the same order they were input.
-	for _, name := range names {
-		threshold, overrideKey := limit.GetThreshold(name, regID)
-		if response.Counts[name] >= threshold {
-			badNames = append(badNames, name)
-		}
-		if overrideKey != "" {
-			// Name is under threshold due to an override.
-			utilization := float64(response.Counts[name]+1) / float64(threshold)
-			metricsData = append(metricsData, struct {
-				overrideKey string
-				utilization float64
-			}{overrideKey, utilization})
-		}
-	}
-
-	if len(badNames) == 0 {
-		// All names were under the threshold, emit override utilization metrics.
-		for _, data := range metricsData {
-			ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, data.overrideKey).Set(data.utilization)
-		}
-	}
-	return badNames, response.Earliest.AsTime(), nil
-}
-
-func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	tldNames := ratelimits.FQDNsToETLDsPlusOne(names)
-	namesOutOfLimit, earliest, err := ra.enforceNameCounts(ctx, tldNames, limit, regID)
-	if err != nil {
-		return fmt.Errorf("checking certificates per name limit for %q: %s",
-			names, err)
-	}
-
-	if len(namesOutOfLimit) > 0 {
-		// Determine the amount of time until the earliest event would fall out
-		// of the window.
-		retryAfter := earliest.Add(limit.Window.Duration).Sub(ra.clk.Now())
-		retryString := earliest.Add(limit.Window.Duration).Format(time.RFC3339)
-
-		ra.log.Infof("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, strings.Join(namesOutOfLimit, ", "))
-		if len(namesOutOfLimit) > 1 {
-			var subErrors []berrors.SubBoulderError
-			for _, name := range namesOutOfLimit {
-				subErrors = append(subErrors, berrors.SubBoulderError{
-					Identifier:   identifier.NewDNS(name),
-					BoulderError: berrors.NewOrdersPerAccountError(retryAfter, "too many certificates already issued. Retry after %s", retryString).(*berrors.BoulderError),
-				})
-			}
-			return berrors.NewOrdersPerAccountError(retryAfter, "too many certificates already issued for multiple names (%q and %d others). Retry after %s", namesOutOfLimit[0], len(namesOutOfLimit), retryString).(*berrors.BoulderError).WithSubErrors(subErrors)
-		}
-		return berrors.NewOrdersPerAccountError(retryAfter, "too many certificates already issued for %q. Retry after %s", namesOutOfLimit[0], retryString)
-	}
-
-	return nil
-}
-
-func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	names = core.UniqueLowerNames(names)
-	threshold, overrideKey := limit.GetThreshold(strings.Join(names, ","), regID)
-	if threshold <= 0 {
-		// No limit configured.
-		return nil
-	}
-
-	prevIssuances, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
-		DnsNames: names,
-		Window:   durationpb.New(limit.Window.Duration),
-	})
-	if err != nil {
-		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
-	}
-
-	if overrideKey != "" {
-		utilization := float64(len(prevIssuances.Timestamps)) / float64(threshold)
-		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerFQDNSet, overrideKey).Set(utilization)
-	}
-
-	issuanceCount := int64(len(prevIssuances.Timestamps))
-	if issuanceCount < threshold {
-		// Issuance in window is below the threshold, no need to limit.
-		if overrideKey != "" {
-			utilization := float64(issuanceCount+1) / float64(threshold)
-			ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerFQDNSet, overrideKey).Set(utilization)
-		}
-		return nil
-	} else {
-		// Evaluate the rate limit using a token bucket algorithm. The bucket
-		// has a capacity of threshold and is refilled at a rate of 1 token per
-		// limit.Window/threshold from the time of each issuance timestamp. The
-		// timestamps start from the most recent issuance and go back in time.
-		now := ra.clk.Now()
-		nsPerToken := limit.Window.Nanoseconds() / threshold
-		for i, timestamp := range prevIssuances.Timestamps {
-			tokensGeneratedSince := now.Add(-time.Duration(int64(i+1) * nsPerToken))
-			if timestamp.AsTime().Before(tokensGeneratedSince) {
-				// We know `i+1` tokens were generated since `tokenGeneratedSince`,
-				// and only `i` certificates were issued, so there's room to allow
-				// for an additional issuance.
-				if overrideKey != "" {
-					utilization := float64(issuanceCount) / float64(threshold)
-					ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerFQDNSet, overrideKey).Set(utilization)
-				}
-				return nil
-			}
-		}
-		retryTime := prevIssuances.Timestamps[0].AsTime().Add(time.Duration(nsPerToken))
-		retryAfter := retryTime.Sub(now)
-		return berrors.CertificatesPerFQDNSetError(
-			retryAfter,
-			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s, retry after %s",
-			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","), retryTime.Format(time.RFC3339),
-		)
-	}
-}
-
-func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, names []string, regID int64, isRenewal bool) error {
-	newOrdersPerAccountLimits := ra.rlPolicies.NewOrdersPerAccount()
-	if newOrdersPerAccountLimits.Enabled() && !isRenewal {
-		started := ra.clk.Now()
-		err := ra.checkNewOrdersPerAccountLimit(ctx, regID, newOrdersPerAccountLimits)
-		elapsed := ra.clk.Since(started)
-		if err != nil {
-			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.NewOrdersPerAccount, ratelimits.Denied).Observe(elapsed.Seconds())
-			}
-			return err
-		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.NewOrdersPerAccount, ratelimits.Allowed).Observe(elapsed.Seconds())
-	}
-
-	certNameLimits := ra.rlPolicies.CertificatesPerName()
-	if certNameLimits.Enabled() && !isRenewal {
-		started := ra.clk.Now()
-		err := ra.checkCertificatesPerNameLimit(ctx, names, certNameLimits, regID)
-		elapsed := ra.clk.Since(started)
-		if err != nil {
-			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerName, ratelimits.Denied).Observe(elapsed.Seconds())
-			}
-			return err
-		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerName, ratelimits.Allowed).Observe(elapsed.Seconds())
-	}
-
-	fqdnLimitsFast := ra.rlPolicies.CertificatesPerFQDNSetFast()
-	if fqdnLimitsFast.Enabled() {
-		started := ra.clk.Now()
-		err := ra.checkCertificatesPerFQDNSetLimit(ctx, names, fqdnLimitsFast, regID)
-		elapsed := ra.clk.Since(started)
-		if err != nil {
-			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerFQDNSetFast, ratelimits.Denied).Observe(elapsed.Seconds())
-			}
-			return err
-		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerFQDNSetFast, ratelimits.Allowed).Observe(elapsed.Seconds())
-	}
-
-	fqdnLimits := ra.rlPolicies.CertificatesPerFQDNSet()
-	if fqdnLimits.Enabled() {
-		started := ra.clk.Now()
-		err := ra.checkCertificatesPerFQDNSetLimit(ctx, names, fqdnLimits, regID)
-		elapsed := ra.clk.Since(started)
-		if err != nil {
-			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerFQDNSet, ratelimits.Denied).Observe(elapsed.Seconds())
-			}
-			return err
-		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerFQDNSet, ratelimits.Allowed).Observe(elapsed.Seconds())
-	}
-
-	invalidAuthzPerAccountLimits := ra.rlPolicies.InvalidAuthorizationsPerAccount()
-	if invalidAuthzPerAccountLimits.Enabled() {
-		started := ra.clk.Now()
-		err := ra.checkInvalidAuthorizationLimits(ctx, regID, names, invalidAuthzPerAccountLimits)
-		elapsed := ra.clk.Since(started)
-		if err != nil {
-			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.InvalidAuthorizationsPerAccount, ratelimits.Denied).Observe(elapsed.Seconds())
-			}
-			return err
-		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.InvalidAuthorizationsPerAccount, ratelimits.Allowed).Observe(elapsed.Seconds())
-	}
-
-	return nil
-}
-
-// UpdateRegistration updates an existing Registration with new values. Caller
-// is responsible for making sure that update.Key is only different from base.Key
-// if it is being called from the WFE key change endpoint.
-//
-// Deprecated: Use UpdateRegistrationContact or UpdateRegistrationKey instead.
-func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
-	// Error if the request is nil, there is no account key or IP address
-	if req.Base == nil || len(req.Base.Key) == 0 || req.Base.Id == 0 {
-		return nil, errIncompleteGRPCRequest
-	}
-
-	err := validateContactsPresent(req.Base.Contact, req.Base.ContactsPresent)
-	if err != nil {
-		return nil, err
-	}
-	err = validateContactsPresent(req.Update.Contact, req.Update.ContactsPresent)
-	if err != nil {
-		return nil, err
-	}
-	err = ra.validateContacts(req.Update.Contact)
-	if err != nil {
-		return nil, err
-	}
-
-	update, changed := mergeUpdate(req.Base, req.Update)
-	if !changed {
-		// If merging the update didn't actually change the base then our work is
-		// done, we can return before calling ra.SA.UpdateRegistration since there's
-		// nothing for the SA to do
-		return req.Base, nil
-	}
-
-	_, err = ra.SA.UpdateRegistration(ctx, update)
-	if err != nil {
-		// berrors.InternalServerError since the user-data was validated before being
-		// passed to the SA.
-		err = berrors.InternalServerError("Could not update registration: %s", err)
-		return nil, err
-	}
-
-	return update, nil
-}
-
 // UpdateRegistrationContact updates an existing Registration's contact.
 // The updated contacts field may be empty.
 func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Context, req *rapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
@@ -1657,81 +1278,6 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationKey(ctx context.Context, 
 	return update, nil
 }
 
-func contactsEqual(a []string, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	// If there is an existing contact slice and it has the same length as the
-	// new contact slice we need to look at each contact to determine if there
-	// is a change being made. Use `sort.Strings` here to ensure a consistent
-	// comparison
-	sort.Strings(a)
-	sort.Strings(b)
-	for i := range len(b) {
-		// If the contact's string representation differs at any index they aren't
-		// equal
-		if a[i] != b[i] {
-			return false
-		}
-	}
-
-	// They are equal!
-	return true
-}
-
-// MergeUpdate returns a new corepb.Registration with the majority of its fields
-// copies from the base Registration, and a subset (Contact, Agreement, and Key)
-// copied from the update Registration. It also returns a boolean indicating
-// whether or not this operation resulted in a Registration which differs from
-// the base.
-func mergeUpdate(base *corepb.Registration, update *corepb.Registration) (*corepb.Registration, bool) {
-	var changed bool
-
-	// Start by copying all of the fields.
-	res := &corepb.Registration{
-		Id:              base.Id,
-		Key:             base.Key,
-		Contact:         base.Contact,
-		ContactsPresent: base.ContactsPresent,
-		Agreement:       base.Agreement,
-		CreatedAt:       base.CreatedAt,
-		Status:          base.Status,
-	}
-
-	// Note: we allow update.Contact to overwrite base.Contact even if the former
-	// is empty in order to allow users to remove the contact associated with
-	// a registration. If the update has ContactsPresent set to false, then we
-	// know it is not attempting to update the contacts field.
-	if update.ContactsPresent && !contactsEqual(base.Contact, update.Contact) {
-		res.Contact = update.Contact
-		res.ContactsPresent = update.ContactsPresent
-		changed = true
-	}
-
-	if len(update.Agreement) > 0 && update.Agreement != base.Agreement {
-		res.Agreement = update.Agreement
-		changed = true
-	}
-
-	if len(update.Key) > 0 {
-		if len(update.Key) != len(base.Key) {
-			res.Key = update.Key
-			changed = true
-		} else {
-			for i := range len(base.Key) {
-				if update.Key[i] != base.Key[i] {
-					res.Key = update.Key
-					changed = true
-					break
-				}
-			}
-		}
-	}
-
-	return res, changed
-}
-
 // recordValidation records an authorization validation event,
 // it should only be used on v2 style authorizations.
 func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authID string, authExpires *time.Time, challenge *core.Challenge) error {
@@ -1768,11 +1314,6 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 // countFailedValidations increments the FailedAuthorizationsPerDomainPerAccount limit.
 // and the FailedAuthorizationsForPausingPerDomainPerAccountTransaction limit.
 func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) error {
-	if ra.limiter == nil || ra.txnBuilder == nil {
-		// Limiter is disabled.
-		return nil
-	}
-
 	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, ident.Value)
 	if err != nil {
 		return fmt.Errorf("building rate limit transaction for the %s rate limit: %w", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
@@ -1869,8 +1410,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	// TODO(#7153): Check each value via core.IsAnyNilOrZero
-	if req.Authz == nil || req.Authz.Id == "" || req.Authz.DnsName == "" || req.Authz.Status == "" || core.IsAnyNilOrZero(req.Authz.Expires) {
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, req.Authz.DnsName, req.Authz.Status, req.Authz.Expires) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -2003,8 +1543,12 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 		err = ra.recordValidation(vaCtx, authz.ID, authz.Expires, challenge)
 		if err != nil {
-			if errors.Is(err, berrors.AlreadyRevoked) {
-				ra.log.Infof("Didn't record already-finalized validation: regID=[%d] authzID=[%s] err=[%s]",
+			if errors.Is(err, berrors.NotFound) {
+				// We log NotFound at a lower level because this is largely due to a
+				// parallel-validation race: a different validation attempt has already
+				// updated this authz, so we failed to find a *pending* authz with the
+				// given ID to update.
+				ra.log.Infof("Failed to record validation (likely parallel validation race): regID=[%d] authzID=[%s] err=[%s]",
 					authz.RegistrationID, authz.ID, err)
 			} else {
 				ra.log.AuditErrf("Failed to record validation: regID=[%d] authzID=[%s] err=[%s]",
@@ -2306,7 +1850,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 
 // AdministrativelyRevokeCertificate terminates trust in the certificate
 // provided and does not require the registration ID of the requester since this
-// method is only called from the admin-revoker tool. It trusts that the admin
+// method is only called from the `admin` tool. It trusts that the admin
 // is doing the right thing, so if the requested reason is keyCompromise, it
 // blocks the key from future issuance even though compromise has not been
 // demonstrated here. It purges the certificate from the Akamai cache, and
@@ -2567,8 +2111,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Error if an incomplete order is returned.
 	if existingOrder != nil {
 		// Check to see if the expected fields of the existing order are set.
-		// TODO(#7153): Check each value via core.IsAnyNilOrZero
-		if existingOrder.Id == 0 || existingOrder.Status == "" || existingOrder.RegistrationID == 0 || len(existingOrder.DnsNames) == 0 || core.IsAnyNilOrZero(existingOrder.Created, existingOrder.Expires) {
+		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, existingOrder.DnsNames, existingOrder.Created, existingOrder.Expires) {
 			return nil, errIncompleteGRPCResponse
 		}
 
@@ -2578,15 +2121,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			// Track how often we reuse an existing order and how old that order is.
 			ra.orderAges.WithLabelValues("NewOrder").Observe(ra.clk.Since(existingOrder.Created.AsTime()).Seconds())
 			return existingOrder, nil
-		}
-	}
-
-	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-	if !req.IsARIRenewal && !features.Get().UseKvLimitsForNewOrder {
-		// Check if there is rate limit space for issuing a certificate.
-		err = ra.checkNewOrderLimits(ctx, newOrder.DnsNames, newOrder.RegistrationID, req.IsRenewal)
-		if err != nil {
-			return nil, err
 		}
 	}
 
@@ -2668,25 +2202,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// If we reached this point then the existing authz was not acceptable for
 		// reuse and we need to mark the name as requiring a new pending authz
 		missingAuthzIdents = append(missingAuthzIdents, ident)
-	}
-
-	// Renewal orders, indicated by ARI, are exempt from NewOrder rate limits.
-	if len(missingAuthzIdents) > 0 && !req.IsARIRenewal && !features.Get().UseKvLimitsForNewOrder {
-		pendingAuthzLimits := ra.rlPolicies.PendingAuthorizationsPerAccount()
-		if pendingAuthzLimits.Enabled() {
-			// The order isn't fully authorized we need to check that the client
-			// has rate limit room for more pending authorizations.
-			started := ra.clk.Now()
-			err := ra.checkPendingAuthorizationLimit(ctx, newOrder.RegistrationID, pendingAuthzLimits)
-			elapsed := ra.clk.Since(started)
-			if err != nil {
-				if errors.Is(err, berrors.RateLimit) {
-					ra.rlCheckLatency.WithLabelValues(ratelimit.PendingAuthorizationsPerAccount, ratelimits.Denied).Observe(elapsed.Seconds())
-				}
-				return nil, err
-			}
-			ra.rlCheckLatency.WithLabelValues(ratelimit.PendingAuthorizationsPerAccount, ratelimits.Allowed).Observe(elapsed.Seconds())
-		}
 	}
 
 	// Loop through each of the names missing authzs and create a new pending
@@ -2794,20 +2309,6 @@ func wildcardOverlap(dnsNames []string) error {
 			return berrors.MalformedError(
 				"Domain name %q is redundant with a wildcard domain in the same request. Remove one or the other from the certificate request.", name)
 		}
-	}
-	return nil
-}
-
-// validateContactsPresent will return an error if the contacts []string
-// len is greater than zero and the contactsPresent bool is false. We
-// don't care about any other cases. If the length of the contacts is zero
-// and contactsPresent is true, it seems like a mismatch but we have to
-// assume that the client is requesting to update the contacts field with
-// by removing the existing contacts value so we don't want to return an
-// error here.
-func validateContactsPresent(contacts []string, contactsPresent bool) error {
-	if len(contacts) > 0 && !contactsPresent {
-		return berrors.InternalServerError("account contacts present but contactsPresent false")
 	}
 	return nil
 }

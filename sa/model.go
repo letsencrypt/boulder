@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net"
 	"net/url"
 	"slices"
 	"strconv"
@@ -274,18 +273,11 @@ type issuedNameModel struct {
 
 // regModel is the description of a core.Registration in the database before
 type regModel struct {
-	ID        int64  `db:"id"`
-	Key       []byte `db:"jwk"`
-	KeySHA256 string `db:"jwk_sha256"`
-	Contact   string `db:"contact"`
-	Agreement string `db:"agreement"`
-	// InitialIP is stored as sixteen binary bytes, regardless of whether it
-	// represents a v4 or v6 IP address.
-	//
-	// Deprecated: This field is no longer used and will be removed from the
-	// database schema in a future release. Although deprecated, this column
-	// remains NOT NULL in the database, so a value must still be provided.
-	InitialIP []byte    `db:"initialIp"`
+	ID        int64     `db:"id"`
+	Key       []byte    `db:"jwk"`
+	KeySHA256 string    `db:"jwk_sha256"`
+	Contact   string    `db:"contact"`
+	Agreement string    `db:"agreement"`
 	CreatedAt time.Time `db:"createdAt"`
 	LockCol   int64
 	Status    string `db:"status"`
@@ -328,9 +320,6 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		KeySHA256: sha,
 		Contact:   string(jsonContact),
 		Agreement: reg.Agreement,
-		// Although deprecated, this column remains NOT NULL in the database, so
-		// a value must still be provided.
-		InitialIP: net.ParseIP("0.0.0.0").To16(),
 		CreatedAt: createdAt,
 		Status:    reg.Status,
 	}, nil
@@ -392,6 +381,8 @@ type orderModelv1 struct {
 	BeganProcessing   bool
 }
 
+// orderModelv2 represents one row in the orders table. The
+// CertificateProfileName column is a pointer because the column is NULL-able.
 type orderModelv2 struct {
 	ID                     int64
 	RegistrationID         int64
@@ -400,7 +391,7 @@ type orderModelv2 struct {
 	Error                  []byte
 	CertificateSerial      string
 	BeganProcessing        bool
-	CertificateProfileName string
+	CertificateProfileName *string
 }
 
 type orderToAuthzModel struct {
@@ -457,6 +448,9 @@ func modelToOrderv1(om *orderModelv1) (*corepb.Order, error) {
 }
 
 func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
+	// Make a local copy so we can take a reference to it below.
+	profile := order.CertificateProfileName
+
 	om := &orderModelv2{
 		ID:                     order.Id,
 		RegistrationID:         order.RegistrationID,
@@ -464,7 +458,7 @@ func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
 		Created:                order.Created.AsTime(),
 		BeganProcessing:        order.BeganProcessing,
 		CertificateSerial:      order.CertificateSerial,
-		CertificateProfileName: order.CertificateProfileName,
+		CertificateProfileName: &profile,
 	}
 
 	if order.Error != nil {
@@ -481,6 +475,10 @@ func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
 }
 
 func modelToOrderv2(om *orderModelv2) (*corepb.Order, error) {
+	profile := ""
+	if om.CertificateProfileName != nil {
+		profile = *om.CertificateProfileName
+	}
 	order := &corepb.Order{
 		Id:                     om.ID,
 		RegistrationID:         om.RegistrationID,
@@ -488,7 +486,7 @@ func modelToOrderv2(om *orderModelv2) (*corepb.Order, error) {
 		Created:                timestamppb.New(om.Created),
 		CertificateSerial:      om.CertificateSerial,
 		BeganProcessing:        om.BeganProcessing,
-		CertificateProfileName: om.CertificateProfileName,
+		CertificateProfileName: profile,
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails

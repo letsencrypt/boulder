@@ -1,6 +1,30 @@
 {
 	"ra": {
 		"rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
+		"limiter": {
+			"redis": {
+				"username": "boulder-wfe",
+				"passwordFile": "test/secrets/wfe_ratelimits_redis_password",
+				"lookups": [
+					{
+						"Service": "redisratelimits",
+						"Domain": "service.consul"
+					}
+				],
+				"lookupDNSAuthority": "consul.service.consul",
+				"readTimeout": "250ms",
+				"writeTimeout": "250ms",
+				"poolSize": 100,
+				"routeRandomly": true,
+				"tls": {
+					"caCertFile": "test/certs/ipki/minica.pem",
+					"certFile": "test/certs/ipki/wfe.boulder/cert.pem",
+					"keyFile": "test/certs/ipki/wfe.boulder/key.pem"
+				}
+			},
+			"Defaults": "test/config/wfe2-ratelimit-defaults.yml",
+			"Overrides": "test/config/wfe2-ratelimit-overrides.yml"
+		},
 		"maxContactsPerRegistration": 3,
 		"debugAddr": ":8002",
 		"hostnamePolicyFile": "test/hostname-policy.yaml",
@@ -90,7 +114,7 @@
 			"services": {
 				"ra.RegistrationAuthority": {
 					"clientNames": [
-						"admin-revoker.boulder",
+						"admin.boulder",
 						"bad-key-revoker.boulder",
 						"ocsp-responder.boulder",
 						"sfe.boulder",
@@ -105,6 +129,7 @@
 			}
 		},
 		"features": {
+			"UseKvLimitsForNewOrder": true,
 			"IncrementRateLimits": true
 		},
 		"ctLogs": {

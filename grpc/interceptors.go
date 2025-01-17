@@ -18,12 +18,14 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/web"
 )
 
 const (
 	returnOverhead         = 20 * time.Millisecond
 	meaningfulWorkOverhead = 100 * time.Millisecond
 	clientRequestTimeKey   = "client-request-time"
+	userAgentKey           = "acme-client-user-agent"
 )
 
 type serverInterceptor interface {
@@ -82,10 +84,15 @@ func (smi *serverMetadataInterceptor) Unary(
 	// timestamp embedded in it. It's okay if the timestamp is missing, since some
 	// clients (like nomad's health-checker) don't set it.
 	md, ok := metadata.FromIncomingContext(ctx)
-	if ok && len(md[clientRequestTimeKey]) > 0 {
-		err := smi.checkLatency(md[clientRequestTimeKey][0])
-		if err != nil {
-			return nil, err
+	if ok {
+		if len(md[clientRequestTimeKey]) > 0 {
+			err := smi.checkLatency(md[clientRequestTimeKey][0])
+			if err != nil {
+				return nil, err
+			}
+		}
+		if len(md[userAgentKey]) > 0 {
+			ctx = web.WithUserAgent(ctx, md[userAgentKey][0])
 		}
 	}
 
@@ -270,8 +277,10 @@ func (cmi *clientMetadataInterceptor) Unary(
 	// Convert the current unix nano timestamp to a string for embedding in the grpc metadata
 	nowTS := strconv.FormatInt(cmi.clk.Now().UnixNano(), 10)
 	// Create a grpc/metadata.Metadata instance for the request metadata.
-	// Initialize it with the request time.
-	reqMD := metadata.New(map[string]string{clientRequestTimeKey: nowTS})
+	reqMD := metadata.New(map[string]string{
+		clientRequestTimeKey: nowTS,
+		userAgentKey:         web.UserAgent(ctx),
+	})
 	// Configure the localCtx with the metadata so it gets sent along in the request
 	localCtx = metadata.NewOutgoingContext(localCtx, reqMD)
 
@@ -380,7 +389,10 @@ func (cmi *clientMetadataInterceptor) Stream(
 	nowTS := strconv.FormatInt(cmi.clk.Now().UnixNano(), 10)
 	// Create a grpc/metadata.Metadata instance for the request metadata.
 	// Initialize it with the request time.
-	reqMD := metadata.New(map[string]string{clientRequestTimeKey: nowTS})
+	reqMD := metadata.New(map[string]string{
+		clientRequestTimeKey: nowTS,
+		userAgentKey:         web.UserAgent(ctx),
+	})
 	// Configure the localCtx with the metadata so it gets sent along in the request
 	localCtx = metadata.NewOutgoingContext(localCtx, reqMD)
 
