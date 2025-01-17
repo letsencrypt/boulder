@@ -102,7 +102,7 @@ func TestWaitForReadyTrue(t *testing.T) {
 		clk:          clock.NewFake(),
 		waitForReady: true,
 	}
-	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
+	conn, err := grpc.NewClient("localhost:19876", // random, probably unused port
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(ci.Unary))
@@ -134,7 +134,7 @@ func TestWaitForReadyFalse(t *testing.T) {
 		clk:          clock.NewFake(),
 		waitForReady: false,
 	}
-	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
+	conn, err := grpc.NewClient("localhost:19876", // random, probably unused port
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(ci.Unary))
@@ -204,9 +204,9 @@ func TestTimeouts(t *testing.T) {
 
 func TestRequestTimeTagging(t *testing.T) {
 	server := new(testTimeoutServer)
-	metrics, err := newServerMetrics(metrics.NoopRegisterer)
+	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating server metrics")
-	client, _, stop := setup(t, server, metrics)
+	client, _, stop := setup(t, server, serverMetrics)
 	defer stop()
 
 	// Make an RPC request with the ChillerClient with a timeout higher than the
@@ -218,7 +218,7 @@ func TestRequestTimeTagging(t *testing.T) {
 	}
 
 	// There should be one histogram sample in the serverInterceptor rpcLag stat
-	test.AssertMetricWithLabelsEquals(t, metrics.rpcLag, prometheus.Labels{}, 1)
+	test.AssertMetricWithLabelsEquals(t, serverMetrics.rpcLag, prometheus.Labels{}, 1)
 }
 
 func TestClockSkew(t *testing.T) {
@@ -238,7 +238,7 @@ func TestClockSkew(t *testing.T) {
 		metrics: clientMetrics,
 		clk:     clientClk,
 	}
-	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(serverPort)),
+	conn, err := grpc.NewClient(net.JoinHostPort("localhost", strconv.Itoa(serverPort)),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(ci.Unary))
 	if err != nil {
@@ -455,7 +455,7 @@ func setup(t *testing.T, server test_proto.ChillerServer, opts ...any) (test_pro
 		metrics: clientMetricsVal,
 		clk:     clock.NewFake(),
 	}
-	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
+	conn, err := grpc.NewClient(net.JoinHostPort("localhost", strconv.Itoa(port)),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(ci.Unary))
 	if err != nil {
