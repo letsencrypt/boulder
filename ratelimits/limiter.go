@@ -31,19 +31,18 @@ const (
 var allowedDecision = &Decision{allowed: true, remaining: math.MaxInt64}
 
 // Limiter provides a high-level interface for rate limiting requests by
-// utilizing a leaky bucket-style approach.
+// utilizing a token bucket-style approach.
 type Limiter struct {
 	// source is used to store buckets. It must be safe for concurrent use.
-	source source
+	source Source
 	clk    clock.Clock
 
-	spendLatency       *prometheus.HistogramVec
-	overrideUsageGauge *prometheus.GaugeVec
+	spendLatency *prometheus.HistogramVec
 }
 
 // NewLimiter returns a new *Limiter. The provided source must be safe for
 // concurrent use.
-func NewLimiter(clk clock.Clock, source source, stats prometheus.Registerer) (*Limiter, error) {
+func NewLimiter(clk clock.Clock, source Source, stats prometheus.Registerer) (*Limiter, error) {
 	spendLatency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "ratelimits_spend_latency",
 		Help: fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", Allowed, Denied),
@@ -52,17 +51,10 @@ func NewLimiter(clk clock.Clock, source source, stats prometheus.Registerer) (*L
 	}, []string{"limit", "decision"})
 	stats.MustRegister(spendLatency)
 
-	overrideUsageGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "ratelimits_override_usage",
-		Help: "Proportion of override limit used, by limit name and bucket key.",
-	}, []string{"limit", "bucket_key"})
-	stats.MustRegister(overrideUsageGauge)
-
 	return &Limiter{
-		source:             source,
-		clk:                clk,
-		spendLatency:       spendLatency,
-		overrideUsageGauge: overrideUsageGauge,
+		source:       source,
+		clk:          clk,
+		spendLatency: spendLatency,
 	}, nil
 }
 
@@ -110,30 +102,32 @@ func (d *Decision) Result(now time.Time) error {
 	retryAfter := d.retryIn + jitter
 	retryAfterTs := now.UTC().Add(retryAfter).Format("2006-01-02 15:04:05 MST")
 
+	// There is no case for FailedAuthorizationsForPausingPerDomainPerAccount
+	// because the RA will pause clients who exceed that ratelimit.
 	switch d.transaction.limit.name {
 	case NewRegistrationsPerIPAddress:
-		return berrors.RegistrationsPerIPError(
+		return berrors.RegistrationsPerIPAddressError(
 			retryAfter,
 			"too many new registrations (%d) from this IP address in the last %s, retry after %s",
-			d.transaction.limit.Burst,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.burst,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
 	case NewRegistrationsPerIPv6Range:
-		return berrors.RateLimitError(
+		return berrors.RegistrationsPerIPv6RangeError(
 			retryAfter,
-			"too many new registrations (%d) from this /48 block of IPv6 addresses in the last %s, retry after %s",
-			d.transaction.limit.Burst,
-			d.transaction.limit.Period.Duration,
+			"too many new registrations (%d) from this /48 subnet of IPv6 addresses in the last %s, retry after %s",
+			d.transaction.limit.burst,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 	case NewOrdersPerAccount:
-		return berrors.RateLimitError(
+		return berrors.NewOrdersPerAccountError(
 			retryAfter,
 			"too many new orders (%d) from this account in the last %s, retry after %s",
-			d.transaction.limit.Burst,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.burst,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
@@ -144,12 +138,12 @@ func (d *Decision) Result(now time.Time) error {
 			return berrors.InternalServerError("unrecognized bucket key while generating error")
 		}
 		domain := d.transaction.bucketKey[idx+1:]
-		return berrors.FailedValidationError(
+		return berrors.FailedAuthorizationsPerDomainPerAccountError(
 			retryAfter,
 			"too many failed authorizations (%d) for %q in the last %s, retry after %s",
-			d.transaction.limit.Burst,
+			d.transaction.limit.burst,
 			domain,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
@@ -160,21 +154,21 @@ func (d *Decision) Result(now time.Time) error {
 			return berrors.InternalServerError("unrecognized bucket key while generating error")
 		}
 		domain := d.transaction.bucketKey[idx+1:]
-		return berrors.RateLimitError(
+		return berrors.CertificatesPerDomainError(
 			retryAfter,
 			"too many certificates (%d) already issued for %q in the last %s, retry after %s",
-			d.transaction.limit.Burst,
+			d.transaction.limit.burst,
 			domain,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
 	case CertificatesPerFQDNSet:
-		return berrors.DuplicateCertificateError(
+		return berrors.CertificatesPerFQDNSetError(
 			retryAfter,
 			"too many certificates (%d) already issued for this exact set of domains in the last %s, retry after %s",
-			d.transaction.limit.Burst,
-			d.transaction.limit.Period.Duration,
+			d.transaction.limit.burst,
+			d.transaction.limit.period.Duration,
 			retryAfterTs,
 		)
 
@@ -270,29 +264,29 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 	ctx = context.WithoutCancel(ctx)
 	tats, err := l.source.BatchGet(ctx, bucketKeys)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("batch get for %d keys: %w", len(bucketKeys), err)
 	}
 	batchDecision := allowedDecision
-	newTATs := make(map[string]time.Time)
+	newBuckets := make(map[string]time.Time)
+	incrBuckets := make(map[string]increment)
+	staleBuckets := make(map[string]time.Time)
 	txnOutcomes := make(map[Transaction]string)
 
 	for _, txn := range batch {
-		tat, exists := tats[txn.bucketKey]
-		if !exists {
-			// First request from this client.
-			tat = l.clk.Now()
-		}
+		storedTAT, bucketExists := tats[txn.bucketKey]
+		d := maybeSpend(l.clk, txn, storedTAT)
 
-		d := maybeSpend(l.clk, txn, tat)
-
-		if txn.limit.isOverride() {
-			utilization := float64(txn.limit.Burst-d.remaining) / float64(txn.limit.Burst)
-			l.overrideUsageGauge.WithLabelValues(txn.limit.name.String(), txn.limit.overrideKey).Set(utilization)
-		}
-
-		if d.allowed && (tat != d.newTAT) && txn.spend {
-			// New bucket state should be persisted.
-			newTATs[txn.bucketKey] = d.newTAT
+		if d.allowed && (storedTAT != d.newTAT) && txn.spend {
+			if !bucketExists {
+				newBuckets[txn.bucketKey] = d.newTAT
+			} else if storedTAT.After(l.clk.Now()) {
+				incrBuckets[txn.bucketKey] = increment{
+					cost: time.Duration(txn.cost * txn.limit.emissionInterval),
+					ttl:  time.Duration(txn.limit.burstOffset),
+				}
+			} else {
+				staleBuckets[txn.bucketKey] = d.newTAT
+			}
 		}
 
 		if !txn.spendOnly() {
@@ -307,10 +301,44 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		}
 	}
 
-	if batchDecision.allowed && len(newTATs) > 0 {
-		err = l.source.BatchSet(ctx, newTATs)
-		if err != nil {
-			return nil, err
+	if batchDecision.allowed {
+		if len(newBuckets) > 0 {
+			// Use BatchSetNotExisting to create new buckets so that we detect
+			// if concurrent requests have created this bucket at the same time,
+			// which would result in overwriting if we used a plain "SET"
+			// command. If that happens, fall back to incrementing.
+			alreadyExists, err := l.source.BatchSetNotExisting(ctx, newBuckets)
+			if err != nil {
+				return nil, fmt.Errorf("batch set for %d keys: %w", len(newBuckets), err)
+			}
+			// Find the original transaction in order to compute the increment
+			// and set the TTL.
+			for _, txn := range batch {
+				if alreadyExists[txn.bucketKey] {
+					incrBuckets[txn.bucketKey] = increment{
+						cost: time.Duration(txn.cost * txn.limit.emissionInterval),
+						ttl:  time.Duration(txn.limit.burstOffset),
+					}
+				}
+			}
+		}
+
+		if len(incrBuckets) > 0 {
+			err = l.source.BatchIncrement(ctx, incrBuckets)
+			if err != nil {
+				return nil, fmt.Errorf("batch increment for %d keys: %w", len(incrBuckets), err)
+			}
+		}
+
+		if len(staleBuckets) > 0 {
+			// Incrementing a TAT in the past grants unintended burst capacity.
+			// So instead we overwrite it with a TAT of now + increment. This
+			// approach may cause a race condition where only the last spend is
+			// saved, but it's preferable to the alternative.
+			err = l.source.BatchSet(ctx, staleBuckets)
+			if err != nil {
+				return nil, fmt.Errorf("batch set for %d keys: %w", len(staleBuckets), err)
+			}
 		}
 	}
 
@@ -360,15 +388,15 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 	ctx = context.WithoutCancel(ctx)
 	tats, err := l.source.BatchGet(ctx, bucketKeys)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("batch get for %d keys: %w", len(bucketKeys), err)
 	}
 
 	batchDecision := allowedDecision
-	newTATs := make(map[string]time.Time)
+	incrBuckets := make(map[string]increment)
 
 	for _, txn := range batch {
-		tat, exists := tats[txn.bucketKey]
-		if !exists {
+		tat, bucketExists := tats[txn.bucketKey]
+		if !bucketExists {
 			// Ignore non-existent bucket.
 			continue
 		}
@@ -381,14 +409,17 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 		batchDecision = stricter(batchDecision, d)
 		if d.allowed && tat != d.newTAT {
 			// New bucket state should be persisted.
-			newTATs[txn.bucketKey] = d.newTAT
+			incrBuckets[txn.bucketKey] = increment{
+				cost: time.Duration(-txn.cost * txn.limit.emissionInterval),
+				ttl:  time.Duration(txn.limit.burstOffset),
+			}
 		}
 	}
 
-	if len(newTATs) > 0 {
-		err = l.source.BatchSet(ctx, newTATs)
+	if len(incrBuckets) > 0 {
+		err = l.source.BatchIncrement(ctx, incrBuckets)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("batch increment for %d keys: %w", len(incrBuckets), err)
 		}
 	}
 	return batchDecision, nil

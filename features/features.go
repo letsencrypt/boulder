@@ -15,21 +15,11 @@ import (
 // then call features.Set(parsedConfig) to load the parsed struct into this
 // package's global Config.
 type Config struct {
-	// Deprecated features. These features have no effect. Removing them from
-	// configuration is safe.
-	//
-	// Once all references to them have been removed from deployed configuration,
-	// they can be deleted from this struct, after which Boulder will fail to
-	// start if they are present in configuration.
-	CAAAfterValidation                bool
-	AllowNoCommonName                 bool
-	SHA256SubjectKeyIdentifier        bool
-	EnforceMultiVA                    bool
-	MultiVAFullResults                bool
-	CertCheckerRequiresCorrespondence bool
-	ECDSAForAll                       bool
-	CheckRenewalExemptionAtWFE        bool
-	InsertAuthzsIndividually          bool
+	// Deprecated flags.
+	IncrementRateLimits      bool
+	UseKvLimitsForNewOrder   bool
+	DisableLegacyLimitWrites bool
+	InsertAuthzsIndividually bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -63,25 +53,8 @@ type Config struct {
 
 	// EnforceMultiCAA causes the VA to kick off remote CAA rechecks when true.
 	// When false, no remote CAA rechecks will be performed. The primary VA will
-	// make a valid/invalid decision with the results. The primary VA will
-	// return an early decision if MultiCAAFullResults is false.
+	// make a valid/invalid decision with the results.
 	EnforceMultiCAA bool
-
-	// MultiCAAFullResults will cause the main VA to block and wait for all of
-	// the remote VA CAA recheck results instead of returning early if the
-	// number of failures is greater than the configured
-	// maxRemoteValidationFailures. Only used when EnforceMultiCAA is true.
-	MultiCAAFullResults bool
-
-	// TrackReplacementCertificatesARI, when enabled, triggers the following
-	// behavior:
-	//   - SA.NewOrderAndAuthzs: upon receiving a NewOrderRequest with a
-	//     'replacesSerial' value, will create a new entry in the 'replacement
-	//     Orders' table. This will occur inside of the new order transaction.
-	//   - SA.FinalizeOrder will update the 'replaced' column of any row with
-	//     a 'orderID' matching the finalized order to true. This will occur
-	//     inside of the finalize (order) transaction.
-	TrackReplacementCertificatesARI bool
 
 	// MultipleCertificateProfiles, when enabled, triggers the following
 	// behavior:
@@ -97,25 +70,43 @@ type Config struct {
 	// until the paused identifiers are unpaused and the order is resubmitted.
 	CheckIdentifiersPaused bool
 
-	// UseKvLimitsForNewOrder when enabled, causes the key-value rate limiter to
-	// be the authoritative source of rate limiting information for new-order
-	// callers and disables the legacy rate limiting checks.
-	//
-	// Note: this flag does not disable writes to the certificatesPerName or
-	// fqdnSets tables at Finalize time.
-	UseKvLimitsForNewOrder bool
+	// PropagateCancels controls whether the WFE and ocsp-responder allows
+	// cancellation of an inbound request to cancel downstream gRPC and other
+	// queries. In practice, cancellation of an inbound request is achieved by
+	// Nginx closing the connection on which the request was happening. This may
+	// help shed load in overcapacity situations. However, note that in-progress
+	// database queries (for instance, in the SA) are not cancelled. Database
+	// queries waiting for an available connection may be cancelled.
+	PropagateCancels bool
 
-	// UseKvLimitsForNewAccount when enabled, causes the key-value rate limiter
-	// to be the authoritative source of rate limiting information for
-	// new-account callers and disables the legacy rate limiting checks.
-	UseKvLimitsForNewAccount bool
+	// AutomaticallyPauseZombieClients configures the RA to automatically track
+	// and pause issuance for each (account, hostname) pair that repeatedly
+	// fails validation.
+	AutomaticallyPauseZombieClients bool
 
-	// DisableLegacyLimitWrites when enabled, disables writes to:
-	//   - the newOrdersRL table at new-order time, and
-	//   - the certificatesPerName table at finalize time.
+	// NoPendingAuthzReuse causes the RA to only select already-validated authzs
+	// to attach to a newly created order. This preserves important client-facing
+	// functionality (valid authz reuse) while letting us simplify our code by
+	// removing pending authz reuse.
+	NoPendingAuthzReuse bool
+
+	// EnforceMPIC enforces SC-067 V3: Require Multi-Perspective Issuance
+	// Corroboration by:
+	//  - Requiring at least three distinct perspectives, as outlined in the
+	//    "Phased Implementation Timeline" in BRs section 3.2.2.9 ("Effective
+	//    March 15, 2025").
+	//  - Ensuring that corroborating (passing) perspectives reside in at least
+	//    2 distinct Regional Internet Registries (RIRs) per the "Phased
+	//    Implementation Timeline" in BRs section 3.2.2.9 ("Effective March 15,
+	//    2026").
+	//  - Including an MPIC summary consisting of: passing perspectives, failing
+	//    perspectives, passing RIRs, and a quorum met for issuance (e.g., 2/3
+	//    or 3/3) in each validation audit log event, per BRs Section 5.4.1,
+	//    Requirement 2.8.
 	//
-	// This flag should only be used in conjunction with UseKvLimitsForNewOrder.
-	DisableLegacyLimitWrites bool
+	// This feature flag also causes CAA checks to happen after all remote VAs
+	// have passed DCV.
+	EnforceMPIC bool
 }
 
 var fMu = new(sync.RWMutex)

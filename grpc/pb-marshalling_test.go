@@ -154,9 +154,11 @@ func TestValidationResult(t *testing.T) {
 	result := []core.ValidationRecord{vrA, vrB}
 	prob := &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}
 
-	pb, err := ValidationResultToPB(result, prob)
+	pb, err := ValidationResultToPB(result, prob, "surreal", "ARIN")
 	test.AssertNotError(t, err, "ValidationResultToPB failed")
 	test.Assert(t, pb != nil, "Returned vapb.ValidationResult is nil")
+	test.AssertEquals(t, pb.Perspective, "surreal")
+	test.AssertEquals(t, pb.Rir, "ARIN")
 
 	reconResult, reconProb, err := pbToValidationResult(pb)
 	test.AssertNotError(t, err, "pbToValidationResult failed")
@@ -181,7 +183,6 @@ func TestRegistration(t *testing.T) {
 		Key:       &key,
 		Contact:   &contacts,
 		Agreement: "yup",
-		InitialIP: net.ParseIP("1.1.1.1"),
 		CreatedAt: &createdAt,
 		Status:    core.StatusValid,
 	}
@@ -205,14 +206,15 @@ func TestRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "registrationToPB failed")
 	outReg, err = PbToRegistration(pbReg)
 	test.AssertNotError(t, err, "PbToRegistration failed")
-	test.Assert(t, *outReg.Contact != nil, "Empty slice was converted to a nil slice")
+	if outReg.Contact != nil {
+		t.Errorf("Empty contacts should be a nil slice")
+	}
 
 	inRegNilCreatedAt := core.Registration{
 		ID:        1,
 		Key:       &key,
 		Contact:   &contacts,
 		Agreement: "yup",
-		InitialIP: net.ParseIP("1.1.1.1"),
 		CreatedAt: nil,
 		Status:    core.StatusValid,
 	}

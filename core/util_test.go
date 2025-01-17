@@ -2,7 +2,9 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -13,6 +15,8 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -361,4 +365,16 @@ func TestHashNames(t *testing.T) {
 	h1 = HashNames([]string{"a", "a"})
 	h2 = HashNames([]string{"a"})
 	test.AssertByteEquals(t, h1, h2)
+}
+
+func TestIsCanceled(t *testing.T) {
+	if !IsCanceled(context.Canceled) {
+		t.Errorf("Expected context.Canceled to be canceled, but wasn't.")
+	}
+	if !IsCanceled(status.Errorf(codes.Canceled, "hi")) {
+		t.Errorf("Expected gRPC cancellation to be canceled, but wasn't.")
+	}
+	if IsCanceled(errors.New("hi")) {
+		t.Errorf("Expected random error to not be canceled, but was.")
+	}
 }

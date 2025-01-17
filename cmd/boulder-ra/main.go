@@ -25,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/ratelimits"
 	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/letsencrypt/boulder/va"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
@@ -33,7 +34,8 @@ type Config struct {
 		cmd.ServiceConfig
 		cmd.HostnamePolicyConfig
 
-		RateLimitPoliciesFilename string `validate:"required"`
+		// RateLimitPoliciesFilename is deprecated.
+		RateLimitPoliciesFilename string
 
 		MaxContactsPerRegistration int
 
@@ -272,7 +274,7 @@ func main() {
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, scope)
 		limiter, err = ratelimits.NewLimiter(clk, source, scope)
 		cmd.FailOnError(err, "Failed to create rate limiter")
-		txnBuilder, err = ratelimits.NewTransactionBuilder(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides)
+		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.RA.Limiter.Defaults, c.RA.Limiter.Overrides)
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
 	}
 
@@ -288,20 +290,20 @@ func main() {
 		authorizationLifetime,
 		pendingAuthorizationLifetime,
 		pubc,
-		caaClient,
 		c.RA.OrderLifetime.Duration,
 		c.RA.FinalizeTimeout.Duration,
 		ctp,
 		apc,
 		issuerCerts,
 	)
-	defer rai.DrainFinalize()
+	defer rai.Drain()
 
-	policyErr := rai.LoadRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
-	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
 	rai.PA = pa
 
-	rai.VA = vac
+	rai.VA = va.RemoteClients{
+		VAClient:  vac,
+		CAAClient: caaClient,
+	}
 	rai.CA = cac
 	rai.OCSP = ocspc
 	rai.SA = sac

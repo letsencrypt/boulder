@@ -14,11 +14,11 @@
 		],
 		"ignoredLints": [
 			"w_subject_common_name_included",
-			"w_sub_cert_aia_contains_internal_names"
+			"w_ext_subject_key_identifier_missing_sub_cert",
+			"w_ext_subject_key_identifier_not_recommended_subscriber"
 		],
 		"ctLogListFile": "test/ct-test-srv/log_list.json",
 		"features": {
-			"CertCheckerRequiresCorrespondence": true,
 			"CertCheckerChecksValidations": true,
 			"CertCheckerRequiresValidations": true
 		}

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/config"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -21,7 +20,7 @@ import (
 const tenZeroZeroTwo = "10.0.0.2"
 
 // newTestLimiter constructs a new limiter.
-func newTestLimiter(t *testing.T, s source, clk clock.FakeClock) *Limiter {
+func newTestLimiter(t *testing.T, s Source, clk clock.FakeClock) *Limiter {
 	l, err := NewLimiter(clk, s, metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "should not error")
 	return l
@@ -32,7 +31,7 @@ func newTestLimiter(t *testing.T, s source, clk clock.FakeClock) *Limiter {
 //   - 'NewRegistrationsPerIPAddress' burst: 20 count: 20 period: 1s
 //   - 'NewRegistrationsPerIPAddress:10.0.0.2' burst: 40 count: 40 period: 1s
 func newTestTransactionBuilder(t *testing.T) *TransactionBuilder {
-	c, err := NewTransactionBuilder("testdata/working_default.yml", "testdata/working_override.yml")
+	c, err := NewTransactionBuilderFromFiles("testdata/working_default.yml", "testdata/working_override.yml")
 	test.AssertNotError(t, err, "should not error")
 	return c
 }
@@ -60,12 +59,6 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 	testCtx, limiters, txnBuilder, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			// Verify our overrideUsageGauge is being set correctly. 0.0 == 0%
-			// of the bucket has been consumed.
-			test.AssertMetricWithLabelsEquals(t, l.overrideUsageGauge, prometheus.Labels{
-				"limit":      NewRegistrationsPerIPAddress.String(),
-				"bucket_key": joinWithColon(NewRegistrationsPerIPAddress.EnumString(), tenZeroZeroTwo)}, 0)
-
 			overriddenBucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, net.ParseIP(tenZeroZeroTwo))
 			test.AssertNotError(t, err, "should not error")
 			overriddenLimit, err := txnBuilder.getLimit(NewRegistrationsPerIPAddress, overriddenBucketKey)
@@ -86,12 +79,6 @@ func TestLimiter_CheckWithLimitOverrides(t *testing.T) {
 			test.Assert(t, !d.allowed, "should not be allowed")
 			test.AssertEquals(t, d.remaining, int64(0))
 			test.AssertEquals(t, d.resetIn, time.Second)
-
-			// Verify our overrideUsageGauge is being set correctly. 1.0 == 100%
-			// of the bucket has been consumed.
-			test.AssertMetricWithLabelsEquals(t, l.overrideUsageGauge, prometheus.Labels{
-				"limit_name": NewRegistrationsPerIPAddress.String(),
-				"bucket_key": joinWithColon(NewRegistrationsPerIPAddress.EnumString(), tenZeroZeroTwo)}, 1.0)
 
 			// Verify our RetryIn is correct. 1 second == 1000 milliseconds and
 			// 1000/40 = 25 milliseconds per request.
@@ -304,8 +291,8 @@ func TestLimiter_InitializationViaCheckAndSpend(t *testing.T) {
 			test.AssertEquals(t, d.resetIn, time.Millisecond*50)
 			test.AssertEquals(t, d.retryIn, time.Duration(0))
 
-			// However, that cost should not be spent yet, a 0 cost check should
-			// tell us that we actually have 19 remaining.
+			// And that cost should have been spent; a 0 cost check should still
+			// tell us that we have 19 remaining.
 			d, err = l.Check(testCtx, txn0)
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.allowed, "should be allowed")
@@ -482,14 +469,14 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 5 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   NewRegistrationsPerIPAddress,
-						Burst:  10,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  10,
+						period: config.Duration{Duration: time.Hour},
 					},
 				},
 			},
-			expectedErr:     "too many new registrations (10) from this IP address in the last 1h0m0s, retry after 1970-01-01 00:00:05 UTC",
+			expectedErr:     "too many new registrations (10) from this IP address in the last 1h0m0s, retry after 1970-01-01 00:00:05 UTC: see https://letsencrypt.org/docs/rate-limits/#new-registrations-per-ip-address",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -498,14 +485,30 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 10 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   NewRegistrationsPerIPv6Range,
-						Burst:  5,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  5,
+						period: config.Duration{Duration: time.Hour},
 					},
 				},
 			},
-			expectedErr:     "too many new registrations (5) from this /48 block of IPv6 addresses in the last 1h0m0s, retry after 1970-01-01 00:00:10 UTC",
+			expectedErr:     "too many new registrations (5) from this /48 subnet of IPv6 addresses in the last 1h0m0s, retry after 1970-01-01 00:00:10 UTC: see https://letsencrypt.org/docs/rate-limits/#new-registrations-per-ipv6-range",
+			expectedErrType: berrors.RateLimit,
+		},
+		{
+			name: "NewOrdersPerAccount limit reached",
+			decision: &Decision{
+				allowed: false,
+				retryIn: 10 * time.Second,
+				transaction: Transaction{
+					limit: &limit{
+						name:   NewOrdersPerAccount,
+						burst:  2,
+						period: config.Duration{Duration: time.Hour},
+					},
+				},
+			},
+			expectedErr:     "too many new orders (2) from this account in the last 1h0m0s, retry after 1970-01-01 00:00:10 UTC: see https://letsencrypt.org/docs/rate-limits/#new-orders-per-account",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -514,15 +517,15 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 15 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   FailedAuthorizationsPerDomainPerAccount,
-						Burst:  7,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  7,
+						period: config.Duration{Duration: time.Hour},
 					},
 					bucketKey: "4:12345:example.com",
 				},
 			},
-			expectedErr:     "too many failed authorizations (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01 00:00:15 UTC",
+			expectedErr:     "too many failed authorizations (7) for \"example.com\" in the last 1h0m0s, retry after 1970-01-01 00:00:15 UTC: see https://letsencrypt.org/docs/rate-limits/#authorization-failures-per-hostname-per-account",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -531,15 +534,15 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 20 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   CertificatesPerDomain,
-						Burst:  3,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  3,
+						period: config.Duration{Duration: time.Hour},
 					},
 					bucketKey: "5:example.org",
 				},
 			},
-			expectedErr:     "too many certificates (3) already issued for \"example.org\" in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC",
+			expectedErr:     "too many certificates (3) already issued for \"example.org\" in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC: see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-registered-domain",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -548,15 +551,15 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 20 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name:   CertificatesPerDomainPerAccount,
-						Burst:  3,
-						Period: config.Duration{Duration: time.Hour},
+						burst:  3,
+						period: config.Duration{Duration: time.Hour},
 					},
 					bucketKey: "6:12345678:example.net",
 				},
 			},
-			expectedErr:     "too many certificates (3) already issued for \"example.net\" in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC",
+			expectedErr:     "too many certificates (3) already issued for \"example.net\" in the last 1h0m0s, retry after 1970-01-01 00:00:20 UTC: see https://letsencrypt.org/docs/rate-limits/#new-certificates-per-registered-domain",
 			expectedErrType: berrors.RateLimit,
 		},
 		{
@@ -565,7 +568,7 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 30 * time.Second,
 				transaction: Transaction{
-					limit: limit{
+					limit: &limit{
 						name: 9999999,
 					},
 				},
@@ -583,7 +586,7 @@ func TestRateLimitError(t *testing.T) {
 				test.AssertNotError(t, err, "expected no error")
 			} else {
 				test.AssertError(t, err, "expected an error")
-				test.AssertContains(t, err.Error(), tc.expectedErr)
+				test.AssertEquals(t, err.Error(), tc.expectedErr)
 				test.AssertErrorIs(t, err, tc.expectedErrType)
 			}
 		})

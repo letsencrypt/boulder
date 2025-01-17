@@ -10,8 +10,8 @@ import (
 // ErrBucketNotFound indicates that the bucket was not found.
 var ErrBucketNotFound = fmt.Errorf("bucket not found")
 
-// source is an interface for creating and modifying TATs.
-type source interface {
+// Source is an interface for creating and modifying TATs.
+type Source interface {
 	// BatchSet stores the TATs at the specified bucketKeys (formatted as
 	// 'name:id'). Implementations MUST ensure non-blocking operations by
 	// either:
@@ -19,6 +19,18 @@ type source interface {
 	//   b) guaranteeing the operation will not block indefinitely (e.g. via
 	//    the underlying storage client implementation).
 	BatchSet(ctx context.Context, bucketKeys map[string]time.Time) error
+
+	// BatchSetNotExisting attempts to set TATs for the specified bucketKeys if
+	// they do not already exist. Returns a map indicating which keys already
+	// exist.
+	BatchSetNotExisting(ctx context.Context, buckets map[string]time.Time) (map[string]bool, error)
+
+	// BatchIncrement updates the TATs for the specified bucketKeys, similar to
+	// BatchSet. Implementations MUST ensure non-blocking operations by either:
+	//   a) applying a deadline or timeout to the context WITHIN the method, or
+	//   b) guaranteeing the operation will not block indefinitely (e.g. via
+	//    the underlying storage client implementation).
+	BatchIncrement(ctx context.Context, buckets map[string]increment) error
 
 	// Get retrieves the TAT associated with the specified bucketKey (formatted
 	// as 'name:id'). Implementations MUST ensure non-blocking operations by
@@ -45,6 +57,11 @@ type source interface {
 	Delete(ctx context.Context, bucketKey string) error
 }
 
+type increment struct {
+	cost time.Duration
+	ttl  time.Duration
+}
+
 // inmem is an in-memory implementation of the source interface used for
 // testing.
 type inmem struct {
@@ -52,7 +69,9 @@ type inmem struct {
 	m map[string]time.Time
 }
 
-func newInmem() *inmem {
+var _ Source = (*inmem)(nil)
+
+func NewInmemSource() *inmem {
 	return &inmem{m: make(map[string]time.Time)}
 }
 
@@ -61,6 +80,30 @@ func (in *inmem) BatchSet(_ context.Context, bucketKeys map[string]time.Time) er
 	defer in.Unlock()
 	for k, v := range bucketKeys {
 		in.m[k] = v
+	}
+	return nil
+}
+
+func (in *inmem) BatchSetNotExisting(_ context.Context, bucketKeys map[string]time.Time) (map[string]bool, error) {
+	in.Lock()
+	defer in.Unlock()
+	alreadyExists := make(map[string]bool, len(bucketKeys))
+	for k, v := range bucketKeys {
+		_, ok := in.m[k]
+		if ok {
+			alreadyExists[k] = true
+		} else {
+			in.m[k] = v
+		}
+	}
+	return alreadyExists, nil
+}
+
+func (in *inmem) BatchIncrement(_ context.Context, bucketKeys map[string]increment) error {
+	in.Lock()
+	defer in.Unlock()
+	for k, v := range bucketKeys {
+		in.m[k] = in.m[k].Add(v.cost)
 	}
 	return nil
 }
@@ -82,7 +125,7 @@ func (in *inmem) BatchGet(_ context.Context, bucketKeys []string) (map[string]ti
 	for _, k := range bucketKeys {
 		tat, ok := in.m[k]
 		if !ok {
-			tats[k] = time.Time{}
+			continue
 		}
 		tats[k] = tat
 	}

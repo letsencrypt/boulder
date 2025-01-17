@@ -76,18 +76,29 @@ const (
 	// Note: When this is referenced in an overrides file, the fqdnSet MUST be
 	// passed as a comma-separated list of domain names.
 	CertificatesPerFQDNSet
+
+	// FailedAuthorizationsForPausingPerDomainPerAccount is similar to
+	// FailedAuthorizationsPerDomainPerAccount in that it uses two different
+	// bucket keys depending on the context:
+	//  - When referenced in an overrides file: uses bucket key 'enum:regId',
+	//    where regId is the ACME registration Id of the account.
+	//  - When referenced in a transaction: uses bucket key 'enum:regId:domain',
+	//    where regId is the ACME registration Id of the account and domain is a
+	//    domain name in the certificate.
+	FailedAuthorizationsForPausingPerDomainPerAccount
 )
 
 // nameToString is a map of Name values to string names.
 var nameToString = map[Name]string{
-	Unknown:                                 "Unknown",
-	NewRegistrationsPerIPAddress:            "NewRegistrationsPerIPAddress",
-	NewRegistrationsPerIPv6Range:            "NewRegistrationsPerIPv6Range",
-	NewOrdersPerAccount:                     "NewOrdersPerAccount",
-	FailedAuthorizationsPerDomainPerAccount: "FailedAuthorizationsPerDomainPerAccount",
-	CertificatesPerDomain:                   "CertificatesPerDomain",
-	CertificatesPerDomainPerAccount:         "CertificatesPerDomainPerAccount",
-	CertificatesPerFQDNSet:                  "CertificatesPerFQDNSet",
+	Unknown:                                           "Unknown",
+	NewRegistrationsPerIPAddress:                      "NewRegistrationsPerIPAddress",
+	NewRegistrationsPerIPv6Range:                      "NewRegistrationsPerIPv6Range",
+	NewOrdersPerAccount:                               "NewOrdersPerAccount",
+	FailedAuthorizationsPerDomainPerAccount:           "FailedAuthorizationsPerDomainPerAccount",
+	CertificatesPerDomain:                             "CertificatesPerDomain",
+	CertificatesPerDomainPerAccount:                   "CertificatesPerDomainPerAccount",
+	CertificatesPerFQDNSet:                            "CertificatesPerFQDNSet",
+	FailedAuthorizationsForPausingPerDomainPerAccount: "FailedAuthorizationsForPausingPerDomainPerAccount",
 }
 
 // isValid returns true if the Name is a valid rate limit name.
@@ -231,6 +242,15 @@ func validateIdForName(name Name, id string) error {
 		// 'enum:fqdnSet'
 		return validateFQDNSet(id)
 
+	case FailedAuthorizationsForPausingPerDomainPerAccount:
+		if strings.Contains(id, ":") {
+			// 'enum:regId:domain' for transaction
+			return validateRegIdDomain(id)
+		} else {
+			// 'enum:regId' for overrides
+			return validateRegId(id)
+		}
+
 	case Unknown:
 		fallthrough
 
@@ -251,7 +271,7 @@ var stringToName = func() map[string]Name {
 
 // limitNames is a slice of all rate limit names.
 var limitNames = func() []string {
-	names := make([]string, len(nameToString))
+	names := make([]string, 0, len(nameToString))
 	for _, v := range nameToString {
 		names = append(names, v)
 	}

@@ -28,8 +28,12 @@ func defaultProfileConfig() *ProfileConfig {
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 		IgnoredLints: []string{
+			// Ignore the two SCT lints because these tests don't get SCTs.
 			"w_ct_sct_policy_count_unsatisfied",
 			"e_scts_from_same_operator",
+			// Ignore the warning about including the SubjectKeyIdentifier extension:
+			// we include it on purpose, but plan to remove it soon.
+			"w_ext_subject_key_identifier_not_recommended_subscriber",
 		},
 	}
 }
@@ -115,7 +119,7 @@ func TestLoadSigner(t *testing.T) {
 		{"invalid key file", IssuerLoc{File: "../test/hierarchy/int-e1.crl.pem"}, "unable to parse"},
 		{"ECDSA key file", IssuerLoc{File: "../test/hierarchy/int-e1.key.pem"}, ""},
 		{"RSA key file", IssuerLoc{File: "../test/hierarchy/int-r3.key.pem"}, ""},
-		{"invalid config file", IssuerLoc{ConfigFile: "../test/example-weak-keys.json"}, "json: cannot unmarshal"},
+		{"invalid config file", IssuerLoc{ConfigFile: "../test/hostname-policy.yaml"}, "invalid character"},
 		// Note that we don't have a test for "valid config file" because it would
 		// always fail -- in CI, the softhsm hasn't been initialized, so there's no
 		// key to look up; locally even if the softhsm has been initialized, the

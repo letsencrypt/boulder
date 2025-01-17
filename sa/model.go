@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net"
 	"net/url"
 	"slices"
 	"strconv"
@@ -59,7 +58,7 @@ func badJSONError(msg string, jsonData []byte, err error) error {
 	}
 }
 
-const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status"
+const regFields = "id, jwk, jwk_sha256, contact, agreement, createdAt, LockCol, status"
 
 // ClearEmail removes the provided email address from one specified registration. If
 // there are multiple email addresses present, it does not modify other ones. If the email
@@ -160,7 +159,7 @@ const precertFields = "registrationID, serial, der, issued, expires"
 // SelectPrecertificate selects all fields of one precertificate object
 // identified by serial.
 func SelectPrecertificate(ctx context.Context, s db.OneSelector, serial string) (core.Certificate, error) {
-	var model precertificateModel
+	var model lintingCertModel
 	err := s.SelectOne(
 		ctx,
 		&model,
@@ -274,14 +273,11 @@ type issuedNameModel struct {
 
 // regModel is the description of a core.Registration in the database before
 type regModel struct {
-	ID        int64  `db:"id"`
-	Key       []byte `db:"jwk"`
-	KeySHA256 string `db:"jwk_sha256"`
-	Contact   string `db:"contact"`
-	Agreement string `db:"agreement"`
-	// InitialIP is stored as sixteen binary bytes, regardless of whether it
-	// represents a v4 or v6 IP address.
-	InitialIP []byte    `db:"initialIp"`
+	ID        int64     `db:"id"`
+	Key       []byte    `db:"jwk"`
+	KeySHA256 string    `db:"jwk_sha256"`
+	Contact   string    `db:"contact"`
+	Agreement string    `db:"agreement"`
 	CreatedAt time.Time `db:"createdAt"`
 	LockCol   int64
 	Status    string `db:"status"`
@@ -313,15 +309,6 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		}
 	}
 
-	// For some reason we use different serialization formats for InitialIP
-	// in database models and in protobufs, despite the fact that both formats
-	// are just []byte.
-	var initialIP net.IP
-	err = initialIP.UnmarshalText(reg.InitialIP)
-	if err != nil {
-		return nil, err
-	}
-
 	var createdAt time.Time
 	if !core.IsAnyNilOrZero(reg.CreatedAt) {
 		createdAt = reg.CreatedAt.AsTime()
@@ -333,14 +320,13 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		KeySHA256: sha,
 		Contact:   string(jsonContact),
 		Agreement: reg.Agreement,
-		InitialIP: []byte(initialIP.To16()),
 		CreatedAt: createdAt,
 		Status:    reg.Status,
 	}, nil
 }
 
 func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
-	if reg.ID == 0 || len(reg.Key) == 0 || len(reg.InitialIP) == 0 {
+	if reg.ID == 0 || len(reg.Key) == 0 {
 		return nil, errors.New("incomplete Registration retrieved from DB")
 	}
 
@@ -356,21 +342,12 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 		}
 	}
 
-	// For some reason we use different serialization formats for InitialIP
-	// in database models and in protobufs, despite the fact that both formats
-	// are just []byte.
-	ipBytes, err := net.IP(reg.InitialIP).MarshalText()
-	if err != nil {
-		return nil, err
-	}
-
 	return &corepb.Registration{
 		Id:              reg.ID,
 		Key:             reg.Key,
 		Contact:         contact,
 		ContactsPresent: contactsPresent,
 		Agreement:       reg.Agreement,
-		InitialIP:       ipBytes,
 		CreatedAt:       timestamppb.New(reg.CreatedAt.UTC()),
 		Status:          reg.Status,
 	}, nil
@@ -384,7 +361,7 @@ type recordedSerialModel struct {
 	Expires        time.Time
 }
 
-type precertificateModel struct {
+type lintingCertModel struct {
 	ID             int64
 	Serial         string
 	RegistrationID int64
@@ -404,6 +381,8 @@ type orderModelv1 struct {
 	BeganProcessing   bool
 }
 
+// orderModelv2 represents one row in the orders table. The
+// CertificateProfileName column is a pointer because the column is NULL-able.
 type orderModelv2 struct {
 	ID                     int64
 	RegistrationID         int64
@@ -412,7 +391,7 @@ type orderModelv2 struct {
 	Error                  []byte
 	CertificateSerial      string
 	BeganProcessing        bool
-	CertificateProfileName string
+	CertificateProfileName *string
 }
 
 type orderToAuthzModel struct {
@@ -469,6 +448,9 @@ func modelToOrderv1(om *orderModelv1) (*corepb.Order, error) {
 }
 
 func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
+	// Make a local copy so we can take a reference to it below.
+	profile := order.CertificateProfileName
+
 	om := &orderModelv2{
 		ID:                     order.Id,
 		RegistrationID:         order.RegistrationID,
@@ -476,7 +458,7 @@ func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
 		Created:                order.Created.AsTime(),
 		BeganProcessing:        order.BeganProcessing,
 		CertificateSerial:      order.CertificateSerial,
-		CertificateProfileName: order.CertificateProfileName,
+		CertificateProfileName: &profile,
 	}
 
 	if order.Error != nil {
@@ -493,6 +475,10 @@ func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
 }
 
 func modelToOrderv2(om *orderModelv2) (*corepb.Order, error) {
+	profile := ""
+	if om.CertificateProfileName != nil {
+		profile = *om.CertificateProfileName
+	}
 	order := &corepb.Order{
 		Id:                     om.ID,
 		RegistrationID:         om.RegistrationID,
@@ -500,7 +486,7 @@ func modelToOrderv2(om *orderModelv2) (*corepb.Order, error) {
 		Created:                timestamppb.New(om.Created),
 		CertificateSerial:      om.CertificateSerial,
 		BeganProcessing:        om.BeganProcessing,
-		CertificateProfileName: om.CertificateProfileName,
+		CertificateProfileName: profile,
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails

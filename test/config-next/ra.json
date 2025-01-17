@@ -1,6 +1,5 @@
 {
 	"ra": {
-		"rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
 		"limiter": {
 			"redis": {
 				"username": "boulder-wfe",
@@ -30,10 +29,7 @@
 		"maxNames": 100,
 		"authorizationLifetimeDays": 30,
 		"pendingAuthorizationLifetimeDays": 7,
-		"goodkey": {
-			"weakKeyFile": "test/example-weak-keys.json",
-			"blockedKeyFile": "test/example-blocked-keys.yaml"
-		},
+		"goodkey": {},
 		"orderLifetime": "168h",
 		"finalizeTimeout": "30s",
 		"issuerCerts": [
@@ -114,7 +110,7 @@
 			"services": {
 				"ra.RegistrationAuthority": {
 					"clientNames": [
-						"admin-revoker.boulder",
+						"admin.boulder",
 						"bad-key-revoker.boulder",
 						"ocsp-responder.boulder",
 						"wfe.boulder",
@@ -130,8 +126,9 @@
 		},
 		"features": {
 			"AsyncFinalize": true,
-			"UseKvLimitsForNewOrder": true,
-			"UseKvLimitsForNewAccount": true
+			"AutomaticallyPauseZombieClients": true,
+			"NoPendingAuthzReuse": true,
+			"EnforceMPIC": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

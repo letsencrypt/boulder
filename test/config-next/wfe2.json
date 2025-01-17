@@ -11,9 +11,7 @@
 		"directoryCAAIdentity": "happy-hacker-ca.invalid",
 		"directoryWebsite": "https://github.com/letsencrypt/boulder",
 		"legacyKeyIDPrefix": "http://boulder.service.consul:4000/reg/",
-		"goodkey": {
-			"blockedKeyFile": "test/example-blocked-keys.yaml"
-		},
+		"goodkey": {},
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/wfe.boulder/cert.pem",
@@ -70,8 +68,8 @@
 			"noWaitForReady": true,
 			"hostOverride": "nonce.boulder"
 		},
-		"noncePrefixKey": {
-			"passwordFile": "test/secrets/nonce_prefix_key"
+		"nonceHMACKey": {
+			"keyFile": "test/secrets/nonce_prefix_key"
 		},
 		"chains": [
 			[
@@ -127,11 +125,9 @@
 			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml"
 		},
 		"features": {
+			"PropagateCancels": true,
 			"ServeRenewalInfo": true,
-			"TrackReplacementCertificatesARI": true,
-			"CheckIdentifiersPaused": true,
-			"UseKvLimitsForNewOrder": true,
-			"UseKvLimitsForNewAccount": true
+			"CheckIdentifiersPaused": true
 		},
 		"certProfiles": {
 			"legacy": "The normal profile you know and love",

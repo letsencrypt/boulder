@@ -2,7 +2,6 @@ package satest
 
 import (
 	"context"
-	"net"
 	"testing"
 	"time"
 
@@ -16,7 +15,6 @@ import (
 // SA using GoodKey under the hood. This is used by various non-SA tests
 // to initialize the a registration for the test to reference.
 func CreateWorkingRegistration(t *testing.T, sa sapb.StorageAuthorityClient) *corepb.Registration {
-	initialIP, _ := net.ParseIP("88.77.66.11").MarshalText()
 	reg, err := sa.NewRegistration(context.Background(), &corepb.Registration{
 		Key: []byte(`{
     "kty": "RSA",
@@ -24,7 +22,6 @@ func CreateWorkingRegistration(t *testing.T, sa sapb.StorageAuthorityClient) *co
     "e": "AQAB"
 }`),
 		Contact:   []string{"mailto:foo@example.com"},
-		InitialIP: initialIP,
 		CreatedAt: timestamppb.New(time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC)),
 		Status:    string(core.StatusValid),
 	})

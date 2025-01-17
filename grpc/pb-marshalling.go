@@ -179,7 +179,7 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 	}, nil
 }
 
-func ValidationResultToPB(records []core.ValidationRecord, prob *probs.ProblemDetails) (*vapb.ValidationResult, error) {
+func ValidationResultToPB(records []core.ValidationRecord, prob *probs.ProblemDetails, perspective, rir string) (*vapb.ValidationResult, error) {
 	recordAry := make([]*corepb.ValidationRecord, len(records))
 	var err error
 	for i, v := range records {
@@ -188,13 +188,15 @@ func ValidationResultToPB(records []core.ValidationRecord, prob *probs.ProblemDe
 			return nil, err
 		}
 	}
-	marshalledProbs, err := ProblemDetailsToPB(prob)
+	marshalledProb, err := ProblemDetailsToPB(prob)
 	if err != nil {
 		return nil, err
 	}
 	return &vapb.ValidationResult{
-		Records:  recordAry,
-		Problems: marshalledProbs,
+		Records:     recordAry,
+		Problem:     marshalledProb,
+		Perspective: perspective,
+		Rir:         rir,
 	}, nil
 }
 
@@ -210,7 +212,7 @@ func pbToValidationResult(in *vapb.ValidationResult) ([]core.ValidationRecord, *
 			return nil, nil, err
 		}
 	}
-	prob, err := PBToProblemDetails(in.Problems)
+	prob, err := PBToProblemDetails(in.Problem)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -219,10 +221,6 @@ func pbToValidationResult(in *vapb.ValidationResult) ([]core.ValidationRecord, *
 
 func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	keyBytes, err := reg.Key.MarshalJSON()
-	if err != nil {
-		return nil, err
-	}
-	ipBytes, err := reg.InitialIP.MarshalText()
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +246,6 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 		Contact:         contacts,
 		ContactsPresent: contactsPresent,
 		Agreement:       reg.Agreement,
-		InitialIP:       ipBytes,
 		CreatedAt:       createdAt,
 		Status:          string(reg.Status),
 	}, nil
@@ -260,36 +257,20 @@ func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 	if err != nil {
 		return core.Registration{}, err
 	}
-	var initialIP net.IP
-	err = initialIP.UnmarshalText(pb.InitialIP)
-	if err != nil {
-		return core.Registration{}, err
-	}
 	var createdAt *time.Time
 	if !core.IsAnyNilOrZero(pb.CreatedAt) {
 		c := pb.CreatedAt.AsTime()
 		createdAt = &c
 	}
 	var contacts *[]string
-	if pb.ContactsPresent {
-		if len(pb.Contact) != 0 {
-			contacts = &pb.Contact
-		} else {
-			// When gRPC creates an empty slice it is actually a nil slice. Since
-			// certain things boulder uses, like encoding/json, differentiate between
-			// these we need to de-nil these slices. Without this we are unable to
-			// properly do registration updates as contacts would always be removed
-			// as we use the difference between a nil and empty slice in ra.mergeUpdate.
-			empty := []string{}
-			contacts = &empty
-		}
+	if len(pb.Contact) != 0 {
+		contacts = &pb.Contact
 	}
 	return core.Registration{
 		ID:        pb.Id,
 		Key:       &key,
 		Contact:   contacts,
 		Agreement: pb.Agreement,
-		InitialIP: initialIP,
 		CreatedAt: createdAt,
 		Status:    core.AcmeStatus(pb.Status),
 	}, nil

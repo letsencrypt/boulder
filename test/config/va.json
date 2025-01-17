@@ -43,22 +43,23 @@
 			{
 				"serverAddress": "rva1.service.consul:9397",
 				"timeout": "15s",
-				"hostOverride": "rva1.boulder"
+				"hostOverride": "rva1.boulder",
+				"perspective": "dadaist",
+				"rir": "ARIN"
 			},
 			{
 				"serverAddress": "rva1.service.consul:9498",
 				"timeout": "15s",
-				"hostOverride": "rva1.boulder"
+				"hostOverride": "rva1.boulder",
+				"perspective": "surrealist",
+				"rir": "RIPE"
 			},
 			{
-				"serverAddress": "rva2.service.consul:9897",
+				"serverAddress": "rva1.service.consul:9499",
 				"timeout": "15s",
-				"hostOverride": "rva2.boulder"
-			},
-			{
-				"serverAddress": "rva2.service.consul:9998",
-				"timeout": "15s",
-				"hostOverride": "rva2.boulder"
+				"hostOverride": "rva1.boulder",
+				"perspective": "cubist",
+				"rir": "ARIN"
 			}
 		],
 		"maxRemoteValidationFailures": 1,

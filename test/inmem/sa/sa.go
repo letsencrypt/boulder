@@ -29,14 +29,6 @@ func (sa SA) GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ..
 	return sa.Impl.GetRegistration(ctx, req)
 }
 
-func (sa SA) CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return sa.Impl.CountRegistrationsByIP(ctx, req)
-}
-
-func (sa SA) CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return sa.Impl.CountRegistrationsByIPRange(ctx, req)
-}
-
 func (sa SA) DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.DeactivateRegistration(ctx, req)
 }
@@ -81,10 +73,6 @@ func (sa SA) GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesReq
 	return sa.Impl.GetOrderForNames(ctx, req)
 }
 
-func (sa SA) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
-	return sa.Impl.CountOrders(ctx, req)
-}
-
 func (sa SA) SetOrderError(ctx context.Context, req *sapb.SetOrderErrorRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.SetOrderError(ctx, req)
 }
@@ -105,10 +93,6 @@ func (sa SA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest
 	return sa.Impl.AddCertificate(ctx, req)
 }
 
-func (sa SA) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
-	return sa.Impl.CountCertificatesByNames(ctx, req)
-}
-
 func (sa SA) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.RevokeCertificate(ctx, req)
 }
@@ -127,6 +111,14 @@ func (sa SA) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest, 
 
 func (sa SA) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
 	return sa.Impl.FQDNSetExists(ctx, req)
+}
+
+func (sa SA) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Timestamps, error) {
+	return sa.Impl.FQDNSetTimestampsForWindow(ctx, req)
+}
+
+func (sa SA) PauseIdentifiers(ctx context.Context, req *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error) {
+	return sa.Impl.PauseIdentifiers(ctx, req)
 }
 
 type mockStreamResult[T any] struct {

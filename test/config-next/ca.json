@@ -51,7 +51,7 @@
 					"lintConfig": "test/config-next/zlint.toml",
 					"ignoredLints": [
 						"w_subject_common_name_included",
-						"w_sub_cert_aia_contains_internal_names"
+						"w_ext_subject_key_identifier_not_recommended_subscriber"
 					]
 				},
 				"modern": {
@@ -64,8 +64,7 @@
 					"maxValidityBackdate": "1h5m",
 					"lintConfig": "test/config-next/zlint.toml",
 					"ignoredLints": [
-						"w_ext_subject_key_identifier_missing_sub_cert",
-						"w_sub_cert_aia_contains_internal_names"
+						"w_ext_subject_key_identifier_missing_sub_cert"
 					]
 				}
 			},
@@ -145,10 +144,7 @@
 		"serialPrefixHex": "7f",
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
-		"goodkey": {
-			"weakKeyFile": "test/example-weak-keys.json",
-			"blockedKeyFile": "test/example-blocked-keys.yaml"
-		},
+		"goodkey": {},
 		"ocspLogMaxLength": 4000,
 		"ocspLogPeriod": "500ms",
 		"ctLogListFile": "test/ct-test-srv/log_list.json",

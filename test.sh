@@ -17,6 +17,7 @@ STATUS="FAILURE"
 RUN=()
 UNIT_PACKAGES=()
 UNIT_FLAGS=()
+INTEGRATION_FLAGS=()
 FILTER=()
 
 #
@@ -37,11 +38,6 @@ function print_outcome() {
   else
     echo -e "\e[31m"$STATUS"\e[0m while running \e[31m"$STAGE"\e[0m"
   fi
-}
-
-function print_list_of_integration_tests() {
-  go test -tags integration -list=. ./test/integration/... | grep '^Test'
-  exit 0
 }
 
 function exit_msg() {
@@ -101,7 +97,7 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
 
     -l, --lints                           Adds lint to the list of tests to run
     -u, --unit                            Adds unit to the list of tests to run
-    -v, --unit-verbose                    Enables verbose output for unit tests
+    -v, --verbose                         Enables verbose output for unit and integration tests
     -w, --unit-without-cache              Disables go test caching for unit tests
     -p <DIR>, --unit-test-package=<DIR>   Run unit tests for specific go package(s)
     -e, --enable-race-detection           Enables race detection for unit and integration tests
@@ -109,7 +105,6 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
     -i, --integration                     Adds integration to the list of tests to run
     -s, --start-py                        Adds start to the list of tests to run
     -g, --generate                        Adds generate to the list of tests to run
-    -o, --list-integration-tests          Outputs a list of the available integration tests
     -f <REGEX>, --filter=<REGEX>          Run only those tests matching the regular expression
 
                                           Note:
@@ -125,7 +120,7 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
 EOM
 )"
 
-while getopts luvweciosmgnhp:f:-: OPT; do
+while getopts luvwecismgnhp:f:-: OPT; do
   if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
@@ -134,12 +129,11 @@ while getopts luvweciosmgnhp:f:-: OPT; do
   case "$OPT" in
     l | lints )                      RUN+=("lints") ;;
     u | unit )                       RUN+=("unit") ;;
-    v | unit-verbose )               UNIT_FLAGS+=("-v") ;;
+    v | verbose )                    UNIT_FLAGS+=("-v"); INTEGRATION_FLAGS+=("-v") ;;
     w | unit-without-cache )         UNIT_FLAGS+=("-count=1") ;;
     p | unit-test-package )          check_arg; UNIT_PACKAGES+=("${OPTARG}") ;;
     e | enable-race-detection )      RACE="true"; UNIT_FLAGS+=("-race") ;;
     i | integration )                RUN+=("integration") ;;
-    o | list-integration-tests )     print_list_of_integration_tests ;;
     f | filter )                     check_arg; FILTER+=("${OPTARG}") ;;
     s | start-py )                   RUN+=("start") ;;
     g | generate )                   RUN+=("generate") ;;
@@ -244,7 +238,11 @@ STAGE="integration"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Integration Tests"
   flush_redis
-  python3 test/integration-test.py --chisel --gotest "${FILTER[@]}"
+  if [[ "${INTEGRATION_FLAGS[@]}" =~ "-v" ]] ; then
+    python3 test/integration-test.py --chisel --gotestverbose "${FILTER[@]}"
+  else
+    python3 test/integration-test.py --chisel --gotest "${FILTER[@]}"
+  fi
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that

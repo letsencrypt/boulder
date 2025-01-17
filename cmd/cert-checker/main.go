@@ -422,7 +422,9 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 			}
 		}
 		// Check the cert has the correct key usage extensions
-		if !slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth, zX509.ExtKeyUsageClientAuth}) {
+		serverAndClient := slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth, zX509.ExtKeyUsageClientAuth})
+		serverOnly := slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth})
+		if !(serverAndClient || serverOnly) {
 			problems = append(problems, "Certificate has incorrect key usage extensions")
 		}
 
@@ -547,12 +549,6 @@ func main() {
 	// Validate PA config and set defaults if needed.
 	cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
 
-	if config.CertChecker.GoodKey.WeakKeyFile != "" {
-		cmd.Fail("cert-checker does not support checking against weak key files")
-	}
-	if config.CertChecker.GoodKey.BlockedKeyFile != "" {
-		cmd.Fail("cert-checker does not support checking against blocked key files")
-	}
 	kp, err := sagoodkey.NewPolicy(&config.CertChecker.GoodKey, nil)
 	cmd.FailOnError(err, "Unable to create key policy")
 

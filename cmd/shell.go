@@ -261,6 +261,12 @@ func newVersionCollector() prometheus.Collector {
 
 func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	registry := prometheus.NewRegistry()
+
+	if addr == "" {
+		logger.Info("No debug listen address specified")
+		return registry
+	}
+
 	registry.MustRegister(collectors.NewGoCollector())
 	registry.MustRegister(collectors.NewProcessCollector(
 		collectors.ProcessCollectorOpts{}))
@@ -287,10 +293,6 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 		ErrorLog: promLogger{logger},
 	}))
 
-	if addr == "" {
-		logger.Err("Debug listen address is not configured")
-		os.Exit(1)
-	}
 	logger.Infof("Debug server listening on %s", addr)
 
 	server := http.Server{

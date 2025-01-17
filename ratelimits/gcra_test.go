@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/test"
 )
 
 func TestDecide(t *testing.T) {
 	clk := clock.NewFake()
-	limit := limit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}}
+	limit := &limit{burst: 10, count: 1, period: config.Duration{Duration: time.Second}}
 	limit.precompute()
 
 	// Begin by using 1 of our 10 requests.
@@ -138,7 +139,7 @@ func TestDecide(t *testing.T) {
 
 func TestMaybeRefund(t *testing.T) {
 	clk := clock.NewFake()
-	limit := limit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}}
+	limit := &limit{burst: 10, count: 1, period: config.Duration{Duration: time.Second}}
 	limit.precompute()
 
 	// Begin by using 1 of our 10 requests.

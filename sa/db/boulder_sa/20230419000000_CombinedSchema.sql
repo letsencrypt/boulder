@@ -86,6 +86,8 @@ CREATE TABLE `fqdnSets` (
   `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   `setHash` binary(32) NOT NULL,
   `serial` varchar(255) NOT NULL,
+  -- Note: This should actually be called "notBefore" since it is set
+  -- based on the certificate's notBefore field, not the issuance time.
   `issued` datetime NOT NULL,
   `expires` datetime NOT NULL,
   PRIMARY KEY (`id`),
@@ -173,6 +175,9 @@ CREATE TABLE `orders` (
  PARTITION BY RANGE(id)
 (PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
+-- Note: This table's name is a historical artifact and it is now
+-- used to store linting certificates, not precertificates.
+-- See #6807.
 CREATE TABLE `precertificates` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `registrationID` bigint(20) NOT NULL,

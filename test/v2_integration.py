@@ -180,7 +180,7 @@ def test_failed_validation_limit():
     """
     Fail a challenge repeatedly for the same domain, with the same account. Once
     we reach the rate limit we should get a rateLimitedError. Note that this
-    depends on the specific threshold configured in rate-limit-policies.yml.
+    depends on the specific threshold configured.
 
     This also incidentally tests a fix for
     https://github.com/letsencrypt/boulder/issues/4329. We expect to get
@@ -1005,7 +1005,8 @@ def test_http_multiva_threshold_pass():
 
     # Configure a guestlist that will pass the multiVA threshold test by
     # allowing the primary VA at some, but not all, remotes.
-    guestlist = {"boulder": 1, "boulder-remoteva-a": 1, "boulder-remoteva-b": 1, "remoteva-a": 1}
+    # In particular, remoteva-c is missing.
+    guestlist = {"boulder": 1, "remoteva-a": 1, "remoteva-b": 1}
 
     hostname, cleanup = multiva_setup(client, guestlist)
 
@@ -1021,7 +1022,7 @@ def test_http_multiva_primary_fail_remote_pass():
 
     # Configure a guestlist that will fail the primary VA check but allow all of
     # the remote VAs.
-    guestlist = {"boulder": 0, "boulder-remoteva-a": 1, "boulder-remoteva-b": 1, "remoteva-a": 1, "remoteva-b": 1}
+    guestlist = {"boulder": 0, "remoteva-a": 1, "remoteva-b": 1}
 
     hostname, cleanup = multiva_setup(client, guestlist)
 
@@ -1340,63 +1341,6 @@ def test_ocsp_exp_unauth():
     else:
         raise(Exception("timed out waiting for unauthorized OCSP response for expired certificate. Last error: {}".format(last_error)))
 
-def test_blocked_key_account():
-    # Only config-next has a blocked keys file configured.
-    if not CONFIG_NEXT:
-        return
-
-    with open("test/hierarchy/int-r4.key.pem", "rb") as key_file:
-        key = serialization.load_pem_private_key(key_file.read(), password=None, backend=default_backend())
-
-    # Create a client with the JWK set to a blocked private key
-    jwk = josepy.JWKRSA(key=key)
-    client = chisel2.uninitialized_client(jwk)
-    email = "test@not-example.com"
-
-    # Try to create an account
-    testPass = False
-    try:
-        client.new_account(messages.NewRegistration.from_data(email=email,
-                terms_of_service_agreed=True))
-    except acme_errors.Error as e:
-        if e.typ != "urn:ietf:params:acme:error:badPublicKey":
-            raise(Exception("problem did not have correct error type, had {0}".format(e.typ)))
-        if e.detail != "public key is forbidden":
-            raise(Exception("problem did not have correct error detail, had {0}".format(e.detail)))
-        testPass = True
-
-    if testPass is False:
-        raise(Exception("expected account creation to fail with Error when using blocked key"))
-
-def test_blocked_key_cert():
-    # Only config-next has a blocked keys file configured.
-    if not CONFIG_NEXT:
-        return
-
-    with open("test/hierarchy/int-r4.key.pem", "r") as f:
-        pemBytes = f.read()
-
-    domains = [random_domain(), random_domain()]
-    csr = acme_crypto_util.make_csr(pemBytes, domains, False)
-
-    client = chisel2.make_client(None)
-    order = client.new_order(csr)
-    authzs = order.authorizations
-
-    testPass = False
-    cleanup = chisel2.do_http_challenges(client, authzs)
-    try:
-        order = client.poll_and_finalize(order)
-    except acme_errors.Error as e:
-        if e.typ != "urn:ietf:params:acme:error:badCSR":
-            raise(Exception("problem did not have correct error type, had {0}".format(e.typ)))
-        if e.detail != "Error finalizing order :: invalid public key in CSR: public key is forbidden":
-            raise(Exception("problem did not have correct error detail, had {0}".format(e.detail)))
-        testPass = True
-
-    if testPass is False:
-        raise(Exception("expected cert creation to fail with Error when using blocked key"))
-
 def test_expiration_mailer():
     email_addr = "integration.%x@letsencrypt.org" % random.randrange(2**16)
     order = chisel2.auth_and_issue([random_domain()], email=email_addr)
@@ -1558,17 +1502,6 @@ def test_renewal_exemption():
     # Final, failed issuance, for another different cert
     chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
         lambda: chisel2.auth_and_issue(["mail." + base_domain]))
-
-# TODO(#5545) Remove this test once key-value rate limits are authoritative in
-# production.
-def test_certificates_per_name():
-    if CONFIG_NEXT:
-        # This test is replaced by TestCertificatesPerDomain in the Go
-        # integration tests because key-value rate limits does not support
-        # override limits of 0.
-        return
-    chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
-        lambda: chisel2.auth_and_issue([random_domain() + ".lim.it"]))
 
 def test_oversized_csr():
     # Number of names is chosen to be one greater than the configured RA/CA maxNames

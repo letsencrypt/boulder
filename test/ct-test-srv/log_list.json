@@ -17,7 +17,7 @@
           },
           "state": {
             "usable": {
-              "timestamp": "2000-00-00T00:00:00Z"
+              "timestamp": "2000-01-01T00:00:00Z"
             }
           }
         },
@@ -32,7 +32,7 @@
           },
           "state": {
             "usable": {
-              "timestamp": "2000-00-00T00:00:00Z"
+              "timestamp": "2000-01-01T00:00:00Z"
             }
           }
         },
@@ -47,7 +47,7 @@
           },
           "state": {
             "usable": {
-              "timestamp": "2000-00-00T00:00:00Z"
+              "timestamp": "2000-01-01T00:00:00Z"
             }
           }
         },
@@ -62,7 +62,7 @@
           },
           "state": {
             "usable": {
-              "timestamp": "2000-00-00T00:00:00Z"
+              "timestamp": "2000-01-01T00:00:00Z"
             }
           }
         }
@@ -83,7 +83,7 @@
           },
           "state": {
             "usable": {
-              "timestamp": "2000-00-00T00:00:00Z"
+              "timestamp": "2000-01-01T00:00:00Z"
             }
           }
         },
@@ -98,7 +98,7 @@
           },
           "state": {
             "usable": {
-              "timestamp": "2000-00-00T00:00:00Z"
+              "timestamp": "2000-01-01T00:00:00Z"
             }
           }
         }
@@ -115,7 +115,7 @@
           "url": "http://boulder.service.consul:4606",
           "state": {
             "usable": {
-              "timestamp": "2000-00-00T00:00:00Z"
+              "timestamp": "2000-01-01T00:00:00Z"
             }
           }
         }
@@ -136,7 +136,7 @@
           },
           "state": {
             "usable": {
-              "timestamp": "2000-00-00T00:00:00Z"
+              "timestamp": "2000-01-01T00:00:00Z"
             }
           }
         }
@@ -186,8 +186,8 @@
       "logs": [
         {
           "description": "This Log Has Every Field To Ensure We Can Parse It",
-          "log_id": "BaseSixtyFourEncodingOfSHA256HashOfPublicKey=",
-          "key": "BaseSixtyFourEncodingOfDEREncodingOfPublicKey=",
+          "log_id": "ZqBFtFIQLFnYQOwJfVnZRn4To/NPZJTlOf/TLBuzXxg=",
+          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEMVjHUOxzh2flagPhuEYy/AhAlpD9qqACg4fGcCxOhLU35r21CQXzKDdCHMu69QDFd6EAe8iGFsybg+Yn4/njtA==",
           "url": "https://example.com/ct/",
           "mmd": 86400,
           "state": {
@@ -206,8 +206,8 @@
         },
         {
           "description": "This Log Is Missing State To Ensure We Can Handle It",
-          "log_id": "SomeOtherFakeLogID=",
-          "key": "SomeOtherFakeKey=",
+          "log_id": "gw0pzEo2G0THdJlm0i80NqV+qn0i9GnbcaBvhQOFxNc=",
+          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEMVjHUOxzh2flaFPhuEYy/AhAlpD9qqzHg4fGcCxOhLU39r21CQXzKDdCHMu69QDFd6EAe8iGFsybg+Yn4/njtA==",
           "url": "https://example.net/ct/",
           "mmd": 86400,
           "temporal_interval": {

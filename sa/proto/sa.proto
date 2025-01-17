@@ -10,13 +10,8 @@ import "google/protobuf/duration.proto";
 
 // StorageAuthorityReadOnly exposes only those SA methods which are read-only.
 service StorageAuthorityReadOnly {
-  rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
-  rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
   rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
-  rpc CountOrders(CountOrdersRequest) returns (Count) {}
   rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
-  rpc CountRegistrationsByIP(CountRegistrationsByIPRequest) returns (Count) {}
-  rpc CountRegistrationsByIPRange(CountRegistrationsByIPRequest) returns (Count) {}
   rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
@@ -47,13 +42,8 @@ service StorageAuthorityReadOnly {
 // StorageAuthority provides full read/write access to the database.
 service StorageAuthority {
   // Getters: this list must be identical to the StorageAuthorityReadOnly rpcs.
-  rpc CountCertificatesByNames(CountCertificatesByNamesRequest) returns (CountByNames) {}
-  rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
   rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
-  rpc CountOrders(CountOrdersRequest) returns (Count) {}
   rpc CountPendingAuthorizations2(RegistrationID) returns (Count) {}
-  rpc CountRegistrationsByIP(CountRegistrationsByIPRequest) returns (Count) {}
-  rpc CountRegistrationsByIPRange(CountRegistrationsByIPRequest) returns (Count) {}
   rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
@@ -94,7 +84,8 @@ service StorageAuthority {
   rpc RevokeCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderError(SetOrderErrorRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderProcessing(OrderRequest) returns (google.protobuf.Empty) {}
-  rpc UpdateRegistration(core.Registration) returns (google.protobuf.Empty) {}
+  rpc UpdateRegistrationContact(UpdateRegistrationContactRequest) returns (core.Registration) {}
+  rpc UpdateRegistrationKey(UpdateRegistrationKeyRequest) returns (core.Registration) {}
   rpc UpdateRevokedCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc LeaseCRLShard(LeaseCRLShardRequest) returns (LeaseCRLShardResponse) {}
   rpc UpdateCRLShard(UpdateCRLShardRequest) returns (google.protobuf.Empty) {}
@@ -154,21 +145,6 @@ message Timestamps {
   repeated google.protobuf.Timestamp timestamps = 2;
 }
 
-message CountCertificatesByNamesRequest {
-  Range range = 1;
-  repeated string dnsNames = 2;
-}
-
-message CountByNames {
-  map<string, int64> counts = 1;
-  google.protobuf.Timestamp earliest = 2; // Unix timestamp (nanoseconds)
-}
-
-message CountRegistrationsByIPRequest {
-  bytes ip = 1;
-  Range range = 2;
-}
-
 message CountInvalidAuthorizationsRequest {
   int64 registrationID = 1;
   string dnsName = 2;
@@ -176,16 +152,12 @@ message CountInvalidAuthorizationsRequest {
   Range range = 3;
 }
 
-message CountOrdersRequest {
-  int64 accountID = 1;
-  Range range = 2;
-}
-
 message CountFQDNSetsRequest {
   // Next unused field number: 4
   reserved 1; // Previously windowNS
   repeated string dnsNames = 2;
   google.protobuf.Duration window = 3;
+  int64 limit = 4;
 }
 
 message FQDNSetExistsRequest {
@@ -428,4 +400,14 @@ message PauseRequest {
 message PauseIdentifiersResponse {
   int64 paused = 1;
   int64 repaused = 2;
+}
+
+message UpdateRegistrationContactRequest {
+  int64 registrationID = 1;
+  repeated string contacts = 2;
+}
+
+message UpdateRegistrationKeyRequest {
+  int64 registrationID = 1;
+  bytes jwk = 2;
 }

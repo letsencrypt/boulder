@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jmhodges/clock"
@@ -47,7 +48,7 @@ func newAdmin(configFile string, dryRun bool) (*admin, error) {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
-	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Admin.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, "")
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
 
@@ -93,4 +94,23 @@ func newAdmin(configFile string, dryRun bool) (*admin, error) {
 		clk:    clk,
 		log:    logger,
 	}, nil
+}
+
+// findActiveInputMethodFlag returns a single key from setInputs with a value of `true`,
+// if exactly one exists. Otherwise it returns an error.
+func findActiveInputMethodFlag(setInputs map[string]bool) (string, error) {
+	var activeFlags []string
+	for flag, isSet := range setInputs {
+		if isSet {
+			activeFlags = append(activeFlags, flag)
+		}
+	}
+
+	if len(activeFlags) == 0 {
+		return "", errors.New("at least one input method flag must be specified")
+	} else if len(activeFlags) > 1 {
+		return "", fmt.Errorf("more than one input method flag specified: %v", activeFlags)
+	}
+
+	return activeFlags[0], nil
 }

@@ -13,9 +13,7 @@
 		"directoryCAAIdentity": "happy-hacker-ca.invalid",
 		"directoryWebsite": "https://github.com/letsencrypt/boulder",
 		"legacyKeyIDPrefix": "http://boulder.service.consul:4000/reg/",
-		"goodkey": {
-			"blockedKeyFile": "test/example-blocked-keys.yaml"
-		},
+		"goodkey": {},
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/wfe.boulder/cert.pem",
@@ -104,9 +102,42 @@
 		"staleTimeout": "5m",
 		"authorizationLifetimeDays": 30,
 		"pendingAuthorizationLifetimeDays": 7,
+		"limiter": {
+			"redis": {
+				"username": "boulder-wfe",
+				"passwordFile": "test/secrets/wfe_ratelimits_redis_password",
+				"lookups": [
+					{
+						"Service": "redisratelimits",
+						"Domain": "service.consul"
+					}
+				],
+				"lookupDNSAuthority": "consul.service.consul",
+				"readTimeout": "250ms",
+				"writeTimeout": "250ms",
+				"poolSize": 100,
+				"routeRandomly": true,
+				"tls": {
+					"caCertFile": "test/certs/ipki/minica.pem",
+					"certFile": "test/certs/ipki/wfe.boulder/cert.pem",
+					"keyFile": "test/certs/ipki/wfe.boulder/key.pem"
+				}
+			},
+			"Defaults": "test/config/wfe2-ratelimit-defaults.yml",
+			"Overrides": "test/config/wfe2-ratelimit-overrides.yml"
+		},
 		"features": {
+			"UseKvLimitsForNewOrder": true,
 			"ServeRenewalInfo": true,
-			"CheckRenewalExemptionAtWFE": true
+			"IncrementRateLimits": true,
+			"CheckIdentifiersPaused": true
+		},
+		"unpause": {
+			"hmacKey": {
+				"keyFile": "test/secrets/sfe_unpause_key"
+			},
+			"jwtLifetime": "336h",
+			"url": "https://boulder.service.consul:4003"
 		}
 	},
 	"syslog": {

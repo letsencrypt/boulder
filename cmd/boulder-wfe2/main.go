@@ -42,15 +42,18 @@ type Config struct {
 		TLSListenAddress string `validate:"omitempty,hostname_port"`
 
 		// Timeout is the per-request overall timeout. This should be slightly
-		// lower than the upstream's timeout when making requests to the WFE.
+		// lower than the upstream's timeout when making requests to this service.
 		Timeout config.Duration `validate:"-"`
+
+		// ShutdownStopTimeout determines the maximum amount of time to wait
+		// for extant request handlers to complete before exiting. It should be
+		// greater than Timeout.
+		ShutdownStopTimeout config.Duration
 
 		ServerCertificatePath string `validate:"required_with=TLSListenAddress"`
 		ServerKeyPath         string `validate:"required_with=TLSListenAddress"`
 
 		AllowOrigins []string
-
-		ShutdownStopTimeout config.Duration
 
 		SubscriberAgreementURL string
 
@@ -71,13 +74,23 @@ type Config struct {
 		// local and remote nonce-service instances.
 		RedeemNonceService *cmd.GRPCClientConfig `validate:"required"`
 
+		// NonceHMACKey is a path to a file containing an HMAC key which is a
+		// secret used for deriving the prefix of each nonce instance. It should
+		// contain 256 bits (32 bytes) of random data to be suitable as an
+		// HMAC-SHA256 key (e.g. the output of `openssl rand -hex 32`). In a
+		// multi-DC deployment this value should be the same across all
+		// boulder-wfe and nonce-service instances.
+		NonceHMACKey cmd.HMACKeyConfig `validate:"-"`
+
 		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
 		// instance. It should contain 256 bits of random data to be suitable as
 		// an HMAC-SHA256 key (e.g. the output of `openssl rand -hex 32`). In a
 		// multi-DC deployment this value should be the same across all
 		// boulder-wfe and nonce-service instances.
 		//
-		// TODO(#7632) Update this to use the new HMACKeyConfig.
+		// TODO(#7632): Remove this.
+		//
+		// Deprecated: Use NonceHMACKey instead.
 		NoncePrefixKey cmd.PasswordConfig `validate:"-"`
 
 		// Chains is a list of lists of certificate filenames. Each inner list is
@@ -294,10 +307,16 @@ func main() {
 		cmd.Fail("'getNonceService' must be configured")
 	}
 
-	var noncePrefixKey string
-	if c.WFE.NoncePrefixKey.PasswordFile != "" {
-		noncePrefixKey, err = c.WFE.NoncePrefixKey.Pass()
-		cmd.FailOnError(err, "Failed to load noncePrefixKey")
+	var noncePrefixKey []byte
+	if c.WFE.NonceHMACKey.KeyFile != "" {
+		noncePrefixKey, err = c.WFE.NonceHMACKey.Load()
+		cmd.FailOnError(err, "Failed to load nonceHMACKey file")
+	} else if c.WFE.NoncePrefixKey.PasswordFile != "" {
+		keyString, err := c.WFE.NoncePrefixKey.Pass()
+		cmd.FailOnError(err, "Failed to load noncePrefixKey file")
+		noncePrefixKey = []byte(keyString)
+	} else {
+		cmd.Fail("NonceHMACKey KeyFile or NoncePrefixKey PasswordFile must be set")
 	}
 
 	getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, stats, clk)
@@ -349,7 +368,7 @@ func main() {
 		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, stats)
 		limiter, err = ratelimits.NewLimiter(clk, source, stats)
 		cmd.FailOnError(err, "Failed to create rate limiter")
-		txnBuilder, err = ratelimits.NewTransactionBuilder(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides)
+		txnBuilder, err = ratelimits.NewTransactionBuilderFromFiles(c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides)
 		cmd.FailOnError(err, "Failed to create rate limits transaction builder")
 	}
 

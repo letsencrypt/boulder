@@ -25,7 +25,6 @@ import (
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -40,11 +39,20 @@ type Log struct {
 	client *ctClient.LogClient
 }
 
+// cacheKey is a comparable type for use as a key within a logCache. It holds
+// both the log URI and its log_id (base64 encoding of its pubkey), so that
+// the cache won't interfere if the RA decides that a log's URI or pubkey has
+// changed.
+type cacheKey struct {
+	uri    string
+	pubkey string
+}
+
 // logCache contains a cache of *Log's that are constructed as required by
 // `SubmitToSingleCT`
 type logCache struct {
 	sync.RWMutex
-	logs map[string]*Log
+	logs map[cacheKey]*Log
 }
 
 // AddLog adds a *Log to the cache by constructing the statName, client and
@@ -52,7 +60,7 @@ type logCache struct {
 func (c *logCache) AddLog(uri, b64PK, userAgent string, logger blog.Logger) (*Log, error) {
 	// Lock the mutex for reading to check the cache
 	c.RLock()
-	log, present := c.logs[b64PK]
+	log, present := c.logs[cacheKey{uri, b64PK}]
 	c.RUnlock()
 
 	// If we have already added this log, give it back
@@ -69,7 +77,7 @@ func (c *logCache) AddLog(uri, b64PK, userAgent string, logger blog.Logger) (*Lo
 	if err != nil {
 		return nil, err
 	}
-	c.logs[b64PK] = log
+	c.logs[cacheKey{uri, b64PK}] = log
 	return log, nil
 }
 
@@ -219,7 +227,7 @@ func New(
 		issuerBundles: bundles,
 		userAgent:     userAgent,
 		ctLogsCache: logCache{
-			logs: make(map[string]*Log),
+			logs: make(map[cacheKey]*Log),
 		},
 		log:     logger,
 		metrics: initMetrics(stats),
@@ -261,7 +269,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 
 	sct, err := pub.singleLogSubmit(ctx, chain, req.Kind, ctLog)
 	if err != nil {
-		if canceled.Is(err) {
+		if core.IsCanceled(err) {
 			return nil, err
 		}
 		var body string
@@ -297,7 +305,7 @@ func (pub *Impl) singleLogSubmit(
 	took := time.Since(start).Seconds()
 	if err != nil {
 		status := "error"
-		if canceled.Is(err) {
+		if core.IsCanceled(err) {
 			status = "canceled"
 		}
 		httpStatus := ""

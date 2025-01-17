@@ -10,6 +10,7 @@ import (
 	"github.com/letsencrypt/borp"
 
 	"github.com/go-sql-driver/mysql"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -122,7 +123,7 @@ func TestTableFromQuery(t *testing.T) {
 		expectedTable string
 	}{
 		{
-			query:         "SELECT id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status FROM registrations WHERE jwk_sha256 = ?",
+			query:         "SELECT id, jwk, jwk_sha256, contact, agreement, createdAt, LockCol, status FROM registrations WHERE jwk_sha256 = ?",
 			expectedTable: "registrations",
 		},
 		{
@@ -134,15 +135,15 @@ func TestTableFromQuery(t *testing.T) {
 			expectedTable: "authz2",
 		},
 		{
-			query:         "insert into `registrations` (`id`,`jwk`,`jw      k_sha256`,`contact`,`agreement`,`initialIp`,`createdAt`,`LockCol`,`status`) values (null,?,?,?,?,?,?,?,?);",
+			query:         "insert into `registrations` (`id`,`jwk`,`jw      k_sha256`,`contact`,`agreement`,`createdAt`,`LockCol`,`status`) values (null,?,?,?,?,?,?,?,?);",
 			expectedTable: "`registrations`",
 		},
 		{
-			query:         "update `registrations` set `jwk`=?, `jwk_sh      a256`=?, `contact`=?, `agreement`=?, `initialIp`=?, `createdAt`=?, `LockCol`      =?, `status`=? where `id`=? and `LockCol`=?;",
+			query:         "update `registrations` set `jwk`=?, `jwk_sh      a256`=?, `contact`=?, `agreement`=?, `createdAt`=?, `LockCol`      =?, `status`=? where `id`=? and `LockCol`=?;",
 			expectedTable: "`registrations`",
 		},
 		{
-			query:         "SELECT COUNT(*) FROM registrations WHERE initialIP = ? AND ? < createdAt AND createdAt <= ?",
+			query:         "SELECT COUNT(*) FROM registrations WHERE ? < createdAt AND createdAt <= ?",
 			expectedTable: "registrations",
 		},
 		{
@@ -184,10 +185,6 @@ func TestTableFromQuery(t *testing.T) {
 		{
 			query:         "insert into `certificates` (`registrationID`,`serial`,`digest`,`der`,`issued`,`expires`) values (?,?,?,?,?,?);",
 			expectedTable: "`certificates`",
-		},
-		{
-			query:         "INSERT INTO certificatesPerName (eTLDPlusOne, time, count) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE count=count+1;",
-			expectedTable: "certificatesPerName",
 		},
 		{
 			query:         "insert into `fqdnSets` (`ID`,`SetHash`,`Serial`,`Issued`,`Expires`) values (null,?,?,?,?);",
