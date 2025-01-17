@@ -569,17 +569,17 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 
 		// Second, insert the new order.
 		created := ssa.clk.Now()
-		omv2 := orderModel{
+		om := orderModel{
 			RegistrationID:         req.NewOrder.RegistrationID,
 			Expires:                req.NewOrder.Expires.AsTime(),
 			Created:                created,
 			CertificateProfileName: &req.NewOrder.CertificateProfileName,
 		}
-		err := tx.Insert(ctx, &omv2)
+		err := tx.Insert(ctx, &om)
 		if err != nil {
 			return nil, err
 		}
-		orderID := omv2.ID
+		orderID := om.ID
 
 		// Third, insert all of the orderToAuthz relations.
 		// Have to combine the already-associated and newly-created authzs.
