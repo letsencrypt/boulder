@@ -1011,7 +1011,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCertsByShard(req *sapb.GetRevokedCer
 // notAfter date are included), but the ending timestamp is exclusive (certs
 // with exactly that notAfter date are *not* included).
 func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
-	if core.IsAnyNilOrZero(req.IssuerNameID, req.RevokedBefore, req.ExpiresAfter, req.ExpiresAfter) {
+	if core.IsAnyNilOrZero(req.IssuerNameID, req.RevokedBefore, req.ExpiresAfter, req.ExpiresBefore) {
 		return errIncompleteRequest
 	}
 	atTime := req.RevokedBefore.AsTime()
