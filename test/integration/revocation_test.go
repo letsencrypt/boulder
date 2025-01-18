@@ -180,160 +180,166 @@ func TestRevocation(t *testing.T) {
 		kind   certKind
 	}
 
-	var testCases []testCase
+	issueAndRevoke := func(tc testCase) *x509.Certificate {
+		issueClient, err := makeClient()
+		test.AssertNotError(t, err, "creating acme client")
+
+		certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		test.AssertNotError(t, err, "creating random cert key")
+
+		domain := random_domain()
+
+		// Try to issue a certificate for the name.
+		var cert *x509.Certificate
+		switch tc.kind {
+		case finalcert:
+			res, err := authAndIssue(issueClient, certKey, []string{domain}, true)
+			test.AssertNotError(t, err, "authAndIssue failed")
+			cert = res.certs[0]
+
+		case precert:
+			// Make sure the ct-test-srv will reject generating SCTs for the domain,
+			// so we only get a precert and no final cert.
+			err := ctAddRejectHost(domain)
+			test.AssertNotError(t, err, "adding ct-test-srv reject host")
+
+			_, err = authAndIssue(issueClient, certKey, []string{domain}, true)
+			test.AssertError(t, err, "expected error from authAndIssue, was nil")
+			if !strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") ||
+				!strings.Contains(err.Error(), "SCT embedding") {
+				t.Fatal(err)
+			}
+
+			// Instead recover the precertificate from CT.
+			cert, err = ctFindRejection([]string{domain})
+			if err != nil || cert == nil {
+				t.Fatalf("couldn't find rejected precert for %q", domain)
+			}
+			// And make sure the cert we found is in fact a precert.
+			if !isPrecert(cert) {
+				t.Fatal("precert was missing poison extension")
+			}
+
+		default:
+			t.Fatalf("unrecognized cert kind %q", tc.kind)
+		}
+
+		// Initially, the cert should have a Good OCSP response.
+		ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+		_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+		test.AssertNotError(t, err, "requesting OCSP for precert")
+
+		// Set up the account and key that we'll use to revoke the cert.
+		var revokeClient *client
+		var revokeKey crypto.Signer
+		switch tc.method {
+		case byAccount:
+			// When revoking by account, use the same client and key as were used
+			// for the original issuance.
+			revokeClient = issueClient
+			revokeKey = revokeClient.PrivateKey
+
+		case byAuth:
+			// When revoking by auth, create a brand new client, authorize it for
+			// the same domain, and use that account and key for revocation. Ignore
+			// errors from authAndIssue because all we need is the auth, not the
+			// issuance.
+			revokeClient, err = makeClient()
+			test.AssertNotError(t, err, "creating second acme client")
+			_, _ = authAndIssue(revokeClient, certKey, []string{domain}, true)
+			revokeKey = revokeClient.PrivateKey
+
+		case byKey:
+			// When revoking by key, create a brand new client and use it with
+			// the cert's key for revocation.
+			revokeClient, err = makeClient()
+			test.AssertNotError(t, err, "creating second acme client")
+			revokeKey = certKey
+
+		default:
+			t.Fatalf("unrecognized revocation method %q", tc.method)
+		}
+
+		// Revoke the cert using the specified key and client.
+		err = revokeClient.RevokeCertificate(
+			revokeClient.Account,
+			cert,
+			revokeKey,
+			tc.reason,
+		)
+		test.AssertNotError(t, err, "revocation should have succeeded")
+
+		return cert
+	}
+
+	type expectation struct {
+		*x509.Certificate
+		name             string
+		revocationReason int
+	}
+	var expectations []expectation
+	var eMu sync.Mutex
+	var wg sync.WaitGroup
+
 	for _, kind := range []certKind{precert, finalcert} {
 		for _, reason := range []int{ocsp.Unspecified, ocsp.KeyCompromise} {
 			for _, method := range []authMethod{byAccount, byAuth, byKey} {
-				testCases = append(testCases, testCase{
-					method: method,
-					reason: reason,
-					kind:   kind,
-					// We do not expect any of these revocation requests to error.
-					// The ones done byAccount will succeed as requested, but will not
-					// result in the key being blocked for future issuance.
-					// The ones done byAuth will succeed, but will be overwritten to have
-					// reason code 5 (cessationOfOperation).
-					// The ones done byKey will succeed, but will be overwritten to have
-					// reason code 1 (keyCompromise), and will block the key.
-				})
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					cert := issueAndRevoke(testCase{
+						method: method,
+						reason: reason,
+						kind:   kind,
+						// We do not expect any of these revocation requests to error.
+						// The ones done byAccount will succeed as requested, but will not
+						// result in the key being blocked for future issuance.
+						// The ones done byAuth will succeed, but will be overwritten to have
+						// reason code 5 (cessationOfOperation).
+						// The ones done byKey will succeed, but will be overwritten to have
+						// reason code 1 (keyCompromise), and will block the key.
+					})
+
+					// If the request was made by demonstrating control over the
+					// names, the reason should be overwritten to CessationOfOperation (5),
+					// and if the request was made by key, then the reason should be set to
+					// KeyCompromise (1).
+					expectedReason := reason
+					switch method {
+					case byAuth:
+						expectedReason = ocsp.CessationOfOperation
+					case byKey:
+						expectedReason = ocsp.KeyCompromise
+					default:
+					}
+
+					eMu.Lock()
+					expectations = append(expectations, expectation{
+						Certificate:      cert,
+						name:             fmt.Sprintf("%s_%d_%s", kind, reason, method),
+						revocationReason: expectedReason,
+					})
+					eMu.Unlock()
+				}()
 			}
 		}
 	}
 
-	type expectedRevocation struct {
-		tc     testCase
-		cert   *x509.Certificate
-		reason int
-	}
+	wg.Wait()
 
-	var wg sync.WaitGroup
-	var once sync.Once
-	var revocations map[string][]*x509.RevocationList
+	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
+	revocations := getAllCRLs(t)
 
-	for _, tc := range testCases {
-		name := fmt.Sprintf("%s_%d_%s", tc.kind, tc.reason, tc.method)
-		wg.Add(1)
-		t.Run(name, func(t *testing.T) {
+	for _, expectation := range expectations {
+		t.Run(expectation.name, func(t *testing.T) {
 			t.Parallel()
-			issueClient, err := makeClient()
-			test.AssertNotError(t, err, "creating acme client")
-
-			certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-			test.AssertNotError(t, err, "creating random cert key")
-
-			domain := random_domain()
-
-			// Try to issue a certificate for the name.
-			var cert *x509.Certificate
-			switch tc.kind {
-			case finalcert:
-				res, err := authAndIssue(issueClient, certKey, []string{domain}, true)
-				test.AssertNotError(t, err, "authAndIssue failed")
-				cert = res.certs[0]
-
-			case precert:
-				// Make sure the ct-test-srv will reject generating SCTs for the domain,
-				// so we only get a precert and no final cert.
-				err := ctAddRejectHost(domain)
-				test.AssertNotError(t, err, "adding ct-test-srv reject host")
-
-				_, err = authAndIssue(issueClient, certKey, []string{domain}, true)
-				test.AssertError(t, err, "expected error from authAndIssue, was nil")
-				if !strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") ||
-					!strings.Contains(err.Error(), "SCT embedding") {
-					t.Fatal(err)
-				}
-
-				// Instead recover the precertificate from CT.
-				cert, err = ctFindRejection([]string{domain})
-				if err != nil || cert == nil {
-					t.Fatalf("couldn't find rejected precert for %q", domain)
-				}
-				// And make sure the cert we found is in fact a precert.
-				if !isPrecert(cert) {
-					t.Fatal("precert was missing poison extension")
-				}
-
-			default:
-				t.Fatalf("unrecognized cert kind %q", tc.kind)
-			}
-
-			// Initially, the cert should have a Good OCSP response.
-			ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
-			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
-			test.AssertNotError(t, err, "requesting OCSP for precert")
-
-			// Set up the account and key that we'll use to revoke the cert.
-			var revokeClient *client
-			var revokeKey crypto.Signer
-			switch tc.method {
-			case byAccount:
-				// When revoking by account, use the same client and key as were used
-				// for the original issuance.
-				revokeClient = issueClient
-				revokeKey = revokeClient.PrivateKey
-
-			case byAuth:
-				// When revoking by auth, create a brand new client, authorize it for
-				// the same domain, and use that account and key for revocation. Ignore
-				// errors from authAndIssue because all we need is the auth, not the
-				// issuance.
-				revokeClient, err = makeClient()
-				test.AssertNotError(t, err, "creating second acme client")
-				_, _ = authAndIssue(revokeClient, certKey, []string{domain}, true)
-				revokeKey = revokeClient.PrivateKey
-
-			case byKey:
-				// When revoking by key, create a brand new client and use it with
-				// the cert's key for revocation.
-				revokeClient, err = makeClient()
-				test.AssertNotError(t, err, "creating second acme client")
-				revokeKey = certKey
-
-			default:
-				t.Fatalf("unrecognized revocation method %q", tc.method)
-			}
-
-			// Revoke the cert using the specified key and client.
-			err = revokeClient.RevokeCertificate(
-				revokeClient.Account,
-				cert,
-				revokeKey,
-				tc.reason,
-			)
-
-			test.AssertNotError(t, err, "revocation should have succeeded")
-
-			// Check the OCSP response for the certificate again. It should now be
-			// revoked. If the request was made by demonstrating control over the
-			// names, the reason should be overwritten to CessationOfOperation (5),
-			// and if the request was made by key, then the reason should be set to
-			// KeyCompromise (1).
-			var expectedReason int
-			switch tc.method {
-			case byAuth:
-				expectedReason = ocsp.CessationOfOperation
-			case byKey:
-				expectedReason = ocsp.KeyCompromise
-			default:
-				expectedReason = tc.reason
-			}
-			_, err = ocsp_helper.ReqDER(cert.Raw, ocsp_helper.
+			_, err := ocsp_helper.ReqDER(expectation.Raw, ocsp_helper.
 				DefaultConfig.
 				WithExpectStatus(ocsp.Revoked).
-				WithExpectReason(expectedReason))
+				WithExpectReason(expectation.revocationReason))
 			test.AssertNotError(t, err, "requesting OCSP for revoked cert")
 
-			// For CRLs, wait till everyone's done before running the updater and
-			// fetching all the CRLs.
-			wg.Done()
-			wg.Wait()
-			once.Do(func() {
-				runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
-				revocations = getAllCRLs(t)
-			})
-
-			checkRevoked(t, revocations, cert, expectedReason)
+			checkRevoked(t, revocations, expectation.Certificate, expectation.revocationReason)
 		})
 	}
 }
