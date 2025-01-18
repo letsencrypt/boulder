@@ -370,20 +370,9 @@ type lintingCertModel struct {
 	Expires        time.Time
 }
 
-// TODO(#7324) orderModelv1 is deprecated, use orderModelv2 moving forward.
-type orderModelv1 struct {
-	ID                int64
-	RegistrationID    int64
-	Expires           time.Time
-	Created           time.Time
-	Error             []byte
-	CertificateSerial string
-	BeganProcessing   bool
-}
-
-// orderModelv2 represents one row in the orders table. The
-// CertificateProfileName column is a pointer because the column is NULL-able.
-type orderModelv2 struct {
+// orderModel represents one row in the orders table. The CertificateProfileName
+// column is a pointer because the column is NULL-able.
+type orderModel struct {
 	ID                     int64
 	RegistrationID         int64
 	Expires                time.Time
@@ -399,59 +388,11 @@ type orderToAuthzModel struct {
 	AuthzID int64
 }
 
-// TODO(#7324) orderToModelv1 is deprecated, use orderModelv2 moving forward.
-func orderToModelv1(order *corepb.Order) (*orderModelv1, error) {
-	om := &orderModelv1{
-		ID:                order.Id,
-		RegistrationID:    order.RegistrationID,
-		Expires:           order.Expires.AsTime(),
-		Created:           order.Created.AsTime(),
-		BeganProcessing:   order.BeganProcessing,
-		CertificateSerial: order.CertificateSerial,
-	}
-
-	if order.Error != nil {
-		errJSON, err := json.Marshal(order.Error)
-		if err != nil {
-			return nil, err
-		}
-		if len(errJSON) > mediumBlobSize {
-			return nil, fmt.Errorf("Error object is too large to store in the database")
-		}
-		om.Error = errJSON
-	}
-	return om, nil
-}
-
-// TODO(#7324) modelToOrderv1 is deprecated, use orderModelv2 moving forward.
-func modelToOrderv1(om *orderModelv1) (*corepb.Order, error) {
-	order := &corepb.Order{
-		Id:                om.ID,
-		RegistrationID:    om.RegistrationID,
-		Expires:           timestamppb.New(om.Expires),
-		Created:           timestamppb.New(om.Created),
-		CertificateSerial: om.CertificateSerial,
-		BeganProcessing:   om.BeganProcessing,
-	}
-	if len(om.Error) > 0 {
-		var problem corepb.ProblemDetails
-		err := json.Unmarshal(om.Error, &problem)
-		if err != nil {
-			return &corepb.Order{}, badJSONError(
-				"failed to unmarshal order model's error",
-				om.Error,
-				err)
-		}
-		order.Error = &problem
-	}
-	return order, nil
-}
-
-func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
+func orderToModel(order *corepb.Order) (*orderModel, error) {
 	// Make a local copy so we can take a reference to it below.
 	profile := order.CertificateProfileName
 
-	om := &orderModelv2{
+	om := &orderModel{
 		ID:                     order.Id,
 		RegistrationID:         order.RegistrationID,
 		Expires:                order.Expires.AsTime(),
@@ -474,7 +415,7 @@ func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
 	return om, nil
 }
 
-func modelToOrderv2(om *orderModelv2) (*corepb.Order, error) {
+func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	profile := ""
 	if om.CertificateProfileName != nil {
 		profile = *om.CertificateProfileName

@@ -568,30 +568,18 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Second, insert the new order.
-		var orderID int64
-		var err error
 		created := ssa.clk.Now()
-		if features.Get().MultipleCertificateProfiles {
-			omv2 := orderModelv2{
-				RegistrationID:         req.NewOrder.RegistrationID,
-				Expires:                req.NewOrder.Expires.AsTime(),
-				Created:                created,
-				CertificateProfileName: &req.NewOrder.CertificateProfileName,
-			}
-			err = tx.Insert(ctx, &omv2)
-			orderID = omv2.ID
-		} else {
-			omv1 := orderModelv1{
-				RegistrationID: req.NewOrder.RegistrationID,
-				Expires:        req.NewOrder.Expires.AsTime(),
-				Created:        created,
-			}
-			err = tx.Insert(ctx, &omv1)
-			orderID = omv1.ID
+		om := orderModel{
+			RegistrationID:         req.NewOrder.RegistrationID,
+			Expires:                req.NewOrder.Expires.AsTime(),
+			Created:                created,
+			CertificateProfileName: &req.NewOrder.CertificateProfileName,
 		}
+		err := tx.Insert(ctx, &om)
 		if err != nil {
 			return nil, err
 		}
+		orderID := om.ID
 
 		// Third, insert all of the orderToAuthz relations.
 		// Have to combine the already-associated and newly-created authzs.
@@ -713,7 +701,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 		return nil, errIncompleteRequest
 	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		om, err := orderToModelv2(&corepb.Order{
+		om, err := orderToModel(&corepb.Order{
 			Id:    req.Id,
 			Error: req.Error,
 		})
