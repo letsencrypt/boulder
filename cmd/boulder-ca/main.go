@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"os"
-	"reflect"
 	"strconv"
 	"time"
 
@@ -39,11 +38,6 @@ type Config struct {
 			// configured certificate profile or boulder-ca will fail to start.
 			DefaultCertificateProfileName string `validate:"omitempty,alphanum,min=1,max=32"`
 
-			// TODO(#7414) Remove this deprecated field.
-			// Deprecated: Use CertProfiles instead. Profile implicitly takes
-			// the internal Boulder default value of ca.DefaultCertProfileName.
-			Profile issuance.ProfileConfig `validate:"required_without=CertProfiles,structonly"`
-
 			// One of the profile names must match the value of
 			// DefaultCertificateProfileName or boulder-ca will fail to start.
 			CertProfiles map[string]*issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
@@ -51,23 +45,7 @@ type Config struct {
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile issuance.CRLProfileConfig `validate:"-"`
 			Issuers    []issuance.IssuerConfig   `validate:"min=1,dive"`
-
-			// LintConfig is a path to a zlint config file.
-			// Deprecated: Use CertProfiles.LintConfig instead.
-			LintConfig string
-			// IgnoredLints is a list of lint names for which any errors should be
-			// ignored.
-			// Deprecated: Use CertProfiles.IgnoredLints instead.
-			IgnoredLints []string
 		}
-
-		// How long issued certificates are valid for.
-		// Deprecated: Use Issuance.CertProfiles.MaxValidityPeriod instead.
-		Expiry config.Duration
-
-		// How far back certificates should be backdated.
-		// Deprecated: Use Issuance.CertProfiles.MaxValidityBackdate instead.
-		Backdate config.Duration
 
 		// What digits we should prepend to serials after randomly generating them.
 		// Deprecated: Use SerialPrefixHex instead.
@@ -93,12 +71,6 @@ type Config struct {
 		// LifespanOCSP is how long OCSP responses are valid for. Per the BRs,
 		// Section 4.9.10, it MUST NOT be more than 10 days. Default 96h.
 		LifespanOCSP config.Duration
-
-		// LifespanCRL is how long CRLs are valid for. It should be longer than the
-		// `period` field of the CRL Updater. Per the BRs, Section 4.9.7, it MUST
-		// NOT be more than 10 days.
-		// Deprecated: Use Config.CA.Issuance.CRLProfile.ValidityInterval instead.
-		LifespanCRL config.Duration `validate:"-"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -179,15 +151,6 @@ func main() {
 		c.CA.LifespanOCSP.Duration = 96 * time.Hour
 	}
 
-	// TODO(#7159): Remove these fallbacks once all live configs are setting the
-	// CRL validity interval inside the Issuance.CRLProfile Config.
-	if c.CA.Issuance.CRLProfile.ValidityInterval.Duration == 0 && c.CA.LifespanCRL.Duration != 0 {
-		c.CA.Issuance.CRLProfile.ValidityInterval = c.CA.LifespanCRL
-	}
-	if c.CA.Issuance.CRLProfile.MaxBackdate.Duration == 0 && c.CA.Backdate.Duration != 0 {
-		c.CA.Issuance.CRLProfile.MaxBackdate = c.CA.Backdate
-	}
-
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)
 	defer oTelShutdown(context.Background())
 	logger.Info(cmd.VersionString())
@@ -226,27 +189,8 @@ func main() {
 	}
 	logger.Infof("Configured default certificate profile name set to: %s", c.CA.Issuance.DefaultCertificateProfileName)
 
-	// TODO(#7414) Remove this check.
-	if !reflect.ValueOf(c.CA.Issuance.Profile).IsZero() && len(c.CA.Issuance.CertProfiles) > 0 {
-		cmd.Fail("Only one of Issuance.Profile or Issuance.CertProfiles can be configured")
-	}
-
-	// If no individual cert profiles are configured, pretend that the deprecated
-	// top-level profile as the only individual profile instead.
-	// TODO(#7414) Remove this fallback.
 	if len(c.CA.Issuance.CertProfiles) == 0 {
-		c.CA.Issuance.CertProfiles = make(map[string]*issuance.ProfileConfig, 0)
-		c.CA.Issuance.CertProfiles[c.CA.Issuance.DefaultCertificateProfileName] = &c.CA.Issuance.Profile
-	}
-
-	// If any individual cert profile doesn't have its own lint configuration,
-	// instead copy in the deprecated top-level lint configuration.
-	// TODO(#7414): Remove this fallback.
-	for _, prof := range c.CA.Issuance.CertProfiles {
-		if prof.LintConfig == "" && len(prof.IgnoredLints) == 0 {
-			prof.LintConfig = c.CA.Issuance.LintConfig
-			prof.IgnoredLints = c.CA.Issuance.IgnoredLints
-		}
+		cmd.Fail("At least one profile must be configured")
 	}
 
 	tlsConfig, err := c.CA.TLS.Load(scope)
