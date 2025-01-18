@@ -48,7 +48,8 @@
 			}
 		},
 		"features": {
-			"UseKvLimitsForNewOrder": true
+			"UseKvLimitsForNewOrder": true,
+			"MultipleCertificateProfiles": true
 		}
 	},
 	"syslog": {
