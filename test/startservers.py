@@ -84,7 +84,7 @@ SERVICES = (
         ('akamai-test-srv',)),
     Service('s3-test-srv',
         4501, None, None,
-        ('./bin/s3-test-srv', '--listen', 'localhost:4501'),
+        ('./bin/s3-test-srv', '--listen', ':4501'),
         None),
     Service('crl-storer',
         9667, None, None,

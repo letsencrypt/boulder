@@ -53,8 +53,8 @@
 		],
 		"liveSigningPeriod": "60h",
 		"timeout": "4.9s",
-		"maxInflightSignings": 2,
-		"maxSigningWaiters": 1,
+		"maxInflightSignings": 20,
+		"maxSigningWaiters": 100,
 		"shutdownStopTimeout": "10s",
 		"requiredSerialPrefixes": [
 			"7f"
