@@ -16,10 +16,11 @@ import (
 // package's global Config.
 type Config struct {
 	// Deprecated flags.
-	IncrementRateLimits      bool
-	UseKvLimitsForNewOrder   bool
-	DisableLegacyLimitWrites bool
-	InsertAuthzsIndividually bool
+	IncrementRateLimits         bool
+	UseKvLimitsForNewOrder      bool
+	DisableLegacyLimitWrites    bool
+	MultipleCertificateProfiles bool
+	InsertAuthzsIndividually    bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -55,14 +56,6 @@ type Config struct {
 	// When false, no remote CAA rechecks will be performed. The primary VA will
 	// make a valid/invalid decision with the results.
 	EnforceMultiCAA bool
-
-	// MultipleCertificateProfiles, when enabled, triggers the following
-	// behavior:
-	//   - SA.NewOrderAndAuthzs: upon receiving a NewOrderRequest with a
-	//     `certificateProfileName` value, will add that value to the database's
-	//     `orders.certificateProfileName` column. Values in this column are
-	//     allowed to be empty.
-	MultipleCertificateProfiles bool
 
 	// CheckIdentifiersPaused checks if any of the identifiers in the order are
 	// currently paused at NewOrder time. If any are paused, an error is

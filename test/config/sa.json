@@ -49,6 +49,7 @@
 		},
 		"features": {
 			"UseKvLimitsForNewOrder": true,
+			"MultipleCertificateProfiles": true,
 			"InsertAuthzsIndividually": true
 		}
 	},
