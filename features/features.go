@@ -20,6 +20,7 @@ type Config struct {
 	UseKvLimitsForNewOrder      bool
 	DisableLegacyLimitWrites    bool
 	MultipleCertificateProfiles bool
+	InsertAuthzsIndividually    bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -70,13 +71,6 @@ type Config struct {
 	// database queries (for instance, in the SA) are not cancelled. Database
 	// queries waiting for an available connection may be cancelled.
 	PropagateCancels bool
-
-	// InsertAuthzsIndividually causes the SA's NewOrderAndAuthzs method to
-	// create each new authz one at a time, rather than using MultiInserter.
-	// Although this is expected to be a performance penalty, it is necessary to
-	// get the AUTO_INCREMENT ID of each new authz without relying on MariaDB's
-	// unique "INSERT ... RETURNING" functionality.
-	InsertAuthzsIndividually bool
 
 	// AutomaticallyPauseZombieClients configures the RA to automatically track
 	// and pause issuance for each (account, hostname) pair that repeatedly
