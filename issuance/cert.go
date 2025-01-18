@@ -192,6 +192,17 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 	return nil
 }
 
+// Baseline Requirements, Section 7.1.6.1: domain-validated
+var domainValidatedOID = mustOIDFromInts([]uint64{2, 23, 140, 1, 2, 1})
+
+func mustOIDFromInts(oid []uint64) x509.OID {
+	x509OID, err := x509.OIDFromInts(oid)
+	if err != nil {
+		panic(fmt.Errorf("failed to create OID using ints %v: %w", oid, err))
+	}
+	return x509OID
+}
+
 func (i *Issuer) generateTemplate() *x509.Certificate {
 	template := &x509.Certificate{
 		SignatureAlgorithm:    i.sigAlg,
@@ -200,6 +211,7 @@ func (i *Issuer) generateTemplate() *x509.Certificate {
 		BasicConstraintsValid: true,
 		// Baseline Requirements, Section 7.1.6.1: domain-validated
 		PolicyIdentifiers: []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
+		Policies:          []x509.OID{domainValidatedOID},
 	}
 
 	// TODO(#7294): Use i.crlURLBase and a shard calculation to create a

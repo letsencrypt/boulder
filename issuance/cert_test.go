@@ -322,6 +322,7 @@ func TestGenerateTemplate(t *testing.T) {
 		OCSPServer:            []string{"http://ocsp"},
 		CRLDistributionPoints: nil,
 		PolicyIdentifiers:     []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
+		Policies:              []x509.OID{domainValidatedOID},
 	}
 
 	test.AssertDeepEquals(t, actual, expected)
