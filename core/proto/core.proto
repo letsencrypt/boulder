@@ -84,7 +84,7 @@ message Registration {
   int64 id = 1;
   bytes key = 2;
   repeated string contact = 3;
-  bool contactsPresent = 4;
+  reserved 4; // Previously contactsPresent
   string agreement = 5;
   reserved 6; // Previously initialIP
   reserved 7; // Previously createdAtNS

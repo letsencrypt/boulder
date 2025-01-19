@@ -331,25 +331,20 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 	}
 
 	contact := []string{}
-	contactsPresent := false
 	if len(reg.Contact) > 0 {
 		err := json.Unmarshal([]byte(reg.Contact), &contact)
 		if err != nil {
 			return nil, err
 		}
-		if len(contact) > 0 {
-			contactsPresent = true
-		}
 	}
 
 	return &corepb.Registration{
-		Id:              reg.ID,
-		Key:             reg.Key,
-		Contact:         contact,
-		ContactsPresent: contactsPresent,
-		Agreement:       reg.Agreement,
-		CreatedAt:       timestamppb.New(reg.CreatedAt.UTC()),
-		Status:          reg.Status,
+		Id:        reg.ID,
+		Key:       reg.Key,
+		Contact:   contact,
+		Agreement: reg.Agreement,
+		CreatedAt: timestamppb.New(reg.CreatedAt.UTC()),
+		Status:    reg.Status,
 	}, nil
 }
 

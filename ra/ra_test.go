@@ -436,9 +436,8 @@ func TestNewRegistration(t *testing.T) {
 	acctKeyB, err := AccountKeyB.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := &corepb.Registration{
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Key:             acctKeyB,
+		Contact: []string{mailto},
+		Key:     acctKeyB,
 	}
 
 	result, err := ra.NewRegistration(ctx, input)
@@ -470,9 +469,8 @@ func TestNewRegistrationSAFailure(t *testing.T) {
 	acctKeyB, err := AccountKeyB.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := corepb.Registration{
-		Contact:         []string{"mailto:test@example.com"},
-		ContactsPresent: true,
-		Key:             acctKeyB,
+		Contact: []string{"mailto:test@example.com"},
+		Key:     acctKeyB,
 	}
 	result, err := ra.NewRegistration(ctx, &input)
 	if err == nil {
@@ -487,11 +485,10 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	acctKeyC, err := AccountKeyC.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := &corepb.Registration{
-		Id:              23,
-		Key:             acctKeyC,
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Agreement:       "I agreed",
+		Id:        23,
+		Key:       acctKeyC,
+		Contact:   []string{mailto},
+		Agreement: "I agreed",
 	}
 
 	result, err := ra.NewRegistration(ctx, input)
@@ -508,9 +505,8 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	shortKey, err := ShortKey.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := &corepb.Registration{
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Key:             shortKey,
+		Contact: []string{mailto},
+		Key:     shortKey,
 	}
 	_, err = ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
