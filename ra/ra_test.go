@@ -36,6 +36,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
+	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
@@ -341,6 +342,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		fc, log, stats,
 		1, testKeyPolicy, limiter, txnBuilder, 100,
 		300*24*time.Hour, 7*24*time.Hour,
+		nil,
 		nil,
 		7*24*time.Hour, 5*time.Minute,
 		ctp, nil, nil)
@@ -1664,6 +1666,45 @@ func TestNewOrder_AuthzReuse_NoPending(t *testing.T) {
 	test.AssertNotError(t, err, "creating test order")
 	test.AssertNotEquals(t, new.Id, extant.Id)
 	test.AssertNotEquals(t, new.V2Authorizations[0], extant.V2Authorizations[0])
+}
+
+func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Set up an allowlist that doesn't contain Registration.Id.
+	ra.validationProfiles = map[string]*ValidationProfile{
+		"test": {
+			allowList: allowlist.NewList[int64]([]int64{1337}),
+		},
+	}
+
+	// Issuance should fail with an unauthorized error regarding the profile.
+	orderReq := &rapb.NewOrderRequest{
+		RegistrationID:         Registration.Id,
+		DnsNames:               []string{"a.example.com"},
+		CertificateProfileName: "test",
+	}
+	_, err := ra.NewOrder(context.Background(), orderReq)
+	test.AssertError(t, err, "NewOrder with invalid profile did not error")
+	test.AssertErrorIs(t, err, berrors.Unauthorized)
+	test.AssertContains(t, err.Error(), "not permitted to use profile")
+
+	// Set up an allowlist that contains Registration.Id.
+	ra.validationProfiles = map[string]*ValidationProfile{
+		"test": {
+			allowList: allowlist.NewList([]int64{Registration.Id}),
+		},
+	}
+
+	// Issuance should succeed with the profile.
+	orderReq = &rapb.NewOrderRequest{
+		RegistrationID:         Registration.Id,
+		DnsNames:               []string{"a.example.com"},
+		CertificateProfileName: "test",
+	}
+	_, err = ra.NewOrder(context.Background(), orderReq)
+	test.AssertNotError(t, err, "NewOrder for account ID that is on the allowlist failed")
 }
 
 // mockSAWithAuthzs has a GetAuthorizations2 method that returns the protobuf
