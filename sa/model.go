@@ -566,6 +566,8 @@ func rehydrateHostPort(vr *core.ValidationRecord) error {
 // This function doesn't do anything special for authzs with an expiration in
 // the past. If the stored authz has a valid status, it is returned with a
 // valid status regardless of whether it is also expired.
+//
+// TODO(#7311): Should this accept Identifiers as well as dnsNames?
 func SelectAuthzsMatchingIssuance(
 	ctx context.Context,
 	s db.Selector,
@@ -658,6 +660,7 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
 // authzPBToModel converts a protobuf authorization representation to the
 // authzModel storage representation.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
+	// TODO(#7311): This should prefer Identifier over DnsName.
 	am := &authzModel{
 		IdentifierType:  identifierTypeToUint[string(identifier.TypeDNS)],
 		IdentifierValue: authz.DnsName,
@@ -806,10 +809,13 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 		return nil, fmt.Errorf("unrecognized identifier type encoding %d", am.IdentifierType)
 	}
 
+	// TODO(#7311): Once we can always expect an am.Identifier instead of a
+	// DnsName, just pass along the existing Identifier, don't recreate it.
 	pb := &corepb.Authorization{
 		Id:             fmt.Sprintf("%d", am.ID),
 		Status:         string(uintToStatus[am.Status]),
 		DnsName:        am.IdentifierValue,
+		Identifier:     identifier.NewDNS(am.IdentifierValue).AsProto(),
 		RegistrationID: am.RegistrationID,
 		Expires:        timestamppb.New(am.Expires),
 	}
@@ -1095,6 +1101,7 @@ func statusForOrder(order *corepb.Order, authzValidityInfo []authzValidity, now 
 
 	// An order is fully authorized if it has valid authzs for each of the order
 	// names
+	// TODO(#7311): We need to handle orders with Identifiers instead of DnsNames.
 	fullyAuthorized := len(order.DnsNames) == validAuthzs
 
 	// If the order isn't fully authorized we've encountered an internal error:

@@ -934,6 +934,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// There should never be an order with 0 names at the stage, but we check to
 	// be on the safe side, throwing an internal server error if this assumption
 	// is ever violated.
+	// TODO(#7311): Accept Identifiers in place of dnsNames.
 	if len(req.Order.DnsNames) == 0 {
 		return nil, berrors.InternalServerError("Order has no associated names")
 	}
@@ -954,6 +955,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
 	csrNames := csrlib.NamesFromCSR(csr).SANs
+	// TODO(#7311): Accept Identifiers in place of dnsNames.
 	orderNames := core.UniqueLowerNames(req.Order.DnsNames)
 
 	// Check that the order names and the CSR names are an exact match
@@ -1024,9 +1026,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 
 	isRenewal := false
 	timestamps, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
-		DnsNames: order.DnsNames,
-		Window:   durationpb.New(120 * 24 * time.Hour),
-		Limit:    1,
+		DnsNames:    order.DnsNames,
+		Identifiers: order.Identifiers,
+		Window:      durationpb.New(120 * 24 * time.Hour),
+		Limit:       1,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("checking if certificate is a renewal: %w", err)
@@ -1058,6 +1061,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		order.CertificateSerial = core.SerialToString(cert.SerialNumber)
 		order.Status = string(core.StatusValid)
 
+		// TODO(#7311): Accept Identifiers in place of dnsNames.
 		ra.namesPerCert.With(
 			prometheus.Labels{"type": "issued"},
 		).Observe(float64(len(order.DnsNames)))
@@ -1071,6 +1075,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
 		logEvent.CommonName = cert.Subject.CommonName
 		logEvent.Names = cert.DNSNames
+		// TODO(#7311): Populate logEvent.Identifiers.
 		logEvent.NotBefore = cert.NotBefore
 		logEvent.NotAfter = cert.NotAfter
 		logEvent.CertProfileName = cpId.name
@@ -1410,6 +1415,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
+	// TODO(#7311): Accept Identifiers in place of dnsNames.
 	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, req.Authz.DnsName, req.Authz.Status, req.Authz.Expires) {
 		return nil, errIncompleteGRPCRequest
 	}
@@ -1695,6 +1701,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		logEvent.Method = "control"
 
 		var authzPB *sapb.Authorizations
+		// TODO(#7311): Populate Identifiers, not just dnsNames.
 		authzPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
 			DnsNames:       cert.DNSNames,
@@ -1710,7 +1717,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 			return nil, err
 		}
 
-		// TODO(#7647): Support other kinds of SANs/identifiers here.
+		// TODO(#7311): TODO(#7647): Support other kinds of SANs/identifiers here.
 		for _, name := range cert.DNSNames {
 			if _, present := authzMap[identifier.NewDNS(name)]; !present {
 				return nil, berrors.UnauthorizedError("requester does not control all names in cert with serial %q", serialString)
@@ -2019,6 +2026,8 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		// internal errors in the client. From our perspective this uses storage
 		// resources similar to how failed authorizations do, so we increment the
 		// failed authorizations limit.
+		//
+		// TODO(#7311): Accept Identifiers in place of dnsNames.
 		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.NewDNS(req.DnsName))
 		if err != nil {
 			return nil, fmt.Errorf("failed to update rate limits: %w", err)
@@ -2072,6 +2081,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
+	// TODO(#7311): Compose Identifiers instead of DnsNames, and use them throughout this entire function.
 	newOrder := &sapb.NewOrderRequest{
 		RegistrationID:         req.RegistrationID,
 		DnsNames:               core.UniqueLowerNames(req.DnsNames),
@@ -2098,8 +2108,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// See if there is an existing unexpired pending (or ready) order that can be reused
 	// for this account
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID:   newOrder.RegistrationID,
-		DnsNames: newOrder.DnsNames,
+		AcctID:      newOrder.RegistrationID,
+		DnsNames:    newOrder.DnsNames,
+		Identifiers: newOrder.Identifiers,
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
 	// immediately
@@ -2139,6 +2150,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			RegistrationID: newOrder.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
 			DnsNames:       newOrder.DnsNames,
+			Identifiers:    newOrder.Identifiers,
 		}
 		existingAuthz, err = ra.SA.GetValidAuthorizations2(ctx, getAuthReq)
 	} else {
@@ -2146,6 +2158,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			RegistrationID: newOrder.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
 			DnsNames:       newOrder.DnsNames,
+			Identifiers:    newOrder.Identifiers,
 		}
 		existingAuthz, err = ra.SA.GetAuthorizations2(ctx, getAuthReq)
 	}

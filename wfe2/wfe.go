@@ -2256,11 +2256,12 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// Collect up all of the DNS identifier values into a []string for
-	// subsequent layers to process. We reject anything with a non-DNS
-	// type identifier here. Check to make sure one of the strings is
-	// short enough to meet the max CN bytes requirement.
+	// Collect up all of the DNS identifier values into a []string and a
+	// *[]corepb.Identifier for subsequent layers to process. We reject anything
+	// with a non-DNS type identifier here. Check to make sure one of the
+	// strings is short enough to meet the max CN bytes requirement.
 	names := make([]string, len(newOrderRequest.Identifiers))
+	pbIdentifiers := make([]*corepb.Identifier, len(newOrderRequest.Identifiers))
 	for i, ident := range newOrderRequest.Identifiers {
 		if ident.Type != identifier.TypeDNS {
 			wfe.sendError(response, logEvent,
@@ -2274,6 +2275,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			return
 		}
 		names[i] = ident.Value
+		pbIdentifiers[i] = ident.AsProto()
 	}
 
 	names = core.UniqueLowerNames(names)
@@ -2324,9 +2326,10 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount
 		// and CertificatesPerDomain limits.
 		timestamps, err := wfe.sa.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
-			DnsNames: names,
-			Window:   durationpb.New(120 * 24 * time.Hour),
-			Limit:    1,
+			DnsNames:    names,
+			Identifiers: pbIdentifiers,
+			Window:      durationpb.New(120 * 24 * time.Hour),
+			Limit:       1,
 		})
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While checking renewal exemption status"), err)
@@ -2371,6 +2374,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID:         acct.ID,
 		DnsNames:               names,
+		Identifiers:            pbIdentifiers,
 		ReplacesSerial:         replaces,
 		CertificateProfileName: newOrderRequest.Profile,
 	})

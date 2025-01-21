@@ -19,6 +19,7 @@ import (
 
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test/vars"
 
@@ -61,6 +62,7 @@ func TestAuthzModel(t *testing.T) {
 	authzPB := &corepb.Authorization{
 		Id:             "1",
 		DnsName:        "example.com",
+		Identifier:     identifier.NewDNS("example.com").AsProto(),
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
 		Expires:        timestamppb.New(expires),
@@ -107,6 +109,7 @@ func TestAuthzModel(t *testing.T) {
 	authzPB = &corepb.Authorization{
 		Id:             "1",
 		DnsName:        "example.com",
+		Identifier:     identifier.NewDNS("example.com").AsProto(),
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
 		Expires:        timestamppb.New(expires),
@@ -158,6 +161,7 @@ func TestAuthzModel(t *testing.T) {
 	authzPB = &corepb.Authorization{
 		Id:             "1",
 		DnsName:        "example.com",
+		Identifier:     identifier.NewDNS("example.com").AsProto(),
 		RegistrationID: 1,
 		Status:         string(core.StatusInvalid),
 		Expires:        timestamppb.New(expires),
@@ -199,6 +203,7 @@ func TestAuthzModel(t *testing.T) {
 	authzPB = &corepb.Authorization{
 		Id:             "1",
 		DnsName:        "example.com",
+		Identifier:     identifier.NewDNS("example.com").AsProto(),
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
 		Expires:        timestamppb.New(expires),

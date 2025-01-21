@@ -76,13 +76,15 @@ message AdministrativelyRevokeCertificateRequest {
 }
 
 message NewOrderRequest {
-  // Next unused field number: 7
+  // Next unused field number: 8
   int64 registrationID = 1;
+  // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 2;
   string replacesSerial = 3;
   reserved 4; // previously isARIRenewal
   string certificateProfileName = 5;
   reserved 6; // previously isRenewal
+  repeated core.Identifier identifiers = 7;
 }
 
 message GetAuthorizationRequest {

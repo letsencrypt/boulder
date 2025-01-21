@@ -106,11 +106,13 @@ message AuthorizationID {
 }
 
 message GetValidAuthorizationsRequest {
-  // Next unused field number: 5
+  // Next unused field number: 6
   int64 registrationID = 1;
+  // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 2;
   reserved 3; // Previously nowNS
   google.protobuf.Timestamp validUntil = 4;
+  repeated core.Identifier identifiers = 5;
 }
 
 message Serial {
@@ -146,22 +148,30 @@ message Timestamps {
 }
 
 message CountInvalidAuthorizationsRequest {
+  // Next unused field number: 5
   int64 registrationID = 1;
+  // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   string dnsName = 2;
   // Count authorizations that expire in this range.
   Range range = 3;
+  core.Identifier identifier = 4;
 }
 
 message CountFQDNSetsRequest {
-  // Next unused field number: 4
+  // Next unused field number: 6
   reserved 1; // Previously windowNS
+  // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 2;
   google.protobuf.Duration window = 3;
   int64 limit = 4;
+  repeated core.Identifier identifiers = 5;
 }
 
 message FQDNSetExistsRequest {
+  // Next unused field number: 3
+  // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 1;
+  repeated core.Identifier identifiers = 2;
 }
 
 message Exists {
@@ -210,14 +220,16 @@ message OrderRequest {
 }
 
 message NewOrderRequest {
-  // Next unused field number: 8
+  // Next unused field number: 9
   int64 registrationID = 1;
   reserved 2; // Previously expiresNS
   google.protobuf.Timestamp expires = 5;
+  // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 3;
   repeated int64 v2Authorizations = 4;
   string replacesSerial = 6;
   string certificateProfileName = 7;
+  repeated core.Identifier identifiers = 8;
 }
 
 // NewAuthzRequest starts with all the same fields as corepb.Authorization,
@@ -255,8 +267,11 @@ message GetValidOrderAuthorizationsRequest {
 }
 
 message GetOrderForNamesRequest {
+  // Next unused field number: 4
   int64 acctID = 1;
+  // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 2;
+  repeated core.Identifier identifiers = 3;
 }
 
 message FinalizeOrderRequest {
@@ -265,11 +280,13 @@ message FinalizeOrderRequest {
 }
 
 message GetAuthorizationsRequest {
-  // Next unused field number: 5
+  // Next unused field number: 6
   int64 registrationID = 1;
+  // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 2;
   reserved 3; // Previously nowNS
   google.protobuf.Timestamp validUntil = 4;
+  repeated core.Identifier identifiers = 5;
 }
 
 message Authorizations {

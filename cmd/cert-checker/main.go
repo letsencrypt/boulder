@@ -298,6 +298,8 @@ var expectedExtensionContent = map[string][]byte{
 // likely valid at the time the certificate was issued. Authorizations with
 // status = "deactivated" are counted for this, so long as their validatedAt
 // is before the issuance and expiration is after.
+//
+// TODO(#7311): This needs to use Identifiers instead of dnsNames.
 func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificate, dnsNames []string) error {
 	authzs, err := sa.SelectAuthzsMatchingIssuance(ctx, c.dbMap, cert.RegistrationID, cert.Issued, dnsNames)
 	if err != nil {

@@ -296,6 +296,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	return &corepb.Authorization{
 		Id:             authz.ID,
 		DnsName:        authz.Identifier.Value,
+		Identifier:     authz.Identifier.AsProto(),
 		RegistrationID: authz.RegistrationID,
 		Status:         string(authz.Status),
 		Expires:        expires,
@@ -318,7 +319,10 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		expires = &c
 	}
 	authz := core.Authorization{
-		ID:             pb.Id,
+		ID: pb.Id,
+		// TODO(#7311): Once we can depend on the Identifier in an Authorization
+		// being populated, reuse the field directly instead of recreating an
+		// Identifier.
 		Identifier:     identifier.NewDNS(pb.DnsName),
 		RegistrationID: pb.RegistrationID,
 		Status:         core.AcmeStatus(pb.Status),
@@ -343,6 +347,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
+	// TODO(#7311): Accept empty DnsNames if Identifiers are present.
 	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.DnsNames) == 0)
 }
 

@@ -600,6 +600,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fourth, insert the FQDNSet entry for the order.
+		// TODO(#7311): Use Identifiers instead of dnsNames.
 		err = addOrderFQDNSet(ctx, tx, req.NewOrder.DnsNames, orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {
 			return nil, err
@@ -630,6 +631,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			RegistrationID: req.NewOrder.RegistrationID,
 			Expires:        req.NewOrder.Expires,
 			DnsNames:       req.NewOrder.DnsNames,
+			Identifiers:    req.NewOrder.Identifiers,
 			// This includes both reused and newly created authz IDs.
 			V2Authorizations: allAuthzIds,
 			// A new order is never processing because it can't be finalized yet.

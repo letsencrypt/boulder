@@ -229,6 +229,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 			Id:             "1",
 			RegistrationID: 1,
 			DnsName:        "not-an-example.com",
+			Identifier:     identifier.NewDNS("not-an-example.com").AsProto(),
 			Status:         string(core.StatusValid),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
 			Challenges: []*corepb.Challenge{
@@ -240,6 +241,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 			Id:             "2",
 			RegistrationID: 1,
 			DnsName:        "not-an-example.com",
+			Identifier:     identifier.NewDNS("not-an-example.com").AsProto(),
 			Status:         string(core.StatusPending),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
 			Challenges: []*corepb.Challenge{
@@ -253,6 +255,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 			Id:             "3",
 			RegistrationID: 1,
 			DnsName:        "not-an-example.com",
+			Identifier:     identifier.NewDNS("not-an-example.com").AsProto(),
 			Status:         string(core.StatusPending),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(-1, 0, 0)),
 			Challenges: []*corepb.Challenge{
@@ -268,6 +271,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 			Id:             "5",
 			RegistrationID: 2,
 			DnsName:        "not-an-example.com",
+			Identifier:     identifier.NewDNS("not-an-example.com").AsProto(),
 			Status:         string(core.StatusPending),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
 			Challenges: []*corepb.Challenge{
@@ -299,6 +303,7 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewO
 		Created:          timestamppb.New(created),
 		Expires:          timestamppb.New(expires),
 		DnsNames:         in.DnsNames,
+		Identifiers:      in.Identifiers,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
 	}, nil
@@ -1724,6 +1729,7 @@ func (ra *RAWithFailedChallenge) GetAuthorization(ctx context.Context, id *rapb.
 		Id:             "6",
 		RegistrationID: 1,
 		DnsName:        "not-an-example.com",
+		Identifier:     identifier.NewDNS("not-an-example.com").AsProto(),
 		Status:         string(core.StatusInvalid),
 		Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
 		Challenges: []*corepb.Challenge{
@@ -3534,6 +3540,7 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 		Id:               1,
 		RegistrationID:   1,
 		DnsNames:         []string{"a"},
+		Identifiers:      []*corepb.Identifier{identifier.NewDNS("a").AsProto()},
 		Status:           string(core.StatusPending),
 		Expires:          timestamppb.New(expires),
 		V2Authorizations: []int64{1, 2},
@@ -3962,6 +3969,7 @@ func (sa *mockRA) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, opts .
 		Created:                timestamppb.New(created),
 		Expires:                timestamppb.New(exp),
 		DnsNames:               []string{"example.com"},
+		Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").AsProto()},
 		Status:                 string(core.StatusValid),
 		V2Authorizations:       []int64{1},
 		CertificateSerial:      "serial",
