@@ -101,8 +101,6 @@ type RegistrationAuthorityImpl struct {
 	ctpolicyResults         *prometheus.HistogramVec
 	revocationReasonCounter *prometheus.CounterVec
 	namesPerCert            *prometheus.HistogramVec
-	rlCheckLatency          *prometheus.HistogramVec
-	rlOverrideUsageGauge    *prometheus.GaugeVec
 	newRegCounter           prometheus.Counter
 	recheckCAACounter       prometheus.Counter
 	newCertCounter          *prometheus.CounterVec
@@ -156,18 +154,6 @@ func NewRegistrationAuthorityImpl(
 		[]string{"type"},
 	)
 	stats.MustRegister(namesPerCert)
-
-	rlCheckLatency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "ratelimitsv1_check_latency_seconds",
-		Help: fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", ratelimits.Allowed, ratelimits.Denied),
-	}, []string{"limit", "decision"})
-	stats.MustRegister(rlCheckLatency)
-
-	overrideUsageGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "ratelimitsv1_override_usage",
-		Help: "Proportion of override limit used, by limit name and client identifier.",
-	}, []string{"limit", "override_key"})
-	stats.MustRegister(overrideUsageGauge)
 
 	newRegCounter := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "new_registrations",
@@ -258,8 +244,6 @@ func NewRegistrationAuthorityImpl(
 		purger:                       purger,
 		issuersByNameID:              issuersByNameID,
 		namesPerCert:                 namesPerCert,
-		rlCheckLatency:               rlCheckLatency,
-		rlOverrideUsageGauge:         overrideUsageGauge,
 		newRegCounter:                newRegCounter,
 		recheckCAACounter:            recheckCAACounter,
 		newCertCounter:               newCertCounter,
@@ -1397,7 +1381,7 @@ func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq 
 			return doDCVRes.Problem, doDCVRes.Records, nil
 		}
 
-		doCAAResp, err := ra.VA.IsCAAValid(ctx, caaReq)
+		doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
 		if err != nil {
 			return nil, nil, err
 		}
