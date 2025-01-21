@@ -1376,7 +1376,7 @@ func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq 
 			return doDCVRes.Problem, doDCVRes.Records, nil
 		}
 
-		doCAAResp, err := ra.VA.IsCAAValid(ctx, caaReq)
+		doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
 		if err != nil {
 			return nil, nil, err
 		}
