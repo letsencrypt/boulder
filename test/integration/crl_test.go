@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,10 +22,16 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 )
 
+// crlUpdaterMu controls access to `runUpdater`, because two crl-updaters running
+// at once will result in errors trying to lease shards that are already leased.
+var crlUpdaterMu sync.Mutex
+
 // runUpdater executes the crl-updater binary with the -runOnce flag, and
 // returns when it completes.
 func runUpdater(t *testing.T, configFile string) {
 	t.Helper()
+	crlUpdaterMu.Lock()
+	defer crlUpdaterMu.Unlock()
 
 	binPath, err := filepath.Abs("bin/boulder")
 	test.AssertNotError(t, err, "computing boulder binary path")
