@@ -21,7 +21,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -316,16 +315,8 @@ type inMemVA struct {
 	rva *ValidationAuthorityImpl
 }
 
-func (inmem *inMemVA) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
-	return inmem.rva.PerformValidation(ctx, req)
-}
-
 func (inmem *inMemVA) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return inmem.rva.DoDCV(ctx, req)
-}
-
-func (inmem *inMemVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
-	return inmem.rva.IsCAAValid(ctx, req)
 }
 
 func (inmem *inMemVA) DoCAA(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
@@ -359,10 +350,6 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 }
 
 type validationFuncRunner func(context.Context, *ValidationAuthorityImpl, *vapb.PerformValidationRequest) (*vapb.ValidationResult, error)
-
-var runPerformValidation = func(ctx context.Context, va *ValidationAuthorityImpl, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	return va.PerformValidation(ctx, req)
-}
 
 var runDoDCV = func(ctx context.Context, va *ValidationAuthorityImpl, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
 	return va.DoDCV(ctx, req)
@@ -659,92 +646,6 @@ func TestPerformValidationWildcard(t *testing.T) {
 			if !strings.Contains(resultLog[0], `"hostname":"good-dns01.com"`) {
 				t.Errorf("PerformValidation didn't log correct validation record hostname.")
 			}
-		})
-	}
-}
-
-func TestDCVAndCAASequencing(t *testing.T) {
-	va, mockLog := setup(nil, "", nil, nil)
-
-	// When validation succeeds, CAA should be checked.
-	mockLog.Clear()
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
-	res, err := va.PerformValidation(context.Background(), req)
-	test.AssertNotError(t, err, "performing validation")
-	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
-	caaLog := mockLog.GetAllMatching(`Checked CAA records for`)
-	test.AssertEquals(t, len(caaLog), 1)
-
-	// When validation fails, CAA should be skipped.
-	mockLog.Clear()
-	req = createValidationRequest("bad-dns01.com", core.ChallengeTypeDNS01)
-	res, err = va.PerformValidation(context.Background(), req)
-	test.AssertNotError(t, err, "performing validation")
-	test.Assert(t, res.Problem != nil, "validation succeeded")
-	caaLog = mockLog.GetAllMatching(`Checked CAA records for`)
-	test.AssertEquals(t, len(caaLog), 0)
-}
-
-func TestPerformRemoteOperation(t *testing.T) {
-	va, _ := setupWithRemotes(nil, "", []remoteConf{
-		{ua: pass, rir: arin},
-		{ua: pass, rir: ripe},
-		{ua: pass, rir: apnic},
-	}, nil)
-
-	testCases := []struct {
-		name           string
-		req            proto.Message
-		expectedType   string
-		expectedDetail string
-		op             func(ctx context.Context, rva RemoteVA, req proto.Message) (remoteResult, error)
-	}{
-		{
-			name:           "ValidationResult",
-			req:            &vapb.PerformValidationRequest{},
-			expectedType:   string(probs.BadNonceProblem),
-			expectedDetail: "quite surprising",
-			op: func(ctx context.Context, rva RemoteVA, req proto.Message) (remoteResult, error) {
-				prob := &corepb.ProblemDetails{
-					ProblemType: string(probs.BadNonceProblem),
-					Detail:      "quite surprising",
-				}
-				return &vapb.ValidationResult{Problem: prob, Perspective: rva.Perspective, Rir: rva.RIR}, nil
-			},
-		},
-		{
-			name:           "IsCAAValidResponse",
-			req:            &vapb.IsCAAValidRequest{},
-			expectedType:   string(probs.PausedProblem),
-			expectedDetail: "quite surprising, indeed",
-			op: func(ctx context.Context, rva RemoteVA, req proto.Message) (remoteResult, error) {
-				prob := &corepb.ProblemDetails{
-					ProblemType: string(probs.PausedProblem),
-					Detail:      "quite surprising, indeed",
-				}
-				return &vapb.IsCAAValidResponse{Problem: prob, Perspective: rva.Perspective, Rir: rva.RIR}, nil
-			},
-		},
-		{
-			name:           "IsCAAValidRequestWithValidationResult",
-			req:            &vapb.IsCAAValidRequest{},
-			expectedType:   string(probs.BadPublicKeyProblem),
-			expectedDetail: "a shocking result",
-			op: func(ctx context.Context, rva RemoteVA, req proto.Message) (remoteResult, error) {
-				prob := &corepb.ProblemDetails{
-					ProblemType: string(probs.BadPublicKeyProblem),
-					Detail:      "a shocking result",
-				}
-				return &vapb.ValidationResult{Problem: prob, Perspective: rva.Perspective, Rir: rva.RIR}, nil
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			prob := va.performRemoteOperation(context.Background(), tc.op, tc.req)
-			test.AssertEquals(t, string(prob.Type), tc.expectedType)
-			test.AssertContains(t, prob.Detail, tc.expectedDetail)
 		})
 	}
 }
@@ -1188,68 +1089,5 @@ func TestDetailedError(t *testing.T) {
 		if actual != tc.expected {
 			t.Errorf("Wrong detail for %v. Got %q, expected %q", tc.err, actual, tc.expected)
 		}
-	}
-}
-
-func TestLogRemoteDifferentials(t *testing.T) {
-	t.Parallel()
-
-	remoteConfs := []remoteConf{
-		{ua: pass, rir: arin},
-		{ua: pass, rir: ripe},
-		{ua: pass, rir: apnic},
-	}
-
-	testCases := []struct {
-		name        string
-		req         *vapb.IsCAAValidRequest
-		passed      int
-		failed      int
-		expectedLog string
-	}{
-		{
-			name:        "all results equal (nil)",
-			passed:      0,
-			failed:      3,
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":3}`,
-		},
-		{
-			name:        "all results equal (not nil)",
-			passed:      0,
-			failed:      3,
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":0,"RemoteFailures":3}`,
-		},
-		{
-			name:        "differing results, some non-nil",
-			passed:      2,
-			failed:      1,
-			expectedLog: `INFO: remoteVADifferentials JSON={"Domain":"example.com","AccountID":1999,"ChallengeType":"blorpus-01","RemoteSuccesses":2,"RemoteFailures":1}`,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			// Configure one test server per test case so that all tests can run in parallel.
-			ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
-			defer ms.Close()
-
-			localVA, mockLog := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
-
-			localVA.logRemoteResults(&vapb.IsCAAValidRequest{
-				Domain:           "example.com",
-				AccountURIID:     1999,
-				ValidationMethod: "blorpus-01",
-			}, tc.passed, tc.failed)
-
-			lines := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
-			if tc.expectedLog != "" {
-				test.AssertEquals(t, len(lines), 1)
-				test.AssertEquals(t, lines[0], tc.expectedLog)
-			} else {
-				test.AssertEquals(t, len(lines), 0)
-			}
-		})
 	}
 }

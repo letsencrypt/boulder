@@ -523,10 +523,6 @@ func TestCAALogging(t *testing.T) {
 
 type caaCheckFuncRunner func(context.Context, *ValidationAuthorityImpl, *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error)
 
-var runIsCAAValid = func(ctx context.Context, va *ValidationAuthorityImpl, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	return va.IsCAAValid(ctx, req)
-}
-
 var runDoCAA = func(ctx context.Context, va *ValidationAuthorityImpl, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
 	return va.DoCAA(ctx, req)
 }
@@ -541,10 +537,6 @@ func TestIsCAAValidErrMessage(t *testing.T) {
 		name         string
 		caaCheckFunc caaCheckFuncRunner
 	}{
-		{
-			name:         "IsCAAValid",
-			caaCheckFunc: runIsCAAValid,
-		},
 		{
 			name:         "DoCAA",
 			caaCheckFunc: runDoCAA,
@@ -585,10 +577,6 @@ func TestIsCAAValidParams(t *testing.T) {
 		name         string
 		caaCheckFunc caaCheckFuncRunner
 	}{
-		{
-			name:         "IsCAAValid",
-			caaCheckFunc: runIsCAAValid,
-		},
 		{
 			name:         "DoCAA",
 			caaCheckFunc: runDoCAA,
@@ -640,28 +628,6 @@ func (b caaBrokenDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, 
 
 func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, error) {
 	return nil, "", bdns.ResolverAddrs{"caaBrokenDNS"}, errCAABrokenDNSClient
-}
-
-func TestDisabledMultiCAARechecking(t *testing.T) {
-	remoteVAs := []remoteConf{{ua: "broken", rir: arin, dns: caaBrokenDNS{}}}
-	va, _ := setupWithRemotes(nil, "local", remoteVAs, nil)
-
-	features.Set(features.Config{
-		EnforceMultiCAA: false,
-	})
-	defer features.Reset()
-
-	isValidRes, err := va.IsCAAValid(context.TODO(), &vapb.IsCAAValidRequest{
-		Domain:           "present.com",
-		ValidationMethod: string(core.ChallengeTypeDNS01),
-		AccountURIID:     1,
-	})
-	test.AssertNotError(t, err, "Error during IsCAAValid")
-	// The primary VA can successfully recheck the CAA record and is allowed to
-	// issue for this domain. If `EnforceMultiCAA`` was enabled, the configured
-	// remote VA with broken dns.Client would fail the check and return a
-	// Problem, but that code path could never trigger.
-	test.AssertBoxedNil(t, isValidRes.Problem, "IsCAAValid returned a problem, but should not have")
 }
 
 // caaHijackedDNS implements the `dns.DNSClient` interface with a set of useful
@@ -741,10 +707,6 @@ func TestMultiCAARechecking(t *testing.T) {
 	}
 
 	testFuncs := []testFunc{
-		{
-			name: "IsCAAValid",
-			impl: runIsCAAValid,
-		},
 		{
 			name: "DoCAA",
 			impl: runDoCAA,

@@ -7,125 +7,19 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/miekg/dns"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
-	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
 type caaParams struct {
 	accountURIID     int64
 	validationMethod core.AcmeChallenge
-}
-
-// IsCAAValid checks requested CAA records from a VA, and recursively any RVAs
-// configured in the VA. It returns a response or an error.
-func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	if core.IsAnyNilOrZero(req.Domain, req.ValidationMethod, req.AccountURIID) {
-		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
-	}
-	logEvent := verificationRequestEvent{
-		// TODO(#7061) Plumb req.Authz.Id as "AuthzID:" through from the RA to
-		// correlate which authz triggered this request.
-		Requester:  req.AccountURIID,
-		Identifier: req.Domain,
-	}
-
-	challType := core.AcmeChallenge(req.ValidationMethod)
-	if !challType.IsValid() {
-		return nil, berrors.InternalServerError("unrecognized validation method %q", req.ValidationMethod)
-	}
-
-	acmeID := identifier.NewDNS(req.Domain)
-	params := &caaParams{
-		accountURIID:     req.AccountURIID,
-		validationMethod: challType,
-	}
-
-	var prob *probs.ProblemDetails
-	var internalErr error
-	var localLatency time.Duration
-	start := va.clk.Now()
-
-	defer func() {
-		probType := ""
-		outcome := fail
-		if prob != nil {
-			// CAA check failed.
-			probType = string(prob.Type)
-			logEvent.Error = prob.Error()
-		} else {
-			// CAA check passed.
-			outcome = pass
-		}
-		// Observe local check latency (primary|remote).
-		va.observeLatency(opCAA, va.perspective, string(challType), probType, outcome, localLatency)
-		if va.isPrimaryVA() {
-			// Observe total check latency (primary+remote).
-			va.observeLatency(opCAA, allPerspectives, string(challType), probType, outcome, va.clk.Since(start))
-		}
-		// Log the total check latency.
-		logEvent.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
-
-		va.log.AuditObject("CAA check result", logEvent)
-	}()
-
-	internalErr = va.checkCAA(ctx, acmeID, params)
-
-	// Stop the clock for local check latency.
-	localLatency = va.clk.Since(start)
-
-	if internalErr != nil {
-		logEvent.InternalError = internalErr.Error()
-		prob = detailedError(internalErr)
-		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
-	}
-
-	if features.Get().EnforceMultiCAA {
-		op := func(ctx context.Context, remoteva RemoteVA, req proto.Message) (remoteResult, error) {
-			checkRequest, ok := req.(*vapb.IsCAAValidRequest)
-			if !ok {
-				return nil, fmt.Errorf("got type %T, want *vapb.IsCAAValidRequest", req)
-			}
-			return remoteva.IsCAAValid(ctx, checkRequest)
-		}
-		remoteProb := va.performRemoteOperation(ctx, op, req)
-		// If the remote result was a non-nil problem then fail the CAA check
-		if remoteProb != nil {
-			prob = remoteProb
-			va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
-				req.Domain, remoteProb)
-		}
-	}
-
-	if prob != nil {
-		// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
-		// It will also later be serialized in JSON, which defaults to UTF-8. Make
-		// sure it is UTF-8 clean now.
-		prob = filterProblemDetails(prob)
-		return &vapb.IsCAAValidResponse{
-			Problem: &corepb.ProblemDetails{
-				ProblemType: string(prob.Type),
-				Detail:      replaceInvalidUTF8([]byte(prob.Detail)),
-			},
-			Perspective: va.perspective,
-			Rir:         va.rir,
-		}, nil
-	} else {
-		return &vapb.IsCAAValidResponse{
-			Perspective: va.perspective,
-			Rir:         va.rir,
-		}, nil
-	}
 }
 
 // checkCAA performs a CAA lookup & validation for the provided identifier. If
