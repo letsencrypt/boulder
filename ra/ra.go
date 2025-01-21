@@ -2264,6 +2264,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			missingAuthzIdents = append(missingAuthzIdents, ident)
 			continue
 		}
+		// If the authz is associated with the wrong profile, don't reuse it.
+		if authz.CertificateProfileName != req.CertificateProfileName {
+			missingAuthzIdents = append(missingAuthzIdents, ident)
+			continue
+		}
 		authzAge := (ra.authorizationLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		// If the identifier is a wildcard and the existing authz only has one
 		// DNS-01 type challenge we can reuse it. In theory we will
