@@ -1917,8 +1917,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertEquals(t, len(order.Identifiers), 2)
 
 	// We expect the order to have the names we requested
-	// TODO(#7311): Once it's able to accept them, use UniqueLowerNames or its new
-	// equivalent to test identifiers too.
+	// TODO(#7311): Use core.NormalizeIdentifiers to test identifiers too.
 	test.AssertDeepEquals(t,
 		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
@@ -1975,8 +1974,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// We expect the order to have two identifiers
 	test.AssertEquals(t, len(order.Identifiers), 2)
 	// We expect the order to have the names we requested
-	// TODO(#7311): Once it's able to accept them, use UniqueLowerNames or its new
-	// equivalent to test identifiers too.
+	// TODO(#7311): Use core.NormalizeIdentifiers to test identifiers too.
 	test.AssertDeepEquals(t,
 		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
@@ -2784,8 +2782,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	// The event CommonName should match the expected common name
 	test.AssertEquals(t, event.CommonName, "not-example.com")
 	// The event names should match the order names
-	// TODO(#7311): Once it's able to accept them, use UniqueLowerNames or its new
-	// equivalent to test identifiers too.
+	// TODO(#7311): Use core.NormalizeIdentifiers to test identifiers too.
 	test.AssertDeepEquals(t, core.UniqueLowerNames(event.Names), core.UniqueLowerNames(order.DnsNames))
 	// The event's NotBefore and NotAfter should match the cert's
 	test.AssertEquals(t, event.NotBefore, parsedCert.NotBefore)

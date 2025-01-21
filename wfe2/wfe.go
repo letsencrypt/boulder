@@ -2278,6 +2278,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		pbIdentifiers[i] = ident.AsProto()
 	}
 
+	// TODO(#7311): Can also use core.NormalizeIdentifiers if it makes sense to
+	// read identifiers here instead.
 	names = core.UniqueLowerNames(names)
 	err = policy.WellFormedDomainNames(names)
 	if err != nil {

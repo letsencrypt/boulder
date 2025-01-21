@@ -367,6 +367,34 @@ func TestHashNames(t *testing.T) {
 	test.AssertByteEquals(t, h1, h2)
 }
 
+// TODO(#7311): Finish implementing.
+func TestHashIdentifiers(t *testing.T) {
+	// Test that it is deterministic
+	h1 := HashIdentifiers([]string{"a"})
+	h2 := HashIdentifiers([]string{"a"})
+	test.AssertByteEquals(t, h1, h2)
+
+	// Test that it differentiates
+	h1 = HashIdentifiers([]string{"a"})
+	h2 = HashIdentifiers([]string{"b"})
+	test.Assert(t, !bytes.Equal(h1, h2), "Should have been different")
+
+	// Test that it is not subject to ordering
+	h1 = HashIdentifiers([]string{"a", "b"})
+	h2 = HashIdentifiers([]string{"b", "a"})
+	test.AssertByteEquals(t, h1, h2)
+
+	// Test that it is not subject to case
+	h1 = HashIdentifiers([]string{"a", "b"})
+	h2 = HashIdentifiers([]string{"A", "B"})
+	test.AssertByteEquals(t, h1, h2)
+
+	// Test that it is not subject to duplication
+	h1 = HashIdentifiers([]string{"a", "a"})
+	h2 = HashIdentifiers([]string{"a"})
+	test.AssertByteEquals(t, h1, h2)
+}
+
 func TestIsCanceled(t *testing.T) {
 	if !IsCanceled(context.Canceled) {
 		t.Errorf("Expected context.Canceled to be canceled, but wasn't.")

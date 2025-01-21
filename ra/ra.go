@@ -955,7 +955,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
 	csrNames := csrlib.NamesFromCSR(csr).SANs
-	// TODO(#7311): Accept Identifiers in place of dnsNames.
+	// TODO(#7311): Accept Identifiers in place of dnsNames; use core.NormalizeIdentifiers.
 	orderNames := core.UniqueLowerNames(req.Order.DnsNames)
 
 	// Check that the order names and the CSR names are an exact match
@@ -2081,7 +2081,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	// TODO(#7311): Compose Identifiers instead of DnsNames, and use them throughout this entire function.
+	// TODO(#7311): Compose Identifiers instead of DnsNames, and use them
+	// throughout this entire function. Here, we can use
+	// core.NormalizeIdentifiers.
 	newOrder := &sapb.NewOrderRequest{
 		RegistrationID:         req.RegistrationID,
 		DnsNames:               core.UniqueLowerNames(req.DnsNames),

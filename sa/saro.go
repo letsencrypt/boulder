@@ -337,7 +337,8 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 //
 // If req.Limit is nonzero, it returns only the most recent `Limit` results
 func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
-	// TODO(#7311): Accept Identifiers instead of dnsNames.
+	// TODO(#7311): Accept Identifiers instead of dnsNames. Can use
+	// core.HashIdentifiers for that.
 	if core.IsAnyNilOrZero(req.Window) || len(req.DnsNames) == 0 {
 		return nil, errIncompleteRequest
 	}
@@ -497,7 +498,8 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 // unexpired orders are considered. If no order meeting these requirements is
 // found a nil corepb.Order pointer is returned.
 //
-// TODO(#7311): Use Identifiers instead of dnsNames (if present).
+// TODO(#7311): Use Identifiers instead of dnsNames (if present). Can use
+// core.HashIdentifiers for that.
 func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
 	if req.AcctID == 0 || len(req.DnsNames) == 0 {
 		return nil, errIncompleteRequest

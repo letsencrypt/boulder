@@ -345,6 +345,15 @@ func HashNames(names []string) []byte {
 	return hash[:]
 }
 
+// HashIdentifiers returns a hash of the identifiers requested. This is intended
+// for use when interacting with the orderFqdnSets table and rate limiting.
+func HashIdentifiers(names []identifier.ACMEIdentifier) []byte {
+	names = NormalizeIdentifiers(names)
+	// TODO(#7311): Figure out an elegant way to unpack identifiers for hashing. Pull the values out, and process the IP identifiers appropriately - and only then crush those into a hash. We have to stringify IPs in many places, and that should be consistent across the board. Careful of fixed-length representation that would need to be different because of IPv6 address collapsing. This should probably come up with the exact same hash as HashNames when receiving a slice of dnsName identifiers.
+	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
+	return hash[:]
+}
+
 // LoadCert loads a PEM certificate specified by filename or returns an error
 func LoadCert(filename string) (*x509.Certificate, error) {
 	certPEM, err := os.ReadFile(filename)
