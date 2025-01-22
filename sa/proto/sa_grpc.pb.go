@@ -38,6 +38,7 @@ const (
 	StorageAuthorityReadOnly_GetRegistrationByKey_FullMethodName         = "/sa.StorageAuthorityReadOnly/GetRegistrationByKey"
 	StorageAuthorityReadOnly_GetRevocationStatus_FullMethodName          = "/sa.StorageAuthorityReadOnly/GetRevocationStatus"
 	StorageAuthorityReadOnly_GetRevokedCerts_FullMethodName              = "/sa.StorageAuthorityReadOnly/GetRevokedCerts"
+	StorageAuthorityReadOnly_GetRevokedCertsByShard_FullMethodName       = "/sa.StorageAuthorityReadOnly/GetRevokedCertsByShard"
 	StorageAuthorityReadOnly_GetSerialMetadata_FullMethodName            = "/sa.StorageAuthorityReadOnly/GetSerialMetadata"
 	StorageAuthorityReadOnly_GetSerialsByAccount_FullMethodName          = "/sa.StorageAuthorityReadOnly/GetSerialsByAccount"
 	StorageAuthorityReadOnly_GetSerialsByKey_FullMethodName              = "/sa.StorageAuthorityReadOnly/GetSerialsByKey"
@@ -71,6 +72,7 @@ type StorageAuthorityReadOnlyClient interface {
 	GetRegistrationByKey(ctx context.Context, in *JSONWebKey, opts ...grpc.CallOption) (*proto.Registration, error)
 	GetRevocationStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*RevocationStatus, error)
 	GetRevokedCerts(ctx context.Context, in *GetRevokedCertsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[proto.CRLEntry], error)
+	GetRevokedCertsByShard(ctx context.Context, in *GetRevokedCertsByShardRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[proto.CRLEntry], error)
 	GetSerialMetadata(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*SerialMetadata, error)
 	GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
 	GetSerialsByKey(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
@@ -261,6 +263,25 @@ func (c *storageAuthorityReadOnlyClient) GetRevokedCerts(ctx context.Context, in
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StorageAuthorityReadOnly_GetRevokedCertsClient = grpc.ServerStreamingClient[proto.CRLEntry]
 
+func (c *storageAuthorityReadOnlyClient) GetRevokedCertsByShard(ctx context.Context, in *GetRevokedCertsByShardRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[proto.CRLEntry], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &StorageAuthorityReadOnly_ServiceDesc.Streams[1], StorageAuthorityReadOnly_GetRevokedCertsByShard_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[GetRevokedCertsByShardRequest, proto.CRLEntry]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthorityReadOnly_GetRevokedCertsByShardClient = grpc.ServerStreamingClient[proto.CRLEntry]
+
 func (c *storageAuthorityReadOnlyClient) GetSerialMetadata(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*SerialMetadata, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SerialMetadata)
@@ -273,7 +294,7 @@ func (c *storageAuthorityReadOnlyClient) GetSerialMetadata(ctx context.Context, 
 
 func (c *storageAuthorityReadOnlyClient) GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StorageAuthorityReadOnly_ServiceDesc.Streams[1], StorageAuthorityReadOnly_GetSerialsByAccount_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StorageAuthorityReadOnly_ServiceDesc.Streams[2], StorageAuthorityReadOnly_GetSerialsByAccount_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +313,7 @@ type StorageAuthorityReadOnly_GetSerialsByAccountClient = grpc.ServerStreamingCl
 
 func (c *storageAuthorityReadOnlyClient) GetSerialsByKey(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StorageAuthorityReadOnly_ServiceDesc.Streams[2], StorageAuthorityReadOnly_GetSerialsByKey_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StorageAuthorityReadOnly_ServiceDesc.Streams[3], StorageAuthorityReadOnly_GetSerialsByKey_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +382,7 @@ func (c *storageAuthorityReadOnlyClient) ReplacementOrderExists(ctx context.Cont
 
 func (c *storageAuthorityReadOnlyClient) SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IncidentSerial], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StorageAuthorityReadOnly_ServiceDesc.Streams[3], StorageAuthorityReadOnly_SerialsForIncident_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StorageAuthorityReadOnly_ServiceDesc.Streams[4], StorageAuthorityReadOnly_SerialsForIncident_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -418,6 +439,7 @@ type StorageAuthorityReadOnlyServer interface {
 	GetRegistrationByKey(context.Context, *JSONWebKey) (*proto.Registration, error)
 	GetRevocationStatus(context.Context, *Serial) (*RevocationStatus, error)
 	GetRevokedCerts(*GetRevokedCertsRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error
+	GetRevokedCertsByShard(*GetRevokedCertsByShardRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error
 	GetSerialMetadata(context.Context, *Serial) (*SerialMetadata, error)
 	GetSerialsByAccount(*RegistrationID, grpc.ServerStreamingServer[Serial]) error
 	GetSerialsByKey(*SPKIHash, grpc.ServerStreamingServer[Serial]) error
@@ -483,6 +505,9 @@ func (UnimplementedStorageAuthorityReadOnlyServer) GetRevocationStatus(context.C
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetRevokedCerts(*GetRevokedCertsRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error {
 	return status.Errorf(codes.Unimplemented, "method GetRevokedCerts not implemented")
+}
+func (UnimplementedStorageAuthorityReadOnlyServer) GetRevokedCertsByShard(*GetRevokedCertsByShardRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error {
+	return status.Errorf(codes.Unimplemented, "method GetRevokedCertsByShard not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetSerialMetadata(context.Context, *Serial) (*SerialMetadata, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSerialMetadata not implemented")
@@ -812,6 +837,17 @@ func _StorageAuthorityReadOnly_GetRevokedCerts_Handler(srv interface{}, stream g
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StorageAuthorityReadOnly_GetRevokedCertsServer = grpc.ServerStreamingServer[proto.CRLEntry]
 
+func _StorageAuthorityReadOnly_GetRevokedCertsByShard_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GetRevokedCertsByShardRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StorageAuthorityReadOnlyServer).GetRevokedCertsByShard(m, &grpc.GenericServerStream[GetRevokedCertsByShardRequest, proto.CRLEntry]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthorityReadOnly_GetRevokedCertsByShardServer = grpc.ServerStreamingServer[proto.CRLEntry]
+
 func _StorageAuthorityReadOnly_GetSerialMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Serial)
 	if err := dec(in); err != nil {
@@ -1096,6 +1132,11 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 		{
+			StreamName:    "GetRevokedCertsByShard",
+			Handler:       _StorageAuthorityReadOnly_GetRevokedCertsByShard_Handler,
+			ServerStreams: true,
+		},
+		{
 			StreamName:    "GetSerialsByAccount",
 			Handler:       _StorageAuthorityReadOnly_GetSerialsByAccount_Handler,
 			ServerStreams: true,
@@ -1131,6 +1172,7 @@ const (
 	StorageAuthority_GetRegistrationByKey_FullMethodName         = "/sa.StorageAuthority/GetRegistrationByKey"
 	StorageAuthority_GetRevocationStatus_FullMethodName          = "/sa.StorageAuthority/GetRevocationStatus"
 	StorageAuthority_GetRevokedCerts_FullMethodName              = "/sa.StorageAuthority/GetRevokedCerts"
+	StorageAuthority_GetRevokedCertsByShard_FullMethodName       = "/sa.StorageAuthority/GetRevokedCertsByShard"
 	StorageAuthority_GetSerialMetadata_FullMethodName            = "/sa.StorageAuthority/GetSerialMetadata"
 	StorageAuthority_GetSerialsByAccount_FullMethodName          = "/sa.StorageAuthority/GetSerialsByAccount"
 	StorageAuthority_GetSerialsByKey_FullMethodName              = "/sa.StorageAuthority/GetSerialsByKey"
@@ -1186,6 +1228,7 @@ type StorageAuthorityClient interface {
 	GetRegistrationByKey(ctx context.Context, in *JSONWebKey, opts ...grpc.CallOption) (*proto.Registration, error)
 	GetRevocationStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*RevocationStatus, error)
 	GetRevokedCerts(ctx context.Context, in *GetRevokedCertsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[proto.CRLEntry], error)
+	GetRevokedCertsByShard(ctx context.Context, in *GetRevokedCertsByShardRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[proto.CRLEntry], error)
 	GetSerialMetadata(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*SerialMetadata, error)
 	GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
 	GetSerialsByKey(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error)
@@ -1398,6 +1441,25 @@ func (c *storageAuthorityClient) GetRevokedCerts(ctx context.Context, in *GetRev
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StorageAuthority_GetRevokedCertsClient = grpc.ServerStreamingClient[proto.CRLEntry]
 
+func (c *storageAuthorityClient) GetRevokedCertsByShard(ctx context.Context, in *GetRevokedCertsByShardRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[proto.CRLEntry], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[1], StorageAuthority_GetRevokedCertsByShard_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[GetRevokedCertsByShardRequest, proto.CRLEntry]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthority_GetRevokedCertsByShardClient = grpc.ServerStreamingClient[proto.CRLEntry]
+
 func (c *storageAuthorityClient) GetSerialMetadata(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*SerialMetadata, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SerialMetadata)
@@ -1410,7 +1472,7 @@ func (c *storageAuthorityClient) GetSerialMetadata(ctx context.Context, in *Seri
 
 func (c *storageAuthorityClient) GetSerialsByAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[1], StorageAuthority_GetSerialsByAccount_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[2], StorageAuthority_GetSerialsByAccount_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1429,7 +1491,7 @@ type StorageAuthority_GetSerialsByAccountClient = grpc.ServerStreamingClient[Ser
 
 func (c *storageAuthorityClient) GetSerialsByKey(ctx context.Context, in *SPKIHash, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Serial], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[2], StorageAuthority_GetSerialsByKey_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[3], StorageAuthority_GetSerialsByKey_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1498,7 +1560,7 @@ func (c *storageAuthorityClient) ReplacementOrderExists(ctx context.Context, in 
 
 func (c *storageAuthorityClient) SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IncidentSerial], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[3], StorageAuthority_SerialsForIncident_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[4], StorageAuthority_SerialsForIncident_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1766,6 +1828,7 @@ type StorageAuthorityServer interface {
 	GetRegistrationByKey(context.Context, *JSONWebKey) (*proto.Registration, error)
 	GetRevocationStatus(context.Context, *Serial) (*RevocationStatus, error)
 	GetRevokedCerts(*GetRevokedCertsRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error
+	GetRevokedCertsByShard(*GetRevokedCertsByShardRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error
 	GetSerialMetadata(context.Context, *Serial) (*SerialMetadata, error)
 	GetSerialsByAccount(*RegistrationID, grpc.ServerStreamingServer[Serial]) error
 	GetSerialsByKey(*SPKIHash, grpc.ServerStreamingServer[Serial]) error
@@ -1853,6 +1916,9 @@ func (UnimplementedStorageAuthorityServer) GetRevocationStatus(context.Context, 
 }
 func (UnimplementedStorageAuthorityServer) GetRevokedCerts(*GetRevokedCertsRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error {
 	return status.Errorf(codes.Unimplemented, "method GetRevokedCerts not implemented")
+}
+func (UnimplementedStorageAuthorityServer) GetRevokedCertsByShard(*GetRevokedCertsByShardRequest, grpc.ServerStreamingServer[proto.CRLEntry]) error {
+	return status.Errorf(codes.Unimplemented, "method GetRevokedCertsByShard not implemented")
 }
 func (UnimplementedStorageAuthorityServer) GetSerialMetadata(context.Context, *Serial) (*SerialMetadata, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSerialMetadata not implemented")
@@ -2243,6 +2309,17 @@ func _StorageAuthority_GetRevokedCerts_Handler(srv interface{}, stream grpc.Serv
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StorageAuthority_GetRevokedCertsServer = grpc.ServerStreamingServer[proto.CRLEntry]
+
+func _StorageAuthority_GetRevokedCertsByShard_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GetRevokedCertsByShardRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StorageAuthorityServer).GetRevokedCertsByShard(m, &grpc.GenericServerStream[GetRevokedCertsByShardRequest, proto.CRLEntry]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthority_GetRevokedCertsByShardServer = grpc.ServerStreamingServer[proto.CRLEntry]
 
 func _StorageAuthority_GetSerialMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Serial)
@@ -2987,6 +3064,11 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "GetRevokedCerts",
 			Handler:       _StorageAuthority_GetRevokedCerts_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetRevokedCertsByShard",
+			Handler:       _StorageAuthority_GetRevokedCertsByShard_Handler,
 			ServerStreams: true,
 		},
 		{
