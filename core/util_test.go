@@ -340,58 +340,45 @@ func TestRetryBackoff(t *testing.T) {
 
 }
 
-func TestHashNames(t *testing.T) {
-	// Test that it is deterministic
-	h1 := HashNames([]string{"a"})
-	h2 := HashNames([]string{"a"})
-	test.AssertByteEquals(t, h1, h2)
-
-	// Test that it differentiates
-	h1 = HashNames([]string{"a"})
-	h2 = HashNames([]string{"b"})
-	test.Assert(t, !bytes.Equal(h1, h2), "Should have been different")
-
-	// Test that it is not subject to ordering
-	h1 = HashNames([]string{"a", "b"})
-	h2 = HashNames([]string{"b", "a"})
-	test.AssertByteEquals(t, h1, h2)
-
-	// Test that it is not subject to case
-	h1 = HashNames([]string{"a", "b"})
-	h2 = HashNames([]string{"A", "B"})
-	test.AssertByteEquals(t, h1, h2)
-
-	// Test that it is not subject to duplication
-	h1 = HashNames([]string{"a", "a"})
-	h2 = HashNames([]string{"a"})
-	test.AssertByteEquals(t, h1, h2)
-}
-
-// TODO(#7311): Finish implementing.
 func TestHashIdentifiers(t *testing.T) {
 	// Test that it is deterministic
-	h1 := HashIdentifiers([]string{"a"})
-	h2 := HashIdentifiers([]string{"a"})
+	h1 := HashIdentifiers([]identifier.ACMEIdentifier{identifier.NewDNS("a")})
+	h2 := HashIdentifiers([]identifier.ACMEIdentifier{identifier.NewDNS("a")})
 	test.AssertByteEquals(t, h1, h2)
 
 	// Test that it differentiates
-	h1 = HashIdentifiers([]string{"a"})
-	h2 = HashIdentifiers([]string{"b"})
+	h1 = HashIdentifiers([]identifier.ACMEIdentifier{identifier.NewDNS("a")})
+	h2 = HashIdentifiers([]identifier.ACMEIdentifier{identifier.NewDNS("b")})
 	test.Assert(t, !bytes.Equal(h1, h2), "Should have been different")
 
 	// Test that it is not subject to ordering
-	h1 = HashIdentifiers([]string{"a", "b"})
-	h2 = HashIdentifiers([]string{"b", "a"})
+	h1 = HashIdentifiers([]identifier.ACMEIdentifier{
+		identifier.NewDNS("a"),
+		identifier.NewDNS("b"),
+	})
+	h2 = HashIdentifiers([]identifier.ACMEIdentifier{
+		identifier.NewDNS("b"),
+		identifier.NewDNS("a"),
+	})
 	test.AssertByteEquals(t, h1, h2)
 
 	// Test that it is not subject to case
-	h1 = HashIdentifiers([]string{"a", "b"})
-	h2 = HashIdentifiers([]string{"A", "B"})
+	h1 = HashIdentifiers([]identifier.ACMEIdentifier{
+		identifier.NewDNS("a"),
+		identifier.NewDNS("b"),
+	})
+	h2 = HashIdentifiers([]identifier.ACMEIdentifier{
+		identifier.NewDNS("A"),
+		identifier.NewDNS("B"),
+	})
 	test.AssertByteEquals(t, h1, h2)
 
 	// Test that it is not subject to duplication
-	h1 = HashIdentifiers([]string{"a", "a"})
-	h2 = HashIdentifiers([]string{"a"})
+	h1 = HashIdentifiers([]identifier.ACMEIdentifier{
+		identifier.NewDNS("a"),
+		identifier.NewDNS("a"),
+	})
+	h2 = HashIdentifiers([]identifier.ACMEIdentifier{identifier.NewDNS("a")})
 	test.AssertByteEquals(t, h1, h2)
 }
 

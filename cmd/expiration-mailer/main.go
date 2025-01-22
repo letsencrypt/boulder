@@ -30,6 +30,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
@@ -310,7 +311,7 @@ func (m *mailer) updateLastNagTimestampsChunk(ctx context.Context, certs []*x509
 }
 
 func (m *mailer) certIsRenewed(ctx context.Context, names []string, issued time.Time) (bool, error) {
-	namehash := core.HashNames(names)
+	namehash := core.HashIdentifiers(identifier.SliceNewDNS(names))
 
 	var present bool
 	err := m.dbMap.SelectOne(

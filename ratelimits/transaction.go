@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 // ErrInvalidCost indicates that the cost specified was < 0.
@@ -83,7 +84,7 @@ func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) { //nol
 	if err != nil {
 		return "", err
 	}
-	id := fmt.Sprintf("%x", core.HashNames(orderNames))
+	id := fmt.Sprintf("%x", core.HashIdentifiers(identifier.SliceNewDNS(orderNames)))
 	return joinWithColon(name.EnumString(), id), nil
 }
 

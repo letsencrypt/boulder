@@ -9,6 +9,7 @@ import (
 
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -199,7 +200,7 @@ func TestCertificatesPerFQDNSetTransactions(t *testing.T) {
 	// A single check-only transaction for the global limit.
 	txn, err := tb.certificatesPerFQDNSetCheckOnlyTransaction([]string{"example.com", "example.net", "example.org"})
 	test.AssertNotError(t, err, "creating transaction")
-	namesHash := fmt.Sprintf("%x", core.HashNames([]string{"example.com", "example.net", "example.org"}))
+	namesHash := fmt.Sprintf("%x", core.HashIdentifiers(identifier.SliceNewDNS([]string{"example.com", "example.net", "example.org"})))
 	test.AssertEquals(t, txn.bucketKey, "7:"+namesHash)
 	test.Assert(t, txn.checkOnly(), "should be check-only")
 	test.Assert(t, !txn.limit.isOverride, "should not be an override")

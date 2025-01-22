@@ -2135,7 +2135,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
-	err := ra.PA.WillingToIssue(newOrder.DnsNames)
+	err := ra.PA.WillingToIssue(identifier.SliceNewDNS(newOrder.DnsNames))
 	if err != nil {
 		return nil, err
 	}

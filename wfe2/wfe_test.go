@@ -2603,7 +2603,7 @@ func TestNewOrder(t *testing.T) {
 		{
 			Name:         "POST, empty domain name identifier",
 			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":""}]}`),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request included empty domain name","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request included empty identifier","status":400}`,
 		},
 		{
 			Name:         "POST, invalid domain name identifier",

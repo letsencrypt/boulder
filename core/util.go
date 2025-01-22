@@ -337,19 +337,19 @@ func NormalizeIdentifiers(identifiers []identifier.ACMEIdentifier) []identifier.
 	return slices.Compact(identifiers)
 }
 
-// HashNames returns a hash of the names requested. This is intended for use
-// when interacting with the orderFqdnSets table and rate limiting.
-func HashNames(names []string) []byte {
-	names = UniqueLowerNames(names)
-	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
-	return hash[:]
-}
-
 // HashIdentifiers returns a hash of the identifiers requested. This is intended
 // for use when interacting with the orderFqdnSets table and rate limiting.
-func HashIdentifiers(names []identifier.ACMEIdentifier) []byte {
-	names = NormalizeIdentifiers(names)
-	// TODO(#7311): Figure out an elegant way to unpack identifiers for hashing. Pull the values out, and process the IP identifiers appropriately - and only then crush those into a hash. We have to stringify IPs in many places, and that should be consistent across the board. Careful of fixed-length representation that would need to be different because of IPv6 address collapsing. This should probably come up with the exact same hash as HashNames when receiving a slice of dnsName identifiers.
+//
+// TODO(#7311): Process IP address identifiers appropriately, and
+// consistently with how we stringify IPs elsewhere.
+func HashIdentifiers(idents []identifier.ACMEIdentifier) []byte {
+	idents = NormalizeIdentifiers(idents)
+
+	names := make([]string, len(idents))
+	for i, ident := range idents {
+		names[i] = ident.Value
+	}
+
 	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
 	return hash[:]
 }

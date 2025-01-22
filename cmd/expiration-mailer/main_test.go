@@ -23,6 +23,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
@@ -353,7 +354,7 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "setting up DB")
 	err = setupDBMap.Insert(ctx, &core.FQDNSet{
-		SetHash: core.HashNames(names),
+		SetHash: core.HashIdentifiers(identifier.SliceNewDNS(names)),
 		Serial:  core.SerialToString(serial2),
 		Issued:  testCtx.fc.Now().Add(time.Hour),
 		Expires: expires.Add(time.Hour),
@@ -570,13 +571,13 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []certDERWithRegID {
 	test.AssertNotError(t, err, "creating cert D")
 
 	fqdnStatusD := &core.FQDNSet{
-		SetHash: core.HashNames(certDNames),
+		SetHash: core.HashIdentifiers(identifier.SliceNewDNS(certDNames)),
 		Serial:  serial4String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -87),
 		Expires: ctx.fc.Now().AddDate(0, 0, 3),
 	}
 	fqdnStatusDRenewed := &core.FQDNSet{
-		SetHash: core.HashNames(certDNames),
+		SetHash: core.HashIdentifiers(identifier.SliceNewDNS(certDNames)),
 		Serial:  serial5String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -3),
 		Expires: ctx.fc.Now().AddDate(0, 0, 87),
@@ -737,7 +738,7 @@ func TestCertIsRenewed(t *testing.T) {
 			t.Fatal(err)
 		}
 		fqdnStatus := &core.FQDNSet{
-			SetHash: core.HashNames(testData.DNS),
+			SetHash: core.HashIdentifiers(identifier.SliceNewDNS(testData.DNS)),
 			Serial:  testData.stringSerial,
 			Issued:  testData.NotBefore,
 			Expires: testData.NotAfter,

@@ -923,9 +923,10 @@ type orderFQDNSet struct {
 	Expires        time.Time
 }
 
+// TODO(#7311): Accept identifiers.
 func addFQDNSet(ctx context.Context, db db.Inserter, names []string, serial string, issued time.Time, expires time.Time) error {
 	return db.Insert(ctx, &core.FQDNSet{
-		SetHash: core.HashNames(names),
+		SetHash: core.HashIdentifiers(identifier.SliceNewDNS(names)),
 		Serial:  serial,
 		Issued:  issued,
 		Expires: expires,
@@ -936,6 +937,8 @@ func addFQDNSet(ctx context.Context, db db.Inserter, names []string, serial stri
 // information. This function accepts a transaction so that the orderFqdnSet
 // addition can take place within the order addition transaction. The caller is
 // required to rollback the transaction if an error is returned.
+//
+// TODO(#7311): Accept identifiers.
 func addOrderFQDNSet(
 	ctx context.Context,
 	db db.Inserter,
@@ -944,7 +947,7 @@ func addOrderFQDNSet(
 	regID int64,
 	expires time.Time) error {
 	return db.Insert(ctx, &orderFQDNSet{
-		SetHash:        core.HashNames(names),
+		SetHash:        core.HashIdentifiers(identifier.SliceNewDNS(names)),
 		OrderID:        orderID,
 		RegistrationID: regID,
 		Expires:        expires,

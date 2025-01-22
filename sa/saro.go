@@ -337,8 +337,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 //
 // If req.Limit is nonzero, it returns only the most recent `Limit` results
 func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
-	// TODO(#7311): Accept Identifiers instead of dnsNames. Can use
-	// core.HashIdentifiers for that.
+	// TODO(#7311): Accept Identifiers instead of dnsNames.
 	if core.IsAnyNilOrZero(req.Window) || len(req.DnsNames) == 0 {
 		return nil, errIncompleteRequest
 	}
@@ -358,7 +357,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 		AND issued > ?
 		ORDER BY issued DESC
 		LIMIT ?`,
-		core.HashNames(req.DnsNames),
+		core.HashIdentifiers(identifier.SliceNewDNS(req.DnsNames)),
 		ssa.clk.Now().Add(-req.Window.AsDuration()),
 		limit,
 	)
@@ -394,7 +393,7 @@ type oneSelectorFunc func(ctx context.Context, holder interface{}, query string,
 // checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
 // for the given names exists.
 func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(ctx context.Context, selector oneSelectorFunc, names []string) (bool, error) {
-	namehash := core.HashNames(names)
+	namehash := core.HashIdentifiers(identifier.SliceNewDNS(names))
 	var exists bool
 	err := selector(
 		ctx,
@@ -506,7 +505,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 	}
 
 	// Hash the names requested for lookup in the orderFqdnSets table
-	fqdnHash := core.HashNames(req.DnsNames)
+	fqdnHash := core.HashIdentifiers(identifier.SliceNewDNS(req.DnsNames))
 
 	// Find a possibly-suitable order. We don't include the account ID or order
 	// status in this query because there's no index that includes those, so
