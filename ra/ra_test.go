@@ -3868,8 +3868,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 1)
 
 	// Revoking a serial for an unspecified reason should work but not block the key.
 	mockSA.reset()
@@ -3880,8 +3878,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
 
 	// Duplicate administrative revocation of a serial for an unspecified reason
 	// should succeed because the akamai cache purge succeeds.
@@ -3893,8 +3889,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
 
 	// Duplicate administrative revocation of a serial for a *malformed* cert for
 	// an unspecified reason should fail because we can't attempt an akamai cache
@@ -3909,8 +3903,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertError(t, err, "Should be revoked")
 	test.AssertContains(t, err.Error(), "already revoked")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
 
 	// Revoking a cert for key compromise with skipBlockKey set should work but
 	// not block the key.
@@ -3923,8 +3915,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 1)
 
 	// Revoking a cert for key compromise should work and block the key.
 	mockSA.reset()
@@ -3939,8 +3929,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertEquals(t, mockSA.blocked[0].Source, "admin-revoker")
 	test.AssertEquals(t, mockSA.blocked[0].Comment, "revoked by root")
 	test.AssertEquals(t, mockSA.blocked[0].Added.AsTime(), clk.Now())
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 2)
 
 	// Revoking a malformed cert for key compromise should fail because we don't
 	// have the pubkey to block.
@@ -4220,4 +4208,61 @@ func TestUpdateRegistrationKey(t *testing.T) {
 	test.AssertError(t, err, "should have received an error from the SA")
 	test.AssertContains(t, err.Error(), "failed to update registration key")
 	test.AssertContains(t, err.Error(), "mocked to always error")
+}
+
+func TestCRLShard(t *testing.T) {
+	var cdp []string
+	n, err := crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err != nil || n != 0 {
+		t.Errorf("crlShard(%+v) = %d, %s, want 0, nil", cdp, n, err)
+	}
+
+	cdp = []string{
+		"https://example.com/123.crl",
+		"https://example.net/123.crl",
+	}
+	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err == nil {
+		t.Errorf("crlShard(%+v) = %d, %s, want 0, some error", cdp, n, err)
+	}
+
+	cdp = []string{
+		"https://example.com/abc",
+	}
+	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err == nil {
+		t.Errorf("crlShard(%+v) = %d, %s, want 0, some error", cdp, n, err)
+	}
+
+	cdp = []string{
+		"example",
+	}
+	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err == nil {
+		t.Errorf("crlShard(%+v) = %d, %s, want 0, some error", cdp, n, err)
+	}
+
+	cdp = []string{
+		"https://example.com/abc/-77.crl",
+	}
+	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err == nil {
+		t.Errorf("crlShard(%+v) = %d, %s, want 0, some error", cdp, n, err)
+	}
+
+	cdp = []string{
+		"https://example.com/abc/123",
+	}
+	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err != nil || n != 123 {
+		t.Errorf("crlShard(%+v) = %d, %s, want 123, nil", cdp, n, err)
+	}
+
+	cdp = []string{
+		"https://example.com/abc/123.crl",
+	}
+	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err != nil || n != 123 {
+		t.Errorf("crlShard(%+v) = %d, %s, want 123, nil", cdp, n, err)
+	}
 }
