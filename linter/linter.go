@@ -194,7 +194,6 @@ func makeIssuer(realIssuer *x509.Certificate, lintSigner crypto.Signer) (*x509.C
 		PermittedEmailAddresses:     realIssuer.PermittedEmailAddresses,
 		PermittedIPRanges:           realIssuer.PermittedIPRanges,
 		PermittedURIDomains:         realIssuer.PermittedURIDomains,
-		PolicyIdentifiers:           realIssuer.PolicyIdentifiers,
 		Policies:                    realIssuer.Policies,
 		SerialNumber:                realIssuer.SerialNumber,
 		Subject:                     realIssuer.Subject,
