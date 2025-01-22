@@ -70,7 +70,8 @@ var (
 // ValidationProfile holds the allowlist for a given validation profile.
 type ValidationProfile struct {
 	// allowList the set of account IDs allowed to use this profile. If left
-	// empty, no accounts are allowed to use this profile.
+	// empty, all accounts are allowed to use this profile. If nil, no accounts
+	// are allowed to use this profile.
 	allowList *allowlist.List[int64]
 }
 
@@ -2101,14 +2102,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	if req.CertificateProfileName != "" {
-		profileValidation, ok := ra.validationProfiles[req.CertificateProfileName]
-		if ok {
-			if !profileValidation.allowList.Contains(req.RegistrationID) {
-				return nil, berrors.UnauthorizedError("account ID %d is not permitted to use profile %q",
-					req.RegistrationID,
-					req.CertificateProfileName,
-				)
-			}
+		pv, ok := ra.validationProfiles[req.CertificateProfileName]
+		if ok && !pv.allowList.Contains(req.RegistrationID) {
+			return nil, berrors.UnauthorizedError("account ID %d is not permitted to use profile %q",
+				req.RegistrationID,
+				req.CertificateProfileName,
+			)
 		}
 	}
 

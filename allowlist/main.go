@@ -31,8 +31,18 @@ func NewFromYAML[T comparable](data []byte) (*List[T], error) {
 	return NewList(entries), nil
 }
 
-// Contains reports whether the provided entry is a member of the list.
+// Contains reports whether the provided entry is a member of the list. If the
+// list is nil, no entries are allowed. If the list is empty, all entries are
+// allowed. Otherwise, only listed entries are allowed.
 func (l *List[T]) Contains(entry T) bool {
+	if l == nil {
+		// Deny all
+		return false
+	}
+	if len(l.members) == 0 {
+		// Allow all
+		return true
+	}
 	_, ok := l.members[entry]
 	return ok
 }
