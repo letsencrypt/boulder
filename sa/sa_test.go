@@ -1069,26 +1069,26 @@ func TestNewOrderAndAuthzs_Profile(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("failed to insert order and authzs: %s", err)
+		t.Fatalf("inserting order and authzs: %s", err)
 	}
 
 	// Retrieve the order and check that the profile is correct.
 	gotOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	if err != nil {
-		t.Fatalf("failed to retrieve inserted order: %s", err)
+		t.Fatalf("retrieving inserted order: %s", err)
 	}
 	if gotOrder.CertificateProfileName != "test" {
-		t.Errorf("order retrieved with wrong profile: got %q, expected %q", gotOrder.CertificateProfileName, "test")
+		t.Errorf("order.CertificateProfileName = %v, want %v", gotOrder.CertificateProfileName, "test")
 	}
 
 	// Retrieve the authz and check that the profile is correct.
 	// Safely get the authz for the order we created above.
 	gotAuthz, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: order.V2Authorizations[0]})
 	if err != nil {
-		t.Fatalf("failed to retrieve inserted authz: %s", err)
+		t.Fatalf("retrieving inserted authz: %s", err)
 	}
 	if gotAuthz.CertificateProfileName != "test" {
-		t.Errorf("authz retrieved with wrong profile: got %q, expected %q", gotAuthz.CertificateProfileName, "test")
+		t.Errorf("authz.CertificateProfileName = %v, want %v", gotAuthz.CertificateProfileName, "test")
 	}
 }
 
