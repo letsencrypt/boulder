@@ -98,6 +98,7 @@ func getAllCRLs(t *testing.T) map[string][]*x509.RevocationList {
 			if err != nil {
 				t.Fatalf("reading CRL from %s: %s", crlURL, err)
 			}
+			resp.Body.Close()
 
 			list, err := x509.ParseRevocationList(body)
 			if err != nil {
@@ -150,7 +151,6 @@ func checkRevoked(t *testing.T, revocations map[string][]*x509.RevocationList, c
 		if match.ReasonCode != reason {
 			t.Errorf("revoked certificate %x: got reason %d, want %d", cert.SerialNumber, match.ReasonCode, reason)
 		}
-		return
 	}
 }
 
