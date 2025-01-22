@@ -41,10 +41,10 @@ func (i ACMEIdentifier) AsProto() *corepb.Identifier {
 
 // SliceAsProto is a convenience function for converting a slice of
 // ACMEIdentifiers into a slice of *corepb.Identifiers, to use for RPCs.
-func SliceAsProto(identifiers []ACMEIdentifier) []*corepb.Identifier {
-	pbIdentifiers := make([]*corepb.Identifier, len(identifiers))
-	for key, identifier := range identifiers {
-		pbIdentifiers[key] = identifier.AsProto()
+func SliceAsProto(idents []ACMEIdentifier) []*corepb.Identifier {
+	pbIdentifiers := make([]*corepb.Identifier, len(idents))
+	for key, ident := range idents {
+		pbIdentifiers[key] = ident.AsProto()
 	}
 	return pbIdentifiers
 }

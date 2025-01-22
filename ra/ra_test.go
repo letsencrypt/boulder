@@ -1409,7 +1409,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 
 	// Create an initial order with regA and names
 	names := []string{"zombo.com", "welcome.to.zombo.com"}
-	identifiers := []*corepb.Identifier{
+	idents := []*corepb.Identifier{
 		identifier.NewDNS("zombo.com").AsProto(),
 		identifier.NewDNS("welcome.to.zombo.com").AsProto(),
 	}
@@ -1417,7 +1417,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID:         Registration.Id,
 		DnsNames:               names,
-		Identifiers:            identifiers,
+		Identifiers:            idents,
 		CertificateProfileName: "test",
 	}
 	firstOrder, err := ra.NewOrder(context.Background(), orderReq)
@@ -1442,7 +1442,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 			Name:           "Duplicate order, same regID",
 			RegistrationID: Registration.Id,
 			DnsNames:       names,
-			Identifiers:    identifiers,
+			Identifiers:    idents,
 			Profile:        "test",
 			// We expect reuse since the order matches firstOrder
 			ExpectReuse: true,
@@ -1451,7 +1451,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 			Name:           "Subset of order names, same regID",
 			RegistrationID: Registration.Id,
 			DnsNames:       names[:1],
-			Identifiers:    identifiers[:1],
+			Identifiers:    idents[:1],
 			Profile:        "test",
 			// We do not expect reuse because the order names don't match firstOrder
 			ExpectReuse: false,
@@ -1460,7 +1460,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 			Name:           "Superset of order names, same regID",
 			RegistrationID: Registration.Id,
 			DnsNames:       append(names, "blog.zombo.com"),
-			Identifiers:    append(identifiers, identifier.NewDNS("blog.zombo.com").AsProto()),
+			Identifiers:    append(idents, identifier.NewDNS("blog.zombo.com").AsProto()),
 			Profile:        "test",
 			// We do not expect reuse because the order names don't match firstOrder
 			ExpectReuse: false,
@@ -1469,7 +1469,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 			Name:           "Missing profile, same regID",
 			RegistrationID: Registration.Id,
 			DnsNames:       append(names, "blog.zombo.com"),
-			Identifiers:    append(identifiers, identifier.NewDNS("blog.zombo.com").AsProto()),
+			Identifiers:    append(idents, identifier.NewDNS("blog.zombo.com").AsProto()),
 			// We do not expect reuse because the profile is missing
 			ExpectReuse: false,
 		},
@@ -1477,7 +1477,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 			Name:           "Missing profile, same regID",
 			RegistrationID: Registration.Id,
 			DnsNames:       append(names, "blog.zombo.com"),
-			Identifiers:    append(identifiers, identifier.NewDNS("blog.zombo.com").AsProto()),
+			Identifiers:    append(idents, identifier.NewDNS("blog.zombo.com").AsProto()),
 			Profile:        "different",
 			// We do not expect reuse because a different profile is specified
 			ExpectReuse: false,
@@ -1486,7 +1486,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 			Name:           "Duplicate order, different regID",
 			RegistrationID: secondReg.Id,
 			DnsNames:       names,
-			Identifiers:    identifiers,
+			Identifiers:    idents,
 			Profile:        "test",
 			// We do not expect reuse because the order regID differs from firstOrder
 			ExpectReuse: false,
@@ -1819,7 +1819,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 
 	ctx := context.Background()
 	names := []string{"*.zombo.com"}
-	identifiers := []*corepb.Identifier{identifier.NewDNS("*.zombo.com").AsProto()}
+	idents := []*corepb.Identifier{identifier.NewDNS("*.zombo.com").AsProto()}
 
 	// Use a mock SA that always returns a valid HTTP-01 authz for the name
 	// "zombo.com"
@@ -1879,7 +1879,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       names,
-		Identifiers:    identifiers,
+		Identifiers:    idents,
 	}
 
 	// Create an order for that request
@@ -2081,7 +2081,7 @@ func TestNewOrderExpiry(t *testing.T) {
 
 	ctx := context.Background()
 	names := []string{"zombo.com"}
-	identifiers := []*corepb.Identifier{identifier.NewDNS("zombo.com").AsProto()}
+	idents := []*corepb.Identifier{identifier.NewDNS("zombo.com").AsProto()}
 
 	// Set the order lifetime to 48 hours.
 	ra.orderLifetime = 48 * time.Hour
@@ -2116,7 +2116,7 @@ func TestNewOrderExpiry(t *testing.T) {
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       names,
-		Identifiers:    identifiers,
+		Identifiers:    idents,
 	}
 
 	// Create an order for that request
@@ -2679,7 +2679,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 
 	// Make some valid authorizations for some names using different challenge types
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	identifiers := []*corepb.Identifier{
+	idents := []*corepb.Identifier{
 		identifier.NewDNS("not-example.com").AsProto(),
 		identifier.NewDNS("www.not-example.com").AsProto(),
 		identifier.NewDNS("still.not-example.com").AsProto(),
@@ -2698,7 +2698,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
 			DnsNames:         names,
-			Identifiers:      identifiers,
+			Identifiers:      idents,
 			V2Authorizations: authzIDs,
 		},
 	})
@@ -2813,7 +2813,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 	// Make some valid authzs for four names. Half of them were validated
 	// recently and half were validated in excess of our CAA recheck time.
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	identifiers := []*corepb.Identifier{
+	idents := []*corepb.Identifier{
 		identifier.NewDNS("not-example.com").AsProto(),
 		identifier.NewDNS("www.not-example.com").AsProto(),
 		identifier.NewDNS("still.not-example.com").AsProto(),
@@ -2834,7 +2834,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
 			DnsNames:         names,
-			Identifiers:      identifiers,
+			Identifiers:      idents,
 			V2Authorizations: authzIDs,
 		},
 	})
@@ -3124,7 +3124,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 
 	// Make some valid authorizations for some names
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	identifiers := []*corepb.Identifier{
+	idents := []*corepb.Identifier{
 		identifier.NewDNS("not-example.com").AsProto(),
 		identifier.NewDNS("www.not-example.com").AsProto(),
 		identifier.NewDNS("still.not-example.com").AsProto(),
@@ -3142,7 +3142,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
 			DnsNames:         names,
-			Identifiers:      identifiers,
+			Identifiers:      idents,
 			V2Authorizations: authzIDs,
 		},
 	})
@@ -3302,7 +3302,7 @@ func TestIssueCertificateOuter(t *testing.T) {
 
 	// Make some valid authorizations for some names
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	identifiers := []*corepb.Identifier{
+	idents := []*corepb.Identifier{
 		identifier.NewDNS("not-example.com").AsProto(),
 		identifier.NewDNS("www.not-example.com").AsProto(),
 		identifier.NewDNS("still.not-example.com").AsProto(),
@@ -3320,7 +3320,7 @@ func TestIssueCertificateOuter(t *testing.T) {
 			RegistrationID:         Registration.Id,
 			Expires:                timestamppb.New(exp),
 			DnsNames:               names,
-			Identifiers:            identifiers,
+			Identifiers:            idents,
 			V2Authorizations:       authzIDs,
 			CertificateProfileName: "philsProfile",
 		},

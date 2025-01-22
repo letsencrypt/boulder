@@ -1210,19 +1210,19 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 		return nil, errIncompleteRequest
 	}
 
-	identifiers, err := newIdentifierModelsFromPB(req.Identifiers)
+	idents, err := newIdentifierModelsFromPB(req.Identifiers)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(identifiers) == 0 {
+	if len(idents) == 0 {
 		// No identifier values to check.
 		return nil, nil
 	}
 
-	identifiersByType := map[uint8][]string{}
-	for _, id := range identifiers {
-		identifiersByType[id.Type] = append(identifiersByType[id.Type], id.Value)
+	identsByType := map[uint8][]string{}
+	for _, id := range idents {
+		identsByType[id.Type] = append(identsByType[id.Type], id.Value)
 	}
 
 	// Build a query to retrieve up to 15 paused identifiers using OR clauses
@@ -1242,7 +1242,7 @@ func (ssa *SQLStorageAuthorityRO) CheckIdentifiersPaused(ctx context.Context, re
 
 	var conditions []string
 	args := []interface{}{req.RegistrationID}
-	for idType, values := range identifiersByType {
+	for idType, values := range identsByType {
 		conditions = append(conditions,
 			fmt.Sprintf("identifierType = ? AND identifierValue IN (%s)",
 				db.QuestionMarks(len(values)),

@@ -2191,9 +2191,9 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 
 func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIdentifiers []identifier.ACMEIdentifier, regID int64) ([]string, error) {
 	uniqueOrderIdentifiers := core.NormalizeIdentifiers(orderIdentifiers)
-	var identifiers []*corepb.Identifier
+	var idents []*corepb.Identifier
 	for _, ident := range uniqueOrderIdentifiers {
-		identifiers = append(identifiers, &corepb.Identifier{
+		idents = append(idents, &corepb.Identifier{
 			Type:  string(ident.Type),
 			Value: ident.Value,
 		})
@@ -2201,7 +2201,7 @@ func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIde
 
 	paused, err := wfe.sa.CheckIdentifiersPaused(ctx, &sapb.PauseRequest{
 		RegistrationID: regID,
-		Identifiers:    identifiers,
+		Identifiers:    idents,
 	})
 	if err != nil {
 		return nil, err

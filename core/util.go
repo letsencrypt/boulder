@@ -325,16 +325,16 @@ func UniqueLowerNames(names []string) (unique []string) {
 // NormalizeIdentifiers returns the set of all unique ACME identifiers in the
 // input after all of them are lowercased. The returned identifier values will
 // be in their lowercased form and sorted alphabetically by value.
-func NormalizeIdentifiers(identifiers []identifier.ACMEIdentifier) []identifier.ACMEIdentifier {
-	for i := range identifiers {
-		identifiers[i].Value = strings.ToLower(identifiers[i].Value)
+func NormalizeIdentifiers(idents []identifier.ACMEIdentifier) []identifier.ACMEIdentifier {
+	for i := range idents {
+		idents[i].Value = strings.ToLower(idents[i].Value)
 	}
 
-	sort.Slice(identifiers, func(i, j int) bool {
-		return fmt.Sprintf("%s:%s", identifiers[i].Type, identifiers[i].Value) < fmt.Sprintf("%s:%s", identifiers[j].Type, identifiers[j].Value)
+	sort.Slice(idents, func(i, j int) bool {
+		return fmt.Sprintf("%s:%s", idents[i].Type, idents[i].Value) < fmt.Sprintf("%s:%s", idents[j].Type, idents[j].Value)
 	})
 
-	return slices.Compact(identifiers)
+	return slices.Compact(idents)
 }
 
 // HashIdentifiers returns a hash of the identifiers requested. This is intended
