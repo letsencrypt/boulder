@@ -99,7 +99,6 @@ type Config struct {
 			// AllowList specifies the file path to a YAML list of account IDs
 			// permitted to use this profile. This field has three possible
 			// states:
-			//
 			//  1. Not included in the config file: No one is allowed to use
 			//     this profile.
 			//  2. Included in the config file with an empty string: Everyone
