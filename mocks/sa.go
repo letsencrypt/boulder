@@ -271,6 +271,11 @@ func (sa *StorageAuthority) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevo
 	return &ServerStreamClient[corepb.CRLEntry]{}, nil
 }
 
+// GetRevokedCertsByShard is a mock
+func (sa *StorageAuthorityReadOnly) GetRevokedCertsByShard(ctx context.Context, _ *sapb.GetRevokedCertsByShardRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[corepb.CRLEntry], error) {
+	return &ServerStreamClient[corepb.CRLEntry]{}, nil
+}
+
 // GetMaxExpiration is a mock
 func (sa *StorageAuthorityReadOnly) GetMaxExpiration(_ context.Context, req *emptypb.Empty, _ ...grpc.CallOption) (*timestamppb.Timestamp, error) {
 	return nil, nil
