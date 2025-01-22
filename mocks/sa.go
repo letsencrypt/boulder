@@ -272,12 +272,7 @@ func (sa *StorageAuthority) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevo
 }
 
 // GetRevokedCertsByShard is a mock
-func (sa *StorageAuthorityReadOnly) GetRevokedCertsByShard(ctx context.Context, _ *sapb.GetRevokedCertsByShardRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetRevokedCertsClient, error) {
-	return &ServerStreamClient[corepb.CRLEntry]{}, nil
-}
-
-// GetRevokedCertsByShard is a mock
-func (sa *StorageAuthority) GetRevokedCertsByShard(ctx context.Context, _ *sapb.GetRevokedCertsByShardRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
+func (sa *StorageAuthorityReadOnly) GetRevokedCertsByShard(ctx context.Context, _ *sapb.GetRevokedCertsByShardRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[corepb.CRLEntry], error) {
 	return &ServerStreamClient[corepb.CRLEntry]{}, nil
 }
 
