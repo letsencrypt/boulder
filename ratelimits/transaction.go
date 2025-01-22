@@ -376,7 +376,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsForPausingPerDomainPerAcc
 // global per domain bucket. This method should be used for checking capacity,
 // before allowing more orders to be created.
 //
-// Precondition: All orderDomains must comply with policy.WellFormedDomainNames.
+// Precondition: All orderDomains must comply with policy.WellFormedIdentifiers.
 func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(regId int64, orderDomains []string) ([]Transaction, error) {
 	perAccountLimitBucketKey, err := newRegIdBucketKey(CertificatesPerDomainPerAccount, regId)
 	if err != nil {
@@ -454,7 +454,7 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 // spend-only Transaction for each global per-domain bucket. This method should
 // be used for spending capacity, when a certificate is issued.
 //
-// Precondition: orderDomains must all pass policy.WellFormedDomainNames.
+// Precondition: orderDomains must all pass policy.WellFormedIdentifiers.
 func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(regId int64, orderDomains []string) ([]Transaction, error) {
 	perAccountLimitBucketKey, err := newRegIdBucketKey(CertificatesPerDomainPerAccount, regId)
 	if err != nil {
@@ -572,7 +572,7 @@ func (builder *TransactionBuilder) CertificatesPerFQDNSetSpendOnlyTransaction(or
 // allowing the request to proceed.
 //
 // Precondition: names must be a list of DNS names that all pass
-// policy.WellFormedDomainNames.
+// policy.WellFormedIdentifiers.
 func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, names []string, isRenewal bool) ([]Transaction, error) {
 	makeTxnError := func(err error, limit Name) error {
 		return fmt.Errorf("error constructing rate limit transaction for %s rate limit: %w", limit, err)

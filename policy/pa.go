@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
@@ -353,16 +354,16 @@ func ValidEmail(address string) error {
 }
 
 // subError returns an appropriately typed error based on the input error
-func subError(name string, err error) berrors.SubBoulderError {
+func subError(ident identifier.ACMEIdentifier, err error) berrors.SubBoulderError {
 	var bErr *berrors.BoulderError
 	if errors.As(err, &bErr) {
 		return berrors.SubBoulderError{
-			Identifier:   identifier.NewDNS(name),
+			Identifier:   ident,
 			BoulderError: bErr,
 		}
 	} else {
 		return berrors.SubBoulderError{
-			Identifier: identifier.NewDNS(name),
+			Identifier: ident,
 			BoulderError: &berrors.BoulderError{
 				Type:   berrors.RejectedIdentifier,
 				Detail: err.Error(),
@@ -372,47 +373,53 @@ func subError(name string, err error) berrors.SubBoulderError {
 }
 
 // WillingToIssue determines whether the CA is willing to issue for the provided
-// domain names.
+// identifiers.
 //
-// It checks the criteria checked by `WellFormedDomainNames`, and additionally checks
-// whether any domain is on a blocklist.
+// It checks the criteria checked by `WellFormedIdentifiers`, and additionally
+// checks whether any identifier is on a blocklist.
 //
-// If multiple domains are invalid, the error will contain suberrors specific to
-// each domain.
+// If multiple identifiers are invalid, the error will contain suberrors
+// specific to each identifier.
 //
-// Precondition: all input domain names must be in lowercase.
-func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
-	err := WellFormedDomainNames(domains)
+// Precondition: all input identifier values must be in lowercase.
+func (pa *AuthorityImpl) WillingToIssue(idents []identifier.ACMEIdentifier) error {
+	err := WellFormedIdentifiers(idents)
 	if err != nil {
 		return err
 	}
 
 	var subErrors []berrors.SubBoulderError
-	for _, domain := range domains {
-		if strings.Count(domain, "*") > 0 {
+	for _, ident := range idents {
+		if ident.Type != identifier.TypeDNS {
+			subErrors = append(subErrors, subError(ident, probs.UnsupportedIdentifier("invalid non-DNS type identifier")))
+			continue
+		}
+
+		if strings.Count(ident.Value, "*") > 0 {
 			// The base domain is the wildcard request with the `*.` prefix removed
-			baseDomain := strings.TrimPrefix(domain, "*.")
+			baseDomain := strings.TrimPrefix(ident.Value, "*.")
 
 			// The base domain can't be in the wildcard exact blocklist
 			err = pa.checkWildcardHostList(baseDomain)
 			if err != nil {
-				subErrors = append(subErrors, subError(domain, err))
+				subErrors = append(subErrors, subError(ident, err))
 				continue
 			}
 		}
 
 		// For both wildcard and non-wildcard domains, check whether any parent domain
 		// name is on the regular blocklist.
-		err := pa.checkHostLists(domain)
+		err := pa.checkHostLists(ident.Value)
 		if err != nil {
-			subErrors = append(subErrors, subError(domain, err))
+			subErrors = append(subErrors, subError(ident, err))
 			continue
 		}
 	}
 	return combineSubErrors(subErrors)
 }
 
-// WellFormedDomainNames returns an error if any of the provided domains do not meet these criteria:
+// WellFormedIdentifiers returns an error if any of the provided domains do not
+// meet these criteria:
 //
 //   - MUST contains only lowercase characters, numbers, hyphens, and dots
 //   - MUST NOT have more than maxLabels labels
@@ -434,12 +441,16 @@ func (pa *AuthorityImpl) WillingToIssue(domains []string) error {
 //
 // If multiple domains are invalid, the error will contain suberrors specific to
 // each domain.
-func WellFormedDomainNames(domains []string) error {
+func WellFormedIdentifiers(idents []identifier.ACMEIdentifier) error {
 	var subErrors []berrors.SubBoulderError
-	for _, domain := range domains {
-		err := ValidDomain(domain)
-		if err != nil {
-			subErrors = append(subErrors, subError(domain, err))
+	for _, ident := range idents {
+		if ident.Type == identifier.TypeDNS {
+			err := ValidDomain(ident.Value)
+			if err != nil {
+				subErrors = append(subErrors, subError(ident, err))
+			}
+		} else {
+			subErrors = append(subErrors, subError(ident, probs.UnsupportedIdentifier("invalid non-DNS type identifier")))
 		}
 	}
 	return combineSubErrors(subErrors)
