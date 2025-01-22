@@ -193,15 +193,15 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 }
 
 // Baseline Requirements, Section 7.1.6.1: domain-validated
-var domainValidatedOID = mustOIDFromInts([]uint64{2, 23, 140, 1, 2, 1})
-
-func mustOIDFromInts(oid []uint64) x509.OID {
-	x509OID, err := x509.OIDFromInts(oid)
+var domainValidatedASN1OID = asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1}
+var domainValidatedOID = func() x509.OID {
+	x509OID, err := x509.OIDFromInts([]uint64{2, 23, 140, 1, 2, 1})
 	if err != nil {
-		panic(fmt.Errorf("failed to create OID using ints %v: %w", oid, err))
+		// This should never happen, as the OID is hardcoded.
+		panic(fmt.Errorf("failed to create OID using ints %v: %s", x509OID, err))
 	}
 	return x509OID
-}
+}()
 
 func (i *Issuer) generateTemplate() *x509.Certificate {
 	template := &x509.Certificate{
@@ -210,7 +210,7 @@ func (i *Issuer) generateTemplate() *x509.Certificate {
 		IssuingCertificateURL: []string{i.issuerURL},
 		BasicConstraintsValid: true,
 		// Baseline Requirements, Section 7.1.6.1: domain-validated
-		PolicyIdentifiers: []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
+		PolicyIdentifiers: []asn1.ObjectIdentifier{domainValidatedASN1OID},
 		Policies:          []x509.OID{domainValidatedOID},
 	}
 
