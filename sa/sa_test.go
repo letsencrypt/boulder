@@ -622,15 +622,15 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to open transaction")
 
 	names := []string{"a.example.com", "B.example.com"}
-	idents := []*corepb.Identifier{
-		identifier.NewDNS("a.example.com").AsProto(),
-		identifier.NewDNS("B.example.com").AsProto(),
+	idents := []identifier.ACMEIdentifier{
+		identifier.NewDNS("a.example.com"),
+		identifier.NewDNS("B.example.com"),
 	}
 
 	// Invalid Window
 	req := &sapb.CountFQDNSetsRequest{
 		DnsNames:    names,
-		Identifiers: idents,
+		Identifiers: identifier.SliceAsProto(idents),
 		Window:      nil,
 	}
 	_, err = sa.FQDNSetTimestampsForWindow(ctx, req)
@@ -639,7 +639,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	window := time.Hour * 3
 	req = &sapb.CountFQDNSetsRequest{
 		DnsNames:    names,
-		Identifiers: idents,
+		Identifiers: identifier.SliceAsProto(idents),
 		Window:      durationpb.New(window),
 	}
 
@@ -681,7 +681,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 
 	// Ensure there are two issuance timestamps for names inside the window.
 	req.DnsNames = names
-	req.Identifiers = idents
+	req.Identifiers = identifier.SliceAsProto(idents)
 	resp, err = sa.FQDNSetTimestampsForWindow(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, len(resp.Timestamps), 2)
@@ -702,7 +702,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 
 	resp, err = sa.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
 		DnsNames:    names,
-		Identifiers: idents,
+		Identifiers: identifier.SliceAsProto(idents),
 		Window:      durationpb.New(window),
 		Limit:       1,
 	})
@@ -716,11 +716,11 @@ func TestFQDNSetsExists(t *testing.T) {
 	defer cleanUp()
 
 	names := []string{"a.example.com", "B.example.com"}
-	idents := []*corepb.Identifier{
-		identifier.NewDNS("a.example.com").AsProto(),
-		identifier.NewDNS("B.example.com").AsProto(),
+	idents := []identifier.ACMEIdentifier{
+		identifier.NewDNS("a.example.com"),
+		identifier.NewDNS("B.example.com"),
 	}
-	exists, err := sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names, Identifiers: idents})
+	exists, err := sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names, Identifiers: identifier.SliceAsProto(idents)})
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
 	test.Assert(t, !exists.Exists, "FQDN set shouldn't exist")
 
@@ -732,7 +732,7 @@ func TestFQDNSetsExists(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to add name set")
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
-	exists, err = sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names, Identifiers: idents})
+	exists, err = sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names, Identifiers: identifier.SliceAsProto(idents)})
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
 	test.Assert(t, exists.Exists, "FQDN set does exist")
 }
@@ -1081,7 +1081,7 @@ func BenchmarkNewOrderAndAuthzs(b *testing.B) {
 				reg := createWorkingRegistration(b, sa)
 
 				dnsNames := make([]string, 0, numIdents)
-				idents := make([]*corepb.Identifier, 0, numIdents)
+				idents := make([]identifier.ACMEIdentifier, 0, numIdents)
 				newAuthzs := make([]*sapb.NewAuthzRequest, 0, numIdents)
 				for range numIdents {
 					var nameBytes [3]byte
@@ -1089,7 +1089,7 @@ func BenchmarkNewOrderAndAuthzs(b *testing.B) {
 					name := fmt.Sprintf("%s.example.com", hex.EncodeToString(nameBytes[:]))
 
 					dnsNames = append(dnsNames, name)
-					idents = append(idents, identifier.NewDNS(name).AsProto())
+					idents = append(idents, identifier.NewDNS(name))
 					newAuthzs = append(newAuthzs, &sapb.NewAuthzRequest{
 						RegistrationID: reg.Id,
 						Identifier:     identifier.NewDNS(name).AsProto(),
@@ -1106,7 +1106,7 @@ func BenchmarkNewOrderAndAuthzs(b *testing.B) {
 						RegistrationID: reg.Id,
 						Expires:        timestamppb.New(sa.clk.Now().Add(24 * time.Hour)),
 						DnsNames:       dnsNames,
-						Identifiers:    idents,
+						Identifiers:    identifier.SliceAsProto(idents),
 					},
 					NewAuthzs: newAuthzs,
 				})
@@ -1348,10 +1348,10 @@ func TestGetAuthorizations2(t *testing.T) {
 	nameB := "bbb"
 	nameC := "ccc"
 	names := []string{nameA, nameB, nameC}
-	idents := []*corepb.Identifier{
-		identifier.NewDNS(nameA).AsProto(),
-		identifier.NewDNS(nameB).AsProto(),
-		identifier.NewDNS(nameC).AsProto(),
+	idents := []identifier.ACMEIdentifier{
+		identifier.NewDNS(nameA),
+		identifier.NewDNS(nameB),
+		identifier.NewDNS(nameC),
 	}
 	nameD := "ddd"
 
@@ -1386,7 +1386,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	authz, err := sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID: reg.Id,
 		DnsNames:       names,
-		Identifiers:    idents,
+		Identifiers:    identifier.SliceAsProto(idents),
 		ValidUntil:     timestamppb.New(expiryCutoff),
 	})
 	// It should not fail
@@ -1399,7 +1399,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID: reg.Id,
 		DnsNames:       append(names, nameD),
-		Identifiers:    append(idents, identifier.NewDNS(nameD).AsProto()),
+		Identifiers:    append(identifier.SliceAsProto(idents), identifier.NewDNS(nameD).AsProto()),
 		ValidUntil:     timestamppb.New(expiryCutoff),
 	})
 	// It should not fail
@@ -1476,9 +1476,9 @@ func TestGetOrderForNames(t *testing.T) {
 
 	ctx := context.Background()
 	names := []string{"example.com", "just.another.example.com"}
-	idents := []*corepb.Identifier{
-		identifier.NewDNS("example.com").AsProto(),
-		identifier.NewDNS("just.another.example.com").AsProto(),
+	idents := []identifier.ACMEIdentifier{
+		identifier.NewDNS("example.com"),
+		identifier.NewDNS("just.another.example.com"),
 	}
 
 	// Call GetOrderForNames for a set of names we haven't created an order for
@@ -1486,7 +1486,7 @@ func TestGetOrderForNames(t *testing.T) {
 	result, err := sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      regA.Id,
 		DnsNames:    names,
-		Identifiers: idents,
+		Identifiers: identifier.SliceAsProto(idents),
 	})
 	// We expect the result to return an error
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
@@ -1502,7 +1502,7 @@ func TestGetOrderForNames(t *testing.T) {
 			Expires:          timestamppb.New(expires),
 			V2Authorizations: []int64{authzIDA, authzIDB},
 			DnsNames:         names,
-			Identifiers:      idents,
+			Identifiers:      identifier.SliceAsProto(idents),
 		},
 	})
 	// It shouldn't error
@@ -1515,7 +1515,7 @@ func TestGetOrderForNames(t *testing.T) {
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      regA.Id,
 		DnsNames:    names,
-		Identifiers: idents,
+		Identifiers: identifier.SliceAsProto(idents),
 	})
 	// It shouldn't error
 	test.AssertNotError(t, err, "sa.GetOrderForNames failed")
@@ -1528,7 +1528,7 @@ func TestGetOrderForNames(t *testing.T) {
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      regB,
 		DnsNames:    names,
-		Identifiers: idents,
+		Identifiers: identifier.SliceAsProto(idents),
 	})
 	// It should error
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
@@ -1545,7 +1545,7 @@ func TestGetOrderForNames(t *testing.T) {
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      regA.Id,
 		DnsNames:    names,
-		Identifiers: idents,
+		Identifiers: identifier.SliceAsProto(idents),
 	})
 	// It should error since there is no result
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
@@ -1570,7 +1570,7 @@ func TestGetOrderForNames(t *testing.T) {
 			Expires:          timestamppb.New(expires),
 			V2Authorizations: []int64{authzIDC, authzIDD},
 			DnsNames:         names,
-			Identifiers:      idents,
+			Identifiers:      identifier.SliceAsProto(idents),
 		},
 	})
 	// It shouldn't error
@@ -1583,7 +1583,7 @@ func TestGetOrderForNames(t *testing.T) {
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      regA.Id,
 		DnsNames:    names,
-		Identifiers: idents,
+		Identifiers: identifier.SliceAsProto(idents),
 	})
 	// It should not error since a ready order can be reused.
 	test.AssertNotError(t, err, "sa.GetOrderForNames returned an unexpected error for ready order reuse")
@@ -1605,7 +1605,7 @@ func TestGetOrderForNames(t *testing.T) {
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      regA.Id,
 		DnsNames:    names,
-		Identifiers: idents,
+		Identifiers: identifier.SliceAsProto(idents),
 	})
 	// It should error since a valid order should not be reused.
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
@@ -1642,7 +1642,7 @@ func TestStatusForOrder(t *testing.T) {
 		Name             string
 		AuthorizationIDs []int64
 		OrderNames       []string
-		OrderIdentifiers []*corepb.Identifier
+		OrderIdents      []identifier.ACMEIdentifier
 		OrderExpires     *timestamppb.Timestamp
 		ExpectedStatus   string
 		SetProcessing    bool
@@ -1651,11 +1651,11 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:       "Order with an invalid authz",
 			OrderNames: []string{"pending.your.order.is.up", "invalid.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
-			OrderIdentifiers: []*corepb.Identifier{
-				identifier.NewDNS("pending.your.order.is.up").AsProto(),
-				identifier.NewDNS("invalid.your.order.is.up").AsProto(),
-				identifier.NewDNS("deactivated.your.order.is.up").AsProto(),
-				identifier.NewDNS("valid.your.order.is.up").AsProto(),
+			OrderIdents: []identifier.ACMEIdentifier{
+				identifier.NewDNS("pending.your.order.is.up"),
+				identifier.NewDNS("invalid.your.order.is.up"),
+				identifier.NewDNS("deactivated.your.order.is.up"),
+				identifier.NewDNS("valid.your.order.is.up"),
 			},
 			AuthorizationIDs: []int64{pendingID, invalidID, deactivatedID, validID},
 			ExpectedStatus:   string(core.StatusInvalid),
@@ -1663,11 +1663,11 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:       "Order with an expired authz",
 			OrderNames: []string{"pending.your.order.is.up", "expired.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
-			OrderIdentifiers: []*corepb.Identifier{
-				identifier.NewDNS("pending.your.order.is.up").AsProto(),
-				identifier.NewDNS("expired.your.order.is.up").AsProto(),
-				identifier.NewDNS("deactivated.your.order.is.up").AsProto(),
-				identifier.NewDNS("valid.your.order.is.up").AsProto(),
+			OrderIdents: []identifier.ACMEIdentifier{
+				identifier.NewDNS("pending.your.order.is.up"),
+				identifier.NewDNS("expired.your.order.is.up"),
+				identifier.NewDNS("deactivated.your.order.is.up"),
+				identifier.NewDNS("valid.your.order.is.up"),
 			},
 			AuthorizationIDs: []int64{pendingID, expiredID, deactivatedID, validID},
 			ExpectedStatus:   string(core.StatusInvalid),
@@ -1675,10 +1675,10 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:       "Order with a deactivated authz",
 			OrderNames: []string{"pending.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
-			OrderIdentifiers: []*corepb.Identifier{
-				identifier.NewDNS("pending.your.order.is.up").AsProto(),
-				identifier.NewDNS("deactivated.your.order.is.up").AsProto(),
-				identifier.NewDNS("valid.your.order.is.up").AsProto(),
+			OrderIdents: []identifier.ACMEIdentifier{
+				identifier.NewDNS("pending.your.order.is.up"),
+				identifier.NewDNS("deactivated.your.order.is.up"),
+				identifier.NewDNS("valid.your.order.is.up"),
 			},
 			AuthorizationIDs: []int64{pendingID, deactivatedID, validID},
 			ExpectedStatus:   string(core.StatusInvalid),
@@ -1686,9 +1686,9 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:       "Order with a pending authz",
 			OrderNames: []string{"valid.your.order.is.up", "pending.your.order.is.up"},
-			OrderIdentifiers: []*corepb.Identifier{
-				identifier.NewDNS("valid.your.order.is.up").AsProto(),
-				identifier.NewDNS("pending.your.order.is.up").AsProto(),
+			OrderIdents: []identifier.ACMEIdentifier{
+				identifier.NewDNS("valid.your.order.is.up"),
+				identifier.NewDNS("pending.your.order.is.up"),
 			},
 			AuthorizationIDs: []int64{validID, pendingID},
 			ExpectedStatus:   string(core.StatusPending),
@@ -1696,14 +1696,14 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:             "Order with only valid authzs, not yet processed or finalized",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdentifiers: []*corepb.Identifier{identifier.NewDNS("valid.your.order.is.up").AsProto()},
+			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			ExpectedStatus:   string(core.StatusReady),
 		},
 		{
 			Name:             "Order with only valid authzs, set processing",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdentifiers: []*corepb.Identifier{identifier.NewDNS("valid.your.order.is.up").AsProto()},
+			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			SetProcessing:    true,
 			ExpectedStatus:   string(core.StatusProcessing),
@@ -1711,14 +1711,14 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:             "Order with only valid authzs, not yet processed or finalized, OrderReadyStatus feature flag",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdentifiers: []*corepb.Identifier{identifier.NewDNS("valid.your.order.is.up").AsProto()},
+			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			ExpectedStatus:   string(core.StatusReady),
 		},
 		{
 			Name:             "Order with only valid authzs, set processing",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdentifiers: []*corepb.Identifier{identifier.NewDNS("valid.your.order.is.up").AsProto()},
+			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			SetProcessing:    true,
 			ExpectedStatus:   string(core.StatusProcessing),
@@ -1726,7 +1726,7 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:             "Order with only valid authzs, set processing and finalized",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdentifiers: []*corepb.Identifier{identifier.NewDNS("valid.your.order.is.up").AsProto()},
+			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			SetProcessing:    true,
 			Finalize:         true,
@@ -1749,7 +1749,7 @@ func TestStatusForOrder(t *testing.T) {
 					Expires:          orderExpiry,
 					V2Authorizations: tc.AuthorizationIDs,
 					DnsNames:         tc.OrderNames,
-					Identifiers:      tc.OrderIdentifiers,
+					Identifiers:      identifier.SliceAsProto(tc.OrderIdents),
 				},
 			})
 			test.AssertNotError(t, err, "NewOrderAndAuthzs errored unexpectedly")
@@ -2567,7 +2567,7 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 	fc.Add(time.Hour)
 	reg := createWorkingRegistration(t, sa)
 	name := "aaa"
-	ident := identifier.NewDNS("aaa").AsProto()
+	ident := identifier.NewDNS("aaa")
 	expiresA := fc.Now().Add(time.Hour).UTC()
 	expiresB := fc.Now().Add(time.Hour * 3).UTC()
 	attemptedAt := fc.Now()
@@ -2579,7 +2579,7 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 	count, err := sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
 		RegistrationID: reg.Id,
 		DnsName:        name,
-		Identifier:     ident,
+		Identifier:     ident.AsProto(),
 		Range: &sapb.Range{
 			Earliest: timestamppb.New(earliest),
 			Latest:   timestamppb.New(latest),

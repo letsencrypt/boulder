@@ -79,7 +79,7 @@ func randomDomain() string {
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
 	t.Helper()
 
-	identifierPb := identifier.NewDNS(domain).AsProto()
+	identPb := identifier.NewDNS(domain)
 
 	res, err := sa.NewOrderAndAuthzs(
 		context.Background(),
@@ -88,11 +88,11 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 				RegistrationID: Registration.Id,
 				Expires:        timestamppb.New(exp),
 				DnsNames:       []string{domain},
-				Identifiers:    []*corepb.Identifier{identifierPb},
+				Identifiers:    []*corepb.Identifier{identPb.AsProto()},
 			},
 			NewAuthzs: []*sapb.NewAuthzRequest{
 				{
-					Identifier:     identifierPb,
+					Identifier:     identPb.AsProto(),
 					RegistrationID: Registration.Id,
 					Expires:        timestamppb.New(exp),
 					ChallengeTypes: []string{
@@ -1409,15 +1409,15 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 
 	// Create an initial order with regA and names
 	names := []string{"zombo.com", "welcome.to.zombo.com"}
-	idents := []*corepb.Identifier{
-		identifier.NewDNS("zombo.com").AsProto(),
-		identifier.NewDNS("welcome.to.zombo.com").AsProto(),
+	idents := []identifier.ACMEIdentifier{
+		identifier.NewDNS("zombo.com"),
+		identifier.NewDNS("welcome.to.zombo.com"),
 	}
 
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID:         Registration.Id,
 		DnsNames:               names,
-		Identifiers:            idents,
+		Identifiers:            identifier.SliceAsProto(idents),
 		CertificateProfileName: "test",
 	}
 	firstOrder, err := ra.NewOrder(context.Background(), orderReq)
@@ -1434,7 +1434,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 		Name           string
 		RegistrationID int64
 		DnsNames       []string
-		Identifiers    []*corepb.Identifier
+		Identifiers    []identifier.ACMEIdentifier
 		Profile        string
 		ExpectReuse    bool
 	}{
@@ -1460,7 +1460,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 			Name:           "Superset of order names, same regID",
 			RegistrationID: Registration.Id,
 			DnsNames:       append(names, "blog.zombo.com"),
-			Identifiers:    append(idents, identifier.NewDNS("blog.zombo.com").AsProto()),
+			Identifiers:    append(idents, identifier.NewDNS("blog.zombo.com")),
 			Profile:        "test",
 			// We do not expect reuse because the order names don't match firstOrder
 			ExpectReuse: false,
@@ -1469,7 +1469,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 			Name:           "Missing profile, same regID",
 			RegistrationID: Registration.Id,
 			DnsNames:       append(names, "blog.zombo.com"),
-			Identifiers:    append(idents, identifier.NewDNS("blog.zombo.com").AsProto()),
+			Identifiers:    append(idents, identifier.NewDNS("blog.zombo.com")),
 			// We do not expect reuse because the profile is missing
 			ExpectReuse: false,
 		},
@@ -1477,7 +1477,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 			Name:           "Missing profile, same regID",
 			RegistrationID: Registration.Id,
 			DnsNames:       append(names, "blog.zombo.com"),
-			Identifiers:    append(idents, identifier.NewDNS("blog.zombo.com").AsProto()),
+			Identifiers:    append(idents, identifier.NewDNS("blog.zombo.com")),
 			Profile:        "different",
 			// We do not expect reuse because a different profile is specified
 			ExpectReuse: false,
@@ -1500,7 +1500,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 			order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 				RegistrationID:         tc.RegistrationID,
 				DnsNames:               tc.DnsNames,
-				Identifiers:            tc.Identifiers,
+				Identifiers:            identifier.SliceAsProto(tc.Identifiers),
 				CertificateProfileName: tc.Profile,
 			})
 			test.AssertNotError(t, err, "NewOrder returned an unexpected error")
@@ -1646,35 +1646,35 @@ func TestNewOrder_AuthzReuse(t *testing.T) {
 		Name           string
 		RegistrationID int64
 		DnsName        string
-		Identifier     *corepb.Identifier
+		Identifier     identifier.ACMEIdentifier
 		ExpectReuse    bool
 	}{
 		{
 			Name:           "Reuse pending authz",
 			RegistrationID: Registration.Id,
 			DnsName:        pending,
-			Identifier:     identifier.NewDNS(pending).AsProto(),
+			Identifier:     identifier.NewDNS(pending),
 			ExpectReuse:    true, // TODO(#7715): Invert this.
 		},
 		{
 			Name:           "Reuse valid authz",
 			RegistrationID: Registration.Id,
 			DnsName:        valid,
-			Identifier:     identifier.NewDNS(valid).AsProto(),
+			Identifier:     identifier.NewDNS(valid),
 			ExpectReuse:    true,
 		},
 		{
 			Name:           "Don't reuse invalid authz",
 			RegistrationID: Registration.Id,
 			DnsName:        invalid,
-			Identifier:     identifier.NewDNS(invalid).AsProto(),
+			Identifier:     identifier.NewDNS(invalid),
 			ExpectReuse:    false,
 		},
 		{
 			Name:           "Don't reuse valid authz from other acct",
 			RegistrationID: secondReg.Id,
 			DnsName:        valid,
-			Identifier:     identifier.NewDNS(valid).AsProto(),
+			Identifier:     identifier.NewDNS(valid),
 			ExpectReuse:    false,
 		},
 	}
@@ -1684,7 +1684,7 @@ func TestNewOrder_AuthzReuse(t *testing.T) {
 			new, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 				RegistrationID: tc.RegistrationID,
 				DnsNames:       []string{tc.DnsName},
-				Identifiers:    []*corepb.Identifier{tc.Identifier},
+				Identifiers:    []*corepb.Identifier{tc.Identifier.AsProto()},
 			})
 			test.AssertNotError(t, err, "creating test order")
 			test.AssertNotEquals(t, new.Id, extant.Id)
@@ -1819,7 +1819,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 
 	ctx := context.Background()
 	names := []string{"*.zombo.com"}
-	idents := []*corepb.Identifier{identifier.NewDNS("*.zombo.com").AsProto()}
+	idents := []identifier.ACMEIdentifier{identifier.NewDNS("*.zombo.com")}
 
 	// Use a mock SA that always returns a valid HTTP-01 authz for the name
 	// "zombo.com"
@@ -1879,7 +1879,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       names,
-		Identifiers:    idents,
+		Identifiers:    identifier.SliceAsProto(idents),
 	}
 
 	// Create an order for that request
@@ -1896,14 +1896,14 @@ func TestNewOrderWildcard(t *testing.T) {
 	defer cleanUp()
 
 	orderNames := []string{"example.com", "*.welcome.zombo.com"}
-	orderIdentifiers := []*corepb.Identifier{
-		identifier.NewDNS("example.com").AsProto(),
-		identifier.NewDNS("*.welcome.zombo.com").AsProto(),
+	orderIdents := []identifier.ACMEIdentifier{
+		identifier.NewDNS("example.com"),
+		identifier.NewDNS("*.welcome.zombo.com"),
 	}
 	wildcardOrderRequest := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
-		Identifiers:    orderIdentifiers,
+		Identifiers:    identifier.SliceAsProto(orderIdents),
 	}
 
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
@@ -1955,14 +1955,14 @@ func TestNewOrderWildcard(t *testing.T) {
 	// return just 2 authz's, one for the wildcard with a DNS-01
 	// challenge and one for the base domain with the normal challenges.
 	orderNames = []string{"zombo.com", "*.zombo.com"}
-	orderIdentifiers = []*corepb.Identifier{
-		identifier.NewDNS("zombo.com").AsProto(),
-		identifier.NewDNS("*.zombo.com").AsProto(),
+	orderIdents = []identifier.ACMEIdentifier{
+		identifier.NewDNS("zombo.com"),
+		identifier.NewDNS("*.zombo.com"),
 	}
 	wildcardOrderRequest = &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
-		Identifiers:    orderIdentifiers,
+		Identifiers:    identifier.SliceAsProto(orderIdents),
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
@@ -2034,11 +2034,11 @@ func TestNewOrderWildcard(t *testing.T) {
 	// order for. We should **NOT** reuse the authorization from the previous
 	// order since we now require a DNS-01 challenge for the `*.` prefixed name.
 	orderNames = []string{"*.everything.is.possible.zombo.com"}
-	orderIdentifiers = []*corepb.Identifier{identifier.NewDNS("everything.is.possible.zombo.com").AsProto()}
+	orderIdents = []identifier.ACMEIdentifier{identifier.NewDNS("*.everything.is.possible.zombo.com")}
 	wildcardOrderRequest = &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
-		Identifiers:    orderIdentifiers,
+		Identifiers:    identifier.SliceAsProto(orderIdents),
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
@@ -2081,7 +2081,7 @@ func TestNewOrderExpiry(t *testing.T) {
 
 	ctx := context.Background()
 	names := []string{"zombo.com"}
-	idents := []*corepb.Identifier{identifier.NewDNS("zombo.com").AsProto()}
+	idents := []identifier.ACMEIdentifier{identifier.NewDNS("zombo.com")}
 
 	// Set the order lifetime to 48 hours.
 	ra.orderLifetime = 48 * time.Hour
@@ -2116,7 +2116,7 @@ func TestNewOrderExpiry(t *testing.T) {
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       names,
-		Identifiers:    idents,
+		Identifiers:    identifier.SliceAsProto(idents),
 	}
 
 	// Create an order for that request
@@ -2561,11 +2561,11 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 
 	// Create a new order for a wildcard domain
 	orderNames := []string{"*.zombo.com"}
-	orderIdentifiers := []*corepb.Identifier{identifier.NewDNS("*.zombo.com").AsProto()}
+	orderIdents := []identifier.ACMEIdentifier{identifier.NewDNS("*.zombo.com")}
 	wildcardOrderRequest := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
-		Identifiers:    orderIdentifiers,
+		Identifiers:    identifier.SliceAsProto(orderIdents),
 	}
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
@@ -2679,11 +2679,11 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 
 	// Make some valid authorizations for some names using different challenge types
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	idents := []*corepb.Identifier{
-		identifier.NewDNS("not-example.com").AsProto(),
-		identifier.NewDNS("www.not-example.com").AsProto(),
-		identifier.NewDNS("still.not-example.com").AsProto(),
-		identifier.NewDNS("definitely.not-example.com").AsProto(),
+	idents := []identifier.ACMEIdentifier{
+		identifier.NewDNS("not-example.com"),
+		identifier.NewDNS("www.not-example.com"),
+		identifier.NewDNS("still.not-example.com"),
+		identifier.NewDNS("definitely.not-example.com"),
 	}
 	exp := ra.clk.Now().Add(ra.orderLifetime)
 	challs := []core.AcmeChallenge{core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01}
@@ -2698,7 +2698,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
 			DnsNames:         names,
-			Identifiers:      idents,
+			Identifiers:      identifier.SliceAsProto(idents),
 			V2Authorizations: authzIDs,
 		},
 	})
@@ -2813,11 +2813,11 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 	// Make some valid authzs for four names. Half of them were validated
 	// recently and half were validated in excess of our CAA recheck time.
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	idents := []*corepb.Identifier{
-		identifier.NewDNS("not-example.com").AsProto(),
-		identifier.NewDNS("www.not-example.com").AsProto(),
-		identifier.NewDNS("still.not-example.com").AsProto(),
-		identifier.NewDNS("definitely.not-example.com").AsProto(),
+	idents := []identifier.ACMEIdentifier{
+		identifier.NewDNS("not-example.com"),
+		identifier.NewDNS("www.not-example.com"),
+		identifier.NewDNS("still.not-example.com"),
+		identifier.NewDNS("definitely.not-example.com"),
 	}
 	var authzIDs []int64
 	for i, name := range names {
@@ -2834,7 +2834,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
 			DnsNames:         names,
-			Identifiers:      idents,
+			Identifiers:      identifier.SliceAsProto(idents),
 			V2Authorizations: authzIDs,
 		},
 	})
@@ -3124,11 +3124,11 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 
 	// Make some valid authorizations for some names
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	idents := []*corepb.Identifier{
-		identifier.NewDNS("not-example.com").AsProto(),
-		identifier.NewDNS("www.not-example.com").AsProto(),
-		identifier.NewDNS("still.not-example.com").AsProto(),
-		identifier.NewDNS("definitely.not-example.com").AsProto(),
+	idents := []identifier.ACMEIdentifier{
+		identifier.NewDNS("not-example.com"),
+		identifier.NewDNS("www.not-example.com"),
+		identifier.NewDNS("still.not-example.com"),
+		identifier.NewDNS("definitely.not-example.com"),
 	}
 	exp := ra.clk.Now().Add(ra.orderLifetime)
 	var authzIDs []int64
@@ -3142,7 +3142,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
 			DnsNames:         names,
-			Identifiers:      idents,
+			Identifiers:      identifier.SliceAsProto(idents),
 			V2Authorizations: authzIDs,
 		},
 	})
@@ -3302,11 +3302,11 @@ func TestIssueCertificateOuter(t *testing.T) {
 
 	// Make some valid authorizations for some names
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	idents := []*corepb.Identifier{
-		identifier.NewDNS("not-example.com").AsProto(),
-		identifier.NewDNS("www.not-example.com").AsProto(),
-		identifier.NewDNS("still.not-example.com").AsProto(),
-		identifier.NewDNS("definitely.not-example.com").AsProto(),
+	idents := []identifier.ACMEIdentifier{
+		identifier.NewDNS("not-example.com"),
+		identifier.NewDNS("www.not-example.com"),
+		identifier.NewDNS("still.not-example.com"),
+		identifier.NewDNS("definitely.not-example.com"),
 	}
 	exp := ra.clk.Now().Add(ra.orderLifetime)
 	var authzIDs []int64
@@ -3320,7 +3320,7 @@ func TestIssueCertificateOuter(t *testing.T) {
 			RegistrationID:         Registration.Id,
 			Expires:                timestamppb.New(exp),
 			DnsNames:               names,
-			Identifiers:            idents,
+			Identifiers:            identifier.SliceAsProto(idents),
 			V2Authorizations:       authzIDs,
 			CertificateProfileName: "philsProfile",
 		},
@@ -3374,7 +3374,7 @@ func TestNewOrderMaxNames(t *testing.T) {
 		},
 	})
 	test.AssertError(t, err, "NewOrder didn't fail with too many names in request")
-	test.AssertEquals(t, err.Error(), "Order cannot contain more than 2 DNS names")
+	test.AssertEquals(t, err.Error(), "Order cannot contain more than 2 identifiers")
 	test.AssertErrorIs(t, err, berrors.Malformed)
 }
 

@@ -2119,28 +2119,32 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	// TODO(#7311): Compose Identifiers instead of DnsNames, and use them
-	// throughout this entire function. Here, we can use
-	// core.NormalizeIdentifiers.
-	newOrder := &sapb.NewOrderRequest{
-		RegistrationID:         req.RegistrationID,
-		DnsNames:               core.UniqueLowerNames(req.DnsNames),
-		CertificateProfileName: req.CertificateProfileName,
-		ReplacesSerial:         req.ReplacesSerial,
-	}
+	// TODO(#7311): Compose Identifiers from DnsNames if that's all we were
+	// given by the WFE.
+	idents := core.NormalizeIdentifiers(identifier.SliceFromProto(req.Identifiers))
 
-	if len(newOrder.DnsNames) > ra.maxNames {
+	if len(idents) > ra.maxNames {
 		return nil, berrors.MalformedError(
-			"Order cannot contain more than %d DNS names", ra.maxNames)
+			"Order cannot contain more than %d identifiers", ra.maxNames)
 	}
 
-	// Validate that our policy allows issuing for each of the names in the order
-	err := ra.PA.WillingToIssue(identifier.SliceNewDNS(newOrder.DnsNames))
+	// Validate that our policy allows issuing for each of the identifiers in
+	// the order
+	err := ra.PA.WillingToIssue(idents)
 	if err != nil {
 		return nil, err
 	}
 
-	err = wildcardOverlap(newOrder.DnsNames)
+	dnsNames := make([]string, len(idents))
+	for i, ident := range idents {
+		if ident.Type == identifier.TypeDNS {
+			dnsNames[i] = ident.Value
+		} else {
+			return nil, berrors.MalformedError(
+				"invalid non-DNS type identifier %s", ident.Value)
+		}
+	}
+	err = wildcardOverlap(dnsNames)
 	if err != nil {
 		return nil, err
 	}
@@ -2148,9 +2152,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// See if there is an existing unexpired pending (or ready) order that can be reused
 	// for this account
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID:      newOrder.RegistrationID,
-		DnsNames:    newOrder.DnsNames,
-		Identifiers: newOrder.Identifiers,
+		AcctID:      req.RegistrationID,
+		DnsNames:    dnsNames,
+		Identifiers: identifier.SliceAsProto(idents),
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
 	// immediately
@@ -2162,13 +2166,14 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Error if an incomplete order is returned.
 	if existingOrder != nil {
 		// Check to see if the expected fields of the existing order are set.
+		// TODO(#7311): Allow one of Identifiers or dnsNames to be empty.
 		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, existingOrder.DnsNames, existingOrder.Created, existingOrder.Expires) {
 			return nil, errIncompleteGRPCResponse
 		}
 
 		// Only re-use the order if the profile (even if it is just the empty
 		// string, leaving us to choose a default profile) matches.
-		if existingOrder.CertificateProfileName == newOrder.CertificateProfileName {
+		if existingOrder.CertificateProfileName == req.CertificateProfileName {
 			// Track how often we reuse an existing order and how old that order is.
 			ra.orderAges.WithLabelValues("NewOrder").Observe(ra.clk.Since(existingOrder.Created.AsTime()).Seconds())
 			return existingOrder, nil
@@ -2187,18 +2192,18 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	var existingAuthz *sapb.Authorizations
 	if features.Get().NoPendingAuthzReuse {
 		getAuthReq := &sapb.GetValidAuthorizationsRequest{
-			RegistrationID: newOrder.RegistrationID,
+			RegistrationID: req.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
-			DnsNames:       newOrder.DnsNames,
-			Identifiers:    newOrder.Identifiers,
+			DnsNames:       dnsNames,
+			Identifiers:    identifier.SliceAsProto(idents),
 		}
 		existingAuthz, err = ra.SA.GetValidAuthorizations2(ctx, getAuthReq)
 	} else {
 		getAuthReq := &sapb.GetAuthorizationsRequest{
-			RegistrationID: newOrder.RegistrationID,
+			RegistrationID: req.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
-			DnsNames:       newOrder.DnsNames,
-			Identifiers:    newOrder.Identifiers,
+			DnsNames:       dnsNames,
+			Identifiers:    identifier.SliceAsProto(idents),
 		}
 		existingAuthz, err = ra.SA.GetAuthorizations2(ctx, getAuthReq)
 	}
@@ -2211,13 +2216,22 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	// For each of the names in the order, if there is an acceptable
-	// existing authz, append it to the order to reuse it. Otherwise track
-	// that there is a missing authz for that name.
+	newOrder := &sapb.NewOrderRequest{
+		RegistrationID:         req.RegistrationID,
+		DnsNames:               dnsNames,
+		Identifiers:            identifier.SliceAsProto(idents),
+		CertificateProfileName: req.CertificateProfileName,
+		ReplacesSerial:         req.ReplacesSerial,
+	}
+
+	// For each of the identifiers in the order, if there is an acceptable
+	// existing authz, append it to the order to reuse it. Otherwise track that
+	// there is a missing authz for that identifier.
+	//
 	// TODO(#7647): Support non-dnsName identifier types here.
 	var missingAuthzIdents []identifier.ACMEIdentifier
-	for _, name := range newOrder.DnsNames {
-		ident := identifier.NewDNS(name)
+	for _, ident := range idents {
+		name := ident.Value
 		// If there isn't an existing authz, note that its missing and continue
 		authz, exists := identToExistingAuthz[ident]
 		if !exists {
@@ -2309,6 +2323,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
+	// TODO(#7311): Allow one of Identifiers or dnsNames to be empty.
 	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, storedOrder.DnsNames, storedOrder.Created, storedOrder.Expires) {
 		return nil, errIncompleteGRPCResponse
 	}
