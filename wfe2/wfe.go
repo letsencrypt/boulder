@@ -889,7 +889,7 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 	if err != nil {
 		return nil, 0, probs.NotFound("No such certificate")
 	}
-	logEvent.DNSNames = parsedCertificate.DNSNames
+	logEvent.Identifiers = identifier.SliceNewDNS(parsedCertificate.DNSNames)
 
 	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
 		return nil, 0, probs.Unauthorized("Certificate is expired")
@@ -1130,9 +1130,9 @@ func (wfe *WebFrontEndImpl) Challenge(
 		}
 	}
 
-	if authz.Identifier.Type == identifier.TypeDNS {
-		logEvent.DNSName = authz.Identifier.Value
-	}
+	// TODO(#7311): We still need to populate Identifier out of DNSName if
+	// that's all we've been given by the RA.
+	logEvent.Identifiers = []identifier.ACMEIdentifier{authz.Identifier}
 	logEvent.Status = string(authz.Status)
 
 	challenge := authz.Challenges[challengeIndex]
@@ -1553,9 +1553,8 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
-	if identifier.IdentifierType(authzPB.DnsName) == identifier.TypeDNS {
-		logEvent.DNSName = authzPB.DnsName
-	}
+	// TODO(#7311): Accept Identifier as an alternative to DnsName.
+	logEvent.Identifiers = []identifier.ACMEIdentifier{identifier.NewDNS(authzPB.DnsName)}
 	logEvent.Status = authzPB.Status
 
 	// After expiring, authorizations are inaccessible
@@ -2277,6 +2276,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		}
 	}
 	idents = core.NormalizeIdentifiers(idents)
+	logEvent.Identifiers = idents
 
 	err = policy.WellFormedIdentifiers(idents)
 	if err != nil {
@@ -2289,14 +2289,10 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	pbIdents := identifier.SliceAsProto(idents)
-
 	names := make([]string, len(idents))
 	for i, ident := range idents {
 		names[i] = ident.Value
 	}
-
-	// TODO(#7311): Replace this with identifiers.
-	logEvent.DNSNames = names
 
 	if features.Get().CheckIdentifiersPaused {
 		pausedValues, err := wfe.checkIdentifiersPaused(ctx, idents, acct.ID)
@@ -2577,7 +2573,9 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	logEvent.DNSNames = order.DnsNames
+	// TODO(#7311): Populate Identifiers from DNSNames if that's all we've been
+	// given by the SA.
+	logEvent.Identifiers = identifier.SliceFromProto(order.Identifiers)
 	logEvent.Extra["KeyType"] = web.KeyTypeToString(csr.PublicKey)
 
 	updatedOrder, err := wfe.ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{

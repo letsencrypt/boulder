@@ -39,14 +39,31 @@ func (i ACMEIdentifier) AsProto() *corepb.Identifier {
 	}
 }
 
+func FromProto(ident *corepb.Identifier) ACMEIdentifier {
+	return ACMEIdentifier{
+		Type:  IdentifierType(ident.Type),
+		Value: ident.Value,
+	}
+}
+
 // SliceAsProto is a convenience function for converting a slice of
 // ACMEIdentifiers into a slice of *corepb.Identifiers, to use for RPCs.
 func SliceAsProto(idents []ACMEIdentifier) []*corepb.Identifier {
-	pbIdentifiers := make([]*corepb.Identifier, len(idents))
+	pbIdents := make([]*corepb.Identifier, len(idents))
 	for key, ident := range idents {
-		pbIdentifiers[key] = ident.AsProto()
+		pbIdents[key] = ident.AsProto()
 	}
-	return pbIdentifiers
+	return pbIdents
+}
+
+// SliceFromProto is a convenience function for converting a slice of
+// *corepb.Identifiers from RPCs into a slice of ACMEIdentifiers.
+func SliceFromProto(pbIdents []*corepb.Identifier) []ACMEIdentifier {
+	idents := make([]ACMEIdentifier, len(pbIdents))
+	for key, pbIdent := range pbIdents {
+		idents[key] = FromProto(pbIdent)
+	}
+	return idents
 }
 
 // NewDNS is a convenience function for creating an ACMEIdentifier with Type
