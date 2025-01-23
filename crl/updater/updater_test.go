@@ -556,10 +556,6 @@ func TestGetChunkAtTime(t *testing.T) {
 	test.AssertError(t, err, "getting far-future chunk")
 }
 
-type streamer struct {
-	entries []*proto.CRLEntry
-}
-
 func TestAddFromStream(t *testing.T) {
 	now := time.Now()
 	yesterday := now.Add(-24 * time.Hour)
