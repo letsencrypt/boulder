@@ -809,13 +809,11 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 		return nil, fmt.Errorf("unrecognized identifier type encoding %d", am.IdentifierType)
 	}
 
-	// TODO(#7311): Once we can always expect an am.Identifier instead of a
-	// DnsName, just pass along the existing Identifier, don't recreate it.
 	pb := &corepb.Authorization{
 		Id:             fmt.Sprintf("%d", am.ID),
 		Status:         string(uintToStatus[am.Status]),
 		DnsName:        am.IdentifierValue,
-		Identifier:     identifier.NewDNS(am.IdentifierValue).AsProto(),
+		Identifier:     identifier.ACMEIdentifier{Type: identifier.IdentifierType(identType), Value: am.IdentifierValue}.AsProto(),
 		RegistrationID: am.RegistrationID,
 		Expires:        timestamppb.New(am.Expires),
 	}
@@ -923,10 +921,9 @@ type orderFQDNSet struct {
 	Expires        time.Time
 }
 
-// TODO(#7311): Accept identifiers.
-func addFQDNSet(ctx context.Context, db db.Inserter, names []string, serial string, issued time.Time, expires time.Time) error {
+func addFQDNSet(ctx context.Context, db db.Inserter, idents []identifier.ACMEIdentifier, serial string, issued time.Time, expires time.Time) error {
 	return db.Insert(ctx, &core.FQDNSet{
-		SetHash: core.HashIdentifiers(identifier.SliceNewDNS(names)),
+		SetHash: core.HashIdentifiers(idents),
 		Serial:  serial,
 		Issued:  issued,
 		Expires: expires,
@@ -937,17 +934,15 @@ func addFQDNSet(ctx context.Context, db db.Inserter, names []string, serial stri
 // information. This function accepts a transaction so that the orderFqdnSet
 // addition can take place within the order addition transaction. The caller is
 // required to rollback the transaction if an error is returned.
-//
-// TODO(#7311): Accept identifiers.
 func addOrderFQDNSet(
 	ctx context.Context,
 	db db.Inserter,
-	names []string,
+	idents []identifier.ACMEIdentifier,
 	orderID int64,
 	regID int64,
 	expires time.Time) error {
 	return db.Insert(ctx, &orderFQDNSet{
-		SetHash:        core.HashIdentifiers(identifier.SliceNewDNS(names)),
+		SetHash:        core.HashIdentifiers(idents),
 		OrderID:        orderID,
 		RegistrationID: regID,
 		Expires:        expires,
