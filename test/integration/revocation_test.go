@@ -319,7 +319,7 @@ func TestReRevocation(t *testing.T) {
 
 				// Check the OCSP response for the certificate again. It should now be
 				// revoked with reason keyCompromise.
-				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectStatus(tc.reason2)
+				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason2)
 				_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 				test.AssertNotError(t, err, "requesting OCSP for revoked cert")
 			}
