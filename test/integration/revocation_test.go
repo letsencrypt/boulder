@@ -272,9 +272,10 @@ func TestRevocation(t *testing.T) {
 		return cert
 	}
 
-	// expectation represents a certificate that was issued and revoked, along with
-	// its revocation reason. Once all the issuances and revocations are done, this
-	// will be used to check the CRL statuses for each certificate.
+	// expectation represents an expectation that a specific certificate will be revoked
+	// with a specific revocation reason. We need the whole certificate because we depend
+	// on various fields to validate revocation: the issuer, serial number, and
+	// AuthorityInformationAccess extension.
 	type expectation struct {
 		revokedCert      *x509.Certificate
 		name             string
