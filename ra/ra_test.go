@@ -76,10 +76,8 @@ func randomDomain() string {
 	return fmt.Sprintf("%x.example.com", bytes[:])
 }
 
-func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
+func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, ident identifier.ACMEIdentifier, exp time.Time) *corepb.Authorization {
 	t.Helper()
-
-	identPb := identifier.NewDNS(domain)
 
 	res, err := sa.NewOrderAndAuthzs(
 		context.Background(),
@@ -87,12 +85,12 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 			NewOrder: &sapb.NewOrderRequest{
 				RegistrationID: Registration.Id,
 				Expires:        timestamppb.New(exp),
-				DnsNames:       []string{domain},
-				Identifiers:    []*corepb.Identifier{identPb.AsProto()},
+				DnsNames:       []string{ident.Value},
+				Identifiers:    []*corepb.Identifier{ident.AsProto()},
 			},
 			NewAuthzs: []*sapb.NewAuthzRequest{
 				{
-					Identifier:     identPb.AsProto(),
+					Identifier:     ident.AsProto(),
 					RegistrationID: Registration.Id,
 					Expires:        timestamppb.New(exp),
 					ChallengeTypes: []string{
@@ -109,9 +107,9 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 	return getAuthorization(t, fmt.Sprint(res.V2Authorizations[0]), sa)
 }
 
-func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time, chall core.AcmeChallenge, attemptedAt time.Time) int64 {
+func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, ident identifier.ACMEIdentifier, exp time.Time, chall core.AcmeChallenge, attemptedAt time.Time) int64 {
 	t.Helper()
-	pending := createPendingAuthorization(t, sa, domain, exp)
+	pending := createPendingAuthorization(t, sa, ident, exp)
 	pendingID, err := strconv.ParseInt(pending.Id, 10, 64)
 	test.AssertNotError(t, err, "strconv.ParseInt failed")
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
@@ -523,7 +521,7 @@ func TestPerformValidationExpired(t *testing.T) {
 	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	authz := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(-2*time.Hour))
+	authz := createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), fc.Now().Add(-2*time.Hour))
 
 	_, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authz,
@@ -583,7 +581,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
-	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
+	authzPB := createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), fc.Now().Add(12*time.Hour))
 
 	va.doDCVResult = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
@@ -684,7 +682,7 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 
 	// Set up a fake domain, authz, and bucket key to care about.
 	domain := randomDomain()
-	authzPB := createPendingAuthorization(t, sa, domain, fc.Now().Add(12*time.Hour))
+	authzPB := createPendingAuthorization(t, sa, identifier.NewDNS(domain), fc.Now().Add(12*time.Hour))
 	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
 	test.AssertNotError(t, err, "constructing test bucket key")
 
@@ -760,7 +758,7 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 
 	// Set up a fake domain, authz, and bucket key to care about.
 	domain := randomDomain()
-	authzPB := createPendingAuthorization(t, sa, domain, fc.Now().Add(12*time.Hour))
+	authzPB := createPendingAuthorization(t, sa, identifier.NewDNS(domain), fc.Now().Add(12*time.Hour))
 	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
 	test.AssertNotError(t, err, "constructing test bucket key")
 
@@ -806,7 +804,7 @@ func TestPerformValidationVAError(t *testing.T) {
 	va, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
+	authzPB := createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), fc.Now().Add(12*time.Hour))
 
 	va.doDCVError = fmt.Errorf("Something went wrong")
 
@@ -855,7 +853,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 
-	authzID := createFinalizedAuthorization(t, sa, "www.example.com", exp, core.ChallengeTypeHTTP01, ra.clk.Now())
+	authzID := createFinalizedAuthorization(t, sa, identifier.NewDNS("www.example.com"), exp, core.ChallengeTypeHTTP01, ra.clk.Now())
 
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
@@ -895,7 +893,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, core.ChallengeTypeHTTP01, ra.clk.Now())
+	authzID := createFinalizedAuthorization(t, sa, identifier.NewDNS("not-example.com"), exp, core.ChallengeTypeHTTP01, ra.clk.Now())
 	dbAuthzPB := getAuthorization(t, fmt.Sprint(authzID), sa)
 	_, err := ra.DeactivateAuthorization(ctx, dbAuthzPB)
 	test.AssertNotError(t, err, "Could not deactivate authorization")
@@ -2153,8 +2151,8 @@ func TestFinalizeOrder(t *testing.T) {
 	// authorization for www.not-example.org
 	now := ra.clk.Now()
 	exp := now.Add(365 * 24 * time.Hour)
-	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, core.ChallengeTypeHTTP01, ra.clk.Now())
-	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, core.ChallengeTypeHTTP01, ra.clk.Now())
+	authzIDA := createFinalizedAuthorization(t, sa, identifier.NewDNS("not-example.com"), exp, core.ChallengeTypeHTTP01, ra.clk.Now())
+	authzIDB := createFinalizedAuthorization(t, sa, identifier.NewDNS("www.not-example.com"), exp, core.ChallengeTypeHTTP01, ra.clk.Now())
 
 	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "error generating test key")
@@ -2462,8 +2460,8 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 
 	// Create one finalized authorization for Registration.Id for not-example.com and
 	// one finalized authorization for Registration.Id for www.not-example.org
-	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, core.ChallengeTypeHTTP01, ra.clk.Now())
-	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, core.ChallengeTypeHTTP01, ra.clk.Now())
+	authzIDA := createFinalizedAuthorization(t, sa, identifier.NewDNS("not-example.com"), exp, core.ChallengeTypeHTTP01, ra.clk.Now())
+	authzIDB := createFinalizedAuthorization(t, sa, identifier.NewDNS("www.not-example.com"), exp, core.ChallengeTypeHTTP01, ra.clk.Now())
 
 	// Create a new order to finalize with names in SAN and CN
 	mixedOrder, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
@@ -2571,7 +2569,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
 
 	// Create one standard finalized authorization for Registration.Id for zombo.com
-	_ = createFinalizedAuthorization(t, sa, "zombo.com", exp, core.ChallengeTypeHTTP01, ra.clk.Now())
+	_ = createFinalizedAuthorization(t, sa, identifier.NewDNS("zombo.com"), exp, core.ChallengeTypeHTTP01, ra.clk.Now())
 
 	// Finalizing the order should *not* work since the existing validated authz
 	// is not a special DNS-01-Wildcard challenge authz, so the order will be
@@ -2626,16 +2624,17 @@ func TestFinalizeOrderDisabledChallenge(t *testing.T) {
 	defer cleanUp()
 
 	domain := randomDomain()
+	ident := identifier.NewDNS(domain)
 
 	// Create a finalized authorization for that domain
 	authzID := createFinalizedAuthorization(
-		t, sa, domain, fc.Now().Add(24*time.Hour), core.ChallengeTypeHTTP01, fc.Now().Add(-1*time.Hour))
+		t, sa, ident, fc.Now().Add(24*time.Hour), core.ChallengeTypeHTTP01, fc.Now().Add(-1*time.Hour))
 
 	// Create an order that reuses that authorization
 	order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       []string{domain},
-		Identifiers:    []*corepb.Identifier{identifier.NewDNS(domain).AsProto()},
+		Identifiers:    []*corepb.Identifier{ident.AsProto()},
 	})
 	test.AssertNotError(t, err, "creating test order")
 	test.AssertEquals(t, order.V2Authorizations[0], authzID)
@@ -2688,8 +2687,8 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	exp := ra.clk.Now().Add(ra.orderLifetime)
 	challs := []core.AcmeChallenge{core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01}
 	var authzIDs []int64
-	for i, name := range names {
-		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, challs[i], ra.clk.Now()))
+	for i, ident := range idents {
+		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, ident, exp, challs[i], ra.clk.Now()))
 	}
 
 	// Create a pending order for all of the names
@@ -2784,6 +2783,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	// The event names should match the order names
 	// TODO(#7311): Use core.NormalizeIdentifiers to test identifiers too.
 	test.AssertDeepEquals(t, core.UniqueLowerNames(event.Names), core.UniqueLowerNames(order.DnsNames))
+	test.AssertDeepEquals(t, core.NormalizeIdentifiers(event.Identifiers), core.NormalizeIdentifiers(identifier.SliceFromProto(order.Identifiers)))
 	// The event's NotBefore and NotAfter should match the cert's
 	test.AssertEquals(t, event.NotBefore, parsedCert.NotBefore)
 	test.AssertEquals(t, event.NotAfter, parsedCert.NotAfter)
@@ -2820,12 +2820,12 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 		identifier.NewDNS("definitely.not-example.com"),
 	}
 	var authzIDs []int64
-	for i, name := range names {
+	for i, ident := range idents {
 		attemptedAt := older
 		if i%2 == 0 {
 			attemptedAt = recent
 		}
-		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, attemptedAt))
+		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, ident, exp, core.ChallengeTypeHTTP01, attemptedAt))
 	}
 
 	// Create a pending order for all of the names.
@@ -2921,7 +2921,7 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 	defer cleanUp()
 	ctx := context.Background()
 
-	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
+	authzPB := createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), fc.Now().Add(12*time.Hour))
 	authz, err := bgrpc.PBToAuthz(authzPB)
 	test.AssertNotError(t, err, "failed to deserialize authz")
 
@@ -2991,8 +2991,8 @@ func TestCTPolicyMeasurements(t *testing.T) {
 
 	// Create valid authorizations for not-example.com and www.not-example.com
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzIDA := createFinalizedAuthorization(t, ssa, "not-example.com", exp, core.ChallengeTypeHTTP01, ra.clk.Now())
-	authzIDB := createFinalizedAuthorization(t, ssa, "www.not-example.com", exp, core.ChallengeTypeHTTP01, ra.clk.Now())
+	authzIDA := createFinalizedAuthorization(t, ssa, identifier.NewDNS("not-example.com"), exp, core.ChallengeTypeHTTP01, ra.clk.Now())
+	authzIDB := createFinalizedAuthorization(t, ssa, identifier.NewDNS("www.not-example.com"), exp, core.ChallengeTypeHTTP01, ra.clk.Now())
 
 	order, err := ra.SA.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
@@ -3132,8 +3132,8 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	}
 	exp := ra.clk.Now().Add(ra.orderLifetime)
 	var authzIDs []int64
-	for _, name := range names {
-		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, ra.clk.Now()))
+	for _, ident := range idents {
+		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, ident, exp, core.ChallengeTypeHTTP01, ra.clk.Now()))
 	}
 
 	// Create a pending order for all of the names
@@ -3310,8 +3310,8 @@ func TestIssueCertificateOuter(t *testing.T) {
 	}
 	exp := ra.clk.Now().Add(ra.orderLifetime)
 	var authzIDs []int64
-	for _, name := range names {
-		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, ra.clk.Now()))
+	for _, ident := range idents {
+		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, ident, exp, core.ChallengeTypeHTTP01, ra.clk.Now()))
 	}
 
 	// Create a pending order for all of the names

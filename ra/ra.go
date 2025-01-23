@@ -282,6 +282,8 @@ type certificateRequestEvent struct {
 	VerifiedFields []string `json:",omitempty"`
 	// CommonName is the subject common name from the issued cert
 	CommonName string `json:",omitempty"`
+	// Identifiers are the identifiers from the issued cert
+	Identifiers []identifier.ACMEIdentifier `json:",omitempty"`
 	// Names are the DNS SAN entries from the issued cert
 	Names []string `json:",omitempty"`
 	// NotBefore is the starting timestamp of the issued cert's validity period
@@ -1059,7 +1061,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
 		logEvent.CommonName = cert.Subject.CommonName
 		logEvent.Names = cert.DNSNames
-		// TODO(#7311): Populate logEvent.Identifiers.
+		logEvent.Identifiers = identifier.SliceNewDNS(cert.DNSNames)
 		logEvent.NotBefore = cert.NotBefore
 		logEvent.NotAfter = cert.NotAfter
 		logEvent.CertProfileName = cpId.name
