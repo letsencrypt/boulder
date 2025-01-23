@@ -90,9 +90,8 @@ func getAllCRLs(t *testing.T) map[string][]*x509.RevocationList {
 			if err != nil {
 				t.Fatalf("getting CRL from %s: %s", crlURL, err)
 			}
-			// When there's nothing in a shard, I guess it doesn't get created?
-			if resp.StatusCode == 404 {
-				continue
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("fetching %s: status code %d", crlURL, resp.StatusCode)
 			}
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
