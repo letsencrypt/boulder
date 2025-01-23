@@ -299,10 +299,8 @@ var expectedExtensionContent = map[string][]byte{
 // likely valid at the time the certificate was issued. Authorizations with
 // status = "deactivated" are counted for this, so long as their validatedAt
 // is before the issuance and expiration is after.
-//
-// TODO(#7311): This needs to use Identifiers instead of dnsNames.
-func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificate, dnsNames []string) error {
-	authzs, err := sa.SelectAuthzsMatchingIssuance(ctx, c.dbMap, cert.RegistrationID, cert.Issued, dnsNames)
+func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificate, idents []identifier.ACMEIdentifier) error {
+	authzs, err := sa.SelectAuthzsMatchingIssuance(ctx, c.dbMap, cert.RegistrationID, cert.Issued, idents)
 	if err != nil {
 		return fmt.Errorf("error checking authzs for certificate %s: %w", cert.Serial, err)
 	}
@@ -313,16 +311,16 @@ func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificat
 
 	// We may get multiple authorizations for the same name, but that's okay.
 	// Any authorization for a given name is sufficient.
-	nameToAuthz := make(map[string]*corepb.Authorization)
+	identToAuthz := make(map[string]*corepb.Authorization)
 	for _, m := range authzs {
-		nameToAuthz[m.DnsName] = m
+		identToAuthz[m.Identifier.Value] = m
 	}
 
 	var errors []error
-	for _, name := range dnsNames {
-		_, ok := nameToAuthz[name]
+	for _, ident := range idents {
+		_, ok := identToAuthz[ident.Value]
 		if !ok {
-			errors = append(errors, fmt.Errorf("missing authz for %q", name))
+			errors = append(errors, fmt.Errorf("missing authz for %q", ident))
 			continue
 		}
 	}
@@ -472,7 +470,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		}
 
 		if features.Get().CertCheckerChecksValidations {
-			err = c.checkValidations(ctx, cert, parsedCert.DNSNames)
+			err = c.checkValidations(ctx, cert, identifier.SliceNewDNS(parsedCert.DNSNames))
 			if err != nil {
 				if features.Get().CertCheckerRequiresValidations {
 					problems = append(problems, err.Error())

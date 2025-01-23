@@ -449,14 +449,13 @@ func (sa *StorageAuthorityReadOnly) GetValidAuthorizations2(ctx context.Context,
 	}
 	expiryCutoff := req.ValidUntil.AsTime()
 	auths := &sapb.Authorizations{}
-	// TODO(#7311): Iterate over Identifiers instead of DnsNames.
-	for _, name := range req.DnsNames {
+	for _, ident := range req.Identifiers {
 		exp := expiryCutoff.AddDate(100, 0, 0)
 		authzPB, err := bgrpc.AuthzToPB(core.Authorization{
 			Status:         core.StatusValid,
 			RegistrationID: req.RegistrationID,
 			Expires:        &exp,
-			Identifier:     identifier.NewDNS(name),
+			Identifier:     identifier.FromProto(ident),
 			Challenges: []core.Challenge{
 				{
 					Status:    core.StatusValid,

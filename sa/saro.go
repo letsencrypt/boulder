@@ -497,8 +497,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 // unexpired orders are considered. If no order meeting these requirements is
 // found a nil corepb.Order pointer is returned.
 //
-// TODO(#7311): Use Identifiers instead of dnsNames (if present). Can use
-// core.HashIdentifiers for that.
+// TODO(#7311): Use Identifiers instead of dnsNames (if present).
 func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
 	if req.AcctID == 0 || len(req.DnsNames) == 0 {
 		return nil, errIncompleteRequest

@@ -2465,13 +2465,13 @@ func TestAuthzModelMapToPB(t *testing.T) {
 	}
 
 	for _, authzPB := range out.Authzs {
-		// TODO(#7311): Accept (and test) Identifiers in place of dnsNames.
-		model, ok := input[authzPB.DnsName]
+		model, ok := input[authzPB.Identifier.Value]
 		if !ok {
-			t.Errorf("output had element for %q, a hostname not present in input", authzPB.DnsName)
+			t.Errorf("output had element for %q, an identifier not present in input", authzPB.DnsName)
 		}
 		test.AssertEquals(t, authzPB.Id, fmt.Sprintf("%d", model.ID))
 		test.AssertEquals(t, authzPB.DnsName, model.IdentifierValue)
+		test.AssertEquals(t, authzPB.Identifier.Value, model.IdentifierValue)
 		test.AssertEquals(t, authzPB.RegistrationID, model.RegistrationID)
 		test.AssertEquals(t, authzPB.Status, string(uintToStatus[model.Status]))
 		gotTime := authzPB.Expires.AsTime()
@@ -2492,7 +2492,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 			test.AssertEquals(t, authzPB.Challenges[0].Type, "tls-alpn-01")
 		}
 
-		delete(input, authzPB.DnsName)
+		delete(input, authzPB.Identifier.Value)
 	}
 
 	for k := range input {
@@ -2540,13 +2540,12 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	test.AssertEquals(t, len(authzPBs.Authzs), 2)
 
 	namesToCheck := map[string]int64{"a.example.com": authzIDA, "b.example.com": authzIDB}
-	// TODO(#7311): Accept (and test) Identifiers in place of dnsNames.
 	for _, a := range authzPBs.Authzs {
-		if fmt.Sprintf("%d", namesToCheck[a.DnsName]) != a.Id {
-			t.Fatalf("incorrect identifier %q with id %s", a.DnsName, a.Id)
+		if fmt.Sprintf("%d", namesToCheck[a.Identifier.Value]) != a.Id {
+			t.Fatalf("incorrect identifier %q with id %s", a.Identifier.Value, a.Id)
 		}
 		test.AssertEquals(t, a.Expires.AsTime(), expires)
-		delete(namesToCheck, a.DnsName)
+		delete(namesToCheck, a.Identifier.Value)
 	}
 
 	// Getting the order authorizations for an order that doesn't exist should return nothing
