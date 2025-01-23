@@ -21,8 +21,13 @@ func NewList[T comparable](members []T) *List[T] {
 }
 
 // NewFromYAML reads a YAML sequence of values of type T and returns a *List[T]
-// containing those values. If the data cannot be parsed, an error is returned.
+// containing those values. If data is empty, an empty (deny all) list is
+// returned. If data cannot be parsed, an error is returned.
 func NewFromYAML[T comparable](data []byte) (*List[T], error) {
+	if len(data) == 0 {
+		return NewList([]T{}), nil
+	}
+
 	var entries []T
 	err := strictyaml.Unmarshal(data, &entries)
 	if err != nil {
@@ -31,20 +36,8 @@ func NewFromYAML[T comparable](data []byte) (*List[T], error) {
 	return NewList(entries), nil
 }
 
-// Contains checks whether the given entry is member of the list. Behavior
-// depends on the state of the list:
-//   - If the list is nil, no one is allowed.
-//   - If the list is empty, everyone is allowed.
-//   - Otherwise, only explicitly listed members are allowed.
+// Contains reports whether the provided entry is a member of the list.
 func (l *List[T]) Contains(entry T) bool {
-	if l == nil {
-		// Deny all
-		return false
-	}
-	if len(l.members) == 0 {
-		// Allow all
-		return true
-	}
 	_, ok := l.members[entry]
 	return ok
 }

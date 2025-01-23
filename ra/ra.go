@@ -68,13 +68,13 @@ var (
 
 // ValidationProfile holds the allowlist for a given validation profile.
 type ValidationProfile struct {
-	// allowList the set of account IDs allowed to use this profile. If left
-	// empty, all accounts are allowed to use this profile. If nil, no accounts
-	// are allowed to use this profile.
+	// allowList holds the set of account IDs allowed to use this profile. If
+	// nil, the profile is open to all accounts (everyone is allowed).
 	allowList *allowlist.List[int64]
 }
 
-// NewValidationProfile creates a new ValidationProfile with the provided allowList.
+// NewValidationProfile creates a new ValidationProfile with the provided
+// allowList. A nil allowList is interpreted as open access for all accounts.
 func NewValidationProfile(allowList *allowlist.List[int64]) *ValidationProfile {
 	return &ValidationProfile{allowList: allowList}
 }
@@ -2139,10 +2139,15 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			"Order cannot contain more than %d DNS names", ra.maxNames)
 	}
 
-	if req.CertificateProfileName != "" {
-		pv, ok := ra.validationProfiles[req.CertificateProfileName]
-		if ok && !pv.allowList.Contains(req.RegistrationID) {
-			return nil, berrors.UnauthorizedError("account ID %d is not permitted to use profile %q",
+	if req.CertificateProfileName != "" && ra.validationProfiles != nil {
+		vp, ok := ra.validationProfiles[req.CertificateProfileName]
+		if !ok {
+			return nil, berrors.MalformedError("requested certificate profile %q not found",
+				req.CertificateProfileName,
+			)
+		}
+		if ok && vp.allowList != nil && !vp.allowList.Contains(req.RegistrationID) {
+			return nil, berrors.UnauthorizedError("account ID %d is not permitted to use certificate profile %q",
 				req.RegistrationID,
 				req.CertificateProfileName,
 			)

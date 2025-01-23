@@ -94,18 +94,15 @@ type Config struct {
 		PendingAuthorizationLifetimeDays int `validate:"required,min=1,max=29"`
 
 		// ValidationProfiles is a map of validation profiles to their
-		// respective issuance allow lists.
+		// respective issuance allow lists. If a profile is not included in this
+		// mapping, it cannot be used by any account. If this field is left
+		// empty, all profiles are open to all accounts.
 		ValidationProfiles map[string]struct {
-			// AllowList specifies the file path to a YAML list of account IDs
-			// permitted to use this profile. This field has three possible
-			// states:
-			//  1. Not included in the config file: No one is allowed to use
-			//     this profile.
-			//  2. Included in the config file with an empty string: Everyone
-			//     is allowed.
-			//  3. Included in the config file with a file path: Only the
-			//     account IDs listed in the file are allowed.
-			AllowList *string `validate:"omitempty"`
+			// AllowList specifies the path to a YAML file containing a list of
+			// account IDs permitted to use this profile. If no path is
+			// specified, the profile is open to all accounts. If the file
+			// exists but is empty, the profile is closed to all accounts.
+			AllowList string `validate:"omitempty"`
 		}
 
 		// GoodKey is an embedded config stanza for the goodkey library.
@@ -271,18 +268,15 @@ func main() {
 
 	validationProfiles := make(map[string]*ra.ValidationProfile)
 	for profileName, v := range c.RA.ValidationProfiles {
-		if v.AllowList == nil {
-			// No one is allowed to use this profile.
+		if v.AllowList == "" {
+			// No allow list file is specified, this profile is open to all accounts.
 			validationProfiles[profileName] = ra.NewValidationProfile(nil)
-		} else if *v.AllowList == "" {
-			// Everyone is allowed to use this profile.
-			validationProfiles[profileName] = ra.NewValidationProfile(allowlist.NewList([]int64{}))
 		} else {
-			// Only the account IDs listed in the file are allowed.
-			data, err := os.ReadFile(*v.AllowList)
+			data, err := os.ReadFile(v.AllowList)
 			cmd.FailOnError(err, fmt.Sprintf("Failed to read allow list for profile %q", profileName))
 			allowList, err := allowlist.NewFromYAML[int64](data)
 			cmd.FailOnError(err, fmt.Sprintf("Failed to parse allow list for profile %q", profileName))
+			// Use of this profile is restricted to the accounts listed in the allow list.
 			validationProfiles[profileName] = ra.NewValidationProfile(allowList)
 		}
 	}

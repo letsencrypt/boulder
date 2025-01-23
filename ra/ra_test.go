@@ -1672,61 +1672,49 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	// Set up an allowlist that doesn't contain Registration.Id.
+	// Set up a ValidationProfile with an allowList that is nil, indicating all
+	// accounts are allowed.
 	ra.validationProfiles = map[string]*ValidationProfile{
-		"test": NewValidationProfile(allowlist.NewList([]int64{1337})),
+		"test": NewValidationProfile(nil),
 	}
 
-	// Issuance should fail with an unauthorized error regarding the profile.
+	// Issuance should succeed.
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID:         Registration.Id,
 		DnsNames:               []string{"a.example.com"},
 		CertificateProfileName: "test",
 	}
 	_, err := ra.NewOrder(context.Background(), orderReq)
-	test.AssertError(t, err, "NewOrder with invalid profile did not error")
-	test.AssertErrorIs(t, err, berrors.Unauthorized)
-	test.AssertContains(t, err.Error(), "not permitted to use profile")
+	test.AssertNotError(t, err, "NewOrder for account ID that is on the allowlist failed")
 
-	// Set up an allowlist that contains Registration.Id.
+	// Set up a ValidationProfile with an allowList that doesn't include
+	// Registration.Id.
 	ra.validationProfiles = map[string]*ValidationProfile{
-		"test": NewValidationProfile(allowlist.NewList([]int64{Registration.Id})),
+		"test": NewValidationProfile(allowlist.NewList([]int64{1337})),
 	}
 
-	// Issuance should succeed with the profile.
+	// Issuance should fail with an unauthorized error regarding the certificate
+	// profile.
 	orderReq = &rapb.NewOrderRequest{
 		RegistrationID:         Registration.Id,
 		DnsNames:               []string{"b.example.com"},
 		CertificateProfileName: "test",
 	}
 	_, err = ra.NewOrder(context.Background(), orderReq)
-	test.AssertNotError(t, err, "NewOrder for account ID that is on the allowlist failed")
+	test.AssertError(t, err, "NewOrder with invalid profile did not error")
+	test.AssertErrorIs(t, err, berrors.Unauthorized)
+	test.AssertContains(t, err.Error(), "not permitted to use certificate profile")
 
-	// Set up an allowlist that is nil.
+	// Set up a ValidationProfile with an allowList that does include
+	// Registration.Id.
 	ra.validationProfiles = map[string]*ValidationProfile{
-		"test": NewValidationProfile(nil),
+		"test": NewValidationProfile(allowlist.NewList([]int64{Registration.Id})),
 	}
 
-	// Issuance should fail with an unauthorized error regarding the profile.
+	// Issuance should succeed.
 	orderReq = &rapb.NewOrderRequest{
 		RegistrationID:         Registration.Id,
 		DnsNames:               []string{"c.example.com"},
-		CertificateProfileName: "test",
-	}
-	_, err = ra.NewOrder(context.Background(), orderReq)
-	test.AssertError(t, err, "NewOrder with invalid profile did not error")
-	test.AssertErrorIs(t, err, berrors.Unauthorized)
-	test.AssertContains(t, err.Error(), "not permitted to use profile")
-
-	// Set up an allowlist that is empty.
-	ra.validationProfiles = map[string]*ValidationProfile{
-		"test": NewValidationProfile(allowlist.NewList([]int64{})),
-	}
-
-	// Issuance should succeed with the profile.
-	orderReq = &rapb.NewOrderRequest{
-		RegistrationID:         Registration.Id,
-		DnsNames:               []string{"e.example.com"},
 		CertificateProfileName: "test",
 	}
 	_, err = ra.NewOrder(context.Background(), orderReq)
