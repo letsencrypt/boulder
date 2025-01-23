@@ -108,7 +108,7 @@ services:
           - boulder-proxysql
 
   bredis_1:
-    image: redis:7.2.7-bookworm
+    image: valkey:7.2.8-bookworm
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis-ocsp.config
@@ -117,7 +117,7 @@ services:
         ipv4_address: 10.33.33.2
 
   bredis_2:
-    image: redis:7.2.7-bookworm
+    image: valkey:7.2.8-bookworm
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis-ocsp.config
@@ -126,7 +126,7 @@ services:
         ipv4_address: 10.33.33.3
 
   bredis_3:
-    image: redis:7.2.7-bookworm
+    image: valkey:7.2.8-bookworm
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis-ratelimits.config
@@ -135,7 +135,7 @@ services:
         ipv4_address: 10.33.33.4
 
   bredis_4:
-    image: redis:7.2.7-bookworm
+    image: valkey:7.2.8-bookworm
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis-ratelimits.config
