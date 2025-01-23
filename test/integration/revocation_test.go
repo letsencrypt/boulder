@@ -271,17 +271,13 @@ func TestRevocation(t *testing.T) {
 		return cert
 	}
 
-	// expectation represents an expectation that a specific certificate will be revoked
-	// with a specific revocation reason. We need the whole certificate because we depend
-	// on various fields to validate revocation: the issuer, serial number, and
-	// AuthorityInformationAccess extension.
-	type expectation struct {
-		revokedCert      *x509.Certificate
-		name             string
-		revocationReason int
-	}
-	var expectations []expectation
-	var eMu sync.Mutex
+	// revocationCheck represents a deferred that a specific certificate is revoked.
+	//
+	// We defer these checks for performance reasons: we want to run crl-updater once,
+	// after all certificates have been revoked.
+	type revocationCheck func(t *testing.T, allCRLs map[string][]*x509.RevocationList)
+	var revocationChecks []revocationCheck
+	var rcMu sync.Mutex
 	var wg sync.WaitGroup
 
 	for _, kind := range []certKind{precert, finalcert} {
@@ -316,13 +312,16 @@ func TestRevocation(t *testing.T) {
 					default:
 					}
 
-					eMu.Lock()
-					expectations = append(expectations, expectation{
-						revokedCert:      cert,
-						name:             fmt.Sprintf("%s_%d_%s", kind, reason, method),
-						revocationReason: expectedReason,
-					})
-					eMu.Unlock()
+					check := func(t *testing.T, allCRLs map[string][]*x509.RevocationList) {
+						_, err := ocsp_helper.ReqDER(cert.Raw, ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(expectedReason))
+						test.AssertNotError(t, err, "requesting OCSP for revoked cert")
+
+						checkRevoked(t, allCRLs, cert, expectedReason)
+					}
+
+					rcMu.Lock()
+					revocationChecks = append(revocationChecks, check)
+					rcMu.Unlock()
 				}()
 			}
 		}
@@ -331,16 +330,10 @@ func TestRevocation(t *testing.T) {
 	wg.Wait()
 
 	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
-	revocations := getAllCRLs(t)
+	allCRLs := getAllCRLs(t)
 
-	for _, expectation := range expectations {
-		t.Run(expectation.name, func(t *testing.T) {
-			t.Parallel()
-			_, err := ocsp_helper.ReqDER(expectation.revokedCert.Raw, ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(expectation.revocationReason))
-			test.AssertNotError(t, err, "requesting OCSP for revoked cert")
-
-			checkRevoked(t, revocations, expectation.revokedCert, expectation.revocationReason)
-		})
+	for _, check := range revocationChecks {
+		check(t, allCRLs)
 	}
 }
 
