@@ -43,6 +43,7 @@ func isPrecert(cert *x509.Certificate) bool {
 // getALLCRLs fetches and parses each certificate for each configured CA.
 // Returns a map from issuer SKID (hex) to a list of that issuer's CRLs.
 func getAllCRLs(t *testing.T) map[string][]*x509.RevocationList {
+	t.Helper()
 	b, err := os.ReadFile(path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "ca.json"))
 	if err != nil {
 		t.Fatalf("reading CA config: %s", err)
@@ -53,7 +54,6 @@ func getAllCRLs(t *testing.T) map[string][]*x509.RevocationList {
 			Issuance struct {
 				Issuers []struct {
 					CRLURLBase string
-					CRLShards  int
 					Location   struct {
 						CertFile string
 					}
@@ -102,7 +102,7 @@ func getAllCRLs(t *testing.T) map[string][]*x509.RevocationList {
 
 			list, err := x509.ParseRevocationList(body)
 			if err != nil {
-				t.Fatalf("parsing CRL from %s: %s (bytes: %x)", crlURL, err, string(body))
+				t.Fatalf("parsing CRL from %s: %s (bytes: %x)", crlURL, err, body)
 			}
 
 			err = list.CheckSignatureFrom(issuerCert)
@@ -129,6 +129,7 @@ func getAllCRLs(t *testing.T) map[string][]*x509.RevocationList {
 }
 
 func checkRevoked(t *testing.T, revocations map[string][]*x509.RevocationList, cert *x509.Certificate, reason int) {
+	t.Helper()
 	akid := hex.EncodeToString(cert.AuthorityKeyId)
 	if len(revocations[akid]) == 0 {
 		t.Errorf("no CRLs found for authorityKeyID %s", akid)
@@ -144,8 +145,7 @@ func checkRevoked(t *testing.T, revocations map[string][]*x509.RevocationList, c
 		}
 	}
 	if len(matches) == 0 {
-		t.Errorf("didn't find matching entry on combined CRLs of length %d", count)
-
+		t.Errorf("searching for %x in CRLs: no entry on combined CRLs of length %d", cert.SerialNumber, count)
 	}
 	for _, match := range matches {
 		if match.ReasonCode != reason {
@@ -272,8 +272,11 @@ func TestRevocation(t *testing.T) {
 		return cert
 	}
 
+	// expectation represents a certificate that was issued and revoked, along with
+	// its revocation reason. Once all the issuances and revocations are done, this
+	// will be used to check the CRL statuses for each certificate.
 	type expectation struct {
-		*x509.Certificate
+		revokedCert      *x509.Certificate
 		name             string
 		revocationReason int
 	}
@@ -315,7 +318,7 @@ func TestRevocation(t *testing.T) {
 
 					eMu.Lock()
 					expectations = append(expectations, expectation{
-						Certificate:      cert,
+						revokedCert:      cert,
 						name:             fmt.Sprintf("%s_%d_%s", kind, reason, method),
 						revocationReason: expectedReason,
 					})
@@ -333,13 +336,10 @@ func TestRevocation(t *testing.T) {
 	for _, expectation := range expectations {
 		t.Run(expectation.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := ocsp_helper.ReqDER(expectation.Raw, ocsp_helper.
-				DefaultConfig.
-				WithExpectStatus(ocsp.Revoked).
-				WithExpectReason(expectation.revocationReason))
+			_, err := ocsp_helper.ReqDER(expectation.revokedCert.Raw, ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(expectation.revocationReason))
 			test.AssertNotError(t, err, "requesting OCSP for revoked cert")
 
-			checkRevoked(t, revocations, expectation.Certificate, expectation.revocationReason)
+			checkRevoked(t, revocations, expectation.revokedCert, expectation.revocationReason)
 		})
 	}
 }
