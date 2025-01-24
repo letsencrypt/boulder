@@ -270,17 +270,14 @@ func main() {
 	if c.RA.ValidationProfiles != nil {
 		validationProfiles = make(map[string]*ra.ValidationProfile)
 		for profileName, v := range c.RA.ValidationProfiles {
-			if v.AllowList == "" {
-				// No allow list file is specified, this profile is open to all accounts.
-				validationProfiles[profileName] = ra.NewValidationProfile(nil)
-			} else {
+			var allowList *allowlist.List[int64]
+			if v.AllowList != "" {
 				data, err := os.ReadFile(v.AllowList)
 				cmd.FailOnError(err, fmt.Sprintf("Failed to read allow list for profile %q", profileName))
-				allowList, err := allowlist.NewFromYAML[int64](data)
+				allowList, err = allowlist.NewFromYAML[int64](data)
 				cmd.FailOnError(err, fmt.Sprintf("Failed to parse allow list for profile %q", profileName))
-				// Use of this profile is restricted to the accounts listed in the allow list.
-				validationProfiles[profileName] = ra.NewValidationProfile(allowList)
 			}
+			validationProfiles[profileName] = ra.NewValidationProfile(allowList)
 		}
 	}
 

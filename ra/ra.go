@@ -2146,7 +2146,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 				req.CertificateProfileName,
 			)
 		}
-		if ok && vp.allowList != nil && !vp.allowList.Contains(req.RegistrationID) {
+		if vp.allowList != nil && !vp.allowList.Contains(req.RegistrationID) {
 			return nil, berrors.UnauthorizedError("account ID %d is not permitted to use certificate profile %q",
 				req.RegistrationID,
 				req.CertificateProfileName,

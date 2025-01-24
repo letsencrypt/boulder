@@ -1669,56 +1669,65 @@ func TestNewOrder_AuthzReuse_NoPending(t *testing.T) {
 }
 
 func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
+	t.Parallel()
+
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	// Set up a ValidationProfile with an allowList that is nil, indicating all
-	// accounts are allowed.
-	ra.validationProfiles = map[string]*ValidationProfile{
-		"test": NewValidationProfile(nil),
+	testCases := []struct {
+		name              string
+		allowList         *allowlist.List[int64]
+		expectErr         bool
+		expectErrContains string
+	}{
+		{
+			name:      "Allow All Account IDs",
+			allowList: nil,
+			expectErr: false,
+		},
+		{
+			name:              "Deny All But Account ID 1337",
+			allowList:         allowlist.NewList([]int64{1337}),
+			expectErr:         true,
+			expectErrContains: "not permitted to use certificate profile",
+		},
+		{
+			name:              "Deny All",
+			allowList:         allowlist.NewList([]int64{}),
+			expectErr:         true,
+			expectErrContains: "not permitted to use certificate profile",
+		},
+		{
+			name:      "Allow Registration ID",
+			allowList: allowlist.NewList([]int64{Registration.Id}),
+			expectErr: false,
+		},
 	}
 
-	// Issuance should succeed.
-	orderReq := &rapb.NewOrderRequest{
-		RegistrationID:         Registration.Id,
-		DnsNames:               []string{"a.example.com"},
-		CertificateProfileName: "test",
-	}
-	_, err := ra.NewOrder(context.Background(), orderReq)
-	test.AssertNotError(t, err, "NewOrder for account ID that is on the allowlist failed")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Set up a ValidationProfile with an allowList that doesn't include
-	// Registration.Id.
-	ra.validationProfiles = map[string]*ValidationProfile{
-		"test": NewValidationProfile(allowlist.NewList([]int64{1337})),
-	}
+			ra.validationProfiles = map[string]*ValidationProfile{
+				"test": NewValidationProfile(tc.allowList),
+			}
 
-	// Issuance should fail with an unauthorized error regarding the certificate
-	// profile.
-	orderReq = &rapb.NewOrderRequest{
-		RegistrationID:         Registration.Id,
-		DnsNames:               []string{"b.example.com"},
-		CertificateProfileName: "test",
-	}
-	_, err = ra.NewOrder(context.Background(), orderReq)
-	test.AssertError(t, err, "NewOrder with invalid profile did not error")
-	test.AssertErrorIs(t, err, berrors.Unauthorized)
-	test.AssertContains(t, err.Error(), "not permitted to use certificate profile")
+			orderReq := &rapb.NewOrderRequest{
+				RegistrationID:         Registration.Id,
+				DnsNames:               []string{randomDomain()},
+				CertificateProfileName: "test",
+			}
+			_, err := ra.NewOrder(context.Background(), orderReq)
 
-	// Set up a ValidationProfile with an allowList that does include
-	// Registration.Id.
-	ra.validationProfiles = map[string]*ValidationProfile{
-		"test": NewValidationProfile(allowlist.NewList([]int64{Registration.Id})),
+			if tc.expectErr {
+				test.AssertError(t, err, "NewOrder did not error")
+				test.AssertErrorIs(t, err, berrors.Unauthorized)
+				test.AssertContains(t, err.Error(), tc.expectErrContains)
+			} else {
+				test.AssertNotError(t, err, "NewOrder failed")
+			}
+		})
 	}
-
-	// Issuance should succeed.
-	orderReq = &rapb.NewOrderRequest{
-		RegistrationID:         Registration.Id,
-		DnsNames:               []string{"c.example.com"},
-		CertificateProfileName: "test",
-	}
-	_, err = ra.NewOrder(context.Background(), orderReq)
-	test.AssertNotError(t, err, "NewOrder for account ID that is on the allowlist failed")
 }
 
 // mockSAWithAuthzs has a GetAuthorizations2 method that returns the protobuf
