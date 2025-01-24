@@ -19,7 +19,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
-	"github.com/letsencrypt/boulder/core/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
@@ -559,25 +558,25 @@ func TestGetChunkAtTime(t *testing.T) {
 func TestAddFromStream(t *testing.T) {
 	now := time.Now()
 	yesterday := now.Add(-24 * time.Hour)
-	simpleEntry := &proto.CRLEntry{
+	simpleEntry := &corepb.CRLEntry{
 		Serial:    "abcdefg",
 		Reason:    ocsp.CessationOfOperation,
 		RevokedAt: timestamppb.New(yesterday),
 	}
 
-	reRevokedEntry := &proto.CRLEntry{
+	reRevokedEntry := &corepb.CRLEntry{
 		Serial:    "abcdefg",
 		Reason:    ocsp.KeyCompromise,
 		RevokedAt: timestamppb.New(now),
 	}
 
-	reRevokedEntryOld := &proto.CRLEntry{
+	reRevokedEntryOld := &corepb.CRLEntry{
 		Serial:    "abcdefg",
 		Reason:    ocsp.KeyCompromise,
 		RevokedAt: timestamppb.New(now.Add(-48 * time.Hour)),
 	}
 
-	reRevokedEntryBadReason := &proto.CRLEntry{
+	reRevokedEntryBadReason := &corepb.CRLEntry{
 		Serial:    "abcdefg",
 		Reason:    ocsp.AffiliationChanged,
 		RevokedAt: timestamppb.New(now),
@@ -585,45 +584,45 @@ func TestAddFromStream(t *testing.T) {
 
 	type testCase struct {
 		name      string
-		inputs    [][]*proto.CRLEntry
-		expected  map[string]*proto.CRLEntry
+		inputs    [][]*corepb.CRLEntry
+		expected  map[string]*corepb.CRLEntry
 		expectErr bool
 	}
 
 	testCases := []testCase{
 		{
 			name: "two streams with same entry",
-			inputs: [][]*proto.CRLEntry{
+			inputs: [][]*corepb.CRLEntry{
 				{simpleEntry},
 				{simpleEntry},
 			},
-			expected: map[string]*proto.CRLEntry{
+			expected: map[string]*corepb.CRLEntry{
 				simpleEntry.Serial: simpleEntry,
 			},
 		},
 		{
 			name: "re-revoked",
-			inputs: [][]*proto.CRLEntry{
+			inputs: [][]*corepb.CRLEntry{
 				{simpleEntry},
 				{simpleEntry, reRevokedEntry},
 			},
-			expected: map[string]*proto.CRLEntry{
+			expected: map[string]*corepb.CRLEntry{
 				simpleEntry.Serial: reRevokedEntry,
 			},
 		},
 		{
 			name: "re-revoked (newer shows up first)",
-			inputs: [][]*proto.CRLEntry{
+			inputs: [][]*corepb.CRLEntry{
 				{reRevokedEntry, simpleEntry},
 				{simpleEntry},
 			},
-			expected: map[string]*proto.CRLEntry{
+			expected: map[string]*corepb.CRLEntry{
 				simpleEntry.Serial: reRevokedEntry,
 			},
 		},
 		{
 			name: "re-revoked (wrong date)",
-			inputs: [][]*proto.CRLEntry{
+			inputs: [][]*corepb.CRLEntry{
 				{simpleEntry},
 				{simpleEntry, reRevokedEntryOld},
 			},
@@ -631,7 +630,7 @@ func TestAddFromStream(t *testing.T) {
 		},
 		{
 			name: "re-revoked (wrong reason)",
-			inputs: [][]*proto.CRLEntry{
+			inputs: [][]*corepb.CRLEntry{
 				{simpleEntry},
 				{simpleEntry, reRevokedEntryBadReason},
 			},
@@ -641,7 +640,7 @@ func TestAddFromStream(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			crlEntries := make(map[string]*proto.CRLEntry)
+			crlEntries := make(map[string]*corepb.CRLEntry)
 			var err error
 			for _, input := range tc.inputs {
 				_, err = addFromStream(crlEntries, &revokedCertsStream{entries: input})
