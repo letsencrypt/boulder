@@ -102,6 +102,9 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 // used in RPCs.
 func IdentifierAndName(pbIdent *corepb.Identifier, name string) (ACMEIdentifier, string) {
 	if pbIdent.GetValue() == "" {
+		if name == "" {
+			return ACMEIdentifier{}, name
+		}
 		return NewDNS(name), name
 	} else {
 		if name == "" {
