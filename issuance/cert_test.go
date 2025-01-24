@@ -413,7 +413,9 @@ func TestIssueWithCRLDP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ecdsa.GenerateKey: %s", err)
 	}
-	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
+	profile := defaultProfile()
+	profile.includeCRLDistributionPoints = true
+	_, issuanceToken, err := signer.Prepare(profile, &IssuanceRequest{
 		PublicKey:       MarshalablePublicKey{pk.Public()},
 		SubjectKeyId:    goodSKID,
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
