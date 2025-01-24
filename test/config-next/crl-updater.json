@@ -48,6 +48,9 @@
 		"lookbackPeriod": "24h",
 		"updatePeriod": "10m",
 		"updateTimeout": "1m",
+		"temporallyShardedSerialPrefixes": [
+			"7f"
+		],
 		"maxParallelism": 10,
 		"maxAttempts": 2,
 		"features": {}

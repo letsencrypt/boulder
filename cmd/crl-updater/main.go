@@ -91,6 +91,19 @@ type Config struct {
 		// of magnitude greater than our p99 update latency.
 		UpdateTimeout config.Duration `validate:"-"`
 
+		// TemporallyShardedSerialPrefixes is a list of prefixes that were used to
+		// issue certificates with no CRLDistributionPoints extension, and which are
+		// therefore temporally sharded. If it's non-empty, the CRL Updater will
+		// require matching serials when querying by temporal shard. When querying
+		// by explicit shard, any prefix is allowed.
+		//
+		// This should be set to the current set of serial prefixes in production.
+		// When deploying explicit sharding (i.e. the CRLDistributionPoints extension),
+		// the CAs should be configured with a new set of serial prefixes that haven't
+		// been used before (and the OCSP Responder config should be updated to
+		// recognize the new prefixes as well as the old ones).
+		TemporallyShardedSerialPrefixes []string
+
 		// MaxParallelism controls how many workers may be running in parallel.
 		// A higher value reduces the total time necessary to update all CRL shards
 		// that this updater is responsible for, but also increases the memory used
@@ -176,6 +189,7 @@ func main() {
 		c.CRLUpdater.UpdateTimeout.Duration,
 		c.CRLUpdater.MaxParallelism,
 		c.CRLUpdater.MaxAttempts,
+		c.CRLUpdater.TemporallyShardedSerialPrefixes,
 		sac,
 		cac,
 		csc,

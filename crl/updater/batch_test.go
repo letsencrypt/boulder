@@ -26,6 +26,7 @@ func TestRunOnce(t *testing.T) {
 		[]*issuance.Certificate{e1, r3},
 		2, 18*time.Hour, 24*time.Hour,
 		6*time.Hour, time.Minute, 1, 1,
+		nil,
 		&fakeSAC{revokedCerts: revokedCertsStream{err: errors.New("db no worky")}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
 		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: &noopUploader{}},
