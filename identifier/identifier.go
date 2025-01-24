@@ -94,22 +94,6 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 	}
 }
 
-// FromName is a convenience function that takes a *corepb.Identifier and a
-// string, and returns an ACMEIdentifier. If the *corepb.Identifier is nil, the
-// ACMEIdentifier's value is constructed from the string.
-//
-// Deprecated: TODO(#7311): This can be removed after DnsNames are no longer
-// used in RPCs.
-func FromName(pbIdent *corepb.Identifier, name string) ACMEIdentifier {
-	if pbIdent.GetValue() == "" {
-		if name == "" {
-			return ACMEIdentifier{}
-		}
-		return NewDNS(name)
-	}
-	return FromProto(pbIdent)
-}
-
 // FromNames is a convenience function that takes []*corepb.Identifier and
 // []string, and returns []ACMEIdentifier. If the []*corepb.Identifier is empty
 // or nil, the []ACMEIdentifier's contents are constructed from the []string.
