@@ -622,7 +622,7 @@ func TestIssueMustStaple(t *testing.T) {
 	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 	test.AssertEquals(t, len(cert.Extensions), 10) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Must-Staple, Poison
-	test.AssertDeepEquals(t, cert.Extensions[9], mustStapleExt)
+	test.AssertDeepEquals(t, cert.Extensions[9], OCSPMustStapleExt)
 }
 
 func TestIssueBadLint(t *testing.T) {
