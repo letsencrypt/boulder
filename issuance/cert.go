@@ -241,7 +241,8 @@ func generateSCTListExt(scts []ct.SignedCertificateTimestamp) (pkix.Extension, e
 	}, nil
 }
 
-var mustStapleExt = pkix.Extension{
+// OCSPMustStapleExt is the OCSP Must-Staple extension, as defined in RFC 7633.
+var OCSPMustStapleExt = pkix.Extension{
 	// RFC 7633: id-pe-tlsfeature OBJECT IDENTIFIER ::=  { id-pe 24 }
 	Id: asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24},
 	// ASN.1 encoding of:
@@ -380,7 +381,7 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 	}
 
 	if req.IncludeMustStaple {
-		template.ExtraExtensions = append(template.ExtraExtensions, mustStapleExt)
+		template.ExtraExtensions = append(template.ExtraExtensions, OCSPMustStapleExt)
 	}
 
 	// check that the tbsCertificate is properly formed by signing it
@@ -428,7 +429,7 @@ func (i *Issuer) Issue(token *issuanceToken) ([]byte, error) {
 // Must-Staple (a.k.a. id-pe-tlsFeature) extension.
 func ContainsMustStaple(extensions []pkix.Extension) bool {
 	for _, ext := range extensions {
-		if ext.Id.Equal(mustStapleExt.Id) && bytes.Equal(ext.Value, mustStapleExt.Value) {
+		if ext.Id.Equal(OCSPMustStapleExt.Id) && bytes.Equal(ext.Value, OCSPMustStapleExt.Value) {
 			return true
 		}
 	}

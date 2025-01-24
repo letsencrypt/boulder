@@ -99,6 +99,7 @@ type RegistrationAuthorityImpl struct {
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
 	validationProfiles           map[string]*ValidationProfile
+	mustStapleAllowList          *allowlist.List[int64]
 	maxContactsPerReg            int
 	limiter                      *ratelimits.Limiter
 	txnBuilder                   *ratelimits.TransactionBuilder
@@ -112,17 +113,18 @@ type RegistrationAuthorityImpl struct {
 
 	ctpolicy *ctpolicy.CTPolicy
 
-	ctpolicyResults         *prometheus.HistogramVec
-	revocationReasonCounter *prometheus.CounterVec
-	namesPerCert            *prometheus.HistogramVec
-	newRegCounter           prometheus.Counter
-	recheckCAACounter       prometheus.Counter
-	newCertCounter          *prometheus.CounterVec
-	authzAges               *prometheus.HistogramVec
-	orderAges               *prometheus.HistogramVec
-	inflightFinalizes       prometheus.Gauge
-	certCSRMismatch         prometheus.Counter
-	pauseCounter            *prometheus.CounterVec
+	ctpolicyResults           *prometheus.HistogramVec
+	revocationReasonCounter   *prometheus.CounterVec
+	namesPerCert              *prometheus.HistogramVec
+	newRegCounter             prometheus.Counter
+	recheckCAACounter         prometheus.Counter
+	newCertCounter            *prometheus.CounterVec
+	authzAges                 *prometheus.HistogramVec
+	orderAges                 *prometheus.HistogramVec
+	inflightFinalizes         prometheus.Gauge
+	certCSRMismatch           prometheus.Counter
+	pauseCounter              *prometheus.CounterVec
+	mustStapleRequestsCounter *prometheus.CounterVec
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
@@ -140,6 +142,7 @@ func NewRegistrationAuthorityImpl(
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
 	validationProfiles map[string]*ValidationProfile,
+	mustStapleAllowList *allowlist.List[int64],
 	pubc pubpb.PublisherClient,
 	orderLifetime time.Duration,
 	finalizeTimeout time.Duration,
@@ -236,6 +239,12 @@ func NewRegistrationAuthorityImpl(
 	}, []string{"paused", "repaused", "grace"})
 	stats.MustRegister(pauseCounter)
 
+	mustStapleRequestsCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "must_staple_requests",
+		Help: "Number of times a must-staple request is made, labeled by allowlist=[allowed|denied]",
+	}, []string{"allowlist"})
+	stats.MustRegister(mustStapleRequestsCounter)
+
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
@@ -247,6 +256,7 @@ func NewRegistrationAuthorityImpl(
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
 		validationProfiles:           validationProfiles,
+		mustStapleAllowList:          mustStapleAllowList,
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		limiter:                      limiter,
@@ -269,6 +279,7 @@ func NewRegistrationAuthorityImpl(
 		inflightFinalizes:            inflightFinalizes,
 		certCSRMismatch:              certCSRMismatch,
 		pauseCounter:                 pauseCounter,
+		mustStapleRequestsCounter:    mustStapleRequestsCounter,
 	}
 	return ra
 }
@@ -943,6 +954,22 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	csr, err := x509.ParseCertificateRequest(req.Csr)
 	if err != nil {
 		return nil, berrors.BadCSRError("unable to parse CSR: %s", err.Error())
+	}
+
+	if ra.mustStapleAllowList != nil {
+		for _, ext := range csr.Extensions {
+			if !ext.Id.Equal(issuance.OCSPMustStapleExt.Id) {
+				continue
+			}
+			if !ra.mustStapleAllowList.Contains(req.Order.RegistrationID) {
+				ra.mustStapleRequestsCounter.WithLabelValues("denied").Inc()
+				return nil, berrors.UnauthorizedError(
+					"OCSP must-staple extension is no longer available: see https://letsencrypt.org/2024/12/05/ending-ocsp",
+				)
+			} else {
+				ra.mustStapleRequestsCounter.WithLabelValues("allowed").Inc()
+			}
+		}
 	}
 
 	err = csrlib.VerifyCSR(ctx, csr, ra.maxNames, &ra.keyPolicy, ra.PA)
