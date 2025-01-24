@@ -5,6 +5,8 @@ import (
 )
 
 func TestNewFromYAML(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		yamlData      string
@@ -37,6 +39,8 @@ func TestNewFromYAML(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			list, err := NewFromYAML[string]([]byte(tt.yamlData))
 			if (err != nil) != tt.expectErr {
 				t.Fatalf("NewFromYAML() error = %v, expectErr = %v", err, tt.expectErr)
@@ -55,6 +59,8 @@ func TestNewFromYAML(t *testing.T) {
 }
 
 func TestNewList(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		members       []string
@@ -89,6 +95,8 @@ func TestNewList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			list := NewList[string](tt.members)
 			for i, item := range tt.check {
 				got := list.Contains(item)
