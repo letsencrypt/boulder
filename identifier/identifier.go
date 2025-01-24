@@ -93,3 +93,45 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 		Value: ip.StringExpanded(),
 	}
 }
+
+// IdentifierAndName is a convenience function that takes a *corepb.Identifier
+// and a string, and returns an ACMEIdentifier and a string. If either input is
+// nil, its corresponding return value is constructed from the other's value.
+//
+// Deprecated: TODO(#7311): This can be removed after DnsNames are no longer
+// used in RPCs.
+func IdentifierAndName(pbIdent *corepb.Identifier, name string) (ACMEIdentifier, string) {
+	if pbIdent.GetValue() == "" {
+		return NewDNS(name), name
+	} else {
+		if name == "" {
+			name = pbIdent.GetValue()
+		}
+		return FromProto(pbIdent), name
+	}
+}
+
+// IdentifiersAndNames is a convenience function that takes slices of
+// *corepb.Identifier and string, and returns slices of ACMEIdentifier and
+// string. If either input is nil, its corresponding return contents are
+// constructed from the other's contents.
+//
+// Deprecated: TODO(#7311): This can be removed after DnsNames are no longer
+// used in RPCs.
+func IdentifiersAndNames(pbIdents []*corepb.Identifier, names []string) ([]ACMEIdentifier, []string) {
+	if len(pbIdents) == 0 {
+		idents := make([]ACMEIdentifier, len(names))
+		for i, name := range names {
+			idents[i] = NewDNS(name)
+		}
+		return idents, names
+	} else {
+		if len(names) == 0 {
+			names = make([]string, len(pbIdents))
+			for i, pbIdent := range pbIdents {
+				names[i] = pbIdent.GetValue()
+			}
+		}
+		return SliceFromProto(pbIdents), names
+	}
+}
