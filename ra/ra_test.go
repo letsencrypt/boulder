@@ -2615,8 +2615,6 @@ func TestFinalizeOrderDisabledChallenge(t *testing.T) {
 }
 
 func TestFinalizeWithMustStaple(t *testing.T) {
-	t.Parallel()
-
 	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
