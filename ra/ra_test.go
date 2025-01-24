@@ -1686,19 +1686,19 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name:              "Deny All But Account ID 1337",
+			name:              "Deny all but account Id 1337",
 			allowList:         allowlist.NewList([]int64{1337}),
 			expectErr:         true,
 			expectErrContains: "not permitted to use certificate profile",
 		},
 		{
-			name:              "Deny All",
+			name:              "Deny all",
 			allowList:         allowlist.NewList([]int64{}),
 			expectErr:         true,
 			expectErrContains: "not permitted to use certificate profile",
 		},
 		{
-			name:      "Allow Registration ID",
+			name:      "Allow Registration.Id",
 			allowList: allowlist.NewList([]int64{Registration.Id}),
 			expectErr: false,
 		},
@@ -1719,8 +1719,7 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 			}
 			_, err := ra.NewOrder(context.Background(), orderReq)
 
-			if tc.expectErr {
-				test.AssertError(t, err, "NewOrder did not error")
+			if tc.expectErrContains != "" {
 				test.AssertErrorIs(t, err, berrors.Unauthorized)
 				test.AssertContains(t, err.Error(), tc.expectErrContains)
 			} else {
