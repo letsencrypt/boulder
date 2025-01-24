@@ -79,7 +79,7 @@
 					"active": true,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-a",
 					"ocspURL": "http://ca.example.org:4002/",
-					"crlURLBase": "http://ca.example.org:4501/ecdsa-a/",
+					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/43104258997432926/",
 					"location": {
 						"configFile": "test/certs/webpki/int-ecdsa-a.pkcs11.json",
 						"certFile": "test/certs/webpki/int-ecdsa-a.cert.pem",
@@ -90,7 +90,7 @@
 					"active": true,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-b",
 					"ocspURL": "http://ca.example.org:4002/",
-					"crlURLBase": "http://ca.example.org:4501/ecdsa-b/",
+					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/17302365692836921/",
 					"location": {
 						"configFile": "test/certs/webpki/int-ecdsa-b.pkcs11.json",
 						"certFile": "test/certs/webpki/int-ecdsa-b.cert.pem",
@@ -101,7 +101,7 @@
 					"active": false,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-c",
 					"ocspURL": "http://ca.example.org:4002/",
-					"crlURLBase": "http://ca.example.org:4501/ecdsa-c/",
+					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/56560759852043581/",
 					"location": {
 						"configFile": "test/certs/webpki/int-ecdsa-c.pkcs11.json",
 						"certFile": "test/certs/webpki/int-ecdsa-c.cert.pem",
@@ -112,7 +112,7 @@
 					"active": true,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-a",
 					"ocspURL": "http://ca.example.org:4002/",
-					"crlURLBase": "http://ca.example.org:4501/rsa-a/",
+					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/29947985078257530/",
 					"location": {
 						"configFile": "test/certs/webpki/int-rsa-a.pkcs11.json",
 						"certFile": "test/certs/webpki/int-rsa-a.cert.pem",
@@ -123,7 +123,7 @@
 					"active": true,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-b",
 					"ocspURL": "http://ca.example.org:4002/",
-					"crlURLBase": "http://ca.example.org:4501/rsa-b/",
+					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/6762885421992935/",
 					"location": {
 						"configFile": "test/certs/webpki/int-rsa-b.pkcs11.json",
 						"certFile": "test/certs/webpki/int-rsa-b.cert.pem",
@@ -134,7 +134,7 @@
 					"active": false,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-c",
 					"ocspURL": "http://ca.example.org:4002/",
-					"crlURLBase": "http://ca.example.org:4501/rsa-c/",
+					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/56183656833365902/",
 					"location": {
 						"configFile": "test/certs/webpki/int-rsa-c.pkcs11.json",
 						"certFile": "test/certs/webpki/int-rsa-c.cert.pem",
