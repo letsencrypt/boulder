@@ -247,8 +247,8 @@ func addFromStream(crlEntries map[string]*proto.CRLEntry, stream crlStream) (int
 // resulting CRL, and gets the crl-storer to upload it. It returns an error if
 // any of these operations fail.
 func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerNameID issuance.NameID, shardIdx int, chunks []chunk) (err error) {
-	if shardIdx == 0 {
-		return fmt.Errorf("invalid shard 0")
+	if shardIdx <= 0 {
+		return fmt.Errorf("invalid shard %d", shardIdx)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
