@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -21,8 +22,7 @@ func TestSubordinateCAChainsServedByWFE(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "creating random cert key")
 
-	name := random_domain()
-	chains, err := authAndIssueFetchAllChains(client, key, []string{name}, true)
+	chains, err := authAndIssueFetchAllChains(client, key, []identifier.ACMEIdentifier{identifier.NewDNS(random_domain())}, true)
 	test.AssertNotError(t, err, "failed to issue test cert")
 
 	// An ECDSA intermediate signed by an ECDSA root, and an ECDSA cross-signed by an RSA root.

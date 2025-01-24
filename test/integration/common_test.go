@@ -16,6 +16,8 @@ import (
 	"os"
 
 	"github.com/eggsampler/acme/v3"
+
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 func init() {
@@ -89,7 +91,7 @@ func delHTTP01Response(token string) error {
 	return nil
 }
 
-func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool, certToReplace *x509.Certificate) (*client, *acme.Order, error) {
+func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, idents []identifier.ACMEIdentifier, cn bool, certToReplace *x509.Certificate) (*client, *acme.Order, error) {
 	var err error
 	if c == nil {
 		c, err = makeClient()
@@ -99,8 +101,8 @@ func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, c
 	}
 
 	var ids []acme.Identifier
-	for _, domain := range domains {
-		ids = append(ids, acme.Identifier{Type: "dns", Value: domain})
+	for _, ident := range idents {
+		ids = append(ids, acme.Identifier{Type: string(ident.Type), Value: ident.Value})
 	}
 	var order acme.Order
 	if certToReplace != nil {
@@ -135,7 +137,7 @@ func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, c
 		delHTTP01Response(chal.Token)
 	}
 
-	csr, err := makeCSR(csrKey, domains, cn)
+	csr, err := makeCSR(csrKey, idents, cn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -153,10 +155,10 @@ type issuanceResult struct {
 	certs []*x509.Certificate
 }
 
-func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*issuanceResult, error) {
+func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, idents []identifier.ACMEIdentifier, cn bool) (*issuanceResult, error) {
 	var err error
 
-	c, order, err := makeClientAndOrder(c, csrKey, domains, cn, nil)
+	c, order, err := makeClientAndOrder(c, csrKey, idents, cn, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -173,8 +175,8 @@ type issuanceResultAllChains struct {
 	certs map[string][]*x509.Certificate
 }
 
-func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*issuanceResultAllChains, error) {
-	c, order, err := makeClientAndOrder(c, csrKey, domains, cn, nil)
+func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, idents []identifier.ACMEIdentifier, cn bool) (*issuanceResultAllChains, error) {
+	c, order, err := makeClientAndOrder(c, csrKey, idents, cn, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +190,7 @@ func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, domains []s
 	return &issuanceResultAllChains{*order, certs}, nil
 }
 
-func makeCSR(k *ecdsa.PrivateKey, domains []string, cn bool) (*x509.CertificateRequest, error) {
+func makeCSR(k *ecdsa.PrivateKey, idents []identifier.ACMEIdentifier, cn bool) (*x509.CertificateRequest, error) {
 	var err error
 	if k == nil {
 		k, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -197,14 +199,20 @@ func makeCSR(k *ecdsa.PrivateKey, domains []string, cn bool) (*x509.CertificateR
 		}
 	}
 
+	// TODO(#7311): Extend this to support IP address identifiers.
+	names := make([]string, len(idents))
+	for i, ident := range idents {
+		names[i] = ident.Value
+	}
+
 	tmpl := &x509.CertificateRequest{
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 		PublicKeyAlgorithm: x509.ECDSA,
 		PublicKey:          k.Public(),
-		DNSNames:           domains,
+		DNSNames:           names,
 	}
 	if cn {
-		tmpl.Subject = pkix.Name{CommonName: domains[0]}
+		tmpl.Subject = pkix.Name{CommonName: names[0]}
 	}
 
 	csrDer, err := x509.CreateCertificateRequest(rand.Reader, tmpl, k)

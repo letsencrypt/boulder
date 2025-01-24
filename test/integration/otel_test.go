@@ -23,6 +23,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -259,8 +260,6 @@ func TestTraces(t *testing.T) {
 }
 
 func traceIssuingTestCert(t *testing.T) trace.TraceID {
-	domains := []string{random_domain()}
-
 	// Configure this integration test to trace to jaeger:4317 like Boulder will
 	shutdown := cmd.NewOpenTelemetry(cmd.OpenTelemetryConfig{
 		Endpoint:    "bjaeger:4317",
@@ -288,7 +287,7 @@ func traceIssuingTestCert(t *testing.T) trace.TraceID {
 	account, err := c.NewAccount(privKey, false, true)
 	test.AssertNotError(t, err, "newAccount failed")
 
-	_, err = authAndIssue(&client{account, c}, nil, domains, true)
+	_, err = authAndIssue(&client{account, c}, nil, []identifier.ACMEIdentifier{identifier.NewDNS(random_domain())}, true)
 	test.AssertNotError(t, err, "authAndIssue failed")
 
 	return span.SpanContext().TraceID()

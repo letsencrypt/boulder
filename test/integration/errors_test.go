@@ -9,6 +9,7 @@ import (
 
 	"github.com/eggsampler/acme/v3"
 
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -17,12 +18,12 @@ import (
 func TestTooBigOrderError(t *testing.T) {
 	t.Parallel()
 
-	var domains []string
+	var idents []identifier.ACMEIdentifier
 	for i := range 101 {
-		domains = append(domains, fmt.Sprintf("%d.example.com", i))
+		idents = append(idents, identifier.NewDNS(fmt.Sprintf("%d.example.com", i)))
 	}
 
-	_, err := authAndIssue(nil, nil, domains, true)
+	_, err := authAndIssue(nil, nil, idents, true)
 	test.AssertError(t, err, "authAndIssue failed")
 
 	var prob acme.Problem
@@ -158,7 +159,7 @@ func TestRejectedIdentifier(t *testing.T) {
 	domains := []string{
 		"яџ–Х6яяdь}",
 	}
-	_, err := authAndIssue(nil, nil, domains, true)
+	_, err := authAndIssue(nil, nil, identifier.SliceNewDNS(domains), true)
 	test.AssertError(t, err, "issuance should fail for one malformed name")
 	var prob acme.Problem
 	test.AssertErrorWraps(t, err, &prob)
@@ -176,7 +177,7 @@ func TestRejectedIdentifier(t *testing.T) {
 		"яџ–Х6яя",
 		"яџ–Х6яя`ь",
 	}
-	_, err = authAndIssue(nil, nil, domains, true)
+	_, err = authAndIssue(nil, nil, identifier.SliceNewDNS(domains), true)
 	test.AssertError(t, err, "issuance should fail for multiple malformed names")
 	test.AssertErrorWraps(t, err, &prob)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:rejectedIdentifier")

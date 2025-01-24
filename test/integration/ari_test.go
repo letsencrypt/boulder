@@ -13,6 +13,7 @@ import (
 
 	"github.com/eggsampler/acme/v3"
 
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -39,7 +40,7 @@ func TestARI(t *testing.T) {
 	// the retry-after header are approximately the right amount of time in the
 	// future.
 	name := random_domain()
-	ir, err := authAndIssue(client, key, []string{name}, true)
+	ir, err := authAndIssue(client, key, []identifier.ACMEIdentifier{identifier.NewDNS(name)}, true)
 	test.AssertNotError(t, err, "failed to issue test cert")
 
 	cert := ir.certs[0]
@@ -50,7 +51,7 @@ func TestARI(t *testing.T) {
 	test.AssertEquals(t, ari.RetryAfter.Sub(time.Now()).Round(time.Hour), 6*time.Hour)
 
 	// Make a new order which indicates that it replaces the cert issued above.
-	_, order, err := makeClientAndOrder(client, key, []string{name}, true, cert)
+	_, order, err := makeClientAndOrder(client, key, []identifier.ACMEIdentifier{identifier.NewDNS(name)}, true, cert)
 	test.AssertNotError(t, err, "failed to issue test cert")
 	replaceID, err := acme.GenerateARICertID(cert)
 	test.AssertNotError(t, err, "failed to generate ARI certID")
@@ -58,7 +59,7 @@ func TestARI(t *testing.T) {
 	test.AssertNotEquals(t, order.Replaces, "")
 
 	// Try it again and verify it fails
-	_, order, err = makeClientAndOrder(client, key, []string{name}, true, cert)
+	_, order, err = makeClientAndOrder(client, key, []identifier.ACMEIdentifier{identifier.NewDNS(name)}, true, cert)
 	test.AssertError(t, err, "subsequent ARI replacements for a replaced cert should fail, but didn't")
 
 	// Revoke the cert and re-request ARI. The renewal window should now be in
@@ -78,7 +79,7 @@ func TestARI(t *testing.T) {
 	name = random_domain()
 	err = ctAddRejectHost(name)
 	test.AssertNotError(t, err, "failed to add ct-test-srv reject host")
-	_, err = authAndIssue(client, key, []string{name}, true)
+	_, err = authAndIssue(client, key, []identifier.ACMEIdentifier{identifier.NewDNS(name)}, true)
 	test.AssertError(t, err, "expected error from authAndIssue, was nil")
 
 	cert, err = ctFindRejection([]string{name})

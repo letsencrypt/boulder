@@ -13,7 +13,6 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/metrics"
@@ -53,19 +52,15 @@ func TestIdentifiersPausedForAccount(t *testing.T) {
 	c, err := makeClient()
 	parts := strings.SplitAfter(c.URL, "/")
 	regID, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
-	domain := random_domain()
+	idents := []identifier.ACMEIdentifier{identifier.NewDNS(random_domain())}
 
 	_, err = saClient.PauseIdentifiers(context.Background(), &sapb.PauseRequest{
 		RegistrationID: regID,
-		Identifiers: []*corepb.Identifier{
-			{
-				Type:  string(identifier.TypeDNS),
-				Value: domain},
-		},
+		Identifiers:    identifier.SliceAsProto(idents),
 	})
 	test.AssertNotError(t, err, "Failed to pause domain")
 
-	_, err = authAndIssue(c, nil, []string{domain}, true)
+	_, err = authAndIssue(c, nil, idents, true)
 	test.AssertError(t, err, "Should not be able to issue a certificate for a paused domain")
 	test.AssertContains(t, err.Error(), "Your account is temporarily prevented from requesting certificates for")
 	test.AssertContains(t, err.Error(), "https://boulder.service.consul:4003/sfe/v1/unpause?jwt=")
@@ -75,6 +70,6 @@ func TestIdentifiersPausedForAccount(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Failed to unpause domain")
 
-	_, err = authAndIssue(c, nil, []string{domain}, true)
+	_, err = authAndIssue(c, nil, idents, true)
 	test.AssertNotError(t, err, "Should be able to issue a certificate for an unpaused domain")
 }

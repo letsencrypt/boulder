@@ -25,6 +25,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/crl/idp"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 )
@@ -192,7 +193,7 @@ func TestRevocation(t *testing.T) {
 		var cert *x509.Certificate
 		switch tc.kind {
 		case finalcert:
-			res, err := authAndIssue(issueClient, certKey, []string{domain}, true)
+			res, err := authAndIssue(issueClient, certKey, []identifier.ACMEIdentifier{identifier.NewDNS(domain)}, true)
 			test.AssertNotError(t, err, "authAndIssue failed")
 			cert = res.certs[0]
 
@@ -202,7 +203,7 @@ func TestRevocation(t *testing.T) {
 			err := ctAddRejectHost(domain)
 			test.AssertNotError(t, err, "adding ct-test-srv reject host")
 
-			_, err = authAndIssue(issueClient, certKey, []string{domain}, true)
+			_, err = authAndIssue(issueClient, certKey, []identifier.ACMEIdentifier{identifier.NewDNS(domain)}, true)
 			test.AssertError(t, err, "expected error from authAndIssue, was nil")
 			if !strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") ||
 				!strings.Contains(err.Error(), "SCT embedding") {
@@ -245,7 +246,7 @@ func TestRevocation(t *testing.T) {
 			// issuance.
 			revokeClient, err = makeClient()
 			test.AssertNotError(t, err, "creating second acme client")
-			_, _ = authAndIssue(revokeClient, certKey, []string{domain}, true)
+			_, _ = authAndIssue(revokeClient, certKey, []identifier.ACMEIdentifier{identifier.NewDNS(domain)}, true)
 			revokeKey = revokeClient.PrivateKey
 
 		case byKey:
@@ -377,8 +378,7 @@ func TestReRevocation(t *testing.T) {
 			test.AssertNotError(t, err, "creating random cert key")
 
 			// Try to issue a certificate for the name.
-			domain := random_domain()
-			res, err := authAndIssue(issueClient, certKey, []string{domain}, true)
+			res, err := authAndIssue(issueClient, certKey, []identifier.ACMEIdentifier{identifier.NewDNS(random_domain())}, true)
 			test.AssertNotError(t, err, "authAndIssue failed")
 			cert := res.certs[0]
 
@@ -492,7 +492,7 @@ func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 		certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		test.AssertNotError(t, err, "failed to generate cert key")
 
-		res, err := authAndIssue(c, certKey, []string{random_domain()}, true)
+		res, err := authAndIssue(c, certKey, []identifier.ACMEIdentifier{identifier.NewDNS(random_domain())}, true)
 		test.AssertNotError(t, err, "authAndIssue failed")
 		cert := res.certs[0]
 
@@ -541,14 +541,14 @@ func TestBadKeyRevoker(t *testing.T) {
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate cert key")
 
-	res, err := authAndIssue(revokerClient, certKey, []string{random_domain()}, true)
+	res, err := authAndIssue(revokerClient, certKey, []identifier.ACMEIdentifier{identifier.NewDNS(random_domain())}, true)
 	test.AssertNotError(t, err, "authAndIssue failed")
 	badCert := res.certs[0]
 	t.Logf("Generated to-be-revoked cert with serial %x", badCert.SerialNumber)
 
 	certs := []*x509.Certificate{}
 	for _, c := range []*client{revokerClient, revokeeClient, noContactClient} {
-		cert, err := authAndIssue(c, certKey, []string{random_domain()}, true)
+		cert, err := authAndIssue(c, certKey, []identifier.ACMEIdentifier{identifier.NewDNS(random_domain())}, true)
 		t.Logf("TestBadKeyRevoker: Issued cert with serial %x", cert.certs[0].SerialNumber)
 		test.AssertNotError(t, err, "authAndIssue failed")
 		certs = append(certs, cert.certs[0])
@@ -619,14 +619,14 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate cert key")
 
-	res, err := authAndIssue(revokerClient, certKey, []string{random_domain()}, true)
+	res, err := authAndIssue(revokerClient, certKey, []identifier.ACMEIdentifier{identifier.NewDNS(random_domain())}, true)
 	test.AssertNotError(t, err, "authAndIssue failed")
 	badCert := res.certs[0]
 	t.Logf("Generated to-be-revoked cert with serial %x", badCert.SerialNumber)
 
 	certs := []*x509.Certificate{}
 	for _, c := range []*client{revokerClient, revokeeClient, noContactClient} {
-		cert, err := authAndIssue(c, certKey, []string{random_domain()}, true)
+		cert, err := authAndIssue(c, certKey, []identifier.ACMEIdentifier{identifier.NewDNS(random_domain())}, true)
 		t.Logf("TestBadKeyRevokerByAccount: Issued cert with serial %x", cert.certs[0].SerialNumber)
 		test.AssertNotError(t, err, "authAndIssue failed")
 		certs = append(certs, cert.certs[0])

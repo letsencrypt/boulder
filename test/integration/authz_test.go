@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -24,8 +25,8 @@ func TestValidAuthzExpires(t *testing.T) {
 	test.AssertNotError(t, err, "makeClient failed")
 
 	// Issue for a random domain
-	domains := []string{random_domain()}
-	result, err := authAndIssue(c, nil, domains, true)
+	idents := identifier.SliceNewDNS([]string{random_domain()})
+	result, err := authAndIssue(c, nil, idents, true)
 	// There should be no error
 	test.AssertNotError(t, err, "authAndIssue failed")
 	// The order should be valid
@@ -40,7 +41,7 @@ func TestValidAuthzExpires(t *testing.T) {
 
 	// The authz should be valid and for the correct identifier
 	test.AssertEquals(t, authzOb.Status, "valid")
-	test.AssertEquals(t, authzOb.Identifier.Value, domains[0])
+	test.AssertEquals(t, authzOb.Identifier.Value, idents[0].Value)
 
 	// The authz should have the expected expiry date, plus or minus a minute
 	expectedExpiresMin := time.Now().AddDate(0, 0, validAuthorizationLifetime).Add(-time.Minute)
