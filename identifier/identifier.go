@@ -122,6 +122,9 @@ func IdentifierAndName(pbIdent *corepb.Identifier, name string) (ACMEIdentifier,
 // Deprecated: TODO(#7311): This can be removed after DnsNames are no longer
 // used in RPCs.
 func IdentifiersAndNames(pbIdents []*corepb.Identifier, names []string) ([]ACMEIdentifier, []string) {
+	if len(pbIdents) == 0 && len(names) == 0 {
+		return nil, nil
+	}
 	if len(pbIdents) == 0 {
 		idents := make([]ACMEIdentifier, len(names))
 		for i, name := range names {
