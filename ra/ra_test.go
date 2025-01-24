@@ -36,6 +36,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
+	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
@@ -341,6 +342,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		fc, log, stats,
 		1, testKeyPolicy, limiter, txnBuilder, 100,
 		300*24*time.Hour, 7*24*time.Hour,
+		nil,
 		nil,
 		7*24*time.Hour, 5*time.Minute,
 		ctp, nil, nil)
@@ -1664,6 +1666,65 @@ func TestNewOrder_AuthzReuse_NoPending(t *testing.T) {
 	test.AssertNotError(t, err, "creating test order")
 	test.AssertNotEquals(t, new.Id, extant.Id)
 	test.AssertNotEquals(t, new.V2Authorizations[0], extant.V2Authorizations[0])
+}
+
+func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
+	t.Parallel()
+
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	testCases := []struct {
+		name              string
+		allowList         *allowlist.List[int64]
+		expectErr         bool
+		expectErrContains string
+	}{
+		{
+			name:      "Allow All Account IDs",
+			allowList: nil,
+			expectErr: false,
+		},
+		{
+			name:              "Deny all but account Id 1337",
+			allowList:         allowlist.NewList([]int64{1337}),
+			expectErr:         true,
+			expectErrContains: "not permitted to use certificate profile",
+		},
+		{
+			name:              "Deny all",
+			allowList:         allowlist.NewList([]int64{}),
+			expectErr:         true,
+			expectErrContains: "not permitted to use certificate profile",
+		},
+		{
+			name:      "Allow Registration.Id",
+			allowList: allowlist.NewList([]int64{Registration.Id}),
+			expectErr: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ra.validationProfiles = map[string]*ValidationProfile{
+				"test": NewValidationProfile(tc.allowList),
+			}
+
+			orderReq := &rapb.NewOrderRequest{
+				RegistrationID:         Registration.Id,
+				DnsNames:               []string{randomDomain()},
+				CertificateProfileName: "test",
+			}
+			_, err := ra.NewOrder(context.Background(), orderReq)
+
+			if tc.expectErrContains != "" {
+				test.AssertErrorIs(t, err, berrors.Unauthorized)
+				test.AssertContains(t, err.Error(), tc.expectErrContains)
+			} else {
+				test.AssertNotError(t, err, "NewOrder failed")
+			}
+		})
+	}
 }
 
 // mockSAWithAuthzs has a GetAuthorizations2 method that returns the protobuf

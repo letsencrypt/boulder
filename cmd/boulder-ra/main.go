@@ -3,10 +3,12 @@ package notmain
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
+	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -90,6 +92,18 @@ type Config struct {
 		// the pending state. If you can't respond to a challenge this quickly, then
 		// you need to request a new challenge.
 		PendingAuthorizationLifetimeDays int `validate:"required,min=1,max=29"`
+
+		// ValidationProfiles is a map of validation profiles to their
+		// respective issuance allow lists. If a profile is not included in this
+		// mapping, it cannot be used by any account. If this field is left
+		// empty, all profiles are open to all accounts.
+		ValidationProfiles map[string]struct {
+			// AllowList specifies the path to a YAML file containing a list of
+			// account IDs permitted to use this profile. If no path is
+			// specified, the profile is open to all accounts. If the file
+			// exists but is empty, the profile is closed to all accounts.
+			AllowList string `validate:"omitempty"`
+		}
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -252,6 +266,21 @@ func main() {
 	}
 	pendingAuthorizationLifetime := time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
+	var validationProfiles map[string]*ra.ValidationProfile
+	if c.RA.ValidationProfiles != nil {
+		validationProfiles = make(map[string]*ra.ValidationProfile)
+		for profileName, v := range c.RA.ValidationProfiles {
+			var allowList *allowlist.List[int64]
+			if v.AllowList != "" {
+				data, err := os.ReadFile(v.AllowList)
+				cmd.FailOnError(err, fmt.Sprintf("Failed to read allow list for profile %q", profileName))
+				allowList, err = allowlist.NewFromYAML[int64](data)
+				cmd.FailOnError(err, fmt.Sprintf("Failed to parse allow list for profile %q", profileName))
+			}
+			validationProfiles[profileName] = ra.NewValidationProfile(allowList)
+		}
+	}
+
 	if features.Get().AsyncFinalize && c.RA.FinalizeTimeout.Duration == 0 {
 		cmd.Fail("finalizeTimeout must be supplied when AsyncFinalize feature is enabled")
 	}
@@ -289,6 +318,7 @@ func main() {
 		c.RA.MaxNames,
 		authorizationLifetime,
 		pendingAuthorizationLifetime,
+		validationProfiles,
 		pubc,
 		c.RA.OrderLifetime.Duration,
 		c.RA.FinalizeTimeout.Duration,
