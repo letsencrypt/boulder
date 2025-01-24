@@ -94,50 +94,38 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 	}
 }
 
-// IdentifierAndName is a convenience function that takes a *corepb.Identifier
-// and a string, and returns an ACMEIdentifier and a string. If either input is
-// nil, its corresponding return value is constructed from the other's value.
+// FromName is a convenience function that takes a *corepb.Identifier and a
+// string, and returns an ACMEIdentifier. If the *corepb.Identifier is nil, the
+// ACMEIdentifier's value is constructed from the string.
 //
 // Deprecated: TODO(#7311): This can be removed after DnsNames are no longer
 // used in RPCs.
-func IdentifierAndName(pbIdent *corepb.Identifier, name string) (ACMEIdentifier, string) {
+func FromName(pbIdent *corepb.Identifier, name string) ACMEIdentifier {
 	if pbIdent.GetValue() == "" {
 		if name == "" {
-			return ACMEIdentifier{}, name
+			return ACMEIdentifier{}
 		}
-		return NewDNS(name), name
-	} else {
-		if name == "" {
-			name = pbIdent.GetValue()
-		}
-		return FromProto(pbIdent), name
+		return NewDNS(name)
 	}
+	return FromProto(pbIdent)
 }
 
-// IdentifiersAndNames is a convenience function that takes slices of
-// *corepb.Identifier and string, and returns slices of ACMEIdentifier and
-// string. If either input is nil, its corresponding return contents are
-// constructed from the other's contents.
+// FromNames is a convenience function that takes []*corepb.Identifier and
+// []string, and returns []ACMEIdentifier. If the []*corepb.Identifier is empty
+// or nil, the []ACMEIdentifier's contents are constructed from the []string.
 //
 // Deprecated: TODO(#7311): This can be removed after DnsNames are no longer
 // used in RPCs.
-func IdentifiersAndNames(pbIdents []*corepb.Identifier, names []string) ([]ACMEIdentifier, []string) {
-	if len(pbIdents) == 0 && len(names) == 0 {
-		return nil, nil
-	}
+func FromNames(pbIdents []*corepb.Identifier, names []string) []ACMEIdentifier {
 	if len(pbIdents) == 0 {
+		if len(names) == 0 {
+			return nil
+		}
 		idents := make([]ACMEIdentifier, len(names))
 		for i, name := range names {
 			idents[i] = NewDNS(name)
 		}
-		return idents, names
-	} else {
-		if len(names) == 0 {
-			names = make([]string, len(pbIdents))
-			for i, pbIdent := range pbIdents {
-				names[i] = pbIdent.GetValue()
-			}
-		}
-		return SliceFromProto(pbIdents), names
+		return idents
 	}
+	return SliceFromProto(pbIdents)
 }
