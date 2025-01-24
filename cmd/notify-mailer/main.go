@@ -38,6 +38,8 @@ type mailer struct {
 	targetRange   interval
 	sleepInterval time.Duration
 	parallelSends uint
+	saveEmailsTo  string
+	readEmailsMap addressToRecipientMap
 }
 
 // interval defines a range of email addresses to send to in alphabetical order.
@@ -120,6 +122,17 @@ func (m *mailer) makeMessageBody(recipients []recipient) (string, error) {
 	return messageBody.String(), nil
 }
 
+// Take an addressToRecipientMap, then marshal and write it to saveEmailsTo
+func (m *mailer) writeEmailsToFile(addressToRecipient addressToRecipientMap) error {
+	jsonData, err := json.Marshal(addressToRecipient)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile(m.saveEmailsTo, jsonData, 0644)
+	return err
+}
+
 func (m *mailer) run(ctx context.Context) error {
 	err := m.ok()
 	if err != nil {
@@ -141,17 +154,15 @@ func (m *mailer) run(ctx context.Context) error {
 
 	m.log.Infof("%d recipients were resolved to %d addresses", totalRecipients, totalAddresses)
 
-	var mostRecipients string
-	var mostRecipientsLen int
-	for k, v := range addressToRecipient {
-		if len(v) > mostRecipientsLen {
-			mostRecipientsLen = len(v)
-			mostRecipients = k
+	// If saveEmailsTo set but readEmailsFrom not, write the map of resolved
+	// addresses to saveEmailsTo
+	if m.saveEmailsTo != "" && m.readEmailsMap == nil {
+		err := m.writeEmailsToFile(addressToRecipient)
+		if err != nil {
+			return err
 		}
+		m.log.Infof("Saved resolved addresses to '%s'", m.saveEmailsTo)
 	}
-
-	m.log.Infof("Address %q was associated with the most recipients (%d)",
-		mostRecipients, mostRecipientsLen)
 
 	type work struct {
 		index   int
@@ -234,12 +245,29 @@ func (m *mailer) run(ctx context.Context) error {
 	}
 	wg.Wait()
 
+	// If both saveEmailsTo and readEmailsFrom set, copy readEmailsMap
+	// entries to addressToRecipient map. Write the combined map of addresses
+	// to saveEmailsTo
+	if m.saveEmailsTo != "" && m.readEmailsMap != nil {
+		for k, v := range m.readEmailsMap {
+			addressToRecipient[k] = v
+		}
+		err = m.writeEmailsToFile(addressToRecipient)
+		if err != nil {
+			return err
+		}
+		m.log.Infof("Saved addresses mailed to in '%s'", m.saveEmailsTo)
+	}
+
 	return nil
 }
 
 // resolveAddresses creates a mapping of email addresses to (a list of)
 // `recipient`s that resolve to that email address.
 func (m *mailer) resolveAddresses(ctx context.Context) (addressToRecipientMap, error) {
+	if m.saveEmailsTo == "" && m.readEmailsMap != nil {
+		return m.readEmailsMap, nil
+	}
 	result := make(addressToRecipientMap, len(m.recipients))
 	for _, recipient := range m.recipients {
 		addresses, err := getAddressForID(ctx, recipient.id, m.dbMap)
@@ -253,7 +281,9 @@ func (m *mailer) resolveAddresses(ctx context.Context) (addressToRecipientMap, e
 				m.log.Errf("Unparsable address %q, skipping ID (%d)", address, recipient.id)
 				continue
 			}
-			result[parsed.Address] = append(result[parsed.Address], recipient)
+			if _, ok := m.readEmailsMap[parsed.Address]; !ok {
+				result[parsed.Address] = append(result[parsed.Address], recipient)
+			}
 		}
 	}
 	return result, nil
@@ -520,6 +550,8 @@ func main() {
 	reconnBase := flag.Duration("reconnectBase", 1*time.Second, "Base sleep duration between reconnect attempts")
 	reconnMax := flag.Duration("reconnectMax", 5*60*time.Second, "Max sleep duration between reconnect attempts after exponential backoff")
 	configFile := flag.String("config", "", "File containing a JSON config.")
+	saveEmailsTo := flag.String("saveEmailsTo", "", "Target file to store resolved email addresses")
+	readEmailsFrom := flag.String("readEmailsFrom", "", "File with recipient addresses to read from")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "%s\n\n", usageIntro)
@@ -548,6 +580,16 @@ func main() {
 	dbMap, err := sa.InitWrappedDb(cfg.NotifyMailer.DB, nil, log)
 	cmd.FailOnError(err, "While initializing dbMap")
 
+	// Read and parse readEmailsFrom file.
+	var readEmailsMap addressToRecipientMap
+	if *readEmailsFrom != "" {
+		data, err := os.ReadFile(*readEmailsFrom)
+		cmd.FailOnError(err, "Couldn't load readEmailsFrom file")
+
+		err = json.Unmarshal(data, &readEmailsMap)
+		cmd.FailOnError(err, "Couldn't unmarshal readEmailsFrom file")
+	}
+
 	// Load and parse message body.
 	template, err := template.ParseFiles(*bodyFile)
 	cmd.FailOnError(err, "Couldn't parse message template")
@@ -569,6 +611,8 @@ func main() {
 	if probs != "" {
 		log.Infof("While reading the recipient list file %s", probs)
 	}
+
+	// TODO: Ensure that if saveEmailsTo provided, the file either doesn't exist or is empty
 
 	var mailClient bmail.Mailer
 	if *dryRun {
@@ -606,6 +650,8 @@ func main() {
 		},
 		sleepInterval: *sleep,
 		parallelSends: *parallelSends,
+		saveEmailsTo:  *saveEmailsTo,
+		readEmailsMap: readEmailsMap,
 	}
 
 	err = m.run(context.TODO())
