@@ -2621,27 +2621,27 @@ func TestFinalizeWithMustStaple(t *testing.T) {
 		expectMetricWithLabel prometheus.Labels
 	}{
 		{
-			name:                  "Allow Registration ID",
+			name:                  "Allow only Registration.ID",
 			mustStapleAllowList:   allowlist.NewList([]int64{Registration.Id}),
 			expectSuccess:         true,
 			expectMetricWithLabel: prometheus.Labels{"allowlist": "allowed"},
 		},
 		{
-			name:                  "Deny All But Account ID 1337",
+			name:                  "Deny all but account Id 1337",
 			mustStapleAllowList:   allowlist.NewList([]int64{1337}),
 			expectSuccess:         false,
 			expectErrorContains:   "no longer available",
 			expectMetricWithLabel: prometheus.Labels{"allowlist": "denied"},
 		},
 		{
-			name:                  "Deny All Account IDs",
+			name:                  "Deny all account Ids",
 			mustStapleAllowList:   allowlist.NewList([]int64{}),
 			expectSuccess:         false,
 			expectErrorContains:   "no longer available",
 			expectMetricWithLabel: prometheus.Labels{"allowlist": "denied"},
 		},
 		{
-			name:                "Allow All Account IDs",
+			name:                "Allow all account Ids",
 			mustStapleAllowList: nil,
 			expectSuccess:       true,
 			// We don't expect this metric to be be emitted if the allowlist is nil.
