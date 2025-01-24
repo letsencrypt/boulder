@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"bufio"
 	"context"
 	"encoding/csv"
 	"encoding/json"
@@ -122,15 +123,21 @@ func (m *mailer) makeMessageBody(recipients []recipient) (string, error) {
 	return messageBody.String(), nil
 }
 
-// Take an addressToRecipientMap, then marshal and write it to saveEmailsTo
-func (m *mailer) writeEmailsToFile(addressToRecipient addressToRecipientMap) error {
-	jsonData, err := json.Marshal(addressToRecipient)
+// Write the keys of addressToRecipientMap to filename
+func writeEmailsToFile(filename string, addressToRecipient addressToRecipientMap) error {
+	outfile, err := os.Create(filename)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile(m.saveEmailsTo, jsonData, 0644)
-	return err
+	defer outfile.Close()
+	for key := range addressToRecipient {
+		_, err = outfile.WriteString(key + "\n")
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (m *mailer) run(ctx context.Context) error {
@@ -157,7 +164,7 @@ func (m *mailer) run(ctx context.Context) error {
 	// If saveEmailsTo set but readEmailsFrom not, write the map of resolved
 	// addresses to saveEmailsTo
 	if m.saveEmailsTo != "" && m.readEmailsMap == nil {
-		err := m.writeEmailsToFile(addressToRecipient)
+		err := writeEmailsToFile(m.saveEmailsTo, addressToRecipient)
 		if err != nil {
 			return err
 		}
@@ -252,7 +259,7 @@ func (m *mailer) run(ctx context.Context) error {
 		for k, v := range m.readEmailsMap {
 			addressToRecipient[k] = v
 		}
-		err = m.writeEmailsToFile(addressToRecipient)
+		err = writeEmailsToFile(m.saveEmailsTo, addressToRecipient)
 		if err != nil {
 			return err
 		}
@@ -449,6 +456,22 @@ func readRecipientsList(filename string, delimiter rune) ([]recipient, string, e
 	}
 }
 
+// Read the emails in readEmailsFile and extract them as keys in an addressToRecipientMap
+func readEmailsFile(filename string) (addressToRecipientMap, error) {
+	infile, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer infile.Close()
+
+	scanner := bufio.NewScanner(infile)
+	addressToRecipientMap := make(addressToRecipientMap)
+	for scanner.Scan() {
+		addressToRecipientMap[scanner.Text()] = []recipient{}
+	}
+	return addressToRecipientMap, nil
+}
+
 const usageIntro = `
 Introduction:
 
@@ -583,11 +606,8 @@ func main() {
 	// Read and parse readEmailsFrom file.
 	var readEmailsMap addressToRecipientMap
 	if *readEmailsFrom != "" {
-		data, err := os.ReadFile(*readEmailsFrom)
-		cmd.FailOnError(err, "Couldn't load readEmailsFrom file")
-
-		err = json.Unmarshal(data, &readEmailsMap)
-		cmd.FailOnError(err, "Couldn't unmarshal readEmailsFrom file")
+		readEmailsMap, err = readEmailsFile(*readEmailsFrom)
+		cmd.FailOnError(err, "Couldn't parse readEmailsFrom file")
 	}
 
 	// Load and parse message body.
@@ -612,7 +632,13 @@ func main() {
 		log.Infof("While reading the recipient list file %s", probs)
 	}
 
-	// TODO: Ensure that if saveEmailsTo provided, the file either doesn't exist or is empty
+	// Ensure that if saveEmailsTo provided, the file either doesn't exist or is empty
+	if *saveEmailsTo != "" {
+		if fi, err := os.Stat(*saveEmailsTo); err != nil && fi.Size() != 0 {
+			log.Warningf("Nonempty, existing saveEmailsTo file would be overwritten. Exiting.")
+			os.Exit(1)
+		}
+	}
 
 	var mailClient bmail.Mailer
 	if *dryRun {

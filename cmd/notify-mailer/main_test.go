@@ -780,3 +780,55 @@ func TestResolveEmails(t *testing.T) {
 		}
 	}
 }
+
+// Create a test addressToRecipientMap, write the emails to a file,
+// read and extract the emails from the file to a new map.
+// Test original and new map have same set of emails.
+func TestReadWriteEmailFiles(t *testing.T) {
+	filename := "testdata/notify-mailer-test.txt"
+	defer os.Remove(filename)
+
+	// Make and fill a test addressToRecipientMap
+	originalMap := make(addressToRecipientMap)
+	originalMap["test@gmail.com"] = []recipient{
+		{id: 10, Data: map[string]string{"date": "2018-11-21", "domainName": "example.com"}},
+		{id: 23, Data: map[string]string{"date": "2018-11-22", "domainName": "example.net"}},
+	}
+	originalMap["example@letsencrypt.org"] = []recipient{
+		{id: 11, Data: map[string]string{"date": "2019-09-21", "domainName": "test.com"}},
+		{id: 24, Data: map[string]string{"date": "2024-01-01", "domainName": "foo.bar"}},
+		{id: 156, Data: map[string]string{"date": "2025-01-04", "domainName": "foo.baz"}},
+	}
+	originalMap["something@domain.com"] = []recipient{
+		{id: 217262284, Data: map[string]string{"date": "2018-11-21", "domainName": "example.org"}},
+	}
+
+	// Write emails from originalMap to filename
+	err := writeEmailsToFile(filename, originalMap)
+	if err != nil {
+		t.Errorf("error writing email map to file: %s", err)
+	}
+
+	// Read emails from filename and add as keys to readMap
+	readMap, err := readEmailsFile(filename)
+	if err != nil {
+		t.Errorf("error reading email map file: %s", err)
+	}
+
+	// Check originalMap and readMap have exact same set of emails/keys
+	for k := range originalMap {
+		if _, ok := readMap[k]; !ok {
+			t.Error("orininalMap has key that is missing in readMap")
+		}
+		delete(readMap, k)
+	}
+	if len(readMap) > 0 {
+		t.Error("readMap has key that is not present in originalMap")
+	}
+}
+
+// test scenarios:
+// DONE write --> read path gives same map
+// test read-only path
+// test save-only path
+// test batch path with read + save
