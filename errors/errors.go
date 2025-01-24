@@ -49,7 +49,7 @@ const (
 	AlreadyRevoked
 	BadRevocationReason
 	UnsupportedContact
-	// The requesteed serial number does not exist in the `serials` table.
+	// The requested serial number does not exist in the `serials` table.
 	UnknownSerial
 	// The certificate being indicated for replacement already has a replacement
 	// order.
