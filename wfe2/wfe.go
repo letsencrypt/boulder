@@ -2572,7 +2572,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error finalizing order"), err)
 		return
 	}
-	if core.IsAnyNilOrZero(order.Id, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
+	if core.IsAnyNilOrZero(updatedOrder.Id, updatedOrder.RegistrationID, updatedOrder.DnsNames, updatedOrder.Created, updatedOrder.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}
