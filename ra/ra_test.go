@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -2613,6 +2614,16 @@ func TestFinalizeWithMustStaple(t *testing.T) {
 	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
+	ocspMustStapleExt := pkix.Extension{
+		// RFC 7633: id-pe-tlsfeature OBJECT IDENTIFIER ::=  { id-pe 24 }
+		Id: asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24},
+		// ASN.1 encoding of:
+		// SEQUENCE
+		//   INTEGER 5
+		// where "5" is the status_request feature (RFC 6066)
+		Value: []byte{0x30, 0x03, 0x02, 0x01, 0x05},
+	}
+
 	testCases := []struct {
 		name                  string
 		mustStapleAllowList   *allowlist.List[int64]
@@ -2671,8 +2682,7 @@ func TestFinalizeWithMustStaple(t *testing.T) {
 			csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 				PublicKey:       testKey.Public(),
 				DNSNames:        []string{domain},
-				Extensions:      []pkix.Extension{issuance.OCSPMustStapleExt},
-				ExtraExtensions: []pkix.Extension{issuance.OCSPMustStapleExt},
+				ExtraExtensions: []pkix.Extension{ocspMustStapleExt},
 			}, testKey)
 			test.AssertNotError(t, err, "creating must-staple CSR")
 
@@ -2686,7 +2696,7 @@ func TestFinalizeWithMustStaple(t *testing.T) {
 				NotAfter:              fc.Now().Add(365 * 24 * time.Hour),
 				BasicConstraintsValid: true,
 				ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-				ExtraExtensions:       []pkix.Extension{issuance.OCSPMustStapleExt},
+				ExtraExtensions:       []pkix.Extension{ocspMustStapleExt},
 			}
 			cert, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
 			test.AssertNotError(t, err, "creating certificate")

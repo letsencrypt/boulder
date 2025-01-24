@@ -957,10 +957,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	}
 
 	if ra.mustStapleAllowList != nil {
-		for _, ext := range csr.Extensions {
-			if !ext.Id.Equal(issuance.OCSPMustStapleExt.Id) {
-				continue
-			}
+		if issuance.ContainsMustStaple(csr.Extensions) {
 			if !ra.mustStapleAllowList.Contains(req.Order.RegistrationID) {
 				ra.mustStapleRequestsCounter.WithLabelValues("denied").Inc()
 				return nil, berrors.UnauthorizedError(
