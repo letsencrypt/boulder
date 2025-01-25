@@ -601,8 +601,12 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fourth, insert the FQDNSet entry for the order.
-		// TODO(#7311): Use Identifiers instead of dnsNames.
-		err = addOrderFQDNSet(ctx, tx, identifier.SliceNewDNS(req.NewOrder.DnsNames), orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
+		if req.NewOrder.Identifiers == nil {
+			// TODO(#7311): Change this to simply return an error once all RPC users
+			// are populating Identifiers.
+			req.NewOrder.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.NewOrder.DnsNames))
+		}
+		err = addOrderFQDNSet(ctx, tx, identifier.SliceFromProto(req.NewOrder.Identifiers), orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {
 			return nil, err
 		}

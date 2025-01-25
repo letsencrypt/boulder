@@ -659,10 +659,15 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
 // authzPBToModel converts a protobuf authorization representation to the
 // authzModel storage representation.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
-	// TODO(#7311): This should prefer Identifier over DnsName.
+	if authz.Identifier == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		authz.Identifier = identifier.NewDNS(authz.DnsName).AsProto()
+	}
+
 	am := &authzModel{
-		IdentifierType:  identifierTypeToUint[string(identifier.TypeDNS)],
-		IdentifierValue: authz.DnsName,
+		IdentifierType:  identifierTypeToUint[authz.Identifier.Type],
+		IdentifierValue: authz.Identifier.Value,
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.AcmeStatus(authz.Status)],
 		Expires:         authz.Expires.AsTime(),
@@ -1097,9 +1102,13 @@ func statusForOrder(order *corepb.Order, authzValidityInfo []authzValidity, now 
 	}
 
 	// An order is fully authorized if it has valid authzs for each of the order
-	// names
-	// TODO(#7311): We need to handle orders with Identifiers instead of DnsNames.
-	fullyAuthorized := len(order.DnsNames) == validAuthzs
+	// identifiers
+	if order.Identifiers == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(order.DnsNames))
+	}
+	fullyAuthorized := len(order.Identifiers) == validAuthzs
 
 	// If the order isn't fully authorized we've encountered an internal error:
 	// Above we checked for any invalid or pending authzs and should have returned

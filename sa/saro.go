@@ -337,8 +337,13 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 //
 // If req.Limit is nonzero, it returns only the most recent `Limit` results
 func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
-	// TODO(#7311): Accept Identifiers instead of dnsNames.
-	if core.IsAnyNilOrZero(req.Window) || len(req.DnsNames) == 0 {
+	if req.Identifiers == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
+	}
+
+	if core.IsAnyNilOrZero(req.Window) || len(req.Identifiers) == 0 {
 		return nil, errIncompleteRequest
 	}
 	limit := req.Limit
@@ -357,7 +362,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 		AND issued > ?
 		ORDER BY issued DESC
 		LIMIT ?`,
-		core.HashIdentifiers(identifier.SliceNewDNS(req.DnsNames)),
+		core.HashIdentifiers(identifier.SliceFromProto(req.Identifiers)),
 		ssa.clk.Now().Add(-req.Window.AsDuration()),
 		limit,
 	)
@@ -374,12 +379,16 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
-// TODO(#7311): Use Identifiers if provided.
 func (ssa *SQLStorageAuthorityRO) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
-	if len(req.DnsNames) == 0 {
+	if req.Identifiers == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
+	}
+	if len(req.Identifiers) == 0 {
 		return nil, errIncompleteRequest
 	}
-	exists, err := ssa.checkFQDNSetExists(ctx, ssa.dbReadOnlyMap.SelectOne, req.DnsNames)
+	exists, err := ssa.checkFQDNSetExists(ctx, ssa.dbReadOnlyMap.SelectOne, identifier.SliceFromProto(req.Identifiers))
 	if err != nil {
 		return nil, err
 	}
@@ -392,8 +401,8 @@ type oneSelectorFunc func(ctx context.Context, holder interface{}, query string,
 
 // checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
 // for the given names exists.
-func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(ctx context.Context, selector oneSelectorFunc, names []string) (bool, error) {
-	namehash := core.HashIdentifiers(identifier.SliceNewDNS(names))
+func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(ctx context.Context, selector oneSelectorFunc, idents []identifier.ACMEIdentifier) (bool, error) {
+	namehash := core.HashIdentifiers(idents)
 	var exists bool
 	err := selector(
 		ctx,
@@ -445,13 +454,14 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, err
 		}
 
+		idents := make([]identifier.ACMEIdentifier, 0, len(authzValidityInfo))
 		names := make([]string, 0, len(authzValidityInfo))
 		for _, a := range authzValidityInfo {
+			idents = append(idents, identifier.ACMEIdentifier{Type: identifier.IdentifierType(uintToIdentifierType[a.IdentifierType]), Value: a.IdentifierValue})
 			names = append(names, a.IdentifierValue)
 		}
+		order.Identifiers = identifier.SliceAsProto(idents)
 		order.DnsNames = names
-
-		// TODO(#7311): Populate order.Identifiers.
 
 		// Calculate the status for the order
 		status, err := statusForOrder(order, authzValidityInfo, ssa.clk.Now())
@@ -499,12 +509,18 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 //
 // TODO(#7311): Use Identifiers instead of dnsNames (if present).
 func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
-	if req.AcctID == 0 || len(req.DnsNames) == 0 {
+	if req.Identifiers == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
+	}
+
+	if req.AcctID == 0 || len(req.Identifiers) == 0 {
 		return nil, errIncompleteRequest
 	}
 
 	// Hash the names requested for lookup in the orderFqdnSets table
-	fqdnHash := core.HashIdentifiers(identifier.SliceNewDNS(req.DnsNames))
+	fqdnHash := core.HashIdentifiers(identifier.SliceFromProto(req.Identifiers))
 
 	// Find a possibly-suitable order. We don't include the account ID or order
 	// status in this query because there's no index that includes those, so
@@ -607,9 +623,16 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 // identifiers are supported.
 //
 // Deprecated: Use GetValidAuthorizations2, as we stop pending authz reuse.
-// TODO(#7311): Use Identifiers if provided.
+//
+// TODO(#7311): Support IP address identifiers.
 func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if core.IsAnyNilOrZero(req, req.RegistrationID, req.DnsNames, req.ValidUntil) {
+	if req.Identifiers == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
+	}
+
+	if core.IsAnyNilOrZero(req, req.RegistrationID, req.Identifiers, req.ValidUntil) {
 		return nil, errIncompleteRequest
 	}
 
@@ -622,7 +645,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 			identifierType = ? AND
 			identifierValue IN (%s)`,
 		authzFields,
-		db.QuestionMarks(len(req.DnsNames)),
+		db.QuestionMarks(len(req.Identifiers)),
 	)
 
 	params := []interface{}{
@@ -631,8 +654,8 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		req.ValidUntil.AsTime(),
 		identifierTypeToUint[string(identifier.TypeDNS)],
 	}
-	for _, dnsName := range req.DnsNames {
-		params = append(params, dnsName)
+	for _, ident := range req.Identifiers {
+		params = append(params, ident.Value)
 	}
 
 	var authzModels []authzModel
@@ -749,8 +772,13 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
 // in a given time range. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	// TODO(#7311): Accept & use Identifiers if provided.
-	if core.IsAnyNilOrZero(req.RegistrationID, req.DnsName, req.Range.Earliest, req.Range.Latest) {
+	if req.Identifier == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		req.Identifier = identifier.NewDNS(req.DnsName).AsProto()
+	}
+
+	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifier, req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 
@@ -768,7 +796,7 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 		map[string]interface{}{
 			"regID":           req.RegistrationID,
 			"dnsType":         identifierTypeToUint[string(identifier.TypeDNS)],
-			"ident":           req.DnsName,
+			"ident":           req.Identifier.Value,
 			"expiresEarliest": req.Range.Earliest.AsTime(),
 			"expiresLatest":   req.Range.Latest.AsTime(),
 			"status":          statusUint(core.StatusInvalid),
@@ -787,7 +815,13 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 //
 // TODO(#7311): Support Identifiers, not just dnsNames.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if core.IsAnyNilOrZero(req, req.RegistrationID, req.DnsNames, req.ValidUntil) {
+	if req.Identifiers == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
+	}
+
+	if core.IsAnyNilOrZero(req, req.RegistrationID, req.Identifiers, req.ValidUntil) {
 		return nil, errIncompleteRequest
 	}
 
@@ -800,7 +834,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 			identifierType = ? AND
 			identifierValue IN (%s)`,
 		authzFields,
-		db.QuestionMarks(len(req.DnsNames)),
+		db.QuestionMarks(len(req.Identifiers)),
 	)
 
 	params := []interface{}{
@@ -809,8 +843,8 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 		req.ValidUntil.AsTime(),
 		identifierTypeToUint[string(identifier.TypeDNS)],
 	}
-	for _, dnsName := range req.DnsNames {
-		params = append(params, dnsName)
+	for _, ident := range req.Identifiers {
+		params = append(params, ident.Value)
 	}
 
 	var authzModels []authzModel
