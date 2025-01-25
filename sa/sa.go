@@ -356,7 +356,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		isRenewal, err := ssa.checkFQDNSetExists(
 			ctx,
 			tx.SelectOne,
-			parsed.DNSNames)
+			identifier.SliceNewDNS(parsed.DNSNames))
 		if err != nil {
 			return nil, err
 		}
