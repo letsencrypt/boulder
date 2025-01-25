@@ -506,8 +506,6 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 // exact set of names requested, associated with the given accountID. Only
 // unexpired orders are considered. If no order meeting these requirements is
 // found a nil corepb.Order pointer is returned.
-//
-// TODO(#7311): Use Identifiers instead of dnsNames (if present).
 func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
 	if req.Identifiers == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
@@ -812,8 +810,6 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 // given account for all given identifiers. If more than one valid authorization
 // exists, only the one with the latest expiry will be returned. Currently only
 // dns identifiers are supported.
-//
-// TODO(#7311): Support Identifiers, not just dnsNames.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
 	if req.Identifiers == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
