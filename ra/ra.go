@@ -934,12 +934,17 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 			req.Order.Status)
 	}
 
-	// There should never be an order with 0 names at the stage, but we check to
-	// be on the safe side, throwing an internal server error if this assumption
-	// is ever violated.
-	// TODO(#7311): Accept Identifiers in place of dnsNames.
-	if len(req.Order.DnsNames) == 0 {
-		return nil, berrors.InternalServerError("Order has no associated names")
+	// There should never be an order with 0 identifiers at the stage, but we
+	// check to be on the safe side, throwing an internal server error if this
+	// assumption is ever violated.
+	if req.Order.Identifiers == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		req.Order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.Order.DnsNames))
+	}
+	req.Order.Identifiers = identifier.SliceAsProto(identifier.FromNames(req.Order.Identifiers, req.Order.DnsNames))
+	if len(req.Order.Identifiers) == 0 {
+		return nil, berrors.InternalServerError("Order has no associated identifiers")
 	}
 
 	// Parse the CSR from the request
@@ -957,10 +962,14 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
+	//
+	// TODO(#7311): Support IP address identifiers.
 	csrNames := csrlib.NamesFromCSR(csr).SANs
-	// TODO(#7311): Accept Identifiers in place of dnsNames; use core.NormalizeIdentifiers.
-	orderNames := core.UniqueLowerNames(req.Order.DnsNames)
-
+	orderIdents := core.NormalizeIdentifiers(identifier.SliceFromProto(req.Order.Identifiers))
+	orderNames := make([]string, len(orderIdents))
+	for i, orderIdent := range orderIdents {
+		orderNames[i] = orderIdent.Value
+	}
 	// Check that the order names and the CSR names are an exact match
 	if !slices.Equal(csrNames, orderNames) {
 		return nil, berrors.UnauthorizedError(("CSR does not specify same identifiers as Order"))
@@ -1027,6 +1036,19 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ra.inflightFinalizes.Inc()
 	defer ra.inflightFinalizes.Dec()
 
+	if order.Identifiers == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(order.DnsNames))
+	}
+	order.Identifiers = identifier.SliceAsProto(identifier.FromNames(order.Identifiers, order.DnsNames))
+
+	// TODO(#7311): Remove this once all RPC users can handle Identifiers.
+	order.DnsNames = make([]string, len(order.Identifiers))
+	for i, orderIdent := range order.Identifiers {
+		order.DnsNames[i] = orderIdent.Value
+	}
+
 	isRenewal := false
 	timestamps, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
 		DnsNames:    order.DnsNames,
@@ -1064,10 +1086,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		order.CertificateSerial = core.SerialToString(cert.SerialNumber)
 		order.Status = string(core.StatusValid)
 
-		// TODO(#7311): Accept Identifiers in place of dnsNames.
 		ra.namesPerCert.With(
 			prometheus.Labels{"type": "issued"},
-		).Observe(float64(len(order.DnsNames)))
+		).Observe(float64(len(order.Identifiers)))
 
 		ra.newCertCounter.With(
 			prometheus.Labels{
@@ -1078,7 +1099,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
 		logEvent.CommonName = cert.Subject.CommonName
 		logEvent.Names = cert.DNSNames
-		logEvent.Identifiers = identifier.SliceNewDNS(cert.DNSNames)
 		logEvent.NotBefore = cert.NotBefore
 		logEvent.NotAfter = cert.NotAfter
 		logEvent.CertProfileName = cpId.name
@@ -1418,8 +1438,15 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	// TODO(#7311): Accept Identifiers in place of dnsNames.
-	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, req.Authz.DnsName, req.Authz.Status, req.Authz.Expires) {
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, req.Authz.Status, req.Authz.Expires) {
+		return nil, errIncompleteGRPCRequest
+	}
+	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
+	// upwards, once all RPC users are populating Identifiers.
+	if req.Authz.Identifier == nil {
+		req.Authz.Identifier = identifier.NewDNS(req.Authz.DnsName).AsProto()
+	}
+	if core.IsAnyNilOrZero(req.Authz.Identifier) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -1708,9 +1735,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		logEvent.Method = "control"
 
 		var authzPB *sapb.Authorizations
-		// TODO(#7311): Populate Identifiers, not just dnsNames.
 		authzPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
+			Identifiers:    identifier.SliceAsProto(identifier.SliceNewDNS(cert.DNSNames)),
 			DnsNames:       cert.DNSNames,
 			ValidUntil:     timestamppb.New(ra.clk.Now()),
 		})
@@ -2067,6 +2094,12 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
+	if req.Identifier == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		req.Identifier = identifier.NewDNS(req.DnsName).AsProto()
+	}
+
 	if core.IsAnyNilOrZero(req, req.Id, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
 	}
@@ -2083,9 +2116,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		// internal errors in the client. From our perspective this uses storage
 		// resources similar to how failed authorizations do, so we increment the
 		// failed authorizations limit.
-		//
-		// TODO(#7311): Accept Identifiers in place of dnsNames.
-		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.NewDNS(req.DnsName))
+		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.FromProto(req.Identifier))
 		if err != nil {
 			return nil, fmt.Errorf("failed to update rate limits: %w", err)
 		}
@@ -2138,9 +2169,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	// TODO(#7311): Compose Identifiers from DnsNames if that's all we were
-	// given by the WFE.
-	idents := core.NormalizeIdentifiers(identifier.SliceFromProto(req.Identifiers))
+	if req.Identifiers == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
+	}
+	idents := core.NormalizeIdentifiers(identifier.FromNames(req.Identifiers, req.DnsNames))
 
 	if len(idents) > ra.maxNames {
 		return nil, berrors.MalformedError(
@@ -2200,8 +2234,15 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Error if an incomplete order is returned.
 	if existingOrder != nil {
 		// Check to see if the expected fields of the existing order are set.
-		// TODO(#7311): Allow one of Identifiers or dnsNames to be empty.
-		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, existingOrder.DnsNames, existingOrder.Created, existingOrder.Expires) {
+		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, existingOrder.Created, existingOrder.Expires) {
+			return nil, errIncompleteGRPCResponse
+		}
+		// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
+		// upwards, once all RPC users are populating Identifiers.
+		if existingOrder.Identifiers == nil {
+			existingOrder.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(existingOrder.DnsNames))
+		}
+		if core.IsAnyNilOrZero(existingOrder.Identifiers) {
 			return nil, errIncompleteGRPCResponse
 		}
 
@@ -2262,7 +2303,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// existing authz, append it to the order to reuse it. Otherwise track that
 	// there is a missing authz for that identifier.
 	//
-	// TODO(#7647): Support non-dnsName identifier types here.
+	// TODO(#7311): TODO(#7647): Support non-dnsName identifier types here.
 	var missingAuthzIdents []identifier.ACMEIdentifier
 	for _, ident := range idents {
 		name := ident.Value
@@ -2357,8 +2398,15 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	// TODO(#7311): Allow one of Identifiers or dnsNames to be empty.
-	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, storedOrder.DnsNames, storedOrder.Created, storedOrder.Expires) {
+	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, storedOrder.Created, storedOrder.Expires) {
+		return nil, errIncompleteGRPCResponse
+	}
+	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
+	// upwards, once all RPC users are populating Identifiers.
+	if storedOrder.Identifiers == nil {
+		storedOrder.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(storedOrder.DnsNames))
+	}
+	if core.IsAnyNilOrZero(storedOrder.Identifiers) {
 		return nil, errIncompleteGRPCResponse
 	}
 	ra.orderAges.WithLabelValues("NewOrder").Observe(0)

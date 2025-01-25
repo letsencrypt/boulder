@@ -2335,7 +2335,7 @@ func TestFinalizeOrder(t *testing.T) {
 				},
 				Csr: oneDomainCSR,
 			},
-			ExpectedErrMsg: "Order has no associated names",
+			ExpectedErrMsg: "Order has no associated identifiers",
 		},
 		{
 			Name: "Wrong order state (valid)",
@@ -2846,8 +2846,11 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	// The event CommonName should match the expected common name
 	test.AssertEquals(t, event.CommonName, "not-example.com")
 	// The event names should match the order names
-	test.AssertDeepEquals(t, core.UniqueLowerNames(event.Names), core.UniqueLowerNames(order.DnsNames))
-	test.AssertDeepEquals(t, core.NormalizeIdentifiers(event.Identifiers), core.NormalizeIdentifiers(identifier.SliceFromProto(order.Identifiers)))
+	orderNames := make([]string, len(order.Identifiers))
+	for i, orderIdent := range order.Identifiers {
+		orderNames[i] = orderIdent.Value
+	}
+	test.AssertDeepEquals(t, core.UniqueLowerNames(event.Names), core.UniqueLowerNames(orderNames))
 	// The event's NotBefore and NotAfter should match the cert's
 	test.AssertEquals(t, event.NotBefore, parsedCert.NotBefore)
 	test.AssertEquals(t, event.NotAfter, parsedCert.NotAfter)
