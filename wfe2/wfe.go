@@ -2633,7 +2633,17 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error finalizing order"), err)
 		return
 	}
-	if core.IsAnyNilOrZero(updatedOrder.Id, updatedOrder.RegistrationID, updatedOrder.Identifiers, updatedOrder.Created, updatedOrder.Expires) {
+	if core.IsAnyNilOrZero(updatedOrder.Id, updatedOrder.RegistrationID, updatedOrder.Created, updatedOrder.Expires) {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
+		return
+	}
+	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
+	// upwards, once all RPC users are populating Identifiers.
+	if updatedOrder.Identifiers == nil {
+		updatedOrder.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(updatedOrder.DnsNames))
+	}
+	updatedOrder.Identifiers = identifier.SliceAsProto(identifier.FromNames(updatedOrder.Identifiers, updatedOrder.DnsNames))
+	if core.IsAnyNilOrZero(updatedOrder.Identifiers) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}

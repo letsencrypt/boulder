@@ -1778,7 +1778,7 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 
 			orderReq := &rapb.NewOrderRequest{
 				RegistrationID:         Registration.Id,
-				DnsNames:               []string{randomDomain()},
+				Identifiers:            []*corepb.Identifier{identifier.NewDNS(randomDomain()).AsProto()},
 				CertificateProfileName: "test",
 			}
 			_, err := ra.NewOrder(context.Background(), orderReq)
