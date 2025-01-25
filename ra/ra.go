@@ -28,6 +28,7 @@ import (
 
 	"github.com/letsencrypt/boulder/akamai"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
+	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -65,6 +66,19 @@ var (
 	caaRecheckDuration = -7 * time.Hour
 )
 
+// ValidationProfile holds the allowlist for a given validation profile.
+type ValidationProfile struct {
+	// allowList holds the set of account IDs allowed to use this profile. If
+	// nil, the profile is open to all accounts (everyone is allowed).
+	allowList *allowlist.List[int64]
+}
+
+// NewValidationProfile creates a new ValidationProfile with the provided
+// allowList. A nil allowList is interpreted as open access for all accounts.
+func NewValidationProfile(allowList *allowlist.List[int64]) *ValidationProfile {
+	return &ValidationProfile{allowList: allowList}
+}
+
 // RegistrationAuthorityImpl defines an RA.
 //
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
@@ -84,6 +98,7 @@ type RegistrationAuthorityImpl struct {
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
+	validationProfiles           map[string]*ValidationProfile
 	maxContactsPerReg            int
 	limiter                      *ratelimits.Limiter
 	txnBuilder                   *ratelimits.TransactionBuilder
@@ -124,6 +139,7 @@ func NewRegistrationAuthorityImpl(
 	maxNames int,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
+	validationProfiles map[string]*ValidationProfile,
 	pubc pubpb.PublisherClient,
 	orderLifetime time.Duration,
 	finalizeTimeout time.Duration,
@@ -230,6 +246,7 @@ func NewRegistrationAuthorityImpl(
 		log:                          logger,
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
+		validationProfiles:           validationProfiles,
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		limiter:                      limiter,
@@ -2128,6 +2145,21 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if len(idents) > ra.maxNames {
 		return nil, berrors.MalformedError(
 			"Order cannot contain more than %d identifiers", ra.maxNames)
+	}
+
+	if req.CertificateProfileName != "" && ra.validationProfiles != nil {
+		vp, ok := ra.validationProfiles[req.CertificateProfileName]
+		if !ok {
+			return nil, berrors.MalformedError("requested certificate profile %q not found",
+				req.CertificateProfileName,
+			)
+		}
+		if vp.allowList != nil && !vp.allowList.Contains(req.RegistrationID) {
+			return nil, berrors.UnauthorizedError("account ID %d is not permitted to use certificate profile %q",
+				req.RegistrationID,
+				req.CertificateProfileName,
+			)
+		}
 	}
 
 	// Validate that our policy allows issuing for each of the identifiers in
