@@ -1259,7 +1259,6 @@ func TestOrder(t *testing.T) {
 	// Fetch the order by its ID and make sure it matches the expected
 	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "sa.GetOrder failed")
-	// TODO(#7961): FIXME: broken
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
 }
 
@@ -1323,7 +1322,6 @@ func TestOrderWithProfile(t *testing.T) {
 	// Fetch the order by its ID and make sure it matches the expected
 	storedOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
 	test.AssertNotError(t, err, "sa.GetOrder failed")
-	// TODO(#7961): FIXME: broken
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
 }
 
@@ -1590,7 +1588,6 @@ func TestGetOrderForNames(t *testing.T) {
 		Identifiers: identifier.SliceAsProto(idents),
 	})
 	// It should not error since a ready order can be reused.
-	// TODO(#7961): FIXME: broken
 	test.AssertNotError(t, err, "sa.GetOrderForNames returned an unexpected error for ready order reuse")
 	// The order returned should have the same ID as the order we created above
 	test.AssertNotNil(t, result, "sa.GetOrderForNames returned nil result")
@@ -2620,8 +2617,8 @@ func TestGetValidAuthorizations2(t *testing.T) {
 	test.AssertNotError(t, err, "sa.GetValidAuthorizations2 failed")
 	test.AssertEquals(t, len(authzs.Authzs), 1)
 	test.AssertEquals(t, authzs.Authzs[0].DnsName, ident.Value)
-	// TODO(#7961): FIXME: a uint8 conversion is broken somewhere
-	test.AssertEquals(t, authzs.Authzs[0].Identifier, ident.AsProto())
+	test.AssertEquals(t, authzs.Authzs[0].Identifier.Type, string(ident.Type))
+	test.AssertEquals(t, authzs.Authzs[0].Identifier.Value, ident.Value)
 	test.AssertEquals(t, authzs.Authzs[0].Id, fmt.Sprintf("%d", authzID))
 }
 
