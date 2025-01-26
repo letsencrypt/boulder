@@ -74,12 +74,11 @@ func (sa *StorageAuthorityReadOnly) GetRegistration(_ context.Context, req *sapb
 	}
 
 	goodReg := &corepb.Registration{
-		Id:              req.Id,
-		Key:             []byte(test1KeyPublicJSON),
-		Agreement:       agreementURL,
-		Contact:         []string{"mailto:person@mail.com"},
-		ContactsPresent: true,
-		Status:          string(core.StatusValid),
+		Id:        req.Id,
+		Key:       []byte(test1KeyPublicJSON),
+		Agreement: agreementURL,
+		Contact:   []string{"mailto:person@mail.com"},
+		Status:    string(core.StatusValid),
 	}
 
 	// Return a populated registration with contacts for ID == 1 or ID == 5
@@ -136,12 +135,11 @@ func (sa *StorageAuthorityReadOnly) GetRegistrationByKey(_ context.Context, req 
 
 	if bytes.Equal(req.Jwk, []byte(test1KeyPublicJSON)) {
 		return &corepb.Registration{
-			Id:              1,
-			Key:             req.Jwk,
-			Agreement:       agreementURL,
-			Contact:         contacts,
-			ContactsPresent: true,
-			Status:          string(core.StatusValid),
+			Id:        1,
+			Key:       req.Jwk,
+			Agreement: agreementURL,
+			Contact:   contacts,
+			Status:    string(core.StatusValid),
 		}, nil
 	}
 
@@ -171,12 +169,11 @@ func (sa *StorageAuthorityReadOnly) GetRegistrationByKey(_ context.Context, req 
 	if bytes.Equal(req.Jwk, []byte(test3KeyPublicJSON)) {
 		// deactivated registration
 		return &corepb.Registration{
-			Id:              2,
-			Key:             req.Jwk,
-			Agreement:       agreementURL,
-			Contact:         contacts,
-			ContactsPresent: true,
-			Status:          string(core.StatusDeactivated),
+			Id:        2,
+			Key:       req.Jwk,
+			Agreement: agreementURL,
+			Contact:   contacts,
+			Status:    string(core.StatusDeactivated),
 		}, nil
 	}
 
