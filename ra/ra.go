@@ -956,17 +956,16 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		return nil, berrors.BadCSRError("unable to parse CSR: %s", err.Error())
 	}
 
-	if ra.mustStapleAllowList != nil {
-		if issuance.ContainsMustStaple(csr.Extensions) {
-			if !ra.mustStapleAllowList.Contains(req.Order.RegistrationID) {
-				ra.mustStapleRequestsCounter.WithLabelValues("denied").Inc()
-				return nil, berrors.UnauthorizedError(
-					"OCSP must-staple extension is no longer available: see https://letsencrypt.org/2024/12/05/ending-ocsp",
-				)
-			} else {
-				ra.mustStapleRequestsCounter.WithLabelValues("allowed").Inc()
-			}
+	if ra.mustStapleAllowList != nil && issuance.ContainsMustStaple(csr.Extensions) {
+		if !ra.mustStapleAllowList.Contains(req.Order.RegistrationID) {
+			ra.mustStapleRequestsCounter.WithLabelValues("denied").Inc()
+			return nil, berrors.UnauthorizedError(
+				"OCSP must-staple extension is no longer available: see https://letsencrypt.org/2024/12/05/ending-ocsp",
+			)
+		} else {
+			ra.mustStapleRequestsCounter.WithLabelValues("allowed").Inc()
 		}
+
 	}
 
 	err = csrlib.VerifyCSR(ctx, csr, ra.maxNames, &ra.keyPolicy, ra.PA)
