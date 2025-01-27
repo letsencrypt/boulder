@@ -154,6 +154,17 @@ func (m *mailer) run(ctx context.Context) error {
 
 	m.log.Infof("%d recipients were resolved to %d addresses", totalRecipients, totalAddresses)
 
+	var mostRecipients string
+	var mostRecipientsLen int
+	for k, v := range addressToRecipient {
+		if len(v) > mostRecipientsLen {
+			mostRecipientsLen = len(v)
+			mostRecipients = k
+		}
+	}
+	m.log.Infof("Address %q was associated with the most recipients (%d)",
+		mostRecipients, mostRecipientsLen)
+
 	// If saveEmailsTo set but readEmailsFrom not, write the map of resolved
 	// addresses to saveEmailsTo
 	if m.saveEmailsTo != "" && m.readEmailsMap == nil {
