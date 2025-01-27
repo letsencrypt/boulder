@@ -317,6 +317,11 @@ type Authorization struct {
 	// as part of the authorization, the identifier we store in the database
 	// can contain an asterisk.
 	Wildcard bool `json:"wildcard,omitempty" db:"-"`
+
+	// CertificateProfileName is the name of the profile associated with the
+	// order that first resulted in the creation of this authorization. Omitted
+	// from API responses.
+	CertificateProfileName string `json:"-"`
 }
 
 // FindChallengeByStringID will look for a challenge matching the given ID inside

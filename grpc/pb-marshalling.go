@@ -289,12 +289,13 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	}
 
 	return &corepb.Authorization{
-		Id:             authz.ID,
-		DnsName:        authz.Identifier.Value,
-		RegistrationID: authz.RegistrationID,
-		Status:         string(authz.Status),
-		Expires:        expires,
-		Challenges:     challs,
+		Id:                     authz.ID,
+		DnsName:                authz.Identifier.Value,
+		RegistrationID:         authz.RegistrationID,
+		Status:                 string(authz.Status),
+		Expires:                expires,
+		Challenges:             challs,
+		CertificateProfileName: authz.CertificateProfileName,
 	}, nil
 }
 
@@ -313,12 +314,13 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		expires = &c
 	}
 	authz := core.Authorization{
-		ID:             pb.Id,
-		Identifier:     identifier.NewDNS(pb.DnsName),
-		RegistrationID: pb.RegistrationID,
-		Status:         core.AcmeStatus(pb.Status),
-		Expires:        expires,
-		Challenges:     challs,
+		ID:                     pb.Id,
+		Identifier:             identifier.NewDNS(pb.DnsName),
+		RegistrationID:         pb.RegistrationID,
+		Status:                 core.AcmeStatus(pb.Status),
+		Expires:                expires,
+		Challenges:             challs,
+		CertificateProfileName: pb.CertificateProfileName,
 	}
 	return authz, nil
 }
