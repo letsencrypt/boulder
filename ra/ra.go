@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"net"
 	"net/url"
 	"slices"
@@ -29,6 +28,7 @@ import (
 
 	"github.com/letsencrypt/boulder/akamai"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
+	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -66,6 +66,19 @@ var (
 	caaRecheckDuration = -7 * time.Hour
 )
 
+// ValidationProfile holds the allowlist for a given validation profile.
+type ValidationProfile struct {
+	// allowList holds the set of account IDs allowed to use this profile. If
+	// nil, the profile is open to all accounts (everyone is allowed).
+	allowList *allowlist.List[int64]
+}
+
+// NewValidationProfile creates a new ValidationProfile with the provided
+// allowList. A nil allowList is interpreted as open access for all accounts.
+func NewValidationProfile(allowList *allowlist.List[int64]) *ValidationProfile {
+	return &ValidationProfile{allowList: allowList}
+}
+
 // RegistrationAuthorityImpl defines an RA.
 //
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
@@ -85,6 +98,7 @@ type RegistrationAuthorityImpl struct {
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
+	validationProfiles           map[string]*ValidationProfile
 	maxContactsPerReg            int
 	limiter                      *ratelimits.Limiter
 	txnBuilder                   *ratelimits.TransactionBuilder
@@ -125,6 +139,7 @@ func NewRegistrationAuthorityImpl(
 	maxNames int,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
+	validationProfiles map[string]*ValidationProfile,
 	pubc pubpb.PublisherClient,
 	orderLifetime time.Duration,
 	finalizeTimeout time.Duration,
@@ -231,6 +246,7 @@ func NewRegistrationAuthorityImpl(
 		log:                          logger,
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
+		validationProfiles:           validationProfiles,
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		limiter:                      limiter,
@@ -328,6 +344,7 @@ type certificateRevocationEvent struct {
 	// RequesterID is the account ID of the requester.
 	// Will be zero for admin revocations.
 	RequesterID int64 `json:",omitempty"`
+	CRLShard    int64
 	// AdminName is the name of the admin requester.
 	// Will be zero for subscriber revocations.
 	AdminName string `json:",omitempty"`
@@ -1545,14 +1562,20 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 // revokeCertificate updates the database to mark the certificate as revoked,
 // with the given reason and current timestamp.
-func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, serial *big.Int, issuerID issuance.NameID, reason revocation.Reason) error {
-	serialString := core.SerialToString(serial)
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert *x509.Certificate, reason revocation.Reason) error {
+	serialString := core.SerialToString(cert.SerialNumber)
+	issuerID := issuance.IssuerNameID(cert)
+	shardIdx, err := crlShard(cert)
+	if err != nil {
+		return err
+	}
 
-	_, err := ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
+	_, err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
 		Reason:   int64(reason),
 		Date:     timestamppb.New(ra.clk.Now()),
 		IssuerID: int64(issuerID),
+		ShardIdx: shardIdx,
 	})
 	if err != nil {
 		return err
@@ -1566,9 +1589,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 // as revoked, with the given reason and current timestamp. This only works for
 // certificates that were previously revoked for a reason other than
 // keyCompromise, and which are now being updated to keyCompromise instead.
-func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serial *big.Int, issuerID issuance.NameID) error {
-	serialString := core.SerialToString(serial)
-
+func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serialString string, issuerID issuance.NameID) error {
 	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serialString})
 	if err != nil {
 		return berrors.NotFoundError("unable to confirm that serial %q was ever issued: %s", serialString, err)
@@ -1709,11 +1730,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		logEvent.Reason = req.Code
 	}
 
-	issuerID := issuance.IssuerNameID(cert)
 	err = ra.revokeCertificate(
 		ctx,
-		cert.SerialNumber,
-		issuerID,
+		cert,
 		revocation.Reason(req.Code),
 	)
 	if err != nil {
@@ -1721,9 +1740,48 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	}
 
 	// Don't propagate purger errors to the client.
+	issuerID := issuance.IssuerNameID(cert)
 	_ = ra.purgeOCSPCache(ctx, cert, issuerID)
 
 	return &emptypb.Empty{}, nil
+}
+
+// crlShard extracts the CRL shard from a certificate's CRLDistributionPoint.
+//
+// If there is no CRLDistributionPoint, returns 0.
+//
+// If there is more than one CRLDistributionPoint, returns an error.
+//
+// Assumes the shard number is represented in the URL as an integer that
+// occurs in the last path component, optionally followed by ".crl".
+//
+// Note: This assumes (a) the CA is generating well-formed, correct
+// CRLDistributionPoints and (b) an earlier component has verified the signature
+// on this certificate comes from one of our issuers.
+func crlShard(cert *x509.Certificate) (int64, error) {
+	if len(cert.CRLDistributionPoints) == 0 {
+		return 0, nil
+	}
+	if len(cert.CRLDistributionPoints) > 1 {
+		return 0, errors.New("too many crlDistributionPoints in certificate")
+	}
+
+	url := strings.TrimSuffix(cert.CRLDistributionPoints[0], ".crl")
+	lastIndex := strings.LastIndex(url, "/")
+	if lastIndex == -1 {
+		return 0, fmt.Errorf("malformed CRLDistributionPoint %q", url)
+	}
+	shardStr := url[lastIndex+1:]
+	shardIdx, err := strconv.Atoi(shardStr)
+	if err != nil {
+		return 0, fmt.Errorf("parsing CRLDistributionPoint: %s", err)
+	}
+
+	if shardIdx <= 0 {
+		return 0, fmt.Errorf("invalid shard in CRLDistributionPoint: %d", shardIdx)
+	}
+
+	return int64(shardIdx), nil
 }
 
 // addToBlockedKeys initiates a GRPC call to have the Base64-encoded SHA256
@@ -1765,8 +1823,6 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		return nil, err
 	}
 
-	issuerID := issuance.IssuerNameID(cert)
-
 	logEvent := certificateRevocationEvent{
 		ID:           core.NewToken(),
 		SerialNumber: core.SerialToString(cert.SerialNumber),
@@ -1791,8 +1847,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// since that addition needs to happen no matter what.
 	revokeErr := ra.revokeCertificate(
 		ctx,
-		cert.SerialNumber,
-		issuerID,
+		cert,
 		revocation.Reason(ocsp.KeyCompromise),
 	)
 
@@ -1803,6 +1858,8 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	if err != nil {
 		return nil, err
 	}
+
+	issuerID := issuance.IssuerNameID(cert)
 
 	// Check the error returned from revokeCertificate itself.
 	err = revokeErr
@@ -1815,7 +1872,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	} else if errors.Is(err, berrors.AlreadyRevoked) {
 		// If it was an AlreadyRevoked error, try to re-revoke the cert in case
 		// it was revoked for a reason other than keyCompromise.
-		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, issuerID)
+		err = ra.updateRevocationForKeyCompromise(ctx, core.SerialToString(cert.SerialNumber), issuerID)
 
 		// Perform an Akamai cache purge to handle occurrences of a client
 		// previously successfully revoking a certificate, but the cache purge had
@@ -1847,6 +1904,9 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	if req.Serial == "" {
 		return nil, errIncompleteGRPCRequest
 	}
+	if req.CrlShard != 0 && !req.Malformed {
+		return nil, errors.New("non-zero CRLShard is only allowed for malformed certificates (shard is automatic for well formed certificates)")
+	}
 
 	reasonCode := revocation.Reason(req.Code)
 	if _, present := revocation.AdminAllowedReasons[reasonCode]; !present {
@@ -1863,6 +1923,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		ID:           core.NewToken(),
 		SerialNumber: req.Serial,
 		Reason:       req.Code,
+		CRLShard:     req.CrlShard,
 		Method:       "admin",
 		AdminName:    req.AdminName,
 	}
@@ -1880,6 +1941,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 
 	var cert *x509.Certificate
 	var issuerID issuance.NameID
+	var shard int64
 	if req.Cert != nil {
 		// If the incoming request includes a certificate body, just use that and
 		// avoid doing any database queries. This code path is deprecated and will
@@ -1889,6 +1951,10 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 			return nil, err
 		}
 		issuerID = issuance.IssuerNameID(cert)
+		shard, err = crlShard(cert)
+		if err != nil {
+			return nil, err
+		}
 	} else if !req.Malformed {
 		// As long as we don't believe the cert will be malformed, we should
 		// get the precertificate so we can block its pubkey if necessary and purge
@@ -1906,6 +1972,10 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 			return nil, err
 		}
 		issuerID = issuance.IssuerNameID(cert)
+		shard, err = crlShard(cert)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		// But if the cert is malformed, we at least still need its IssuerID.
 		var status *corepb.CertificateStatus
@@ -1914,29 +1984,30 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 			return nil, fmt.Errorf("unable to confirm that serial %q was ever issued: %w", req.Serial, err)
 		}
 		issuerID = issuance.NameID(status.IssuerID)
+		shard = req.CrlShard
 	}
 
-	var serialInt *big.Int
-	serialInt, err = core.StringToSerial(req.Serial)
-	if err != nil {
-		return nil, err
-	}
-
-	err = ra.revokeCertificate(ctx, serialInt, issuerID, revocation.Reason(req.Code))
+	_, err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
+		Serial:   req.Serial,
+		Reason:   req.Code,
+		Date:     timestamppb.New(ra.clk.Now()),
+		IssuerID: int64(issuerID),
+		ShardIdx: shard,
+	})
 	// Perform an Akamai cache purge to handle occurrences of a client
 	// successfully revoking a certificate, but the initial cache purge failing.
 	if errors.Is(err, berrors.AlreadyRevoked) {
 		if cert != nil {
 			err = ra.purgeOCSPCache(ctx, cert, issuerID)
 			if err != nil {
-				err = fmt.Errorf("OCSP cache purge for already revoked serial %v failed: %w", serialInt, err)
+				err = fmt.Errorf("OCSP cache purge for already revoked serial %v failed: %w", req.Serial, err)
 				return nil, err
 			}
 		}
 	}
 	if err != nil {
 		if req.Code == ocsp.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
-			err = ra.updateRevocationForKeyCompromise(ctx, serialInt, issuerID)
+			err = ra.updateRevocationForKeyCompromise(ctx, req.Serial, issuerID)
 			if err != nil {
 				return nil, err
 			}
@@ -1957,7 +2028,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	if cert != nil {
 		err = ra.purgeOCSPCache(ctx, cert, issuerID)
 		if err != nil {
-			err = fmt.Errorf("OCSP cache purge for serial %v failed: %w", serialInt, err)
+			err = fmt.Errorf("OCSP cache purge for serial %v failed: %w", req.Serial, err)
 			return nil, err
 		}
 	}
@@ -2066,6 +2137,21 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if len(newOrder.DnsNames) > ra.maxNames {
 		return nil, berrors.MalformedError(
 			"Order cannot contain more than %d DNS names", ra.maxNames)
+	}
+
+	if req.CertificateProfileName != "" && ra.validationProfiles != nil {
+		vp, ok := ra.validationProfiles[req.CertificateProfileName]
+		if !ok {
+			return nil, berrors.MalformedError("requested certificate profile %q not found",
+				req.CertificateProfileName,
+			)
+		}
+		if vp.allowList != nil && !vp.allowList.Contains(req.RegistrationID) {
+			return nil, berrors.UnauthorizedError("account ID %d is not permitted to use certificate profile %q",
+				req.RegistrationID,
+				req.CertificateProfileName,
+			)
+		}
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order

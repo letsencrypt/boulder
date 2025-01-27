@@ -762,18 +762,15 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	var contacts []string
-	var contactsPresent bool
 	if accountCreateRequest.Contact != nil {
-		contactsPresent = true
 		contacts = *accountCreateRequest.Contact
 	}
 
 	// Create corepb.Registration from provided account information
 	reg := corepb.Registration{
-		Contact:         contacts,
-		ContactsPresent: contactsPresent,
-		Agreement:       wfe.SubscriberAgreementURL,
-		Key:             keyBytes,
+		Contact:   contacts,
+		Agreement: wfe.SubscriberAgreementURL,
+		Key:       keyBytes,
 	}
 
 	refundLimits, err := wfe.checkNewAccountLimits(ctx, ip)
@@ -2572,7 +2569,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error finalizing order"), err)
 		return
 	}
-	if core.IsAnyNilOrZero(order.Id, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
+	if core.IsAnyNilOrZero(updatedOrder.Id, updatedOrder.RegistrationID, updatedOrder.DnsNames, updatedOrder.Created, updatedOrder.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}

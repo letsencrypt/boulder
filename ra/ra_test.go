@@ -36,6 +36,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
+	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
@@ -342,6 +343,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		1, testKeyPolicy, limiter, txnBuilder, 100,
 		300*24*time.Hour, 7*24*time.Hour,
 		nil,
+		nil,
 		7*24*time.Hour, 5*time.Minute,
 		ctp, nil, nil)
 	ra.SA = sa
@@ -436,9 +438,8 @@ func TestNewRegistration(t *testing.T) {
 	acctKeyB, err := AccountKeyB.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := &corepb.Registration{
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Key:             acctKeyB,
+		Contact: []string{mailto},
+		Key:     acctKeyB,
 	}
 
 	result, err := ra.NewRegistration(ctx, input)
@@ -470,9 +471,8 @@ func TestNewRegistrationSAFailure(t *testing.T) {
 	acctKeyB, err := AccountKeyB.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := corepb.Registration{
-		Contact:         []string{"mailto:test@example.com"},
-		ContactsPresent: true,
-		Key:             acctKeyB,
+		Contact: []string{"mailto:test@example.com"},
+		Key:     acctKeyB,
 	}
 	result, err := ra.NewRegistration(ctx, &input)
 	if err == nil {
@@ -487,11 +487,10 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	acctKeyC, err := AccountKeyC.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := &corepb.Registration{
-		Id:              23,
-		Key:             acctKeyC,
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Agreement:       "I agreed",
+		Id:        23,
+		Key:       acctKeyC,
+		Contact:   []string{mailto},
+		Agreement: "I agreed",
 	}
 
 	result, err := ra.NewRegistration(ctx, input)
@@ -508,9 +507,8 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	shortKey, err := ShortKey.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := &corepb.Registration{
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Key:             shortKey,
+		Contact: []string{mailto},
+		Key:     shortKey,
 	}
 	_, err = ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
@@ -1664,6 +1662,65 @@ func TestNewOrder_AuthzReuse_NoPending(t *testing.T) {
 	test.AssertNotError(t, err, "creating test order")
 	test.AssertNotEquals(t, new.Id, extant.Id)
 	test.AssertNotEquals(t, new.V2Authorizations[0], extant.V2Authorizations[0])
+}
+
+func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
+	t.Parallel()
+
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	testCases := []struct {
+		name              string
+		allowList         *allowlist.List[int64]
+		expectErr         bool
+		expectErrContains string
+	}{
+		{
+			name:      "Allow All Account IDs",
+			allowList: nil,
+			expectErr: false,
+		},
+		{
+			name:              "Deny all but account Id 1337",
+			allowList:         allowlist.NewList([]int64{1337}),
+			expectErr:         true,
+			expectErrContains: "not permitted to use certificate profile",
+		},
+		{
+			name:              "Deny all",
+			allowList:         allowlist.NewList([]int64{}),
+			expectErr:         true,
+			expectErrContains: "not permitted to use certificate profile",
+		},
+		{
+			name:      "Allow Registration.Id",
+			allowList: allowlist.NewList([]int64{Registration.Id}),
+			expectErr: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ra.validationProfiles = map[string]*ValidationProfile{
+				"test": NewValidationProfile(tc.allowList),
+			}
+
+			orderReq := &rapb.NewOrderRequest{
+				RegistrationID:         Registration.Id,
+				DnsNames:               []string{randomDomain()},
+				CertificateProfileName: "test",
+			}
+			_, err := ra.NewOrder(context.Background(), orderReq)
+
+			if tc.expectErrContains != "" {
+				test.AssertErrorIs(t, err, berrors.Unauthorized)
+				test.AssertContains(t, err.Error(), tc.expectErrContains)
+			} else {
+				test.AssertNotError(t, err, "NewOrder failed")
+			}
+		})
+	}
 }
 
 // mockSAWithAuthzs has a GetAuthorizations2 method that returns the protobuf
@@ -3707,8 +3764,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 1)
 
 	// Revoking a serial for an unspecified reason should work but not block the key.
 	mockSA.reset()
@@ -3719,8 +3774,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
 
 	// Duplicate administrative revocation of a serial for an unspecified reason
 	// should succeed because the akamai cache purge succeeds.
@@ -3732,8 +3785,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
 
 	// Duplicate administrative revocation of a serial for a *malformed* cert for
 	// an unspecified reason should fail because we can't attempt an akamai cache
@@ -3748,8 +3799,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertError(t, err, "Should be revoked")
 	test.AssertContains(t, err.Error(), "already revoked")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
 
 	// Revoking a cert for key compromise with skipBlockKey set should work but
 	// not block the key.
@@ -3762,8 +3811,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 1)
 
 	// Revoking a cert for key compromise should work and block the key.
 	mockSA.reset()
@@ -3778,8 +3825,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertEquals(t, mockSA.blocked[0].Source, "admin-revoker")
 	test.AssertEquals(t, mockSA.blocked[0].Comment, "revoked by root")
 	test.AssertEquals(t, mockSA.blocked[0].Added.AsTime(), clk.Now())
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 2)
 
 	// Revoking a malformed cert for key compromise should fail because we don't
 	// have the pubkey to block.
@@ -4057,4 +4102,61 @@ func TestUpdateRegistrationKey(t *testing.T) {
 	test.AssertError(t, err, "should have received an error from the SA")
 	test.AssertContains(t, err.Error(), "failed to update registration key")
 	test.AssertContains(t, err.Error(), "mocked to always error")
+}
+
+func TestCRLShard(t *testing.T) {
+	var cdp []string
+	n, err := crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err != nil || n != 0 {
+		t.Errorf("crlShard(%+v) = %d, %s, want 0, nil", cdp, n, err)
+	}
+
+	cdp = []string{
+		"https://example.com/123.crl",
+		"https://example.net/123.crl",
+	}
+	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err == nil {
+		t.Errorf("crlShard(%+v) = %d, %s, want 0, some error", cdp, n, err)
+	}
+
+	cdp = []string{
+		"https://example.com/abc",
+	}
+	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err == nil {
+		t.Errorf("crlShard(%+v) = %d, %s, want 0, some error", cdp, n, err)
+	}
+
+	cdp = []string{
+		"example",
+	}
+	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err == nil {
+		t.Errorf("crlShard(%+v) = %d, %s, want 0, some error", cdp, n, err)
+	}
+
+	cdp = []string{
+		"https://example.com/abc/-77.crl",
+	}
+	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err == nil {
+		t.Errorf("crlShard(%+v) = %d, %s, want 0, some error", cdp, n, err)
+	}
+
+	cdp = []string{
+		"https://example.com/abc/123",
+	}
+	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err != nil || n != 123 {
+		t.Errorf("crlShard(%+v) = %d, %s, want 123, nil", cdp, n, err)
+	}
+
+	cdp = []string{
+		"https://example.com/abc/123.crl",
+	}
+	n, err = crlShard(&x509.Certificate{CRLDistributionPoints: cdp})
+	if err != nil || n != 123 {
+		t.Errorf("crlShard(%+v) = %d, %s, want 123, nil", cdp, n, err)
+	}
 }
