@@ -4,13 +4,13 @@ For each issuer certificate, Boulder generates several sharded CRLs.
 The responsibility is shared across these components:
 
  - crl-updater
+ - sa
  - ca
  - crl-storer
- - sa
 
 The crl-updater starts the process: for each shard of each issuer,
 it requests revoked certificate information from the SA. It sends
-that information to the CA for signing, and received back a signed
+that information to the CA for signing, and receives back a signed
 CRL. It sends the signed CRL to the crl-storer for upload to an
 S3-compatible data store.
 
