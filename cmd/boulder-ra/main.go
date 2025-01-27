@@ -105,6 +105,13 @@ type Config struct {
 			AllowList string `validate:"omitempty"`
 		}
 
+		// MustStapleAllowList specifies the path to a YAML file containing a
+		// list of account IDs permitted to request certificates with the OCSP
+		// Must-Staple extension. If no path is specified, the extension is
+		// permitted for all accounts. If the file exists but is empty, the
+		// extension is disabled for all accounts.
+		MustStapleAllowList string `validate:"omitempty"`
+
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
@@ -281,6 +288,14 @@ func main() {
 		}
 	}
 
+	var mustStapleAllowList *allowlist.List[int64]
+	if c.RA.MustStapleAllowList != "" {
+		data, err := os.ReadFile(c.RA.MustStapleAllowList)
+		cmd.FailOnError(err, "Failed to read allow list for Must-Staple extension")
+		mustStapleAllowList, err = allowlist.NewFromYAML[int64](data)
+		cmd.FailOnError(err, "Failed to parse allow list for Must-Staple extension")
+	}
+
 	if features.Get().AsyncFinalize && c.RA.FinalizeTimeout.Duration == 0 {
 		cmd.Fail("finalizeTimeout must be supplied when AsyncFinalize feature is enabled")
 	}
@@ -319,6 +334,7 @@ func main() {
 		authorizationLifetime,
 		pendingAuthorizationLifetime,
 		validationProfiles,
+		mustStapleAllowList,
 		pubc,
 		c.RA.OrderLifetime.Duration,
 		c.RA.FinalizeTimeout.Duration,
