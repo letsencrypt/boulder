@@ -1,12 +1,15 @@
 package notmain
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"reflect"
+	"strings"
 	"testing"
 	"text/template"
 	"time"
@@ -763,7 +766,7 @@ func TestResolveEmails(t *testing.T) {
 		clk:           clock.NewFake(),
 	}
 
-	addressesToRecipients, err := m.resolveAddresses(context.Background())
+	addressesToRecipients, _, err := m.resolveAddresses(context.Background())
 	test.AssertNotError(t, err, "failed to resolveEmailAddresses")
 
 	expected := []string{
@@ -781,54 +784,124 @@ func TestResolveEmails(t *testing.T) {
 	}
 }
 
-// Create a test addressToRecipientMap, write the emails to a file,
-// read and extract the emails from the file to a new map.
-// Test original and new map have same set of emails.
+func GetTestAddressToRecipientMap() addressToRecipientMap {
+	// Make and fill a test addressToRecipientMap
+	myMap := make(addressToRecipientMap) // exclude id because it won't be exported
+	myMap["test@gmail.com"] = []recipient{
+		{Data: map[string]string{"date": "2018-11-21", "domainName": "example.com"}},
+		{Data: map[string]string{"date": "2018-11-22", "domainName": "example.net"}},
+	}
+	myMap["example@letsencrypt.org"] = []recipient{
+		{Data: map[string]string{"date": "2019-09-21", "domainName": "test.com"}},
+		{Data: map[string]string{"date": "2024-01-01", "domainName": "foo.bar"}},
+		{Data: map[string]string{"date": "2025-01-04", "domainName": "foo.baz"}},
+	}
+	myMap["something@domain.com"] = []recipient{
+		{Data: map[string]string{"date": "2018-11-21", "domainName": "example.org"}},
+	}
+	return myMap
+}
+
+// Test that map written to file and map read from that file are the same.
 func TestReadWriteEmailFiles(t *testing.T) {
-	filename := "testdata/notify-mailer-test.txt"
+	filename := "testdata/notify-mailer-test.json"
 	defer os.Remove(filename)
 
 	// Make and fill a test addressToRecipientMap
-	originalMap := make(addressToRecipientMap)
-	originalMap["test@gmail.com"] = []recipient{
-		{id: 10, Data: map[string]string{"date": "2018-11-21", "domainName": "example.com"}},
-		{id: 23, Data: map[string]string{"date": "2018-11-22", "domainName": "example.net"}},
-	}
-	originalMap["example@letsencrypt.org"] = []recipient{
-		{id: 11, Data: map[string]string{"date": "2019-09-21", "domainName": "test.com"}},
-		{id: 24, Data: map[string]string{"date": "2024-01-01", "domainName": "foo.bar"}},
-		{id: 156, Data: map[string]string{"date": "2025-01-04", "domainName": "foo.baz"}},
-	}
-	originalMap["something@domain.com"] = []recipient{
-		{id: 217262284, Data: map[string]string{"date": "2018-11-21", "domainName": "example.org"}},
-	}
+	originalMap := GetTestAddressToRecipientMap()
 
-	// Write emails from originalMap to filename
+	// Marshal and write map to file
 	err := writeEmailsToFile(filename, originalMap)
 	if err != nil {
 		t.Errorf("error writing email map to file: %s", err)
 	}
 
-	// Read emails from filename and add as keys to readMap
+	// Read and unmarshal map from file
 	readMap, err := readEmailsFile(filename)
 	if err != nil {
 		t.Errorf("error reading email map file: %s", err)
 	}
 
-	// Check originalMap and readMap have exact same set of emails/keys
-	for k := range originalMap {
-		if _, ok := readMap[k]; !ok {
-			t.Error("orininalMap has key that is missing in readMap")
-		}
-		delete(readMap, k)
-	}
-	if len(readMap) > 0 {
-		t.Error("readMap has key that is not present in originalMap")
+	// Check if originalMap and readMap the same
+	if !reflect.DeepEqual(readMap, originalMap) {
+		t.Errorf("maps not the same")
 	}
 }
 
-// test scenarios:
-// DONE write --> read path gives same map
-// test read-only path
-// test save-only path
-// test batch path with read + save
+// Test that map read from testdata/addressToRecipientMap matches the
+// expected map and is addressed correctly by resolveAddresses()
+func TestReadFilesFrom(t *testing.T) {
+	tmpl := template.Must(template.New("letter").Parse("an email body"))
+
+	readEmailsMap, err := readEmailsFile("testdata/addressToRecipientMap.json")
+	if err != nil {
+		t.Errorf("error reading email map file: %s", err)
+	}
+
+	expectedMap := GetTestAddressToRecipientMap()
+	if !reflect.DeepEqual(expectedMap, readEmailsMap) {
+		t.Errorf("parsed map from read file doesn't match expected map")
+	}
+
+	dbMap := mockEmailResolver{}
+	mc := &mocks.Mailer{}
+	m := &mailer{
+		log:           blog.UseMock(),
+		mailer:        mc,
+		dbMap:         dbMap,
+		subject:       "Test",
+		recipients:    []recipient{},
+		emailTemplate: tmpl,
+		targetRange:   interval{end: "\xFF"},
+		sleepInterval: 0,
+		clk:           clock.NewFake(),
+		readEmailsMap: readEmailsMap,
+	}
+
+	resolvedMap, isRead, err := m.resolveAddresses(context.Background())
+	if err != nil {
+		t.Errorf("error running resolveAddresses: %s", err)
+	}
+	if !isRead {
+		t.Error("Addresses should have been read from file, not resolved")
+	}
+	if !reflect.DeepEqual(readEmailsMap, resolvedMap) {
+		t.Error("Resolved map not same as map read from file")
+	}
+}
+
+// Test that map written to testdata/saveemailsto-test.json includes
+// the expected data (using testdata/addressToRecipientMap.json for comparison)
+func TestSaveEmailsTo(t *testing.T) {
+	// write addressToRecipientMap to testdata/saveemailsto-test.json
+	saveEmailsTo := "testdata/saveemailsto-test.json"
+	addressToRecipientMap := GetTestAddressToRecipientMap()
+	err := writeEmailsToFile(saveEmailsTo, addressToRecipientMap)
+	if err != nil {
+		t.Errorf("error writing email map to file: %s", err)
+	}
+	defer os.Remove(saveEmailsTo)
+
+	// get saveEmailsTo file output as string
+	saveFile, err := os.ReadFile(saveEmailsTo)
+	if err != nil {
+		t.Error("error reading saveEmailsTo file")
+	}
+	saveData := string(saveFile)
+
+	// open testdata/addressToRecipientMap.json for comparison
+	expectedFile, err := os.Open("testdata/addressToRecipientMap.json")
+	if err != nil {
+		t.Error("error reading testdata/addressToRecipientMap.json")
+	}
+	defer expectedFile.Close()
+
+	// for each line in the expected file, check that it exists in the saveEmailsTo file
+	scanner := bufio.NewScanner(expectedFile)
+	for scanner.Scan() {
+		if !strings.Contains(saveData, strings.TrimSpace(scanner.Text())) {
+			fmt.Println(scanner.Text())
+			t.Errorf("expected data missing from saveEmailsTo file: %s", strings.TrimSpace(scanner.Text()))
+		}
+	}
+}

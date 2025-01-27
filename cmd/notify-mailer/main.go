@@ -1,7 +1,6 @@
 package notmain
 
 import (
-	"bufio"
 	"context"
 	"encoding/csv"
 	"encoding/json"
@@ -123,21 +122,15 @@ func (m *mailer) makeMessageBody(recipients []recipient) (string, error) {
 	return messageBody.String(), nil
 }
 
-// Write the keys of addressToRecipientMap to filename
+// Take an addressToRecipientMap, then marshal and write it to saveEmailsTo
 func writeEmailsToFile(filename string, addressToRecipient addressToRecipientMap) error {
-	outfile, err := os.Create(filename)
+	jsonData, err := json.Marshal(addressToRecipient)
 	if err != nil {
 		return err
 	}
 
-	defer outfile.Close()
-	for key := range addressToRecipient {
-		_, err = outfile.WriteString(key + "\n")
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	err = os.WriteFile(filename, jsonData, 0644)
+	return err
 }
 
 func (m *mailer) run(ctx context.Context) error {
@@ -149,7 +142,7 @@ func (m *mailer) run(ctx context.Context) error {
 	totalRecipients := len(m.recipients)
 	m.log.Infof("Resolving addresses for (%d) recipients", totalRecipients)
 
-	addressToRecipient, err := m.resolveAddresses(ctx)
+	addressToRecipient, _, err := m.resolveAddresses(ctx)
 	if err != nil {
 		return err
 	}
@@ -270,16 +263,17 @@ func (m *mailer) run(ctx context.Context) error {
 }
 
 // resolveAddresses creates a mapping of email addresses to (a list of)
-// `recipient`s that resolve to that email address.
-func (m *mailer) resolveAddresses(ctx context.Context) (addressToRecipientMap, error) {
+// `recipient`s that resolve to that email address. Return true bool if
+// skip resolve address steps and return readEmailsMap instead (for testing purposes)
+func (m *mailer) resolveAddresses(ctx context.Context) (addressToRecipientMap, bool, error) {
 	if m.saveEmailsTo == "" && m.readEmailsMap != nil {
-		return m.readEmailsMap, nil
+		return m.readEmailsMap, true, nil
 	}
 	result := make(addressToRecipientMap, len(m.recipients))
 	for _, recipient := range m.recipients {
 		addresses, err := getAddressForID(ctx, recipient.id, m.dbMap)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
 		for _, address := range addresses {
@@ -293,7 +287,7 @@ func (m *mailer) resolveAddresses(ctx context.Context) (addressToRecipientMap, e
 			}
 		}
 	}
-	return result, nil
+	return result, false, nil
 }
 
 // dbSelector abstracts over a subset of methods from `borp.DbMap` objects to
@@ -456,20 +450,19 @@ func readRecipientsList(filename string, delimiter rune) ([]recipient, string, e
 	}
 }
 
-// Read the emails in readEmailsFile and extract them as keys in an addressToRecipientMap
+// Read filename then extract and return parsed addressToRecipientMap
 func readEmailsFile(filename string) (addressToRecipientMap, error) {
-	infile, err := os.Open(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	defer infile.Close()
 
-	scanner := bufio.NewScanner(infile)
-	addressToRecipientMap := make(addressToRecipientMap)
-	for scanner.Scan() {
-		addressToRecipientMap[scanner.Text()] = []recipient{}
+	var readEmailsMap addressToRecipientMap
+	err = json.Unmarshal(data, &readEmailsMap)
+	if err != nil {
+		return nil, err
 	}
-	return addressToRecipientMap, nil
+	return readEmailsMap, nil
 }
 
 const usageIntro = `
@@ -607,7 +600,7 @@ func main() {
 	var readEmailsMap addressToRecipientMap
 	if *readEmailsFrom != "" {
 		readEmailsMap, err = readEmailsFile(*readEmailsFrom)
-		cmd.FailOnError(err, "Couldn't parse readEmailsFrom file")
+		cmd.FailOnError(err, "Could not parse readEmailsFrom file")
 	}
 
 	// Load and parse message body.

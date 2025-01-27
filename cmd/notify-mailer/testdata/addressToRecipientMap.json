@@ -1,0 +1,16 @@
+{"example@letsencrypt.org": 
+    [
+        {"Data":{"date":"2019-09-21","domainName":"test.com"}},
+        {"Data":{"date":"2024-01-01","domainName":"foo.bar"}},
+        {"Data":{"date":"2025-01-04","domainName":"foo.baz"}}
+    ],
+    "something@domain.com":
+    [
+        {"Data":{"date":"2018-11-21","domainName":"example.org"}}
+    ],
+    "test@gmail.com":
+    [
+        {"Data":{"date":"2018-11-21","domainName":"example.com"}},
+        {"Data":{"date":"2018-11-22","domainName":"example.net"}}
+    ]
+}
