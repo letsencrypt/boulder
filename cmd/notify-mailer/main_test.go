@@ -766,7 +766,7 @@ func TestResolveEmails(t *testing.T) {
 		clk:           clock.NewFake(),
 	}
 
-	addressesToRecipients, _, err := m.resolveAddresses(context.Background())
+	addressesToRecipients, err := m.resolveAddresses(context.Background())
 	test.AssertNotError(t, err, "failed to resolveEmailAddresses")
 
 	expected := []string{
@@ -858,12 +858,9 @@ func TestReadFilesFrom(t *testing.T) {
 		readEmailsMap: readEmailsMap,
 	}
 
-	resolvedMap, isRead, err := m.resolveAddresses(context.Background())
+	resolvedMap, err := m.resolveAddresses(context.Background())
 	if err != nil {
 		t.Errorf("error running resolveAddresses: %s", err)
-	}
-	if !isRead {
-		t.Error("Addresses should have been read from file, not resolved")
 	}
 	if !reflect.DeepEqual(readEmailsMap, resolvedMap) {
 		t.Error("Resolved map not same as map read from file")

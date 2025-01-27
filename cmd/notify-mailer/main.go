@@ -142,7 +142,7 @@ func (m *mailer) run(ctx context.Context) error {
 	totalRecipients := len(m.recipients)
 	m.log.Infof("Resolving addresses for (%d) recipients", totalRecipients)
 
-	addressToRecipient, _, err := m.resolveAddresses(ctx)
+	addressToRecipient, err := m.resolveAddresses(ctx)
 	if err != nil {
 		return err
 	}
@@ -263,17 +263,16 @@ func (m *mailer) run(ctx context.Context) error {
 }
 
 // resolveAddresses creates a mapping of email addresses to (a list of)
-// `recipient`s that resolve to that email address. Return true bool if
-// skip resolve address steps and return readEmailsMap instead (for testing purposes)
-func (m *mailer) resolveAddresses(ctx context.Context) (addressToRecipientMap, bool, error) {
+// `recipient`s that resolve to that email address.
+func (m *mailer) resolveAddresses(ctx context.Context) (addressToRecipientMap, error) {
 	if m.saveEmailsTo == "" && m.readEmailsMap != nil {
-		return m.readEmailsMap, true, nil
+		return m.readEmailsMap, nil
 	}
 	result := make(addressToRecipientMap, len(m.recipients))
 	for _, recipient := range m.recipients {
 		addresses, err := getAddressForID(ctx, recipient.id, m.dbMap)
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
 
 		for _, address := range addresses {
@@ -287,7 +286,7 @@ func (m *mailer) resolveAddresses(ctx context.Context) (addressToRecipientMap, b
 			}
 		}
 	}
-	return result, false, nil
+	return result, nil
 }
 
 // dbSelector abstracts over a subset of methods from `borp.DbMap` objects to
@@ -450,7 +449,7 @@ func readRecipientsList(filename string, delimiter rune) ([]recipient, string, e
 	}
 }
 
-// Read filename then extract and return parsed addressToRecipientMap
+// Read file then extract and return unmarshaled addressToRecipientMap
 func readEmailsFile(filename string) (addressToRecipientMap, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
