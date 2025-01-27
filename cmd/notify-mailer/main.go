@@ -162,6 +162,7 @@ func (m *mailer) run(ctx context.Context) error {
 			mostRecipients = k
 		}
 	}
+
 	m.log.Infof("Address %q was associated with the most recipients (%d)",
 		mostRecipients, mostRecipientsLen)
 
