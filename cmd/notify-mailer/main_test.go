@@ -877,7 +877,7 @@ func TestReadWriteEmailFiles(t *testing.T) {
 	}
 }
 
-// When readEmailsFrom flag set, test that resolveAdresses() and run() run correctly
+// When readEmailsFrom flag set, test that resolveAddresses() and run() run correctly
 func TestRunReadEmailsFrom(t *testing.T) {
 	// read map from readEmailsFrom test file
 	readEmailsMap, err := readEmailsFile("testdata/readEmailsFrom-test.json")
