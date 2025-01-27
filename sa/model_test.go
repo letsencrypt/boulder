@@ -60,12 +60,13 @@ func TestAuthzModel(t *testing.T) {
 	now := clk.Now()
 	expires := now.Add(24 * time.Hour)
 	authzPB := &corepb.Authorization{
-		Id:             "1",
-		DnsName:        "example.com",
-		Identifier:     identifier.NewDNS("example.com").AsProto(),
-		RegistrationID: 1,
-		Status:         string(core.StatusValid),
-		Expires:        timestamppb.New(expires),
+		Id:                     "1",
+		DnsName:                "example.com",
+		Identifier:             identifier.NewDNS("example.com").AsProto(),
+		RegistrationID:         1,
+		Status:                 string(core.StatusValid),
+		Expires:                timestamppb.New(expires),
+		CertificateProfileName: "test",
 		Challenges: []*corepb.Challenge{
 			{
 				Type:      string(core.ChallengeTypeHTTP01),
@@ -103,6 +104,7 @@ func TestAuthzModel(t *testing.T) {
 	authzPB.Challenges[0].Validationrecords[0].Hostname = "example.com"
 	authzPB.Challenges[0].Validationrecords[0].Port = "443"
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
+	test.AssertEquals(t, authzPBOut.CertificateProfileName, authzPB.CertificateProfileName)
 
 	now = clk.Now()
 	expires = now.Add(24 * time.Hour)

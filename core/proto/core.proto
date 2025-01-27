@@ -93,7 +93,7 @@ message Registration {
 }
 
 message Authorization {
-  // Next unused field number: 11
+  // Next unused field number: 12
   reserved 5, 7, 8;
   string id = 1;
   int64 registrationID = 3;
@@ -103,7 +103,8 @@ message Authorization {
   string status = 4;
   google.protobuf.Timestamp expires = 9;
   repeated core.Challenge challenges = 6;
-  core.Identifier identifier = 10;
+  string certificateProfileName = 10;
+  core.Identifier identifier = 11;
   // We do not directly represent the "wildcard" field, instead inferring it
   // from the identifier value.
 }

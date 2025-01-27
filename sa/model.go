@@ -480,21 +480,24 @@ func statusUint(status core.AcmeStatus) uint8 {
 
 // authzFields is used in a variety of places in sa.go, and modifications to
 // it must be carried through to every use in sa.go
-const authzFields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, attemptedAt, token, validationError, validationRecord"
+const authzFields = "id, identifierType, identifierValue, registrationID, certificateProfileName, status, expires, challenges, attempted, attemptedAt, token, validationError, validationRecord"
 
+// authzModel represents one row in the authz2 table. The CertificateProfileName
+// column is a pointer because the column is NULL-able.
 type authzModel struct {
-	ID               int64      `db:"id"`
-	IdentifierType   uint8      `db:"identifierType"`
-	IdentifierValue  string     `db:"identifierValue"`
-	RegistrationID   int64      `db:"registrationID"`
-	Status           uint8      `db:"status"`
-	Expires          time.Time  `db:"expires"`
-	Challenges       uint8      `db:"challenges"`
-	Attempted        *uint8     `db:"attempted"`
-	AttemptedAt      *time.Time `db:"attemptedAt"`
-	Token            []byte     `db:"token"`
-	ValidationError  []byte     `db:"validationError"`
-	ValidationRecord []byte     `db:"validationRecord"`
+	ID                     int64      `db:"id"`
+	IdentifierType         uint8      `db:"identifierType"`
+	IdentifierValue        string     `db:"identifierValue"`
+	RegistrationID         int64      `db:"registrationID"`
+	CertificateProfileName *string    `db:"certificateProfileName"`
+	Status                 uint8      `db:"status"`
+	Expires                time.Time  `db:"expires"`
+	Challenges             uint8      `db:"challenges"`
+	Attempted              *uint8     `db:"attempted"`
+	AttemptedAt            *time.Time `db:"attemptedAt"`
+	Token                  []byte     `db:"token"`
+	ValidationError        []byte     `db:"validationError"`
+	ValidationRecord       []byte     `db:"validationRecord"`
 }
 
 // rehydrateHostPort mutates a validation record. If the URL in the validation
@@ -628,13 +631,17 @@ func hasMultipleNonPendingChallenges(challenges []*corepb.Challenge) bool {
 // newAuthzReqToModel converts an sapb.NewAuthzRequest to the authzModel storage
 // representation. It hardcodes the status to "pending" because it should be
 // impossible to create an authz in any other state.
-func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
+func newAuthzReqToModel(authz *sapb.NewAuthzRequest, profile string) (*authzModel, error) {
 	am := &authzModel{
 		IdentifierType:  identifierTypeToUint[authz.Identifier.Type],
 		IdentifierValue: authz.Identifier.Value,
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.StatusPending],
 		Expires:         authz.Expires.AsTime(),
+	}
+
+	if profile != "" {
+		am.CertificateProfileName = &profile
 	}
 
 	for _, challType := range authz.ChallengeTypes {
@@ -653,6 +660,8 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
 
 // authzPBToModel converts a protobuf authorization representation to the
 // authzModel storage representation.
+// Deprecated: this function is only used as part of test setup, do not
+// introduce any new uses in production code.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 	if authz.Identifier == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
@@ -666,6 +675,10 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.AcmeStatus(authz.Status)],
 		Expires:         authz.Expires.AsTime(),
+	}
+	if authz.CertificateProfileName != "" {
+		profile := authz.CertificateProfileName
+		am.CertificateProfileName = &profile
 	}
 	if authz.Id != "" {
 		// The v1 internal authorization objects use a string for the ID, the v2
@@ -808,13 +821,19 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 		return nil, fmt.Errorf("unrecognized identifier type encoding %d", am.IdentifierType)
 	}
 
+	profile := ""
+	if am.CertificateProfileName != nil {
+		profile = *am.CertificateProfileName
+	}
+
 	pb := &corepb.Authorization{
-		Id:             fmt.Sprintf("%d", am.ID),
-		Status:         string(uintToStatus[am.Status]),
-		DnsName:        am.IdentifierValue,
-		Identifier:     identifier.ACMEIdentifier{Type: identifier.IdentifierType(identType), Value: am.IdentifierValue}.AsProto(),
-		RegistrationID: am.RegistrationID,
-		Expires:        timestamppb.New(am.Expires),
+		Id:                     fmt.Sprintf("%d", am.ID),
+		Status:                 string(uintToStatus[am.Status]),
+		DnsName:                am.IdentifierValue,
+		Identifier:             identifier.ACMEIdentifier{Type: identifier.IdentifierType(identType), Value: am.IdentifierValue}.AsProto(),
+		RegistrationID:         am.RegistrationID,
+		Expires:                timestamppb.New(am.Expires),
+		CertificateProfileName: profile,
 	}
 	// Populate authorization challenge array. We do this by iterating through
 	// the challenge type bitmap and creating a challenge of each type if its
