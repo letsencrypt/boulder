@@ -917,7 +917,10 @@ func TestRunReadEmailsFrom(t *testing.T) {
 	}
 
 	// Test that run() runs without error
-	m.run(context.Background())
+	err = m.run(context.Background())
+	if err != nil {
+		t.Error("Error running with readEmailsFrom flag")
+	}
 }
 
 // When saveEmailsTo flag set, test that resolveAdresses() and run() run correctly
@@ -962,8 +965,11 @@ func TestRunSaveEmailsTo(t *testing.T) {
 	}
 
 	// Test that run() saves resolved addresses to saveEmailsTo
-	m.run(context.Background())
+	err = m.run(context.Background())
 	defer os.Remove(m.saveEmailsTo)
+	if err != nil {
+		t.Error("Error running with saveEmailsTo flag")
+	}
 
 	saveFile, err := os.ReadFile(m.saveEmailsTo)
 	if err != nil {
@@ -1029,8 +1035,11 @@ func TestReadAndSaveBatchCase(t *testing.T) {
 
 	// Test that run() saves both a) emails extracted from readEmailsFrom and b) emails resolved
 	// by resolvedAddresses() in saveEmailsTo file
-	m.run(context.Background())
+	err = m.run(context.Background())
 	defer os.Remove(m.saveEmailsTo)
+	if err != nil {
+		t.Error("Error running with saveEmailsTo and readEmailsFrom flags")
+	}
 
 	saveFile, err := os.ReadFile(m.saveEmailsTo)
 	if err != nil {
