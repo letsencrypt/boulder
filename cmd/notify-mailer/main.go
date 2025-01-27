@@ -275,7 +275,9 @@ func (m *mailer) run(ctx context.Context) error {
 }
 
 // resolveAddresses creates a mapping of email addresses to (a list of)
-// `recipient`s that resolve to that email address.
+// `recipient`s that resolve to that email address. If readEmailsMap isn't nil:
+// a) if saveEmailsTo unset, then return readinsteadEmailsMap
+// b) otherwise, resolve addresses that aren't in readEmailsMap
 func (m *mailer) resolveAddresses(ctx context.Context) (addressToRecipientMap, error) {
 	if m.saveEmailsTo == "" && m.readEmailsMap != nil {
 		return m.readEmailsMap, nil
@@ -607,7 +609,7 @@ func main() {
 	dbMap, err := sa.InitWrappedDb(cfg.NotifyMailer.DB, nil, log)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	// Read and parse readEmailsFrom file.
+	// If readEmailsFrom set, read and extract map from readEmailsFrom file
 	var readEmailsMap addressToRecipientMap
 	if *readEmailsFrom != "" {
 		readEmailsMap, err = readEmailsFile(*readEmailsFrom)
