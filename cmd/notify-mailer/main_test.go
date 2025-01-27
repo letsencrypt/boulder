@@ -907,7 +907,7 @@ func TestRunReadEmailsFrom(t *testing.T) {
 		readEmailsMap: readEmailsMap,
 	}
 
-	// Test that resolveAdresses() returns the same readEmailsMap map
+	// Test that resolveAddresses() returns the same readEmailsMap map
 	resolvedMap, err := m.resolveAddresses(context.Background())
 	if err != nil {
 		t.Errorf("error running resolveAddresses: %s", err)
@@ -923,7 +923,7 @@ func TestRunReadEmailsFrom(t *testing.T) {
 	}
 }
 
-// When saveEmailsTo flag set, test that resolveAdresses() and run() run correctly
+// When saveEmailsTo flag set, test that resolveAddresses() and run() run correctly
 func TestRunSaveEmailsTo(t *testing.T) {
 	// get recipients from test recipients file
 	recipients, _, err := readRecipientsList("testdata/test_recipients.csv", ',')
@@ -953,7 +953,7 @@ func TestRunSaveEmailsTo(t *testing.T) {
 		"gotta.lotta.accounts@letsencrypt.org",
 	}
 
-	// Test that resolveAdresses() resolves addresses for recipients from test file
+	// Test that resolveAddresses() resolves addresses for recipients from test file
 	addressToRecipients, err := m.resolveAddresses(context.Background())
 	if err != nil {
 		t.Errorf("error resolving addresses: %s", err)
