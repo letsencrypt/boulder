@@ -1665,46 +1665,48 @@ func TestNewOrder_AuthzReuse_NoPending(t *testing.T) {
 }
 
 func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
-	t.Parallel()
-
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	testCases := []struct {
-		name              string
-		allowList         *allowlist.List[int64]
-		expectErr         bool
-		expectErrContains string
+		name               string
+		validationProfiles map[string]*ValidationProfile
+		expectErr          bool
+		expectErrContains  string
 	}{
 		{
-			name:      "Allow All Account IDs",
-			allowList: nil,
-			expectErr: false,
+			name:               "Allow all account IDs",
+			validationProfiles: nil,
+			expectErr:          false,
 		},
 		{
-			name:              "Deny all but account Id 1337",
-			allowList:         allowlist.NewList([]int64{1337}),
+			name: "Deny all but account Id 1337",
+			validationProfiles: map[string]*ValidationProfile{
+				"test": NewValidationProfile(allowlist.NewList([]int64{1337})),
+			},
 			expectErr:         true,
 			expectErrContains: "not permitted to use certificate profile",
 		},
 		{
-			name:              "Deny all",
-			allowList:         allowlist.NewList([]int64{}),
+			name: "Deny all",
+			validationProfiles: map[string]*ValidationProfile{
+				"test": NewValidationProfile(allowlist.NewList([]int64{})),
+			},
 			expectErr:         true,
 			expectErrContains: "not permitted to use certificate profile",
 		},
 		{
-			name:      "Allow Registration.Id",
-			allowList: allowlist.NewList([]int64{Registration.Id}),
+			name: "Allow Registration.Id",
+			validationProfiles: map[string]*ValidationProfile{
+				"test": NewValidationProfile(allowlist.NewList([]int64{Registration.Id})),
+			},
 			expectErr: false,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ra.validationProfiles = map[string]*ValidationProfile{
-				"test": NewValidationProfile(tc.allowList),
-			}
+			ra.validationProfiles = tc.validationProfiles
 
 			orderReq := &rapb.NewOrderRequest{
 				RegistrationID:         Registration.Id,
