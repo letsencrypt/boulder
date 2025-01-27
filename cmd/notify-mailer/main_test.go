@@ -802,37 +802,9 @@ func GetTestAddressToRecipientMap() addressToRecipientMap {
 	return myMap
 }
 
-// Test that map written to file and map read from that file are the same.
-func TestReadWriteEmailFiles(t *testing.T) {
-	filename := "testdata/notify-mailer-test.json"
-	defer os.Remove(filename)
-
-	// Make and fill a test addressToRecipientMap
-	originalMap := GetTestAddressToRecipientMap()
-
-	// Marshal and write map to file
-	err := writeEmailsToFile(filename, originalMap)
-	if err != nil {
-		t.Errorf("error writing email map to file: %s", err)
-	}
-
-	// Read and unmarshal map from file
-	readMap, err := readEmailsFile(filename)
-	if err != nil {
-		t.Errorf("error reading email map file: %s", err)
-	}
-
-	// Check if originalMap and readMap the same
-	if !reflect.DeepEqual(readMap, originalMap) {
-		t.Errorf("maps not the same")
-	}
-}
-
-// Test that map read from testdata/addressToRecipientMap matches the
-// expected map and is addressed correctly by resolveAddresses()
-func TestReadFilesFrom(t *testing.T) {
-	tmpl := template.Must(template.New("letter").Parse("an email body"))
-
+// Test that map read from testdata/addressToRecipientMap matches the expected map,
+// using map returned by GetTestAddressToRecipientMap() for comparison
+func TestReadEmailsFile(t *testing.T) {
 	readEmailsMap, err := readEmailsFile("testdata/addressToRecipientMap.json")
 	if err != nil {
 		t.Errorf("error reading email map file: %s", err)
@@ -842,38 +814,15 @@ func TestReadFilesFrom(t *testing.T) {
 	if !reflect.DeepEqual(expectedMap, readEmailsMap) {
 		t.Errorf("parsed map from read file doesn't match expected map")
 	}
-
-	dbMap := mockEmailResolver{}
-	mc := &mocks.Mailer{}
-	m := &mailer{
-		log:           blog.UseMock(),
-		mailer:        mc,
-		dbMap:         dbMap,
-		subject:       "Test",
-		recipients:    []recipient{},
-		emailTemplate: tmpl,
-		targetRange:   interval{end: "\xFF"},
-		sleepInterval: 0,
-		clk:           clock.NewFake(),
-		readEmailsMap: readEmailsMap,
-	}
-
-	resolvedMap, err := m.resolveAddresses(context.Background())
-	if err != nil {
-		t.Errorf("error running resolveAddresses: %s", err)
-	}
-	if !reflect.DeepEqual(readEmailsMap, resolvedMap) {
-		t.Error("Resolved map not same as map read from file")
-	}
 }
 
 // Test that map written to testdata/saveemailsto-test.json includes
-// the expected data (using testdata/addressToRecipientMap.json for comparison)
-func TestSaveEmailsTo(t *testing.T) {
+// the expected data, using testdata/addressToRecipientMap.json for comparison
+func TestWriteEmailsFile(t *testing.T) {
 	// write addressToRecipientMap to testdata/saveemailsto-test.json
 	saveEmailsTo := "testdata/saveemailsto-test.json"
 	addressToRecipientMap := GetTestAddressToRecipientMap()
-	err := writeEmailsToFile(saveEmailsTo, addressToRecipientMap)
+	err := writeEmailsFile(saveEmailsTo, addressToRecipientMap)
 	if err != nil {
 		t.Errorf("error writing email map to file: %s", err)
 	}
@@ -897,8 +846,207 @@ func TestSaveEmailsTo(t *testing.T) {
 	scanner := bufio.NewScanner(expectedFile)
 	for scanner.Scan() {
 		if !strings.Contains(saveData, strings.TrimSpace(scanner.Text())) {
-			fmt.Println(scanner.Text())
 			t.Errorf("expected data missing from saveEmailsTo file: %s", strings.TrimSpace(scanner.Text()))
+		}
+	}
+}
+
+// Test that map written to file and map read from that file are the same.
+func TestReadWriteEmailFiles(t *testing.T) {
+	filename := "testdata/notify-mailer-test.json"
+	defer os.Remove(filename)
+
+	// Make and fill a test addressToRecipientMap
+	originalMap := GetTestAddressToRecipientMap()
+
+	// Marshal and write map to file
+	err := writeEmailsFile(filename, originalMap)
+	if err != nil {
+		t.Errorf("error writing email map to file: %s", err)
+	}
+
+	// Read and unmarshal map from file
+	readMap, err := readEmailsFile(filename)
+	if err != nil {
+		t.Errorf("error reading email map file: %s", err)
+	}
+
+	// Check if originalMap and readMap the same
+	if !reflect.DeepEqual(readMap, originalMap) {
+		t.Errorf("maps not the same")
+	}
+}
+
+// When readEmailsFrom flag set, test that resolveAdresses() and run() run correctly
+func TestRunReadEmailsFrom(t *testing.T) {
+	// read map from readEmailsFrom test file
+	readEmailsMap, err := readEmailsFile("testdata/readEmailsFrom-test.json")
+	if err != nil {
+		t.Error("error reading map in testdata/addressToRecipientMap.json")
+	}
+
+	// get recipients from test recipients file
+	recipients, _, err := readRecipientsList("testdata/test_recipients.csv", ',')
+	if err != nil {
+		t.Error("error getting recipients from testdata/test_msg_recipients.csv")
+	}
+
+	tmpl := template.Must(template.New("letter").Parse("an email body"))
+	dbMap := mockEmailResolver{}
+	mc := &mocks.Mailer{}
+	m := &mailer{
+		log:           blog.UseMock(),
+		mailer:        mc,
+		dbMap:         dbMap,
+		subject:       "Test",
+		recipients:    recipients,
+		emailTemplate: tmpl,
+		targetRange:   interval{end: "\xFF"},
+		sleepInterval: 0,
+		clk:           clock.NewFake(),
+		readEmailsMap: readEmailsMap,
+	}
+
+	// Test that resolveAdresses() returns the same readEmailsMap map
+	resolvedMap, err := m.resolveAddresses(context.Background())
+	if err != nil {
+		t.Errorf("error running resolveAddresses: %s", err)
+	}
+	if !reflect.DeepEqual(readEmailsMap, resolvedMap) {
+		t.Error("Resolved map not same as map read from file")
+	}
+
+	// Test that run() runs without error
+	m.run(context.Background())
+}
+
+// When saveEmailsTo flag set, test that resolveAdresses() and run() run correctly
+func TestRunSaveEmailsTo(t *testing.T) {
+	// get recipients from test recipients file
+	recipients, _, err := readRecipientsList("testdata/test_recipients.csv", ',')
+	if err != nil {
+		t.Error("error getting recipients from testdata/test_msg_recipients.csv")
+	}
+
+	tmpl := template.Must(template.New("letter").Parse("an email body"))
+	dbMap := mockEmailResolver{}
+	mc := &mocks.Mailer{}
+	m := &mailer{
+		log:           blog.UseMock(),
+		mailer:        mc,
+		dbMap:         dbMap,
+		subject:       "Test",
+		recipients:    recipients,
+		emailTemplate: tmpl,
+		targetRange:   interval{end: "\xFF"},
+		sleepInterval: 0,
+		clk:           clock.NewFake(),
+		saveEmailsTo:  "testdata/saveEmailsTo-test.json",
+	}
+
+	expectedAddresses := []string{
+		"example@letsencrypt.org",
+		"test-example-updated@letsencrypt.org",
+		"gotta.lotta.accounts@letsencrypt.org",
+	}
+
+	// Test that resolveAdresses() resolves addresses for recipients from test file
+	addressToRecipients, err := m.resolveAddresses(context.Background())
+	if err != nil {
+		t.Errorf("error resolving addresses: %s", err)
+	}
+	for _, address := range expectedAddresses {
+		if _, ok := addressToRecipients[address]; !ok {
+			t.Errorf("failed to resolve expected address '%s'", address)
+		}
+	}
+
+	// Test that run() saves resolved addresses to saveEmailsTo
+	m.run(context.Background())
+	defer os.Remove(m.saveEmailsTo)
+
+	saveFile, err := os.ReadFile(m.saveEmailsTo)
+	if err != nil {
+		t.Error("error reading saveEmailsTo file")
+	}
+	savedData := string(saveFile)
+
+	for _, address := range expectedAddresses {
+		if !strings.Contains(savedData, address) {
+			t.Errorf("expected address '%s' not in savedEmailsTo file", address)
+		}
+	}
+}
+
+// Test that when both readEmailsFrom and saveEmailsTo are set:
+// 1) resolveAddresses() resolves addresses for recipients NOT IN readEmailsFrom
+// 2) run() saves both a) emails extracted from readEmailsFrom and b) emails resolved
+// by resolvedAddresses() in saveEmailsTo file
+func TestReadAndSaveBatchCase(t *testing.T) {
+	// read map from readEmailsFrom test file
+	readEmailsMap, err := readEmailsFile("testdata/readEmailsFrom-test.json")
+	if err != nil {
+		t.Error("error reading map in testdata/addressToRecipientMap.json")
+	}
+
+	// get recipients from test recipients file
+	recipients, _, err := readRecipientsList("testdata/test_recipients.csv", ',')
+	if err != nil {
+		t.Error("error getting recipients from testdata/test_msg_recipients.csv")
+	}
+
+	tmpl := template.Must(template.New("letter").Parse("an email body"))
+	dbMap := mockEmailResolver{}
+	mc := &mocks.Mailer{}
+	m := &mailer{
+		log:           blog.UseMock(),
+		mailer:        mc,
+		dbMap:         dbMap,
+		subject:       "Test",
+		recipients:    recipients,
+		emailTemplate: tmpl,
+		targetRange:   interval{end: "\xFF"},
+		sleepInterval: 0,
+		clk:           clock.NewFake(),
+		readEmailsMap: readEmailsMap,
+		saveEmailsTo:  "testdata/saveEmailsTo-test.json",
+	}
+
+	// Test that resolveAddresses() resolves addresses for recipients NOT IN readEmailsFrom
+	addressesToRecipients, err := m.resolveAddresses(context.Background())
+	if err != nil {
+		t.Errorf("error resolving addresses: %s", err)
+	}
+	if _, ok := addressesToRecipients["example@letsencrypt.org"]; !ok {
+		t.Error("failed to resolve expected address 'example@letsencrypt.org'")
+	}
+	if _, ok := addressesToRecipients["test-example-updated@letsencrypt.org"]; !ok {
+		t.Error("failed to resolve expected address 'test-example-updated@letsencrypt.org'")
+	}
+	if _, ok := addressesToRecipients["gotta.lotta.accounts@letsencrypt.org"]; ok {
+		t.Error("should not have resolved 'gotta.lotta.accounts@letsencrypt.org'")
+	}
+
+	// Test that run() saves both a) emails extracted from readEmailsFrom and b) emails resolved
+	// by resolvedAddresses() in saveEmailsTo file
+	m.run(context.Background())
+	defer os.Remove(m.saveEmailsTo)
+
+	saveFile, err := os.ReadFile(m.saveEmailsTo)
+	if err != nil {
+		t.Error("error reading saveEmailsTo file")
+	}
+	savedData := string(saveFile)
+
+	expectedAddresses := []string{
+		"example@letsencrypt.org",
+		"test-example-updated@letsencrypt.org",
+		"gotta.lotta.accounts@letsencrypt.org",
+		"test-test-test@letsencrypt.org",
+	}
+	for _, address := range expectedAddresses {
+		if !strings.Contains(savedData, address) {
+			t.Errorf("expected address '%s' not in savedEmailsTo file", address)
 		}
 	}
 }

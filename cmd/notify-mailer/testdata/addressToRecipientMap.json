@@ -1,4 +1,5 @@
-{"example@letsencrypt.org": 
+{
+    "example@letsencrypt.org": 
     [
         {"Data":{"date":"2019-09-21","domainName":"test.com"}},
         {"Data":{"date":"2024-01-01","domainName":"foo.bar"}},

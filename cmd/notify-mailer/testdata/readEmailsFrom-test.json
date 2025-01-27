@@ -1,0 +1,12 @@
+{
+    "gotta.lotta.accounts@letsencrypt.org": 
+    [
+        {"Data":{"date":"2019-09-21"}},
+        {"Data":{"date":"2024-01-01"}},
+        {"Data":{"date":"2025-01-04"}}
+    ],
+    "test-test-test@letsencrypt.org":
+    [
+        {"Data":{"date":"2018-11-21"}}
+    ]
+}

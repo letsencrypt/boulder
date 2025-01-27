@@ -123,7 +123,7 @@ func (m *mailer) makeMessageBody(recipients []recipient) (string, error) {
 }
 
 // Take an addressToRecipientMap, then marshal and write it to saveEmailsTo
-func writeEmailsToFile(filename string, addressToRecipient addressToRecipientMap) error {
+func writeEmailsFile(filename string, addressToRecipient addressToRecipientMap) error {
 	jsonData, err := json.Marshal(addressToRecipient)
 	if err != nil {
 		return err
@@ -157,7 +157,7 @@ func (m *mailer) run(ctx context.Context) error {
 	// If saveEmailsTo set but readEmailsFrom not, write the map of resolved
 	// addresses to saveEmailsTo
 	if m.saveEmailsTo != "" && m.readEmailsMap == nil {
-		err := writeEmailsToFile(m.saveEmailsTo, addressToRecipient)
+		err := writeEmailsFile(m.saveEmailsTo, addressToRecipient)
 		if err != nil {
 			return err
 		}
@@ -252,7 +252,7 @@ func (m *mailer) run(ctx context.Context) error {
 		for k, v := range m.readEmailsMap {
 			addressToRecipient[k] = v
 		}
-		err = writeEmailsToFile(m.saveEmailsTo, addressToRecipient)
+		err = writeEmailsFile(m.saveEmailsTo, addressToRecipient)
 		if err != nil {
 			return err
 		}
