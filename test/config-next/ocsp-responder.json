@@ -57,7 +57,8 @@
 		"maxInflightSignings": 20,
 		"maxSigningWaiters": 100,
 		"requiredSerialPrefixes": [
-			"7f"
+			"7f",
+			"6e"
 		],
 		"features": {}
 	},
