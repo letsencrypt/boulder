@@ -1675,8 +1675,15 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 		expectErrContains  string
 	}{
 		{
-			name:               "Allow all account IDs",
+			name:               "Allow all account IDs regardless of profile",
 			validationProfiles: nil,
+			expectErr:          false,
+		}
+		{
+			name:               "Allow all account IDs for this specific profile",
+			validationProfiles: map[string]*ValidationProfile{
+				"test": NewValidationProfile(nil),
+			},
 			expectErr:          false,
 		},
 		{
