@@ -1678,13 +1678,13 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 			name:               "Allow all account IDs regardless of profile",
 			validationProfiles: nil,
 			expectErr:          false,
-		}
+		},
 		{
-			name:               "Allow all account IDs for this specific profile",
+			name: "Allow all account IDs for this specific profile",
 			validationProfiles: map[string]*ValidationProfile{
 				"test": NewValidationProfile(nil),
 			},
-			expectErr:          false,
+			expectErr: false,
 		},
 		{
 			name: "Deny all but account Id 1337",
