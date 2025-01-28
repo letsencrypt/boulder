@@ -9,10 +9,12 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	mrand "math/rand/v2"
 	"regexp"
@@ -36,6 +38,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
+	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
@@ -342,6 +345,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		1, testKeyPolicy, limiter, txnBuilder, 100,
 		300*24*time.Hour, 7*24*time.Hour,
 		nil,
+		nil,
+		nil,
 		7*24*time.Hour, 5*time.Minute,
 		ctp, nil, nil)
 	ra.SA = sa
@@ -436,9 +441,8 @@ func TestNewRegistration(t *testing.T) {
 	acctKeyB, err := AccountKeyB.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := &corepb.Registration{
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Key:             acctKeyB,
+		Contact: []string{mailto},
+		Key:     acctKeyB,
 	}
 
 	result, err := ra.NewRegistration(ctx, input)
@@ -470,9 +474,8 @@ func TestNewRegistrationSAFailure(t *testing.T) {
 	acctKeyB, err := AccountKeyB.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := corepb.Registration{
-		Contact:         []string{"mailto:test@example.com"},
-		ContactsPresent: true,
-		Key:             acctKeyB,
+		Contact: []string{"mailto:test@example.com"},
+		Key:     acctKeyB,
 	}
 	result, err := ra.NewRegistration(ctx, &input)
 	if err == nil {
@@ -487,11 +490,10 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	acctKeyC, err := AccountKeyC.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := &corepb.Registration{
-		Id:              23,
-		Key:             acctKeyC,
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Agreement:       "I agreed",
+		Id:        23,
+		Key:       acctKeyC,
+		Contact:   []string{mailto},
+		Agreement: "I agreed",
 	}
 
 	result, err := ra.NewRegistration(ctx, input)
@@ -508,9 +510,8 @@ func TestNewRegistrationBadKey(t *testing.T) {
 	shortKey, err := ShortKey.MarshalJSON()
 	test.AssertNotError(t, err, "failed to marshal account key")
 	input := &corepb.Registration{
-		Contact:         []string{mailto},
-		ContactsPresent: true,
-		Key:             shortKey,
+		Contact: []string{mailto},
+		Key:     shortKey,
 	}
 	_, err = ra.NewRegistration(ctx, input)
 	test.AssertError(t, err, "Should have rejected authorization with short key")
@@ -1666,6 +1667,65 @@ func TestNewOrder_AuthzReuse_NoPending(t *testing.T) {
 	test.AssertNotEquals(t, new.V2Authorizations[0], extant.V2Authorizations[0])
 }
 
+func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
+	t.Parallel()
+
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	testCases := []struct {
+		name              string
+		allowList         *allowlist.List[int64]
+		expectErr         bool
+		expectErrContains string
+	}{
+		{
+			name:      "Allow All Account IDs",
+			allowList: nil,
+			expectErr: false,
+		},
+		{
+			name:              "Deny all but account Id 1337",
+			allowList:         allowlist.NewList([]int64{1337}),
+			expectErr:         true,
+			expectErrContains: "not permitted to use certificate profile",
+		},
+		{
+			name:              "Deny all",
+			allowList:         allowlist.NewList([]int64{}),
+			expectErr:         true,
+			expectErrContains: "not permitted to use certificate profile",
+		},
+		{
+			name:      "Allow Registration.Id",
+			allowList: allowlist.NewList([]int64{Registration.Id}),
+			expectErr: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ra.validationProfiles = map[string]*ValidationProfile{
+				"test": NewValidationProfile(tc.allowList),
+			}
+
+			orderReq := &rapb.NewOrderRequest{
+				RegistrationID:         Registration.Id,
+				DnsNames:               []string{randomDomain()},
+				CertificateProfileName: "test",
+			}
+			_, err := ra.NewOrder(context.Background(), orderReq)
+
+			if tc.expectErrContains != "" {
+				test.AssertErrorIs(t, err, berrors.Unauthorized)
+				test.AssertContains(t, err.Error(), tc.expectErrContains)
+			} else {
+				test.AssertNotError(t, err, "NewOrder failed")
+			}
+		})
+	}
+}
+
 // mockSAWithAuthzs has a GetAuthorizations2 method that returns the protobuf
 // version of its authzs struct member. It also has a fake GetOrderForNames
 // which always fails, and a fake NewOrderAndAuthzs which always succeeds, to
@@ -2548,6 +2608,123 @@ func TestFinalizeOrderDisabledChallenge(t *testing.T) {
 	// into a single more generic error message. But it does at least distinguish
 	// between missing, expired, and invalid, so we can test for "invalid".
 	test.AssertContains(t, err.Error(), "authorizations for these identifiers not valid")
+}
+
+func TestFinalizeWithMustStaple(t *testing.T) {
+	_, sa, ra, _, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ocspMustStapleExt := pkix.Extension{
+		// RFC 7633: id-pe-tlsfeature OBJECT IDENTIFIER ::=  { id-pe 24 }
+		Id: asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24},
+		// ASN.1 encoding of:
+		// SEQUENCE
+		//   INTEGER 5
+		// where "5" is the status_request feature (RFC 6066)
+		Value: []byte{0x30, 0x03, 0x02, 0x01, 0x05},
+	}
+
+	testCases := []struct {
+		name                  string
+		mustStapleAllowList   *allowlist.List[int64]
+		expectSuccess         bool
+		expectErrorContains   string
+		expectMetricWithLabel prometheus.Labels
+	}{
+		{
+			name:                  "Allow only Registration.ID",
+			mustStapleAllowList:   allowlist.NewList([]int64{Registration.Id}),
+			expectSuccess:         true,
+			expectMetricWithLabel: prometheus.Labels{"allowlist": "allowed"},
+		},
+		{
+			name:                  "Deny all but account Id 1337",
+			mustStapleAllowList:   allowlist.NewList([]int64{1337}),
+			expectSuccess:         false,
+			expectErrorContains:   "no longer available",
+			expectMetricWithLabel: prometheus.Labels{"allowlist": "denied"},
+		},
+		{
+			name:                  "Deny all account Ids",
+			mustStapleAllowList:   allowlist.NewList([]int64{}),
+			expectSuccess:         false,
+			expectErrorContains:   "no longer available",
+			expectMetricWithLabel: prometheus.Labels{"allowlist": "denied"},
+		},
+		{
+			name:                "Allow all account Ids",
+			mustStapleAllowList: nil,
+			expectSuccess:       true,
+			// We don't expect this metric to be be emitted if the allowlist is nil.
+			expectMetricWithLabel: nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ra.mustStapleAllowList = tc.mustStapleAllowList
+
+			domain := randomDomain()
+
+			authzID := createFinalizedAuthorization(
+				t, sa, domain, fc.Now().Add(24*time.Hour), core.ChallengeTypeHTTP01, fc.Now().Add(-1*time.Hour))
+
+			order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+				RegistrationID: Registration.Id,
+				DnsNames:       []string{domain},
+			})
+			test.AssertNotError(t, err, "creating test order")
+			test.AssertEquals(t, order.V2Authorizations[0], authzID)
+
+			testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			test.AssertNotError(t, err, "generating test key")
+
+			csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+				PublicKey:       testKey.Public(),
+				DNSNames:        []string{domain},
+				ExtraExtensions: []pkix.Extension{ocspMustStapleExt},
+			}, testKey)
+			test.AssertNotError(t, err, "creating must-staple CSR")
+
+			serial, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
+			test.AssertNotError(t, err, "generating random serial number")
+			template := &x509.Certificate{
+				SerialNumber:          serial,
+				Subject:               pkix.Name{CommonName: domain},
+				DNSNames:              []string{domain},
+				NotBefore:             fc.Now(),
+				NotAfter:              fc.Now().Add(365 * 24 * time.Hour),
+				BasicConstraintsValid: true,
+				ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+				ExtraExtensions:       []pkix.Extension{ocspMustStapleExt},
+			}
+			cert, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
+			test.AssertNotError(t, err, "creating certificate")
+			ra.CA = &mocks.MockCA{
+				PEM: pem.EncodeToMemory(&pem.Block{
+					Bytes: cert,
+					Type:  "CERTIFICATE",
+				}),
+			}
+
+			_, err = ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{
+				Order: order,
+				Csr:   csr,
+			})
+
+			if tc.expectSuccess {
+				test.AssertNotError(t, err, "finalization should succeed")
+			} else {
+				test.AssertError(t, err, "finalization should fail")
+				test.AssertContains(t, err.Error(), tc.expectErrorContains)
+			}
+
+			if tc.expectMetricWithLabel != nil {
+				test.AssertMetricWithLabelsEquals(t, ra.mustStapleRequestsCounter, tc.expectMetricWithLabel, 1)
+			}
+			ra.mustStapleRequestsCounter.Reset()
+		})
+	}
 }
 
 func TestIssueCertificateAuditLog(t *testing.T) {

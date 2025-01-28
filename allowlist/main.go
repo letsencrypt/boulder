@@ -21,8 +21,13 @@ func NewList[T comparable](members []T) *List[T] {
 }
 
 // NewFromYAML reads a YAML sequence of values of type T and returns a *List[T]
-// containing those values. If the data cannot be parsed, an error is returned.
+// containing those values. If data is empty, an empty (deny all) list is
+// returned. If data cannot be parsed, an error is returned.
 func NewFromYAML[T comparable](data []byte) (*List[T], error) {
+	if len(data) == 0 {
+		return NewList([]T{}), nil
+	}
+
 	var entries []T
 	err := strictyaml.Unmarshal(data, &entries)
 	if err != nil {

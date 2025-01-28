@@ -28,6 +28,7 @@ import (
 
 	"github.com/letsencrypt/boulder/akamai"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
+	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -65,6 +66,19 @@ var (
 	caaRecheckDuration = -7 * time.Hour
 )
 
+// ValidationProfile holds the allowlist for a given validation profile.
+type ValidationProfile struct {
+	// allowList holds the set of account IDs allowed to use this profile. If
+	// nil, the profile is open to all accounts (everyone is allowed).
+	allowList *allowlist.List[int64]
+}
+
+// NewValidationProfile creates a new ValidationProfile with the provided
+// allowList. A nil allowList is interpreted as open access for all accounts.
+func NewValidationProfile(allowList *allowlist.List[int64]) *ValidationProfile {
+	return &ValidationProfile{allowList: allowList}
+}
+
 // RegistrationAuthorityImpl defines an RA.
 //
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
@@ -84,6 +98,8 @@ type RegistrationAuthorityImpl struct {
 	// How long before a newly created authorization expires.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
+	validationProfiles           map[string]*ValidationProfile
+	mustStapleAllowList          *allowlist.List[int64]
 	maxContactsPerReg            int
 	limiter                      *ratelimits.Limiter
 	txnBuilder                   *ratelimits.TransactionBuilder
@@ -97,17 +113,18 @@ type RegistrationAuthorityImpl struct {
 
 	ctpolicy *ctpolicy.CTPolicy
 
-	ctpolicyResults         *prometheus.HistogramVec
-	revocationReasonCounter *prometheus.CounterVec
-	namesPerCert            *prometheus.HistogramVec
-	newRegCounter           prometheus.Counter
-	recheckCAACounter       prometheus.Counter
-	newCertCounter          *prometheus.CounterVec
-	authzAges               *prometheus.HistogramVec
-	orderAges               *prometheus.HistogramVec
-	inflightFinalizes       prometheus.Gauge
-	certCSRMismatch         prometheus.Counter
-	pauseCounter            *prometheus.CounterVec
+	ctpolicyResults           *prometheus.HistogramVec
+	revocationReasonCounter   *prometheus.CounterVec
+	namesPerCert              *prometheus.HistogramVec
+	newRegCounter             prometheus.Counter
+	recheckCAACounter         prometheus.Counter
+	newCertCounter            *prometheus.CounterVec
+	authzAges                 *prometheus.HistogramVec
+	orderAges                 *prometheus.HistogramVec
+	inflightFinalizes         prometheus.Gauge
+	certCSRMismatch           prometheus.Counter
+	pauseCounter              *prometheus.CounterVec
+	mustStapleRequestsCounter *prometheus.CounterVec
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
@@ -124,6 +141,8 @@ func NewRegistrationAuthorityImpl(
 	maxNames int,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
+	validationProfiles map[string]*ValidationProfile,
+	mustStapleAllowList *allowlist.List[int64],
 	pubc pubpb.PublisherClient,
 	orderLifetime time.Duration,
 	finalizeTimeout time.Duration,
@@ -220,6 +239,12 @@ func NewRegistrationAuthorityImpl(
 	}, []string{"paused", "repaused", "grace"})
 	stats.MustRegister(pauseCounter)
 
+	mustStapleRequestsCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "must_staple_requests",
+		Help: "Number of times a must-staple request is made, labeled by allowlist=[allowed|denied]",
+	}, []string{"allowlist"})
+	stats.MustRegister(mustStapleRequestsCounter)
+
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
@@ -230,6 +255,8 @@ func NewRegistrationAuthorityImpl(
 		log:                          logger,
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
+		validationProfiles:           validationProfiles,
+		mustStapleAllowList:          mustStapleAllowList,
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		limiter:                      limiter,
@@ -252,6 +279,7 @@ func NewRegistrationAuthorityImpl(
 		inflightFinalizes:            inflightFinalizes,
 		certCSRMismatch:              certCSRMismatch,
 		pauseCounter:                 pauseCounter,
+		mustStapleRequestsCounter:    mustStapleRequestsCounter,
 	}
 	return ra
 }
@@ -926,6 +954,18 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	csr, err := x509.ParseCertificateRequest(req.Csr)
 	if err != nil {
 		return nil, berrors.BadCSRError("unable to parse CSR: %s", err.Error())
+	}
+
+	if ra.mustStapleAllowList != nil && issuance.ContainsMustStaple(csr.Extensions) {
+		if !ra.mustStapleAllowList.Contains(req.Order.RegistrationID) {
+			ra.mustStapleRequestsCounter.WithLabelValues("denied").Inc()
+			return nil, berrors.UnauthorizedError(
+				"OCSP must-staple extension is no longer available: see https://letsencrypt.org/2024/12/05/ending-ocsp",
+			)
+		} else {
+			ra.mustStapleRequestsCounter.WithLabelValues("allowed").Inc()
+		}
+
 	}
 
 	err = csrlib.VerifyCSR(ctx, csr, ra.maxNames, &ra.keyPolicy, ra.PA)
@@ -2120,6 +2160,21 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if len(newOrder.DnsNames) > ra.maxNames {
 		return nil, berrors.MalformedError(
 			"Order cannot contain more than %d DNS names", ra.maxNames)
+	}
+
+	if req.CertificateProfileName != "" && ra.validationProfiles != nil {
+		vp, ok := ra.validationProfiles[req.CertificateProfileName]
+		if !ok {
+			return nil, berrors.MalformedError("requested certificate profile %q not found",
+				req.CertificateProfileName,
+			)
+		}
+		if vp.allowList != nil && !vp.allowList.Contains(req.RegistrationID) {
+			return nil, berrors.UnauthorizedError("account ID %d is not permitted to use certificate profile %q",
+				req.RegistrationID,
+				req.CertificateProfileName,
+			)
+		}
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
