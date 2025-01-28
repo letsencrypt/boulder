@@ -26,15 +26,24 @@ where that issuer's CRLs will be served.
 
 ## Shard assignment
 
-Certificates are assigned to shards two ways: temporally and explicitly.
+Certificates are assigned to shards one of two ways: temporally or explicitly.
 Temporal shard assignment places certificates into shards based on their
 notAfter. Explicit shard assignment places certificates into shards based
-on the (random) low bytes of their serial numbers. All certificates
-implicitly have a temporal shard. Only certificates with the
-CRLDistributionPoints extension are considered to have an explicit shard.
+on the (random) low bytes of their serial numbers.
 
-As of Jan 2025, we are planning to start assigning explicit shards at
-issuance time and then, after a transition period, turn off temporal sharding.
+Boulder distinguishes the two types of sharding by the one-byte (two hex
+encoded bytes) prefix on the serial number, configured at the CA.
+When enabling explicit sharding at the CA, operators should at the same
+time change the CA's configured serial prefix. Also, the crl-updater should
+be configured with `temporallyShardedPrefixes` set to the _old_ serial prefix.
+
+An explicitly sharded certificate will always have the CRLDistributionPoints
+extension, containing a URL that points to its CRL shard. A temporally sharded
+certificate will never have that extension.
+
+As of Jan 2025, we are planning to turn on explicit sharding for new
+certificates soon. Once all temporally sharded certificates have expired, we
+will remove the code for temporal sharding.
 
 ## Storage
 
@@ -61,7 +70,13 @@ crl-updater de-duplicates by serial number.
 
 Explicit sharding is enabled at the CA by configuring each issuer with a number
 of CRL shards. This number must be the same across all issuers and must match
-the number of shards configured on the crl-updater.
+the number of shards configured on the crl-updater. As part of the same config
+deploy, the CA must be updated to issue using a new serial prefix. Note: the
+ocsp-responder must also be updated to recognize the new serial prefix.
+
+The crl-updater must also be updated to add the `temporallyShardedPrefixes`
+field, listing the _old_ serial prefixes (i.e., those that were issued by a CA
+that did not include the CRLDistributionPoints extension).
 
 Once we've turned on explicit sharding, we can turn it back off. However, for
 the certificates we've already issued, we are still committed to serving their
