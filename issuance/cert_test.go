@@ -11,12 +11,14 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
+	"fmt"
 	"testing"
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/test"
@@ -779,7 +781,7 @@ func TestMismatchedProfiles(t *testing.T) {
 
 	// Create a new profile that differs slightly (no common name)
 	pc = defaultProfileConfig()
-	pc.AllowCommonName = false
+	pc.OmitCommonName = false
 	test.AssertNotError(t, err, "building test lint registry")
 	noCNProfile, err := NewProfile(pc)
 	test.AssertNotError(t, err, "NewProfile failed")
@@ -808,4 +810,52 @@ func TestMismatchedProfiles(t *testing.T) {
 	_, _, err = issuer2.Prepare(noCNProfile, request2)
 	test.AssertError(t, err, "preparing final cert issuance")
 	test.AssertContains(t, err.Error(), "precert does not correspond to linted final cert")
+}
+
+func TestProfileHash(t *testing.T) {
+	// A profile without IncludeCRLDistributionPoints.
+	// Hash calculated over the gob encoding of the old `ProfileConfig`.
+	profile := ProfileConfigNew{
+		IncludeCRLDistributionPoints: false,
+		AllowMustStaple:              true,
+		OmitCommonName:               true,
+		OmitKeyEncipherment:          false,
+		OmitClientAuth:               false,
+		OmitSKID:                     true,
+		MaxValidityPeriod:            config.Duration{Duration: time.Hour},
+		MaxValidityBackdate:          config.Duration{Duration: time.Second},
+		LintConfig:                   "example/config.toml",
+		IgnoredLints:                 []string{"one", "two"},
+	}
+	hash, err := profile.Hash()
+	if err != nil {
+		t.Fatalf("hashing %+v: %s", profile, err)
+	}
+	expectedHash := "f6b5766141fdc066824e781347095ffb3c86fa97a174e21123a323a93b078f46"
+	if expectedHash != fmt.Sprintf("%x", hash) {
+		t.Errorf("%+v.Hash()=%x, want %s", profile, hash, expectedHash)
+	}
+
+	// A profile _with_ IncludeCRLDistributionPoints.
+	// Hash calculated over the ASN.1 encoding of the `ProfileConfigNew`.
+	profile = ProfileConfigNew{
+		IncludeCRLDistributionPoints: true,
+		AllowMustStaple:              true,
+		OmitCommonName:               true,
+		OmitKeyEncipherment:          false,
+		OmitClientAuth:               false,
+		OmitSKID:                     true,
+		MaxValidityPeriod:            config.Duration{Duration: time.Hour},
+		MaxValidityBackdate:          config.Duration{Duration: time.Second},
+		LintConfig:                   "example/config.toml",
+		IgnoredLints:                 []string{"one", "two"},
+	}
+	hash, err = profile.Hash()
+	if err != nil {
+		t.Fatalf("hashing %+v: %s", profile, err)
+	}
+	expectedHash = "5939ea199deb3327d1b529da08d6fb07eb8de4c4cca9f6bf499d76da4b67d1e8"
+	if expectedHash != fmt.Sprintf("%x", hash) {
+		t.Errorf("%+v.Hash()=%x, want %s", profile, hash, expectedHash)
+	}
 }

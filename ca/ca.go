@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/gob"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -195,7 +194,7 @@ func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 //   - CA1 returns the precertificate DER bytes and profile hash to the RA
 //   - RA instructs CA2 to issue a final certificate, but CA2 does not contain a
 //     profile corresponding to that hash and an issuance is prevented.
-func makeCertificateProfilesMap(defaultName string, profiles map[string]*issuance.ProfileConfig) (certProfilesMaps, error) {
+func makeCertificateProfilesMap(defaultName string, profiles map[string]*issuance.ProfileConfigNew) (certProfilesMaps, error) {
 	if len(profiles) <= 0 {
 		return certProfilesMaps{}, fmt.Errorf("must pass at least one certificate profile")
 	}
@@ -215,20 +214,10 @@ func makeCertificateProfilesMap(defaultName string, profiles map[string]*issuanc
 			return certProfilesMaps{}, err
 		}
 
-		// gob can only encode exported fields, of which an issuance.Profile has
-		// none. However, since we're already in a loop iteration having access
-		// to the issuance.ProfileConfig used to generate the issuance.Profile,
-		// we'll generate the hash from that.
-		var encodedProfile bytes.Buffer
-		enc := gob.NewEncoder(&encodedProfile)
-		err = enc.Encode(profileConfig)
+		hash, err := profileConfig.Hash()
 		if err != nil {
 			return certProfilesMaps{}, err
 		}
-		if len(encodedProfile.Bytes()) <= 0 {
-			return certProfilesMaps{}, fmt.Errorf("certificate profile encoding returned 0 bytes")
-		}
-		hash := sha256.Sum256(encodedProfile.Bytes())
 
 		withID := certProfileWithID{
 			name:    name,
@@ -256,7 +245,7 @@ func NewCertificateAuthorityImpl(
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
 	defaultCertProfileName string,
-	certificateProfiles map[string]*issuance.ProfileConfig,
+	certificateProfiles map[string]*issuance.ProfileConfigNew,
 	serialPrefix byte,
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
