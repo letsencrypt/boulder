@@ -125,6 +125,9 @@ type RegistrationAuthorityImpl struct {
 	certCSRMismatch           prometheus.Counter
 	pauseCounter              *prometheus.CounterVec
 	mustStapleRequestsCounter *prometheus.CounterVec
+	// TODO(#7966): Remove once the rate of registrations with contacts has been
+	// determined.
+	newRegWithContactCounter prometheus.Counter
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
@@ -245,6 +248,14 @@ func NewRegistrationAuthorityImpl(
 	}, []string{"allowlist"})
 	stats.MustRegister(mustStapleRequestsCounter)
 
+	// TODO(#7966): Remove once the rate of registrations with contacts has been
+	// determined.
+	newRegWithContactCounter := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "new_registrations_with_contacts",
+		Help: "A counter of new registrations with contacts",
+	})
+	stats.MustRegister(newRegWithContactCounter)
+
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
@@ -280,6 +291,7 @@ func NewRegistrationAuthorityImpl(
 		certCSRMismatch:              certCSRMismatch,
 		pauseCounter:                 pauseCounter,
 		mustStapleRequestsCounter:    mustStapleRequestsCounter,
+		newRegWithContactCounter:     newRegWithContactCounter,
 	}
 	return ra
 }
@@ -416,6 +428,11 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	}
 
 	ra.newRegCounter.Inc()
+	// TODO(#7966): Remove once the rate of registrations with contacts has been
+	// determined.
+	if len(request.Contact) > 0 {
+		ra.newRegWithContactCounter.Inc()
+	}
 	return res, nil
 }
 
