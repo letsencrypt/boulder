@@ -225,9 +225,9 @@ func makeCertificateProfilesMap(defaultName string, profiles map[string]*issuanc
 		profilesByName[name] = &withID
 		_, found := profilesByHash[hash]
 		if found {
-			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile hash %d", hash)
+			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile hash %d", profile.Hash())
 		}
-		profilesByHash[hash] = &withID
+		profilesByHash[profile.Hash()] = &withID
 	}
 
 	return certProfilesMaps{defaultName, profilesByHash, profilesByName}, nil
