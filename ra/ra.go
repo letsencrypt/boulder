@@ -127,7 +127,7 @@ type RegistrationAuthorityImpl struct {
 	mustStapleRequestsCounter *prometheus.CounterVec
 	// TODO(#7966): Remove once the rate of registrations with contacts has been
 	// determined.
-	newRegWithContactCounter prometheus.Counter
+	newRegWithContactCounter *prometheus.CounterVec
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
@@ -250,10 +250,10 @@ func NewRegistrationAuthorityImpl(
 
 	// TODO(#7966): Remove once the rate of registrations with contacts has been
 	// determined.
-	newRegWithContactCounter := prometheus.NewCounter(prometheus.CounterOpts{
+	newRegWithContactCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "new_registrations_with_contacts",
-		Help: "A counter of new registrations with contacts",
-	})
+		Help: "A counter of new registrations with contacts, labeled by new=[bool], update=[bool]",
+	}, []string{"new", "update"})
 	stats.MustRegister(newRegWithContactCounter)
 
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
@@ -427,12 +427,13 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 		return nil, err
 	}
 
-	ra.newRegCounter.Inc()
 	// TODO(#7966): Remove once the rate of registrations with contacts has been
 	// determined.
-	if len(request.Contact) > 0 {
-		ra.newRegWithContactCounter.Inc()
+	for range request.Contact {
+		ra.newRegWithContactCounter.With(prometheus.Labels{"new": "true"}).Inc()
 	}
+
+	ra.newRegCounter.Inc()
 	return res, nil
 }
 
@@ -1289,6 +1290,12 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Conte
 	err := ra.validateContacts(req.Contacts)
 	if err != nil {
 		return nil, fmt.Errorf("invalid contact: %w", err)
+	}
+
+	// TODO(#7966): Remove once the rate of registrations with contacts has
+	// been determined.
+	for range req.Contacts {
+		ra.newRegWithContactCounter.With(prometheus.Labels{"update": "true"}).Inc()
 	}
 
 	update, err := ra.SA.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{
