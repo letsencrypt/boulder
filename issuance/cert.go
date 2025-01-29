@@ -182,6 +182,8 @@ type Profile struct {
 	maxValidity time.Duration
 
 	lints lint.Registry
+
+	hash [32]byte
 }
 
 // NewProfile converts the profile config into a usable profile.
@@ -206,6 +208,11 @@ func NewProfile(profileConfig *ProfileConfigNew) (*Profile, error) {
 		lints.SetConfiguration(lintconfig)
 	}
 
+	hash, err := profileConfig.Hash()
+	if err != nil {
+		return nil, err
+	}
+
 	sp := &Profile{
 		allowMustStaple:     profileConfig.AllowMustStaple,
 		omitCommonName:      profileConfig.OmitCommonName,
@@ -215,9 +222,14 @@ func NewProfile(profileConfig *ProfileConfigNew) (*Profile, error) {
 		maxBackdate:         profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:         profileConfig.MaxValidityPeriod.Duration,
 		lints:               lints,
+		hash:                hash,
 	}
 
 	return sp, nil
+}
+
+func (p *Profile) Hash() [32]byte {
+	return p.hash
 }
 
 // GenerateValidity returns a notBefore/notAfter pair bracketing the input time,
