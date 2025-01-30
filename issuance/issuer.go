@@ -165,13 +165,8 @@ type IssuerConfig struct {
 	CRLURLBase string `validate:"required,url,startswith=http://,endswith=/"`
 
 	// Number of CRL shards.
-	// If this is zero, no CRLDP will be added to issued certs.
-	// If this is nonzero, enable explicit sharding: a CRLDP based on CRLURLBase
-	// will be added to all issued certs.
-	// A shard will be selected between 1 and CRLShards, inclusive.
-	// Enabling explicit sharding enables writing to the `revokedCertificates`
-	// table at revocation time, which in turn allows the the crl-updater to
-	// find certificates by their explicit shard.
+	// This must be nonzero if adding CRLDistributionPoints to certificates
+	// (that is, if profile.IncludeCRLDistributionPoints is true).
 	CRLShards int
 
 	Location IssuerLoc
