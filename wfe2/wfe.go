@@ -2517,11 +2517,6 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	if order.RegistrationID != acctID {
-		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
-		return
-	}
-
 	// If the authenticated account ID doesn't match the order's registration ID
 	// pretend it doesn't exist and abort.
 	if acct.ID != order.RegistrationID {
