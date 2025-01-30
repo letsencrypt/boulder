@@ -2174,7 +2174,7 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 	}
 	if _, ok := wfe.certProfiles[profile]; !ok {
 		// The profile name is not in the list of configured profiles.
-		return errors.New("not a recognized profile name")
+		return fmt.Errorf("profile name %q not recognized", profile)
 	}
 
 	return nil
@@ -2335,7 +2335,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	err = wfe.validateCertificateProfileName(newOrderRequest.Profile)
 	if err != nil {
 		// TODO(#7392) Provide link to profile documentation.
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid certificate profile, %q: %s", newOrderRequest.Profile, err), err)
+		wfe.sendError(response, logEvent, probs.InvalidProfile(err.Error()), err)
 		return
 	}
 
@@ -2540,6 +2540,16 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	if orderExpiry.Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("Order %d is expired", order.Id)), nil)
 		return
+	}
+
+	// Don't finalize orders with profiles we no longer recognize.
+	if order.CertificateProfileName != "" {
+		err = wfe.validateCertificateProfileName(order.CertificateProfileName)
+		if err != nil {
+			// TODO(#7392) Provide link to profile documentation.
+			wfe.sendError(response, logEvent, probs.InvalidProfile(err.Error()), err)
+			return
+		}
 	}
 
 	// The authenticated finalize message body should be an encoded CSR

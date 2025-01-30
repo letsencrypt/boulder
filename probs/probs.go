@@ -36,6 +36,9 @@ const (
 	UnsupportedContactProblem    = ProblemType("unsupportedContact")
 	UnsupportedIdentifierProblem = ProblemType("unsupportedIdentifier")
 
+	// Defined in https://datatracker.ietf.org/doc/draft-aaron-acme-profiles/
+	InvalidProfileProblem = ProblemType("invalidProfile")
+
 	ErrorNS = "urn:ietf:params:acme:error:"
 )
 
@@ -349,5 +352,15 @@ func NotFound(detail string) *ProblemDetails {
 		Type:       MalformedProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusNotFound,
+	}
+}
+
+// InvalidProfile returns a ProblemDetails with type InvalidProfile, specified
+// in https://datatracker.ietf.org/doc/draft-aaron-acme-profiles/.
+func InvalidProfile(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       InvalidProfileProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusBadRequest,
 	}
 }
