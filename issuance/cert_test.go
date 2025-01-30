@@ -854,7 +854,7 @@ func TestProfileHash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hashing %+v: %s", profile, err)
 	}
-	expectedHash = "5939ea199deb3327d1b529da08d6fb07eb8de4c4cca9f6bf499d76da4b67d1e8"
+	expectedHash = "a7d2ee3ede97124e66265cebfb59dccc55c1c67dc267b361324400f89e577afe"
 	if expectedHash != fmt.Sprintf("%x", hash) {
 		t.Errorf("%+v.Hash()=%x, want %s", profile, hash, expectedHash)
 	}

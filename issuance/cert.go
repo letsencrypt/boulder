@@ -103,6 +103,9 @@ type ProfileConfig struct {
 // allows for gracefully adding new fields without changing the hash of existing
 // profile configs). This struct does not get embedded into any certs, CRLs, or
 // other objects, and does not get signed; it's only used internally.
+//
+// Note: even though these fields have encoding instructions (tag:N), they will
+// be encoded in the order they appear in the struct, so do not reorder them.
 type ProfileConfigNew struct {
 	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
 	// OCSP Must Staple extension to be rejected.
@@ -121,10 +124,10 @@ type ProfileConfigNew struct {
 	OmitSKID bool `asn1:"tag:5,optional"`
 	// IncludeCRLDistributionPoints causes the CRLDistributionPoints extension to
 	// be added to all certificates issued by this profile.
-	IncludeCRLDistributionPoints bool `asn1:"tag:8,optional"`
+	IncludeCRLDistributionPoints bool `asn1:"tag:6,optional"`
 
-	MaxValidityPeriod   config.Duration `asn1:"tag:6,optional"`
-	MaxValidityBackdate config.Duration `asn1:"tag:7,optional"`
+	MaxValidityPeriod   config.Duration `asn1:"tag:7,optional"`
+	MaxValidityBackdate config.Duration `asn1:"tag:8,optional"`
 
 	// LintConfig is a path to a zlint config file, which can be used to control
 	// the behavior of zlint's "customizable lints".
