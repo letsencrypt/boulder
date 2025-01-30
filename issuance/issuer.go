@@ -162,7 +162,7 @@ type IssuerConfig struct {
 
 	IssuerURL  string `validate:"required,url"`
 	OCSPURL    string `validate:"required,url"`
-	CRLURLBase string `validate:"omitempty,url,startswith=http://,endswith=/"`
+	CRLURLBase string `validate:"required,url,startswith=http://,endswith=/"`
 
 	// Number of CRL shards.
 	// If this is zero, no CRLDP will be added to issued certs.
