@@ -14,9 +14,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/letsencrypt/boulder/identifier"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 // ErrorType provides a coarse category for BoulderErrors.
@@ -54,6 +55,8 @@ const (
 	// The certificate being indicated for replacement already has a replacement
 	// order.
 	Conflict
+	// Defined in https://datatracker.ietf.org/doc/draft-aaron-acme-profiles/00/
+	InvalidProfile
 )
 
 func (ErrorType) Error() string {
@@ -285,4 +288,8 @@ func UnknownSerialError() error {
 
 func ConflictError(msg string, args ...interface{}) error {
 	return New(Conflict, msg, args...)
+}
+
+func InvalidProfileError(msg string, args ...interface{}) error {
+	return New(InvalidProfile, msg, args...)
 }

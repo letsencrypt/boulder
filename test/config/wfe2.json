@@ -132,6 +132,10 @@
 			"IncrementRateLimits": true,
 			"CheckIdentifiersPaused": true
 		},
+		"certProfiles": {
+			"legacy": "The normal profile you know and love",
+			"modern": "Profile 2: Electric Boogaloo"
+		},
 		"unpause": {
 			"hmacKey": {
 				"keyFile": "test/secrets/sfe_unpause_key"

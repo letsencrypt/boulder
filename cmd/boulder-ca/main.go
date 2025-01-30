@@ -3,6 +3,7 @@ package notmain
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -40,7 +41,7 @@ type Config struct {
 
 			// One of the profile names must match the value of
 			// DefaultCertificateProfileName or boulder-ca will fail to start.
-			CertProfiles map[string]*issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
+			CertProfiles map[string]*issuance.ProfileConfigNew `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
 
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile issuance.CRLProfileConfig `validate:"-"`
@@ -176,10 +177,19 @@ func main() {
 	}
 
 	clk := cmd.Clock()
+	var crlShards int
 	issuers := make([]*issuance.Issuer, 0, len(c.CA.Issuance.Issuers))
-	for _, issuerConfig := range c.CA.Issuance.Issuers {
+	for i, issuerConfig := range c.CA.Issuance.Issuers {
 		issuer, err := issuance.LoadIssuer(issuerConfig, clk)
 		cmd.FailOnError(err, "Loading issuer")
+		// All issuers should have the same number of CRL shards, because
+		// crl-updater assumes they all have the same number.
+		if issuerConfig.CRLShards != 0 && crlShards == 0 {
+			crlShards = issuerConfig.CRLShards
+		}
+		if issuerConfig.CRLShards != crlShards {
+			cmd.Fail(fmt.Sprintf("issuer %d has %d shards, want %d", i, issuerConfig.CRLShards, crlShards))
+		}
 		issuers = append(issuers, issuer)
 		logger.Infof("Loaded issuer: name=[%s] keytype=[%s] nameID=[%v] isActive=[%t]", issuer.Name(), issuer.KeyType(), issuer.NameID(), issuer.IsActive())
 	}
