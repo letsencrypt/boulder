@@ -40,7 +40,7 @@ import (
 // The CA uses a hash of the gob encoding of ProfileConfig to ensure precert
 // and final cert issuance use the exact same profile settings. Gob encodes all
 // fields, including zero values, which means adding fields immediately changes all
-// hashes, causing a deployability problem.
+// hashes, causing a deployability problem. It also encodes the struct name.
 //
 // To solve the deployability problem, we're switching to ASN.1 encoding. However,
 // while deploying that we still need the ability to hash old configs the same way
@@ -119,11 +119,12 @@ type ProfileConfigNew struct {
 	OmitClientAuth bool `asn1:"tag:4,optional"`
 	// OmitSKID causes the Subject Key Identifier extension to be omitted.
 	OmitSKID bool `asn1:"tag:5,optional"`
+	// IncludeCRLDistributionPoints causes the CRLDistributionPoints extension to
+	// be added to all certificates issued by this profile.
+	IncludeCRLDistributionPoints bool `asn1:"tag:8,optional"`
 
 	MaxValidityPeriod   config.Duration `asn1:"tag:6,optional"`
 	MaxValidityBackdate config.Duration `asn1:"tag:7,optional"`
-
-	IncludeCRLDistributionPoints bool `asn1:"tag:8,optional"`
 
 	// LintConfig is a path to a zlint config file, which can be used to control
 	// the behavior of zlint's "customizable lints".
