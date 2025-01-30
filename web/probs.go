@@ -48,6 +48,8 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		outProb = probs.UnsupportedContact(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.Conflict:
 		outProb = probs.Conflict(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.InvalidProfile:
+		outProb = probs.InvalidProfile(fmt.Sprintf("%s :: %s", msg, err))
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
