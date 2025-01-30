@@ -2501,6 +2501,11 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
+	if acct.ID != acctID {
+		wfe.sendError(response, logEvent, probs.Malformed("Mismatched account ID"), nil)
+		return
+	}
+
 	order, err := wfe.sa.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
