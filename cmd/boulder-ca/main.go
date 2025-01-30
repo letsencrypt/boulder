@@ -3,6 +3,7 @@ package notmain
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -176,10 +177,19 @@ func main() {
 	}
 
 	clk := cmd.Clock()
+	var crlShards int
 	issuers := make([]*issuance.Issuer, 0, len(c.CA.Issuance.Issuers))
-	for _, issuerConfig := range c.CA.Issuance.Issuers {
+	for i, issuerConfig := range c.CA.Issuance.Issuers {
 		issuer, err := issuance.LoadIssuer(issuerConfig, clk)
 		cmd.FailOnError(err, "Loading issuer")
+		// All issuers should have the same number of CRL shards, because
+		// crl-updater assumes they all have the same number.
+		if issuerConfig.CRLShards != 0 && crlShards == 0 {
+			crlShards = issuerConfig.CRLShards
+		}
+		if issuerConfig.CRLShards != crlShards {
+			cmd.Fail(fmt.Sprintf("issuer %d has %d shards, want %d", i, issuerConfig.CRLShards, crlShards))
+		}
 		issuers = append(issuers, issuer)
 		logger.Infof("Loaded issuer: name=[%s] keytype=[%s] nameID=[%v] isActive=[%t]", issuer.Name(), issuer.KeyType(), issuer.NameID(), issuer.IsActive())
 	}

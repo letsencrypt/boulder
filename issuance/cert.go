@@ -182,6 +182,8 @@ type Profile struct {
 	omitClientAuth      bool
 	omitSKID            bool
 
+	includeCRLDistributionPoints bool
+
 	maxBackdate time.Duration
 	maxValidity time.Duration
 
@@ -218,15 +220,16 @@ func NewProfile(profileConfig *ProfileConfigNew) (*Profile, error) {
 	}
 
 	sp := &Profile{
-		allowMustStaple:     profileConfig.AllowMustStaple,
-		omitCommonName:      profileConfig.OmitCommonName,
-		omitKeyEncipherment: profileConfig.OmitKeyEncipherment,
-		omitClientAuth:      profileConfig.OmitClientAuth,
-		omitSKID:            profileConfig.OmitSKID,
-		maxBackdate:         profileConfig.MaxValidityBackdate.Duration,
-		maxValidity:         profileConfig.MaxValidityPeriod.Duration,
-		lints:               lints,
-		hash:                hash,
+		allowMustStaple:              profileConfig.AllowMustStaple,
+		omitCommonName:               profileConfig.OmitCommonName,
+		omitKeyEncipherment:          profileConfig.OmitKeyEncipherment,
+		omitClientAuth:               profileConfig.OmitClientAuth,
+		omitSKID:                     profileConfig.OmitSKID,
+		includeCRLDistributionPoints: profileConfig.IncludeCRLDistributionPoints,
+		maxBackdate:                  profileConfig.MaxValidityBackdate.Duration,
+		maxValidity:                  profileConfig.MaxValidityPeriod.Duration,
+		lints:                        lints,
+		hash:                         hash,
 	}
 
 	return sp, nil
@@ -310,9 +313,6 @@ func (i *Issuer) generateTemplate() *x509.Certificate {
 		// Baseline Requirements, Section 7.1.6.1: domain-validated
 		PolicyIdentifiers: []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
 	}
-
-	// TODO(#7294): Use i.crlURLBase and a shard calculation to create a
-	// crlDistributionPoint.
 
 	return template
 }
@@ -486,6 +486,19 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
 	} else {
 		return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
+	}
+
+	// If explicit CRL sharding is enabled, pick a shard based on the serial number
+	// modulus the number of shards. This gives us random distribution that is
+	// nonetheless consistent between precert and cert.
+	if prof.includeCRLDistributionPoints {
+		if i.crlShards <= 0 {
+			return nil, nil, errors.New("IncludeCRLDistributionPoints was set but CRLShards was not set")
+		}
+		shardZeroBased := big.NewInt(0).Mod(template.SerialNumber, big.NewInt(int64(i.crlShards)))
+		shard := int(shardZeroBased.Int64()) + 1
+		url := i.crlURL(shard)
+		template.CRLDistributionPoints = []string{url}
 	}
 
 	if req.IncludeMustStaple {

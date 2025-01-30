@@ -127,28 +127,45 @@ func getAllCRLs(t *testing.T) map[string][]*x509.RevocationList {
 	return ret
 }
 
-func checkRevoked(t *testing.T, revocations map[string][]*x509.RevocationList, cert *x509.Certificate, reason int) {
+func checkRevoked(t *testing.T, revocations map[string][]*x509.RevocationList, cert *x509.Certificate, expectedReason int) {
 	t.Helper()
 	akid := hex.EncodeToString(cert.AuthorityKeyId)
 	if len(revocations[akid]) == 0 {
 		t.Errorf("no CRLs found for authorityKeyID %s", akid)
 	}
-	var matches []x509.RevocationListEntry
+	var matchingCRLs []string
 	var count int
 	for _, list := range revocations[akid] {
 		for _, entry := range list.RevokedCertificateEntries {
 			count++
 			if entry.SerialNumber.Cmp(cert.SerialNumber) == 0 {
-				matches = append(matches, entry)
+				idpURIs, err := idp.GetIDPURIs(list.Extensions)
+				if err != nil {
+					t.Errorf("getting IDP URIs: %s", err)
+				}
+				idpURI := idpURIs[0]
+				if entry.ReasonCode != expectedReason {
+					t.Errorf("revoked certificate %x in CRL %s: revocation reason %d, want %d", cert.SerialNumber, idpURI, entry.ReasonCode, expectedReason)
+				}
+				matchingCRLs = append(matchingCRLs, idpURI)
 			}
 		}
 	}
-	if len(matches) == 0 {
+	if len(matchingCRLs) == 0 {
 		t.Errorf("searching for %x in CRLs: no entry on combined CRLs of length %d", cert.SerialNumber, count)
 	}
-	for _, match := range matches {
-		if match.ReasonCode != reason {
-			t.Errorf("revoked certificate %x: got reason %d, want %d", cert.SerialNumber, match.ReasonCode, reason)
+
+	// If the cert has a CRLDP, it must be listed on the CRL served at that URL.
+	if len(cert.CRLDistributionPoints) > 0 {
+		expectedCRLDP := cert.CRLDistributionPoints[0]
+		found := false
+		for _, crl := range matchingCRLs {
+			if crl == expectedCRLDP {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("revoked certificate %x: seen on CRLs %s, want to see on CRL %s", cert.SerialNumber, matchingCRLs, expectedCRLDP)
 		}
 	}
 }

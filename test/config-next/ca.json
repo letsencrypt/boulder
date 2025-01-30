@@ -48,6 +48,17 @@
 					"allowMustStaple": true,
 					"maxValidityPeriod": "7776000s",
 					"maxValidityBackdate": "1h5m",
+					"includeCRLDistributionPoints": true,
+					"lintConfig": "test/config-next/zlint.toml",
+					"ignoredLints": [
+						"w_subject_common_name_included",
+						"w_ext_subject_key_identifier_not_recommended_subscriber"
+					]
+				},
+				"legacyRenamedPriorToDeletion": {
+					"allowMustStaple": true,
+					"maxValidityPeriod": "7776000s",
+					"maxValidityBackdate": "1h5m",
 					"lintConfig": "test/config-next/zlint.toml",
 					"ignoredLints": [
 						"w_subject_common_name_included",
@@ -55,6 +66,20 @@
 					]
 				},
 				"modern": {
+					"allowMustStaple": true,
+					"omitCommonName": true,
+					"omitKeyEncipherment": true,
+					"omitClientAuth": true,
+					"omitSKID": true,
+					"includeCRLDistributionPoints": true,
+					"maxValidityPeriod": "583200s",
+					"maxValidityBackdate": "1h5m",
+					"lintConfig": "test/config-next/zlint.toml",
+					"ignoredLints": [
+						"w_ext_subject_key_identifier_missing_sub_cert"
+					]
+				},
+				"modernRenamedPriorToDeletion": {
 					"allowMustStaple": true,
 					"omitCommonName": true,
 					"omitKeyEncipherment": true,
@@ -75,6 +100,7 @@
 			"issuers": [
 				{
 					"active": true,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-a",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/43104258997432926/",
@@ -86,6 +112,7 @@
 				},
 				{
 					"active": true,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-b",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/17302365692836921/",
@@ -97,6 +124,7 @@
 				},
 				{
 					"active": false,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-c",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/56560759852043581/",
@@ -108,6 +136,7 @@
 				},
 				{
 					"active": true,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-a",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/29947985078257530/",
@@ -119,6 +148,7 @@
 				},
 				{
 					"active": true,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-b",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/6762885421992935/",
@@ -130,6 +160,7 @@
 				},
 				{
 					"active": false,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-c",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/56183656833365902/",

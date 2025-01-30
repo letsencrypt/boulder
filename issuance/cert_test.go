@@ -12,6 +12,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -67,6 +68,18 @@ func TestGenerateValidity(t *testing.T) {
 			test.AssertEquals(t, notBefore, tc.notBefore)
 			test.AssertEquals(t, notAfter, tc.notAfter)
 		})
+	}
+}
+
+func TestCRLURL(t *testing.T) {
+	issuer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, clock.NewFake())
+	if err != nil {
+		t.Fatalf("newIssuer: %s", err)
+	}
+	url := issuer.crlURL(4928)
+	want := "http://crl-url.example.org/4928.crl"
+	if url != want {
+		t.Errorf("crlURL(4928)=%s, want %s", url, want)
 	}
 }
 
@@ -380,7 +393,52 @@ func TestIssue(t *testing.T) {
 			test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 			test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Poison
 			test.AssertEquals(t, cert.KeyUsage, tc.ku)
+			if len(cert.CRLDistributionPoints) > 0 {
+				t.Errorf("want CRLDistributionPoints=[], got %v", cert.CRLDistributionPoints)
+			}
 		})
+	}
+}
+
+func TestIssueWithCRLDP(t *testing.T) {
+	fc := clock.NewFake()
+	issuerConfig := defaultIssuerConfig()
+	issuerConfig.CRLURLBase = "http://crls.example.net/"
+	issuerConfig.CRLShards = 999
+	signer, err := newIssuer(issuerConfig, issuerCert, issuerSigner, fc)
+	if err != nil {
+		t.Fatalf("newIssuer: %s", err)
+	}
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %s", err)
+	}
+	profile := defaultProfile()
+	profile.includeCRLDistributionPoints = true
+	_, issuanceToken, err := signer.Prepare(profile, &IssuanceRequest{
+		PublicKey:       MarshalablePublicKey{pk.Public()},
+		SubjectKeyId:    goodSKID,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:        []string{"example.com"},
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
+	})
+	if err != nil {
+		t.Fatalf("signer.Prepare: %s", err)
+	}
+	certBytes, err := signer.Issue(issuanceToken)
+	if err != nil {
+		t.Fatalf("signer.Issue: %s", err)
+	}
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		t.Fatalf("x509.ParseCertificate: %s", err)
+	}
+	// Because CRL shard is calculated deterministically from serial, we know which shard will be chosen.
+	expectedCRLDP := []string{"http://crls.example.net/919.crl"}
+	if !reflect.DeepEqual(cert.CRLDistributionPoints, expectedCRLDP) {
+		t.Errorf("CRLDP=%+v, want %+v", cert.CRLDistributionPoints, expectedCRLDP)
 	}
 }
 
