@@ -40,7 +40,7 @@ type Config struct {
 
 			// One of the profile names must match the value of
 			// DefaultCertificateProfileName or boulder-ca will fail to start.
-			CertProfiles map[string]*issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
+			CertProfiles map[string]*issuance.ProfileConfigNew `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
 
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile issuance.CRLProfileConfig `validate:"-"`

@@ -102,7 +102,7 @@ type testCtx struct {
 	ocsp                   *ocspImpl
 	crl                    *crlImpl
 	defaultCertProfileName string
-	certProfiles           map[string]*issuance.ProfileConfig
+	certProfiles           map[string]*issuance.ProfileConfigNew
 	serialPrefix           byte
 	maxNames               int
 	boulderIssuers         []*issuance.Issuer
@@ -153,14 +153,14 @@ func setup(t *testing.T) *testCtx {
 	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
-	certProfiles := make(map[string]*issuance.ProfileConfig, 0)
-	certProfiles["legacy"] = &issuance.ProfileConfig{
+	certProfiles := make(map[string]*issuance.ProfileConfigNew, 0)
+	certProfiles["legacy"] = &issuance.ProfileConfigNew{
 		AllowMustStaple:     true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 		IgnoredLints:        []string{"w_subject_common_name_included"},
 	}
-	certProfiles["modern"] = &issuance.ProfileConfig{
+	certProfiles["modern"] = &issuance.ProfileConfigNew{
 		AllowMustStaple:     true,
 		OmitCommonName:      true,
 		OmitKeyEncipherment: true,
@@ -546,7 +546,7 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 	testCtx := setup(t)
 	test.AssertEquals(t, len(testCtx.certProfiles), 2)
 
-	testProfile := issuance.ProfileConfig{
+	testProfile := issuance.ProfileConfigNew{
 		AllowMustStaple:     false,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
@@ -560,7 +560,7 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 	testCases := []struct {
 		name              string
 		defaultName       string
-		profileConfigs    map[string]*issuance.ProfileConfig
+		profileConfigs    map[string]*issuance.ProfileConfigNew
 		expectedErrSubstr string
 		expectedProfiles  []nameToHash
 	}{
@@ -571,13 +571,13 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 		},
 		{
 			name:              "no profiles",
-			profileConfigs:    map[string]*issuance.ProfileConfig{},
+			profileConfigs:    map[string]*issuance.ProfileConfigNew{},
 			expectedErrSubstr: "at least one certificate profile",
 		},
 		{
 			name:        "no profile matching default name",
 			defaultName: "default",
-			profileConfigs: map[string]*issuance.ProfileConfig{
+			profileConfigs: map[string]*issuance.ProfileConfigNew{
 				"notDefault": &testProfile,
 			},
 			expectedErrSubstr: "profile object was not found for that name",
@@ -585,7 +585,7 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 		{
 			name:        "duplicate hash",
 			defaultName: "default",
-			profileConfigs: map[string]*issuance.ProfileConfig{
+			profileConfigs: map[string]*issuance.ProfileConfigNew{
 				"default":  &testProfile,
 				"default2": &testProfile,
 			},
@@ -594,7 +594,7 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 		{
 			name:        "empty profile config",
 			defaultName: "empty",
-			profileConfigs: map[string]*issuance.ProfileConfig{
+			profileConfigs: map[string]*issuance.ProfileConfigNew{
 				"empty": {},
 			},
 			expectedProfiles: []nameToHash{
