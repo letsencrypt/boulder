@@ -86,24 +86,33 @@ type Config struct {
 		// considered valid for. Given a value of 300 days when used with a 90-day
 		// cert lifetime, this allows creation of certs that will cover a whole
 		// year, plus a grace period of a month.
-		AuthorizationLifetimeDays int `validate:"required,min=1,max=397"`
+		//
+		// Deprecated: use ValidationProfiles.ValidAuthzLifetime instead.
+		// TODO(#7986): Remove this.
+		AuthorizationLifetimeDays int `validate:"omitempty,required_without=ValidationProfiles,min=1,max=397"`
 
 		// PendingAuthorizationLifetimeDays defines how long authorizations may be in
 		// the pending state. If you can't respond to a challenge this quickly, then
 		// you need to request a new challenge.
-		PendingAuthorizationLifetimeDays int `validate:"required,min=1,max=29"`
+		//
+		// Deprecated: use ValidationProfiles.PendingAuthzLifetime instead.
+		// TODO(#7986): Remove this.
+		PendingAuthorizationLifetimeDays int `validate:"omitempty,required_without=ValidationProfiles,min=1,max=29"`
 
 		// ValidationProfiles is a map of validation profiles to their
 		// respective issuance allow lists. If a profile is not included in this
 		// mapping, it cannot be used by any account. If this field is left
 		// empty, all profiles are open to all accounts.
-		ValidationProfiles map[string]struct {
-			// AllowList specifies the path to a YAML file containing a list of
-			// account IDs permitted to use this profile. If no path is
-			// specified, the profile is open to all accounts. If the file
-			// exists but is empty, the profile is closed to all accounts.
-			AllowList string `validate:"omitempty"`
-		}
+		// TODO(#7986): Make this field required.
+		ValidationProfiles map[string]ra.ValidationProfileConfig `validate:"omitempty"`
+
+		// DefaultProfileName sets the profile to use if one wasn't provided by the
+		// client in the new-order request. Must match a configured validation
+		// profile or the RA will fail to start. Must match a certificate profile
+		// configured in the CA or finalization will fail for orders using this
+		// default.
+		// TODO(#7986): Make this field unconditionally required.
+		DefaultProfileName string `validate:"required_with=ValidationProfiles"`
 
 		// MustStapleAllowList specifies the path to a YAML file containing a
 		// list of account IDs permitted to request certificates with the OCSP
@@ -117,7 +126,10 @@ type Config struct {
 
 		// OrderLifetime is how far in the future an Order's expiration date should
 		// be set when it is first created.
-		OrderLifetime config.Duration
+		//
+		// Deprecated: Use ValidationProfiles.OrderLifetime instead.
+		// TODO(#7986): Remove this.
+		OrderLifetime config.Duration `validate:"omitempty,required_without=ValidationProfiles"`
 
 		// FinalizeTimeout is how long the RA is willing to wait for the Order
 		// finalization process to take. This config parameter only has an effect
@@ -255,37 +267,38 @@ func main() {
 
 	ctp = ctpolicy.New(pubc, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
 
-	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
-	// or completed validation MUST be obtained no more than 398 days prior
-	// to issuing the Certificate". If unconfigured or the configured value is
-	// greater than 397 days, bail out.
-	if c.RA.AuthorizationLifetimeDays <= 0 || c.RA.AuthorizationLifetimeDays > 397 {
-		cmd.Fail("authorizationLifetimeDays value must be greater than 0 and less than 398")
+	// TODO(#7986): Remove this fallback, error out if no default is configured.
+	if c.RA.DefaultProfileName == "" {
+		c.RA.DefaultProfileName = ra.UnconfiguredDefaultProfileName
 	}
-	authorizationLifetime := time.Duration(c.RA.AuthorizationLifetimeDays) * 24 * time.Hour
+	logger.Infof("Configured default profile name set to: %s", c.RA.DefaultProfileName)
 
-	// The Baseline Requirements v1.8.1 state that validation tokens "MUST
-	// NOT be used for more than 30 days from its creation". If unconfigured
-	// or the configured value pendingAuthorizationLifetimeDays is greater
-	// than 29 days, bail out.
-	if c.RA.PendingAuthorizationLifetimeDays <= 0 || c.RA.PendingAuthorizationLifetimeDays > 29 {
-		cmd.Fail("pendingAuthorizationLifetimeDays value must be greater than 0 and less than 30")
-	}
-	pendingAuthorizationLifetime := time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
-
-	var validationProfiles map[string]*ra.ValidationProfile
-	if c.RA.ValidationProfiles != nil {
-		validationProfiles = make(map[string]*ra.ValidationProfile)
-		for profileName, v := range c.RA.ValidationProfiles {
-			var allowList *allowlist.List[int64]
-			if v.AllowList != "" {
-				data, err := os.ReadFile(v.AllowList)
-				cmd.FailOnError(err, fmt.Sprintf("Failed to read allow list for profile %q", profileName))
-				allowList, err = allowlist.NewFromYAML[int64](data)
-				cmd.FailOnError(err, fmt.Sprintf("Failed to parse allow list for profile %q", profileName))
-			}
-			validationProfiles[profileName] = ra.NewValidationProfile(allowList)
+	// TODO(#7986): Remove this fallback, error out if no profiles are configured.
+	if len(c.RA.ValidationProfiles) == 0 {
+		c.RA.ValidationProfiles = map[string]ra.ValidationProfileConfig{
+			c.RA.DefaultProfileName: {
+				PendingAuthzLifetime: config.Duration{
+					Duration: time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour},
+				ValidAuthzLifetime: config.Duration{
+					Duration: time.Duration(c.RA.AuthorizationLifetimeDays) * 24 * time.Hour},
+				OrderLifetime: c.RA.OrderLifetime,
+				// Leave the allowlist empty, so all accounts have access to this
+				// default profile.
+			},
 		}
+	}
+
+	validationProfiles := make(map[string]*ra.ValidationProfile)
+	for name, profileConfig := range c.RA.ValidationProfiles {
+		profile, err := ra.NewValidationProfile(&profileConfig)
+		cmd.FailOnError(err, fmt.Sprintf("Failed to load validation profile %q", name))
+
+		validationProfiles[name] = profile
+	}
+
+	_, present := validationProfiles[c.RA.DefaultProfileName]
+	if !present {
+		cmd.Fail(fmt.Sprintf("No profile configured matching default profile name %q", c.RA.DefaultProfileName))
 	}
 
 	var mustStapleAllowList *allowlist.List[int64]
@@ -331,12 +344,10 @@ func main() {
 		limiter,
 		txnBuilder,
 		c.RA.MaxNames,
-		authorizationLifetime,
-		pendingAuthorizationLifetime,
 		validationProfiles,
+		c.RA.DefaultProfileName,
 		mustStapleAllowList,
 		pubc,
-		c.RA.OrderLifetime.Duration,
 		c.RA.FinalizeTimeout.Duration,
 		ctp,
 		apc,

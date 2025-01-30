@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -30,6 +31,7 @@ import (
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	csrlib "github.com/letsencrypt/boulder/csr"
@@ -66,17 +68,97 @@ var (
 	caaRecheckDuration = -7 * time.Hour
 )
 
+// UnconfiguredDefaultProfileName is a unique string which the RA can use to
+// identify a profile, but also detect that no profiles were explicitly
+// configured, and therefore should not be assumed to exist outside the RA.
+// TODO(#7986): Remove this when the defaultProfileName config is required.
+const UnconfiguredDefaultProfileName = "unconfiguredDefaultProfileName"
+
+// ValidationProfileConfig is a config struct which can be used to create a
+// ValidationProfile.
+type ValidationProfileConfig struct {
+	// PendingAuthzLifetime defines how far in the future an authorization's
+	// "expires" timestamp is set when it is first created, i.e. how much
+	// time the applicant has to attempt the challenge.
+	PendingAuthzLifetime config.Duration `validate:"required"`
+	// ValidAuthzLifetime defines how far in the future an authorization's
+	// "expires" timestamp is set when one of its challenges is fulfilled,
+	// i.e. how long a validated authorization may be reused.
+	ValidAuthzLifetime config.Duration `validate:"required"`
+	// OrderLifetime defines how far in the future an order's "expires"
+	// timestamp is set when it is first created, i.e. how much time the
+	// applicant has to fulfill all challenges and finalize the order. This is
+	// a maximum time: if the order reuses an authorization and that authz
+	// expires earlier than this OrderLifetime would otherwise set, then the
+	// order's expiration is brought in to match that authorization.
+	OrderLifetime config.Duration `validate:"required"`
+	// AllowList specifies the path to a YAML file containing a list of
+	// account IDs permitted to use this profile. If no path is
+	// specified, the profile is open to all accounts. If the file
+	// exists but is empty, the profile is closed to all accounts.
+	AllowList string `validate:"omitempty"`
+}
+
 // ValidationProfile holds the allowlist for a given validation profile.
 type ValidationProfile struct {
+	// PendingAuthzLifetime defines how far in the future an authorization's
+	// "expires" timestamp is set when it is first created, i.e. how much
+	// time the applicant has to attempt the challenge.
+	pendingAuthzLifetime time.Duration
+	// ValidAuthzLifetime defines how far in the future an authorization's
+	// "expires" timestamp is set when one of its challenges is fulfilled,
+	// i.e. how long a validated authorization may be reused.
+	validAuthzLifetime time.Duration
+	// OrderLifetime defines how far in the future an order's "expires"
+	// timestamp is set when it is first created, i.e. how much time the
+	// applicant has to fulfill all challenges and finalize the order. This is
+	// a maximum time: if the order reuses an authorization and that authz
+	// expires earlier than this OrderLifetime would otherwise set, then the
+	// order's expiration is brought in to match that authorization.
+	orderLifetime time.Duration
 	// allowList holds the set of account IDs allowed to use this profile. If
 	// nil, the profile is open to all accounts (everyone is allowed).
 	allowList *allowlist.List[int64]
 }
 
-// NewValidationProfile creates a new ValidationProfile with the provided
-// allowList. A nil allowList is interpreted as open access for all accounts.
-func NewValidationProfile(allowList *allowlist.List[int64]) *ValidationProfile {
-	return &ValidationProfile{allowList: allowList}
+// NewValidationProfile creates a new ValidationProfile from the given config.
+// It enforces that the given authorization lifetimes are within the bounds
+// mandated by the Baseline Requirements.
+func NewValidationProfile(c *ValidationProfileConfig) (*ValidationProfile, error) {
+	// The Baseline Requirements v1.8.1 state that validation tokens "MUST
+	// NOT be used for more than 30 days from its creation". If unconfigured
+	// or the configured value pendingAuthorizationLifetimeDays is greater
+	// than 29 days, bail out.
+	if c.PendingAuthzLifetime.Duration <= 0 || c.PendingAuthzLifetime.Duration > 29*(24*time.Hour) {
+		return nil, fmt.Errorf("PendingAuthzLifetime value must be greater than 0 and less than 30d, but got %q", c.PendingAuthzLifetime.Duration)
+	}
+
+	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
+	// or completed validation MUST be obtained no more than 398 days prior
+	// to issuing the Certificate". If unconfigured or the configured value is
+	// greater than 397 days, bail out.
+	if c.ValidAuthzLifetime.Duration <= 0 || c.ValidAuthzLifetime.Duration > 397*(24*time.Hour) {
+		return nil, fmt.Errorf("ValidAuthzLifetime value must be greater than 0 and less than 398d, but got %q", c.ValidAuthzLifetime.Duration)
+	}
+
+	var allowList *allowlist.List[int64]
+	if c.AllowList != "" {
+		data, err := os.ReadFile(c.AllowList)
+		if err != nil {
+			return nil, fmt.Errorf("reading allowlist: %w", err)
+		}
+		allowList, err = allowlist.NewFromYAML[int64](data)
+		if err != nil {
+			return nil, fmt.Errorf("parsing allowlist: %w", err)
+		}
+	}
+
+	return &ValidationProfile{
+		pendingAuthzLifetime: c.PendingAuthzLifetime.Duration,
+		validAuthzLifetime:   c.ValidAuthzLifetime.Duration,
+		orderLifetime:        c.OrderLifetime.Duration,
+		allowList:            allowList,
+	}, nil
 }
 
 // RegistrationAuthorityImpl defines an RA.
@@ -92,21 +174,18 @@ type RegistrationAuthorityImpl struct {
 	PA        core.PolicyAuthority
 	publisher pubpb.PublisherClient
 
-	clk       clock.Clock
-	log       blog.Logger
-	keyPolicy goodkey.KeyPolicy
-	// How long before a newly created authorization expires.
-	authorizationLifetime        time.Duration
-	pendingAuthorizationLifetime time.Duration
-	validationProfiles           map[string]*ValidationProfile
-	mustStapleAllowList          *allowlist.List[int64]
-	maxContactsPerReg            int
-	limiter                      *ratelimits.Limiter
-	txnBuilder                   *ratelimits.TransactionBuilder
-	maxNames                     int
-	orderLifetime                time.Duration
-	finalizeTimeout              time.Duration
-	drainWG                      sync.WaitGroup
+	clk                 clock.Clock
+	log                 blog.Logger
+	keyPolicy           goodkey.KeyPolicy
+	validationProfiles  map[string]*ValidationProfile
+	defaultProfileName  string
+	mustStapleAllowList *allowlist.List[int64]
+	maxContactsPerReg   int
+	limiter             *ratelimits.Limiter
+	txnBuilder          *ratelimits.TransactionBuilder
+	maxNames            int
+	finalizeTimeout     time.Duration
+	drainWG             sync.WaitGroup
 
 	issuersByNameID map[issuance.NameID]*issuance.Certificate
 	purger          akamaipb.AkamaiPurgerClient
@@ -139,12 +218,10 @@ func NewRegistrationAuthorityImpl(
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,
 	maxNames int,
-	authorizationLifetime time.Duration,
-	pendingAuthorizationLifetime time.Duration,
 	validationProfiles map[string]*ValidationProfile,
+	defaultProfileName string,
 	mustStapleAllowList *allowlist.List[int64],
 	pubc pubpb.PublisherClient,
-	orderLifetime time.Duration,
 	finalizeTimeout time.Duration,
 	ctp *ctpolicy.CTPolicy,
 	purger akamaipb.AkamaiPurgerClient,
@@ -251,35 +328,33 @@ func NewRegistrationAuthorityImpl(
 	}
 
 	ra := &RegistrationAuthorityImpl{
-		clk:                          clk,
-		log:                          logger,
-		authorizationLifetime:        authorizationLifetime,
-		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
-		validationProfiles:           validationProfiles,
-		mustStapleAllowList:          mustStapleAllowList,
-		maxContactsPerReg:            maxContactsPerReg,
-		keyPolicy:                    keyPolicy,
-		limiter:                      limiter,
-		txnBuilder:                   txnBuilder,
-		maxNames:                     maxNames,
-		publisher:                    pubc,
-		orderLifetime:                orderLifetime,
-		finalizeTimeout:              finalizeTimeout,
-		ctpolicy:                     ctp,
-		ctpolicyResults:              ctpolicyResults,
-		purger:                       purger,
-		issuersByNameID:              issuersByNameID,
-		namesPerCert:                 namesPerCert,
-		newRegCounter:                newRegCounter,
-		recheckCAACounter:            recheckCAACounter,
-		newCertCounter:               newCertCounter,
-		revocationReasonCounter:      revocationReasonCounter,
-		authzAges:                    authzAges,
-		orderAges:                    orderAges,
-		inflightFinalizes:            inflightFinalizes,
-		certCSRMismatch:              certCSRMismatch,
-		pauseCounter:                 pauseCounter,
-		mustStapleRequestsCounter:    mustStapleRequestsCounter,
+		clk:                       clk,
+		log:                       logger,
+		validationProfiles:        validationProfiles,
+		defaultProfileName:        defaultProfileName,
+		mustStapleAllowList:       mustStapleAllowList,
+		maxContactsPerReg:         maxContactsPerReg,
+		keyPolicy:                 keyPolicy,
+		limiter:                   limiter,
+		txnBuilder:                txnBuilder,
+		maxNames:                  maxNames,
+		publisher:                 pubc,
+		finalizeTimeout:           finalizeTimeout,
+		ctpolicy:                  ctp,
+		ctpolicyResults:           ctpolicyResults,
+		purger:                    purger,
+		issuersByNameID:           issuersByNameID,
+		namesPerCert:              namesPerCert,
+		newRegCounter:             newRegCounter,
+		recheckCAACounter:         recheckCAACounter,
+		newCertCounter:            newCertCounter,
+		revocationReasonCounter:   revocationReasonCounter,
+		authzAges:                 authzAges,
+		orderAges:                 orderAges,
+		inflightFinalizes:         inflightFinalizes,
+		certCSRMismatch:           certCSRMismatch,
+		pauseCounter:              pauseCounter,
+		mustStapleRequestsCounter: mustStapleRequestsCounter,
 	}
 	return ra
 }
@@ -943,6 +1018,15 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 			req.Order.Status)
 	}
 
+	profileName := req.Order.CertificateProfileName
+	if profileName == "" {
+		profileName = ra.defaultProfileName
+	}
+	profile, ok := ra.validationProfiles[profileName]
+	if !ok {
+		return nil, berrors.InvalidProfileError("unrecognized profile name %q", profileName)
+	}
+
 	// There should never be an order with 0 names at the stage, but we check to
 	// be on the safe side, throwing an internal server error if this assumption
 	// is ever violated.
@@ -1022,7 +1106,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 			ID:            authz.ID,
 			ChallengeType: solvedByChallengeType,
 		}
-		authzAge := (ra.authorizationLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
+		authzAge := (profile.validAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		ra.authzAges.WithLabelValues("FinalizeOrder", string(authz.Status)).Observe(authzAge)
 	}
 	logEvent.Authorizations = logEventAuthzs
@@ -1060,9 +1144,18 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		logEvent.PreviousCertificateIssued = timestamps.Timestamps[0].AsTime()
 	}
 
+	// If the order didn't request a specific profile and we have a default
+	// configured, provide it to the CA so we can stop relying on the CA's
+	// configured default.
+	// TODO(#7309): Make this unconditional.
+	profileName := order.CertificateProfileName
+	if profileName == "" && ra.defaultProfileName != UnconfiguredDefaultProfileName {
+		profileName = ra.defaultProfileName
+	}
+
 	// Step 3: Issue the Certificate
 	cert, cpId, err := ra.issueCertificateInner(
-		ctx, csr, isRenewal, order.CertificateProfileName, accountID(order.RegistrationID), orderID(order.Id))
+		ctx, csr, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
 	var result string
@@ -1304,16 +1397,10 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationKey(ctx context.Context, 
 
 // recordValidation records an authorization validation event,
 // it should only be used on v2 style authorizations.
-func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authID string, authExpires *time.Time, challenge *core.Challenge) error {
+func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authID string, authExpires time.Time, challenge *core.Challenge) error {
 	authzID, err := strconv.ParseInt(authID, 10, 64)
 	if err != nil {
 		return err
-	}
-	var expires time.Time
-	if challenge.Status == core.StatusInvalid {
-		expires = *authExpires
-	} else {
-		expires = ra.clk.Now().Add(ra.authorizationLifetime)
 	}
 	vr, err := bgrpc.ValidationResultToPB(challenge.ValidationRecord, challenge.Error, "", "")
 	if err != nil {
@@ -1326,7 +1413,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:                authzID,
 		Status:            string(challenge.Status),
-		Expires:           timestamppb.New(expires),
+		Expires:           timestamppb.New(authExpires),
 		Attempted:         string(challenge.Type),
 		AttemptedAt:       validated,
 		ValidationRecords: vr.Records,
@@ -1448,6 +1535,15 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.MalformedError("expired authorization")
 	}
 
+	profileName := authz.CertificateProfileName
+	if profileName == "" {
+		profileName = ra.defaultProfileName
+	}
+	profile, ok := ra.validationProfiles[profileName]
+	if !ok {
+		return nil, berrors.InvalidProfileError("unrecognized profile name %q", profileName)
+	}
+
 	challIndex := int(req.ChallengeIndex)
 	if challIndex >= len(authz.Challenges) {
 		return nil,
@@ -1549,6 +1645,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			prob = probs.ServerInternal("Records for validation failed sanity check")
 		}
 
+		expires := *authz.Expires
 		if prob != nil {
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
@@ -1558,6 +1655,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			}
 		} else {
 			challenge.Status = core.StatusValid
+			expires = ra.clk.Now().Add(profile.validAuthzLifetime)
 			if features.Get().AutomaticallyPauseZombieClients {
 				ra.resetAccountPausingLimit(vaCtx, authz.RegistrationID, authz.Identifier)
 			}
@@ -1565,7 +1663,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		challenge.Validated = &vStart
 		authz.Challenges[challIndex] = *challenge
 
-		err = ra.recordValidation(vaCtx, authz.ID, authz.Expires, challenge)
+		err = ra.recordValidation(vaCtx, authz.ID, expires, challenge)
 		if err != nil {
 			if errors.Is(err, berrors.NotFound) {
 				// We log NotFound at a lower level because this is largely due to a
@@ -2162,19 +2260,22 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			"Order cannot contain more than %d DNS names", ra.maxNames)
 	}
 
-	if req.CertificateProfileName != "" && ra.validationProfiles != nil {
-		vp, ok := ra.validationProfiles[req.CertificateProfileName]
-		if !ok {
-			return nil, berrors.MalformedError("requested certificate profile %q not found",
-				req.CertificateProfileName,
-			)
-		}
-		if vp.allowList != nil && !vp.allowList.Contains(req.RegistrationID) {
-			return nil, berrors.UnauthorizedError("account ID %d is not permitted to use certificate profile %q",
-				req.RegistrationID,
-				req.CertificateProfileName,
-			)
-		}
+	profileName := req.CertificateProfileName
+	if profileName == "" {
+		profileName = ra.defaultProfileName
+	}
+	profile, ok := ra.validationProfiles[profileName]
+	if !ok {
+		return nil, berrors.MalformedError("requested certificate profile %q not found",
+			req.CertificateProfileName,
+		)
+	}
+
+	if profile.allowList != nil && !profile.allowList.Contains(req.RegistrationID) {
+		return nil, berrors.UnauthorizedError("account ID %d is not permitted to use certificate profile %q",
+			req.RegistrationID,
+			req.CertificateProfileName,
+		)
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
@@ -2264,7 +2365,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			missingAuthzIdents = append(missingAuthzIdents, ident)
 			continue
 		}
-		authzAge := (ra.authorizationLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
+		// This is only used for our metrics.
+		authzAge := (profile.validAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
+		if authz.Status == core.StatusPending {
+			authzAge = (profile.pendingAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
+		}
 		// If the identifier is a wildcard and the existing authz only has one
 		// DNS-01 type challenge we can reuse it. In theory we will
 		// never get back an authorization for a domain with a wildcard prefix
@@ -2301,17 +2406,30 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// authorization for each.
 	var newAuthzs []*sapb.NewAuthzRequest
 	for _, ident := range missingAuthzIdents {
-		pb, err := ra.createPendingAuthz(newOrder.RegistrationID, ident)
+		challTypes, err := ra.PA.ChallengeTypesFor(ident)
 		if err != nil {
 			return nil, err
 		}
-		newAuthzs = append(newAuthzs, pb)
+
+		challStrs := make([]string, len(challTypes))
+		for i, t := range challTypes {
+			challStrs[i] = string(t)
+		}
+
+		newAuthzs = append(newAuthzs, &sapb.NewAuthzRequest{
+			Identifier:     ident.AsProto(),
+			RegistrationID: newOrder.RegistrationID,
+			Expires:        timestamppb.New(ra.clk.Now().Add(profile.pendingAuthzLifetime).Truncate(time.Second)),
+			ChallengeTypes: challStrs,
+			Token:          core.NewToken(),
+		})
+
 		ra.authzAges.WithLabelValues("NewOrder", string(core.StatusPending)).Observe(0)
 	}
 
 	// Start with the order's own expiry as the minExpiry. We only care
 	// about authz expiries that are sooner than the order's expiry
-	minExpiry := ra.clk.Now().Add(ra.orderLifetime)
+	minExpiry := ra.clk.Now().Add(profile.orderLifetime)
 
 	// Check the reused authorizations to see if any have an expiry before the
 	// minExpiry (the order's lifetime)
@@ -2331,7 +2449,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// If the newly created pending authz's have an expiry closer than the
 	// minExpiry the minExpiry is the pending authz expiry.
 	if len(newAuthzs) > 0 {
-		newPendingAuthzExpires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
+		newPendingAuthzExpires := ra.clk.Now().Add(profile.pendingAuthzLifetime)
 		if newPendingAuthzExpires.Before(minExpiry) {
 			minExpiry = newPendingAuthzExpires
 		}
@@ -2358,31 +2476,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	ra.namesPerCert.With(prometheus.Labels{"type": "requested"}).Observe(float64(len(storedOrder.DnsNames)))
 
 	return storedOrder, nil
-}
-
-// createPendingAuthz checks that a name is allowed for issuance and creates the
-// necessary challenges for it and puts this and all of the relevant information
-// into a corepb.Authorization for transmission to the SA to be stored
-func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, ident identifier.ACMEIdentifier) (*sapb.NewAuthzRequest, error) {
-	challTypes, err := ra.PA.ChallengeTypesFor(ident)
-	if err != nil {
-		return nil, err
-	}
-
-	challStrs := make([]string, len(challTypes))
-	for i, t := range challTypes {
-		challStrs[i] = string(t)
-	}
-
-	authz := &sapb.NewAuthzRequest{
-		Identifier:     ident.AsProto(),
-		RegistrationID: reg,
-		Expires:        timestamppb.New(ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second)),
-		ChallengeTypes: challStrs,
-		Token:          core.NewToken(),
-	}
-
-	return authz, nil
 }
 
 // wildcardOverlap takes a slice of domain names and returns an error if any of
