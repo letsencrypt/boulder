@@ -127,7 +127,7 @@ type RegistrationAuthorityImpl struct {
 	mustStapleRequestsCounter *prometheus.CounterVec
 	// TODO(#7966): Remove once the rate of registrations with contacts has been
 	// determined.
-	newRegWithContactCounter *prometheus.CounterVec
+	newOrUpdatedContactCounter *prometheus.CounterVec
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
@@ -250,11 +250,11 @@ func NewRegistrationAuthorityImpl(
 
 	// TODO(#7966): Remove once the rate of registrations with contacts has been
 	// determined.
-	newRegWithContactCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "new_registrations_with_contacts",
-		Help: "A counter of new registrations with contacts, labeled by new=[bool]",
+	newOrUpdatedContactCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "new_or_updated_contact",
+		Help: "A counter of new or updated contacts, labeled by new=[bool]",
 	}, []string{"new"})
-	stats.MustRegister(newRegWithContactCounter)
+	stats.MustRegister(newOrUpdatedContactCounter)
 
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
@@ -291,7 +291,7 @@ func NewRegistrationAuthorityImpl(
 		certCSRMismatch:              certCSRMismatch,
 		pauseCounter:                 pauseCounter,
 		mustStapleRequestsCounter:    mustStapleRequestsCounter,
-		newRegWithContactCounter:     newRegWithContactCounter,
+		newOrUpdatedContactCounter:   newOrUpdatedContactCounter,
 	}
 	return ra
 }
@@ -430,7 +430,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	// TODO(#7966): Remove once the rate of registrations with contacts has been
 	// determined.
 	for range request.Contact {
-		ra.newRegWithContactCounter.With(prometheus.Labels{"new": "true"}).Inc()
+		ra.newOrUpdatedContactCounter.With(prometheus.Labels{"new": "true"}).Inc()
 	}
 
 	ra.newRegCounter.Inc()
@@ -1295,7 +1295,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Conte
 	// TODO(#7966): Remove once the rate of registrations with contacts has
 	// been determined.
 	for range req.Contacts {
-		ra.newRegWithContactCounter.With(prometheus.Labels{"new": "false"}).Inc()
+		ra.newOrUpdatedContactCounter.With(prometheus.Labels{"new": "false"}).Inc()
 	}
 
 	update, err := ra.SA.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{
