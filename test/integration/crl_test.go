@@ -7,6 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -104,16 +105,14 @@ func TestCRLPipeline(t *testing.T) {
 
 func TestTemporalAndExplicitShardingCoexist(t *testing.T) {
 	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
-	test.AssertNotError(t, err, "opening database connection")
+	if err != nil {
+		t.Fatalf("sql.Open: %s", err)
+	}
 	// Insert an old, revoked certificate in the certificateStatus table. Importantly this
 	// serial has the 7f prefix, which is in test/config-next/crl-updater.json in the
 	// `temporallyShardedPrefixes` list.
 	oldSerial := "7faa39be44fc95f3d19befe3cb715848e601"
 	issuerID := 43104258997432926
-	_, err = db.Query(`DELETE FROM certificateStatus WHERE serial = ?`, oldSerial)
-	if err != nil {
-		t.Fatalf("deleting old certificateStatus row: %s", err)
-	}
 	_, err = db.Exec(`DELETE FROM certificateStatus WHERE serial = ?`, oldSerial)
 	if err != nil {
 		t.Fatalf("deleting old certificateStatus row: %s", err)
@@ -122,51 +121,58 @@ func TestTemporalAndExplicitShardingCoexist(t *testing.T) {
 		INSERT INTO certificateStatus (serial, issuerID, notAfter, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent)
 		VALUES ("%s", %d, "%s", "revoked", NOW(), NOW(), 0, 0);`,
 		oldSerial, issuerID, time.Now().Add(24*time.Hour).Format("2006-01-02 15:04:05")))
-	test.AssertNotError(t, err, "inserting old revoked certificate")
+	if err != nil {
+		t.Fatalf("inserting old certificateStatus row: %s", err)
+	}
 
 	client, err := makeClient()
-	test.AssertNotError(t, err, "creating acme client")
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
 
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "creating random cert key")
+	if err != nil {
+		t.Fatalf("creating cert key: %s", err)
+	}
 
-	domain := random_domain()
-	result, err := authAndIssue(client, certKey, []string{domain}, true)
+	result, err := authAndIssue(client, certKey, []string{random_domain()}, true)
 	if err != nil {
 		t.Fatalf("authAndIssue: %s", err)
 	}
+
+	cert := result.certs[0]
 	err = client.RevokeCertificate(
 		client.Account,
-		result.certs[0],
+		cert,
 		client.PrivateKey,
 		0,
 	)
-	test.AssertNotError(t, err, "revocation should have succeeded")
+	if err != nil {
+		t.Fatalf("revoking: %s", err)
+	}
 
 	// Reset the "leasedUntil" column to prepare for another round of CRLs.
 	fc := clock.NewFake()
 	_, err = db.Exec(`UPDATE crlShards SET leasedUntil = ?`, fc.Now().Add(-time.Minute))
-	test.AssertNotError(t, err, "resetting leasedUntil column")
+	if err != nil {
+		t.Fatalf("resetting crlShards.leasedUntil: %s", err)
+	}
 
 	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
 
-	allCRLs := getAllCRLs(t)
-	allSeen := make(map[string]bool)
-	for _, crls := range allCRLs {
-		seen := make(map[string]bool)
-		for _, crl := range crls {
-			for _, entry := range crl.RevokedCertificateEntries {
-				serial := fmt.Sprintf("%x", entry.SerialNumber)
-				if seen[serial] {
-					t.Errorf("revoked certificate %s seen on multiple CRLs", serial)
-				}
-				seen[serial] = true
-				allSeen[serial] = true
+	akid := hex.EncodeToString(cert.AuthorityKeyId)
+	seen := make(map[string]bool)
+	for _, crl := range getAllCRLs(t)[akid] {
+		for _, entry := range crl.RevokedCertificateEntries {
+			serial := fmt.Sprintf("%x", entry.SerialNumber)
+			if seen[serial] {
+				t.Errorf("revoked certificate %s seen on multiple CRLs", serial)
 			}
+			seen[serial] = true
 		}
 	}
 
-	if !allSeen[oldSerial] {
+	if !seen[oldSerial] {
 		t.Errorf("revoked certificate %s not seen on any CRL", oldSerial)
 	}
 }
