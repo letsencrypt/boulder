@@ -1292,18 +1292,18 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Conte
 		return nil, fmt.Errorf("invalid contact: %w", err)
 	}
 
-	// TODO(#7966): Remove once the rate of registrations with contacts has
-	// been determined.
-	for range req.Contacts {
-		ra.newOrUpdatedContactCounter.With(prometheus.Labels{"new": "false"}).Inc()
-	}
-
 	update, err := ra.SA.UpdateRegistrationContact(ctx, &sapb.UpdateRegistrationContactRequest{
 		RegistrationID: req.RegistrationID,
 		Contacts:       req.Contacts,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to update registration contact: %w", err)
+	}
+
+	// TODO(#7966): Remove once the rate of registrations with contacts has
+	// been determined.
+	for range req.Contacts {
+		ra.newOrUpdatedContactCounter.With(prometheus.Labels{"new": "false"}).Inc()
 	}
 
 	return update, nil
