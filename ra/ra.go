@@ -2256,6 +2256,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			RegistrationID: newOrder.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
 			DnsNames:       newOrder.DnsNames,
+			Profile:        req.CertificateProfileName,
 		}
 		existingAuthz, err = ra.SA.GetValidAuthorizations2(ctx, getAuthReq)
 	} else {
@@ -2263,6 +2264,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			RegistrationID: newOrder.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
 			DnsNames:       newOrder.DnsNames,
+			Profile:        req.CertificateProfileName,
 		}
 		existingAuthz, err = ra.SA.GetAuthorizations2(ctx, getAuthReq)
 	}
@@ -2285,6 +2287,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// If there isn't an existing authz, note that its missing and continue
 		authz, exists := identToExistingAuthz[ident]
 		if !exists {
+			missingAuthzIdents = append(missingAuthzIdents, ident)
+			continue
+		}
+		// If the authz is associated with the wrong profile, don't reuse it.
+		if authz.CertificateProfileName != req.CertificateProfileName {
 			missingAuthzIdents = append(missingAuthzIdents, ident)
 			continue
 		}

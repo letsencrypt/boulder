@@ -1379,10 +1379,10 @@ func TestNewOrder(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "Cannot issue for \"a\": Domain name needs at least one dot")
 }
 
-// TestNewOrderReuse tests that subsequent requests by an ACME account to create
+// TestNewOrder_OrderReuse tests that subsequent requests by an ACME account to create
 // an identical order results in only one order being created & subsequently
 // reused.
-func TestNewOrder_OrderReusex(t *testing.T) {
+func TestNewOrder_OrderReuse(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
@@ -1590,6 +1590,7 @@ func TestNewOrder_AuthzReuse(t *testing.T) {
 		Name           string
 		RegistrationID int64
 		DnsName        string
+		Profile        string
 		ExpectReuse    bool
 	}{
 		{
@@ -1611,6 +1612,13 @@ func TestNewOrder_AuthzReuse(t *testing.T) {
 			ExpectReuse:    false,
 		},
 		{
+			Name:           "Don't reuse valid authz with wrong profile",
+			RegistrationID: Registration.Id,
+			DnsName:        valid,
+			Profile:        "test",
+			ExpectReuse:    false,
+		},
+		{
 			Name:           "Don't reuse valid authz from other acct",
 			RegistrationID: secondReg.Id,
 			DnsName:        valid,
@@ -1621,8 +1629,9 @@ func TestNewOrder_AuthzReuse(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			new, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-				RegistrationID: tc.RegistrationID,
-				DnsNames:       []string{tc.DnsName},
+				RegistrationID:         tc.RegistrationID,
+				DnsNames:               []string{tc.DnsName},
+				CertificateProfileName: tc.Profile,
 			})
 			test.AssertNotError(t, err, "creating test order")
 			test.AssertNotEquals(t, new.Id, extant.Id)
