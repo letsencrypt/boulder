@@ -7,7 +7,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -160,19 +159,26 @@ func TestTemporalAndExplicitShardingCoexist(t *testing.T) {
 
 	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
 
-	akid := hex.EncodeToString(cert.AuthorityKeyId)
-	seen := make(map[string]bool)
-	for _, crl := range getAllCRLs(t)[akid] {
-		for _, entry := range crl.RevokedCertificateEntries {
-			serial := fmt.Sprintf("%x", entry.SerialNumber)
-			if seen[serial] {
-				t.Errorf("revoked certificate %s seen on multiple CRLs", serial)
+	allCRLs := getAllCRLs(t)
+	allSeen := make(map[string]bool)
+	// Range over CRLs from all issuers, because the "old" certificate (7faa...) has a
+	// different issuer than the "new" certificate issued by `authAndIssue`, which
+	// has a random issuer.
+	for _, crls := range allCRLs {
+		seen := make(map[string]bool)
+		for _, crl := range crls {
+			for _, entry := range crl.RevokedCertificateEntries {
+				serial := fmt.Sprintf("%x", entry.SerialNumber)
+				if seen[serial] {
+					t.Errorf("revoked certificate %s seen on multiple CRLs", serial)
+				}
+				seen[serial] = true
+				allSeen[serial] = true
 			}
-			seen[serial] = true
 		}
 	}
 
-	if !seen[oldSerial] {
+	if !allSeen[oldSerial] {
 		t.Errorf("revoked certificate %s not seen on any CRL", oldSerial)
 	}
 }
