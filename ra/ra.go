@@ -204,6 +204,9 @@ type RegistrationAuthorityImpl struct {
 	certCSRMismatch           prometheus.Counter
 	pauseCounter              *prometheus.CounterVec
 	mustStapleRequestsCounter *prometheus.CounterVec
+	// TODO(#7966): Remove once the rate of registrations with contacts has been
+	// determined.
+	newOrUpdatedContactCounter *prometheus.CounterVec
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
@@ -322,39 +325,48 @@ func NewRegistrationAuthorityImpl(
 	}, []string{"allowlist"})
 	stats.MustRegister(mustStapleRequestsCounter)
 
+	// TODO(#7966): Remove once the rate of registrations with contacts has been
+	// determined.
+	newOrUpdatedContactCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "new_or_updated_contact",
+		Help: "A counter of new or updated contacts, labeled by new=[bool]",
+	}, []string{"new"})
+	stats.MustRegister(newOrUpdatedContactCounter)
+
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
 	}
 
 	ra := &RegistrationAuthorityImpl{
-		clk:                       clk,
-		log:                       logger,
-		validationProfiles:        validationProfiles,
-		defaultProfileName:        defaultProfileName,
-		mustStapleAllowList:       mustStapleAllowList,
-		maxContactsPerReg:         maxContactsPerReg,
-		keyPolicy:                 keyPolicy,
-		limiter:                   limiter,
-		txnBuilder:                txnBuilder,
-		maxNames:                  maxNames,
-		publisher:                 pubc,
-		finalizeTimeout:           finalizeTimeout,
-		ctpolicy:                  ctp,
-		ctpolicyResults:           ctpolicyResults,
-		purger:                    purger,
-		issuersByNameID:           issuersByNameID,
-		namesPerCert:              namesPerCert,
-		newRegCounter:             newRegCounter,
-		recheckCAACounter:         recheckCAACounter,
-		newCertCounter:            newCertCounter,
-		revocationReasonCounter:   revocationReasonCounter,
-		authzAges:                 authzAges,
-		orderAges:                 orderAges,
-		inflightFinalizes:         inflightFinalizes,
-		certCSRMismatch:           certCSRMismatch,
-		pauseCounter:              pauseCounter,
-		mustStapleRequestsCounter: mustStapleRequestsCounter,
+		clk:                        clk,
+		log:                        logger,
+		validationProfiles:         validationProfiles,
+		defaultProfileName:         defaultProfileName,
+		mustStapleAllowList:        mustStapleAllowList,
+		maxContactsPerReg:          maxContactsPerReg,
+		keyPolicy:                  keyPolicy,
+		limiter:                    limiter,
+		txnBuilder:                 txnBuilder,
+		maxNames:                   maxNames,
+		publisher:                  pubc,
+		finalizeTimeout:            finalizeTimeout,
+		ctpolicy:                   ctp,
+		ctpolicyResults:            ctpolicyResults,
+		purger:                     purger,
+		issuersByNameID:            issuersByNameID,
+		namesPerCert:               namesPerCert,
+		newRegCounter:              newRegCounter,
+		recheckCAACounter:          recheckCAACounter,
+		newCertCounter:             newCertCounter,
+		revocationReasonCounter:    revocationReasonCounter,
+		authzAges:                  authzAges,
+		orderAges:                  orderAges,
+		inflightFinalizes:          inflightFinalizes,
+		certCSRMismatch:            certCSRMismatch,
+		pauseCounter:               pauseCounter,
+		mustStapleRequestsCounter:  mustStapleRequestsCounter,
+		newOrUpdatedContactCounter: newOrUpdatedContactCounter,
 	}
 	return ra
 }
@@ -488,6 +500,12 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	res, err := ra.SA.NewRegistration(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+
+	// TODO(#7966): Remove once the rate of registrations with contacts has been
+	// determined.
+	for range request.Contact {
+		ra.newOrUpdatedContactCounter.With(prometheus.Labels{"new": "true"}).Inc()
 	}
 
 	ra.newRegCounter.Inc()
@@ -1373,6 +1391,12 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Conte
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to update registration contact: %w", err)
+	}
+
+	// TODO(#7966): Remove once the rate of registrations with contacts has
+	// been determined.
+	for range req.Contacts {
+		ra.newOrUpdatedContactCounter.With(prometheus.Labels{"new": "false"}).Inc()
 	}
 
 	return update, nil
