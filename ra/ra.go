@@ -125,6 +125,9 @@ type RegistrationAuthorityImpl struct {
 	certCSRMismatch           prometheus.Counter
 	pauseCounter              *prometheus.CounterVec
 	mustStapleRequestsCounter *prometheus.CounterVec
+	// TODO(#7966): Remove once the rate of registrations with contacts has been
+	// determined.
+	newOrUpdatedContactCounter *prometheus.CounterVec
 }
 
 var _ rapb.RegistrationAuthorityServer = (*RegistrationAuthorityImpl)(nil)
@@ -245,6 +248,14 @@ func NewRegistrationAuthorityImpl(
 	}, []string{"allowlist"})
 	stats.MustRegister(mustStapleRequestsCounter)
 
+	// TODO(#7966): Remove once the rate of registrations with contacts has been
+	// determined.
+	newOrUpdatedContactCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "new_or_updated_contact",
+		Help: "A counter of new or updated contacts, labeled by new=[bool]",
+	}, []string{"new"})
+	stats.MustRegister(newOrUpdatedContactCounter)
+
 	issuersByNameID := make(map[issuance.NameID]*issuance.Certificate)
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.NameID()] = issuer
@@ -280,6 +291,7 @@ func NewRegistrationAuthorityImpl(
 		certCSRMismatch:              certCSRMismatch,
 		pauseCounter:                 pauseCounter,
 		mustStapleRequestsCounter:    mustStapleRequestsCounter,
+		newOrUpdatedContactCounter:   newOrUpdatedContactCounter,
 	}
 	return ra
 }
@@ -415,6 +427,12 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	res, err := ra.SA.NewRegistration(ctx, req)
 	if err != nil {
 		return nil, err
+	}
+
+	// TODO(#7966): Remove once the rate of registrations with contacts has been
+	// determined.
+	for range request.Contact {
+		ra.newOrUpdatedContactCounter.With(prometheus.Labels{"new": "true"}).Inc()
 	}
 
 	ra.newRegCounter.Inc()
@@ -1307,6 +1325,12 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistrationContact(ctx context.Conte
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to update registration contact: %w", err)
+	}
+
+	// TODO(#7966): Remove once the rate of registrations with contacts has
+	// been determined.
+	for range req.Contacts {
+		ra.newOrUpdatedContactCounter.With(prometheus.Labels{"new": "false"}).Inc()
 	}
 
 	return update, nil
@@ -2294,6 +2318,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
 			DnsNames:       dnsNames,
 			Identifiers:    identifier.SliceAsProto(idents),
+			Profile:        req.CertificateProfileName,
 		}
 		existingAuthz, err = ra.SA.GetValidAuthorizations2(ctx, getAuthReq)
 	} else {
@@ -2302,6 +2327,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
 			DnsNames:       dnsNames,
 			Identifiers:    identifier.SliceAsProto(idents),
+			Profile:        req.CertificateProfileName,
 		}
 		existingAuthz, err = ra.SA.GetAuthorizations2(ctx, getAuthReq)
 	}
@@ -2333,6 +2359,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// If there isn't an existing authz, note that its missing and continue
 		authz, exists := identToExistingAuthz[ident]
 		if !exists {
+			missingAuthzIdents = append(missingAuthzIdents, ident)
+			continue
+		}
+		// If the authz is associated with the wrong profile, don't reuse it.
+		if authz.CertificateProfileName != req.CertificateProfileName {
 			missingAuthzIdents = append(missingAuthzIdents, ident)
 			continue
 		}

@@ -20,6 +20,7 @@ import (
 	"net"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1410,28 +1411,10 @@ func TestGetAuthorizations2(t *testing.T) {
 	nameD := "ddd"
 	identD := identifier.NewDNS(nameD)
 
-	authzIDA := createFinalizedAuthorization(t, sa, identA, exp, "valid", attemptedAt)
-	authzIDB := createPendingAuthorization(t, sa, identB, exp)
+	createFinalizedAuthorization(t, sa, identA, exp, "valid", attemptedAt)
+	createPendingAuthorization(t, sa, identB, exp)
 	nearbyExpires := fc.Now().UTC().Add(time.Hour)
-	authzIDC := createPendingAuthorization(t, sa, identC, nearbyExpires)
-
-	// Associate authorizations with an order so that GetAuthorizations2 thinks
-	// they are WFE2 authorizations.
-	err := sa.dbMap.Insert(ctx, &orderToAuthzModel{
-		OrderID: 1,
-		AuthzID: authzIDA,
-	})
-	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
-	err = sa.dbMap.Insert(ctx, &orderToAuthzModel{
-		OrderID: 1,
-		AuthzID: authzIDB,
-	})
-	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
-	err = sa.dbMap.Insert(ctx, &orderToAuthzModel{
-		OrderID: 1,
-		AuthzID: authzIDC,
-	})
-	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
+	createPendingAuthorization(t, sa, identC, nearbyExpires)
 
 	// Set an expiry cut off of 1 day in the future similar to `RA.NewOrderAndAuthzs`. This
 	// should exclude pending authorization C based on its nearbyExpires expiry
@@ -2647,32 +2630,84 @@ func TestGetValidAuthorizations2(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	// Create a valid authorization
-	ident := identifier.NewDNS("aaa")
-	expires := fc.Now().Add(time.Hour).UTC()
-	attemptedAt := fc.Now()
-	authzID := createFinalizedAuthorization(t, sa, ident, expires, "valid", attemptedAt)
+	aaa := createFinalizedAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(24*time.Hour), "valid", fc.Now())
 
-	now := fc.Now().UTC()
-	regID := int64(1)
-	authzs, err := sa.GetValidAuthorizations2(context.Background(), &sapb.GetValidAuthorizationsRequest{
-		DnsNames: []string{
-			"aaa",
-			"bbb",
+	for _, tc := range []struct {
+		name       string
+		regID      int64
+		dnsNames   []string
+		profile    string
+		validUntil time.Time
+		wantIDs    []int64
+	}{
+		{
+			name:       "happy path",
+			regID:      1,
+			dnsNames:   []string{"aaa"},
+			profile:    "",
+			validUntil: fc.Now().Add(time.Hour),
+			wantIDs:    []int64{aaa},
 		},
-		Identifiers: []*corepb.Identifier{
-			identifier.NewDNS("aaa").AsProto(),
-			identifier.NewDNS("bbb").AsProto(),
+		{
+			name:       "different regID",
+			regID:      2,
+			dnsNames:   []string{"aaa"},
+			profile:    "",
+			validUntil: fc.Now().Add(time.Hour),
+			wantIDs:    []int64{},
 		},
-		RegistrationID: regID,
-		ValidUntil:     timestamppb.New(now),
-	})
-	test.AssertNotError(t, err, "sa.GetValidAuthorizations2 failed")
-	test.AssertEquals(t, len(authzs.Authzs), 1)
-	test.AssertEquals(t, authzs.Authzs[0].DnsName, ident.Value)
-	test.AssertEquals(t, authzs.Authzs[0].Identifier.Type, string(ident.Type))
-	test.AssertEquals(t, authzs.Authzs[0].Identifier.Value, ident.Value)
-	test.AssertEquals(t, authzs.Authzs[0].Id, fmt.Sprintf("%d", authzID))
+		{
+			name:       "different dnsName",
+			regID:      1,
+			dnsNames:   []string{"bbb"},
+			profile:    "",
+			validUntil: fc.Now().Add(time.Hour),
+			wantIDs:    []int64{},
+		},
+		{
+			name:       "different profile",
+			regID:      1,
+			dnsNames:   []string{"aaa"},
+			profile:    "test",
+			validUntil: fc.Now().Add(time.Hour),
+			wantIDs:    []int64{},
+		},
+		{
+			name:       "too-far-out validUntil",
+			regID:      2,
+			dnsNames:   []string{"aaa"},
+			profile:    "",
+			validUntil: fc.Now().Add(25 * time.Hour),
+			wantIDs:    []int64{},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := sa.GetValidAuthorizations2(context.Background(), &sapb.GetValidAuthorizationsRequest{
+				RegistrationID: tc.regID,
+				DnsNames:       tc.dnsNames,
+				Profile:        tc.profile,
+				ValidUntil:     timestamppb.New(tc.validUntil),
+			})
+			if err != nil {
+				t.Fatalf("GetValidAuthorizations2 got error %q, want success", err)
+			}
+
+			var gotIDs []int64
+			for _, authz := range got.Authzs {
+				id, err := strconv.Atoi(authz.Id)
+				if err != nil {
+					t.Fatalf("parsing authz id: %s", err)
+				}
+				gotIDs = append(gotIDs, int64(id))
+			}
+
+			slices.Sort(gotIDs)
+			slices.Sort(tc.wantIDs)
+			if !slices.Equal(gotIDs, tc.wantIDs) {
+				t.Errorf("GetValidAuthorizations2() = %+v, want %+v", gotIDs, tc.wantIDs)
+			}
+		})
+	}
 }
 
 func TestGetOrderExpired(t *testing.T) {
