@@ -2373,6 +2373,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			RegistrationID: newOrder.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
 			DnsNames:       newOrder.DnsNames,
+			Profile:        req.CertificateProfileName,
 		}
 		existingAuthz, err = ra.SA.GetValidAuthorizations2(ctx, getAuthReq)
 	} else {
@@ -2380,6 +2381,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			RegistrationID: newOrder.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
 			DnsNames:       newOrder.DnsNames,
+			Profile:        req.CertificateProfileName,
 		}
 		existingAuthz, err = ra.SA.GetAuthorizations2(ctx, getAuthReq)
 	}
@@ -2405,11 +2407,19 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			missingAuthzIdents = append(missingAuthzIdents, ident)
 			continue
 		}
+
+		// If the authz is associated with the wrong profile, don't reuse it.
+		if authz.CertificateProfileName != req.CertificateProfileName {
+			missingAuthzIdents = append(missingAuthzIdents, ident)
+			continue
+		}
+
 		// This is only used for our metrics.
 		authzAge := (profile.validAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		if authz.Status == core.StatusPending {
 			authzAge = (profile.pendingAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		}
+
 		// If the identifier is a wildcard and the existing authz only has one
 		// DNS-01 type challenge we can reuse it. In theory we will
 		// never get back an authorization for a domain with a wildcard prefix

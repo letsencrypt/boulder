@@ -108,11 +108,12 @@ message AuthorizationID {
 }
 
 message GetValidAuthorizationsRequest {
-  // Next unused field number: 5
+  // Next unused field number: 6
   int64 registrationID = 1;
   repeated string dnsNames = 2;
   reserved 3; // Previously nowNS
   google.protobuf.Timestamp validUntil = 4;
+  string profile = 5;
 }
 
 message Serial {
@@ -267,11 +268,12 @@ message FinalizeOrderRequest {
 }
 
 message GetAuthorizationsRequest {
-  // Next unused field number: 5
+  // Next unused field number: 6
   int64 registrationID = 1;
   repeated string dnsNames = 2;
   reserved 3; // Previously nowNS
   google.protobuf.Timestamp validUntil = 4;
+  string profile = 5;
 }
 
 message Authorizations {
