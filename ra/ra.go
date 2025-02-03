@@ -68,99 +68,6 @@ var (
 	caaRecheckDuration = -7 * time.Hour
 )
 
-// UnconfiguredDefaultProfileName is a unique string which the RA can use to
-// identify a profile, but also detect that no profiles were explicitly
-// configured, and therefore should not be assumed to exist outside the RA.
-// TODO(#7986): Remove this when the defaultProfileName config is required.
-const UnconfiguredDefaultProfileName = "unconfiguredDefaultProfileName"
-
-// ValidationProfileConfig is a config struct which can be used to create a
-// ValidationProfile.
-type ValidationProfileConfig struct {
-	// PendingAuthzLifetime defines how far in the future an authorization's
-	// "expires" timestamp is set when it is first created, i.e. how much
-	// time the applicant has to attempt the challenge.
-	PendingAuthzLifetime config.Duration `validate:"required"`
-	// ValidAuthzLifetime defines how far in the future an authorization's
-	// "expires" timestamp is set when one of its challenges is fulfilled,
-	// i.e. how long a validated authorization may be reused.
-	ValidAuthzLifetime config.Duration `validate:"required"`
-	// OrderLifetime defines how far in the future an order's "expires"
-	// timestamp is set when it is first created, i.e. how much time the
-	// applicant has to fulfill all challenges and finalize the order. This is
-	// a maximum time: if the order reuses an authorization and that authz
-	// expires earlier than this OrderLifetime would otherwise set, then the
-	// order's expiration is brought in to match that authorization.
-	OrderLifetime config.Duration `validate:"required"`
-	// AllowList specifies the path to a YAML file containing a list of
-	// account IDs permitted to use this profile. If no path is
-	// specified, the profile is open to all accounts. If the file
-	// exists but is empty, the profile is closed to all accounts.
-	AllowList string `validate:"omitempty"`
-}
-
-// ValidationProfile holds the allowlist for a given validation profile.
-type ValidationProfile struct {
-	// PendingAuthzLifetime defines how far in the future an authorization's
-	// "expires" timestamp is set when it is first created, i.e. how much
-	// time the applicant has to attempt the challenge.
-	pendingAuthzLifetime time.Duration
-	// ValidAuthzLifetime defines how far in the future an authorization's
-	// "expires" timestamp is set when one of its challenges is fulfilled,
-	// i.e. how long a validated authorization may be reused.
-	validAuthzLifetime time.Duration
-	// OrderLifetime defines how far in the future an order's "expires"
-	// timestamp is set when it is first created, i.e. how much time the
-	// applicant has to fulfill all challenges and finalize the order. This is
-	// a maximum time: if the order reuses an authorization and that authz
-	// expires earlier than this OrderLifetime would otherwise set, then the
-	// order's expiration is brought in to match that authorization.
-	orderLifetime time.Duration
-	// allowList holds the set of account IDs allowed to use this profile. If
-	// nil, the profile is open to all accounts (everyone is allowed).
-	allowList *allowlist.List[int64]
-}
-
-// NewValidationProfile creates a new ValidationProfile from the given config.
-// It enforces that the given authorization lifetimes are within the bounds
-// mandated by the Baseline Requirements.
-func NewValidationProfile(c *ValidationProfileConfig) (*ValidationProfile, error) {
-	// The Baseline Requirements v1.8.1 state that validation tokens "MUST
-	// NOT be used for more than 30 days from its creation". If unconfigured
-	// or the configured value pendingAuthorizationLifetimeDays is greater
-	// than 29 days, bail out.
-	if c.PendingAuthzLifetime.Duration <= 0 || c.PendingAuthzLifetime.Duration > 29*(24*time.Hour) {
-		return nil, fmt.Errorf("PendingAuthzLifetime value must be greater than 0 and less than 30d, but got %q", c.PendingAuthzLifetime.Duration)
-	}
-
-	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
-	// or completed validation MUST be obtained no more than 398 days prior
-	// to issuing the Certificate". If unconfigured or the configured value is
-	// greater than 397 days, bail out.
-	if c.ValidAuthzLifetime.Duration <= 0 || c.ValidAuthzLifetime.Duration > 397*(24*time.Hour) {
-		return nil, fmt.Errorf("ValidAuthzLifetime value must be greater than 0 and less than 398d, but got %q", c.ValidAuthzLifetime.Duration)
-	}
-
-	var allowList *allowlist.List[int64]
-	if c.AllowList != "" {
-		data, err := os.ReadFile(c.AllowList)
-		if err != nil {
-			return nil, fmt.Errorf("reading allowlist: %w", err)
-		}
-		allowList, err = allowlist.NewFromYAML[int64](data)
-		if err != nil {
-			return nil, fmt.Errorf("parsing allowlist: %w", err)
-		}
-	}
-
-	return &ValidationProfile{
-		pendingAuthzLifetime: c.PendingAuthzLifetime.Duration,
-		validAuthzLifetime:   c.ValidAuthzLifetime.Duration,
-		orderLifetime:        c.OrderLifetime.Duration,
-		allowList:            allowList,
-	}, nil
-}
-
 // RegistrationAuthorityImpl defines an RA.
 //
 // NOTE: All of the fields in RegistrationAuthorityImpl need to be
@@ -177,8 +84,7 @@ type RegistrationAuthorityImpl struct {
 	clk                 clock.Clock
 	log                 blog.Logger
 	keyPolicy           goodkey.KeyPolicy
-	validationProfiles  map[string]*ValidationProfile
-	defaultProfileName  string
+	profiles            *validationProfiles
 	mustStapleAllowList *allowlist.List[int64]
 	maxContactsPerReg   int
 	limiter             *ratelimits.Limiter
@@ -221,8 +127,7 @@ func NewRegistrationAuthorityImpl(
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,
 	maxNames int,
-	validationProfiles map[string]*ValidationProfile,
-	defaultProfileName string,
+	profiles *validationProfiles,
 	mustStapleAllowList *allowlist.List[int64],
 	pubc pubpb.PublisherClient,
 	finalizeTimeout time.Duration,
@@ -341,8 +246,7 @@ func NewRegistrationAuthorityImpl(
 	ra := &RegistrationAuthorityImpl{
 		clk:                        clk,
 		log:                        logger,
-		validationProfiles:         validationProfiles,
-		defaultProfileName:         defaultProfileName,
+		profiles:                   profiles,
 		mustStapleAllowList:        mustStapleAllowList,
 		maxContactsPerReg:          maxContactsPerReg,
 		keyPolicy:                  keyPolicy,
@@ -369,6 +273,132 @@ func NewRegistrationAuthorityImpl(
 		newOrUpdatedContactCounter: newOrUpdatedContactCounter,
 	}
 	return ra
+}
+
+// UnconfiguredDefaultProfileName is a unique string which the RA can use to
+// identify a profile, but also detect that no profiles were explicitly
+// configured, and therefore should not be assumed to exist outside the RA.
+// TODO(#7986): Remove this when the defaultProfileName config is required.
+const UnconfiguredDefaultProfileName = "unconfiguredDefaultProfileName"
+
+// ValidationProfileConfig is a config struct which can be used to create a
+// ValidationProfile.
+type ValidationProfileConfig struct {
+	// PendingAuthzLifetime defines how far in the future an authorization's
+	// "expires" timestamp is set when it is first created, i.e. how much
+	// time the applicant has to attempt the challenge.
+	PendingAuthzLifetime config.Duration `validate:"required"`
+	// ValidAuthzLifetime defines how far in the future an authorization's
+	// "expires" timestamp is set when one of its challenges is fulfilled,
+	// i.e. how long a validated authorization may be reused.
+	ValidAuthzLifetime config.Duration `validate:"required"`
+	// OrderLifetime defines how far in the future an order's "expires"
+	// timestamp is set when it is first created, i.e. how much time the
+	// applicant has to fulfill all challenges and finalize the order. This is
+	// a maximum time: if the order reuses an authorization and that authz
+	// expires earlier than this OrderLifetime would otherwise set, then the
+	// order's expiration is brought in to match that authorization.
+	OrderLifetime config.Duration `validate:"required"`
+	// AllowList specifies the path to a YAML file containing a list of
+	// account IDs permitted to use this profile. If no path is
+	// specified, the profile is open to all accounts. If the file
+	// exists but is empty, the profile is closed to all accounts.
+	AllowList string `validate:"omitempty"`
+}
+
+// validationProfile holds the order and authz lifetimes and allowlist for a
+// given validation profile.
+type validationProfile struct {
+	// PendingAuthzLifetime defines how far in the future an authorization's
+	// "expires" timestamp is set when it is first created, i.e. how much
+	// time the applicant has to attempt the challenge.
+	pendingAuthzLifetime time.Duration
+	// ValidAuthzLifetime defines how far in the future an authorization's
+	// "expires" timestamp is set when one of its challenges is fulfilled,
+	// i.e. how long a validated authorization may be reused.
+	validAuthzLifetime time.Duration
+	// OrderLifetime defines how far in the future an order's "expires"
+	// timestamp is set when it is first created, i.e. how much time the
+	// applicant has to fulfill all challenges and finalize the order. This is
+	// a maximum time: if the order reuses an authorization and that authz
+	// expires earlier than this OrderLifetime would otherwise set, then the
+	// order's expiration is brought in to match that authorization.
+	orderLifetime time.Duration
+	// allowList holds the set of account IDs allowed to use this profile. If
+	// nil, the profile is open to all accounts (everyone is allowed).
+	allowList *allowlist.List[int64]
+}
+
+// validationProfiles provides access to the set of configured profiles,
+// including the default profile for orders/authzs which do not specify one.
+type validationProfiles struct {
+	defaultName string
+	byName      map[string]*validationProfile
+}
+
+// NewValidationProfiles builds a new validationProfiles struct from the given
+// configs and default name. It enforces that the given authorization lifetimes
+// are within the bounds mandated by the Baseline Requirements.
+func NewValidationProfiles(defaultName string, configs map[string]ValidationProfileConfig) (*validationProfiles, error) {
+	profiles := make(map[string]*validationProfile, len(configs))
+
+	for name, config := range configs {
+		// The Baseline Requirements v1.8.1 state that validation tokens "MUST
+		// NOT be used for more than 30 days from its creation". If unconfigured
+		// or the configured value pendingAuthorizationLifetimeDays is greater
+		// than 29 days, bail out.
+		if config.PendingAuthzLifetime.Duration <= 0 || config.PendingAuthzLifetime.Duration > 29*(24*time.Hour) {
+			return nil, fmt.Errorf("PendingAuthzLifetime value must be greater than 0 and less than 30d, but got %q", config.PendingAuthzLifetime.Duration)
+		}
+
+		// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
+		// or completed validation MUST be obtained no more than 398 days prior
+		// to issuing the Certificate". If unconfigured or the configured value is
+		// greater than 397 days, bail out.
+		if config.ValidAuthzLifetime.Duration <= 0 || config.ValidAuthzLifetime.Duration > 397*(24*time.Hour) {
+			return nil, fmt.Errorf("ValidAuthzLifetime value must be greater than 0 and less than 398d, but got %q", config.ValidAuthzLifetime.Duration)
+		}
+
+		var allowList *allowlist.List[int64]
+		if config.AllowList != "" {
+			data, err := os.ReadFile(config.AllowList)
+			if err != nil {
+				return nil, fmt.Errorf("reading allowlist: %w", err)
+			}
+			allowList, err = allowlist.NewFromYAML[int64](data)
+			if err != nil {
+				return nil, fmt.Errorf("parsing allowlist: %w", err)
+			}
+		}
+
+		profiles[name] = &validationProfile{
+			pendingAuthzLifetime: config.PendingAuthzLifetime.Duration,
+			validAuthzLifetime:   config.ValidAuthzLifetime.Duration,
+			orderLifetime:        config.OrderLifetime.Duration,
+			allowList:            allowList,
+		}
+	}
+
+	_, ok := profiles[defaultName]
+	if !ok {
+		return nil, fmt.Errorf("no profile configured matching default profile name %q", defaultName)
+	}
+
+	return &validationProfiles{
+		defaultName: defaultName,
+		byName:      profiles,
+	}, nil
+}
+
+func (vp *validationProfiles) get(name string) (*validationProfile, error) {
+	if name == "" {
+		name = vp.defaultName
+	}
+	profile, ok := vp.byName[name]
+	if !ok {
+		return nil, berrors.InvalidProfileError("unrecognized profile name %q", name)
+	}
+	return profile, nil
 }
 
 // certificateRequestAuthz is a struct for holding information about a valid
@@ -1036,13 +1066,9 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 			req.Order.Status)
 	}
 
-	profileName := req.Order.CertificateProfileName
-	if profileName == "" {
-		profileName = ra.defaultProfileName
-	}
-	profile, ok := ra.validationProfiles[profileName]
-	if !ok {
-		return nil, berrors.InvalidProfileError("unrecognized profile name %q", profileName)
+	profile, err := ra.profiles.get(req.Order.CertificateProfileName)
+	if err != nil {
+		return nil, err
 	}
 
 	// There should never be an order with 0 names at the stage, but we check to
@@ -1167,8 +1193,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	// configured default.
 	// TODO(#7309): Make this unconditional.
 	profileName := order.CertificateProfileName
-	if profileName == "" && ra.defaultProfileName != UnconfiguredDefaultProfileName {
-		profileName = ra.defaultProfileName
+	if profileName == "" && ra.profiles.defaultName != UnconfiguredDefaultProfileName {
+		profileName = ra.profiles.defaultName
 	}
 
 	// Step 3: Issue the Certificate
@@ -1559,13 +1585,9 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.MalformedError("expired authorization")
 	}
 
-	profileName := authz.CertificateProfileName
-	if profileName == "" {
-		profileName = ra.defaultProfileName
-	}
-	profile, ok := ra.validationProfiles[profileName]
-	if !ok {
-		return nil, berrors.InvalidProfileError("unrecognized profile name %q", profileName)
+	profile, err := ra.profiles.get(authz.CertificateProfileName)
+	if err != nil {
+		return nil, err
 	}
 
 	challIndex := int(req.ChallengeIndex)
@@ -2284,15 +2306,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			"Order cannot contain more than %d DNS names", ra.maxNames)
 	}
 
-	profileName := req.CertificateProfileName
-	if profileName == "" {
-		profileName = ra.defaultProfileName
-	}
-	profile, ok := ra.validationProfiles[profileName]
-	if !ok {
-		return nil, berrors.MalformedError("requested certificate profile %q not found",
-			req.CertificateProfileName,
-		)
+	profile, err := ra.profiles.get(req.CertificateProfileName)
+	if err != nil {
+		return nil, err
 	}
 
 	if profile.allowList != nil && !profile.allowList.Contains(req.RegistrationID) {
@@ -2303,7 +2319,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
-	err := ra.PA.WillingToIssue(newOrder.DnsNames)
+	err = ra.PA.WillingToIssue(newOrder.DnsNames)
 	if err != nil {
 		return nil, err
 	}
@@ -2435,9 +2451,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			return nil, err
 		}
 
-		challStrs := make([]string, len(challTypes))
-		for i, t := range challTypes {
-			challStrs[i] = string(t)
+		var challStrs []string
+		for _, t := range challTypes {
+			challStrs = append(challStrs, string(t))
 		}
 
 		newAuthzs = append(newAuthzs, &sapb.NewAuthzRequest{

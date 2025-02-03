@@ -156,6 +156,13 @@ func numAuthorizations(o *corepb.Order) int {
 	return len(o.V2Authorizations)
 }
 
+// def is a test-only helper that returns the default validation profile
+// and is guaranteed to succeed because the validationProfile constructor
+// ensures that the default name has a corresponding profile.
+func (vp *validationProfiles) def() *validationProfile {
+	return vp.byName[vp.defaultName]
+}
+
 type DummyValidationAuthority struct {
 	doDCVRequest chan *vapb.PerformValidationRequest
 	doDCVError   error
@@ -341,16 +348,19 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "making keypolicy")
 
-	ra := NewRegistrationAuthorityImpl(
-		fc, log, stats,
-		1, testKeyPolicy, limiter, txnBuilder, 100,
-		map[string]*ValidationProfile{"test": {
+	profiles := &validationProfiles{
+		defaultName: "test",
+		byName: map[string]*validationProfile{"test": {
 			pendingAuthzLifetime: 7 * 24 * time.Hour,
 			validAuthzLifetime:   300 * 24 * time.Hour,
 			orderLifetime:        7 * 24 * time.Hour,
 		}},
-		"test",
-		nil, nil, 5*time.Minute, ctp, nil, nil)
+	}
+
+	ra := NewRegistrationAuthorityImpl(
+		fc, log, stats,
+		1, testKeyPolicy, limiter, txnBuilder, 100,
+		profiles, nil, nil, 5*time.Minute, ctp, nil, nil)
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
@@ -635,7 +645,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 	// The DB authz's expiry should be equal to the current time plus the
 	// configured authorization lifetime
-	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), now.Add(ra.validationProfiles[ra.defaultProfileName].validAuthzLifetime))
+	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), now.Add(ra.profiles.def().validAuthzLifetime))
 
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
@@ -1055,7 +1065,7 @@ func TestRecheckCAADates(t *testing.T) {
 	defer cleanUp()
 	recorder := &caaRecorder{names: make(map[string]bool)}
 	ra.VA = va.RemoteClients{CAAClient: recorder}
-	ra.validationProfiles[ra.defaultProfileName].validAuthzLifetime = 15 * time.Hour
+	ra.profiles.def().validAuthzLifetime = 15 * time.Hour
 
 	recentValidated := fc.Now().Add(-1 * time.Hour)
 	recentExpires := fc.Now().Add(15 * time.Hour)
@@ -1365,7 +1375,7 @@ func TestNewOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderA.RegistrationID, int64(1))
-	test.AssertEquals(t, orderA.Expires.AsTime(), now.Add(ra.validationProfiles[ra.defaultProfileName].orderLifetime))
+	test.AssertEquals(t, orderA.Expires.AsTime(), now.Add(ra.profiles.def().orderLifetime))
 	test.AssertEquals(t, len(orderA.DnsNames), 3)
 	test.AssertEquals(t, orderA.CertificateProfileName, "test")
 	// We expect the order names to have been sorted, deduped, and lowercased
@@ -1406,7 +1416,7 @@ func TestNewOrder_OrderReusex(t *testing.T) {
 	test.AssertNotError(t, err, "Error creating a second test registration")
 
 	// Insert a second (albeit identical) profile to reference
-	ra.validationProfiles["different"] = ra.validationProfiles[ra.defaultProfileName]
+	ra.profiles.byName["different"] = ra.profiles.def()
 
 	testCases := []struct {
 		Name           string
@@ -1497,7 +1507,7 @@ func TestNewOrder_OrderReuse_Expired(t *testing.T) {
 	defer cleanUp()
 
 	// Set the order lifetime to something short and known.
-	ra.validationProfiles[ra.defaultProfileName].orderLifetime = time.Hour
+	ra.profiles.def().orderLifetime = time.Hour
 
 	// Create an initial order.
 	extant, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
@@ -1676,19 +1686,21 @@ func TestNewOrder_ValidationProfiles(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.validationProfiles = map[string]*ValidationProfile{
-		"one": {
-			pendingAuthzLifetime: 1 * 24 * time.Hour,
-			validAuthzLifetime:   1 * 24 * time.Hour,
-			orderLifetime:        1 * 24 * time.Hour,
-		},
-		"two": {
-			pendingAuthzLifetime: 2 * 24 * time.Hour,
-			validAuthzLifetime:   2 * 24 * time.Hour,
-			orderLifetime:        2 * 24 * time.Hour,
+	ra.profiles = &validationProfiles{
+		defaultName: "one",
+		byName: map[string]*validationProfile{
+			"one": {
+				pendingAuthzLifetime: 1 * 24 * time.Hour,
+				validAuthzLifetime:   1 * 24 * time.Hour,
+				orderLifetime:        1 * 24 * time.Hour,
+			},
+			"two": {
+				pendingAuthzLifetime: 2 * 24 * time.Hour,
+				validAuthzLifetime:   2 * 24 * time.Hour,
+				orderLifetime:        2 * 24 * time.Hour,
+			},
 		},
 	}
-	ra.defaultProfileName = "one"
 
 	for _, tc := range []struct {
 		name        string
@@ -1748,20 +1760,20 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 
 	testCases := []struct {
 		name               string
-		validationProfiles map[string]*ValidationProfile
+		validationProfiles map[string]*validationProfile
 		expectErr          bool
 		expectErrContains  string
 	}{
 		{
 			name: "Allow all account IDs",
-			validationProfiles: map[string]*ValidationProfile{
+			validationProfiles: map[string]*validationProfile{
 				"test": {allowList: nil},
 			},
 			expectErr: false,
 		},
 		{
 			name: "Deny all but account Id 1337",
-			validationProfiles: map[string]*ValidationProfile{
+			validationProfiles: map[string]*validationProfile{
 				"test": {allowList: allowlist.NewList([]int64{1337})},
 			},
 			expectErr:         true,
@@ -1769,7 +1781,7 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 		},
 		{
 			name: "Deny all",
-			validationProfiles: map[string]*ValidationProfile{
+			validationProfiles: map[string]*validationProfile{
 				"test": {allowList: allowlist.NewList([]int64{})},
 			},
 			expectErr:         true,
@@ -1777,7 +1789,7 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 		},
 		{
 			name: "Allow Registration.Id",
-			validationProfiles: map[string]*ValidationProfile{
+			validationProfiles: map[string]*validationProfile{
 				"test": {allowList: allowlist.NewList([]int64{Registration.Id})},
 			},
 			expectErr: false,
@@ -1786,7 +1798,7 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ra.validationProfiles = tc.validationProfiles
+			ra.profiles.byName = tc.validationProfiles
 
 			orderReq := &rapb.NewOrderRequest{
 				RegistrationID:         Registration.Id,
@@ -2130,7 +2142,7 @@ func TestNewOrderExpiry(t *testing.T) {
 	names := []string{"zombo.com"}
 
 	// Set the order lifetime to 48 hours.
-	ra.validationProfiles[ra.defaultProfileName].orderLifetime = 48 * time.Hour
+	ra.profiles.def().orderLifetime = 48 * time.Hour
 
 	// Use an expiry that is sooner than the configured order expiry but greater
 	// than 24 hours away.
@@ -2176,7 +2188,7 @@ func TestNewOrderExpiry(t *testing.T) {
 	test.AssertEquals(t, order.Expires.AsTime(), fakeAuthzExpires)
 
 	// Set the order lifetime to be lower than the fakeAuthzLifetime
-	ra.validationProfiles[ra.defaultProfileName].orderLifetime = 12 * time.Hour
+	ra.profiles.def().orderLifetime = 12 * time.Hour
 	expectedOrderExpiry := clk.Now().Add(12 * time.Hour)
 	// Create the order again
 	order, err = ra.NewOrder(ctx, orderReq)
@@ -2812,7 +2824,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 
 	// Make some valid authorizations for some names using different challenge types
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	exp := ra.clk.Now().Add(ra.validationProfiles[ra.defaultProfileName].orderLifetime)
+	exp := ra.clk.Now().Add(ra.profiles.def().orderLifetime)
 	challs := []core.AcmeChallenge{core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01}
 	var authzIDs []int64
 	for i, name := range names {
@@ -3238,7 +3250,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 
 	// Make some valid authorizations for some names
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	exp := ra.clk.Now().Add(ra.validationProfiles[ra.defaultProfileName].orderLifetime)
+	exp := ra.clk.Now().Add(ra.profiles.def().orderLifetime)
 	var authzIDs []int64
 	for _, name := range names {
 		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, ra.clk.Now()))

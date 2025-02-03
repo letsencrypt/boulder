@@ -3,7 +3,6 @@ package notmain
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"time"
 
@@ -87,7 +86,7 @@ type Config struct {
 		// cert lifetime, this allows creation of certs that will cover a whole
 		// year, plus a grace period of a month.
 		//
-		// Deprecated: use ValidationProfiles.ValidAuthzLifetime instead.
+		// Deprecated: use ValidationProfiles.[profile].ValidAuthzLifetime instead.
 		// TODO(#7986): Remove this.
 		AuthorizationLifetimeDays int `validate:"omitempty,required_without=ValidationProfiles,min=1,max=397"`
 
@@ -95,7 +94,7 @@ type Config struct {
 		// the pending state. If you can't respond to a challenge this quickly, then
 		// you need to request a new challenge.
 		//
-		// Deprecated: use ValidationProfiles.PendingAuthzLifetime instead.
+		// Deprecated: use ValidationProfiles.[profile].PendingAuthzLifetime instead.
 		// TODO(#7986): Remove this.
 		PendingAuthorizationLifetimeDays int `validate:"omitempty,required_without=ValidationProfiles,min=1,max=29"`
 
@@ -127,7 +126,7 @@ type Config struct {
 		// OrderLifetime is how far in the future an Order's expiration date should
 		// be set when it is first created.
 		//
-		// Deprecated: Use ValidationProfiles.OrderLifetime instead.
+		// Deprecated: Use ValidationProfiles.[profile].OrderLifetime instead.
 		// TODO(#7986): Remove this.
 		OrderLifetime config.Duration `validate:"omitempty,required_without=ValidationProfiles"`
 
@@ -288,18 +287,8 @@ func main() {
 		}
 	}
 
-	validationProfiles := make(map[string]*ra.ValidationProfile)
-	for name, profileConfig := range c.RA.ValidationProfiles {
-		profile, err := ra.NewValidationProfile(&profileConfig)
-		cmd.FailOnError(err, fmt.Sprintf("Failed to load validation profile %q", name))
-
-		validationProfiles[name] = profile
-	}
-
-	_, present := validationProfiles[c.RA.DefaultProfileName]
-	if !present {
-		cmd.Fail(fmt.Sprintf("No profile configured matching default profile name %q", c.RA.DefaultProfileName))
-	}
+	validationProfiles, err := ra.NewValidationProfiles(c.RA.DefaultProfileName, c.RA.ValidationProfiles)
+	cmd.FailOnError(err, "Failed to load validation profiles")
 
 	var mustStapleAllowList *allowlist.List[int64]
 	if c.RA.MustStapleAllowList != "" {
@@ -345,7 +334,6 @@ func main() {
 		txnBuilder,
 		c.RA.MaxNames,
 		validationProfiles,
-		c.RA.DefaultProfileName,
 		mustStapleAllowList,
 		pubc,
 		c.RA.FinalizeTimeout.Duration,
