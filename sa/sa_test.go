@@ -2633,58 +2633,65 @@ func TestGetValidAuthorizations2(t *testing.T) {
 	aaa := createFinalizedAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(24*time.Hour), "valid", fc.Now())
 
 	for _, tc := range []struct {
-		name       string
-		regID      int64
-		dnsNames   []string
-		profile    string
-		validUntil time.Time
-		wantIDs    []int64
+		name        string
+		regID       int64
+		dnsNames    []string
+		identifiers []*corepb.Identifier
+		profile     string
+		validUntil  time.Time
+		wantIDs     []int64
 	}{
 		{
-			name:       "happy path",
-			regID:      1,
-			dnsNames:   []string{"aaa"},
-			profile:    "",
-			validUntil: fc.Now().Add(time.Hour),
-			wantIDs:    []int64{aaa},
+			name:        "happy path",
+			regID:       1,
+			dnsNames:    []string{"aaa"},
+			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").AsProto()},
+			profile:     "",
+			validUntil:  fc.Now().Add(time.Hour),
+			wantIDs:     []int64{aaa},
 		},
 		{
-			name:       "different regID",
-			regID:      2,
-			dnsNames:   []string{"aaa"},
-			profile:    "",
-			validUntil: fc.Now().Add(time.Hour),
-			wantIDs:    []int64{},
+			name:        "different regID",
+			regID:       2,
+			dnsNames:    []string{"aaa"},
+			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").AsProto()},
+			profile:     "",
+			validUntil:  fc.Now().Add(time.Hour),
+			wantIDs:     []int64{},
 		},
 		{
-			name:       "different dnsName",
-			regID:      1,
-			dnsNames:   []string{"bbb"},
-			profile:    "",
-			validUntil: fc.Now().Add(time.Hour),
-			wantIDs:    []int64{},
+			name:        "different dnsName",
+			regID:       1,
+			dnsNames:    []string{"bbb"},
+			identifiers: []*corepb.Identifier{identifier.NewDNS("bbb").AsProto()},
+			profile:     "",
+			validUntil:  fc.Now().Add(time.Hour),
+			wantIDs:     []int64{},
 		},
 		{
-			name:       "different profile",
-			regID:      1,
-			dnsNames:   []string{"aaa"},
-			profile:    "test",
-			validUntil: fc.Now().Add(time.Hour),
-			wantIDs:    []int64{},
+			name:        "different profile",
+			regID:       1,
+			dnsNames:    []string{"aaa"},
+			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").AsProto()},
+			profile:     "test",
+			validUntil:  fc.Now().Add(time.Hour),
+			wantIDs:     []int64{},
 		},
 		{
-			name:       "too-far-out validUntil",
-			regID:      2,
-			dnsNames:   []string{"aaa"},
-			profile:    "",
-			validUntil: fc.Now().Add(25 * time.Hour),
-			wantIDs:    []int64{},
+			name:        "too-far-out validUntil",
+			regID:       2,
+			dnsNames:    []string{"aaa"},
+			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").AsProto()},
+			profile:     "",
+			validUntil:  fc.Now().Add(25 * time.Hour),
+			wantIDs:     []int64{},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := sa.GetValidAuthorizations2(context.Background(), &sapb.GetValidAuthorizationsRequest{
 				RegistrationID: tc.regID,
 				DnsNames:       tc.dnsNames,
+				Identifiers:    tc.identifiers,
 				Profile:        tc.profile,
 				ValidUntil:     timestamppb.New(tc.validUntil),
 			})
