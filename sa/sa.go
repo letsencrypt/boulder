@@ -607,7 +607,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			// are populating Identifiers.
 			req.NewOrder.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.NewOrder.DnsNames))
 		}
-		err = addOrderFQDNSet(ctx, tx, identifier.SliceFromProto(req.NewOrder.Identifiers), orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
+		err = addOrderFQDNSet(ctx, tx, identifier.SliceFromProto(req.NewOrder.Identifiers, nil), orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {
 			return nil, err
 		}

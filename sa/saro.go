@@ -362,7 +362,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 		AND issued > ?
 		ORDER BY issued DESC
 		LIMIT ?`,
-		core.HashIdentifiers(identifier.SliceFromProto(req.Identifiers)),
+		core.HashIdentifiers(identifier.SliceFromProto(req.Identifiers, nil)),
 		ssa.clk.Now().Add(-req.Window.AsDuration()),
 		limit,
 	)
@@ -388,7 +388,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetExists(ctx context.Context, req *sapb.F
 	if len(req.Identifiers) == 0 {
 		return nil, errIncompleteRequest
 	}
-	exists, err := ssa.checkFQDNSetExists(ctx, ssa.dbReadOnlyMap.SelectOne, identifier.SliceFromProto(req.Identifiers))
+	exists, err := ssa.checkFQDNSetExists(ctx, ssa.dbReadOnlyMap.SelectOne, identifier.SliceFromProto(req.Identifiers, nil))
 	if err != nil {
 		return nil, err
 	}
@@ -518,7 +518,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 	}
 
 	// Hash the names requested for lookup in the orderFqdnSets table
-	fqdnHash := core.HashIdentifiers(identifier.SliceFromProto(req.Identifiers))
+	fqdnHash := core.HashIdentifiers(identifier.SliceFromProto(req.Identifiers, nil))
 
 	// Find a possibly-suitable order. We don't include the account ID or order
 	// status in this query because there's no index that includes those, so

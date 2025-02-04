@@ -7,7 +7,27 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestFromNames(t *testing.T) {
+func TestNormalizeIdentifiers(t *testing.T) {
+	idents := []ACMEIdentifier{
+		{Type: "DNS", Value: "foobar.com"},
+		{Type: "DNS", Value: "fooBAR.com"},
+		{Type: "DNS", Value: "baz.com"},
+		{Type: "DNS", Value: "foobar.com"},
+		{Type: "DNS", Value: "bar.com"},
+		{Type: "DNS", Value: "bar.com"},
+		{Type: "DNS", Value: "a.com"},
+	}
+	expected := []ACMEIdentifier{
+		{Type: "DNS", Value: "a.com"},
+		{Type: "DNS", Value: "bar.com"},
+		{Type: "DNS", Value: "baz.com"},
+		{Type: "DNS", Value: "foobar.com"},
+	}
+	u := NormalizeIdentifiers(idents)
+	test.AssertDeepEquals(t, expected, u)
+}
+
+func TestSliceFromProto(t *testing.T) {
 	testCases := []struct {
 		Name         string
 		InputIdents  []*corepb.Identifier
@@ -102,7 +122,7 @@ func TestFromNames(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			idents := FromNames(tc.InputIdents, tc.InputNames)
+			idents := SliceFromProto(tc.InputIdents, tc.InputNames)
 			test.AssertDeepEquals(t, idents, tc.ExpectIdents)
 		})
 	}

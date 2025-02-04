@@ -1689,9 +1689,9 @@ func TestNewOrder_AuthzReuse(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			new, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-				RegistrationID: tc.RegistrationID,
-				DnsNames:       []string{tc.DnsName},
-				Identifiers:    []*corepb.Identifier{tc.Identifier.AsProto()},
+				RegistrationID:         tc.RegistrationID,
+				DnsNames:               []string{tc.DnsName},
+				Identifiers:            []*corepb.Identifier{tc.Identifier.AsProto()},
 				CertificateProfileName: tc.Profile,
 			})
 			test.AssertNotError(t, err, "creating test order")
@@ -1997,8 +1997,8 @@ func TestNewOrderWildcard(t *testing.T) {
 		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
 	test.AssertDeepEquals(t,
-		core.NormalizeIdentifiers(identifier.SliceFromProto(order.Identifiers)),
-		core.NormalizeIdentifiers(orderIdents))
+		identifier.NormalizeIdentifiers(identifier.SliceFromProto(order.Identifiers, order.DnsNames)),
+		identifier.NormalizeIdentifiers(orderIdents))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
 	// Check each of the authz IDs in the order
@@ -2056,8 +2056,8 @@ func TestNewOrderWildcard(t *testing.T) {
 		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
 	test.AssertDeepEquals(t,
-		core.NormalizeIdentifiers(identifier.SliceFromProto(order.Identifiers)),
-		core.NormalizeIdentifiers(orderIdents))
+		identifier.NormalizeIdentifiers(identifier.SliceFromProto(order.Identifiers, order.DnsNames)),
+		identifier.NormalizeIdentifiers(orderIdents))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
 	for _, authzID := range order.V2Authorizations {

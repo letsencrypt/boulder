@@ -255,26 +255,6 @@ func TestUniqueLowerNames(t *testing.T) {
 	test.AssertDeepEquals(t, []string{"a.com", "bar.com", "baz.com", "foobar.com"}, u)
 }
 
-func TestNormalizeIdentifiers(t *testing.T) {
-	idents := []identifier.ACMEIdentifier{
-		{Type: "DNS", Value: "foobar.com"},
-		{Type: "DNS", Value: "fooBAR.com"},
-		{Type: "DNS", Value: "baz.com"},
-		{Type: "DNS", Value: "foobar.com"},
-		{Type: "DNS", Value: "bar.com"},
-		{Type: "DNS", Value: "bar.com"},
-		{Type: "DNS", Value: "a.com"},
-	}
-	expected := []identifier.ACMEIdentifier{
-		{Type: "DNS", Value: "a.com"},
-		{Type: "DNS", Value: "bar.com"},
-		{Type: "DNS", Value: "baz.com"},
-		{Type: "DNS", Value: "foobar.com"},
-	}
-	u := NormalizeIdentifiers(idents)
-	test.AssertDeepEquals(t, expected, u)
-}
-
 func TestValidSerial(t *testing.T) {
 	notLength32Or36 := "A"
 	length32 := strings.Repeat("A", 32)

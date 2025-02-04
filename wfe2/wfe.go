@@ -1994,7 +1994,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	respObj := orderJSON{
 		Status:      core.AcmeStatus(order.Status),
 		Expires:     order.Expires.AsTime(),
-		Identifiers: identifier.FromNames(order.Identifiers, order.DnsNames),
+		Identifiers: identifier.SliceFromProto(order.Identifiers, order.DnsNames),
 		Finalize:    finalizeURL,
 		Profile:     order.CertificateProfileName,
 	}
@@ -2213,7 +2213,7 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 }
 
 func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIdents []identifier.ACMEIdentifier, regID int64) ([]string, error) {
-	uniqueOrderIdents := core.NormalizeIdentifiers(orderIdents)
+	uniqueOrderIdents := identifier.NormalizeIdentifiers(orderIdents)
 	var idents []*corepb.Identifier
 	for _, ident := range uniqueOrderIdents {
 		idents = append(idents, &corepb.Identifier{
@@ -2299,7 +2299,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			return
 		}
 	}
-	idents = core.NormalizeIdentifiers(idents)
+	idents = identifier.NormalizeIdentifiers(idents)
 	logEvent.Identifiers = idents
 
 	err = policy.WellFormedIdentifiers(idents)
@@ -2415,7 +2415,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	if order.Identifiers == nil {
 		order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(order.DnsNames))
 	}
-	order.Identifiers = identifier.SliceAsProto(identifier.FromNames(order.Identifiers, order.DnsNames))
+	order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(order.Identifiers, order.DnsNames))
 	if core.IsAnyNilOrZero(order.Identifiers) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
@@ -2486,7 +2486,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	if order.Identifiers == nil {
 		order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(order.DnsNames))
 	}
-	order.Identifiers = identifier.SliceAsProto(identifier.FromNames(order.Identifiers, order.DnsNames))
+	order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(order.Identifiers, order.DnsNames))
 	if core.IsAnyNilOrZero(order.Identifiers) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
@@ -2577,7 +2577,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	if order.Identifiers == nil {
 		order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(order.DnsNames))
 	}
-	order.Identifiers = identifier.SliceAsProto(identifier.FromNames(order.Identifiers, order.DnsNames))
+	order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(order.Identifiers, order.DnsNames))
 	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, order.Identifiers, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
@@ -2629,7 +2629,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	logEvent.Identifiers = identifier.SliceFromProto(order.Identifiers)
+	logEvent.Identifiers = identifier.SliceFromProto(order.Identifiers, nil)
 	logEvent.Extra["KeyType"] = web.KeyTypeToString(csr.PublicKey)
 
 	updatedOrder, err := wfe.ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
@@ -2649,7 +2649,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	if updatedOrder.Identifiers == nil {
 		updatedOrder.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(updatedOrder.DnsNames))
 	}
-	updatedOrder.Identifiers = identifier.SliceAsProto(identifier.FromNames(updatedOrder.Identifiers, updatedOrder.DnsNames))
+	updatedOrder.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(updatedOrder.Identifiers, updatedOrder.DnsNames))
 	if core.IsAnyNilOrZero(updatedOrder.Identifiers) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return

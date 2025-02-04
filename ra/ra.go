@@ -971,7 +971,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		// are populating Identifiers.
 		req.Order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.Order.DnsNames))
 	}
-	req.Order.Identifiers = identifier.SliceAsProto(identifier.FromNames(req.Order.Identifiers, req.Order.DnsNames))
+	req.Order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(req.Order.Identifiers, req.Order.DnsNames))
 	if len(req.Order.Identifiers) == 0 {
 		return nil, berrors.InternalServerError("Order has no associated identifiers")
 	}
@@ -1006,7 +1006,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	//
 	// TODO(#7311): Support IP address identifiers.
 	csrNames := csrlib.NamesFromCSR(csr).SANs
-	orderIdents := core.NormalizeIdentifiers(identifier.SliceFromProto(req.Order.Identifiers))
+	orderIdents := identifier.NormalizeIdentifiers(identifier.SliceFromProto(req.Order.Identifiers, nil))
 	orderNames := make([]string, len(orderIdents))
 	for i, orderIdent := range orderIdents {
 		orderNames[i] = orderIdent.Value
@@ -1082,7 +1082,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		// are populating Identifiers.
 		order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(order.DnsNames))
 	}
-	order.Identifiers = identifier.SliceAsProto(identifier.FromNames(order.Identifiers, order.DnsNames))
+	order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(order.Identifiers, order.DnsNames))
 
 	// TODO(#7311): Remove this once all RPC users can handle Identifiers.
 	order.DnsNames = make([]string, len(order.Identifiers))
@@ -2221,7 +2221,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// are populating Identifiers.
 		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
 	}
-	idents := core.NormalizeIdentifiers(identifier.FromNames(req.Identifiers, req.DnsNames))
+	idents := identifier.NormalizeIdentifiers(identifier.SliceFromProto(req.Identifiers, req.DnsNames))
 
 	if len(idents) > ra.maxNames {
 		return nil, berrors.MalformedError(

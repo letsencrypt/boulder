@@ -21,7 +21,6 @@ import (
 	"path"
 	"reflect"
 	"regexp"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -322,28 +321,13 @@ func UniqueLowerNames(names []string) (unique []string) {
 	return
 }
 
-// NormalizeIdentifiers returns the set of all unique ACME identifiers in the
-// input after all of them are lowercased. The returned identifier values will
-// be in their lowercased form and sorted alphabetically by value.
-func NormalizeIdentifiers(idents []identifier.ACMEIdentifier) []identifier.ACMEIdentifier {
-	for i := range idents {
-		idents[i].Value = strings.ToLower(idents[i].Value)
-	}
-
-	sort.Slice(idents, func(i, j int) bool {
-		return fmt.Sprintf("%s:%s", idents[i].Type, idents[i].Value) < fmt.Sprintf("%s:%s", idents[j].Type, idents[j].Value)
-	})
-
-	return slices.Compact(idents)
-}
-
 // HashIdentifiers returns a hash of the identifiers requested. This is intended
 // for use when interacting with the orderFqdnSets table and rate limiting.
 //
 // TODO(#7311): Process IP address identifiers appropriately, and
 // consistently with how we stringify IPs elsewhere.
 func HashIdentifiers(idents []identifier.ACMEIdentifier) []byte {
-	idents = NormalizeIdentifiers(idents)
+	idents = identifier.NormalizeIdentifiers(idents)
 
 	names := make([]string, len(idents))
 	for i, ident := range idents {
