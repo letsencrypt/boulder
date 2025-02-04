@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -154,6 +155,13 @@ func dnsChallIdx(t *testing.T, challenges []*corepb.Challenge) int64 {
 
 func numAuthorizations(o *corepb.Order) int {
 	return len(o.V2Authorizations)
+}
+
+// def is a test-only helper that returns the default validation profile
+// and is guaranteed to succeed because the validationProfile constructor
+// ensures that the default name has a corresponding profile.
+func (vp *validationProfiles) def() *validationProfile {
+	return vp.byName[vp.defaultName]
 }
 
 type DummyValidationAuthority struct {
@@ -341,15 +349,19 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	testKeyPolicy, err := goodkey.NewPolicy(nil, nil)
 	test.AssertNotError(t, err, "making keypolicy")
 
+	profiles := &validationProfiles{
+		defaultName: "test",
+		byName: map[string]*validationProfile{"test": {
+			pendingAuthzLifetime: 7 * 24 * time.Hour,
+			validAuthzLifetime:   300 * 24 * time.Hour,
+			orderLifetime:        7 * 24 * time.Hour,
+		}},
+	}
+
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
 		1, testKeyPolicy, limiter, txnBuilder, 100,
-		300*24*time.Hour, 7*24*time.Hour,
-		nil,
-		nil,
-		nil,
-		7*24*time.Hour, 5*time.Minute,
-		ctp, nil, nil)
+		profiles, nil, nil, 5*time.Minute, ctp, nil, nil)
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
@@ -634,7 +646,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 	// The DB authz's expiry should be equal to the current time plus the
 	// configured authorization lifetime
-	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), now.Add(ra.authorizationLifetime))
+	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), now.Add(ra.profiles.def().validAuthzLifetime))
 
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
@@ -1059,7 +1071,7 @@ func TestRecheckCAADates(t *testing.T) {
 	defer cleanUp()
 	recorder := &caaRecorder{names: make(map[string]bool)}
 	ra.VA = va.RemoteClients{CAAClient: recorder}
-	ra.authorizationLifetime = 15 * time.Hour
+	ra.profiles.def().validAuthzLifetime = 15 * time.Hour
 
 	recentValidated := fc.Now().Add(-1 * time.Hour)
 	recentExpires := fc.Now().Add(15 * time.Hour)
@@ -1375,7 +1387,7 @@ func TestNewOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderA.RegistrationID, int64(1))
-	test.AssertEquals(t, orderA.Expires.AsTime(), now.Add(ra.orderLifetime))
+	test.AssertEquals(t, orderA.Expires.AsTime(), now.Add(ra.profiles.def().orderLifetime))
 	test.AssertEquals(t, len(orderA.DnsNames), 3)
 	test.AssertEquals(t, len(orderA.Identifiers), 3)
 	test.AssertEquals(t, orderA.CertificateProfileName, "test")
@@ -1428,6 +1440,9 @@ func TestNewOrder_OrderReuse(t *testing.T) {
 	input := &corepb.Registration{Key: acctKeyB}
 	secondReg, err := ra.NewRegistration(context.Background(), input)
 	test.AssertNotError(t, err, "Error creating a second test registration")
+
+	// Insert a second (albeit identical) profile to reference
+	ra.profiles.byName["different"] = ra.profiles.def()
 
 	testCases := []struct {
 		Name           string
@@ -1526,7 +1541,7 @@ func TestNewOrder_OrderReuse_Expired(t *testing.T) {
 	defer cleanUp()
 
 	// Set the order lifetime to something short and known.
-	ra.orderLifetime = time.Hour
+	ra.profiles.def().orderLifetime = time.Hour
 
 	// Create an initial order.
 	extant, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
@@ -1742,48 +1757,115 @@ func TestNewOrder_AuthzReuse_NoPending(t *testing.T) {
 	test.AssertNotEquals(t, new.V2Authorizations[0], extant.V2Authorizations[0])
 }
 
+func TestNewOrder_ValidationProfiles(t *testing.T) {
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.profiles = &validationProfiles{
+		defaultName: "one",
+		byName: map[string]*validationProfile{
+			"one": {
+				pendingAuthzLifetime: 1 * 24 * time.Hour,
+				validAuthzLifetime:   1 * 24 * time.Hour,
+				orderLifetime:        1 * 24 * time.Hour,
+			},
+			"two": {
+				pendingAuthzLifetime: 2 * 24 * time.Hour,
+				validAuthzLifetime:   2 * 24 * time.Hour,
+				orderLifetime:        2 * 24 * time.Hour,
+			},
+		},
+	}
+
+	for _, tc := range []struct {
+		name        string
+		profile     string
+		wantExpires time.Time
+	}{
+		{
+			// A request with no profile should get an order and authzs with one-day lifetimes.
+			name:        "no profile specified",
+			profile:     "",
+			wantExpires: ra.clk.Now().Add(1 * 24 * time.Hour),
+		},
+		{
+			// A request for profile one should get an order and authzs with one-day lifetimes.
+			name:        "profile one",
+			profile:     "one",
+			wantExpires: ra.clk.Now().Add(1 * 24 * time.Hour),
+		},
+		{
+			// A request for profile two should get an order and authzs with one-day lifetimes.
+			name:        "profile two",
+			profile:     "two",
+			wantExpires: ra.clk.Now().Add(2 * 24 * time.Hour),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+				RegistrationID:         Registration.Id,
+				DnsNames:               []string{randomDomain()},
+				CertificateProfileName: tc.profile,
+			})
+			if err != nil {
+				t.Fatalf("creating order: %s", err)
+			}
+			gotExpires := order.Expires.AsTime()
+			if gotExpires != tc.wantExpires {
+				t.Errorf("NewOrder(profile: %q).Expires = %s, expected %s", tc.profile, gotExpires, tc.wantExpires)
+			}
+
+			authz, err := ra.GetAuthorization(context.Background(), &rapb.GetAuthorizationRequest{
+				Id: order.V2Authorizations[0],
+			})
+			if err != nil {
+				t.Fatalf("fetching test authz: %s", err)
+			}
+			gotExpires = authz.Expires.AsTime()
+			if gotExpires != tc.wantExpires {
+				t.Errorf("GetAuthorization(profile: %q).Expires = %s, expected %s", tc.profile, gotExpires, tc.wantExpires)
+			}
+		})
+	}
+}
+
 func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
 	testCases := []struct {
 		name               string
-		validationProfiles map[string]*ValidationProfile
+		validationProfiles map[string]*validationProfile
 		expectErr          bool
 		expectErrContains  string
 	}{
 		{
-			name:               "Allow all account IDs regardless of profile",
-			validationProfiles: nil,
-			expectErr:          false,
-		},
-		{
-			name: "Allow all account IDs for this specific profile",
-			validationProfiles: map[string]*ValidationProfile{
-				"test": NewValidationProfile(nil),
+			name: "Allow all account IDs",
+			validationProfiles: map[string]*validationProfile{
+				"test": {allowList: nil},
 			},
 			expectErr: false,
 		},
 		{
 			name: "Deny all but account Id 1337",
-			validationProfiles: map[string]*ValidationProfile{
-				"test": NewValidationProfile(allowlist.NewList([]int64{1337})),
+			validationProfiles: map[string]*validationProfile{
+				"test": {allowList: allowlist.NewList([]int64{1337})},
 			},
 			expectErr:         true,
 			expectErrContains: "not permitted to use certificate profile",
 		},
 		{
 			name: "Deny all",
-			validationProfiles: map[string]*ValidationProfile{
-				"test": NewValidationProfile(allowlist.NewList([]int64{})),
+			validationProfiles: map[string]*validationProfile{
+				"test": {allowList: allowlist.NewList([]int64{})},
 			},
 			expectErr:         true,
 			expectErrContains: "not permitted to use certificate profile",
 		},
 		{
 			name: "Allow Registration.Id",
-			validationProfiles: map[string]*ValidationProfile{
-				"test": NewValidationProfile(allowlist.NewList([]int64{Registration.Id})),
+			validationProfiles: map[string]*validationProfile{
+				"test": {allowList: allowlist.NewList([]int64{Registration.Id})},
 			},
 			expectErr: false,
 		},
@@ -1791,7 +1873,7 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ra.validationProfiles = tc.validationProfiles
+			ra.profiles.byName = tc.validationProfiles
 
 			orderReq := &rapb.NewOrderRequest{
 				RegistrationID:         Registration.Id,
@@ -2164,7 +2246,7 @@ func TestNewOrderExpiry(t *testing.T) {
 	idents := []identifier.ACMEIdentifier{identifier.NewDNS("zombo.com")}
 
 	// Set the order lifetime to 48 hours.
-	ra.orderLifetime = 48 * time.Hour
+	ra.profiles.def().orderLifetime = 48 * time.Hour
 
 	// Use an expiry that is sooner than the configured order expiry but greater
 	// than 24 hours away.
@@ -2211,8 +2293,8 @@ func TestNewOrderExpiry(t *testing.T) {
 	test.AssertEquals(t, order.Expires.AsTime(), fakeAuthzExpires)
 
 	// Set the order lifetime to be lower than the fakeAuthzLifetime
-	ra.orderLifetime = 12 * time.Hour
-	expectedOrderExpiry := clk.Now().Add(ra.orderLifetime)
+	ra.profiles.def().orderLifetime = 12 * time.Hour
+	expectedOrderExpiry := clk.Now().Add(12 * time.Hour)
 	// Create the order again
 	order, err = ra.NewOrder(ctx, orderReq)
 	// It shouldn't fail
@@ -2884,7 +2966,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 		identifier.NewDNS("still.not-example.com"),
 		identifier.NewDNS("definitely.not-example.com"),
 	}
-	exp := ra.clk.Now().Add(ra.orderLifetime)
+	exp := ra.clk.Now().Add(ra.profiles.def().orderLifetime)
 	challs := []core.AcmeChallenge{core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01}
 	var authzIDs []int64
 	for i, ident := range idents {
@@ -3129,11 +3211,11 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 
 	// Twiddle the authz to pretend its been validated by the VA
 	authz.Challenges[0].Status = "valid"
-	err = ra.recordValidation(ctx, authz.ID, authz.Expires, &authz.Challenges[0])
+	err = ra.recordValidation(ctx, authz.ID, fc.Now().Add(24*time.Hour), &authz.Challenges[0])
 	test.AssertNotError(t, err, "ra.recordValidation failed")
 
 	// Try to record the same validation a second time.
-	err = ra.recordValidation(ctx, authz.ID, authz.Expires, &authz.Challenges[0])
+	err = ra.recordValidation(ctx, authz.ID, fc.Now().Add(25*time.Hour), &authz.Challenges[0])
 	test.AssertError(t, err, "ra.recordValidation didn't fail")
 	test.AssertErrorIs(t, err, berrors.NotFound)
 }
@@ -3332,7 +3414,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 		identifier.NewDNS("still.not-example.com"),
 		identifier.NewDNS("definitely.not-example.com"),
 	}
-	exp := ra.clk.Now().Add(ra.orderLifetime)
+	exp := ra.clk.Now().Add(ra.profiles.def().orderLifetime)
 	var authzIDs []int64
 	for _, ident := range idents {
 		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, ident, exp, core.ChallengeTypeHTTP01, ra.clk.Now()))
@@ -3462,11 +3544,12 @@ func (sa *mockSAWithFinalize) FQDNSetTimestampsForWindow(ctx context.Context, in
 	}, nil
 }
 
-func TestIssueCertificateInnerWithProfile(t *testing.T) {
+func TestIssueCertificateOuter(t *testing.T) {
 	_, _, ra, _, fc, cleanup := initAuthorities(t)
 	defer cleanup()
+	ra.SA = &mockSAWithFinalize{}
 
-	// Generate a reasonable-looking CSR and cert to pass the matchesCSR check.
+	// Create a CSR to submit and a certificate for the fake CA to return.
 	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "generating test key")
 	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{DNSNames: []string{"example.com"}}, testKey)
@@ -3483,78 +3566,69 @@ func TestIssueCertificateInnerWithProfile(t *testing.T) {
 	test.AssertNotError(t, err, "creating test cert")
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 
-	// Use a mock CA that will record the profile name and profile hash included
-	// in the RA's request messages. Populate it with the cert generated above.
-	mockCA := MockCARecordingProfile{inner: &mocks.MockCA{PEM: certPEM}}
-	ra.CA = &mockCA
-
-	ra.SA = &mockSAWithFinalize{}
-
-	// Call issueCertificateInner with the CSR generated above and the profile
-	// name "default", which will cause the mockCA to return a specific hash.
-	_, cpId, err := ra.issueCertificateInner(context.Background(), csr, false, "default", 1, 1)
-	test.AssertNotError(t, err, "issuing cert with profile name")
-	test.AssertEquals(t, mockCA.profileName, cpId.name)
-	test.AssertByteEquals(t, mockCA.profileHash, cpId.hash)
-}
-
-func TestIssueCertificateOuter(t *testing.T) {
-	_, sa, ra, _, fc, cleanup := initAuthorities(t)
-	defer cleanup()
-
-	// Make some valid authorizations for some names
-	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	idents := []identifier.ACMEIdentifier{
-		identifier.NewDNS("not-example.com"),
-		identifier.NewDNS("www.not-example.com"),
-		identifier.NewDNS("still.not-example.com"),
-		identifier.NewDNS("definitely.not-example.com"),
-	}
-	exp := ra.clk.Now().Add(ra.orderLifetime)
-	var authzIDs []int64
-	for _, ident := range idents {
-		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, ident, exp, core.ChallengeTypeHTTP01, ra.clk.Now()))
-	}
-
-	// Create a pending order for all of the names
-	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:         Registration.Id,
-			Expires:                timestamppb.New(exp),
-			DnsNames:               names,
-			Identifiers:            identifier.SliceAsProto(idents),
-			V2Authorizations:       authzIDs,
-			CertificateProfileName: "philsProfile",
+	for _, tc := range []struct {
+		name        string
+		profile     string
+		wantProfile string
+		wantHash    string
+	}{
+		{
+			name:        "select default profile when none specified",
+			wantProfile: "test", // matches ra.defaultProfileName
+			wantHash:    "9f86d081884c7d65",
 		},
-	})
-	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
+		{
+			name:        "default profile specified",
+			profile:     "test",
+			wantProfile: "test",
+			wantHash:    "9f86d081884c7d65",
+		},
+		{
+			name:        "other profile specified",
+			profile:     "other",
+			wantProfile: "other",
+			wantHash:    "d9298a10d1b07358",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Use a mock CA that will record the profile name and profile hash included
+			// in the RA's request messages. Populate it with the cert generated above.
+			mockCA := MockCARecordingProfile{inner: &mocks.MockCA{PEM: certPEM}}
+			ra.CA = &mockCA
 
-	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "generating test key")
-	csrDER, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{DNSNames: []string{"example.com"}}, testKey)
-	test.AssertNotError(t, err, "creating test csr")
-	csr, err := x509.ParseCertificateRequest(csrDER)
-	test.AssertNotError(t, err, "parsing test csr")
-	certDER, err := x509.CreateCertificate(rand.Reader, &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		DNSNames:              []string{"example.com"},
-		NotBefore:             fc.Now(),
-		BasicConstraintsValid: true,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-	}, &x509.Certificate{}, testKey.Public(), testKey)
-	test.AssertNotError(t, err, "creating test cert")
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+			order := &corepb.Order{
+				RegistrationID:         Registration.Id,
+				Expires:                timestamppb.New(fc.Now().Add(24 * time.Hour)),
+				DnsNames:               []string{"example.com"},
+				Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").AsProto()},
+				CertificateProfileName: tc.profile,
+			}
 
-	// Use a mock CA that will record the profile name and profile hash included
-	// in the RA's request messages. Populate it with the cert generated above.
-	mockCA := MockCARecordingProfile{inner: &mocks.MockCA{PEM: certPEM}}
-	ra.CA = &mockCA
+			order, err = ra.issueCertificateOuter(context.Background(), order, csr, certificateRequestEvent{})
 
-	ra.SA = &mockSAWithFinalize{}
+			// The resulting order should have new fields populated
+			if order.Status != string(core.StatusValid) {
+				t.Errorf("order.Status = %+v, want %+v", order.Status, core.StatusValid)
+			}
+			if order.CertificateSerial != core.SerialToString(big.NewInt(1)) {
+				t.Errorf("CertificateSerial = %+v, want %+v", order.CertificateSerial, 1)
+			}
 
-	_, err = ra.issueCertificateOuter(context.Background(), order, csr, certificateRequestEvent{})
-	test.AssertNotError(t, err, "Could not issue certificate")
-	test.AssertMetricWithLabelsEquals(t, ra.newCertCounter, prometheus.Labels{"profileName": mockCA.profileName, "profileHash": fmt.Sprintf("%x", mockCA.profileHash)}, 1)
+			// The recorded profile and profile hash should match what we expect.
+			if mockCA.profileName != tc.wantProfile {
+				t.Errorf("recorded profileName = %+v, want %+v", mockCA.profileName, tc.wantProfile)
+			}
+			wantHash, err := hex.DecodeString(tc.wantHash)
+			if err != nil {
+				t.Fatalf("decoding test hash: %s", err)
+			}
+			if !bytes.Equal(mockCA.profileHash, wantHash) {
+				t.Errorf("recorded profileName = %x, want %x", mockCA.profileHash, wantHash)
+			}
+			test.AssertMetricWithLabelsEquals(t, ra.newCertCounter, prometheus.Labels{"profileName": tc.wantProfile, "profileHash": tc.wantHash}, 1)
+			ra.newCertCounter.Reset()
+		})
+	}
 }
 
 func TestNewOrderMaxNames(t *testing.T) {

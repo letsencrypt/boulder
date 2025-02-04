@@ -172,7 +172,7 @@
 				}
 			]
 		},
-		"serialPrefixHex": "7f",
+		"serialPrefixHex": "6e",
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
 		"goodkey": {},

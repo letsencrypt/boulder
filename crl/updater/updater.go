@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -35,6 +36,8 @@ type crlUpdater struct {
 	maxParallelism int
 	maxAttempts    int
 
+	temporallyShardedPrefixes []string
+
 	sa sapb.StorageAuthorityClient
 	ca capb.CRLGeneratorClient
 	cs cspb.CRLStorerClient
@@ -55,6 +58,7 @@ func NewUpdater(
 	updateTimeout time.Duration,
 	maxParallelism int,
 	maxAttempts int,
+	temporallyShardedPrefixes []string,
 	sa sapb.StorageAuthorityClient,
 	ca capb.CRLGeneratorClient,
 	cs cspb.CRLStorerClient,
@@ -113,6 +117,7 @@ func NewUpdater(
 		updateTimeout,
 		maxParallelism,
 		maxAttempts,
+		temporallyShardedPrefixes,
 		sa,
 		ca,
 		cs,
@@ -207,9 +212,11 @@ func reRevoked(a *proto.CRLEntry, b *proto.CRLEntry) (*proto.CRLEntry, error) {
 // addFromStream pulls `proto.CRLEntry` objects from a stream, adding them to the crlEntries map.
 //
 // Consolidates duplicates and checks for internal consistency of the results.
+// If allowedSerialPrefixes is non-empty, only serials with that one-byte prefix (two hex-encoded
+// bytes) will be accepted.
 //
-// Returns the number of entries received from the stream, regardless of duplicate status.
-func addFromStream(crlEntries map[string]*proto.CRLEntry, stream crlStream) (int, error) {
+// Returns the number of entries received from the stream, regardless of whether they were accepted.
+func addFromStream(crlEntries map[string]*proto.CRLEntry, stream crlStream, allowedSerialPrefixes []string) (int, error) {
 	var count int
 	for {
 		entry, err := stream.Recv()
@@ -220,6 +227,10 @@ func addFromStream(crlEntries map[string]*proto.CRLEntry, stream crlStream) (int
 			return 0, fmt.Errorf("retrieving entry from SA: %w", err)
 		}
 		count++
+		serialPrefix := entry.Serial[0:2]
+		if len(allowedSerialPrefixes) > 0 && !slices.Contains(allowedSerialPrefixes, serialPrefix) {
+			continue
+		}
 		previousEntry := crlEntries[entry.Serial]
 		if previousEntry == nil {
 			crlEntries[entry.Serial] = entry
@@ -284,7 +295,7 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 			return fmt.Errorf("GetRevokedCerts: %w", err)
 		}
 
-		n, err := addFromStream(crlEntries, saStream)
+		n, err := addFromStream(crlEntries, saStream, cu.temporallyShardedPrefixes)
 		if err != nil {
 			return fmt.Errorf("streaming GetRevokedCerts: %w", err)
 		}
@@ -308,7 +319,7 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 		return fmt.Errorf("GetRevokedCertsByShard: %w", err)
 	}
 
-	n, err := addFromStream(crlEntries, saStream)
+	n, err := addFromStream(crlEntries, saStream, nil)
 	if err != nil {
 		return fmt.Errorf("streaming GetRevokedCertsByShard: %w", err)
 	}
