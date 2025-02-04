@@ -225,6 +225,7 @@ func TestUpdateShard(t *testing.T) {
 		[]*issuance.Certificate{e1, r3},
 		2, 18*time.Hour, 24*time.Hour,
 		6*time.Hour, time.Minute, 1, 1,
+		nil,
 		&fakeSAC{
 			revokedCerts: revokedCertsStream{},
 			maxNotAfter:  clk.Now().Add(90 * 24 * time.Hour),
@@ -405,6 +406,7 @@ func TestUpdateShardWithRetry(t *testing.T) {
 		[]*issuance.Certificate{e1, r3},
 		2, 18*time.Hour, 24*time.Hour,
 		6*time.Hour, time.Minute, 1, 1,
+		nil,
 		&fakeSAC{revokedCerts: revokedCertsStream{err: sentinelErr}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
 		&fakeCA{gcc: generateCRLStream{}},
 		&fakeStorer{uploaderStream: &noopUploader{}},
@@ -643,7 +645,7 @@ func TestAddFromStream(t *testing.T) {
 			crlEntries := make(map[string]*corepb.CRLEntry)
 			var err error
 			for _, input := range tc.inputs {
-				_, err = addFromStream(crlEntries, &revokedCertsStream{entries: input})
+				_, err = addFromStream(crlEntries, &revokedCertsStream{entries: input}, nil)
 				if err != nil {
 					break
 				}
@@ -662,5 +664,39 @@ func TestAddFromStream(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestAddFromStreamDisallowedSerialPrefix(t *testing.T) {
+	now := time.Now()
+	yesterday := now.Add(-24 * time.Hour)
+	input := []*corepb.CRLEntry{
+		{
+			Serial:    "abcdefg",
+			Reason:    ocsp.CessationOfOperation,
+			RevokedAt: timestamppb.New(yesterday),
+		},
+		{
+			Serial:    "01020304",
+			Reason:    ocsp.CessationOfOperation,
+			RevokedAt: timestamppb.New(yesterday),
+		},
+	}
+	crlEntries := make(map[string]*corepb.CRLEntry)
+	var err error
+	_, err = addFromStream(
+		crlEntries,
+		&revokedCertsStream{entries: input},
+		[]string{"ab"},
+	)
+	if err != nil {
+		t.Fatalf("addFromStream: %s", err)
+	}
+	expected := map[string]*corepb.CRLEntry{
+		"abcdefg": input[0],
+	}
+
+	if !reflect.DeepEqual(crlEntries, expected) {
+		t.Errorf("addFromStream=%+v, want %+v", crlEntries, expected)
 	}
 }
