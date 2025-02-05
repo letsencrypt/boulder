@@ -350,7 +350,7 @@ func newOrderValid(order *corepb.Order) bool {
 	if order.Identifiers == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(order.DnsNames))
+		order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
 	}
 
 	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.Identifiers) == 0)

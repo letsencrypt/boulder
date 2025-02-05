@@ -1079,7 +1079,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	if req.Order.Identifiers == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.Order.DnsNames))
+		req.Order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.Order.DnsNames))
 	}
 	req.Order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(req.Order.Identifiers, req.Order.DnsNames))
 	if len(req.Order.Identifiers) == 0 {
@@ -1190,7 +1190,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	if order.Identifiers == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(order.DnsNames))
+		order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
 	}
 	order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(order.Identifiers, order.DnsNames))
 
@@ -1904,7 +1904,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		var authzPB *sapb.Authorizations
 		authzPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
-			Identifiers:    identifier.SliceAsProto(identifier.SliceNewDNS(cert.DNSNames)),
+			Identifiers:    identifier.SliceAsProto(identifier.SliceFromProto(nil, cert.DNSNames)),
 			DnsNames:       cert.DNSNames,
 			ValidUntil:     timestamppb.New(ra.clk.Now()),
 		})
@@ -2339,7 +2339,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if req.Identifiers == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
+		req.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
 	}
 	idents := identifier.Normalize(identifier.SliceFromProto(req.Identifiers, req.DnsNames))
 
@@ -2404,7 +2404,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
 		// upwards, once all RPC users are populating Identifiers.
 		if existingOrder.Identifiers == nil {
-			existingOrder.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(existingOrder.DnsNames))
+			existingOrder.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, existingOrder.DnsNames))
 		}
 		if core.IsAnyNilOrZero(existingOrder.Identifiers) {
 			return nil, errIncompleteGRPCResponse
@@ -2595,7 +2595,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
 	// upwards, once all RPC users are populating Identifiers.
 	if storedOrder.Identifiers == nil {
-		storedOrder.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(storedOrder.DnsNames))
+		storedOrder.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, storedOrder.DnsNames))
 	}
 	if core.IsAnyNilOrZero(storedOrder.Identifiers) {
 		return nil, errIncompleteGRPCResponse
