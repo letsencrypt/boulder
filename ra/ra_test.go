@@ -2079,8 +2079,8 @@ func TestNewOrderWildcard(t *testing.T) {
 		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
 	test.AssertDeepEquals(t,
-		identifier.NormalizeIdentifiers(identifier.SliceFromProto(order.Identifiers, order.DnsNames)),
-		identifier.NormalizeIdentifiers(orderIdents))
+		identifier.Normalize(identifier.SliceFromProto(order.Identifiers, order.DnsNames)),
+		identifier.Normalize(orderIdents))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
 	// Check each of the authz IDs in the order
@@ -2138,8 +2138,8 @@ func TestNewOrderWildcard(t *testing.T) {
 		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
 	test.AssertDeepEquals(t,
-		identifier.NormalizeIdentifiers(identifier.SliceFromProto(order.Identifiers, order.DnsNames)),
-		identifier.NormalizeIdentifiers(orderIdents))
+		identifier.Normalize(identifier.SliceFromProto(order.Identifiers, order.DnsNames)),
+		identifier.Normalize(orderIdents))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
 	for _, authzID := range order.V2Authorizations {

@@ -1116,7 +1116,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	//
 	// TODO(#7311): Support IP address identifiers.
 	csrNames := csrlib.NamesFromCSR(csr).SANs
-	orderIdents := identifier.NormalizeIdentifiers(identifier.SliceFromProto(req.Order.Identifiers, nil))
+	orderIdents := identifier.Normalize(identifier.SliceFromProto(req.Order.Identifiers, nil))
 	orderNames := make([]string, len(orderIdents))
 	for i, orderIdent := range orderIdents {
 		orderNames[i] = orderIdent.Value
@@ -2341,7 +2341,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// are populating Identifiers.
 		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
 	}
-	idents := identifier.NormalizeIdentifiers(identifier.SliceFromProto(req.Identifiers, req.DnsNames))
+	idents := identifier.Normalize(identifier.SliceFromProto(req.Identifiers, req.DnsNames))
 
 	if len(idents) > ra.maxNames {
 		return nil, berrors.MalformedError(

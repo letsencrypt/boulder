@@ -23,7 +23,7 @@ func TestNormalizeIdentifiers(t *testing.T) {
 		{Type: "DNS", Value: "baz.com"},
 		{Type: "DNS", Value: "foobar.com"},
 	}
-	u := NormalizeIdentifiers(idents)
+	u := Normalize(idents)
 	test.AssertDeepEquals(t, expected, u)
 }
 

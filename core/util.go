@@ -327,7 +327,7 @@ func UniqueLowerNames(names []string) (unique []string) {
 // TODO(#7311): Process IP address identifiers appropriately, and
 // consistently with how we stringify IPs elsewhere.
 func HashIdentifiers(idents []identifier.ACMEIdentifier) []byte {
-	idents = identifier.NormalizeIdentifiers(idents)
+	idents = identifier.Normalize(idents)
 
 	names := make([]string, len(idents))
 	for i, ident := range idents {

@@ -2213,7 +2213,7 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 }
 
 func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIdents []identifier.ACMEIdentifier, regID int64) ([]string, error) {
-	uniqueOrderIdents := identifier.NormalizeIdentifiers(orderIdents)
+	uniqueOrderIdents := identifier.Normalize(orderIdents)
 	var idents []*corepb.Identifier
 	for _, ident := range uniqueOrderIdents {
 		idents = append(idents, &corepb.Identifier{
@@ -2299,7 +2299,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			return
 		}
 	}
-	idents = identifier.NormalizeIdentifiers(idents)
+	idents = identifier.Normalize(idents)
 	logEvent.Identifiers = idents
 
 	err = policy.WellFormedIdentifiers(idents)

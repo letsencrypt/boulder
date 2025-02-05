@@ -470,12 +470,24 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		}
 
 		if features.Get().CertCheckerChecksValidations {
-			err = c.checkValidations(ctx, cert, identifier.SliceNewDNS(parsedCert.DNSNames))
+			idents, err := identifier.FromCert(p)
 			if err != nil {
 				if features.Get().CertCheckerRequiresValidations {
 					problems = append(problems, err.Error())
 				} else {
-					c.logger.Errf("Certificate %s %s: %s", cert.Serial, parsedCert.DNSNames, err)
+					c.logger.Errf("Couldn't parse identifiers from certificate %s: %s", cert.Serial, err)
+				}
+			}
+			err = c.checkValidations(ctx, cert, idents)
+			if err != nil {
+				if features.Get().CertCheckerRequiresValidations {
+					problems = append(problems, err.Error())
+				} else {
+					identValues := make([]string, len(idents))
+					for key, ident := range idents {
+						identValues[key] = ident.Value
+					}
+					c.logger.Errf("Certificate %s %s: %s", cert.Serial, identValues, err)
 				}
 			}
 		}

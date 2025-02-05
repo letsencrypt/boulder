@@ -153,13 +153,13 @@ func FromCert(cert *x509.Certificate) ([]ACMEIdentifier, error) {
 		return nil, err
 	}
 
-	return NormalizeIdentifiers(append(SliceNewDNS(sans), ips...)), nil
+	return Normalize(append(SliceNewDNS(sans), ips...)), nil
 }
 
-// NormalizeIdentifiers returns the set of all unique ACME identifiers in the
+// Normalize returns the set of all unique ACME identifiers in the
 // input after all of them are lowercased. The returned identifier values will
 // be in their lowercased form and sorted alphabetically by value.
-func NormalizeIdentifiers(idents []ACMEIdentifier) []ACMEIdentifier {
+func Normalize(idents []ACMEIdentifier) []ACMEIdentifier {
 	for i := range idents {
 		idents[i].Value = strings.ToLower(idents[i].Value)
 	}
