@@ -7,7 +7,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestNormalizeIdentifiers(t *testing.T) {
+func TestNormalize(t *testing.T) {
 	idents := []ACMEIdentifier{
 		{Type: "DNS", Value: "foobar.com"},
 		{Type: "DNS", Value: "fooBAR.com"},

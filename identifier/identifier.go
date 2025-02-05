@@ -139,6 +139,12 @@ func SliceNewIPs(netIPs []net.IP) ([]ACMEIdentifier, error) {
 
 // FromCert extracts the Subject Common Name and Subject Alternative Names from
 // a certificate, and returns a slice of ACMEIdentifiers (or an error).
+//
+// TODO(#7961): We need to ensure the output is as identical as possible to
+// reading a slice of DNSNames from an x509.Certificate. This could be checked
+// in a test. This is because in (at least) expiration-mailer, we were using
+// HashIdentifiers(parsedCert.DNSNames), and that is being changed to
+// HashIdentifiers(FromCert(cert)).
 func FromCert(cert *x509.Certificate) ([]ACMEIdentifier, error) {
 	// Produce a new "sans" slice with the same memory address as csr.DNSNames
 	// but force a new allocation if an append happens so that we don't

@@ -353,8 +353,12 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 
 	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "setting up DB")
+	parsedCert, err := x509.ParseCertificate(cert.DER)
+	test.AssertNotError(t, err, "parsing certificate to x509")
+	idents, err := identifier.FromCert(parsedCert)
+	test.AssertNotError(t, err, "parsing identifiers from certificate")
 	err = setupDBMap.Insert(ctx, &core.FQDNSet{
-		SetHash: core.HashIdentifiers(identifier.SliceNewDNS(names)),
+		SetHash: core.HashIdentifiers(idents),
 		Serial:  core.SerialToString(serial2),
 		Issued:  testCtx.fc.Now().Add(time.Hour),
 		Expires: expires.Add(time.Hour),
@@ -561,23 +565,27 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []certDERWithRegID {
 	test.AssertNotError(t, err, "creating cert C")
 
 	// Expires in 3d, renewed
-	certDNames := []string{"example-d.com"}
 	certD, err := makeCertificate(
 		regC.Id,
 		serial4,
-		certDNames,
+		[]string{"example-d.com"},
 		72*time.Hour,
 		ctx.fc)
 	test.AssertNotError(t, err, "creating cert D")
 
+	parsedCertD, err := x509.ParseCertificate(certD.DER)
+	test.AssertNotError(t, err, "parsing certificate to x509")
+	idents, err := identifier.FromCert(parsedCertD)
+	test.AssertNotError(t, err, "parsing identifiers from certificate")
+
 	fqdnStatusD := &core.FQDNSet{
-		SetHash: core.HashIdentifiers(identifier.SliceNewDNS(certDNames)),
+		SetHash: core.HashIdentifiers(idents),
 		Serial:  serial4String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -87),
 		Expires: ctx.fc.Now().AddDate(0, 0, 3),
 	}
 	fqdnStatusDRenewed := &core.FQDNSet{
-		SetHash: core.HashIdentifiers(identifier.SliceNewDNS(certDNames)),
+		SetHash: core.HashIdentifiers(idents),
 		Serial:  serial5String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -3),
 		Expires: ctx.fc.Now().AddDate(0, 0, 87),
@@ -738,8 +746,12 @@ func TestCertIsRenewed(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		parsedCert, err := x509.ParseCertificate(certDer)
+		test.AssertNotError(t, err, "parsing certificate to x509")
+		idents, err := identifier.FromCert(parsedCert)
+		test.AssertNotError(t, err, "parsing identifiers from certificate")
 		fqdnStatus := &core.FQDNSet{
-			SetHash: core.HashIdentifiers(identifier.SliceNewDNS(testData.DNS)),
+			SetHash: core.HashIdentifiers(idents),
 			Serial:  testData.stringSerial,
 			Issued:  testData.NotBefore,
 			Expires: testData.NotAfter,
