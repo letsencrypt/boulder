@@ -1689,6 +1689,7 @@ func TestNewOrder_AuthzReuse(t *testing.T) {
 			Name:           "Don't reuse valid authz with wrong profile",
 			RegistrationID: Registration.Id,
 			DnsName:        valid,
+			Identifier:     identifier.NewDNS(valid),
 			Profile:        "test",
 			ExpectReuse:    false,
 		},
