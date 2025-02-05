@@ -310,16 +310,19 @@ func (m *mailer) updateLastNagTimestampsChunk(ctx context.Context, certs []*x509
 	}
 }
 
-func (m *mailer) certIsRenewed(ctx context.Context, names []string, issued time.Time) (bool, error) {
-	namehash := core.HashIdentifiers(identifier.SliceNewDNS(names))
+func (m *mailer) certIsRenewed(ctx context.Context, cert *x509.Certificate) (bool, error) {
+	idents, err := identifier.FromCert(cert)
+	if err != nil {
+		return false, err
+	}
 
 	var present bool
-	err := m.dbMap.SelectOne(
+	err = m.dbMap.SelectOne(
 		ctx,
 		&present,
 		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? AND issued > ? LIMIT 1)`,
-		namehash,
-		issued,
+		core.HashIdentifiers(idents),
+		cert.NotBefore,
 	)
 	return present, err
 }
@@ -425,7 +428,7 @@ func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int6
 				sendDelay.Truncate(time.Second).Seconds())
 		}
 
-		renewed, err := m.certIsRenewed(ctx, parsedCert.DNSNames, parsedCert.NotBefore)
+		renewed, err := m.certIsRenewed(ctx, parsedCert)
 		if err != nil {
 			m.log.AuditErrf("expiration-mailer: error fetching renewal state: %v", err)
 			// assume not renewed

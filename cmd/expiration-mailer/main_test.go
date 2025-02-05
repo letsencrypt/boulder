@@ -650,6 +650,7 @@ func TestCertIsRenewed(t *testing.T) {
 		DNS          []string
 		NotBefore    time.Time
 		NotAfter     time.Time
+		rawCert      x509.Certificate
 		// this field is the test assertion
 		IsRenewed bool
 	}{
@@ -726,14 +727,14 @@ func TestCertIsRenewed(t *testing.T) {
 	for _, testData := range testCerts {
 		testData.stringSerial = core.SerialToString(testData.Serial)
 
-		rawCert := x509.Certificate{
+		testData.rawCert = x509.Certificate{
 			NotBefore:    testData.NotBefore,
 			NotAfter:     testData.NotAfter,
 			DNSNames:     testData.DNS,
 			SerialNumber: testData.Serial,
 		}
 		// Can't use makeCertificate here because we also care about NotBefore
-		certDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
+		certDer, err := x509.CreateCertificate(rand.Reader, &testData.rawCert, &testData.rawCert, &testKey.PublicKey, testKey)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -752,7 +753,7 @@ func TestCertIsRenewed(t *testing.T) {
 	}
 
 	for _, testData := range testCerts {
-		renewed, err := testCtx.m.certIsRenewed(context.Background(), testData.DNS, testData.NotBefore)
+		renewed, err := testCtx.m.certIsRenewed(context.Background(), &testData.rawCert)
 		if err != nil {
 			t.Errorf("error checking renewal state for %s: %v", testData.stringSerial, err)
 			continue
