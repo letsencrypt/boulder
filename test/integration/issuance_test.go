@@ -31,7 +31,7 @@ func TestCommonNameInCSR(t *testing.T) {
 	san2 := random_domain()
 
 	// Issue a cert. authAndIssue includes the 0th name as the CN by default.
-	ir, err := authAndIssue(client, key, []string{cn, san1, san2}, true)
+	ir, err := authAndIssue(client, key, []string{cn, san1, san2}, true, "")
 	test.AssertNotError(t, err, "failed to issue test cert")
 	cert := ir.certs[0]
 
@@ -62,7 +62,7 @@ func TestFirstCSRSANHoistedToCN(t *testing.T) {
 	san2 := "b" + random_domain()
 
 	// Issue a cert using a CSR with no CN set, and the SANs in *non*-alpha order.
-	ir, err := authAndIssue(client, key, []string{san2, san1}, false)
+	ir, err := authAndIssue(client, key, []string{san2, san1}, false, "")
 	test.AssertNotError(t, err, "failed to issue test cert")
 	cert := ir.certs[0]
 
@@ -92,7 +92,7 @@ func TestCommonNameSANsTooLong(t *testing.T) {
 	san2 := fmt.Sprintf("thisdomainnameis.morethan64characterslong.forthesakeoftesting.%s", random_domain())
 
 	// Issue a cert using a CSR with no CN set.
-	ir, err := authAndIssue(client, key, []string{san1, san2}, false)
+	ir, err := authAndIssue(client, key, []string{san1, san2}, false, "")
 	test.AssertNotError(t, err, "failed to issue test cert")
 	cert := ir.certs[0]
 
