@@ -67,8 +67,8 @@ func TestFirstCSRSANHoistedToCN(t *testing.T) {
 	san1 := "a" + random_domain()
 	san2 := "b" + random_domain()
 	idents := []identifier.ACMEIdentifier{
-		identifier.NewDNS(san1),
 		identifier.NewDNS(san2),
+		identifier.NewDNS(san1),
 	}
 
 	// Issue a cert using a CSR with no CN set, and the SANs in *non*-alpha order.

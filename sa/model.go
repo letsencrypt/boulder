@@ -554,17 +554,16 @@ func rehydrateHostPort(vr *core.ValidationRecord) error {
 // authorized a given issuance that is known to have occurred. The returned
 // authzs will all belong to the given regID, will have potentially been valid
 // at the time of issuance, and will have the appropriate identifier type and
-// value. This may return multiple authzs for the same identifier type and
-// value.
+// value. This may return multiple authzs for the same identifier type and value.
 //
 // This returns "potentially" valid authzs because a client may have set an
 // authzs status to deactivated after issuance, so we return both valid and
-// deactivated authzs. It also uses a small amount of leeway (1s) to account for
-// possible clock skew.
+// deactivated authzs. It also uses a small amount of leeway (1s) to account
+// for possible clock skew.
 //
 // This function doesn't do anything special for authzs with an expiration in
-// the past. If the stored authz has a valid status, it is returned with a valid
-// status regardless of whether it is also expired.
+// the past. If the stored authz has a valid status, it is returned with a
+// valid status regardless of whether it is also expired.
 func SelectAuthzsMatchingIssuance(
 	ctx context.Context,
 	s db.Selector,

@@ -429,8 +429,6 @@ type certificateRequestEvent struct {
 	CommonName string `json:",omitempty"`
 	// Identifiers are the identifiers from the issued cert
 	Identifiers []identifier.ACMEIdentifier `json:",omitempty"`
-	// Names are the DNS SAN entries from the issued cert
-	Names []string `json:",omitempty"`
 	// NotBefore is the starting timestamp of the issued cert's validity period
 	NotBefore time.Time `json:",omitempty"`
 	// NotAfter is the ending timestamp of the issued cert's validity period
@@ -1256,15 +1254,21 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 				"profileHash": hex.EncodeToString(cpId.hash),
 			}).Inc()
 
-		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
-		logEvent.CommonName = cert.Subject.CommonName
-		logEvent.Names = cert.DNSNames
-		logEvent.NotBefore = cert.NotBefore
-		logEvent.NotAfter = cert.NotAfter
-		logEvent.CertProfileName = cpId.name
-		logEvent.CertProfileHash = hex.EncodeToString(cpId.hash)
+		certIdents, err := identifier.FromCert(cert)
+		if err != nil {
+			logEvent.Error = err.Error()
+			result = "error"
+		} else {
+			logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
+			logEvent.CommonName = cert.Subject.CommonName
+			logEvent.Identifiers = certIdents
+			logEvent.NotBefore = cert.NotBefore
+			logEvent.NotAfter = cert.NotAfter
+			logEvent.CertProfileName = cpId.name
+			logEvent.CertProfileHash = hex.EncodeToString(cpId.hash)
 
-		result = "successful"
+			result = "successful"
+		}
 	}
 
 	logEvent.ResponseTime = ra.clk.Now()

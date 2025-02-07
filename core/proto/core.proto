@@ -100,11 +100,11 @@ message Authorization {
   // Fields specified by RFC 8555, Section 7.1.4
   // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   string dnsName = 2;
+  Identifier identifier = 11;
   string status = 4;
   google.protobuf.Timestamp expires = 9;
   repeated core.Challenge challenges = 6;
   string certificateProfileName = 10;
-  core.Identifier identifier = 11;
   // We do not directly represent the "wildcard" field, instead inferring it
   // from the identifier value.
 }
@@ -121,10 +121,10 @@ message Order {
   google.protobuf.Timestamp expires = 12;
   // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 8;
+  repeated Identifier identifiers = 15;
   ProblemDetails error = 4;
   repeated int64 v2Authorizations = 11;
   string certificateSerial = 5;
-  repeated core.Identifier identifiers = 15;
   // Additional fields for our own record-keeping.
   google.protobuf.Timestamp created = 13;
   string certificateProfileName = 14;

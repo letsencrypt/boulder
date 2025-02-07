@@ -112,10 +112,10 @@ message GetValidAuthorizationsRequest {
   int64 registrationID = 1;
   // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 2;
+  repeated core.Identifier identifiers = 6;
   reserved 3; // Previously nowNS
   google.protobuf.Timestamp validUntil = 4;
   string profile = 5;
-  repeated core.Identifier identifiers = 6;
 }
 
 message Serial {
@@ -155,9 +155,9 @@ message CountInvalidAuthorizationsRequest {
   int64 registrationID = 1;
   // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   string dnsName = 2;
+  core.Identifier identifier = 4;
   // Count authorizations that expire in this range.
   Range range = 3;
-  core.Identifier identifier = 4;
 }
 
 message CountFQDNSetsRequest {
@@ -165,9 +165,9 @@ message CountFQDNSetsRequest {
   reserved 1; // Previously windowNS
   // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 2;
+  repeated core.Identifier identifiers = 5;
   google.protobuf.Duration window = 3;
   int64 limit = 4;
-  repeated core.Identifier identifiers = 5;
 }
 
 message FQDNSetExistsRequest {
@@ -229,10 +229,10 @@ message NewOrderRequest {
   google.protobuf.Timestamp expires = 5;
   // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 3;
+  repeated core.Identifier identifiers = 8;
   repeated int64 v2Authorizations = 4;
   string replacesSerial = 6;
   string certificateProfileName = 7;
-  repeated core.Identifier identifiers = 8;
 }
 
 // NewAuthzRequest starts with all the same fields as corepb.Authorization,
@@ -287,10 +287,10 @@ message GetAuthorizationsRequest {
   int64 registrationID = 1;
   // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 2;
+  repeated core.Identifier identifiers = 6;
   reserved 3; // Previously nowNS
   google.protobuf.Timestamp validUntil = 4;
   string profile = 5;
-  repeated core.Identifier identifiers = 6;
 }
 
 message Authorizations {

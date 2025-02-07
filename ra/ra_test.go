@@ -3065,12 +3065,8 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	test.AssertDeepEquals(t, event.VerifiedFields, []string{"subject.commonName", "subjectAltName"})
 	// The event CommonName should match the expected common name
 	test.AssertEquals(t, event.CommonName, "not-example.com")
-	// The event names should match the order names
-	orderNames := make([]string, len(order.Identifiers))
-	for i, orderIdent := range order.Identifiers {
-		orderNames[i] = orderIdent.Value
-	}
-	test.AssertDeepEquals(t, core.UniqueLowerNames(event.Names), core.UniqueLowerNames(orderNames))
+	// The event identifiers should match the order identifiers
+	test.AssertDeepEquals(t, identifier.Normalize(event.Identifiers), identifier.Normalize(identifier.SliceFromProto(order.Identifiers, nil)))
 	// The event's NotBefore and NotAfter should match the cert's
 	test.AssertEquals(t, event.NotBefore, parsedCert.NotBefore)
 	test.AssertEquals(t, event.NotAfter, parsedCert.NotAfter)
