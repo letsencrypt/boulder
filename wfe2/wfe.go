@@ -2027,11 +2027,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 //
 // TODO(#7311): Handle IP address identifiers.
 func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, idents []identifier.ACMEIdentifier, isRenewal bool) (func(), error) {
-	names := make([]string, len(idents))
-	for i, ident := range idents {
-		names[i] = ident.Value
-	}
-	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, isRenewal)
+	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, idents, isRenewal)
 	if err != nil {
 		return nil, fmt.Errorf("building new order limit transactions: %w", err)
 	}

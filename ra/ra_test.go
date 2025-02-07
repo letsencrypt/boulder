@@ -695,8 +695,9 @@ func TestPerformValidation_FailedValidationsTriggerPauseIdentifiersRatelimit(t *
 
 	// Set up a fake domain, authz, and bucket key to care about.
 	domain := randomDomain()
-	authzPB := createPendingAuthorization(t, sa, identifier.NewDNS(domain), fc.Now().Add(12*time.Hour))
-	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
+	ident := identifier.NewDNS(domain)
+	authzPB := createPendingAuthorization(t, sa, ident, fc.Now().Add(12*time.Hour))
+	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident)
 	test.AssertNotError(t, err, "constructing test bucket key")
 
 	// Set the stored TAT to indicate that this bucket has exhausted its quota.
@@ -771,8 +772,9 @@ func TestPerformValidation_FailedThenSuccessfulValidationResetsPauseIdentifiersR
 
 	// Set up a fake domain, authz, and bucket key to care about.
 	domain := randomDomain()
-	authzPB := createPendingAuthorization(t, sa, identifier.NewDNS(domain), fc.Now().Add(12*time.Hour))
-	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, domain)
+	ident := identifier.NewDNS(domain)
+	authzPB := createPendingAuthorization(t, sa, ident, fc.Now().Add(12*time.Hour))
+	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, authzPB.RegistrationID, ident)
 	test.AssertNotError(t, err, "constructing test bucket key")
 
 	// Set a stored TAT so that we can tell when it's been reset.
