@@ -401,6 +401,10 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 		}
 	}
 
+	// TODO(#7311): The CertificatesPerDomain limit should ignore IP addresses;
+	// those should be handled by either one or two new limits for IPv4 & IPv6
+	// addresses. This will probably require some logic both here and in
+	// callers.
 	var txns []Transaction
 	for _, orderIdent := range IdentifiersToETLDsPlusOne(orderIdents) {
 		perDomainBucketKey, err := newDomainBucketKey(CertificatesPerDomain, orderIdent)

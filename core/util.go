@@ -323,18 +323,15 @@ func UniqueLowerNames(names []string) (unique []string) {
 
 // HashIdentifiers returns a hash of the identifiers requested. This is intended
 // for use when interacting with the orderFqdnSets table and rate limiting.
-//
-// TODO(#7311): Process IP address identifiers appropriately, and
-// consistently with how we stringify IPs elsewhere.
 func HashIdentifiers(idents []identifier.ACMEIdentifier) []byte {
 	idents = identifier.Normalize(idents)
 
-	names := make([]string, len(idents))
+	values := make([]string, len(idents))
 	for i, ident := range idents {
-		names[i] = ident.Value
+		values[i] = ident.Value
 	}
 
-	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
+	hash := sha256.Sum256([]byte(strings.Join(values, ",")))
 	return hash[:]
 }
 
