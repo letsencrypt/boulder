@@ -82,6 +82,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return berrors.BadCSRError("CSR contains more than %d DNS names", maxNames)
 	}
 
+	// TODO(#7961): Replace this with a call to identifier.FromCSR.
 	sans := make([]identifier.ACMEIdentifier, len(names.SANs))
 	for key, san := range names.SANs {
 		sans[key] = identifier.NewDNS(san)
@@ -104,6 +105,8 @@ type names struct {
 // will be the first SAN that is short enough, which is done only for backwards
 // compatibility with prior Let's Encrypt behaviour. The resulting SANs will
 // always include the original CN, if any.
+//
+// Deprecated: TODO(#7961): Use identifier.FromCert instead.
 func NamesFromCSR(csr *x509.CertificateRequest) names {
 	// Produce a new "sans" slice with the same memory address as csr.DNSNames
 	// but force a new allocation if an append happens so that we don't

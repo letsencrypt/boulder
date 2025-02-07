@@ -311,14 +311,14 @@ func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificat
 
 	// We may get multiple authorizations for the same name, but that's okay.
 	// Any authorization for a given name is sufficient.
-	identToAuthz := make(map[string]*corepb.Authorization)
+	identToAuthz := make(map[identifier.ACMEIdentifier]*corepb.Authorization)
 	for _, m := range authzs {
-		identToAuthz[m.Identifier.Value] = m
+		identToAuthz[identifier.FromProto(m.Identifier)] = m
 	}
 
 	var errors []error
 	for _, ident := range idents {
-		_, ok := identToAuthz[ident.Value]
+		_, ok := identToAuthz[ident]
 		if !ok {
 			errors = append(errors, fmt.Errorf("missing authz for %q", ident))
 			continue
@@ -406,6 +406,8 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		// Check that the PA is still willing to issue for each name in DNSNames.
 		// We do not check the CommonName here, as (if it exists) we already checked
 		// that it is identical to one of the DNSNames in the SAN.
+		//
+		// TODO(#7311): We'll need to iterate over IP address identifiers too.
 		for _, name := range parsedCert.DNSNames {
 			err = c.pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS(name)})
 			if err != nil {

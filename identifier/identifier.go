@@ -107,19 +107,27 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 }
 
 // FromCert extracts the Subject Common Name and Subject Alternative Names from
-// a certificate, and returns a slice of ACMEIdentifiers (or an error).
+// a certificate, and returns a slice of ACMEIdentifiers for SANs, a single
+// ACMEIdentifier for the CN, and an error.
 //
 // TODO(#7961): We need to ensure the output is as identical as possible to
 // reading a slice of DNSNames from an x509.Certificate. This could be checked
 // in a test. This is because in (at least) expiration-mailer, we were using
 // HashIdentifiers(parsedCert.DNSNames), and that is being changed to
 // HashIdentifiers(FromCert(cert)).
+//
+// TODO(#7961): Borrow and adapt tests from the csr package.
+//
+// TODO(#7961): Clone this into FromCSR.
 func FromCert(cert *x509.Certificate) ([]ACMEIdentifier, error) {
-	sans := make([]ACMEIdentifier, len(cert.DNSNames))
-	for key, name := range cert.DNSNames {
-		sans[key] = NewDNS(name)
+	var sans []ACMEIdentifier
+	for _, name := range cert.DNSNames {
+		sans = append(sans, NewDNS(name))
 	}
 	if cert.Subject.CommonName != "" {
+		// Boulder won't generate certificates with a CN that's not also present
+		// in the SANs, but such a certificate is possible. If appended, this is
+		// deduplicated later with Normalize().
 		sans = append(sans, NewDNS(cert.Subject.CommonName))
 	}
 
