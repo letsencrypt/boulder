@@ -347,16 +347,15 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
-		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
-		// that it is a renewal) we use just the DNSNames from the certificate and
-		// ignore the Subject Common Name (if any). This is a safe assumption because
-		// if a certificate we issued were to have a Subj. CN not present as a SAN it
-		// would be a misissuance and miscalculating whether the cert is a renewal or
-		// not for the purpose of rate limiting is the least of our troubles.
+		idents, err := identifier.FromCert(parsed)
+		if err != nil {
+			return nil, err
+		}
+
 		isRenewal, err := ssa.checkFQDNSetExists(
 			ctx,
 			tx.SelectOne,
-			identifier.SliceNewDNS(parsed.DNSNames))
+			idents)
 		if err != nil {
 			return nil, err
 		}
@@ -392,6 +391,10 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	}
 	digest := core.Fingerprint256(req.Der)
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
+	idents, err := identifier.FromCert(parsedCertificate)
+	if err != nil {
+		return nil, err
+	}
 
 	cert := &core.Certificate{
 		RegistrationID: req.RegID,
@@ -437,7 +440,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		err = addFQDNSet(
 			ctx,
 			tx,
-			identifier.SliceNewDNS(parsedCertificate.DNSNames),
+			idents,
 			core.SerialToString(parsedCertificate.SerialNumber),
 			parsedCertificate.NotBefore,
 			parsedCertificate.NotAfter,
@@ -605,7 +608,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		if req.NewOrder.Identifiers == nil {
 			// TODO(#7311): Change this to simply return an error once all RPC users
 			// are populating Identifiers.
-			req.NewOrder.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.NewOrder.DnsNames))
+			req.NewOrder.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.NewOrder.DnsNames))
 		}
 		err = addOrderFQDNSet(ctx, tx, identifier.SliceFromProto(req.NewOrder.Identifiers, nil), orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {

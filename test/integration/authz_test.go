@@ -25,7 +25,7 @@ func TestValidAuthzExpires(t *testing.T) {
 	test.AssertNotError(t, err, "makeClient failed")
 
 	// Issue for a random domain
-	idents := identifier.SliceNewDNS([]string{random_domain()})
+	idents := []identifier.ACMEIdentifier{identifier.NewDNS(random_domain())}
 	result, err := authAndIssue(c, nil, idents, true)
 	// There should be no error
 	test.AssertNotError(t, err, "authAndIssue failed")

@@ -197,10 +197,16 @@ func TestCertificatesPerFQDNSetTransactions(t *testing.T) {
 	tb, err := NewTransactionBuilderFromFiles("../test/config-next/wfe2-ratelimit-defaults.yml", "")
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
+	idents := []identifier.ACMEIdentifier{
+		identifier.NewDNS("example.com"),
+		identifier.NewDNS("example.net"),
+		identifier.NewDNS("example.org"),
+	}
+
 	// A single check-only transaction for the global limit.
-	txn, err := tb.certificatesPerFQDNSetCheckOnlyTransaction([]identifier.ACMEIdentifier{identifier.NewDNS("example.com"), identifier.NewDNS("example.net"), identifier.NewDNS("example.org")})
+	txn, err := tb.certificatesPerFQDNSetCheckOnlyTransaction(idents)
 	test.AssertNotError(t, err, "creating transaction")
-	namesHash := fmt.Sprintf("%x", core.HashIdentifiers(identifier.SliceNewDNS([]string{"example.com", "example.net", "example.org"})))
+	namesHash := fmt.Sprintf("%x", core.HashIdentifiers(idents))
 	test.AssertEquals(t, txn.bucketKey, "7:"+namesHash)
 	test.Assert(t, txn.checkOnly(), "should be check-only")
 	test.Assert(t, !txn.limit.isOverride, "should not be an override")

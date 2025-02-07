@@ -1120,7 +1120,7 @@ func statusForOrder(order *corepb.Order, authzValidityInfo []authzValidity, now 
 	if order.Identifiers == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(order.DnsNames))
+		order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
 	}
 	fullyAuthorized := len(order.Identifiers) == validAuthzs
 

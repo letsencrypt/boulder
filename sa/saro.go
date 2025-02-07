@@ -340,7 +340,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 	if req.Identifiers == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
+		req.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
 	}
 
 	if core.IsAnyNilOrZero(req.Window) || len(req.Identifiers) == 0 {
@@ -383,7 +383,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetExists(ctx context.Context, req *sapb.F
 	if req.Identifiers == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
+		req.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
 	}
 	if len(req.Identifiers) == 0 {
 		return nil, errIncompleteRequest
@@ -510,7 +510,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 	if req.Identifiers == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
+		req.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
 	}
 
 	if req.AcctID == 0 || len(req.Identifiers) == 0 {
@@ -627,7 +627,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 	if req.Identifiers == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
+		req.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
 	}
 
 	if core.IsAnyNilOrZero(req, req.RegistrationID, req.Identifiers, req.ValidUntil) {
@@ -818,7 +818,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 	if req.Identifiers == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(req.DnsNames))
+		req.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
 	}
 
 	if core.IsAnyNilOrZero(req, req.RegistrationID, req.Identifiers, req.ValidUntil) {

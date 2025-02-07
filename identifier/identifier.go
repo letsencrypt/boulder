@@ -6,7 +6,6 @@ package identifier
 import (
 	"crypto/x509"
 	"fmt"
-	"net"
 	"net/netip"
 	"slices"
 	"sort"
@@ -98,19 +97,6 @@ func NewDNS(domain string) ACMEIdentifier {
 	}
 }
 
-// SliceNewDNS is a convenience function for creating a slice of ACMEIdentifiers
-// with Type "dns" for a given slice of domain names.
-//
-// TODO(#7961): A bunch of uses of this should be replaced with SliceFromProto,
-// and a bunch of others should be replaced with FromCert or FromCSR.
-func SliceNewDNS(domains []string) []ACMEIdentifier {
-	idents := make([]ACMEIdentifier, len(domains))
-	for key, domain := range domains {
-		idents[key] = NewDNS(domain)
-	}
-	return idents
-}
-
 // NewIP is a convenience function for creating an ACMEIdentifier with Type "ip"
 // for a given IP address.
 func NewIP(ip netip.Addr) ACMEIdentifier {
@@ -118,23 +104,6 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 		Type:  TypeIP,
 		Value: ip.StringExpanded(),
 	}
-}
-
-// SliceNewIPs is a convenience function for creating a slice of ACMEIdentifiers
-// with Type "ip" for a given slice of net.IPs.
-//
-// TODO(#7961): A bunch of uses of this should be replaced with SliceFromProto,
-// and a bunch of others should be replaced with FromCert or FromCSR.
-func SliceNewIPs(netIPs []net.IP) ([]ACMEIdentifier, error) {
-	idents := make([]ACMEIdentifier, len(netIPs))
-	for key, netIP := range netIPs {
-		netipAddr, ok := netip.AddrFromSlice(netIP)
-		if !ok {
-			return nil, fmt.Errorf("converting IP from bytes: %s", netIP)
-		}
-		idents[key] = NewIP(netipAddr)
-	}
-	return idents, nil
 }
 
 // FromCert extracts the Subject Common Name and Subject Alternative Names from
@@ -146,20 +115,23 @@ func SliceNewIPs(netIPs []net.IP) ([]ACMEIdentifier, error) {
 // HashIdentifiers(parsedCert.DNSNames), and that is being changed to
 // HashIdentifiers(FromCert(cert)).
 func FromCert(cert *x509.Certificate) ([]ACMEIdentifier, error) {
-	// Produce a new "sans" slice with the same memory address as csr.DNSNames
-	// but force a new allocation if an append happens so that we don't
-	// accidentally mutate the underlying csr.DNSNames array.
-	sans := cert.DNSNames[0:len(cert.DNSNames):len(cert.DNSNames)]
+	sans := make([]ACMEIdentifier, len(cert.DNSNames))
+	for key, name := range cert.DNSNames {
+		sans[key] = NewDNS(name)
+	}
 	if cert.Subject.CommonName != "" {
-		sans = append(sans, cert.Subject.CommonName)
+		sans = append(sans, NewDNS(cert.Subject.CommonName))
 	}
 
-	ips, err := SliceNewIPs(cert.IPAddresses)
-	if err != nil {
-		return nil, err
+	for _, netIP := range cert.IPAddresses {
+		netipAddr, ok := netip.AddrFromSlice(netIP)
+		if !ok {
+			return nil, fmt.Errorf("converting IP from bytes: %s", netIP)
+		}
+		sans = append(sans, NewIP(netipAddr))
 	}
 
-	return Normalize(append(SliceNewDNS(sans), ips...)), nil
+	return Normalize(sans), nil
 }
 
 // Normalize returns the set of all unique ACME identifiers in the

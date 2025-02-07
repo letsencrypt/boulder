@@ -886,7 +886,10 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 	if err != nil {
 		return nil, 0, probs.NotFound("No such certificate")
 	}
-	logEvent.Identifiers = identifier.SliceNewDNS(parsedCertificate.DNSNames)
+	logEvent.Identifiers, err = identifier.FromCert(parsedCertificate)
+	if err != nil {
+		return nil, 0, probs.NotFound("Couldn't parse identifiers from certificate")
+	}
 
 	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
 		return nil, 0, probs.Unauthorized("Certificate is expired")
@@ -1986,7 +1989,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	// TODO(#7311): Remove this conditional once all RPC users are populating
 	// Identifiers.
 	if order.Identifiers == nil {
-		order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(order.DnsNames))
+		order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
 	}
 
 	finalizeURL := web.RelativeEndpoint(request,
@@ -2409,7 +2412,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
 	// upwards, once all RPC users are populating Identifiers.
 	if order.Identifiers == nil {
-		order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(order.DnsNames))
+		order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
 	}
 	order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(order.Identifiers, order.DnsNames))
 	if core.IsAnyNilOrZero(order.Identifiers) {
@@ -2480,7 +2483,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
 	// upwards, once all RPC users are populating Identifiers.
 	if order.Identifiers == nil {
-		order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(order.DnsNames))
+		order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
 	}
 	order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(order.Identifiers, order.DnsNames))
 	if core.IsAnyNilOrZero(order.Identifiers) {
@@ -2571,7 +2574,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	// TODO(#7311): Remove this conditional once all RPC users are populating
 	// Identifiers.
 	if order.Identifiers == nil {
-		order.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(order.DnsNames))
+		order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
 	}
 	order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(order.Identifiers, order.DnsNames))
 	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, order.Identifiers, order.Created, order.Expires) {
@@ -2643,7 +2646,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
 	// upwards, once all RPC users are populating Identifiers.
 	if updatedOrder.Identifiers == nil {
-		updatedOrder.Identifiers = identifier.SliceAsProto(identifier.SliceNewDNS(updatedOrder.DnsNames))
+		updatedOrder.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, updatedOrder.DnsNames))
 	}
 	updatedOrder.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(updatedOrder.Identifiers, updatedOrder.DnsNames))
 	if core.IsAnyNilOrZero(updatedOrder.Identifiers) {

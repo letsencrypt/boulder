@@ -2220,7 +2220,9 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	// Make a new cert and add its FQDN set to the db so it will be considered a
 	// renewal
 	serial, testCert := test.ThrowAwayCert(t, fc)
-	err = addFQDNSet(ctx, sa.dbMap, identifier.SliceNewDNS(testCert.DNSNames), serial, testCert.NotBefore, testCert.NotAfter)
+	idents, err := identifier.FromCert(testCert)
+	test.AssertNotError(t, err, "Failed to parse identifiers from certificate")
+	err = addFQDNSet(ctx, sa.dbMap, idents, serial, testCert.NotBefore, testCert.NotAfter)
 	test.AssertNotError(t, err, "Failed to add name set")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
