@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/identifier"
+	"github.com/eggsampler/acme/v3"
+
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -25,7 +26,7 @@ func TestValidAuthzExpires(t *testing.T) {
 	test.AssertNotError(t, err, "makeClient failed")
 
 	// Issue for a random domain
-	idents := []identifier.ACMEIdentifier{identifier.NewDNS(random_domain())}
+	idents := []acme.Identifier{{Type: "dns", Value: random_domain()}}
 	result, err := authAndIssue(c, nil, idents, true)
 	// There should be no error
 	test.AssertNotError(t, err, "authAndIssue failed")

@@ -9,7 +9,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/letsencrypt/boulder/identifier"
+	"github.com/eggsampler/acme/v3"
+
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -30,10 +31,10 @@ func TestCommonNameInCSR(t *testing.T) {
 	cn := random_domain()
 	san1 := random_domain()
 	san2 := random_domain()
-	idents := []identifier.ACMEIdentifier{
-		identifier.NewDNS(cn),
-		identifier.NewDNS(san1),
-		identifier.NewDNS(san2),
+	idents := []acme.Identifier{
+		{Type: "dns", Value: cn},
+		{Type: "dns", Value: san1},
+		{Type: "dns", Value: san2},
 	}
 
 	// Issue a cert. authAndIssue includes the 0th name as the CN by default.
@@ -66,9 +67,9 @@ func TestFirstCSRSANHoistedToCN(t *testing.T) {
 	// Create some names that we can sort.
 	san1 := "a" + random_domain()
 	san2 := "b" + random_domain()
-	idents := []identifier.ACMEIdentifier{
-		identifier.NewDNS(san2),
-		identifier.NewDNS(san1),
+	idents := []acme.Identifier{
+		{Type: "dns", Value: san2},
+		{Type: "dns", Value: san1},
 	}
 
 	// Issue a cert using a CSR with no CN set, and the SANs in *non*-alpha order.
@@ -100,9 +101,9 @@ func TestCommonNameSANsTooLong(t *testing.T) {
 	// Put together some names.
 	san1 := fmt.Sprintf("thisdomainnameis.morethan64characterslong.forthesakeoftesting.%s", random_domain())
 	san2 := fmt.Sprintf("thisdomainnameis.morethan64characterslong.forthesakeoftesting.%s", random_domain())
-	idents := []identifier.ACMEIdentifier{
-		identifier.NewDNS(san1),
-		identifier.NewDNS(san2),
+	idents := []acme.Identifier{
+		{Type: "dns", Value: san1},
+		{Type: "dns", Value: san2},
 	}
 
 	// Issue a cert using a CSR with no CN set.

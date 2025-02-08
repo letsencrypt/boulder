@@ -80,6 +80,9 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	if len(idents) > maxNames {
 		return berrors.BadCSRError("CSR contains more than %d DNS names", maxNames)
 	}
+	// TODO(#7961): This check now blocks all CSRs with too long of a CN,
+	// instead of testing whether it remains too long after our parsing. Is this
+	// desirable? Should we change the test to match?
 	if len(csr.Subject.CommonName) > maxCNLength {
 		return berrors.BadCSRError("CN was longer than %d bytes", maxCNLength)
 	}

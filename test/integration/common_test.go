@@ -17,8 +17,6 @@ import (
 	"os"
 
 	"github.com/eggsampler/acme/v3"
-
-	"github.com/letsencrypt/boulder/identifier"
 )
 
 func init() {
@@ -92,7 +90,7 @@ func delHTTP01Response(token string) error {
 	return nil
 }
 
-func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, idents []identifier.ACMEIdentifier, cn bool, certToReplace *x509.Certificate) (*client, *acme.Order, error) {
+func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Identifier, cn bool, certToReplace *x509.Certificate) (*client, *acme.Order, error) {
 	var err error
 	if c == nil {
 		c, err = makeClient()
@@ -156,7 +154,7 @@ type issuanceResult struct {
 	certs []*x509.Certificate
 }
 
-func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, idents []identifier.ACMEIdentifier, cn bool) (*issuanceResult, error) {
+func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Identifier, cn bool) (*issuanceResult, error) {
 	var err error
 
 	c, order, err := makeClientAndOrder(c, csrKey, idents, cn, nil)
@@ -176,7 +174,7 @@ type issuanceResultAllChains struct {
 	certs map[string][]*x509.Certificate
 }
 
-func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, idents []identifier.ACMEIdentifier, cn bool) (*issuanceResultAllChains, error) {
+func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Identifier, cn bool) (*issuanceResultAllChains, error) {
 	c, order, err := makeClientAndOrder(c, csrKey, idents, cn, nil)
 	if err != nil {
 		return nil, err
@@ -191,7 +189,7 @@ func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, idents []id
 	return &issuanceResultAllChains{*order, certs}, nil
 }
 
-func makeCSR(k *ecdsa.PrivateKey, idents []identifier.ACMEIdentifier, cn bool) (*x509.CertificateRequest, error) {
+func makeCSR(k *ecdsa.PrivateKey, idents []acme.Identifier, cn bool) (*x509.CertificateRequest, error) {
 	var err error
 	if k == nil {
 		k, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

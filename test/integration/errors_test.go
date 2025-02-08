@@ -9,7 +9,6 @@ import (
 
 	"github.com/eggsampler/acme/v3"
 
-	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -18,9 +17,9 @@ import (
 func TestTooBigOrderError(t *testing.T) {
 	t.Parallel()
 
-	var idents []identifier.ACMEIdentifier
+	var idents []acme.Identifier
 	for i := range 101 {
-		idents = append(idents, identifier.NewDNS(fmt.Sprintf("%d.example.com", i)))
+		idents = append(idents, acme.Identifier{Type: "dns", Value: fmt.Sprintf("%d.example.com", i)})
 	}
 
 	_, err := authAndIssue(nil, nil, idents, true)
@@ -156,8 +155,8 @@ func TestRejectedIdentifier(t *testing.T) {
 	t.Parallel()
 
 	// When a single malformed name is provided, we correctly reject it.
-	idents := []identifier.ACMEIdentifier{
-		identifier.NewDNS("яџ–Х6яяdь}"),
+	idents := []acme.Identifier{
+		{Type: "dns", Value: "яџ–Х6яяdь}"},
 	}
 	_, err := authAndIssue(nil, nil, idents, true)
 	test.AssertError(t, err, "issuance should fail for one malformed name")
@@ -170,12 +169,12 @@ func TestRejectedIdentifier(t *testing.T) {
 	// them and reflect this in suberrors. This test ensures that the way we
 	// encode these errors across the gRPC boundary is resilient to non-ascii
 	// characters.
-	idents = []identifier.ACMEIdentifier{
-		identifier.NewDNS("o-"),
-		identifier.NewDNS("ш№Ў"),
-		identifier.NewDNS("р±y"),
-		identifier.NewDNS("яџ–Х6яя"),
-		identifier.NewDNS("яџ–Х6яя`ь"),
+	idents = []acme.Identifier{
+		{Type: "dns", Value: "o-"},
+		{Type: "dns", Value: "ш№Ў"},
+		{Type: "dns", Value: "р±y"},
+		{Type: "dns", Value: "яџ–Х6яя"},
+		{Type: "dns", Value: "яџ–Х6яя`ь"},
 	}
 	_, err = authAndIssue(nil, nil, idents, true)
 	test.AssertError(t, err, "issuance should fail for multiple malformed names")
