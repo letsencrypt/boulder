@@ -8,11 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/url"
 	"os"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -606,7 +604,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 }
 
 // matchesCSR tests the contents of a generated certificate to make sure
-// that the PublicKey, CommonName, and DNSNames match those provided in
+// that the PublicKey, CommonName, and identifiers match those provided in
 // the CSR that was used to generate the certificate. It also checks the
 // following fields for:
 //   - notBefore is not more than 24 hours ago
@@ -619,27 +617,32 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 		return berrors.InternalServerError("generated certificate public key doesn't match CSR public key")
 	}
 
-	csrNames := csrlib.NamesFromCSR(csr)
+	csrIdents, err := identifier.FromCSR(csr)
+	if err != nil {
+		return berrors.InternalServerError("couldn't parse identifiers from CSR")
+	}
 	if parsedCertificate.Subject.CommonName != "" {
 		// Only check that the issued common name matches one of the SANs if there
 		// is an issued CN at all: this allows flexibility on whether we include
 		// the CN.
-		if !slices.Contains(csrNames.SANs, parsedCertificate.Subject.CommonName) {
+		cnFound := false
+		for _, ident := range csrIdents {
+			if ident.Value == parsedCertificate.Subject.CommonName && ident.Type == identifier.TypeDNS {
+				cnFound = true
+				break
+			}
+		}
+		if !cnFound {
 			return berrors.InternalServerError("generated certificate CommonName doesn't match any CSR name")
 		}
 	}
 
-	parsedNames := parsedCertificate.DNSNames
-	sort.Strings(parsedNames)
-	if !slices.Equal(parsedNames, csrNames.SANs) {
-		return berrors.InternalServerError("generated certificate DNSNames don't match CSR DNSNames")
+	parsedIdents, err := identifier.FromCert(parsedCertificate)
+	if err != nil {
+		return berrors.InternalServerError("couldn't parse identifiers from certificate")
 	}
-
-	if !slices.EqualFunc(parsedCertificate.IPAddresses, csr.IPAddresses, func(l, r net.IP) bool { return l.Equal(r) }) {
-		return berrors.InternalServerError("generated certificate IPAddresses don't match CSR IPAddresses")
-	}
-	if !slices.Equal(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
-		return berrors.InternalServerError("generated certificate EmailAddresses don't match CSR EmailAddresses")
+	if !slices.Equal(csrIdents, parsedIdents) {
+		return berrors.InternalServerError("generated certificate identifiers don't match CSR identifiers")
 	}
 
 	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
@@ -679,7 +682,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	ctx context.Context,
 	orderID orderID,
 	acctID accountID,
-	names []string,
+	idents []identifier.ACMEIdentifier,
 	now time.Time) (map[identifier.ACMEIdentifier]*core.Authorization, error) {
 	// Get all of the valid authorizations for this account/order
 	req := &sapb.GetValidOrderAuthorizationsRequest{
@@ -699,11 +702,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	var missing []string
 	var invalid []string
 	var expired []string
-	for _, name := range names {
-		// TODO(#7647): Iterate directly over identifiers here, once the rest of the
-		// finalization flow supports non-dnsName identifiers.
-		ident := identifier.NewDNS(name)
-
+	for _, ident := range idents {
 		authz, ok := authzs[ident]
 		if !ok || authz == nil {
 			missing = append(missing, ident.Value)
@@ -746,8 +745,8 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 
 	// Even though this check is cheap, we do it after the more specific checks
 	// so that we can return more specific error messages.
-	if len(names) != len(authzs) {
-		return nil, berrors.UnauthorizedError("incorrect number of names requested for finalization")
+	if len(idents) != len(authzs) {
+		return nil, berrors.UnauthorizedError("incorrect number of identifiers requested for finalization")
 	}
 
 	// Check that the authzs either don't need CAA rechecking, or do the
@@ -1111,16 +1110,13 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
-	//
-	// TODO(#7311): Support IP address identifiers.
-	csrNames := csrlib.NamesFromCSR(csr).SANs
-	orderIdents := identifier.Normalize(identifier.SliceFromProto(req.Order.Identifiers, nil))
-	orderNames := make([]string, len(orderIdents))
-	for i, orderIdent := range orderIdents {
-		orderNames[i] = orderIdent.Value
+	csrIdents, err := identifier.FromCSR(csr)
+	if err != nil {
+		return nil, err
 	}
+	orderIdents := identifier.Normalize(identifier.SliceFromProto(req.Order.Identifiers, nil))
 	// Check that the order names and the CSR names are an exact match
-	if !slices.Equal(csrNames, orderNames) {
+	if !slices.Equal(csrIdents, orderIdents) {
 		return nil, berrors.UnauthorizedError(("CSR does not specify same identifiers as Order"))
 	}
 
@@ -1143,7 +1139,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// Double-check that all authorizations on this order are valid, are also
 	// associated with the same account as the order itself, and have recent CAA.
 	authzs, err := ra.checkOrderAuthorizations(
-		ctx, orderID(req.Order.Id), accountID(req.Order.RegistrationID), csrNames, ra.clk.Now())
+		ctx, orderID(req.Order.Id), accountID(req.Order.RegistrationID), csrIdents, ra.clk.Now())
 	if err != nil {
 		// Pass through the error without wrapping it because the called functions
 		// return BoulderError and we don't want to lose the type.
@@ -1152,7 +1148,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 
 	// Collect up a certificateRequestAuthz that stores the ID and challenge type
 	// of each of the valid authorizations we used for this issuance.
-	logEventAuthzs := make(map[string]certificateRequestAuthz, len(csrNames))
+	logEventAuthzs := make(map[string]certificateRequestAuthz, len(csrIdents))
 	for _, authz := range authzs {
 		// No need to check for error here because we know this same call just
 		// succeeded inside ra.checkOrderAuthorizations

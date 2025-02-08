@@ -107,8 +107,10 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 }
 
 // FromCert extracts the Subject Common Name and Subject Alternative Names from
-// a certificate, and returns a slice of ACMEIdentifiers for SANs, a single
-// ACMEIdentifier for the CN, and an error.
+// a certificate, and returns a slice of ACMEIdentifiers and an error.
+//
+// FromCSR is nearly identical but handles CSRs, and is kept separate so that
+// it's always clear we are handling an untrusted CSR.
 //
 // TODO(#7961): We need to ensure the output is as identical as possible to
 // reading a slice of DNSNames from an x509.Certificate. This could be checked
@@ -117,8 +119,6 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 // HashIdentifiers(FromCert(cert)).
 //
 // TODO(#7961): Borrow and adapt tests from the csr package.
-//
-// TODO(#7961): Clone this into FromCSR.
 func FromCert(cert *x509.Certificate) ([]ACMEIdentifier, error) {
 	var sans []ACMEIdentifier
 	for _, name := range cert.DNSNames {
@@ -127,11 +127,47 @@ func FromCert(cert *x509.Certificate) ([]ACMEIdentifier, error) {
 	if cert.Subject.CommonName != "" {
 		// Boulder won't generate certificates with a CN that's not also present
 		// in the SANs, but such a certificate is possible. If appended, this is
-		// deduplicated later with Normalize().
+		// deduplicated later with Normalize(). We assume the CN is a DNSName,
+		// because CNs are untyped strings without metadata, and we will never
+		// configure a Boulder profile to issue a certificate that contains both
+		// an IP address identifier and a CN.
 		sans = append(sans, NewDNS(cert.Subject.CommonName))
 	}
 
 	for _, netIP := range cert.IPAddresses {
+		netipAddr, ok := netip.AddrFromSlice(netIP)
+		if !ok {
+			return nil, fmt.Errorf("converting IP from bytes: %s", netIP)
+		}
+		sans = append(sans, NewIP(netipAddr))
+	}
+
+	return Normalize(sans), nil
+}
+
+// FromCSR extracts the Subject Common Name and Subject Alternative Names from a
+// CSR, and returns a slice of ACMEIdentifiers and an error.
+//
+// FromCert is nearly identical but handles certs, and is kept separate so that
+// it's always clear we are handling an untrusted CSR.
+//
+// TODO(#7961): See TODOs on FromCert.
+func FromCSR(csr *x509.CertificateRequest) ([]ACMEIdentifier, error) {
+	var sans []ACMEIdentifier
+	for _, name := range csr.DNSNames {
+		sans = append(sans, NewDNS(name))
+	}
+	if csr.Subject.CommonName != "" {
+		// Boulder won't generate certificates with a CN that's not also present
+		// in the SANs, but such a certificate is possible. If appended, this is
+		// deduplicated later with Normalize(). We assume the CN is a DNSName,
+		// because CNs are untyped strings without metadata, and we will never
+		// configure a Boulder profile to issue a certificate that contains both
+		// an IP address identifier and a CN.
+		sans = append(sans, NewDNS(csr.Subject.CommonName))
+	}
+
+	for _, netIP := range csr.IPAddresses {
 		netipAddr, ok := netip.AddrFromSlice(netIP)
 		if !ok {
 			return nil, fmt.Errorf("converting IP from bytes: %s", netIP)

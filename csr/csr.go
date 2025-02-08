@@ -35,12 +35,11 @@ var (
 	invalidSig          = berrors.BadCSRError("invalid signature on CSR")
 	invalidEmailPresent = berrors.BadCSRError("CSR contains one or more email address fields")
 	invalidIPPresent    = berrors.BadCSRError("CSR contains one or more IP address fields")
-	invalidNoDNS        = berrors.BadCSRError("at least one DNS name is required")
+	invalidNoIdentifier = berrors.BadCSRError("at least one identifier is required")
 )
 
-// VerifyCSR checks the validity of a x509.CertificateRequest. It uses
-// NamesFromCSR to normalize the DNS names before checking whether we'll issue
-// for them.
+// VerifyCSR checks the validity of a x509.CertificateRequest. It uses FromCSR
+// to normalize the DNS names before checking whether we'll issue for them.
 func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority) error {
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
@@ -68,26 +67,24 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return invalidIPPresent
 	}
 
-	// NamesFromCSR also performs normalization, returning values that may not
-	// match the literal CSR contents.
-	names := NamesFromCSR(csr)
+	// FromCSR also performs normalization, returning values that may not match
+	// the literal CSR contents.
+	idents, err := identifier.FromCSR(csr)
 
-	if len(names.SANs) == 0 && names.CN == "" {
-		return invalidNoDNS
+	if err != nil {
+		return berrors.BadCSRError("couldn't parse identifiers from CSR")
 	}
-	if len(names.CN) > maxCNLength {
-		return berrors.BadCSRError("CN was longer than %d bytes", maxCNLength)
+	if len(idents) == 0 {
+		return invalidNoIdentifier
 	}
-	if len(names.SANs) > maxNames {
+	if len(idents) > maxNames {
 		return berrors.BadCSRError("CSR contains more than %d DNS names", maxNames)
 	}
-
-	// TODO(#7961): Replace this with a call to identifier.FromCSR.
-	sans := make([]identifier.ACMEIdentifier, len(names.SANs))
-	for key, san := range names.SANs {
-		sans[key] = identifier.NewDNS(san)
+	if len(csr.Subject.CommonName) > maxCNLength {
+		return berrors.BadCSRError("CN was longer than %d bytes", maxCNLength)
 	}
-	err = pa.WillingToIssue(sans)
+
+	err = pa.WillingToIssue(idents)
 	if err != nil {
 		return err
 	}

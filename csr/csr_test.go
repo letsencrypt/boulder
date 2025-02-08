@@ -103,7 +103,7 @@ func TestVerifyCSR(t *testing.T) {
 			signedReq,
 			100,
 			&mockPA{},
-			invalidNoDNS,
+			invalidNoIdentifier,
 		},
 		{
 			signedReqWithLongCN,
