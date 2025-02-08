@@ -55,8 +55,8 @@ func FromProto(ident *corepb.Identifier) ACMEIdentifier {
 // ACMEIdentifiers into a slice of *corepb.Identifiers, to use for RPCs.
 func SliceAsProto(idents []ACMEIdentifier) []*corepb.Identifier {
 	pbIdents := make([]*corepb.Identifier, len(idents))
-	for key, ident := range idents {
-		pbIdents[key] = ident.AsProto()
+	for i, ident := range idents {
+		pbIdents[i] = ident.AsProto()
 	}
 	return pbIdents
 }
@@ -75,15 +75,15 @@ func SliceFromProto(pbIdents []*corepb.Identifier, names []string) []ACMEIdentif
 			return nil
 		}
 		idents := make([]ACMEIdentifier, len(names))
-		for key, name := range names {
-			idents[key] = NewDNS(name)
+		for i, name := range names {
+			idents[i] = NewDNS(name)
 		}
 		return idents
 	}
 
 	idents := make([]ACMEIdentifier, len(pbIdents))
-	for key, pbIdent := range pbIdents {
-		idents[key] = FromProto(pbIdent)
+	for i, pbIdent := range pbIdents {
+		idents[i] = FromProto(pbIdent)
 	}
 	return idents
 }
