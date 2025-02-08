@@ -41,6 +41,7 @@ func TestValidAuthzExpires(t *testing.T) {
 
 	// The authz should be valid and for the correct identifier
 	test.AssertEquals(t, authzOb.Status, "valid")
+	test.AssertEquals(t, authzOb.Identifier.Type, idents[0].Type)
 	test.AssertEquals(t, authzOb.Identifier.Value, idents[0].Value)
 
 	// The authz should have the expected expiry date, plus or minus a minute

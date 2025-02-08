@@ -1117,7 +1117,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	orderIdents := identifier.Normalize(identifier.SliceFromProto(req.Order.Identifiers, nil))
 	// Check that the order names and the CSR names are an exact match
 	if !slices.Equal(csrIdents, orderIdents) {
-		return nil, berrors.UnauthorizedError(("CSR does not specify same identifiers as Order"))
+		return nil, berrors.UnauthorizedError("CSR does not specify same identifiers as Order")
 	}
 
 	// Get the originating account for use in the next check.
