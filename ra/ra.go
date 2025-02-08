@@ -2363,9 +2363,14 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// `sa.GetAuthorizations` returned an authorization that was very close to
 	// expiry. The resulting pending order that references it would itself end up
 	// expiring very soon.
-	// To prevent this we only return authorizations that are at least 1 day away
-	// from expiring.
-	authzExpiryCutoff := ra.clk.Now().AddDate(0, 0, 1)
+	// What is considered "very soon" changes depending on the profile's authz
+	// lifetime: if this profile's orders and authzs are usually valid for a long
+	// time, we say they should have at least one day still on the clock; if
+	// they're usually short lived, we say they should still have at least 1 hour.
+	authzExpiryCutoff := ra.clk.Now().Add(24 * time.Hour)
+	if profile.validAuthzLifetime < 24*time.Hour {
+		authzExpiryCutoff = ra.clk.Now().Add(time.Hour)
+	}
 
 	var existingAuthz *sapb.Authorizations
 	if features.Get().NoPendingAuthzReuse {
