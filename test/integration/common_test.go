@@ -12,6 +12,7 @@ import (
 	"encoding/asn1"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 
@@ -199,10 +200,17 @@ func makeCSR(k *ecdsa.PrivateKey, idents []identifier.ACMEIdentifier, cn bool) (
 		}
 	}
 
-	// TODO(#7311): Extend this to support IP address identifiers.
-	names := make([]string, len(idents))
-	for i, ident := range idents {
-		names[i] = ident.Value
+	var names []string
+	var ips []net.IP
+	for _, ident := range idents {
+		switch ident.Type {
+		case "dns":
+			names = append(names, ident.Value)
+		case "ip":
+			ips = append(ips, net.ParseIP(ident.Value))
+		default:
+			return nil, fmt.Errorf("unrecognized identifier type %q", ident.Type)
+		}
 	}
 
 	tmpl := &x509.CertificateRequest{
@@ -210,6 +218,7 @@ func makeCSR(k *ecdsa.PrivateKey, idents []identifier.ACMEIdentifier, cn bool) (
 		PublicKeyAlgorithm: x509.ECDSA,
 		PublicKey:          k.Public(),
 		DNSNames:           names,
+		IPAddresses:        ips,
 	}
 	if cn {
 		tmpl.Subject = pkix.Name{CommonName: names[0]}
