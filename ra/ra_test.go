@@ -1805,9 +1805,11 @@ func TestNewOrder_ValidationProfiles(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			domain := randomDomain()
 			order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 				RegistrationID:         Registration.Id,
-				DnsNames:               []string{randomDomain()},
+				DnsNames:               []string{domain},
+				Identifiers:            []*corepb.Identifier{identifier.NewDNS(domain).AsProto()},
 				CertificateProfileName: tc.profile,
 			})
 			if err != nil {
@@ -1866,9 +1868,11 @@ func TestNewOrder_UnconfiguredValidationProfiles(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			domain := randomDomain()
 			order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 				RegistrationID:         Registration.Id,
-				DnsNames:               []string{randomDomain()},
+				DnsNames:               []string{domain},
+				Identifiers:            []*corepb.Identifier{identifier.NewDNS(domain).AsProto()},
 				CertificateProfileName: tc.profile,
 			})
 			if err != nil {
@@ -1939,9 +1943,12 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ra.profiles.byName = tc.validationProfiles
 
+			domain := randomDomain()
+
 			orderReq := &rapb.NewOrderRequest{
 				RegistrationID:         Registration.Id,
-				Identifiers:            []*corepb.Identifier{identifier.NewDNS(randomDomain()).AsProto()},
+				DnsNames:               []string{domain},
+				Identifiers:            []*corepb.Identifier{identifier.NewDNS(domain).AsProto()},
 				CertificateProfileName: "test",
 			}
 			_, err := ra.NewOrder(context.Background(), orderReq)
