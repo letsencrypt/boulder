@@ -84,21 +84,21 @@ func (log grpcLogger) Fatalln(args ...interface{}) {
 
 // Treat all gRPC error logs as potential audit events.
 func (log grpcLogger) Error(args ...interface{}) {
-	log.Logger.AuditErr(fmt.Sprint(args...))
+	// log.Logger.AuditErr(fmt.Sprint(args...))
 }
 func (log grpcLogger) Errorf(format string, args ...interface{}) {
-	log.Logger.AuditErrf(format, args...)
+	// log.Logger.AuditErrf(format, args...)
 }
 func (log grpcLogger) Errorln(args ...interface{}) {
-	log.Logger.AuditErr(fmt.Sprintln(args...))
+	// log.Logger.AuditErr(fmt.Sprintln(args...))
 }
 
 // Pass through most Warnings, but filter out a few noisy ones.
 func (log grpcLogger) Warning(args ...interface{}) {
-	log.Logger.Warning(fmt.Sprint(args...))
+	// log.Logger.Warning(fmt.Sprint(args...))
 }
 func (log grpcLogger) Warningf(format string, args ...interface{}) {
-	log.Logger.Warningf(format, args...)
+	// log.Logger.Warningf(format, args...)
 }
 func (log grpcLogger) Warningln(args ...interface{}) {
 	msg := fmt.Sprintln(args...)

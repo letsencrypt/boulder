@@ -204,6 +204,7 @@ func TestRevocation(t *testing.T) {
 		test.AssertNotError(t, err, "creating random cert key")
 
 		domain := fmt.Sprintf("%s.%s.%d.revokeme.%s", tc.kind, tc.method, tc.reason, random_domain())
+		t.Logf("requesting cert for %q", domain)
 
 		// Try to issue a certificate for the name.
 		var cert *x509.Certificate
@@ -219,7 +220,10 @@ func TestRevocation(t *testing.T) {
 			err := ctAddRejectHost(domain)
 			test.AssertNotError(t, err, "adding ct-test-srv reject host")
 
-			_, err = authAndIssue(issueClient, certKey, []string{domain}, true)
+			result, err := authAndIssue(issueClient, certKey, []string{domain}, true)
+			if err == nil {
+				t.Fatalf("expected error issuing for %q, got cert for %v", domain, result.certs[0].DNSNames)
+			}
 			test.AssertError(t, err, "expected error from authAndIssue, was nil")
 			if !strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") ||
 				!strings.Contains(err.Error(), "SCT embedding") {
