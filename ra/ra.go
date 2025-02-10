@@ -389,6 +389,9 @@ func NewValidationProfiles(defaultName string, configs map[string]ValidationProf
 }
 
 func (vp *validationProfiles) get(name string) (*validationProfile, error) {
+	if vp.defaultName == UnconfiguredDefaultProfileName {
+		return vp.byName[vp.defaultName], nil
+	}
 	if name == "" {
 		name = vp.defaultName
 	}
