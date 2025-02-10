@@ -303,7 +303,7 @@ def stop():
     global processes
     for p in reversed(processes):
         if p.poll() is None:
-            p.send_signal(signal.SIGTERM)
+            p.send_signal(signal.SIGKILL)
             p.wait()
     processes = []
 
