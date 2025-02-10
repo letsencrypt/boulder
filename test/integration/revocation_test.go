@@ -203,7 +203,7 @@ func TestRevocation(t *testing.T) {
 		certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		test.AssertNotError(t, err, "creating random cert key")
 
-		domain := random_domain()
+		domain := fmt.Sprintf("%s.%s.%d.revokeme.%s", tc.kind, tc.method, tc.reason, random_domain())
 
 		// Try to issue a certificate for the name.
 		var cert *x509.Certificate
