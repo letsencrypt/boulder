@@ -82,17 +82,6 @@ type Config struct {
 		// boulder-wfe and nonce-service instances.
 		NonceHMACKey cmd.HMACKeyConfig `validate:"-"`
 
-		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
-		// instance. It should contain 256 bits of random data to be suitable as
-		// an HMAC-SHA256 key (e.g. the output of `openssl rand -hex 32`). In a
-		// multi-DC deployment this value should be the same across all
-		// boulder-wfe and nonce-service instances.
-		//
-		// TODO(#7632): Remove this.
-		//
-		// Deprecated: Use NonceHMACKey instead.
-		NoncePrefixKey cmd.PasswordConfig `validate:"-"`
-
 		// Chains is a list of lists of certificate filenames. Each inner list is
 		// a chain (starting with the issuing intermediate, followed by one or
 		// more additional certificates, up to and including a root) which we are
@@ -307,17 +296,8 @@ func main() {
 		cmd.Fail("'getNonceService' must be configured")
 	}
 
-	var noncePrefixKey []byte
-	if c.WFE.NonceHMACKey.KeyFile != "" {
-		noncePrefixKey, err = c.WFE.NonceHMACKey.Load()
-		cmd.FailOnError(err, "Failed to load nonceHMACKey file")
-	} else if c.WFE.NoncePrefixKey.PasswordFile != "" {
-		keyString, err := c.WFE.NoncePrefixKey.Pass()
-		cmd.FailOnError(err, "Failed to load noncePrefixKey file")
-		noncePrefixKey = []byte(keyString)
-	} else {
-		cmd.Fail("NonceHMACKey KeyFile or NoncePrefixKey PasswordFile must be set")
-	}
+	noncePrefixKey, err := c.WFE.NonceHMACKey.Load()
+	cmd.FailOnError(err, "Failed to load nonceHMACKey file")
 
 	getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, stats, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
