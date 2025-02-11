@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	berrors "github.com/letsencrypt/boulder/errors"
 )
@@ -86,7 +87,7 @@ RejectionLoop:
 		}
 		// If any names don't match, it isn't a match
 		for i, name := range c.DNSNames {
-			if name != domains[i] {
+			if !strings.EqualFold(name, domains[i]) {
 				continue RejectionLoop
 			}
 		}
