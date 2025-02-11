@@ -301,10 +301,11 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 }
 
 func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
-	if pb.Identifier == nil {
+	ident := pb.Identifier
+	if ident == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		pb.Identifier = identifier.NewDNS(pb.DnsName).AsProto()
+		ident = identifier.NewDNS(pb.DnsName).AsProto()
 	}
 
 	challs := make([]core.Challenge, len(pb.Challenges))
@@ -322,7 +323,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	}
 	authz := core.Authorization{
 		ID:                     pb.Id,
-		Identifier:             identifier.FromProto(pb.Identifier),
+		Identifier:             identifier.FromProto(ident),
 		RegistrationID:         pb.RegistrationID,
 		Status:                 core.AcmeStatus(pb.Status),
 		Expires:                expires,
@@ -347,13 +348,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	if order.Identifiers == nil {
-		// TODO(#7311): Change this to simply return an error once all RPC users
-		// are populating Identifiers.
-		order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
-	}
-
-	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.Identifiers) == 0)
+	return !(order.RegistrationID == 0 || order.Expires == nil || (len(order.Identifiers) == 0 && len(order.DnsNames) == 0))
 }
 
 func CertToPB(cert core.Certificate) *corepb.Certificate {

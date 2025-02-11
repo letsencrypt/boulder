@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -452,10 +453,12 @@ var uintToChallType = map[uint8]string{
 
 var identifierTypeToUint = map[string]uint8{
 	"dns": 0,
+	"ip":  1,
 }
 
 var uintToIdentifierType = map[uint8]string{
 	0: "dns",
+	1: "ip",
 }
 
 var statusToUint = map[core.AcmeStatus]uint8{
@@ -571,27 +574,23 @@ func SelectAuthzsMatchingIssuance(
 	issued time.Time,
 	idents []identifier.ACMEIdentifier,
 ) ([]*corepb.Authorization, error) {
+	identConditions, identArgs := buildIdentifierQueryConditions(idents)
 	query := fmt.Sprintf(`SELECT %s FROM authz2 WHERE
 			registrationID = ? AND
 			status IN (?, ?) AND
 			expires >= ? AND
 			attemptedAt <= ? AND
-			identifierType = ? AND
-			identifierValue IN (%s)`,
+			(%s)`,
 		authzFields,
-		db.QuestionMarks(len(idents)))
+		identConditions)
 	var args []any
 	args = append(args,
 		regID,
-		statusToUint[core.StatusValid],
-		statusToUint[core.StatusDeactivated],
+		statusToUint[core.StatusValid], statusToUint[core.StatusDeactivated],
 		issued.Add(-1*time.Second), // leeway for clock skew
 		issued.Add(1*time.Second),  // leeway for clock skew
-		identifierTypeToUint[string(identifier.TypeDNS)],
 	)
-	for _, name := range idents {
-		args = append(args, name)
-	}
+	args = append(args, identArgs...)
 
 	var authzModels []authzModel
 	_, err := s.Select(ctx, &authzModels, query, args...)
@@ -662,15 +661,16 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest, profile string) (*authzMode
 // Deprecated: this function is only used as part of test setup, do not
 // introduce any new uses in production code.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
-	if authz.Identifier == nil {
+	ident := authz.Identifier
+	if ident == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		authz.Identifier = identifier.NewDNS(authz.DnsName).AsProto()
+		ident = identifier.NewDNS(authz.DnsName).AsProto()
 	}
 
 	am := &authzModel{
-		IdentifierType:  identifierTypeToUint[authz.Identifier.Type],
-		IdentifierValue: authz.Identifier.Value,
+		IdentifierType:  identifierTypeToUint[ident.Type],
+		IdentifierValue: ident.Value,
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.AcmeStatus(authz.Status)],
 		Expires:         authz.Expires.AsTime(),
@@ -1116,12 +1116,13 @@ func statusForOrder(order *corepb.Order, authzValidityInfo []authzValidity, now 
 
 	// An order is fully authorized if it has valid authzs for each of the order
 	// identifiers
-	if order.Identifiers == nil {
+	idents := order.Identifiers
+	if idents == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
+		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
 	}
-	fullyAuthorized := len(order.Identifiers) == validAuthzs
+	fullyAuthorized := len(idents) == validAuthzs
 
 	// If the order isn't fully authorized we've encountered an internal error:
 	// Above we checked for any invalid or pending authzs and should have returned
@@ -1351,6 +1352,38 @@ func newPBFromIdentifierModels(ids []identifierModel) (*sapb.Identifiers, error)
 		pbs = append(pbs, pb)
 	}
 	return &sapb.Identifiers{Identifiers: pbs}, nil
+}
+
+// buildIdentifierQueryConditions takes a slice of identifiers and returns a
+// string (conditions to use within the prepared statement) and a slice of
+// anys (arguments for the prepared statement), both to use within a WHERE
+// clause for queries against the authz2 table.
+func buildIdentifierQueryConditions(idents []identifier.ACMEIdentifier) (string, []any) {
+	if len(idents) == 0 {
+		// No identifier values to check.
+		return "FALSE", []any{}
+	}
+
+	identsByType := map[identifier.IdentifierType][]string{}
+	for _, id := range idents {
+		identsByType[id.Type] = append(identsByType[id.Type], id.Value)
+	}
+
+	var conditions []string
+	var args []any
+	for idType, idValues := range identsByType {
+		conditions = append(conditions,
+			fmt.Sprintf("identifierType = ? AND identifierValue IN (%s)",
+				db.QuestionMarks(len(idValues)),
+			),
+		)
+		args = append(args, identifierTypeToUint[string(idType)])
+		for _, idValue := range idValues {
+			args = append(args, idValue)
+		}
+	}
+
+	return strings.Join(conditions, " OR "), args
 }
 
 // pausedModel represents a row in the paused table. It contains the

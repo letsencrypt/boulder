@@ -1076,13 +1076,14 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// There should never be an order with 0 identifiers at the stage, but we
 	// check to be on the safe side, throwing an internal server error if this
 	// assumption is ever violated.
-	if req.Order.Identifiers == nil {
+	orderIdentsPb := req.Order.Identifiers
+	if orderIdentsPb == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.Order.DnsNames))
+		orderIdentsPb = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.Order.DnsNames))
 	}
-	req.Order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(req.Order.Identifiers, req.Order.DnsNames))
-	if len(req.Order.Identifiers) == 0 {
+	orderIdents := identifier.Normalize(identifier.SliceFromProto(orderIdentsPb, req.Order.DnsNames))
+	if len(orderIdents) == 0 {
 		return nil, berrors.InternalServerError("Order has no associated identifiers")
 	}
 
@@ -1117,7 +1118,6 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	if err != nil {
 		return nil, err
 	}
-	orderIdents := identifier.Normalize(identifier.SliceFromProto(req.Order.Identifiers, nil))
 	// Check that the order names and the CSR names are an exact match
 	if !slices.Equal(csrIdents, orderIdents) {
 		return nil, berrors.UnauthorizedError("CSR does not specify same identifiers as Order")
@@ -1184,23 +1184,24 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ra.inflightFinalizes.Inc()
 	defer ra.inflightFinalizes.Dec()
 
-	if order.Identifiers == nil {
+	idents := order.Identifiers
+	if idents == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
+		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
 	}
-	order.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(order.Identifiers, order.DnsNames))
+	idents = identifier.SliceAsProto(identifier.SliceFromProto(idents, order.DnsNames))
 
 	// TODO(#7311): Remove this once all RPC users can handle Identifiers.
-	order.DnsNames = make([]string, len(order.Identifiers))
-	for i, orderIdent := range order.Identifiers {
+	order.DnsNames = make([]string, len(idents))
+	for i, orderIdent := range idents {
 		order.DnsNames[i] = orderIdent.Value
 	}
 
 	isRenewal := false
 	timestamps, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
 		DnsNames:    order.DnsNames,
-		Identifiers: order.Identifiers,
+		Identifiers: idents,
 		Window:      durationpb.New(120 * 24 * time.Hour),
 		Limit:       1,
 	})
@@ -1245,7 +1246,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 
 		ra.namesPerCert.With(
 			prometheus.Labels{"type": "issued"},
-		).Observe(float64(len(order.Identifiers)))
+		).Observe(float64(len(idents)))
 
 		ra.newCertCounter.With(
 			prometheus.Labels{

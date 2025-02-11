@@ -507,18 +507,20 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 // unexpired orders are considered. If no order meeting these requirements is
 // found a nil corepb.Order pointer is returned.
 func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
-	if req.Identifiers == nil {
+	idents := req.Identifiers
+
+	if idents == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
+		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
 	}
 
-	if req.AcctID == 0 || len(req.Identifiers) == 0 {
+	if req.AcctID == 0 || len(idents) == 0 {
 		return nil, errIncompleteRequest
 	}
 
 	// Hash the names requested for lookup in the orderFqdnSets table
-	fqdnHash := core.HashIdentifiers(identifier.SliceFromProto(req.Identifiers, nil))
+	fqdnHash := core.HashIdentifiers(identifier.SliceFromProto(idents, nil))
 
 	// Find a possibly-suitable order. We don't include the account ID or order
 	// status in this query because there's no index that includes those, so
@@ -621,40 +623,36 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 // identifiers are supported.
 //
 // Deprecated: Use GetValidAuthorizations2, as we stop pending authz reuse.
-//
-// TODO(#7311): Support IP address identifiers.
 func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if req.Identifiers == nil {
+	idents := req.Identifiers
+	if idents == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
+		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
 	}
 
-	if core.IsAnyNilOrZero(req, req.RegistrationID, req.Identifiers, req.ValidUntil) {
+	if core.IsAnyNilOrZero(req, req.RegistrationID, idents, req.ValidUntil) {
 		return nil, errIncompleteRequest
 	}
 
+	identConditions, identArgs := buildIdentifierQueryConditions(identifier.SliceFromProto(idents, nil))
 	query := fmt.Sprintf(
 		`SELECT %s FROM authz2
 			USE INDEX (regID_identifier_status_expires_idx)
 			WHERE registrationID = ? AND
 			status IN (?,?) AND
 			expires > ? AND
-			identifierType = ? AND
-			identifierValue IN (%s)`,
+			(%s)`,
 		authzFields,
-		db.QuestionMarks(len(req.Identifiers)),
+		identConditions,
 	)
 
 	params := []interface{}{
 		req.RegistrationID,
 		statusUint(core.StatusValid), statusUint(core.StatusPending),
 		req.ValidUntil.AsTime(),
-		identifierTypeToUint[string(identifier.TypeDNS)],
 	}
-	for _, ident := range req.Identifiers {
-		params = append(params, ident.Value)
-	}
+	params = append(params, identArgs...)
 
 	var authzModels []authzModel
 	_, err := ssa.dbReadOnlyMap.Select(
@@ -815,37 +813,36 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 // exists, only the one with the latest expiry will be returned. Currently only
 // dns identifiers are supported.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if req.Identifiers == nil {
+	idents := req.Identifiers
+
+	if idents == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
+		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
 	}
 
-	if core.IsAnyNilOrZero(req, req.RegistrationID, req.Identifiers, req.ValidUntil) {
+	if core.IsAnyNilOrZero(req, req.RegistrationID, idents, req.ValidUntil) {
 		return nil, errIncompleteRequest
 	}
 
+	identConditions, identArgs := buildIdentifierQueryConditions(identifier.SliceFromProto(idents, nil))
 	query := fmt.Sprintf(
 		`SELECT %s FROM authz2
 			USE INDEX (regID_identifier_status_expires_idx)
 			WHERE registrationID = ? AND
 			status = ? AND
 			expires > ? AND
-			identifierType = ? AND
-			identifierValue IN (%s)`,
+			(%s)`,
 		authzFields,
-		db.QuestionMarks(len(req.Identifiers)),
+		identConditions,
 	)
 
 	params := []interface{}{
 		req.RegistrationID,
 		statusUint(core.StatusValid),
 		req.ValidUntil.AsTime(),
-		identifierTypeToUint[string(identifier.TypeDNS)],
 	}
-	for _, ident := range req.Identifiers {
-		params = append(params, ident.Value)
-	}
+	params = append(params, identArgs...)
 
 	var authzModels []authzModel
 	_, err := ssa.dbReadOnlyMap.Select(
