@@ -400,7 +400,9 @@ func TestReRevocation(t *testing.T) {
 			// Try to issue a certificate for the name.
 			domain := random_domain()
 			res, err := authAndIssue(issueClient, certKey, []string{domain}, true)
-			test.AssertNotError(t, err, "authAndIssue failed")
+			if err != nil {
+				t.Fatalf("authAndIssue(%s)=%s", domain, err)
+			}
 			cert := res.certs[0]
 
 			// Initially, the cert should have a Good OCSP response.
