@@ -99,7 +99,7 @@ func (l *certViaPKILint) Execute(c *x509.Certificate) *lint.LintResult {
 	if err != nil {
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: fmt.Sprintf("making POST request to pkilint API: %s", err),
+			Details: fmt.Sprintf("making POST request to pkilint API: %s (timeout %s)", err, timeout),
 		}
 	}
 	defer resp.Body.Close()
