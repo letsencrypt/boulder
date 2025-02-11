@@ -456,7 +456,7 @@ var identifierTypeToUint = map[string]uint8{
 	"ip":  1,
 }
 
-var uintToIdentifierType = map[uint8]string{
+var uintToIdentifierType = map[uint8]identifier.IdentifierType{
 	0: "dns",
 	1: "ip",
 }
@@ -816,7 +816,7 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 
 func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	identType, ok := uintToIdentifierType[am.IdentifierType]
-	if !ok || identType != string(identifier.TypeDNS) {
+	if !ok || identType != identifier.TypeDNS {
 		return nil, fmt.Errorf("unrecognized identifier type encoding %d", am.IdentifierType)
 	}
 
@@ -1325,7 +1325,7 @@ func newPBFromIdentifierModel(id identifierModel) (*corepb.Identifier, error) {
 	}
 
 	return &corepb.Identifier{
-		Type:  idType,
+		Type:  string(idType),
 		Value: id.Value,
 	}, nil
 }

@@ -758,7 +758,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 	// other identifier types, and is an inefficient wire format.
 	byName := make(map[string]authzModel)
 	for _, am := range ams {
-		if uintToIdentifierType[am.IdentifierType] != string(identifier.TypeDNS) {
+		if uintToIdentifierType[am.IdentifierType] != identifier.TypeDNS {
 			return nil, fmt.Errorf("unknown identifier type: %q on authz id %d", am.IdentifierType, am.ID)
 		}
 		_, present := byName[am.IdentifierValue]
