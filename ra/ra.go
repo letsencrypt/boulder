@@ -1073,9 +1073,9 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		return nil, err
 	}
 
-	// There should never be an order with 0 identifiers at the stage, but we
-	// check to be on the safe side, throwing an internal server error if this
-	// assumption is ever violated.
+	// There should never be an order with 0 identifiers at the stage, but we check to
+	// be on the safe side, throwing an internal server error if this assumption
+	// is ever violated.
 	orderIdentsPb := req.Order.Identifiers
 	if orderIdentsPb == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
