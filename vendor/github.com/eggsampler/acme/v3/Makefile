@@ -63,7 +63,7 @@ boulder_setup:
 
 # runs an instance of boulder
 boulder_start:
-	docker-compose -f $(BOULDER_PATH)/docker-compose.yml -f $(BOULDER_PATH)/docker-compose.next.yml -f docker-compose.boulder-temp.yml up -d
+	docker-compose -f $(BOULDER_PATH)/docker-compose.yml -f docker-compose.boulder-temp.yml up -d
 
 # waits until boulder responds
 boulder_wait:
