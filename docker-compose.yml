@@ -17,6 +17,7 @@ services:
       BOULDER_CONFIG_DIR: test/config
       GOCACHE: /boulder/.gocache/go-build
       GOFLAGS: -mod=vendor
+      GOMAXPROCS: 2
     volumes:
       - .:/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
@@ -161,7 +162,7 @@ services:
         ipv4_address: 10.77.77.17
 
   bpkilint:
-    image: ghcr.io/digicert/pkilint:v0.12.6
+    image: ghcr.io/digicert/pkilint:v0.10.1
     networks:
       bouldernet:
         ipv4_address: 10.77.77.9
