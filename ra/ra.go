@@ -275,12 +275,6 @@ func NewRegistrationAuthorityImpl(
 	return ra
 }
 
-// UnconfiguredDefaultProfileName is a unique string which the RA can use to
-// identify a profile, but also detect that no profiles were explicitly
-// configured, and therefore should not be assumed to exist outside the RA.
-// TODO(#7986): Remove this when the defaultProfileName config is required.
-const UnconfiguredDefaultProfileName = "unconfiguredDefaultProfileName"
-
 // ValidationProfileConfig is a config struct which can be used to create a
 // ValidationProfile.
 type ValidationProfileConfig struct {
@@ -340,6 +334,10 @@ type validationProfiles struct {
 // configs and default name. It enforces that the given authorization lifetimes
 // are within the bounds mandated by the Baseline Requirements.
 func NewValidationProfiles(defaultName string, configs map[string]ValidationProfileConfig) (*validationProfiles, error) {
+	if defaultName == "" {
+		return nil, errors.New("default profile name must be configured")
+	}
+
 	profiles := make(map[string]*validationProfile, len(configs))
 
 	for name, config := range configs {
@@ -391,9 +389,6 @@ func NewValidationProfiles(defaultName string, configs map[string]ValidationProf
 }
 
 func (vp *validationProfiles) get(name string) (*validationProfile, error) {
-	if vp.defaultName == UnconfiguredDefaultProfileName {
-		return vp.byName[vp.defaultName], nil
-	}
 	if name == "" {
 		name = vp.defaultName
 	}
@@ -1191,12 +1186,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		logEvent.PreviousCertificateIssued = timestamps.Timestamps[0].AsTime()
 	}
 
-	// If the order didn't request a specific profile and we have a default
-	// configured, provide it to the CA so we can stop relying on the CA's
-	// configured default.
-	// TODO(#7309): Make this unconditional.
 	profileName := order.CertificateProfileName
-	if profileName == "" && ra.profiles.defaultName != UnconfiguredDefaultProfileName {
+	if profileName == "" {
 		profileName = ra.profiles.defaultName
 	}
 

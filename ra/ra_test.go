@@ -1763,67 +1763,6 @@ func TestNewOrder_ValidationProfiles(t *testing.T) {
 	}
 }
 
-func TestNewOrder_UnconfiguredValidationProfiles(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ra.profiles = &validationProfiles{
-		defaultName: UnconfiguredDefaultProfileName,
-		byName: map[string]*validationProfile{
-			UnconfiguredDefaultProfileName: {
-				pendingAuthzLifetime: 1 * 24 * time.Hour,
-				validAuthzLifetime:   1 * 24 * time.Hour,
-				orderLifetime:        1 * 24 * time.Hour,
-			},
-		},
-	}
-
-	for _, tc := range []struct {
-		name        string
-		profile     string
-		wantExpires time.Time
-	}{
-		{
-			// A request with no profile should get an order and authzs with one-day lifetimes.
-			name:        "no profile specified",
-			profile:     "",
-			wantExpires: ra.clk.Now().Add(1 * 24 * time.Hour),
-		},
-		{
-			// A request for a specific profile should get the same lifetimes.
-			name:        "profile specified",
-			profile:     "test",
-			wantExpires: ra.clk.Now().Add(1 * 24 * time.Hour),
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-				RegistrationID:         Registration.Id,
-				DnsNames:               []string{randomDomain()},
-				CertificateProfileName: tc.profile,
-			})
-			if err != nil {
-				t.Fatalf("creating order: %s", err)
-			}
-			gotExpires := order.Expires.AsTime()
-			if gotExpires != tc.wantExpires {
-				t.Errorf("NewOrder(profile: %q).Expires = %s, expected %s", tc.profile, gotExpires, tc.wantExpires)
-			}
-
-			authz, err := ra.GetAuthorization(context.Background(), &rapb.GetAuthorizationRequest{
-				Id: order.V2Authorizations[0],
-			})
-			if err != nil {
-				t.Fatalf("fetching test authz: %s", err)
-			}
-			gotExpires = authz.Expires.AsTime()
-			if gotExpires != tc.wantExpires {
-				t.Errorf("GetAuthorization(profile: %q).Expires = %s, expected %s", tc.profile, gotExpires, tc.wantExpires)
-			}
-		})
-	}
-}
-
 func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
