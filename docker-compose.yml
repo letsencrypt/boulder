@@ -161,7 +161,7 @@ services:
         ipv4_address: 10.77.77.17
 
   bpkilint:
-    image: ghcr.io/digicert/pkilint:v0.10.1
+    image: ghcr.io/digicert/pkilint:v0.12.6
     networks:
       bouldernet:
         ipv4_address: 10.77.77.9
