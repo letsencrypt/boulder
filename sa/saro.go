@@ -337,13 +337,14 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 //
 // If req.Limit is nonzero, it returns only the most recent `Limit` results
 func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
-	if req.Identifiers == nil {
+	idents := req.Identifiers
+	if idents == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
+		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
 	}
 
-	if core.IsAnyNilOrZero(req.Window) || len(req.Identifiers) == 0 {
+	if core.IsAnyNilOrZero(req.Window) || len(idents) == 0 {
 		return nil, errIncompleteRequest
 	}
 	limit := req.Limit
@@ -362,7 +363,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 		AND issued > ?
 		ORDER BY issued DESC
 		LIMIT ?`,
-		core.HashIdentifiers(identifier.SliceFromProto(req.Identifiers, nil)),
+		core.HashIdentifiers(identifier.SliceFromProto(idents, nil)),
 		ssa.clk.Now().Add(-req.Window.AsDuration()),
 		limit,
 	)
@@ -380,15 +381,16 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
 func (ssa *SQLStorageAuthorityRO) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
-	if req.Identifiers == nil {
+	idents := req.Identifiers
+	if idents == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
+		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
 	}
-	if len(req.Identifiers) == 0 {
+	if len(idents) == 0 {
 		return nil, errIncompleteRequest
 	}
-	exists, err := ssa.checkFQDNSetExists(ctx, ssa.dbReadOnlyMap.SelectOne, identifier.SliceFromProto(req.Identifiers, nil))
+	exists, err := ssa.checkFQDNSetExists(ctx, ssa.dbReadOnlyMap.SelectOne, identifier.SliceFromProto(idents, nil))
 	if err != nil {
 		return nil, err
 	}
@@ -772,13 +774,14 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
 // in a given time range. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	if req.Identifier == nil {
+	ident := req.Identifier
+	if ident == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifier = identifier.NewDNS(req.DnsName).AsProto()
+		ident = identifier.NewDNS(req.DnsName).AsProto()
 	}
 
-	if core.IsAnyNilOrZero(req.RegistrationID, req.Identifier, req.Range.Earliest, req.Range.Latest) {
+	if core.IsAnyNilOrZero(req.RegistrationID, ident, req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
 
@@ -796,7 +799,7 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 		map[string]interface{}{
 			"regID":           req.RegistrationID,
 			"dnsType":         identifierTypeToUint[string(identifier.TypeDNS)],
-			"ident":           req.Identifier.Value,
+			"ident":           ident.Value,
 			"expiresEarliest": req.Range.Earliest.AsTime(),
 			"expiresLatest":   req.Range.Latest.AsTime(),
 			"status":          statusUint(core.StatusInvalid),
@@ -814,7 +817,6 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 // dns identifiers are supported.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
 	idents := req.Identifiers
-
 	if idents == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.

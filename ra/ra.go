@@ -1611,10 +1611,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	}
 	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
 	// upwards, once all RPC users are populating Identifiers.
-	if req.Authz.Identifier == nil {
-		req.Authz.Identifier = identifier.NewDNS(req.Authz.DnsName).AsProto()
+	ident := req.Authz.Identifier
+	if ident == nil {
+		ident = identifier.NewDNS(req.Authz.DnsName).AsProto()
 	}
-	if core.IsAnyNilOrZero(req.Authz.Identifier) {
+	if core.IsAnyNilOrZero(ident) && core.IsAnyNilOrZero(req.Authz.DnsName) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -2269,10 +2270,11 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
-	if req.Identifier == nil {
+	ident := req.Identifier
+	if ident == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifier = identifier.NewDNS(req.DnsName).AsProto()
+		ident = identifier.NewDNS(req.DnsName).AsProto()
 	}
 
 	if core.IsAnyNilOrZero(req, req.Id, req.Status, req.RegistrationID) {
@@ -2291,7 +2293,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		// internal errors in the client. From our perspective this uses storage
 		// resources similar to how failed authorizations do, so we increment the
 		// failed authorizations limit.
-		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.FromProto(req.Identifier))
+		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.FromProto(ident))
 		if err != nil {
 			return nil, fmt.Errorf("failed to update rate limits: %w", err)
 		}
@@ -2344,12 +2346,13 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	if req.Identifiers == nil {
+	identsPb := req.Identifiers
+	if identsPb == nil {
 		// TODO(#7311): Change this to simply return an error once all RPC users
 		// are populating Identifiers.
-		req.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
+		identsPb = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
 	}
-	idents := identifier.Normalize(identifier.SliceFromProto(req.Identifiers, req.DnsNames))
+	idents := identifier.Normalize(identifier.SliceFromProto(identsPb, req.DnsNames))
 
 	if len(idents) > ra.maxNames {
 		return nil, berrors.MalformedError(
@@ -2411,10 +2414,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 		// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
 		// upwards, once all RPC users are populating Identifiers.
-		if existingOrder.Identifiers == nil {
-			existingOrder.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, existingOrder.DnsNames))
+		existingOrderIdents := existingOrder.Identifiers
+		if existingOrderIdents == nil {
+			existingOrderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, existingOrder.DnsNames))
 		}
-		if core.IsAnyNilOrZero(existingOrder.Identifiers) {
+		if core.IsAnyNilOrZero(existingOrderIdents) && core.IsAnyNilOrZero(existingOrder.DnsNames) {
 			return nil, errIncompleteGRPCResponse
 		}
 
@@ -2602,10 +2606,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
 	// upwards, once all RPC users are populating Identifiers.
-	if storedOrder.Identifiers == nil {
-		storedOrder.Identifiers = identifier.SliceAsProto(identifier.SliceFromProto(nil, storedOrder.DnsNames))
+	storedOrderIdents := storedOrder.Identifiers
+	if storedOrderIdents == nil {
+		storedOrderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, storedOrder.DnsNames))
 	}
-	if core.IsAnyNilOrZero(storedOrder.Identifiers) {
+	if core.IsAnyNilOrZero(storedOrderIdents) && core.IsAnyNilOrZero(storedOrder.DnsNames) {
 		return nil, errIncompleteGRPCResponse
 	}
 	ra.orderAges.WithLabelValues("NewOrder").Observe(0)
