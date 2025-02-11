@@ -2615,8 +2615,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 	ra.orderAges.WithLabelValues("NewOrder").Observe(0)
 
-	// Note how many names are being requested in this certificate order.
-	ra.namesPerCert.With(prometheus.Labels{"type": "requested"}).Observe(float64(len(storedOrder.DnsNames)))
+	// Note how many identifiers are being requested in this certificate order.
+	ra.namesPerCert.With(prometheus.Labels{"type": "requested"}).Observe(float64(len(storedOrder.Identifiers)))
 
 	return storedOrder, nil
 }
