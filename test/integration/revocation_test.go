@@ -211,7 +211,9 @@ func TestRevocation(t *testing.T) {
 		switch tc.kind {
 		case finalcert:
 			res, err := authAndIssue(issueClient, certKey, []string{domain}, true)
-			test.AssertNotError(t, err, "authAndIssue failed")
+			if err != nil {
+				t.Fatalf("authAndIssue (%s)=%s", domain, err)
+			}
 			cert = res.certs[0]
 
 		case precert:
