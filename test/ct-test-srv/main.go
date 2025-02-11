@@ -75,7 +75,8 @@ func (is *integrationSrv) addRejectHost(w http.ResponseWriter, r *http.Request) 
 
 	is.Lock()
 	defer is.Unlock()
-	is.rejectHosts[rejectHostReq.Host] = true
+
+	is.rejectHosts[strings.ToLower(rejectHostReq.Host)] = true
 	w.Write([]byte{})
 }
 
@@ -101,7 +102,7 @@ func (is *integrationSrv) getRejections(w http.ResponseWriter, r *http.Request) 
 func (is *integrationSrv) shouldReject(host, chain string) bool {
 	is.Lock()
 	defer is.Unlock()
-	if is.rejectHosts[host] {
+	if is.rejectHosts[strings.ToLower(host)] {
 		is.rejected = append(is.rejected, chain)
 		return true
 	}
