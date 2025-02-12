@@ -829,7 +829,7 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 		Id:                     fmt.Sprintf("%d", am.ID),
 		Status:                 string(uintToStatus[am.Status]),
 		DnsName:                am.IdentifierValue,
-		Identifier:             identifier.ACMEIdentifier{Type: identifier.IdentifierType(identType), Value: am.IdentifierValue}.AsProto(),
+		Identifier:             identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}.AsProto(),
 		RegistrationID:         am.RegistrationID,
 		Expires:                timestamppb.New(am.Expires),
 		CertificateProfileName: profile,

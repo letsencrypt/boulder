@@ -459,7 +459,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		idents := make([]identifier.ACMEIdentifier, 0, len(authzValidityInfo))
 		names := make([]string, 0, len(authzValidityInfo))
 		for _, a := range authzValidityInfo {
-			idents = append(idents, identifier.ACMEIdentifier{Type: identifier.IdentifierType(uintToIdentifierType[a.IdentifierType]), Value: a.IdentifierValue})
+			idents = append(idents, identifier.ACMEIdentifier{Type: uintToIdentifierType[a.IdentifierType], Value: a.IdentifierValue})
 			names = append(names, a.IdentifierValue)
 		}
 		order.Identifiers = identifier.SliceAsProto(idents)
