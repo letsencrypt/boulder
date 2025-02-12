@@ -129,7 +129,7 @@ type Config struct {
 		//
 		// A small ExpiresMargin means revocations become visible sooner, including
 		// admin-invoked revocations that may have a time requirement.
-		ExpiresMargin time.Duration
+		ExpiresMargin config.Duration
 
 		// CacheControl is a string passed verbatim to the crl-storer to store on
 		// the S3 object.
@@ -221,7 +221,7 @@ func main() {
 		c.CRLUpdater.MaxParallelism,
 		c.CRLUpdater.MaxAttempts,
 		c.CRLUpdater.CacheControl,
-		c.CRLUpdater.ExpiresMargin,
+		c.CRLUpdater.ExpiresMargin.Duration,
 		c.CRLUpdater.TemporallyShardedSerialPrefixes,
 		sac,
 		cac,
