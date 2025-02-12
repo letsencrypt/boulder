@@ -6,8 +6,9 @@ import (
 	"log"
 	"math/big"
 
-	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/miekg/pkcs11"
+
+	"github.com/letsencrypt/boulder/pkcs11helpers"
 )
 
 const (
@@ -18,10 +19,10 @@ const (
 // device and specifies which mechanism should be used. modulusLen specifies the
 // length of the modulus to be generated on the device in bits and exponent
 // specifies the public exponent that should be used.
-func rsaArgs(label string, modulusLen, exponent uint, keyID []byte) generateArgs {
+func rsaArgs(label string, modulusLen int, keyID []byte) generateArgs {
 	// Encode as unpadded big endian encoded byte slice
-	expSlice := big.NewInt(int64(exponent)).Bytes()
-	log.Printf("\tEncoded public exponent (%d) as: %0X\n", exponent, expSlice)
+	expSlice := big.NewInt(rsaExp).Bytes()
+	log.Printf("\tEncoded public exponent (%d) as: %0X\n", rsaExp, expSlice)
 	return generateArgs{
 		mechanism: []*pkcs11.Mechanism{
 			pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN, nil),
@@ -55,15 +56,15 @@ func rsaArgs(label string, modulusLen, exponent uint, keyID []byte) generateArgs
 // handle, and constructs a rsa.PublicKey. It also checks that the key has the
 // correct length modulus and that the public exponent is what was requested in
 // the public key template.
-func rsaPub(session *pkcs11helpers.Session, object pkcs11.ObjectHandle, modulusLen, exponent uint) (*rsa.PublicKey, error) {
+func rsaPub(session *pkcs11helpers.Session, object pkcs11.ObjectHandle, modulusLen int) (*rsa.PublicKey, error) {
 	pubKey, err := session.GetRSAPublicKey(object)
 	if err != nil {
 		return nil, err
 	}
-	if pubKey.E != int(exponent) {
+	if pubKey.E != rsaExp {
 		return nil, errors.New("returned CKA_PUBLIC_EXPONENT doesn't match expected exponent")
 	}
-	if pubKey.N.BitLen() != int(modulusLen) {
+	if pubKey.N.BitLen() != modulusLen {
 		return nil, errors.New("returned CKA_MODULUS isn't of the expected bit length")
 	}
 	log.Printf("\tPublic exponent: %d\n", pubKey.E)
@@ -75,21 +76,21 @@ func rsaPub(session *pkcs11helpers.Session, object pkcs11.ObjectHandle, modulusL
 // specified by modulusLen and with the exponent 65537.
 // It returns the public part of the generated key pair as a rsa.PublicKey
 // and the random key ID that the HSM uses to identify the key pair.
-func rsaGenerate(session *pkcs11helpers.Session, label string, modulusLen uint) (*rsa.PublicKey, []byte, error) {
+func rsaGenerate(session *pkcs11helpers.Session, label string, modulusLen int) (*rsa.PublicKey, []byte, error) {
 	keyID := make([]byte, 4)
 	_, err := newRandReader(session).Read(keyID)
 	if err != nil {
 		return nil, nil, err
 	}
 	log.Printf("Generating RSA key with %d bit modulus and public exponent %d and ID %x\n", modulusLen, rsaExp, keyID)
-	args := rsaArgs(label, modulusLen, rsaExp, keyID)
+	args := rsaArgs(label, modulusLen, keyID)
 	pub, _, err := session.GenerateKeyPair(args.mechanism, args.publicAttrs, args.privateAttrs)
 	if err != nil {
 		return nil, nil, err
 	}
 	log.Println("Key generated")
 	log.Println("Extracting public key")
-	pk, err := rsaPub(session, pub, modulusLen, rsaExp)
+	pk, err := rsaPub(session, pub, modulusLen)
 	if err != nil {
 		return nil, nil, err
 	}

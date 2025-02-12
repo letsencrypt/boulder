@@ -9,9 +9,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/letsencrypt/boulder/test/ocsp/helper"
 	prom "github.com/prometheus/client_golang/prometheus"
 	promhttp "github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/letsencrypt/boulder/test/ocsp/helper"
 )
 
 var listenAddress = flag.String("listen", ":8080", "Port to listen on")
@@ -86,10 +87,7 @@ func main() {
 	}
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
-		// The gosec linter complains that timeouts cannot be set here. That's fine,
-		// because this is test-only code.
-		////nolint:gosec
-		err := http.ListenAndServe(*listenAddress, nil)
+		err := http.ListenAndServe(*listenAddress, nil) //nolint: gosec // No request timeout is fine for test-only code.
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)
 		}

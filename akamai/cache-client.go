@@ -3,7 +3,7 @@ package akamai
 import (
 	"bytes"
 	"crypto/hmac"
-	"crypto/md5"
+	"crypto/md5" //nolint: gosec // MD5 is required by the Akamai API.
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"

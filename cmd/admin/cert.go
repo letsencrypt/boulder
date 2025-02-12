@@ -42,7 +42,7 @@ type subcommandRevokeCert struct {
 	incidentTable string
 	serialsFile   string
 	privKey       string
-	regID         uint
+	regID         int64
 	certFile      string
 	crlShard      int64
 }
@@ -66,7 +66,7 @@ func (s *subcommandRevokeCert) Flags(flag *flag.FlagSet) {
 	flag.StringVar(&s.incidentTable, "incident-table", "", "Revoke all certificates whose serials are in this table")
 	flag.StringVar(&s.serialsFile, "serials-file", "", "Revoke all certificates whose hex serials are in this file")
 	flag.StringVar(&s.privKey, "private-key", "", "Revoke all certificates whose pubkey matches this private key")
-	flag.UintVar(&s.regID, "reg-id", 0, "Revoke all certificates issued to this account")
+	flag.Int64Var(&s.regID, "reg-id", 0, "Revoke all certificates issued to this account")
 	flag.StringVar(&s.certFile, "cert-file", "", "Revoke the single PEM-formatted certificate in this file")
 }
 
@@ -126,7 +126,7 @@ func (s *subcommandRevokeCert) Run(ctx context.Context, a *admin) error {
 	case "-private-key":
 		serials, err = a.serialsFromPrivateKey(ctx, s.privKey)
 	case "-reg-id":
-		serials, err = a.serialsFromRegID(ctx, int64(s.regID))
+		serials, err = a.serialsFromRegID(ctx, s.regID)
 	case "-cert-file":
 		serials, err = a.serialsFromCertPEM(ctx, s.certFile)
 	default:

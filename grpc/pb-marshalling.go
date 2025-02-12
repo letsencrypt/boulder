@@ -36,7 +36,7 @@ func ProblemDetailsToPB(prob *probs.ProblemDetails) (*corepb.ProblemDetails, err
 	return &corepb.ProblemDetails{
 		ProblemType: string(prob.Type),
 		Detail:      prob.Detail,
-		HttpStatus:  int32(prob.HTTPStatus),
+		HttpStatus:  int32(prob.HTTPStatus), //nolint: gosec // HTTP status codes are guaranteed to be small, no risk of overflow.
 	}, nil
 }
 

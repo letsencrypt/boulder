@@ -2276,7 +2276,7 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 	return ra.OCSP.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:    req.Serial,
 		Status:    status.Status,
-		Reason:    int32(status.RevokedReason),
+		Reason:    int32(status.RevokedReason), //nolint: gosec // Revocation reasons are guaranteed to be small, no risk of overflow.
 		RevokedAt: status.RevokedDate,
 		IssuerID:  status.IssuerID,
 	})

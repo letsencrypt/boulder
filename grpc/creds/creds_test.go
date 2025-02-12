@@ -2,8 +2,9 @@ package creds
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"math/big"
@@ -80,8 +81,8 @@ func TestServerTransportCredentials(t *testing.T) {
 }
 
 func TestClientTransportCredentials(t *testing.T) {
-	priv, err := rsa.GenerateKey(rand.Reader, 1024)
-	test.AssertNotError(t, err, "rsa.GenerateKey failed")
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate test key")
 
 	temp := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),

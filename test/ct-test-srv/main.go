@@ -228,10 +228,7 @@ func runPersonality(p Personality) {
 	m.HandleFunc("/ct/v1/add-chain", is.addChain)
 	m.HandleFunc("/add-reject-host", is.addRejectHost)
 	m.HandleFunc("/get-rejections", is.getRejections)
-	// The gosec linter complains that ReadHeaderTimeout is not set. That's fine,
-	// because this is test-only code.
-	////nolint:gosec
-	srv := &http.Server{
+	srv := &http.Server{ //nolint: gosec // No ReadHeaderTimeout is fine for test-only code.
 		Addr:    p.Addr,
 		Handler: m,
 	}

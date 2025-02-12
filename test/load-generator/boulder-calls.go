@@ -1,16 +1,14 @@
 package main
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -153,10 +151,9 @@ func newAccount(s *State, c *acmeCache) error {
 func randDomain(base string) string {
 	// This approach will cause some repeat domains but not enough to make rate
 	// limits annoying!
-	n := time.Now().UnixNano()
-	b := new(bytes.Buffer)
-	binary.Write(b, binary.LittleEndian, n)
-	return fmt.Sprintf("%x.%s", sha1.Sum(b.Bytes()), base)
+	var bytes [3]byte
+	_, _ = rand.Read(bytes[:])
+	return hex.EncodeToString(bytes[:]) + base
 }
 
 // newOrder creates a new pending order object for a random set of domains using
