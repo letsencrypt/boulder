@@ -81,21 +81,20 @@ func main() {
 	cmd.FailOnError(err, "Creating Pardot client")
 	exporterServer := email.NewExporterImpl(pardotClient, scope, logger)
 
-	daemonCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Begin asynchronous processing of the email queue.
-	go exporterServer.Start(daemonCtx)
-
 	tlsConfig, err := c.EmailExporter.TLS.Load(scope)
 	cmd.FailOnError(err, "Loading TLS config")
+
+	daemonCtx, shutdownExporterServer := context.WithCancel(context.Background())
+	go exporterServer.Start(daemonCtx)
 
 	start, err := bgrpc.NewServer(c.EmailExporter.GRPC, logger).Add(
 		&emailpb.Exporter_ServiceDesc, exporterServer).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Configuring gRPC server")
 
-	// Start the gRPC service.
-	cmd.FailOnError(start(), "email-exporter gRPC service failed to start")
+	err = start()
+	shutdownExporterServer()
+	exporterServer.Drain()
+	cmd.FailOnError(err, "email-exporter gRPC service failed to start")
 }
 
 func init() {
