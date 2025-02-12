@@ -116,6 +116,37 @@ type Config struct {
 		// load of said run. The default is 1.
 		MaxAttempts int `validate:"omitempty,min=1"`
 
+		// ExpiresMargin adds a small increment to the CRL's HTTP Expires time.
+		//
+		// When uploading a CRL, its Expires field in S3 is set to the expected time
+		// the next CRL will be uploaded (by this instance). That allows our CDN
+		// instances to cache for that long. However, since the next update might be
+		// slow or delayed, we add a margin of error.
+		//
+		// Tradeoffs: A large ExpiresMargin reduces the chance that a CRL becomes
+		// uncacheable and floods S3 with traffic (which might result in 503s while
+		// S3 scales out).
+		//
+		// A small ExpiresMargin means revocations become visible sooner, including
+		// admin-invoked revocations that may have a time requirement.
+		ExpiresMargin time.Duration
+
+		// CacheControl is a string passed verbatim to the crl-storer to store on
+		// the S3 object.
+		//
+		// Note: if this header contains max-age, it will override
+		// Expires. https://www.rfc-editor.org/rfc/rfc9111.html#name-calculating-freshness-lifet
+		// Cache-Control: max-age has the disadvantage that it caches for a fixed
+		// amount of time, regardless of how close the CRL is to replacement. So
+		// if max-age is used, the worst-case time for a revocation to become visible
+		// is UpdatePeriod + the value of max age.
+		//
+		// The stale-if-error and stale-while-revalidate headers may be useful here:
+		// https://aws.amazon.com/about-aws/whats-new/2023/05/amazon-cloudfront-stale-while-revalidate-stale-if-error-cache-control-directives/
+		//
+		// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+		CacheControl string
+
 		Features features.Config
 	}
 
@@ -189,6 +220,8 @@ func main() {
 		c.CRLUpdater.UpdateTimeout.Duration,
 		c.CRLUpdater.MaxParallelism,
 		c.CRLUpdater.MaxAttempts,
+		c.CRLUpdater.CacheControl,
+		c.CRLUpdater.ExpiresMargin,
 		c.CRLUpdater.TemporallyShardedSerialPrefixes,
 		sac,
 		cac,

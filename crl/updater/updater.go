@@ -36,6 +36,9 @@ type crlUpdater struct {
 	maxParallelism int
 	maxAttempts    int
 
+	cacheControl  string
+	expiresMargin time.Duration
+
 	temporallyShardedPrefixes []string
 
 	sa sapb.StorageAuthorityClient
@@ -58,6 +61,8 @@ func NewUpdater(
 	updateTimeout time.Duration,
 	maxParallelism int,
 	maxAttempts int,
+	cacheControl string,
+	expiresMargin time.Duration,
 	temporallyShardedPrefixes []string,
 	sa sapb.StorageAuthorityClient,
 	ca capb.CRLGeneratorClient,
@@ -117,6 +122,8 @@ func NewUpdater(
 		updateTimeout,
 		maxParallelism,
 		maxAttempts,
+		cacheControl,
+		expiresMargin,
 		temporallyShardedPrefixes,
 		sa,
 		ca,
@@ -392,6 +399,8 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 				IssuerNameID: int64(issuerNameID),
 				Number:       atTime.UnixNano(),
 				ShardIdx:     int64(shardIdx),
+				CacheControl: cu.cacheControl,
+				Expires:      timestamppb.New(atTime.Add(cu.updatePeriod).Add(cu.expiresMargin)),
 			},
 		},
 	})

@@ -105,6 +105,8 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 	var shardIdx int64
 	var crlNumber *big.Int
 	crlBytes := make([]byte, 0)
+	var cacheControl string
+	var expires time.Time
 
 	// Read all of the messages from the input stream.
 	for {
@@ -124,6 +126,9 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 			if payload.Metadata.IssuerNameID == 0 || payload.Metadata.Number == 0 {
 				return errors.New("got incomplete metadata message")
 			}
+
+			cacheControl = payload.Metadata.CacheControl
+			expires = payload.Metadata.Expires.AsTime()
 
 			shardIdx = payload.Metadata.ShardIdx
 			crlNumber = crl.Number(time.Unix(0, payload.Metadata.Number))
@@ -229,6 +234,8 @@ func (cs *crlStorer) UploadCRL(stream grpc.ClientStreamingServer[cspb.UploadCRLR
 		ChecksumSHA256:    &checksumb64,
 		ContentType:       &crlContentType,
 		Metadata:          map[string]string{"crlNumber": crlNumber.String()},
+		Expires:           &expires,
+		CacheControl:      &cacheControl,
 	})
 
 	latency := cs.clk.Now().Sub(start)

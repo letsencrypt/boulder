@@ -225,6 +225,8 @@ func TestUpdateShard(t *testing.T) {
 		[]*issuance.Certificate{e1, r3},
 		2, 18*time.Hour, 24*time.Hour,
 		6*time.Hour, time.Minute, 1, 1,
+		"stale-if-error=60",
+		5*time.Minute,
 		nil,
 		&fakeSAC{
 			revokedCerts: revokedCertsStream{},
@@ -406,6 +408,8 @@ func TestUpdateShardWithRetry(t *testing.T) {
 		[]*issuance.Certificate{e1, r3},
 		2, 18*time.Hour, 24*time.Hour,
 		6*time.Hour, time.Minute, 1, 1,
+		"stale-if-error=60",
+		5*time.Minute,
 		nil,
 		&fakeSAC{revokedCerts: revokedCertsStream{err: sentinelErr}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
 		&fakeCA{gcc: generateCRLStream{}},
