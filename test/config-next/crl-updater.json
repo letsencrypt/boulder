@@ -48,6 +48,8 @@
 		"lookbackPeriod": "24h",
 		"updatePeriod": "10m",
 		"updateTimeout": "1m",
+		"expiresMargin": "5m",
+		"cacheControl": "stale-if-error=60",
 		"temporallyShardedSerialPrefixes": [
 			"7f"
 		],
