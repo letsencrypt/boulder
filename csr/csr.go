@@ -38,8 +38,9 @@ var (
 	invalidNoIdentifier = berrors.BadCSRError("at least one identifier is required")
 )
 
-// VerifyCSR checks the validity of a x509.CertificateRequest. It uses FromCSR
-// to normalize the DNS names before checking whether we'll issue for them.
+// VerifyCSR checks the validity of a x509.CertificateRequest. It uses
+// NamesFromCSR to normalize the DNS names before checking whether we'll issue
+// for them.
 func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority) error {
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
@@ -67,27 +68,21 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return invalidIPPresent
 	}
 
-	// FromCSR also performs normalization, returning values that may not match
-	// the literal CSR contents.
-	idents, err := identifier.FromCSR(csr)
+	// NamesFromCSR also performs normalization, returning values that may not
+	// match the literal CSR contents.
+	names := NamesFromCSR(csr)
 
-	if err != nil {
-		return berrors.BadCSRError("couldn't parse identifiers from CSR")
-	}
-	if len(idents) == 0 {
+	if len(names.SANs) == 0 && names.CN == "" {
 		return invalidNoIdentifier
 	}
-	if len(idents) > maxNames {
-		return berrors.BadCSRError("CSR contains more than %d DNS names", maxNames)
-	}
-	// TODO(#7961): This check now blocks all CSRs with too long of a CN,
-	// instead of testing whether it remains too long after our parsing. Is this
-	// desirable? Should we change the test to match?
-	if len(csr.Subject.CommonName) > maxCNLength {
+	if len(names.CN) > maxCNLength {
 		return berrors.BadCSRError("CN was longer than %d bytes", maxCNLength)
 	}
+	if len(names.SANs) > maxNames {
+		return berrors.BadCSRError("CSR contains more than %d DNS names", maxNames)
+	}
 
-	err = pa.WillingToIssue(idents)
+	err = pa.WillingToIssue(identifier.SliceFromProto(nil, names.SANs))
 	if err != nil {
 		return err
 	}
