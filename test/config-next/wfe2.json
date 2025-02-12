@@ -98,8 +98,6 @@
 			]
 		],
 		"staleTimeout": "5m",
-		"authorizationLifetimeDays": 30,
-		"pendingAuthorizationLifetimeDays": 7,
 		"limiter": {
 			"redis": {
 				"username": "boulder-wfe",
