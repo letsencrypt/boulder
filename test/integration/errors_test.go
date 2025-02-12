@@ -22,7 +22,7 @@ func TestTooBigOrderError(t *testing.T) {
 		idents = append(idents, acme.Identifier{Type: "dns", Value: fmt.Sprintf("%d.example.com", i)})
 	}
 
-	_, err := authAndIssue(nil, nil, idents, true)
+	_, err := authAndIssue(nil, nil, idents, true, "")
 	test.AssertError(t, err, "authAndIssue failed")
 
 	var prob acme.Problem
@@ -158,7 +158,7 @@ func TestRejectedIdentifier(t *testing.T) {
 	idents := []acme.Identifier{
 		{Type: "dns", Value: "яџ–Х6яяdь}"},
 	}
-	_, err := authAndIssue(nil, nil, idents, true)
+	_, err := authAndIssue(nil, nil, idents, true, "")
 	test.AssertError(t, err, "issuance should fail for one malformed name")
 	var prob acme.Problem
 	test.AssertErrorWraps(t, err, &prob)
@@ -176,7 +176,7 @@ func TestRejectedIdentifier(t *testing.T) {
 		{Type: "dns", Value: "яџ–Х6яя"},
 		{Type: "dns", Value: "яџ–Х6яя`ь"},
 	}
-	_, err = authAndIssue(nil, nil, idents, true)
+	_, err = authAndIssue(nil, nil, idents, true, "")
 	test.AssertError(t, err, "issuance should fail for multiple malformed names")
 	test.AssertErrorWraps(t, err, &prob)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:rejectedIdentifier")

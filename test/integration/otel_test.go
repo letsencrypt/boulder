@@ -286,7 +286,7 @@ func traceIssuingTestCert(t *testing.T) trace.TraceID {
 	account, err := c.NewAccount(privKey, false, true)
 	test.AssertNotError(t, err, "newAccount failed")
 
-	_, err = authAndIssue(&client{account, c}, nil, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true)
+	_, err = authAndIssue(&client{account, c}, nil, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 	test.AssertNotError(t, err, "authAndIssue failed")
 
 	return span.SpanContext().TraceID()

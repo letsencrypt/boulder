@@ -27,7 +27,7 @@ func TestValidAuthzExpires(t *testing.T) {
 
 	// Issue for a random domain
 	idents := []acme.Identifier{{Type: "dns", Value: random_domain()}}
-	result, err := authAndIssue(c, nil, idents, true)
+	result, err := authAndIssue(c, nil, idents, true, "")
 	// There should be no error
 	test.AssertNotError(t, err, "authAndIssue failed")
 	// The order should be valid

@@ -18,13 +18,13 @@ func TestDuplicateFQDNRateLimit(t *testing.T) {
 	idents := []acme.Identifier{{Type: "dns", Value: random_domain()}}
 
 	// The global rate limit for a duplicate certificates is 2 per 3 hours.
-	_, err := authAndIssue(nil, nil, idents, true)
+	_, err := authAndIssue(nil, nil, idents, true, "")
 	test.AssertNotError(t, err, "Failed to issue first certificate")
 
-	_, err = authAndIssue(nil, nil, idents, true)
+	_, err = authAndIssue(nil, nil, idents, true, "")
 	test.AssertNotError(t, err, "Failed to issue second certificate")
 
-	_, err = authAndIssue(nil, nil, idents, true)
+	_, err = authAndIssue(nil, nil, idents, true, "")
 	test.AssertError(t, err, "Somehow managed to issue third certificate")
 
 	test.AssertContains(t, err.Error(), "too many certificates (2) already issued for this exact set of domains in the last 3h0m0s")
@@ -41,19 +41,19 @@ func TestCertificatesPerDomain(t *testing.T) {
 	}
 
 	firstSubDomain := randomSubDomain()
-	_, err := authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: firstSubDomain}}, true)
+	_, err := authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: firstSubDomain}}, true, "")
 	test.AssertNotError(t, err, "Failed to issue first certificate")
 
-	_, err = authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: randomSubDomain()}}, true)
+	_, err = authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: randomSubDomain()}}, true, "")
 	test.AssertNotError(t, err, "Failed to issue second certificate")
 
-	_, err = authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: randomSubDomain()}}, true)
+	_, err = authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: randomSubDomain()}}, true, "")
 	test.AssertError(t, err, "Somehow managed to issue third certificate")
 
 	test.AssertContains(t, err.Error(), fmt.Sprintf("too many certificates (2) already issued for %q in the last 2160h0m0s", randomDomain))
 
 	// Issue a certificate for the first subdomain, which should succeed because
 	// it's a renewal.
-	_, err = authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: firstSubDomain}}, true)
+	_, err = authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: firstSubDomain}}, true, "")
 	test.AssertNotError(t, err, "Failed to issue renewal certificate")
 }

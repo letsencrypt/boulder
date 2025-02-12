@@ -37,10 +37,12 @@ type Config struct {
 			// The name of the certificate profile to use if one wasn't provided
 			// by the RA during NewOrder and Finalize requests. Must match a
 			// configured certificate profile or boulder-ca will fail to start.
+			//
+			// Deprecated: set the defaultProfileName in the RA config instead.
 			DefaultCertificateProfileName string `validate:"omitempty,alphanum,min=1,max=32"`
 
-			// One of the profile names must match the value of
-			// DefaultCertificateProfileName or boulder-ca will fail to start.
+			// One of the profile names must match the value of ra.defaultProfileName
+			// or large amounts of issuance will fail.
 			CertProfiles map[string]*issuance.ProfileConfigNew `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
 
 			// TODO(#7159): Make this required once all live configs are using it.
@@ -194,11 +196,6 @@ func main() {
 		logger.Infof("Loaded issuer: name=[%s] keytype=[%s] nameID=[%v] isActive=[%t]", issuer.Name(), issuer.KeyType(), issuer.NameID(), issuer.IsActive())
 	}
 
-	if c.CA.Issuance.DefaultCertificateProfileName == "" {
-		c.CA.Issuance.DefaultCertificateProfileName = "defaultBoulderCertificateProfile"
-	}
-	logger.Infof("Configured default certificate profile name set to: %s", c.CA.Issuance.DefaultCertificateProfileName)
-
 	if len(c.CA.Issuance.CertProfiles) == 0 {
 		cmd.Fail("At least one profile must be configured")
 	}
@@ -251,7 +248,6 @@ func main() {
 			sa,
 			pa,
 			issuers,
-			c.CA.Issuance.DefaultCertificateProfileName,
 			c.CA.Issuance.CertProfiles,
 			serialPrefix,
 			c.CA.MaxNames,

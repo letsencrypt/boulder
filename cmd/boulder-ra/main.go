@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"os"
-	"time"
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/allowlist"
@@ -81,37 +80,18 @@ type Config struct {
 		// configurations.
 		MaxNames int `validate:"required,min=1,max=100"`
 
-		// AuthorizationLifetimeDays defines how long authorizations will be
-		// considered valid for. Given a value of 300 days when used with a 90-day
-		// cert lifetime, this allows creation of certs that will cover a whole
-		// year, plus a grace period of a month.
-		//
-		// Deprecated: use ValidationProfiles.[profile].ValidAuthzLifetime instead.
-		// TODO(#7986): Remove this.
-		AuthorizationLifetimeDays int `validate:"omitempty,required_without=ValidationProfiles,min=1,max=397"`
-
-		// PendingAuthorizationLifetimeDays defines how long authorizations may be in
-		// the pending state. If you can't respond to a challenge this quickly, then
-		// you need to request a new challenge.
-		//
-		// Deprecated: use ValidationProfiles.[profile].PendingAuthzLifetime instead.
-		// TODO(#7986): Remove this.
-		PendingAuthorizationLifetimeDays int `validate:"omitempty,required_without=ValidationProfiles,min=1,max=29"`
-
 		// ValidationProfiles is a map of validation profiles to their
 		// respective issuance allow lists. If a profile is not included in this
 		// mapping, it cannot be used by any account. If this field is left
 		// empty, all profiles are open to all accounts.
-		// TODO(#7986): Make this field required.
-		ValidationProfiles map[string]ra.ValidationProfileConfig `validate:"omitempty"`
+		ValidationProfiles map[string]ra.ValidationProfileConfig `validate:"required"`
 
 		// DefaultProfileName sets the profile to use if one wasn't provided by the
 		// client in the new-order request. Must match a configured validation
 		// profile or the RA will fail to start. Must match a certificate profile
 		// configured in the CA or finalization will fail for orders using this
 		// default.
-		// TODO(#7986): Make this field unconditionally required.
-		DefaultProfileName string `validate:"required_with=ValidationProfiles"`
+		DefaultProfileName string `validate:"required"`
 
 		// MustStapleAllowList specifies the path to a YAML file containing a
 		// list of account IDs permitted to request certificates with the OCSP
@@ -122,13 +102,6 @@ type Config struct {
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
-
-		// OrderLifetime is how far in the future an Order's expiration date should
-		// be set when it is first created.
-		//
-		// Deprecated: Use ValidationProfiles.[profile].OrderLifetime instead.
-		// TODO(#7986): Remove this.
-		OrderLifetime config.Duration `validate:"omitempty,required_without=ValidationProfiles"`
 
 		// FinalizeTimeout is how long the RA is willing to wait for the Order
 		// finalization process to take. This config parameter only has an effect
@@ -266,25 +239,8 @@ func main() {
 
 	ctp = ctpolicy.New(pubc, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
 
-	// TODO(#7986): Remove this fallback, error out if no default is configured.
-	if c.RA.DefaultProfileName == "" {
-		c.RA.DefaultProfileName = ra.UnconfiguredDefaultProfileName
-	}
-	logger.Infof("Configured default profile name set to: %s", c.RA.DefaultProfileName)
-
-	// TODO(#7986): Remove this fallback, error out if no profiles are configured.
 	if len(c.RA.ValidationProfiles) == 0 {
-		c.RA.ValidationProfiles = map[string]ra.ValidationProfileConfig{
-			c.RA.DefaultProfileName: {
-				PendingAuthzLifetime: config.Duration{
-					Duration: time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour},
-				ValidAuthzLifetime: config.Duration{
-					Duration: time.Duration(c.RA.AuthorizationLifetimeDays) * 24 * time.Hour},
-				OrderLifetime: c.RA.OrderLifetime,
-				// Leave the allowlist empty, so all accounts have access to this
-				// default profile.
-			},
-		}
+		cmd.Fail("At least one profile must be configured")
 	}
 
 	validationProfiles, err := ra.NewValidationProfiles(c.RA.DefaultProfileName, c.RA.ValidationProfiles)

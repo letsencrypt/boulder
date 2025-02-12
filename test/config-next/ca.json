@@ -42,7 +42,6 @@
 			"hostOverride": "sa.boulder"
 		},
 		"issuance": {
-			"defaultCertificateProfileName": "legacy",
 			"certProfiles": {
 				"legacy": {
 					"allowMustStaple": true,

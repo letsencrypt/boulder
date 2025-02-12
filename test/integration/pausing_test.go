@@ -63,7 +63,7 @@ func TestIdentifiersPausedForAccount(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Failed to pause domain")
 
-	_, err = authAndIssue(c, nil, clientIdents, true)
+	_, err = authAndIssue(c, nil, clientIdents, true, "")
 	test.AssertError(t, err, "Should not be able to issue a certificate for a paused domain")
 	test.AssertContains(t, err.Error(), "Your account is temporarily prevented from requesting certificates for")
 	test.AssertContains(t, err.Error(), "https://boulder.service.consul:4003/sfe/v1/unpause?jwt=")
@@ -73,6 +73,6 @@ func TestIdentifiersPausedForAccount(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Failed to unpause domain")
 
-	_, err = authAndIssue(c, nil, clientIdents, true)
+	_, err = authAndIssue(c, nil, clientIdents, true, "")
 	test.AssertNotError(t, err, "Should be able to issue a certificate for an unpaused domain")
 }
