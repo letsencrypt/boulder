@@ -1159,6 +1159,20 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	return csr, nil
 }
 
+func (ra *RegistrationAuthorityImpl) GetSCTs(ctx context.Context, sctRequest *rapb.SCTRequest) (*rapb.SCTResponse, error) {
+	cert, err := x509.ParseCertificate(sctRequest.PrecertDER)
+	if err != nil {
+		return nil, err
+	}
+	scts, err := ra.getSCTs(ctx, sctRequest.PrecertDER, cert.NotAfter)
+	if err != nil {
+		return nil, err
+	}
+	return &rapb.SCTResponse{
+		SctDER: scts,
+	}, nil
+}
+
 // issueCertificateOuter exists solely to ensure that all calls to
 // issueCertificateInner have their result handled uniformly, no matter what
 // return path that inner function takes. It takes ownership of the logEvent,
@@ -1228,8 +1242,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		logEvent.Names = cert.DNSNames
 		logEvent.NotBefore = cert.NotBefore
 		logEvent.NotAfter = cert.NotAfter
-		logEvent.CertProfileName = cpId.name
-		logEvent.CertProfileHash = hex.EncodeToString(cpId.hash)
 
 		result = "successful"
 	}
@@ -1317,33 +1329,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		OrderID:         int64(oID),
 		CertProfileName: profileName,
 	}
-	// Once we get a precert from IssuePrecertificate, we must attempt issuing
-	// a final certificate at most once. We achieve that by bailing on any error
-	// between here and IssueCertificateForPrecertificate.
-	precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
-	if err != nil {
-		return nil, nil, wrapError(err, "issuing precertificate")
-	}
 
-	parsedPrecert, err := x509.ParseCertificate(precert.DER)
+	cert, err := ra.CA.IssueCertificate(ctx, issueReq)
 	if err != nil {
-		return nil, nil, wrapError(err, "parsing precertificate")
-	}
-
-	scts, err := ra.getSCTs(ctx, precert.DER, parsedPrecert.NotAfter)
-	if err != nil {
-		return nil, nil, wrapError(err, "getting SCTs")
-	}
-
-	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
-		DER:             precert.DER,
-		SCTs:            scts,
-		RegistrationID:  int64(acctID),
-		OrderID:         int64(oID),
-		CertProfileHash: precert.CertProfileHash,
-	})
-	if err != nil {
-		return nil, nil, wrapError(err, "issuing certificate for precertificate")
+		return nil, nil, err
 	}
 
 	parsedCertificate, err := x509.ParseCertificate(cert.Der)
@@ -1370,7 +1359,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return nil, nil, wrapError(err, "persisting finalized order")
 	}
 
-	return parsedCertificate, &certProfileID{name: precert.CertProfileName, hash: precert.CertProfileHash}, nil
+	return parsedCertificate, &certProfileID{name: "fake profile name", hash: []byte("fake profile hash")}, nil
 }
 
 func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, expiration time.Time) (core.SCTDERs, error) {

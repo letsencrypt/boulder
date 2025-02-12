@@ -39,6 +39,7 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -138,6 +139,7 @@ func (m *caMetrics) noteSignError(err error) {
 type certificateAuthorityImpl struct {
 	capb.UnsafeCertificateAuthorityServer
 	sa           sapb.StorageAuthorityCertificateClient
+	sctService   rapb.SCTProviderClient
 	pa           core.PolicyAuthority
 	issuers      issuerMaps
 	certProfiles certProfilesMaps
@@ -227,6 +229,7 @@ func makeCertificateProfilesMap(profiles map[string]*issuance.ProfileConfigNew) 
 // OCSP (via delegation to an ocspImpl and its issuers).
 func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
+	sctService rapb.SCTProviderClient,
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
 	certificateProfiles map[string]*issuance.ProfileConfigNew,
@@ -341,6 +344,28 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		CertProfileName: cpwid.name,
 		CertProfileHash: cpwid.hash[:],
 	}, nil
+}
+
+func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*corepb.Certificate, error) {
+	resp, err := ca.IssuePrecertificate(ctx, issueReq)
+	if err != nil {
+		return nil, err
+	}
+	scts, err := ca.sctService.GetSCTs(ctx, &rapb.SCTRequest{PrecertDER: resp.DER})
+	if err != nil {
+		return nil, err
+	}
+	cert, err := ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
+		DER:             resp.DER,
+		SCTs:            scts.SctDER,
+		RegistrationID:  issueReq.RegistrationID,
+		OrderID:         issueReq.RegistrationID,
+		CertProfileHash: resp.CertProfileHash,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return cert, nil
 }
 
 // IssueCertificateForPrecertificate final step in the [issuance cycle].
