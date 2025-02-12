@@ -19,8 +19,9 @@ const (
 	tokenPath = "/services/oauth2/token"
 
 	// prospectsPath is the path to the Pardot v5 Prospects endpoint. This
-	// endpoint will create a new Prospect if one does not already exist.
-	prospectsPath = "/api/v5/prospects"
+	// endpoint will create a new Prospect if one does not already exist with
+	// the same email address.
+	prospectsPath = "/api/v5/objects/prospects"
 
 	// maxAttempts is the maximum number of attempts to retry a request.
 	maxAttempts = 3
@@ -58,7 +59,7 @@ type PardotClient struct {
 func NewPardotClient(clk clock.Clock, businessUnit, clientId, clientSecret, oauthbaseURL, pardotBaseURL string) (*PardotClient, error) {
 	prospectsURL, err := url.JoinPath(pardotBaseURL, prospectsPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to join upsert path: %w", err)
+		return nil, fmt.Errorf("failed to join prospects path: %w", err)
 	}
 	tokenURL, err := url.JoinPath(oauthbaseURL, tokenPath)
 	if err != nil {
@@ -102,21 +103,22 @@ func (pc *PardotClient) updateToken() error {
 		ExpiresIn   int    `json:"expires_in"`
 	}
 
-	if resp.StatusCode == http.StatusOK {
-		err = json.NewDecoder(resp.Body).Decode(&respJSON)
-		if err != nil {
-			return fmt.Errorf("failed to decode token response: %w", err)
+	if resp.StatusCode != http.StatusOK {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("token request failed with status %d; while reading body: %w", resp.StatusCode, readErr)
 		}
-		pc.token.accessToken = respJSON.AccessToken
-		pc.token.expiresAt = pc.clk.Now().Add(time.Duration(respJSON.ExpiresIn) * time.Second)
-		return nil
+		return fmt.Errorf("token request failed with status %d: %s", resp.StatusCode, body)
 	}
 
-	body, readErr := io.ReadAll(resp.Body)
-	if readErr != nil {
-		return fmt.Errorf("token request failed with status %d; while reading body: %w", resp.StatusCode, readErr)
+	err = json.NewDecoder(resp.Body).Decode(&respJSON)
+	if err != nil {
+		return fmt.Errorf("failed to decode token response: %w", err)
 	}
-	return fmt.Errorf("token request failed with status %d: %s", resp.StatusCode, body)
+	pc.token.accessToken = respJSON.AccessToken
+	pc.token.expiresAt = pc.clk.Now().Add(time.Duration(respJSON.ExpiresIn) * time.Second)
+
+	return nil
 }
 
 // redactEmail replaces all occurrences of an email address in a response body
@@ -125,39 +127,35 @@ func redactEmail(body []byte, email string) string {
 	return string(bytes.ReplaceAll(body, []byte(email), []byte("[REDACTED]")))
 }
 
-// UpsertEmail sends an email to the Pardot Prospects endpoint, retrying up
+// CreateProspect submits an email to the Pardot Prospects endpoint, retrying up
 // to 3 times with exponential backoff.
-func (pc *PardotClient) UpsertEmail(email string) error {
-	var finalErr error
-
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		err := pc.updateToken()
+func (pc *PardotClient) CreateProspect(email string) error {
+	var err error
+	for attempt := range maxAttempts {
+		time.Sleep(core.RetryBackoff(attempt, retryBackoffMin, retryBackoffMax, retryBackoffBase))
+		err = pc.updateToken()
 		if err != nil {
-			finalErr = err
-		} else {
-			break
+			continue
 		}
-
-		if attempt < maxAttempts {
-			time.Sleep(core.RetryBackoff(attempt, retryBackoffMin, retryBackoffMax, retryBackoffBase))
-		}
+		break
+	}
+	if err != nil {
+		return fmt.Errorf("failed to update token: %w", err)
 	}
 
-	if finalErr != nil {
-		return finalErr
-	}
-
-	payload, err := json.Marshal(map[string]interface{}{
-		"prospect": map[string]string{"email": email},
-	})
+	payload, err := json.Marshal(map[string]string{"email": email})
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
+	var finalErr error
+	for attempt := range maxAttempts {
+		time.Sleep(core.RetryBackoff(attempt, retryBackoffMin, retryBackoffMax, retryBackoffBase))
+
 		req, err := http.NewRequest("POST", pc.prospectsURL, bytes.NewReader(payload))
 		if err != nil {
-			return fmt.Errorf("failed to create upsert request: %w", err)
+			finalErr = fmt.Errorf("failed to create prospects request: %w", err)
+			continue
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+pc.token.accessToken)
@@ -165,24 +163,22 @@ func (pc *PardotClient) UpsertEmail(email string) error {
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			finalErr = fmt.Errorf("upsert request failed: %w", err)
-		} else {
-			defer resp.Body.Close()
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				return nil
-			}
-
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				finalErr = fmt.Errorf("upsert request returned status %d; while reading body: %w", resp.StatusCode, err)
-			} else {
-				finalErr = fmt.Errorf("upsert request returned status %d: %s", resp.StatusCode, redactEmail(body, email))
-			}
+			finalErr = fmt.Errorf("prospects request failed: %w", err)
+			continue
 		}
 
-		if attempt < maxAttempts {
-			time.Sleep(core.RetryBackoff(attempt, retryBackoffMin, retryBackoffMax, retryBackoffBase))
+		defer resp.Body.Close()
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return nil
 		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			finalErr = fmt.Errorf("prospects request returned status %d; while reading body: %w", resp.StatusCode, err)
+			continue
+		}
+		finalErr = fmt.Errorf("prospects request returned status %d: %s", resp.StatusCode, redactEmail(body, email))
+		continue
 	}
 
 	return finalErr
