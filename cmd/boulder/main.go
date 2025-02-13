@@ -19,6 +19,7 @@ import (
 	_ "github.com/letsencrypt/boulder/cmd/crl-checker"
 	_ "github.com/letsencrypt/boulder/cmd/crl-storer"
 	_ "github.com/letsencrypt/boulder/cmd/crl-updater"
+	_ "github.com/letsencrypt/boulder/cmd/email-exporter"
 	_ "github.com/letsencrypt/boulder/cmd/expiration-mailer"
 	_ "github.com/letsencrypt/boulder/cmd/id-exporter"
 	_ "github.com/letsencrypt/boulder/cmd/log-validator"
