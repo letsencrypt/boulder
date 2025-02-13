@@ -921,7 +921,7 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	nowC := sa.clk.Now().Add(time.Hour)
 	nowD := sa.clk.Now().Add(time.Hour)
 	expires := sa.clk.Now().Add(2 * time.Hour)
-	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+	req := &sapb.NewOrderAndAuthzsRequest{
 		// Insert an order for four names, two of which already have authzs
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID: reg.Id,
@@ -952,7 +952,8 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 				Token:          core.NewToken(),
 			},
 		},
-	})
+	}
+	order, err := sa.NewOrderAndAuthzs(context.Background(), req)
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
 	test.AssertEquals(t, order.Id, int64(1))
 	test.AssertDeepEquals(t, order.V2Authorizations, []int64{1, 2, 3, 4})
@@ -962,6 +963,16 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
 	test.AssertEquals(t, len(authzIDs), 4)
 	test.AssertDeepEquals(t, authzIDs, []int64{1, 2, 3, 4})
+
+	reqNoIdentifiers := req
+	reqNoIdentifiers.NewOrder.Identifiers = nil
+	_, err = sa.NewOrderAndAuthzs(context.Background(), reqNoIdentifiers)
+	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed without Identifiers")
+
+	reqNoDnsNames := req
+	reqNoDnsNames.NewOrder.DnsNames = nil
+	_, err = sa.NewOrderAndAuthzs(context.Background(), reqNoDnsNames)
+	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed without DnsNames")
 }
 
 // TestNewOrderAndAuthzs_NonNilInnerOrder verifies that a nil
