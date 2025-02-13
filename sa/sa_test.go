@@ -730,7 +730,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	test.AssertEquals(t, firstIssued, resp.Timestamps[len(resp.Timestamps)-1].AsTime())
 }
 
-func TestFQDNSetsExists(t *testing.T) {
+func TestFQDNSetExists(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -754,6 +754,14 @@ func TestFQDNSetsExists(t *testing.T) {
 	exists, err = sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names, Identifiers: identifier.SliceAsProto(idents)})
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
 	test.Assert(t, exists.Exists, "FQDN set does exist")
+
+	exists, err = sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names})
+	test.AssertNotError(t, err, "Failed to check FQDN set existence without Identifiers")
+	test.Assert(t, exists.Exists, "FQDN set does exist without Identifiers")
+
+	exists, err = sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Identifiers: identifier.SliceAsProto(idents)})
+	test.AssertNotError(t, err, "Failed to check FQDN set existence without DnsNames")
+	test.Assert(t, exists.Exists, "FQDN set does exist without DnsNames")
 }
 
 type queryRecorder struct {
