@@ -120,6 +120,12 @@ func TestWellFormedIdentifiers(t *testing.T) {
 			test.AssertContains(t, berr.Error(), tc.err.Error())
 		}
 	}
+
+	err := WellFormedIdentifiers([]identifier.ACMEIdentifier{identifier.NewIP(netip.MustParseAddr("9.9.9.9"))})
+	test.AssertError(t, err, "Expected error for IP, but got none")
+	var berr *berrors.BoulderError
+	test.AssertErrorWraps(t, err, &berr)
+	test.AssertContains(t, berr.Error(), errUnsupportedIdentifier.Error())
 }
 
 func TestWillingToIssue(t *testing.T) {
