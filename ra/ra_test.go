@@ -1413,6 +1413,27 @@ func TestNewOrder(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "Cannot issue for \"a\": Domain name needs at least one dot")
 }
 
+// TestNewOrder_Identifiers tests that NewOrder works when other microservices
+// don't yet understand Identifiers, or have stopped understanding DnsNames.
+func TestNewOrder_Identifiers(t *testing.T) {
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	_, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID:         Registration.Id,
+		CertificateProfileName: "test",
+		DnsNames:               []string{"a.com"},
+	})
+	test.AssertNotError(t, err, "ra.NewOrder failed without Identifiers")
+
+	_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID:         Registration.Id,
+		CertificateProfileName: "test",
+		Identifiers:            []*corepb.Identifier{identifier.NewDNS("a.com").AsProto()},
+	})
+	test.AssertNotError(t, err, "ra.NewOrder failed without DnsNames")
+}
+
 // TestNewOrder_OrderReuse tests that subsequent requests by an ACME account to create
 // an identical order results in only one order being created & subsequently
 // reused.
