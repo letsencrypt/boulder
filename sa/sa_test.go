@@ -2663,6 +2663,28 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "sa.CountInvalidAuthorizations2 failed")
 	test.AssertEquals(t, count.Count, int64(1))
+
+	count, err = sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
+		RegistrationID: reg.Id,
+		DnsName:        name,
+		Range: &sapb.Range{
+			Earliest: timestamppb.New(earliest),
+			Latest:   timestamppb.New(latest),
+		},
+	})
+	test.AssertNotError(t, err, "sa.CountInvalidAuthorizations2 failed without Identifier")
+	test.AssertEquals(t, count.Count, int64(1))
+
+	count, err = sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
+		RegistrationID: reg.Id,
+		Identifier:     ident.AsProto(),
+		Range: &sapb.Range{
+			Earliest: timestamppb.New(earliest),
+			Latest:   timestamppb.New(latest),
+		},
+	})
+	test.AssertNotError(t, err, "sa.CountInvalidAuthorizations2 failed without DnsName")
+	test.AssertEquals(t, count.Count, int64(1))
 }
 
 func TestGetValidAuthorizations2(t *testing.T) {
