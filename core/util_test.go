@@ -322,23 +322,14 @@ func TestRetryBackoff(t *testing.T) {
 }
 
 func TestHashIdentifiers(t *testing.T) {
-	netip4_1, err := netip.ParseAddr("10.10.10.10")
-	test.AssertNotError(t, err, "Failed to parse ip4_1")
-	netip4_2, err := netip.ParseAddr("172.16.16.16")
-	test.AssertNotError(t, err, "Failed to parse ip4_2")
-	netip6_1, err := netip.ParseAddr("2001:0db8:0bad:0dab:c0ff:fee0:0007:1337")
-	test.AssertNotError(t, err, "Failed to parse ip6_1")
-	netip6_2, err := netip.ParseAddr("3fff::")
-	test.AssertNotError(t, err, "Failed to parse ip6_2")
-
 	dns1 := identifier.NewDNS("example.com")
 	dns1_caps := identifier.NewDNS("eXaMpLe.COM")
 	dns2 := identifier.NewDNS("high-energy-cheese-lab.nrc-cnrc.gc.ca")
 	dns2_caps := identifier.NewDNS("HIGH-ENERGY-CHEESE-LAB.NRC-CNRC.GC.CA")
-	ip4_1 := identifier.NewIP(netip4_1)
-	ip4_2 := identifier.NewIP(netip4_2)
-	ip6_1 := identifier.NewIP(netip6_1)
-	ip6_2 := identifier.NewIP(netip6_2)
+	ipv4_1 := identifier.NewIP(netip.MustParseAddr("10.10.10.10"))
+	ipv4_2 := identifier.NewIP(netip.MustParseAddr("172.16.16.16"))
+	ipv6_1 := identifier.NewIP(netip.MustParseAddr("2001:0db8:0bad:0dab:c0ff:fee0:0007:1337"))
+	ipv6_2 := identifier.NewIP(netip.MustParseAddr("3fff::"))
 
 	testCases := []struct {
 		Name          string
@@ -354,14 +345,14 @@ func TestHashIdentifiers(t *testing.T) {
 		},
 		{
 			Name:          "Deterministic for IPv4",
-			Identifiers1:  []identifier.ACMEIdentifier{ip4_1},
-			Identifiers2:  []identifier.ACMEIdentifier{ip4_1},
+			Identifiers1:  []identifier.ACMEIdentifier{ipv4_1},
+			Identifiers2:  []identifier.ACMEIdentifier{ipv4_1},
 			ExpectedEqual: true,
 		},
 		{
 			Name:          "Deterministic for IPv6",
-			Identifiers1:  []identifier.ACMEIdentifier{ip6_1},
-			Identifiers2:  []identifier.ACMEIdentifier{ip6_1},
+			Identifiers1:  []identifier.ACMEIdentifier{ipv6_1},
+			Identifiers2:  []identifier.ACMEIdentifier{ipv6_1},
 			ExpectedEqual: true,
 		},
 		{
@@ -372,23 +363,23 @@ func TestHashIdentifiers(t *testing.T) {
 		},
 		{
 			Name:          "Differentiates for IPv4",
-			Identifiers1:  []identifier.ACMEIdentifier{ip4_1},
-			Identifiers2:  []identifier.ACMEIdentifier{ip4_2},
+			Identifiers1:  []identifier.ACMEIdentifier{ipv4_1},
+			Identifiers2:  []identifier.ACMEIdentifier{ipv4_2},
 			ExpectedEqual: false,
 		},
 		{
 			Name:          "Differentiates for IPv6",
-			Identifiers1:  []identifier.ACMEIdentifier{ip6_1},
-			Identifiers2:  []identifier.ACMEIdentifier{ip6_2},
+			Identifiers1:  []identifier.ACMEIdentifier{ipv6_1},
+			Identifiers2:  []identifier.ACMEIdentifier{ipv6_2},
 			ExpectedEqual: false,
 		},
 		{
 			Name: "Not subject to ordering",
 			Identifiers1: []identifier.ACMEIdentifier{
-				dns1, dns2, ip4_1, ip4_2, ip6_1, ip6_2,
+				dns1, dns2, ipv4_1, ipv4_2, ipv6_1, ipv6_2,
 			},
 			Identifiers2: []identifier.ACMEIdentifier{
-				ip6_1, dns2, ip4_2, dns1, ip4_1, ip6_2,
+				ipv6_1, dns2, ipv4_2, dns1, ipv4_1, ipv6_2,
 			},
 			ExpectedEqual: true,
 		},

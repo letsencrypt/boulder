@@ -183,9 +183,11 @@ func TestWillingToIssue(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	// Invalid encoding
-
 	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS("www.xn--m.com")})
 	test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
+	// Invalid identifier type
+	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewIP(netip.MustParseAddr("1.1.1.1"))})
+	test.AssertError(t, err, "WillingToIssue didn't fail on an IP address")
 	// Valid encoding
 	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS("www.xn--mnich-kva.com")})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
