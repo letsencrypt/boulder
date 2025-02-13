@@ -8,11 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/url"
 	"os"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -425,8 +423,8 @@ type certificateRequestEvent struct {
 	VerifiedFields []string `json:",omitempty"`
 	// CommonName is the subject common name from the issued cert
 	CommonName string `json:",omitempty"`
-	// Names are the DNS SAN entries from the issued cert
-	Names []string `json:",omitempty"`
+	// Identifiers are the identifiers from the issued cert
+	Identifiers []identifier.ACMEIdentifier `json:",omitempty"`
 	// NotBefore is the starting timestamp of the issued cert's validity period
 	NotBefore time.Time `json:",omitempty"`
 	// NotAfter is the ending timestamp of the issued cert's validity period
@@ -604,7 +602,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 }
 
 // matchesCSR tests the contents of a generated certificate to make sure
-// that the PublicKey, CommonName, and DNSNames match those provided in
+// that the PublicKey, CommonName, and identifiers match those provided in
 // the CSR that was used to generate the certificate. It also checks the
 // following fields for:
 //   - notBefore is not more than 24 hours ago
@@ -617,27 +615,32 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 		return berrors.InternalServerError("generated certificate public key doesn't match CSR public key")
 	}
 
-	csrNames := csrlib.NamesFromCSR(csr)
+	csrIdents, err := identifier.FromCSR(csr)
+	if err != nil {
+		return berrors.InternalServerError("couldn't parse identifiers from CSR")
+	}
 	if parsedCertificate.Subject.CommonName != "" {
 		// Only check that the issued common name matches one of the SANs if there
 		// is an issued CN at all: this allows flexibility on whether we include
 		// the CN.
-		if !slices.Contains(csrNames.SANs, parsedCertificate.Subject.CommonName) {
+		cnFound := false
+		for _, ident := range csrIdents {
+			if ident.Value == parsedCertificate.Subject.CommonName && ident.Type == identifier.TypeDNS {
+				cnFound = true
+				break
+			}
+		}
+		if !cnFound {
 			return berrors.InternalServerError("generated certificate CommonName doesn't match any CSR name")
 		}
 	}
 
-	parsedNames := parsedCertificate.DNSNames
-	sort.Strings(parsedNames)
-	if !slices.Equal(parsedNames, csrNames.SANs) {
-		return berrors.InternalServerError("generated certificate DNSNames don't match CSR DNSNames")
+	parsedIdents, err := identifier.FromCert(parsedCertificate)
+	if err != nil {
+		return berrors.InternalServerError("couldn't parse identifiers from certificate")
 	}
-
-	if !slices.EqualFunc(parsedCertificate.IPAddresses, csr.IPAddresses, func(l, r net.IP) bool { return l.Equal(r) }) {
-		return berrors.InternalServerError("generated certificate IPAddresses don't match CSR IPAddresses")
-	}
-	if !slices.Equal(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
-		return berrors.InternalServerError("generated certificate EmailAddresses don't match CSR EmailAddresses")
+	if !slices.Equal(csrIdents, parsedIdents) {
+		return berrors.InternalServerError("generated certificate identifiers don't match CSR identifiers")
 	}
 
 	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
@@ -677,7 +680,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	ctx context.Context,
 	orderID orderID,
 	acctID accountID,
-	names []string,
+	idents []identifier.ACMEIdentifier,
 	now time.Time) (map[identifier.ACMEIdentifier]*core.Authorization, error) {
 	// Get all of the valid authorizations for this account/order
 	req := &sapb.GetValidOrderAuthorizationsRequest{
@@ -697,11 +700,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	var missing []string
 	var invalid []string
 	var expired []string
-	for _, name := range names {
-		// TODO(#7647): Iterate directly over identifiers here, once the rest of the
-		// finalization flow supports non-dnsName identifiers.
-		ident := identifier.NewDNS(name)
-
+	for _, ident := range idents {
 		authz, ok := authzs[ident]
 		if !ok || authz == nil {
 			missing = append(missing, ident.Value)
@@ -744,8 +743,8 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 
 	// Even though this check is cheap, we do it after the more specific checks
 	// so that we can return more specific error messages.
-	if len(names) != len(authzs) {
-		return nil, berrors.UnauthorizedError("incorrect number of names requested for finalization")
+	if len(idents) != len(authzs) {
+		return nil, berrors.UnauthorizedError("incorrect number of identifiers requested for finalization")
 	}
 
 	// Check that the authzs either don't need CAA rechecking, or do the
@@ -1069,11 +1068,18 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		return nil, err
 	}
 
-	// There should never be an order with 0 names at the stage, but we check to
+	// There should never be an order with 0 identifiers at the stage, but we check to
 	// be on the safe side, throwing an internal server error if this assumption
 	// is ever violated.
-	if len(req.Order.DnsNames) == 0 {
-		return nil, berrors.InternalServerError("Order has no associated names")
+	orderIdentsPb := req.Order.Identifiers
+	if orderIdentsPb == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		orderIdentsPb = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.Order.DnsNames))
+	}
+	orderIdents := identifier.Normalize(identifier.SliceFromProto(orderIdentsPb, req.Order.DnsNames))
+	if len(orderIdents) == 0 {
+		return nil, berrors.InternalServerError("Order has no associated identifiers")
 	}
 
 	// Parse the CSR from the request
@@ -1103,12 +1109,13 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
-	csrNames := csrlib.NamesFromCSR(csr).SANs
-	orderNames := core.UniqueLowerNames(req.Order.DnsNames)
-
+	csrIdents, err := identifier.FromCSR(csr)
+	if err != nil {
+		return nil, err
+	}
 	// Check that the order names and the CSR names are an exact match
-	if !slices.Equal(csrNames, orderNames) {
-		return nil, berrors.UnauthorizedError(("CSR does not specify same identifiers as Order"))
+	if !slices.Equal(csrIdents, orderIdents) {
+		return nil, berrors.UnauthorizedError("CSR does not specify same identifiers as Order")
 	}
 
 	// Get the originating account for use in the next check.
@@ -1130,7 +1137,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// Double-check that all authorizations on this order are valid, are also
 	// associated with the same account as the order itself, and have recent CAA.
 	authzs, err := ra.checkOrderAuthorizations(
-		ctx, orderID(req.Order.Id), accountID(req.Order.RegistrationID), csrNames, ra.clk.Now())
+		ctx, orderID(req.Order.Id), accountID(req.Order.RegistrationID), csrIdents, ra.clk.Now())
 	if err != nil {
 		// Pass through the error without wrapping it because the called functions
 		// return BoulderError and we don't want to lose the type.
@@ -1139,7 +1146,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 
 	// Collect up a certificateRequestAuthz that stores the ID and challenge type
 	// of each of the valid authorizations we used for this issuance.
-	logEventAuthzs := make(map[string]certificateRequestAuthz, len(csrNames))
+	logEventAuthzs := make(map[string]certificateRequestAuthz, len(csrIdents))
 	for _, authz := range authzs {
 		// No need to check for error here because we know this same call just
 		// succeeded inside ra.checkOrderAuthorizations
@@ -1172,11 +1179,26 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ra.inflightFinalizes.Inc()
 	defer ra.inflightFinalizes.Dec()
 
+	idents := order.Identifiers
+	if idents == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
+	}
+	idents = identifier.SliceAsProto(identifier.SliceFromProto(idents, order.DnsNames))
+
+	// TODO(#7311): Remove this once all RPC users can handle Identifiers.
+	order.DnsNames = make([]string, len(idents))
+	for i, orderIdent := range idents {
+		order.DnsNames[i] = orderIdent.Value
+	}
+
 	isRenewal := false
 	timestamps, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
-		DnsNames: order.DnsNames,
-		Window:   durationpb.New(120 * 24 * time.Hour),
-		Limit:    1,
+		DnsNames:    order.DnsNames,
+		Identifiers: idents,
+		Window:      durationpb.New(120 * 24 * time.Hour),
+		Limit:       1,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("checking if certificate is a renewal: %w", err)
@@ -1215,7 +1237,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 
 		ra.namesPerCert.With(
 			prometheus.Labels{"type": "issued"},
-		).Observe(float64(len(order.DnsNames)))
+		).Observe(float64(len(idents)))
 
 		ra.newCertCounter.With(
 			prometheus.Labels{
@@ -1223,15 +1245,21 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 				"profileHash": hex.EncodeToString(cpId.hash),
 			}).Inc()
 
-		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
-		logEvent.CommonName = cert.Subject.CommonName
-		logEvent.Names = cert.DNSNames
-		logEvent.NotBefore = cert.NotBefore
-		logEvent.NotAfter = cert.NotAfter
-		logEvent.CertProfileName = cpId.name
-		logEvent.CertProfileHash = hex.EncodeToString(cpId.hash)
+		certIdents, err := identifier.FromCert(cert)
+		if err != nil {
+			logEvent.Error = err.Error()
+			result = "error"
+		} else {
+			logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
+			logEvent.CommonName = cert.Subject.CommonName
+			logEvent.Identifiers = certIdents
+			logEvent.NotBefore = cert.NotBefore
+			logEvent.NotAfter = cert.NotAfter
+			logEvent.CertProfileName = cpId.name
+			logEvent.CertProfileHash = hex.EncodeToString(cpId.hash)
 
-		result = "successful"
+			result = "successful"
+		}
 	}
 
 	logEvent.ResponseTime = ra.clk.Now()
@@ -1244,17 +1272,24 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 // account) and duplicate certificate rate limits. There is no reason to surface
 // errors from this function to the Subscriber, spends against these limit are
 // best effort.
-func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderDomains []string, isRenewal bool) {
+//
+// TODO(#7311): Handle IP address identifiers.
+func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderIdents []identifier.ACMEIdentifier, isRenewal bool) {
+	names := make([]string, len(orderIdents))
+	for i, orderIdent := range orderIdents {
+		names[i] = orderIdent.Value
+	}
+
 	var transactions []ratelimits.Transaction
 	if !isRenewal {
-		txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderDomains)
+		txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, names)
 		if err != nil {
 			ra.log.Warningf("building rate limit transactions at finalize: %s", err)
 		}
 		transactions = append(transactions, txns...)
 	}
 
-	txn, err := ra.txnBuilder.CertificatesPerFQDNSetSpendOnlyTransaction(orderDomains)
+	txn, err := ra.txnBuilder.CertificatesPerFQDNSetSpendOnlyTransaction(names)
 	if err != nil {
 		ra.log.Warningf("building rate limit transaction at finalize: %s", err)
 	}
@@ -1350,8 +1385,12 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return nil, nil, wrapError(err, "parsing final certificate")
 	}
+	idents, err := identifier.FromCert(parsedCertificate)
+	if err != nil {
+		return nil, nil, wrapError(err, "parsing identifiers from certificate")
+	}
 
-	ra.countCertificateIssued(ctx, int64(acctID), slices.Clone(parsedCertificate.DNSNames), isRenewal)
+	ra.countCertificateIssued(ctx, int64(acctID), idents, isRenewal)
 
 	// Asynchronously submit the final certificate to any configured logs
 	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
@@ -1468,8 +1507,12 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 
 // countFailedValidations increments the FailedAuthorizationsPerDomainPerAccount limit.
 // and the FailedAuthorizationsForPausingPerDomainPerAccountTransaction limit.
+//
+// TODO(#7311): Handle IP address identifiers.
 func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) error {
-	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, ident.Value)
+	name := ident.Value
+
+	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, name)
 	if err != nil {
 		return fmt.Errorf("building rate limit transaction for the %s rate limit: %w", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
@@ -1480,7 +1523,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context,
 	}
 
 	if features.Get().AutomaticallyPauseZombieClients {
-		txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, ident.Value)
+		txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, name)
 		if err != nil {
 			return fmt.Errorf("building rate limit transaction for the %s rate limit: %w", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
 		}
@@ -1515,6 +1558,8 @@ func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context,
 
 // resetAccountPausingLimit resets bucket to maximum capacity for given account.
 // There is no reason to surface errors from this function to the Subscriber.
+//
+// TODO(#7311): Handle IP address identifiers.
 func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
 	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident.Value)
 	if err != nil {
@@ -1565,7 +1610,16 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, req.Authz.DnsName, req.Authz.Status, req.Authz.Expires) {
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, req.Authz.Status, req.Authz.Expires) {
+		return nil, errIncompleteGRPCRequest
+	}
+	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
+	// upwards, once all RPC users are populating Identifiers.
+	ident := req.Authz.Identifier
+	if ident == nil {
+		ident = identifier.NewDNS(req.Authz.DnsName).AsProto()
+	}
+	if core.IsAnyNilOrZero(ident) && core.IsAnyNilOrZero(req.Authz.DnsName) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -1863,6 +1917,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		var authzPB *sapb.Authorizations
 		authzPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
+			Identifiers:    identifier.SliceAsProto(identifier.SliceFromProto(nil, cert.DNSNames)),
 			DnsNames:       cert.DNSNames,
 			ValidUntil:     timestamppb.New(ra.clk.Now()),
 		})
@@ -1876,7 +1931,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 			return nil, err
 		}
 
-		// TODO(#7647): Support other kinds of SANs/identifiers here.
+		// TODO(#7311): TODO(#7647): Support other kinds of SANs/identifiers here.
 		for _, name := range cert.DNSNames {
 			if _, present := authzMap[identifier.NewDNS(name)]; !present {
 				return nil, berrors.UnauthorizedError("requester does not control all names in cert with serial %q", serialString)
@@ -2219,6 +2274,13 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
+	ident := req.Identifier
+	if ident == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		ident = identifier.NewDNS(req.DnsName).AsProto()
+	}
+
 	if core.IsAnyNilOrZero(req, req.Id, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
 	}
@@ -2235,7 +2297,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		// internal errors in the client. From our perspective this uses storage
 		// resources similar to how failed authorizations do, so we increment the
 		// failed authorizations limit.
-		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.NewDNS(req.DnsName))
+		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.FromProto(ident))
 		if err != nil {
 			return nil, fmt.Errorf("failed to update rate limits: %w", err)
 		}
@@ -2288,16 +2350,17 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	newOrder := &sapb.NewOrderRequest{
-		RegistrationID:         req.RegistrationID,
-		DnsNames:               core.UniqueLowerNames(req.DnsNames),
-		CertificateProfileName: req.CertificateProfileName,
-		ReplacesSerial:         req.ReplacesSerial,
+	identsPb := req.Identifiers
+	if identsPb == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		identsPb = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
 	}
+	idents := identifier.Normalize(identifier.SliceFromProto(identsPb, req.DnsNames))
 
-	if len(newOrder.DnsNames) > ra.maxNames {
+	if len(idents) > ra.maxNames {
 		return nil, berrors.MalformedError(
-			"Order cannot contain more than %d DNS names", ra.maxNames)
+			"Order cannot contain more than %d identifiers", ra.maxNames)
 	}
 
 	profile, err := ra.profiles.get(req.CertificateProfileName)
@@ -2312,13 +2375,23 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		)
 	}
 
-	// Validate that our policy allows issuing for each of the names in the order
-	err = ra.PA.WillingToIssue(newOrder.DnsNames)
+	// Validate that our policy allows issuing for each of the identifiers in
+	// the order
+	err = ra.PA.WillingToIssue(idents)
 	if err != nil {
 		return nil, err
 	}
 
-	err = wildcardOverlap(newOrder.DnsNames)
+	dnsNames := make([]string, len(idents))
+	for i, ident := range idents {
+		if ident.Type == identifier.TypeDNS {
+			dnsNames[i] = ident.Value
+		} else {
+			return nil, berrors.MalformedError(
+				"invalid non-DNS type identifier %s", ident.Value)
+		}
+	}
+	err = wildcardOverlap(dnsNames)
 	if err != nil {
 		return nil, err
 	}
@@ -2326,8 +2399,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// See if there is an existing unexpired pending (or ready) order that can be reused
 	// for this account
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
-		AcctID:   newOrder.RegistrationID,
-		DnsNames: newOrder.DnsNames,
+		AcctID:      req.RegistrationID,
+		DnsNames:    dnsNames,
+		Identifiers: identifier.SliceAsProto(idents),
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
 	// immediately
@@ -2339,13 +2413,22 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Error if an incomplete order is returned.
 	if existingOrder != nil {
 		// Check to see if the expected fields of the existing order are set.
-		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, existingOrder.DnsNames, existingOrder.Created, existingOrder.Expires) {
+		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, existingOrder.Created, existingOrder.Expires) {
+			return nil, errIncompleteGRPCResponse
+		}
+		// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
+		// upwards, once all RPC users are populating Identifiers.
+		existingOrderIdents := existingOrder.Identifiers
+		if existingOrderIdents == nil {
+			existingOrderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, existingOrder.DnsNames))
+		}
+		if core.IsAnyNilOrZero(existingOrderIdents) && core.IsAnyNilOrZero(existingOrder.DnsNames) {
 			return nil, errIncompleteGRPCResponse
 		}
 
 		// Only re-use the order if the profile (even if it is just the empty
 		// string, leaving us to choose a default profile) matches.
-		if existingOrder.CertificateProfileName == newOrder.CertificateProfileName {
+		if existingOrder.CertificateProfileName == req.CertificateProfileName {
 			// Track how often we reuse an existing order and how old that order is.
 			ra.orderAges.WithLabelValues("NewOrder").Observe(ra.clk.Since(existingOrder.Created.AsTime()).Seconds())
 			return existingOrder, nil
@@ -2370,17 +2453,19 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	var existingAuthz *sapb.Authorizations
 	if features.Get().NoPendingAuthzReuse {
 		getAuthReq := &sapb.GetValidAuthorizationsRequest{
-			RegistrationID: newOrder.RegistrationID,
+			RegistrationID: req.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
-			DnsNames:       newOrder.DnsNames,
+			DnsNames:       dnsNames,
+			Identifiers:    identifier.SliceAsProto(idents),
 			Profile:        req.CertificateProfileName,
 		}
 		existingAuthz, err = ra.SA.GetValidAuthorizations2(ctx, getAuthReq)
 	} else {
 		getAuthReq := &sapb.GetAuthorizationsRequest{
-			RegistrationID: newOrder.RegistrationID,
+			RegistrationID: req.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
-			DnsNames:       newOrder.DnsNames,
+			DnsNames:       dnsNames,
+			Identifiers:    identifier.SliceAsProto(idents),
 			Profile:        req.CertificateProfileName,
 		}
 		existingAuthz, err = ra.SA.GetAuthorizations2(ctx, getAuthReq)
@@ -2394,13 +2479,22 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	// For each of the names in the order, if there is an acceptable
-	// existing authz, append it to the order to reuse it. Otherwise track
-	// that there is a missing authz for that name.
-	// TODO(#7647): Support non-dnsName identifier types here.
+	newOrder := &sapb.NewOrderRequest{
+		RegistrationID:         req.RegistrationID,
+		DnsNames:               dnsNames,
+		Identifiers:            identifier.SliceAsProto(idents),
+		CertificateProfileName: req.CertificateProfileName,
+		ReplacesSerial:         req.ReplacesSerial,
+	}
+
+	// For each of the identifiers in the order, if there is an acceptable
+	// existing authz, append it to the order to reuse it. Otherwise track that
+	// there is a missing authz for that identifier.
+	//
+	// TODO(#7311): TODO(#7647): Support non-dnsName identifier types here.
 	var missingAuthzIdents []identifier.ACMEIdentifier
-	for _, name := range newOrder.DnsNames {
-		ident := identifier.NewDNS(name)
+	for _, ident := range idents {
+		name := ident.Value
 		// If there isn't an existing authz, note that its missing and continue
 		authz, exists := identToExistingAuthz[ident]
 		if !exists {
@@ -2517,13 +2611,22 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, storedOrder.DnsNames, storedOrder.Created, storedOrder.Expires) {
+	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, storedOrder.Created, storedOrder.Expires) {
+		return nil, errIncompleteGRPCResponse
+	}
+	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
+	// upwards, once all RPC users are populating Identifiers.
+	storedOrderIdents := storedOrder.Identifiers
+	if storedOrderIdents == nil {
+		storedOrderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, storedOrder.DnsNames))
+	}
+	if core.IsAnyNilOrZero(storedOrderIdents) && core.IsAnyNilOrZero(storedOrder.DnsNames) {
 		return nil, errIncompleteGRPCResponse
 	}
 	ra.orderAges.WithLabelValues("NewOrder").Observe(0)
 
-	// Note how many names are being requested in this certificate order.
-	ra.namesPerCert.With(prometheus.Labels{"type": "requested"}).Observe(float64(len(storedOrder.DnsNames)))
+	// Note how many identifiers are being requested in this certificate order.
+	ra.namesPerCert.With(prometheus.Labels{"type": "requested"}).Observe(float64(len(storedOrder.Identifiers)))
 
 	return storedOrder, nil
 }

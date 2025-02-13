@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
+	"github.com/letsencrypt/boulder/identifier"
 	_ "github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
@@ -298,8 +299,8 @@ var expectedExtensionContent = map[string][]byte{
 // likely valid at the time the certificate was issued. Authorizations with
 // status = "deactivated" are counted for this, so long as their validatedAt
 // is before the issuance and expiration is after.
-func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificate, dnsNames []string) error {
-	authzs, err := sa.SelectAuthzsMatchingIssuance(ctx, c.dbMap, cert.RegistrationID, cert.Issued, dnsNames)
+func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificate, idents []identifier.ACMEIdentifier) error {
+	authzs, err := sa.SelectAuthzsMatchingIssuance(ctx, c.dbMap, cert.RegistrationID, cert.Issued, idents)
 	if err != nil {
 		return fmt.Errorf("error checking authzs for certificate %s: %w", cert.Serial, err)
 	}
@@ -310,16 +311,16 @@ func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificat
 
 	// We may get multiple authorizations for the same name, but that's okay.
 	// Any authorization for a given name is sufficient.
-	nameToAuthz := make(map[string]*corepb.Authorization)
+	identToAuthz := make(map[identifier.ACMEIdentifier]*corepb.Authorization)
 	for _, m := range authzs {
-		nameToAuthz[m.DnsName] = m
+		identToAuthz[identifier.FromProto(m.Identifier)] = m
 	}
 
 	var errors []error
-	for _, name := range dnsNames {
-		_, ok := nameToAuthz[name]
+	for _, ident := range idents {
+		_, ok := identToAuthz[ident]
 		if !ok {
-			errors = append(errors, fmt.Errorf("missing authz for %q", name))
+			errors = append(errors, fmt.Errorf("missing authz for %q", ident))
 			continue
 		}
 	}
@@ -405,8 +406,10 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		// Check that the PA is still willing to issue for each name in DNSNames.
 		// We do not check the CommonName here, as (if it exists) we already checked
 		// that it is identical to one of the DNSNames in the SAN.
+		//
+		// TODO(#7311): We'll need to iterate over IP address identifiers too.
 		for _, name := range parsedCert.DNSNames {
-			err = c.pa.WillingToIssue([]string{name})
+			err = c.pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS(name)})
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			} else {
@@ -469,12 +472,24 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		}
 
 		if features.Get().CertCheckerChecksValidations {
-			err = c.checkValidations(ctx, cert, parsedCert.DNSNames)
+			idents, err := identifier.FromCert(p)
 			if err != nil {
 				if features.Get().CertCheckerRequiresValidations {
 					problems = append(problems, err.Error())
 				} else {
-					c.logger.Errf("Certificate %s %s: %s", cert.Serial, parsedCert.DNSNames, err)
+					c.logger.Errf("Couldn't parse identifiers from certificate %s: %s", cert.Serial, err)
+				}
+			}
+			err = c.checkValidations(ctx, cert, idents)
+			if err != nil {
+				if features.Get().CertCheckerRequiresValidations {
+					problems = append(problems, err.Error())
+				} else {
+					identValues := make([]string, len(idents))
+					for i, ident := range idents {
+						identValues[i] = ident.Value
+					}
+					c.logger.Errf("Certificate %s %s: %s", cert.Serial, identValues, err)
 				}
 			}
 		}

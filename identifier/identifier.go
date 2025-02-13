@@ -4,7 +4,12 @@
 package identifier
 
 import (
+	"crypto/x509"
+	"fmt"
 	"net/netip"
+	"slices"
+	"sort"
+	"strings"
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
 )
@@ -39,6 +44,50 @@ func (i ACMEIdentifier) AsProto() *corepb.Identifier {
 	}
 }
 
+func FromProto(ident *corepb.Identifier) ACMEIdentifier {
+	return ACMEIdentifier{
+		Type:  IdentifierType(ident.Type),
+		Value: ident.Value,
+	}
+}
+
+// SliceAsProto is a convenience function for converting a slice of
+// ACMEIdentifiers into a slice of *corepb.Identifiers, to use for RPCs.
+func SliceAsProto(idents []ACMEIdentifier) []*corepb.Identifier {
+	pbIdents := make([]*corepb.Identifier, len(idents))
+	for i, ident := range idents {
+		pbIdents[i] = ident.AsProto()
+	}
+	return pbIdents
+}
+
+// SliceFromProto is a convenience function for converting a slice of
+// *corepb.Identifiers from RPCs into a slice of ACMEIdentifiers.
+//
+// If the *corepb.Identifiers are empty or nil, then the second parameter, a
+// slice of strings, is used to construct the result.
+//
+// TODO(#7311): The second parameter can be removed after DnsNames are no longer
+// used in RPCs.
+func SliceFromProto(pbIdents []*corepb.Identifier, names []string) []ACMEIdentifier {
+	if len(pbIdents) == 0 {
+		if len(names) == 0 {
+			return nil
+		}
+		idents := make([]ACMEIdentifier, len(names))
+		for i, name := range names {
+			idents[i] = NewDNS(name)
+		}
+		return idents
+	}
+
+	idents := make([]ACMEIdentifier, len(pbIdents))
+	for i, pbIdent := range pbIdents {
+		idents[i] = FromProto(pbIdent)
+	}
+	return idents
+}
+
 // NewDNS is a convenience function for creating an ACMEIdentifier with Type
 // "dns" for a given domain name.
 func NewDNS(domain string) ACMEIdentifier {
@@ -55,4 +104,81 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 		Type:  TypeIP,
 		Value: ip.StringExpanded(),
 	}
+}
+
+// FromCert extracts the Subject Common Name and Subject Alternative Names from
+// a certificate, and returns a slice of ACMEIdentifiers and an error.
+//
+// FromCSR is nearly identical but handles CSRs, and is kept separate so that
+// it's always clear we are handling an untrusted CSR.
+func FromCert(cert *x509.Certificate) ([]ACMEIdentifier, error) {
+	var sans []ACMEIdentifier
+	for _, name := range cert.DNSNames {
+		sans = append(sans, NewDNS(name))
+	}
+	if cert.Subject.CommonName != "" {
+		// Boulder won't generate certificates with a CN that's not also present
+		// in the SANs, but such a certificate is possible. If appended, this is
+		// deduplicated later with Normalize(). We assume the CN is a DNSName,
+		// because CNs are untyped strings without metadata, and we will never
+		// configure a Boulder profile to issue a certificate that contains both
+		// an IP address identifier and a CN.
+		sans = append(sans, NewDNS(cert.Subject.CommonName))
+	}
+
+	for _, netIP := range cert.IPAddresses {
+		netipAddr, ok := netip.AddrFromSlice(netIP)
+		if !ok {
+			return nil, fmt.Errorf("converting IP from bytes: %s", netIP)
+		}
+		sans = append(sans, NewIP(netipAddr))
+	}
+
+	return Normalize(sans), nil
+}
+
+// FromCSR extracts the Subject Common Name and Subject Alternative Names from a
+// CSR, and returns a slice of ACMEIdentifiers and an error.
+//
+// FromCert is nearly identical but handles certs, and is kept separate so that
+// it's always clear we are handling an untrusted CSR.
+func FromCSR(csr *x509.CertificateRequest) ([]ACMEIdentifier, error) {
+	var sans []ACMEIdentifier
+	for _, name := range csr.DNSNames {
+		sans = append(sans, NewDNS(name))
+	}
+	if csr.Subject.CommonName != "" {
+		// Boulder won't generate certificates with a CN that's not also present
+		// in the SANs, but such a certificate is possible. If appended, this is
+		// deduplicated later with Normalize(). We assume the CN is a DNSName,
+		// because CNs are untyped strings without metadata, and we will never
+		// configure a Boulder profile to issue a certificate that contains both
+		// an IP address identifier and a CN.
+		sans = append(sans, NewDNS(csr.Subject.CommonName))
+	}
+
+	for _, netIP := range csr.IPAddresses {
+		netipAddr, ok := netip.AddrFromSlice(netIP)
+		if !ok {
+			return nil, fmt.Errorf("converting IP from bytes: %s", netIP)
+		}
+		sans = append(sans, NewIP(netipAddr))
+	}
+
+	return Normalize(sans), nil
+}
+
+// Normalize returns the set of all unique ACME identifiers in the
+// input after all of them are lowercased. The returned identifier values will
+// be in their lowercased form and sorted alphabetically by value.
+func Normalize(idents []ACMEIdentifier) []ACMEIdentifier {
+	for i := range idents {
+		idents[i].Value = strings.ToLower(idents[i].Value)
+	}
+
+	sort.Slice(idents, func(i, j int) bool {
+		return fmt.Sprintf("%s:%s", idents[i].Type, idents[i].Value) < fmt.Sprintf("%s:%s", idents[j].Type, idents[j].Value)
+	})
+
+	return slices.Compact(idents)
 }

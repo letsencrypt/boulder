@@ -8,6 +8,8 @@ import (
 
 	"golang.org/x/crypto/ocsp"
 
+	"github.com/eggsampler/acme/v3"
+
 	"github.com/letsencrypt/boulder/core"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 )
@@ -39,8 +41,7 @@ func TestOCSPBadIssuerCert(t *testing.T) {
 
 func TestOCSPBadSerialPrefix(t *testing.T) {
 	t.Parallel()
-	domain := random_domain()
-	res, err := authAndIssue(nil, nil, []string{domain}, true, "")
+	res, err := authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 	if err != nil || len(res.certs) < 1 {
 		t.Fatal("Failed to issue dummy cert for OCSP testing")
 	}
@@ -73,7 +74,7 @@ func TestOCSPRejectedPrecertificate(t *testing.T) {
 		t.Fatalf("adding ct-test-srv reject host: %s", err)
 	}
 
-	_, err = authAndIssue(nil, nil, []string{domain}, true, "")
+	_, err = authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: domain}}, true, "")
 	if err != nil {
 		if !strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") ||
 			!strings.Contains(err.Error(), "SCT embedding") {

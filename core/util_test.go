@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"net/netip"
 	"os"
 	"sort"
 	"strings"
@@ -255,26 +256,6 @@ func TestUniqueLowerNames(t *testing.T) {
 	test.AssertDeepEquals(t, []string{"a.com", "bar.com", "baz.com", "foobar.com"}, u)
 }
 
-func TestNormalizeIdentifiers(t *testing.T) {
-	identifiers := []identifier.ACMEIdentifier{
-		{Type: "DNS", Value: "foobar.com"},
-		{Type: "DNS", Value: "fooBAR.com"},
-		{Type: "DNS", Value: "baz.com"},
-		{Type: "DNS", Value: "foobar.com"},
-		{Type: "DNS", Value: "bar.com"},
-		{Type: "DNS", Value: "bar.com"},
-		{Type: "DNS", Value: "a.com"},
-	}
-	expected := []identifier.ACMEIdentifier{
-		{Type: "DNS", Value: "a.com"},
-		{Type: "DNS", Value: "bar.com"},
-		{Type: "DNS", Value: "baz.com"},
-		{Type: "DNS", Value: "foobar.com"},
-	}
-	u := NormalizeIdentifiers(identifiers)
-	test.AssertDeepEquals(t, expected, u)
-}
-
 func TestValidSerial(t *testing.T) {
 	notLength32Or36 := "A"
 	length32 := strings.Repeat("A", 32)
@@ -340,31 +321,99 @@ func TestRetryBackoff(t *testing.T) {
 
 }
 
-func TestHashNames(t *testing.T) {
-	// Test that it is deterministic
-	h1 := HashNames([]string{"a"})
-	h2 := HashNames([]string{"a"})
-	test.AssertByteEquals(t, h1, h2)
+func TestHashIdentifiers(t *testing.T) {
+	dns1 := identifier.NewDNS("example.com")
+	dns1_caps := identifier.NewDNS("eXaMpLe.COM")
+	dns2 := identifier.NewDNS("high-energy-cheese-lab.nrc-cnrc.gc.ca")
+	dns2_caps := identifier.NewDNS("HIGH-ENERGY-CHEESE-LAB.NRC-CNRC.GC.CA")
+	ipv4_1 := identifier.NewIP(netip.MustParseAddr("10.10.10.10"))
+	ipv4_2 := identifier.NewIP(netip.MustParseAddr("172.16.16.16"))
+	ipv6_1 := identifier.NewIP(netip.MustParseAddr("2001:0db8:0bad:0dab:c0ff:fee0:0007:1337"))
+	ipv6_2 := identifier.NewIP(netip.MustParseAddr("3fff::"))
 
-	// Test that it differentiates
-	h1 = HashNames([]string{"a"})
-	h2 = HashNames([]string{"b"})
-	test.Assert(t, !bytes.Equal(h1, h2), "Should have been different")
+	testCases := []struct {
+		Name          string
+		Identifiers1  []identifier.ACMEIdentifier
+		Identifiers2  []identifier.ACMEIdentifier
+		ExpectedEqual bool
+	}{
+		{
+			Name:          "Deterministic for DNS",
+			Identifiers1:  []identifier.ACMEIdentifier{dns1},
+			Identifiers2:  []identifier.ACMEIdentifier{dns1},
+			ExpectedEqual: true,
+		},
+		{
+			Name:          "Deterministic for IPv4",
+			Identifiers1:  []identifier.ACMEIdentifier{ipv4_1},
+			Identifiers2:  []identifier.ACMEIdentifier{ipv4_1},
+			ExpectedEqual: true,
+		},
+		{
+			Name:          "Deterministic for IPv6",
+			Identifiers1:  []identifier.ACMEIdentifier{ipv6_1},
+			Identifiers2:  []identifier.ACMEIdentifier{ipv6_1},
+			ExpectedEqual: true,
+		},
+		{
+			Name:          "Differentiates for DNS",
+			Identifiers1:  []identifier.ACMEIdentifier{dns1},
+			Identifiers2:  []identifier.ACMEIdentifier{dns2},
+			ExpectedEqual: false,
+		},
+		{
+			Name:          "Differentiates for IPv4",
+			Identifiers1:  []identifier.ACMEIdentifier{ipv4_1},
+			Identifiers2:  []identifier.ACMEIdentifier{ipv4_2},
+			ExpectedEqual: false,
+		},
+		{
+			Name:          "Differentiates for IPv6",
+			Identifiers1:  []identifier.ACMEIdentifier{ipv6_1},
+			Identifiers2:  []identifier.ACMEIdentifier{ipv6_2},
+			ExpectedEqual: false,
+		},
+		{
+			Name: "Not subject to ordering",
+			Identifiers1: []identifier.ACMEIdentifier{
+				dns1, dns2, ipv4_1, ipv4_2, ipv6_1, ipv6_2,
+			},
+			Identifiers2: []identifier.ACMEIdentifier{
+				ipv6_1, dns2, ipv4_2, dns1, ipv4_1, ipv6_2,
+			},
+			ExpectedEqual: true,
+		},
+		{
+			Name: "Not case sensitive",
+			Identifiers1: []identifier.ACMEIdentifier{
+				dns1, dns2,
+			},
+			Identifiers2: []identifier.ACMEIdentifier{
+				dns1_caps, dns2_caps,
+			},
+			ExpectedEqual: true,
+		},
+		{
+			Name: "Not subject to duplication",
+			Identifiers1: []identifier.ACMEIdentifier{
+				dns1, dns1,
+			},
+			Identifiers2:  []identifier.ACMEIdentifier{dns1},
+			ExpectedEqual: true,
+		},
+	}
 
-	// Test that it is not subject to ordering
-	h1 = HashNames([]string{"a", "b"})
-	h2 = HashNames([]string{"b", "a"})
-	test.AssertByteEquals(t, h1, h2)
-
-	// Test that it is not subject to case
-	h1 = HashNames([]string{"a", "b"})
-	h2 = HashNames([]string{"A", "B"})
-	test.AssertByteEquals(t, h1, h2)
-
-	// Test that it is not subject to duplication
-	h1 = HashNames([]string{"a", "a"})
-	h2 = HashNames([]string{"a"})
-	test.AssertByteEquals(t, h1, h2)
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			h1 := HashIdentifiers(tc.Identifiers1)
+			h2 := HashIdentifiers(tc.Identifiers2)
+			if tc.ExpectedEqual {
+				test.AssertByteEquals(t, h1, h2)
+			} else {
+				test.Assert(t, !bytes.Equal(h1, h2), "Should have been different")
+			}
+		})
+	}
 }
 
 func TestIsCanceled(t *testing.T) {
