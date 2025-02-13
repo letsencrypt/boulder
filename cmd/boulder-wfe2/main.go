@@ -117,6 +117,14 @@ type Config struct {
 		// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
 		StaleTimeout config.Duration `validate:"-"`
 
+		// AuthorizationLifetimeDays duplicates the RA's config of the same name.
+		// Deprecated: This field no longer has any effect.
+		AuthorizationLifetimeDays int `validate:"-"`
+
+		// PendingAuthorizationLifetimeDays duplicates the RA's config of the same name.
+		// Deprecated: This field no longer has any effect.
+		PendingAuthorizationLifetimeDays int `validate:"-"`
+
 		AccountCache *CacheConfig
 
 		Limiter struct {
