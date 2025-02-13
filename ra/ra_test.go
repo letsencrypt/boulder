@@ -2427,6 +2427,28 @@ func TestFinalizeOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs, ready status")
 
+	validatedOrderNoIdents, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:   Registration.Id,
+			Expires:          timestamppb.New(exp),
+			DnsNames:         []string{"not-example.com", "www.not-example.com"},
+			V2Authorizations: []int64{authzIDA, authzIDB},
+		},
+	})
+	test.AssertNotError(t, err, "Could not add test order without Identifiers")
+	validatedOrderNoDnsNames, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID: Registration.Id,
+			Expires:        timestamppb.New(exp),
+			Identifiers: []*corepb.Identifier{
+				identifier.NewDNS("not-example.com").AsProto(),
+				identifier.NewDNS("www.not-example.com").AsProto(),
+			},
+			V2Authorizations: []int64{authzIDA, authzIDB},
+		},
+	})
+	test.AssertNotError(t, err, "Could not add test order without DnsNames")
+
 	testCases := []struct {
 		Name           string
 		OrderReq       *rapb.FinalizeOrderRequest
@@ -2613,6 +2635,22 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with correct authorizations, ready status",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: validatedOrder,
+				Csr:   validCSR,
+			},
+			ExpectIssuance: true,
+		},
+		{
+			Name: "Order with no Identifiers",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: validatedOrderNoIdents,
+				Csr:   validCSR,
+			},
+			ExpectIssuance: true,
+		},
+		{
+			Name: "Order with no DnsNames",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: validatedOrderNoDnsNames,
 				Csr:   validCSR,
 			},
 			ExpectIssuance: true,
