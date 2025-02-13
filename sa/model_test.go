@@ -106,6 +106,19 @@ func TestAuthzModel(t *testing.T) {
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 	test.AssertEquals(t, authzPBOut.CertificateProfileName, authzPB.CertificateProfileName)
 
+	authzPBNoIdentifier := authzPB
+	authzPBNoIdentifier.Identifier = nil
+	model, err = authzPBToModel(authzPBNoIdentifier)
+	test.AssertNotError(t, err, "authzPBToModel failed without Identifier")
+	_, err = modelToAuthzPB(*model)
+	test.AssertNotError(t, err, "modelToAuthzPB failed without Identifier")
+	authzPBNoDnsName := authzPB
+	authzPBNoDnsName.DnsName = ""
+	model, err = authzPBToModel(authzPBNoDnsName)
+	test.AssertNotError(t, err, "authzPBToModel failed without DnsName")
+	_, err = modelToAuthzPB(*model)
+	test.AssertNotError(t, err, "modelToAuthzPB failed without DnsName")
+
 	now = clk.Now()
 	expires = now.Add(24 * time.Hour)
 	authzPB = &corepb.Authorization{
@@ -157,6 +170,19 @@ func TestAuthzModel(t *testing.T) {
 	authzPB.Challenges[0].Validationrecords[0].Hostname = "example.com"
 	authzPB.Challenges[0].Validationrecords[0].Port = "443"
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
+
+	authzPBNoIdentifier = authzPB
+	authzPBNoIdentifier.Identifier = nil
+	model, err = authzPBToModel(authzPBNoIdentifier)
+	test.AssertNotError(t, err, "authzPBToModel failed without Identifier")
+	_, err = modelToAuthzPB(*model)
+	test.AssertNotError(t, err, "modelToAuthzPB failed without Identifier")
+	authzPBNoDnsName = authzPB
+	authzPBNoDnsName.DnsName = ""
+	model, err = authzPBToModel(authzPBNoDnsName)
+	test.AssertNotError(t, err, "authzPBToModel failed without DnsName")
+	_, err = modelToAuthzPB(*model)
+	test.AssertNotError(t, err, "modelToAuthzPB failed without DnsName")
 
 	now = clk.Now()
 	expires = now.Add(24 * time.Hour)
@@ -238,6 +264,19 @@ func TestAuthzModel(t *testing.T) {
 	if authzPBOut.Challenges[0].Validationrecords[0].Port != "443" {
 		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected port 443 but found %v", authzPBOut.Challenges[0].Validationrecords[0].Port))
 	}
+
+	authzPBNoIdentifier = authzPB
+	authzPBNoIdentifier.Identifier = nil
+	model, err = authzPBToModel(authzPBNoIdentifier)
+	test.AssertNotError(t, err, "authzPBToModel failed without Identifier")
+	_, err = modelToAuthzPB(*model)
+	test.AssertNotError(t, err, "modelToAuthzPB failed without Identifier")
+	authzPBNoDnsName = authzPB
+	authzPBNoDnsName.DnsName = ""
+	model, err = authzPBToModel(authzPBNoDnsName)
+	test.AssertNotError(t, err, "authzPBToModel failed without DnsName")
+	_, err = modelToAuthzPB(*model)
+	test.AssertNotError(t, err, "modelToAuthzPB failed without DnsName")
 }
 
 // TestModelToOrderBADJSON tests that converting an order model with an invalid
