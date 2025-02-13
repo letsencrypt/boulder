@@ -1807,6 +1807,15 @@ func TestStatusForOrder(t *testing.T) {
 			Finalize:         true,
 			ExpectedStatus:   string(core.StatusValid),
 		},
+		{
+			Name:             "Order with only valid authzs, set processing and finalized, Identifiers overriding DnsNames",
+			OrderNames:       []string{"deactivated.your.order.is.up"},
+			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
+			AuthorizationIDs: []int64{validID},
+			SetProcessing:    true,
+			Finalize:         true,
+			ExpectedStatus:   string(core.StatusValid),
+		},
 	}
 
 	for _, tc := range testCases {
