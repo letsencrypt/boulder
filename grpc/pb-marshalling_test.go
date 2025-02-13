@@ -308,6 +308,34 @@ func TestOrderValid(t *testing.T) {
 			ExpectedValid: true,
 		},
 		{
+			Name: "All valid, DnsNames only",
+			Order: &corepb.Order{
+				Id:                1,
+				RegistrationID:    1,
+				Expires:           timestamppb.New(expires),
+				CertificateSerial: "",
+				V2Authorizations:  []int64{},
+				DnsNames:          []string{"example.com"},
+				BeganProcessing:   false,
+				Created:           timestamppb.New(created),
+			},
+			ExpectedValid: true,
+		},
+		{
+			Name: "All valid, Identifiers only",
+			Order: &corepb.Order{
+				Id:                1,
+				RegistrationID:    1,
+				Expires:           timestamppb.New(expires),
+				CertificateSerial: "",
+				V2Authorizations:  []int64{},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").AsProto()},
+				BeganProcessing:   false,
+				Created:           timestamppb.New(created),
+			},
+			ExpectedValid: true,
+		},
+		{
 			Name: "Serial empty",
 			Order: &corepb.Order{
 				Id:               1,
