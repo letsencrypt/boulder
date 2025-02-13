@@ -3,60 +3,25 @@ package ratelimits
 import (
 	"testing"
 
-	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestIdentifiersToETLDsPlusOne(t *testing.T) {
-	idents := IdentifiersToETLDsPlusOne([]identifier.ACMEIdentifier{})
-	test.AssertEquals(t, len(idents), 0)
+func TestFQDNsToETLDsPlusOne(t *testing.T) {
+	domains := FQDNsToETLDsPlusOne([]string{})
+	test.AssertEquals(t, len(domains), 0)
 
-	idents = IdentifiersToETLDsPlusOne([]identifier.ACMEIdentifier{
-		identifier.NewDNS("www.example.com"),
-		identifier.NewDNS("example.com"),
-	})
-	test.AssertDeepEquals(t, idents, []identifier.ACMEIdentifier{
-		identifier.NewDNS("example.com"),
-	})
+	domains = FQDNsToETLDsPlusOne([]string{"www.example.com", "example.com"})
+	test.AssertDeepEquals(t, domains, []string{"example.com"})
 
-	idents = IdentifiersToETLDsPlusOne([]identifier.ACMEIdentifier{
-		identifier.NewDNS("www.example.com"),
-		identifier.NewDNS("example.com"),
-		identifier.NewDNS("www.example.co.uk"),
-	})
-	test.AssertDeepEquals(t, idents, []identifier.ACMEIdentifier{
-		identifier.NewDNS("example.co.uk"),
-		identifier.NewDNS("example.com"),
-	})
+	domains = FQDNsToETLDsPlusOne([]string{"www.example.com", "example.com", "www.example.co.uk"})
+	test.AssertDeepEquals(t, domains, []string{"example.co.uk", "example.com"})
 
-	idents = IdentifiersToETLDsPlusOne([]identifier.ACMEIdentifier{
-		identifier.NewDNS("www.example.com"),
-		identifier.NewDNS("example.com"),
-		identifier.NewDNS("www.example.co.uk"),
-		identifier.NewDNS("co.uk"),
-	})
-	test.AssertDeepEquals(t, idents, []identifier.ACMEIdentifier{
-		identifier.NewDNS("co.uk"),
-		identifier.NewDNS("example.co.uk"),
-		identifier.NewDNS("example.com"),
-	})
+	domains = FQDNsToETLDsPlusOne([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
+	test.AssertDeepEquals(t, domains, []string{"co.uk", "example.co.uk", "example.com"})
 
-	idents = IdentifiersToETLDsPlusOne([]identifier.ACMEIdentifier{
-		identifier.NewDNS("foo.bar.baz.www.example.com"),
-		identifier.NewDNS("baz.example.com"),
-	})
-	test.AssertDeepEquals(t, idents, []identifier.ACMEIdentifier{
-		identifier.NewDNS("example.com"),
-	})
+	domains = FQDNsToETLDsPlusOne([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
+	test.AssertDeepEquals(t, domains, []string{"example.com"})
 
-	idents = IdentifiersToETLDsPlusOne([]identifier.ACMEIdentifier{
-		identifier.NewDNS("github.io"),
-		identifier.NewDNS("foo.github.io"),
-		identifier.NewDNS("bar.github.io"),
-	})
-	test.AssertDeepEquals(t, idents, []identifier.ACMEIdentifier{
-		identifier.NewDNS("bar.github.io"),
-		identifier.NewDNS("foo.github.io"),
-		identifier.NewDNS("github.io"),
-	})
+	domains = FQDNsToETLDsPlusOne([]string{"github.io", "foo.github.io", "bar.github.io"})
+	test.AssertDeepEquals(t, domains, []string{"bar.github.io", "foo.github.io", "github.io"})
 }

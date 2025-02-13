@@ -321,6 +321,16 @@ func UniqueLowerNames(names []string) (unique []string) {
 	return
 }
 
+// HashNames returns a hash of the names requested. This is intended for use
+// when interacting with the orderFqdnSets table and rate limiting.
+//
+// Deprecated: TODO(#7311): Use HashIdentifiers instead.
+func HashNames(names []string) []byte {
+	names = UniqueLowerNames(names)
+	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
+	return hash[:]
+}
+
 // HashIdentifiers returns a hash of the identifiers requested. This is intended
 // for use when interacting with the orderFqdnSets table and rate limiting.
 func HashIdentifiers(idents []identifier.ACMEIdentifier) []byte {

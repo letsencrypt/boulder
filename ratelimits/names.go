@@ -194,13 +194,19 @@ func validateRegIdDomain(id string) error {
 
 // validateFQDNSet validates that the provided string is formatted 'fqdnSet',
 // where fqdnSet is a comma-separated list of domain names.
+//
+// TODO(#7311): Support non-DNS identifiers.
 func validateFQDNSet(id string) error {
 	domains := strings.Split(id, ",")
 	if len(domains) == 0 {
 		return fmt.Errorf(
 			"invalid fqdnSet, %q must be formatted 'fqdnSet'", id)
 	}
-	return policy.WellFormedIdentifiers(identifier.SliceFromProto(nil, domains))
+	idents := make([]identifier.ACMEIdentifier, len(domains))
+	for i, domain := range domains {
+		idents[i] = identifier.NewDNS(domain)
+	}
+	return policy.WellFormedIdentifiers(idents)
 }
 
 func validateIdForName(name Name, id string) error {

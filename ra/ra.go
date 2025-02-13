@@ -1272,17 +1272,24 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 // account) and duplicate certificate rate limits. There is no reason to surface
 // errors from this function to the Subscriber, spends against these limit are
 // best effort.
+//
+// TODO(#7311): Handle IP address identifiers.
 func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderIdents []identifier.ACMEIdentifier, isRenewal bool) {
+	names := make([]string, len(orderIdents))
+	for i, orderIdent := range orderIdents {
+		names[i] = orderIdent.Value
+	}
+
 	var transactions []ratelimits.Transaction
 	if !isRenewal {
-		txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, orderIdents)
+		txns, err := ra.txnBuilder.CertificatesPerDomainSpendOnlyTransactions(regId, names)
 		if err != nil {
 			ra.log.Warningf("building rate limit transactions at finalize: %s", err)
 		}
 		transactions = append(transactions, txns...)
 	}
 
-	txn, err := ra.txnBuilder.CertificatesPerFQDNSetSpendOnlyTransaction(orderIdents)
+	txn, err := ra.txnBuilder.CertificatesPerFQDNSetSpendOnlyTransaction(names)
 	if err != nil {
 		ra.log.Warningf("building rate limit transaction at finalize: %s", err)
 	}
@@ -1500,8 +1507,12 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 
 // countFailedValidations increments the FailedAuthorizationsPerDomainPerAccount limit.
 // and the FailedAuthorizationsForPausingPerDomainPerAccountTransaction limit.
+//
+// TODO(#7311): Handle IP address identifiers.
 func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) error {
-	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, ident)
+	name := ident.Value
+
+	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, name)
 	if err != nil {
 		return fmt.Errorf("building rate limit transaction for the %s rate limit: %w", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
@@ -1512,7 +1523,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context,
 	}
 
 	if features.Get().AutomaticallyPauseZombieClients {
-		txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, ident)
+		txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, name)
 		if err != nil {
 			return fmt.Errorf("building rate limit transaction for the %s rate limit: %w", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
 		}
@@ -1547,8 +1558,10 @@ func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context,
 
 // resetAccountPausingLimit resets bucket to maximum capacity for given account.
 // There is no reason to surface errors from this function to the Subscriber.
+//
+// TODO(#7311): Handle IP address identifiers.
 func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
-	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident)
+	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident.Value)
 	if err != nil {
 		ra.log.Warningf("creating bucket key for regID=[%d] identifier=[%s]: %s", regId, ident.Value, err)
 	}

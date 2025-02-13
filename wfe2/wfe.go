@@ -2034,10 +2034,11 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 //
 // TODO(#7311): Handle IP address identifiers.
 func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, idents []identifier.ACMEIdentifier, isRenewal bool) (func(), error) {
-	// TODO(#7961): This (and maybe the RA?) should grow some boilerplate to
-	// convert to names for now, so we can split the ratelimits changes into
-	// their own PR.
-	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, idents, isRenewal)
+	names := make([]string, len(idents))
+	for i, ident := range idents {
+		names[i] = ident.Value
+	}
+	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, isRenewal)
 	if err != nil {
 		return nil, fmt.Errorf("building new order limit transactions: %w", err)
 	}
