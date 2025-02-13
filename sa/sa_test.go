@@ -2690,6 +2690,22 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			wantIDs:     []int64{aaa},
 		},
 		{
+			name:       "happy path, no Identifiers",
+			regID:      1,
+			dnsNames:   []string{"aaa"},
+			profile:    "",
+			validUntil: fc.Now().Add(time.Hour),
+			wantIDs:    []int64{aaa},
+		},
+		{
+			name:        "happy path, no DnsNames",
+			regID:       1,
+			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").AsProto()},
+			profile:     "",
+			validUntil:  fc.Now().Add(time.Hour),
+			wantIDs:     []int64{aaa},
+		},
+		{
 			name:        "different regID",
 			regID:       2,
 			dnsNames:    []string{"aaa"},
