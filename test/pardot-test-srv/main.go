@@ -181,27 +181,27 @@ func (ts *testServer) createProspectsHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func (ts *testServer) queryProspectsHandler(w http.ResponseWriter, r *http.Request) {
-	buid := r.URL.Query().Get("pardot_business_unit_id")
-	if buid == "" {
+	businessUnitIdHeader := r.URL.Query().Get("pardot_business_unit_id")
+	if businessUnitIdHeader == "" {
 		http.Error(w, "Missing 'pardot_business_unit_id' parameter", http.StatusBadRequest)
 		return
 	}
 
 	ts.prospects.RLock()
-	prospectsForBuid, exists := ts.prospects.byBusinessUnitId[buid]
+	requestedProspects, exists := ts.prospects.byBusinessUnitId[businessUnitIdHeader]
 	ts.prospects.RUnlock()
 
-	var requested []string
+	var respProspects []string
 	if exists {
-		for p := range maps.Keys(prospectsForBuid) {
-			requested = append(requested, p)
+		for p := range maps.Keys(requestedProspects) {
+			respProspects = append(respProspects, p)
 		}
 
 	}
-	slices.Sort(requested)
+	slices.Sort(respProspects)
 
 	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(map[string]interface{}{"prospects": requested})
+	err := json.NewEncoder(w).Encode(map[string]interface{}{"prospects": respProspects})
 	if err != nil {
 		log.Printf("Failed to encode prospects query response: %v", err)
 		http.Error(w, "Failed to encode prospects query response", http.StatusInternalServerError)
