@@ -1,6 +1,10 @@
 package identifier
 
 import (
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"net"
+	"net/netip"
 	"testing"
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -124,6 +128,53 @@ func TestSliceFromProto(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			idents := SliceFromProto(tc.InputIdents, tc.InputNames)
 			test.AssertDeepEquals(t, idents, tc.ExpectIdents)
+		})
+	}
+}
+
+// TestFromCSR covers TestFromCert as well, because their logic is exactly the same.
+func TestFromCSR(t *testing.T) {
+	cases := []struct {
+		name           string
+		csr            *x509.CertificateRequest
+		expectedIdents []ACMEIdentifier
+	}{
+		{
+			"no explicit CN",
+			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
+			[]ACMEIdentifier{NewDNS("a.com")},
+		},
+		{
+			"explicit uppercase CN",
+			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"a.com"}},
+			[]ACMEIdentifier{NewDNS("a.com")},
+		},
+		{
+			"no explicit CN, uppercase SAN",
+			&x509.CertificateRequest{DNSNames: []string{"A.com"}},
+			[]ACMEIdentifier{NewDNS("a.com")},
+		},
+		{
+			"duplicate SANs",
+			&x509.CertificateRequest{DNSNames: []string{"b.com", "b.com", "a.com", "a.com"}},
+			[]ACMEIdentifier{NewDNS("a.com"), NewDNS("b.com")},
+		},
+		{
+			"explicit CN not found in SANs",
+			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "a.com"}, DNSNames: []string{"b.com"}},
+			[]ACMEIdentifier{NewDNS("a.com"), NewDNS("b.com")},
+		},
+		{
+			"mix of DNSNames and IPAddresses",
+			&x509.CertificateRequest{DNSNames: []string{"a.com"}, IPAddresses: []net.IP{{192, 168, 1, 1}}},
+			[]ACMEIdentifier{NewDNS("a.com"), NewIP(netip.MustParseAddr("192.168.1.1"))},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			idents, err := FromCSR(tc.csr)
+			test.AssertNotError(t, err, "Error parsing identifiers from CSR")
+			test.AssertDeepEquals(t, idents, tc.expectedIdents)
 		})
 	}
 }

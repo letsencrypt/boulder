@@ -111,14 +111,6 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 //
 // FromCSR is nearly identical but handles CSRs, and is kept separate so that
 // it's always clear we are handling an untrusted CSR.
-//
-// TODO(#7961): We need to ensure the output is as identical as possible to
-// reading a slice of DNSNames from an x509.Certificate. This could be checked
-// in a test. This is because in (at least) expiration-mailer, we were using
-// HashIdentifiers(parsedCert.DNSNames), and that is being changed to
-// HashIdentifiers(FromCert(cert)).
-//
-// TODO(#7961): Borrow and adapt tests from the csr package.
 func FromCert(cert *x509.Certificate) ([]ACMEIdentifier, error) {
 	var sans []ACMEIdentifier
 	for _, name := range cert.DNSNames {
@@ -150,8 +142,6 @@ func FromCert(cert *x509.Certificate) ([]ACMEIdentifier, error) {
 //
 // FromCert is nearly identical but handles certs, and is kept separate so that
 // it's always clear we are handling an untrusted CSR.
-//
-// TODO(#7961): See TODOs on FromCert.
 func FromCSR(csr *x509.CertificateRequest) ([]ACMEIdentifier, error) {
 	var sans []ACMEIdentifier
 	for _, name := range csr.DNSNames {
