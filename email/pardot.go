@@ -36,6 +36,10 @@ const (
 	retryBackoffMin = 200 * time.Millisecond
 )
 
+type PardotClient interface {
+	CreateProspect(email string) error
+}
+
 // oAuthToken holds the OAuth2 access token and its expiration.
 type oAuthToken struct {
 	sync.Mutex
@@ -44,8 +48,8 @@ type oAuthToken struct {
 	expiresAt   time.Time
 }
 
-// PardotClient handles authentication and sending contacts to Pardot.
-type PardotClient struct {
+// PardotClientImpl handles authentication and sending contacts to Pardot.
+type PardotClientImpl struct {
 	businessUnit string
 	clientId     string
 	clientSecret string
@@ -55,8 +59,10 @@ type PardotClient struct {
 	clk          clock.Clock
 }
 
-// NewPardotClient creates a new PardotClient.
-func NewPardotClient(clk clock.Clock, businessUnit, clientId, clientSecret, oauthbaseURL, pardotBaseURL string) (*PardotClient, error) {
+var _ PardotClient = &PardotClientImpl{}
+
+// NewPardotClientImpl creates a new PardotClientImpl.
+func NewPardotClientImpl(clk clock.Clock, businessUnit, clientId, clientSecret, oauthbaseURL, pardotBaseURL string) (*PardotClientImpl, error) {
 	prospectsURL, err := url.JoinPath(pardotBaseURL, prospectsPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to join prospects path: %w", err)
@@ -66,7 +72,7 @@ func NewPardotClient(clk clock.Clock, businessUnit, clientId, clientSecret, oaut
 		return nil, fmt.Errorf("failed to join token path: %w", err)
 	}
 
-	return &PardotClient{
+	return &PardotClientImpl{
 		businessUnit: businessUnit,
 		clientId:     clientId,
 		clientSecret: clientSecret,
@@ -79,7 +85,7 @@ func NewPardotClient(clk clock.Clock, businessUnit, clientId, clientSecret, oaut
 }
 
 // updateToken updates the OAuth token if necessary.
-func (pc *PardotClient) updateToken() error {
+func (pc *PardotClientImpl) updateToken() error {
 	pc.token.Lock()
 	defer pc.token.Unlock()
 
@@ -129,7 +135,7 @@ func redactEmail(body []byte, email string) string {
 
 // CreateProspect submits an email to the Pardot Prospects endpoint, retrying up
 // to 3 times with exponential backoff.
-func (pc *PardotClient) CreateProspect(email string) error {
+func (pc *PardotClientImpl) CreateProspect(email string) error {
 	var err error
 	for attempt := range maxAttempts {
 		time.Sleep(core.RetryBackoff(attempt, retryBackoffMin, retryBackoffMax, retryBackoffBase))

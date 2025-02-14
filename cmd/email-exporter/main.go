@@ -70,7 +70,7 @@ func main() {
 	clientSecret, err := c.EmailExporter.ClientSecret.Pass()
 	cmd.FailOnError(err, "Loading client secret")
 
-	pardotClient, err := email.NewPardotClient(
+	pardotClient, err := email.NewPardotClientImpl(
 		clk,
 		c.EmailExporter.PardotBusinessUnit,
 		clientId,
