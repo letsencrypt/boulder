@@ -205,7 +205,12 @@ func setup(t *testing.T) *testCtx {
 			Name: "lint_errors",
 			Help: "Number of issuances that were halted by linting errors",
 		})
-	cametrics := &caMetrics{signatureCount, signErrorCount, lintErrorCount}
+	certificatesCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "certificates",
+			Help: "Number of certificates issued",
+		}, []string{"profile"})
+	cametrics := &caMetrics{signatureCount, signErrorCount, lintErrorCount, certificatesCount}
 
 	ocsp, err := NewOCSPImpl(
 		boulderIssuers,

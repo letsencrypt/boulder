@@ -491,7 +491,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	}
 
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
-	ca.metrics.certificates.With(prometheus.Labels{"profile": string(certProfile.name)}).Inc()
+	ca.metrics.certificates.With(prometheus.Labels{"profile": certProfile.name}).Inc()
 	logEvent.Result.Certificate = hex.EncodeToString(certDER)
 	ca.log.AuditObject("Signing cert success", logEvent)
 
