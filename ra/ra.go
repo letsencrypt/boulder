@@ -74,6 +74,7 @@ var (
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
 	rapb.UnsafeRegistrationAuthorityServer
+	rapb.UnsafeSCTProviderServer
 	CA        capb.CertificateAuthorityClient
 	OCSP      capb.OCSPGeneratorClient
 	VA        va.RemoteClients

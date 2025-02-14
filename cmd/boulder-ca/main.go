@@ -210,9 +210,12 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := sapb.NewStorageAuthorityClient(saConn)
 
-	sctConn, err := bgrpc.ClientSetup(c.CA.SCTService, tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sct := rapb.NewSCTProviderClient(sctConn)
+	var sctService rapb.SCTProviderClient
+	if c.CA.SCTService != nil {
+		sctConn, err := bgrpc.ClientSetup(c.CA.SCTService, tlsConfig, scope, clk)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA for SCTs")
+		sctService = rapb.NewSCTProviderClient(sctConn)
+	}
 
 	kp, err := sagoodkey.NewPolicy(&c.CA.GoodKey, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
@@ -253,7 +256,7 @@ func main() {
 	if !c.CA.DisableCertService {
 		cai, err := ca.NewCertificateAuthorityImpl(
 			sa,
-			sct,
+			sctService,
 			pa,
 			issuers,
 			c.CA.Issuance.CertProfiles,

@@ -264,6 +264,7 @@ func NewCertificateAuthorityImpl(
 
 	ca = &certificateAuthorityImpl{
 		sa:           sa,
+		sctService:   sctService,
 		pa:           pa,
 		issuers:      issuers,
 		certProfiles: certProfiles,
@@ -347,6 +348,9 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 }
 
 func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*corepb.Certificate, error) {
+	if ca.sctService == nil {
+		return nil, errors.New("IssueCertificate called with a nil SCT service")
+	}
 	resp, err := ca.IssuePrecertificate(ctx, issueReq)
 	if err != nil {
 		return nil, err
