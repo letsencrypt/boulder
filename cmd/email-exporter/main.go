@@ -16,6 +16,11 @@ type Config struct {
 	EmailExporter struct {
 		cmd.ServiceConfig
 
+		// PerDayLimit is our daily limit as determined by the tier of our
+		// Salesforce account. For more information, see:
+		// https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
+		PerDayLimit float64 `validate:"required,min=1"`
+
 		// PardotBusinessUnit is the Pardot business unit to use.
 		PardotBusinessUnit string `validate:"required"`
 
@@ -79,7 +84,7 @@ func main() {
 		c.EmailExporter.PardotBaseURL,
 	)
 	cmd.FailOnError(err, "Creating Pardot client")
-	exporterServer := email.NewExporterImpl(pardotClient, scope, logger)
+	exporterServer := email.NewExporterImpl(pardotClient, c.EmailExporter.PerDayLimit, scope, logger)
 
 	tlsConfig, err := c.EmailExporter.TLS.Load(scope)
 	cmd.FailOnError(err, "Loading TLS config")

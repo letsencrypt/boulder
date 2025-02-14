@@ -4,53 +4,54 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/time/rate"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/core"
-	exporterpb "github.com/letsencrypt/boulder/email/proto"
+	emailpb "github.com/letsencrypt/boulder/email/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
 const (
-	// Our daily limit is determined by the tier of our Salesforce account. For
-	// more information, see:
-	// https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
-
-	// ratelimit represents our daily limit of 50,000 requests.
-	rateLimit = 50000.0 / 86400.0
-
-	// numWorkers is the number of concurrent workers processing the email
-	// queue. We also use this as the burst limit for the rate limiter.
-	numWorkers = 5
+	// five is the number of concurrent workers processing the email queue. This
+	// number was chosen specifically to match the number of concurrent
+	// connections allowed by the Pardot API.
+	five = 5
 
 	// queueCap enforces a maximum stack size to prevent unbounded growth.
 	queueCap = 10000
 )
 
-var ErrQueueFull = errors.New("email export queue is full")
+var ErrQueueFull = errors.New("email-exporter queue is full")
 
 // ExporterImpl implements the gRPC server and processes email exports.
 type ExporterImpl struct {
-	exporterpb.UnsafeExporterServer
+	emailpb.UnsafeExporterServer
 
-	sync.RWMutex
+	sync.Mutex
 	drainWG sync.WaitGroup
+	wake    *sync.Cond
 
+	limiter              *rate.Limiter
 	toSend               []string
-	client               *PardotClient
+	client               PardotClient
 	emailsHandledCounter prometheus.Counter
 	log                  blog.Logger
 }
 
-var _ exporterpb.ExporterServer = (*ExporterImpl)(nil)
+var _ emailpb.ExporterServer = (*ExporterImpl)(nil)
 
 // NewExporterImpl creates a new ExporterImpl.
-func NewExporterImpl(client *PardotClient, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
+func NewExporterImpl(client PardotClient, perDayLimit float64, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
+	// This limiter enforces the daily Pardot API limit and restricts
+	// concurrency to the maximum of 5 requests specified in their
+	// documentation. For more details see:
+	// https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
+	limiter := rate.NewLimiter(rate.Limit(perDayLimit/86400.0), 5)
+
 	emailsHandledCounter := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "email_exporter_emails_handled",
 		Help: "Total number of emails handled by the email exporter",
@@ -58,18 +59,20 @@ func NewExporterImpl(client *PardotClient, scope prometheus.Registerer, logger b
 	scope.MustRegister(emailsHandledCounter)
 
 	impl := &ExporterImpl{
+		limiter:              limiter,
 		toSend:               make([]string, 0, queueCap),
 		client:               client,
 		emailsHandledCounter: emailsHandledCounter,
 		log:                  logger,
 	}
+	impl.wake = sync.NewCond(&impl.Mutex)
 
 	queueGauge := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "email_exporter_queue_length",
 		Help: "Current length of the email export queue",
 	}, func() float64 {
-		impl.RLock()
-		defer impl.RUnlock()
+		impl.Lock()
+		defer impl.Unlock()
 		return float64(len(impl.toSend))
 	})
 	scope.MustRegister(queueGauge)
@@ -77,82 +80,76 @@ func NewExporterImpl(client *PardotClient, scope prometheus.Registerer, logger b
 	return impl
 }
 
-// CreateProspects enqueues the provided email addresses. If the queue is near
-// capacity, only enqueues as many emails as can fit. Returns ErrQueueFull if
-// some or all emails were dropped.
-func (impl *ExporterImpl) CreateProspects(ctx context.Context, req *exporterpb.CreateProspectsRequest) (*emptypb.Empty, error) {
+// CreateProspects enqueues the provided email addresses. If the queue cannot
+// accommodate the new emails, an ErrQueueFull is returned.
+func (impl *ExporterImpl) CreateProspects(ctx context.Context, req *emailpb.CreateProspectsRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req, req.Emails) {
 		return nil, berrors.InternalServerError("Incomplete UpsertEmails request")
 	}
 
 	impl.Lock()
-	defer impl.Unlock()
-
 	spotsLeft := queueCap - len(impl.toSend)
 	if spotsLeft < len(req.Emails) {
 		return nil, ErrQueueFull
 	}
 	impl.toSend = append(impl.toSend, req.Emails...)
+	impl.Unlock()
+	// Wake waiting workers to process the new emails.
+	impl.wake.Broadcast()
 
 	return &emptypb.Empty{}, nil
-}
-
-func (impl *ExporterImpl) takeEmail() (string, bool) {
-	impl.Lock()
-	defer impl.Unlock()
-
-	if len(impl.toSend) == 0 {
-		return "", false
-	}
-
-	email := impl.toSend[len(impl.toSend)-1]
-	impl.toSend = impl.toSend[:len(impl.toSend)-1]
-
-	return email, true
 }
 
 // Start begins asynchronous processing of the email queue. When the parent
 // daemonCtx is cancelled the queue will be drained and the workers will exit.
 func (impl *ExporterImpl) Start(daemonCtx context.Context) {
-	limiter := rate.NewLimiter(rate.Limit(rateLimit), numWorkers)
+	go func() {
+		<-daemonCtx.Done()
+		impl.Lock()
+		// Wake waiting workers to exit.
+		impl.wake.Broadcast()
+		impl.Unlock()
+	}()
 
 	worker := func() {
 		defer impl.drainWG.Done()
 		for {
-			if daemonCtx.Err() != nil && len(impl.toSend) == 0 {
+			impl.Lock()
+
+			for len(impl.toSend) == 0 && daemonCtx.Err() == nil {
+				// Wait for the queue to be updated or the daemon to exit.
+				impl.wake.Wait()
+			}
+
+			if len(impl.toSend) == 0 && daemonCtx.Err() != nil {
+				// No more emails to process, exit.
+				impl.Unlock()
 				return
 			}
 
-			err := limiter.Wait(daemonCtx)
+			// Dequeue and dispatch an email.
+			last := len(impl.toSend) - 1
+			email := impl.toSend[last]
+			impl.toSend = impl.toSend[:last]
+			impl.Unlock()
+
+			err := impl.limiter.Wait(daemonCtx)
 			if err != nil {
-				if errors.Is(err, context.Canceled) {
-					// Keep processing emails until the queue is drained.
+				if !errors.Is(err, context.Canceled) {
+					impl.log.Errf("Unexpected limiter.Wait() error: %s", err)
 					continue
 				}
-				impl.log.Errf("Unexpected limiter wait error: %s", err)
-				continue
-			}
-
-			email, ok := impl.takeEmail()
-			if !ok {
-				if daemonCtx.Err() != nil {
-					// Exit immediately.
-					return
-				}
-				// No emails to process, avoid busy-waiting.
-				time.Sleep(100 * time.Millisecond)
-				continue
 			}
 
 			err = impl.client.CreateProspect(email)
 			if err != nil {
-				impl.log.Errf("Failed to upsert email: %s", err)
+				impl.log.Errf("Sending Prospect to Pardot: %s", err)
 			}
 			impl.emailsHandledCounter.Inc()
 		}
 	}
 
-	for range numWorkers {
+	for range five {
 		impl.drainWG.Add(1)
 		go worker()
 	}

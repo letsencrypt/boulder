@@ -22,6 +22,7 @@
 			"certFile": "test/certs/ipki/email-exporter.boulder/cert.pem",
 			"keyFile": "test/certs/ipki/email-exporter.boulder/key.pem"
 		},
+		"perDayLimit": 999999,
 		"pardotBusinessUnit": "test-business-unit",
 		"clientId": {
 			"passwordFile": "test/secrets/salesforce_client_id"
