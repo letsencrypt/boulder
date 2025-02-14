@@ -4219,6 +4219,7 @@ TRANSMISSION LINE: Direct relay, Exchange Circuit No. 42.`},
 			request := makePostRequestWithPath(path, body)
 			wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 			test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+
 			for _, email := range tc.expected {
 				test.AssertSliceContains(t, mockImpl.CreatedProspects, email)
 			}
