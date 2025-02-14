@@ -37,6 +37,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/policy"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -254,6 +255,7 @@ func TestSerialPrefix(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		0x00,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
@@ -263,6 +265,7 @@ func TestSerialPrefix(t *testing.T) {
 	test.AssertError(t, err, "CA should have failed with no SerialPrefix")
 
 	_, err = NewCertificateAuthorityImpl(
+		nil,
 		nil,
 		nil,
 		nil,
@@ -354,11 +357,18 @@ func TestIssuePrecertificate(t *testing.T) {
 	}
 }
 
+type mockSCTService struct{}
+
+func (m mockSCTService) GetSCTs(ctx context.Context, sctRequest *rapb.SCTRequest, _ ...grpc.CallOption) (*rapb.SCTResponse, error) {
+	return &rapb.SCTResponse{}, nil
+}
+
 func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
+		mockSCTService{},
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.certProfiles,
@@ -397,6 +407,7 @@ func TestNoIssuers(t *testing.T) {
 	sa := &mockSA{}
 	_, err := NewCertificateAuthorityImpl(
 		sa,
+		mockSCTService{},
 		testCtx.pa,
 		nil, // No issuers
 		testCtx.certProfiles,
@@ -417,6 +428,7 @@ func TestMultipleIssuers(t *testing.T) {
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
+		mockSCTService{},
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.certProfiles,
@@ -486,6 +498,7 @@ func TestUnpredictableIssuance(t *testing.T) {
 
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
+		mockSCTService{},
 		testCtx.pa,
 		boulderIssuers,
 		testCtx.certProfiles,
@@ -678,6 +691,7 @@ func TestInvalidCSRs(t *testing.T) {
 		sa := &mockSA{}
 		ca, err := NewCertificateAuthorityImpl(
 			sa,
+			mockSCTService{},
 			testCtx.pa,
 			testCtx.boulderIssuers,
 			testCtx.certProfiles,
@@ -716,6 +730,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 
 	ca, err := NewCertificateAuthorityImpl(
 		&mockSA{},
+		mockSCTService{},
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.certProfiles,
@@ -808,6 +823,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
+		mockSCTService{},
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.certProfiles,
@@ -869,6 +885,7 @@ func TestIssueCertificateForPrecertificateWithSpecificCertificateProfile(t *test
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
+		mockSCTService{},
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.certProfiles,
@@ -984,6 +1001,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	sa := &dupeSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
+		mockSCTService{},
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.certProfiles,
@@ -1026,6 +1044,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	errorsa := &getCertErrorSA{}
 	errorca, err := NewCertificateAuthorityImpl(
 		errorsa,
+		mockSCTService{},
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.certProfiles,
