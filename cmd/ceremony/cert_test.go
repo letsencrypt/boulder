@@ -2,8 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -551,7 +552,7 @@ func TestGenerateCSR(t *testing.T) {
 		Country:      "country",
 	}
 
-	signer, err := rsa.GenerateKey(rand.Reader, 1024)
+	signer, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
 
 	csrBytes, err := generateCSR(profile, &wrappedSigner{signer})

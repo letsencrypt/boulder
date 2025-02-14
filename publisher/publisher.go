@@ -332,15 +332,16 @@ func (pub *Impl) singleLogSubmit(
 		"http_status": "",
 	}).Observe(took)
 
-	timestamp := time.Unix(int64(sct.Timestamp)/1000, 0)
-	if time.Until(timestamp) > time.Minute {
-		return nil, fmt.Errorf("SCT Timestamp was too far in the future (%s)", timestamp)
+	threshold := uint64(time.Now().Add(time.Minute).UnixMilli()) //nolint: gosec // Current-ish timestamp is guaranteed to fit in a uint64
+	if sct.Timestamp > threshold {
+		return nil, fmt.Errorf("SCT Timestamp was too far in the future (%d > %d)", sct.Timestamp, threshold)
 	}
 
 	// For regular certificates, we could get an old SCT, but that shouldn't
 	// happen for precertificates.
-	if kind != pubpb.SubmissionType_final && time.Until(timestamp) < -10*time.Minute {
-		return nil, fmt.Errorf("SCT Timestamp was too far in the past (%s)", timestamp)
+	threshold = uint64(time.Now().Add(-10 * time.Minute).UnixMilli()) //nolint: gosec // Current-ish timestamp is guaranteed to fit in a uint64
+	if kind != pubpb.SubmissionType_final && sct.Timestamp < threshold {
+		return nil, fmt.Errorf("SCT Timestamp was too far in the past (%d < %d)", sct.Timestamp, threshold)
 	}
 
 	return sct, nil
@@ -371,7 +372,7 @@ func CreateTestingSignedSCT(req []string, k *ecdsa.PrivateKey, precert bool, tim
 	// Sign the SCT
 	rawKey, _ := x509.MarshalPKIXPublicKey(&k.PublicKey)
 	logID := sha256.Sum256(rawKey)
-	timestampMillis := uint64(timestamp.UnixNano()) / 1e6
+	timestampMillis := uint64(timestamp.UnixMilli()) //nolint: gosec // Current-ish timestamp is guaranteed to fit in a uint64
 	serialized, _ := ct.SerializeSCTSignatureInput(ct.SignedCertificateTimestamp{
 		SCTVersion: ct.V1,
 		LogID:      ct.LogID{KeyID: logID},
