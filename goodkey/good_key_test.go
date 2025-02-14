@@ -362,13 +362,13 @@ func TestCheckPrimeFactorsTooClose(t *testing.T) {
 			expectRounds: 1,
 		},
 		{
-			// FIPS requires that |p-q| > 2^(nlen/2 - 100), i.e. that the absolute
-			// value of the difference between the prime factors of a 2048-bit RSA key
-			// be at least 2^924. These two factors have a difference of exactly 2^924
-			// + 4, just *barely* FIPS-compliant. Their first different digit is in
-			// column 52 of this file, which still makes them vastly further apart
-			// than the cases above. Their product cannot be factored even with one
-			// hundred million rounds of Fermat's Algorithm.
+			// FIPS requires that |p-q| > 2^(nlen/2 - 100). For example, a 2048-bit
+			// RSA key must have prime factors with a difference of at least 2^924.
+			// These two factors have a difference of exactly 2^924 + 4, just *barely*
+			// FIPS-compliant. Their first different digit is in column 52 of this
+			// file, which makes them vastly further apart than the cases above. Their
+			// product cannot be factored even with 100,000,000 rounds of Fermat's
+			// Algorithm.
 			name:         "barely FIPS compliant (2048 bit)",
 			p:            "151546560166767007654995655231369126386504564489055366370313539237722892921762327477057109592614214965864835328962951695621854530739049166771701397343693962526456985866167580660948398404000483264137738772983130282095332559392185543017295488346592188097443414824871619976114874896240350402349774470198190454623",
 			q:            "151546560166767007654995655231510939369872272987323309037144546294925352276321214430320942815891873491060949332482502812040326472743233767963240491605860423063942576391584034077877871768428333113881339606298282107984376151546711223157061364850161576363709081794948857957944390170575452970542651659150041855843",
