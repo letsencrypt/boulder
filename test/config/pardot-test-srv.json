@@ -3,5 +3,5 @@
 	"pardotPort": 9602,
 	"expectedClientId": "test-client-id",
 	"expectedClientSecret": "you-shall-not-pass",
-	"developmentMode" : true
+	"developmentMode": true
 }
