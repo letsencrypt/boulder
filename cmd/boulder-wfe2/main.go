@@ -119,17 +119,13 @@ type Config struct {
 		// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
 		StaleTimeout config.Duration `validate:"-"`
 
-		// AuthorizationLifetimeDays defines how long authorizations will be
-		// considered valid for. The WFE uses this to find the creation date of
-		// authorizations by subtracing this value from the expiry. It should match
-		// the value configured in the RA.
-		AuthorizationLifetimeDays int `validate:"required,min=1,max=397"`
+		// AuthorizationLifetimeDays duplicates the RA's config of the same name.
+		// Deprecated: This field no longer has any effect.
+		AuthorizationLifetimeDays int `validate:"-"`
 
-		// PendingAuthorizationLifetimeDays defines how long authorizations may be in
-		// the pending state before expiry. The WFE uses this to find the creation
-		// date of pending authorizations by subtracting this value from the expiry.
-		// It should match the value configured in the RA.
-		PendingAuthorizationLifetimeDays int `validate:"required,min=1,max=29"`
+		// PendingAuthorizationLifetimeDays duplicates the RA's config of the same name.
+		// Deprecated: This field no longer has any effect.
+		PendingAuthorizationLifetimeDays int `validate:"-"`
 
 		AccountCache *CacheConfig
 
@@ -328,24 +324,6 @@ func main() {
 		c.WFE.StaleTimeout.Duration = time.Minute * 10
 	}
 
-	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
-	// or completed validation MUST be obtained no more than 398 days prior
-	// to issuing the Certificate". If unconfigured or the configured value is
-	// greater than 397 days, bail out.
-	if c.WFE.AuthorizationLifetimeDays <= 0 || c.WFE.AuthorizationLifetimeDays > 397 {
-		cmd.Fail("authorizationLifetimeDays value must be greater than 0 and less than 398")
-	}
-	authorizationLifetime := time.Duration(c.WFE.AuthorizationLifetimeDays) * 24 * time.Hour
-
-	// The Baseline Requirements v1.8.1 state that validation tokens "MUST
-	// NOT be used for more than 30 days from its creation". If unconfigured
-	// or the configured value pendingAuthorizationLifetimeDays is greater
-	// than 29 days, bail out.
-	if c.WFE.PendingAuthorizationLifetimeDays <= 0 || c.WFE.PendingAuthorizationLifetimeDays > 29 {
-		cmd.Fail("pendingAuthorizationLifetimeDays value must be greater than 0 and less than 30")
-	}
-	pendingAuthorizationLifetime := time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * 24 * time.Hour
-
 	var limiter *ratelimits.Limiter
 	var txnBuilder *ratelimits.TransactionBuilder
 	var limiterRedis *bredis.Ring
@@ -380,8 +358,6 @@ func main() {
 		logger,
 		c.WFE.Timeout.Duration,
 		c.WFE.StaleTimeout.Duration,
-		authorizationLifetime,
-		pendingAuthorizationLifetime,
 		rac,
 		sac,
 		eec,

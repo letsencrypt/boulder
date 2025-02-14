@@ -87,13 +87,8 @@ type certProfileWithID struct {
 }
 
 // certProfilesMaps allows looking up the human-readable name of a certificate
-// profile to retrieve the actual profile. The default profile to be used is
-// stored alongside the maps.
+// profile to retrieve the actual profile.
 type certProfilesMaps struct {
-	// The name of the profile that will be selected if no explicit profile name
-	// is provided via gRPC.
-	defaultName string
-
 	profileByHash map[[32]byte]*certProfileWithID
 	profileByName map[string]*certProfileWithID
 }
@@ -194,15 +189,9 @@ func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 //   - CA1 returns the precertificate DER bytes and profile hash to the RA
 //   - RA instructs CA2 to issue a final certificate, but CA2 does not contain a
 //     profile corresponding to that hash and an issuance is prevented.
-func makeCertificateProfilesMap(defaultName string, profiles map[string]*issuance.ProfileConfigNew) (certProfilesMaps, error) {
+func makeCertificateProfilesMap(profiles map[string]*issuance.ProfileConfigNew) (certProfilesMaps, error) {
 	if len(profiles) <= 0 {
 		return certProfilesMaps{}, fmt.Errorf("must pass at least one certificate profile")
-	}
-
-	// Check that a profile exists with the configured default profile name.
-	_, ok := profiles[defaultName]
-	if !ok {
-		return certProfilesMaps{}, fmt.Errorf("defaultCertificateProfileName:\"%s\" was configured, but a profile object was not found for that name", defaultName)
 	}
 
 	profilesByName := make(map[string]*certProfileWithID, len(profiles))
@@ -230,7 +219,7 @@ func makeCertificateProfilesMap(defaultName string, profiles map[string]*issuanc
 		profilesByHash[hash] = &withID
 	}
 
-	return certProfilesMaps{defaultName, profilesByHash, profilesByName}, nil
+	return certProfilesMaps{profilesByHash, profilesByName}, nil
 }
 
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
@@ -240,7 +229,6 @@ func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
-	defaultCertProfileName string,
 	certificateProfiles map[string]*issuance.ProfileConfigNew,
 	serialPrefix byte,
 	maxNames int,
@@ -261,7 +249,7 @@ func NewCertificateAuthorityImpl(
 		return nil, errors.New("must have at least one issuer")
 	}
 
-	certProfiles, err := makeCertificateProfilesMap(defaultCertProfileName, certificateProfiles)
+	certProfiles, err := makeCertificateProfilesMap(certificateProfiles)
 	if err != nil {
 		return nil, err
 	}
@@ -306,18 +294,14 @@ var ocspStatusToCode = map[string]int{
 // [issuance cycle]: https://github.com/letsencrypt/boulder/blob/main/docs/ISSUANCE-CYCLE.md
 func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
-	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID) {
+	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID, issueReq.CertProfileName) {
 		return nil, berrors.InternalServerError("Incomplete issue certificate request")
 	}
 
 	// The CA must check if it is capable of issuing for the given certificate
-	// profile name. The name is checked here instead of the hash because the RA
-	// is unaware of what certificate profiles exist. Pre-existing orders stored
-	// in the database may not have an associated certificate profile name and
-	// will take the default name stored alongside the map.
-	if issueReq.CertProfileName == "" {
-		issueReq.CertProfileName = ca.certProfiles.defaultName
-	}
+	// profile name. We check the name here, because the RA is not able to
+	// precompute profile hashes. All issuance requests must come with a profile
+	// name, and the RA handles selecting the default.
 	certProfile, ok := ca.certProfiles.profileByName[issueReq.CertProfileName]
 	if !ok {
 		return nil, fmt.Errorf("the CA is incapable of using a profile named %s", issueReq.CertProfileName)

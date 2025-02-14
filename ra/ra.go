@@ -275,12 +275,6 @@ func NewRegistrationAuthorityImpl(
 	return ra
 }
 
-// UnconfiguredDefaultProfileName is a unique string which the RA can use to
-// identify a profile, but also detect that no profiles were explicitly
-// configured, and therefore should not be assumed to exist outside the RA.
-// TODO(#7986): Remove this when the defaultProfileName config is required.
-const UnconfiguredDefaultProfileName = "unconfiguredDefaultProfileName"
-
 // ValidationProfileConfig is a config struct which can be used to create a
 // ValidationProfile.
 type ValidationProfileConfig struct {
@@ -340,6 +334,10 @@ type validationProfiles struct {
 // configs and default name. It enforces that the given authorization lifetimes
 // are within the bounds mandated by the Baseline Requirements.
 func NewValidationProfiles(defaultName string, configs map[string]ValidationProfileConfig) (*validationProfiles, error) {
+	if defaultName == "" {
+		return nil, errors.New("default profile name must be configured")
+	}
+
 	profiles := make(map[string]*validationProfile, len(configs))
 
 	for name, config := range configs {
@@ -1188,12 +1186,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		logEvent.PreviousCertificateIssued = timestamps.Timestamps[0].AsTime()
 	}
 
-	// If the order didn't request a specific profile and we have a default
-	// configured, provide it to the CA so we can stop relying on the CA's
-	// configured default.
-	// TODO(#7309): Make this unconditional.
 	profileName := order.CertificateProfileName
-	if profileName == "" && ra.profiles.defaultName != UnconfiguredDefaultProfileName {
+	if profileName == "" {
 		profileName = ra.profiles.defaultName
 	}
 
@@ -2363,9 +2357,15 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// `sa.GetAuthorizations` returned an authorization that was very close to
 	// expiry. The resulting pending order that references it would itself end up
 	// expiring very soon.
-	// To prevent this we only return authorizations that are at least 1 day away
-	// from expiring.
-	authzExpiryCutoff := ra.clk.Now().AddDate(0, 0, 1)
+	// What is considered "very soon" scales with the associated order's lifetime,
+	// up to a point.
+	minTimeToExpiry := profile.orderLifetime / 8
+	if minTimeToExpiry < time.Hour {
+		minTimeToExpiry = time.Hour
+	} else if minTimeToExpiry > 24*time.Hour {
+		minTimeToExpiry = 24 * time.Hour
+	}
+	authzExpiryCutoff := ra.clk.Now().Add(minTimeToExpiry)
 
 	var existingAuthz *sapb.Authorizations
 	if features.Get().NoPendingAuthzReuse {

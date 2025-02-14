@@ -137,7 +137,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	// ---- Test revocation by serial ----
 	revokeMeDomain := "revokeme.wantserror.com"
 	// This should fail because the trigger prevented setting the certificate status to "ready"
-	_, err = authAndIssue(nil, certKey, []string{revokeMeDomain}, true)
+	_, err = authAndIssue(nil, certKey, []string{revokeMeDomain}, true, "")
 	test.AssertError(t, err, "expected authAndIssue to fail")
 
 	cert, err := getPrecertByName(db, revokeMeDomain)
@@ -164,7 +164,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	// ---- Test revocation by key ----
 	blockMyKeyDomain := "blockmykey.wantserror.com"
 	// This should fail because the trigger prevented setting the certificate status to "ready"
-	_, err = authAndIssue(nil, certKey, []string{blockMyKeyDomain}, true)
+	_, err = authAndIssue(nil, certKey, []string{blockMyKeyDomain}, true, "")
 	test.AssertError(t, err, "expected authAndIssue to fail")
 
 	cert, err = getPrecertByName(db, blockMyKeyDomain)
@@ -177,7 +177,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	// with the same key, then revoking that certificate for keyCompromise.
 	revokeClient, err := makeClient()
 	test.AssertNotError(t, err, "creating second acme client")
-	res, err := authAndIssue(nil, certKey, []string{random_domain()}, true)
+	res, err := authAndIssue(nil, certKey, []string{random_domain()}, true, "")
 	test.AssertNotError(t, err, "issuing second cert")
 
 	successfulCert := res.certs[0]
@@ -200,7 +200,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	test.AssertNotError(t, err, "expected status to eventually become revoked")
 
 	// Try to issue again with the same key, expecting an error because of the key is blocked.
-	_, err = authAndIssue(nil, certKey, []string{"123.example.com"}, true)
+	_, err = authAndIssue(nil, certKey, []string{"123.example.com"}, true, "")
 	test.AssertError(t, err, "expected authAndIssue to fail")
 	if !strings.Contains(err.Error(), "public key is forbidden") {
 		t.Errorf("expected issuance to be rejected with a bad pubkey")

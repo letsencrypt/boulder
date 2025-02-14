@@ -25,7 +25,7 @@ func TestValidAuthzExpires(t *testing.T) {
 
 	// Issue for a random domain
 	domains := []string{random_domain()}
-	result, err := authAndIssue(c, nil, domains, true)
+	result, err := authAndIssue(c, nil, domains, true, "")
 	// There should be no error
 	test.AssertNotError(t, err, "authAndIssue failed")
 	// The order should be valid
