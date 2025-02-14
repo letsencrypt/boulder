@@ -31,7 +31,7 @@ const (
 type CertificateAuthorityClient interface {
 	IssuePrecertificate(ctx context.Context, in *IssueCertificateRequest, opts ...grpc.CallOption) (*IssuePrecertificateResponse, error)
 	IssueCertificateForPrecertificate(ctx context.Context, in *IssueCertificateForPrecertificateRequest, opts ...grpc.CallOption) (*proto.Certificate, error)
-	// IssueCertificate issues a precertificate, gets SCT, issues a certificate, and returns that.
+	// IssueCertificate issues a precertificate, gets SCTs, issues a certificate, and returns that.
 	IssueCertificate(ctx context.Context, in *IssueCertificateRequest, opts ...grpc.CallOption) (*proto.Certificate, error)
 }
 
@@ -79,7 +79,7 @@ func (c *certificateAuthorityClient) IssueCertificate(ctx context.Context, in *I
 type CertificateAuthorityServer interface {
 	IssuePrecertificate(context.Context, *IssueCertificateRequest) (*IssuePrecertificateResponse, error)
 	IssueCertificateForPrecertificate(context.Context, *IssueCertificateForPrecertificateRequest) (*proto.Certificate, error)
-	// IssueCertificate issues a precertificate, gets SCT, issues a certificate, and returns that.
+	// IssueCertificate issues a precertificate, gets SCTs, issues a certificate, and returns that.
 	IssueCertificate(context.Context, *IssueCertificateRequest) (*proto.Certificate, error)
 	mustEmbedUnimplementedCertificateAuthorityServer()
 }

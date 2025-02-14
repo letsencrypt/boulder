@@ -100,6 +100,7 @@ type caMetrics struct {
 	signatureCount *prometheus.CounterVec
 	signErrorCount *prometheus.CounterVec
 	lintErrorCount prometheus.Counter
+	certificates   *prometheus.CounterVec
 }
 
 func NewCAMetrics(stats prometheus.Registerer) *caMetrics {
@@ -124,7 +125,15 @@ func NewCAMetrics(stats prometheus.Registerer) *caMetrics {
 		})
 	stats.MustRegister(lintErrorCount)
 
-	return &caMetrics{signatureCount, signErrorCount, lintErrorCount}
+	certificates := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "certificates",
+			Help: "Number of certificates issued",
+		},
+		[]string{"profile"})
+	stats.MustRegister(certificates)
+
+	return &caMetrics{signatureCount, signErrorCount, lintErrorCount, certificates}
 }
 
 func (m *caMetrics) noteSignError(err error) {
@@ -482,6 +491,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	}
 
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
+	ca.metrics.certificates.With(prometheus.Labels{"profile": string(certProfile.name)}).Inc()
 	logEvent.Result.Certificate = hex.EncodeToString(certDER)
 	ca.log.AuditObject("Signing cert success", logEvent)
 
