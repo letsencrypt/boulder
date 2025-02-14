@@ -23,6 +23,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -346,16 +347,15 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
-		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
-		// that it is a renewal) we use just the DNSNames from the certificate and
-		// ignore the Subject Common Name (if any). This is a safe assumption because
-		// if a certificate we issued were to have a Subj. CN not present as a SAN it
-		// would be a misissuance and miscalculating whether the cert is a renewal or
-		// not for the purpose of rate limiting is the least of our troubles.
+		idents, err := identifier.FromCert(parsed)
+		if err != nil {
+			return nil, err
+		}
+
 		isRenewal, err := ssa.checkFQDNSetExists(
 			ctx,
 			tx.SelectOne,
-			parsed.DNSNames)
+			idents)
 		if err != nil {
 			return nil, err
 		}
@@ -391,6 +391,10 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	}
 	digest := core.Fingerprint256(req.Der)
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
+	idents, err := identifier.FromCert(parsedCertificate)
+	if err != nil {
+		return nil, err
+	}
 
 	cert := &core.Certificate{
 		RegistrationID: req.RegID,
@@ -436,7 +440,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		err = addFQDNSet(
 			ctx,
 			tx,
-			parsedCertificate.DNSNames,
+			idents,
 			core.SerialToString(parsedCertificate.SerialNumber),
 			parsedCertificate.NotBefore,
 			parsedCertificate.NotAfter,
@@ -505,6 +509,13 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest) (*corepb.Order, error) {
 	if req.NewOrder == nil {
 		return nil, errIncompleteRequest
+	}
+
+	idents := req.NewOrder.Identifiers
+	if idents == nil {
+		// TODO(#7311): Change this to simply return an error once all RPC users
+		// are populating Identifiers.
+		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.NewOrder.DnsNames))
 	}
 
 	for _, authz := range req.NewAuthzs {
@@ -601,7 +612,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fourth, insert the FQDNSet entry for the order.
-		err = addOrderFQDNSet(ctx, tx, req.NewOrder.DnsNames, orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
+		err = addOrderFQDNSet(ctx, tx, identifier.SliceFromProto(idents, nil), orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {
 			return nil, err
 		}
@@ -631,6 +642,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			RegistrationID: req.NewOrder.RegistrationID,
 			Expires:        req.NewOrder.Expires,
 			DnsNames:       req.NewOrder.DnsNames,
+			Identifiers:    req.NewOrder.Identifiers,
 			// This includes both reused and newly created authz IDs.
 			V2Authorizations: allAuthzIds,
 			// A new order is never processing because it can't be finalized yet.
@@ -1348,17 +1360,17 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 	}
 
 	// Marshal the identifier now that we've crossed the RPC boundary.
-	identifiers, err := newIdentifierModelsFromPB(req.Identifiers)
+	idents, err := newIdentifierModelsFromPB(req.Identifiers)
 	if err != nil {
 		return nil, err
 	}
 
 	response := &sapb.PauseIdentifiersResponse{}
 	_, err = db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		for _, identifier := range identifiers {
+		for _, ident := range idents {
 			pauseError := func(op string, err error) error {
 				return fmt.Errorf("while %s identifier %s for registration ID %d: %w",
-					op, identifier.Value, req.RegistrationID, err,
+					op, ident.Value, req.RegistrationID, err,
 				)
 			}
 
@@ -1371,8 +1383,8 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				identifierType = ? AND 
 				identifierValue = ?`,
 				req.RegistrationID,
-				identifier.Type,
-				identifier.Value,
+				ident.Type,
+				ident.Value,
 			)
 
 			switch {
@@ -1386,8 +1398,8 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 					RegistrationID: req.RegistrationID,
 					PausedAt:       ssa.clk.Now().Truncate(time.Second),
 					identifierModel: identifierModel{
-						Type:  identifier.Type,
-						Value: identifier.Value,
+						Type:  ident.Type,
+						Value: ident.Value,
 					},
 				})
 				if err != nil && !db.IsDuplicate(err) {
@@ -1419,8 +1431,8 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 					unpausedAt IS NOT NULL`,
 					ssa.clk.Now().Truncate(time.Second),
 					req.RegistrationID,
-					identifier.Type,
-					identifier.Value,
+					ident.Type,
+					ident.Value,
 				)
 				if err != nil {
 					return nil, pauseError("repausing", err)
@@ -1433,7 +1445,7 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 			default:
 				// This indicates a database state which should never occur.
 				return nil, fmt.Errorf("impossible database state encountered while pausing identifier %s",
-					identifier.Value,
+					ident.Value,
 				)
 			}
 		}

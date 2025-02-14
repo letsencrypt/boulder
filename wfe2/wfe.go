@@ -886,7 +886,10 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 	if err != nil {
 		return nil, 0, probs.NotFound("No such certificate")
 	}
-	logEvent.DNSNames = parsedCertificate.DNSNames
+	logEvent.Identifiers, err = identifier.FromCert(parsedCertificate)
+	if err != nil {
+		return nil, 0, probs.NotFound("Couldn't parse identifiers from certificate")
+	}
 
 	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
 		return nil, 0, probs.Unauthorized("Certificate is expired")
@@ -1098,7 +1101,17 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Ensure gRPC response is complete.
-	if core.IsAnyNilOrZero(authzPB.Id, authzPB.DnsName, authzPB.Status, authzPB.Expires) {
+	if core.IsAnyNilOrZero(authzPB.Id, authzPB.Status, authzPB.Expires) {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
+		return
+	}
+	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
+	// upwards, once all RPC users are populating Identifiers.
+	pbIdent := authzPB.Identifier
+	if pbIdent == nil {
+		pbIdent = identifier.NewDNS(authzPB.DnsName).AsProto()
+	}
+	if core.IsAnyNilOrZero(pbIdent) && core.IsAnyNilOrZero(authzPB.DnsName) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -1126,9 +1139,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		}
 	}
 
-	if authz.Identifier.Type == identifier.TypeDNS {
-		logEvent.DNSName = authz.Identifier.Value
-	}
+	logEvent.Identifiers = []identifier.ACMEIdentifier{authz.Identifier}
 	logEvent.Status = string(authz.Status)
 
 	challenge := authz.Challenges[challengeIndex]
@@ -1300,7 +1311,17 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
 		})
-		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, authzPB.DnsName, authzPB.Status, authzPB.Expires) {
+		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, authzPB.Status, authzPB.Expires) {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
+			return
+		}
+		// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
+		// upwards, once all RPC users are populating Identifiers.
+		pbIdent := authzPB.Identifier
+		if pbIdent == nil {
+			pbIdent = identifier.NewDNS(authzPB.DnsName).AsProto()
+		}
+		if core.IsAnyNilOrZero(pbIdent) && core.IsAnyNilOrZero(authzPB.DnsName) {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
 		}
@@ -1542,14 +1563,22 @@ func (wfe *WebFrontEndImpl) Authorization(
 	}
 
 	// Ensure gRPC response is complete.
-	if core.IsAnyNilOrZero(authzPB.Id, authzPB.DnsName, authzPB.Status, authzPB.Expires) {
+	if core.IsAnyNilOrZero(authzPB.Id, authzPB.Status, authzPB.Expires) {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
+		return
+	}
+	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
+	// upwards, once all RPC users are populating Identifiers.
+	ident := authzPB.Identifier
+	if ident == nil {
+		ident = identifier.NewDNS(authzPB.DnsName).AsProto()
+	}
+	if core.IsAnyNilOrZero(ident) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
 
-	if identifier.IdentifierType(authzPB.DnsName) == identifier.TypeDNS {
-		logEvent.DNSName = authzPB.DnsName
-	}
+	logEvent.Identifiers = []identifier.ACMEIdentifier{identifier.FromProto(ident)}
 	logEvent.Status = authzPB.Status
 
 	// After expiring, authorizations are inaccessible
@@ -1960,16 +1989,19 @@ type orderJSON struct {
 // DNS type identifiers and additionally create absolute URLs for the finalize
 // URL and the certificate URL as appropriate.
 func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corepb.Order) orderJSON {
-	idents := make([]identifier.ACMEIdentifier, len(order.DnsNames))
-	for i, name := range order.DnsNames {
-		idents[i] = identifier.NewDNS(name)
+	// TODO(#7311): Remove this conditional once all RPC users are populating
+	// Identifiers.
+	idents := order.Identifiers
+	if idents == nil {
+		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
 	}
+
 	finalizeURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", finalizeOrderPath, order.RegistrationID, order.Id))
 	respObj := orderJSON{
 		Status:      core.AcmeStatus(order.Status),
 		Expires:     order.Expires.AsTime(),
-		Identifiers: idents,
+		Identifiers: identifier.SliceFromProto(idents, order.DnsNames),
 		Finalize:    finalizeURL,
 		Profile:     order.CertificateProfileName,
 	}
@@ -1999,7 +2031,13 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 // encountered during the check, it is logged but not returned. A refund
 // function is returned that can be used to refund the quota if the order is not
 // created, the func will be nil if any error was encountered during the check.
-func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, names []string, isRenewal bool) (func(), error) {
+//
+// TODO(#7311): Handle IP address identifiers.
+func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, idents []identifier.ACMEIdentifier, isRenewal bool) (func(), error) {
+	names := make([]string, len(idents))
+	for i, ident := range idents {
+		names[i] = ident.Value
+	}
 	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, isRenewal)
 	if err != nil {
 		return nil, fmt.Errorf("building new order limit transactions: %w", err)
@@ -2029,7 +2067,7 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 //   - the requesting account owns that certificate, and
 //   - a name in this new order matches a name in the certificate being
 //     replaced.
-func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *core.Registration, names []string, serial string) error {
+func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *core.Registration, idents []identifier.ACMEIdentifier, serial string) error {
 	// It's okay to use GetCertificate (vs trying to get a precertificate),
 	// because we don't intend to serve ARI for certs that never made it past
 	// the precert stage.
@@ -2050,8 +2088,9 @@ func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *c
 	}
 
 	var nameMatch bool
-	for _, name := range names {
-		if parsedCert.VerifyHostname(name) == nil {
+	for _, ident := range idents {
+		// TODO(#7311): Handle IP address identifiers.
+		if parsedCert.VerifyHostname(ident.Value) == nil {
 			// At least one name in the new order matches a name in the
 			// predecessor certificate.
 			nameMatch = true
@@ -2125,7 +2164,7 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 //     Otherwise, this value is false.
 //   - The last value is an error, this is non-nil unless the order is not a
 //     replacement or there was an error while validating the replacement.
-func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *core.Registration, names []string, replaces string) (string, bool, error) {
+func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *core.Registration, idents []identifier.ACMEIdentifier, replaces string) (string, bool, error) {
 	if replaces == "" {
 		// No replacement indicated.
 		return "", false, nil
@@ -2147,7 +2186,7 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 		)
 	}
 
-	err = wfe.orderMatchesReplacement(ctx, acct, names, decodedSerial)
+	err = wfe.orderMatchesReplacement(ctx, acct, idents, decodedSerial)
 	if err != nil {
 		// The provided replacement field value failed to meet the required
 		// criteria. We're going to return the error to the caller instead
@@ -2180,11 +2219,11 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 	return nil
 }
 
-func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIdentifiers []identifier.ACMEIdentifier, regID int64) ([]string, error) {
-	uniqueOrderIdentifiers := core.NormalizeIdentifiers(orderIdentifiers)
-	var identifiers []*corepb.Identifier
-	for _, ident := range uniqueOrderIdentifiers {
-		identifiers = append(identifiers, &corepb.Identifier{
+func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIdents []identifier.ACMEIdentifier, regID int64) ([]string, error) {
+	uniqueOrderIdents := identifier.Normalize(orderIdents)
+	var idents []*corepb.Identifier
+	for _, ident := range uniqueOrderIdents {
+		idents = append(idents, &corepb.Identifier{
 			Type:  string(ident.Type),
 			Value: ident.Value,
 		})
@@ -2192,7 +2231,7 @@ func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIde
 
 	paused, err := wfe.sa.CheckIdentifiersPaused(ctx, &sapb.PauseRequest{
 		RegistrationID: regID,
-		Identifiers:    identifiers,
+		Identifiers:    idents,
 	})
 	if err != nil {
 		return nil, err
@@ -2253,12 +2292,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// Collect up all of the DNS identifier values into a []string for
-	// subsequent layers to process. We reject anything with a non-DNS
-	// type identifier here. Check to make sure one of the strings is
-	// short enough to meet the max CN bytes requirement.
-	names := make([]string, len(newOrderRequest.Identifiers))
-	for i, ident := range newOrderRequest.Identifiers {
+	idents := newOrderRequest.Identifiers
+	for _, ident := range idents {
 		if ident.Type != identifier.TypeDNS {
 			wfe.sendError(response, logEvent,
 				probs.UnsupportedIdentifier("NewOrder request included invalid non-DNS type identifier: type %q, value %q",
@@ -2267,27 +2302,31 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			return
 		}
 		if ident.Value == "" {
-			wfe.sendError(response, logEvent, probs.Malformed("NewOrder request included empty domain name"), nil)
+			wfe.sendError(response, logEvent, probs.Malformed("NewOrder request included empty identifier"), nil)
 			return
 		}
-		names[i] = ident.Value
 	}
+	idents = identifier.Normalize(idents)
+	logEvent.Identifiers = idents
 
-	names = core.UniqueLowerNames(names)
-	err = policy.WellFormedDomainNames(names)
+	err = policy.WellFormedIdentifiers(idents)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Invalid identifiers requested"), nil)
 		return
 	}
-	if len(names) > wfe.maxNames {
-		wfe.sendError(response, logEvent, probs.Malformed("Order cannot contain more than %d DNS names", wfe.maxNames), nil)
+	if len(idents) > wfe.maxNames {
+		wfe.sendError(response, logEvent, probs.Malformed("Order cannot contain more than %d identifiers", wfe.maxNames), nil)
 		return
 	}
 
-	logEvent.DNSNames = names
+	pbIdents := identifier.SliceAsProto(idents)
+	names := make([]string, len(idents))
+	for i, ident := range idents {
+		names[i] = ident.Value
+	}
 
 	if features.Get().CheckIdentifiersPaused {
-		pausedValues, err := wfe.checkIdentifiersPaused(ctx, newOrderRequest.Identifiers, acct.ID)
+		pausedValues, err := wfe.checkIdentifiersPaused(ctx, idents, acct.ID)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Failure while checking pause status of identifiers"), err)
 			return
@@ -2309,7 +2348,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	var replaces string
 	var isARIRenewal bool
-	replaces, isARIRenewal, err = wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
+	replaces, isARIRenewal, err = wfe.validateReplacementOrder(ctx, acct, idents, newOrderRequest.Replaces)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
 		return
@@ -2321,9 +2360,10 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount
 		// and CertificatesPerDomain limits.
 		timestamps, err := wfe.sa.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
-			DnsNames: names,
-			Window:   durationpb.New(120 * 24 * time.Hour),
-			Limit:    1,
+			DnsNames:    names,
+			Identifiers: pbIdents,
+			Window:      durationpb.New(120 * 24 * time.Hour),
+			Limit:       1,
 		})
 		if err != nil {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While checking renewal exemption status"), err)
@@ -2341,7 +2381,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	refundLimits := func() {}
 	if !isARIRenewal {
-		refundLimits, err = wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal || isARIRenewal)
+		refundLimits, err = wfe.checkNewOrderLimits(ctx, acct.ID, idents, isRenewal || isARIRenewal)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
@@ -2368,10 +2408,22 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID:         acct.ID,
 		DnsNames:               names,
+		Identifiers:            pbIdents,
 		ReplacesSerial:         replaces,
 		CertificateProfileName: newOrderRequest.Profile,
 	})
-	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
+
+	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, order.Created, order.Expires) {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
+		return
+	}
+	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
+	// upwards, once all RPC users are populating Identifiers.
+	orderIdents := order.Identifiers
+	if orderIdents == nil {
+		orderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
+	}
+	if core.IsAnyNilOrZero(orderIdents) && core.IsAnyNilOrZero(order.DnsNames) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
@@ -2432,7 +2484,17 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
+	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, order.Created, order.Expires) {
+		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
+		return
+	}
+	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
+	// upwards, once all RPC users are populating Identifiers.
+	orderIdents := order.Identifiers
+	if orderIdents == nil {
+		orderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
+	}
+	if core.IsAnyNilOrZero(orderIdents) && core.IsAnyNilOrZero(order.DnsNames) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2517,7 +2579,14 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
+	// TODO(#7311): Remove this conditional once all RPC users are populating
+	// Identifiers.
+	orderIdents := order.Identifiers
+	if orderIdents == nil {
+		orderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
+	}
+	orderIdents = identifier.SliceAsProto(identifier.SliceFromProto(orderIdents, order.DnsNames))
+	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, orderIdents, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2568,7 +2637,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	logEvent.DNSNames = order.DnsNames
+	logEvent.Identifiers = identifier.SliceFromProto(orderIdents, nil)
 	logEvent.Extra["KeyType"] = web.KeyTypeToString(csr.PublicKey)
 
 	updatedOrder, err := wfe.ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
@@ -2579,7 +2648,17 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error finalizing order"), err)
 		return
 	}
-	if core.IsAnyNilOrZero(updatedOrder.Id, updatedOrder.RegistrationID, updatedOrder.DnsNames, updatedOrder.Created, updatedOrder.Expires) {
+	if core.IsAnyNilOrZero(updatedOrder.Id, updatedOrder.RegistrationID, updatedOrder.Created, updatedOrder.Expires) {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
+		return
+	}
+	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
+	// upwards, once all RPC users are populating Identifiers.
+	updatedOrderIdents := updatedOrder.Identifiers
+	if updatedOrderIdents == nil {
+		updatedOrderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, updatedOrder.DnsNames))
+	}
+	if core.IsAnyNilOrZero(updatedOrderIdents) && core.IsAnyNilOrZero(updatedOrder.DnsNames) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}
