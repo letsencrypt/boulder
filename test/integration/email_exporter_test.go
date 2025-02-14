@@ -1,3 +1,5 @@
+//go:build integration
+
 package integration
 
 import (
@@ -8,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 
@@ -32,6 +35,10 @@ func randomDomain() string {
 // pardot-test-srv by the email-exporter when a new account is created.
 func TestProspectsCreatedForNewAccount(t *testing.T) {
 	t.Parallel()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires WFE to be configured to use email-exporter")
+	}
 
 	domain := randomDomain()
 
@@ -73,7 +80,7 @@ func TestProspectsCreatedForNewAccount(t *testing.T) {
 
 			// Wait for the prospects to be exported from the email exporter
 			// queue to pardot-test-srv.
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(1 * time.Second)
 
 			httpClient := http.DefaultClient
 			resp, err := httpClient.Get("http://localhost:9602/query_prospects?" + url.Values{
@@ -101,6 +108,10 @@ func TestProspectsCreatedForNewAccount(t *testing.T) {
 // pardot-test-srv by the email-exporter when an account is updated.
 func TestProspectsCreatedWhenAccountUpdated(t *testing.T) {
 	t.Parallel()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires WFE to be configured to use email-exporter")
+	}
 
 	domain := randomDomain()
 
@@ -145,7 +156,7 @@ func TestProspectsCreatedWhenAccountUpdated(t *testing.T) {
 
 			// Wait for the prospects to be exported from the email exporter
 			// queue to pardot-test-srv.
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(1 * time.Second)
 
 			httpClient := http.DefaultClient
 			resp, err := httpClient.Get("http://localhost:9602/query_prospects?" + url.Values{
