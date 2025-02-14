@@ -1331,9 +1331,42 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		CertProfileName: profileName,
 	}
 
-	cert, err := ra.CA.IssueCertificate(ctx, issueReq)
-	if err != nil {
-		return nil, nil, err
+	var cert *corepb.Certificate
+	var err error
+	if features.Get().UnsplitIssuance {
+		cert, err = ra.CA.IssueCertificate(ctx, issueReq)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		// Once we get a precert from IssuePrecertificate, we must attempt issuing
+		// a final certificate at most once. We achieve that by bailing on any error
+		// between here and IssueCertificateForPrecertificate.
+		precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
+		if err != nil {
+			return nil, nil, wrapError(err, "issuing precertificate")
+		}
+
+		parsedPrecert, err := x509.ParseCertificate(precert.DER)
+		if err != nil {
+			return nil, nil, wrapError(err, "parsing precertificate")
+		}
+
+		scts, err := ra.getSCTs(ctx, precert.DER, parsedPrecert.NotAfter)
+		if err != nil {
+			return nil, nil, wrapError(err, "getting SCTs")
+		}
+
+		cert, err = ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
+			DER:             precert.DER,
+			SCTs:            scts,
+			RegistrationID:  int64(acctID),
+			OrderID:         int64(oID),
+			CertProfileHash: precert.CertProfileHash,
+		})
+		if err != nil {
+			return nil, nil, wrapError(err, "issuing certificate for precertificate")
+		}
 	}
 
 	parsedCertificate, err := x509.ParseCertificate(cert.Der)
