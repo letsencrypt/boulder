@@ -227,9 +227,7 @@ def start(fakeclock):
             print("Error starting service %s: %s" % (service.name, e))
             return False
 
-    print("All servers running. Sleeping")
-    time.sleep(2)
-    print("Done sleeping")
+    print("All servers running. Hit ^C to kill.")
     return True
 
 def check():
