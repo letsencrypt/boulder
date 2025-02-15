@@ -106,6 +106,11 @@ type Config struct {
 	// This feature flag also causes CAA checks to happen after all remote VAs
 	// have passed DCV.
 	EnforceMPIC bool
+
+	// UnsplitIssuance causes the RA to make a single call to the CA for issuance,
+	// calling the new `IssueCertificate` instead of the old `IssuePrecertficate` /
+	// `IssueCertificateForPrecertificate` pair.
+	UnsplitIssuance bool
 }
 
 var fMu = new(sync.RWMutex)

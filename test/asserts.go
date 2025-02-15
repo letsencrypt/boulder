@@ -247,5 +247,7 @@ loop:
 			total += float64(iom.Histogram.GetSampleCount())
 		}
 	}
-	AssertEquals(t, total, expected)
+	if total != expected {
+		t.Errorf("metric with labels %+v: got %g, want %g", l, total, expected)
+	}
 }

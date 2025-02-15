@@ -19,6 +19,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/policy"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -31,6 +32,8 @@ type Config struct {
 		GRPCCA *cmd.GRPCServerConfig
 
 		SAService *cmd.GRPCClientConfig
+
+		SCTService *cmd.GRPCClientConfig
 
 		// Issuance contains all information necessary to load and initialize issuers.
 		Issuance struct {
@@ -203,9 +206,16 @@ func main() {
 	tlsConfig, err := c.CA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
-	conn, err := bgrpc.ClientSetup(c.CA.SAService, tlsConfig, scope, clk)
+	saConn, err := bgrpc.ClientSetup(c.CA.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sa := sapb.NewStorageAuthorityClient(conn)
+	sa := sapb.NewStorageAuthorityClient(saConn)
+
+	var sctService rapb.SCTProviderClient
+	if c.CA.SCTService != nil {
+		sctConn, err := bgrpc.ClientSetup(c.CA.SCTService, tlsConfig, scope, clk)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA for SCTs")
+		sctService = rapb.NewSCTProviderClient(sctConn)
+	}
 
 	kp, err := sagoodkey.NewPolicy(&c.CA.GoodKey, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
@@ -246,6 +256,7 @@ func main() {
 	if !c.CA.DisableCertService {
 		cai, err := ca.NewCertificateAuthorityImpl(
 			sa,
+			sctService,
 			pa,
 			issuers,
 			c.CA.Issuance.CertProfiles,

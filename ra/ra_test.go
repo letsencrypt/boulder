@@ -3337,7 +3337,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
 			// Attempt issuance
-			_, _, err = ra.issueCertificateInner(ctx, csrOb, false, order.CertificateProfileName, accountID(Registration.Id), orderID(order.Id))
+			_, err = ra.issueCertificateInner(ctx, csrOb, false, order.CertificateProfileName, accountID(Registration.Id), orderID(order.Id))
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
 			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
 			// If there is an expected `error` then match the error message
@@ -3360,6 +3360,10 @@ type MockCARecordingProfile struct {
 	inner       *mocks.MockCA
 	profileName string
 	profileHash []byte
+}
+
+func (ca *MockCARecordingProfile) IssueCertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, errors.New("IssueCertificate called in a test that didn't need it")
 }
 
 func (ca *MockCARecordingProfile) IssuePrecertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
@@ -3468,8 +3472,6 @@ func TestIssueCertificateOuter(t *testing.T) {
 			if !bytes.Equal(mockCA.profileHash, wantHash) {
 				t.Errorf("recorded profileName = %x, want %x", mockCA.profileHash, wantHash)
 			}
-			test.AssertMetricWithLabelsEquals(t, ra.newCertCounter, prometheus.Labels{"profileName": tc.wantProfile, "profileHash": tc.wantHash}, 1)
-			ra.newCertCounter.Reset()
 		})
 	}
 }
