@@ -127,6 +127,7 @@ func TestMakeTemplateRoot(t *testing.T) {
 	test.AssertEquals(t, cert.IssuingCertificateURL[0], profile.IssuerURL)
 	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature|x509.KeyUsageCRLSign)
 	test.AssertEquals(t, len(cert.PolicyIdentifiers), 2)
+	test.AssertEquals(t, len(cert.Policies), 2)
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 0)
 
 	cert, err = makeTemplate(randReader, profile, pubKey, nil, intermediateCert)

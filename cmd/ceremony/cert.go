@@ -318,11 +318,17 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 	}
 
 	for _, policyConfig := range profile.Policies {
-		oid, err := parseOID(policyConfig.OID)
+		asnOID, err := parseOID(policyConfig.OID)
 		if err != nil {
 			return nil, err
 		}
-		cert.PolicyIdentifiers = append(cert.PolicyIdentifiers, oid)
+		cert.PolicyIdentifiers = append(cert.PolicyIdentifiers, asnOID)
+
+		x509OID, err := x509.ParseOID(policyConfig.OID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse %s as OID: %w", policyConfig.OID, err)
+		}
+		cert.Policies = append(cert.Policies, x509OID)
 	}
 
 	return cert, nil
