@@ -372,7 +372,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 		DER:             resp.DER,
 		SCTs:            scts.SctDER,
 		RegistrationID:  issueReq.RegistrationID,
-		OrderID:         issueReq.RegistrationID,
+		OrderID:         issueReq.OrderID,
 		CertProfileHash: resp.CertProfileHash,
 	})
 	if err != nil {

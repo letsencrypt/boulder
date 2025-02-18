@@ -31,7 +31,7 @@ func (ca *MockCA) IssueCertificate(ctx context.Context, req *capb.IssueCertifica
 		DER:             resp.DER,
 		SCTs:            nil,
 		RegistrationID:  req.RegistrationID,
-		OrderID:         req.RegistrationID,
+		OrderID:         req.OrderID,
 		CertProfileHash: resp.CertProfileHash,
 	})
 }
