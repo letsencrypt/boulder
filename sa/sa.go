@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -21,7 +20,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
@@ -518,54 +516,17 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 
 	output, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		// First, insert all of the new authorizations and record their IDs.
-		newAuthzIDs := make([]int64, 0)
-		if features.Get().InsertAuthzsIndividually {
-			for _, authz := range req.NewAuthzs {
-				am, err := newAuthzReqToModel(authz, req.NewOrder.CertificateProfileName)
-				if err != nil {
-					return nil, err
-				}
-				err = tx.Insert(ctx, am)
-				if err != nil {
-					return nil, err
-				}
-				newAuthzIDs = append(newAuthzIDs, am.ID)
+		newAuthzIDs := make([]int64, 0, len(req.NewAuthzs))
+		for _, authz := range req.NewAuthzs {
+			am, err := newAuthzReqToModel(authz, req.NewOrder.CertificateProfileName)
+			if err != nil {
+				return nil, err
 			}
-		} else {
-			if len(req.NewAuthzs) != 0 {
-				inserter, err := db.NewMultiInserter("authz2", strings.Split(authzFields, ", "), "id")
-				if err != nil {
-					return nil, err
-				}
-				for _, authz := range req.NewAuthzs {
-					am, err := newAuthzReqToModel(authz, req.NewOrder.CertificateProfileName)
-					if err != nil {
-						return nil, err
-					}
-					err = inserter.Add([]interface{}{
-						am.ID,
-						am.IdentifierType,
-						am.IdentifierValue,
-						am.RegistrationID,
-						am.CertificateProfileName,
-						statusToUint[core.StatusPending],
-						am.Expires,
-						am.Challenges,
-						nil,
-						nil,
-						am.Token,
-						nil,
-						nil,
-					})
-					if err != nil {
-						return nil, err
-					}
-				}
-				newAuthzIDs, err = inserter.Insert(ctx, tx)
-				if err != nil {
-					return nil, err
-				}
+			err = tx.Insert(ctx, am)
+			if err != nil {
+				return nil, err
 			}
+			newAuthzIDs = append(newAuthzIDs, am.ID)
 		}
 
 		// Second, insert the new order.
@@ -585,7 +546,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// Third, insert all of the orderToAuthz relations.
 		// Have to combine the already-associated and newly-created authzs.
 		allAuthzIds := append(req.NewOrder.V2Authorizations, newAuthzIDs...)
-		inserter, err := db.NewMultiInserter("orderToAuthz2", []string{"orderID", "authzID"}, "")
+		inserter, err := db.NewMultiInserter("orderToAuthz2", []string{"orderID", "authzID"})
 		if err != nil {
 			return nil, err
 		}
@@ -595,7 +556,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 				return nil, err
 			}
 		}
-		_, err = inserter.Insert(ctx, tx)
+		err = inserter.Insert(ctx, tx)
 		if err != nil {
 			return nil, err
 		}
