@@ -427,8 +427,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		blog.NewMock(),
 		10*time.Second,
 		10*time.Second,
-		30*24*time.Hour,
-		7*24*time.Hour,
 		&MockRegistrationAuthority{clk: fc},
 		mockSA,
 		gnc,
@@ -438,7 +436,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		limiter,
 		txnBuilder,
 		100,
-		nil,
+		map[string]string{"default": "a test profile"},
 		unpauseSigner,
 		unpauseLifetime,
 		unpauseURL,
@@ -809,7 +807,10 @@ func TestDirectory(t *testing.T) {
 			expectedJSON: `{
   "keyChange": "http://localhost:4300/acme/key-change",
   "meta": {
-    "termsOfService": "http://example.invalid/terms"
+    "termsOfService": "http://example.invalid/terms",
+		"profiles": {
+			"default": "a test profile"
+		}
   },
   "newNonce": "http://localhost:4300/acme/new-nonce",
   "newAccount": "http://localhost:4300/acme/new-acct",
@@ -831,7 +832,10 @@ func TestDirectory(t *testing.T) {
       "Radiant Lock"
     ],
     "termsOfService": "http://example.invalid/terms",
-    "website": "zombo.com"
+    "website": "zombo.com",
+		"profiles": {
+			"default": "a test profile"
+		}
   },
   "newAccount": "http://localhost:4300/acme/new-acct",
   "newNonce": "http://localhost:4300/acme/new-nonce",
@@ -852,7 +856,10 @@ func TestDirectory(t *testing.T) {
       "Radiant Lock"
     ],
     "termsOfService": "http://example.invalid/terms",
-    "website": "zombo.com"
+    "website": "zombo.com",
+		"profiles": {
+			"default": "a test profile"
+		}
   },
   "newAccount": "http://localhost/acme/new-acct",
   "newNonce": "http://localhost/acme/new-nonce",
@@ -900,7 +907,10 @@ func TestRelativeDirectory(t *testing.T) {
 		fmt.Fprintf(expected, `"newOrder":"%s/acme/new-order",`, hostname)
 		fmt.Fprintf(expected, `"revokeCert":"%s/acme/revoke-cert",`, hostname)
 		fmt.Fprintf(expected, `"AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",`)
-		fmt.Fprintf(expected, `"meta":{"termsOfService":"http://example.invalid/terms"}`)
+		fmt.Fprintf(expected, `"meta":{`)
+		fmt.Fprintf(expected, `"termsOfService":"http://example.invalid/terms",`)
+		fmt.Fprintf(expected, `"profiles":{"default":"a test profile"}`)
+		fmt.Fprintf(expected, "}")
 		fmt.Fprintf(expected, "}")
 		return expected.String()
 	}
@@ -2775,7 +2785,7 @@ func TestFinalizeOrder(t *testing.T) {
 			// stripped by the global WFE2 handler. We need the JWS URL to match the request
 			// URL so we fudge both such that the finalize-order prefix has been removed.
 			Request:      signAndPost(signer, "2/1", "http://localhost/2/1", "{}"),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"No order found for account ID 2","status":404}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Mismatched account ID","status":400}`,
 		},
 		{
 			Name:         "Order ID is invalid",
@@ -2981,7 +2991,6 @@ func TestGetOrder(t *testing.T) {
 		Request  *http.Request
 		Response string
 		Headers  map[string]string
-		Endpoint string
 	}{
 		{
 			Name:     "Good request",
@@ -3034,12 +3043,6 @@ func TestGetOrder(t *testing.T) {
 			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "profile": "default", "authorizations":["http://localhost/acme/authz/1/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
-			Name:     "GET new order",
-			Request:  makeGet("1/9"),
-			Response: `{"type":"` + probs.ErrorNS + `unauthorized","detail":"Order is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`,
-			Endpoint: "/get/order/",
-		},
-		{
 			Name:     "GET new order from old endpoint",
 			Request:  makeGet("1/9"),
 			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "profile": "default", "authorizations":["http://localhost/acme/authz/1/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
@@ -3060,11 +3063,7 @@ func TestGetOrder(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
-			if tc.Endpoint != "" {
-				wfe.GetOrder(ctx, &web.RequestEvent{Extra: make(map[string]interface{}), Endpoint: tc.Endpoint}, responseWriter, tc.Request)
-			} else {
-				wfe.GetOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
-			}
+			wfe.GetOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
 			t.Log(tc.Name)
 			t.Log("actual:", responseWriter.Body.String())
 			t.Log("expect:", tc.Response)
@@ -3559,123 +3558,6 @@ func TestPrepAccountForDisplay(t *testing.T) {
 	test.AssertEquals(t, acct.ID, int64(0))
 }
 
-func TestGETAPIAuthorizationHandler(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
-		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
-			&web.RequestEvent{Endpoint: endpoint}
-	}
-
-	testCases := []struct {
-		name              string
-		path              string
-		expectTooFreshErr bool
-	}{
-		{
-			name:              "fresh authz",
-			path:              "1/1",
-			expectTooFreshErr: true,
-		},
-		{
-			name:              "old authz",
-			path:              "1/2",
-			expectTooFreshErr: false,
-		},
-	}
-
-	tooFreshErr := `{"type":"` + probs.ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
-	for _, tc := range testCases {
-		responseWriter := httptest.NewRecorder()
-		req, logEvent := makeGet(tc.path, getAuthzPath)
-		wfe.AuthorizationHandler(context.Background(), logEvent, responseWriter, req)
-
-		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
-			t.Errorf("expected too fresh error, got http.StatusOK")
-		} else {
-			test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
-			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tooFreshErr)
-		}
-	}
-}
-
-func TestGETAPIAuthorizationHandlerWitAccount(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
-		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
-			&web.RequestEvent{Endpoint: endpoint}
-	}
-
-	testCases := []struct {
-		name              string
-		path              string
-		expectTooFreshErr bool
-	}{
-		{
-			name:              "fresh authz",
-			path:              "1/1",
-			expectTooFreshErr: true,
-		},
-		{
-			name:              "old authz",
-			path:              "1/2",
-			expectTooFreshErr: false,
-		},
-	}
-
-	tooFreshErr := `{"type":"` + probs.ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
-	for _, tc := range testCases {
-		responseWriter := httptest.NewRecorder()
-		req, logEvent := makeGet(tc.path, getAuthzPath)
-		wfe.AuthorizationHandler(context.Background(), logEvent, responseWriter, req)
-
-		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
-			t.Errorf("expected too fresh error, got http.StatusOK")
-		} else {
-			test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
-			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tooFreshErr)
-		}
-	}
-}
-
-func TestGETAPIChallenge(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
-		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
-			&web.RequestEvent{Endpoint: endpoint}
-	}
-
-	testCases := []struct {
-		name              string
-		path              string
-		expectTooFreshErr bool
-	}{
-		{
-			name:              "fresh authz challenge",
-			path:              "1/1/7TyhFQ",
-			expectTooFreshErr: true,
-		},
-		{
-			name:              "old authz challenge",
-			path:              "1/2/7TyhFQ",
-			expectTooFreshErr: false,
-		},
-	}
-
-	tooFreshErr := `{"type":"` + probs.ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
-	for _, tc := range testCases {
-		responseWriter := httptest.NewRecorder()
-		req, logEvent := makeGet(tc.path, getAuthzPath)
-		wfe.ChallengeHandler(context.Background(), logEvent, responseWriter, req)
-
-		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
-			t.Errorf("expected too fresh error, got http.StatusOK")
-		} else {
-			test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
-			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tooFreshErr)
-		}
-	}
-}
-
 // TestGet404 tests that a 404 is served and that the expected endpoint of
 // "/" is logged when an unknown path is requested. This will test the
 // codepath to the wfe.Index() handler which handles "/" and all non-api
@@ -3994,8 +3876,8 @@ func TestNewOrderWithProfile(t *testing.T) {
 	var errorResp map[string]interface{}
 	err := json.Unmarshal(responseWriter.Body.Bytes(), &errorResp)
 	test.AssertNotError(t, err, "Failed to unmarshal error response")
-	test.AssertEquals(t, errorResp["type"], "urn:ietf:params:acme:error:malformed")
-	test.AssertEquals(t, errorResp["detail"], "Invalid certificate profile, \"bad-profile\": not a recognized profile name")
+	test.AssertEquals(t, errorResp["type"], "urn:ietf:params:acme:error:invalidProfile")
+	test.AssertEquals(t, errorResp["detail"], "profile name \"bad-profile\" not recognized")
 
 	// Test that the newOrder endpoint returns no error if the valid profile is specified.
 	validOrderBody := `
@@ -4023,8 +3905,8 @@ func TestNewOrderWithProfile(t *testing.T) {
 	var errorResp2 map[string]interface{}
 	err = json.Unmarshal(responseWriter.Body.Bytes(), &errorResp2)
 	test.AssertNotError(t, err, "Failed to unmarshal error response")
-	test.AssertEquals(t, errorResp2["type"], "urn:ietf:params:acme:error:malformed")
-	test.AssertEquals(t, errorResp2["detail"], "Invalid certificate profile, \"test-profile\": not a recognized profile name")
+	test.AssertEquals(t, errorResp2["type"], "urn:ietf:params:acme:error:invalidProfile")
+	test.AssertEquals(t, errorResp2["detail"], "profile name \"test-profile\" not recognized")
 }
 
 func makeARICertID(leaf *x509.Certificate) (string, error) {

@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+type OrderExtension struct {
+	Profile string
+}
+
 // NewOrder initiates a new order for a new certificate. This method does not use ACME Renewal Info.
 func (c Client) NewOrder(account Account, identifiers []Identifier) (Order, error) {
 	return c.ReplacementOrder(account, nil, identifiers)
@@ -23,6 +27,11 @@ func (c Client) NewOrderDomains(account Account, domains ...string) (Order, erro
 	return c.ReplacementOrder(account, nil, identifiers)
 }
 
+// NewOrderExtension takes a struct providing any extensions onto the order
+func (c Client) NewOrderExtension(account Account, identifiers []Identifier, ext OrderExtension) (Order, error) {
+	return c.ReplacementOrderExtension(account, nil, identifiers, ext)
+}
+
 // ReplacementOrder takes an existing *x509.Certificate and initiates a new
 // order for a new certificate, but with the order being marked as a
 // replacement. Replacement orders which are valid replacements are (currently)
@@ -32,22 +41,36 @@ func (c Client) NewOrderDomains(account Account, domains ...string) (Order, erro
 // a valid replacement order.
 // See https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-03#section-5
 func (c Client) ReplacementOrder(account Account, oldCert *x509.Certificate, identifiers []Identifier) (Order, error) {
+	return c.ReplacementOrderExtension(account, oldCert, identifiers, OrderExtension{})
+}
+
+// ReplacementOrderExtension takes a struct providing any extensions onto the order
+func (c Client) ReplacementOrderExtension(account Account, oldCert *x509.Certificate, identifiers []Identifier, ext OrderExtension) (Order, error) {
 	// If an old cert being replaced is present and the acme directory doesn't list a RenewalInfo endpoint,
 	// throw an error. This endpoint being present indicates support for ARI.
 	if oldCert != nil && c.dir.RenewalInfo == "" {
 		return Order{}, ErrRenewalInfoNotSupported
 	}
 
-	// 'replaces' is specifically listed as 'omitempty' so the json encoder doesn't include this key
-	// if the ari oldCert is nil
+	// optional fields are listed as 'omitempty' so the json encoder doesn't
+	// include those keys if their values are not provided.
 	newOrderReq := struct {
 		Identifiers []Identifier `json:"identifiers"`
 		Replaces    string       `json:"replaces,omitempty"`
+		Profile     string       `json:"Profile,omitempty"`
 	}{
 		Identifiers: identifiers,
 	}
 
 	newOrderResp := Order{}
+
+	if ext.Profile != "" {
+		_, ok := c.Directory().Meta.Profiles[ext.Profile]
+		if !ok {
+			return Order{}, fmt.Errorf("requested Profile not advertised by directory: %v", ext.Profile)
+		}
+		newOrderReq.Profile = ext.Profile
+	}
 
 	// If present, add the ari cert ID from the original/old certificate
 	if oldCert != nil {

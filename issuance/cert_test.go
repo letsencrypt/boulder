@@ -11,12 +11,15 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
+	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/test"
@@ -65,6 +68,18 @@ func TestGenerateValidity(t *testing.T) {
 			test.AssertEquals(t, notBefore, tc.notBefore)
 			test.AssertEquals(t, notAfter, tc.notAfter)
 		})
+	}
+}
+
+func TestCRLURL(t *testing.T) {
+	issuer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, clock.NewFake())
+	if err != nil {
+		t.Fatalf("newIssuer: %s", err)
+	}
+	url := issuer.crlURL(4928)
+	want := "http://crl-url.example.org/4928.crl"
+	if url != want {
+		t.Errorf("crlURL(4928)=%s, want %s", url, want)
 	}
 }
 
@@ -378,7 +393,52 @@ func TestIssue(t *testing.T) {
 			test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 			test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Poison
 			test.AssertEquals(t, cert.KeyUsage, tc.ku)
+			if len(cert.CRLDistributionPoints) > 0 {
+				t.Errorf("want CRLDistributionPoints=[], got %v", cert.CRLDistributionPoints)
+			}
 		})
+	}
+}
+
+func TestIssueWithCRLDP(t *testing.T) {
+	fc := clock.NewFake()
+	issuerConfig := defaultIssuerConfig()
+	issuerConfig.CRLURLBase = "http://crls.example.net/"
+	issuerConfig.CRLShards = 999
+	signer, err := newIssuer(issuerConfig, issuerCert, issuerSigner, fc)
+	if err != nil {
+		t.Fatalf("newIssuer: %s", err)
+	}
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %s", err)
+	}
+	profile := defaultProfile()
+	profile.includeCRLDistributionPoints = true
+	_, issuanceToken, err := signer.Prepare(profile, &IssuanceRequest{
+		PublicKey:       MarshalablePublicKey{pk.Public()},
+		SubjectKeyId:    goodSKID,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:        []string{"example.com"},
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
+	})
+	if err != nil {
+		t.Fatalf("signer.Prepare: %s", err)
+	}
+	certBytes, err := signer.Issue(issuanceToken)
+	if err != nil {
+		t.Fatalf("signer.Issue: %s", err)
+	}
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		t.Fatalf("x509.ParseCertificate: %s", err)
+	}
+	// Because CRL shard is calculated deterministically from serial, we know which shard will be chosen.
+	expectedCRLDP := []string{"http://crls.example.net/919.crl"}
+	if !reflect.DeepEqual(cert.CRLDistributionPoints, expectedCRLDP) {
+		t.Errorf("CRLDP=%+v, want %+v", cert.CRLDistributionPoints, expectedCRLDP)
 	}
 }
 
@@ -779,7 +839,7 @@ func TestMismatchedProfiles(t *testing.T) {
 
 	// Create a new profile that differs slightly (no common name)
 	pc = defaultProfileConfig()
-	pc.AllowCommonName = false
+	pc.OmitCommonName = false
 	test.AssertNotError(t, err, "building test lint registry")
 	noCNProfile, err := NewProfile(pc)
 	test.AssertNotError(t, err, "NewProfile failed")
@@ -808,4 +868,52 @@ func TestMismatchedProfiles(t *testing.T) {
 	_, _, err = issuer2.Prepare(noCNProfile, request2)
 	test.AssertError(t, err, "preparing final cert issuance")
 	test.AssertContains(t, err.Error(), "precert does not correspond to linted final cert")
+}
+
+func TestProfileHash(t *testing.T) {
+	// A profile without IncludeCRLDistributionPoints.
+	// Hash calculated over the gob encoding of the old `ProfileConfig`.
+	profile := ProfileConfigNew{
+		IncludeCRLDistributionPoints: false,
+		AllowMustStaple:              true,
+		OmitCommonName:               true,
+		OmitKeyEncipherment:          false,
+		OmitClientAuth:               false,
+		OmitSKID:                     true,
+		MaxValidityPeriod:            config.Duration{Duration: time.Hour},
+		MaxValidityBackdate:          config.Duration{Duration: time.Second},
+		LintConfig:                   "example/config.toml",
+		IgnoredLints:                 []string{"one", "two"},
+	}
+	hash, err := profile.Hash()
+	if err != nil {
+		t.Fatalf("hashing %+v: %s", profile, err)
+	}
+	expectedHash := "f6b5766141fdc066824e781347095ffb3c86fa97a174e21123a323a93b078f46"
+	if expectedHash != fmt.Sprintf("%x", hash) {
+		t.Errorf("%+v.Hash()=%x, want %s", profile, hash, expectedHash)
+	}
+
+	// A profile _with_ IncludeCRLDistributionPoints.
+	// Hash calculated over the ASN.1 encoding of the `ProfileConfigNew`.
+	profile = ProfileConfigNew{
+		IncludeCRLDistributionPoints: true,
+		AllowMustStaple:              true,
+		OmitCommonName:               true,
+		OmitKeyEncipherment:          false,
+		OmitClientAuth:               false,
+		OmitSKID:                     true,
+		MaxValidityPeriod:            config.Duration{Duration: time.Hour},
+		MaxValidityBackdate:          config.Duration{Duration: time.Second},
+		LintConfig:                   "example/config.toml",
+		IgnoredLints:                 []string{"one", "two"},
+	}
+	hash, err = profile.Hash()
+	if err != nil {
+		t.Fatalf("hashing %+v: %s", profile, err)
+	}
+	expectedHash = "d2a6c9f0aa37d2ac0b15476cb6e0ae9b98ba59b1321d8d6da26efc620581c53d"
+	if expectedHash != fmt.Sprintf("%x", hash) {
+		t.Errorf("%+v.Hash()=%x, want %s", profile, hash, expectedHash)
+	}
 }

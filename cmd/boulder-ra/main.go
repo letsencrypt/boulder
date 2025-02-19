@@ -4,9 +4,9 @@ import (
 	"context"
 	"flag"
 	"os"
-	"time"
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
+	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -80,23 +80,28 @@ type Config struct {
 		// configurations.
 		MaxNames int `validate:"required,min=1,max=100"`
 
-		// AuthorizationLifetimeDays defines how long authorizations will be
-		// considered valid for. Given a value of 300 days when used with a 90-day
-		// cert lifetime, this allows creation of certs that will cover a whole
-		// year, plus a grace period of a month.
-		AuthorizationLifetimeDays int `validate:"required,min=1,max=397"`
+		// ValidationProfiles is a map of validation profiles to their
+		// respective issuance allow lists. If a profile is not included in this
+		// mapping, it cannot be used by any account. If this field is left
+		// empty, all profiles are open to all accounts.
+		ValidationProfiles map[string]ra.ValidationProfileConfig `validate:"required"`
 
-		// PendingAuthorizationLifetimeDays defines how long authorizations may be in
-		// the pending state. If you can't respond to a challenge this quickly, then
-		// you need to request a new challenge.
-		PendingAuthorizationLifetimeDays int `validate:"required,min=1,max=29"`
+		// DefaultProfileName sets the profile to use if one wasn't provided by the
+		// client in the new-order request. Must match a configured validation
+		// profile or the RA will fail to start. Must match a certificate profile
+		// configured in the CA or finalization will fail for orders using this
+		// default.
+		DefaultProfileName string `validate:"required"`
+
+		// MustStapleAllowList specifies the path to a YAML file containing a
+		// list of account IDs permitted to request certificates with the OCSP
+		// Must-Staple extension. If no path is specified, the extension is
+		// permitted for all accounts. If the file exists but is empty, the
+		// extension is disabled for all accounts.
+		MustStapleAllowList string `validate:"omitempty"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
-
-		// OrderLifetime is how far in the future an Order's expiration date should
-		// be set when it is first created.
-		OrderLifetime config.Duration
 
 		// FinalizeTimeout is how long the RA is willing to wait for the Order
 		// finalization process to take. This config parameter only has an effect
@@ -234,23 +239,20 @@ func main() {
 
 	ctp = ctpolicy.New(pubc, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
 
-	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
-	// or completed validation MUST be obtained no more than 398 days prior
-	// to issuing the Certificate". If unconfigured or the configured value is
-	// greater than 397 days, bail out.
-	if c.RA.AuthorizationLifetimeDays <= 0 || c.RA.AuthorizationLifetimeDays > 397 {
-		cmd.Fail("authorizationLifetimeDays value must be greater than 0 and less than 398")
+	if len(c.RA.ValidationProfiles) == 0 {
+		cmd.Fail("At least one profile must be configured")
 	}
-	authorizationLifetime := time.Duration(c.RA.AuthorizationLifetimeDays) * 24 * time.Hour
 
-	// The Baseline Requirements v1.8.1 state that validation tokens "MUST
-	// NOT be used for more than 30 days from its creation". If unconfigured
-	// or the configured value pendingAuthorizationLifetimeDays is greater
-	// than 29 days, bail out.
-	if c.RA.PendingAuthorizationLifetimeDays <= 0 || c.RA.PendingAuthorizationLifetimeDays > 29 {
-		cmd.Fail("pendingAuthorizationLifetimeDays value must be greater than 0 and less than 30")
+	validationProfiles, err := ra.NewValidationProfiles(c.RA.DefaultProfileName, c.RA.ValidationProfiles)
+	cmd.FailOnError(err, "Failed to load validation profiles")
+
+	var mustStapleAllowList *allowlist.List[int64]
+	if c.RA.MustStapleAllowList != "" {
+		data, err := os.ReadFile(c.RA.MustStapleAllowList)
+		cmd.FailOnError(err, "Failed to read allow list for Must-Staple extension")
+		mustStapleAllowList, err = allowlist.NewFromYAML[int64](data)
+		cmd.FailOnError(err, "Failed to parse allow list for Must-Staple extension")
 	}
-	pendingAuthorizationLifetime := time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
 	if features.Get().AsyncFinalize && c.RA.FinalizeTimeout.Duration == 0 {
 		cmd.Fail("finalizeTimeout must be supplied when AsyncFinalize feature is enabled")
@@ -287,10 +289,9 @@ func main() {
 		limiter,
 		txnBuilder,
 		c.RA.MaxNames,
-		authorizationLifetime,
-		pendingAuthorizationLifetime,
+		validationProfiles,
+		mustStapleAllowList,
 		pubc,
-		c.RA.OrderLifetime.Duration,
 		c.RA.FinalizeTimeout.Duration,
 		ctp,
 		apc,

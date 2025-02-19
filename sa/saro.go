@@ -645,6 +645,10 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 
 	authzModelMap := make(map[string]authzModel, len(authzModels))
 	for _, am := range authzModels {
+		if req.Profile != "" && am.CertificateProfileName != &req.Profile {
+			// Don't return authzs whose profile doesn't match that requested.
+			continue
+		}
 		// If there is an existing authorization in the map, only replace it with
 		// one which has a "better" validation state (valid instead of pending).
 		existing, present := authzModelMap[am.IdentifierValue]
@@ -820,6 +824,10 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 
 	authzMap := make(map[string]authzModel, len(authzModels))
 	for _, am := range authzModels {
+		if req.Profile != "" && am.CertificateProfileName != &req.Profile {
+			// Don't return authzs whose profile doesn't match that requested.
+			continue
+		}
 		// If there is an existing authorization in the map only replace it with one
 		// which has a later expiry.
 		existing, present := authzMap[am.IdentifierValue]
@@ -940,26 +948,13 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 	})
 }
 
-// GetRevokedCerts gets a request specifying an issuer and a period of time,
-// and writes to the output stream the set of all certificates issued by that
-// issuer which expire during that period of time and which have been revoked.
-// The starting timestamp is treated as inclusive (certs with exactly that
-// notAfter date are included), but the ending timestamp is exclusive (certs
-// with exactly that notAfter date are *not* included).
-func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
-	if req.ShardIdx != 0 {
-		return ssa.getRevokedCertsFromRevokedCertificatesTable(req, stream)
-	} else {
-		return ssa.getRevokedCertsFromCertificateStatusTable(req, stream)
-	}
-}
-
-// getRevokedCertsFromRevokedCertificatesTable uses the new revokedCertificates
-// table to implement GetRevokedCerts. It must only be called when the request
-// contains a non-zero ShardIdx.
-func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
-	if req.ShardIdx == 0 {
-		return errors.New("can't select shard 0 from revokedCertificates table")
+// GetRevokedCertsByShard returns revoked certificates by explicit sharding.
+//
+// It returns all unexpired certificates from the revokedCertificates table with the given
+// shardIdx. It limits the results those revoked before req.RevokedBefore.
+func (ssa *SQLStorageAuthorityRO) GetRevokedCertsByShard(req *sapb.GetRevokedCertsByShardRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
+	if core.IsAnyNilOrZero(req.ShardIdx, req.IssuerNameID, req.RevokedBefore, req.ExpiresAfter) {
+		return errIncompleteRequest
 	}
 
 	atTime := req.RevokedBefore.AsTime()
@@ -1003,9 +998,18 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(re
 	})
 }
 
-// getRevokedCertsFromCertificateStatusTable uses the old certificateStatus
-// table to implement GetRevokedCerts.
-func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
+// GetRevokedCerts returns revoked certificates based on temporal sharding.
+//
+// Based on a request specifying an issuer and a period of time,
+// it writes to the output stream the set of all certificates issued by that
+// issuer which expire during that period of time and which have been revoked.
+// The starting timestamp is treated as inclusive (certs with exactly that
+// notAfter date are included), but the ending timestamp is exclusive (certs
+// with exactly that notAfter date are *not* included).
+func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
+	if core.IsAnyNilOrZero(req.IssuerNameID, req.RevokedBefore, req.ExpiresAfter, req.ExpiresBefore) {
+		return errIncompleteRequest
+	}
 	atTime := req.RevokedBefore.AsTime()
 
 	clauses := `

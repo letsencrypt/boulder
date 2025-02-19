@@ -82,17 +82,6 @@ type Config struct {
 		// boulder-wfe and nonce-service instances.
 		NonceHMACKey cmd.HMACKeyConfig `validate:"-"`
 
-		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
-		// instance. It should contain 256 bits of random data to be suitable as
-		// an HMAC-SHA256 key (e.g. the output of `openssl rand -hex 32`). In a
-		// multi-DC deployment this value should be the same across all
-		// boulder-wfe and nonce-service instances.
-		//
-		// TODO(#7632): Remove this.
-		//
-		// Deprecated: Use NonceHMACKey instead.
-		NoncePrefixKey cmd.PasswordConfig `validate:"-"`
-
 		// Chains is a list of lists of certificate filenames. Each inner list is
 		// a chain (starting with the issuing intermediate, followed by one or
 		// more additional certificates, up to and including a root) which we are
@@ -128,17 +117,13 @@ type Config struct {
 		// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
 		StaleTimeout config.Duration `validate:"-"`
 
-		// AuthorizationLifetimeDays defines how long authorizations will be
-		// considered valid for. The WFE uses this to find the creation date of
-		// authorizations by subtracing this value from the expiry. It should match
-		// the value configured in the RA.
-		AuthorizationLifetimeDays int `validate:"required,min=1,max=397"`
+		// AuthorizationLifetimeDays duplicates the RA's config of the same name.
+		// Deprecated: This field no longer has any effect.
+		AuthorizationLifetimeDays int `validate:"-"`
 
-		// PendingAuthorizationLifetimeDays defines how long authorizations may be in
-		// the pending state before expiry. The WFE uses this to find the creation
-		// date of pending authorizations by subtracting this value from the expiry.
-		// It should match the value configured in the RA.
-		PendingAuthorizationLifetimeDays int `validate:"required,min=1,max=29"`
+		// PendingAuthorizationLifetimeDays duplicates the RA's config of the same name.
+		// Deprecated: This field no longer has any effect.
+		PendingAuthorizationLifetimeDays int `validate:"-"`
 
 		AccountCache *CacheConfig
 
@@ -307,17 +292,8 @@ func main() {
 		cmd.Fail("'getNonceService' must be configured")
 	}
 
-	var noncePrefixKey []byte
-	if c.WFE.NonceHMACKey.KeyFile != "" {
-		noncePrefixKey, err = c.WFE.NonceHMACKey.Load()
-		cmd.FailOnError(err, "Failed to load nonceHMACKey file")
-	} else if c.WFE.NoncePrefixKey.PasswordFile != "" {
-		keyString, err := c.WFE.NoncePrefixKey.Pass()
-		cmd.FailOnError(err, "Failed to load noncePrefixKey file")
-		noncePrefixKey = []byte(keyString)
-	} else {
-		cmd.Fail("NonceHMACKey KeyFile or NoncePrefixKey PasswordFile must be set")
-	}
+	noncePrefixKey, err := c.WFE.NonceHMACKey.Load()
+	cmd.FailOnError(err, "Failed to load nonceHMACKey file")
 
 	getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, stats, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
@@ -338,24 +314,6 @@ func main() {
 	if c.WFE.StaleTimeout.Duration == 0 {
 		c.WFE.StaleTimeout.Duration = time.Minute * 10
 	}
-
-	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
-	// or completed validation MUST be obtained no more than 398 days prior
-	// to issuing the Certificate". If unconfigured or the configured value is
-	// greater than 397 days, bail out.
-	if c.WFE.AuthorizationLifetimeDays <= 0 || c.WFE.AuthorizationLifetimeDays > 397 {
-		cmd.Fail("authorizationLifetimeDays value must be greater than 0 and less than 398")
-	}
-	authorizationLifetime := time.Duration(c.WFE.AuthorizationLifetimeDays) * 24 * time.Hour
-
-	// The Baseline Requirements v1.8.1 state that validation tokens "MUST
-	// NOT be used for more than 30 days from its creation". If unconfigured
-	// or the configured value pendingAuthorizationLifetimeDays is greater
-	// than 29 days, bail out.
-	if c.WFE.PendingAuthorizationLifetimeDays <= 0 || c.WFE.PendingAuthorizationLifetimeDays > 29 {
-		cmd.Fail("pendingAuthorizationLifetimeDays value must be greater than 0 and less than 30")
-	}
-	pendingAuthorizationLifetime := time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
 	var limiter *ratelimits.Limiter
 	var txnBuilder *ratelimits.TransactionBuilder
@@ -391,8 +349,6 @@ func main() {
 		logger,
 		c.WFE.Timeout.Duration,
 		c.WFE.StaleTimeout.Duration,
-		authorizationLifetime,
-		pendingAuthorizationLifetime,
 		rac,
 		sac,
 		gnc,

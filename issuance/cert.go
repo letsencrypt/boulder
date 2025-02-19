@@ -6,9 +6,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,7 +30,26 @@ import (
 	"github.com/letsencrypt/boulder/precert"
 )
 
-// ProfileConfig describes the certificate issuance constraints for all issuers.
+// ProfileConfig is a subset of ProfileConfigNew used for hashing.
+//
+// Deprecated: Use ProfileConfigNew instead.
+//
+// This struct exists for backwards-compatibility purposes when generating hashes
+// of profile configs.
+//
+// The CA uses a hash of the gob encoding of ProfileConfig to ensure precert
+// and final cert issuance use the exact same profile settings. Gob encodes all
+// fields, including zero values, which means adding fields immediately changes all
+// hashes, causing a deployability problem. It also encodes the struct name.
+//
+// To solve the deployability problem, we're switching to ASN.1 encoding. However,
+// while deploying that we still need the ability to hash old configs the same way
+// they've always been hashed. So this struct (with the same name it always had)
+// gets hashed, only when `ProfileConfigNew.IncludeCRLDistributionPoints` (the
+// newly added field) is false.
+//
+// Note that gob encodes the names of structs, not just their fields, so we needed
+// to retain the name as well.
 type ProfileConfig struct {
 	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
 	// OCSP Must Staple extension to be rejected.
@@ -72,6 +93,82 @@ type ProfileConfig struct {
 	Policies []PolicyConfig `validate:"-"`
 }
 
+// ProfileConfigNew describes the certificate issuance constraints for all issuers.
+//
+// See ProfileConfig for why this is called "New".
+//
+// This struct gets hashed in the CA to allow matching up precert and final cert
+// issuance by the exact profile config. We compute the hash over an ASN.1 encoding
+// because ASN.1 encoding has a canonical form and can omit optional fields (which
+// allows for gracefully adding new fields without changing the hash of existing
+// profile configs). This struct does not get embedded into any certs, CRLs, or
+// other objects, and does not get signed; it's only used internally.
+//
+// Note: even though these fields have encoding instructions (tag:N), they will
+// be encoded in the order they appear in the struct, so do not reorder them.
+type ProfileConfigNew struct {
+	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
+	// OCSP Must Staple extension to be rejected.
+	AllowMustStaple bool `asn1:"tag:1,optional"`
+
+	// OmitCommonName causes the CN field to be excluded from the resulting
+	// certificate, regardless of its inclusion in the IssuanceRequest.
+	OmitCommonName bool `asn1:"tag:2,optional"`
+	// OmitKeyEncipherment causes the keyEncipherment bit to be omitted from the
+	// Key Usage field of all certificates (instead of only from ECDSA certs).
+	OmitKeyEncipherment bool `asn1:"tag:3,optional"`
+	// OmitClientAuth causes the id-kp-clientAuth OID (TLS Client Authentication)
+	// to be omitted from the EKU extension.
+	OmitClientAuth bool `asn1:"tag:4,optional"`
+	// OmitSKID causes the Subject Key Identifier extension to be omitted.
+	OmitSKID bool `asn1:"tag:5,optional"`
+	// IncludeCRLDistributionPoints causes the CRLDistributionPoints extension to
+	// be added to all certificates issued by this profile.
+	IncludeCRLDistributionPoints bool `asn1:"tag:6,optional"`
+
+	MaxValidityPeriod   config.Duration `asn1:"tag:7,optional"`
+	MaxValidityBackdate config.Duration `asn1:"tag:8,optional"`
+
+	// LintConfig is a path to a zlint config file, which can be used to control
+	// the behavior of zlint's "customizable lints".
+	LintConfig string `asn1:"tag:9,optional"`
+	// IgnoredLints is a list of lint names that we know will fail for this
+	// profile, and which we know it is safe to ignore.
+	IgnoredLints []string `asn1:"tag:10,optional"`
+}
+
+func (pcn ProfileConfigNew) Hash() ([32]byte, error) {
+	var encodedBytes []byte
+	var err error
+	if !pcn.IncludeCRLDistributionPoints {
+		old := ProfileConfig{
+			AllowMustStaple:     pcn.AllowMustStaple,
+			AllowCTPoison:       false,
+			AllowSCTList:        false,
+			AllowCommonName:     false,
+			OmitCommonName:      pcn.OmitCommonName,
+			OmitKeyEncipherment: pcn.OmitKeyEncipherment,
+			OmitClientAuth:      pcn.OmitClientAuth,
+			OmitSKID:            pcn.OmitSKID,
+			MaxValidityPeriod:   pcn.MaxValidityPeriod,
+			MaxValidityBackdate: pcn.MaxValidityBackdate,
+			LintConfig:          pcn.LintConfig,
+			IgnoredLints:        pcn.IgnoredLints,
+			Policies:            nil,
+		}
+		var encoded bytes.Buffer
+		enc := gob.NewEncoder(&encoded)
+		err = enc.Encode(old)
+		encodedBytes = encoded.Bytes()
+	} else {
+		encodedBytes, err = asn1.Marshal(pcn)
+	}
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return sha256.Sum256(encodedBytes), nil
+}
+
 // PolicyConfig describes a policy
 type PolicyConfig struct {
 	OID string `validate:"required"`
@@ -85,14 +182,18 @@ type Profile struct {
 	omitClientAuth      bool
 	omitSKID            bool
 
+	includeCRLDistributionPoints bool
+
 	maxBackdate time.Duration
 	maxValidity time.Duration
 
 	lints lint.Registry
+
+	hash [32]byte
 }
 
 // NewProfile converts the profile config into a usable profile.
-func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
+func NewProfile(profileConfig *ProfileConfigNew) (*Profile, error) {
 	// The Baseline Requirements, Section 7.1.2.7, says that the notBefore time
 	// must be "within 48 hours of the time of signing". We can be even stricter.
 	if profileConfig.MaxValidityBackdate.Duration >= 24*time.Hour {
@@ -113,18 +214,29 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 		lints.SetConfiguration(lintconfig)
 	}
 
+	hash, err := profileConfig.Hash()
+	if err != nil {
+		return nil, err
+	}
+
 	sp := &Profile{
-		allowMustStaple:     profileConfig.AllowMustStaple,
-		omitCommonName:      profileConfig.OmitCommonName,
-		omitKeyEncipherment: profileConfig.OmitKeyEncipherment,
-		omitClientAuth:      profileConfig.OmitClientAuth,
-		omitSKID:            profileConfig.OmitSKID,
-		maxBackdate:         profileConfig.MaxValidityBackdate.Duration,
-		maxValidity:         profileConfig.MaxValidityPeriod.Duration,
-		lints:               lints,
+		allowMustStaple:              profileConfig.AllowMustStaple,
+		omitCommonName:               profileConfig.OmitCommonName,
+		omitKeyEncipherment:          profileConfig.OmitKeyEncipherment,
+		omitClientAuth:               profileConfig.OmitClientAuth,
+		omitSKID:                     profileConfig.OmitSKID,
+		includeCRLDistributionPoints: profileConfig.IncludeCRLDistributionPoints,
+		maxBackdate:                  profileConfig.MaxValidityBackdate.Duration,
+		maxValidity:                  profileConfig.MaxValidityPeriod.Duration,
+		lints:                        lints,
+		hash:                         hash,
 	}
 
 	return sp, nil
+}
+
+func (p *Profile) Hash() [32]byte {
+	return p.hash
 }
 
 // GenerateValidity returns a notBefore/notAfter pair bracketing the input time,
@@ -201,9 +313,6 @@ func (i *Issuer) generateTemplate() *x509.Certificate {
 		// Baseline Requirements, Section 7.1.6.1: domain-validated
 		PolicyIdentifiers: []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
 	}
-
-	// TODO(#7294): Use i.crlURLBase and a shard calculation to create a
-	// crlDistributionPoint.
 
 	return template
 }
@@ -377,6 +486,19 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
 	} else {
 		return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
+	}
+
+	// If explicit CRL sharding is enabled, pick a shard based on the serial number
+	// modulus the number of shards. This gives us random distribution that is
+	// nonetheless consistent between precert and cert.
+	if prof.includeCRLDistributionPoints {
+		if i.crlShards <= 0 {
+			return nil, nil, errors.New("IncludeCRLDistributionPoints was set but CRLShards was not set")
+		}
+		shardZeroBased := big.NewInt(0).Mod(template.SerialNumber, big.NewInt(int64(i.crlShards)))
+		shard := int(shardZeroBased.Int64()) + 1
+		url := i.crlURL(shard)
+		template.CRLDistributionPoints = []string{url}
 	}
 
 	if req.IncludeMustStaple {

@@ -19,6 +19,7 @@ import (
 	"net"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1043,6 +1044,55 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	test.AssertBoxedNil(t, am.ValidationRecord, "am.ValidationRecord should be nil")
 }
 
+func TestNewOrderAndAuthzs_Profile(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	reg := createWorkingRegistration(t, sa)
+	expires := fc.Now().Add(time.Hour)
+
+	// Create and order and authz while specifying a profile.
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:         reg.Id,
+			Expires:                timestamppb.New(expires),
+			DnsNames:               []string{"example.com"},
+			CertificateProfileName: "test",
+		},
+		NewAuthzs: []*sapb.NewAuthzRequest{
+			{
+				Identifier:     &corepb.Identifier{Type: "dns", Value: "example.com"},
+				RegistrationID: reg.Id,
+				Expires:        timestamppb.New(expires),
+				ChallengeTypes: []string{string(core.ChallengeTypeHTTP01)},
+				Token:          core.NewToken(),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("inserting order and authzs: %s", err)
+	}
+
+	// Retrieve the order and check that the profile is correct.
+	gotOrder, err := sa.GetOrder(context.Background(), &sapb.OrderRequest{Id: order.Id})
+	if err != nil {
+		t.Fatalf("retrieving inserted order: %s", err)
+	}
+	if gotOrder.CertificateProfileName != "test" {
+		t.Errorf("order.CertificateProfileName = %v, want %v", gotOrder.CertificateProfileName, "test")
+	}
+
+	// Retrieve the authz and check that the profile is correct.
+	// Safely get the authz for the order we created above.
+	gotAuthz, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: order.V2Authorizations[0]})
+	if err != nil {
+		t.Fatalf("retrieving inserted authz: %s", err)
+	}
+	if gotAuthz.CertificateProfileName != "test" {
+		t.Errorf("authz.CertificateProfileName = %v, want %v", gotAuthz.CertificateProfileName, "test")
+	}
+}
+
 func TestSetOrderProcessing(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
@@ -1125,7 +1175,9 @@ func TestFinalizeOrder(t *testing.T) {
 	test.AssertEquals(t, updatedOrder.Status, string(core.StatusValid))
 }
 
-func TestOrder(t *testing.T) {
+// TestGetOrder tests that round-tripping a simple order through
+// NewOrderAndAuthzs and GetOrder has the expected result.
+func TestGetOrder(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1181,7 +1233,9 @@ func TestOrder(t *testing.T) {
 	test.AssertDeepEquals(t, storedOrder, expectedOrder)
 }
 
-func TestOrderWithProfile(t *testing.T) {
+// TestGetOrderWithProfile tests that round-tripping a simple order through
+// NewOrderAndAuthzs and GetOrder has the expected result.
+func TestGetOrderWithProfile(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1267,28 +1321,10 @@ func TestGetAuthorizations2(t *testing.T) {
 	identD := "ddd"
 	idents := []string{identA, identB, identC}
 
-	authzIDA := createFinalizedAuthorization(t, sa, "aaa", exp, "valid", attemptedAt)
-	authzIDB := createPendingAuthorization(t, sa, "bbb", exp)
+	createFinalizedAuthorization(t, sa, "aaa", exp, "valid", attemptedAt)
+	createPendingAuthorization(t, sa, "bbb", exp)
 	nearbyExpires := fc.Now().UTC().Add(time.Hour)
-	authzIDC := createPendingAuthorization(t, sa, "ccc", nearbyExpires)
-
-	// Associate authorizations with an order so that GetAuthorizations2 thinks
-	// they are WFE2 authorizations.
-	err := sa.dbMap.Insert(ctx, &orderToAuthzModel{
-		OrderID: 1,
-		AuthzID: authzIDA,
-	})
-	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
-	err = sa.dbMap.Insert(ctx, &orderToAuthzModel{
-		OrderID: 1,
-		AuthzID: authzIDB,
-	})
-	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
-	err = sa.dbMap.Insert(ctx, &orderToAuthzModel{
-		OrderID: 1,
-		AuthzID: authzIDC,
-	})
-	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
+	createPendingAuthorization(t, sa, "ccc", nearbyExpires)
 
 	// Set an expiry cut off of 1 day in the future similar to `RA.NewOrderAndAuthzs`. This
 	// should exclude pending authorization C based on its nearbyExpires expiry
@@ -2452,26 +2488,84 @@ func TestGetValidAuthorizations2(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	// Create a valid authorization
-	ident := "aaa"
-	expires := fc.Now().Add(time.Hour).UTC()
-	attemptedAt := fc.Now()
-	authzID := createFinalizedAuthorization(t, sa, ident, expires, "valid", attemptedAt)
+	aaa := createFinalizedAuthorization(t, sa, "aaa", fc.Now().Add(24*time.Hour), "valid", fc.Now())
 
-	now := fc.Now().UTC()
-	regID := int64(1)
-	authzs, err := sa.GetValidAuthorizations2(context.Background(), &sapb.GetValidAuthorizationsRequest{
-		DnsNames: []string{
-			"aaa",
-			"bbb",
+	for _, tc := range []struct {
+		name       string
+		regID      int64
+		dnsNames   []string
+		profile    string
+		validUntil time.Time
+		wantIDs    []int64
+	}{
+		{
+			name:       "happy path",
+			regID:      1,
+			dnsNames:   []string{"aaa"},
+			profile:    "",
+			validUntil: fc.Now().Add(time.Hour),
+			wantIDs:    []int64{aaa},
 		},
-		RegistrationID: regID,
-		ValidUntil:     timestamppb.New(now),
-	})
-	test.AssertNotError(t, err, "sa.GetValidAuthorizations2 failed")
-	test.AssertEquals(t, len(authzs.Authzs), 1)
-	test.AssertEquals(t, authzs.Authzs[0].DnsName, ident)
-	test.AssertEquals(t, authzs.Authzs[0].Id, fmt.Sprintf("%d", authzID))
+		{
+			name:       "different regID",
+			regID:      2,
+			dnsNames:   []string{"aaa"},
+			profile:    "",
+			validUntil: fc.Now().Add(time.Hour),
+			wantIDs:    []int64{},
+		},
+		{
+			name:       "different dnsName",
+			regID:      1,
+			dnsNames:   []string{"bbb"},
+			profile:    "",
+			validUntil: fc.Now().Add(time.Hour),
+			wantIDs:    []int64{},
+		},
+		{
+			name:       "different profile",
+			regID:      1,
+			dnsNames:   []string{"aaa"},
+			profile:    "test",
+			validUntil: fc.Now().Add(time.Hour),
+			wantIDs:    []int64{},
+		},
+		{
+			name:       "too-far-out validUntil",
+			regID:      2,
+			dnsNames:   []string{"aaa"},
+			profile:    "",
+			validUntil: fc.Now().Add(25 * time.Hour),
+			wantIDs:    []int64{},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := sa.GetValidAuthorizations2(context.Background(), &sapb.GetValidAuthorizationsRequest{
+				RegistrationID: tc.regID,
+				DnsNames:       tc.dnsNames,
+				Profile:        tc.profile,
+				ValidUntil:     timestamppb.New(tc.validUntil),
+			})
+			if err != nil {
+				t.Fatalf("GetValidAuthorizations2 got error %q, want success", err)
+			}
+
+			var gotIDs []int64
+			for _, authz := range got.Authzs {
+				id, err := strconv.Atoi(authz.Id)
+				if err != nil {
+					t.Fatalf("parsing authz id: %s", err)
+				}
+				gotIDs = append(gotIDs, int64(id))
+			}
+
+			slices.Sort(gotIDs)
+			slices.Sort(tc.wantIDs)
+			if !slices.Equal(gotIDs, tc.wantIDs) {
+				t.Errorf("GetValidAuthorizations2() = %+v, want %+v", gotIDs, tc.wantIDs)
+			}
+		})
+	}
 }
 
 func TestGetOrderExpired(t *testing.T) {
@@ -2920,14 +3014,14 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
 	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
 
-	// Here's a little helper func we'll use to call GetRevokedCerts and count
+	// Here's a little helper func we'll use to call GetRevokedCertsByShard and count
 	// how many results it returned.
-	countRevokedCerts := func(req *sapb.GetRevokedCertsRequest) (int, error) {
+	countRevokedCerts := func(req *sapb.GetRevokedCertsByShardRequest) (int, error) {
 		stream := make(chan *corepb.CRLEntry)
 		mockServerStream := &fakeServerStream[corepb.CRLEntry]{output: stream}
 		var err error
 		go func() {
-			err = sa.GetRevokedCerts(req, mockServerStream)
+			err = sa.GetRevokedCertsByShard(req, mockServerStream)
 			close(stream)
 		}()
 		entriesReceived := 0
@@ -2938,7 +3032,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	}
 
 	// The basic request covers a time range and shard that should include this certificate.
-	basicRequest := &sapb.GetRevokedCertsRequest{
+	basicRequest := &sapb.GetRevokedCertsByShardRequest{
 		IssuerNameID:  1,
 		ShardIdx:      9,
 		ExpiresAfter:  mustTimestamp("2023-03-01 00:00"),
@@ -2975,7 +3069,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertEquals(t, count, 1)
 
 	// Asking for revoked certs from a different issuer should return zero results.
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsByShardRequest{
 		IssuerNameID:  5678,
 		ShardIdx:      basicRequest.ShardIdx,
 		ExpiresAfter:  basicRequest.ExpiresAfter,
@@ -2985,7 +3079,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs from a different shard should return zero results.
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsByShardRequest{
 		IssuerNameID:  basicRequest.IssuerNameID,
 		ShardIdx:      8,
 		ExpiresAfter:  basicRequest.ExpiresAfter,
@@ -2995,7 +3089,7 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs with an old RevokedBefore should return no results.
-	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsByShardRequest{
 		IssuerNameID:  basicRequest.IssuerNameID,
 		ShardIdx:      basicRequest.ShardIdx,
 		ExpiresAfter:  basicRequest.ExpiresAfter,

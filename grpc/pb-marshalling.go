@@ -225,10 +225,6 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 		return nil, err
 	}
 	var contacts []string
-	// Since the default value of corepb.Registration.Contact is a slice
-	// we need a indicator as to if the value is actually important on
-	// the other side (pb -> reg).
-	contactsPresent := reg.Contact != nil
 	if reg.Contact != nil {
 		contacts = *reg.Contact
 	}
@@ -241,13 +237,12 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	}
 
 	return &corepb.Registration{
-		Id:              reg.ID,
-		Key:             keyBytes,
-		Contact:         contacts,
-		ContactsPresent: contactsPresent,
-		Agreement:       reg.Agreement,
-		CreatedAt:       createdAt,
-		Status:          string(reg.Status),
+		Id:        reg.ID,
+		Key:       keyBytes,
+		Contact:   contacts,
+		Agreement: reg.Agreement,
+		CreatedAt: createdAt,
+		Status:    string(reg.Status),
 	}, nil
 }
 
@@ -294,12 +289,13 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	}
 
 	return &corepb.Authorization{
-		Id:             authz.ID,
-		DnsName:        authz.Identifier.Value,
-		RegistrationID: authz.RegistrationID,
-		Status:         string(authz.Status),
-		Expires:        expires,
-		Challenges:     challs,
+		Id:                     authz.ID,
+		DnsName:                authz.Identifier.Value,
+		RegistrationID:         authz.RegistrationID,
+		Status:                 string(authz.Status),
+		Expires:                expires,
+		Challenges:             challs,
+		CertificateProfileName: authz.CertificateProfileName,
 	}, nil
 }
 
@@ -318,12 +314,13 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		expires = &c
 	}
 	authz := core.Authorization{
-		ID:             pb.Id,
-		Identifier:     identifier.NewDNS(pb.DnsName),
-		RegistrationID: pb.RegistrationID,
-		Status:         core.AcmeStatus(pb.Status),
-		Expires:        expires,
-		Challenges:     challs,
+		ID:                     pb.Id,
+		Identifier:             identifier.NewDNS(pb.DnsName),
+		RegistrationID:         pb.RegistrationID,
+		Status:                 core.AcmeStatus(pb.Status),
+		Expires:                expires,
+		Challenges:             challs,
+		CertificateProfileName: pb.CertificateProfileName,
 	}
 	return authz, nil
 }

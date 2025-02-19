@@ -3,6 +3,7 @@ package notmain
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -36,11 +37,13 @@ type Config struct {
 			// The name of the certificate profile to use if one wasn't provided
 			// by the RA during NewOrder and Finalize requests. Must match a
 			// configured certificate profile or boulder-ca will fail to start.
+			//
+			// Deprecated: set the defaultProfileName in the RA config instead.
 			DefaultCertificateProfileName string `validate:"omitempty,alphanum,min=1,max=32"`
 
-			// One of the profile names must match the value of
-			// DefaultCertificateProfileName or boulder-ca will fail to start.
-			CertProfiles map[string]*issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
+			// One of the profile names must match the value of ra.defaultProfileName
+			// or large amounts of issuance will fail.
+			CertProfiles map[string]*issuance.ProfileConfigNew `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
 
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile issuance.CRLProfileConfig `validate:"-"`
@@ -176,18 +179,22 @@ func main() {
 	}
 
 	clk := cmd.Clock()
+	var crlShards int
 	issuers := make([]*issuance.Issuer, 0, len(c.CA.Issuance.Issuers))
-	for _, issuerConfig := range c.CA.Issuance.Issuers {
+	for i, issuerConfig := range c.CA.Issuance.Issuers {
 		issuer, err := issuance.LoadIssuer(issuerConfig, clk)
 		cmd.FailOnError(err, "Loading issuer")
+		// All issuers should have the same number of CRL shards, because
+		// crl-updater assumes they all have the same number.
+		if issuerConfig.CRLShards != 0 && crlShards == 0 {
+			crlShards = issuerConfig.CRLShards
+		}
+		if issuerConfig.CRLShards != crlShards {
+			cmd.Fail(fmt.Sprintf("issuer %d has %d shards, want %d", i, issuerConfig.CRLShards, crlShards))
+		}
 		issuers = append(issuers, issuer)
 		logger.Infof("Loaded issuer: name=[%s] keytype=[%s] nameID=[%v] isActive=[%t]", issuer.Name(), issuer.KeyType(), issuer.NameID(), issuer.IsActive())
 	}
-
-	if c.CA.Issuance.DefaultCertificateProfileName == "" {
-		c.CA.Issuance.DefaultCertificateProfileName = "defaultBoulderCertificateProfile"
-	}
-	logger.Infof("Configured default certificate profile name set to: %s", c.CA.Issuance.DefaultCertificateProfileName)
 
 	if len(c.CA.Issuance.CertProfiles) == 0 {
 		cmd.Fail("At least one profile must be configured")
@@ -241,7 +248,6 @@ func main() {
 			sa,
 			pa,
 			issuers,
-			c.CA.Issuance.DefaultCertificateProfileName,
 			c.CA.Issuance.CertProfiles,
 			serialPrefix,
 			c.CA.MaxNames,

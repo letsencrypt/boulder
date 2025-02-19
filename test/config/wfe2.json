@@ -70,8 +70,8 @@
 			"noWaitForReady": true,
 			"hostOverride": "nonce.boulder"
 		},
-		"noncePrefixKey": {
-			"passwordFile": "test/secrets/nonce_prefix_key"
+		"nonceHMACKey": {
+			"keyFile": "test/secrets/nonce_prefix_key"
 		},
 		"chains": [
 			[
@@ -132,6 +132,10 @@
 			"IncrementRateLimits": true,
 			"CheckIdentifiersPaused": true
 		},
+		"certProfiles": {
+			"legacy": "The normal profile you know and love",
+			"modern": "Profile 2: Electric Boogaloo"
+		},
 		"unpause": {
 			"hmacKey": {
 				"keyFile": "test/secrets/sfe_unpause_key"
@@ -141,7 +145,7 @@
 		}
 	},
 	"syslog": {
-		"stdoutlevel": 4,
+		"stdoutlevel": 7,
 		"sysloglevel": 6
 	}
 }
