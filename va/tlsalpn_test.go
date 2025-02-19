@@ -604,8 +604,8 @@ func TestTLSALPN01NotSelfSigned(t *testing.T) {
 	issuerKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "creating test key")
 
-	// Test that a self-signed cert with issuer and subject fields that don't
-	// match is rejected.
+	// Test that a cert with mismatched subject and issuer fields is rejected,
+	// even though its signature is produced with the right (self-signed) key.
 	certBytes, err := x509.CreateCertificate(rand.Reader, eeTemplate, issuerCert, eeKey.Public(), eeKey)
 	test.AssertNotError(t, err, "failed to create acme-tls/1 cert")
 
@@ -622,8 +622,8 @@ func TestTLSALPN01NotSelfSigned(t *testing.T) {
 	test.AssertError(t, err, "validation should have failed")
 	test.AssertContains(t, err.Error(), "not self-signed")
 
-	// Test that a self-signed cert with issuer and subject fields that don't
-	// match is rejected.
+	// Test that a cert whose signature was produced by some other key is rejected,
+	// even though its subject and issuer fields claim that it is self-signed.
 	certBytes, err = x509.CreateCertificate(rand.Reader, eeTemplate, eeTemplate, eeKey.Public(), issuerKey)
 	test.AssertNotError(t, err, "failed to create acme-tls/1 cert")
 

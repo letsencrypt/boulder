@@ -158,9 +158,9 @@ func New(errType ErrorType, msg string) error {
 	}
 }
 
-// Newf is a convenience function for creating a new BoulderError with a
+// newf is a convenience function for creating a new BoulderError with a
 // formatted message.
-func Newf(errType ErrorType, msg string, args ...interface{}) error {
+func newf(errType ErrorType, msg string, args ...interface{}) error {
 	return &BoulderError{
 		Type:   errType,
 		Detail: fmt.Sprintf(msg, args...),
@@ -168,19 +168,19 @@ func Newf(errType ErrorType, msg string, args ...interface{}) error {
 }
 
 func InternalServerError(msg string, args ...interface{}) error {
-	return Newf(InternalServer, msg, args...)
+	return newf(InternalServer, msg, args...)
 }
 
 func MalformedError(msg string, args ...interface{}) error {
-	return Newf(Malformed, msg, args...)
+	return newf(Malformed, msg, args...)
 }
 
 func UnauthorizedError(msg string, args ...interface{}) error {
-	return Newf(Unauthorized, msg, args...)
+	return newf(Unauthorized, msg, args...)
 }
 
 func NotFoundError(msg string, args ...interface{}) error {
-	return Newf(NotFound, msg, args...)
+	return newf(NotFound, msg, args...)
 }
 
 func RateLimitError(retryAfter time.Duration, msg string, args ...interface{}) error {
@@ -240,65 +240,65 @@ func FailedAuthorizationsPerDomainPerAccountError(retryAfter time.Duration, msg 
 }
 
 func RejectedIdentifierError(msg string, args ...interface{}) error {
-	return Newf(RejectedIdentifier, msg, args...)
+	return newf(RejectedIdentifier, msg, args...)
 }
 
 func InvalidEmailError(msg string, args ...interface{}) error {
-	return Newf(InvalidEmail, msg, args...)
+	return newf(InvalidEmail, msg, args...)
 }
 
 func UnsupportedContactError(msg string, args ...interface{}) error {
-	return Newf(UnsupportedContact, msg, args...)
+	return newf(UnsupportedContact, msg, args...)
 }
 
 func ConnectionFailureError(msg string, args ...interface{}) error {
-	return Newf(ConnectionFailure, msg, args...)
+	return newf(ConnectionFailure, msg, args...)
 }
 
 func CAAError(msg string, args ...interface{}) error {
-	return Newf(CAA, msg, args...)
+	return newf(CAA, msg, args...)
 }
 
 func MissingSCTsError(msg string, args ...interface{}) error {
-	return Newf(MissingSCTs, msg, args...)
+	return newf(MissingSCTs, msg, args...)
 }
 
 func DuplicateError(msg string, args ...interface{}) error {
-	return Newf(Duplicate, msg, args...)
+	return newf(Duplicate, msg, args...)
 }
 
 func OrderNotReadyError(msg string, args ...interface{}) error {
-	return Newf(OrderNotReady, msg, args...)
+	return newf(OrderNotReady, msg, args...)
 }
 
 func DNSError(msg string, args ...interface{}) error {
-	return Newf(DNS, msg, args...)
+	return newf(DNS, msg, args...)
 }
 
 func BadPublicKeyError(msg string, args ...interface{}) error {
-	return Newf(BadPublicKey, msg, args...)
+	return newf(BadPublicKey, msg, args...)
 }
 
 func BadCSRError(msg string, args ...interface{}) error {
-	return Newf(BadCSR, msg, args...)
+	return newf(BadCSR, msg, args...)
 }
 
 func AlreadyRevokedError(msg string, args ...interface{}) error {
-	return Newf(AlreadyRevoked, msg, args...)
+	return newf(AlreadyRevoked, msg, args...)
 }
 
 func BadRevocationReasonError(reason int64) error {
-	return Newf(BadRevocationReason, "disallowed revocation reason: %d", reason)
+	return newf(BadRevocationReason, "disallowed revocation reason: %d", reason)
 }
 
 func UnknownSerialError() error {
-	return Newf(UnknownSerial, "unknown serial")
+	return newf(UnknownSerial, "unknown serial")
 }
 
 func ConflictError(msg string, args ...interface{}) error {
-	return Newf(Conflict, msg, args...)
+	return newf(Conflict, msg, args...)
 }
 
 func InvalidProfileError(msg string, args ...interface{}) error {
-	return Newf(InvalidProfile, msg, args...)
+	return newf(InvalidProfile, msg, args...)
 }

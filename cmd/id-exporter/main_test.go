@@ -337,8 +337,7 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: serial1,
 	}
-	certDerA, err := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, key.Public(), key)
-	test.AssertNotError(t, err, "creating test cert")
+	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, key.Public(), key)
 	certA := &core.Certificate{
 		RegistrationID: regA.Id,
 		Serial:         serial1String,
