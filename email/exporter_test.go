@@ -41,6 +41,13 @@ func (m *MockPardotClientImpl) CreateProspect(email string) error {
 	return nil
 }
 
+func (m *MockPardotClientImpl) getCreatedProspects() []string {
+	m.Lock()
+	defer m.Unlock()
+	// Return a copy to avoid race conditions.
+	return append([]string(nil), m.CreatedProspects...)
+}
+
 func setup() (*ExporterImpl, *MockPardotClientImpl, func(), func()) {
 	mockClient, clientImpl := NewMockPardotClientImpl()
 	logger := blog.NewMock()
@@ -72,7 +79,7 @@ func TestCreateProspects(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	test.AssertNotError(t, err, "Error creating prospects")
-	test.AssertEquals(t, 2, len(clientImpl.CreatedProspects))
+	test.AssertEquals(t, 2, len(clientImpl.getCreatedProspects()))
 }
 
 func TestCreateProspectsQueueFull(t *testing.T) {
@@ -112,5 +119,5 @@ func TestCreateProspectsQueueDrains(t *testing.T) {
 	cleanup()
 
 	// Check that the queue was drained.
-	test.AssertEquals(t, 100, len(clientImpl.CreatedProspects))
+	test.AssertEquals(t, 100, len(clientImpl.getCreatedProspects()))
 }
