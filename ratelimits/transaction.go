@@ -18,7 +18,7 @@ var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 
 // newIPAddressBucketKey validates and returns a bucketKey for limits that use
 // the 'enum:ipAddress' bucket key format.
-func newIPAddressBucketKey(name Name, ip net.IP) (string, error) { //nolint: unparam
+func newIPAddressBucketKey(name Name, ip net.IP) (string, error) { //nolint:unparam // Only one named rate limit uses this helper
 	id := ip.String()
 	err := validateIdForName(name, id)
 	if err != nil {
@@ -78,7 +78,7 @@ func NewRegIdDomainBucketKey(name Name, regId int64, orderName string) (string, 
 
 // newFQDNSetBucketKey validates and returns a bucketKey for limits that use the
 // 'enum:fqdnSet' bucket key format.
-func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) { //nolint: unparam
+func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) { //nolint: unparam // Only one named rate limit uses this helper
 	err := validateIdForName(name, strings.Join(orderNames, ","))
 	if err != nil {
 		return "", err
