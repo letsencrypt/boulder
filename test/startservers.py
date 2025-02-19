@@ -102,6 +102,17 @@ SERVICES = (
         8102, 9494, 'ra.boulder',
         ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', ':9494', '--debug-addr', ':8102'),
         ('boulder-sa-1', 'boulder-sa-2', 'boulder-ca-1', 'boulder-ca-2', 'boulder-va-1', 'boulder-va-2', 'akamai-purger', 'boulder-publisher-1', 'boulder-publisher-2')),
+    # We run a separate instance of the RA for use as the SCTProvder service called by the CA.
+    # This solves a small problem of startup order: if a client (the CA in this case) starts
+    # up before its backends, gRPC will try to connect immediately (due to health checks),
+    # get a connection refused, and enter a backoff state. That backoff state can cause
+    # subsequent requests to fail. This issue only exists for the CA-RA pair because they
+    # have a circular relationship - the RA calls CA.IssueCertificate, and the CA calls
+    # SCTProvider.GetSCTs (offered by the RA).
+    Service('boulder-ra-sct-provider',
+        8118, 9594, 'ra.boulder',
+        ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', ':9594', '--debug-addr', ':8118'),
+        ('boulder-publisher-1', 'boulder-publisher-2')),
     Service('bad-key-revoker',
         8020, None, None,
         ('./bin/boulder', 'bad-key-revoker', '--config', os.path.join(config_dir, 'bad-key-revoker.json'), '--debug-addr', ':8020'),
