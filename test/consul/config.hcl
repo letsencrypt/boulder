@@ -153,6 +153,14 @@ services {
 }
 
 services {
+  id      = "ra-sct-provider-b"
+  name    = "ra-sct-provider"
+  address = "10.77.77.77"
+  port    = 9694
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+}
+
+services {
   id      = "ra-a"
   name    = "ra"
   address = "10.77.77.77"
