@@ -160,7 +160,7 @@ func (pc *PardotClientImpl) CreateProspect(email string) error {
 
 		req, err := http.NewRequest("POST", pc.prospectsURL, bytes.NewReader(payload))
 		if err != nil {
-			finalErr = fmt.Errorf("failed to create prospects request: %w", err)
+			finalErr = fmt.Errorf("failed to create new prospect request: %w", err)
 			continue
 		}
 		req.Header.Set("Content-Type", "application/json")
@@ -169,7 +169,7 @@ func (pc *PardotClientImpl) CreateProspect(email string) error {
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			finalErr = fmt.Errorf("prospects request failed: %w", err)
+			finalErr = fmt.Errorf("create prospect request failed: %w", err)
 			continue
 		}
 
@@ -180,10 +180,10 @@ func (pc *PardotClientImpl) CreateProspect(email string) error {
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			finalErr = fmt.Errorf("prospects request returned status %d; while reading body: %w", resp.StatusCode, err)
+			finalErr = fmt.Errorf("create prospect request returned status %d; while reading body: %w", resp.StatusCode, err)
 			continue
 		}
-		finalErr = fmt.Errorf("prospects request returned status %d: %s", resp.StatusCode, redactEmail(body, email))
+		finalErr = fmt.Errorf("create prospect request returned status %d: %s", resp.StatusCode, redactEmail(body, email))
 		continue
 	}
 
