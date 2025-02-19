@@ -103,13 +103,13 @@ type vaMetrics struct {
 	//   - challenge_type: core.Challenge.Type
 	//   - problem_type: probs.ProblemType
 	//   - result: the result of the validation as [pass|fail]
-	validationLatency                 *prometheus.HistogramVec
-	prospectiveRemoteCAACheckFailures prometheus.Counter
-	tlsALPNOIDCounter                 *prometheus.CounterVec
-	http01Fallbacks                   prometheus.Counter
-	http01Redirects                   prometheus.Counter
-	caaCounter                        *prometheus.CounterVec
-	ipv4FallbackCounter               prometheus.Counter
+	validationLatency                *prometheus.HistogramVec
+	contactiveRemoteCAACheckFailures prometheus.Counter
+	tlsALPNOIDCounter                *prometheus.CounterVec
+	http01Fallbacks                  prometheus.Counter
+	http01Redirects                  prometheus.Counter
+	caaCounter                       *prometheus.CounterVec
+	ipv4FallbackCounter              prometheus.Counter
 }
 
 func initMetrics(stats prometheus.Registerer) *vaMetrics {
@@ -122,12 +122,12 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 		[]string{"operation", "perspective", "challenge_type", "problem_type", "result"},
 	)
 	stats.MustRegister(validationLatency)
-	prospectiveRemoteCAACheckFailures := prometheus.NewCounter(
+	contactiveRemoteCAACheckFailures := prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "prospective_remote_caa_check_failures",
+			Name: "contactive_remote_caa_check_failures",
 			Help: "Number of CAA rechecks that would have failed due to remote VAs returning failure if consesus were enforced",
 		})
-	stats.MustRegister(prospectiveRemoteCAACheckFailures)
+	stats.MustRegister(contactiveRemoteCAACheckFailures)
 	tlsALPNOIDCounter := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "tls_alpn_oid_usage",
@@ -160,13 +160,13 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 	stats.MustRegister(ipv4FallbackCounter)
 
 	return &vaMetrics{
-		validationLatency:                 validationLatency,
-		prospectiveRemoteCAACheckFailures: prospectiveRemoteCAACheckFailures,
-		tlsALPNOIDCounter:                 tlsALPNOIDCounter,
-		http01Fallbacks:                   http01Fallbacks,
-		http01Redirects:                   http01Redirects,
-		caaCounter:                        caaCounter,
-		ipv4FallbackCounter:               ipv4FallbackCounter,
+		validationLatency:                validationLatency,
+		contactiveRemoteCAACheckFailures: contactiveRemoteCAACheckFailures,
+		tlsALPNOIDCounter:                tlsALPNOIDCounter,
+		http01Fallbacks:                  http01Fallbacks,
+		http01Redirects:                  http01Redirects,
+		caaCounter:                       caaCounter,
+		ipv4FallbackCounter:              ipv4FallbackCounter,
 	}
 }
 

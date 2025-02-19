@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"maps"
 	"math/rand/v2"
 	"net/http"
 	"os"
-	"slices"
 	"sync"
 	"time"
 
@@ -35,8 +33,8 @@ type config struct {
 	// DevelopmentMode is a flag that indicates whether the server is running in
 	// development mode. In development mode, the server will:
 	//   - provide an endpoint to expire the current token,
-	//   - store prospects in memory, and
-	//   - provide an endpoint to query the stored prospects.
+	//   - store contacts in memory, and
+	//   - provide an endpoint to query the stored contacts.
 	//
 	// Only set this flag to true if you are running the server for testing
 	// (e.g. within docker-compose) or local development purposes.
@@ -51,22 +49,19 @@ type token struct {
 	active string
 }
 
-type prospectsByBusinessUnitId map[string]map[string]struct{}
+type createdContacts map[string]struct{}
 
-type prospects struct {
+type contacts struct {
 	sync.RWMutex
 
-	// byBusinessUnitId is a map from business unit ID to a unique set of
-	// prospects. Prospects are only stored in memory if the server is running
-	// in development mode.
-	byBusinessUnitId prospectsByBusinessUnitId
+	created createdContacts
 }
 
 type testServer struct {
 	expectedClientID     string
 	expectedClientSecret string
 	token                token
-	prospects            prospects
+	contacts             contacts
 	developmentMode      bool
 }
 
@@ -127,7 +122,7 @@ func (ts *testServer) expireTokenHandler(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-func (ts *testServer) createProspectsHandler(w http.ResponseWriter, r *http.Request) {
+func (ts *testServer) createContactsHandler(w http.ResponseWriter, r *http.Request) {
 	ts.token.Lock()
 	validToken := ts.token.active
 	ts.token.Unlock()
@@ -140,36 +135,40 @@ func (ts *testServer) createProspectsHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	if businessUnitId == "" {
+		http.Error(w, "Missing 'Pardot-Business-Unit-Id' header", http.StatusBadRequest)
+		return
+	}
+
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
 		return
 	}
 
-	type prospectData struct {
+	type contactData struct {
 		Email string `json:"email"`
 	}
 
-	var prospect prospectData
-	err = json.Unmarshal(body, &prospect)
+	var contact contactData
+	err = json.Unmarshal(body, &contact)
 	if err != nil {
 		http.Error(w, "Failed to parse request body", http.StatusBadRequest)
 		return
 	}
 
-	if prospect.Email == "" {
+	if contact.Email == "" {
 		http.Error(w, "Missing 'email' field in request body", http.StatusBadRequest)
 		return
 	}
 
 	if ts.developmentMode {
-		ts.prospects.Lock()
-		_, exists := ts.prospects.byBusinessUnitId[businessUnitId]
+		ts.contacts.Lock()
+		_, exists := ts.contacts.created[contact.Email]
 		if !exists {
-			ts.prospects.byBusinessUnitId[businessUnitId] = make(map[string]struct{})
+			ts.contacts.created[contact.Email] = struct{}{}
 		}
-		ts.prospects.byBusinessUnitId[businessUnitId][prospect.Email] = struct{}{}
-		ts.prospects.Unlock()
+		ts.contacts.Unlock()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -180,31 +179,19 @@ func (ts *testServer) createProspectsHandler(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-func (ts *testServer) queryProspectsHandler(w http.ResponseWriter, r *http.Request) {
-	businessUnitIdHeader := r.URL.Query().Get("pardot_business_unit_id")
-	if businessUnitIdHeader == "" {
-		http.Error(w, "Missing 'pardot_business_unit_id' parameter", http.StatusBadRequest)
-		return
+func (ts *testServer) queryContactsHandler(w http.ResponseWriter, r *http.Request) {
+	ts.contacts.RLock()
+	respContacts := make([]string, 0, len(ts.contacts.created))
+	for contact := range ts.contacts.created {
+		respContacts = append(respContacts, contact)
 	}
-
-	ts.prospects.RLock()
-	requestedProspects, exists := ts.prospects.byBusinessUnitId[businessUnitIdHeader]
-	ts.prospects.RUnlock()
-
-	var respProspects []string
-	if exists {
-		for p := range maps.Keys(requestedProspects) {
-			respProspects = append(respProspects, p)
-		}
-
-	}
-	slices.Sort(respProspects)
+	ts.contacts.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(map[string]interface{}{"prospects": respProspects})
+	err := json.NewEncoder(w).Encode(map[string]interface{}{"contacts": respContacts})
 	if err != nil {
-		log.Printf("Failed to encode prospects query response: %v", err)
-		http.Error(w, "Failed to encode prospects query response", http.StatusInternalServerError)
+		log.Printf("Failed to encode contacts query response: %v", err)
+		http.Error(w, "Failed to encode contacts query response", http.StatusInternalServerError)
 	}
 }
 
@@ -228,8 +215,8 @@ func main() {
 	ts := &testServer{
 		expectedClientID:     c.ExpectedClientID,
 		expectedClientSecret: c.ExpectedClientSecret,
-		prospects: prospects{
-			byBusinessUnitId: make(prospectsByBusinessUnitId),
+		contacts: contacts{
+			created: make(createdContacts),
 		},
 		token: token{
 			active: generateToken(),
@@ -258,9 +245,9 @@ func main() {
 
 	// Pardot API
 	pardotMux := http.NewServeMux()
-	pardotMux.HandleFunc("/api/v5/objects/prospects", ts.createProspectsHandler)
+	pardotMux.HandleFunc("/api/v5/objects/prospects", ts.createContactsHandler)
 	if c.DevelopmentMode {
-		pardotMux.HandleFunc("/query_prospects", ts.queryProspectsHandler)
+		pardotMux.HandleFunc("/contacts", ts.queryContactsHandler)
 	}
 	pardotServer := &http.Server{
 		Addr:        fmt.Sprintf(":%d", c.PardotPort),

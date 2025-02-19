@@ -18,10 +18,10 @@ const (
 	// tokenPath is the path to the Salesforce OAuth2 token endpoint.
 	tokenPath = "/services/oauth2/token"
 
-	// prospectsPath is the path to the Pardot v5 Prospects endpoint. This
+	// contactsPath is the path to the Pardot v5 Prospects endpoint. This
 	// endpoint will create a new Prospect if one does not already exist with
 	// the same email address.
-	prospectsPath = "/api/v5/objects/prospects"
+	contactsPath = "/api/v5/objects/prospects"
 
 	// maxAttempts is the maximum number of attempts to retry a request.
 	maxAttempts = 3
@@ -37,7 +37,7 @@ const (
 )
 
 type PardotClient interface {
-	CreateProspect(email string) error
+	SendContact(email string) error
 }
 
 // oAuthToken holds the OAuth2 access token and its expiration.
@@ -53,7 +53,7 @@ type PardotClientImpl struct {
 	businessUnit string
 	clientId     string
 	clientSecret string
-	prospectsURL string
+	contactsURL  string
 	tokenURL     string
 	token        *oAuthToken
 	clk          clock.Clock
@@ -63,9 +63,9 @@ var _ PardotClient = &PardotClientImpl{}
 
 // NewPardotClientImpl creates a new PardotClientImpl.
 func NewPardotClientImpl(clk clock.Clock, businessUnit, clientId, clientSecret, oauthbaseURL, pardotBaseURL string) (*PardotClientImpl, error) {
-	prospectsURL, err := url.JoinPath(pardotBaseURL, prospectsPath)
+	contactsURL, err := url.JoinPath(pardotBaseURL, contactsPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to join prospects path: %w", err)
+		return nil, fmt.Errorf("failed to join contacts path: %w", err)
 	}
 	tokenURL, err := url.JoinPath(oauthbaseURL, tokenPath)
 	if err != nil {
@@ -76,7 +76,7 @@ func NewPardotClientImpl(clk clock.Clock, businessUnit, clientId, clientSecret, 
 		businessUnit: businessUnit,
 		clientId:     clientId,
 		clientSecret: clientSecret,
-		prospectsURL: prospectsURL,
+		contactsURL:  contactsURL,
 		tokenURL:     tokenURL,
 
 		token: &oAuthToken{},
@@ -133,9 +133,9 @@ func redactEmail(body []byte, email string) string {
 	return string(bytes.ReplaceAll(body, []byte(email), []byte("[REDACTED]")))
 }
 
-// CreateProspect submits an email to the Pardot Prospects endpoint, retrying up
+// SendContact submits an email to the Pardot Contacts endpoint, retrying up
 // to 3 times with exponential backoff.
-func (pc *PardotClientImpl) CreateProspect(email string) error {
+func (pc *PardotClientImpl) SendContact(email string) error {
 	var err error
 	for attempt := range maxAttempts {
 		time.Sleep(core.RetryBackoff(attempt, retryBackoffMin, retryBackoffMax, retryBackoffBase))
@@ -158,9 +158,9 @@ func (pc *PardotClientImpl) CreateProspect(email string) error {
 	for attempt := range maxAttempts {
 		time.Sleep(core.RetryBackoff(attempt, retryBackoffMin, retryBackoffMax, retryBackoffBase))
 
-		req, err := http.NewRequest("POST", pc.prospectsURL, bytes.NewReader(payload))
+		req, err := http.NewRequest("POST", pc.contactsURL, bytes.NewReader(payload))
 		if err != nil {
-			finalErr = fmt.Errorf("failed to create new prospect request: %w", err)
+			finalErr = fmt.Errorf("failed to create new contact request: %w", err)
 			continue
 		}
 		req.Header.Set("Content-Type", "application/json")
@@ -169,7 +169,7 @@ func (pc *PardotClientImpl) CreateProspect(email string) error {
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			finalErr = fmt.Errorf("create prospect request failed: %w", err)
+			finalErr = fmt.Errorf("create contact request failed: %w", err)
 			continue
 		}
 
@@ -180,10 +180,10 @@ func (pc *PardotClientImpl) CreateProspect(email string) error {
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			finalErr = fmt.Errorf("create prospect request returned status %d; while reading body: %w", resp.StatusCode, err)
+			finalErr = fmt.Errorf("create contact request returned status %d; while reading body: %w", resp.StatusCode, err)
 			continue
 		}
-		finalErr = fmt.Errorf("create prospect request returned status %d: %s", resp.StatusCode, redactEmail(body, email))
+		finalErr = fmt.Errorf("create contact request returned status %d: %s", resp.StatusCode, redactEmail(body, email))
 		continue
 	}
 

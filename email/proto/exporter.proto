@@ -6,9 +6,9 @@ option go_package = "github.com/letsencrypt/boulder/email/proto";
 import "google/protobuf/empty.proto";
 
 service Exporter {
-  rpc CreateProspects (CreateProspectsRequest) returns (google.protobuf.Empty);
+  rpc SendContacts (SendContactsRequest) returns (google.protobuf.Empty);
 }
 
-message CreateProspectsRequest {
+message SendContactsRequest {
   repeated string emails = 1;
 }

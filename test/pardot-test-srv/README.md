@@ -68,16 +68,16 @@ go run test/partdot-test-srv/main.go <config.json>
 }
 ```
 
-### Query Submitted Prospects (Development Mode Only)
+### Query Submitted Contacts (Development Mode Only)
 
-**Endpoint:** `GET /query_prospects`  
+**Endpoint:** `GET /contacts`  
 **Query Parameter:**  
 - `pardot_business_unit_id=<business_unit>`
 
 **Response:**
 ```json
 {
-  "prospects": [
+  "contacts": [
     "email1@example.com",
     "email2@example.com"
   ]

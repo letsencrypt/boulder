@@ -852,15 +852,15 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 	newRegistrationSuccessful = true
 
-	prospects := contactsToEmails(accountCreateRequest.Contact)
-	if wfe.ee != nil && len(prospects) > 0 {
-		_, err := wfe.ee.CreateProspects(ctx, &emailpb.CreateProspectsRequest{
+	emails := contactsToEmails(accountCreateRequest.Contact)
+	if wfe.ee != nil && len(emails) > 0 {
+		_, err := wfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{
 			// Note: We are explicitly using the contacts provided by the
 			// subscriber here, rather than the contacts returned by the RA.
-			Emails: prospects,
+			Emails: emails,
 		})
 		if err != nil {
-			wfe.log.Warningf("Error creating prospect: %v", err)
+			wfe.log.Warningf("Error creating contact: %v", err)
 		}
 	}
 }
@@ -1457,13 +1457,13 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		return nil, probs.ServerInternal("Error updating account")
 	}
 
-	prospects := contactsToEmails(accountUpdateRequest.Contact)
-	if wfe.ee != nil && len(prospects) > 0 {
-		_, err := wfe.ee.CreateProspects(ctx, &emailpb.CreateProspectsRequest{
-			Emails: prospects,
+	emails := contactsToEmails(accountUpdateRequest.Contact)
+	if wfe.ee != nil && len(emails) > 0 {
+		_, err := wfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{
+			Emails: emails,
 		})
 		if err != nil {
-			wfe.log.Warningf("Error creating prospect: %v", err)
+			wfe.log.Warningf("Error creating contact: %v", err)
 		}
 	}
 

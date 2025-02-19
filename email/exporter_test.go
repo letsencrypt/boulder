@@ -19,7 +19,7 @@ var ctx = context.Background()
 // MockPardotClientImpl is a mock implementation of PardotClient.
 type MockPardotClientImpl struct {
 	sync.Mutex
-	CreatedProspects []string
+	CreatedContacts []string
 }
 
 // NewMockPardotClientImpl returns a MockPardotClientImpl, implementing the
@@ -27,25 +27,25 @@ type MockPardotClientImpl struct {
 // for mock interaction and the struct for state inspection and modification.
 func NewMockPardotClientImpl() (PardotClient, *MockPardotClientImpl) {
 	mockImpl := &MockPardotClientImpl{
-		CreatedProspects: []string{},
+		CreatedContacts: []string{},
 	}
 	return mockImpl, mockImpl
 }
 
-// CreateProspect adds an email to CreatedProspects.
-func (m *MockPardotClientImpl) CreateProspect(email string) error {
+// SendContact adds an email to CreatedContacts.
+func (m *MockPardotClientImpl) SendContact(email string) error {
 	m.Lock()
 	defer m.Unlock()
 
-	m.CreatedProspects = append(m.CreatedProspects, email)
+	m.CreatedContacts = append(m.CreatedContacts, email)
 	return nil
 }
 
-func (m *MockPardotClientImpl) getCreatedProspects() []string {
+func (m *MockPardotClientImpl) getCreatedContacts() []string {
 	m.Lock()
 	defer m.Unlock()
 	// Return a copy to avoid race conditions.
-	return append([]string(nil), m.CreatedProspects...)
+	return append([]string(nil), m.CreatedContacts...)
 }
 
 func setup() (*ExporterImpl, *MockPardotClientImpl, func(), func()) {
@@ -64,25 +64,25 @@ func setup() (*ExporterImpl, *MockPardotClientImpl, func(), func()) {
 		}
 }
 
-func TestCreateProspects(t *testing.T) {
+func TestSendContacts(t *testing.T) {
 	t.Parallel()
 
 	exporter, clientImpl, start, cleanup := setup()
 	start()
 	defer cleanup()
 
-	_, err := exporter.CreateProspects(ctx, &emailpb.CreateProspectsRequest{
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 		Emails: []string{"test@example.com", "user@example.com"},
 	})
 
 	// Wait for the queue to be processed.
 	time.Sleep(100 * time.Millisecond)
 
-	test.AssertNotError(t, err, "Error creating prospects")
-	test.AssertEquals(t, 2, len(clientImpl.getCreatedProspects()))
+	test.AssertNotError(t, err, "Error creating contacts")
+	test.AssertEquals(t, 2, len(clientImpl.getCreatedContacts()))
 }
 
-func TestCreateProspectsQueueFull(t *testing.T) {
+func TestSendContactsQueueFull(t *testing.T) {
 	t.Parallel()
 
 	exporter, _, _, _ := setup()
@@ -92,13 +92,13 @@ func TestCreateProspectsQueueFull(t *testing.T) {
 	exporter.toSend = make([]string, queueCap-1)
 	exporter.Unlock()
 
-	_, err := exporter.CreateProspects(ctx, &emailpb.CreateProspectsRequest{
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 		Emails: []string{"test@example.com", "user@example.com"},
 	})
 	test.AssertErrorIs(t, err, ErrQueueFull)
 }
 
-func TestCreateProspectsQueueDrains(t *testing.T) {
+func TestSendContactsQueueDrains(t *testing.T) {
 	t.Parallel()
 
 	exporter, clientImpl, start, cleanup := setup()
@@ -110,14 +110,14 @@ func TestCreateProspectsQueueDrains(t *testing.T) {
 		emails = append(emails, fmt.Sprintf("test@%d.example.com", i))
 	}
 
-	_, err := exporter.CreateProspects(ctx, &emailpb.CreateProspectsRequest{
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
 		Emails: emails,
 	})
-	test.AssertNotError(t, err, "Error creating prospects")
+	test.AssertNotError(t, err, "Error creating contacts")
 
 	// Drain the queue.
 	cleanup()
 
 	// Check that the queue was drained.
-	test.AssertEquals(t, 100, len(clientImpl.getCreatedProspects()))
+	test.AssertEquals(t, 100, len(clientImpl.getCreatedContacts()))
 }

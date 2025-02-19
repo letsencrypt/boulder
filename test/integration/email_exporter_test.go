@@ -31,9 +31,9 @@ func randomDomain() string {
 	return fmt.Sprintf("%x.mail.com", bytes[:])
 }
 
-// TestProspectsCreatedForNewAccount tests that prospects are dispatched to
+// TestContactsSentForNewAccount tests that contacts are dispatched to
 // pardot-test-srv by the email-exporter when a new account is created.
-func TestProspectsCreatedForNewAccount(t *testing.T) {
+func TestContactsSentForNewAccount(t *testing.T) {
 	t.Parallel()
 
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
@@ -43,19 +43,19 @@ func TestProspectsCreatedForNewAccount(t *testing.T) {
 	domain := randomDomain()
 
 	tests := []struct {
-		name            string
-		contacts        []string
-		expectProspects []string
+		name           string
+		contacts       []string
+		expectContacts []string
 	}{
 		{
-			name:            "Single email",
-			contacts:        []string{"mailto:example@" + domain},
-			expectProspects: []string{"example@" + domain},
+			name:           "Single email",
+			contacts:       []string{"mailto:example@" + domain},
+			expectContacts: []string{"example@" + domain},
 		},
 		{
-			name:            "Multiple emails",
-			contacts:        []string{"mailto:example1@" + domain, "mailto:example2@" + domain},
-			expectProspects: []string{"example1@" + domain, "example2@" + domain},
+			name:           "Multiple emails",
+			contacts:       []string{"mailto:example1@" + domain, "mailto:example2@" + domain},
+			expectContacts: []string{"example1@" + domain, "example2@" + domain},
 		},
 	}
 
@@ -78,35 +78,35 @@ func TestProspectsCreatedForNewAccount(t *testing.T) {
 				t.Fatalf("failed to create initial account: %s", err)
 			}
 
-			// Wait for the prospects to be exported from the email exporter
+			// Wait for the contacts to be exported from the email exporter
 			// queue to pardot-test-srv.
 			time.Sleep(1 * time.Second)
 
 			httpClient := http.DefaultClient
-			resp, err := httpClient.Get("http://localhost:9602/query_prospects?" + url.Values{
+			resp, err := httpClient.Get("http://localhost:9602/contacts?" + url.Values{
 				"pardot_business_unit_id": []string{"test-business-unit"}}.Encode(),
 			)
-			test.AssertNotError(t, err, "Failed to query prospects")
+			test.AssertNotError(t, err, "Failed to query contacts")
 			test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 			defer resp.Body.Close()
 
 			var got struct {
-				Prospects []string `json:"prospects"`
+				Contacts []string `json:"contacts"`
 			}
 			decoder := json.NewDecoder(resp.Body)
 			err = decoder.Decode(&got)
-			test.AssertNotError(t, err, "Failed to decode prospects")
+			test.AssertNotError(t, err, "Failed to decode contacts")
 
-			for _, expectEmail := range tt.expectProspects {
-				test.AssertSliceContains(t, got.Prospects, expectEmail)
+			for _, expectEmail := range tt.expectContacts {
+				test.AssertSliceContains(t, got.Contacts, expectEmail)
 			}
 		})
 	}
 }
 
-// TestProspectsCreatedWhenAccountUpdated tests that prospects are dispatched to
+// TestContactsSentWhenAccountUpdated tests that contacts are dispatched to
 // pardot-test-srv by the email-exporter when an account is updated.
-func TestProspectsCreatedWhenAccountUpdated(t *testing.T) {
+func TestContactsSentWhenAccountUpdated(t *testing.T) {
 	t.Parallel()
 
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
@@ -131,19 +131,19 @@ func TestProspectsCreatedWhenAccountUpdated(t *testing.T) {
 	}
 
 	tests := []struct {
-		name            string
-		contacts        []string
-		expectProspects []string
+		name           string
+		contacts       []string
+		expectContacts []string
 	}{
 		{
-			name:            "Single email",
-			contacts:        []string{"mailto:example@" + domain},
-			expectProspects: []string{"example@" + domain},
+			name:           "Single email",
+			contacts:       []string{"mailto:example@" + domain},
+			expectContacts: []string{"example@" + domain},
 		},
 		{
-			name:            "Multiple emails",
-			contacts:        []string{"mailto:example1@" + domain, "mailto:example2@" + domain},
-			expectProspects: []string{"example1@" + domain, "example2@" + domain},
+			name:           "Multiple emails",
+			contacts:       []string{"mailto:example1@" + domain, "mailto:example2@" + domain},
+			expectContacts: []string{"example1@" + domain, "example2@" + domain},
 		},
 	}
 
@@ -154,27 +154,27 @@ func TestProspectsCreatedWhenAccountUpdated(t *testing.T) {
 			_, err := c.UpdateAccount(acct, tt.contacts...)
 			test.AssertNotError(t, err, "Failed to update account")
 
-			// Wait for the prospects to be exported from the email exporter
+			// Wait for the contacts to be exported from the email exporter
 			// queue to pardot-test-srv.
 			time.Sleep(1 * time.Second)
 
 			httpClient := http.DefaultClient
-			resp, err := httpClient.Get("http://localhost:9602/query_prospects?" + url.Values{
+			resp, err := httpClient.Get("http://localhost:9602/contacts?" + url.Values{
 				"pardot_business_unit_id": []string{"test-business-unit"}}.Encode(),
 			)
-			test.AssertNotError(t, err, "Failed to query prospects")
+			test.AssertNotError(t, err, "Failed to query contacts")
 			test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 			defer resp.Body.Close()
 
 			var got struct {
-				Prospects []string `json:"prospects"`
+				Contacts []string `json:"contacts"`
 			}
 			decoder := json.NewDecoder(resp.Body)
 			err = decoder.Decode(&got)
-			test.AssertNotError(t, err, "Failed to decode prospects")
+			test.AssertNotError(t, err, "Failed to decode contacts")
 
-			for _, expectEmail := range tt.expectProspects {
-				test.AssertSliceContains(t, got.Prospects, expectEmail)
+			for _, expectEmail := range tt.expectContacts {
+				test.AssertSliceContains(t, got.Contacts, expectEmail)
 			}
 		})
 	}

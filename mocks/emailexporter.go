@@ -15,7 +15,7 @@ import (
 // MockPardotClientImpl is a mock implementation of PardotClient.
 type MockPardotClientImpl struct {
 	sync.Mutex
-	CreatedProspects []string
+	CreatedContacts  []string
 	ForceCreateError bool
 }
 
@@ -24,23 +24,23 @@ type MockPardotClientImpl struct {
 // for mock interaction and the struct for state inspection and modification.
 func NewMockPardotClientImpl() (email.PardotClient, *MockPardotClientImpl) {
 	mockImpl := &MockPardotClientImpl{
-		CreatedProspects: []string{},
+		CreatedContacts:  []string{},
 		ForceCreateError: false,
 	}
 	return mockImpl, mockImpl
 }
 
-// CreateProspect adds an email to CreatedProspects. Returns an error if
+// SendContact adds an email to CreatedContacts. Returns an error if
 // ForceCreateError is set.
-func (m *MockPardotClientImpl) CreateProspect(email string) error {
+func (m *MockPardotClientImpl) SendContact(email string) error {
 	m.Lock()
 	defer m.Unlock()
 
 	if m.ForceCreateError {
-		return fmt.Errorf("error creating prospect")
+		return fmt.Errorf("error creating contact")
 	}
 
-	m.CreatedProspects = append(m.CreatedProspects, email)
+	m.CreatedContacts = append(m.CreatedContacts, email)
 	return nil
 }
 
@@ -57,11 +57,11 @@ func NewMockExporterImpl(pardotClient email.PardotClient) emailpb.ExporterClient
 	}
 }
 
-// CreateProspects submits emails to the inner PardotClient, returning an error
+// SendContacts submits emails to the inner PardotClient, returning an error
 // if any fail.
-func (m *MockExporterClientImpl) CreateProspects(ctx context.Context, req *emailpb.CreateProspectsRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+func (m *MockExporterClientImpl) SendContacts(ctx context.Context, req *emailpb.SendContactsRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	for _, e := range req.Emails {
-		if err := m.PardotClient.CreateProspect(e); err != nil {
+		if err := m.PardotClient.SendContact(e); err != nil {
 			return nil, err
 		}
 	}

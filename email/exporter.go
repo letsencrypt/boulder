@@ -80,9 +80,9 @@ func NewExporterImpl(client PardotClient, perDayLimit float64, scope prometheus.
 	return impl
 }
 
-// CreateProspects enqueues the provided email addresses. If the queue cannot
+// SendContacts enqueues the provided email addresses. If the queue cannot
 // accommodate the new emails, an ErrQueueFull is returned.
-func (impl *ExporterImpl) CreateProspects(ctx context.Context, req *emailpb.CreateProspectsRequest) (*emptypb.Empty, error) {
+func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendContactsRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req, req.Emails) {
 		return nil, berrors.InternalServerError("Incomplete UpsertEmails request")
 	}
@@ -141,9 +141,9 @@ func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 				}
 			}
 
-			err = impl.client.CreateProspect(email)
+			err = impl.client.SendContact(email)
 			if err != nil {
-				impl.log.Errf("Sending Prospect to Pardot: %s", err)
+				impl.log.Errf("Sending Contact to Pardot: %s", err)
 			}
 			impl.emailsHandledCounter.Inc()
 		}

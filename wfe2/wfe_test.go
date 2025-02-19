@@ -4068,7 +4068,7 @@ func TestNewOrderRateLimits(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
 }
 
-func TestNewAccountCreatesProspects(t *testing.T) {
+func TestNewAccountCreatesContacts(t *testing.T) {
 	t.Parallel()
 
 	key := loadKey(t, []byte(test2KeyPrivatePEM))
@@ -4144,13 +4144,13 @@ ALTERNATE SITE: If no reply, move to Observation Point B at Broken Cairn.`},
 			wfe.NewAccount(context.Background(), newRequestEvent(), responseWriter, request)
 
 			for _, email := range tc.expected {
-				test.AssertSliceContains(t, mockImpl.CreatedProspects, email)
+				test.AssertSliceContains(t, mockImpl.CreatedContacts, email)
 			}
 		})
 	}
 }
 
-func TestUpdateAccountCreatesProspects(t *testing.T) {
+func TestUpdateAccountCreatesContacts(t *testing.T) {
 	t.Parallel()
 
 	key := loadKey(t, []byte(test1KeyPrivatePEM))
@@ -4220,7 +4220,7 @@ TRANSMISSION LINE: Direct relay, Exchange Circuit No. 42.`},
 			wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 			test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 			for _, email := range tc.expected {
-				test.AssertSliceContains(t, mockImpl.CreatedProspects, email)
+				test.AssertSliceContains(t, mockImpl.CreatedContacts, email)
 			}
 		})
 	}

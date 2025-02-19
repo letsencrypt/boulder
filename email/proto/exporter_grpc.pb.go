@@ -20,14 +20,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Exporter_CreateProspects_FullMethodName = "/email.Exporter/CreateProspects"
+	Exporter_SendContacts_FullMethodName = "/email.Exporter/SendContacts"
 )
 
 // ExporterClient is the client API for Exporter service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ExporterClient interface {
-	CreateProspects(ctx context.Context, in *CreateProspectsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	SendContacts(ctx context.Context, in *SendContactsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type exporterClient struct {
@@ -38,10 +38,10 @@ func NewExporterClient(cc grpc.ClientConnInterface) ExporterClient {
 	return &exporterClient{cc}
 }
 
-func (c *exporterClient) CreateProspects(ctx context.Context, in *CreateProspectsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *exporterClient) SendContacts(ctx context.Context, in *SendContactsRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, Exporter_CreateProspects_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, Exporter_SendContacts_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func (c *exporterClient) CreateProspects(ctx context.Context, in *CreateProspect
 // All implementations must embed UnimplementedExporterServer
 // for forward compatibility
 type ExporterServer interface {
-	CreateProspects(context.Context, *CreateProspectsRequest) (*emptypb.Empty, error)
+	SendContacts(context.Context, *SendContactsRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedExporterServer()
 }
 
@@ -60,8 +60,8 @@ type ExporterServer interface {
 type UnimplementedExporterServer struct {
 }
 
-func (UnimplementedExporterServer) CreateProspects(context.Context, *CreateProspectsRequest) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method CreateProspects not implemented")
+func (UnimplementedExporterServer) SendContacts(context.Context, *SendContactsRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendContacts not implemented")
 }
 func (UnimplementedExporterServer) mustEmbedUnimplementedExporterServer() {}
 
@@ -76,20 +76,20 @@ func RegisterExporterServer(s grpc.ServiceRegistrar, srv ExporterServer) {
 	s.RegisterService(&Exporter_ServiceDesc, srv)
 }
 
-func _Exporter_CreateProspects_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(CreateProspectsRequest)
+func _Exporter_SendContacts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SendContactsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ExporterServer).CreateProspects(ctx, in)
+		return srv.(ExporterServer).SendContacts(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Exporter_CreateProspects_FullMethodName,
+		FullMethod: Exporter_SendContacts_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ExporterServer).CreateProspects(ctx, req.(*CreateProspectsRequest))
+		return srv.(ExporterServer).SendContacts(ctx, req.(*SendContactsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -102,8 +102,8 @@ var Exporter_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*ExporterServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "CreateProspects",
-			Handler:    _Exporter_CreateProspects_Handler,
+			MethodName: "SendContacts",
+			Handler:    _Exporter_SendContacts_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
