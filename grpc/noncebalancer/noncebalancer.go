@@ -2,6 +2,7 @@ package noncebalancer
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/letsencrypt/boulder/nonce"
 
@@ -61,8 +62,9 @@ func (b *Balancer) Build(buildInfo base.PickerBuildInfo) balancer.Picker {
 // Picker implements the balancer.Picker interface. It picks a backend (SubConn)
 // based on the nonce prefix contained in each request's Context.
 type Picker struct {
-	backends        map[balancer.SubConn]base.SubConnInfo
-	prefixToBackend map[string]balancer.SubConn
+	backends            map[balancer.SubConn]base.SubConnInfo
+	prefixToBackend     map[string]balancer.SubConn
+	prefixToBackendOnce sync.Once
 }
 
 // Compile-time assertion that *Picker implements the balancer.Picker interface.
@@ -90,7 +92,7 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		return balancer.PickResult{}, errInvalidHMACKeyCtxKeyType
 	}
 
-	if p.prefixToBackend == nil {
+	p.prefixToBackendOnce.Do(func() {
 		// First call to Pick with a new Picker.
 		prefixToBackend := make(map[string]balancer.SubConn)
 		for sc, scInfo := range p.backends {
@@ -98,7 +100,7 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 			prefixToBackend[scPrefix] = sc
 		}
 		p.prefixToBackend = prefixToBackend
-	}
+	})
 
 	// Get the destination prefix from the RPC context.
 	destPrefixVal := info.Ctx.Value(nonce.PrefixCtxKey{})
