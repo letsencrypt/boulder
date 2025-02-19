@@ -22,18 +22,22 @@ type MockCA struct {
 }
 
 // IssueCertificate is a mock
-func (ca *MockCA) IssueCertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	resp, err := ca.IssuePrecertificate(ctx, req)
+func (ca *MockCA) IssueCertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssueCertificateResponse, error) {
+	precert, err := ca.IssuePrecertificate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
-		DER:             resp.DER,
+	cert, err := ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
+		DER:             precert.DER,
 		SCTs:            nil,
 		RegistrationID:  req.RegistrationID,
 		OrderID:         req.OrderID,
-		CertProfileHash: resp.CertProfileHash,
+		CertProfileHash: precert.CertProfileHash,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return &capb.IssueCertificateResponse{DER: cert.Der}, nil
 }
 
 // IssuePrecertificate is a mock

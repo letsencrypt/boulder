@@ -148,7 +148,7 @@ func (m *caMetrics) noteSignError(err error) {
 type certificateAuthorityImpl struct {
 	capb.UnsafeCertificateAuthorityServer
 	sa           sapb.StorageAuthorityCertificateClient
-	sctService   rapb.SCTProviderClient
+	sctClient    rapb.SCTProviderClient
 	pa           core.PolicyAuthority
 	issuers      issuerMaps
 	certProfiles certProfilesMaps
@@ -273,7 +273,7 @@ func NewCertificateAuthorityImpl(
 
 	ca = &certificateAuthorityImpl{
 		sa:           sa,
-		sctService:   sctService,
+		sctClient:    sctService,
 		pa:           pa,
 		issuers:      issuers,
 		certProfiles: certProfiles,
@@ -356,29 +356,29 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	}, nil
 }
 
-func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*corepb.Certificate, error) {
-	if ca.sctService == nil {
+func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssueCertificateResponse, error) {
+	if ca.sctClient == nil {
 		return nil, errors.New("IssueCertificate called with a nil SCT service")
 	}
-	resp, err := ca.IssuePrecertificate(ctx, issueReq)
+	precert, err := ca.IssuePrecertificate(ctx, issueReq)
 	if err != nil {
 		return nil, err
 	}
-	scts, err := ca.sctService.GetSCTs(ctx, &rapb.SCTRequest{PrecertDER: resp.DER})
+	scts, err := ca.sctClient.GetSCTs(ctx, &rapb.SCTRequest{PrecertDER: precert.DER})
 	if err != nil {
 		return nil, err
 	}
 	cert, err := ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
-		DER:             resp.DER,
+		DER:             precert.DER,
 		SCTs:            scts.SctDER,
 		RegistrationID:  issueReq.RegistrationID,
 		OrderID:         issueReq.OrderID,
-		CertProfileHash: resp.CertProfileHash,
+		CertProfileHash: precert.CertProfileHash,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return cert, nil
+	return &capb.IssueCertificateResponse{DER: cert.Der}, nil
 }
 
 // IssueCertificateForPrecertificate final step in the [issuance cycle].

@@ -32,7 +32,7 @@ type CertificateAuthorityClient interface {
 	IssuePrecertificate(ctx context.Context, in *IssueCertificateRequest, opts ...grpc.CallOption) (*IssuePrecertificateResponse, error)
 	IssueCertificateForPrecertificate(ctx context.Context, in *IssueCertificateForPrecertificateRequest, opts ...grpc.CallOption) (*proto.Certificate, error)
 	// IssueCertificate issues a precertificate, gets SCTs, issues a certificate, and returns that.
-	IssueCertificate(ctx context.Context, in *IssueCertificateRequest, opts ...grpc.CallOption) (*proto.Certificate, error)
+	IssueCertificate(ctx context.Context, in *IssueCertificateRequest, opts ...grpc.CallOption) (*IssueCertificateResponse, error)
 }
 
 type certificateAuthorityClient struct {
@@ -63,9 +63,9 @@ func (c *certificateAuthorityClient) IssueCertificateForPrecertificate(ctx conte
 	return out, nil
 }
 
-func (c *certificateAuthorityClient) IssueCertificate(ctx context.Context, in *IssueCertificateRequest, opts ...grpc.CallOption) (*proto.Certificate, error) {
+func (c *certificateAuthorityClient) IssueCertificate(ctx context.Context, in *IssueCertificateRequest, opts ...grpc.CallOption) (*IssueCertificateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(proto.Certificate)
+	out := new(IssueCertificateResponse)
 	err := c.cc.Invoke(ctx, CertificateAuthority_IssueCertificate_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ type CertificateAuthorityServer interface {
 	IssuePrecertificate(context.Context, *IssueCertificateRequest) (*IssuePrecertificateResponse, error)
 	IssueCertificateForPrecertificate(context.Context, *IssueCertificateForPrecertificateRequest) (*proto.Certificate, error)
 	// IssueCertificate issues a precertificate, gets SCTs, issues a certificate, and returns that.
-	IssueCertificate(context.Context, *IssueCertificateRequest) (*proto.Certificate, error)
+	IssueCertificate(context.Context, *IssueCertificateRequest) (*IssueCertificateResponse, error)
 	mustEmbedUnimplementedCertificateAuthorityServer()
 }
 
@@ -94,7 +94,7 @@ func (UnimplementedCertificateAuthorityServer) IssuePrecertificate(context.Conte
 func (UnimplementedCertificateAuthorityServer) IssueCertificateForPrecertificate(context.Context, *IssueCertificateForPrecertificateRequest) (*proto.Certificate, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IssueCertificateForPrecertificate not implemented")
 }
-func (UnimplementedCertificateAuthorityServer) IssueCertificate(context.Context, *IssueCertificateRequest) (*proto.Certificate, error) {
+func (UnimplementedCertificateAuthorityServer) IssueCertificate(context.Context, *IssueCertificateRequest) (*IssueCertificateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IssueCertificate not implemented")
 }
 func (UnimplementedCertificateAuthorityServer) mustEmbedUnimplementedCertificateAuthorityServer() {}

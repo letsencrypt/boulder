@@ -124,8 +124,7 @@
 						"bad-key-revoker.boulder",
 						"ocsp-responder.boulder",
 						"wfe.boulder",
-						"sfe.boulder",
-						"ca.boulder"
+						"sfe.boulder"
 					]
 				},
 				"ra.SCTProvider": {

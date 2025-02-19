@@ -3362,7 +3362,7 @@ type MockCARecordingProfile struct {
 	profileHash []byte
 }
 
-func (ca *MockCARecordingProfile) IssueCertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+func (ca *MockCARecordingProfile) IssueCertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssueCertificateResponse, error) {
 	return nil, errors.New("IssueCertificate called in a test that didn't need it")
 }
 
