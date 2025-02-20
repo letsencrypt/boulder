@@ -429,6 +429,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		10*time.Second,
 		&MockRegistrationAuthority{clk: fc},
 		mockSA,
+		nil,
 		gnc,
 		rnc,
 		rncKey,
@@ -4065,4 +4066,162 @@ func TestNewOrderRateLimits(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
+}
+
+func TestNewAccountCreatesContacts(t *testing.T) {
+	t.Parallel()
+
+	key := loadKey(t, []byte(test2KeyPrivatePEM))
+	_, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load test2 key")
+
+	path := newAcctPath
+	signedURL := fmt.Sprintf("http://localhost%s", path)
+
+	testCases := []struct {
+		name     string
+		contacts []string
+		expected []string
+	}{
+		{
+			name:     "No email",
+			contacts: []string{},
+			expected: []string{},
+		},
+		{
+			name:     "One email",
+			contacts: []string{"mailto:person@mail.com"},
+			expected: []string{"person@mail.com"},
+		},
+		{
+			name:     "Two emails",
+			contacts: []string{"mailto:person1@mail.com", "mailto:person2@mail.com"},
+			expected: []string{"person1@mail.com", "person2@mail.com"},
+		},
+		{
+			name:     "Invalid email",
+			contacts: []string{"mailto:lol@%mail.com"},
+			expected: []string{},
+		},
+		{
+			name:     "One valid email, one invalid email",
+			contacts: []string{"mailto:person@mail.com", "mailto:lol@%mail.com"},
+			expected: []string{"person@mail.com"},
+		},
+		{
+			name:     "Valid email with non-email prefix",
+			contacts: []string{"heliograph:person@mail.com"},
+			expected: []string{},
+		},
+		{
+			name: "Non-email prefix with correct field signal instructions",
+			contacts: []string{`heliograph:STATION OF RECEPTION: High Ridge above Black Hollow, near Lone Pine.
+AZIMUTH TO SIGNAL STATION: Due West, bearing Twin Peaks.
+WATCH PERIOD: Third hour post-zenith; observation maintained for 30 minutes.
+SIGNAL CODE: Standard Morse, three-flash attention signal.
+ALTERNATE SITE: If no reply, move to Observation Point B at Broken Cairn.`},
+			expected: []string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			wfe, _, signer := setupWFE(t)
+
+			mockPardotClient, mockImpl := mocks.NewMockPardotClientImpl()
+			wfe.ee = mocks.NewMockExporterImpl(mockPardotClient)
+
+			contactsJSON, err := json.Marshal(tc.contacts)
+			test.AssertNotError(t, err, "Failed to marshal contacts")
+
+			payload := fmt.Sprintf(`{"contact":%s,"termsOfServiceAgreed":true}`, contactsJSON)
+			_, _, body := signer.embeddedJWK(key, signedURL, payload)
+			request := makePostRequestWithPath(path, body)
+
+			responseWriter := httptest.NewRecorder()
+			wfe.NewAccount(context.Background(), newRequestEvent(), responseWriter, request)
+
+			for _, email := range tc.expected {
+				test.AssertSliceContains(t, mockImpl.GetCreatedContacts(), email)
+			}
+		})
+	}
+}
+
+func TestUpdateAccountCreatesContacts(t *testing.T) {
+	t.Parallel()
+
+	key := loadKey(t, []byte(test1KeyPrivatePEM))
+	_, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load RSA key for acct 1")
+
+	testCases := []struct {
+		name     string
+		contacts []string
+		expected []string
+	}{
+		{
+			name:     "No email",
+			contacts: []string{},
+			expected: []string{},
+		},
+		{
+			name:     "One email",
+			contacts: []string{"mailto:person@mail.com"},
+			expected: []string{"person@mail.com"},
+		},
+		{
+			name:     "Two emails",
+			contacts: []string{"mailto:person1@mail.com", "mailto:person2@mail.com"},
+			expected: []string{"person1@mail.com", "person2@mail.com"},
+		},
+		{
+			name:     "Invalid email",
+			contacts: []string{"mailto:lol@%mail.com"},
+			expected: []string{},
+		},
+		{
+			name:     "One valid email, one invalid email",
+			contacts: []string{"mailto:person@mail.com", "mailto:lol@%mail.com"},
+			expected: []string{"person@mail.com"},
+		},
+		{
+			name:     "Valid email with invalid prefix",
+			contacts: []string{"pantelegraph:person@mail.com"},
+			expected: []string{},
+		},
+		{
+			name: "Non-email prefix with correct telegraphic notation",
+			contacts: []string{`pantelegraph:RECEIVING OFFICE: Bureau Room, Third Floor, Merchant House.
+TRANSMISSION LINE: Direct relay, Exchange Circuit No. 42.`},
+			expected: []string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			wfe, _, signer := setupWFE(t)
+			mockPardotClient, mockImpl := mocks.NewMockPardotClientImpl()
+			wfe.ee = mocks.NewMockExporterImpl(mockPardotClient)
+
+			responseWriter := httptest.NewRecorder()
+			contactsJSON, err := json.Marshal(tc.contacts)
+			test.AssertNotError(t, err, "Failed to marshal contacts")
+
+			newContact := fmt.Sprintf(`{"contact":%s}`, contactsJSON)
+			signedURL := "http://localhost/1"
+			path := "1"
+			_, _, body := signer.byKeyID(1, key, signedURL, newContact)
+			request := makePostRequestWithPath(path, body)
+			wfe.Account(ctx, newRequestEvent(), responseWriter, request)
+			test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+			for _, email := range tc.expected {
+				test.AssertSliceContains(t, mockImpl.GetCreatedContacts(), email)
+			}
+		})
+	}
 }
