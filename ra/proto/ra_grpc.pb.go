@@ -607,3 +607,94 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "ra.proto",
 }
+
+const (
+	SCTProvider_GetSCTs_FullMethodName = "/ra.SCTProvider/GetSCTs"
+)
+
+// SCTProviderClient is the client API for SCTProvider service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type SCTProviderClient interface {
+	GetSCTs(ctx context.Context, in *SCTRequest, opts ...grpc.CallOption) (*SCTResponse, error)
+}
+
+type sCTProviderClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewSCTProviderClient(cc grpc.ClientConnInterface) SCTProviderClient {
+	return &sCTProviderClient{cc}
+}
+
+func (c *sCTProviderClient) GetSCTs(ctx context.Context, in *SCTRequest, opts ...grpc.CallOption) (*SCTResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SCTResponse)
+	err := c.cc.Invoke(ctx, SCTProvider_GetSCTs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SCTProviderServer is the server API for SCTProvider service.
+// All implementations must embed UnimplementedSCTProviderServer
+// for forward compatibility
+type SCTProviderServer interface {
+	GetSCTs(context.Context, *SCTRequest) (*SCTResponse, error)
+	mustEmbedUnimplementedSCTProviderServer()
+}
+
+// UnimplementedSCTProviderServer must be embedded to have forward compatible implementations.
+type UnimplementedSCTProviderServer struct {
+}
+
+func (UnimplementedSCTProviderServer) GetSCTs(context.Context, *SCTRequest) (*SCTResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSCTs not implemented")
+}
+func (UnimplementedSCTProviderServer) mustEmbedUnimplementedSCTProviderServer() {}
+
+// UnsafeSCTProviderServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to SCTProviderServer will
+// result in compilation errors.
+type UnsafeSCTProviderServer interface {
+	mustEmbedUnimplementedSCTProviderServer()
+}
+
+func RegisterSCTProviderServer(s grpc.ServiceRegistrar, srv SCTProviderServer) {
+	s.RegisterService(&SCTProvider_ServiceDesc, srv)
+}
+
+func _SCTProvider_GetSCTs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SCTRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SCTProviderServer).GetSCTs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SCTProvider_GetSCTs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SCTProviderServer).GetSCTs(ctx, req.(*SCTRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// SCTProvider_ServiceDesc is the grpc.ServiceDesc for SCTProvider service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var SCTProvider_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "ra.SCTProvider",
+	HandlerType: (*SCTProviderServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetSCTs",
+			Handler:    _SCTProvider_GetSCTs_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "ra.proto",
+}

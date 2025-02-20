@@ -21,6 +21,25 @@ type MockCA struct {
 	PEM []byte
 }
 
+// IssueCertificate is a mock
+func (ca *MockCA) IssueCertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssueCertificateResponse, error) {
+	precert, err := ca.IssuePrecertificate(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	cert, err := ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
+		DER:             precert.DER,
+		SCTs:            nil,
+		RegistrationID:  req.RegistrationID,
+		OrderID:         req.OrderID,
+		CertProfileHash: precert.CertProfileHash,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &capb.IssueCertificateResponse{DER: cert.Der}, nil
+}
+
 // IssuePrecertificate is a mock
 func (ca *MockCA) IssuePrecertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
 	if ca.PEM == nil {

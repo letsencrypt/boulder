@@ -31,6 +31,7 @@ func TestOCSP(t *testing.T) {
 	testCtx := setup(t)
 	ca, err := NewCertificateAuthorityImpl(
 		&mockSA{},
+		mockSCTService{},
 		testCtx.pa,
 		testCtx.boulderIssuers,
 		testCtx.certProfiles,
