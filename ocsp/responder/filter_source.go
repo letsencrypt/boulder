@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
-	"crypto/sha1"
+	"crypto/sha1" //nolint: gosec // SHA1 is required by the RFC 5019 Lightweight OCSP Profile
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
