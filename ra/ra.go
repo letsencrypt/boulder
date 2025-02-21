@@ -1188,14 +1188,14 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	idents = identifier.SliceAsProto(identifier.SliceFromProto(idents, order.DnsNames))
 
 	// TODO(#7311): Remove this once all RPC users can handle Identifiers.
-	order.DnsNames = make([]string, len(idents))
-	for i, orderIdent := range idents {
-		order.DnsNames[i] = orderIdent.Value
+	var dnsNames []string
+	for _, orderIdent := range idents {
+		dnsNames = append(dnsNames, orderIdent.Value)
 	}
 
 	isRenewal := false
 	timestamps, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
-		DnsNames:    order.DnsNames,
+		DnsNames:    dnsNames,
 		Identifiers: idents,
 		Window:      durationpb.New(120 * 24 * time.Hour),
 		Limit:       1,
@@ -1275,9 +1275,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 //
 // TODO(#7311): Handle IP address identifiers.
 func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderIdents []identifier.ACMEIdentifier, isRenewal bool) {
-	names := make([]string, len(orderIdents))
-	for i, orderIdent := range orderIdents {
-		names[i] = orderIdent.Value
+	var names []string
+	for _, orderIdent := range orderIdents {
+		names = append(names, orderIdent.Value)
 	}
 
 	var transactions []ratelimits.Transaction
@@ -2382,10 +2382,10 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	dnsNames := make([]string, len(idents))
-	for i, ident := range idents {
+	var dnsNames []string
+	for _, ident := range idents {
 		if ident.Type == identifier.TypeDNS {
-			dnsNames[i] = ident.Value
+			dnsNames = append(dnsNames, ident.Value)
 		} else {
 			return nil, berrors.MalformedError(
 				"invalid non-DNS type identifier %s", ident.Value)

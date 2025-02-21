@@ -336,9 +336,9 @@ func HashNames(names []string) []byte {
 func HashIdentifiers(idents []identifier.ACMEIdentifier) []byte {
 	idents = identifier.Normalize(idents)
 
-	values := make([]string, len(idents))
-	for i, ident := range idents {
-		values[i] = ident.Value
+	var values []string
+	for _, ident := range idents {
+		values = append(values, ident.Value)
 	}
 
 	hash := sha256.Sum256([]byte(strings.Join(values, ",")))

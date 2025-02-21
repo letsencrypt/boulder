@@ -54,9 +54,9 @@ func FromProto(ident *corepb.Identifier) ACMEIdentifier {
 // SliceAsProto is a convenience function for converting a slice of
 // ACMEIdentifiers into a slice of *corepb.Identifiers, to use for RPCs.
 func SliceAsProto(idents []ACMEIdentifier) []*corepb.Identifier {
-	pbIdents := make([]*corepb.Identifier, len(idents))
-	for i, ident := range idents {
-		pbIdents[i] = ident.AsProto()
+	var pbIdents []*corepb.Identifier
+	for _, ident := range idents {
+		pbIdents = append(pbIdents, ident.AsProto())
 	}
 	return pbIdents
 }
@@ -70,20 +70,17 @@ func SliceAsProto(idents []ACMEIdentifier) []*corepb.Identifier {
 // TODO(#7311): The second parameter can be removed after DnsNames are no longer
 // used in RPCs.
 func SliceFromProto(pbIdents []*corepb.Identifier, names []string) []ACMEIdentifier {
+	var idents []ACMEIdentifier
+
 	if len(pbIdents) == 0 {
-		if len(names) == 0 {
-			return nil
-		}
-		idents := make([]ACMEIdentifier, len(names))
-		for i, name := range names {
-			idents[i] = NewDNS(name)
+		for _, name := range names {
+			idents = append(idents, NewDNS(name))
 		}
 		return idents
 	}
 
-	idents := make([]ACMEIdentifier, len(pbIdents))
-	for i, pbIdent := range pbIdents {
-		idents[i] = FromProto(pbIdent)
+	for _, pbIdent := range pbIdents {
+		idents = append(idents, FromProto(pbIdent))
 	}
 	return idents
 }

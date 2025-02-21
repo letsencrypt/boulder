@@ -2003,9 +2003,12 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 //
 // TODO(#7311): Handle IP address identifiers.
 func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, idents []identifier.ACMEIdentifier, isRenewal bool) (func(), error) {
-	names := make([]string, len(idents))
-	for i, ident := range idents {
-		names[i] = ident.Value
+	var names []string
+	for _, ident := range idents {
+		if ident.Type != identifier.TypeDNS {
+			return nil, fmt.Errorf("invalid non-DNS type identifier: type %q, value %q", ident.Type, ident.Value)
+		}
+		names = append(names, ident.Value)
 	}
 	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, isRenewal)
 	if err != nil {
@@ -2289,9 +2292,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	pbIdents := identifier.SliceAsProto(idents)
-	names := make([]string, len(idents))
-	for i, ident := range idents {
-		names[i] = ident.Value
+	var names []string
+	for _, ident := range idents {
+		names = append(names, ident.Value)
 	}
 
 	if features.Get().CheckIdentifiersPaused {

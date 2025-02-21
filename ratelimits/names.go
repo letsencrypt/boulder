@@ -202,9 +202,9 @@ func validateFQDNSet(id string) error {
 		return fmt.Errorf(
 			"invalid fqdnSet, %q must be formatted 'fqdnSet'", id)
 	}
-	idents := make([]identifier.ACMEIdentifier, len(domains))
-	for i, domain := range domains {
-		idents[i] = identifier.NewDNS(domain)
+	var idents []identifier.ACMEIdentifier
+	for _, domain := range domains {
+		idents = append(idents, identifier.NewDNS(domain))
 	}
 	return policy.WellFormedIdentifiers(idents)
 }

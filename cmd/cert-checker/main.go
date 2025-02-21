@@ -485,9 +485,9 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 				if features.Get().CertCheckerRequiresValidations {
 					problems = append(problems, err.Error())
 				} else {
-					identValues := make([]string, len(idents))
-					for i, ident := range idents {
-						identValues[i] = ident.Value
+					var identValues []string
+					for _, ident := range idents {
+						identValues = append(identValues, ident.Value)
 					}
 					c.logger.Errf("Certificate %s %s: %s", cert.Serial, identValues, err)
 				}
