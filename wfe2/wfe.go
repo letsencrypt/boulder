@@ -152,7 +152,6 @@ type WebFrontEndImpl struct {
 
 	limiter    *ratelimits.Limiter
 	txnBuilder *ratelimits.TransactionBuilder
-	maxNames   int
 
 	unpauseSigner      unpause.JWTSigner
 	unpauseJWTLifetime time.Duration
@@ -182,7 +181,6 @@ func NewWebFrontEndImpl(
 	accountGetter AccountGetter,
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,
-	maxNames int,
 	certProfiles map[string]string,
 	unpauseSigner unpause.JWTSigner,
 	unpauseJWTLifetime time.Duration,
@@ -221,7 +219,6 @@ func NewWebFrontEndImpl(
 		accountGetter:      accountGetter,
 		limiter:            limiter,
 		txnBuilder:         txnBuilder,
-		maxNames:           maxNames,
 		certProfiles:       certProfiles,
 		unpauseSigner:      unpauseSigner,
 		unpauseJWTLifetime: unpauseJWTLifetime,
@@ -2246,10 +2243,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	err = policy.WellFormedDomainNames(names)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Invalid identifiers requested"), nil)
-		return
-	}
-	if len(names) > wfe.maxNames {
-		wfe.sendError(response, logEvent, probs.Malformed("Order cannot contain more than %d DNS names", wfe.maxNames), nil)
 		return
 	}
 
