@@ -2,12 +2,12 @@ package sa
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"database/sql"
-	"encoding/base64"
 	"fmt"
 	"math/big"
 	"os"
@@ -388,35 +388,25 @@ func insertCertificate(ctx context.Context, dbMap *db.WrappedMap, fc clock.FakeC
 		SerialNumber: serialBigInt,
 	}
 
-	testKey := makeKey()
-	certDer, _ := x509.CreateCertificate(rand.Reader, &template, &template, &testKey.PublicKey, &testKey)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("generating test key: %w", err)
+	}
+	certDer, err := x509.CreateCertificate(rand.Reader, &template, &template, key.Public(), key)
+	if err != nil {
+		return fmt.Errorf("generating test cert: %w", err)
+	}
 	cert := &core.Certificate{
 		RegistrationID: regID,
 		Serial:         serialString,
 		Expires:        template.NotAfter,
 		DER:            certDer,
 	}
-	err := dbMap.Insert(ctx, cert)
+	err = dbMap.Insert(ctx, cert)
 	if err != nil {
 		return err
 	}
 	return nil
-}
-
-func bigIntFromB64(b64 string) *big.Int {
-	bytes, _ := base64.URLEncoding.DecodeString(b64)
-	x := big.NewInt(0)
-	x.SetBytes(bytes)
-	return x
-}
-
-func makeKey() rsa.PrivateKey {
-	n := bigIntFromB64("n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT-O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqVwGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuCLqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5gHdrNP5zw==")
-	e := int(bigIntFromB64("AQAB").Int64())
-	d := bigIntFromB64("bWUC9B-EFRIo8kpGfh0ZuyGPvMNKvYWNtB_ikiH9k20eT-O1q_I78eiZkpXxXQ0UTEs2LsNRS-8uJbvQ-A1irkwMSMkK1J3XTGgdrhCku9gRldY7sNA_AKZGh-Q661_42rINLRCe8W-nZ34ui_qOfkLnK9QWDDqpaIsA-bMwWWSDFu2MUBYwkHTMEzLYGqOe04noqeq1hExBTHBOBdkMXiuFhUq1BU6l-DqEiWxqg82sXt2h-LMnT3046AOYJoRioz75tSUQfGCshWTBnP5uDjd18kKhyv07lhfSJdrPdM5Plyl21hsFf4L_mHCuoFau7gdsPfHPxxjVOcOpBrQzwQ==")
-	p := bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
-	q := bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
-	return rsa.PrivateKey{PublicKey: rsa.PublicKey{N: n, E: e}, D: d, Primes: []*big.Int{p, q}}
 }
 
 func TestIncidentSerialModel(t *testing.T) {

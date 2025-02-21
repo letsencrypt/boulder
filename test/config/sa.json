@@ -49,7 +49,8 @@
 		},
 		"features": {
 			"UseKvLimitsForNewOrder": true,
-			"MultipleCertificateProfiles": true
+			"MultipleCertificateProfiles": true,
+			"InsertAuthzsIndividually": true
 		}
 	},
 	"syslog": {

@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"math/big"
-	"net"
 	"regexp"
 	"strings"
 	"time"
@@ -154,52 +152,6 @@ func (ssa *SQLStorageAuthorityRO) GetRegistrationByKey(ctx context.Context, req 
 	}
 
 	return registrationModelToPb(model)
-}
-
-// incrementIP returns a copy of `ip` incremented at a bit index `index`,
-// or in other words the first IP of the next highest subnet given a mask of
-// length `index`.
-// In order to easily account for overflow, we treat ip as a big.Int and add to
-// it. If the increment overflows the max size of a net.IP, return the highest
-// possible net.IP.
-func incrementIP(ip net.IP, index int) net.IP {
-	bigInt := new(big.Int)
-	bigInt.SetBytes([]byte(ip))
-	incr := new(big.Int).Lsh(big.NewInt(1), 128-uint(index))
-	bigInt.Add(bigInt, incr)
-	// bigInt.Bytes can be shorter than 16 bytes, so stick it into a
-	// full-sized net.IP.
-	resultBytes := bigInt.Bytes()
-	if len(resultBytes) > 16 {
-		return net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
-	}
-	result := make(net.IP, 16)
-	copy(result[16-len(resultBytes):], resultBytes)
-	return result
-}
-
-// ipRange returns a range of IP addresses suitable for querying MySQL for the
-// purpose of rate limiting using a range that is inclusive on the lower end and
-// exclusive at the higher end. If ip is an IPv4 address, it returns that address,
-// plus the one immediately higher than it. If ip is an IPv6 address, it applies
-// a /48 mask to it and returns the lowest IP in the resulting network, and the
-// first IP outside of the resulting network.
-func ipRange(ip net.IP) (net.IP, net.IP) {
-	ip = ip.To16()
-	// For IPv6, match on a certain subnet range, since one person can commonly
-	// have an entire /48 to themselves.
-	maskLength := 48
-	// For IPv4 addresses, do a match on exact address, so begin = ip and end =
-	// next higher IP.
-	if ip.To4() != nil {
-		maskLength = 128
-	}
-
-	mask := net.CIDRMask(maskLength, 128)
-	begin := ip.Mask(mask)
-	end := incrementIP(begin, maskLength)
-
-	return begin, end
 }
 
 func ReverseName(domain string) string {
@@ -1031,7 +983,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCertsByShard(req *sapb.GetRevokedCer
 
 		return stream.Send(&corepb.CRLEntry{
 			Serial:    row.Serial,
-			Reason:    int32(row.RevokedReason),
+			Reason:    int32(row.RevokedReason), //nolint: gosec // Revocation reasons are guaranteed to be small, no risk of overflow.
 			RevokedAt: timestamppb.New(row.RevokedDate),
 		})
 	})
@@ -1084,7 +1036,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsReque
 
 		return stream.Send(&corepb.CRLEntry{
 			Serial:    row.Serial,
-			Reason:    int32(row.RevokedReason),
+			Reason:    int32(row.RevokedReason), //nolint: gosec // Revocation reasons are guaranteed to be small, no risk of overflow.
 			RevokedAt: timestamppb.New(row.RevokedDate),
 		})
 	})

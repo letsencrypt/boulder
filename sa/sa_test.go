@@ -10,7 +10,6 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -764,15 +763,28 @@ func TestFQDNSetExists(t *testing.T) {
 	test.Assert(t, exists.Exists, "FQDN set does exist without DnsNames")
 }
 
-type queryRecorder struct {
-	query string
-	args  []interface{}
+type execRecorder struct {
+	valuesPerRow int
+	query        string
+	args         []interface{}
 }
 
-func (e *queryRecorder) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+func (e *execRecorder) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	e.query = query
 	e.args = args
-	return nil, nil
+	return rowsResult{int64(len(args) / e.valuesPerRow)}, nil
+}
+
+type rowsResult struct {
+	rowsAffected int64
+}
+
+func (r rowsResult) LastInsertId() (int64, error) {
+	return r.rowsAffected, nil
+}
+
+func (r rowsResult) RowsAffected() (int64, error) {
+	return r.rowsAffected, nil
 }
 
 func TestAddIssuedNames(t *testing.T) {
@@ -855,7 +867,7 @@ func TestAddIssuedNames(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			var e queryRecorder
+			e := execRecorder{valuesPerRow: 4}
 			err := addIssuedNames(
 				ctx,
 				&e,
@@ -933,9 +945,6 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
-	features.Set(features.Config{InsertAuthzsIndividually: true})
-	defer features.Reset()
-
 	reg := createWorkingRegistration(t, sa)
 
 	// Insert two pre-existing authorizations to reference
@@ -1007,9 +1016,6 @@ func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
-	features.Set(features.Config{InsertAuthzsIndividually: true})
-	defer features.Reset()
-
 	reg := createWorkingRegistration(t, sa)
 
 	expires := fc.Now().Add(2 * time.Hour)
@@ -1031,9 +1037,6 @@ func TestNewOrderAndAuthzs_MismatchedRegID(t *testing.T) {
 	sa, _, cleanup := initSA(t)
 	defer cleanup()
 
-	features.Set(features.Config{InsertAuthzsIndividually: true})
-	defer features.Reset()
-
 	_, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID: 1,
@@ -1051,9 +1054,6 @@ func TestNewOrderAndAuthzs_MismatchedRegID(t *testing.T) {
 func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
-
-	features.Set(features.Config{InsertAuthzsIndividually: true})
-	defer features.Reset()
 
 	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour)
@@ -1150,58 +1150,6 @@ func TestNewOrderAndAuthzs_Profile(t *testing.T) {
 	}
 	if gotAuthz.CertificateProfileName != "test" {
 		t.Errorf("authz.CertificateProfileName = %v, want %v", gotAuthz.CertificateProfileName, "test")
-	}
-}
-
-func BenchmarkNewOrderAndAuthzs(b *testing.B) {
-	for _, flag := range []bool{false, true} {
-		for _, numIdents := range []int{1, 2, 5, 10, 20, 50, 100} {
-			b.Run(fmt.Sprintf("%t/%d", flag, numIdents), func(b *testing.B) {
-				sa, _, cleanup := initSA(b)
-				defer cleanup()
-
-				if flag {
-					features.Set(features.Config{InsertAuthzsIndividually: true})
-					defer features.Reset()
-				}
-
-				reg := createWorkingRegistration(b, sa)
-
-				dnsNames := make([]string, 0, numIdents)
-				idents := make([]identifier.ACMEIdentifier, 0, numIdents)
-				newAuthzs := make([]*sapb.NewAuthzRequest, 0, numIdents)
-				for range numIdents {
-					var nameBytes [3]byte
-					_, _ = rand.Read(nameBytes[:])
-					name := fmt.Sprintf("%s.example.com", hex.EncodeToString(nameBytes[:]))
-
-					dnsNames = append(dnsNames, name)
-					idents = append(idents, identifier.NewDNS(name))
-					newAuthzs = append(newAuthzs, &sapb.NewAuthzRequest{
-						RegistrationID: reg.Id,
-						Identifier:     identifier.NewDNS(name).AsProto(),
-						ChallengeTypes: []string{string(core.ChallengeTypeDNS01)},
-						Token:          core.NewToken(),
-						Expires:        timestamppb.New(sa.clk.Now().Add(24 * time.Hour)),
-					})
-				}
-
-				b.ResetTimer()
-
-				_, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-					NewOrder: &sapb.NewOrderRequest{
-						RegistrationID: reg.Id,
-						Expires:        timestamppb.New(sa.clk.Now().Add(24 * time.Hour)),
-						DnsNames:       dnsNames,
-						Identifiers:    identifier.SliceAsProto(idents),
-					},
-					NewAuthzs: newAuthzs,
-				})
-				if err != nil {
-					b.Error(err)
-				}
-			})
-		}
 	}
 }
 
