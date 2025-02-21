@@ -103,24 +103,16 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 	}
 }
 
-// FromCert extracts the Subject Common Name and Subject Alternative Names from
-// a certificate, and returns a slice of ACMEIdentifiers and an error.
+// FromCert extracts the Subject Alternative Names from a certificate, and
+// returns a slice of ACMEIdentifiers and an error. It does not extract the
+// Subject Common Name.
 //
-// FromCSR is nearly identical but handles CSRs, and is kept separate so that
-// it's always clear we are handling an untrusted CSR.
+// FromCSR is similar but handles CSRs, and is kept separate so that it's always
+// clear we are handling an untrusted CSR.
 func FromCert(cert *x509.Certificate) ([]ACMEIdentifier, error) {
 	var sans []ACMEIdentifier
 	for _, name := range cert.DNSNames {
 		sans = append(sans, NewDNS(name))
-	}
-	if cert.Subject.CommonName != "" {
-		// Boulder won't generate certificates with a CN that's not also present
-		// in the SANs, but such a certificate is possible. If appended, this is
-		// deduplicated later with Normalize(). We assume the CN is a DNSName,
-		// because CNs are untyped strings without metadata, and we will never
-		// configure a Boulder profile to issue a certificate that contains both
-		// an IP address identifier and a CN.
-		sans = append(sans, NewDNS(cert.Subject.CommonName))
 	}
 
 	for _, netIP := range cert.IPAddresses {
@@ -137,8 +129,8 @@ func FromCert(cert *x509.Certificate) ([]ACMEIdentifier, error) {
 // FromCSR extracts the Subject Common Name and Subject Alternative Names from a
 // CSR, and returns a slice of ACMEIdentifiers and an error.
 //
-// FromCert is nearly identical but handles certs, and is kept separate so that
-// it's always clear we are handling an untrusted CSR.
+// FromCert is similar but handles certs, and is kept separate so that it's
+// always clear we are handling an untrusted CSR.
 func FromCSR(csr *x509.CertificateRequest) ([]ACMEIdentifier, error) {
 	var sans []ACMEIdentifier
 	for _, name := range csr.DNSNames {
