@@ -758,12 +758,8 @@ func TestFetchHTTP(t *testing.T) {
 	// redirect to the url with a port definition and on i=1 it will encounter
 	// the second redirect to the url with the port and get an expected error.
 	expectedLoopRecords := []core.ValidationRecord{}
-	for i := range 2 {
-		// The first request will not have a port # in the URL.
-		url := "http://example.com/loop"
-		if i != 0 {
-			url = fmt.Sprintf("http://example.com:%d/loop", httpPort)
-		}
+	for range 2 {
+		url := fmt.Sprintf("http://example.com:%d/loop", httpPort)
 		expectedLoopRecords = append(expectedLoopRecords,
 			core.ValidationRecord{
 				DnsName:           "example.com",
@@ -780,11 +776,7 @@ func TestFetchHTTP(t *testing.T) {
 	// base lookup, giving a termination criteria of > maxRedirect+1
 	expectedTooManyRedirRecords := []core.ValidationRecord{}
 	for i := range maxRedirect + 2 {
-		// The first request will not have a port # in the URL.
-		url := "http://example.com/max-redirect/0"
-		if i != 0 {
-			url = fmt.Sprintf("http://example.com:%d/max-redirect/%d", httpPort, i)
-		}
+		url := fmt.Sprintf("http://example.com:%d/max-redirect/%d", httpPort, i)
 		expectedTooManyRedirRecords = append(expectedTooManyRedirRecords,
 			core.ValidationRecord{
 				DnsName:           "example.com",
@@ -827,13 +819,13 @@ func TestFetchHTTP(t *testing.T) {
 			Port:  httpPort,
 			Path:  "/timeout",
 			ExpectedProblem: probs.Connection(
-				"127.0.0.1: Fetching http://example.com/timeout: " +
+				"127.0.0.1: Fetching http://example.com:" + strconv.Itoa(httpPort) + "/timeout: " +
 					"Timeout after connect (your server may be slow or overloaded)"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/timeout",
+					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/timeout",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
@@ -890,7 +882,7 @@ func TestFetchHTTP(t *testing.T) {
 				{
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/redir-bad-proto",
+					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/redir-bad-proto",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
@@ -909,7 +901,7 @@ func TestFetchHTTP(t *testing.T) {
 				{
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/redir-bad-port",
+					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/redir-bad-port",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
@@ -926,7 +918,7 @@ func TestFetchHTTP(t *testing.T) {
 				{
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/redir-bare-ip",
+					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/redir-bare-ip",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
@@ -951,7 +943,7 @@ func TestFetchHTTP(t *testing.T) {
 				{
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/redir-path-too-long",
+					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/redir-path-too-long",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
@@ -964,12 +956,12 @@ func TestFetchHTTP(t *testing.T) {
 			Port:  httpPort,
 			Path:  "/bad-status-code",
 			ExpectedProblem: probs.Unauthorized(
-				"127.0.0.1: Invalid response from http://example.com/bad-status-code: 410"),
+				"127.0.0.1: Invalid response from http://example.com:" + strconv.Itoa(httpPort) + "/bad-status-code: 410"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/bad-status-code",
+					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/bad-status-code",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
@@ -987,7 +979,7 @@ func TestFetchHTTP(t *testing.T) {
 				{
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/303-see-other",
+					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/303-see-other",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
@@ -1000,13 +992,13 @@ func TestFetchHTTP(t *testing.T) {
 			Port:  httpPort,
 			Path:  "/resp-too-big",
 			ExpectedProblem: probs.Unauthorized(fmt.Sprintf(
-				"127.0.0.1: Invalid response from http://example.com/resp-too-big: %q", expectedTruncatedResp.String(),
+				"127.0.0.1: Invalid response from http://example.com:"+strconv.Itoa(httpPort)+"/resp-too-big: %q", expectedTruncatedResp.String(),
 			)),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/resp-too-big",
+					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/resp-too-big",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
@@ -1019,12 +1011,12 @@ func TestFetchHTTP(t *testing.T) {
 			Port:  httpPort,
 			Path:  "/ok",
 			ExpectedProblem: probs.Connection(
-				"::1: Fetching http://ipv6.localhost/ok: Connection refused"),
+				"::1: Fetching http://ipv6.localhost:" + strconv.Itoa(httpPort) + "/ok: Connection refused"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "ipv6.localhost",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://ipv6.localhost/ok",
+					URL:               "http://ipv6.localhost:" + strconv.Itoa(httpPort) + "/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1")},
 					AddressUsed:       net.ParseIP("::1"),
 					ResolverAddrs:     []string{"MockClient"},
@@ -1041,7 +1033,7 @@ func TestFetchHTTP(t *testing.T) {
 				{
 					DnsName:           "ipv4.and.ipv6.localhost",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://ipv4.and.ipv6.localhost/ok",
+					URL:               "http://ipv4.and.ipv6.localhost:" + strconv.Itoa(httpPort) + "/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 					// The first validation record should have used the IPv6 addr
 					AddressUsed:   net.ParseIP("::1"),
@@ -1050,7 +1042,7 @@ func TestFetchHTTP(t *testing.T) {
 				{
 					DnsName:           "ipv4.and.ipv6.localhost",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://ipv4.and.ipv6.localhost/ok",
+					URL:               "http://ipv4.and.ipv6.localhost:" + strconv.Itoa(httpPort) + "/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 					// The second validation record should have used the IPv4 addr as a fallback
 					AddressUsed:   net.ParseIP("127.0.0.1"),
@@ -1068,7 +1060,7 @@ func TestFetchHTTP(t *testing.T) {
 				{
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/ok",
+					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/ok",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
@@ -1085,7 +1077,7 @@ func TestFetchHTTP(t *testing.T) {
 				{
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/redir-uppercase-publicsuffix",
+					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/redir-uppercase-publicsuffix",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
@@ -1107,7 +1099,7 @@ func TestFetchHTTP(t *testing.T) {
 			Path:  "/printf-verbs",
 			ExpectedProblem: &probs.ProblemDetails{
 				Type: probs.UnauthorizedProblem,
-				Detail: fmt.Sprintf("127.0.0.1: Invalid response from http://example.com/printf-verbs: %q",
+				Detail: fmt.Sprintf("127.0.0.1: Invalid response from http://example.com:"+strconv.Itoa(httpPort)+"/printf-verbs: %q",
 					("%2F.well-known%2F" + expectedTruncatedResp.String())[:maxResponseSize]),
 				HTTPStatus: http.StatusForbidden,
 			},
@@ -1115,7 +1107,7 @@ func TestFetchHTTP(t *testing.T) {
 				{
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/printf-verbs",
+					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/printf-verbs",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
@@ -1320,7 +1312,7 @@ func TestHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to follow http.StatusMovedPermanently redirect")
 	}
-	redirectValid := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
+	redirectValid := `following redirect to host "" url "http://localhost.com:` + strconv.Itoa(getPort(hs)) + `/.well-known/acme-challenge/` + pathValid + `"`
 	matchedValidRedirect := log.GetAllMatching(redirectValid)
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 
@@ -1329,7 +1321,7 @@ func TestHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to follow http.StatusFound redirect")
 	}
-	redirectMoved := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
+	redirectMoved := `following redirect to host "" url "http://localhost.com:` + strconv.Itoa(getPort(hs)) + `/.well-known/acme-challenge/` + pathMoved + `"`
 	matchedMovedRedirect := log.GetAllMatching(redirectMoved)
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
@@ -1368,7 +1360,7 @@ func TestHTTPTimeout(t *testing.T) {
 	}
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	test.AssertEquals(t, prob.Detail, "127.0.0.1: Fetching http://localhost/.well-known/acme-challenge/wait-long: Timeout after connect (your server may be slow or overloaded)")
+	test.AssertEquals(t, prob.Detail, "127.0.0.1: Fetching http://localhost:"+strconv.Itoa(getPort(hs))+"/.well-known/acme-challenge/wait-long: Timeout after connect (your server may be slow or overloaded)")
 }
 
 func TestHTTPRedirectLookup(t *testing.T) {
@@ -1380,7 +1372,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathMoved, err)
 	}
-	redirectValid := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathValid + `"`
+	redirectValid := `following redirect to host "" url "http://localhost.com:` + strconv.Itoa(getPort(hs)) + `/.well-known/acme-challenge/` + pathValid + `"`
 	matchedValidRedirect := log.GetAllMatching(redirectValid)
 	test.AssertEquals(t, len(matchedValidRedirect), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 2)
@@ -1390,7 +1382,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected failure in redirect (%s): %s", pathFound, err)
 	}
-	redirectMoved := `following redirect to host "" url "http://localhost.com/.well-known/acme-challenge/` + pathMoved + `"`
+	redirectMoved := `following redirect to host "" url "http://localhost.com:` + strconv.Itoa(getPort(hs)) + `/.well-known/acme-challenge/` + pathMoved + `"`
 	matchedMovedRedirect := log.GetAllMatching(redirectMoved)
 	test.AssertEquals(t, len(matchedMovedRedirect), 1)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 3)

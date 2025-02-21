@@ -431,7 +431,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// Create an initial GET Request
 	initialURL := url.URL{
 		Scheme: "http",
-		Host:   ident.Value,
+		Host:   net.JoinHostPort(ident.Value, strconv.Itoa(port)),
 		Path:   path,
 	}
 	initialReq, err := http.NewRequest("GET", initialURL.String(), nil)
@@ -481,7 +481,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	transport := httpTransport(dialer.DialContext)
 
 	va.log.AuditInfof("Attempting to validate HTTP-01 for %q with GET to %q",
-		initialReq.Host, initialReq.URL.String())
+		initialReq.URL.Hostname(), initialReq.URL.String())
 
 	// Create a closure around records & numRedirects we can use with a HTTP
 	// client to process redirects per our own policy (e.g. resolving IP
