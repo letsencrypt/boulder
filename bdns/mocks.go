@@ -28,6 +28,12 @@ func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string,
 		// expected token + test account jwk thumbprint
 		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
 	}
+	if hostname == "_acme-challenge.good-dns02.com" {
+		// base64(sha256("LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
+		//               + "." + "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"))
+		// expected token + test account jwk thumbprint
+		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
+	}
 	if hostname == "_acme-challenge.wrong-dns01.com" {
 		return []string{"a"}, ResolverAddrs{"MockClient"}, nil
 	}

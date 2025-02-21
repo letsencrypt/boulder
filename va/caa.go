@@ -37,7 +37,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		// TODO(#7061) Plumb req.Authz.Id as "AuthzID:" through from the RA to
 		// correlate which authz triggered this request.
 		Requester:  req.AccountURIID,
-		Identifier: req.Domain,
+		Identifier: identifier.NewDNS(req.Domain),
 	}
 
 	challType := core.AcmeChallenge(req.ValidationMethod)

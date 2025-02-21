@@ -299,7 +299,7 @@ func maxAllowedFailures(perspectiveCount int) int {
 type verificationRequestEvent struct {
 	AuthzID       string
 	Requester     int64
-	Identifier    string
+	Identifier    identifier.ACMEIdentifier
 	Challenge     core.Challenge
 	Error         string `json:",omitempty"`
 	InternalError string `json:",omitempty"`
@@ -422,8 +422,10 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	token string,
 	keyAuthorization string,
 ) ([]core.ValidationRecord, error) {
-	// Strip a (potential) leading wildcard token from the identifier.
-	ident.Value = strings.TrimPrefix(ident.Value, "*.")
+	if ident.Type == identifier.TypeDNS {
+		// Strip a (potential) leading wildcard token from the identifier.
+		ident.Value = strings.TrimPrefix(ident.Value, "*.")
+	}
 
 	switch kind {
 	case core.ChallengeTypeHTTP01:
@@ -676,7 +678,12 @@ func (va *ValidationAuthorityImpl) performLocalValidation(
 // also contains Problems. This method does NOT implement Multi-Perspective
 // Issuance Corroboration as defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	if core.IsAnyNilOrZero(req, req.DnsName, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
+	ident := req.Identifier
+	if ident == nil {
+		ident = identifier.NewDNS(req.DnsName).AsProto()
+	}
+
+	if core.IsAnyNilOrZero(req, ident, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
@@ -699,7 +706,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	logEvent := verificationRequestEvent{
 		AuthzID:    req.Authz.Id,
 		Requester:  req.Authz.RegID,
-		Identifier: req.DnsName,
+		Identifier: identifier.FromProto(ident),
 		Challenge:  chall,
 	}
 	defer func() {
@@ -732,7 +739,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	// was successful or not, and cannot themselves fail.
 	records, err := va.performLocalValidation(
 		ctx,
-		identifier.NewDNS(req.DnsName),
+		identifier.FromProto(ident),
 		req.Authz.RegID,
 		chall.Type,
 		chall.Token,

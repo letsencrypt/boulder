@@ -39,6 +39,13 @@ func (i ACMEIdentifier) AsProto() *corepb.Identifier {
 	}
 }
 
+func FromProto(ident *corepb.Identifier) ACMEIdentifier {
+	return ACMEIdentifier{
+		Type:  IdentifierType(ident.Type),
+		Value: ident.Value,
+	}
+}
+
 // NewDNS is a convenience function for creating an ACMEIdentifier with Type
 // "dns" for a given domain name.
 func NewDNS(domain string) ACMEIdentifier {

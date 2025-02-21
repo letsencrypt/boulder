@@ -9,6 +9,8 @@ import (
 	"slices"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -16,7 +18,6 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -199,7 +200,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 type validationLogEvent struct {
 	AuthzID       string
 	Requester     int64
-	Identifier    string
+	Identifier    identifier.ACMEIdentifier
 	Challenge     core.Challenge
 	Error         string `json:",omitempty"`
 	InternalError string `json:",omitempty"`
@@ -218,7 +219,12 @@ type validationLogEvent struct {
 // implements the DCV portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	if core.IsAnyNilOrZero(req, req.DnsName, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
+	ident := req.Identifier
+	if ident == nil {
+		ident = identifier.NewDNS(req.DnsName).AsProto()
+	}
+
+	if core.IsAnyNilOrZero(req, ident, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
@@ -242,7 +248,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	logEvent := validationLogEvent{
 		AuthzID:    req.Authz.Id,
 		Requester:  req.Authz.RegID,
-		Identifier: req.DnsName,
+		Identifier: identifier.FromProto(ident),
 		Challenge:  chall,
 	}
 	defer func() {
@@ -276,7 +282,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	// was successful or not, and cannot themselves fail.
 	records, err := va.validateChallenge(
 		ctx,
-		identifier.NewDNS(req.DnsName),
+		identifier.FromProto(ident),
 		chall.Type,
 		chall.Token,
 		req.ExpectedKeyAuthorization,
@@ -330,7 +336,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	logEvent := validationLogEvent{
 		AuthzID:    req.AuthzID,
 		Requester:  req.AccountURIID,
-		Identifier: req.Domain,
+		Identifier: identifier.NewDNS(req.Domain),
 	}
 
 	challType := core.AcmeChallenge(req.ValidationMethod)

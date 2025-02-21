@@ -51,7 +51,7 @@ func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
 func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
 	if ident.Type != identifier.TypeDNS {
 		va.log.Infof("Identifier type for DNS challenge was not DNS: %s", ident)
-		return nil, berrors.MalformedError("Identifier type for DNS was not itself DNS")
+		return nil, berrors.MalformedError("Identifier type for DNS challenge was not DNS")
 	}
 
 	// Compute the digest of the key authorization file

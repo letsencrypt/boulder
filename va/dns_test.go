@@ -23,7 +23,7 @@ func TestDNSValidationEmpty(t *testing.T) {
 
 	// This test calls PerformValidation directly, because that is where the
 	// metrics checked below are incremented.
-	req := createValidationRequest("empty-txts.com", core.ChallengeTypeDNS01)
+	req := createValidationRequest(identifier.NewDNS("empty-txts.com"), core.ChallengeTypeDNS01)
 	res, _ := va.PerformValidation(context.Background(), req)
 	test.AssertEquals(t, res.Problem.ProblemType, "unauthorized")
 	test.AssertEquals(t, res.Problem.Detail, "No TXT record found at _acme-challenge.empty-txts.com")
