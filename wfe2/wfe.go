@@ -867,10 +867,7 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 	if err != nil {
 		return nil, 0, probs.NotFound("No such certificate")
 	}
-	logEvent.Identifiers, err = identifier.FromCert(parsedCertificate)
-	if err != nil {
-		return nil, 0, probs.NotFound("Couldn't parse identifiers from certificate")
-	}
+	logEvent.Identifiers = identifier.FromCert(parsedCertificate)
 
 	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
 		return nil, 0, probs.Unauthorized("Certificate is expired")

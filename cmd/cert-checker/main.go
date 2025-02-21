@@ -472,14 +472,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		}
 
 		if features.Get().CertCheckerChecksValidations {
-			idents, err := identifier.FromCert(p)
-			if err != nil {
-				if features.Get().CertCheckerRequiresValidations {
-					problems = append(problems, err.Error())
-				} else {
-					c.logger.Errf("Couldn't parse identifiers from certificate %s: %s", cert.Serial, err)
-				}
-			}
+			idents := identifier.FromCert(p)
 			err = c.checkValidations(ctx, cert, idents)
 			if err != nil {
 				if features.Get().CertCheckerRequiresValidations {

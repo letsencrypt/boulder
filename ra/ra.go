@@ -615,10 +615,7 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 		return berrors.InternalServerError("generated certificate public key doesn't match CSR public key")
 	}
 
-	csrIdents, err := identifier.FromCSR(csr)
-	if err != nil {
-		return berrors.InternalServerError("couldn't parse identifiers from CSR")
-	}
+	csrIdents := identifier.FromCSR(csr)
 	if parsedCertificate.Subject.CommonName != "" {
 		// Only check that the issued common name matches one of the SANs if there
 		// is an issued CN at all: this allows flexibility on whether we include
@@ -635,10 +632,7 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 		}
 	}
 
-	parsedIdents, err := identifier.FromCert(parsedCertificate)
-	if err != nil {
-		return berrors.InternalServerError("couldn't parse identifiers from certificate")
-	}
+	parsedIdents := identifier.FromCert(parsedCertificate)
 	if !slices.Equal(csrIdents, parsedIdents) {
 		return berrors.InternalServerError("generated certificate identifiers don't match CSR identifiers")
 	}
@@ -1109,10 +1103,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
-	csrIdents, err := identifier.FromCSR(csr)
-	if err != nil {
-		return nil, err
-	}
+	csrIdents := identifier.FromCSR(csr)
 	// Check that the order names and the CSR names are an exact match
 	if !slices.Equal(csrIdents, orderIdents) {
 		return nil, berrors.UnauthorizedError("CSR does not specify same identifiers as Order")
@@ -1245,21 +1236,15 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 				"profileHash": hex.EncodeToString(cpId.hash),
 			}).Inc()
 
-		certIdents, err := identifier.FromCert(cert)
-		if err != nil {
-			logEvent.Error = err.Error()
-			result = "error"
-		} else {
-			logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
-			logEvent.CommonName = cert.Subject.CommonName
-			logEvent.Identifiers = certIdents
-			logEvent.NotBefore = cert.NotBefore
-			logEvent.NotAfter = cert.NotAfter
-			logEvent.CertProfileName = cpId.name
-			logEvent.CertProfileHash = hex.EncodeToString(cpId.hash)
+		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
+		logEvent.CommonName = cert.Subject.CommonName
+		logEvent.Identifiers = identifier.FromCert(cert)
+		logEvent.NotBefore = cert.NotBefore
+		logEvent.NotAfter = cert.NotAfter
+		logEvent.CertProfileName = cpId.name
+		logEvent.CertProfileHash = hex.EncodeToString(cpId.hash)
 
-			result = "successful"
-		}
+		result = "successful"
 	}
 
 	logEvent.ResponseTime = ra.clk.Now()
@@ -1385,10 +1370,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return nil, nil, wrapError(err, "parsing final certificate")
 	}
-	idents, err := identifier.FromCert(parsedCertificate)
-	if err != nil {
-		return nil, nil, wrapError(err, "parsing identifiers from certificate")
-	}
+	idents := identifier.FromCert(parsedCertificate)
 
 	ra.countCertificateIssued(ctx, int64(acctID), idents, isRenewal)
 

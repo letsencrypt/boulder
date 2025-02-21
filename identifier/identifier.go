@@ -109,21 +109,20 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 //
 // FromCSR is similar but handles CSRs, and is kept separate so that it's always
 // clear we are handling an untrusted CSR.
-func FromCert(cert *x509.Certificate) ([]ACMEIdentifier, error) {
+func FromCert(cert *x509.Certificate) []ACMEIdentifier {
 	var sans []ACMEIdentifier
 	for _, name := range cert.DNSNames {
 		sans = append(sans, NewDNS(name))
 	}
 
-	for _, netIP := range cert.IPAddresses {
-		netipAddr, ok := netip.AddrFromSlice(netIP)
-		if !ok {
-			return nil, fmt.Errorf("converting IP from bytes: %s", netIP)
-		}
-		sans = append(sans, NewIP(netipAddr))
+	for _, ip := range cert.IPAddresses {
+		sans = append(sans, ACMEIdentifier{
+			Type:  TypeIP,
+			Value: ip.String(),
+		})
 	}
 
-	return Normalize(sans), nil
+	return Normalize(sans)
 }
 
 // FromCSR extracts the Subject Common Name and Subject Alternative Names from a
@@ -131,7 +130,7 @@ func FromCert(cert *x509.Certificate) ([]ACMEIdentifier, error) {
 //
 // FromCert is similar but handles certs, and is kept separate so that it's
 // always clear we are handling an untrusted CSR.
-func FromCSR(csr *x509.CertificateRequest) ([]ACMEIdentifier, error) {
+func FromCSR(csr *x509.CertificateRequest) []ACMEIdentifier {
 	var sans []ACMEIdentifier
 	for _, name := range csr.DNSNames {
 		sans = append(sans, NewDNS(name))
@@ -146,15 +145,14 @@ func FromCSR(csr *x509.CertificateRequest) ([]ACMEIdentifier, error) {
 		sans = append(sans, NewDNS(csr.Subject.CommonName))
 	}
 
-	for _, netIP := range csr.IPAddresses {
-		netipAddr, ok := netip.AddrFromSlice(netIP)
-		if !ok {
-			return nil, fmt.Errorf("converting IP from bytes: %s", netIP)
-		}
-		sans = append(sans, NewIP(netipAddr))
+	for _, ip := range csr.IPAddresses {
+		sans = append(sans, ACMEIdentifier{
+			Type:  TypeIP,
+			Value: ip.String(),
+		})
 	}
 
-	return Normalize(sans), nil
+	return Normalize(sans)
 }
 
 // Normalize returns the set of all unique ACME identifiers in the

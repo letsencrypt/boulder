@@ -311,13 +311,10 @@ func (m *mailer) updateLastNagTimestampsChunk(ctx context.Context, certs []*x509
 }
 
 func (m *mailer) certIsRenewed(ctx context.Context, cert *x509.Certificate) (bool, error) {
-	idents, err := identifier.FromCert(cert)
-	if err != nil {
-		return false, err
-	}
+	idents := identifier.FromCert(cert)
 
 	var present bool
-	err = m.dbMap.SelectOne(
+	err := m.dbMap.SelectOne(
 		ctx,
 		&present,
 		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? AND issued > ? LIMIT 1)`,

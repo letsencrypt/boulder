@@ -355,8 +355,7 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 	test.AssertNotError(t, err, "setting up DB")
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	test.AssertNotError(t, err, "parsing certificate to x509")
-	idents, err := identifier.FromCert(parsedCert)
-	test.AssertNotError(t, err, "parsing identifiers from certificate")
+	idents := identifier.FromCert(parsedCert)
 	err = setupDBMap.Insert(ctx, &core.FQDNSet{
 		SetHash: core.HashIdentifiers(idents),
 		Serial:  core.SerialToString(serial2),
@@ -575,8 +574,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []certDERWithRegID {
 
 	parsedCertD, err := x509.ParseCertificate(certD.DER)
 	test.AssertNotError(t, err, "parsing certificate to x509")
-	idents, err := identifier.FromCert(parsedCertD)
-	test.AssertNotError(t, err, "parsing identifiers from certificate")
+	idents := identifier.FromCert(parsedCertD)
 
 	fqdnStatusD := &core.FQDNSet{
 		SetHash: core.HashIdentifiers(idents),
@@ -748,10 +746,8 @@ func TestCertIsRenewed(t *testing.T) {
 		}
 		parsedCert, err := x509.ParseCertificate(certDer)
 		test.AssertNotError(t, err, "parsing certificate to x509")
-		idents, err := identifier.FromCert(parsedCert)
-		test.AssertNotError(t, err, "parsing identifiers from certificate")
 		fqdnStatus := &core.FQDNSet{
-			SetHash: core.HashIdentifiers(idents),
+			SetHash: core.HashIdentifiers(identifier.FromCert(parsedCert)),
 			Serial:  testData.stringSerial,
 			Issued:  testData.NotBefore,
 			Expires: testData.NotAfter,

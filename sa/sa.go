@@ -345,10 +345,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
-		idents, err := identifier.FromCert(parsed)
-		if err != nil {
-			return nil, err
-		}
+		idents := identifier.FromCert(parsed)
 
 		isRenewal, err := ssa.checkFQDNSetExists(
 			ctx,
@@ -389,10 +386,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	}
 	digest := core.Fingerprint256(req.Der)
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
-	idents, err := identifier.FromCert(parsedCertificate)
-	if err != nil {
-		return nil, err
-	}
+	idents := identifier.FromCert(parsedCertificate)
 
 	cert := &core.Certificate{
 		RegistrationID: req.RegID,

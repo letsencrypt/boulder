@@ -172,9 +172,7 @@ func TestFromCSR(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			idents, err := FromCSR(tc.csr)
-			test.AssertNotError(t, err, "Error parsing identifiers from CSR")
-			test.AssertDeepEquals(t, idents, tc.expectedIdents)
+			test.AssertDeepEquals(t, FromCSR(tc.csr), tc.expectedIdents)
 		})
 	}
 }
