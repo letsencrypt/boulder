@@ -173,17 +173,20 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 
 // TODO(#7311): Identifiers need testing here.
 func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) error {
+	var tagType int
 	var certSAN []byte
 	switch ident.Type {
 	case identifier.TypeDNS:
 		if len(cert.DNSNames) != 1 || len(cert.IPAddresses) != 0 {
 			return errors.New("wrong number of identifiers")
 		}
+		tagType = 2
 		certSAN = []byte(cert.DNSNames[0])
 	case identifier.TypeIP:
 		if len(cert.IPAddresses) != 1 || len(cert.DNSNames) != 0 {
 			return errors.New("wrong number of identifiers")
 		}
+		tagType = 7
 		certSAN = cert.IPAddresses[0]
 	default:
 		// This should never happen. The calling function should check the
@@ -194,7 +197,7 @@ func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) e
 	for _, ext := range cert.Extensions {
 		if IdCeSubjectAltName.Equal(ext.Id) {
 			expectedSANs, err := asn1.Marshal([]asn1.RawValue{
-				{Tag: 2, Class: 2, Bytes: certSAN},
+				{Tag: tagType, Class: 2, Bytes: certSAN},
 			})
 			if err != nil || !bytes.Equal(expectedSANs, ext.Value) {
 				return errors.New("SAN extension does not match expected bytes")

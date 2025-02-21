@@ -560,7 +560,7 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 		http.Redirect(
 			resp,
 			req,
-			"https://127.0.0.1",
+			"http://127.0.0.1/ok",
 			http.StatusMovedPermanently,
 		)
 	})
@@ -926,10 +926,17 @@ func TestFetchHTTP(t *testing.T) {
 				{
 					DnsName:           "example.com",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/redir-bad-host",
+					URL:               "http://example.com/redir-bare-ip",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
+				},
+				{
+					DnsName:           "127.0.0.1",
+					Port:              strconv.Itoa(httpPort),
+					URL:               "http://127.0.0.1/ok",
+					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
+					AddressUsed:       net.ParseIP("127.0.0.1"),
 				},
 			},
 		},

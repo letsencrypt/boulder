@@ -377,9 +377,9 @@ func TestTLSALPN01SuccessIP(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, prob := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
-	if prob != nil {
-		t.Errorf("Validation failed: %v", prob)
+	_, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
+	if err != nil {
+		t.Errorf("Validation failed: %v", err)
 	}
 	test.AssertMetricWithLabelsEquals(
 		t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifier.String()}, 1)
