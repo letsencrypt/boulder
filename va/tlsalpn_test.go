@@ -78,8 +78,8 @@ func testTLSCert(names []string, ips []net.IP, extensions []pkix.Extension) *tls
 // testACMECert returns a certificate with the correctly-formed ACME TLS-ALPN-01
 // extension with our default test values. Use acmeExtension and testCert if you
 // need to customize the contents of that extension.
-func testACMECert(names []string, ips []net.IP) *tls.Certificate {
-	return testTLSCert(names, ips, []pkix.Extension{testACMEExt})
+func testACMECert(names []string) *tls.Certificate {
+	return testTLSCert(names, nil, []pkix.Extension{testACMEExt})
 }
 
 // tlsalpn01SrvWithCert creates a test server which will present the given
@@ -113,7 +113,7 @@ func tlsalpn01SrvWithCert(t *testing.T, acmeCert *tls.Certificate, tlsVersion ui
 // that don't need to customize specific names or extensions in the certificate
 // served by the TLS server.
 func testTLSALPN01Srv(t *testing.T) *httptest.Server {
-	return tlsalpn01SrvWithCert(t, testACMECert([]string{"expected"}, nil), 0)
+	return tlsalpn01SrvWithCert(t, testACMECert([]string{"expected"}), 0)
 }
 
 func slowTLSSrv() *httptest.Server {
@@ -508,7 +508,7 @@ func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
 }
 
 func TestTLSALPN01TLSVersion(t *testing.T) {
-	cert := testACMECert([]string{"expected"}, nil)
+	cert := testACMECert([]string{"expected"})
 
 	for _, tc := range []struct {
 		version     uint16
@@ -553,7 +553,7 @@ func TestTLSALPN01TLSVersion(t *testing.T) {
 
 func TestTLSALPN01WrongName(t *testing.T) {
 	// Create a cert with a different name from what we're validating
-	hs := tlsalpn01SrvWithCert(t, testACMECert([]string{"incorrect"}, nil), 0)
+	hs := tlsalpn01SrvWithCert(t, testACMECert([]string{"incorrect"}), 0)
 
 	va, _ := setup(hs, "", nil, nil)
 
@@ -564,7 +564,7 @@ func TestTLSALPN01WrongName(t *testing.T) {
 
 func TestTLSALPN01ExtraNames(t *testing.T) {
 	// Create a cert with two names when we only want to validate one.
-	hs := tlsalpn01SrvWithCert(t, testACMECert([]string{"expected", "extra"}, nil), 0)
+	hs := tlsalpn01SrvWithCert(t, testACMECert([]string{"expected", "extra"}), 0)
 
 	va, _ := setup(hs, "", nil, nil)
 

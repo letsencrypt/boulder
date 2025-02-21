@@ -843,7 +843,7 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:  "Connecting to bad port",
 			Ident: identifier.NewDNS("example.com"),
-			Port:  1023,
+			Port:  httpPort,
 			Path:  "/timeout",
 			ExpectedProblem: probs.Connection(
 				"127.0.0.1: Fetching http://example.com:" + strconv.Itoa(httpPort) + "/timeout: " +
