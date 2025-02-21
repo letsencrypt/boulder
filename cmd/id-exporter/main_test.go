@@ -2,11 +2,11 @@ package notmain
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/base64"
 	"fmt"
 	"math/big"
 	"os"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	blog "github.com/letsencrypt/boulder/log"
@@ -321,17 +322,9 @@ func (tc testCtx) addCertificates(t *testing.T) {
 	serial3String := core.SerialToString(serial3)
 	serial4 := big.NewInt(1339)
 	serial4String := core.SerialToString(serial4)
-	n := bigIntFromB64("n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT-O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqVwGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuCLqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5gHdrNP5zw==")
-	e := intFromB64("AQAB")
-	d := bigIntFromB64("bWUC9B-EFRIo8kpGfh0ZuyGPvMNKvYWNtB_ikiH9k20eT-O1q_I78eiZkpXxXQ0UTEs2LsNRS-8uJbvQ-A1irkwMSMkK1J3XTGgdrhCku9gRldY7sNA_AKZGh-Q661_42rINLRCe8W-nZ34ui_qOfkLnK9QWDDqpaIsA-bMwWWSDFu2MUBYwkHTMEzLYGqOe04noqeq1hExBTHBOBdkMXiuFhUq1BU6l-DqEiWxqg82sXt2h-LMnT3046AOYJoRioz75tSUQfGCshWTBnP5uDjd18kKhyv07lhfSJdrPdM5Plyl21hsFf4L_mHCuoFau7gdsPfHPxxjVOcOpBrQzwQ==")
-	p := bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
-	q := bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
 
-	testKey := rsa.PrivateKey{
-		PublicKey: rsa.PublicKey{N: n, E: e},
-		D:         d,
-		Primes:    []*big.Int{p, q},
-	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "creating test key")
 
 	fc := clock.NewFake()
 
@@ -344,14 +337,14 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: serial1,
 	}
-	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
+	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, key.Public(), key)
 	certA := &core.Certificate{
 		RegistrationID: regA.Id,
 		Serial:         serial1String,
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
-	err := tc.c.dbMap.Insert(ctx, certA)
+	err = tc.c.dbMap.Insert(ctx, certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
 	_, err = tc.c.dbMap.ExecContext(
 		ctx,
@@ -370,7 +363,7 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		DNSNames:     []string{"example-b.com"},
 		SerialNumber: serial2,
 	}
-	certDerB, _ := x509.CreateCertificate(rand.Reader, &rawCertB, &rawCertB, &testKey.PublicKey, &testKey)
+	certDerB, _ := x509.CreateCertificate(rand.Reader, &rawCertB, &rawCertB, key.Public(), key)
 	certB := &core.Certificate{
 		RegistrationID: regB.Id,
 		Serial:         serial2String,
@@ -396,7 +389,7 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		DNSNames:     []string{"example-c.com"},
 		SerialNumber: serial3,
 	}
-	certDerC, _ := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, &testKey.PublicKey, &testKey)
+	certDerC, _ := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, key.Public(), key)
 	certC := &core.Certificate{
 		RegistrationID: regC.Id,
 		Serial:         serial3String,
@@ -422,7 +415,7 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		DNSNames:     []string{"example-d.com"},
 		SerialNumber: serial4,
 	}
-	certDerD, _ := x509.CreateCertificate(rand.Reader, &rawCertD, &rawCertD, &testKey.PublicKey, &testKey)
+	certDerD, _ := x509.CreateCertificate(rand.Reader, &rawCertD, &rawCertD, key.Public(), key)
 	certD := &core.Certificate{
 		RegistrationID: regD.Id,
 		Serial:         serial4String,
@@ -465,15 +458,4 @@ func setup(t *testing.T) testCtx {
 		ssa:     isa.SA{Impl: ssa},
 		cleanUp: cleanUp,
 	}
-}
-
-func bigIntFromB64(b64 string) *big.Int {
-	bytes, _ := base64.URLEncoding.DecodeString(b64)
-	x := big.NewInt(0)
-	x.SetBytes(bytes)
-	return x
-}
-
-func intFromB64(b64 string) int {
-	return int(bigIntFromB64(b64).Int64())
 }

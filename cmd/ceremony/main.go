@@ -96,7 +96,7 @@ func postIssuanceLinting(fc *x509.Certificate, skipLints []string) error {
 
 type keyGenConfig struct {
 	Type         string `yaml:"type"`
-	RSAModLength uint   `yaml:"rsa-mod-length"`
+	RSAModLength int    `yaml:"rsa-mod-length"`
 	ECDSACurve   string `yaml:"ecdsa-curve"`
 }
 

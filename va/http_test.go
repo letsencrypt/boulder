@@ -1265,7 +1265,7 @@ func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Expected validation to fail when file mismatched.")
 	}
-	expected := `The key authorization file from the server did not match this challenge. Expected "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI" (got "\xef\xffAABBCC")`
+	expected := fmt.Sprintf(`The key authorization file from the server did not match this challenge. Expected "%s" (got "\xef\xffAABBCC")`, expectedKeyAuthorization)
 	if err.Error() != expected {
 		t.Errorf("validation failed with %s, expected %s", err, expected)
 	}

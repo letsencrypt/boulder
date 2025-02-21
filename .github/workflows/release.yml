@@ -15,7 +15,8 @@ jobs:
       fail-fast: false
       matrix:
         GO_VERSION:
-          - "1.23.1"
+          - "1.23.6"
+          - "1.24.0"
     runs-on: ubuntu-20.04
     permissions:
       contents: write
@@ -51,7 +52,7 @@ jobs:
         run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb boulder*.tar.gz boulder*.checksums.txt
 
       - name: Build ct-test-srv Container
-        run: docker buildx build . --build-arg "GO_VERSION=${{ matrix.GO_VERSION }}" -f test/ct-test-srv/Dockerfile -t "ghcr.io/letsencrypt/ct-test-srv:${{ github.ref_name }}"
+        run: docker buildx build . --build-arg "GO_VERSION=${{ matrix.GO_VERSION }}" -f test/ct-test-srv/Dockerfile -t "ghcr.io/letsencrypt/ct-test-srv:${{ github.ref_name }}-go${{ matrix.GO_VERSION }}"
 
       - name: Login to ghcr.io
         run: printenv GITHUB_TOKEN | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -59,4 +60,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push ct-test-srv Container
-        run: docker push "ghcr.io/letsencrypt/ct-test-srv:${{ github.ref_name }}"
+        run: docker push "ghcr.io/letsencrypt/ct-test-srv:${{ github.ref_name }}-go${{ matrix.GO_VERSION }}"
