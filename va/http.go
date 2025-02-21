@@ -203,7 +203,7 @@ func (vt *httpValidationTarget) nextIP() error {
 // An error is returned if there are no usable IP addresses or if the DNS
 // lookups fail.
 //
-// TODO(#7311): This needs testing with IP address identifiers.
+// TODO(#8020): This needs testing with IP address identifiers.
 func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
@@ -643,7 +643,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 }
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, token string, keyAuthorization string) ([]core.ValidationRecord, error) {
-	// TODO(#7311): This needs testing.
+	// TODO(#8020): This needs testing.
 	if ident.Type != identifier.TypeDNS && ident.Type != identifier.TypeIP {
 		va.log.Info(fmt.Sprintf("Identifier type for HTTP-01 challenge was not DNS or IP: %s", ident))
 		return nil, berrors.MalformedError("Identifier type for HTTP-01 challenge was not DNS or IP")

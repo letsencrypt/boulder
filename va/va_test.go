@@ -603,7 +603,7 @@ func TestPerformValidationValid(t *testing.T) {
 // TestPerformValidationWildcard tests that the VA properly strips the `*.`
 // prefix from a wildcard name provided to the PerformValidation function.
 //
-// TODO(#7311): This or another test should check that an IP address identifier
+// TODO(#8020): This or another test should check that an IP address identifier
 // with a wildcard is rejected.
 func TestPerformValidationWildcard(t *testing.T) {
 	t.Parallel()

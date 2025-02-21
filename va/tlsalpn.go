@@ -57,7 +57,7 @@ func certAltNames(cert *x509.Certificate) []string {
 	return names
 }
 
-// TODO(#7311): Identifiers need testing here.
+// TODO(#8020): Identifiers need testing here.
 func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
@@ -171,22 +171,22 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 	return certs[0], &cs, nil
 }
 
-// TODO(#7311): Identifiers need testing here.
+// TODO(#8020): Identifiers need testing here.
 func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) error {
-	var tagType int
+	var asn1Tag int
 	var certSAN []byte
 	switch ident.Type {
 	case identifier.TypeDNS:
 		if len(cert.DNSNames) != 1 || len(cert.IPAddresses) != 0 {
 			return errors.New("wrong number of identifiers")
 		}
-		tagType = 2
+		asn1Tag = 2
 		certSAN = []byte(cert.DNSNames[0])
 	case identifier.TypeIP:
 		if len(cert.IPAddresses) != 1 || len(cert.DNSNames) != 0 {
 			return errors.New("wrong number of identifiers")
 		}
-		tagType = 7
+		asn1Tag = 7
 		certSAN = cert.IPAddresses[0]
 	default:
 		// This should never happen. The calling function should check the
@@ -197,7 +197,7 @@ func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) e
 	for _, ext := range cert.Extensions {
 		if IdCeSubjectAltName.Equal(ext.Id) {
 			expectedSANs, err := asn1.Marshal([]asn1.RawValue{
-				{Tag: tagType, Class: 2, Bytes: certSAN},
+				{Tag: asn1Tag, Class: 2, Bytes: certSAN},
 			})
 			if err != nil || !bytes.Equal(expectedSANs, ext.Value) {
 				return errors.New("SAN extension does not match expected bytes")
@@ -235,13 +235,13 @@ func checkAcceptableExtensions(exts []pkix.Extension, requiredOIDs []asn1.Object
 }
 
 func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
-	// TODO(#7311): This needs testing.
+	// TODO(#8020): This needs testing.
 	if ident.Type != identifier.TypeDNS && ident.Type != identifier.TypeIP {
 		va.log.Info(fmt.Sprintf("Identifier type for TLS-ALPN-01 challenge was not DNS or IP: %s", ident))
 		return nil, berrors.MalformedError("Identifier type for TLS-ALPN-01 challenge was not DNS or IP")
 	}
 
-	cert, cs, tvr, problem := va.tryGetChallengeCert(ctx, ident, &tls.Config{
+	cert, cs, tvr, err := va.tryGetChallengeCert(ctx, ident, &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		NextProtos: []string{ACMETLS1Protocol},
 		ServerName: ident.Value,
@@ -250,8 +250,8 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, ident 
 	// get a reference to it so we can modify it if we have to.
 	validationRecords := []core.ValidationRecord{tvr}
 	validationRecord := &validationRecords[0]
-	if problem != nil {
-		return validationRecords, problem
+	if err != nil {
+		return validationRecords, err
 	}
 
 	if cs.NegotiatedProtocol != ACMETLS1Protocol {
@@ -271,7 +271,7 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, ident 
 	}
 
 	// The certificate must be self-signed.
-	err := cert.CheckSignature(cert.SignatureAlgorithm, cert.RawTBSCertificate, cert.Signature)
+	err = cert.CheckSignature(cert.SignatureAlgorithm, cert.RawTBSCertificate, cert.Signature)
 	if err != nil || !bytes.Equal(cert.RawSubject, cert.RawIssuer) {
 		return validationRecords, badCertErr(
 			"Received certificate which is not self-signed.")
