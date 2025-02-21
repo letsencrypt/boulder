@@ -750,27 +750,6 @@ func TestFetchHTTP(t *testing.T) {
 	// We need to know the randomly assigned HTTP port for testcases as well
 	httpPort := getPort(testSrv)
 
-	// For the looped test case we expect one validation record per redirect
-	// until boulder detects that a url has been used twice indicating a
-	// redirect loop. Because it is hitting the /loop endpoint it will encounter
-	// this scenario after the base url and fail on the second time hitting the
-	// redirect with a port definition. On i=0 it will encounter the first
-	// redirect to the url with a port definition and on i=1 it will encounter
-	// the second redirect to the url with the port and get an expected error.
-	expectedLoopRecords := []core.ValidationRecord{}
-	for range 2 {
-		url := fmt.Sprintf("http://example.com:%d/loop", httpPort)
-		expectedLoopRecords = append(expectedLoopRecords,
-			core.ValidationRecord{
-				DnsName:           "example.com",
-				Port:              strconv.Itoa(httpPort),
-				URL:               url,
-				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
-				AddressUsed:       net.ParseIP("127.0.0.1"),
-				ResolverAddrs:     []string{"MockClient"},
-			})
-	}
-
 	// For the too many redirect test case we expect one validation record per
 	// redirect up to maxRedirect (inclusive). There is also +1 record for the
 	// base lookup, giving a termination criteria of > maxRedirect+1
@@ -858,7 +837,16 @@ func TestFetchHTTP(t *testing.T) {
 			Path:  "/loop",
 			ExpectedProblem: probs.Connection(fmt.Sprintf(
 				"127.0.0.1: Fetching http://example.com:%d/loop: Redirect loop detected", httpPort)),
-			ExpectedRecords: expectedLoopRecords,
+			ExpectedRecords: []core.ValidationRecord{
+				{
+					DnsName:           "example.com",
+					Port:              strconv.Itoa(httpPort),
+					URL:               fmt.Sprintf("http://example.com:%d/loop", httpPort),
+					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
+					AddressUsed:       net.ParseIP("127.0.0.1"),
+					ResolverAddrs:     []string{"MockClient"},
+				},
+			},
 		},
 		{
 			Name:  "Too many redirects",
