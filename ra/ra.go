@@ -89,7 +89,6 @@ type RegistrationAuthorityImpl struct {
 	maxContactsPerReg   int
 	limiter             *ratelimits.Limiter
 	txnBuilder          *ratelimits.TransactionBuilder
-	maxNames            int
 	finalizeTimeout     time.Duration
 	drainWG             sync.WaitGroup
 
@@ -252,7 +251,6 @@ func NewRegistrationAuthorityImpl(
 		keyPolicy:                  keyPolicy,
 		limiter:                    limiter,
 		txnBuilder:                 txnBuilder,
-		maxNames:                   maxNames,
 		publisher:                  pubc,
 		finalizeTimeout:            finalizeTimeout,
 		ctpolicy:                   ctp,
@@ -293,6 +291,12 @@ type ValidationProfileConfig struct {
 	// expires earlier than this OrderLifetime would otherwise set, then the
 	// order's expiration is brought in to match that authorization.
 	OrderLifetime config.Duration `validate:"required"`
+	// MaxNames is the maximum number of subjectAltNames in a single cert.
+	// The value supplied MUST be greater than 0 and no more than 100. These
+	// limits are per section 7.1 of our combined CP/CPS, under "DV-SSL
+	// Subscriber Certificate". The value must be less than or equal to the
+	// global (i.e. not per-profile) value configured in the CA.
+	MaxNames int `validate:"omitempty,min=1,max=100"`
 	// AllowList specifies the path to a YAML file containing a list of
 	// account IDs permitted to use this profile. If no path is
 	// specified, the profile is open to all accounts. If the file
@@ -303,21 +307,23 @@ type ValidationProfileConfig struct {
 // validationProfile holds the order and authz lifetimes and allowlist for a
 // given validation profile.
 type validationProfile struct {
-	// PendingAuthzLifetime defines how far in the future an authorization's
+	// pendingAuthzLifetime defines how far in the future an authorization's
 	// "expires" timestamp is set when it is first created, i.e. how much
 	// time the applicant has to attempt the challenge.
 	pendingAuthzLifetime time.Duration
-	// ValidAuthzLifetime defines how far in the future an authorization's
+	// validAuthzLifetime defines how far in the future an authorization's
 	// "expires" timestamp is set when one of its challenges is fulfilled,
 	// i.e. how long a validated authorization may be reused.
 	validAuthzLifetime time.Duration
-	// OrderLifetime defines how far in the future an order's "expires"
+	// orderLifetime defines how far in the future an order's "expires"
 	// timestamp is set when it is first created, i.e. how much time the
 	// applicant has to fulfill all challenges and finalize the order. This is
 	// a maximum time: if the order reuses an authorization and that authz
 	// expires earlier than this OrderLifetime would otherwise set, then the
 	// order's expiration is brought in to match that authorization.
 	orderLifetime time.Duration
+	// maxNames is the maximum number of subjectAltNames in a single cert.
+	maxNames int
 	// allowList holds the set of account IDs allowed to use this profile. If
 	// nil, the profile is open to all accounts (everyone is allowed).
 	allowList *allowlist.List[int64]
@@ -333,7 +339,7 @@ type validationProfiles struct {
 // NewValidationProfiles builds a new validationProfiles struct from the given
 // configs and default name. It enforces that the given authorization lifetimes
 // are within the bounds mandated by the Baseline Requirements.
-func NewValidationProfiles(defaultName string, configs map[string]ValidationProfileConfig) (*validationProfiles, error) {
+func NewValidationProfiles(defaultName string, configs map[string]*ValidationProfileConfig) (*validationProfiles, error) {
 	if defaultName == "" {
 		return nil, errors.New("default profile name must be configured")
 	}
@@ -357,6 +363,10 @@ func NewValidationProfiles(defaultName string, configs map[string]ValidationProf
 			return nil, fmt.Errorf("ValidAuthzLifetime value must be greater than 0 and less than 398d, but got %q", config.ValidAuthzLifetime.Duration)
 		}
 
+		if config.MaxNames <= 0 || config.MaxNames > 100 {
+			return nil, fmt.Errorf("MaxNames must be greater than 0 and at most 100")
+		}
+
 		var allowList *allowlist.List[int64]
 		if config.AllowList != "" {
 			data, err := os.ReadFile(config.AllowList)
@@ -373,6 +383,7 @@ func NewValidationProfiles(defaultName string, configs map[string]ValidationProf
 			pendingAuthzLifetime: config.PendingAuthzLifetime.Duration,
 			validAuthzLifetime:   config.ValidAuthzLifetime.Duration,
 			orderLifetime:        config.OrderLifetime.Duration,
+			maxNames:             config.MaxNames,
 			allowList:            allowList,
 		}
 	}
@@ -1094,7 +1105,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 
 	}
 
-	err = csrlib.VerifyCSR(ctx, csr, ra.maxNames, &ra.keyPolicy, ra.PA)
+	err = csrlib.VerifyCSR(ctx, csr, profile.maxNames, &ra.keyPolicy, ra.PA)
 	if err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
@@ -2295,11 +2306,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		ReplacesSerial:         req.ReplacesSerial,
 	}
 
-	if len(newOrder.DnsNames) > ra.maxNames {
-		return nil, berrors.MalformedError(
-			"Order cannot contain more than %d DNS names", ra.maxNames)
-	}
-
 	profile, err := ra.profiles.get(req.CertificateProfileName)
 	if err != nil {
 		return nil, err
@@ -2310,6 +2316,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			req.RegistrationID,
 			req.CertificateProfileName,
 		)
+	}
+
+	if len(newOrder.DnsNames) > profile.maxNames {
+		return nil, berrors.MalformedError(
+			"Order cannot contain more than %d DNS names", profile.maxNames)
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order

@@ -28,7 +28,7 @@ func TestTooBigOrderError(t *testing.T) {
 	var prob acme.Problem
 	test.AssertErrorWraps(t, err, &prob)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:malformed")
-	test.AssertEquals(t, prob.Detail, "Order cannot contain more than 100 DNS names")
+	test.AssertContains(t, prob.Detail, "Order cannot contain more than 100 DNS names")
 }
 
 // TestAccountEmailError tests that registering a new account, or updating an

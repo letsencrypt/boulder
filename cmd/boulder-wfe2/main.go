@@ -149,13 +149,6 @@ type Config struct {
 			Overrides string
 		}
 
-		// MaxNames is the maximum number of subjectAltNames in a single cert.
-		// The value supplied SHOULD be greater than 0 and no more than 100,
-		// defaults to 100. These limits are per section 7.1 of our combined
-		// CP/CPS, under "DV-SSL Subscriber Certificate". The value must match
-		// the CA and RA configurations.
-		MaxNames int `validate:"min=0,max=100"`
-
 		// CertProfiles is a map of acceptable certificate profile names to
 		// descriptions (perhaps including URLs) of those profiles. NewOrder
 		// Requests with a profile name not present in this map will be rejected.
@@ -240,11 +233,6 @@ func main() {
 	}
 	if *debugAddr != "" {
 		c.WFE.DebugAddr = *debugAddr
-	}
-	maxNames := c.WFE.MaxNames
-	if maxNames == 0 {
-		// Default to 100 names per cert.
-		maxNames = 100
 	}
 
 	certChains := map[issuance.NameID][][]byte{}
@@ -357,7 +345,6 @@ func main() {
 		accountGetter,
 		limiter,
 		txnBuilder,
-		maxNames,
 		c.WFE.CertProfiles,
 		unpauseSigner,
 		c.WFE.Unpause.JWTLifetime.Duration,

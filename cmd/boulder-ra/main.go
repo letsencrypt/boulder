@@ -78,13 +78,14 @@ type Config struct {
 		// limits are per section 7.1 of our combined CP/CPS, under "DV-SSL
 		// Subscriber Certificate". The value must match the CA and WFE
 		// configurations.
-		MaxNames int `validate:"required,min=1,max=100"`
+		// Deprecated: Set ValidationProfiles[*].MaxNames instead.
+		MaxNames int `validate:"omitempty,min=1,max=100"`
 
 		// ValidationProfiles is a map of validation profiles to their
 		// respective issuance allow lists. If a profile is not included in this
 		// mapping, it cannot be used by any account. If this field is left
 		// empty, all profiles are open to all accounts.
-		ValidationProfiles map[string]ra.ValidationProfileConfig `validate:"required"`
+		ValidationProfiles map[string]*ra.ValidationProfileConfig `validate:"required"`
 
 		// DefaultProfileName sets the profile to use if one wasn't provided by the
 		// client in the new-order request. Must match a configured validation
@@ -243,6 +244,16 @@ func main() {
 		cmd.Fail("At least one profile must be configured")
 	}
 
+	// TODO(#7993): Remove this fallback and make ValidationProfile.MaxNames a
+	// required config field. We don't do any validation on the value of this
+	// top-level MaxNames because that happens inside the call to
+	// NewValidationProfiles below.
+	for _, pc := range c.RA.ValidationProfiles {
+		if pc.MaxNames == 0 {
+			pc.MaxNames = c.RA.MaxNames
+		}
+	}
+
 	validationProfiles, err := ra.NewValidationProfiles(c.RA.DefaultProfileName, c.RA.ValidationProfiles)
 	cmd.FailOnError(err, "Failed to load validation profiles")
 
@@ -260,10 +271,6 @@ func main() {
 
 	kp, err := sagoodkey.NewPolicy(&c.RA.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
-
-	if c.RA.MaxNames == 0 {
-		cmd.Fail("Error in RA config: MaxNames must not be 0")
-	}
 
 	var limiter *ratelimits.Limiter
 	var txnBuilder *ratelimits.TransactionBuilder
