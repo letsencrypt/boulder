@@ -420,10 +420,9 @@ func fallbackErr(err error) bool {
 func (va *ValidationAuthorityImpl) processHTTPValidation(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
-	port int,
 	path string) ([]byte, []core.ValidationRecord, error) {
 	// Create a target for the host, port and path with no query parameters
-	target, err := va.newHTTPValidationTarget(ctx, ident, port, path, "")
+	target, err := va.newHTTPValidationTarget(ctx, ident, va.httpPort, path, "")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -431,7 +430,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// Create an initial GET Request
 	initialURL := url.URL{
 		Scheme: "http",
-		Host:   net.JoinHostPort(ident.Value, strconv.Itoa(port)),
+		Host:   ident.Value,
 		Path:   path,
 	}
 	initialReq, err := http.NewRequest("GET", initialURL.String(), nil)
@@ -481,7 +480,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	transport := httpTransport(dialer.DialContext)
 
 	va.log.AuditInfof("Attempting to validate HTTP-01 for %q with GET to %q",
-		initialReq.URL.Hostname(), initialReq.URL.String())
+		initialReq.Host, initialReq.URL.String())
 
 	// Create a closure around records & numRedirects we can use with a HTTP
 	// client to process redirects per our own policy (e.g. resolving IP
@@ -651,7 +650,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident ide
 
 	// Perform the fetch
 	path := fmt.Sprintf(".well-known/acme-challenge/%s", token)
-	body, validationRecords, err := va.processHTTPValidation(ctx, ident, va.httpPort, "/"+path)
+	body, validationRecords, err := va.processHTTPValidation(ctx, ident, "/"+path)
 	if err != nil {
 		return validationRecords, err
 	}

@@ -539,7 +539,7 @@ func TestInternalErrorLogged(t *testing.T) {
 			_, err := tc.validationFunc(ctx, va, req)
 			test.AssertNotError(t, err, "failed validation should not be an error")
 			matchingLogs := mockLog.GetAllMatching(
-				`Validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com:80/\.well-known.*: context deadline exceeded`)
+				`Validation result JSON=.*"InternalError":"127.0.0.1: Get.*nonexistent.com/\.well-known.*: context deadline exceeded`)
 			test.AssertEquals(t, len(matchingLogs), 1)
 		})
 	}
