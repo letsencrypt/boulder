@@ -804,7 +804,6 @@ func TestFetchHTTP(t *testing.T) {
 	testCases := []struct {
 		Name            string
 		Ident           identifier.ACMEIdentifier
-		Port            int
 		Path            string
 		ExpectedBody    string
 		ExpectedRecords []core.ValidationRecord
@@ -813,7 +812,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:  "No IPs for host",
 			Ident: identifier.NewDNS("always.invalid"),
-			Port:  httpPort,
 			Path:  "/.well-known/whatever",
 			ExpectedProblem: probs.DNS(
 				"No valid IP addresses found for always.invalid"),
@@ -824,7 +822,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:  "Timeout for host with standard ACME allowed port",
 			Ident: identifier.NewDNS("example.com"),
-			Port:  httpPort,
 			Path:  "/timeout",
 			ExpectedProblem: probs.Connection(
 				"127.0.0.1: Fetching http://example.com/timeout: " +
@@ -843,7 +840,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:  "Redirect loop",
 			Ident: identifier.NewDNS("example.com"),
-			Port:  httpPort,
 			Path:  "/loop",
 			ExpectedProblem: probs.Connection(fmt.Sprintf(
 				"127.0.0.1: Fetching http://example.com:%d/loop: Redirect loop detected", httpPort)),
@@ -852,7 +848,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:  "Too many redirects",
 			Ident: identifier.NewDNS("example.com"),
-			Port:  httpPort,
 			Path:  "/max-redirect/0",
 			ExpectedProblem: probs.Connection(fmt.Sprintf(
 				"127.0.0.1: Fetching http://example.com:%d/max-redirect/12: Too many redirects", httpPort)),
@@ -861,7 +856,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:  "Redirect to bad protocol",
 			Ident: identifier.NewDNS("example.com"),
-			Port:  httpPort,
 			Path:  "/redir-bad-proto",
 			ExpectedProblem: probs.Connection(
 				"127.0.0.1: Fetching gopher://example.com: Invalid protocol scheme in " +
@@ -881,7 +875,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:  "Redirect to bad port",
 			Ident: identifier.NewDNS("example.com"),
-			Port:  httpPort,
 			Path:  "/redir-bad-port",
 			ExpectedProblem: probs.Connection(fmt.Sprintf(
 				"127.0.0.1: Fetching https://example.com:1987: Invalid port in redirect target. "+
@@ -900,7 +893,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:         "Redirect to bare IP address",
 			Ident:        identifier.NewDNS("example.com"),
-			Port:         httpPort,
 			Path:         "/redir-bare-ip",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
@@ -924,7 +916,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:  "Redirect to long path",
 			Ident: identifier.NewDNS("example.com"),
-			Port:  httpPort,
 			Path:  "/redir-path-too-long",
 			ExpectedProblem: probs.Connection(
 				"127.0.0.1: Fetching https://example.com/this-is-too-long-01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789: Redirect target too long"),
@@ -942,7 +933,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:  "Wrong HTTP status code",
 			Ident: identifier.NewDNS("example.com"),
-			Port:  httpPort,
 			Path:  "/bad-status-code",
 			ExpectedProblem: probs.Unauthorized(
 				"127.0.0.1: Invalid response from http://example.com/bad-status-code: 410"),
@@ -960,7 +950,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:  "HTTP status code 303 redirect",
 			Ident: identifier.NewDNS("example.com"),
-			Port:  httpPort,
 			Path:  "/303-see-other",
 			ExpectedProblem: probs.Connection(
 				"127.0.0.1: Fetching http://example.org/303-see-other: received disallowed redirect status code"),
@@ -978,7 +967,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:  "Response too large",
 			Ident: identifier.NewDNS("example.com"),
-			Port:  httpPort,
 			Path:  "/resp-too-big",
 			ExpectedProblem: probs.Unauthorized(fmt.Sprintf(
 				"127.0.0.1: Invalid response from http://example.com/resp-too-big: %q", expectedTruncatedResp.String(),
@@ -997,7 +985,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:  "Broken IPv6 only",
 			Ident: identifier.NewDNS("ipv6.localhost"),
-			Port:  httpPort,
 			Path:  "/ok",
 			ExpectedProblem: probs.Connection(
 				"::1: Fetching http://ipv6.localhost/ok: Connection refused"),
@@ -1015,7 +1002,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:         "Dual homed w/ broken IPv6, working IPv4",
 			Ident:        identifier.NewDNS("ipv4.and.ipv6.localhost"),
-			Port:         httpPort,
 			Path:         "/ok",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
@@ -1042,7 +1028,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:         "Working IPv4 only",
 			Ident:        identifier.NewDNS("example.com"),
-			Port:         httpPort,
 			Path:         "/ok",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
@@ -1059,7 +1044,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:         "Redirect to uppercase Public Suffix",
 			Ident:        identifier.NewDNS("example.com"),
-			Port:         httpPort,
 			Path:         "/redir-uppercase-publicsuffix",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
@@ -1084,7 +1068,6 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name:  "Reflected response body containing printf verbs",
 			Ident: identifier.NewDNS("example.com"),
-			Port:  httpPort,
 			Path:  "/printf-verbs",
 			ExpectedProblem: &probs.ProblemDetails{
 				Type: probs.UnauthorizedProblem,
