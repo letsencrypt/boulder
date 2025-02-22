@@ -82,6 +82,8 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 	case identifier.TypeIP:
 		validationRecord.AddressesResolved = []net.IP{net.ParseIP(ident.Value)}
 	default:
+		// This should never happen. The calling function should check the
+		// identifier type.
 		return nil, nil, validationRecord, fmt.Errorf("Unknown identifier type: %s", ident.Type)
 	}
 

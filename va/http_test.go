@@ -211,7 +211,7 @@ func TestExtractRequestTarget(t *testing.T) {
 		Name          string
 		Req           *http.Request
 		ExpectedError error
-		ExpectedHost  identifier.ACMEIdentifier
+		ExpectedIdent identifier.ACMEIdentifier
 		ExpectedPort  int
 	}{
 		{
@@ -261,40 +261,40 @@ func TestExtractRequestTarget(t *testing.T) {
 			Req: &http.Request{
 				URL: mustURL("https://10.10.10.10"),
 			},
-			ExpectedHost: identifier.NewIP(netip.MustParseAddr("10.10.10.10")),
-			ExpectedPort: 443,
+			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("10.10.10.10")),
+			ExpectedPort:  443,
 		},
 		{
 			Name: "valid HTTP redirect, explicit port",
 			Req: &http.Request{
 				URL: mustURL("http://cpu.letsencrypt.org:80"),
 			},
-			ExpectedHost: identifier.NewDNS("cpu.letsencrypt.org"),
-			ExpectedPort: 80,
+			ExpectedIdent: identifier.NewDNS("cpu.letsencrypt.org"),
+			ExpectedPort:  80,
 		},
 		{
 			Name: "valid HTTP redirect, implicit port",
 			Req: &http.Request{
 				URL: mustURL("http://cpu.letsencrypt.org"),
 			},
-			ExpectedHost: identifier.NewDNS("cpu.letsencrypt.org"),
-			ExpectedPort: 80,
+			ExpectedIdent: identifier.NewDNS("cpu.letsencrypt.org"),
+			ExpectedPort:  80,
 		},
 		{
 			Name: "valid HTTPS redirect, explicit port",
 			Req: &http.Request{
 				URL: mustURL("https://cpu.letsencrypt.org:443/hello.world"),
 			},
-			ExpectedHost: identifier.NewDNS("cpu.letsencrypt.org"),
-			ExpectedPort: 443,
+			ExpectedIdent: identifier.NewDNS("cpu.letsencrypt.org"),
+			ExpectedPort:  443,
 		},
 		{
 			Name: "valid HTTPS redirect, implicit port",
 			Req: &http.Request{
 				URL: mustURL("https://cpu.letsencrypt.org/hello.world"),
 			},
-			ExpectedHost: identifier.NewDNS("cpu.letsencrypt.org"),
-			ExpectedPort: 443,
+			ExpectedIdent: identifier.NewDNS("cpu.letsencrypt.org"),
+			ExpectedPort:  443,
 		},
 	}
 
@@ -309,7 +309,7 @@ func TestExtractRequestTarget(t *testing.T) {
 			} else if err == nil && tc.ExpectedError != nil {
 				t.Errorf("Expected err %v, got nil", tc.ExpectedError)
 			} else {
-				test.AssertEquals(t, host, tc.ExpectedHost)
+				test.AssertEquals(t, host, tc.ExpectedIdent)
 				test.AssertEquals(t, port, tc.ExpectedPort)
 			}
 		})
