@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -76,6 +77,15 @@ func TestDNSValidationFailure(t *testing.T) {
 	prob := detailedError(err)
 
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
+}
+
+func TestDNSValidationIP(t *testing.T) {
+	va, _ := setup(nil, "", nil, nil)
+
+	_, err := va.validateDNS01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
+	prob := detailedError(err)
+
+	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 }
 
 func TestDNSValidationInvalid(t *testing.T) {

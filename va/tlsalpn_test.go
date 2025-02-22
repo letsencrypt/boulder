@@ -562,6 +562,18 @@ func TestTLSALPN01WrongName(t *testing.T) {
 	test.AssertContains(t, err.Error(), "identifier does not match expected identifier")
 }
 
+func TestTLSALPN01WrongIP(t *testing.T) {
+	// Create a cert with a different IP address from what we're validating
+	cert := testTLSCert(nil, []net.IP{net.ParseIP("10.10.10.10")}, []pkix.Extension{testACMEExt})
+	hs := tlsalpn01SrvWithCert(t, cert, 0)
+
+	va, _ := setup(hs, "", nil, nil)
+
+	_, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
+	test.AssertError(t, err, "validation should have failed")
+	test.AssertContains(t, err.Error(), "identifier does not match expected identifier")
+}
+
 func TestTLSALPN01ExtraNames(t *testing.T) {
 	// Create a cert with two names when we only want to validate one.
 	hs := tlsalpn01SrvWithCert(t, testACMECert([]string{"expected", "extra"}), 0)

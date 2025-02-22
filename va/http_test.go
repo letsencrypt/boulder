@@ -1222,6 +1222,23 @@ func TestHTTPBadPort(t *testing.T) {
 	}
 }
 
+func TestHTTPBadIdentifier(t *testing.T) {
+	hs := httpSrv(t, expectedToken)
+	defer hs.Close()
+
+	va, _ := setup(hs, "", nil, nil)
+
+	_, err := va.validateHTTP01(ctx, identifier.ACMEIdentifier{Type: "smime", Value: "dobber@bad.horse"}, expectedToken, expectedKeyAuthorization)
+	if err == nil {
+		t.Fatalf("Server accepted a hypothetical S/MIME identifier")
+	}
+	prob := detailedError(err)
+	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
+	if !strings.Contains(prob.Detail, "Identifier type for HTTP-01 challenge was not DNS or IP") {
+		t.Errorf("Expected an identifier type error, got %q", prob.Detail)
+	}
+}
+
 func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
 	m := http.NewServeMux()
 	hs := httptest.NewUnstartedServer(m)
