@@ -26,6 +26,9 @@ type IsCAAValidRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// TODO(#7311): Accept an identifier instead of a domain (purely for
+	// consistency, because only DNS identifiers support CAA checks).
+	//
 	// NOTE: Domain may be a name with a wildcard prefix (e.g. `*.example.com`)
 	Domain           string `protobuf:"bytes,1,opt,name=domain,proto3" json:"domain,omitempty"`
 	ValidationMethod string `protobuf:"bytes,2,opt,name=validationMethod,proto3" json:"validationMethod,omitempty"`
