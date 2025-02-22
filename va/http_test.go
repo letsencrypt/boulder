@@ -1254,6 +1254,7 @@ func TestHTTP(t *testing.T) {
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
+	log.Clear()
 	_, err = va.validateHTTP01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedToken, expectedKeyAuthorization)
 	if err != nil {
 		t.Errorf("Unexpected failure in HTTP validation for IP: %s", err)
