@@ -372,7 +372,7 @@ func TestTLSALPN01SuccessDNS(t *testing.T) {
 }
 
 func TestTLSALPN01SuccessIP(t *testing.T) {
-	cert := testTLSCert(nil, []net.IP{net.ParseIP("127.0.0.1")}, nil)
+	cert := testTLSCert(nil, []net.IP{net.ParseIP("127.0.0.1")}, []pkix.Extension{testACMEExt})
 	hs := tlsalpn01SrvWithCert(t, cert, 0)
 
 	va, _ := setup(hs, "", nil, nil)
