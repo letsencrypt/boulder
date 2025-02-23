@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -91,6 +92,11 @@ func tlsalpn01SrvWithCert(t *testing.T, acmeCert *tls.Certificate, tlsVersion ui
 		Certificates: []tls.Certificate{},
 		ClientAuth:   tls.NoClientCert,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			// This is a backstop test for RFC 8738, Section 6. Go's
+			// tls.hostnameInSNI already does the right thing.
+			if net.ParseIP(clientHello.ServerName) != nil {
+				return nil, errors.New("TLS client used a bare IP address for SNI")
+			}
 			return acmeCert, nil
 		},
 		NextProtos: []string{"http/1.1", ACMETLS1Protocol},

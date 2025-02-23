@@ -144,8 +144,6 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 	case identifier.TypeDNS:
 		tlsConfig.ServerName = ident.Value
 	case identifier.TypeIP:
-		// TODO(#8020): Test this against RFC 8738 Sec. 6.
-		// https://datatracker.ietf.org/doc/html/rfc8738#section-6
 		reverseIP, err := dns.ReverseAddr(ident.Value)
 		if err != nil {
 			va.log.Infof("%s Failed to parse IP address %s.", core.ChallengeTypeTLSALPN01, ident.Value)
