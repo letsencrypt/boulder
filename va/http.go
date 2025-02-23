@@ -314,6 +314,16 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 		return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid empty host in redirect target")
 	}
 
+	// In URLs, bare IPv6 addresses are always enclosed in square brackets,
+	// which must be stripped in order for net.ParseIP to recognize the address.
+	if len(reqHost) > 2 && reqHost[0] == '[' && reqHost[len(reqHost)-1] == ']' {
+		shortHost := reqHost[1 : len(reqHost)-1]
+		// Square brackets are only valid syntax for bare IPs, not DNS names.
+		if net.ParseIP(shortHost) != nil {
+			reqHost = shortHost
+		}
+	}
+
 	// Often folks will misconfigure their webserver to send an HTTP redirect
 	// missing a `/' between the FQDN and the path. E.g. in Apache using:
 	//   Redirect / https://bad-redirect.org

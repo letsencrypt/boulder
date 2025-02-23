@@ -139,25 +139,35 @@ func TestHTTPValidationTarget(t *testing.T) {
 		ExpectedIPs   []string
 	}{
 		{
-			Name:          "No IPs for host",
+			Name:          "No IPs for DNS identifier",
 			Ident:         identifier.NewDNS("always.invalid"),
 			ExpectedError: berrors.DNSError("No valid IP addresses found for always.invalid"),
 		},
 		{
-			Name:        "Only IPv4 addrs for host",
+			Name:        "Only IPv4 addrs for DNS identifier",
 			Ident:       identifier.NewDNS("some.example.com"),
 			ExpectedIPs: []string{"127.0.0.1"},
 		},
 		{
-			Name:        "Only IPv6 addrs for host",
+			Name:        "Only IPv6 addrs for DNS identifier",
 			Ident:       identifier.NewDNS("ipv6.localhost"),
 			ExpectedIPs: []string{"::1"},
 		},
 		{
-			Name:  "Both IPv6 and IPv4 addrs for host",
+			Name:  "Both IPv6 and IPv4 addrs for DNS identifier",
 			Ident: identifier.NewDNS("ipv4.and.ipv6.localhost"),
 			// In this case we expect 1 IPv6 address first, and then 1 IPv4 address
 			ExpectedIPs: []string{"::1", "127.0.0.1"},
+		},
+		{
+			Name:        "IPv4 IP address identifier",
+			Ident:       identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
+			ExpectedIPs: []string{"127.0.0.1"},
+		},
+		{
+			Name:        "IPv6 IP address identifier",
+			Ident:       identifier.NewIP(netip.MustParseAddr("::1")),
+			ExpectedIPs: []string{"::1"},
 		},
 	}
 
@@ -257,12 +267,57 @@ func TestExtractRequestTarget(t *testing.T) {
 			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
 		},
 		{
-			Name: "bare IP",
+			Name: "malformed wildcard-ish IPv4 address",
 			Req: &http.Request{
-				URL: mustURL("https://10.10.10.10"),
+				URL: mustURL("https://10.10.10.*"),
+			},
+			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
+		},
+		{
+			Name: "malformed too-long IPv6 address",
+			Req: &http.Request{
+				URL: mustURL("https://[a:b:c:d:e:f:b:a:d]"),
+			},
+			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
+		},
+		{
+			Name: "DNS name enclosed in square brackets",
+			Req: &http.Request{
+				URL: mustURL("https://[bad.horse]"),
+			},
+			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
+		},
+		{
+			Name: "bare IPv4, implicit port",
+			Req: &http.Request{
+				URL: mustURL("http://10.10.10.10"),
 			},
 			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("10.10.10.10")),
-			ExpectedPort:  443,
+			ExpectedPort:  80,
+		},
+		{
+			Name: "bare IPv4, explicit port",
+			Req: &http.Request{
+				URL: mustURL("http://10.10.10.10:80"),
+			},
+			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("10.10.10.10")),
+			ExpectedPort:  80,
+		},
+		{
+			Name: "bare IPv6, implicit port",
+			Req: &http.Request{
+				URL: mustURL("http://[::1]"),
+			},
+			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("::1")),
+			ExpectedPort:  80,
+		},
+		{
+			Name: "bare IPv6, explicit port",
+			Req: &http.Request{
+				URL: mustURL("http://[::1]:80"),
+			},
+			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("::1")),
+			ExpectedPort:  80,
 		},
 		{
 			Name: "valid HTTP redirect, explicit port",
