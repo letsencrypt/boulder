@@ -194,7 +194,6 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 	return certs[0], &cs, nil
 }
 
-// TODO(#8020): Identifiers need testing here.
 func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) error {
 	var asn1Tag int
 	var certSAN []byte

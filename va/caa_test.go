@@ -1231,13 +1231,13 @@ func TestCAAFailure(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, caaMockDNS{})
 
-	err := va.checkCAA(ctx, dnsi("reserved.com"), &caaParams{1, core.ChallengeTypeHTTP01})
+	err := va.checkCAA(ctx, identifier.NewDNS("reserved.com"), &caaParams{1, core.ChallengeTypeHTTP01})
 	if err == nil {
 		t.Fatalf("Expected CAA rejection for reserved.com, got success")
 	}
 	test.AssertErrorIs(t, err, berrors.CAA)
 
-	err = va.checkCAA(ctx, dnsi("example.gonetld"), &caaParams{1, core.ChallengeTypeHTTP01})
+	err = va.checkCAA(ctx, identifier.NewDNS("example.gonetld"), &caaParams{1, core.ChallengeTypeHTTP01})
 	if err == nil {
 		t.Fatalf("Expected CAA rejection for gonetld, got success")
 	}

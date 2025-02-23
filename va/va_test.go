@@ -70,11 +70,6 @@ var expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 var expectedThumbprint = "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 var expectedKeyAuthorization = ka(expectedToken)
 
-// Return an ACME DNS identifier for the given hostname
-func dnsi(hostname string) identifier.ACMEIdentifier {
-	return identifier.NewDNS(hostname)
-}
-
 var ctx context.Context
 
 func TestMain(m *testing.M) {
