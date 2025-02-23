@@ -59,7 +59,6 @@ func certAltNames(cert *x509.Certificate) []string {
 	return names
 }
 
-// TODO(#8020): Identifiers need testing here.
 func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
@@ -265,7 +264,6 @@ func checkAcceptableExtensions(exts []pkix.Extension, requiredOIDs []asn1.Object
 }
 
 func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
-	// TODO(#8020): This needs testing.
 	if ident.Type != identifier.TypeDNS && ident.Type != identifier.TypeIP {
 		va.log.Info(fmt.Sprintf("Identifier type for TLS-ALPN-01 challenge was not DNS or IP: %s", ident))
 		return nil, berrors.MalformedError("Identifier type for TLS-ALPN-01 challenge was not DNS or IP")

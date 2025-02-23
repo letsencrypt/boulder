@@ -542,10 +542,18 @@ func TestSetupHTTPValidation(t *testing.T) {
 }
 
 // A more concise version of httpSrv() that supports http.go tests
-func httpTestSrv(t *testing.T) *httptest.Server {
+func httpTestSrv(t *testing.T, ipv6 bool) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	server := httptest.NewUnstartedServer(mux)
+
+	if ipv6 {
+		l, err := net.Listen("tcp", "[::1]:0")
+		if err != nil {
+			panic(fmt.Sprintf("httptest: failed to listen on a port: %v", err))
+		}
+		server.Listener = l
+	}
 
 	server.Start()
 	httpPort := getPort(server)
@@ -611,11 +619,20 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 	})
 
 	// A path that always redirects to a URL with a bare IP address
-	mux.HandleFunc("/redir-bare-ip", func(resp http.ResponseWriter, req *http.Request) {
+	mux.HandleFunc("/redir-bare-ipv4", func(resp http.ResponseWriter, req *http.Request) {
 		http.Redirect(
 			resp,
 			req,
 			"http://127.0.0.1/ok",
+			http.StatusMovedPermanently,
+		)
+	})
+
+	mux.HandleFunc("/redir-bare-ipv6", func(resp http.ResponseWriter, req *http.Request) {
+		http.Redirect(
+			resp,
+			req,
+			"http://[::1]/ok",
 			http.StatusMovedPermanently,
 		)
 	})
@@ -794,16 +811,20 @@ func TestFallbackErr(t *testing.T) {
 }
 
 func TestFetchHTTP(t *testing.T) {
-	// Create a test server
-	testSrv := httpTestSrv(t)
-	defer testSrv.Close()
+	// Create test servers
+	testSrvIPv4 := httpTestSrv(t, false)
+	defer testSrvIPv4.Close()
+	testSrvIPv6 := httpTestSrv(t, true)
+	defer testSrvIPv6.Close()
 
-	// Setup a VA. By providing the testSrv to setup the VA will use the testSrv's
+	// Setup VAs. By providing the testSrv to setup the VA will use the testSrv's
 	// randomly assigned port as its HTTP port.
-	va, _ := setup(testSrv, "", nil, nil)
+	vaIPv4, _ := setup(testSrvIPv4, "", nil, nil)
+	vaIPv6, _ := setup(testSrvIPv6, "", nil, nil)
 
 	// We need to know the randomly assigned HTTP port for testcases as well
-	httpPort := getPort(testSrv)
+	httpPortIPv4 := getPort(testSrvIPv4)
+	httpPortIPv6 := getPort(testSrvIPv6)
 
 	// For the looped test case we expect one validation record per redirect
 	// until boulder detects that a url has been used twice indicating a
@@ -817,12 +838,12 @@ func TestFetchHTTP(t *testing.T) {
 		// The first request will not have a port # in the URL.
 		url := "http://example.com/loop"
 		if i != 0 {
-			url = fmt.Sprintf("http://example.com:%d/loop", httpPort)
+			url = fmt.Sprintf("http://example.com:%d/loop", httpPortIPv4)
 		}
 		expectedLoopRecords = append(expectedLoopRecords,
 			core.ValidationRecord{
 				DnsName:           "example.com",
-				Port:              strconv.Itoa(httpPort),
+				Port:              strconv.Itoa(httpPortIPv4),
 				URL:               url,
 				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -838,12 +859,12 @@ func TestFetchHTTP(t *testing.T) {
 		// The first request will not have a port # in the URL.
 		url := "http://example.com/max-redirect/0"
 		if i != 0 {
-			url = fmt.Sprintf("http://example.com:%d/max-redirect/%d", httpPort, i)
+			url = fmt.Sprintf("http://example.com:%d/max-redirect/%d", httpPortIPv4, i)
 		}
 		expectedTooManyRedirRecords = append(expectedTooManyRedirRecords,
 			core.ValidationRecord{
 				DnsName:           "example.com",
-				Port:              strconv.Itoa(httpPort),
+				Port:              strconv.Itoa(httpPortIPv4),
 				URL:               url,
 				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -858,6 +879,7 @@ func TestFetchHTTP(t *testing.T) {
 
 	testCases := []struct {
 		Name            string
+		IPv6            bool
 		Ident           identifier.ACMEIdentifier
 		Path            string
 		ExpectedBody    string
@@ -884,7 +906,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/timeout",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -897,7 +919,7 @@ func TestFetchHTTP(t *testing.T) {
 			Ident: identifier.NewDNS("example.com"),
 			Path:  "/loop",
 			ExpectedProblem: probs.Connection(fmt.Sprintf(
-				"127.0.0.1: Fetching http://example.com:%d/loop: Redirect loop detected", httpPort)),
+				"127.0.0.1: Fetching http://example.com:%d/loop: Redirect loop detected", httpPortIPv4)),
 			ExpectedRecords: expectedLoopRecords,
 		},
 		{
@@ -905,7 +927,7 @@ func TestFetchHTTP(t *testing.T) {
 			Ident: identifier.NewDNS("example.com"),
 			Path:  "/max-redirect/0",
 			ExpectedProblem: probs.Connection(fmt.Sprintf(
-				"127.0.0.1: Fetching http://example.com:%d/max-redirect/12: Too many redirects", httpPort)),
+				"127.0.0.1: Fetching http://example.com:%d/max-redirect/12: Too many redirects", httpPortIPv4)),
 			ExpectedRecords: expectedTooManyRedirRecords,
 		},
 		{
@@ -919,7 +941,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/redir-bad-proto",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -933,11 +955,11 @@ func TestFetchHTTP(t *testing.T) {
 			Path:  "/redir-bad-port",
 			ExpectedProblem: probs.Connection(fmt.Sprintf(
 				"127.0.0.1: Fetching https://example.com:1987: Invalid port in redirect target. "+
-					"Only ports %d and 443 are supported, not 1987", httpPort)),
+					"Only ports %d and 443 are supported, not 1987", httpPortIPv4)),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/redir-bad-port",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -946,25 +968,48 @@ func TestFetchHTTP(t *testing.T) {
 			},
 		},
 		{
-			Name:         "Redirect to bare IP address",
+			Name:         "Redirect to bare IPv4 address",
 			Ident:        identifier.NewDNS("example.com"),
-			Path:         "/redir-bare-ip",
+			Path:         "/redir-bare-ipv4",
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
-					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/redir-bare-ip",
+					Port:              strconv.Itoa(httpPortIPv4),
+					URL:               "http://example.com/redir-bare-ipv4",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 					ResolverAddrs:     []string{"MockClient"},
 				},
 				{
 					DnsName:           "127.0.0.1",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://127.0.0.1/ok",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
+				},
+			},
+		}, {
+			Name:         "Redirect to bare IPv6 address",
+			IPv6:         true,
+			Ident:        identifier.NewDNS("ipv6.localhost"),
+			Path:         "/redir-bare-ipv6",
+			ExpectedBody: "ok",
+			ExpectedRecords: []core.ValidationRecord{
+				{
+					DnsName:           "ipv6.localhost",
+					Port:              strconv.Itoa(httpPortIPv6),
+					URL:               "http://ipv6.localhost/redir-bare-ipv6",
+					AddressesResolved: []net.IP{net.ParseIP("::1")},
+					AddressUsed:       net.ParseIP("::1"),
+					ResolverAddrs:     []string{"MockClient"},
+				},
+				{
+					DnsName:           "::1",
+					Port:              strconv.Itoa(httpPortIPv6),
+					URL:               "http://[::1]/ok",
+					AddressesResolved: []net.IP{net.ParseIP("::1")},
+					AddressUsed:       net.ParseIP("::1"),
 				},
 			},
 		},
@@ -977,7 +1022,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/redir-path-too-long",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -994,7 +1039,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/bad-status-code",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -1011,7 +1056,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/303-see-other",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -1029,7 +1074,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/resp-too-big",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -1046,7 +1091,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "ipv6.localhost",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1")},
 					AddressUsed:       net.ParseIP("::1"),
@@ -1062,7 +1107,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "ipv4.and.ipv6.localhost",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 					// The first validation record should have used the IPv6 addr
@@ -1071,7 +1116,7 @@ func TestFetchHTTP(t *testing.T) {
 				},
 				{
 					DnsName:           "ipv4.and.ipv6.localhost",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 					// The second validation record should have used the IPv4 addr as a fallback
@@ -1088,7 +1133,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/ok",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -1104,7 +1149,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/redir-uppercase-publicsuffix",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -1112,7 +1157,7 @@ func TestFetchHTTP(t *testing.T) {
 				},
 				{
 					DnsName:           "example.com",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/ok",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -1133,7 +1178,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					DnsName:           "example.com",
-					Port:              strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPortIPv4),
 					URL:               "http://example.com/printf-verbs",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -1147,7 +1192,14 @@ func TestFetchHTTP(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 			defer cancel()
-			body, records, err := va.processHTTPValidation(ctx, tc.Ident, tc.Path)
+			var body []byte
+			var records []core.ValidationRecord
+			var err error
+			if tc.IPv6 {
+				body, records, err = vaIPv6.processHTTPValidation(ctx, tc.Ident, tc.Path)
+			} else {
+				body, records, err = vaIPv4.processHTTPValidation(ctx, tc.Ident, tc.Path)
+			}
 			if tc.ExpectedProblem == nil {
 				test.AssertNotError(t, err, "expected nil prob")
 			} else {
@@ -1180,7 +1232,7 @@ const pathLooper = "looper"
 const pathValid = "valid"
 const rejectUserAgent = "rejectMe"
 
-func httpSrv(t *testing.T, token string) *httptest.Server {
+func httpSrv(t *testing.T, token string, ipv6 bool) *httptest.Server {
 	m := http.NewServeMux()
 
 	server := httptest.NewUnstartedServer(m)
@@ -1250,12 +1302,20 @@ func httpSrv(t *testing.T, token string) *httptest.Server {
 		}
 	})
 
+	if ipv6 {
+		l, err := net.Listen("tcp", "[::1]:0")
+		if err != nil {
+			panic(fmt.Sprintf("httptest: failed to listen on a port: %v", err))
+		}
+		server.Listener = l
+	}
+
 	server.Start()
 	return server
 }
 
 func TestHTTPBadPort(t *testing.T) {
-	hs := httpSrv(t, expectedToken)
+	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
 
 	va, _ := setup(hs, "", nil, nil)
@@ -1278,7 +1338,7 @@ func TestHTTPBadPort(t *testing.T) {
 }
 
 func TestHTTPBadIdentifier(t *testing.T) {
-	hs := httpSrv(t, expectedToken)
+	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
 
 	va, _ := setup(hs, "", nil, nil)
@@ -1315,7 +1375,7 @@ func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
 }
 
 func TestHTTP(t *testing.T) {
-	hs := httpSrv(t, expectedToken)
+	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
 
 	va, log := setup(hs, "", nil, nil)
@@ -1329,7 +1389,7 @@ func TestHTTP(t *testing.T) {
 	log.Clear()
 	_, err = va.validateHTTP01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedToken, expectedKeyAuthorization)
 	if err != nil {
-		t.Errorf("Unexpected failure in HTTP validation for IP: %s", err)
+		t.Errorf("Unexpected failure in HTTP validation for IPv4: %s", err)
 	}
 	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
 
@@ -1379,8 +1439,21 @@ func TestHTTP(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
 
+func TestHTTPIPv6(t *testing.T) {
+	hs := httpSrv(t, expectedToken, true)
+	defer hs.Close()
+
+	va, log := setup(hs, "", nil, nil)
+
+	_, err := va.validateHTTP01(ctx, identifier.NewIP(netip.MustParseAddr("::1")), expectedToken, expectedKeyAuthorization)
+	if err != nil {
+		t.Errorf("Unexpected failure in HTTP validation for IPv6: %s", err)
+	}
+	test.AssertEquals(t, len(log.GetAllMatching(`\[AUDIT\] `)), 1)
+}
+
 func TestHTTPTimeout(t *testing.T) {
-	hs := httpSrv(t, expectedToken)
+	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
 
 	va, _ := setup(hs, "", nil, nil)
@@ -1409,7 +1482,7 @@ func TestHTTPTimeout(t *testing.T) {
 }
 
 func TestHTTPRedirectLookup(t *testing.T) {
-	hs := httpSrv(t, expectedToken)
+	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
 	va, log := setup(hs, "", nil, nil)
 
@@ -1471,7 +1544,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 }
 
 func TestHTTPRedirectLoop(t *testing.T) {
-	hs := httpSrv(t, expectedToken)
+	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
 	va, _ := setup(hs, "", nil, nil)
 
@@ -1482,7 +1555,7 @@ func TestHTTPRedirectLoop(t *testing.T) {
 }
 
 func TestHTTPRedirectUserAgent(t *testing.T) {
-	hs := httpSrv(t, expectedToken)
+	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
 	va, _ := setup(hs, "", nil, nil)
 	va.userAgent = rejectUserAgent
@@ -1517,7 +1590,7 @@ func getPort(hs *httptest.Server) int {
 func TestValidateHTTP(t *testing.T) {
 	token := core.NewToken()
 
-	hs := httpSrv(t, token)
+	hs := httpSrv(t, token, false)
 	defer hs.Close()
 
 	va, _ := setup(hs, "", nil, nil)
@@ -1529,7 +1602,7 @@ func TestValidateHTTP(t *testing.T) {
 func TestLimitedReader(t *testing.T) {
 	token := core.NewToken()
 
-	hs := httpSrv(t, "012345\xff67890123456789012345678901234567890123456789012345678901234567890123456789")
+	hs := httpSrv(t, "012345\xff67890123456789012345678901234567890123456789012345678901234567890123456789", false)
 	va, _ := setup(hs, "", nil, nil)
 	defer hs.Close()
 

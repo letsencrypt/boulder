@@ -202,8 +202,6 @@ func (vt *httpValidationTarget) nextIP() error {
 // port, and path. This involves querying DNS for the IP addresses for the host.
 // An error is returned if there are no usable IP addresses or if the DNS
 // lookups fail.
-//
-// TODO(#8020): This needs testing with IP address identifiers.
 func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
@@ -437,10 +435,23 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		return nil, nil, err
 	}
 
+	// When constructing a URL, bare IPv6 addresses must be enclosed in square
+	// brackets. Otherwise, a colon may be interpreted as a port separator.
+	host := ident.Value
+	if ident.Type == identifier.TypeIP {
+		netipHost, err := netip.ParseAddr(host)
+		if err != nil {
+			return nil, nil, fmt.Errorf("couldn't parse IP address from identifier")
+		}
+		if netipHost.Is6() {
+			host = "[" + host + "]"
+		}
+	}
+
 	// Create an initial GET Request
 	initialURL := url.URL{
 		Scheme: "http",
-		Host:   ident.Value,
+		Host:   host,
 		Path:   path,
 	}
 	initialReq, err := http.NewRequest("GET", initialURL.String(), nil)

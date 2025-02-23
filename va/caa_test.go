@@ -1226,7 +1226,7 @@ func TestMultiCAARechecking(t *testing.T) {
 }
 
 func TestCAAFailure(t *testing.T) {
-	hs := httpSrv(t, expectedToken)
+	hs := httpSrv(t, expectedToken, false)
 	defer hs.Close()
 
 	va, _ := setup(hs, "", nil, caaMockDNS{})
