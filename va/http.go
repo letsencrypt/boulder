@@ -443,7 +443,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		if err != nil {
 			return nil, nil, fmt.Errorf("couldn't parse IP address from identifier")
 		}
-		if netipHost.Is6() {
+		if !netipHost.Is4() {
 			host = "[" + host + "]"
 		}
 	}
