@@ -139,6 +139,8 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		NextProtos: []string{ACMETLS1Protocol},
+		// We expect a self-signed challenge certificate, do not verify it here.
+		InsecureSkipVerify: true,
 	}
 	switch ident.Type {
 	case identifier.TypeDNS:
@@ -158,9 +160,6 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 	}
 
 	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", core.ChallengeTypeTLSALPN01, ident, hostPort, tlsConfig.ServerName))
-
-	// We expect a self-signed challenge certificate, do not verify it here.
-	tlsConfig.InsecureSkipVerify = true
 
 	dialCtx, cancel := context.WithTimeout(ctx, va.singleDialTimeout)
 	defer cancel()
