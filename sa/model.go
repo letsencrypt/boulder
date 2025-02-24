@@ -1115,13 +1115,7 @@ func statusForOrder(order *corepb.Order, authzValidityInfo []authzValidity, now 
 
 	// An order is fully authorized if it has valid authzs for each of the order
 	// identifiers
-	idents := order.Identifiers
-	if idents == nil {
-		// TODO(#7311): Change this to simply return an error once all RPC users
-		// are populating Identifiers.
-		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
-	}
-	fullyAuthorized := len(idents) == validAuthzs
+	fullyAuthorized := len(identifier.SliceFromProto(order.Identifiers, order.DnsNames)) == validAuthzs
 
 	// If the order isn't fully authorized we've encountered an internal error:
 	// Above we checked for any invalid or pending authzs and should have returned

@@ -1955,19 +1955,12 @@ type orderJSON struct {
 // DNS type identifiers and additionally create absolute URLs for the finalize
 // URL and the certificate URL as appropriate.
 func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corepb.Order) orderJSON {
-	// TODO(#7311): Remove this conditional once all RPC users are populating
-	// Identifiers.
-	idents := order.Identifiers
-	if idents == nil {
-		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
-	}
-
 	finalizeURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", finalizeOrderPath, order.RegistrationID, order.Id))
 	respObj := orderJSON{
 		Status:      core.AcmeStatus(order.Status),
 		Expires:     order.Expires.AsTime(),
-		Identifiers: identifier.SliceFromProto(idents, order.DnsNames),
+		Identifiers: identifier.SliceFromProto(order.Identifiers, order.DnsNames),
 		Finalize:    finalizeURL,
 		Profile:     order.CertificateProfileName,
 	}
@@ -2382,17 +2375,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		CertificateProfileName: newOrderRequest.Profile,
 	})
 
-	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, order.Created, order.Expires) {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
-		return
-	}
-	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
-	// upwards, once all RPC users are populating Identifiers.
-	orderIdents := order.Identifiers
-	if orderIdents == nil {
-		orderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
-	}
-	if core.IsAnyNilOrZero(orderIdents) && core.IsAnyNilOrZero(order.DnsNames) {
+	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, identifier.SliceFromProto(order.Identifiers, order.DnsNames), order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
@@ -2453,17 +2436,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, order.Created, order.Expires) {
-		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
-		return
-	}
-	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
-	// upwards, once all RPC users are populating Identifiers.
-	orderIdents := order.Identifiers
-	if orderIdents == nil {
-		orderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
-	}
-	if core.IsAnyNilOrZero(orderIdents) && core.IsAnyNilOrZero(order.DnsNames) {
+	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, identifier.SliceFromProto(order.Identifiers, order.DnsNames), order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2541,13 +2514,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	// TODO(#7311): Remove this conditional once all RPC users are populating
-	// Identifiers.
-	orderIdents := order.Identifiers
-	if orderIdents == nil {
-		orderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
-	}
-	orderIdents = identifier.SliceAsProto(identifier.SliceFromProto(orderIdents, order.DnsNames))
+	orderIdents := identifier.SliceFromProto(order.Identifiers, order.DnsNames)
 	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, orderIdents, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
@@ -2599,7 +2566,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	logEvent.Identifiers = identifier.SliceFromProto(orderIdents, nil)
+	logEvent.Identifiers = orderIdents
 	logEvent.Extra["KeyType"] = web.KeyTypeToString(csr.PublicKey)
 
 	updatedOrder, err := wfe.ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
@@ -2616,11 +2583,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
 	// upwards, once all RPC users are populating Identifiers.
-	updatedOrderIdents := updatedOrder.Identifiers
-	if updatedOrderIdents == nil {
-		updatedOrderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, updatedOrder.DnsNames))
-	}
-	if core.IsAnyNilOrZero(updatedOrderIdents) && core.IsAnyNilOrZero(updatedOrder.DnsNames) {
+	if core.IsAnyNilOrZero(identifier.SliceFromProto(updatedOrder.Identifiers, updatedOrder.DnsNames)) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}

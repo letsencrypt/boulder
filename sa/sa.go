@@ -503,13 +503,6 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		return nil, errIncompleteRequest
 	}
 
-	idents := req.NewOrder.Identifiers
-	if idents == nil {
-		// TODO(#7311): Change this to simply return an error once all RPC users
-		// are populating Identifiers.
-		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.NewOrder.DnsNames))
-	}
-
 	for _, authz := range req.NewAuthzs {
 		if authz.RegistrationID != req.NewOrder.RegistrationID {
 			// This is a belt-and-suspenders check. These were just created by the RA,
@@ -567,7 +560,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fourth, insert the FQDNSet entry for the order.
-		err = addOrderFQDNSet(ctx, tx, identifier.SliceFromProto(idents, nil), orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
+		err = addOrderFQDNSet(ctx, tx, identifier.SliceFromProto(req.NewOrder.Identifiers, req.NewOrder.DnsNames), orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {
 			return nil, err
 		}

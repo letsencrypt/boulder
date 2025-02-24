@@ -1065,13 +1065,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// There should never be an order with 0 identifiers at the stage, but we check to
 	// be on the safe side, throwing an internal server error if this assumption
 	// is ever violated.
-	orderIdentsPb := req.Order.Identifiers
-	if orderIdentsPb == nil {
-		// TODO(#7311): Change this to simply return an error once all RPC users
-		// are populating Identifiers.
-		orderIdentsPb = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.Order.DnsNames))
-	}
-	orderIdents := identifier.Normalize(identifier.SliceFromProto(orderIdentsPb, req.Order.DnsNames))
+	orderIdents := identifier.Normalize(identifier.SliceFromProto(req.Order.Identifiers, req.Order.DnsNames))
 	if len(orderIdents) == 0 {
 		return nil, berrors.InternalServerError("Order has no associated identifiers")
 	}
@@ -1170,13 +1164,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ra.inflightFinalizes.Inc()
 	defer ra.inflightFinalizes.Dec()
 
-	idents := order.Identifiers
-	if idents == nil {
-		// TODO(#7311): Change this to simply return an error once all RPC users
-		// are populating Identifiers.
-		idents = identifier.SliceAsProto(identifier.SliceFromProto(nil, order.DnsNames))
-	}
-	idents = identifier.SliceAsProto(identifier.SliceFromProto(idents, order.DnsNames))
+	idents := identifier.SliceAsProto(identifier.SliceFromProto(order.Identifiers, order.DnsNames))
 
 	// TODO(#7311): Remove this once all RPC users can handle Identifiers.
 	var dnsNames []string
@@ -1896,6 +1884,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		// authorizations for all names in the cert.
 		logEvent.Method = "control"
 
+		// TODO(#7311): Support other kinds of SANs/identifiers here.
 		var authzPB *sapb.Authorizations
 		authzPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
@@ -2332,13 +2321,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	identsPb := req.Identifiers
-	if identsPb == nil {
-		// TODO(#7311): Change this to simply return an error once all RPC users
-		// are populating Identifiers.
-		identsPb = identifier.SliceAsProto(identifier.SliceFromProto(nil, req.DnsNames))
-	}
-	idents := identifier.Normalize(identifier.SliceFromProto(identsPb, req.DnsNames))
+	idents := identifier.Normalize(identifier.SliceFromProto(req.Identifiers, req.DnsNames))
 
 	if len(idents) > ra.maxNames {
 		return nil, berrors.MalformedError(
@@ -2395,16 +2378,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Error if an incomplete order is returned.
 	if existingOrder != nil {
 		// Check to see if the expected fields of the existing order are set.
-		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, existingOrder.Created, existingOrder.Expires) {
-			return nil, errIncompleteGRPCResponse
-		}
-		// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
-		// upwards, once all RPC users are populating Identifiers.
-		existingOrderIdents := existingOrder.Identifiers
-		if existingOrderIdents == nil {
-			existingOrderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, existingOrder.DnsNames))
-		}
-		if core.IsAnyNilOrZero(existingOrderIdents) && core.IsAnyNilOrZero(existingOrder.DnsNames) {
+		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, identifier.SliceFromProto(existingOrder.Identifiers, existingOrder.DnsNames), existingOrder.Created, existingOrder.Expires) {
 			return nil, errIncompleteGRPCResponse
 		}
 
@@ -2593,16 +2567,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, storedOrder.Created, storedOrder.Expires) {
-		return nil, errIncompleteGRPCResponse
-	}
-	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
-	// upwards, once all RPC users are populating Identifiers.
-	storedOrderIdents := storedOrder.Identifiers
-	if storedOrderIdents == nil {
-		storedOrderIdents = identifier.SliceAsProto(identifier.SliceFromProto(nil, storedOrder.DnsNames))
-	}
-	if core.IsAnyNilOrZero(storedOrderIdents) && core.IsAnyNilOrZero(storedOrder.DnsNames) {
+	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, identifier.SliceFromProto(storedOrder.Identifiers, storedOrder.DnsNames), storedOrder.Created, storedOrder.Expires) {
 		return nil, errIncompleteGRPCResponse
 	}
 	ra.orderAges.WithLabelValues("NewOrder").Observe(0)
