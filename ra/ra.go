@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,6 +73,7 @@ var (
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
 	rapb.UnsafeRegistrationAuthorityServer
+	rapb.UnsafeSCTProviderServer
 	CA        capb.CertificateAuthorityClient
 	OCSP      capb.OCSPGeneratorClient
 	VA        va.RemoteClients
@@ -103,7 +103,7 @@ type RegistrationAuthorityImpl struct {
 	namesPerCert              *prometheus.HistogramVec
 	newRegCounter             prometheus.Counter
 	recheckCAACounter         prometheus.Counter
-	newCertCounter            *prometheus.CounterVec
+	newCertCounter            prometheus.Counter
 	authzAges                 *prometheus.HistogramVec
 	orderAges                 *prometheus.HistogramVec
 	inflightFinalizes         prometheus.Gauge
@@ -170,10 +170,10 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(recheckCAACounter)
 
-	newCertCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	newCertCounter := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "new_certificates",
-		Help: "A counter of new certificates including the certificate profile name and hexadecimal certificate profile hash",
-	}, []string{"profileName", "profileHash"})
+		Help: "A counter of issued certificates",
+	})
 	stats.MustRegister(newCertCounter)
 
 	revocationReasonCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -1159,6 +1159,16 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	return csr, nil
 }
 
+func (ra *RegistrationAuthorityImpl) GetSCTs(ctx context.Context, sctRequest *rapb.SCTRequest) (*rapb.SCTResponse, error) {
+	scts, err := ra.getSCTs(ctx, sctRequest.PrecertDER)
+	if err != nil {
+		return nil, err
+	}
+	return &rapb.SCTResponse{
+		SctDER: scts,
+	}, nil
+}
+
 // issueCertificateOuter exists solely to ensure that all calls to
 // issueCertificateInner have their result handled uniformly, no matter what
 // return path that inner function takes. It takes ownership of the logEvent,
@@ -1192,7 +1202,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	}
 
 	// Step 3: Issue the Certificate
-	cert, cpId, err := ra.issueCertificateInner(
+	cert, err := ra.issueCertificateInner(
 		ctx, csr, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
@@ -1217,19 +1227,14 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 			prometheus.Labels{"type": "issued"},
 		).Observe(float64(len(order.DnsNames)))
 
-		ra.newCertCounter.With(
-			prometheus.Labels{
-				"profileName": cpId.name,
-				"profileHash": hex.EncodeToString(cpId.hash),
-			}).Inc()
+		ra.newCertCounter.Inc()
 
 		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
 		logEvent.CommonName = cert.Subject.CommonName
 		logEvent.Names = cert.DNSNames
 		logEvent.NotBefore = cert.NotBefore
 		logEvent.NotAfter = cert.NotAfter
-		logEvent.CertProfileName = cpId.name
-		logEvent.CertProfileHash = hex.EncodeToString(cpId.hash)
+		logEvent.CertProfileName = profileName
 
 		result = "successful"
 	}
@@ -1269,13 +1274,6 @@ func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context,
 	}
 }
 
-// certProfileID contains the name and hash of a certificate profile returned by
-// a CA.
-type certProfileID struct {
-	name string
-	hash []byte
-}
-
 // issueCertificateInner is part of the [issuance cycle].
 //
 // It gets a precertificate from the CA, submits it to CT logs to get SCTs,
@@ -1299,7 +1297,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	isRenewal bool,
 	profileName string,
 	acctID accountID,
-	oID orderID) (*x509.Certificate, *certProfileID, error) {
+	oID orderID) (*x509.Certificate, error) {
 	// wrapError adds a prefix to an error. If the error is a boulder error then
 	// the problem detail is updated with the prefix. Otherwise a new error is
 	// returned with the message prefixed using `fmt.Errorf`
@@ -1317,49 +1315,55 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		OrderID:         int64(oID),
 		CertProfileName: profileName,
 	}
-	// Once we get a precert from IssuePrecertificate, we must attempt issuing
-	// a final certificate at most once. We achieve that by bailing on any error
-	// between here and IssueCertificateForPrecertificate.
-	precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
-	if err != nil {
-		return nil, nil, wrapError(err, "issuing precertificate")
+
+	var certDER []byte
+	if features.Get().UnsplitIssuance {
+		resp, err := ra.CA.IssueCertificate(ctx, issueReq)
+		if err != nil {
+			return nil, err
+		}
+		certDER = resp.DER
+	} else {
+		// Once we get a precert from IssuePrecertificate, we must attempt issuing
+		// a final certificate at most once. We achieve that by bailing on any error
+		// between here and IssueCertificateForPrecertificate.
+		precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
+		if err != nil {
+			return nil, wrapError(err, "issuing precertificate")
+		}
+
+		scts, err := ra.getSCTs(ctx, precert.DER)
+		if err != nil {
+			return nil, wrapError(err, "getting SCTs")
+		}
+
+		certPB, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
+			DER:             precert.DER,
+			SCTs:            scts,
+			RegistrationID:  int64(acctID),
+			OrderID:         int64(oID),
+			CertProfileHash: precert.CertProfileHash,
+		})
+		if err != nil {
+			return nil, wrapError(err, "issuing certificate for precertificate")
+		}
+		certDER = certPB.Der
 	}
 
-	parsedPrecert, err := x509.ParseCertificate(precert.DER)
+	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
-		return nil, nil, wrapError(err, "parsing precertificate")
-	}
-
-	scts, err := ra.getSCTs(ctx, precert.DER, parsedPrecert.NotAfter)
-	if err != nil {
-		return nil, nil, wrapError(err, "getting SCTs")
-	}
-
-	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
-		DER:             precert.DER,
-		SCTs:            scts,
-		RegistrationID:  int64(acctID),
-		OrderID:         int64(oID),
-		CertProfileHash: precert.CertProfileHash,
-	})
-	if err != nil {
-		return nil, nil, wrapError(err, "issuing certificate for precertificate")
-	}
-
-	parsedCertificate, err := x509.ParseCertificate(cert.Der)
-	if err != nil {
-		return nil, nil, wrapError(err, "parsing final certificate")
+		return nil, wrapError(err, "parsing final certificate")
 	}
 
 	ra.countCertificateIssued(ctx, int64(acctID), slices.Clone(parsedCertificate.DNSNames), isRenewal)
 
 	// Asynchronously submit the final certificate to any configured logs
-	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
+	go ra.ctpolicy.SubmitFinalCert(certDER, parsedCertificate.NotAfter)
 
 	err = ra.matchesCSR(parsedCertificate, csr)
 	if err != nil {
 		ra.certCSRMismatch.Inc()
-		return nil, nil, err
+		return nil, err
 	}
 
 	_, err = ra.SA.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{
@@ -1367,15 +1371,20 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		CertificateSerial: core.SerialToString(parsedCertificate.SerialNumber),
 	})
 	if err != nil {
-		return nil, nil, wrapError(err, "persisting finalized order")
+		return nil, wrapError(err, "persisting finalized order")
 	}
 
-	return parsedCertificate, &certProfileID{name: precert.CertProfileName, hash: precert.CertProfileHash}, nil
+	return parsedCertificate, nil
 }
 
-func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, expiration time.Time) (core.SCTDERs, error) {
+func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, precertDER []byte) (core.SCTDERs, error) {
 	started := ra.clk.Now()
-	scts, err := ra.ctpolicy.GetSCTs(ctx, cert, expiration)
+	precert, err := x509.ParseCertificate(precertDER)
+	if err != nil {
+		return nil, fmt.Errorf("parsing precertificate: %w", err)
+	}
+
+	scts, err := ra.ctpolicy.GetSCTs(ctx, precertDER, precert.NotAfter)
 	took := ra.clk.Since(started)
 	if err != nil {
 		state := "failure"
