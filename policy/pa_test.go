@@ -30,7 +30,7 @@ func paImpl(t *testing.T) *AuthorityImpl {
 	return pa
 }
 
-func TestWellFormedDomainNames(t *testing.T) {
+func TestWellFormedIdentifiers(t *testing.T) {
 	testCases := []struct {
 		domain string
 		err    error
@@ -110,7 +110,7 @@ func TestWellFormedDomainNames(t *testing.T) {
 
 	// Test syntax errors
 	for _, tc := range testCases {
-		err := WellFormedDomainNames([]string{tc.domain})
+		err := WellFormedIdentifiers([]identifier.ACMEIdentifier{identifier.NewDNS(tc.domain)})
 		if tc.err == nil {
 			test.AssertNil(t, err, fmt.Sprintf("Unexpected error for domain %q, got %s", tc.domain, err))
 		} else {
@@ -120,6 +120,12 @@ func TestWellFormedDomainNames(t *testing.T) {
 			test.AssertContains(t, berr.Error(), tc.err.Error())
 		}
 	}
+
+	err := WellFormedIdentifiers([]identifier.ACMEIdentifier{identifier.NewIP(netip.MustParseAddr("9.9.9.9"))})
+	test.AssertError(t, err, "Expected error for IP, but got none")
+	var berr *berrors.BoulderError
+	test.AssertErrorWraps(t, err, &berr)
+	test.AssertContains(t, berr.Error(), errUnsupportedIdentifier.Error())
 }
 
 func TestWillingToIssue(t *testing.T) {
@@ -177,19 +183,22 @@ func TestWillingToIssue(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	// Invalid encoding
-	err = pa.WillingToIssue([]string{"www.xn--m.com"})
+	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS("www.xn--m.com")})
 	test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
+	// Invalid identifier type
+	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewIP(netip.MustParseAddr("1.1.1.1"))})
+	test.AssertError(t, err, "WillingToIssue didn't fail on an IP address")
 	// Valid encoding
-	err = pa.WillingToIssue([]string{"www.xn--mnich-kva.com"})
+	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS("www.xn--mnich-kva.com")})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
 	// IDN TLD
-	err = pa.WillingToIssue([]string{"xn--example--3bhk5a.xn--p1ai"})
+	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS("xn--example--3bhk5a.xn--p1ai")})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
 	features.Reset()
 
 	// Test expected blocked domains
 	for _, domain := range shouldBeBlocked {
-		err := pa.WillingToIssue([]string{domain})
+		err := pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS(domain)})
 		test.AssertError(t, err, "domain was not correctly forbidden")
 		var berr *berrors.BoulderError
 		test.AssertErrorWraps(t, err, &berr)
@@ -198,7 +207,7 @@ func TestWillingToIssue(t *testing.T) {
 
 	// Test acceptance of good names
 	for _, domain := range shouldBeAccepted {
-		err := pa.WillingToIssue([]string{domain})
+		err := pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS(domain)})
 		test.AssertNotError(t, err, "domain was incorrectly forbidden")
 	}
 }
@@ -284,7 +293,7 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			err := pa.WillingToIssue([]string{tc.Domain})
+			err := pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS(tc.Domain)})
 			if tc.ExpectedErr == nil {
 				test.AssertNil(t, err, fmt.Sprintf("Unexpected error for domain %q, got %s", tc.Domain, err))
 			} else {
@@ -319,12 +328,12 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
 
 	// Test multiple malformed domains and one banned domain; only the malformed ones will generate errors
-	err = pa.WillingToIssue([]string{
-		"perfectly-fine.com",      // fine
-		"letsdecrypt_org",         // malformed
-		"example.comm",            // malformed
-		"letsdecrypt.org",         // banned
-		"also-perfectly-fine.com", // fine
+	err = pa.WillingToIssue([]identifier.ACMEIdentifier{
+		identifier.NewDNS("perfectly-fine.com"),      // fine
+		identifier.NewDNS("letsdecrypt_org"),         // malformed
+		identifier.NewDNS("example.comm"),            // malformed
+		identifier.NewDNS("letsdecrypt.org"),         // banned
+		identifier.NewDNS("also-perfectly-fine.com"), // fine
 	})
 	test.AssertDeepEquals(t, err,
 		&berrors.BoulderError{
@@ -349,11 +358,11 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 		})
 
 	// Test multiple banned domains.
-	err = pa.WillingToIssue([]string{
-		"perfectly-fine.com",      // fine
-		"letsdecrypt.org",         // banned
-		"example.com",             // banned
-		"also-perfectly-fine.com", // fine
+	err = pa.WillingToIssue([]identifier.ACMEIdentifier{
+		identifier.NewDNS("perfectly-fine.com"),      // fine
+		identifier.NewDNS("letsdecrypt.org"),         // banned
+		identifier.NewDNS("example.com"),             // banned
+		identifier.NewDNS("also-perfectly-fine.com"), // fine
 	})
 	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
 
@@ -380,7 +389,7 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 		})
 
 	// Test willing to issue with only *one* bad identifier.
-	err = pa.WillingToIssue([]string{"letsdecrypt.org"})
+	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS("letsdecrypt.org")})
 	test.AssertDeepEquals(t, err,
 		&berrors.BoulderError{
 			Type:   berrors.RejectedIdentifier,
