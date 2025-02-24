@@ -46,6 +46,15 @@ func FromProto(ident *corepb.Identifier) ACMEIdentifier {
 	}
 }
 
+// FromProtoWithDefault can be removed after DnsNames are no longer used in
+// RPCs. TODO(#7311)
+func FromProtoWithDefault(ident *corepb.Identifier, name string) ACMEIdentifier {
+	if ident == nil {
+		return NewDNS(name)
+	}
+	return FromProto(ident)
+}
+
 // NewDNS is a convenience function for creating an ACMEIdentifier with Type
 // "dns" for a given domain name.
 func NewDNS(domain string) ACMEIdentifier {

@@ -219,10 +219,7 @@ type validationLogEvent struct {
 // implements the DCV portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	ident := req.Identifier
-	if ident == nil {
-		ident = identifier.NewDNS(req.DnsName).AsProto()
-	}
+	ident := identifier.FromProtoWithDefault(req.Identifier, req.DnsName)
 
 	if core.IsAnyNilOrZero(req, ident, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
@@ -248,7 +245,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	logEvent := validationLogEvent{
 		AuthzID:    req.Authz.Id,
 		Requester:  req.Authz.RegID,
-		Identifier: identifier.FromProto(ident),
+		Identifier: ident,
 		Challenge:  chall,
 	}
 	defer func() {
@@ -282,7 +279,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	// was successful or not, and cannot themselves fail.
 	records, err := va.validateChallenge(
 		ctx,
-		identifier.FromProto(ident),
+		ident,
 		chall.Type,
 		chall.Token,
 		req.ExpectedKeyAuthorization,
