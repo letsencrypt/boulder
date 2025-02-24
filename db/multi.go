@@ -7,29 +7,24 @@ import (
 )
 
 // MultiInserter makes it easy to construct a
-// `INSERT INTO table (...) VALUES ... RETURNING id;`
+// `INSERT INTO table (...) VALUES ...;`
 // query which inserts multiple rows into the same table. It can also execute
 // the resulting query.
 type MultiInserter struct {
 	// These are validated by the constructor as containing only characters
 	// that are allowed in an unquoted identifier.
 	// https://mariadb.com/kb/en/identifier-names/#unquoted
-	table           string
-	fields          []string
-	returningColumn string
+	table  string
+	fields []string
 
 	values [][]interface{}
 }
 
 // NewMultiInserter creates a new MultiInserter, checking for reasonable table
-// name and list of fields. returningColumn is the name of a column to be used
-// in a `RETURNING xyz` clause at the end. If it is empty, no `RETURNING xyz`
-// clause is used. If returningColumn is present, it must refer to a column
-// that can be parsed into an int64.
-// Safety: `table`, `fields`, and `returningColumn` must contain only strings
-// that are known at compile time. They must not contain user-controlled
-// strings.
-func NewMultiInserter(table string, fields []string, returningColumn string) (*MultiInserter, error) {
+// name and list of fields.
+// Safety: `table` and `fields` must contain only strings that are known at
+// compile time. They must not contain user-controlled strings.
+func NewMultiInserter(table string, fields []string) (*MultiInserter, error) {
 	if len(table) == 0 || len(fields) == 0 {
 		return nil, fmt.Errorf("empty table name or fields list")
 	}
@@ -44,18 +39,11 @@ func NewMultiInserter(table string, fields []string, returningColumn string) (*M
 			return nil, err
 		}
 	}
-	if returningColumn != "" {
-		err := validMariaDBUnquotedIdentifier(returningColumn)
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	return &MultiInserter{
-		table:           table,
-		fields:          fields,
-		returningColumn: returningColumn,
-		values:          make([][]interface{}, 0),
+		table:  table,
+		fields: fields,
+		values: make([][]interface{}, 0),
 	}, nil
 }
 
@@ -84,56 +72,32 @@ func (mi *MultiInserter) query() (string, []interface{}) {
 
 	questions := strings.TrimRight(questionsBuf.String(), ",")
 
-	// Safety: we are interpolating `mi.returningColumn` into an SQL query. We
-	// know it is a valid unquoted identifier in MariaDB because we verified
-	// that in the constructor.
-	returning := ""
-	if mi.returningColumn != "" {
-		returning = fmt.Sprintf(" RETURNING %s", mi.returningColumn)
-	}
 	// Safety: we are interpolating `mi.table` and `mi.fields` into an SQL
 	// query. We know they contain, respectively, a valid unquoted identifier
 	// and a slice of valid unquoted identifiers because we verified that in
 	// the constructor. We know the query overall has valid syntax because we
 	// generate it entirely within this function.
-	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES %s%s", mi.table, strings.Join(mi.fields, ","), questions, returning)
+	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES %s", mi.table, strings.Join(mi.fields, ","), questions)
 
 	return query, queryArgs
 }
 
 // Insert inserts all the collected rows into the database represented by
-// `queryer`. If a non-empty returningColumn was provided, then it returns
-// the list of values from that column returned by the query.
-func (mi *MultiInserter) Insert(ctx context.Context, queryer Queryer) ([]int64, error) {
+// `queryer`.
+func (mi *MultiInserter) Insert(ctx context.Context, db Execer) error {
 	query, queryArgs := mi.query()
-	rows, err := queryer.QueryContext(ctx, query, queryArgs...)
+	res, err := db.ExecContext(ctx, query, queryArgs...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	ids := make([]int64, 0, len(mi.values))
-	if mi.returningColumn != "" {
-		for rows.Next() {
-			var id int64
-			err = rows.Scan(&id)
-			if err != nil {
-				rows.Close()
-				return nil, err
-			}
-			ids = append(ids, id)
-		}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != int64(len(mi.values)) {
+		return fmt.Errorf("unexpected number of rows inserted: %d != %d", affected, len(mi.values))
 	}
 
-	// Hack: sometimes in unittests we make a mock Queryer that returns a nil
-	// `*sql.Rows`. A nil `*sql.Rows` is not actually valid— calling `Close()`
-	// on it will panic— but here we choose to treat it like an empty list,
-	// and skip calling `Close()` to avoid the panic.
-	if rows != nil {
-		err = rows.Close()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return ids, nil
+	return nil
 }

@@ -9,7 +9,6 @@ import "google/protobuf/empty.proto";
 
 service RegistrationAuthority {
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
-  rpc UpdateRegistration(UpdateRegistrationRequest) returns (core.Registration) {}
   rpc UpdateRegistrationContact(UpdateRegistrationContactRequest) returns (core.Registration) {}
   rpc UpdateRegistrationKey(UpdateRegistrationKeyRequest) returns (core.Registration) {}
   rpc PerformValidation(PerformValidationRequest) returns (core.Authorization) {}
@@ -28,11 +27,6 @@ service RegistrationAuthority {
 
 message GenerateOCSPRequest {
   string serial = 1;
-}
-
-message UpdateRegistrationRequest {
-  core.Registration base = 1;
-  core.Registration update = 2;
 }
 
 message UpdateRegistrationContactRequest {
@@ -79,6 +73,14 @@ message AdministrativelyRevokeCertificateRequest {
   // certificate in question. In this case, the keyCompromise reason cannot be
   // specified, because the key cannot be blocked.
   bool malformed = 6;
+  // The CRL shard to store the revocation in.
+  //
+  // This is used when revoking malformed certificates, to allow human judgement
+  // in setting the CRL shard instead of automatically determining it by parsing
+  // the certificate.
+  //
+  // Passing a nonzero crlShard with malformed=false returns error.
+  int64 crlShard = 7;
 }
 
 message NewOrderRequest {
@@ -86,11 +88,9 @@ message NewOrderRequest {
   int64 registrationID = 1;
   repeated string dnsNames = 2;
   string replacesSerial = 3;
-  // TODO(#7512): Remove this field.
-  bool isARIRenewal = 4;
+  reserved 4; // previously isARIRenewal
   string certificateProfileName = 5;
-  // TODO(#7512): Remove this field.
-  bool isRenewal = 6;
+  reserved 6; // previously isRenewal
 }
 
 message GetAuthorizationRequest {

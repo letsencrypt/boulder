@@ -40,7 +40,7 @@ ipki() (
   minica -domains redis -ip-addresses 10.33.33.2,10.33.33.3,10.33.33.4,10.33.33.5,10.33.33.6,10.33.33.7,10.33.33.8,10.33.33.9
 
   # Used by Boulder gRPC services as both server and client mTLS certificates.
-  for SERVICE in admin-revoker expiration-mailer ocsp-responder consul \
+  for SERVICE in admin expiration-mailer ocsp-responder consul \
     wfe akamai-purger bad-key-revoker crl-updater crl-storer \
     health-checker rocsp-tool sfe; do
     minica -domains "${SERVICE}.boulder" &

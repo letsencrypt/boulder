@@ -66,7 +66,7 @@ func init() {
 
 func BenchmarkCheckCert(b *testing.B) {
 	checker := newChecker(nil, clock.New(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
-	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
+	testKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
 	rawCert := x509.Certificate{
@@ -290,7 +290,7 @@ func TestCheckCert(t *testing.T) {
 				delete(problemsMap, p)
 			}
 			for k := range problemsMap {
-				t.Errorf("Expected problem but didn't find it: '%s'.", k)
+				t.Errorf("Expected problem but didn't find '%s' in problems: %q.", k, problems)
 			}
 
 			// Same settings as above, but the stored serial number in the DB is invalid.
@@ -340,7 +340,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 		saCleanUp()
 	}()
 
-	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
+	testKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	// Problems
 	//   Expiry period is too long
 	rawCert := x509.Certificate{

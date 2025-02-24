@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"math/big"
-	"net"
 	"regexp"
 	"strings"
 	"time"
@@ -22,7 +20,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -155,52 +152,6 @@ func (ssa *SQLStorageAuthorityRO) GetRegistrationByKey(ctx context.Context, req 
 	}
 
 	return registrationModelToPb(model)
-}
-
-// incrementIP returns a copy of `ip` incremented at a bit index `index`,
-// or in other words the first IP of the next highest subnet given a mask of
-// length `index`.
-// In order to easily account for overflow, we treat ip as a big.Int and add to
-// it. If the increment overflows the max size of a net.IP, return the highest
-// possible net.IP.
-func incrementIP(ip net.IP, index int) net.IP {
-	bigInt := new(big.Int)
-	bigInt.SetBytes([]byte(ip))
-	incr := new(big.Int).Lsh(big.NewInt(1), 128-uint(index))
-	bigInt.Add(bigInt, incr)
-	// bigInt.Bytes can be shorter than 16 bytes, so stick it into a
-	// full-sized net.IP.
-	resultBytes := bigInt.Bytes()
-	if len(resultBytes) > 16 {
-		return net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
-	}
-	result := make(net.IP, 16)
-	copy(result[16-len(resultBytes):], resultBytes)
-	return result
-}
-
-// ipRange returns a range of IP addresses suitable for querying MySQL for the
-// purpose of rate limiting using a range that is inclusive on the lower end and
-// exclusive at the higher end. If ip is an IPv4 address, it returns that address,
-// plus the one immediately higher than it. If ip is an IPv6 address, it applies
-// a /48 mask to it and returns the lowest IP in the resulting network, and the
-// first IP outside of the resulting network.
-func ipRange(ip net.IP) (net.IP, net.IP) {
-	ip = ip.To16()
-	// For IPv6, match on a certain subnet range, since one person can commonly
-	// have an entire /48 to themselves.
-	maskLength := 48
-	// For IPv4 addresses, do a match on exact address, so begin = ip and end =
-	// next higher IP.
-	if ip.To4() != nil {
-		maskLength = 128
-	}
-
-	mask := net.CIDRMask(maskLength, 128)
-	begin := ip.Mask(mask)
-	end := incrementIP(begin, maskLength)
-
-	return begin, end
 }
 
 func ReverseName(domain string) string {
@@ -410,13 +361,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 	}
 
 	txn := func(tx db.Executor) (interface{}, error) {
-		var omObj interface{}
-		var err error
-		if features.Get().MultipleCertificateProfiles {
-			omObj, err = tx.Get(ctx, orderModelv2{}, req.Id)
-		} else {
-			omObj, err = tx.Get(ctx, orderModelv1{}, req.Id)
-		}
+		omObj, err := tx.Get(ctx, orderModel{}, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
 				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
@@ -427,12 +372,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
 
-		var order *corepb.Order
-		if features.Get().MultipleCertificateProfiles {
-			order, err = modelToOrderv2(omObj.(*orderModelv2))
-		} else {
-			order, err = modelToOrderv1(omObj.(*orderModelv1))
-		}
+		order, err := modelToOrder(omObj.(*orderModel))
 		if err != nil {
 			return nil, err
 		}
@@ -657,6 +597,10 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 
 	authzModelMap := make(map[string]authzModel, len(authzModels))
 	for _, am := range authzModels {
+		if req.Profile != "" && am.CertificateProfileName != &req.Profile {
+			// Don't return authzs whose profile doesn't match that requested.
+			continue
+		}
 		// If there is an existing authorization in the map, only replace it with
 		// one which has a "better" validation state (valid instead of pending).
 		existing, present := authzModelMap[am.IdentifierValue]
@@ -832,6 +776,10 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 
 	authzMap := make(map[string]authzModel, len(authzModels))
 	for _, am := range authzModels {
+		if req.Profile != "" && am.CertificateProfileName != &req.Profile {
+			// Don't return authzs whose profile doesn't match that requested.
+			continue
+		}
 		// If there is an existing authorization in the map only replace it with one
 		// which has a later expiry.
 		existing, present := authzMap[am.IdentifierValue]
@@ -952,26 +900,13 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 	})
 }
 
-// GetRevokedCerts gets a request specifying an issuer and a period of time,
-// and writes to the output stream the set of all certificates issued by that
-// issuer which expire during that period of time and which have been revoked.
-// The starting timestamp is treated as inclusive (certs with exactly that
-// notAfter date are included), but the ending timestamp is exclusive (certs
-// with exactly that notAfter date are *not* included).
-func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
-	if req.ShardIdx != 0 {
-		return ssa.getRevokedCertsFromRevokedCertificatesTable(req, stream)
-	} else {
-		return ssa.getRevokedCertsFromCertificateStatusTable(req, stream)
-	}
-}
-
-// getRevokedCertsFromRevokedCertificatesTable uses the new revokedCertificates
-// table to implement GetRevokedCerts. It must only be called when the request
-// contains a non-zero ShardIdx.
-func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
-	if req.ShardIdx == 0 {
-		return errors.New("can't select shard 0 from revokedCertificates table")
+// GetRevokedCertsByShard returns revoked certificates by explicit sharding.
+//
+// It returns all unexpired certificates from the revokedCertificates table with the given
+// shardIdx. It limits the results those revoked before req.RevokedBefore.
+func (ssa *SQLStorageAuthorityRO) GetRevokedCertsByShard(req *sapb.GetRevokedCertsByShardRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
+	if core.IsAnyNilOrZero(req.ShardIdx, req.IssuerNameID, req.RevokedBefore, req.ExpiresAfter) {
+		return errIncompleteRequest
 	}
 
 	atTime := req.RevokedBefore.AsTime()
@@ -1009,15 +944,24 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(re
 
 		return stream.Send(&corepb.CRLEntry{
 			Serial:    row.Serial,
-			Reason:    int32(row.RevokedReason),
+			Reason:    int32(row.RevokedReason), //nolint: gosec // Revocation reasons are guaranteed to be small, no risk of overflow.
 			RevokedAt: timestamppb.New(row.RevokedDate),
 		})
 	})
 }
 
-// getRevokedCertsFromCertificateStatusTable uses the old certificateStatus
-// table to implement GetRevokedCerts.
-func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
+// GetRevokedCerts returns revoked certificates based on temporal sharding.
+//
+// Based on a request specifying an issuer and a period of time,
+// it writes to the output stream the set of all certificates issued by that
+// issuer which expire during that period of time and which have been revoked.
+// The starting timestamp is treated as inclusive (certs with exactly that
+// notAfter date are included), but the ending timestamp is exclusive (certs
+// with exactly that notAfter date are *not* included).
+func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream grpc.ServerStreamingServer[corepb.CRLEntry]) error {
+	if core.IsAnyNilOrZero(req.IssuerNameID, req.RevokedBefore, req.ExpiresAfter, req.ExpiresBefore) {
+		return errIncompleteRequest
+	}
 	atTime := req.RevokedBefore.AsTime()
 
 	clauses := `
@@ -1053,7 +997,7 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req 
 
 		return stream.Send(&corepb.CRLEntry{
 			Serial:    row.Serial,
-			Reason:    int32(row.RevokedReason),
+			Reason:    int32(row.RevokedReason), //nolint: gosec // Revocation reasons are guaranteed to be small, no risk of overflow.
 			RevokedAt: timestamppb.New(row.RevokedDate),
 		})
 	})

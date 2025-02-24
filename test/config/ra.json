@@ -29,12 +29,9 @@
 		"debugAddr": ":8002",
 		"hostnamePolicyFile": "test/hostname-policy.yaml",
 		"maxNames": 100,
-		"authorizationLifetimeDays": 30,
-		"pendingAuthorizationLifetimeDays": 7,
 		"goodkey": {
 			"fermatRounds": 100
 		},
-		"orderLifetime": "168h",
 		"issuerCerts": [
 			"test/certs/webpki/int-rsa-a.cert.pem",
 			"test/certs/webpki/int-rsa-b.cert.pem",
@@ -43,6 +40,19 @@
 			"test/certs/webpki/int-ecdsa-b.cert.pem",
 			"test/certs/webpki/int-ecdsa-c.cert.pem"
 		],
+		"validationProfiles": {
+			"legacy": {
+				"pendingAuthzLifetime": "168h",
+				"validAuthzLifetime": "720h",
+				"orderLifetime": "168h"
+			},
+			"modern": {
+				"pendingAuthzLifetime": "7h",
+				"validAuthzLifetime": "7h",
+				"orderLifetime": "7h"
+			}
+		},
+		"defaultProfileName": "legacy",
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/ra.boulder/cert.pem",
@@ -114,7 +124,7 @@
 			"services": {
 				"ra.RegistrationAuthority": {
 					"clientNames": [
-						"admin-revoker.boulder",
+						"admin.boulder",
 						"bad-key-revoker.boulder",
 						"ocsp-responder.boulder",
 						"sfe.boulder",

@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 
-	_ "github.com/letsencrypt/boulder/cmd/admin-revoker"
 	_ "github.com/letsencrypt/boulder/cmd/akamai-purger"
 	_ "github.com/letsencrypt/boulder/cmd/bad-key-revoker"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-ca"

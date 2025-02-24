@@ -89,7 +89,7 @@ func TestDialerTimeout(t *testing.T) {
 	var took time.Duration
 	for range 20 {
 		started := time.Now()
-		_, _, err = va.fetchHTTP(ctx, "unroutable.invalid", "/.well-known/acme-challenge/whatever")
+		_, _, err = va.processHTTPValidation(ctx, "unroutable.invalid", "/.well-known/acme-challenge/whatever")
 		took = time.Since(started)
 		if err != nil && strings.Contains(err.Error(), "network is unreachable") {
 			continue
@@ -322,7 +322,7 @@ func TestExtractRequestTarget(t *testing.T) {
 func TestHTTPValidationDNSError(t *testing.T) {
 	va, mockLog := setup(nil, "", nil, nil)
 
-	_, _, prob := va.fetchHTTP(ctx, "always.error", "/.well-known/acme-challenge/whatever")
+	_, _, prob := va.processHTTPValidation(ctx, "always.error", "/.well-known/acme-challenge/whatever")
 	test.AssertError(t, prob, "Expected validation fetch to fail")
 	matchingLines := mockLog.GetAllMatching(`read udp: some net error`)
 	if len(matchingLines) != 1 {
@@ -338,7 +338,7 @@ func TestHTTPValidationDNSError(t *testing.T) {
 func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
 	va, mockLog := setup(nil, "", nil, nil)
 
-	_, _, prob := va.fetchHTTP(ctx, "id.mismatch", "/.well-known/acme-challenge/whatever")
+	_, _, prob := va.processHTTPValidation(ctx, "id.mismatch", "/.well-known/acme-challenge/whatever")
 	test.AssertError(t, prob, "Expected validation fetch to fail")
 	matchingLines := mockLog.GetAllMatching(`logDNSError ID mismatch`)
 	if len(matchingLines) != 1 {
@@ -1105,7 +1105,7 @@ func TestFetchHTTP(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 			defer cancel()
-			body, records, err := va.fetchHTTP(ctx, tc.Host, tc.Path)
+			body, records, err := va.processHTTPValidation(ctx, tc.Host, tc.Path)
 			if tc.ExpectedProblem == nil {
 				test.AssertNotError(t, err, "expected nil prob")
 			} else {
@@ -1249,7 +1249,7 @@ func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Expected validation to fail when file mismatched.")
 	}
-	expected := `The key authorization file from the server did not match this challenge. Expected "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI" (got "\xef\xffAABBCC")`
+	expected := fmt.Sprintf(`The key authorization file from the server did not match this challenge. Expected "%s" (got "\xef\xffAABBCC")`, expectedKeyAuthorization)
 	if err.Error() != expected {
 		t.Errorf("validation failed with %s, expected %s", err, expected)
 	}

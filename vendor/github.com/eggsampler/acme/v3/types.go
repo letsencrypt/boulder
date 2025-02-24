@@ -62,10 +62,11 @@ type Directory struct {
 
 	// meta object containing directory metadata
 	Meta struct {
-		TermsOfService          string   `json:"termsOfService"`
-		Website                 string   `json:"website"`
-		CaaIdentities           []string `json:"caaIdentities"`
-		ExternalAccountRequired bool     `json:"externalAccountRequired"`
+		TermsOfService          string            `json:"termsOfService"`
+		Website                 string            `json:"website"`
+		CaaIdentities           []string          `json:"caaIdentities"`
+		ExternalAccountRequired bool              `json:"externalAccountRequired"`
+		Profiles                map[string]string `json:"profiles"`
 	} `json:"meta"`
 
 	// Directory url provided when creating a new acme client.
@@ -150,6 +151,7 @@ type Order struct {
 	Status         string       `json:"status"`
 	Expires        time.Time    `json:"expires"`
 	Identifiers    []Identifier `json:"identifiers"`
+	Profile        string       `json:"Profile,omitempty"`
 	NotBefore      time.Time    `json:"notBefore"`
 	NotAfter       time.Time    `json:"notAfter"`
 	Error          Problem      `json:"error"`

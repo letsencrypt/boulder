@@ -382,20 +382,6 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 	return dialer, record, nil
 }
 
-// fetchHTTP invokes processHTTPValidation and if an error result is
-// returned, converts it to a problem. Otherwise the results from
-// processHTTPValidation are returned.
-func (va *ValidationAuthorityImpl) fetchHTTP(
-	ctx context.Context,
-	host string,
-	path string) ([]byte, []core.ValidationRecord, error) {
-	body, records, err := va.processHTTPValidation(ctx, host, path)
-	if err != nil {
-		return body, records, err
-	}
-	return body, records, nil
-}
-
 // fallbackErr returns true only for net.OpError instances where the op is equal
 // to "dial", or url.Error instances wrapping such an error. fallbackErr returns
 // false for all other errors. By policy, only dial errors (not read or write
@@ -647,7 +633,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident ide
 
 	// Perform the fetch
 	path := fmt.Sprintf(".well-known/acme-challenge/%s", token)
-	body, validationRecords, err := va.fetchHTTP(ctx, ident.Value, "/"+path)
+	body, validationRecords, err := va.processHTTPValidation(ctx, ident.Value, "/"+path)
 	if err != nil {
 		return validationRecords, err
 	}

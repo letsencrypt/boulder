@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net"
 	"net/url"
 	"slices"
 	"strconv"
@@ -274,18 +273,11 @@ type issuedNameModel struct {
 
 // regModel is the description of a core.Registration in the database before
 type regModel struct {
-	ID        int64  `db:"id"`
-	Key       []byte `db:"jwk"`
-	KeySHA256 string `db:"jwk_sha256"`
-	Contact   string `db:"contact"`
-	Agreement string `db:"agreement"`
-	// InitialIP is stored as sixteen binary bytes, regardless of whether it
-	// represents a v4 or v6 IP address.
-	//
-	// Deprecated: This field is no longer used and will be removed from the
-	// database schema in a future release. Although deprecated, this column
-	// remains NOT NULL in the database, so a value must still be provided.
-	InitialIP []byte    `db:"initialIp"`
+	ID        int64     `db:"id"`
+	Key       []byte    `db:"jwk"`
+	KeySHA256 string    `db:"jwk_sha256"`
+	Contact   string    `db:"contact"`
+	Agreement string    `db:"agreement"`
 	CreatedAt time.Time `db:"createdAt"`
 	LockCol   int64
 	Status    string `db:"status"`
@@ -328,9 +320,6 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		KeySHA256: sha,
 		Contact:   string(jsonContact),
 		Agreement: reg.Agreement,
-		// Although deprecated, this column remains NOT NULL in the database, so
-		// a value must still be provided.
-		InitialIP: net.ParseIP("0.0.0.0").To16(),
 		CreatedAt: createdAt,
 		Status:    reg.Status,
 	}, nil
@@ -342,25 +331,20 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 	}
 
 	contact := []string{}
-	contactsPresent := false
 	if len(reg.Contact) > 0 {
 		err := json.Unmarshal([]byte(reg.Contact), &contact)
 		if err != nil {
 			return nil, err
 		}
-		if len(contact) > 0 {
-			contactsPresent = true
-		}
 	}
 
 	return &corepb.Registration{
-		Id:              reg.ID,
-		Key:             reg.Key,
-		Contact:         contact,
-		ContactsPresent: contactsPresent,
-		Agreement:       reg.Agreement,
-		CreatedAt:       timestamppb.New(reg.CreatedAt.UTC()),
-		Status:          reg.Status,
+		Id:        reg.ID,
+		Key:       reg.Key,
+		Contact:   contact,
+		Agreement: reg.Agreement,
+		CreatedAt: timestamppb.New(reg.CreatedAt.UTC()),
+		Status:    reg.Status,
 	}, nil
 }
 
@@ -381,20 +365,9 @@ type lintingCertModel struct {
 	Expires        time.Time
 }
 
-// TODO(#7324) orderModelv1 is deprecated, use orderModelv2 moving forward.
-type orderModelv1 struct {
-	ID                int64
-	RegistrationID    int64
-	Expires           time.Time
-	Created           time.Time
-	Error             []byte
-	CertificateSerial string
-	BeganProcessing   bool
-}
-
-// orderModelv2 represents one row in the orders table. The
-// CertificateProfileName column is a pointer because the column is NULL-able.
-type orderModelv2 struct {
+// orderModel represents one row in the orders table. The CertificateProfileName
+// column is a pointer because the column is NULL-able.
+type orderModel struct {
 	ID                     int64
 	RegistrationID         int64
 	Expires                time.Time
@@ -410,59 +383,11 @@ type orderToAuthzModel struct {
 	AuthzID int64
 }
 
-// TODO(#7324) orderToModelv1 is deprecated, use orderModelv2 moving forward.
-func orderToModelv1(order *corepb.Order) (*orderModelv1, error) {
-	om := &orderModelv1{
-		ID:                order.Id,
-		RegistrationID:    order.RegistrationID,
-		Expires:           order.Expires.AsTime(),
-		Created:           order.Created.AsTime(),
-		BeganProcessing:   order.BeganProcessing,
-		CertificateSerial: order.CertificateSerial,
-	}
-
-	if order.Error != nil {
-		errJSON, err := json.Marshal(order.Error)
-		if err != nil {
-			return nil, err
-		}
-		if len(errJSON) > mediumBlobSize {
-			return nil, fmt.Errorf("Error object is too large to store in the database")
-		}
-		om.Error = errJSON
-	}
-	return om, nil
-}
-
-// TODO(#7324) modelToOrderv1 is deprecated, use orderModelv2 moving forward.
-func modelToOrderv1(om *orderModelv1) (*corepb.Order, error) {
-	order := &corepb.Order{
-		Id:                om.ID,
-		RegistrationID:    om.RegistrationID,
-		Expires:           timestamppb.New(om.Expires),
-		Created:           timestamppb.New(om.Created),
-		CertificateSerial: om.CertificateSerial,
-		BeganProcessing:   om.BeganProcessing,
-	}
-	if len(om.Error) > 0 {
-		var problem corepb.ProblemDetails
-		err := json.Unmarshal(om.Error, &problem)
-		if err != nil {
-			return &corepb.Order{}, badJSONError(
-				"failed to unmarshal order model's error",
-				om.Error,
-				err)
-		}
-		order.Error = &problem
-	}
-	return order, nil
-}
-
-func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
+func orderToModel(order *corepb.Order) (*orderModel, error) {
 	// Make a local copy so we can take a reference to it below.
 	profile := order.CertificateProfileName
 
-	om := &orderModelv2{
+	om := &orderModel{
 		ID:                     order.Id,
 		RegistrationID:         order.RegistrationID,
 		Expires:                order.Expires.AsTime(),
@@ -485,7 +410,7 @@ func orderToModelv2(order *corepb.Order) (*orderModelv2, error) {
 	return om, nil
 }
 
-func modelToOrderv2(om *orderModelv2) (*corepb.Order, error) {
+func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	profile := ""
 	if om.CertificateProfileName != nil {
 		profile = *om.CertificateProfileName
@@ -555,21 +480,24 @@ func statusUint(status core.AcmeStatus) uint8 {
 
 // authzFields is used in a variety of places in sa.go, and modifications to
 // it must be carried through to every use in sa.go
-const authzFields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, attemptedAt, token, validationError, validationRecord"
+const authzFields = "id, identifierType, identifierValue, registrationID, certificateProfileName, status, expires, challenges, attempted, attemptedAt, token, validationError, validationRecord"
 
+// authzModel represents one row in the authz2 table. The CertificateProfileName
+// column is a pointer because the column is NULL-able.
 type authzModel struct {
-	ID               int64      `db:"id"`
-	IdentifierType   uint8      `db:"identifierType"`
-	IdentifierValue  string     `db:"identifierValue"`
-	RegistrationID   int64      `db:"registrationID"`
-	Status           uint8      `db:"status"`
-	Expires          time.Time  `db:"expires"`
-	Challenges       uint8      `db:"challenges"`
-	Attempted        *uint8     `db:"attempted"`
-	AttemptedAt      *time.Time `db:"attemptedAt"`
-	Token            []byte     `db:"token"`
-	ValidationError  []byte     `db:"validationError"`
-	ValidationRecord []byte     `db:"validationRecord"`
+	ID                     int64      `db:"id"`
+	IdentifierType         uint8      `db:"identifierType"`
+	IdentifierValue        string     `db:"identifierValue"`
+	RegistrationID         int64      `db:"registrationID"`
+	CertificateProfileName *string    `db:"certificateProfileName"`
+	Status                 uint8      `db:"status"`
+	Expires                time.Time  `db:"expires"`
+	Challenges             uint8      `db:"challenges"`
+	Attempted              *uint8     `db:"attempted"`
+	AttemptedAt            *time.Time `db:"attemptedAt"`
+	Token                  []byte     `db:"token"`
+	ValidationError        []byte     `db:"validationError"`
+	ValidationRecord       []byte     `db:"validationRecord"`
 }
 
 // rehydrateHostPort mutates a validation record. If the URL in the validation
@@ -702,13 +630,17 @@ func hasMultipleNonPendingChallenges(challenges []*corepb.Challenge) bool {
 // newAuthzReqToModel converts an sapb.NewAuthzRequest to the authzModel storage
 // representation. It hardcodes the status to "pending" because it should be
 // impossible to create an authz in any other state.
-func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
+func newAuthzReqToModel(authz *sapb.NewAuthzRequest, profile string) (*authzModel, error) {
 	am := &authzModel{
 		IdentifierType:  identifierTypeToUint[authz.Identifier.Type],
 		IdentifierValue: authz.Identifier.Value,
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.StatusPending],
 		Expires:         authz.Expires.AsTime(),
+	}
+
+	if profile != "" {
+		am.CertificateProfileName = &profile
 	}
 
 	for _, challType := range authz.ChallengeTypes {
@@ -727,6 +659,8 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest) (*authzModel, error) {
 
 // authzPBToModel converts a protobuf authorization representation to the
 // authzModel storage representation.
+// Deprecated: this function is only used as part of test setup, do not
+// introduce any new uses in production code.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 	am := &authzModel{
 		IdentifierType:  identifierTypeToUint[string(identifier.TypeDNS)],
@@ -734,6 +668,10 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.AcmeStatus(authz.Status)],
 		Expires:         authz.Expires.AsTime(),
+	}
+	if authz.CertificateProfileName != "" {
+		profile := authz.CertificateProfileName
+		am.CertificateProfileName = &profile
 	}
 	if authz.Id != "" {
 		// The v1 internal authorization objects use a string for the ID, the v2
@@ -876,12 +814,18 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 		return nil, fmt.Errorf("unrecognized identifier type encoding %d", am.IdentifierType)
 	}
 
+	profile := ""
+	if am.CertificateProfileName != nil {
+		profile = *am.CertificateProfileName
+	}
+
 	pb := &corepb.Authorization{
-		Id:             fmt.Sprintf("%d", am.ID),
-		Status:         string(uintToStatus[am.Status]),
-		DnsName:        am.IdentifierValue,
-		RegistrationID: am.RegistrationID,
-		Expires:        timestamppb.New(am.Expires),
+		Id:                     fmt.Sprintf("%d", am.ID),
+		Status:                 string(uintToStatus[am.Status]),
+		DnsName:                am.IdentifierValue,
+		RegistrationID:         am.RegistrationID,
+		Expires:                timestamppb.New(am.Expires),
+		CertificateProfileName: profile,
 	}
 	// Populate authorization challenge array. We do this by iterating through
 	// the challenge type bitmap and creating a challenge of each type if its
@@ -1044,12 +988,12 @@ func deleteOrderFQDNSet(
 	return nil
 }
 
-func addIssuedNames(ctx context.Context, queryer db.Queryer, cert *x509.Certificate, isRenewal bool) error {
+func addIssuedNames(ctx context.Context, queryer db.Execer, cert *x509.Certificate, isRenewal bool) error {
 	if len(cert.DNSNames) == 0 {
 		return berrors.InternalServerError("certificate has no DNSNames")
 	}
 
-	multiInserter, err := db.NewMultiInserter("issuedNames", []string{"reversedName", "serial", "notBefore", "renewal"}, "")
+	multiInserter, err := db.NewMultiInserter("issuedNames", []string{"reversedName", "serial", "notBefore", "renewal"})
 	if err != nil {
 		return err
 	}
@@ -1064,8 +1008,7 @@ func addIssuedNames(ctx context.Context, queryer db.Queryer, cert *x509.Certific
 			return err
 		}
 	}
-	_, err = multiInserter.Insert(ctx, queryer)
-	return err
+	return multiInserter.Insert(ctx, queryer)
 }
 
 func addKeyHash(ctx context.Context, db db.Inserter, cert *x509.Certificate) error {

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -21,7 +20,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
@@ -123,46 +121,6 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb
 		return nil, err
 	}
 	return registrationModelToPb(reg)
-}
-
-// UpdateRegistration stores an updated Registration
-//
-// Deprecated: Use UpdateRegistrationContact or UpdateRegistrationKey instead.
-func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *corepb.Registration) (*emptypb.Empty, error) {
-	if req == nil || req.Id == 0 || len(req.Key) == 0 {
-		return nil, errIncompleteRequest
-	}
-
-	curr, err := selectRegistration(ctx, ssa.dbMap, "id", req.Id)
-	if err != nil {
-		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
-		}
-		return nil, err
-	}
-
-	update, err := registrationPbToModel(req)
-	if err != nil {
-		return nil, err
-	}
-
-	// Copy the existing registration model's LockCol to the new updated
-	// registration model's LockCol
-	update.LockCol = curr.LockCol
-	n, err := ssa.dbMap.Update(ctx, update)
-	if err != nil {
-		if db.IsDuplicate(err) {
-			// duplicate entry error can only happen when jwk_sha256 collides, indicate
-			// to caller that the provided key is already in use
-			return nil, berrors.DuplicateError("key is already in use for a different account")
-		}
-		return nil, err
-	}
-	if n == 0 {
-		return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
-	}
-
-	return &emptypb.Empty{}, nil
 }
 
 // UpdateRegistrationContact stores an updated contact in a Registration.
@@ -558,85 +516,37 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 
 	output, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		// First, insert all of the new authorizations and record their IDs.
-		newAuthzIDs := make([]int64, 0)
-		if features.Get().InsertAuthzsIndividually {
-			for _, authz := range req.NewAuthzs {
-				am, err := newAuthzReqToModel(authz)
-				if err != nil {
-					return nil, err
-				}
-				err = tx.Insert(ctx, am)
-				if err != nil {
-					return nil, err
-				}
-				newAuthzIDs = append(newAuthzIDs, am.ID)
+		newAuthzIDs := make([]int64, 0, len(req.NewAuthzs))
+		for _, authz := range req.NewAuthzs {
+			am, err := newAuthzReqToModel(authz, req.NewOrder.CertificateProfileName)
+			if err != nil {
+				return nil, err
 			}
-		} else {
-			if len(req.NewAuthzs) != 0 {
-				inserter, err := db.NewMultiInserter("authz2", strings.Split(authzFields, ", "), "id")
-				if err != nil {
-					return nil, err
-				}
-				for _, authz := range req.NewAuthzs {
-					am, err := newAuthzReqToModel(authz)
-					if err != nil {
-						return nil, err
-					}
-					err = inserter.Add([]interface{}{
-						am.ID,
-						am.IdentifierType,
-						am.IdentifierValue,
-						am.RegistrationID,
-						statusToUint[core.StatusPending],
-						am.Expires,
-						am.Challenges,
-						nil,
-						nil,
-						am.Token,
-						nil,
-						nil,
-					})
-					if err != nil {
-						return nil, err
-					}
-				}
-				newAuthzIDs, err = inserter.Insert(ctx, tx)
-				if err != nil {
-					return nil, err
-				}
+			err = tx.Insert(ctx, am)
+			if err != nil {
+				return nil, err
 			}
+			newAuthzIDs = append(newAuthzIDs, am.ID)
 		}
 
 		// Second, insert the new order.
-		var orderID int64
-		var err error
 		created := ssa.clk.Now()
-		if features.Get().MultipleCertificateProfiles {
-			omv2 := orderModelv2{
-				RegistrationID:         req.NewOrder.RegistrationID,
-				Expires:                req.NewOrder.Expires.AsTime(),
-				Created:                created,
-				CertificateProfileName: &req.NewOrder.CertificateProfileName,
-			}
-			err = tx.Insert(ctx, &omv2)
-			orderID = omv2.ID
-		} else {
-			omv1 := orderModelv1{
-				RegistrationID: req.NewOrder.RegistrationID,
-				Expires:        req.NewOrder.Expires.AsTime(),
-				Created:        created,
-			}
-			err = tx.Insert(ctx, &omv1)
-			orderID = omv1.ID
+		om := orderModel{
+			RegistrationID:         req.NewOrder.RegistrationID,
+			Expires:                req.NewOrder.Expires.AsTime(),
+			Created:                created,
+			CertificateProfileName: &req.NewOrder.CertificateProfileName,
 		}
+		err := tx.Insert(ctx, &om)
 		if err != nil {
 			return nil, err
 		}
+		orderID := om.ID
 
 		// Third, insert all of the orderToAuthz relations.
 		// Have to combine the already-associated and newly-created authzs.
 		allAuthzIds := append(req.NewOrder.V2Authorizations, newAuthzIDs...)
-		inserter, err := db.NewMultiInserter("orderToAuthz2", []string{"orderID", "authzID"}, "")
+		inserter, err := db.NewMultiInserter("orderToAuthz2", []string{"orderID", "authzID"})
 		if err != nil {
 			return nil, err
 		}
@@ -646,7 +556,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 				return nil, err
 			}
 		}
-		_, err = inserter.Insert(ctx, tx)
+		err = inserter.Insert(ctx, tx)
 		if err != nil {
 			return nil, err
 		}
@@ -753,7 +663,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 		return nil, errIncompleteRequest
 	}
 	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		om, err := orderToModelv2(&corepb.Order{
+		om, err := orderToModel(&corepb.Order{
 			Id:    req.Id,
 			Error: req.Error,
 		})
@@ -954,6 +864,9 @@ func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.Revoke
 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
+//
+// If ShardIdx is non-zero, RevokeCertificate also writes an entry for this certificate to
+// the revokedCertificates table, with the provided shard number.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req.Serial, req.IssuerID, req.Date) {
 		return nil, errIncompleteRequest
@@ -1053,7 +966,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 			// the "UPDATE certificateStatus SET revokedReason..." above if this
 			// query ever becomes the first or only query in this transaction. We are
 			// currently relying on the query above to exit early if the certificate
-			// does not have an appropriate status.
+			// does not have an appropriate status and revocation reason.
 			err = tx.SelectOne(
 				ctx, &rcm, `SELECT * FROM revokedCertificates WHERE serial = ?`, req.Serial)
 			if db.IsNoRows(err) {
