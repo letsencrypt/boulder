@@ -56,32 +56,12 @@ type Config struct {
 		// recovering from an outage to ensure continuity of coverage.
 		LookbackPeriod config.Duration `validate:"-"`
 
-		// CertificateLifetime is the validity period (usually expressed in hours,
-		// like "2160h") of the longest-lived currently-unexpired certificate. For
-		// Let's Encrypt, this is usually ninety days. If the validity period of
-		// the issued certificates ever changes upwards, this value must be updated
-		// immediately; if the validity period of the issued certificates ever
-		// changes downwards, the value must not change until after all certificates with
-		// the old validity period have expired.
-		// Deprecated: This config value is no longer used.
-		// TODO(#6438): Remove this value.
-		CertificateLifetime config.Duration `validate:"-"`
-
 		// UpdatePeriod controls how frequently the crl-updater runs and publishes
 		// new versions of every CRL shard. The Baseline Requirements, Section 4.9.7
 		// state that this MUST NOT be more than 7 days. We believe that future
 		// updates may require that this not be more than 24 hours, and currently
 		// recommend an UpdatePeriod of 6 hours.
 		UpdatePeriod config.Duration
-
-		// UpdateOffset controls the times at which crl-updater runs, to avoid
-		// scheduling the batch job at exactly midnight. The updater runs every
-		// UpdatePeriod, starting from the Unix Epoch plus UpdateOffset, and
-		// continuing forward into the future forever. This value must be strictly
-		// less than the UpdatePeriod.
-		// Deprecated: This config value is not relevant with continuous updating.
-		// TODO(#7023): Remove this value.
-		UpdateOffset config.Duration `validate:"-"`
 
 		// UpdateTimeout controls how long a single CRL shard is allowed to attempt
 		// to update before being timed out. The total CRL updating process may take
