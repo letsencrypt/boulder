@@ -1580,16 +1580,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, req.Authz.Status, req.Authz.Expires) {
-		return nil, errIncompleteGRPCRequest
-	}
-	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
-	// upwards, once all RPC users are populating Identifiers.
-	ident := req.Authz.Identifier
-	if ident == nil {
-		ident = identifier.NewDNS(req.Authz.DnsName).AsProto()
-	}
-	if core.IsAnyNilOrZero(ident) && core.IsAnyNilOrZero(req.Authz.DnsName) {
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, identifier.FromProtoWithDefault(req.Authz.Identifier, req.Authz.DnsName), req.Authz.Status, req.Authz.Expires) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -2245,14 +2236,9 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
-	ident := req.Identifier
-	if ident == nil {
-		// TODO(#7311): Change this to simply return an error once all RPC users
-		// are populating Identifiers.
-		ident = identifier.NewDNS(req.DnsName).AsProto()
-	}
+	ident := identifier.FromProtoWithDefault(req.Identifier, req.DnsName)
 
-	if core.IsAnyNilOrZero(req, req.Id, req.Status, req.RegistrationID) {
+	if core.IsAnyNilOrZero(req, req.Id, ident, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
 	}
 	authzID, err := strconv.ParseInt(req.Id, 10, 64)
@@ -2268,7 +2254,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		// internal errors in the client. From our perspective this uses storage
 		// resources similar to how failed authorizations do, so we increment the
 		// failed authorizations limit.
-		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.FromProto(ident))
+		err = ra.countFailedValidations(ctx, req.RegistrationID, ident)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update rate limits: %w", err)
 		}

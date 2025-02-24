@@ -51,6 +51,14 @@ func FromProto(ident *corepb.Identifier) ACMEIdentifier {
 	}
 }
 
+// TODO(#7311): This can be removed after DnsNames are no longer used in RPCs.
+func FromProtoWithDefault(ident *corepb.Identifier, name string) ACMEIdentifier {
+	if ident == nil {
+		return NewDNS(name)
+	}
+	return FromProto(ident)
+}
+
 // SliceAsProto is a convenience function for converting a slice of
 // ACMEIdentifiers into a slice of *corepb.Identifiers, to use for RPCs.
 func SliceAsProto(idents []ACMEIdentifier) []*corepb.Identifier {

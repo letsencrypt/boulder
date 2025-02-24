@@ -1079,17 +1079,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Ensure gRPC response is complete.
-	if core.IsAnyNilOrZero(authzPB.Id, authzPB.Status, authzPB.Expires) {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
-		return
-	}
-	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
-	// upwards, once all RPC users are populating Identifiers.
-	pbIdent := authzPB.Identifier
-	if pbIdent == nil {
-		pbIdent = identifier.NewDNS(authzPB.DnsName).AsProto()
-	}
-	if core.IsAnyNilOrZero(pbIdent) && core.IsAnyNilOrZero(authzPB.DnsName) {
+	if core.IsAnyNilOrZero(authzPB.Id, identifier.FromProtoWithDefault(authzPB.Identifier, authzPB.DnsName), authzPB.Status, authzPB.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -1282,17 +1272,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
 		})
-		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, authzPB.Status, authzPB.Expires) {
-			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
-			return
-		}
-		// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
-		// upwards, once all RPC users are populating Identifiers.
-		pbIdent := authzPB.Identifier
-		if pbIdent == nil {
-			pbIdent = identifier.NewDNS(authzPB.DnsName).AsProto()
-		}
-		if core.IsAnyNilOrZero(pbIdent) && core.IsAnyNilOrZero(authzPB.DnsName) {
+		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, identifier.FromProtoWithDefault(authzPB.Identifier, authzPB.DnsName), authzPB.Status, authzPB.Expires) {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
 		}
@@ -1533,23 +1513,15 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
+	ident := identifier.FromProtoWithDefault(authzPB.Identifier, authzPB.DnsName)
+
 	// Ensure gRPC response is complete.
-	if core.IsAnyNilOrZero(authzPB.Id, authzPB.Status, authzPB.Expires) {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
-		return
-	}
-	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
-	// upwards, once all RPC users are populating Identifiers.
-	ident := authzPB.Identifier
-	if ident == nil {
-		ident = identifier.NewDNS(authzPB.DnsName).AsProto()
-	}
-	if core.IsAnyNilOrZero(ident) {
+	if core.IsAnyNilOrZero(authzPB.Id, ident, authzPB.Status, authzPB.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
 
-	logEvent.Identifiers = []identifier.ACMEIdentifier{identifier.FromProto(ident)}
+	logEvent.Identifiers = []identifier.ACMEIdentifier{ident}
 	logEvent.Status = authzPB.Status
 
 	// After expiring, authorizations are inaccessible

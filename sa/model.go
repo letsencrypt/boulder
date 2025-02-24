@@ -661,15 +661,10 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest, profile string) (*authzMode
 // Deprecated: this function is only used as part of test setup, do not
 // introduce any new uses in production code.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
-	ident := authz.Identifier
-	if ident == nil {
-		// TODO(#7311): Change this to simply return an error once all RPC users
-		// are populating Identifiers.
-		ident = identifier.NewDNS(authz.DnsName).AsProto()
-	}
+	ident := identifier.FromProtoWithDefault(authz.Identifier, authz.DnsName)
 
 	am := &authzModel{
-		IdentifierType:  identifierTypeToUint[ident.Type],
+		IdentifierType:  identifierTypeToUint[ident.AsProto().Type],
 		IdentifierValue: ident.Value,
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.AcmeStatus(authz.Status)],
