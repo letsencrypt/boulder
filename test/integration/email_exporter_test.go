@@ -52,14 +52,14 @@ func getCreatedContacts(t *testing.T) []string {
 }
 
 // assertAllContactsReceived waits for the expected contacts to be received by
-// pardot-test-srv. Retries every 200ms for up to 2 seconds and fails if the
+// pardot-test-srv. Retries every 50ms for up to 2 seconds and fails if the
 // expected contacts are not received.
 func assertAllContactsReceived(t *testing.T, expect []string) {
 	t.Helper()
 
-	for attempt := range 10 {
+	for attempt := range 20 {
 		if attempt > 0 {
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 		}
 		got := getCreatedContacts(t)
 
@@ -73,7 +73,7 @@ func assertAllContactsReceived(t *testing.T, expect []string) {
 		if allFound {
 			break
 		}
-		if attempt >= 9 {
+		if attempt >= 19 {
 			t.Fatalf("Expected contacts=%v to be received by pardot-test-srv, got contacts=%v", expect, got)
 		}
 	}
