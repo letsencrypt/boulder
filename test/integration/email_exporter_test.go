@@ -9,8 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -20,15 +20,63 @@ import (
 )
 
 // randomDomain creates a random domain name for testing.
-//
-// panics if crypto/rand.Rand.Read fails.
-func randomDomain() string {
+func randomDomain(t *testing.T) string {
+	t.Helper()
+
 	var bytes [4]byte
 	_, err := rand.Read(bytes[:])
 	if err != nil {
-		panic(err)
+		test.AssertNotError(t, err, "Failed to generate random domain")
 	}
 	return fmt.Sprintf("%x.mail.com", bytes[:])
+}
+
+// getCreatedContacts queries the pardot-test-srv for the list of created
+// contacts.
+func getCreatedContacts(t *testing.T) []string {
+	t.Helper()
+
+	httpClient := http.DefaultClient
+	resp, err := httpClient.Get("http://localhost:9602/contacts")
+	test.AssertNotError(t, err, "Failed to query contacts")
+	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
+	defer resp.Body.Close()
+
+	var got struct {
+		Contacts []string `json:"contacts"`
+	}
+	decoder := json.NewDecoder(resp.Body)
+	err = decoder.Decode(&got)
+	test.AssertNotError(t, err, "Failed to decode contacts")
+	return got.Contacts
+}
+
+// assertAllContactsReceived waits for the expected contacts to be received by
+// pardot-test-srv. Retries every 200ms for up to 2 seconds and fails if the
+// expected contacts are not received.
+func assertAllContactsReceived(t *testing.T, expect []string) {
+	t.Helper()
+
+	for attempt := range 10 {
+		if attempt > 0 {
+			time.Sleep(200 * time.Millisecond)
+		}
+		got := getCreatedContacts(t)
+
+		allFound := true
+		for _, e := range expect {
+			if !slices.Contains(got, e) {
+				allFound = false
+				break
+			}
+		}
+		if allFound {
+			break
+		}
+		if attempt >= 9 {
+			t.Fatalf("Expected contacts=%v to be received by pardot-test-srv, got contacts=%v", expect, got)
+		}
+	}
 }
 
 // TestContactsSentForNewAccount tests that contacts are dispatched to
@@ -40,7 +88,7 @@ func TestContactsSentForNewAccount(t *testing.T) {
 		t.Skip("Test requires WFE to be configured to use email-exporter")
 	}
 
-	domain := randomDomain()
+	domain := randomDomain(t)
 
 	tests := []struct {
 		name           string
@@ -74,32 +122,8 @@ func TestContactsSentForNewAccount(t *testing.T) {
 			}
 
 			_, err = c.NewAccount(acctKey, false, true, tt.contacts...)
-			if err != nil {
-				t.Fatalf("failed to create initial account: %s", err)
-			}
-
-			// Wait for the contacts to be exported from the email exporter
-			// queue to pardot-test-srv.
-			time.Sleep(1 * time.Second)
-
-			httpClient := http.DefaultClient
-			resp, err := httpClient.Get("http://localhost:9602/contacts?" + url.Values{
-				"pardot_business_unit_id": []string{"test-business-unit"}}.Encode(),
-			)
-			test.AssertNotError(t, err, "Failed to query contacts")
-			test.AssertEquals(t, resp.StatusCode, http.StatusOK)
-			defer resp.Body.Close()
-
-			var got struct {
-				Contacts []string `json:"contacts"`
-			}
-			decoder := json.NewDecoder(resp.Body)
-			err = decoder.Decode(&got)
-			test.AssertNotError(t, err, "Failed to decode contacts")
-
-			for _, expectEmail := range tt.expectContacts {
-				test.AssertSliceContains(t, got.Contacts, expectEmail)
-			}
+			test.AssertNotError(t, err, "Failed to create initial account with contacts")
+			assertAllContactsReceived(t, tt.expectContacts)
 		})
 	}
 }
@@ -113,7 +137,7 @@ func TestContactsSentWhenAccountUpdated(t *testing.T) {
 		t.Skip("Test requires WFE to be configured to use email-exporter")
 	}
 
-	domain := randomDomain()
+	domain := randomDomain(t)
 
 	c, err := acme.NewClient("http://boulder.service.consul:4001/directory")
 	if err != nil {
@@ -152,30 +176,8 @@ func TestContactsSentWhenAccountUpdated(t *testing.T) {
 			t.Parallel()
 
 			_, err := c.UpdateAccount(acct, tt.contacts...)
-			test.AssertNotError(t, err, "Failed to update account")
-
-			// Wait for the contacts to be exported from the email exporter
-			// queue to pardot-test-srv.
-			time.Sleep(1 * time.Second)
-
-			httpClient := http.DefaultClient
-			resp, err := httpClient.Get("http://localhost:9602/contacts?" + url.Values{
-				"pardot_business_unit_id": []string{"test-business-unit"}}.Encode(),
-			)
-			test.AssertNotError(t, err, "Failed to query contacts")
-			test.AssertEquals(t, resp.StatusCode, http.StatusOK)
-			defer resp.Body.Close()
-
-			var got struct {
-				Contacts []string `json:"contacts"`
-			}
-			decoder := json.NewDecoder(resp.Body)
-			err = decoder.Decode(&got)
-			test.AssertNotError(t, err, "Failed to decode contacts")
-
-			for _, expectEmail := range tt.expectContacts {
-				test.AssertSliceContains(t, got.Contacts, expectEmail)
-			}
+			test.AssertNotError(t, err, "Failed to update contacts for existing account")
+			assertAllContactsReceived(t, tt.expectContacts)
 		})
 	}
 }

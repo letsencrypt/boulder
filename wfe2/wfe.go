@@ -856,11 +856,12 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if wfe.ee != nil && len(emails) > 0 {
 		_, err := wfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{
 			// Note: We are explicitly using the contacts provided by the
-			// subscriber here, rather than the contacts returned by the RA.
+			// subscriber here. The RA will eventually stop accepting contacts.
 			Emails: emails,
 		})
 		if err != nil {
-			wfe.log.Warningf("Error creating contact: %v", err)
+			wfe.sendError(response, logEvent, probs.ServerInternal("Error sending contacts"), err)
+			return
 		}
 	}
 }
@@ -1460,10 +1461,12 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	emails := contactsToEmails(accountUpdateRequest.Contact)
 	if wfe.ee != nil && len(emails) > 0 {
 		_, err := wfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{
+			// Note: We are explicitly using the contacts provided by the subscriber
+			// here. The RA will eventually stop accepting contacts.
 			Emails: emails,
 		})
 		if err != nil {
-			wfe.log.Warningf("Error creating contact: %v", err)
+			return nil, probs.ServerInternal("Error sending contact email")
 		}
 	}
 
