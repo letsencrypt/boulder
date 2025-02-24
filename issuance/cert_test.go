@@ -9,7 +9,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/asn1"
 	"encoding/base64"
 	"fmt"
 	"reflect"
@@ -336,7 +335,7 @@ func TestGenerateTemplate(t *testing.T) {
 		IssuingCertificateURL: []string{"http://issuer"},
 		OCSPServer:            []string{"http://ocsp"},
 		CRLDistributionPoints: nil,
-		PolicyIdentifiers:     []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
+		Policies:              []x509.OID{domainValidatedOID},
 	}
 
 	test.AssertDeepEquals(t, actual, expected)

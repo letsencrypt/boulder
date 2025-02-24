@@ -18,7 +18,6 @@ import (
 	mrand "math/rand/v2"
 	"os"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -585,18 +584,19 @@ func TestIgnoredLint(t *testing.T) {
 	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
 	serial := big.NewInt(1337)
 
+	x509OID, err := x509.OIDFromInts([]uint64{1, 2, 3})
+	test.AssertNotError(t, err, "failed to create x509.OID")
+
 	template := &x509.Certificate{
 		Subject: pkix.Name{
 			CommonName: "CPU's Cool CA",
 		},
-		SerialNumber: serial,
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(testValidityDuration - time.Second),
-		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		PolicyIdentifiers: []asn1.ObjectIdentifier{
-			{1, 2, 3},
-		},
+		SerialNumber:          serial,
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(testValidityDuration - time.Second),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		Policies:              []x509.OID{x509OID},
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		IssuingCertificateURL: []string{"http://aia.example.org"},
@@ -639,12 +639,12 @@ func TestIgnoredLint(t *testing.T) {
 		"zlint info: w_ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.",
 		"zlint error: e_scts_from_same_operator Certificate had too few embedded SCTs; browser policy requires 2.",
 	}
-	sort.Strings(expectedProblems)
+	slices.Sort(expectedProblems)
 
 	// Check the certificate with a nil ignore map. This should return the
 	// expected zlint problems.
 	_, problems := checker.checkCert(context.Background(), cert, nil)
-	sort.Strings(problems)
+	slices.Sort(problems)
 	test.AssertDeepEquals(t, problems, expectedProblems)
 
 	// Check the certificate again with an ignore map that excludes the affected
