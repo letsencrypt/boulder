@@ -196,21 +196,33 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 }
 
 func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) error {
-	var asn1Tag int
-	var certSAN []byte
+	var expectedSANBytes []byte
+	var expectedSANValue string
 	switch ident.Type {
 	case identifier.TypeDNS:
 		if len(cert.DNSNames) != 1 || len(cert.IPAddresses) != 0 {
 			return errors.New("wrong number of identifiers")
 		}
-		asn1Tag = 2
-		certSAN = []byte(cert.DNSNames[0])
+		bytes, err := asn1.Marshal([]asn1.RawValue{
+			{Tag: 2, Class: 2, Bytes: []byte(cert.DNSNames[0])},
+		})
+		if err != nil {
+			return errors.New("composing SAN extension")
+		}
+		expectedSANBytes = bytes
+		expectedSANValue = cert.DNSNames[0]
 	case identifier.TypeIP:
 		if len(cert.IPAddresses) != 1 || len(cert.DNSNames) != 0 {
 			return errors.New("wrong number of identifiers")
 		}
-		asn1Tag = 7
-		certSAN = cert.IPAddresses[0]
+		bytes, err := asn1.Marshal([]asn1.RawValue{
+			{Tag: 7, Class: 2, Bytes: cert.IPAddresses[0]},
+		})
+		if err != nil {
+			return errors.New("composing SAN extension")
+		}
+		expectedSANBytes = bytes
+		expectedSANValue = cert.IPAddresses[0].String()
 	default:
 		// This should never happen. The calling function should check the
 		// identifier type.
@@ -219,20 +231,13 @@ func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) e
 
 	for _, ext := range cert.Extensions {
 		if IdCeSubjectAltName.Equal(ext.Id) {
-			expectedSANs, err := asn1.Marshal([]asn1.RawValue{
-				{Tag: asn1Tag, Class: 2, Bytes: certSAN},
-			})
-			if err != nil || !bytes.Equal(expectedSANs, ext.Value) {
+			if !bytes.Equal(expectedSANBytes, ext.Value) {
 				return errors.New("SAN extension does not match expected bytes")
 			}
 		}
 	}
 
-	if ident.Type == identifier.TypeIP {
-		certSAN = []byte(net.IP(certSAN).String())
-	}
-
-	if !strings.EqualFold(string(certSAN), ident.Value) {
+	if !strings.EqualFold(expectedSANValue, ident.Value) {
 		return errors.New("identifier does not match expected identifier")
 	}
 
