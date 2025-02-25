@@ -3940,19 +3940,19 @@ func makeARICertID(leaf *x509.Certificate) (string, error) {
 }
 
 func TestCountNewOrderWithReplaces(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
+	wfe, fc, signer := setupWFE(t)
 
-	expectExpiry := time.Now().AddDate(0, 0, 1)
 	// Pick a random issuer to "issue" expectCert.
 	var issuer *issuance.Certificate
 	for _, v := range wfe.issuerCertificates {
 		issuer = v
 		break
 	}
-	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
+	testKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	expectSerial := big.NewInt(1337)
 	expectCert := &x509.Certificate{
-		NotAfter:       expectExpiry,
+		NotBefore:      fc.Now(),
+		NotAfter:       fc.Now().AddDate(0, 0, 90),
 		DNSNames:       []string{"example.com"},
 		SerialNumber:   expectSerial,
 		AuthorityKeyId: issuer.SubjectKeyId,
@@ -3968,10 +3968,17 @@ func TestCountNewOrderWithReplaces(t *testing.T) {
 			RegistrationID: 1,
 			Serial:         core.SerialToString(expectSerial),
 			Der:            expectDer,
+			Issued:         timestamppb.New(expectCert.NotBefore),
+			Expires:        timestamppb.New(expectCert.NotAfter),
 		},
 	}
 	mux := wfe.Handler(metrics.NoopRegisterer)
 	responseWriter := httptest.NewRecorder()
+
+	// Set the fake clock forward to 1s past the suggested renewal window start
+	// time.
+	renewalWindowStart := core.RenewalInfoSimple(expectCert.NotBefore, expectCert.NotAfter).SuggestedWindow.Start
+	fc.Set(renewalWindowStart.Add(time.Second))
 
 	body := fmt.Sprintf(`
 	{
