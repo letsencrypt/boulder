@@ -50,13 +50,16 @@ func FromProto(ident *corepb.Identifier) ACMEIdentifier {
 // FromProtoOrName can be removed after DnsNames are no longer used in RPCs.
 // TODO(#8023)
 func FromProtoOrName(ident *corepb.Identifier, name string) (ACMEIdentifier, error) {
-	if ident == nil {
-		return NewDNS(name), nil
+	if ident != nil && name != "" {
+		return ACMEIdentifier{}, errors.New("both Identifier and DNSName are set")
 	}
-	if name == "" {
+	if ident != nil {
 		return FromProto(ident), nil
 	}
-	return ACMEIdentifier{}, errors.New("can't use both Identifier and DNSName")
+	if name != "" {
+		return NewDNS(name), nil
+	}
+	return ACMEIdentifier{}, errors.New("neither Identifier nor DNSName are set")
 }
 
 // NewDNS is a convenience function for creating an ACMEIdentifier with Type

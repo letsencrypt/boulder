@@ -1278,7 +1278,7 @@ func TestPerformValidationDnsName(t *testing.T) {
 				req.DnsName = "good-dns02.com"
 			},
 			expectErr:       true,
-			expectErrString: "can't use both Identifier and DNSName",
+			expectErrString: "both Identifier and DNSName are set",
 			expectLog:       `"Identifier":{"type":"dns","value":"good-dns01.com"}`,
 		},
 		{
@@ -1290,7 +1290,7 @@ func TestPerformValidationDnsName(t *testing.T) {
 				req.DnsName = "good-dns02.com"
 			},
 			expectErr:       true,
-			expectErrString: "can't use both Identifier and DNSName",
+			expectErrString: "both Identifier and DNSName are set",
 			expectLog:       `"Identifier":{"type":"dns","value":"good-dns01.com"}`,
 		},
 		{
