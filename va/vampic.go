@@ -219,10 +219,12 @@ type validationLogEvent struct {
 // implements the DCV portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	ident, err := identifier.FromProtoOrName(req.Identifier, req.DnsName)
-	if err != nil {
-		return nil, err
+	// TODO(#8023): Once DnsNames are no longer used in RPCs, use req.Identifier
+	// directly instead of setting ident.
+	if req.Identifier != nil && req.DnsName != "" {
+		return nil, errors.New("both Identifier and DNSName are set")
 	}
+	ident := identifier.FromProtoWithDefault(req.Identifier, req.DnsName)
 
 	if core.IsAnyNilOrZero(req, ident, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
