@@ -7,10 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	emailpb "github.com/letsencrypt/boulder/email/proto"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -48,14 +47,14 @@ func (m *MockPardotClientImpl) getCreatedContacts() []string {
 	return append([]string(nil), m.CreatedContacts...)
 }
 
+// setup creates a new ExporterImpl, a MockPardotClientImpl, and the start and
+// cleanup functions for the ExporterImpl. Call start() to begin processing the
+// ExporterImpl queue and cleanup() to drain and shutdown. If start() is called,
+// cleanup() must be called.
 func setup() (*ExporterImpl, *MockPardotClientImpl, func(), func()) {
 	mockClient, clientImpl := NewMockPardotClientImpl()
-	logger := blog.NewMock()
-	scope := prometheus.NewRegistry()
-	exporter := NewExporterImpl(mockClient, 1000000, scope, logger)
-
+	exporter := NewExporterImpl(mockClient, 1000000, metrics.NoopRegisterer, blog.NewMock())
 	daemonCtx, cancel := context.WithCancel(context.Background())
-
 	return exporter, clientImpl,
 		func() { exporter.Start(daemonCtx) },
 		func() {

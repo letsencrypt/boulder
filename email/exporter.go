@@ -88,12 +88,13 @@ func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendCon
 	}
 
 	impl.Lock()
+	defer impl.Unlock()
+
 	spotsLeft := queueCap - len(impl.toSend)
 	if spotsLeft < len(req.Emails) {
 		return nil, ErrQueueFull
 	}
 	impl.toSend = append(impl.toSend, req.Emails...)
-	impl.Unlock()
 	// Wake waiting workers to process the new emails.
 	impl.wake.Broadcast()
 
@@ -106,9 +107,9 @@ func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 	go func() {
 		<-daemonCtx.Done()
 		impl.Lock()
+		defer impl.Unlock()
 		// Wake waiting workers to exit.
 		impl.wake.Broadcast()
-		impl.Unlock()
 	}()
 
 	worker := func() {
@@ -134,11 +135,9 @@ func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 			impl.Unlock()
 
 			err := impl.limiter.Wait(daemonCtx)
-			if err != nil {
-				if !errors.Is(err, context.Canceled) {
-					impl.log.Errf("Unexpected limiter.Wait() error: %s", err)
-					continue
-				}
+			if err != nil && !errors.Is(err, context.Canceled) {
+				impl.log.Errf("Unexpected limiter.Wait() error: %s", err)
+				continue
 			}
 
 			err = impl.client.SendContact(email)
