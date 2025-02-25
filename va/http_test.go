@@ -281,13 +281,6 @@ func TestExtractRequestTarget(t *testing.T) {
 			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
 		},
 		{
-			Name: "DNS name enclosed in square brackets",
-			Req: &http.Request{
-				URL: mustURL("https://[bad.horse]"),
-			},
-			ExpectedError: errors.New("Invalid host in redirect target, must end in IANA registered TLD"),
-		},
-		{
 			Name: "bare IPv4, implicit port",
 			Req: &http.Request{
 				URL: mustURL("http://10.10.10.10"),

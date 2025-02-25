@@ -283,21 +283,23 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 	// Try and split an explicit port number from the request URL host. If there is
 	// one we need to make sure its a valid port. If there isn't one we need to
 	// pick the port based on the reqScheme default port.
-	reqHost := req.URL.Host
+	reqHost := req.URL.Hostname()
 	var reqPort int
-	if h, p, err := net.SplitHostPort(reqHost); err == nil {
-		reqHost = h
-		reqPort, err = strconv.Atoi(p)
+	reqPortStr := req.URL.Port()
+	if reqPortStr != "" {
+		port, err := strconv.Atoi(reqPortStr)
 		if err != nil {
 			return identifier.ACMEIdentifier{}, 0, err
 		}
 
 		// The explicit port must match the VA's configured HTTP or HTTPS port.
-		if reqPort != va.httpPort && reqPort != va.httpsPort {
+		if port != va.httpPort && port != va.httpsPort {
 			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError(
 				"Invalid port in redirect target. Only ports %d and %d are supported, not %d",
-				va.httpPort, va.httpsPort, reqPort)
+				va.httpPort, va.httpsPort, port)
 		}
+
+		reqPort = port
 	} else if reqScheme == "http" {
 		reqPort = va.httpPort
 	} else if reqScheme == "https" {
@@ -310,16 +312,6 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 
 	if reqHost == "" {
 		return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid empty host in redirect target")
-	}
-
-	// In URLs, bare IPv6 addresses are always enclosed in square brackets,
-	// which must be stripped in order for net.ParseIP to recognize the address.
-	if len(reqHost) > 2 && reqHost[0] == '[' && reqHost[len(reqHost)-1] == ']' {
-		shortHost := reqHost[1 : len(reqHost)-1]
-		// Square brackets are only valid syntax for bare IPs, not DNS names.
-		if net.ParseIP(shortHost) != nil {
-			reqHost = shortHost
-		}
 	}
 
 	// Often folks will misconfigure their webserver to send an HTTP redirect
