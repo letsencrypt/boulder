@@ -153,20 +153,18 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 		return nil, nil, fmt.Errorf("unknown identifier type: %s", ident.Type)
 	}
 
-	tlsConfig := &tls.Config{
+	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", core.ChallengeTypeTLSALPN01, ident, hostPort, serverName))
+
+	dialCtx, cancel := context.WithTimeout(ctx, va.singleDialTimeout)
+	defer cancel()
+
+	dialer := &tls.Dialer{Config: &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		NextProtos: []string{ACMETLS1Protocol},
 		ServerName: serverName,
 		// We expect a self-signed challenge certificate, do not verify it here.
 		InsecureSkipVerify: true,
-	}
-
-	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", core.ChallengeTypeTLSALPN01, ident, hostPort, tlsConfig.ServerName))
-
-	dialCtx, cancel := context.WithTimeout(ctx, va.singleDialTimeout)
-	defer cancel()
-
-	dialer := &tls.Dialer{Config: tlsConfig}
+	}}
 	conn, err := dialer.DialContext(dialCtx, "tcp", hostPort)
 	if err != nil {
 		va.log.Infof("%s connection failure for %s. err=[%#v] errStr=[%s]", core.ChallengeTypeTLSALPN01, ident, err, err)

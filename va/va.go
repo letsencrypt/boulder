@@ -422,15 +422,12 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	token string,
 	keyAuthorization string,
 ) ([]core.ValidationRecord, error) {
-	if ident.Type == identifier.TypeDNS {
-		// Strip a (potential) leading wildcard token from the identifier.
-		ident.Value = strings.TrimPrefix(ident.Value, "*.")
-	}
-
 	switch kind {
 	case core.ChallengeTypeHTTP01:
 		return va.validateHTTP01(ctx, ident, token, keyAuthorization)
 	case core.ChallengeTypeDNS01:
+		// Strip a (potential) leading wildcard token from the identifier.
+		ident.Value = strings.TrimPrefix(ident.Value, "*.")
 		return va.validateDNS01(ctx, ident, keyAuthorization)
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, ident, keyAuthorization)

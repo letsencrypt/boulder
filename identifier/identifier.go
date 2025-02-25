@@ -69,9 +69,9 @@ func NewDNS(domain string) ACMEIdentifier {
 func NewIP(ip netip.Addr) ACMEIdentifier {
 	return ACMEIdentifier{
 		Type: TypeIP,
-		// Section 3 of RFC 8738: The identifier value MUST contain the textual
-		// form of the address as defined in Section 2.1 of RFC1123 for IPv4 and
-		// in Section 4 of RFC5952 for IPv6.
+		// RFC 8738, Sec. 3: The identifier value MUST contain the textual form
+		// of the address as defined in RFC 1123, Sec. 2.1 for IPv4 and in RFC
+		// 5952, Sec. 4 for IPv6.
 		Value: ip.String(),
 	}
 }

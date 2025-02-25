@@ -330,7 +330,8 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 		)
 	}
 
-	if reqIP, err := netip.ParseAddr(reqHost); err == nil {
+	reqIP, err := netip.ParseAddr(reqHost)
+	if err == nil {
 		return identifier.NewIP(reqIP), reqPort, nil
 	}
 
