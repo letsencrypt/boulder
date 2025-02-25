@@ -78,6 +78,7 @@ type Config struct {
 		// limits are per section 7.1 of our combined CP/CPS, under "DV-SSL
 		// Subscriber Certificate". The value must match the CA and WFE
 		// configurations.
+		//
 		// Deprecated: Set ValidationProfiles[*].MaxNames instead.
 		MaxNames int `validate:"omitempty,min=1,max=100"`
 
