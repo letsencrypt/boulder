@@ -129,7 +129,8 @@
 		},
 		"certProfiles": {
 			"legacy": "The normal profile you know and love",
-			"modern": "Profile 2: Electric Boogaloo"
+			"modern": "Profile 2: Electric Boogaloo",
+			"shortlived": "Like modern, but smaller"
 		},
 		"unpause": {
 			"hmacKey": {

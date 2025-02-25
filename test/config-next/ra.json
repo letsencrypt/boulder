@@ -47,6 +47,11 @@
 				"pendingAuthzLifetime": "7h",
 				"validAuthzLifetime": "7h",
 				"orderLifetime": "7h"
+			},
+			"shortlived": {
+				"pendingAuthzLifetime": "7h",
+				"validAuthzLifetime": "7h",
+				"orderLifetime": "7h"
 			}
 		},
 		"defaultProfileName": "legacy",

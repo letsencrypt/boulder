@@ -100,6 +100,33 @@
 					"ignoredLints": [
 						"w_ext_subject_key_identifier_missing_sub_cert"
 					]
+				},
+				"shortlived": {
+					"allowMustStaple": true,
+					"omitCommonName": true,
+					"omitKeyEncipherment": true,
+					"omitClientAuth": true,
+					"omitSKID": true,
+					"includeCRLDistributionPoints": true,
+					"maxValidityPeriod": "160h",
+					"maxValidityBackdate": "1h5m",
+					"lintConfig": "test/config-next/zlint.toml",
+					"ignoredLints": [
+						"w_ext_subject_key_identifier_missing_sub_cert"
+					]
+				},
+				"shortlivedRenamedPriorToDeletion": {
+					"allowMustStaple": true,
+					"omitCommonName": true,
+					"omitKeyEncipherment": true,
+					"omitClientAuth": true,
+					"omitSKID": true,
+					"maxValidityPeriod": "160h",
+					"maxValidityBackdate": "1h5m",
+					"lintConfig": "test/config-next/zlint.toml",
+					"ignoredLints": [
+						"w_ext_subject_key_identifier_missing_sub_cert"
+					]
 				}
 			},
 			"crlProfile": {
