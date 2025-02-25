@@ -757,6 +757,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 			return
 		} else {
+			// Proceed, since we don't want internal rate limit system failures to
+			// block all account creation.
 			logEvent.IgnoredRateLimitError = err.Error()
 		}
 	}
@@ -2301,7 +2303,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	refundLimits := func() {}
+	var refundLimits func()
 	if !isARIRenewal {
 		refundLimits, err = wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal || isARIRenewal)
 		if err != nil {
@@ -2309,8 +2311,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 				return
 			} else {
+				// Proceed, since we don't want internal rate limit system failures to
+				// block all issuance.
 				logEvent.IgnoredRateLimitError = err.Error()
-				return
 			}
 		}
 	}
