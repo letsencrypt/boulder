@@ -26,8 +26,8 @@ type IsCAAValidRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// TODO(#7311): Accept an identifier instead of a domain (purely for
-	// consistency, because only DNS identifiers support CAA checks).
+	// TODO: Accept an identifier instead of a domain (purely for consistency,
+	// because only DNS identifiers support CAA checks).
 	//
 	// NOTE: Domain may be a name with a wildcard prefix (e.g. `*.example.com`)
 	Domain           string `protobuf:"bytes,1,opt,name=domain,proto3" json:"domain,omitempty"`
@@ -166,7 +166,7 @@ type PerformValidationRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Next unused field number: 6
-	// TODO(#7311): dnsNames are being deprecated in favour of identifiers.
+	// TODO(#8023): dnsNames are being deprecated in favour of identifiers.
 	DnsName                  string            `protobuf:"bytes,1,opt,name=dnsName,proto3" json:"dnsName,omitempty"`
 	Identifier               *proto.Identifier `protobuf:"bytes,5,opt,name=identifier,proto3" json:"identifier,omitempty"`
 	Challenge                *proto.Challenge  `protobuf:"bytes,2,opt,name=challenge,proto3" json:"challenge,omitempty"`

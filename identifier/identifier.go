@@ -4,6 +4,7 @@
 package identifier
 
 import (
+	"errors"
 	"net/netip"
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -46,13 +47,16 @@ func FromProto(ident *corepb.Identifier) ACMEIdentifier {
 	}
 }
 
-// FromProtoWithDefault can be removed after DnsNames are no longer used in
-// RPCs. TODO(#7311)
-func FromProtoWithDefault(ident *corepb.Identifier, name string) ACMEIdentifier {
+// FromProtoOrName can be removed after DnsNames are no longer used in RPCs.
+// TODO(#8023)
+func FromProtoOrName(ident *corepb.Identifier, name string) (ACMEIdentifier, error) {
 	if ident == nil {
-		return NewDNS(name)
+		return NewDNS(name), nil
 	}
-	return FromProto(ident)
+	if name == "" {
+		return FromProto(ident), nil
+	}
+	return ACMEIdentifier{}, errors.New("can't use both Identifier and DNSName")
 }
 
 // NewDNS is a convenience function for creating an ACMEIdentifier with Type

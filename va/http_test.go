@@ -296,12 +296,28 @@ func TestExtractRequestTarget(t *testing.T) {
 			ExpectedPort:  80,
 		},
 		{
-			Name: "bare IPv4, explicit port",
+			Name: "bare IPv4, explicit valid port",
 			Req: &http.Request{
 				URL: mustURL("http://10.10.10.10:80"),
 			},
 			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("10.10.10.10")),
 			ExpectedPort:  80,
+		},
+		{
+			Name: "bare IPv4, explicit invalid port",
+			Req: &http.Request{
+				URL: mustURL("http://10.10.10.10:9999"),
+			},
+			ExpectedError: fmt.Errorf("Invalid port in redirect target. Only ports 80 " +
+				"and 443 are supported, not 9999"),
+		},
+		{
+			Name: "bare IPv4, HTTPS",
+			Req: &http.Request{
+				URL: mustURL("https://10.10.10.10"),
+			},
+			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("10.10.10.10")),
+			ExpectedPort:  443,
 		},
 		{
 			Name: "bare IPv6, implicit port",
@@ -312,12 +328,28 @@ func TestExtractRequestTarget(t *testing.T) {
 			ExpectedPort:  80,
 		},
 		{
-			Name: "bare IPv6, explicit port",
+			Name: "bare IPv6, explicit valid port",
 			Req: &http.Request{
 				URL: mustURL("http://[::1]:80"),
 			},
 			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("::1")),
 			ExpectedPort:  80,
+		},
+		{
+			Name: "bare IPv6, explicit invalid port",
+			Req: &http.Request{
+				URL: mustURL("http://[::1]:9999"),
+			},
+			ExpectedError: fmt.Errorf("Invalid port in redirect target. Only ports 80 " +
+				"and 443 are supported, not 9999"),
+		},
+		{
+			Name: "bare IPv6, HTTPS",
+			Req: &http.Request{
+				URL: mustURL("https://[::1]"),
+			},
+			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("::1")),
+			ExpectedPort:  443,
 		},
 		{
 			Name: "valid HTTP redirect, explicit port",
@@ -432,10 +464,10 @@ func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
 func TestSetupHTTPValidation(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	mustTarget := func(t *testing.T, host identifier.ACMEIdentifier, port int, path string) *httpValidationTarget {
+	mustTarget := func(t *testing.T, host string, port int, path string) *httpValidationTarget {
 		target, err := va.newHTTPValidationTarget(
 			context.Background(),
-			host,
+			identifier.NewDNS(host),
 			port,
 			path,
 			"")
@@ -484,7 +516,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 		},
 		{
 			Name:        "HTTP input req",
-			InputTarget: mustTarget(t, identifier.NewDNS("ipv4.and.ipv6.localhost"), va.httpPort, "/yellow/brick/road"),
+			InputTarget: mustTarget(t, "ipv4.and.ipv6.localhost", va.httpPort, "/yellow/brick/road"),
 			InputURL:    httpInputURL,
 			ExpectedRecord: core.ValidationRecord{
 				DnsName:           "ipv4.and.ipv6.localhost",
@@ -502,7 +534,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 		},
 		{
 			Name:        "HTTPS input req",
-			InputTarget: mustTarget(t, identifier.NewDNS("ipv4.and.ipv6.localhost"), va.httpsPort, "/yellow/brick/road"),
+			InputTarget: mustTarget(t, "ipv4.and.ipv6.localhost", va.httpsPort, "/yellow/brick/road"),
 			InputURL:    httpsInputURL,
 			ExpectedRecord: core.ValidationRecord{
 				DnsName:           "ipv4.and.ipv6.localhost",

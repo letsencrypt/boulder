@@ -18,7 +18,6 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
@@ -64,30 +63,30 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 	ident identifier.ACMEIdentifier,
 ) (*x509.Certificate, *tls.ConnectionState, core.ValidationRecord, error) {
 	validationRecord := core.ValidationRecord{
-		DnsName:           ident.Value,
-		AddressesResolved: []net.IP{},
-		Port:              strconv.Itoa(va.tlsPort),
-		ResolverAddrs:     bdns.ResolverAddrs{},
+		DnsName: ident.Value,
+		Port:    strconv.Itoa(va.tlsPort),
 	}
 
+	var addrs []net.IP
 	switch ident.Type {
 	case identifier.TypeDNS:
 		// Resolve IP addresses for the identifier
-		addrs, resolvers, err := va.getAddrs(ctx, ident.Value)
+		dnsAddrs, dnsResolvers, err := va.getAddrs(ctx, ident.Value)
 		if err != nil {
 			return nil, nil, validationRecord, err
 		}
-		validationRecord.AddressesResolved, validationRecord.ResolverAddrs = addrs, resolvers
+		addrs, validationRecord.ResolverAddrs = dnsAddrs, dnsResolvers
 	case identifier.TypeIP:
-		validationRecord.AddressesResolved = []net.IP{net.ParseIP(ident.Value)}
+		addrs = []net.IP{net.ParseIP(ident.Value)}
 	default:
 		// This should never happen. The calling function should check the
 		// identifier type.
-		return nil, nil, validationRecord, fmt.Errorf("Unknown identifier type: %s", ident.Type)
+		return nil, nil, validationRecord, fmt.Errorf("unknown identifier type: %s", ident.Type)
 	}
+	validationRecord.AddressesResolved = addrs
 
 	// Split the available addresses into v4 and v6 addresses
-	v4, v6 := availableAddresses(validationRecord.AddressesResolved)
+	v4, v6 := availableAddresses(addrs)
 	addresses := append(v4, v6...)
 
 	// This shouldn't happen, but be defensive about it anyway
@@ -136,27 +135,30 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 	hostPort string,
 	ident identifier.ACMEIdentifier,
 ) (*x509.Certificate, *tls.ConnectionState, error) {
-	tlsConfig := &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		NextProtos: []string{ACMETLS1Protocol},
-		// We expect a self-signed challenge certificate, do not verify it here.
-		InsecureSkipVerify: true,
-	}
+	var serverName string
 	switch ident.Type {
 	case identifier.TypeDNS:
-		tlsConfig.ServerName = ident.Value
+		serverName = ident.Value
 	case identifier.TypeIP:
 		reverseIP, err := dns.ReverseAddr(ident.Value)
 		if err != nil {
 			va.log.Infof("%s Failed to parse IP address %s.", core.ChallengeTypeTLSALPN01, ident.Value)
-			return nil, nil, fmt.Errorf("Failed to parse IP address")
+			return nil, nil, fmt.Errorf("failed to parse IP address")
 		}
-		tlsConfig.ServerName = reverseIP
+		serverName = reverseIP
 	default:
 		// This should never happen. The calling function should check the
 		// identifier type.
 		va.log.Infof("%s Unknown identifier type '%s' for %s.", core.ChallengeTypeTLSALPN01, ident.Type, ident.Value)
-		return nil, nil, fmt.Errorf("Unknown identifier type: %s", ident.Type)
+		return nil, nil, fmt.Errorf("unknown identifier type: %s", ident.Type)
+	}
+
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		NextProtos: []string{ACMETLS1Protocol},
+		ServerName: serverName,
+		// We expect a self-signed challenge certificate, do not verify it here.
+		InsecureSkipVerify: true,
 	}
 
 	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", core.ChallengeTypeTLSALPN01, ident, hostPort, tlsConfig.ServerName))
@@ -212,7 +214,7 @@ func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) e
 	default:
 		// This should never happen. The calling function should check the
 		// identifier type.
-		return fmt.Errorf("Unknown identifier type: %s", ident.Type)
+		return fmt.Errorf("unknown identifier type: %s", ident.Type)
 	}
 
 	for _, ext := range cert.Extensions {

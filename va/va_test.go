@@ -1254,6 +1254,8 @@ func TestLogRemoteDifferentials(t *testing.T) {
 // TestPerformValidationDnsName modifies the PerformValidationRequest to test
 // backward compatibility during the transition to using an Identifier instead
 // of a DnsName.
+//
+// TODO(#8023): Remove this after the transition is over.
 func TestPerformValidationDnsName(t *testing.T) {
 	t.Parallel()
 
@@ -1263,27 +1265,33 @@ func TestPerformValidationDnsName(t *testing.T) {
 		validationFunc     validationFuncRunner
 		identDomain        string
 		transmogrifier     func(*vapb.PerformValidationRequest)
+		expectErr          bool
+		expectErrString    string
 		expectLog          string
 	}{
 		{
-			name:               "Identifier overrides DnsName for PerformValidation",
+			name:               "Both Identifier and DnsName for PerformValidation",
 			validationFuncName: "PerformValidation",
 			validationFunc:     runPerformValidation,
 			identDomain:        "good-dns01.com",
 			transmogrifier: func(req *vapb.PerformValidationRequest) {
 				req.DnsName = "good-dns02.com"
 			},
-			expectLog: `"Identifier":{"type":"dns","value":"good-dns01.com"}`,
+			expectErr:       true,
+			expectErrString: "can't use both Identifier and DNSName",
+			expectLog:       `"Identifier":{"type":"dns","value":"good-dns01.com"}`,
 		},
 		{
-			name:               "Identifier overrides DnsName for DoDCV",
+			name:               "Both Identifier and DnsName for DoDCV",
 			validationFuncName: "DoDCV",
 			validationFunc:     runDoDCV,
 			identDomain:        "good-dns01.com",
 			transmogrifier: func(req *vapb.PerformValidationRequest) {
 				req.DnsName = "good-dns02.com"
 			},
-			expectLog: `"Identifier":{"type":"dns","value":"good-dns01.com"}`,
+			expectErr:       true,
+			expectErrString: "can't use both Identifier and DNSName",
+			expectLog:       `"Identifier":{"type":"dns","value":"good-dns01.com"}`,
 		},
 		{
 			name:               "No Identifier for PerformValidation",
@@ -1313,36 +1321,16 @@ func TestPerformValidationDnsName(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			va, mockLog := setup(nil, "", nil, nil)
+			va, _ := setup(nil, "", nil, nil)
 
 			// create a challenge with well known token
 			req := createValidationRequest(identifier.NewDNS(tc.identDomain), core.ChallengeTypeDNS01)
 			tc.transmogrifier(req)
-			res, _ := tc.validationFunc(context.Background(), va, req)
-			test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
-			if tc.validationFuncName == "PerformValidation" {
-				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-					"operation":      opDCVAndCAA,
-					"perspective":    va.perspective,
-					"challenge_type": string(core.ChallengeTypeDNS01),
-					"problem_type":   "",
-					"result":         pass,
-				}, 1)
+			res, err := tc.validationFunc(context.Background(), va, req)
+			if tc.expectErr {
+				test.AssertDeepEquals(t, err, errors.New(tc.expectErrString))
 			} else {
-				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-					"operation":      opDCV,
-					"perspective":    va.perspective,
-					"challenge_type": string(core.ChallengeTypeDNS01),
-					"problem_type":   "",
-					"result":         pass,
-				}, 1)
-			}
-			resultLog := mockLog.GetAllMatching(`Validation result`)
-			if len(resultLog) != 1 {
-				t.Fatalf("Wrong number of matching lines for 'Validation result'")
-			}
-			if !strings.Contains(resultLog[0], tc.expectLog) {
-				t.Error("PerformValidation didn't log correct validation identifier.")
+				test.AssertNotNil(t, res.GetProblem(), fmt.Sprintf("validation failed: %#v", res.Problem))
 			}
 		})
 	}

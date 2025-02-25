@@ -221,7 +221,7 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	case identifier.TypeIP:
 		addrs = []net.IP{net.ParseIP(ident.Value)}
 	default:
-		return nil, fmt.Errorf("Unknown identifier type: %s", ident.Type)
+		return nil, fmt.Errorf("unknown identifier type: %s", ident.Type)
 	}
 
 	target := &httpValidationTarget{
@@ -338,14 +338,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 		)
 	}
 
-	// We use net.ParseIP to check whether the host is an IP address; otherwise,
-	// netip.ParseAddr would happily ingest a hostname, returning a garbage IP
-	// and no error.
-	if net.ParseIP(reqHost) != nil {
-		reqIP, err := netip.ParseAddr(reqHost)
-		if err != nil {
-			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid IP address in redirect target %q", reqHost)
-		}
+	if reqIP, err := netip.ParseAddr(reqHost); err == nil {
 		return identifier.NewIP(reqIP), reqPort, nil
 	}
 
