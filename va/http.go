@@ -280,26 +280,25 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 				`Only "http" and "https" protocol schemes are supported, not %q`, reqScheme)
 	}
 
-	// Try and split an explicit port number from the request URL host. If there is
-	// one we need to make sure its a valid port. If there isn't one we need to
-	// pick the port based on the reqScheme default port.
+	// Try to parse an explicit port number from the request URL host. If there
+	// is one, we need to make sure its a valid port. If there isn't one we need
+	// to pick the port based on the reqScheme default port.
 	reqHost := req.URL.Hostname()
 	var reqPort int
-	reqPortStr := req.URL.Port()
-	if reqPortStr != "" {
-		port, err := strconv.Atoi(reqPortStr)
+	if req.URL.Port() != "" {
+		parsedPort, err := strconv.Atoi(req.URL.Port())
 		if err != nil {
 			return identifier.ACMEIdentifier{}, 0, err
 		}
 
 		// The explicit port must match the VA's configured HTTP or HTTPS port.
-		if port != va.httpPort && port != va.httpsPort {
+		if parsedPort != va.httpPort && parsedPort != va.httpsPort {
 			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError(
 				"Invalid port in redirect target. Only ports %d and %d are supported, not %d",
-				va.httpPort, va.httpsPort, port)
+				va.httpPort, va.httpsPort, parsedPort)
 		}
 
-		reqPort = port
+		reqPort = parsedPort
 	} else if reqScheme == "http" {
 		reqPort = va.httpPort
 	} else if reqScheme == "https" {
