@@ -10,6 +10,8 @@ import "google/protobuf/timestamp.proto";
 service CertificateAuthority {
   rpc IssuePrecertificate(IssueCertificateRequest) returns (IssuePrecertificateResponse) {}
   rpc IssueCertificateForPrecertificate(IssueCertificateForPrecertificateRequest) returns (core.Certificate) {}
+  // IssueCertificate issues a precertificate, gets SCTs, issues a certificate, and returns that.
+  rpc IssueCertificate(IssueCertificateRequest) returns (IssueCertificateResponse) {}
 }
 
 message IssueCertificateRequest {
@@ -24,6 +26,10 @@ message IssueCertificateRequest {
   // assigned inside the CA during *Profile construction if no name is provided.
   // The value of this field should not be relied upon inside the RA.
   string certProfileName = 5;
+}
+
+message IssueCertificateResponse {
+  bytes DER = 1;
 }
 
 message IssuePrecertificateResponse {
