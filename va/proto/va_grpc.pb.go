@@ -19,15 +19,13 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	VA_PerformValidation_FullMethodName = "/va.VA/PerformValidation"
-	VA_DoDCV_FullMethodName             = "/va.VA/DoDCV"
+	VA_DoDCV_FullMethodName = "/va.VA/DoDCV"
 )
 
 // VAClient is the client API for VA service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type VAClient interface {
-	PerformValidation(ctx context.Context, in *PerformValidationRequest, opts ...grpc.CallOption) (*ValidationResult, error)
 	DoDCV(ctx context.Context, in *PerformValidationRequest, opts ...grpc.CallOption) (*ValidationResult, error)
 }
 
@@ -37,16 +35,6 @@ type vAClient struct {
 
 func NewVAClient(cc grpc.ClientConnInterface) VAClient {
 	return &vAClient{cc}
-}
-
-func (c *vAClient) PerformValidation(ctx context.Context, in *PerformValidationRequest, opts ...grpc.CallOption) (*ValidationResult, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ValidationResult)
-	err := c.cc.Invoke(ctx, VA_PerformValidation_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *vAClient) DoDCV(ctx context.Context, in *PerformValidationRequest, opts ...grpc.CallOption) (*ValidationResult, error) {
@@ -63,7 +51,6 @@ func (c *vAClient) DoDCV(ctx context.Context, in *PerformValidationRequest, opts
 // All implementations must embed UnimplementedVAServer
 // for forward compatibility
 type VAServer interface {
-	PerformValidation(context.Context, *PerformValidationRequest) (*ValidationResult, error)
 	DoDCV(context.Context, *PerformValidationRequest) (*ValidationResult, error)
 	mustEmbedUnimplementedVAServer()
 }
@@ -72,9 +59,6 @@ type VAServer interface {
 type UnimplementedVAServer struct {
 }
 
-func (UnimplementedVAServer) PerformValidation(context.Context, *PerformValidationRequest) (*ValidationResult, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method PerformValidation not implemented")
-}
 func (UnimplementedVAServer) DoDCV(context.Context, *PerformValidationRequest) (*ValidationResult, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DoDCV not implemented")
 }
@@ -89,24 +73,6 @@ type UnsafeVAServer interface {
 
 func RegisterVAServer(s grpc.ServiceRegistrar, srv VAServer) {
 	s.RegisterService(&VA_ServiceDesc, srv)
-}
-
-func _VA_PerformValidation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PerformValidationRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(VAServer).PerformValidation(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: VA_PerformValidation_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VAServer).PerformValidation(ctx, req.(*PerformValidationRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _VA_DoDCV_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -135,10 +101,6 @@ var VA_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*VAServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "PerformValidation",
-			Handler:    _VA_PerformValidation_Handler,
-		},
-		{
 			MethodName: "DoDCV",
 			Handler:    _VA_DoDCV_Handler,
 		},
@@ -148,15 +110,13 @@ var VA_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	CAA_IsCAAValid_FullMethodName = "/va.CAA/IsCAAValid"
-	CAA_DoCAA_FullMethodName      = "/va.CAA/DoCAA"
+	CAA_DoCAA_FullMethodName = "/va.CAA/DoCAA"
 )
 
 // CAAClient is the client API for CAA service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CAAClient interface {
-	IsCAAValid(ctx context.Context, in *IsCAAValidRequest, opts ...grpc.CallOption) (*IsCAAValidResponse, error)
 	DoCAA(ctx context.Context, in *IsCAAValidRequest, opts ...grpc.CallOption) (*IsCAAValidResponse, error)
 }
 
@@ -166,16 +126,6 @@ type cAAClient struct {
 
 func NewCAAClient(cc grpc.ClientConnInterface) CAAClient {
 	return &cAAClient{cc}
-}
-
-func (c *cAAClient) IsCAAValid(ctx context.Context, in *IsCAAValidRequest, opts ...grpc.CallOption) (*IsCAAValidResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IsCAAValidResponse)
-	err := c.cc.Invoke(ctx, CAA_IsCAAValid_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *cAAClient) DoCAA(ctx context.Context, in *IsCAAValidRequest, opts ...grpc.CallOption) (*IsCAAValidResponse, error) {
@@ -192,7 +142,6 @@ func (c *cAAClient) DoCAA(ctx context.Context, in *IsCAAValidRequest, opts ...gr
 // All implementations must embed UnimplementedCAAServer
 // for forward compatibility
 type CAAServer interface {
-	IsCAAValid(context.Context, *IsCAAValidRequest) (*IsCAAValidResponse, error)
 	DoCAA(context.Context, *IsCAAValidRequest) (*IsCAAValidResponse, error)
 	mustEmbedUnimplementedCAAServer()
 }
@@ -201,9 +150,6 @@ type CAAServer interface {
 type UnimplementedCAAServer struct {
 }
 
-func (UnimplementedCAAServer) IsCAAValid(context.Context, *IsCAAValidRequest) (*IsCAAValidResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method IsCAAValid not implemented")
-}
 func (UnimplementedCAAServer) DoCAA(context.Context, *IsCAAValidRequest) (*IsCAAValidResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DoCAA not implemented")
 }
@@ -218,24 +164,6 @@ type UnsafeCAAServer interface {
 
 func RegisterCAAServer(s grpc.ServiceRegistrar, srv CAAServer) {
 	s.RegisterService(&CAA_ServiceDesc, srv)
-}
-
-func _CAA_IsCAAValid_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IsCAAValidRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(CAAServer).IsCAAValid(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: CAA_IsCAAValid_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CAAServer).IsCAAValid(ctx, req.(*IsCAAValidRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _CAA_DoCAA_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -263,10 +191,6 @@ var CAA_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "va.CAA",
 	HandlerType: (*CAAServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "IsCAAValid",
-			Handler:    _CAA_IsCAAValid_Handler,
-		},
 		{
 			MethodName: "DoCAA",
 			Handler:    _CAA_DoCAA_Handler,

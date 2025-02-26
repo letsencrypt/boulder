@@ -6,12 +6,10 @@ option go_package = "github.com/letsencrypt/boulder/va/proto";
 import "core/proto/core.proto";
 
 service VA {
-  rpc PerformValidation(PerformValidationRequest) returns (ValidationResult) {}
   rpc DoDCV(PerformValidationRequest) returns (ValidationResult) {}
 }
 
 service CAA {
-  rpc IsCAAValid(IsCAAValidRequest) returns (IsCAAValidResponse) {}
   rpc DoCAA(IsCAAValidRequest) returns (IsCAAValidResponse) {}
 }
 
