@@ -15,15 +15,10 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-const (
-	// five is the number of concurrent workers processing the email queue. This
-	// number was chosen specifically to match the number of concurrent
-	// connections allowed by the Pardot API.
-	five = 5
-
-	// queueCap enforces a maximum stack size to prevent unbounded growth.
-	queueCap = 10000
-)
+// contactsQueueCap limits the queue size to prevent unbounded growth. This
+// value is adjustable as needed. Each RFC 5321 email address, encoded in UTF-8,
+// is at most 320 bytes. Storing 10,000 emails requires ~3.44 MB of memory.
+const contactsQueueCap = 10000
 
 var ErrQueueFull = errors.New("email-exporter queue is full")
 
@@ -35,22 +30,26 @@ type ExporterImpl struct {
 	drainWG sync.WaitGroup
 	wake    *sync.Cond
 
-	limiter              *rate.Limiter
-	toSend               []string
-	client               PardotClient
-	emailsHandledCounter prometheus.Counter
-	log                  blog.Logger
+	maxConcurrentRequests int
+	limiter               *rate.Limiter
+	toSend                []string
+	client                PardotClient
+	emailsHandledCounter  prometheus.Counter
+	log                   blog.Logger
 }
 
 var _ emailpb.ExporterServer = (*ExporterImpl)(nil)
 
-// NewExporterImpl creates a new ExporterImpl.
-func NewExporterImpl(client PardotClient, perDayLimit float64, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
-	// This limiter enforces the daily Pardot API limit and restricts
-	// concurrency to the maximum of 5 requests specified in their
-	// documentation. For more details see:
-	// https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
-	limiter := rate.NewLimiter(rate.Limit(perDayLimit/86400.0), five)
+// NewExporterImpl initializes an ExporterImpl with the given client and
+// configuration. The perDayLimit should be the Pardot API's daily request cap
+// for our tier, divided by the number of active ExporterImpl instances. The
+// maxConcurrentRequests must not exceed Pardot's limit (currently 5), divided
+// among instances.
+//
+// For more details, see:
+// https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
+func NewExporterImpl(client PardotClient, perDayLimit float64, maxConcurrentRequests int, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
+	limiter := rate.NewLimiter(rate.Limit(perDayLimit/86400.0), maxConcurrentRequests)
 
 	emailsHandledCounter := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "email_exporter_emails_handled",
@@ -59,11 +58,12 @@ func NewExporterImpl(client PardotClient, perDayLimit float64, scope prometheus.
 	scope.MustRegister(emailsHandledCounter)
 
 	impl := &ExporterImpl{
-		limiter:              limiter,
-		toSend:               make([]string, 0, queueCap),
-		client:               client,
-		emailsHandledCounter: emailsHandledCounter,
-		log:                  logger,
+		maxConcurrentRequests: maxConcurrentRequests,
+		limiter:               limiter,
+		toSend:                make([]string, 0, contactsQueueCap),
+		client:                client,
+		emailsHandledCounter:  emailsHandledCounter,
+		log:                   logger,
 	}
 	impl.wake = sync.NewCond(&impl.Mutex)
 
@@ -90,7 +90,7 @@ func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendCon
 	impl.Lock()
 	defer impl.Unlock()
 
-	spotsLeft := queueCap - len(impl.toSend)
+	spotsLeft := contactsQueueCap - len(impl.toSend)
 	if spotsLeft < len(req.Emails) {
 		return nil, ErrQueueFull
 	}
@@ -148,7 +148,7 @@ func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 		}
 	}
 
-	for range five {
+	for range impl.maxConcurrentRequests {
 		impl.drainWG.Add(1)
 		go worker()
 	}

@@ -53,7 +53,7 @@ func (m *MockPardotClientImpl) getCreatedContacts() []string {
 // cleanup() must be called.
 func setup() (*ExporterImpl, *MockPardotClientImpl, func(), func()) {
 	mockClient, clientImpl := NewMockPardotClientImpl()
-	exporter := NewExporterImpl(mockClient, 1000000, metrics.NoopRegisterer, blog.NewMock())
+	exporter := NewExporterImpl(mockClient, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	return exporter, clientImpl,
 		func() { exporter.Start(daemonCtx) },
@@ -88,7 +88,7 @@ func TestSendContactsQueueFull(t *testing.T) {
 
 	// Fill the queue.
 	exporter.Lock()
-	exporter.toSend = make([]string, queueCap-1)
+	exporter.toSend = make([]string, contactsQueueCap-1)
 	exporter.Unlock()
 
 	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
