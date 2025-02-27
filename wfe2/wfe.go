@@ -152,7 +152,6 @@ type WebFrontEndImpl struct {
 
 	limiter    *ratelimits.Limiter
 	txnBuilder *ratelimits.TransactionBuilder
-	maxNames   int
 
 	unpauseSigner      unpause.JWTSigner
 	unpauseJWTLifetime time.Duration
@@ -182,7 +181,6 @@ func NewWebFrontEndImpl(
 	accountGetter AccountGetter,
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,
-	maxNames int,
 	certProfiles map[string]string,
 	unpauseSigner unpause.JWTSigner,
 	unpauseJWTLifetime time.Duration,
@@ -221,7 +219,6 @@ func NewWebFrontEndImpl(
 		accountGetter:      accountGetter,
 		limiter:            limiter,
 		txnBuilder:         txnBuilder,
-		maxNames:           maxNames,
 		certProfiles:       certProfiles,
 		unpauseSigner:      unpauseSigner,
 		unpauseJWTLifetime: unpauseJWTLifetime,
@@ -760,6 +757,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 			return
 		} else {
+			// Proceed, since we don't want internal rate limit system failures to
+			// block all account creation.
 			logEvent.IgnoredRateLimitError = err.Error()
 		}
 	}
@@ -2248,10 +2247,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Invalid identifiers requested"), nil)
 		return
 	}
-	if len(names) > wfe.maxNames {
-		wfe.sendError(response, logEvent, probs.Malformed("Order cannot contain more than %d DNS names", wfe.maxNames), nil)
-		return
-	}
 
 	logEvent.DNSNames = names
 
@@ -2308,7 +2303,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	refundLimits := func() {}
+	var refundLimits func()
 	if !isARIRenewal {
 		refundLimits, err = wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal || isARIRenewal)
 		if err != nil {
@@ -2316,8 +2311,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 				return
 			} else {
+				// Proceed, since we don't want internal rate limit system failures to
+				// block all issuance.
 				logEvent.IgnoredRateLimitError = err.Error()
-				return
 			}
 		}
 	}
