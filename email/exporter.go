@@ -41,12 +41,11 @@ type ExporterImpl struct {
 var _ emailpb.ExporterServer = (*ExporterImpl)(nil)
 
 // NewExporterImpl initializes an ExporterImpl with the given client and
-// configuration. The perDayLimit should be the Pardot API's daily request cap
-// for our tier, divided by the number of active ExporterImpl instances. The
-// maxConcurrentRequests must not exceed Pardot's limit (currently 5), divided
-// among instances.
-//
-// For more details, see:
+// configuration. Both perDayLimit and maxConcurrentRequests should be
+// distributed proportionally among instances based on their share of the daily
+// request cap. For example, if the total daily limit is 50,000 and one instance
+// is assigned 40% (20,000 requests), it should also receive 40% of the max
+// concurrent requests (e.g., 2 out of 5). For more details, see:
 // https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
 func NewExporterImpl(client PardotClient, perDayLimit float64, maxConcurrentRequests int, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
 	limiter := rate.NewLimiter(rate.Limit(perDayLimit/86400.0), maxConcurrentRequests)
