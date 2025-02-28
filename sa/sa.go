@@ -311,7 +311,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		var row struct {
 			Count int64
 		}
-		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM precertificates WHERE serial=? FOR UPDATE", serialHex)
+		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM precertificates WHERE serial=?", serialHex)
 		if err != nil {
 			return nil, err
 		}
@@ -404,7 +404,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		var row struct {
 			Count int64
 		}
-		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM certificates WHERE serial=? FOR UPDATE", serial)
+		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM certificates WHERE serial=?", serial)
 		if err != nil {
 			return nil, err
 		}
