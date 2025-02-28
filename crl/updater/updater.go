@@ -138,9 +138,9 @@ func NewUpdater(
 // updateShardWithRetry calls updateShard repeatedly (with exponential backoff
 // between attempts) until it succeeds or the max number of attempts is reached.
 func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time, issuerNameID issuance.NameID, shardIdx int, chunks []chunk) error {
-	ctx, cancel := context.WithTimeout(ctx, cu.updateTimeout)
+	deadline := cu.clk.Now().Add(cu.updateTimeout)
+	ctx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
-	deadline, _ := ctx.Deadline()
 
 	if chunks == nil {
 		// Compute the shard map and relevant chunk boundaries, if not supplied.
