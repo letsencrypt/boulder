@@ -1082,8 +1082,7 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 			`SELECT id, issuerID, idx, thisUpdate, nextUpdate, leasedUntil
 				FROM crlShards
 				WHERE issuerID = ?
-				AND idx BETWEEN ? AND ?
-				FOR UPDATE`,
+				AND idx BETWEEN ? AND ?`,
 			req.IssuerNameID, req.MinShardIdx, req.MaxShardIdx,
 		)
 		if err != nil {
@@ -1185,8 +1184,7 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 			  FROM crlShards
 				WHERE issuerID = ?
 				AND idx = ?
-				LIMIT 1
-				FOR UPDATE`,
+				LIMIT 1`,
 			req.IssuerNameID,
 			req.MinShardIdx,
 		)
