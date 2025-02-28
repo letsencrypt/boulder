@@ -328,15 +328,6 @@ func (va *ValidationAuthorityImpl) validateCAA(caaSet *caaResult, wildcard bool,
 		return false, caaSet.name
 	}
 
-	if len(caaSet.issue) == 0 && !wildcard {
-		// Although CAA records exist, none of them pertain to issuance in this case.
-		// (e.g. there is only an issuewild directive, but we are checking for a
-		// non-wildcard identifier, or there is only an iodef or non-critical unknown
-		// directive.)
-		va.metrics.caaCounter.WithLabelValues("no relevant records").Inc()
-		return true, caaSet.name
-	}
-
 	// Per RFC 8659 Section 5.3:
 	//   - "Each issuewild Property MUST be ignored when processing a request for
 	//     an FQDN that is not a Wildcard Domain Name."; and
@@ -349,6 +340,15 @@ func (va *ValidationAuthorityImpl) validateCAA(caaSet *caaResult, wildcard bool,
 	records := caaSet.issue
 	if wildcard && len(caaSet.issuewild) > 0 {
 		records = caaSet.issuewild
+	}
+
+	if len(records) == 0 {
+		// Although CAA records exist, none of them pertain to issuance in this case.
+		// (e.g. there is only an issuewild directive, but we are checking for a
+		// non-wildcard identifier, or there is only an iodef or non-critical unknown
+		// directive.)
+		va.metrics.caaCounter.WithLabelValues("no relevant records").Inc()
+		return true, caaSet.name
 	}
 
 	// There are CAA records pertaining to issuance in our case. Note that this
