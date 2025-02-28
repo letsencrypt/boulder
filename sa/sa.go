@@ -1135,7 +1135,7 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 			}
 			shardIdx = oldest.Idx
 
-			_, err = tx.ExecContext(ctx,
+			res, err := tx.ExecContext(ctx,
 				`UPDATE crlShards
 					SET leasedUntil = ?
 					WHERE issuerID = ?
@@ -1149,6 +1149,13 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 			)
 			if err != nil {
 				return -1, fmt.Errorf("updating selected shard: %w", err)
+			}
+			rowsAffected, err := res.RowsAffected()
+			if err != nil {
+				return -1, fmt.Errorf("confirming update of selected shard: %w", err)
+			}
+			if rowsAffected != 1 {
+				return -1, errors.New("failed to lease shard")
 			}
 		}
 
@@ -1205,7 +1212,7 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 				return nil, fmt.Errorf("inserting selected shard: %w", err)
 			}
 		} else {
-			_, err = tx.ExecContext(ctx,
+			res, err := tx.ExecContext(ctx,
 				`UPDATE crlShards
 					SET leasedUntil = ?
 					WHERE issuerID = ?
@@ -1219,6 +1226,13 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 			)
 			if err != nil {
 				return nil, fmt.Errorf("updating selected shard: %w", err)
+			}
+			rowsAffected, err := res.RowsAffected()
+			if err != nil {
+				return -1, fmt.Errorf("confirming update of selected shard: %w", err)
+			}
+			if rowsAffected != 1 {
+				return -1, errors.New("failed to lease shard")
 			}
 		}
 
