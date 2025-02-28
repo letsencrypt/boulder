@@ -311,7 +311,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		var row struct {
 			Count int64
 		}
-		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM precertificates WHERE serial=?", serialHex)
+		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM precertificates WHERE serial=? FOR UPDATE", serialHex)
 		if err != nil {
 			return nil, err
 		}
@@ -404,7 +404,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		var row struct {
 			Count int64
 		}
-		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM certificates WHERE serial=?", serial)
+		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM certificates WHERE serial=? FOR UPDATE", serial)
 		if err != nil {
 			return nil, err
 		}
@@ -1082,7 +1082,8 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 			`SELECT id, issuerID, idx, thisUpdate, nextUpdate, leasedUntil
 				FROM crlShards
 				WHERE issuerID = ?
-				AND idx BETWEEN ? AND ?`,
+				AND idx BETWEEN ? AND ?
+				FOR UPDATE`,
 			req.IssuerNameID, req.MinShardIdx, req.MaxShardIdx,
 		)
 		if err != nil {
@@ -1184,7 +1185,8 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 			  FROM crlShards
 				WHERE issuerID = ?
 				AND idx = ?
-				LIMIT 1`,
+				LIMIT 1
+				FOR UPDATE`,
 			req.IssuerNameID,
 			req.MinShardIdx,
 		)
