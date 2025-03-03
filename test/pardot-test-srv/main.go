@@ -1,12 +1,12 @@
 package main
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
-	"math/rand/v2"
 	"net/http"
 	"os"
 	"sync"
@@ -41,14 +41,6 @@ type config struct {
 	DevelopmentMode bool
 }
 
-type token struct {
-	sync.Mutex
-
-	// active is the currently active token. If this field is empty, it means
-	// that the token has been manually expired.
-	active string
-}
-
 type createdContacts map[string]struct{}
 
 type contacts struct {
@@ -60,18 +52,9 @@ type contacts struct {
 type testServer struct {
 	expectedClientID     string
 	expectedClientSecret string
-	token                token
+	token                string
 	contacts             contacts
 	developmentMode      bool
-}
-
-// generateToken generates a new random token.
-func generateToken() string {
-	bytes := make([]byte, 32)
-	for i := range bytes {
-		bytes[i] = byte(rand.IntN(256))
-	}
-	return fmt.Sprintf("%x", bytes)
 }
 
 func (ts *testServer) getTokenHandler(w http.ResponseWriter, r *http.Request) {
@@ -89,14 +72,8 @@ func (ts *testServer) getTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ts.token.Lock()
-	defer ts.token.Unlock()
-	if ts.token.active == "" {
-		ts.token.active = generateToken()
-	}
-
 	response := map[string]interface{}{
-		"access_token": ts.token.active,
+		"access_token": ts.token,
 		"token_type":   "Bearer",
 		"expires_in":   3600,
 	}
@@ -110,14 +87,10 @@ func (ts *testServer) getTokenHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ts *testServer) createContactsHandler(w http.ResponseWriter, r *http.Request) {
-	ts.token.Lock()
-	validToken := ts.token.active
-	ts.token.Unlock()
-
 	token := r.Header.Get("Authorization")
 	businessUnitId := r.Header.Get("Pardot-Business-Unit-Id")
 
-	if token != "Bearer "+validToken {
+	if token != "Bearer "+ts.token {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -159,11 +132,7 @@ func (ts *testServer) createContactsHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-	if err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	w.Write([]byte(`{"status": "success"}`))
 }
 
 func (ts *testServer) queryContactsHandler(w http.ResponseWriter, r *http.Request) {
@@ -193,13 +162,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	file, err := os.Open(*configFile)
-	cmd.FailOnError(err, "Opening configuration file")
-	defer file.Close()
-	decoder := json.NewDecoder(file)
 	var c config
-	err = decoder.Decode(&c)
-	cmd.FailOnError(err, "Unmarshalling configuration file")
+	err := cmd.ReadConfigFile(*configFile, &c)
+	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
 	if *oauthAddr != "" {
 		c.OAuthAddr = *oauthAddr
@@ -208,10 +173,16 @@ func main() {
 		c.PardotAddr = *pardotAddr
 	}
 
+	tokenBytes := make([]byte, 32)
+	_, err = rand.Read(tokenBytes)
+	if err != nil {
+		log.Fatalf("Failed to generate token: %v", err)
+	}
+
 	ts := &testServer{
 		expectedClientID:     c.ExpectedClientID,
 		expectedClientSecret: c.ExpectedClientSecret,
-		token:                token{active: generateToken()},
+		token:                fmt.Sprintf("%x", tokenBytes),
 		contacts:             contacts{created: make(createdContacts)},
 		developmentMode:      c.DevelopmentMode,
 	}
