@@ -195,32 +195,35 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 
 func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) error {
 	var expectedSANBytes []byte
-	var expectedSANValue string
 	switch ident.Type {
 	case identifier.TypeDNS:
 		if len(cert.DNSNames) != 1 || len(cert.IPAddresses) != 0 {
 			return errors.New("wrong number of identifiers")
 		}
+		if !strings.EqualFold(cert.DNSNames[0], ident.Value) {
+			return errors.New("identifier does not match expected identifier")
+		}
 		bytes, err := asn1.Marshal([]asn1.RawValue{
-			{Tag: 2, Class: 2, Bytes: []byte(cert.DNSNames[0])},
+			{Tag: 2, Class: 2, Bytes: []byte(ident.Value)},
 		})
 		if err != nil {
 			return errors.New("composing SAN extension")
 		}
 		expectedSANBytes = bytes
-		expectedSANValue = cert.DNSNames[0]
 	case identifier.TypeIP:
 		if len(cert.IPAddresses) != 1 || len(cert.DNSNames) != 0 {
 			return errors.New("wrong number of identifiers")
 		}
+		if !cert.IPAddresses[0].Equal(net.ParseIP(ident.Value)) {
+			return errors.New("identifier does not match expected identifier")
+		}
 		bytes, err := asn1.Marshal([]asn1.RawValue{
-			{Tag: 7, Class: 2, Bytes: cert.IPAddresses[0]},
+			{Tag: 7, Class: 2, Bytes: net.ParseIP(ident.Value)},
 		})
 		if err != nil {
 			return errors.New("composing SAN extension")
 		}
 		expectedSANBytes = bytes
-		expectedSANValue = cert.IPAddresses[0].String()
 	default:
 		// This should never happen. The calling function should check the
 		// identifier type.
@@ -233,10 +236,6 @@ func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) e
 				return errors.New("SAN extension does not match expected bytes")
 			}
 		}
-	}
-
-	if !strings.EqualFold(expectedSANValue, ident.Value) {
-		return errors.New("identifier does not match expected identifier")
 	}
 
 	return nil
