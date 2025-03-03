@@ -144,8 +144,7 @@
 			"AsyncFinalize": true,
 			"AutomaticallyPauseZombieClients": true,
 			"NoPendingAuthzReuse": true,
-			"UnsplitIssuance": true,
-			"EnforceMPIC": true
+			"UnsplitIssuance": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

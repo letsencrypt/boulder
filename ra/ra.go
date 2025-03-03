@@ -866,19 +866,11 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			}
 			var resp *vapb.IsCAAValidResponse
 			var err error
-			if !features.Get().EnforceMPIC {
-				resp, err = ra.VA.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-					Domain:           name,
-					ValidationMethod: method,
-					AccountURIID:     authz.RegistrationID,
-				})
-			} else {
-				resp, err = ra.VA.DoCAA(ctx, &vapb.IsCAAValidRequest{
-					Domain:           name,
-					ValidationMethod: method,
-					AccountURIID:     authz.RegistrationID,
-				})
-			}
+			resp, err = ra.VA.DoCAA(ctx, &vapb.IsCAAValidRequest{
+				Domain:           name,
+				ValidationMethod: method,
+				AccountURIID:     authz.RegistrationID,
+			})
 			if err != nil {
 				ra.log.AuditErrf("Rechecking CAA: %s", err)
 				err = berrors.InternalServerError(
@@ -1546,33 +1538,23 @@ func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Contex
 	}
 }
 
-// doDCVAndCAA performs DCV and CAA checks. When EnforceMPIC is enabled, the
-// checks are executed sequentially: DCV is performed first and CAA is only
-// checked if DCV is successful. Validation records from the DCV check are
-// returned even if the CAA check fails. When EnforceMPIC is disabled, DCV and
-// CAA checks are performed in the same request.
+// doDCVAndCAA performs DCV and CAA checks sequentially: DCV is performed first
+// and CAA is only checked if DCV is successful. Validation records from the DCV
+// check are returned even if the CAA check fails.
 func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq *vapb.PerformValidationRequest, caaReq *vapb.IsCAAValidRequest) (*corepb.ProblemDetails, []*corepb.ValidationRecord, error) {
-	if !features.Get().EnforceMPIC {
-		performValidationRes, err := ra.VA.PerformValidation(ctx, dcvReq)
-		if err != nil {
-			return nil, nil, err
-		}
-		return performValidationRes.Problem, performValidationRes.Records, nil
-	} else {
-		doDCVRes, err := ra.VA.DoDCV(ctx, dcvReq)
-		if err != nil {
-			return nil, nil, err
-		}
-		if doDCVRes.Problem != nil {
-			return doDCVRes.Problem, doDCVRes.Records, nil
-		}
-
-		doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
-		if err != nil {
-			return nil, nil, err
-		}
-		return doCAAResp.Problem, doDCVRes.Records, nil
+	doDCVRes, err := ra.VA.DoDCV(ctx, dcvReq)
+	if err != nil {
+		return nil, nil, err
 	}
+	if doDCVRes.Problem != nil {
+		return doDCVRes.Problem, doDCVRes.Records, nil
+	}
+
+	doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
+	if err != nil {
+		return nil, nil, err
+	}
+	return doCAAResp.Problem, doDCVRes.Records, nil
 }
 
 // PerformValidation initiates validation for a specific challenge associated
