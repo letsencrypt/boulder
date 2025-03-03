@@ -76,6 +76,7 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 			return nil, nil, validationRecord, err
 		}
 		addrs, validationRecord.ResolverAddrs = dnsAddrs, dnsResolvers
+		validationRecord.AddressesResolved = addrs
 	case identifier.TypeIP:
 		addrs = []net.IP{net.ParseIP(ident.Value)}
 	default:
@@ -83,7 +84,6 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 		// identifier type.
 		return nil, nil, validationRecord, fmt.Errorf("unknown identifier type: %s", ident.Type)
 	}
-	validationRecord.AddressesResolved = addrs
 
 	// Split the available addresses into v4 and v6 addresses
 	v4, v6 := availableAddresses(addrs)
