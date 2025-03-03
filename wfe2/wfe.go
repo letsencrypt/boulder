@@ -2305,7 +2305,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	var refundLimits func()
 	if !isARIRenewal {
-		refundLimits, err = wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal || isARIRenewal)
+		refundLimits, err = wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
