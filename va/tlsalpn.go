@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 
@@ -217,8 +218,16 @@ func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) e
 		if !cert.IPAddresses[0].Equal(net.ParseIP(ident.Value)) {
 			return errors.New("identifier does not match expected identifier")
 		}
+		netipAddr, err := netip.ParseAddr(ident.Value)
+		if err != nil {
+			return errors.New("parsing IP address identifier")
+		}
+		netipBytes, err := netipAddr.MarshalBinary()
+		if err != nil {
+			return errors.New("marshalling IP address identifier")
+		}
 		bytes, err := asn1.Marshal([]asn1.RawValue{
-			{Tag: 7, Class: 2, Bytes: net.ParseIP(ident.Value)},
+			{Tag: 7, Class: 2, Bytes: netipBytes},
 		})
 		if err != nil {
 			return errors.New("composing SAN extension")
