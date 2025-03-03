@@ -521,107 +521,59 @@ func TestCAALogging(t *testing.T) {
 	}
 }
 
-type caaCheckFuncRunner func(context.Context, *ValidationAuthorityImpl, *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error)
-
-var runIsCAAValid = func(ctx context.Context, va *ValidationAuthorityImpl, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	return va.IsCAAValid(ctx, req)
-}
-
-var runDoCAA = func(ctx context.Context, va *ValidationAuthorityImpl, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	return va.DoCAA(ctx, req)
-}
-
-// TestIsCAAValidErrMessage tests that an error result from `va.IsCAAValid`
+// TestDoCAAErrMessage tests that an error result from `va.IsCAAValid`
 // includes the domain name that was being checked in the failure detail.
-func TestIsCAAValidErrMessage(t *testing.T) {
+func TestDoCAAErrMessage(t *testing.T) {
 	t.Parallel()
 	va, _ := setup(nil, "", nil, caaMockDNS{})
 
-	testCases := []struct {
-		name         string
-		caaCheckFunc caaCheckFuncRunner
-	}{
-		{
-			name:         "IsCAAValid",
-			caaCheckFunc: runIsCAAValid,
-		},
-		{
-			name:         "DoCAA",
-			caaCheckFunc: runDoCAA,
-		},
-	}
+	// Call the operation with a domain we know fails with a generic error from the
+	// caaMockDNS.
+	domain := "caa-timeout.com"
+	resp, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
+		Domain:           domain,
+		ValidationMethod: string(core.ChallengeTypeHTTP01),
+		AccountURIID:     12345,
+	})
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			// Call the operation with a domain we know fails with a generic error from the
-			// caaMockDNS.
-			domain := "caa-timeout.com"
-			resp, err := tc.caaCheckFunc(ctx, va, &vapb.IsCAAValidRequest{
-				Domain:           domain,
-				ValidationMethod: string(core.ChallengeTypeHTTP01),
-				AccountURIID:     12345,
-			})
-
-			// The lookup itself should not return an error
-			test.AssertNotError(t, err, "Unexpected error calling IsCAAValidRequest")
-			// The result should not be nil
-			test.AssertNotNil(t, resp, "Response to IsCAAValidRequest was nil")
-			// The result's Problem should not be nil
-			test.AssertNotNil(t, resp.Problem, "Response Problem was nil")
-			// The result's Problem should be an error message that includes the domain.
-			test.AssertEquals(t, resp.Problem.Detail, fmt.Sprintf("While processing CAA for %s: error", domain))
-		})
-	}
+	// The lookup itself should not return an error
+	test.AssertNotError(t, err, "Unexpected error calling IsCAAValidRequest")
+	// The result should not be nil
+	test.AssertNotNil(t, resp, "Response to IsCAAValidRequest was nil")
+	// The result's Problem should not be nil
+	test.AssertNotNil(t, resp.Problem, "Response Problem was nil")
+	// The result's Problem should be an error message that includes the domain.
+	test.AssertEquals(t, resp.Problem.Detail, fmt.Sprintf("While processing CAA for %s: error", domain))
 }
 
-// TestIsCAAValidParams tests that the IsCAAValid method rejects any requests
+// TestDoCAAParams tests that the IsCAAValid method rejects any requests
 // which do not have the necessary parameters to do CAA Account and Method
 // Binding checks.
-func TestIsCAAValidParams(t *testing.T) {
+func TestDoCAAParams(t *testing.T) {
 	t.Parallel()
 	va, _ := setup(nil, "", nil, caaMockDNS{})
-	testCases := []struct {
-		name         string
-		caaCheckFunc caaCheckFuncRunner
-	}{
-		{
-			name:         "IsCAAValid",
-			caaCheckFunc: runIsCAAValid,
-		},
-		{
-			name:         "DoCAA",
-			caaCheckFunc: runDoCAA,
-		},
-	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	// Calling IsCAAValid without a ValidationMethod should fail.
+	_, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
+		Domain:       "present.com",
+		AccountURIID: 12345,
+	})
+	test.AssertError(t, err, "calling IsCAAValid without a ValidationMethod")
 
-			// Calling IsCAAValid without a ValidationMethod should fail.
-			_, err := tc.caaCheckFunc(ctx, va, &vapb.IsCAAValidRequest{
-				Domain:       "present.com",
-				AccountURIID: 12345,
-			})
-			test.AssertError(t, err, "calling IsCAAValid without a ValidationMethod")
+	// Calling IsCAAValid with an invalid ValidationMethod should fail.
+	_, err = va.DoCAA(ctx, &vapb.IsCAAValidRequest{
+		Domain:           "present.com",
+		ValidationMethod: "tls-sni-01",
+		AccountURIID:     12345,
+	})
+	test.AssertError(t, err, "calling IsCAAValid with a bad ValidationMethod")
 
-			// Calling IsCAAValid with an invalid ValidationMethod should fail.
-			_, err = tc.caaCheckFunc(ctx, va, &vapb.IsCAAValidRequest{
-				Domain:           "present.com",
-				ValidationMethod: "tls-sni-01",
-				AccountURIID:     12345,
-			})
-			test.AssertError(t, err, "calling IsCAAValid with a bad ValidationMethod")
-
-			// Calling IsCAAValid without an AccountURIID should fail.
-			_, err = tc.caaCheckFunc(ctx, va, &vapb.IsCAAValidRequest{
-				Domain:           "present.com",
-				ValidationMethod: string(core.ChallengeTypeHTTP01),
-			})
-			test.AssertError(t, err, "calling IsCAAValid without an AccountURIID")
-		})
-	}
+	// Calling IsCAAValid without an AccountURIID should fail.
+	_, err = va.DoCAA(ctx, &vapb.IsCAAValidRequest{
+		Domain:           "present.com",
+		ValidationMethod: string(core.ChallengeTypeHTTP01),
+	})
+	test.AssertError(t, err, "calling IsCAAValid without an AccountURIID")
 }
 
 var errCAABrokenDNSClient = errors.New("dnsClient is broken")
@@ -640,28 +592,6 @@ func (b caaBrokenDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, 
 
 func (b caaBrokenDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, error) {
 	return nil, "", bdns.ResolverAddrs{"caaBrokenDNS"}, errCAABrokenDNSClient
-}
-
-func TestDisabledMultiCAARechecking(t *testing.T) {
-	remoteVAs := []remoteConf{{ua: "broken", rir: arin, dns: caaBrokenDNS{}}}
-	va, _ := setupWithRemotes(nil, "local", remoteVAs, nil)
-
-	features.Set(features.Config{
-		EnforceMultiCAA: false,
-	})
-	defer features.Reset()
-
-	isValidRes, err := va.IsCAAValid(context.TODO(), &vapb.IsCAAValidRequest{
-		Domain:           "present.com",
-		ValidationMethod: string(core.ChallengeTypeDNS01),
-		AccountURIID:     1,
-	})
-	test.AssertNotError(t, err, "Error during IsCAAValid")
-	// The primary VA can successfully recheck the CAA record and is allowed to
-	// issue for this domain. If `EnforceMultiCAA`` was enabled, the configured
-	// remote VA with broken dns.Client would fail the check and return a
-	// Problem, but that code path could never trigger.
-	test.AssertBoxedNil(t, isValidRes.Problem, "IsCAAValid returned a problem, but should not have")
 }
 
 // caaHijackedDNS implements the `dns.DNSClient` interface with a set of useful
@@ -735,26 +665,8 @@ func TestMultiCAARechecking(t *testing.T) {
 		hijackedUA = "hijacked"
 	)
 
-	type testFunc struct {
-		name string
-		impl caaCheckFuncRunner
-	}
-
-	testFuncs := []testFunc{
-		{
-			name: "IsCAAValid",
-			impl: runIsCAAValid,
-		},
-		{
-			name: "DoCAA",
-			impl: runDoCAA,
-		},
-	}
-
 	testCases := []struct {
-		name string
-		// method is only set inside of the test loop.
-		methodName               string
+		name                     string
 		domains                  string
 		remoteVAs                []remoteConf
 		expectedProbSubstring    string
@@ -1151,77 +1063,55 @@ func TestMultiCAARechecking(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		for _, testFunc := range testFuncs {
-			t.Run(tc.name+"_"+testFunc.name, func(t *testing.T) {
-				va, mockLog := setupWithRemotes(nil, localUA, tc.remoteVAs, tc.localDNSClient)
-				defer mockLog.Clear()
+		t.Run(tc.name, func(t *testing.T) {
+			va, mockLog := setupWithRemotes(nil, localUA, tc.remoteVAs, tc.localDNSClient)
+			defer mockLog.Clear()
 
-				features.Set(features.Config{
-					EnforceMultiCAA: true,
-				})
-				defer features.Reset()
-
-				isValidRes, err := testFunc.impl(context.TODO(), va, &vapb.IsCAAValidRequest{
-					Domain:           tc.domains,
-					ValidationMethod: string(core.ChallengeTypeDNS01),
-					AccountURIID:     1,
-				})
-				test.AssertNotError(t, err, "Should not have errored, but did")
-
-				if tc.expectedProbSubstring != "" {
-					test.AssertNotNil(t, isValidRes.Problem, "IsCAAValidRequest returned nil problem, but should not have")
-					test.AssertContains(t, isValidRes.Problem.Detail, tc.expectedProbSubstring)
-				} else if isValidRes.Problem != nil {
-					test.AssertBoxedNil(t, isValidRes.Problem, "IsCAAValidRequest returned a problem, but should not have")
-				}
-
-				if tc.expectedProbType != "" {
-					test.AssertNotNil(t, isValidRes.Problem, "IsCAAValidRequest returned nil problem, but should not have")
-					test.AssertEquals(t, string(tc.expectedProbType), isValidRes.Problem.ProblemType)
-				}
-
-				if testFunc.name == "IsCAAValid" {
-					var invalidRVACount int
-					for _, x := range tc.remoteVAs {
-						if x.ua == brokenUA || x.ua == hijackedUA {
-							invalidRVACount++
-						}
-					}
-
-					gotRequestProbs := mockLog.GetAllMatching(" returned a problem: ")
-					test.AssertEquals(t, len(gotRequestProbs), invalidRVACount)
-
-					gotDifferential := mockLog.GetAllMatching("remoteVADifferentials JSON=.*")
-					if tc.expectedDiffLogSubstring != "" {
-						test.AssertEquals(t, len(gotDifferential), 1)
-						test.AssertContains(t, gotDifferential[0], tc.expectedDiffLogSubstring)
-					} else {
-						test.AssertEquals(t, len(gotDifferential), 0)
-					}
-				}
-
-				if testFunc.name == "DoCAA" && tc.expectedSummary != nil {
-					gotAuditLog := parseValidationLogEvent(t, mockLog.GetAllMatching("JSON=.*"))
-					slices.Sort(tc.expectedSummary.Passed)
-					slices.Sort(tc.expectedSummary.Failed)
-					slices.Sort(tc.expectedSummary.PassedRIRs)
-					test.AssertDeepEquals(t, gotAuditLog.Summary, tc.expectedSummary)
-				}
-
-				gotAnyRemoteFailures := mockLog.GetAllMatching("CAA check failed due to remote failures:")
-				if len(gotAnyRemoteFailures) >= 1 {
-					// The primary VA only emits this line once.
-					test.AssertEquals(t, len(gotAnyRemoteFailures), 1)
-				} else {
-					test.AssertEquals(t, len(gotAnyRemoteFailures), 0)
-				}
-
-				if tc.expectedLabels != nil {
-					test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, tc.expectedLabels, 1)
-				}
-
+			features.Set(features.Config{
+				EnforceMultiCAA: true,
 			})
-		}
+			defer features.Reset()
+
+			isValidRes, err := va.DoCAA(context.TODO(), &vapb.IsCAAValidRequest{
+				Domain:           tc.domains,
+				ValidationMethod: string(core.ChallengeTypeDNS01),
+				AccountURIID:     1,
+			})
+			test.AssertNotError(t, err, "Should not have errored, but did")
+
+			if tc.expectedProbSubstring != "" {
+				test.AssertNotNil(t, isValidRes.Problem, "IsCAAValidRequest returned nil problem, but should not have")
+				test.AssertContains(t, isValidRes.Problem.Detail, tc.expectedProbSubstring)
+			} else if isValidRes.Problem != nil {
+				test.AssertBoxedNil(t, isValidRes.Problem, "IsCAAValidRequest returned a problem, but should not have")
+			}
+
+			if tc.expectedProbType != "" {
+				test.AssertNotNil(t, isValidRes.Problem, "IsCAAValidRequest returned nil problem, but should not have")
+				test.AssertEquals(t, string(tc.expectedProbType), isValidRes.Problem.ProblemType)
+			}
+
+			if tc.expectedSummary != nil {
+				gotAuditLog := parseValidationLogEvent(t, mockLog.GetAllMatching("JSON=.*"))
+				slices.Sort(tc.expectedSummary.Passed)
+				slices.Sort(tc.expectedSummary.Failed)
+				slices.Sort(tc.expectedSummary.PassedRIRs)
+				test.AssertDeepEquals(t, gotAuditLog.Summary, tc.expectedSummary)
+			}
+
+			gotAnyRemoteFailures := mockLog.GetAllMatching("CAA check failed due to remote failures:")
+			if len(gotAnyRemoteFailures) >= 1 {
+				// The primary VA only emits this line once.
+				test.AssertEquals(t, len(gotAnyRemoteFailures), 1)
+			} else {
+				test.AssertEquals(t, len(gotAnyRemoteFailures), 0)
+			}
+
+			if tc.expectedLabels != nil {
+				test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, tc.expectedLabels, 1)
+			}
+
+		})
 	}
 }
 

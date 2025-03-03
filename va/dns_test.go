@@ -9,34 +9,13 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
-
-func TestDNSValidationEmpty(t *testing.T) {
-	va, _ := setup(nil, "", nil, nil)
-
-	// This test calls PerformValidation directly, because that is where the
-	// metrics checked below are incremented.
-	req := createValidationRequest(identifier.NewDNS("empty-txts.com"), core.ChallengeTypeDNS01)
-	res, _ := va.PerformValidation(context.Background(), req)
-	test.AssertEquals(t, res.Problem.ProblemType, "unauthorized")
-	test.AssertEquals(t, res.Problem.Detail, "No TXT record found at _acme-challenge.empty-txts.com")
-
-	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
-		"operation":      opDCVAndCAA,
-		"perspective":    va.perspective,
-		"challenge_type": string(core.ChallengeTypeDNS01),
-		"problem_type":   string(probs.UnauthorizedProblem),
-		"result":         fail,
-	}, 1)
-}
 
 func TestDNSValidationWrong(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)

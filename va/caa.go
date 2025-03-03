@@ -16,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -27,15 +26,20 @@ type caaParams struct {
 	validationMethod core.AcmeChallenge
 }
 
-// IsCAAValid checks requested CAA records from a VA, and recursively any RVAs
-// configured in the VA. It returns a response or an error.
-func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
+// DoCAA conducts a CAA check for the specified dnsName. When invoked on the
+// primary Validation Authority (VA) and the local check succeeds, it also
+// performs CAA checks using the configured remote VAs. Failed checks are
+// indicated by a non-nil Problems in the returned ValidationResult. DoCAA
+// returns error only for internal logic errors (and the client may receive
+// errors from gRPC in the event of a communication problem). This method
+// implements the CAA portion of Multi-Perspective Issuance Corroboration as
+// defined in BRs Sections 3.2.2.9 and 5.4.1.
+func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
 	if core.IsAnyNilOrZero(req.Domain, req.ValidationMethod, req.AccountURIID) {
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
-	logEvent := verificationRequestEvent{
-		// TODO(#7061) Plumb req.Authz.Id as "AuthzID:" through from the RA to
-		// correlate which authz triggered this request.
+	logEvent := validationLogEvent{
+		AuthzID:    req.AuthzID,
 		Requester:  req.AccountURIID,
 		Identifier: identifier.NewDNS(req.Domain),
 	}
@@ -51,7 +55,11 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		validationMethod: challType,
 	}
 
+	// Initialize variables and a deferred function to handle check latency
+	// metrics, log check errors, and log an MPIC summary. Avoid using := to
+	// redeclare `prob`, `localLatency`, or `summary` below this point.
 	var prob *probs.ProblemDetails
+	var summary *mpicSummary
 	var internalErr error
 	var localLatency time.Duration
 	start := va.clk.Now()
@@ -72,6 +80,7 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		if va.isPrimaryVA() {
 			// Observe total check latency (primary+remote).
 			va.observeLatency(opCAA, allPerspectives, string(challType), probType, outcome, va.clk.Since(start))
+			logEvent.Summary = summary
 		}
 		// Log the total check latency.
 		logEvent.Latency = va.clk.Since(start).Round(time.Millisecond).Seconds()
@@ -90,15 +99,16 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
 	}
 
-	if features.Get().EnforceMultiCAA {
+	if va.isPrimaryVA() {
 		op := func(ctx context.Context, remoteva RemoteVA, req proto.Message) (remoteResult, error) {
 			checkRequest, ok := req.(*vapb.IsCAAValidRequest)
 			if !ok {
 				return nil, fmt.Errorf("got type %T, want *vapb.IsCAAValidRequest", req)
 			}
-			return remoteva.IsCAAValid(ctx, checkRequest)
+			return remoteva.DoCAA(ctx, checkRequest)
 		}
-		remoteProb := va.performRemoteOperation(ctx, op, req)
+		var remoteProb *probs.ProblemDetails
+		summary, remoteProb = va.doRemoteOperation(ctx, op, req)
 		// If the remote result was a non-nil problem then fail the CAA check
 		if remoteProb != nil {
 			prob = remoteProb
