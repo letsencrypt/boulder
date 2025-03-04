@@ -28,11 +28,17 @@ type ExporterImpl struct {
 
 	sync.Mutex
 	drainWG sync.WaitGroup
-	wake    *sync.Cond
+	// wake is used to signal workers when new emails are enqueued in toSend.
+	// The sync.Cond docs note that "For many simple use cases, users will be
+	// better off using channels." However, channels enforce FIFO ordering,
+	// while this implementation uses a LIFO queue. Making channels behave as
+	// LIFO would require extra complexity. Using a slice and broadcasting is
+	// simpler and achieves exactly what we need.
+	wake   *sync.Cond
+	toSend []string
 
 	maxConcurrentRequests int
 	limiter               *rate.Limiter
-	toSend                []string
 	client                PardotClient
 	emailsHandledCounter  prometheus.Counter
 	log                   blog.Logger
