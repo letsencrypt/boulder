@@ -18,7 +18,7 @@ jobs:
         GO_VERSION:
           - "1.23.6"
           - "1.24.0"
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
