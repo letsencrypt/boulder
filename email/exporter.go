@@ -83,7 +83,7 @@ func NewExporterImpl(client PardotClient, perDayLimit float64, maxConcurrentRequ
 // accommodate the new emails, an ErrQueueFull is returned.
 func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendContactsRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req, req.Emails) {
-		return nil, berrors.InternalServerError("Incomplete UpsertEmails request")
+		return nil, berrors.InternalServerError("Incomplete gRPC request message")
 	}
 
 	impl.Lock()
@@ -105,8 +105,6 @@ func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendCon
 func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 	go func() {
 		<-daemonCtx.Done()
-		impl.Lock()
-		defer impl.Unlock()
 		// Wake waiting workers to exit.
 		impl.wake.Broadcast()
 	}()
