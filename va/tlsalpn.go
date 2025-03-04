@@ -208,7 +208,7 @@ func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) e
 			{Tag: 2, Class: 2, Bytes: []byte(ident.Value)},
 		})
 		if err != nil {
-			return errors.New("composing SAN extension")
+			return fmt.Errorf("composing SAN extension: %w", err)
 		}
 		expectedSANBytes = bytes
 	case identifier.TypeIP:
@@ -220,17 +220,17 @@ func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) e
 		}
 		netipAddr, err := netip.ParseAddr(ident.Value)
 		if err != nil {
-			return errors.New("parsing IP address identifier")
+			return fmt.Errorf("parsing IP address identifier: %w", err)
 		}
 		netipBytes, err := netipAddr.MarshalBinary()
 		if err != nil {
-			return errors.New("marshalling IP address identifier")
+			return fmt.Errorf("marshalling IP address identifier: %w", err)
 		}
 		bytes, err := asn1.Marshal([]asn1.RawValue{
 			{Tag: 7, Class: 2, Bytes: netipBytes},
 		})
 		if err != nil {
-			return errors.New("composing SAN extension")
+			return fmt.Errorf("composing SAN extension: %w", err)
 		}
 		expectedSANBytes = bytes
 	default:
@@ -241,7 +241,7 @@ func checkExpectedSAN(cert *x509.Certificate, ident identifier.ACMEIdentifier) e
 
 	for _, ext := range cert.Extensions {
 		if IdCeSubjectAltName.Equal(ext.Id) {
-			if !bytes.Equal(expectedSANBytes, ext.Value) {
+			if !bytes.Equal(ext.Value, expectedSANBytes) {
 				return errors.New("SAN extension does not match expected bytes")
 			}
 		}
