@@ -23,6 +23,7 @@ type Config struct {
 	InsertAuthzsIndividually    bool
 	EnforceMultiCAA             bool
 	EnforceMPIC                 bool
+	UnsplitIssuance             bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -79,11 +80,6 @@ type Config struct {
 	// functionality (valid authz reuse) while letting us simplify our code by
 	// removing pending authz reuse.
 	NoPendingAuthzReuse bool
-
-	// UnsplitIssuance causes the RA to make a single call to the CA for issuance,
-	// calling the new `IssueCertificate` instead of the old `IssuePrecertficate` /
-	// `IssueCertificateForPrecertificate` pair.
-	UnsplitIssuance bool
 }
 
 var fMu = new(sync.RWMutex)

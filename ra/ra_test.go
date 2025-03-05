@@ -10,7 +10,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -26,9 +25,6 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
-	ctasn1 "github.com/google/certificate-transparency-go/asn1"
-	ctx509 "github.com/google/certificate-transparency-go/x509"
-	ctpkix "github.com/google/certificate-transparency-go/x509/pkix"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
@@ -3114,7 +3110,7 @@ func (mp *timeoutPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Req
 }
 
 func TestCTPolicyMeasurements(t *testing.T) {
-	_, ssa, ra, _, _, cleanup := initAuthorities(t)
+	_, _, ra, _, _, cleanup := initAuthorities(t)
 	defer cleanup()
 
 	ra.ctpolicy = ctpolicy.New(&timeoutPub{}, loglist.List{
@@ -3126,37 +3122,12 @@ func TestCTPolicyMeasurements(t *testing.T) {
 		},
 	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
-	// Create valid authorizations for not-example.com and www.not-example.com
-	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzIDA := createFinalizedAuthorization(t, ssa, "not-example.com", exp, core.ChallengeTypeHTTP01, ra.clk.Now())
-	authzIDB := createFinalizedAuthorization(t, ssa, "www.not-example.com", exp, core.ChallengeTypeHTTP01, ra.clk.Now())
-
-	order, err := ra.SA.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:   Registration.Id,
-			Expires:          timestamppb.New(exp),
-			DnsNames:         []string{"not-example.com", "www.not-example.com"},
-			V2Authorizations: []int64{authzIDA, authzIDB},
-		},
+	_, cert := test.ThrowAwayCert(t, clock.NewFake())
+	_, err := ra.GetSCTs(context.Background(), &rapb.SCTRequest{
+		PrecertDER: cert.Raw,
 	})
-	test.AssertNotError(t, err, "error generating test order")
-
-	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "error generating test key")
-
-	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
-		PublicKey:          testKey.Public(),
-		SignatureAlgorithm: x509.SHA256WithRSA,
-		DNSNames:           []string{"not-example.com", "www.not-example.com"},
-	}, testKey)
-	test.AssertNotError(t, err, "error generating test CSR")
-
-	_, err = ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{
-		Order: order,
-		Csr:   csr,
-	})
-	test.AssertError(t, err, "FinalizeOrder should have failed when SCTs timed out")
-	test.AssertContains(t, err.Error(), "getting SCTs")
+	test.AssertError(t, err, "GetSCTs should have failed when SCTs timed out")
+	test.AssertContains(t, err.Error(), "failed to get 2 SCTs")
 	test.AssertMetricWithLabelsEquals(t, ra.ctpolicyResults, prometheus.Labels{"result": "failure"}, 1)
 }
 
@@ -3188,190 +3159,22 @@ func TestWildcardOverlap(t *testing.T) {
 	}
 }
 
-// mockCAFailPrecert is a mock CA that always returns an error from `IssuePrecertificate`
-type mockCAFailPrecert struct {
-	mocks.MockCA
-	err error
-}
-
-func (ca *mockCAFailPrecert) IssuePrecertificate(
-	context.Context,
-	*capb.IssueCertificateRequest,
-	...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
-	return nil, ca.err
-}
-
-// mockCAFailCertForPrecert is a mock CA that always returns an error from
-// `IssueCertificateForPrecertificate`
-type mockCAFailCertForPrecert struct {
-	mocks.MockCA
-	err error
-}
-
-// IssuePrecertificate needs to be mocked for mockCAFailCertForPrecert's `IssueCertificateForPrecertificate` to get called.
-func (ca *mockCAFailCertForPrecert) IssuePrecertificate(
-	ctx context.Context,
-	req *capb.IssueCertificateRequest,
-	opts ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, err
-	}
-	parsedCSR, err := x509.ParseCertificateRequest(req.Csr)
-	if err != nil {
-		return nil, err
-	}
-	tmpl := &ctx509.Certificate{
-		SerialNumber: big.NewInt(1),
-		DNSNames:     parsedCSR.DNSNames,
-		ExtraExtensions: []ctpkix.Extension{
-			{
-				Id:       ctx509.OIDExtensionCTPoison,
-				Critical: true,
-				Value:    ctasn1.NullBytes,
-			},
-		},
-	}
-	precert, err := ctx509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Public(), k)
-	if err != nil {
-		return nil, err
-	}
-	return &capb.IssuePrecertificateResponse{
-		DER: precert,
-	}, nil
-}
-
-func (ca *mockCAFailCertForPrecert) IssueCertificateForPrecertificate(
-	context.Context,
-	*capb.IssueCertificateForPrecertificateRequest,
-	...grpc.CallOption) (*corepb.Certificate, error) {
-	return &corepb.Certificate{}, ca.err
-}
-
-// TestIssueCertificateInnerErrs tests that errors from the CA caught during
-// `ra.issueCertificateInner` are propagated correctly, with the part of the
-// issuance process that failed prefixed on the error message.
-func TestIssueCertificateInnerErrs(t *testing.T) {
-	_, sa, ra, _, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// Make some valid authorizations for some names
-	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	exp := ra.clk.Now().Add(ra.profiles.def().orderLifetime)
-	var authzIDs []int64
-	for _, name := range names {
-		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, ra.clk.Now()))
-	}
-
-	// Create a pending order for all of the names
-	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:   Registration.Id,
-			Expires:          timestamppb.New(exp),
-			DnsNames:         names,
-			V2Authorizations: authzIDs,
-		},
-	})
-	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
-
-	// Generate a CSR covering the order names with a random RSA key
-	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "error generating test key")
-	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
-		PublicKey:          testKey.PublicKey,
-		SignatureAlgorithm: x509.SHA256WithRSA,
-		Subject:            pkix.Name{CommonName: "not-example.com"},
-		DNSNames:           names,
-	}, testKey)
-	test.AssertNotError(t, err, "Could not create test order CSR")
-
-	csrOb, err := x509.ParseCertificateRequest(csr)
-	test.AssertNotError(t, err, "Error pasring generated CSR")
-
-	testCases := []struct {
-		Name         string
-		Mock         capb.CertificateAuthorityClient
-		ExpectedErr  error
-		ExpectedProb *berrors.BoulderError
-	}{
-		{
-			Name: "vanilla error during IssuePrecertificate",
-			Mock: &mockCAFailPrecert{
-				err: fmt.Errorf("bad bad not good"),
-			},
-			ExpectedErr: fmt.Errorf("issuing precertificate: bad bad not good"),
-		},
-		{
-			Name: "malformed problem during IssuePrecertificate",
-			Mock: &mockCAFailPrecert{
-				err: berrors.MalformedError("detected 1x whack attack"),
-			},
-			ExpectedProb: &berrors.BoulderError{
-				Detail: "issuing precertificate: detected 1x whack attack",
-				Type:   berrors.Malformed,
-			},
-		},
-		{
-			Name: "vanilla error during IssueCertificateForPrecertificate",
-			Mock: &mockCAFailCertForPrecert{
-				err: fmt.Errorf("aaaaaaaaaaaaaaaaaaaa!!"),
-			},
-			ExpectedErr: fmt.Errorf("issuing certificate for precertificate: aaaaaaaaaaaaaaaaaaaa!!"),
-		},
-		{
-			Name: "malformed problem during IssueCertificateForPrecertificate",
-			Mock: &mockCAFailCertForPrecert{
-				err: berrors.MalformedError("provided DER is DERanged"),
-			},
-			ExpectedProb: &berrors.BoulderError{
-				Detail: "issuing certificate for precertificate: provided DER is DERanged",
-				Type:   berrors.Malformed,
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			// Mock the CA
-			ra.CA = tc.Mock
-			// Attempt issuance
-			_, err = ra.issueCertificateInner(ctx, csrOb, false, order.CertificateProfileName, accountID(Registration.Id), orderID(order.Id))
-			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
-			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
-			// If there is an expected `error` then match the error message
-			if tc.ExpectedErr != nil {
-				test.AssertEquals(t, err.Error(), tc.ExpectedErr.Error())
-			} else if tc.ExpectedProb != nil {
-				// If there is an expected `berrors.BoulderError` then we expect the
-				// `issueCertificateInner` error to be a `berrors.BoulderError`
-				var berr *berrors.BoulderError
-				test.AssertErrorWraps(t, err, &berr)
-				// Match the expected berror Type and Detail to the observed
-				test.AssertErrorIs(t, berr, tc.ExpectedProb.Type)
-				test.AssertEquals(t, berr.Detail, tc.ExpectedProb.Detail)
-			}
-		})
-	}
-}
-
 type MockCARecordingProfile struct {
 	inner       *mocks.MockCA
 	profileName string
-	profileHash []byte
 }
 
 func (ca *MockCARecordingProfile) IssueCertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssueCertificateResponse, error) {
-	return nil, errors.New("IssueCertificate called in a test that didn't need it")
+	ca.profileName = req.CertProfileName
+	return ca.inner.IssueCertificate(ctx, req)
 }
 
 func (ca *MockCARecordingProfile) IssuePrecertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
-	ca.profileName = req.CertProfileName
-	return ca.inner.IssuePrecertificate(ctx, req)
+	return nil, errors.New("nope")
 }
 
 func (ca *MockCARecordingProfile) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	ca.profileHash = req.CertProfileHash
-	return ca.inner.IssueCertificateForPrecertificate(ctx, req)
+	return nil, errors.New("nope")
 }
 
 type mockSAWithFinalize struct {
@@ -3416,24 +3219,20 @@ func TestIssueCertificateOuter(t *testing.T) {
 		name        string
 		profile     string
 		wantProfile string
-		wantHash    string
 	}{
 		{
 			name:        "select default profile when none specified",
 			wantProfile: "test", // matches ra.defaultProfileName
-			wantHash:    "9f86d081884c7d65",
 		},
 		{
 			name:        "default profile specified",
 			profile:     "test",
 			wantProfile: "test",
-			wantHash:    "9f86d081884c7d65",
 		},
 		{
 			name:        "other profile specified",
 			profile:     "other",
 			wantProfile: "other",
-			wantHash:    "d9298a10d1b07358",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -3462,13 +3261,6 @@ func TestIssueCertificateOuter(t *testing.T) {
 			// The recorded profile and profile hash should match what we expect.
 			if mockCA.profileName != tc.wantProfile {
 				t.Errorf("recorded profileName = %+v, want %+v", mockCA.profileName, tc.wantProfile)
-			}
-			wantHash, err := hex.DecodeString(tc.wantHash)
-			if err != nil {
-				t.Fatalf("decoding test hash: %s", err)
-			}
-			if !bytes.Equal(mockCA.profileHash, wantHash) {
-				t.Errorf("recorded profileName = %x, want %x", mockCA.profileHash, wantHash)
 			}
 		})
 	}

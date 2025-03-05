@@ -143,8 +143,7 @@
 		"features": {
 			"AsyncFinalize": true,
 			"AutomaticallyPauseZombieClients": true,
-			"NoPendingAuthzReuse": true,
-			"UnsplitIssuance": true
+			"NoPendingAuthzReuse": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",
