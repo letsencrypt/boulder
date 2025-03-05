@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,6 +73,7 @@ var (
 // populated, or there is a risk of panic.
 type RegistrationAuthorityImpl struct {
 	rapb.UnsafeRegistrationAuthorityServer
+	rapb.UnsafeSCTProviderServer
 	CA        capb.CertificateAuthorityClient
 	OCSP      capb.OCSPGeneratorClient
 	VA        va.RemoteClients
@@ -89,7 +89,6 @@ type RegistrationAuthorityImpl struct {
 	maxContactsPerReg   int
 	limiter             *ratelimits.Limiter
 	txnBuilder          *ratelimits.TransactionBuilder
-	maxNames            int
 	finalizeTimeout     time.Duration
 	drainWG             sync.WaitGroup
 
@@ -103,7 +102,7 @@ type RegistrationAuthorityImpl struct {
 	namesPerCert              *prometheus.HistogramVec
 	newRegCounter             prometheus.Counter
 	recheckCAACounter         prometheus.Counter
-	newCertCounter            *prometheus.CounterVec
+	newCertCounter            prometheus.Counter
 	authzAges                 *prometheus.HistogramVec
 	orderAges                 *prometheus.HistogramVec
 	inflightFinalizes         prometheus.Gauge
@@ -170,10 +169,10 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(recheckCAACounter)
 
-	newCertCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	newCertCounter := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "new_certificates",
-		Help: "A counter of new certificates including the certificate profile name and hexadecimal certificate profile hash",
-	}, []string{"profileName", "profileHash"})
+		Help: "A counter of issued certificates",
+	})
 	stats.MustRegister(newCertCounter)
 
 	revocationReasonCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -252,7 +251,6 @@ func NewRegistrationAuthorityImpl(
 		keyPolicy:                  keyPolicy,
 		limiter:                    limiter,
 		txnBuilder:                 txnBuilder,
-		maxNames:                   maxNames,
 		publisher:                  pubc,
 		finalizeTimeout:            finalizeTimeout,
 		ctpolicy:                   ctp,
@@ -293,6 +291,12 @@ type ValidationProfileConfig struct {
 	// expires earlier than this OrderLifetime would otherwise set, then the
 	// order's expiration is brought in to match that authorization.
 	OrderLifetime config.Duration `validate:"required"`
+	// MaxNames is the maximum number of subjectAltNames in a single cert.
+	// The value supplied MUST be greater than 0 and no more than 100. These
+	// limits are per section 7.1 of our combined CP/CPS, under "DV-SSL
+	// Subscriber Certificate". The value must be less than or equal to the
+	// global (i.e. not per-profile) value configured in the CA.
+	MaxNames int `validate:"omitempty,min=1,max=100"`
 	// AllowList specifies the path to a YAML file containing a list of
 	// account IDs permitted to use this profile. If no path is
 	// specified, the profile is open to all accounts. If the file
@@ -303,21 +307,23 @@ type ValidationProfileConfig struct {
 // validationProfile holds the order and authz lifetimes and allowlist for a
 // given validation profile.
 type validationProfile struct {
-	// PendingAuthzLifetime defines how far in the future an authorization's
+	// pendingAuthzLifetime defines how far in the future an authorization's
 	// "expires" timestamp is set when it is first created, i.e. how much
 	// time the applicant has to attempt the challenge.
 	pendingAuthzLifetime time.Duration
-	// ValidAuthzLifetime defines how far in the future an authorization's
+	// validAuthzLifetime defines how far in the future an authorization's
 	// "expires" timestamp is set when one of its challenges is fulfilled,
 	// i.e. how long a validated authorization may be reused.
 	validAuthzLifetime time.Duration
-	// OrderLifetime defines how far in the future an order's "expires"
+	// orderLifetime defines how far in the future an order's "expires"
 	// timestamp is set when it is first created, i.e. how much time the
 	// applicant has to fulfill all challenges and finalize the order. This is
 	// a maximum time: if the order reuses an authorization and that authz
 	// expires earlier than this OrderLifetime would otherwise set, then the
 	// order's expiration is brought in to match that authorization.
 	orderLifetime time.Duration
+	// maxNames is the maximum number of subjectAltNames in a single cert.
+	maxNames int
 	// allowList holds the set of account IDs allowed to use this profile. If
 	// nil, the profile is open to all accounts (everyone is allowed).
 	allowList *allowlist.List[int64]
@@ -333,7 +339,7 @@ type validationProfiles struct {
 // NewValidationProfiles builds a new validationProfiles struct from the given
 // configs and default name. It enforces that the given authorization lifetimes
 // are within the bounds mandated by the Baseline Requirements.
-func NewValidationProfiles(defaultName string, configs map[string]ValidationProfileConfig) (*validationProfiles, error) {
+func NewValidationProfiles(defaultName string, configs map[string]*ValidationProfileConfig) (*validationProfiles, error) {
 	if defaultName == "" {
 		return nil, errors.New("default profile name must be configured")
 	}
@@ -357,6 +363,10 @@ func NewValidationProfiles(defaultName string, configs map[string]ValidationProf
 			return nil, fmt.Errorf("ValidAuthzLifetime value must be greater than 0 and less than 398d, but got %q", config.ValidAuthzLifetime.Duration)
 		}
 
+		if config.MaxNames <= 0 || config.MaxNames > 100 {
+			return nil, fmt.Errorf("MaxNames must be greater than 0 and at most 100")
+		}
+
 		var allowList *allowlist.List[int64]
 		if config.AllowList != "" {
 			data, err := os.ReadFile(config.AllowList)
@@ -373,6 +383,7 @@ func NewValidationProfiles(defaultName string, configs map[string]ValidationProf
 			pendingAuthzLifetime: config.PendingAuthzLifetime.Duration,
 			validAuthzLifetime:   config.ValidAuthzLifetime.Duration,
 			orderLifetime:        config.OrderLifetime.Duration,
+			maxNames:             config.MaxNames,
 			allowList:            allowList,
 		}
 	}
@@ -855,19 +866,11 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			}
 			var resp *vapb.IsCAAValidResponse
 			var err error
-			if !features.Get().EnforceMPIC {
-				resp, err = ra.VA.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-					Domain:           name,
-					ValidationMethod: method,
-					AccountURIID:     authz.RegistrationID,
-				})
-			} else {
-				resp, err = ra.VA.DoCAA(ctx, &vapb.IsCAAValidRequest{
-					Domain:           name,
-					ValidationMethod: method,
-					AccountURIID:     authz.RegistrationID,
-				})
-			}
+			resp, err = ra.VA.DoCAA(ctx, &vapb.IsCAAValidRequest{
+				Domain:           name,
+				ValidationMethod: method,
+				AccountURIID:     authz.RegistrationID,
+			})
 			if err != nil {
 				ra.log.AuditErrf("Rechecking CAA: %s", err)
 				err = berrors.InternalServerError(
@@ -1094,7 +1097,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 
 	}
 
-	err = csrlib.VerifyCSR(ctx, csr, ra.maxNames, &ra.keyPolicy, ra.PA)
+	err = csrlib.VerifyCSR(ctx, csr, profile.maxNames, &ra.keyPolicy, ra.PA)
 	if err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
@@ -1159,6 +1162,16 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	return csr, nil
 }
 
+func (ra *RegistrationAuthorityImpl) GetSCTs(ctx context.Context, sctRequest *rapb.SCTRequest) (*rapb.SCTResponse, error) {
+	scts, err := ra.getSCTs(ctx, sctRequest.PrecertDER)
+	if err != nil {
+		return nil, err
+	}
+	return &rapb.SCTResponse{
+		SctDER: scts,
+	}, nil
+}
+
 // issueCertificateOuter exists solely to ensure that all calls to
 // issueCertificateInner have their result handled uniformly, no matter what
 // return path that inner function takes. It takes ownership of the logEvent,
@@ -1192,7 +1205,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	}
 
 	// Step 3: Issue the Certificate
-	cert, cpId, err := ra.issueCertificateInner(
+	cert, err := ra.issueCertificateInner(
 		ctx, csr, isRenewal, profileName, accountID(order.RegistrationID), orderID(order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
@@ -1217,19 +1230,14 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 			prometheus.Labels{"type": "issued"},
 		).Observe(float64(len(order.DnsNames)))
 
-		ra.newCertCounter.With(
-			prometheus.Labels{
-				"profileName": cpId.name,
-				"profileHash": hex.EncodeToString(cpId.hash),
-			}).Inc()
+		ra.newCertCounter.Inc()
 
 		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
 		logEvent.CommonName = cert.Subject.CommonName
 		logEvent.Names = cert.DNSNames
 		logEvent.NotBefore = cert.NotBefore
 		logEvent.NotAfter = cert.NotAfter
-		logEvent.CertProfileName = cpId.name
-		logEvent.CertProfileHash = hex.EncodeToString(cpId.hash)
+		logEvent.CertProfileName = profileName
 
 		result = "successful"
 	}
@@ -1269,13 +1277,6 @@ func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context,
 	}
 }
 
-// certProfileID contains the name and hash of a certificate profile returned by
-// a CA.
-type certProfileID struct {
-	name string
-	hash []byte
-}
-
 // issueCertificateInner is part of the [issuance cycle].
 //
 // It gets a precertificate from the CA, submits it to CT logs to get SCTs,
@@ -1299,7 +1300,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	isRenewal bool,
 	profileName string,
 	acctID accountID,
-	oID orderID) (*x509.Certificate, *certProfileID, error) {
+	oID orderID) (*x509.Certificate, error) {
 	// wrapError adds a prefix to an error. If the error is a boulder error then
 	// the problem detail is updated with the prefix. Otherwise a new error is
 	// returned with the message prefixed using `fmt.Errorf`
@@ -1317,49 +1318,55 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		OrderID:         int64(oID),
 		CertProfileName: profileName,
 	}
-	// Once we get a precert from IssuePrecertificate, we must attempt issuing
-	// a final certificate at most once. We achieve that by bailing on any error
-	// between here and IssueCertificateForPrecertificate.
-	precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
-	if err != nil {
-		return nil, nil, wrapError(err, "issuing precertificate")
+
+	var certDER []byte
+	if features.Get().UnsplitIssuance {
+		resp, err := ra.CA.IssueCertificate(ctx, issueReq)
+		if err != nil {
+			return nil, err
+		}
+		certDER = resp.DER
+	} else {
+		// Once we get a precert from IssuePrecertificate, we must attempt issuing
+		// a final certificate at most once. We achieve that by bailing on any error
+		// between here and IssueCertificateForPrecertificate.
+		precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
+		if err != nil {
+			return nil, wrapError(err, "issuing precertificate")
+		}
+
+		scts, err := ra.getSCTs(ctx, precert.DER)
+		if err != nil {
+			return nil, wrapError(err, "getting SCTs")
+		}
+
+		certPB, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
+			DER:             precert.DER,
+			SCTs:            scts,
+			RegistrationID:  int64(acctID),
+			OrderID:         int64(oID),
+			CertProfileHash: precert.CertProfileHash,
+		})
+		if err != nil {
+			return nil, wrapError(err, "issuing certificate for precertificate")
+		}
+		certDER = certPB.Der
 	}
 
-	parsedPrecert, err := x509.ParseCertificate(precert.DER)
+	parsedCertificate, err := x509.ParseCertificate(certDER)
 	if err != nil {
-		return nil, nil, wrapError(err, "parsing precertificate")
-	}
-
-	scts, err := ra.getSCTs(ctx, precert.DER, parsedPrecert.NotAfter)
-	if err != nil {
-		return nil, nil, wrapError(err, "getting SCTs")
-	}
-
-	cert, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
-		DER:             precert.DER,
-		SCTs:            scts,
-		RegistrationID:  int64(acctID),
-		OrderID:         int64(oID),
-		CertProfileHash: precert.CertProfileHash,
-	})
-	if err != nil {
-		return nil, nil, wrapError(err, "issuing certificate for precertificate")
-	}
-
-	parsedCertificate, err := x509.ParseCertificate(cert.Der)
-	if err != nil {
-		return nil, nil, wrapError(err, "parsing final certificate")
+		return nil, wrapError(err, "parsing final certificate")
 	}
 
 	ra.countCertificateIssued(ctx, int64(acctID), slices.Clone(parsedCertificate.DNSNames), isRenewal)
 
 	// Asynchronously submit the final certificate to any configured logs
-	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
+	go ra.ctpolicy.SubmitFinalCert(certDER, parsedCertificate.NotAfter)
 
 	err = ra.matchesCSR(parsedCertificate, csr)
 	if err != nil {
 		ra.certCSRMismatch.Inc()
-		return nil, nil, err
+		return nil, err
 	}
 
 	_, err = ra.SA.FinalizeOrder(ctx, &sapb.FinalizeOrderRequest{
@@ -1367,15 +1374,20 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		CertificateSerial: core.SerialToString(parsedCertificate.SerialNumber),
 	})
 	if err != nil {
-		return nil, nil, wrapError(err, "persisting finalized order")
+		return nil, wrapError(err, "persisting finalized order")
 	}
 
-	return parsedCertificate, &certProfileID{name: precert.CertProfileName, hash: precert.CertProfileHash}, nil
+	return parsedCertificate, nil
 }
 
-func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, expiration time.Time) (core.SCTDERs, error) {
+func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, precertDER []byte) (core.SCTDERs, error) {
 	started := ra.clk.Now()
-	scts, err := ra.ctpolicy.GetSCTs(ctx, cert, expiration)
+	precert, err := x509.ParseCertificate(precertDER)
+	if err != nil {
+		return nil, fmt.Errorf("parsing precertificate: %w", err)
+	}
+
+	scts, err := ra.ctpolicy.GetSCTs(ctx, precertDER, precert.NotAfter)
 	took := ra.clk.Since(started)
 	if err != nil {
 		state := "failure"
@@ -1526,33 +1538,23 @@ func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Contex
 	}
 }
 
-// doDCVAndCAA performs DCV and CAA checks. When EnforceMPIC is enabled, the
-// checks are executed sequentially: DCV is performed first and CAA is only
-// checked if DCV is successful. Validation records from the DCV check are
-// returned even if the CAA check fails. When EnforceMPIC is disabled, DCV and
-// CAA checks are performed in the same request.
+// doDCVAndCAA performs DCV and CAA checks sequentially: DCV is performed first
+// and CAA is only checked if DCV is successful. Validation records from the DCV
+// check are returned even if the CAA check fails.
 func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq *vapb.PerformValidationRequest, caaReq *vapb.IsCAAValidRequest) (*corepb.ProblemDetails, []*corepb.ValidationRecord, error) {
-	if !features.Get().EnforceMPIC {
-		performValidationRes, err := ra.VA.PerformValidation(ctx, dcvReq)
-		if err != nil {
-			return nil, nil, err
-		}
-		return performValidationRes.Problem, performValidationRes.Records, nil
-	} else {
-		doDCVRes, err := ra.VA.DoDCV(ctx, dcvReq)
-		if err != nil {
-			return nil, nil, err
-		}
-		if doDCVRes.Problem != nil {
-			return doDCVRes.Problem, doDCVRes.Records, nil
-		}
-
-		doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
-		if err != nil {
-			return nil, nil, err
-		}
-		return doCAAResp.Problem, doDCVRes.Records, nil
+	doDCVRes, err := ra.VA.DoDCV(ctx, dcvReq)
+	if err != nil {
+		return nil, nil, err
 	}
+	if doDCVRes.Problem != nil {
+		return doDCVRes.Problem, doDCVRes.Records, nil
+	}
+
+	doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
+	if err != nil {
+		return nil, nil, err
+	}
+	return doCAAResp.Problem, doDCVRes.Records, nil
 }
 
 // PerformValidation initiates validation for a specific challenge associated
@@ -2295,11 +2297,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		ReplacesSerial:         req.ReplacesSerial,
 	}
 
-	if len(newOrder.DnsNames) > ra.maxNames {
-		return nil, berrors.MalformedError(
-			"Order cannot contain more than %d DNS names", ra.maxNames)
-	}
-
 	profile, err := ra.profiles.get(req.CertificateProfileName)
 	if err != nil {
 		return nil, err
@@ -2310,6 +2307,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			req.RegistrationID,
 			req.CertificateProfileName,
 		)
+	}
+
+	if len(newOrder.DnsNames) > profile.maxNames {
+		return nil, berrors.MalformedError(
+			"Order cannot contain more than %d DNS names", profile.maxNames)
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order

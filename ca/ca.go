@@ -39,6 +39,7 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -99,6 +100,7 @@ type caMetrics struct {
 	signatureCount *prometheus.CounterVec
 	signErrorCount *prometheus.CounterVec
 	lintErrorCount prometheus.Counter
+	certificates   *prometheus.CounterVec
 }
 
 func NewCAMetrics(stats prometheus.Registerer) *caMetrics {
@@ -123,7 +125,15 @@ func NewCAMetrics(stats prometheus.Registerer) *caMetrics {
 		})
 	stats.MustRegister(lintErrorCount)
 
-	return &caMetrics{signatureCount, signErrorCount, lintErrorCount}
+	certificates := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "certificates",
+			Help: "Number of certificates issued",
+		},
+		[]string{"profile"})
+	stats.MustRegister(certificates)
+
+	return &caMetrics{signatureCount, signErrorCount, lintErrorCount, certificates}
 }
 
 func (m *caMetrics) noteSignError(err error) {
@@ -138,6 +148,7 @@ func (m *caMetrics) noteSignError(err error) {
 type certificateAuthorityImpl struct {
 	capb.UnsafeCertificateAuthorityServer
 	sa           sapb.StorageAuthorityCertificateClient
+	sctClient    rapb.SCTProviderClient
 	pa           core.PolicyAuthority
 	issuers      issuerMaps
 	certProfiles certProfilesMaps
@@ -227,6 +238,7 @@ func makeCertificateProfilesMap(profiles map[string]*issuance.ProfileConfigNew) 
 // OCSP (via delegation to an ocspImpl and its issuers).
 func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
+	sctService rapb.SCTProviderClient,
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
 	certificateProfiles map[string]*issuance.ProfileConfigNew,
@@ -261,6 +273,7 @@ func NewCertificateAuthorityImpl(
 
 	ca = &certificateAuthorityImpl{
 		sa:           sa,
+		sctClient:    sctService,
 		pa:           pa,
 		issuers:      issuers,
 		certProfiles: certProfiles,
@@ -341,6 +354,31 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		CertProfileName: cpwid.name,
 		CertProfileHash: cpwid.hash[:],
 	}, nil
+}
+
+func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssueCertificateResponse, error) {
+	if ca.sctClient == nil {
+		return nil, errors.New("IssueCertificate called with a nil SCT service")
+	}
+	precert, err := ca.IssuePrecertificate(ctx, issueReq)
+	if err != nil {
+		return nil, err
+	}
+	scts, err := ca.sctClient.GetSCTs(ctx, &rapb.SCTRequest{PrecertDER: precert.DER})
+	if err != nil {
+		return nil, err
+	}
+	cert, err := ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
+		DER:             precert.DER,
+		SCTs:            scts.SctDER,
+		RegistrationID:  issueReq.RegistrationID,
+		OrderID:         issueReq.OrderID,
+		CertProfileHash: precert.CertProfileHash,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &capb.IssueCertificateResponse{DER: cert.Der}, nil
 }
 
 // IssueCertificateForPrecertificate final step in the [issuance cycle].
@@ -453,6 +491,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	}
 
 	ca.metrics.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
+	ca.metrics.certificates.With(prometheus.Labels{"profile": certProfile.name}).Inc()
 	logEvent.Result.Certificate = hex.EncodeToString(certDER)
 	ca.log.AuditObject("Signing cert success", logEvent)
 

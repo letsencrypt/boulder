@@ -354,6 +354,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 			pendingAuthzLifetime: 7 * 24 * time.Hour,
 			validAuthzLifetime:   300 * 24 * time.Hour,
 			orderLifetime:        7 * 24 * time.Hour,
+			maxNames:             100,
 		}},
 	}
 
@@ -1702,11 +1703,13 @@ func TestNewOrder_ValidationProfiles(t *testing.T) {
 				pendingAuthzLifetime: 1 * 24 * time.Hour,
 				validAuthzLifetime:   1 * 24 * time.Hour,
 				orderLifetime:        1 * 24 * time.Hour,
+				maxNames:             10,
 			},
 			"two": {
 				pendingAuthzLifetime: 2 * 24 * time.Hour,
 				validAuthzLifetime:   2 * 24 * time.Hour,
 				orderLifetime:        2 * 24 * time.Hour,
+				maxNames:             10,
 			},
 		},
 	}
@@ -1768,46 +1771,41 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 	defer cleanUp()
 
 	testCases := []struct {
-		name               string
-		validationProfiles map[string]*validationProfile
-		expectErr          bool
-		expectErrContains  string
+		name              string
+		profile           validationProfile
+		expectErr         bool
+		expectErrContains string
 	}{
 		{
-			name: "Allow all account IDs",
-			validationProfiles: map[string]*validationProfile{
-				"test": {allowList: nil},
-			},
+			name:      "Allow all account IDs",
+			profile:   validationProfile{allowList: nil},
 			expectErr: false,
 		},
 		{
-			name: "Deny all but account Id 1337",
-			validationProfiles: map[string]*validationProfile{
-				"test": {allowList: allowlist.NewList([]int64{1337})},
-			},
+			name:              "Deny all but account Id 1337",
+			profile:           validationProfile{allowList: allowlist.NewList([]int64{1337})},
 			expectErr:         true,
 			expectErrContains: "not permitted to use certificate profile",
 		},
 		{
-			name: "Deny all",
-			validationProfiles: map[string]*validationProfile{
-				"test": {allowList: allowlist.NewList([]int64{})},
-			},
+			name:              "Deny all",
+			profile:           validationProfile{allowList: allowlist.NewList([]int64{})},
 			expectErr:         true,
 			expectErrContains: "not permitted to use certificate profile",
 		},
 		{
-			name: "Allow Registration.Id",
-			validationProfiles: map[string]*validationProfile{
-				"test": {allowList: allowlist.NewList([]int64{Registration.Id})},
-			},
+			name:      "Allow Registration.Id",
+			profile:   validationProfile{allowList: allowlist.NewList([]int64{Registration.Id})},
 			expectErr: false,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ra.profiles.byName = tc.validationProfiles
+			tc.profile.maxNames = 1
+			ra.profiles.byName = map[string]*validationProfile{
+				"test": &tc.profile,
+			}
 
 			orderReq := &rapb.NewOrderRequest{
 				RegistrationID:         Registration.Id,
@@ -3337,7 +3335,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
 			// Attempt issuance
-			_, _, err = ra.issueCertificateInner(ctx, csrOb, false, order.CertificateProfileName, accountID(Registration.Id), orderID(order.Id))
+			_, err = ra.issueCertificateInner(ctx, csrOb, false, order.CertificateProfileName, accountID(Registration.Id), orderID(order.Id))
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
 			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
 			// If there is an expected `error` then match the error message
@@ -3360,6 +3358,10 @@ type MockCARecordingProfile struct {
 	inner       *mocks.MockCA
 	profileName string
 	profileHash []byte
+}
+
+func (ca *MockCARecordingProfile) IssueCertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssueCertificateResponse, error) {
+	return nil, errors.New("IssueCertificate called in a test that didn't need it")
 }
 
 func (ca *MockCARecordingProfile) IssuePrecertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
@@ -3468,8 +3470,6 @@ func TestIssueCertificateOuter(t *testing.T) {
 			if !bytes.Equal(mockCA.profileHash, wantHash) {
 				t.Errorf("recorded profileName = %x, want %x", mockCA.profileHash, wantHash)
 			}
-			test.AssertMetricWithLabelsEquals(t, ra.newCertCounter, prometheus.Labels{"profileName": tc.wantProfile, "profileHash": tc.wantHash}, 1)
-			ra.newCertCounter.Reset()
 		})
 	}
 }
@@ -3478,7 +3478,7 @@ func TestNewOrderMaxNames(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.maxNames = 2
+	ra.profiles.def().maxNames = 2
 	_, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: 1,
 		DnsNames: []string{

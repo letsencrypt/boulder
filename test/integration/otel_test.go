@@ -226,7 +226,7 @@ func TestTraces(t *testing.T) {
 			httpSpan("/acme/chall/"),
 			httpSpan("/acme/finalize/",
 				rpcSpan("ra.RegistrationAuthority/FinalizeOrder", wfe, ra,
-					rpcSpan("ca.CertificateAuthority/IssueCertificateForPrecertificate", ra, ca))),
+					rpcSpan("ca.CertificateAuthority/IssueCertificate", ra, ca))),
 		},
 	}
 

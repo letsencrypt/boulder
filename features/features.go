@@ -21,6 +21,8 @@ type Config struct {
 	DisableLegacyLimitWrites    bool
 	MultipleCertificateProfiles bool
 	InsertAuthzsIndividually    bool
+	EnforceMultiCAA             bool
+	EnforceMPIC                 bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -52,11 +54,6 @@ type Config struct {
 	// DOH enables DNS-over-HTTPS queries for validation
 	DOH bool
 
-	// EnforceMultiCAA causes the VA to kick off remote CAA rechecks when true.
-	// When false, no remote CAA rechecks will be performed. The primary VA will
-	// make a valid/invalid decision with the results.
-	EnforceMultiCAA bool
-
 	// CheckIdentifiersPaused checks if any of the identifiers in the order are
 	// currently paused at NewOrder time. If any are paused, an error is
 	// returned to the Subscriber indicating that the order cannot be processed
@@ -83,23 +80,10 @@ type Config struct {
 	// removing pending authz reuse.
 	NoPendingAuthzReuse bool
 
-	// EnforceMPIC enforces SC-067 V3: Require Multi-Perspective Issuance
-	// Corroboration by:
-	//  - Requiring at least three distinct perspectives, as outlined in the
-	//    "Phased Implementation Timeline" in BRs section 3.2.2.9 ("Effective
-	//    March 15, 2025").
-	//  - Ensuring that corroborating (passing) perspectives reside in at least
-	//    2 distinct Regional Internet Registries (RIRs) per the "Phased
-	//    Implementation Timeline" in BRs section 3.2.2.9 ("Effective March 15,
-	//    2026").
-	//  - Including an MPIC summary consisting of: passing perspectives, failing
-	//    perspectives, passing RIRs, and a quorum met for issuance (e.g., 2/3
-	//    or 3/3) in each validation audit log event, per BRs Section 5.4.1,
-	//    Requirement 2.8.
-	//
-	// This feature flag also causes CAA checks to happen after all remote VAs
-	// have passed DCV.
-	EnforceMPIC bool
+	// UnsplitIssuance causes the RA to make a single call to the CA for issuance,
+	// calling the new `IssueCertificate` instead of the old `IssuePrecertficate` /
+	// `IssueCertificateForPrecertificate` pair.
+	UnsplitIssuance bool
 }
 
 var fMu = new(sync.RWMutex)

@@ -592,7 +592,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// If the retry still failed there isn't anything more to do, return the
 		// error immediately.
 		if err != nil {
-			return nil, records, newIPError(retryRecord.AddressUsed, err)
+			return nil, records, newIPError(records[len(records)-1].AddressUsed, err)
 		}
 	} else if err != nil {
 		// if the error was not a fallbackErr then return immediately.

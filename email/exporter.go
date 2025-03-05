@@ -15,15 +15,10 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-const (
-	// five is the number of concurrent workers processing the email queue. This
-	// number was chosen specifically to match the number of concurrent
-	// connections allowed by the Pardot API.
-	five = 5
-
-	// queueCap enforces a maximum stack size to prevent unbounded growth.
-	queueCap = 10000
-)
+// contactsQueueCap limits the queue size to prevent unbounded growth. This
+// value is adjustable as needed. Each RFC 5321 email address, encoded in UTF-8,
+// is at most 320 bytes. Storing 10,000 emails requires ~3.44 MB of memory.
+const contactsQueueCap = 10000
 
 var ErrQueueFull = errors.New("email-exporter queue is full")
 
@@ -33,24 +28,33 @@ type ExporterImpl struct {
 
 	sync.Mutex
 	drainWG sync.WaitGroup
-	wake    *sync.Cond
+	// wake is used to signal workers when new emails are enqueued in toSend.
+	// The sync.Cond docs note that "For many simple use cases, users will be
+	// better off using channels." However, channels enforce FIFO ordering,
+	// while this implementation uses a LIFO queue. Making channels behave as
+	// LIFO would require extra complexity. Using a slice and broadcasting is
+	// simpler and achieves exactly what we need.
+	wake   *sync.Cond
+	toSend []string
 
-	limiter              *rate.Limiter
-	toSend               []string
-	client               PardotClient
-	emailsHandledCounter prometheus.Counter
-	log                  blog.Logger
+	maxConcurrentRequests int
+	limiter               *rate.Limiter
+	client                PardotClient
+	emailsHandledCounter  prometheus.Counter
+	log                   blog.Logger
 }
 
 var _ emailpb.ExporterServer = (*ExporterImpl)(nil)
 
-// NewExporterImpl creates a new ExporterImpl.
-func NewExporterImpl(client PardotClient, perDayLimit float64, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
-	// This limiter enforces the daily Pardot API limit and restricts
-	// concurrency to the maximum of 5 requests specified in their
-	// documentation. For more details see:
-	// https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
-	limiter := rate.NewLimiter(rate.Limit(perDayLimit/86400.0), five)
+// NewExporterImpl initializes an ExporterImpl with the given client and
+// configuration. Both perDayLimit and maxConcurrentRequests should be
+// distributed proportionally among instances based on their share of the daily
+// request cap. For example, if the total daily limit is 50,000 and one instance
+// is assigned 40% (20,000 requests), it should also receive 40% of the max
+// concurrent requests (e.g., 2 out of 5). For more details, see:
+// https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
+func NewExporterImpl(client PardotClient, perDayLimit float64, maxConcurrentRequests int, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
+	limiter := rate.NewLimiter(rate.Limit(perDayLimit/86400.0), maxConcurrentRequests)
 
 	emailsHandledCounter := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "email_exporter_emails_handled",
@@ -59,11 +63,12 @@ func NewExporterImpl(client PardotClient, perDayLimit float64, scope prometheus.
 	scope.MustRegister(emailsHandledCounter)
 
 	impl := &ExporterImpl{
-		limiter:              limiter,
-		toSend:               make([]string, 0, queueCap),
-		client:               client,
-		emailsHandledCounter: emailsHandledCounter,
-		log:                  logger,
+		maxConcurrentRequests: maxConcurrentRequests,
+		limiter:               limiter,
+		toSend:                make([]string, 0, contactsQueueCap),
+		client:                client,
+		emailsHandledCounter:  emailsHandledCounter,
+		log:                   logger,
 	}
 	impl.wake = sync.NewCond(&impl.Mutex)
 
@@ -84,16 +89,17 @@ func NewExporterImpl(client PardotClient, perDayLimit float64, scope prometheus.
 // accommodate the new emails, an ErrQueueFull is returned.
 func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendContactsRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req, req.Emails) {
-		return nil, berrors.InternalServerError("Incomplete UpsertEmails request")
+		return nil, berrors.InternalServerError("Incomplete gRPC request message")
 	}
 
 	impl.Lock()
-	spotsLeft := queueCap - len(impl.toSend)
+	defer impl.Unlock()
+
+	spotsLeft := contactsQueueCap - len(impl.toSend)
 	if spotsLeft < len(req.Emails) {
 		return nil, ErrQueueFull
 	}
 	impl.toSend = append(impl.toSend, req.Emails...)
-	impl.Unlock()
 	// Wake waiting workers to process the new emails.
 	impl.wake.Broadcast()
 
@@ -105,10 +111,8 @@ func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendCon
 func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 	go func() {
 		<-daemonCtx.Done()
-		impl.Lock()
 		// Wake waiting workers to exit.
 		impl.wake.Broadcast()
-		impl.Unlock()
 	}()
 
 	worker := func() {
@@ -134,11 +138,9 @@ func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 			impl.Unlock()
 
 			err := impl.limiter.Wait(daemonCtx)
-			if err != nil {
-				if !errors.Is(err, context.Canceled) {
-					impl.log.Errf("Unexpected limiter.Wait() error: %s", err)
-					continue
-				}
+			if err != nil && !errors.Is(err, context.Canceled) {
+				impl.log.Errf("Unexpected limiter.Wait() error: %s", err)
+				continue
 			}
 
 			err = impl.client.SendContact(email)
@@ -149,7 +151,7 @@ func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 		}
 	}
 
-	for range five {
+	for range impl.maxConcurrentRequests {
 		impl.drainWG.Add(1)
 		go worker()
 	}

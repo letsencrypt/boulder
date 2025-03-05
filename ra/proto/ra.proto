@@ -25,6 +25,18 @@ service RegistrationAuthority {
   rpc UnpauseAccount(UnpauseAccountRequest) returns (UnpauseAccountResponse) {}
 }
 
+service SCTProvider {
+  rpc GetSCTs(SCTRequest) returns (SCTResponse) {}
+}
+
+message SCTRequest {
+  bytes precertDER = 1;
+}
+
+message SCTResponse {
+  repeated bytes sctDER = 1;
+}
+
 message GenerateOCSPRequest {
   string serial = 1;
 }
