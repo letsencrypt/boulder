@@ -48,6 +48,12 @@
 				"validAuthzLifetime": "7h",
 				"orderLifetime": "7h",
 				"maxNames": 10
+			},
+			"shortlived": {
+				"pendingAuthzLifetime": "7h",
+				"validAuthzLifetime": "7h",
+				"orderLifetime": "7h",
+				"maxNames": 10
 			}
 		},
 		"defaultProfileName": "legacy",
