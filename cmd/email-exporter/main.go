@@ -16,22 +16,21 @@ type Config struct {
 	EmailExporter struct {
 		cmd.ServiceConfig
 
-		// PerDayLimit defines the maximum number of API requests allowed per
-		// day, determined by the "Allocated Daily Requests" tier of our
-		// Salesforce account. This cap should be distributed among all
-		// email-exporter instances and should be proportional to the number of
-		// MaxConcurrentRequests that instance. For more information, see:
-		// https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
+		// PerDayLimit enforces the daily request limit imposed by the Pardot
+		// API. The total daily limit, which varies based on the Salesforce
+		// Pardot subscription tier, must be distributed among all
+		// email-exporter instances. For more information, see:
+		// https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate+limits#daily-requests-limits
 		PerDayLimit float64 `validate:"required,min=1"`
 
-		// MaxConcurrentRequests specifies the maximum number of concurrent
-		// requests that can be made to the Pardot API at any given time. The
-		// overall cap (5) should be distributed among all email-exporter
-		// instances and should be proportional to the PerDayLimit. For example,
-		// if the total daily limit is 50,000 and one instance is assigned 40%
-		// (20,000 requests), it should also receive 40% of the max concurrent
-		// requests (2 out of 5)
-		// https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
+		// MaxConcurrentRequests enforces the concurrent request limit imposed
+		// by the Pardot API. This limit must be distributed among all
+		// email-exporter instances and be proportional to each instance's
+		// PerDayLimit. For example, if the total daily limit is 50,000 and one
+		// instance is assigned 40% (20,000 requests), it should also receive
+		// 40% of the max concurrent requests (2 out of 5). For more
+		// information, see:
+		// https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate+limits#concurrent-requests
 		MaxConcurrentRequests int `validate:"required,min=1,max=5"`
 
 		// PardotBusinessUnit is the Pardot business unit to use.
