@@ -2,6 +2,5 @@
 	"oauthAddr": ":9601",
 	"pardotAddr": ":9602",
 	"expectedClientId": "test-client-id",
-	"expectedClientSecret": "you-shall-not-pass",
-	"developmentMode": true
+	"expectedClientSecret": "you-shall-not-pass"
 }

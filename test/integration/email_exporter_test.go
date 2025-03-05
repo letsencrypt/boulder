@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,13 +33,48 @@ func randomDomain(t *testing.T) string {
 	return fmt.Sprintf("%x.mail.com", bytes[:])
 }
 
+// getOAuthToken queries the pardot-test-srv for the current OAuth token.
+func getOAuthToken(t *testing.T) string {
+	t.Helper()
+
+	data, err := os.ReadFile("test/secrets/salesforce_client_id")
+	test.AssertNotError(t, err, "Failed to read Salesforce client ID")
+	clientId := string(data)
+
+	data, err = os.ReadFile("test/secrets/salesforce_client_secret")
+	test.AssertNotError(t, err, "Failed to read Salesforce client secret")
+	clientSecret := string(data)
+
+	httpClient := http.DefaultClient
+	resp, err := httpClient.PostForm("http://localhost:9601/services/oauth2/token", url.Values{
+		"grant_type":    {"client_credentials"},
+		"client_id":     {strings.TrimSpace(clientId)},
+		"client_secret": {strings.TrimSpace(clientSecret)},
+	})
+	test.AssertNotError(t, err, "Failed to fetch OAuth token")
+	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
+	defer resp.Body.Close()
+
+	var response struct {
+		AccessToken string `json:"access_token"`
+	}
+	decoder := json.NewDecoder(resp.Body)
+	err = decoder.Decode(&response)
+	test.AssertNotError(t, err, "Failed to decode OAuth token")
+	return response.AccessToken
+}
+
 // getCreatedContacts queries the pardot-test-srv for the list of created
 // contacts.
-func getCreatedContacts(t *testing.T) []string {
+func getCreatedContacts(t *testing.T, token string) []string {
 	t.Helper()
 
 	httpClient := http.DefaultClient
-	resp, err := httpClient.Get("http://localhost:9602/contacts")
+	req, err := http.NewRequest("GET", "http://localhost:9602/contacts", nil)
+	test.AssertNotError(t, err, "Failed to create request")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := httpClient.Do(req)
 	test.AssertNotError(t, err, "Failed to query contacts")
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 	defer resp.Body.Close()
@@ -54,14 +91,14 @@ func getCreatedContacts(t *testing.T) []string {
 // assertAllContactsReceived waits for the expected contacts to be received by
 // pardot-test-srv. Retries every 50ms for up to 2 seconds and fails if the
 // expected contacts are not received.
-func assertAllContactsReceived(t *testing.T, expect []string) {
+func assertAllContactsReceived(t *testing.T, token string, expect []string) {
 	t.Helper()
 
 	for attempt := range 20 {
 		if attempt > 0 {
 			time.Sleep(50 * time.Millisecond)
 		}
-		got := getCreatedContacts(t)
+		got := getCreatedContacts(t, token)
 
 		allFound := true
 		for _, e := range expect {
@@ -88,6 +125,7 @@ func TestContactsSentForNewAccount(t *testing.T) {
 		t.Skip("Test requires WFE to be configured to use email-exporter")
 	}
 
+	token := getOAuthToken(t)
 	domain := randomDomain(t)
 
 	tests := []struct {
@@ -123,7 +161,7 @@ func TestContactsSentForNewAccount(t *testing.T) {
 
 			_, err = c.NewAccount(acctKey, false, true, tt.contacts...)
 			test.AssertNotError(t, err, "Failed to create initial account with contacts")
-			assertAllContactsReceived(t, tt.expectContacts)
+			assertAllContactsReceived(t, token, tt.expectContacts)
 		})
 	}
 }
@@ -137,6 +175,7 @@ func TestContactsSentWhenAccountUpdated(t *testing.T) {
 		t.Skip("Test requires WFE to be configured to use email-exporter")
 	}
 
+	token := getOAuthToken(t)
 	domain := randomDomain(t)
 
 	c, err := acme.NewClient("http://boulder.service.consul:4001/directory")
@@ -177,7 +216,7 @@ func TestContactsSentWhenAccountUpdated(t *testing.T) {
 
 			_, err := c.UpdateAccount(acct, tt.contacts...)
 			test.AssertNotError(t, err, "Failed to update contacts for existing account")
-			assertAllContactsReceived(t, tt.expectContacts)
+			assertAllContactsReceived(t, token, tt.expectContacts)
 		})
 	}
 }

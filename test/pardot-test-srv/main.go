@@ -9,11 +9,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 )
+
+var contactsCap = 20
 
 type config struct {
 	// OAuthAddr is the address (e.g. IP:port) on which the OAuth server will
@@ -31,22 +34,11 @@ type config struct {
 	// ExpectedClientSecret is the client secret that the server expects to
 	// receive in requests to the /services/oauth2/token endpoint.
 	ExpectedClientSecret string `validate:"required"`
-
-	// DevelopmentMode is a flag that indicates whether the server is running in
-	// development mode. In development mode, the server will store contacts and
-	// provide an endpoint to query them.
-	//
-	// Only set this flag to true if you are running the server for testing
-	// (e.g. within docker-compose) or local development purposes.
-	DevelopmentMode bool
 }
-
-type createdContacts map[string]struct{}
 
 type contacts struct {
 	sync.Mutex
-
-	created createdContacts
+	created []string
 }
 
 type testServer struct {
@@ -54,7 +46,6 @@ type testServer struct {
 	expectedClientSecret string
 	token                string
 	contacts             contacts
-	developmentMode      bool
 }
 
 func (ts *testServer) getTokenHandler(w http.ResponseWriter, r *http.Request) {
@@ -86,15 +77,18 @@ func (ts *testServer) getTokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (ts *testServer) createContactsHandler(w http.ResponseWriter, r *http.Request) {
+func (ts *testServer) checkToken(w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("Authorization")
-	businessUnitId := r.Header.Get("Pardot-Business-Unit-Id")
-
 	if token != "Bearer "+ts.token {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+}
 
+func (ts *testServer) createContactsHandler(w http.ResponseWriter, r *http.Request) {
+	ts.checkToken(w, r)
+
+	businessUnitId := r.Header.Get("Pardot-Business-Unit-Id")
 	if businessUnitId == "" {
 		http.Error(w, "Missing 'Pardot-Business-Unit-Id' header", http.StatusBadRequest)
 		return
@@ -122,25 +116,24 @@ func (ts *testServer) createContactsHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if ts.developmentMode {
-		ts.contacts.Lock()
-		_, exists := ts.contacts.created[contact.Email]
-		if !exists {
-			ts.contacts.created[contact.Email] = struct{}{}
-		}
-		ts.contacts.Unlock()
+	ts.contacts.Lock()
+	if len(ts.contacts.created) >= contactsCap {
+		// Copying the slice in memory is inefficient, but this is a test server
+		// with a small number of contacts, so it's fine.
+		ts.contacts.created = ts.contacts.created[1:]
 	}
+	ts.contacts.created = append(ts.contacts.created, contact.Email)
+	ts.contacts.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status": "success"}`))
 }
 
 func (ts *testServer) queryContactsHandler(w http.ResponseWriter, r *http.Request) {
+	ts.checkToken(w, r)
+
 	ts.contacts.Lock()
-	respContacts := make([]string, 0, len(ts.contacts.created))
-	for contact := range ts.contacts.created {
-		respContacts = append(respContacts, contact)
-	}
+	respContacts := slices.Clone(ts.contacts.created)
 	ts.contacts.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -183,8 +176,7 @@ func main() {
 		expectedClientID:     c.ExpectedClientID,
 		expectedClientSecret: c.ExpectedClientSecret,
 		token:                fmt.Sprintf("%x", tokenBytes),
-		contacts:             contacts{created: make(createdContacts)},
-		developmentMode:      c.DevelopmentMode,
+		contacts:             contacts{created: make([]string, 0, contactsCap)},
 	}
 
 	// OAuth Server
@@ -207,9 +199,8 @@ func main() {
 	// Pardot API Server
 	pardotMux := http.NewServeMux()
 	pardotMux.HandleFunc("/api/v5/objects/prospects", ts.createContactsHandler)
-	if c.DevelopmentMode {
-		pardotMux.HandleFunc("/contacts", ts.queryContactsHandler)
-	}
+	pardotMux.HandleFunc("/contacts", ts.queryContactsHandler)
+
 	pardotServer := &http.Server{
 		Addr:        c.PardotAddr,
 		Handler:     pardotMux,
