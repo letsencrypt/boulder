@@ -16,10 +16,23 @@ type Config struct {
 	EmailExporter struct {
 		cmd.ServiceConfig
 
-		// PerDayLimit is our daily limit as determined by the tier of our
-		// Salesforce account. For more information, see:
+		// PerDayLimit defines the maximum number of API requests allowed per
+		// day, determined by the "Allocated Daily Requests" tier of our
+		// Salesforce account. This cap should be distributed among all
+		// email-exporter instances and should be proportional to the number of
+		// MaxConcurrentRequests that instance. For more information, see:
 		// https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
 		PerDayLimit float64 `validate:"required,min=1"`
+
+		// MaxConcurrentRequests specifies the maximum number of concurrent
+		// requests that can be made to the Pardot API at any given time. The
+		// overall cap (5) should be distributed among all email-exporter
+		// instances and should be proportional to the PerDayLimit. For example,
+		// if the total daily limit is 50,000 and one instance is assigned 40%
+		// (20,000 requests), it should also receive 40% of the max concurrent
+		// requests (2 out of 5)
+		// https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
+		MaxConcurrentRequests int `validate:"required,min=1,max=5"`
 
 		// PardotBusinessUnit is the Pardot business unit to use.
 		PardotBusinessUnit string `validate:"required"`
@@ -84,7 +97,7 @@ func main() {
 		c.EmailExporter.PardotBaseURL,
 	)
 	cmd.FailOnError(err, "Creating Pardot API client")
-	exporterServer := email.NewExporterImpl(pardotClient, c.EmailExporter.PerDayLimit, scope, logger)
+	exporterServer := email.NewExporterImpl(pardotClient, c.EmailExporter.PerDayLimit, c.EmailExporter.MaxConcurrentRequests, scope, logger)
 
 	tlsConfig, err := c.EmailExporter.TLS.Load(scope)
 	cmd.FailOnError(err, "Loading email-exporter TLS config")
