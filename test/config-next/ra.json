@@ -26,7 +26,6 @@
 		},
 		"maxContactsPerRegistration": 3,
 		"hostnamePolicyFile": "test/hostname-policy.yaml",
-		"maxNames": 100,
 		"goodkey": {},
 		"finalizeTimeout": "30s",
 		"issuerCerts": [
@@ -41,17 +40,20 @@
 			"legacy": {
 				"pendingAuthzLifetime": "168h",
 				"validAuthzLifetime": "720h",
-				"orderLifetime": "168h"
+				"orderLifetime": "168h",
+				"maxNames": 100
 			},
 			"modern": {
 				"pendingAuthzLifetime": "7h",
 				"validAuthzLifetime": "7h",
-				"orderLifetime": "7h"
+				"orderLifetime": "7h",
+				"maxNames": 10
 			},
 			"shortlived": {
 				"pendingAuthzLifetime": "7h",
 				"validAuthzLifetime": "7h",
-				"orderLifetime": "7h"
+				"orderLifetime": "7h",
+				"maxNames": 10
 			}
 		},
 		"defaultProfileName": "legacy",
@@ -148,8 +150,7 @@
 			"AsyncFinalize": true,
 			"AutomaticallyPauseZombieClients": true,
 			"NoPendingAuthzReuse": true,
-			"UnsplitIssuance": true,
-			"EnforceMPIC": true
+			"UnsplitIssuance": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

@@ -435,7 +435,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		mockSA,
 		limiter,
 		txnBuilder,
-		100,
 		map[string]string{"default": "a test profile"},
 		unpauseSigner,
 		unpauseLifetime,

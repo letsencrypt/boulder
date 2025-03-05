@@ -102,7 +102,7 @@ func TestCRLPipeline(t *testing.T) {
 	resp.Body.Close()
 }
 
-func TestTemporalAndExplicitShardingCoexist(t *testing.T) {
+func TestCRLTemporalAndExplicitShardingCoexist(t *testing.T) {
 	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
 	if err != nil {
 		t.Fatalf("sql.Open: %s", err)

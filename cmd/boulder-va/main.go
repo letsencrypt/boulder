@@ -30,9 +30,7 @@ type RemoteVAGRPCClientConfig struct {
 	// Requirement 2.7 ("Multi-Perspective Issuance Corroboration attempts
 	// from each Network Perspective"). It should uniquely identify a group
 	// of RVAs deployed in the same datacenter.
-	//
-	// TODO(#7615): Make mandatory.
-	Perspective string `validate:"omitempty"`
+	Perspective string `validate:"required"`
 
 	// RIR indicates the Regional Internet Registry where this RVA is
 	// located. This field is used to identify the RIR region from which a
@@ -44,9 +42,7 @@ type RemoteVAGRPCClientConfig struct {
 	//   - APNIC
 	//   - LACNIC
 	//   - AFRINIC
-	//
-	// TODO(#7615): Make mandatory.
-	RIR string `validate:"omitempty,oneof=ARIN RIPE APNIC LACNIC AFRINIC"`
+	RIR string `validate:"required,oneof=ARIN RIPE APNIC LACNIC AFRINIC"`
 }
 
 type Config struct {
