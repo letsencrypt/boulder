@@ -216,6 +216,7 @@ type ValidationAuthorityImpl struct {
 	singleDialTimeout  time.Duration
 	perspective        string
 	rir                string
+	reservedIPChecker  func(ip net.IP) bool
 
 	metrics *vaMetrics
 }
@@ -235,6 +236,7 @@ func NewValidationAuthorityImpl(
 	accountURIPrefixes []string,
 	perspective string,
 	rir string,
+	reservedIPChecker func(ip net.IP) bool,
 ) (*ValidationAuthorityImpl, error) {
 
 	if len(accountURIPrefixes) == 0 {
@@ -271,6 +273,7 @@ func NewValidationAuthorityImpl(
 		singleDialTimeout: 10 * time.Second,
 		perspective:       perspective,
 		rir:               rir,
+		reservedIPChecker: reservedIPChecker,
 	}
 
 	return va, nil

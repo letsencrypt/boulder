@@ -283,23 +283,23 @@ func TestExtractRequestTarget(t *testing.T) {
 		{
 			Name: "bare IPv4, implicit port",
 			Req: &http.Request{
-				URL: mustURL("http://10.10.10.10"),
+				URL: mustURL("http://127.0.0.1"),
 			},
-			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("10.10.10.10")),
+			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
 			ExpectedPort:  80,
 		},
 		{
 			Name: "bare IPv4, explicit valid port",
 			Req: &http.Request{
-				URL: mustURL("http://10.10.10.10:80"),
+				URL: mustURL("http://127.0.0.1:80"),
 			},
-			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("10.10.10.10")),
+			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
 			ExpectedPort:  80,
 		},
 		{
 			Name: "bare IPv4, explicit invalid port",
 			Req: &http.Request{
-				URL: mustURL("http://10.10.10.10:9999"),
+				URL: mustURL("http://127.0.0.1:9999"),
 			},
 			ExpectedError: fmt.Errorf("Invalid port in redirect target. Only ports 80 " +
 				"and 443 are supported, not 9999"),
@@ -307,10 +307,18 @@ func TestExtractRequestTarget(t *testing.T) {
 		{
 			Name: "bare IPv4, HTTPS",
 			Req: &http.Request{
-				URL: mustURL("https://10.10.10.10"),
+				URL: mustURL("https://127.0.0.1"),
 			},
-			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("10.10.10.10")),
+			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
 			ExpectedPort:  443,
+		},
+		{
+			Name: "bare IPv4, reserved IP address",
+			Req: &http.Request{
+				URL: mustURL("http://10.10.10.10"),
+			},
+			ExpectedError: fmt.Errorf("Invalid host in redirect target, " +
+				"must not be a reserved IP address"),
 		},
 		{
 			Name: "bare IPv6, implicit port",
@@ -343,6 +351,14 @@ func TestExtractRequestTarget(t *testing.T) {
 			},
 			ExpectedIdent: identifier.NewIP(netip.MustParseAddr("::1")),
 			ExpectedPort:  443,
+		},
+		{
+			Name: "bare IPv6, reserved IP address",
+			Req: &http.Request{
+				URL: mustURL("http://[3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee]"),
+			},
+			ExpectedError: fmt.Errorf("Invalid host in redirect target, " +
+				"must not be a reserved IP address"),
 		},
 		{
 			Name: "valid HTTP redirect, explicit port",

@@ -166,6 +166,8 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 		// We expect a self-signed challenge certificate, do not verify it here.
 		InsecureSkipVerify: true,
 	}}
+	// TODO(#8041): This could be a good place for a backstop check for reserved IP
+	// addresses.
 	conn, err := dialer.DialContext(dialCtx, "tcp", hostPort)
 	if err != nil {
 		va.log.Infof("%s connection failure for %s. err=[%#v] errStr=[%s]", core.ChallengeTypeTLSALPN01, ident, err, err)

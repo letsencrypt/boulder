@@ -331,6 +331,9 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 
 	reqIP, err := netip.ParseAddr(reqHost)
 	if err == nil {
+		if va.reservedIPChecker(reqIP.AsSlice()) {
+			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target, must not be a reserved IP address")
+		}
 		return identifier.NewIP(reqIP), reqPort, nil
 	}
 
@@ -380,6 +383,8 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 				"host %q has no IP addresses remaining to use",
 				target.host)
 	}
+	// TODO(#8041): This could be a good place for a backstop check for reserved IP
+	// addresses.
 	record.AddressUsed = targetIP
 
 	dialer := &preresolvedDialer{

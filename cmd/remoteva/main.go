@@ -138,7 +138,8 @@ func main() {
 		logger,
 		c.RVA.AccountURIPrefixes,
 		c.RVA.Perspective,
-		c.RVA.RIR)
+		c.RVA.RIR,
+		bdns.IsReservedIP)
 	cmd.FailOnError(err, "Unable to create Remote-VA server")
 
 	start, err := bgrpc.NewServer(c.RVA.GRPC, logger).Add(
