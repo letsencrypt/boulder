@@ -683,12 +683,14 @@ func (d *dohExchanger) Exchange(query *dns.Msg, server string) (*dns.Msg, time.D
 
 // IsReservedIP reports whether an IP address is part of a reserved range.
 //
-// TODO(#7311): Once we're fully ready to issue for IP address
-// identifiers, dev environments should have a way to bypass this check
-// for their own Private-Use IP addresses. Maybe plumb the
-// DNSAllowLoopbackAddresses feature flag through to here.
+// TODO(#7311): Once we're fully ready to issue for IP address identifiers, dev
+// environments should have a way to bypass this check for their own Private-Use
+// IP addresses. Maybe plumb the DNSAllowLoopbackAddresses feature flag through
+// to here.
 //
-// TODO(#8040): Move this and its dependencies into the policy package.
+// TODO(#8040): Move this and its dependencies into the policy package. As part
+// of this, consider changing it to return an error and/or the description of
+// the reserved network.
 func IsReservedIP(ip net.IP) bool {
 	if ip.To4() == nil {
 		return isPrivateV6(ip)

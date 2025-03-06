@@ -216,7 +216,7 @@ type ValidationAuthorityImpl struct {
 	singleDialTimeout  time.Duration
 	perspective        string
 	rir                string
-	reservedIPChecker  func(ip net.IP) bool
+	isReservedIPFunc   func(ip net.IP) bool
 
 	metrics *vaMetrics
 }
@@ -273,7 +273,7 @@ func NewValidationAuthorityImpl(
 		singleDialTimeout: 10 * time.Second,
 		perspective:       perspective,
 		rir:               rir,
-		reservedIPChecker: reservedIPChecker,
+		isReservedIPFunc:  reservedIPChecker,
 	}
 
 	return va, nil
