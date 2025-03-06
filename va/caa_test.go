@@ -286,8 +286,14 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   false,
 		},
 		{
-			Name:    "Good (unknown non-critical, no issue/issuewild)",
+			Name:    "Good (unknown non-critical, no issue)",
 			Domain:  "unknown-noncritical.com",
+			FoundAt: "unknown-noncritical.com",
+			Valid:   true,
+		},
+		{
+			Name:    "Good (unknown non-critical, no issuewild)",
+			Domain:  "*.unknown-noncritical.com",
 			FoundAt: "unknown-noncritical.com",
 			Valid:   true,
 		},
