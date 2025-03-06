@@ -1319,41 +1319,12 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		CertProfileName: profileName,
 	}
 
-	var certDER []byte
-	if features.Get().UnsplitIssuance {
-		resp, err := ra.CA.IssueCertificate(ctx, issueReq)
-		if err != nil {
-			return nil, err
-		}
-		certDER = resp.DER
-	} else {
-		// Once we get a precert from IssuePrecertificate, we must attempt issuing
-		// a final certificate at most once. We achieve that by bailing on any error
-		// between here and IssueCertificateForPrecertificate.
-		precert, err := ra.CA.IssuePrecertificate(ctx, issueReq)
-		if err != nil {
-			return nil, wrapError(err, "issuing precertificate")
-		}
-
-		scts, err := ra.getSCTs(ctx, precert.DER)
-		if err != nil {
-			return nil, wrapError(err, "getting SCTs")
-		}
-
-		certPB, err := ra.CA.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
-			DER:             precert.DER,
-			SCTs:            scts,
-			RegistrationID:  int64(acctID),
-			OrderID:         int64(oID),
-			CertProfileHash: precert.CertProfileHash,
-		})
-		if err != nil {
-			return nil, wrapError(err, "issuing certificate for precertificate")
-		}
-		certDER = certPB.Der
+	resp, err := ra.CA.IssueCertificate(ctx, issueReq)
+	if err != nil {
+		return nil, err
 	}
 
-	parsedCertificate, err := x509.ParseCertificate(certDER)
+	parsedCertificate, err := x509.ParseCertificate(resp.DER)
 	if err != nil {
 		return nil, wrapError(err, "parsing final certificate")
 	}
@@ -1361,7 +1332,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ra.countCertificateIssued(ctx, int64(acctID), slices.Clone(parsedCertificate.DNSNames), isRenewal)
 
 	// Asynchronously submit the final certificate to any configured logs
-	go ra.ctpolicy.SubmitFinalCert(certDER, parsedCertificate.NotAfter)
+	go ra.ctpolicy.SubmitFinalCert(resp.DER, parsedCertificate.NotAfter)
 
 	err = ra.matchesCSR(parsedCertificate, csr)
 	if err != nil {
