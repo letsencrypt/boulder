@@ -216,6 +216,7 @@ type ValidationAuthorityImpl struct {
 	singleDialTimeout  time.Duration
 	perspective        string
 	rir                string
+	isReservedIPFunc   func(ip net.IP) bool
 
 	metrics *vaMetrics
 }
@@ -235,6 +236,7 @@ func NewValidationAuthorityImpl(
 	accountURIPrefixes []string,
 	perspective string,
 	rir string,
+	reservedIPChecker func(ip net.IP) bool,
 ) (*ValidationAuthorityImpl, error) {
 
 	if len(accountURIPrefixes) == 0 {
@@ -271,6 +273,7 @@ func NewValidationAuthorityImpl(
 		singleDialTimeout: 10 * time.Second,
 		perspective:       perspective,
 		rir:               rir,
+		isReservedIPFunc:  reservedIPChecker,
 	}
 
 	return va, nil
@@ -410,13 +413,12 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 	token string,
 	keyAuthorization string,
 ) ([]core.ValidationRecord, error) {
-	// Strip a (potential) leading wildcard token from the identifier.
-	ident.Value = strings.TrimPrefix(ident.Value, "*.")
-
 	switch kind {
 	case core.ChallengeTypeHTTP01:
 		return va.validateHTTP01(ctx, ident, token, keyAuthorization)
 	case core.ChallengeTypeDNS01:
+		// Strip a (potential) leading wildcard token from the identifier.
+		ident.Value = strings.TrimPrefix(ident.Value, "*.")
 		return va.validateDNS01(ctx, ident, keyAuthorization)
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, ident, keyAuthorization)
@@ -640,7 +642,7 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 type validationLogEvent struct {
 	AuthzID       string
 	Requester     int64
-	Identifier    string
+	Identifier    identifier.ACMEIdentifier
 	Challenge     core.Challenge
 	Error         string `json:",omitempty"`
 	InternalError string `json:",omitempty"`
@@ -659,7 +661,14 @@ type validationLogEvent struct {
 // implements the DCV portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	if core.IsAnyNilOrZero(req, req.DnsName, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
+	// TODO(#8023): Once DnsNames are no longer used in RPCs, use req.Identifier
+	// directly instead of setting ident.
+	if req.Identifier != nil && req.DnsName != "" {
+		return nil, errors.New("both Identifier and DNSName are set")
+	}
+	ident := identifier.FromProtoWithDefault(req.Identifier, req.DnsName)
+
+	if core.IsAnyNilOrZero(req, ident, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 
@@ -683,7 +692,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	logEvent := validationLogEvent{
 		AuthzID:    req.Authz.Id,
 		Requester:  req.Authz.RegID,
-		Identifier: req.DnsName,
+		Identifier: ident,
 		Challenge:  chall,
 	}
 	defer func() {
@@ -717,7 +726,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	// was successful or not, and cannot themselves fail.
 	records, err := va.validateChallenge(
 		ctx,
-		identifier.NewDNS(req.DnsName),
+		ident,
 		chall.Type,
 		chall.Token,
 		req.ExpectedKeyAuthorization,

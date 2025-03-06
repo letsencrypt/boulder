@@ -149,7 +149,8 @@ func main() {
 		logger,
 		c.VA.AccountURIPrefixes,
 		va.PrimaryPerspective,
-		"")
+		"",
+		bdns.IsReservedIP)
 	cmd.FailOnError(err, "Unable to create VA server")
 
 	start, err := bgrpc.NewServer(c.VA.GRPC, logger).Add(

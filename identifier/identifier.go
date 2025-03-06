@@ -39,6 +39,22 @@ func (i ACMEIdentifier) AsProto() *corepb.Identifier {
 	}
 }
 
+func FromProto(ident *corepb.Identifier) ACMEIdentifier {
+	return ACMEIdentifier{
+		Type:  IdentifierType(ident.Type),
+		Value: ident.Value,
+	}
+}
+
+// FromProtoWithDefault can be removed after DnsNames are no longer used in
+// RPCs. TODO(#8023)
+func FromProtoWithDefault(ident *corepb.Identifier, name string) ACMEIdentifier {
+	if ident == nil {
+		return NewDNS(name)
+	}
+	return FromProto(ident)
+}
+
 // NewDNS is a convenience function for creating an ACMEIdentifier with Type
 // "dns" for a given domain name.
 func NewDNS(domain string) ACMEIdentifier {
@@ -52,7 +68,10 @@ func NewDNS(domain string) ACMEIdentifier {
 // for a given IP address.
 func NewIP(ip netip.Addr) ACMEIdentifier {
 	return ACMEIdentifier{
-		Type:  TypeIP,
-		Value: ip.StringExpanded(),
+		Type: TypeIP,
+		// RFC 8738, Sec. 3: The identifier value MUST contain the textual form
+		// of the address as defined in RFC 1123, Sec. 2.1 for IPv4 and in RFC
+		// 5952, Sec. 4 for IPv6.
+		Value: ip.String(),
 	}
 }

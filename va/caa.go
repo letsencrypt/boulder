@@ -41,7 +41,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	logEvent := validationLogEvent{
 		AuthzID:    req.AuthzID,
 		Requester:  req.AccountURIID,
-		Identifier: req.Domain,
+		Identifier: identifier.NewDNS(req.Domain),
 	}
 
 	challType := core.AcmeChallenge(req.ValidationMethod)

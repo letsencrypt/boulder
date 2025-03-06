@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
@@ -69,11 +70,6 @@ var expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 var expectedThumbprint = "9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 var expectedKeyAuthorization = ka(expectedToken)
 
-// Return an ACME DNS identifier for the given hostname
-func dnsi(hostname string) identifier.ACMEIdentifier {
-	return identifier.NewDNS(hostname)
-}
-
 var ctx context.Context
 
 func TestMain(m *testing.M) {
@@ -86,9 +82,9 @@ func TestMain(m *testing.M) {
 
 var accountURIPrefixes = []string{"http://boulder.service.consul:4000/acme/reg/"}
 
-func createValidationRequest(domain string, challengeType core.AcmeChallenge) *vapb.PerformValidationRequest {
+func createValidationRequest(ident identifier.ACMEIdentifier, challengeType core.AcmeChallenge) *vapb.PerformValidationRequest {
 	return &vapb.PerformValidationRequest{
-		DnsName: domain,
+		Identifier: ident.AsProto(),
 		Challenge: &corepb.Challenge{
 			Type:              string(challengeType),
 			Status:            string(core.StatusPending),
@@ -101,6 +97,21 @@ func createValidationRequest(domain string, challengeType core.AcmeChallenge) *v
 		},
 		ExpectedKeyAuthorization: expectedKeyAuthorization,
 	}
+}
+
+// isNonLoopbackReservedIP is a mock reserved IP checker that permits loopback
+// networks.
+func isNonLoopbackReservedIP(ip net.IP) bool {
+	loopbackV4 := netip.MustParsePrefix("127.0.0.0/8")
+	loopbackV6 := netip.MustParsePrefix("::1/128")
+	netIPAddr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		panic(fmt.Sprintf("error parsing IP (%s)", ip))
+	}
+	if loopbackV4.Contains(netIPAddr) || loopbackV6.Contains(netIPAddr) {
+		return false
+	}
+	return bdns.IsReservedIP(ip)
 }
 
 // setup returns an in-memory VA and a mock logger. The default resolver client
@@ -136,6 +147,7 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 		accountURIPrefixes,
 		perspective,
 		"",
+		isNonLoopbackReservedIP,
 	)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
@@ -321,6 +333,7 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 		accountURIPrefixes,
 		"example perspective",
 		"",
+		isNonLoopbackReservedIP,
 	)
 	test.AssertError(t, err, "NewValidationAuthorityImpl allowed duplicate remote perspectives")
 	test.AssertContains(t, err.Error(), "duplicate remote VA perspective \"dadaist\"")
@@ -343,7 +356,7 @@ func TestPerformValidationWithMismatchedRemoteVAPerspectives(t *testing.T) {
 	remoteVAs = append(remoteVAs, mismatched1, mismatched2)
 
 	va, mockLog := setup(nil, "", remoteVAs, nil)
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
 	res, _ := va.DoDCV(context.Background(), req)
 	test.AssertNotNil(t, res.GetProblem(), "validation succeeded with mismatched remote VA perspectives")
 	test.AssertEquals(t, len(mockLog.GetAllMatching("Expected perspective")), 2)
@@ -366,7 +379,7 @@ func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
 	remoteVAs = append(remoteVAs, mismatched1, mismatched2)
 
 	va, mockLog := setup(nil, "", remoteVAs, nil)
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
 	res, _ := va.DoDCV(context.Background(), req)
 	test.AssertNotNil(t, res.GetProblem(), "validation succeeded with mismatched remote VA perspectives")
 	test.AssertEquals(t, len(mockLog.GetAllMatching("Expected perspective")), 2)
@@ -375,7 +388,7 @@ func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
 func TestValidateMalformedChallenge(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateChallenge(ctx, dnsi("example.com"), "fake-type-01", expectedToken, expectedKeyAuthorization)
+	_, err := va.validateChallenge(ctx, identifier.NewDNS("example.com"), "fake-type-01", expectedToken, expectedKeyAuthorization)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
@@ -385,7 +398,7 @@ func TestPerformValidationInvalid(t *testing.T) {
 	t.Parallel()
 	va, _ := setup(nil, "", nil, nil)
 
-	req := createValidationRequest("foo.com", core.ChallengeTypeDNS01)
+	req := createValidationRequest(identifier.NewDNS("foo.com"), core.ChallengeTypeDNS01)
 	res, _ := va.DoDCV(context.Background(), req)
 	test.Assert(t, res.Problem != nil, "validation succeeded")
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
@@ -404,7 +417,7 @@ func TestInternalErrorLogged(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
-	req := createValidationRequest("nonexistent.com", core.ChallengeTypeHTTP01)
+	req := createValidationRequest(identifier.NewDNS("nonexistent.com"), core.ChallengeTypeHTTP01)
 	_, err := va.DoDCV(ctx, req)
 	test.AssertNotError(t, err, "failed validation should not be an error")
 	matchingLogs := mockLog.GetAllMatching(
@@ -418,7 +431,7 @@ func TestPerformValidationValid(t *testing.T) {
 	va, mockLog := setup(nil, "", nil, nil)
 
 	// create a challenge with well known token
-	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	req := createValidationRequest(identifier.NewDNS("good-dns01.com"), core.ChallengeTypeDNS01)
 	res, _ := va.DoDCV(context.Background(), req)
 	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
 	test.AssertMetricWithLabelsEquals(t, va.metrics.validationLatency, prometheus.Labels{
@@ -432,7 +445,8 @@ func TestPerformValidationValid(t *testing.T) {
 	if len(resultLog) != 1 {
 		t.Fatalf("Wrong number of matching lines for 'Validation result'")
 	}
-	if !strings.Contains(resultLog[0], `"Identifier":"good-dns01.com"`) {
+
+	if !strings.Contains(resultLog[0], `"Identifier":{"type":"dns","value":"good-dns01.com"}`) {
 		t.Error("PerformValidation didn't log validation identifier.")
 	}
 }
@@ -445,7 +459,7 @@ func TestPerformValidationWildcard(t *testing.T) {
 	va, mockLog := setup(nil, "", nil, nil)
 
 	// create a challenge with well known token
-	req := createValidationRequest("*.good-dns01.com", core.ChallengeTypeDNS01)
+	req := createValidationRequest(identifier.NewDNS("*.good-dns01.com"), core.ChallengeTypeDNS01)
 	// perform a validation for a wildcard name
 	res, _ := va.DoDCV(context.Background(), req)
 	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed: %#v", res.Problem))
@@ -462,7 +476,7 @@ func TestPerformValidationWildcard(t *testing.T) {
 	}
 
 	// We expect that the top level Identifier reflect the wildcard name
-	if !strings.Contains(resultLog[0], `"Identifier":"*.good-dns01.com"`) {
+	if !strings.Contains(resultLog[0], `"Identifier":{"type":"dns","value":"*.good-dns01.com"}`) {
 		t.Errorf("PerformValidation didn't log correct validation identifier.")
 	}
 	// We expect that the ValidationRecord contain the correct non-wildcard
@@ -476,7 +490,7 @@ func TestMultiVA(t *testing.T) {
 	t.Parallel()
 
 	// Create a new challenge to use for the httpSrv
-	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
+	req := createValidationRequest(identifier.NewDNS("localhost"), core.ChallengeTypeHTTP01)
 
 	brokenVA := RemoteClients{
 		VAClient:  brokenRemoteVA{},
@@ -724,7 +738,7 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 
 			// Perform all validations
 			start := time.Now()
-			req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)
+			req := createValidationRequest(identifier.NewDNS("localhost"), core.ChallengeTypeHTTP01)
 			res, _ := localVA.DoDCV(ctx, req)
 
 			// It should always fail
@@ -763,13 +777,12 @@ func TestMultiVAPolicy(t *testing.T) {
 	localVA, _ := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
 
 	// Perform validation for a domain not in the disabledDomains list
-	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
+	req := createValidationRequest(identifier.NewDNS("letsencrypt.org"), core.ChallengeTypeHTTP01)
 	res, _ := localVA.DoDCV(ctx, req)
 	// It should fail
 	if res.Problem == nil {
 		t.Error("expected prob from PerformValidation, got nil")
 	}
-
 }
 
 func TestMultiVALogging(t *testing.T) {
@@ -785,7 +798,7 @@ func TestMultiVALogging(t *testing.T) {
 	defer ms.Close()
 
 	va, _ := setupWithRemotes(ms.Server, pass, remoteConfs, nil)
-	req := createValidationRequest("letsencrypt.org", core.ChallengeTypeHTTP01)
+	req := createValidationRequest(identifier.NewDNS("letsencrypt.org"), core.ChallengeTypeHTTP01)
 	res, err := va.DoDCV(ctx, req)
 	test.Assert(t, res.Problem == nil, fmt.Sprintf("validation failed with: %#v", res.Problem))
 	test.AssertNotError(t, err, "performing validation")
@@ -840,5 +853,61 @@ func TestDetailedError(t *testing.T) {
 		if actual != tc.expected {
 			t.Errorf("Wrong detail for %v. Got %q, expected %q", tc.err, actual, tc.expected)
 		}
+	}
+}
+
+// TestPerformValidationDnsName modifies the PerformValidationRequest to test
+// backward compatibility during the transition to using an Identifier instead
+// of a DnsName.
+//
+// TODO(#8023): Remove this after the transition is over.
+func TestPerformValidationDnsName(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name            string
+		identDomain     string
+		transmogrifier  func(*vapb.PerformValidationRequest)
+		expectErr       bool
+		expectErrString string
+		expectLog       string
+	}{
+		{
+			name:        "Both Identifier and DnsName",
+			identDomain: "good-dns01.com",
+			transmogrifier: func(req *vapb.PerformValidationRequest) {
+				req.DnsName = "good-dns02.com"
+			},
+			expectErr:       true,
+			expectErrString: "both Identifier and DNSName are set",
+			expectLog:       `"Identifier":{"type":"dns","value":"good-dns01.com"}`,
+		},
+		{
+			name:        "No Identifier",
+			identDomain: "good-dns01.com",
+			transmogrifier: func(req *vapb.PerformValidationRequest) {
+				req.DnsName = "good-dns02.com"
+				req.Identifier = nil
+			},
+			expectLog: `"Identifier":{"type":"dns","value":"good-dns02.com"}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			va, _ := setup(nil, "", nil, nil)
+
+			// create a challenge with well known token
+			req := createValidationRequest(identifier.NewDNS(tc.identDomain), core.ChallengeTypeDNS01)
+			tc.transmogrifier(req)
+			res, err := va.DoDCV(context.Background(), req)
+			if tc.expectErr {
+				test.AssertDeepEquals(t, err, errors.New(tc.expectErrString))
+			} else {
+				test.AssertNotNil(t, res.GetProblem(), fmt.Sprintf("validation failed: %#v", res.Problem))
+			}
+		})
 	}
 }

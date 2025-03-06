@@ -122,6 +122,8 @@ type ValidationRecord struct {
 	URL string `json:"url,omitempty"`
 
 	// Shared
+	//
+	// TODO(#7311): Replace DnsName with Identifier.
 	DnsName           string   `json:"hostname,omitempty"`
 	Port              string   `json:"port,omitempty"`
 	AddressesResolved []net.IP `json:"addressesResolved,omitempty"`
