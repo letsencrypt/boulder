@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -689,7 +690,8 @@ func TestMultiVA(t *testing.T) {
 }
 
 func TestMultiVAEarlyReturn(t *testing.T) {
-	t.Parallel()
+	// TODO(#7809): Make this test parallel when it no longer manipulates the
+	// MPICFullResults feature flag.
 
 	testCases := []struct {
 		name              string
@@ -768,53 +770,59 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(fmt.Sprintf(tc.name), func(t *testing.T) {
-			t.Parallel()
+	for _, mpicFullResults := range []bool{false, true} {
+		for _, tc := range testCases {
+			t.Run(fmt.Sprintf("%s_(MPICFullResults: %s)", tc.name, strconv.FormatBool(mpicFullResults)), func(t *testing.T) {
+				// TODO(#7809): Make this test parallel when it no longer manipulates the
+				// MPICFullResults feature flag.
 
-			// Configure one test server per test case so that all tests can run in parallel.
-			ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
-			defer ms.Close()
+				// Configure one test server per test case so that all tests can run in parallel.
+				ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
+				defer ms.Close()
 
-			localVA, _ := setupWithRemotes(ms.Server, pass, tc.remoteConfs, nil)
+				localVA, _ := setupWithRemotes(ms.Server, pass, tc.remoteConfs, nil)
 
-			// Perform all validations
-			start := time.Now()
-			req := createValidationRequest(identifier.NewDNS("localhost"), core.ChallengeTypeHTTP01)
-			res, _ := localVA.DoDCV(ctx, req)
+				features.Set(features.Config{MPICFullResults: mpicFullResults})
+				defer features.Reset()
 
-			if tc.wantCorroboration {
-				if res.Problem != nil {
-					t.Errorf("expected corroboration, but got prob %s", res.Problem)
+				// Perform all validations
+				start := time.Now()
+				req := createValidationRequest(identifier.NewDNS("localhost"), core.ChallengeTypeHTTP01)
+				res, _ := localVA.DoDCV(ctx, req)
+
+				if tc.wantCorroboration {
+					if res.Problem != nil {
+						t.Errorf("expected corroboration, but got prob %s", res.Problem)
+					}
+				} else {
+					if res.Problem == nil {
+						t.Error("expected prob from PerformValidation, got nil")
+					}
 				}
-			} else {
-				if res.Problem == nil {
-					t.Error("expected prob from PerformValidation, got nil")
-				}
-			}
 
-			elapsed := time.Since(start).Round(time.Millisecond).Milliseconds()
+				elapsed := time.Since(start).Round(time.Millisecond).Milliseconds()
 
-			if tc.wantEarlyReturn {
-				// The slow UA should sleep for `slowRemoteSleepMillis`. But the first remote
-				// VA should fail quickly and the early-return code should cause the overall
-				// overall validation to return a prob quickly (i.e. in less than half of
-				// `slowRemoteSleepMillis`).
-				if elapsed > slowRemoteSleepMillis/2 {
-					t.Errorf(
-						"Expected an early return from PerformValidation in < %d ms, took %d ms",
-						slowRemoteSleepMillis/2, elapsed)
+				if tc.wantEarlyReturn && !mpicFullResults {
+					// The slow UA should sleep for `slowRemoteSleepMillis`. But the first remote
+					// VA should fail quickly and the early-return code should cause the overall
+					// overall validation to return a prob quickly (i.e. in less than half of
+					// `slowRemoteSleepMillis`).
+					if elapsed > slowRemoteSleepMillis/2 {
+						t.Errorf(
+							"Expected an early return from PerformValidation in < %d ms, took %d ms",
+							slowRemoteSleepMillis/2, elapsed)
+					}
+				} else {
+					// The VA will have to wait for all of the results, because the fast
+					// results aren't sufficient to determine (non)corroboration.
+					if elapsed < slowRemoteSleepMillis {
+						t.Errorf(
+							"Expected a slow return from PerformValidation in >= %d ms, took %d ms",
+							slowRemoteSleepMillis, elapsed)
+					}
 				}
-			} else {
-				// The VA will have to wait for all of the results, because the fast
-				// results aren't sufficient to determine (non)corroboration.
-				if elapsed < slowRemoteSleepMillis {
-					t.Errorf(
-						"Expected a slow return from PerformValidation in >= %d ms, took %d ms",
-						slowRemoteSleepMillis, elapsed)
-				}
-			}
-		})
+			})
+		}
 	}
 }
 
