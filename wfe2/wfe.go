@@ -26,6 +26,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	emailpb "github.com/letsencrypt/boulder/email/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -89,6 +90,7 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 type WebFrontEndImpl struct {
 	ra rapb.RegistrationAuthorityClient
 	sa sapb.StorageAuthorityReadOnlyClient
+	ee emailpb.ExporterClient
 	// gnc is a nonce-service client used exclusively for the issuance of
 	// nonces. It's configured to route requests to backends colocated with the
 	// WFE.
@@ -175,6 +177,7 @@ func NewWebFrontEndImpl(
 	staleTimeout time.Duration,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
+	eec emailpb.ExporterClient,
 	gnc nonce.Getter,
 	rnc nonce.Redeemer,
 	rncKey []byte,
@@ -213,6 +216,7 @@ func NewWebFrontEndImpl(
 		staleTimeout:       staleTimeout,
 		ra:                 rac,
 		sa:                 sac,
+		ee:                 eec,
 		gnc:                gnc,
 		rnc:                rnc,
 		rncKey:             rncKey,
@@ -610,6 +614,28 @@ func link(url, relation string) string {
 	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
 }
 
+// contactsToEmails converts a *[]string of contacts (e.g. mailto:
+// person@example.com) to a []string of valid email addresses. Non-email
+// contacts or contacts with invalid email addresses are ignored.
+func contactsToEmails(contacts *[]string) []string {
+	if contacts == nil {
+		return nil
+	}
+	var emails []string
+	for _, c := range *contacts {
+		if !strings.HasPrefix(c, "mailto:") {
+			continue
+		}
+		address := strings.TrimPrefix(c, "mailto:")
+		err := policy.ValidEmail(address)
+		if err != nil {
+			continue
+		}
+		emails = append(emails, address)
+	}
+	return emails
+}
+
 // checkNewAccountLimits checks whether sufficient limit quota exists for the
 // creation of a new account. If so, that quota is spent. If an error is
 // encountered during the check, it is logged but not returned. A refund
@@ -824,6 +850,19 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 	newRegistrationSuccessful = true
+
+	emails := contactsToEmails(accountCreateRequest.Contact)
+	if wfe.ee != nil && len(emails) > 0 {
+		_, err := wfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{
+			// Note: We are explicitly using the contacts provided by the
+			// subscriber here. The RA will eventually stop accepting contacts.
+			Emails: emails,
+		})
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Error sending contacts"), err)
+			return
+		}
+	}
 }
 
 // parseRevocation accepts the payload for a revocation request and parses it
@@ -1416,6 +1455,18 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	updatedReg, err := bgrpc.PbToRegistration(updatedAcct)
 	if err != nil {
 		return nil, probs.ServerInternal("Error updating account")
+	}
+
+	emails := contactsToEmails(accountUpdateRequest.Contact)
+	if wfe.ee != nil && len(emails) > 0 {
+		_, err := wfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{
+			// Note: We are explicitly using the contacts provided by the subscriber
+			// here. The RA will eventually stop accepting contacts.
+			Emails: emails,
+		})
+		if err != nil {
+			return nil, probs.ServerInternal("Error sending contact email")
+		}
 	}
 
 	return &updatedReg, nil

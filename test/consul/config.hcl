@@ -34,6 +34,14 @@ services {
 }
 
 services {
+  id      = "email-exporter-a"
+  name    = "email-exporter"
+  address = "10.77.77.77"
+  port    = 9603
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+}
+
+services {
   id      = "boulder-a"
   name    = "boulder"
   address = "10.77.77.77"
