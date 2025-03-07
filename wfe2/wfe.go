@@ -1441,12 +1441,16 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		return nil, probs.Malformed("Invalid value provided for status field")
 	}
 
-	var contacts []string
-	if accountUpdateRequest.Contact != nil {
-		contacts = *accountUpdateRequest.Contact
+	if accountUpdateRequest.Contact == nil {
+		// We use a pointer-to-slice for the contacts field so that we can tell the
+		// difference between the request not including the contact field, and the
+		// request including an empty contact list. If the field was omitted
+		// entirely, they don't want us to update it, so there's no work to do here.
+		return currAcct, nil
 	}
 
-	updatedAcct, err := wfe.ra.UpdateRegistrationContact(ctx, &rapb.UpdateRegistrationContactRequest{RegistrationID: currAcct.ID, Contacts: contacts})
+	updatedAcct, err := wfe.ra.UpdateRegistrationContact(ctx, &rapb.UpdateRegistrationContactRequest{
+		RegistrationID: currAcct.ID, Contacts: *accountUpdateRequest.Contact})
 	if err != nil {
 		return nil, web.ProblemDetailsForError(err, "Unable to update account")
 	}
