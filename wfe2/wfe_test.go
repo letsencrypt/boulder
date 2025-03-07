@@ -2987,7 +2987,7 @@ func TestKeyRollover(t *testing.T) {
 			Payload: `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "key": ` + string(newJWKJSON) + `,
-		     "status": ""
+		     "status": "valid"
 		   }`,
 			NewKey: newKeyPriv,
 		},
