@@ -69,11 +69,11 @@ SERVICES = (
     Service('boulder-ca-1',
         8001, 9393, 'ca.boulder',
         ('./bin/boulder', 'boulder-ca', '--config', os.path.join(config_dir, 'ca.json'), '--addr', ':9393', '--debug-addr', ':8001'),
-        ('boulder-sa-1', 'boulder-sa-2')),
+        ('boulder-sa-1', 'boulder-sa-2', 'boulder-ra-sct-provider-1', 'boulder-ra-sct-provider-2')),
     Service('boulder-ca-2',
         8101, 9493, 'ca.boulder',
         ('./bin/boulder', 'boulder-ca', '--config', os.path.join(config_dir, 'ca.json'), '--addr', ':9493', '--debug-addr', ':8101'),
-        ('boulder-sa-1', 'boulder-sa-2')),
+        ('boulder-sa-1', 'boulder-sa-2', 'boulder-ra-sct-provider-1', 'boulder-ra-sct-provider-2')),
     Service('akamai-test-srv',
         6789, None, None,
         ('./bin/akamai-test-srv', '--listen', 'localhost:6789', '--secret', 'its-a-secret'),
@@ -102,6 +102,21 @@ SERVICES = (
         8102, 9494, 'ra.boulder',
         ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', ':9494', '--debug-addr', ':8102'),
         ('boulder-sa-1', 'boulder-sa-2', 'boulder-ca-1', 'boulder-ca-2', 'boulder-va-1', 'boulder-va-2', 'akamai-purger', 'boulder-publisher-1', 'boulder-publisher-2')),
+    # We run a separate instance of the RA for use as the SCTProvider service called by the CA.
+    # This solves a small problem of startup order: if a client (the CA in this case) starts
+    # up before its backends, gRPC will try to connect immediately (due to health checks),
+    # get a connection refused, and enter a backoff state. That backoff state can cause
+    # subsequent requests to fail. This issue only exists for the CA-RA pair because they
+    # have a circular relationship - the RA calls CA.IssueCertificate, and the CA calls
+    # SCTProvider.GetSCTs (offered by the RA).
+    Service('boulder-ra-sct-provider-1',
+        8118, 9594, 'ra.boulder',
+        ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', ':9594', '--debug-addr', ':8118'),
+        ('boulder-publisher-1', 'boulder-publisher-2')),
+    Service('boulder-ra-sct-provider-2',
+        8119, 9694, 'ra.boulder',
+        ('./bin/boulder', 'boulder-ra', '--config', os.path.join(config_dir, 'ra.json'), '--addr', ':9694', '--debug-addr', ':8119'),
+        ('boulder-publisher-1', 'boulder-publisher-2')),
     Service('bad-key-revoker',
         8020, None, None,
         ('./bin/boulder', 'bad-key-revoker', '--config', os.path.join(config_dir, 'bad-key-revoker.json'), '--debug-addr', ':8020'),
@@ -125,10 +140,20 @@ SERVICES = (
         8112, None, None,
         ('./bin/boulder', 'nonce-service', '--config', os.path.join(config_dir, 'nonce-b.json'), '--addr', '10.77.77.77:9401', '--debug-addr', ':8112',),
         None),
+    Service('pardot-test-srv',
+        # Uses port 9601 to mock Salesforce OAuth2 token API and 9602 to mock
+        # the Pardot API. 
+        9601, None, None,
+        ('./bin/pardot-test-srv', '--config', os.path.join(config_dir, 'pardot-test-srv.json'),),
+        None),
+    Service('email-exporter',
+        8114, None, None,
+        ('./bin/boulder', 'email-exporter', '--config', os.path.join(config_dir, 'email-exporter.json'), '--addr', ':9603', '--debug-addr', ':8114'),
+        ('pardot-test-srv',)),
     Service('boulder-wfe2',
         4001, None, None,
         ('./bin/boulder', 'boulder-wfe2', '--config', os.path.join(config_dir, 'wfe2.json'), '--addr', ':4001', '--tls-addr', ':4431', '--debug-addr', ':8013'),
-        ('boulder-ra-1', 'boulder-ra-2', 'boulder-sa-1', 'boulder-sa-2', 'nonce-service-taro-1', 'nonce-service-taro-2', 'nonce-service-zinc-1')),
+        ('boulder-ra-1', 'boulder-ra-2', 'boulder-sa-1', 'boulder-sa-2', 'nonce-service-taro-1', 'nonce-service-taro-2', 'nonce-service-zinc-1', 'email-exporter')),
     Service('sfe',
         4003, None, None,
         ('./bin/boulder', 'sfe', '--config', os.path.join(config_dir, 'sfe.json'), '--addr', ':4003', '--debug-addr', ':8015'),

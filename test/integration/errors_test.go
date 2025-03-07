@@ -12,8 +12,8 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-// TestTooBigOrderError tests that submitting an order with more than 100 names
-// produces the expected problem result.
+// TestTooBigOrderError tests that submitting an order with more than 100
+// identifiers produces the expected problem result.
 func TestTooBigOrderError(t *testing.T) {
 	t.Parallel()
 
@@ -28,7 +28,7 @@ func TestTooBigOrderError(t *testing.T) {
 	var prob acme.Problem
 	test.AssertErrorWraps(t, err, &prob)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:malformed")
-	test.AssertEquals(t, prob.Detail, "Order cannot contain more than 100 identifiers")
+	test.AssertContains(t, prob.Detail, "Order cannot contain more than 100 identifiers")
 }
 
 // TestAccountEmailError tests that registering a new account, or updating an

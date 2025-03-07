@@ -33,6 +33,16 @@
 				}
 			}
 		},
+		"sctService": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "ra-sct-provider",
+				"domain": "service.consul"
+			},
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "ra.boulder"
+		},
 		"saService": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
@@ -63,6 +73,19 @@
 					"omitClientAuth": true,
 					"omitSKID": true,
 					"maxValidityPeriod": "583200s",
+					"maxValidityBackdate": "1h5m",
+					"lintConfig": "test/config-next/zlint.toml",
+					"ignoredLints": [
+						"w_ext_subject_key_identifier_missing_sub_cert"
+					]
+				},
+				"shortlived": {
+					"allowMustStaple": true,
+					"omitCommonName": true,
+					"omitKeyEncipherment": true,
+					"omitClientAuth": true,
+					"omitSKID": true,
+					"maxValidityPeriod": "160h",
 					"maxValidityBackdate": "1h5m",
 					"lintConfig": "test/config-next/zlint.toml",
 					"ignoredLints": [

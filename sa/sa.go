@@ -1090,7 +1090,6 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 
 		// Determine which shard index we want to lease.
 		var shardIdx int
-		var needToInsert bool
 		if len(shards) < (int(req.MaxShardIdx + 1 - req.MinShardIdx)) {
 			// Some expected shards are missing (i.e. never-before-produced), so we
 			// pick one at random.
@@ -1106,7 +1105,17 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 				shardIdx = idx
 				break
 			}
-			needToInsert = true
+
+			_, err = tx.ExecContext(ctx,
+				`INSERT INTO crlShards (issuerID, idx, leasedUntil)
+					VALUES (?, ?, ?)`,
+				req.IssuerNameID,
+				shardIdx,
+				req.Until.AsTime(),
+			)
+			if err != nil {
+				return -1, fmt.Errorf("inserting selected shard: %w", err)
+			}
 		} else {
 			// We got all the shards we expect, so we pick the oldest unleased shard.
 			var oldest *crlShardModel
@@ -1124,33 +1133,28 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 				return -1, fmt.Errorf("issuer %d has no unleased shards in range %d-%d", req.IssuerNameID, req.MinShardIdx, req.MaxShardIdx)
 			}
 			shardIdx = oldest.Idx
-			needToInsert = false
-		}
 
-		if needToInsert {
-			_, err = tx.ExecContext(ctx,
-				`INSERT INTO crlShards (issuerID, idx, leasedUntil)
-					VALUES (?, ?, ?)`,
-				req.IssuerNameID,
-				shardIdx,
-				req.Until.AsTime(),
-			)
-			if err != nil {
-				return -1, fmt.Errorf("inserting selected shard: %w", err)
-			}
-		} else {
-			_, err = tx.ExecContext(ctx,
+			res, err := tx.ExecContext(ctx,
 				`UPDATE crlShards
 					SET leasedUntil = ?
 					WHERE issuerID = ?
 					AND idx = ?
+					AND leasedUntil = ?
 					LIMIT 1`,
 				req.Until.AsTime(),
 				req.IssuerNameID,
 				shardIdx,
+				oldest.LeasedUntil,
 			)
 			if err != nil {
 				return -1, fmt.Errorf("updating selected shard: %w", err)
+			}
+			rowsAffected, err := res.RowsAffected()
+			if err != nil {
+				return -1, fmt.Errorf("confirming update of selected shard: %w", err)
+			}
+			if rowsAffected != 1 {
+				return -1, errors.New("failed to lease shard")
 			}
 		}
 
@@ -1207,18 +1211,27 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 				return nil, fmt.Errorf("inserting selected shard: %w", err)
 			}
 		} else {
-			_, err = tx.ExecContext(ctx,
+			res, err := tx.ExecContext(ctx,
 				`UPDATE crlShards
 					SET leasedUntil = ?
 					WHERE issuerID = ?
 					AND idx = ?
+					AND leasedUntil = ?
 					LIMIT 1`,
 				req.Until.AsTime(),
 				req.IssuerNameID,
 				req.MinShardIdx,
+				shardModel.LeasedUntil,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("updating selected shard: %w", err)
+			}
+			rowsAffected, err := res.RowsAffected()
+			if err != nil {
+				return -1, fmt.Errorf("confirming update of selected shard: %w", err)
+			}
+			if rowsAffected != 1 {
+				return -1, errors.New("failed to lease shard")
 			}
 		}
 
