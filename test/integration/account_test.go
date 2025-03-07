@@ -76,9 +76,4 @@ func TestAccountUpdate_UnspecifiedContacts(t *testing.T) {
 	if len(acct.Contact) != 1 {
 		t.Errorf("unexpected number of contacts: want 1, got %d", len(acct.Contact))
 	}
-
-	// TODO: Figure out a way to test that we don't update contacts even when the
-	// rest of the request is non-empty. We can't do this today because eggsampler
-	// makes it impossible to include the `status` field in an UpdateAccount
-	// request (it exposes DeactivateAccount for that instead).
 }
