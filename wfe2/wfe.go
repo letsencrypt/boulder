@@ -1457,18 +1457,6 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		return nil, probs.ServerInternal("Error updating account")
 	}
 
-	emails := contactsToEmails(accountUpdateRequest.Contact)
-	if wfe.ee != nil && len(emails) > 0 {
-		_, err := wfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{
-			// Note: We are explicitly using the contacts provided by the subscriber
-			// here. The RA will eventually stop accepting contacts.
-			Emails: emails,
-		})
-		if err != nil {
-			return nil, probs.ServerInternal("Error sending contact email")
-		}
-	}
-
 	return &updatedReg, nil
 }
 
