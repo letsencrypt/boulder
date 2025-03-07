@@ -237,8 +237,8 @@ type multiSrv struct {
 }
 
 const (
-	slowUA                = "slow remote"
-	slowRemoteSleepMillis = 1000
+	slowUA                = "slow"
+	slowRemoteSleepMillis = 100
 )
 
 func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multiSrv {
@@ -250,7 +250,7 @@ func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multi
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.UserAgent() == slowUA {
-			time.Sleep(slowRemoteSleepMillis)
+			time.Sleep(slowRemoteSleepMillis * time.Millisecond)
 		}
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
@@ -692,42 +692,84 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name        string
-		remoteConfs []remoteConf
+		name              string
+		remoteConfs       []remoteConf
+		wantCorroboration bool
+		wantEarlyReturn   bool
 	}{
 		{
-			name: "One slow, one pass, one fail",
+			name: "Early return when 2/3 pass",
 			remoteConfs: []remoteConf{
-				{ua: slowUA, rir: arin},
+				{ua: pass, rir: arin},
 				{ua: pass, rir: ripe},
-				{ua: fail, rir: apnic},
+				{ua: slowUA, rir: apnic},
 			},
+			wantCorroboration: true,
+			wantEarlyReturn:   true,
 		},
 		{
-			name: "Two slow, two pass, one fail",
+			name: "Early return when 2/3 fail",
 			remoteConfs: []remoteConf{
-				{ua: slowUA, rir: arin},
-				{ua: slowUA, rir: ripe},
+				{ua: fail, rir: arin},
+				{ua: fail, rir: ripe},
+				{ua: slowUA, rir: apnic},
+			},
+			wantCorroboration: false,
+			wantEarlyReturn:   true,
+		},
+		{
+			name: "Slow return when first 2/3 are inconclusive",
+			remoteConfs: []remoteConf{
+				{ua: pass, rir: arin},
+				{ua: fail, rir: ripe},
+				{ua: slowUA, rir: apnic},
+			},
+			wantCorroboration: false,
+			wantEarlyReturn:   false,
+		},
+		{
+			name: "Early return when 4/6 pass",
+			remoteConfs: []remoteConf{
+				{ua: pass, rir: arin},
+				{ua: pass, rir: ripe},
 				{ua: pass, rir: apnic},
 				{ua: pass, rir: arin},
 				{ua: fail, rir: ripe},
+				{ua: slowUA, rir: apnic},
 			},
+			wantCorroboration: true,
+			wantEarlyReturn:   true,
 		},
 		{
-			name: "Two slow, two pass, two fail",
+			name: "Early return when 4/6 fail",
 			remoteConfs: []remoteConf{
-				{ua: slowUA, rir: arin},
-				{ua: slowUA, rir: ripe},
-				{ua: pass, rir: apnic},
 				{ua: pass, rir: arin},
 				{ua: fail, rir: ripe},
 				{ua: fail, rir: apnic},
+				{ua: fail, rir: arin},
+				{ua: fail, rir: ripe},
+				{ua: slowUA, rir: apnic},
 			},
+			wantCorroboration: false,
+			wantEarlyReturn:   true,
+		},
+		{
+			name: "Slow return when first 5/6 are inconclusive",
+			remoteConfs: []remoteConf{
+				{ua: pass, rir: arin},
+				{ua: pass, rir: ripe},
+				{ua: pass, rir: apnic},
+				{ua: fail, rir: arin},
+				{ua: fail, rir: ripe},
+				{ua: slowUA, rir: apnic},
+			},
+			wantCorroboration: false,
+			wantEarlyReturn:   false,
 		},
 	}
 
-	for i, tc := range testCases {
-		t.Run(fmt.Sprintf("TestCase%d", i), func(t *testing.T) {
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf(tc.name), func(t *testing.T) {
 			t.Parallel()
 
 			// Configure one test server per test case so that all tests can run in parallel.
@@ -741,21 +783,36 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 			req := createValidationRequest(identifier.NewDNS("localhost"), core.ChallengeTypeHTTP01)
 			res, _ := localVA.DoDCV(ctx, req)
 
-			// It should always fail
-			if res.Problem == nil {
-				t.Error("expected prob from PerformValidation, got nil")
+			if tc.wantCorroboration {
+				if res.Problem != nil {
+					t.Errorf("expected corroboration, but got prob %s", res.Problem)
+				}
+			} else {
+				if res.Problem == nil {
+					t.Error("expected prob from PerformValidation, got nil")
+				}
 			}
 
 			elapsed := time.Since(start).Round(time.Millisecond).Milliseconds()
 
-			// The slow UA should sleep for `slowRemoteSleepMillis`. But the first remote
-			// VA should fail quickly and the early-return code should cause the overall
-			// overall validation to return a prob quickly (i.e. in less than half of
-			// `slowRemoteSleepMillis`).
-			if elapsed > slowRemoteSleepMillis/2 {
-				t.Errorf(
-					"Expected an early return from PerformValidation in < %d ms, took %d ms",
-					slowRemoteSleepMillis/2, elapsed)
+			if tc.wantEarlyReturn {
+				// The slow UA should sleep for `slowRemoteSleepMillis`. But the first remote
+				// VA should fail quickly and the early-return code should cause the overall
+				// overall validation to return a prob quickly (i.e. in less than half of
+				// `slowRemoteSleepMillis`).
+				if elapsed > slowRemoteSleepMillis/2 {
+					t.Errorf(
+						"Expected an early return from PerformValidation in < %d ms, took %d ms",
+						slowRemoteSleepMillis/2, elapsed)
+				}
+			} else {
+				// The VA will have to wait for all of the results, because the fast
+				// results aren't sufficient to determine (non)corroboration.
+				if elapsed < slowRemoteSleepMillis {
+					t.Errorf(
+						"Expected a slow return from PerformValidation in >= %d ms, took %d ms",
+						slowRemoteSleepMillis, elapsed)
+				}
 			}
 		})
 	}
