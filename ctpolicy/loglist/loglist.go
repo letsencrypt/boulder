@@ -31,6 +31,18 @@ const Informational purpose = "info"
 // necessarily still issuing SCTs today.
 const Validation purpose = "lint"
 
+// apiType is used to indicate which API the log implements.
+type apiType string
+
+// RFC6962 means that the log implements the original CT spec. These logs are
+// already accepted by all CT programs.
+const RFC6962 apiType = "rfc6962"
+
+// Tiled means that the log implements the "static-ct-api" spec. These logs are
+// in the process of being accepted by CT programs, so we can't include SCTs
+// from them just yet.
+const Tiled apiType = "tiled"
+
 // List represents a list of logs, grouped by their operator, arranged by
 // the "v3" schema as published by Chrome:
 // https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
@@ -53,14 +65,17 @@ type Log struct {
 	StartInclusive time.Time
 	EndExclusive   time.Time
 	State          loglist3.LogStatus
+	ApiType        apiType
 }
 
 // usableForPurpose returns true if the log state is acceptable for the given
 // log list purpose, and false otherwise.
-func usableForPurpose(s loglist3.LogStatus, p purpose) bool {
+func usableForPurpose(s loglist3.LogStatus, a apiType, p purpose) bool {
 	switch p {
 	case Issuance:
-		return s == loglist3.UsableLogStatus
+		// TODO: Allow Tiled logs to be used for the Issuance (i.e. SCTs) purpose
+		// once all root programs allow it.
+		return s == loglist3.UsableLogStatus && a == RFC6962
 	case Informational:
 		return s == loglist3.UsableLogStatus || s == loglist3.QualifiedLogStatus || s == loglist3.PendingLogStatus
 	case Validation:
@@ -93,19 +108,38 @@ func newHelper(file []byte) (List, error) {
 	for _, op := range parsed.Operators {
 		group := make(OperatorGroup)
 		for _, log := range op.Logs {
-			info := Log{
-				Name:  log.Description,
-				Url:   log.URL,
-				Key:   base64.StdEncoding.EncodeToString(log.Key),
-				State: log.State.LogStatus(),
-			}
-
+			var start, end time.Time
 			if log.TemporalInterval != nil {
-				info.StartInclusive = log.TemporalInterval.StartInclusive
-				info.EndExclusive = log.TemporalInterval.EndExclusive
+				start = log.TemporalInterval.StartInclusive
+				end = log.TemporalInterval.EndExclusive
 			}
 
-			group[base64.StdEncoding.EncodeToString(log.LogID)] = info
+			group[base64.StdEncoding.EncodeToString(log.LogID)] = Log{
+				Name:           log.Description,
+				Url:            log.URL,
+				Key:            base64.StdEncoding.EncodeToString(log.Key),
+				StartInclusive: start,
+				EndExclusive:   end,
+				State:          log.State.LogStatus(),
+				ApiType:        RFC6962,
+			}
+		}
+		for _, log := range op.TiledLogs {
+			var start, end time.Time
+			if log.TemporalInterval != nil {
+				start = log.TemporalInterval.StartInclusive
+				end = log.TemporalInterval.EndExclusive
+			}
+
+			group[base64.StdEncoding.EncodeToString(log.LogID)] = Log{
+				Name:           log.Description,
+				Url:            log.SubmissionURL,
+				Key:            base64.StdEncoding.EncodeToString(log.Key),
+				StartInclusive: start,
+				EndExclusive:   end,
+				State:          log.State.LogStatus(),
+				ApiType:        Tiled,
+			}
 		}
 		result[op.Name] = group
 	}
@@ -186,7 +220,7 @@ func (ll List) forPurpose(p purpose) (List, error) {
 	for operator, group := range ll {
 		newGroup := make(OperatorGroup)
 		for id, log := range group {
-			if !usableForPurpose(log.State, p) {
+			if !usableForPurpose(log.State, log.ApiType, p) {
 				continue
 			}
 

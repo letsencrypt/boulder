@@ -14,7 +14,6 @@ options:
   - name: go-modules
     path: /go
   env:
-  - GO111MODULE=on
   - GOPROXY=https://proxy.golang.org
   - PROJECT_ROOT=github.com/google/certificate-transparency-go
   - GOPATH=/go
@@ -93,7 +92,7 @@ steps:
   id: 'default_test'
   env:
     - 'GOFLAGS='
-    - 'PRESUBMIT_OPTS=--no-generate'
+    - 'PRESUBMIT_OPTS=--no-linters --no-generate'
     - 'TRILLIAN_LOG_SERVERS=deployment_trillian-log-server_1:8090'
     - 'TRILLIAN_LOG_SERVER_1=deployment_trillian-log-server_1:8090'
   waitFor: ['ci-ready']

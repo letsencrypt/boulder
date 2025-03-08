@@ -14,7 +14,6 @@ options:
   - name: go-modules
     path: /go
   env:
-  - GO111MODULE=on
   - GOPROXY=https://proxy.golang.org
   - PROJECT_ROOT=github.com/google/certificate-transparency-go
   - GOPATH=/go
@@ -86,6 +85,13 @@ steps:
 
       # Wait for trillian logserver to be up
       until nc -z deployment_trillian-log-server_1 8090; do echo .; sleep 5; done
+
+      # Reset the CT test database
+      export CT_GO_PATH="$$(go list -f '{{.Dir}}' github.com/google/certificate-transparency-go)"
+      export MYSQL_HOST="mysql"
+      export MYSQL_ROOT_PASSWORD="zaphod"
+      export MYSQL_USER_HOST="%"
+      yes | bash "$${CT_GO_PATH}/scripts/resetctdb.sh" --verbose
   waitFor: ['prepare']
 
 # Run the presubmit tests
@@ -93,7 +99,7 @@ steps:
   id: 'default_test'
   env:
     - 'GOFLAGS='
-    - 'PRESUBMIT_OPTS=--no-generate'
+    - 'PRESUBMIT_OPTS=--no-linters --no-generate'
     - 'TRILLIAN_LOG_SERVERS=deployment_trillian-log-server_1:8090'
     - 'TRILLIAN_LOG_SERVER_1=deployment_trillian-log-server_1:8090'
   waitFor: ['ci-ready']
