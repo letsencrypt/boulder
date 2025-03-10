@@ -6,13 +6,14 @@ import (
 	"crypto/elliptic"
 	"crypto/rsa"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
 )
 
 func TestMakeSigner_RSA(t *testing.T) {
-	rsaMod, ok := big.NewInt(0).SetString("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 16)
+	rsaMod, ok := big.NewInt(0).SetString(strings.Repeat("ff", 128), 16)
 	test.Assert(t, ok, "failed to set RSA mod")
 	realSigner := &rsa.PrivateKey{
 		PublicKey: rsa.PublicKey{

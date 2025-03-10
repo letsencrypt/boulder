@@ -769,7 +769,7 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf(tc.name), func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			// Configure one test server per test case so that all tests can run in parallel.
