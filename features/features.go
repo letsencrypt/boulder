@@ -80,6 +80,10 @@ type Config struct {
 	// functionality (valid authz reuse) while letting us simplify our code by
 	// removing pending authz reuse.
 	NoPendingAuthzReuse bool
+
+	// StoreARIReplacesInOrders causes the SA to store and retrieve the optional
+	// ARI replaces field in the orders table.
+	StoreARIReplacesInOrders bool
 }
 
 var fMu = new(sync.RWMutex)

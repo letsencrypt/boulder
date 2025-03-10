@@ -2265,6 +2265,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		RegistrationID:         req.RegistrationID,
 		DnsNames:               core.UniqueLowerNames(req.DnsNames),
 		CertificateProfileName: req.CertificateProfileName,
+		Replaces:               req.Replaces,
 		ReplacesSerial:         req.ReplacesSerial,
 	}
 

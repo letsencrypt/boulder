@@ -48,7 +48,9 @@
 			}
 		},
 		"healthCheckInterval": "4s",
-		"features": {}
+		"features": {
+			"StoreARIReplacesInOrders": true
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 6,
