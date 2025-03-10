@@ -26,6 +26,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	emailpb "github.com/letsencrypt/boulder/email/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -52,24 +53,21 @@ import (
 // measured_http.
 const (
 	directoryPath     = "/directory"
+	newNoncePath      = "/acme/new-nonce"
 	newAcctPath       = "/acme/new-acct"
+	newOrderPath      = "/acme/new-order"
+	rolloverPath      = "/acme/key-change"
+	revokeCertPath    = "/acme/revoke-cert"
 	acctPath          = "/acme/acct/"
+	orderPath         = "/acme/order/"
 	authzPath         = "/acme/authz/"
 	challengePath     = "/acme/chall/"
-	certPath          = "/acme/cert/"
-	revokeCertPath    = "/acme/revoke-cert"
-	buildIDPath       = "/build"
-	rolloverPath      = "/acme/key-change"
-	newNoncePath      = "/acme/new-nonce"
-	newOrderPath      = "/acme/new-order"
-	orderPath         = "/acme/order/"
 	finalizeOrderPath = "/acme/finalize/"
+	certPath          = "/acme/cert/"
 
-	getAPIPrefix     = "/get/"
-	getOrderPath     = getAPIPrefix + "order/"
-	getAuthzPath     = getAPIPrefix + "authz/"
-	getChallengePath = getAPIPrefix + "chall/"
-	getCertPath      = getAPIPrefix + "cert/"
+	// Non-ACME paths.
+	getCertPath = "/get/cert/"
+	buildIDPath = "/build"
 
 	// Draft or likely-to-change paths
 	renewalInfoPath = "/draft-ietf-acme-ari-03/renewalInfo/"
@@ -92,6 +90,7 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 type WebFrontEndImpl struct {
 	ra rapb.RegistrationAuthorityClient
 	sa sapb.StorageAuthorityReadOnlyClient
+	ee emailpb.ExporterClient
 	// gnc is a nonce-service client used exclusively for the issuance of
 	// nonces. It's configured to route requests to backends colocated with the
 	// WFE.
@@ -147,21 +146,14 @@ type WebFrontEndImpl struct {
 	// requestTimeout is the per-request overall timeout.
 	requestTimeout time.Duration
 
-	// StaleTimeout determines the required staleness for resources allowed to be
-	// accessed via Boulder-specific GET-able APIs. Resources newer than
+	// StaleTimeout determines the required staleness for certificates to be
+	// accessed via the Boulder-specific GET API. Certificates newer than
 	// staleTimeout must be accessed via POST-as-GET and the RFC 8555 ACME API. We
 	// do this to incentivize client developers to use the standard API.
 	staleTimeout time.Duration
 
-	// How long before authorizations and pending authorizations expire. The
-	// Boulder specific GET-able API uses these values to find the creation date
-	// of authorizations to determine if they are stale enough. The values should
-	// match the ones used by the RA.
-	authorizationLifetime        time.Duration
-	pendingAuthorizationLifetime time.Duration
-	limiter                      *ratelimits.Limiter
-	txnBuilder                   *ratelimits.TransactionBuilder
-	maxNames                     int
+	limiter    *ratelimits.Limiter
+	txnBuilder *ratelimits.TransactionBuilder
 
 	unpauseSigner      unpause.JWTSigner
 	unpauseJWTLifetime time.Duration
@@ -183,17 +175,15 @@ func NewWebFrontEndImpl(
 	logger blog.Logger,
 	requestTimeout time.Duration,
 	staleTimeout time.Duration,
-	authorizationLifetime time.Duration,
-	pendingAuthorizationLifetime time.Duration,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
+	eec emailpb.ExporterClient,
 	gnc nonce.Getter,
 	rnc nonce.Redeemer,
 	rncKey []byte,
 	accountGetter AccountGetter,
 	limiter *ratelimits.Limiter,
 	txnBuilder *ratelimits.TransactionBuilder,
-	maxNames int,
 	certProfiles map[string]string,
 	unpauseSigner unpause.JWTSigner,
 	unpauseJWTLifetime time.Duration,
@@ -216,29 +206,27 @@ func NewWebFrontEndImpl(
 	}
 
 	wfe := WebFrontEndImpl{
-		log:                          logger,
-		clk:                          clk,
-		keyPolicy:                    keyPolicy,
-		certificateChains:            certificateChains,
-		issuerCertificates:           issuerCertificates,
-		stats:                        initStats(stats),
-		requestTimeout:               requestTimeout,
-		staleTimeout:                 staleTimeout,
-		authorizationLifetime:        authorizationLifetime,
-		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
-		ra:                           rac,
-		sa:                           sac,
-		gnc:                          gnc,
-		rnc:                          rnc,
-		rncKey:                       rncKey,
-		accountGetter:                accountGetter,
-		limiter:                      limiter,
-		txnBuilder:                   txnBuilder,
-		maxNames:                     maxNames,
-		certProfiles:                 certProfiles,
-		unpauseSigner:                unpauseSigner,
-		unpauseJWTLifetime:           unpauseJWTLifetime,
-		unpauseURL:                   unpauseURL,
+		log:                logger,
+		clk:                clk,
+		keyPolicy:          keyPolicy,
+		certificateChains:  certificateChains,
+		issuerCertificates: issuerCertificates,
+		stats:              initStats(stats),
+		requestTimeout:     requestTimeout,
+		staleTimeout:       staleTimeout,
+		ra:                 rac,
+		sa:                 sac,
+		ee:                 eec,
+		gnc:                gnc,
+		rnc:                rnc,
+		rncKey:             rncKey,
+		accountGetter:      accountGetter,
+		limiter:            limiter,
+		txnBuilder:         txnBuilder,
+		certProfiles:       certProfiles,
+		unpauseSigner:      unpauseSigner,
+		unpauseJWTLifetime: unpauseJWTLifetime,
+		unpauseURL:         unpauseURL,
 	}
 
 	return wfe, nil
@@ -411,8 +399,6 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 // various ACME-specified paths.
 func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions ...otelhttp.Option) http.Handler {
 	m := http.NewServeMux()
-	// Boulder specific endpoints
-	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 
 	// POSTable ACME endpoints
 	wfe.HandleFunc(m, newAcctPath, wfe.NewAccount, "POST")
@@ -425,18 +411,14 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	// GETable and POST-as-GETable ACME endpoints
 	wfe.HandleFunc(m, directoryPath, wfe.Directory, "GET", "POST")
 	wfe.HandleFunc(m, newNoncePath, wfe.Nonce, "GET", "POST")
-	// POST-as-GETable ACME endpoints
-	// TODO(@cpu): After November 1st, 2020 support for "GET" to the following
-	// endpoints will be removed, leaving only POST-as-GET support.
 	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET", "POST")
 	wfe.HandleFunc(m, authzPath, wfe.AuthorizationHandler, "GET", "POST")
 	wfe.HandleFunc(m, challengePath, wfe.ChallengeHandler, "GET", "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
-	// Boulder-specific GET-able resource endpoints
-	wfe.HandleFunc(m, getOrderPath, wfe.GetOrder, "GET")
-	wfe.HandleFunc(m, getAuthzPath, wfe.AuthorizationHandler, "GET")
-	wfe.HandleFunc(m, getChallengePath, wfe.ChallengeHandler, "GET")
+
+	// Boulder specific endpoints
 	wfe.HandleFunc(m, getCertPath, wfe.Certificate, "GET")
+	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
 
 	// Endpoint for draft-ietf-acme-ari
 	if features.Get().ServeRenewalInfo {
@@ -632,6 +614,28 @@ func link(url, relation string) string {
 	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
 }
 
+// contactsToEmails converts a *[]string of contacts (e.g. mailto:
+// person@example.com) to a []string of valid email addresses. Non-email
+// contacts or contacts with invalid email addresses are ignored.
+func contactsToEmails(contacts *[]string) []string {
+	if contacts == nil {
+		return nil
+	}
+	var emails []string
+	for _, c := range *contacts {
+		if !strings.HasPrefix(c, "mailto:") {
+			continue
+		}
+		address := strings.TrimPrefix(c, "mailto:")
+		err := policy.ValidEmail(address)
+		if err != nil {
+			continue
+		}
+		emails = append(emails, address)
+	}
+	return emails
+}
+
 // checkNewAccountLimits checks whether sufficient limit quota exists for the
 // creation of a new account. If so, that quota is spent. If an error is
 // encountered during the check, it is logged but not returned. A refund
@@ -762,21 +766,15 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	var contacts []string
-	var contactsPresent bool
 	if accountCreateRequest.Contact != nil {
-		contactsPresent = true
 		contacts = *accountCreateRequest.Contact
 	}
 
 	// Create corepb.Registration from provided account information
 	reg := corepb.Registration{
-		Contact:         contacts,
-		ContactsPresent: contactsPresent,
-		Agreement:       wfe.SubscriberAgreementURL,
-		Key:             keyBytes,
-		// TODO(#7671): This must remain until InitialIP is removed from
-		// corepb.Registration.
-		InitialIP: net.ParseIP("0.0.0.0").To16(),
+		Contact:   contacts,
+		Agreement: wfe.SubscriberAgreementURL,
+		Key:       keyBytes,
 	}
 
 	refundLimits, err := wfe.checkNewAccountLimits(ctx, ip)
@@ -785,6 +783,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 			return
 		} else {
+			// Proceed, since we don't want internal rate limit system failures to
+			// block all account creation.
 			logEvent.IgnoredRateLimitError = err.Error()
 		}
 	}
@@ -850,6 +850,19 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 	newRegistrationSuccessful = true
+
+	emails := contactsToEmails(accountCreateRequest.Contact)
+	if wfe.ee != nil && len(emails) > 0 {
+		_, err := wfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{
+			// Note: We are explicitly using the contacts provided by the
+			// subscriber here. The RA will eventually stop accepting contacts.
+			Emails: emails,
+		})
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Error sending contacts"), err)
+			return
+		}
+	}
 }
 
 // parseRevocation accepts the payload for a revocation request and parses it
@@ -1123,13 +1136,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
-	}
-
-	if requiredStale(request, logEvent) {
-		if prob := wfe.staleEnoughToGETAuthz(authzPB); prob != nil {
-			wfe.sendError(response, logEvent, prob, nil)
-			return
-		}
 	}
 
 	if authz.Identifier.Type == identifier.TypeDNS {
@@ -1435,12 +1441,16 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		return nil, probs.Malformed("Invalid value provided for status field")
 	}
 
-	var contacts []string
-	if accountUpdateRequest.Contact != nil {
-		contacts = *accountUpdateRequest.Contact
+	if accountUpdateRequest.Contact == nil {
+		// We use a pointer-to-slice for the contacts field so that we can tell the
+		// difference between the request not including the contact field, and the
+		// request including an empty contact list. If the field was omitted
+		// entirely, they don't want us to update it, so there's no work to do here.
+		return currAcct, nil
 	}
 
-	updatedAcct, err := wfe.ra.UpdateRegistrationContact(ctx, &rapb.UpdateRegistrationContactRequest{RegistrationID: currAcct.ID, Contacts: contacts})
+	updatedAcct, err := wfe.ra.UpdateRegistrationContact(ctx, &rapb.UpdateRegistrationContactRequest{
+		RegistrationID: currAcct.ID, Contacts: *accountUpdateRequest.Contact})
 	if err != nil {
 		return nil, web.ProblemDetailsForError(err, "Unable to update account")
 	}
@@ -1564,13 +1574,6 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
-	if requiredStale(request, logEvent) {
-		if prob := wfe.staleEnoughToGETAuthz(authzPB); prob != nil {
-			wfe.sendError(response, logEvent, prob, nil)
-			return
-		}
-	}
-
 	// If this was a POST that has an associated requestAccount and that account
 	// doesn't own the authorization, abort before trying to deactivate the authz
 	// or return its details
@@ -1663,11 +1666,13 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	if requiredStale(request, logEvent) {
-		if prob := wfe.staleEnoughToGETCert(cert); prob != nil {
-			wfe.sendError(response, logEvent, prob, nil)
-			return
-		}
+	// Don't serve certificates from the /get/ path until they're a little stale,
+	// to prevent ACME clients from using that path.
+	if strings.HasPrefix(logEvent.Endpoint, getCertPath) && wfe.clk.Since(cert.Issued.AsTime()) < wfe.staleTimeout {
+		wfe.sendError(response, logEvent, probs.Unauthorized(fmt.Sprintf(
+			"Certificate is too new for GET API. You should only use this non-standard API to access resources created more than %s ago",
+			wfe.staleTimeout)), nil)
+		return
 	}
 
 	// If there was a requesterAccount (e.g. because it was a POST-as-GET request)
@@ -2180,7 +2185,7 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 	}
 	if _, ok := wfe.certProfiles[profile]; !ok {
 		// The profile name is not in the list of configured profiles.
-		return errors.New("not a recognized profile name")
+		return fmt.Errorf("profile name %q not recognized", profile)
 	}
 
 	return nil
@@ -2285,10 +2290,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Invalid identifiers requested"), nil)
 		return
 	}
-	if len(names) > wfe.maxNames {
-		wfe.sendError(response, logEvent, probs.Malformed("Order cannot contain more than %d DNS names", wfe.maxNames), nil)
-		return
-	}
 
 	logEvent.DNSNames = names
 
@@ -2341,20 +2342,21 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	err = wfe.validateCertificateProfileName(newOrderRequest.Profile)
 	if err != nil {
 		// TODO(#7392) Provide link to profile documentation.
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid certificate profile, %q: %s", newOrderRequest.Profile, err), err)
+		wfe.sendError(response, logEvent, probs.InvalidProfile(err.Error()), err)
 		return
 	}
 
-	refundLimits := func() {}
+	var refundLimits func()
 	if !isARIRenewal {
-		refundLimits, err = wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal || isARIRenewal)
+		refundLimits, err = wfe.checkNewOrderLimits(ctx, acct.ID, names, isRenewal)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
 				wfe.sendError(response, logEvent, probs.RateLimited(err.Error()), err)
 				return
 			} else {
+				// Proceed, since we don't want internal rate limit system failures to
+				// block all issuance.
 				logEvent.IgnoredRateLimitError = err.Error()
-				return
 			}
 		}
 	}
@@ -2376,8 +2378,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		DnsNames:               names,
 		ReplacesSerial:         replaces,
 		CertificateProfileName: newOrderRequest.Profile,
-		IsARIRenewal:           isARIRenewal,
-		IsRenewal:              isRenewal,
 	})
 	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
@@ -2445,13 +2445,6 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	if requiredStale(request, logEvent) {
-		if prob := wfe.staleEnoughToGETOrder(order); prob != nil {
-			wfe.sendError(response, logEvent, prob, nil)
-			return
-		}
-	}
-
 	if order.RegistrationID != acctID {
 		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
 		return
@@ -2509,6 +2502,11 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
+	if acct.ID != acctID {
+		wfe.sendError(response, logEvent, probs.Malformed("Mismatched account ID"), nil)
+		return
+	}
+
 	order, err := wfe.sa.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
@@ -2522,11 +2520,6 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 
 	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
-		return
-	}
-
-	if order.RegistrationID != acctID {
-		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
 		return
 	}
 
@@ -2548,6 +2541,16 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	if orderExpiry.Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("Order %d is expired", order.Id)), nil)
 		return
+	}
+
+	// Don't finalize orders with profiles we no longer recognize.
+	if order.CertificateProfileName != "" {
+		err = wfe.validateCertificateProfileName(order.CertificateProfileName)
+		if err != nil {
+			// TODO(#7392) Provide link to profile documentation.
+			wfe.sendError(response, logEvent, probs.InvalidProfile(err.Error()), err)
+			return
+		}
 	}
 
 	// The authenticated finalize message body should be an encoded CSR
@@ -2577,7 +2580,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error finalizing order"), err)
 		return
 	}
-	if core.IsAnyNilOrZero(order.Id, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
+	if core.IsAnyNilOrZero(updatedOrder.Id, updatedOrder.RegistrationID, updatedOrder.DnsNames, updatedOrder.Created, updatedOrder.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}

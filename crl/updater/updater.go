@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -34,6 +36,11 @@ type crlUpdater struct {
 	maxParallelism int
 	maxAttempts    int
 
+	cacheControl  string
+	expiresMargin time.Duration
+
+	temporallyShardedPrefixes []string
+
 	sa sapb.StorageAuthorityClient
 	ca capb.CRLGeneratorClient
 	cs cspb.CRLStorerClient
@@ -54,6 +61,9 @@ func NewUpdater(
 	updateTimeout time.Duration,
 	maxParallelism int,
 	maxAttempts int,
+	cacheControl string,
+	expiresMargin time.Duration,
+	temporallyShardedPrefixes []string,
 	sa sapb.StorageAuthorityClient,
 	ca capb.CRLGeneratorClient,
 	cs cspb.CRLStorerClient,
@@ -112,6 +122,9 @@ func NewUpdater(
 		updateTimeout,
 		maxParallelism,
 		maxAttempts,
+		cacheControl,
+		expiresMargin,
+		temporallyShardedPrefixes,
 		sa,
 		ca,
 		cs,
@@ -125,9 +138,9 @@ func NewUpdater(
 // updateShardWithRetry calls updateShard repeatedly (with exponential backoff
 // between attempts) until it succeeds or the max number of attempts is reached.
 func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time, issuerNameID issuance.NameID, shardIdx int, chunks []chunk) error {
-	ctx, cancel := context.WithTimeout(ctx, cu.updateTimeout)
+	deadline := cu.clk.Now().Add(cu.updateTimeout)
+	ctx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
-	deadline, _ := ctx.Deadline()
 
 	if chunks == nil {
 		// Compute the shard map and relevant chunk boundaries, if not supplied.
@@ -183,11 +196,78 @@ func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time
 	return nil
 }
 
+type crlStream interface {
+	Recv() (*proto.CRLEntry, error)
+}
+
+// reRevoked returns the later of the two entries, only if the latter represents a valid
+// re-revocation of the former (reason == KeyCompromise).
+func reRevoked(a *proto.CRLEntry, b *proto.CRLEntry) (*proto.CRLEntry, error) {
+	first, second := a, b
+	if b.RevokedAt.AsTime().Before(a.RevokedAt.AsTime()) {
+		first, second = b, a
+	}
+	if first.Reason != ocsp.KeyCompromise && second.Reason == ocsp.KeyCompromise {
+		return second, nil
+	}
+	// The RA has logic to prevent re-revocation for any reason other than KeyCompromise,
+	// so this should be impossible. The best we can do is error out.
+	return nil, fmt.Errorf("certificate %s was revoked with reason %d at %s and re-revoked with invalid reason %d at %s",
+		first.Serial, first.Reason, first.RevokedAt.AsTime(), second.Reason, second.RevokedAt.AsTime())
+}
+
+// addFromStream pulls `proto.CRLEntry` objects from a stream, adding them to the crlEntries map.
+//
+// Consolidates duplicates and checks for internal consistency of the results.
+// If allowedSerialPrefixes is non-empty, only serials with that one-byte prefix (two hex-encoded
+// bytes) will be accepted.
+//
+// Returns the number of entries received from the stream, regardless of whether they were accepted.
+func addFromStream(crlEntries map[string]*proto.CRLEntry, stream crlStream, allowedSerialPrefixes []string) (int, error) {
+	var count int
+	for {
+		entry, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return 0, fmt.Errorf("retrieving entry from SA: %w", err)
+		}
+		count++
+		serialPrefix := entry.Serial[0:2]
+		if len(allowedSerialPrefixes) > 0 && !slices.Contains(allowedSerialPrefixes, serialPrefix) {
+			continue
+		}
+		previousEntry := crlEntries[entry.Serial]
+		if previousEntry == nil {
+			crlEntries[entry.Serial] = entry
+			continue
+		}
+		if previousEntry.Reason == entry.Reason &&
+			previousEntry.RevokedAt.AsTime().Equal(entry.RevokedAt.AsTime()) {
+			continue
+		}
+
+		// There's a tiny possibility a certificate was re-revoked for KeyCompromise and
+		// we got a different view of it from temporal sharding vs explicit sharding.
+		// Prefer the re-revoked CRL entry, which must be the one with KeyCompromise.
+		second, err := reRevoked(entry, previousEntry)
+		if err != nil {
+			return 0, err
+		}
+		crlEntries[entry.Serial] = second
+	}
+	return count, nil
+}
+
 // updateShard processes a single shard. It computes the shard's boundaries, gets
 // the list of revoked certs in that shard from the SA, gets the CA to sign the
 // resulting CRL, and gets the crl-storer to upload it. It returns an error if
 // any of these operations fail.
 func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerNameID issuance.NameID, shardIdx int, chunks []chunk) (err error) {
+	if shardIdx <= 0 {
+		return fmt.Errorf("invalid shard %d", shardIdx)
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -207,8 +287,10 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 	cu.log.Infof(
 		"Generating CRL shard: id=[%s] numChunks=[%d]", crlID, len(chunks))
 
-	// Get the full list of CRL Entries for this shard from the SA.
-	var crlEntries []*proto.CRLEntry
+	// Deduplicate the CRL entries by serial number, since we can get the same certificate via
+	// both temporal sharding (GetRevokedCerts) and explicit sharding (GetRevokedCertsByShard).
+	crlEntries := make(map[string]*proto.CRLEntry)
+
 	for _, chunk := range chunks {
 		saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
 			IssuerNameID:  int64(issuerNameID),
@@ -217,24 +299,40 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 			RevokedBefore: timestamppb.New(atTime),
 		})
 		if err != nil {
-			return fmt.Errorf("connecting to SA: %w", err)
+			return fmt.Errorf("GetRevokedCerts: %w", err)
 		}
 
-		for {
-			entry, err := saStream.Recv()
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				return fmt.Errorf("retrieving entry from SA: %w", err)
-			}
-			crlEntries = append(crlEntries, entry)
+		n, err := addFromStream(crlEntries, saStream, cu.temporallyShardedPrefixes)
+		if err != nil {
+			return fmt.Errorf("streaming GetRevokedCerts: %w", err)
 		}
 
 		cu.log.Infof(
 			"Queried SA for CRL shard: id=[%s] expiresAfter=[%s] expiresBefore=[%s] numEntries=[%d]",
-			crlID, chunk.start, chunk.end, len(crlEntries))
+			crlID, chunk.start, chunk.end, n)
 	}
+
+	// Query for unexpired certificates, with padding to ensure that revoked certificates show
+	// up in at least one CRL, even if they expire between revocation and CRL generation.
+	expiresAfter := cu.clk.Now().Add(cu.lookbackPeriod)
+
+	saStream, err := cu.sa.GetRevokedCertsByShard(ctx, &sapb.GetRevokedCertsByShardRequest{
+		IssuerNameID:  int64(issuerNameID),
+		ShardIdx:      int64(shardIdx),
+		ExpiresAfter:  timestamppb.New(expiresAfter),
+		RevokedBefore: timestamppb.New(atTime),
+	})
+	if err != nil {
+		return fmt.Errorf("GetRevokedCertsByShard: %w", err)
+	}
+
+	n, err := addFromStream(crlEntries, saStream, nil)
+	if err != nil {
+		return fmt.Errorf("streaming GetRevokedCertsByShard: %w", err)
+	}
+
+	cu.log.Infof(
+		"Queried SA by CRL shard number: id=[%s] shardIdx=[%d] numEntries=[%d]", crlID, shardIdx, n)
 
 	// Send the full list of CRL Entries to the CA.
 	caStream, err := cu.ca.GenerateCRL(ctx)
@@ -301,6 +399,8 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 				IssuerNameID: int64(issuerNameID),
 				Number:       atTime.UnixNano(),
 				ShardIdx:     int64(shardIdx),
+				CacheControl: cu.cacheControl,
+				Expires:      timestamppb.New(atTime.Add(cu.updatePeriod).Add(cu.expiresMargin)),
 			},
 		},
 	})

@@ -8,7 +8,7 @@ services:
       context: test/boulder-tools/
       # Should match one of the GO_CI_VERSIONS in test/boulder-tools/tag_and_upload.sh.
       args:
-        GO_VERSION: 1.23.1
+        GO_VERSION: 1.24.1
     environment:
       # To solve HTTP-01 and TLS-ALPN-01 challenges, change the IP in FAKE_DNS
       # to the IP address where your ACME client's solver is listening.

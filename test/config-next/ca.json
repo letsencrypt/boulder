@@ -31,6 +31,16 @@
 				}
 			}
 		},
+		"sctService": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "ra-sct-provider",
+				"domain": "service.consul"
+			},
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "ra.boulder"
+		},
 		"saService": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
@@ -42,9 +52,19 @@
 			"hostOverride": "sa.boulder"
 		},
 		"issuance": {
-			"defaultCertificateProfileName": "legacy",
 			"certProfiles": {
 				"legacy": {
+					"allowMustStaple": true,
+					"maxValidityPeriod": "7776000s",
+					"maxValidityBackdate": "1h5m",
+					"includeCRLDistributionPoints": true,
+					"lintConfig": "test/config-next/zlint.toml",
+					"ignoredLints": [
+						"w_subject_common_name_included",
+						"w_ext_subject_key_identifier_not_recommended_subscriber"
+					]
+				},
+				"legacyRenamedPriorToDeletion": {
 					"allowMustStaple": true,
 					"maxValidityPeriod": "7776000s",
 					"maxValidityBackdate": "1h5m",
@@ -60,7 +80,35 @@
 					"omitKeyEncipherment": true,
 					"omitClientAuth": true,
 					"omitSKID": true,
+					"includeCRLDistributionPoints": true,
 					"maxValidityPeriod": "583200s",
+					"maxValidityBackdate": "1h5m",
+					"lintConfig": "test/config-next/zlint.toml",
+					"ignoredLints": [
+						"w_ext_subject_key_identifier_missing_sub_cert"
+					]
+				},
+				"modernRenamedPriorToDeletion": {
+					"allowMustStaple": true,
+					"omitCommonName": true,
+					"omitKeyEncipherment": true,
+					"omitClientAuth": true,
+					"omitSKID": true,
+					"maxValidityPeriod": "583200s",
+					"maxValidityBackdate": "1h5m",
+					"lintConfig": "test/config-next/zlint.toml",
+					"ignoredLints": [
+						"w_ext_subject_key_identifier_missing_sub_cert"
+					]
+				},
+				"shortlived": {
+					"allowMustStaple": true,
+					"omitCommonName": true,
+					"omitKeyEncipherment": true,
+					"omitClientAuth": true,
+					"omitSKID": true,
+					"includeCRLDistributionPoints": true,
+					"maxValidityPeriod": "160h",
 					"maxValidityBackdate": "1h5m",
 					"lintConfig": "test/config-next/zlint.toml",
 					"ignoredLints": [
@@ -75,9 +123,10 @@
 			"issuers": [
 				{
 					"active": true,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-a",
 					"ocspURL": "http://ca.example.org:4002/",
-					"crlURLBase": "http://ca.example.org:4501/ecdsa-a/",
+					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/43104258997432926/",
 					"location": {
 						"configFile": "test/certs/webpki/int-ecdsa-a.pkcs11.json",
 						"certFile": "test/certs/webpki/int-ecdsa-a.cert.pem",
@@ -86,9 +135,10 @@
 				},
 				{
 					"active": true,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-b",
 					"ocspURL": "http://ca.example.org:4002/",
-					"crlURLBase": "http://ca.example.org:4501/ecdsa-b/",
+					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/17302365692836921/",
 					"location": {
 						"configFile": "test/certs/webpki/int-ecdsa-b.pkcs11.json",
 						"certFile": "test/certs/webpki/int-ecdsa-b.cert.pem",
@@ -97,9 +147,10 @@
 				},
 				{
 					"active": false,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-c",
 					"ocspURL": "http://ca.example.org:4002/",
-					"crlURLBase": "http://ca.example.org:4501/ecdsa-c/",
+					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/56560759852043581/",
 					"location": {
 						"configFile": "test/certs/webpki/int-ecdsa-c.pkcs11.json",
 						"certFile": "test/certs/webpki/int-ecdsa-c.cert.pem",
@@ -108,9 +159,10 @@
 				},
 				{
 					"active": true,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-a",
 					"ocspURL": "http://ca.example.org:4002/",
-					"crlURLBase": "http://ca.example.org:4501/rsa-a/",
+					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/29947985078257530/",
 					"location": {
 						"configFile": "test/certs/webpki/int-rsa-a.pkcs11.json",
 						"certFile": "test/certs/webpki/int-rsa-a.cert.pem",
@@ -119,9 +171,10 @@
 				},
 				{
 					"active": true,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-b",
 					"ocspURL": "http://ca.example.org:4002/",
-					"crlURLBase": "http://ca.example.org:4501/rsa-b/",
+					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/6762885421992935/",
 					"location": {
 						"configFile": "test/certs/webpki/int-rsa-b.pkcs11.json",
 						"certFile": "test/certs/webpki/int-rsa-b.cert.pem",
@@ -130,9 +183,10 @@
 				},
 				{
 					"active": false,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-c",
 					"ocspURL": "http://ca.example.org:4002/",
-					"crlURLBase": "http://ca.example.org:4501/rsa-c/",
+					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/56183656833365902/",
 					"location": {
 						"configFile": "test/certs/webpki/int-rsa-c.pkcs11.json",
 						"certFile": "test/certs/webpki/int-rsa-c.cert.pem",
@@ -141,7 +195,7 @@
 				}
 			]
 		},
-		"serialPrefixHex": "7f",
+		"serialPrefixHex": "6e",
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
 		"goodkey": {},

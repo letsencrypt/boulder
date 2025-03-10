@@ -37,6 +37,16 @@
 			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
+		"emailExporter": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "email-exporter",
+				"domain": "service.consul"
+			},
+			"timeout": "15s",
+			"noWaitForReady": true,
+			"hostOverride": "email-exporter.boulder"
+		},
 		"accountCache": {
 			"size": 9000,
 			"ttl": "5s"
@@ -98,8 +108,6 @@
 			]
 		],
 		"staleTimeout": "5m",
-		"authorizationLifetimeDays": 30,
-		"pendingAuthorizationLifetimeDays": 7,
 		"limiter": {
 			"redis": {
 				"username": "boulder-wfe",
@@ -131,7 +139,8 @@
 		},
 		"certProfiles": {
 			"legacy": "The normal profile you know and love",
-			"modern": "Profile 2: Electric Boogaloo"
+			"modern": "Profile 2: Electric Boogaloo",
+			"shortlived": "Like modern, but smaller"
 		},
 		"unpause": {
 			"hmacKey": {
@@ -142,7 +151,7 @@
 		}
 	},
 	"syslog": {
-		"stdoutlevel": 4,
+		"stdoutlevel": 7,
 		"sysloglevel": -1
 	},
 	"openTelemetry": {

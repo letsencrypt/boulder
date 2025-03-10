@@ -1,6 +1,6 @@
 [e_pkilint_lint_cabf_serverauth_cert]
 pkilint_addr = "http://10.77.77.9"
-pkilint_timeout = 200000000 # 200 milliseconds
+pkilint_timeout = 2000000000 # 2 seconds
 ignore_lints = [
   # We include the CN in (almost) all of our certificates, on purpose.
   # See https://github.com/letsencrypt/boulder/issues/5112 for details.

@@ -31,9 +31,9 @@ func TestOCSP(t *testing.T) {
 	testCtx := setup(t)
 	ca, err := NewCertificateAuthorityImpl(
 		&mockSA{},
+		mockSCTService{},
 		testCtx.pa,
 		testCtx.boulderIssuers,
-		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
@@ -46,7 +46,7 @@ func TestOCSP(t *testing.T) {
 
 	// Issue a certificate from an RSA issuer, request OCSP from the same issuer,
 	// and make sure it works.
-	rsaCertPB, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID})
+	rsaCertPB, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, CertProfileName: "legacy"})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	rsaCert, err := x509.ParseCertificate(rsaCertPB.DER)
 	test.AssertNotError(t, err, "Failed to parse rsaCert")
@@ -69,7 +69,7 @@ func TestOCSP(t *testing.T) {
 
 	// Issue a certificate from an ECDSA issuer, request OCSP from the same issuer,
 	// and make sure it works.
-	ecdsaCertPB, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID})
+	ecdsaCertPB, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID, CertProfileName: "legacy"})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	ecdsaCert, err := x509.ParseCertificate(ecdsaCertPB.DER)
 	test.AssertNotError(t, err, "Failed to parse ecdsaCert")

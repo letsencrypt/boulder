@@ -4,12 +4,12 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"html/template"
 	"io/fs"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/go-jose/go-jose/v4/jwt"

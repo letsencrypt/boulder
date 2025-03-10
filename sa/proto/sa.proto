@@ -26,6 +26,7 @@ service StorageAuthorityReadOnly {
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
   rpc GetRevokedCerts(GetRevokedCertsRequest) returns (stream core.CRLEntry) {}
+  rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
   rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
@@ -58,6 +59,7 @@ service StorageAuthority {
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
   rpc GetRevocationStatus(Serial) returns (RevocationStatus) {}
   rpc GetRevokedCerts(GetRevokedCertsRequest) returns (stream core.CRLEntry) {}
+  rpc GetRevokedCertsByShard(GetRevokedCertsByShardRequest) returns (stream core.CRLEntry) {}
   rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
   rpc GetSerialsByAccount(RegistrationID) returns (stream Serial) {}
   rpc GetSerialsByKey(SPKIHash) returns (stream Serial) {}
@@ -84,7 +86,6 @@ service StorageAuthority {
   rpc RevokeCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderError(SetOrderErrorRequest) returns (google.protobuf.Empty) {}
   rpc SetOrderProcessing(OrderRequest) returns (google.protobuf.Empty) {}
-  rpc UpdateRegistration(core.Registration) returns (google.protobuf.Empty) {}
   rpc UpdateRegistrationContact(UpdateRegistrationContactRequest) returns (core.Registration) {}
   rpc UpdateRegistrationKey(UpdateRegistrationKeyRequest) returns (core.Registration) {}
   rpc UpdateRevokedCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
@@ -107,11 +108,12 @@ message AuthorizationID {
 }
 
 message GetValidAuthorizationsRequest {
-  // Next unused field number: 5
+  // Next unused field number: 6
   int64 registrationID = 1;
   repeated string dnsNames = 2;
   reserved 3; // Previously nowNS
   google.protobuf.Timestamp validUntil = 4;
+  string profile = 5;
 }
 
 message Serial {
@@ -266,11 +268,12 @@ message FinalizeOrderRequest {
 }
 
 message GetAuthorizationsRequest {
-  // Next unused field number: 5
+  // Next unused field number: 6
   int64 registrationID = 1;
   repeated string dnsNames = 2;
   reserved 3; // Previously nowNS
   google.protobuf.Timestamp validUntil = 4;
+  string profile = 5;
 }
 
 message Authorizations {
@@ -352,6 +355,13 @@ message IncidentSerial {
   google.protobuf.Timestamp lastNoticeSent = 5;
 }
 
+message GetRevokedCertsByShardRequest {
+  int64 issuerNameID = 1;
+  google.protobuf.Timestamp revokedBefore = 2;
+  google.protobuf.Timestamp expiresAfter = 3;
+  int64 shardIdx = 4;
+}
+
 message GetRevokedCertsRequest {
   // Next unused field number: 9
   int64 issuerNameID = 1;
@@ -361,7 +371,7 @@ message GetRevokedCertsRequest {
   google.protobuf.Timestamp expiresBefore = 7; // exclusive
   reserved 4; // Previously revokedBeforeNS
   google.protobuf.Timestamp revokedBefore = 8;
-  int64 shardIdx = 5; // Must not be set until the revokedCertificates table has 90+ days of entries.
+  reserved 5;
 }
 
 message RevocationStatus {

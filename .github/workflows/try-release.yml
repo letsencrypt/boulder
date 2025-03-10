@@ -16,7 +16,8 @@ jobs:
       fail-fast: false
       matrix:
         GO_VERSION:
-          - "1.23.1"
+          - "1.23.7"
+          - "1.24.1"
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
@@ -44,4 +45,4 @@ jobs:
         run: cat boulder*.checksums.txt
 
       - name: Build ct-test-srv Container
-        run: docker buildx build . --build-arg "GO_VERSION=${{ matrix.GO_VERSION }}" -f test/ct-test-srv/Dockerfile -t "ghcr.io/letsencrypt/ct-test-srv:${{ github.sha }}"
+        run: docker buildx build . --build-arg "GO_VERSION=${{ matrix.GO_VERSION }}" -f test/ct-test-srv/Dockerfile -t "ghcr.io/letsencrypt/ct-test-srv:${{ github.sha }}-go${{ matrix.GO_VERSION }}"

@@ -22,13 +22,13 @@ func TestTooBigOrderError(t *testing.T) {
 		domains = append(domains, fmt.Sprintf("%d.example.com", i))
 	}
 
-	_, err := authAndIssue(nil, nil, domains, true)
+	_, err := authAndIssue(nil, nil, domains, true, "")
 	test.AssertError(t, err, "authAndIssue failed")
 
 	var prob acme.Problem
 	test.AssertErrorWraps(t, err, &prob)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:malformed")
-	test.AssertEquals(t, prob.Detail, "Order cannot contain more than 100 DNS names")
+	test.AssertContains(t, prob.Detail, "Order cannot contain more than 100 DNS names")
 }
 
 // TestAccountEmailError tests that registering a new account, or updating an
@@ -158,7 +158,7 @@ func TestRejectedIdentifier(t *testing.T) {
 	domains := []string{
 		"яџ–Х6яяdь}",
 	}
-	_, err := authAndIssue(nil, nil, domains, true)
+	_, err := authAndIssue(nil, nil, domains, true, "")
 	test.AssertError(t, err, "issuance should fail for one malformed name")
 	var prob acme.Problem
 	test.AssertErrorWraps(t, err, &prob)
@@ -176,7 +176,7 @@ func TestRejectedIdentifier(t *testing.T) {
 		"яџ–Х6яя",
 		"яџ–Х6яя`ь",
 	}
-	_, err = authAndIssue(nil, nil, domains, true)
+	_, err = authAndIssue(nil, nil, domains, true, "")
 	test.AssertError(t, err, "issuance should fail for multiple malformed names")
 	test.AssertErrorWraps(t, err, &prob)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:rejectedIdentifier")
