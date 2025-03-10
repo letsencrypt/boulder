@@ -12,23 +12,23 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-// TestTooBigOrderError tests that submitting an order with more than 100 names
-// produces the expected problem result.
+// TestTooBigOrderError tests that submitting an order with more than 100
+// identifiers produces the expected problem result.
 func TestTooBigOrderError(t *testing.T) {
 	t.Parallel()
 
-	var domains []string
+	var idents []acme.Identifier
 	for i := range 101 {
-		domains = append(domains, fmt.Sprintf("%d.example.com", i))
+		idents = append(idents, acme.Identifier{Type: "dns", Value: fmt.Sprintf("%d.example.com", i)})
 	}
 
-	_, err := authAndIssue(nil, nil, domains, true, "")
+	_, err := authAndIssue(nil, nil, idents, true, "")
 	test.AssertError(t, err, "authAndIssue failed")
 
 	var prob acme.Problem
 	test.AssertErrorWraps(t, err, &prob)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:malformed")
-	test.AssertContains(t, prob.Detail, "Order cannot contain more than 100 DNS names")
+	test.AssertContains(t, prob.Detail, "Order cannot contain more than 100 identifiers")
 }
 
 // TestAccountEmailError tests that registering a new account, or updating an
@@ -155,10 +155,10 @@ func TestRejectedIdentifier(t *testing.T) {
 	t.Parallel()
 
 	// When a single malformed name is provided, we correctly reject it.
-	domains := []string{
-		"яџ–Х6яяdь}",
+	idents := []acme.Identifier{
+		{Type: "dns", Value: "яџ–Х6яяdь}"},
 	}
-	_, err := authAndIssue(nil, nil, domains, true, "")
+	_, err := authAndIssue(nil, nil, idents, true, "")
 	test.AssertError(t, err, "issuance should fail for one malformed name")
 	var prob acme.Problem
 	test.AssertErrorWraps(t, err, &prob)
@@ -169,14 +169,14 @@ func TestRejectedIdentifier(t *testing.T) {
 	// them and reflect this in suberrors. This test ensures that the way we
 	// encode these errors across the gRPC boundary is resilient to non-ascii
 	// characters.
-	domains = []string{
-		"o-",
-		"ш№Ў",
-		"р±y",
-		"яџ–Х6яя",
-		"яџ–Х6яя`ь",
+	idents = []acme.Identifier{
+		{Type: "dns", Value: "o-"},
+		{Type: "dns", Value: "ш№Ў"},
+		{Type: "dns", Value: "р±y"},
+		{Type: "dns", Value: "яџ–Х6яя"},
+		{Type: "dns", Value: "яџ–Х6яя`ь"},
 	}
-	_, err = authAndIssue(nil, nil, domains, true, "")
+	_, err = authAndIssue(nil, nil, idents, true, "")
 	test.AssertError(t, err, "issuance should fail for multiple malformed names")
 	test.AssertErrorWraps(t, err, &prob)
 	test.AssertEquals(t, prob.Type, "urn:ietf:params:acme:error:rejectedIdentifier")
