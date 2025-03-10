@@ -2152,7 +2152,7 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 		return "", false, fmt.Errorf("checking replacement status of existing certificate: %w", err)
 	}
 	if exists.Exists {
-		return "", false, berrors.ConflictError(
+		return "", false, berrors.AlreadyReplacedError(
 			"cannot indicate an order replaces certificate with serial %q, which already has a replacement order",
 			decodedSerial,
 		)
