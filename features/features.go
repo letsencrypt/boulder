@@ -80,6 +80,11 @@ type Config struct {
 	// functionality (valid authz reuse) while letting us simplify our code by
 	// removing pending authz reuse.
 	NoPendingAuthzReuse bool
+
+	// MPICFullResults causes the VA to wait for all remote (MPIC) results, rather
+	// than cancelling outstanding requests after enough successes or failures for
+	// the result to be determined.
+	MPICFullResults bool
 }
 
 var fMu = new(sync.RWMutex)
