@@ -33,7 +33,7 @@ Similarly, to connect to `bredis_2`:
 ```
 
 You can pass any IP address for the -h (host) parameter. The full list of IP
-addresses for Redis nodes is in `docker-compose.yml`. You can also pass other
+addresses for Redis nodes is in `compose.yaml`. You can also pass other
 redis-cli commandline parameters. They'll get passed through.
 
 You may want to go a level deeper and communicate with a Redis node using the

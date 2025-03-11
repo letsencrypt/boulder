@@ -49,8 +49,7 @@ jobs:
           #
           # Testing DB Schema Changes:
           # Database migrations in `sa/_db-next/migrations` are only performed
-          # when `docker compose` is called using `-f docker-compose.yml -f
-          # docker-compose.next.yml`.
+          # when `docker compose` is called using `-f compose.yaml -f compose.next.yaml`.
           - "./tn.sh --integration"
           - "./t.sh --unit --enable-race-detection"
           - "./tn.sh --unit --enable-race-detection"

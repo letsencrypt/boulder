@@ -71,7 +71,7 @@ Consul should be accessible at http://10.55.55.10:8500.
 ### Mac
 
 Docker desktop on macOS doesn't expose the bridge network adapter so you'll need
-to add the following port lines (temporarily) to `docker-compose.yml`:
+to add the following port lines (temporarily) to `compose.yaml`:
 
 ```yaml
   bconsul:

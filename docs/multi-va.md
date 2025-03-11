@@ -7,7 +7,7 @@ capacity](https://letsencrypt.org/2020/02/19/multi-perspective-validation.html)
 by Let's Encrypt.
 
 If you follow the [Development Instructions](https://github.com/letsencrypt/boulder#development)
-to set up a Boulder environment in Docker and then change your `docker-compose.yml`'s
+to set up a Boulder environment in Docker and then change your `compose.yaml`'s
 `BOULDER_CONFIG_DIR` to `test/config-next` instead of `test/config` you'll have
 a Boulder environment configured with two primary VA instances (validation
 requests are load balanced across the two) and two remote VA instances (each

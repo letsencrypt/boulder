@@ -146,7 +146,7 @@ To get a list of available integration tests:
 docker compose run --use-aliases boulder ./test.sh --list-integration-tests
 ```
 
-The configuration in docker-compose.yml mounts your boulder checkout at
+The configuration in compose.yaml mounts your boulder checkout at
 /boulder so you can edit code on your host and it will be immediately
 reflected inside the Docker containers run with `docker compose`.
 
@@ -163,7 +163,7 @@ running on your host instead, you should find your host's Docker IP with:
 ifconfig docker0 | grep "inet addr:" | cut -d: -f2 | awk '{ print $1}'
 ```
 
-And edit docker-compose.yml to change the `FAKE_DNS` environment variable to
+And edit compose.yaml to change the `FAKE_DNS` environment variable to
 match. This will cause Boulder's stubbed-out DNS resolver (`sd-test-srv`) to
 respond to all A queries with the address in `FAKE_DNS`.
 
@@ -171,7 +171,7 @@ If you use a host-based firewall (e.g. `ufw` or `iptables`) make sure you allow
 connections from the Docker instance to your host on the required validation
 ports to your ACME client.
 
-Alternatively, you can override the docker-compose.yml default with an
+Alternatively, you can override the compose.yaml default with an
 environmental variable using -e (replace 172.17.0.1 with the host IPv4
 address found in the command above)
 
