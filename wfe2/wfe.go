@@ -1439,12 +1439,16 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		return nil, probs.Malformed("Invalid value provided for status field")
 	}
 
-	var contacts []string
-	if accountUpdateRequest.Contact != nil {
-		contacts = *accountUpdateRequest.Contact
+	if accountUpdateRequest.Contact == nil {
+		// We use a pointer-to-slice for the contacts field so that we can tell the
+		// difference between the request not including the contact field, and the
+		// request including an empty contact list. If the field was omitted
+		// entirely, they don't want us to update it, so there's no work to do here.
+		return currAcct, nil
 	}
 
-	updatedAcct, err := wfe.ra.UpdateRegistrationContact(ctx, &rapb.UpdateRegistrationContactRequest{RegistrationID: currAcct.ID, Contacts: contacts})
+	updatedAcct, err := wfe.ra.UpdateRegistrationContact(ctx, &rapb.UpdateRegistrationContactRequest{
+		RegistrationID: currAcct.ID, Contacts: *accountUpdateRequest.Contact})
 	if err != nil {
 		return nil, web.ProblemDetailsForError(err, "Unable to update account")
 	}
@@ -1453,18 +1457,6 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	updatedReg, err := bgrpc.PbToRegistration(updatedAcct)
 	if err != nil {
 		return nil, probs.ServerInternal("Error updating account")
-	}
-
-	emails := contactsToEmails(accountUpdateRequest.Contact)
-	if wfe.ee != nil && len(emails) > 0 {
-		_, err := wfe.ee.SendContacts(ctx, &emailpb.SendContactsRequest{
-			// Note: We are explicitly using the contacts provided by the subscriber
-			// here. The RA will eventually stop accepting contacts.
-			Emails: emails,
-		})
-		if err != nil {
-			return nil, probs.ServerInternal("Error sending contact email")
-		}
 	}
 
 	return &updatedReg, nil

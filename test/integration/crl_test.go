@@ -3,12 +3,15 @@
 package integration
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -16,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -38,6 +42,14 @@ func runUpdater(t *testing.T, configFile string) {
 	crlUpdaterMu.Lock()
 	defer crlUpdaterMu.Unlock()
 
+	// Reset the "leasedUntil" column so this can be done alongside other
+	// updater runs without worrying about unclean state.
+	fc := clock.NewFake()
+	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
+	test.AssertNotError(t, err, "opening database connection")
+	_, err = db.Exec(`UPDATE crlShards SET leasedUntil = ?`, fc.Now().Add(-time.Minute))
+	test.AssertNotError(t, err, "resetting leasedUntil column")
+
 	binPath, err := filepath.Abs("bin/boulder")
 	test.AssertNotError(t, err, "computing boulder binary path")
 
@@ -50,22 +62,73 @@ func runUpdater(t *testing.T, configFile string) {
 	test.AssertNotError(t, err, "crl-updater failed")
 }
 
-// TestCRLPipeline runs an end-to-end test of the crl issuance process, ensuring
-// that the correct number of properly-formed and validly-signed CRLs are sent
-// to our fake S3 service.
-func TestCRLPipeline(t *testing.T) {
-	// Basic setup.
-	fc := clock.NewFake()
+// TestCRLUpdaterStartup ensures that the crl-updater can start in daemon mode.
+// We do this here instead of in startservers so that we can shut it down after
+// we've confirmed it is running. It's important that it not be running while
+// other CRL integration tests are running, because otherwise they fight over
+// database leases, leading to flaky test failures.
+func TestCRLUpdaterStartup(t *testing.T) {
+	t.Parallel()
+
+	crlUpdaterMu.Lock()
+	defer crlUpdaterMu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	binPath, err := filepath.Abs("bin/boulder")
+	test.AssertNotError(t, err, "computing boulder binary path")
+
 	configDir, ok := os.LookupEnv("BOULDER_CONFIG_DIR")
 	test.Assert(t, ok, "failed to look up test config directory")
 	configFile := path.Join(configDir, "crl-updater.json")
 
-	// Reset the "leasedUntil" column so that this test isn't dependent on state
-	// like prior runs of this test.
-	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
-	test.AssertNotError(t, err, "opening database connection")
-	_, err = db.Exec(`UPDATE crlShards SET leasedUntil = ?`, fc.Now().Add(-time.Minute))
-	test.AssertNotError(t, err, "resetting leasedUntil column")
+	c := exec.CommandContext(ctx, binPath, "crl-updater", "-config", configFile, "-debug-addr", ":8021")
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		out, err := c.CombinedOutput()
+		// Log the output and error, but only if the main goroutine couldn't connect
+		// and declared the test failed.
+		for _, line := range strings.Split(string(out), "\n") {
+			t.Log(line)
+		}
+		t.Log(err)
+		wg.Done()
+	}()
+
+	for attempt := range 10 {
+		time.Sleep(core.RetryBackoff(attempt, 10*time.Millisecond, 1*time.Second, 2))
+
+		conn, err := net.DialTimeout("tcp", "localhost:8021", 100*time.Millisecond)
+		if errors.Is(err, syscall.ECONNREFUSED) {
+			t.Logf("Connection attempt %d failed: %s", attempt, err)
+			continue
+		}
+		if err != nil {
+			t.Logf("Connection attempt %d failed unrecoverably: %s", attempt, err)
+			t.Fail()
+			break
+		}
+		t.Logf("Connection attempt %d succeeded", attempt)
+		defer conn.Close()
+		break
+	}
+
+	cancel()
+	wg.Wait()
+}
+
+// TestCRLPipeline runs an end-to-end test of the crl issuance process, ensuring
+// that the correct number of properly-formed and validly-signed CRLs are sent
+// to our fake S3 service.
+func TestCRLPipeline(t *testing.T) {
+	t.Parallel()
+
+	// Basic setup.
+	configDir, ok := os.LookupEnv("BOULDER_CONFIG_DIR")
+	test.Assert(t, ok, "failed to look up test config directory")
+	configFile := path.Join(configDir, "crl-updater.json")
 
 	// Issue a test certificate and save its serial number.
 	client, err := makeClient()
@@ -86,10 +149,6 @@ func TestCRLPipeline(t *testing.T) {
 	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 5)
 	test.AssertNotError(t, err, "failed to revoke test certificate")
 
-	// Reset the "leasedUntil" column to prepare for another round of CRLs.
-	_, err = db.Exec(`UPDATE crlShards SET leasedUntil = ?`, fc.Now().Add(-time.Minute))
-	test.AssertNotError(t, err, "resetting leasedUntil column")
-
 	// Confirm that the cert now *does* show up in the CRLs.
 	runUpdater(t, configFile)
 	resp, err = http.Get("http://localhost:4501/query?serial=" + serial)
@@ -104,6 +163,8 @@ func TestCRLPipeline(t *testing.T) {
 }
 
 func TestCRLTemporalAndExplicitShardingCoexist(t *testing.T) {
+	t.Parallel()
+
 	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
 	if err != nil {
 		t.Fatalf("sql.Open: %s", err)
@@ -157,13 +218,6 @@ func TestCRLTemporalAndExplicitShardingCoexist(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatalf("revoking: %s", err)
-	}
-
-	// Reset the "leasedUntil" column to prepare for another round of CRLs.
-	fc := clock.NewFake()
-	_, err = db.Exec(`UPDATE crlShards SET leasedUntil = ?`, fc.Now().Add(-time.Minute))
-	if err != nil {
-		t.Fatalf("resetting crlShards.leasedUntil: %s", err)
 	}
 
 	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))

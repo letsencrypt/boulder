@@ -21,6 +21,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -197,13 +199,17 @@ func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *co
 
 func (ra *MockRegistrationAuthority) UpdateRegistrationContact(ctx context.Context, in *rapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return &corepb.Registration{
+		Status:  string(core.StatusValid),
 		Contact: in.Contacts,
 		Key:     []byte(test1KeyPublicJSON),
 	}, nil
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistrationKey(ctx context.Context, in *rapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	return &corepb.Registration{Key: in.Jwk}, nil
+	return &corepb.Registration{
+		Status: string(core.StatusValid),
+		Key:    in.Jwk,
+	}, nil
 }
 
 func (ra *MockRegistrationAuthority) PerformValidation(context.Context, *rapb.PerformValidationRequest, ...grpc.CallOption) (*corepb.Authorization, error) {
@@ -1779,15 +1785,6 @@ func TestAuthorizationChallengeHandlerNamespace(t *testing.T) {
 	responseWriter.Body.Reset()
 }
 
-func contains(s []string, e string) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
-	}
-	return false
-}
-
 func TestAccount(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 	mux := wfe.Handler(metrics.NoopRegisterer)
@@ -1842,7 +1839,7 @@ func TestAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertNotContains(t, responseWriter.Body.String(), probs.ErrorNS)
 	links := responseWriter.Header()["Link"]
-	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
+	test.AssertEquals(t, slices.Contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with garbage in URL but valid account ID
@@ -1881,6 +1878,66 @@ func TestAccount(t *testing.T) {
 		"detail": "Request signing key did not match account key",
 		"status": 403
 	}`)
+}
+
+func TestUpdateAccount(t *testing.T) {
+	t.Parallel()
+	wfe, _, _ := setupWFE(t)
+
+	for _, tc := range []struct {
+		name     string
+		req      string
+		wantAcct *core.Registration
+	}{
+		{
+			name:     "deactivate clears contact",
+			req:      `{"status": "deactivated"}`,
+			wantAcct: &core.Registration{Status: core.StatusDeactivated},
+		},
+		{
+			name:     "deactivate takes priority over contact change",
+			req:      `{"status": "deactivated", "contact": ["mailto:admin@example.com"]}`,
+			wantAcct: &core.Registration{Status: core.StatusDeactivated},
+		},
+		{
+			name:     "change contact",
+			req:      `{"contact": ["mailto:admin@example.com"]}`,
+			wantAcct: &core.Registration{Status: core.StatusValid, Contact: &[]string{"mailto:admin@example.com"}},
+		},
+		{
+			name:     "change contact with unchanged status",
+			req:      `{"status": "valid", "contact": ["mailto:admin@example.com"]}`,
+			wantAcct: &core.Registration{Status: core.StatusValid, Contact: &[]string{"mailto:admin@example.com"}},
+		},
+		{
+			name:     "unchanged status leaves contact untouched",
+			req:      `{"status": "valid"}`,
+			wantAcct: &core.Registration{Status: core.StatusValid, Contact: &[]string{"mailto:webmaster@example.com"}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			acct := core.Registration{
+				Status:  core.StatusValid,
+				Contact: &[]string{"mailto:webmaster@example.com"},
+			}
+
+			gotAcct, gotProb := wfe.updateAccount(context.Background(), []byte(tc.req), &acct)
+			if gotProb != nil {
+				t.Fatalf("want success, got problem %s", gotProb)
+			}
+
+			if tc.wantAcct != nil {
+				if gotAcct.Status != tc.wantAcct.Status {
+					t.Errorf("want status %s, got %s", tc.wantAcct.Status, gotAcct.Status)
+				}
+				if !reflect.DeepEqual(gotAcct.Contact, tc.wantAcct.Contact) {
+					t.Errorf("want contact %v, got %v", tc.wantAcct.Contact, gotAcct.Contact)
+				}
+			}
+		})
+	}
 }
 
 type mockSAWithCert struct {
@@ -2936,7 +2993,7 @@ func TestKeyRollover(t *testing.T) {
 			Payload: `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "key": ` + string(newJWKJSON) + `,
-		     "status": ""
+		     "status": "valid"
 		   }`,
 			NewKey: newKeyPriv,
 		},
@@ -4157,82 +4214,6 @@ ALTERNATE SITE: If no reply, move to Observation Point B at Broken Cairn.`},
 			responseWriter := httptest.NewRecorder()
 			wfe.NewAccount(context.Background(), newRequestEvent(), responseWriter, request)
 
-			for _, email := range tc.expected {
-				test.AssertSliceContains(t, mockImpl.GetCreatedContacts(), email)
-			}
-		})
-	}
-}
-
-func TestUpdateAccountCreatesContacts(t *testing.T) {
-	t.Parallel()
-
-	key := loadKey(t, []byte(test1KeyPrivatePEM))
-	_, ok := key.(*rsa.PrivateKey)
-	test.Assert(t, ok, "Couldn't load RSA key for acct 1")
-
-	testCases := []struct {
-		name     string
-		contacts []string
-		expected []string
-	}{
-		{
-			name:     "No email",
-			contacts: []string{},
-			expected: []string{},
-		},
-		{
-			name:     "One email",
-			contacts: []string{"mailto:person@mail.com"},
-			expected: []string{"person@mail.com"},
-		},
-		{
-			name:     "Two emails",
-			contacts: []string{"mailto:person1@mail.com", "mailto:person2@mail.com"},
-			expected: []string{"person1@mail.com", "person2@mail.com"},
-		},
-		{
-			name:     "Invalid email",
-			contacts: []string{"mailto:lol@%mail.com"},
-			expected: []string{},
-		},
-		{
-			name:     "One valid email, one invalid email",
-			contacts: []string{"mailto:person@mail.com", "mailto:lol@%mail.com"},
-			expected: []string{"person@mail.com"},
-		},
-		{
-			name:     "Valid email with invalid prefix",
-			contacts: []string{"pantelegraph:person@mail.com"},
-			expected: []string{},
-		},
-		{
-			name: "Non-email prefix with correct telegraphic notation",
-			contacts: []string{`pantelegraph:RECEIVING OFFICE: Bureau Room, Third Floor, Merchant House.
-TRANSMISSION LINE: Direct relay, Exchange Circuit No. 42.`},
-			expected: []string{},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			wfe, _, signer := setupWFE(t)
-			mockPardotClient, mockImpl := mocks.NewMockPardotClientImpl()
-			wfe.ee = mocks.NewMockExporterImpl(mockPardotClient)
-
-			responseWriter := httptest.NewRecorder()
-			contactsJSON, err := json.Marshal(tc.contacts)
-			test.AssertNotError(t, err, "Failed to marshal contacts")
-
-			newContact := fmt.Sprintf(`{"contact":%s}`, contactsJSON)
-			signedURL := "http://localhost/1"
-			path := "1"
-			_, _, body := signer.byKeyID(1, key, signedURL, newContact)
-			request := makePostRequestWithPath(path, body)
-			wfe.Account(ctx, newRequestEvent(), responseWriter, request)
-			test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 			for _, email := range tc.expected {
 				test.AssertSliceContains(t, mockImpl.GetCreatedContacts(), email)
 			}

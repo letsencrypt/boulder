@@ -10,7 +10,6 @@ import (
 	"database/sql"
 	"fmt"
 	"math/big"
-	"os"
 	"testing"
 	"time"
 
@@ -463,10 +462,6 @@ func TestIncidentSerialModel(t *testing.T) {
 }
 
 func TestAddReplacementOrder(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires replacementOrders database table")
-	}
-
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -512,10 +507,6 @@ func TestAddReplacementOrder(t *testing.T) {
 }
 
 func TestSetReplacementOrderFinalized(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires replacementOrders database table")
-	}
-
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 

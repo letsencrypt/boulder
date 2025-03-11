@@ -33,5 +33,6 @@ extend-ignore-re = [
 "otConf" = "otConf"
 "serInt" = "serInt"
 "StratName" = "StratName"
+"typ" = "typ"
 "UPDATEs" = "UPDATEs"
 "vai" = "vai"
