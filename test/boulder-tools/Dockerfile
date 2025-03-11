@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM buildpack-deps:focal-scm as godeps
 ARG GO_VERSION
 # Provided automatically by docker build.
