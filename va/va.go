@@ -25,6 +25,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -609,14 +610,16 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			firstProb = currProb
 		}
 
-		// To respond faster, if we get enough successes or too many failures, we cancel remaining RPCs.
-		// Finish the loop to collect remaining responses into `failed` so we can rely on having a response
-		// for every request we made.
-		if len(passed) >= required && len(passedRIRs) >= requiredRIRs {
-			cancel()
-		}
-		if len(failed) > va.maxRemoteFailures {
-			cancel()
+		if !features.Get().MPICFullResults {
+			// To respond faster, if we get enough successes or too many failures, we cancel remaining RPCs.
+			// Finish the loop to collect remaining responses into `failed` so we can rely on having a response
+			// for every request we made.
+			if len(passed) >= required && len(passedRIRs) >= requiredRIRs {
+				cancel()
+			}
+			if len(failed) > va.maxRemoteFailures {
+				cancel()
+			}
 		}
 
 		// Once all the VAs have returned a result, break the loop.
