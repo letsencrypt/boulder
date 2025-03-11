@@ -81,6 +81,11 @@ type Config struct {
 	// removing pending authz reuse.
 	NoPendingAuthzReuse bool
 
+	// MPICFullResults causes the VA to wait for all remote (MPIC) results, rather
+	// than cancelling outstanding requests after enough successes or failures for
+	// the result to be determined.
+	MPICFullResults bool
+
 	// StoreARIReplacesInOrders causes the SA to store and retrieve the optional
 	// ARI replaces field in the orders table.
 	StoreARIReplacesInOrders bool
