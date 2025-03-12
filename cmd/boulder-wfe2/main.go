@@ -12,6 +12,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	emailpb "github.com/letsencrypt/boulder/email/proto"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
@@ -59,8 +60,9 @@ type Config struct {
 
 		TLS cmd.TLSConfig
 
-		RAService *cmd.GRPCClientConfig
-		SAService *cmd.GRPCClientConfig
+		RAService     *cmd.GRPCClientConfig
+		SAService     *cmd.GRPCClientConfig
+		EmailExporter *cmd.GRPCClientConfig
 
 		// GetNonceService is a gRPC config which contains a single SRV name
 		// used to lookup nonce-service instances used exclusively for nonce
@@ -149,13 +151,6 @@ type Config struct {
 			Overrides string
 		}
 
-		// MaxNames is the maximum number of subjectAltNames in a single cert.
-		// The value supplied SHOULD be greater than 0 and no more than 100,
-		// defaults to 100. These limits are per section 7.1 of our combined
-		// CP/CPS, under "DV-SSL Subscriber Certificate". The value must match
-		// the CA and RA configurations.
-		MaxNames int `validate:"min=0,max=100"`
-
 		// CertProfiles is a map of acceptable certificate profile names to
 		// descriptions (perhaps including URLs) of those profiles. NewOrder
 		// Requests with a profile name not present in this map will be rejected.
@@ -241,11 +236,6 @@ func main() {
 	if *debugAddr != "" {
 		c.WFE.DebugAddr = *debugAddr
 	}
-	maxNames := c.WFE.MaxNames
-	if maxNames == 0 {
-		// Default to 100 names per cert.
-		maxNames = 100
-	}
 
 	certChains := map[issuance.NameID][][]byte{}
 	issuerCerts := map[issuance.NameID]*issuance.Certificate{}
@@ -284,6 +274,13 @@ func main() {
 	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, stats, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
+
+	var eec emailpb.ExporterClient
+	if c.WFE.EmailExporter != nil {
+		emailExporterConn, err := bgrpc.ClientSetup(c.WFE.EmailExporter, tlsConfig, stats, clk)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to email-exporter")
+		eec = emailpb.NewExporterClient(emailExporterConn)
+	}
 
 	if c.WFE.RedeemNonceService == nil {
 		cmd.Fail("'redeemNonceService' must be configured.")
@@ -351,13 +348,13 @@ func main() {
 		c.WFE.StaleTimeout.Duration,
 		rac,
 		sac,
+		eec,
 		gnc,
 		rnc,
 		noncePrefixKey,
 		accountGetter,
 		limiter,
 		txnBuilder,
-		maxNames,
 		c.WFE.CertProfiles,
 		unpauseSigner,
 		c.WFE.Unpause.JWTLifetime.Duration,

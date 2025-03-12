@@ -378,6 +378,10 @@ func (builder *TransactionBuilder) FailedAuthorizationsForPausingPerDomainPerAcc
 //
 // Precondition: All orderDomains must comply with policy.WellFormedDomainNames.
 func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(regId int64, orderDomains []string) ([]Transaction, error) {
+	if len(orderDomains) > 100 {
+		return nil, fmt.Errorf("unwilling to process more than 100 rate limit transactions, got %d", len(orderDomains))
+	}
+
 	perAccountLimitBucketKey, err := newRegIdBucketKey(CertificatesPerDomainPerAccount, regId)
 	if err != nil {
 		return nil, err
@@ -456,6 +460,10 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 //
 // Precondition: orderDomains must all pass policy.WellFormedDomainNames.
 func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(regId int64, orderDomains []string) ([]Transaction, error) {
+	if len(orderDomains) > 100 {
+		return nil, fmt.Errorf("unwilling to process more than 100 rate limit transactions, got %d", len(orderDomains))
+	}
+
 	perAccountLimitBucketKey, err := newRegIdBucketKey(CertificatesPerDomainPerAccount, regId)
 	if err != nil {
 		return nil, err

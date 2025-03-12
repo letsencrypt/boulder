@@ -47,7 +47,6 @@
 		"shardWidth": "240h",
 		"lookbackPeriod": "24h",
 		"updatePeriod": "6h",
-		"updateOffset": "9120s",
 		"maxParallelism": 10,
 		"maxAttempts": 5,
 		"features": {}

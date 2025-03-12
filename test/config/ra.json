@@ -50,6 +50,11 @@
 				"pendingAuthzLifetime": "7h",
 				"validAuthzLifetime": "7h",
 				"orderLifetime": "7h"
+			},
+			"shortlived": {
+				"pendingAuthzLifetime": "7h",
+				"validAuthzLifetime": "7h",
+				"orderLifetime": "7h"
 			}
 		},
 		"defaultProfileName": "legacy",
@@ -129,6 +134,11 @@
 						"ocsp-responder.boulder",
 						"sfe.boulder",
 						"wfe.boulder"
+					]
+				},
+				"ra.SCTProvider": {
+					"clientNames": [
+						"ca.boulder"
 					]
 				},
 				"grpc.health.v1.Health": {
