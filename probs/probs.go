@@ -12,7 +12,11 @@ const (
 	// same order as they are defined in RFC8555 Section 6.7. We do not implement
 	// the `compound`, `externalAccountRequired`, or `userActionRequired` errors,
 	// because we have no path that would return them.
-	AccountDoesNotExistProblem   = ProblemType("accountDoesNotExist")
+	AccountDoesNotExistProblem = ProblemType("accountDoesNotExist")
+	// AlreadyReplacedProblem is a problem type that is defined in Section 7.4
+	// of draft-ietf-acme-ari-08, for more information see:
+	// https://datatracker.ietf.org/doc/html/draft-ietf-acme-ari-08#section-7.4
+	AlreadyReplacedProblem       = ProblemType("alreadyReplaced")
 	AlreadyRevokedProblem        = ProblemType("alreadyRevoked")
 	BadCSRProblem                = ProblemType("badCSR")
 	BadNonceProblem              = ProblemType("badNonce")
@@ -91,6 +95,16 @@ func AccountDoesNotExist(detail string) *ProblemDetails {
 		Type:       AccountDoesNotExistProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
+	}
+}
+
+// AlreadyReplaced returns a ProblemDetails with a AlreadyReplacedProblem and a
+// 409 Conflict status code.
+func AlreadyReplaced(detail string) *ProblemDetails {
+	return &ProblemDetails{
+		Type:       AlreadyReplacedProblem,
+		Detail:     detail,
+		HTTPStatus: http.StatusConflict,
 	}
 }
 

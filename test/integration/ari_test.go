@@ -59,6 +59,9 @@ func TestARIAndReplacement(t *testing.T) {
 	// Try another replacement order and verify that it fails.
 	_, order, err = makeClientAndOrder(client, key, []string{name}, true, "", cert)
 	test.AssertError(t, err, "subsequent ARI replacements for a replaced cert should fail, but didn't")
+	test.AssertContains(t, err.Error(), "urn:ietf:params:acme:error:alreadyReplaced")
+	test.AssertContains(t, err.Error(), "already has a replacement order")
+	test.AssertContains(t, err.Error(), "error code 409")
 }
 
 func TestARIShortLived(t *testing.T) {
