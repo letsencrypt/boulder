@@ -85,6 +85,10 @@ type Config struct {
 	// than cancelling outstanding requests after enough successes or failures for
 	// the result to be determined.
 	MPICFullResults bool
+
+	// StoreARIReplacesInOrders causes the SA to store and retrieve the optional
+	// ARI replaces field in the orders table.
+	StoreARIReplacesInOrders bool
 }
 
 var fMu = new(sync.RWMutex)

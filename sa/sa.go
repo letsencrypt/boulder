@@ -536,6 +536,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			Expires:                req.NewOrder.Expires.AsTime(),
 			Created:                created,
 			CertificateProfileName: &req.NewOrder.CertificateProfileName,
+			Replaces:               &req.NewOrder.Replaces,
 		}
 		err := tx.Insert(ctx, &om)
 		if err != nil {
@@ -600,6 +601,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			// transmits it to the CA, the empty string will take the value of
 			// DefaultCertProfileName from the //issuance package.
 			CertificateProfileName: req.NewOrder.CertificateProfileName,
+			Replaces:               req.NewOrder.Replaces,
 		}
 
 		// Calculate the order status before returning it. Since it may have reused

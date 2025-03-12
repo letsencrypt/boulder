@@ -108,7 +108,7 @@ message Authorization {
 }
 
 message Order {
-  // Next unused field number: 15
+  // Next unused field number: 16
   reserved 3, 6, 10;
   int64 id = 1;
   int64 registrationID = 2;
@@ -124,6 +124,7 @@ message Order {
   // Additional fields for our own record-keeping.
   google.protobuf.Timestamp created = 13;
   string certificateProfileName = 14;
+  string replaces = 15;
   bool beganProcessing = 9;
 }
 

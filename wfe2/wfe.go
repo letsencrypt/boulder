@@ -1964,6 +1964,7 @@ type orderJSON struct {
 	Profile        string                      `json:"profile,omitempty"`
 	Certificate    string                      `json:"certificate,omitempty"`
 	Error          *probs.ProblemDetails       `json:"error,omitempty"`
+	Replaces       string                      `json:"replaces,omitempty"`
 }
 
 // orderToOrderJSON converts a *corepb.Order instance into an orderJSON struct
@@ -1983,6 +1984,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		Identifiers: idents,
 		Finalize:    finalizeURL,
 		Profile:     order.CertificateProfileName,
+		Replaces:    order.Replaces,
 	}
 	// If there is an order error, prefix its type with the V2 namespace
 	if order.Error != nil {
@@ -2314,9 +2316,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		}
 	}
 
-	var replaces string
+	var replacesSerial string
 	var isARIRenewal bool
-	replaces, isARIRenewal, err = wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
+	replacesSerial, isARIRenewal, err = wfe.validateReplacementOrder(ctx, acct, names, newOrderRequest.Replaces)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
 		return
@@ -2364,7 +2366,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	var newOrderSuccessful bool
 	defer func() {
 		wfe.stats.ariReplacementOrders.With(prometheus.Labels{
-			"isReplacement": fmt.Sprintf("%t", replaces != ""),
+			"isReplacement": fmt.Sprintf("%t", replacesSerial != ""),
 			"limitsExempt":  fmt.Sprintf("%t", isARIRenewal),
 		}).Inc()
 
@@ -2376,8 +2378,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID:         acct.ID,
 		DnsNames:               names,
-		ReplacesSerial:         replaces,
 		CertificateProfileName: newOrderRequest.Profile,
+		Replaces:               newOrderRequest.Replaces,
+		ReplacesSerial:         replacesSerial,
 	})
 	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, order.DnsNames, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
