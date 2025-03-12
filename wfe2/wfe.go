@@ -1962,6 +1962,7 @@ type orderJSON struct {
 	Profile        string                      `json:"profile,omitempty"`
 	Certificate    string                      `json:"certificate,omitempty"`
 	Error          *probs.ProblemDetails       `json:"error,omitempty"`
+	Replaces       string                      `json:"replaces,omitempty"`
 }
 
 // orderToOrderJSON converts a *corepb.Order instance into an orderJSON struct
@@ -1977,6 +1978,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		Identifiers: identifier.SliceFromProto(order.Identifiers, order.DnsNames),
 		Finalize:    finalizeURL,
 		Profile:     order.CertificateProfileName,
+		Replaces:    order.Replaces,
 	}
 	// If there is an order error, prefix its type with the V2 namespace
 	if order.Error != nil {
@@ -2156,7 +2158,7 @@ func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *
 		return "", false, fmt.Errorf("checking replacement status of existing certificate: %w", err)
 	}
 	if exists.Exists {
-		return "", false, berrors.ConflictError(
+		return "", false, berrors.AlreadyReplacedError(
 			"cannot indicate an order replaces certificate with serial %q, which already has a replacement order",
 			decodedSerial,
 		)
@@ -2318,9 +2320,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		}
 	}
 
-	var replaces string
+	var replacesSerial string
 	var isARIRenewal bool
-	replaces, isARIRenewal, err = wfe.validateReplacementOrder(ctx, acct, idents, newOrderRequest.Replaces)
+	replacesSerial, isARIRenewal, err = wfe.validateReplacementOrder(ctx, acct, idents, newOrderRequest.Replaces)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "While validating order as a replacement an error occurred"), err)
 		return
@@ -2369,7 +2371,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	var newOrderSuccessful bool
 	defer func() {
 		wfe.stats.ariReplacementOrders.With(prometheus.Labels{
-			"isReplacement": fmt.Sprintf("%t", replaces != ""),
+			"isReplacement": fmt.Sprintf("%t", replacesSerial != ""),
 			"limitsExempt":  fmt.Sprintf("%t", isARIRenewal),
 		}).Inc()
 
@@ -2382,8 +2384,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		RegistrationID:         acct.ID,
 		DnsNames:               names,
 		Identifiers:            pbIdents,
-		ReplacesSerial:         replaces,
 		CertificateProfileName: newOrderRequest.Profile,
+		Replaces:               newOrderRequest.Replaces,
+		ReplacesSerial:         replacesSerial,
 	})
 
 	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, identifier.SliceFromProto(order.Identifiers, order.DnsNames), order.Created, order.Expires) {

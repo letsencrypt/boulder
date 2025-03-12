@@ -52,11 +52,12 @@ const (
 	UnsupportedContact
 	// The requested serial number does not exist in the `serials` table.
 	UnknownSerial
-	// The certificate being indicated for replacement already has a replacement
-	// order.
 	Conflict
 	// Defined in https://datatracker.ietf.org/doc/draft-aaron-acme-profiles/00/
 	InvalidProfile
+	// The certificate being indicated for replacement already has a replacement
+	// order.
+	AlreadyReplaced
 )
 
 func (ErrorType) Error() string {
@@ -283,6 +284,10 @@ func BadCSRError(msg string, args ...interface{}) error {
 	return newf(BadCSR, msg, args...)
 }
 
+func AlreadyReplacedError(msg string, args ...interface{}) error {
+	return newf(AlreadyReplaced, msg, args...)
+}
+
 func AlreadyRevokedError(msg string, args ...interface{}) error {
 	return newf(AlreadyRevoked, msg, args...)
 }
@@ -293,10 +298,6 @@ func BadRevocationReasonError(reason int64) error {
 
 func UnknownSerialError() error {
 	return newf(UnknownSerial, "unknown serial")
-}
-
-func ConflictError(msg string, args ...interface{}) error {
-	return newf(Conflict, msg, args...)
 }
 
 func InvalidProfileError(msg string, args ...interface{}) error {

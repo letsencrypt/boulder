@@ -1,18 +1,18 @@
-[e_pkilint_lint_cabf_serverauth_cert]
-pkilint_addr = "http://10.77.77.9"
-pkilint_timeout = 2000000000 # 2 seconds
+[e_pkimetal_lint_cabf_serverauth_cert]
+addr = "http://10.77.77.9:8080"
+severity = "notice"
+timeout = 2000000000 # 2 seconds
 ignore_lints = [
-  # We include the CN in (almost) all of our certificates, on purpose.
-  # See https://github.com/letsencrypt/boulder/issues/5112 for details.
-  "DvSubcriberAttributeAllowanceValidator:cabf.serverauth.dv.common_name_attribute_present",
-  # We include the SKID in all of our certs, on purpose.
-  # See https://github.com/letsencrypt/boulder/issues/7446 for details.
-  "SubscriberExtensionAllowanceValidator:cabf.serverauth.subscriber.subject_key_identifier_extension_present",
-  # We compute the skid using RFC7093 Method 1, on purpose.
-  # See https://github.com/letsencrypt/boulder/pull/7179 for details.
-  "SubjectKeyIdentifierValidator:pkix.subject_key_identifier_rfc7093_method_1_identified",
-  # We include the keyEncipherment key usage in RSA certs, on purpose.
-  # It is only necessary for old versions of TLS, and is included for backwards
-  # compatibility. We intend to remove this in the short-lived profile.
-  "SubscriberKeyUsageValidator:cabf.serverauth.subscriber_rsa_digitalsignature_and_keyencipherment_present",
+  # We continue to include the Common Name in our "classic" profile, but have
+  # removed it from our "tlsserver" and "shortlived" profiles.
+  "pkilint:cabf.serverauth.dv.common_name_attribute_present",
+  "zlint:w_subject_common_name_included",
+  # We continue to include the SKID extension in our "classic" profile, but have
+  # removed it from our "tlsserver" and "shortlived" profiles.
+  "pkilint:cabf.serverauth.subscriber.subject_key_identifier_extension_present",
+  "zlint:w_ext_subject_key_identifier_not_recommended_subscriber",
+  # We continue to include the Key Encipherment Key Usage for RSA certificates
+  # issued under the "classic" profile, but have removed it from our "tlsserver"
+  # and "shortlived" profiles.
+  "pkilint:cabf.serverauth.subscriber_rsa_digitalsignature_and_keyencipherment_present",
 ]

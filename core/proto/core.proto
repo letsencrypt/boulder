@@ -110,7 +110,7 @@ message Authorization {
 }
 
 message Order {
-  // Next unused field number: 16
+  // Next unused field number: 17
   reserved 3, 6, 10;
   int64 id = 1;
   int64 registrationID = 2;
@@ -121,13 +121,14 @@ message Order {
   google.protobuf.Timestamp expires = 12;
   // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 8;
-  repeated Identifier identifiers = 15;
+  repeated Identifier identifiers = 16;
   ProblemDetails error = 4;
   repeated int64 v2Authorizations = 11;
   string certificateSerial = 5;
   // Additional fields for our own record-keeping.
   google.protobuf.Timestamp created = 13;
   string certificateProfileName = 14;
+  string replaces = 15;
   bool beganProcessing = 9;
 }
 

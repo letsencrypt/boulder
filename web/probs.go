@@ -40,6 +40,8 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		outProb = probs.BadPublicKey(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.BadCSR:
 		outProb = probs.BadCSR(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.AlreadyReplaced:
+		outProb = probs.AlreadyReplaced(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.AlreadyRevoked:
 		outProb = probs.AlreadyRevoked(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.BadRevocationReason:

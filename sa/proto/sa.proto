@@ -223,16 +223,21 @@ message OrderRequest {
 }
 
 message NewOrderRequest {
-  // Next unused field number: 9
+  // Next unused field number: 10
   int64 registrationID = 1;
   reserved 2; // Previously expiresNS
   google.protobuf.Timestamp expires = 5;
   // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
   repeated string dnsNames = 3;
-  repeated core.Identifier identifiers = 8;
+  repeated core.Identifier identifiers = 9;
   repeated int64 v2Authorizations = 4;
-  string replacesSerial = 6;
   string certificateProfileName = 7;
+  // Replaces is the ARI certificate Id that this order replaces.
+  string replaces = 8;
+  // ReplacesSerial is the serial number of the certificate that this order
+  // replaces.
+  string replacesSerial = 6;
+
 }
 
 // NewAuthzRequest starts with all the same fields as corepb.Authorization,

@@ -377,6 +377,7 @@ type orderModel struct {
 	CertificateSerial      string
 	BeganProcessing        bool
 	CertificateProfileName *string
+	Replaces               *string
 }
 
 type orderToAuthzModel struct {
@@ -387,6 +388,7 @@ type orderToAuthzModel struct {
 func orderToModel(order *corepb.Order) (*orderModel, error) {
 	// Make a local copy so we can take a reference to it below.
 	profile := order.CertificateProfileName
+	replaces := order.Replaces
 
 	om := &orderModel{
 		ID:                     order.Id,
@@ -396,6 +398,7 @@ func orderToModel(order *corepb.Order) (*orderModel, error) {
 		BeganProcessing:        order.BeganProcessing,
 		CertificateSerial:      order.CertificateSerial,
 		CertificateProfileName: &profile,
+		Replaces:               &replaces,
 	}
 
 	if order.Error != nil {
@@ -416,6 +419,10 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	if om.CertificateProfileName != nil {
 		profile = *om.CertificateProfileName
 	}
+	replaces := ""
+	if om.Replaces != nil {
+		replaces = *om.Replaces
+	}
 	order := &corepb.Order{
 		Id:                     om.ID,
 		RegistrationID:         om.RegistrationID,
@@ -424,6 +431,7 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		CertificateSerial:      om.CertificateSerial,
 		BeganProcessing:        om.BeganProcessing,
 		CertificateProfileName: profile,
+		Replaces:               replaces,
 	}
 	if len(om.Error) > 0 {
 		var problem corepb.ProblemDetails

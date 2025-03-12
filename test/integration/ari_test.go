@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/x509/pkix"
 	"math/big"
+	"os"
 	"testing"
 	"time"
 
@@ -56,9 +57,21 @@ func TestARIAndReplacement(t *testing.T) {
 	test.AssertEquals(t, order.Replaces, replaceID)
 	test.AssertNotEquals(t, order.Replaces, "")
 
+	// Retrieve the order and verify that it has the correct replaces field.
+	resp, err := client.FetchOrder(client.Account, order.URL)
+	test.AssertNotError(t, err, "failed to fetch order")
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		test.AssertEquals(t, resp.Replaces, order.Replaces)
+	} else {
+		test.AssertEquals(t, resp.Replaces, "")
+	}
+
 	// Try another replacement order and verify that it fails.
 	_, order, err = makeClientAndOrder(client, key, []acme.Identifier{{Type: "dns", Value: name}}, true, "", cert)
 	test.AssertError(t, err, "subsequent ARI replacements for a replaced cert should fail, but didn't")
+	test.AssertContains(t, err.Error(), "urn:ietf:params:acme:error:alreadyReplaced")
+	test.AssertContains(t, err.Error(), "already has a replacement order")
+	test.AssertContains(t, err.Error(), "error code 409")
 }
 
 func TestARIShortLived(t *testing.T) {
