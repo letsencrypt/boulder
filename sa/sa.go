@@ -456,22 +456,51 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 }
 
 // DeactivateRegistration deactivates a currently valid registration and removes its contact field
-func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*emptypb.Empty, error) {
+func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
 	if req == nil || req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
-	_, err := ssa.dbMap.ExecContext(ctx,
-		"UPDATE registrations SET status = ?, contact = '[]' WHERE status = ? AND id = ? LIMIT 1",
-		string(core.StatusDeactivated),
-		string(core.StatusValid),
-		req.Id,
-	)
-	if err != nil {
-		return nil, err
+
+	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
+		result, err := tx.ExecContext(ctx,
+			"UPDATE registrations SET status = ?, contact = '[]' WHERE status = ? AND id = ? LIMIT 1",
+			string(core.StatusDeactivated),
+			string(core.StatusValid),
+			req.Id,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("deactivating account %d: %w", req.Id, err)
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil || rowsAffected != 1 {
+			return nil, fmt.Errorf("deactivating account %d: no rows updated", req.Id)
+		}
+
+		updatedRegistrationModel, err := selectRegistration(ctx, tx, "id", req.Id)
+		if err != nil {
+			if db.IsNoRows(err) {
+				return nil, berrors.NotFoundError("fetching account %d: no rows found", req.Id)
+			}
+			return nil, fmt.Errorf("fetching account %d: %w", req.Id, err)
+		}
+
+		updatedRegistration, err := registrationModelToPb(updatedRegistrationModel)
+		if err != nil {
+			return nil, err
+		}
+
+		return updatedRegistration, nil
+	})
+	if overallError != nil {
+		return nil, overallError
 	}
 
-	// TODO(#5554): Return the updated account object.
-	return &emptypb.Empty{}, nil
+	res, ok := result.(*corepb.Registration)
+	if !ok {
+		return nil, fmt.Errorf("unexpected casting failure in DeactivateRegistration")
+	}
+
+	return res, nil
 }
 
 // DeactivateAuthorization2 deactivates a currently valid or pending authorization.

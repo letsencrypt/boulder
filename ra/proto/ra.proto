@@ -11,8 +11,8 @@ service RegistrationAuthority {
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
   rpc UpdateRegistrationContact(UpdateRegistrationContactRequest) returns (core.Registration) {}
   rpc UpdateRegistrationKey(UpdateRegistrationKeyRequest) returns (core.Registration) {}
+  rpc DeactivateRegistration(DeactivateRegistrationRequest) returns (core.Registration) {}
   rpc PerformValidation(PerformValidationRequest) returns (core.Authorization) {}
-  rpc DeactivateRegistration(core.Registration) returns (google.protobuf.Empty) {}
   rpc DeactivateAuthorization(core.Authorization) returns (google.protobuf.Empty) {}
   rpc RevokeCertByApplicant(RevokeCertByApplicantRequest) returns (google.protobuf.Empty) {}
   rpc RevokeCertByKey(RevokeCertByKeyRequest) returns (google.protobuf.Empty) {}
@@ -49,6 +49,10 @@ message UpdateRegistrationContactRequest {
 message UpdateRegistrationKeyRequest {
   int64 registrationID = 1;
   bytes jwk = 2;
+}
+
+message DeactivateRegistrationRequest {
+  int64 registrationID = 1;
 }
 
 message UpdateAuthorizationRequest {

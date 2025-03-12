@@ -29,7 +29,7 @@ func (sa SA) GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ..
 	return sa.Impl.GetRegistration(ctx, req)
 }
 
-func (sa SA) DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+func (sa SA) DeactivateRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return sa.Impl.DeactivateRegistration(ctx, req)
 }
 
