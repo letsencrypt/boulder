@@ -274,7 +274,7 @@ func initTables(dbMap *borp.DbMap) {
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
 	tableMap := dbMap.AddTableWithName(orderModel{}, "orders").SetKeys(true, "ID")
 	if !features.Get().StoreARIReplacesInOrders {
-		tableMap.ColMap("Replaces").Transient = true
+		tableMap.ColMap("Replaces").SetTransient(true)
 	}
 
 	dbMap.AddTableWithName(orderToAuthzModel{}, "orderToAuthz").SetKeys(false, "OrderID", "AuthzID")
