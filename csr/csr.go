@@ -10,6 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 // maxCNLength is the maximum length allowed for the common name as specified in RFC 5280
@@ -34,7 +35,7 @@ var (
 	invalidSig          = berrors.BadCSRError("invalid signature on CSR")
 	invalidEmailPresent = berrors.BadCSRError("CSR contains one or more email address fields")
 	invalidIPPresent    = berrors.BadCSRError("CSR contains one or more IP address fields")
-	invalidNoDNS        = berrors.BadCSRError("at least one DNS name is required")
+	invalidNoIdentifier = berrors.BadCSRError("at least one identifier is required")
 )
 
 // VerifyCSR checks the validity of a x509.CertificateRequest. It uses
@@ -72,7 +73,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	names := NamesFromCSR(csr)
 
 	if len(names.SANs) == 0 && names.CN == "" {
-		return invalidNoDNS
+		return invalidNoIdentifier
 	}
 	if len(names.CN) > maxCNLength {
 		return berrors.BadCSRError("CN was longer than %d bytes", maxCNLength)
@@ -81,7 +82,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return berrors.BadCSRError("CSR contains more than %d DNS names", maxNames)
 	}
 
-	err = pa.WillingToIssue(names.SANs)
+	err = pa.WillingToIssue(identifier.FromDNSNames(names.SANs))
 	if err != nil {
 		return err
 	}
