@@ -322,14 +322,14 @@ func TestRetryBackoff(t *testing.T) {
 }
 
 func TestHashIdentifiers(t *testing.T) {
-	dns1 := identifier.NewDNS("example.com")
-	dns1_caps := identifier.NewDNS("eXaMpLe.COM")
-	dns2 := identifier.NewDNS("high-energy-cheese-lab.nrc-cnrc.gc.ca")
-	dns2_caps := identifier.NewDNS("HIGH-ENERGY-CHEESE-LAB.NRC-CNRC.GC.CA")
-	ipv4_1 := identifier.NewIP(netip.MustParseAddr("10.10.10.10"))
-	ipv4_2 := identifier.NewIP(netip.MustParseAddr("172.16.16.16"))
-	ipv6_1 := identifier.NewIP(netip.MustParseAddr("2001:0db8:0bad:0dab:c0ff:fee0:0007:1337"))
-	ipv6_2 := identifier.NewIP(netip.MustParseAddr("3fff::"))
+	dns1 := identifier.FromDNS("example.com")
+	dns1_caps := identifier.FromDNS("eXaMpLe.COM")
+	dns2 := identifier.FromDNS("high-energy-cheese-lab.nrc-cnrc.gc.ca")
+	dns2_caps := identifier.FromDNS("HIGH-ENERGY-CHEESE-LAB.NRC-CNRC.GC.CA")
+	ipv4_1 := identifier.FromIP(netip.MustParseAddr("10.10.10.10"))
+	ipv4_2 := identifier.FromIP(netip.MustParseAddr("172.16.16.16"))
+	ipv6_1 := identifier.FromIP(netip.MustParseAddr("2001:0db8:0bad:0dab:c0ff:fee0:0007:1337"))
+	ipv6_2 := identifier.FromIP(netip.MustParseAddr("3fff::"))
 
 	testCases := []struct {
 		Name          string

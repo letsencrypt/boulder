@@ -1068,7 +1068,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// There should never be an order with 0 identifiers at the stage, but we check to
 	// be on the safe side, throwing an internal server error if this assumption
 	// is ever violated.
-	orderIdents := identifier.Normalize(identifier.SliceFromProto(req.Order.Identifiers, req.Order.DnsNames))
+	orderIdents := identifier.Normalize(identifier.SliceFromProto(identifier.WithDefaults(req.Order)))
 	if len(orderIdents) == 0 {
 		return nil, berrors.InternalServerError("Order has no associated identifiers")
 	}
@@ -1177,7 +1177,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ra.inflightFinalizes.Inc()
 	defer ra.inflightFinalizes.Dec()
 
-	idents := identifier.SliceAsProto(identifier.SliceFromProto(order.Identifiers, order.DnsNames))
+	idents := identifier.WithDefaults(order)
 
 	// TODO(#7311): Remove this once all RPC users can handle Identifiers.
 	var dnsNames []string
@@ -1553,7 +1553,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, identifier.FromProtoWithDefault(req.Authz.Identifier, req.Authz.DnsName), req.Authz.Status, req.Authz.Expires) {
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, identifier.WithDefault(req.Authz), req.Authz.Status, req.Authz.Expires) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -1852,7 +1852,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		var authzPB *sapb.Authorizations
 		authzPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
-			Identifiers:    identifier.SliceAsProto(identifier.SliceFromProto(nil, cert.DNSNames)),
+			Identifiers:    identifier.SliceAsProto(identifier.FromDNSNames(cert.DNSNames)),
 			DnsNames:       cert.DNSNames,
 			ValidUntil:     timestamppb.New(ra.clk.Now()),
 		})
@@ -1868,7 +1868,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 
 		// TODO(#7311): TODO(#7647): Support other kinds of SANs/identifiers here.
 		for _, name := range cert.DNSNames {
-			if _, present := authzMap[identifier.NewDNS(name)]; !present {
+			if _, present := authzMap[identifier.FromDNS(name)]; !present {
 				return nil, berrors.UnauthorizedError("requester does not control all names in cert with serial %q", serialString)
 			}
 		}
@@ -2209,7 +2209,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
-	ident := identifier.FromProtoWithDefault(req.Identifier, req.DnsName)
+	ident := identifier.FromProto(identifier.WithDefault(req))
 
 	if core.IsAnyNilOrZero(req, req.Id, ident, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
@@ -2280,7 +2280,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	idents := identifier.Normalize(identifier.SliceFromProto(req.Identifiers, req.DnsNames))
+	idents := identifier.Normalize(identifier.SliceFromProto(identifier.WithDefaults(req)))
 
 	profile, err := ra.profiles.get(req.CertificateProfileName)
 	if err != nil {
@@ -2336,7 +2336,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Error if an incomplete order is returned.
 	if existingOrder != nil {
 		// Check to see if the expected fields of the existing order are set.
-		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, identifier.SliceFromProto(existingOrder.Identifiers, existingOrder.DnsNames), existingOrder.Created, existingOrder.Expires) {
+		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, identifier.WithDefaults(existingOrder), existingOrder.Created, existingOrder.Expires) {
 			return nil, errIncompleteGRPCResponse
 		}
 
@@ -2526,7 +2526,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, identifier.SliceFromProto(storedOrder.Identifiers, storedOrder.DnsNames), storedOrder.Created, storedOrder.Expires) {
+	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, identifier.WithDefaults(storedOrder), storedOrder.Created, storedOrder.Expires) {
 		return nil, errIncompleteGRPCResponse
 	}
 	ra.orderAges.WithLabelValues("NewOrder").Observe(0)

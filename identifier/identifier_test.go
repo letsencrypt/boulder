@@ -31,13 +31,23 @@ func TestNormalize(t *testing.T) {
 	test.AssertDeepEquals(t, expected, u)
 }
 
-func TestSliceFromProto(t *testing.T) {
-	testCases := []struct {
-		Name         string
-		InputIdents  []*corepb.Identifier
-		InputNames   []string
-		ExpectIdents []ACMEIdentifier
-	}{
+type protoToProtoTestCases struct {
+	Name         string
+	InputIdents  []*corepb.Identifier
+	InputNames   []string
+	ExpectIdents []ACMEIdentifier
+}
+
+func (tc protoToProtoTestCases) GetIdentifiers() []*corepb.Identifier {
+	return tc.InputIdents
+}
+
+func (tc protoToProtoTestCases) GetDnsNames() []string {
+	return tc.InputNames
+}
+
+func TestProtoToProtoWithDefault(t *testing.T) {
+	testCases := []protoToProtoTestCases{
 		{
 			Name: "Populated identifiers, populated names, same values",
 			InputIdents: []*corepb.Identifier{
@@ -126,8 +136,7 @@ func TestSliceFromProto(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			idents := SliceFromProto(tc.InputIdents, tc.InputNames)
-			test.AssertDeepEquals(t, idents, tc.ExpectIdents)
+			test.AssertDeepEquals(t, SliceFromProto(WithDefaults(tc)), tc.ExpectIdents)
 		})
 	}
 }
@@ -142,32 +151,32 @@ func TestFromCSR(t *testing.T) {
 		{
 			"no explicit CN",
 			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
-			[]ACMEIdentifier{NewDNS("a.com")},
+			[]ACMEIdentifier{FromDNS("a.com")},
 		},
 		{
 			"explicit uppercase CN",
 			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"a.com"}},
-			[]ACMEIdentifier{NewDNS("a.com")},
+			[]ACMEIdentifier{FromDNS("a.com")},
 		},
 		{
 			"no explicit CN, uppercase SAN",
 			&x509.CertificateRequest{DNSNames: []string{"A.com"}},
-			[]ACMEIdentifier{NewDNS("a.com")},
+			[]ACMEIdentifier{FromDNS("a.com")},
 		},
 		{
 			"duplicate SANs",
 			&x509.CertificateRequest{DNSNames: []string{"b.com", "b.com", "a.com", "a.com"}},
-			[]ACMEIdentifier{NewDNS("a.com"), NewDNS("b.com")},
+			[]ACMEIdentifier{FromDNS("a.com"), FromDNS("b.com")},
 		},
 		{
 			"explicit CN not found in SANs",
 			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "a.com"}, DNSNames: []string{"b.com"}},
-			[]ACMEIdentifier{NewDNS("a.com"), NewDNS("b.com")},
+			[]ACMEIdentifier{FromDNS("a.com"), FromDNS("b.com")},
 		},
 		{
 			"mix of DNSNames and IPAddresses",
 			&x509.CertificateRequest{DNSNames: []string{"a.com"}, IPAddresses: []net.IP{{192, 168, 1, 1}}},
-			[]ACMEIdentifier{NewDNS("a.com"), NewIP(netip.MustParseAddr("192.168.1.1"))},
+			[]ACMEIdentifier{FromDNS("a.com"), FromIP(netip.MustParseAddr("192.168.1.1"))},
 		},
 	}
 	for _, tc := range cases {

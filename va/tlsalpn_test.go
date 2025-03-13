@@ -152,7 +152,7 @@ func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 	defer cancel()
 
 	started := time.Now()
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("slow.server"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("slow.server"), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Validation should've failed")
 	}
@@ -195,7 +195,7 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 	// that, just retry until we get something other than "Network unreachable".
 	var err error
 	for range 20 {
-		_, err = va.validateTLSALPN01(ctx, identifier.NewDNS("unroutable.invalid"), expectedKeyAuthorization)
+		_, err = va.validateTLSALPN01(ctx, identifier.FromDNS("unroutable.invalid"), expectedKeyAuthorization)
 		if err != nil && strings.Contains(err.Error(), "Network unreachable") {
 			continue
 		} else {
@@ -235,7 +235,7 @@ func TestTLSALPN01Refused(t *testing.T) {
 
 	// Take down validation server and check that validation fails.
 	hs.Close()
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
@@ -256,7 +256,7 @@ func TestTLSALPN01TalkingToHTTP(t *testing.T) {
 	httpOnly := httpSrv(t, "", false)
 	va.tlsPort = getPort(httpOnly)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "TLS-SNI-01 validation passed when talking to a HTTP-only server")
 	prob := detailedError(err)
 	expected := "Server only speaks HTTP, not TLS"
@@ -281,7 +281,7 @@ func TestTLSError(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("TLS validation should have failed: What cert was used?")
 	}
@@ -297,7 +297,7 @@ func TestDNSError(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("always.invalid"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("always.invalid"), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("TLS validation should have failed: what IP was used?")
 	}
@@ -374,7 +374,7 @@ func TestTLSALPN01SuccessDNS(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	if err != nil {
 		t.Errorf("Validation failed: %v", err)
 	}
@@ -390,7 +390,7 @@ func TestTLSALPN01SuccessIPv4(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
 	if err != nil {
 		t.Errorf("Validation failed: %v", err)
 	}
@@ -406,7 +406,7 @@ func TestTLSALPN01SuccessIPv6(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("::1")), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromIP(netip.MustParseAddr("::1")), expectedKeyAuthorization)
 	if err != nil {
 		t.Errorf("Validation failed: %v", err)
 	}
@@ -431,7 +431,7 @@ func TestTLSALPN01ObsoleteFailure(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	test.AssertNotNil(t, err, "expected validation to fail")
 	test.AssertContains(t, err.Error(), "Required extension OID 1.3.6.1.5.5.7.1.31 is not present")
 }
@@ -444,7 +444,7 @@ func TestValidateTLSALPN01BadChallenge(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("TLS ALPN validation should have failed.")
 	}
@@ -465,7 +465,7 @@ func TestValidateTLSALPN01BrokenSrv(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("TLS ALPN validation should have failed.")
 	}
@@ -488,7 +488,7 @@ func TestValidateTLSALPN01UnawareSrv(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("TLS ALPN validation should have failed.")
 	}
@@ -521,7 +521,7 @@ func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
 		hs := tlsalpn01SrvWithCert(t, acmeCert, 0, false)
 		va, _ := setup(hs, "", nil, nil)
 
-		_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+		_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 		hs.Close()
 
 		if err == nil {
@@ -561,7 +561,7 @@ func TestTLSALPN01TLSVersion(t *testing.T) {
 
 		va, _ := setup(hs, "", nil, nil)
 
-		_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+		_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 		if !tc.expectError {
 			if err != nil {
 				t.Errorf("expected success, got: %v", err)
@@ -586,7 +586,7 @@ func TestTLSALPN01WrongName(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
 	test.AssertContains(t, err.Error(), "identifier does not match expected identifier")
 }
@@ -598,7 +598,7 @@ func TestTLSALPN01WrongIPv4(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
 	test.AssertContains(t, err.Error(), "identifier does not match expected identifier")
 }
@@ -610,7 +610,7 @@ func TestTLSALPN01WrongIPv6(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("::1")), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromIP(netip.MustParseAddr("::1")), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
 	test.AssertContains(t, err.Error(), "identifier does not match expected identifier")
 }
@@ -621,7 +621,7 @@ func TestTLSALPN01ExtraNames(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
 	test.AssertContains(t, err.Error(), "wrong number of identifiers")
 }
@@ -632,7 +632,7 @@ func TestTLSALPN01WrongIdentType(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
 	test.AssertContains(t, err.Error(), "wrong number of identifiers")
 }
@@ -643,11 +643,11 @@ func TestTLSALPN01TooManyIdentTypes(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
 	test.AssertContains(t, err.Error(), "wrong number of identifiers")
 
-	_, err = va.validateTLSALPN01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
+	_, err = va.validateTLSALPN01(ctx, identifier.FromIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
 	test.AssertContains(t, err.Error(), "wrong number of identifiers")
 }
@@ -701,7 +701,7 @@ func TestTLSALPN01NotSelfSigned(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err = va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err = va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
 	test.AssertContains(t, err.Error(), "not self-signed")
 
@@ -719,7 +719,7 @@ func TestTLSALPN01NotSelfSigned(t *testing.T) {
 
 	va, _ = setup(hs, "", nil, nil)
 
-	_, err = va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err = va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
 	test.AssertContains(t, err.Error(), "not self-signed")
 }
@@ -758,7 +758,7 @@ func TestTLSALPN01ExtraIdentifiers(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err = va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err = va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
 	test.AssertContains(t, err.Error(), "Received certificate with unexpected identifiers")
 }
@@ -781,7 +781,7 @@ func TestTLSALPN01ExtraSANs(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err = va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err = va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
 	// In go >= 1.19, the TLS client library detects that the certificate has
 	// a duplicate extension and terminates the connection itself.
@@ -796,7 +796,7 @@ func TestTLSALPN01ExtraAcmeExtensions(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, nil)
 
-	_, err := va.validateTLSALPN01(ctx, identifier.NewDNS("expected"), expectedKeyAuthorization)
+	_, err := va.validateTLSALPN01(ctx, identifier.FromDNS("expected"), expectedKeyAuthorization)
 	test.AssertError(t, err, "validation should have failed")
 	// In go >= 1.19, the TLS client library detects that the certificate has
 	// a duplicate extension and terminates the connection itself.

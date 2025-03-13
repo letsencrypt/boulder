@@ -54,7 +54,7 @@ func TestIdentifiersPausedForAccount(t *testing.T) {
 	parts := strings.SplitAfter(c.URL, "/")
 	regID, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
 	domain := random_domain()
-	serverIdents := []identifier.ACMEIdentifier{identifier.NewDNS(domain)}
+	serverIdents := []identifier.ACMEIdentifier{identifier.FromDNS(domain)}
 	clientIdents := []acme.Identifier{{Type: "dns", Value: domain}}
 
 	_, err = saClient.PauseIdentifiers(context.Background(), &sapb.PauseRequest{

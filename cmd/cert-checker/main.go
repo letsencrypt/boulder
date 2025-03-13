@@ -409,7 +409,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		//
 		// TODO(#7311): We'll need to iterate over IP address identifiers too.
 		for _, name := range parsedCert.DNSNames {
-			err = c.pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS(name)})
+			err = c.pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.FromDNS(name)})
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			} else {

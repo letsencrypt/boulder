@@ -1117,7 +1117,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Ensure gRPC response is complete.
-	if core.IsAnyNilOrZero(authzPB.Id, identifier.FromProtoWithDefault(authzPB.Identifier, authzPB.DnsName), authzPB.Status, authzPB.Expires) {
+	if core.IsAnyNilOrZero(authzPB.Id, identifier.WithDefault(authzPB), authzPB.Status, authzPB.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -1310,7 +1310,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
 		})
-		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, identifier.FromProtoWithDefault(authzPB.Identifier, authzPB.DnsName), authzPB.Status, authzPB.Expires) {
+		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, identifier.WithDefault(authzPB), authzPB.Status, authzPB.Expires) {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
 		}
@@ -1555,7 +1555,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
-	ident := identifier.FromProtoWithDefault(authzPB.Identifier, authzPB.DnsName)
+	ident := identifier.FromProto(identifier.WithDefault(authzPB))
 
 	// Ensure gRPC response is complete.
 	if core.IsAnyNilOrZero(authzPB.Id, ident, authzPB.Status, authzPB.Expires) {
@@ -1975,7 +1975,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	respObj := orderJSON{
 		Status:      core.AcmeStatus(order.Status),
 		Expires:     order.Expires.AsTime(),
-		Identifiers: identifier.SliceFromProto(order.Identifiers, order.DnsNames),
+		Identifiers: identifier.SliceFromProto(identifier.WithDefaults(order)),
 		Finalize:    finalizeURL,
 		Profile:     order.CertificateProfileName,
 		Replaces:    order.Replaces,
@@ -2389,7 +2389,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		ReplacesSerial:         replacesSerial,
 	})
 
-	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, identifier.SliceFromProto(order.Identifiers, order.DnsNames), order.Created, order.Expires) {
+	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, identifier.WithDefaults(order), order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
@@ -2450,7 +2450,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, identifier.SliceFromProto(order.Identifiers, order.DnsNames), order.Created, order.Expires) {
+	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, identifier.WithDefaults(order), order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2528,7 +2528,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	orderIdents := identifier.SliceFromProto(order.Identifiers, order.DnsNames)
+	orderIdents := identifier.SliceFromProto(identifier.WithDefaults(order))
 	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, orderIdents, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
@@ -2591,13 +2591,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error finalizing order"), err)
 		return
 	}
-	if core.IsAnyNilOrZero(updatedOrder.Id, updatedOrder.RegistrationID, updatedOrder.Created, updatedOrder.Expires) {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
-		return
-	}
-	// TODO(#7311): Remove this conditional, and merge the IsAnyNilOrZero check
-	// upwards, once all RPC users are populating Identifiers.
-	if core.IsAnyNilOrZero(identifier.SliceFromProto(updatedOrder.Identifiers, updatedOrder.DnsNames)) {
+	if core.IsAnyNilOrZero(updatedOrder.Id, updatedOrder.RegistrationID, identifier.WithDefaults(updatedOrder), updatedOrder.Created, updatedOrder.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}
