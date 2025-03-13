@@ -305,7 +305,6 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 }
 
 // Baseline Requirements, Section 7.1.6.1: domain-validated
-var domainValidatedASN1OID = asn1.ObjectIdentifier{2, 23, 140, 1, 2, 1}
 var domainValidatedOID = func() x509.OID {
 	x509OID, err := x509.OIDFromInts([]uint64{2, 23, 140, 1, 2, 1})
 	if err != nil {
@@ -322,8 +321,7 @@ func (i *Issuer) generateTemplate() *x509.Certificate {
 		IssuingCertificateURL: []string{i.issuerURL},
 		BasicConstraintsValid: true,
 		// Baseline Requirements, Section 7.1.6.1: domain-validated
-		PolicyIdentifiers: []asn1.ObjectIdentifier{domainValidatedASN1OID},
-		Policies:          []x509.OID{domainValidatedOID},
+		Policies: []x509.OID{domainValidatedOID},
 	}
 
 	return template
