@@ -1324,17 +1324,17 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 	}
 
 	// Marshal the identifier now that we've crossed the RPC boundary.
-	identifiers, err := newIdentifierModelsFromPB(req.Identifiers)
+	idents, err := newIdentifierModelsFromPB(req.Identifiers)
 	if err != nil {
 		return nil, err
 	}
 
 	response := &sapb.PauseIdentifiersResponse{}
 	_, err = db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		for _, identifier := range identifiers {
+		for _, ident := range idents {
 			pauseError := func(op string, err error) error {
 				return fmt.Errorf("while %s identifier %s for registration ID %d: %w",
-					op, identifier.Value, req.RegistrationID, err,
+					op, ident.Value, req.RegistrationID, err,
 				)
 			}
 
@@ -1347,8 +1347,8 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				identifierType = ? AND 
 				identifierValue = ?`,
 				req.RegistrationID,
-				identifier.Type,
-				identifier.Value,
+				ident.Type,
+				ident.Value,
 			)
 
 			switch {
@@ -1362,8 +1362,8 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 					RegistrationID: req.RegistrationID,
 					PausedAt:       ssa.clk.Now().Truncate(time.Second),
 					identifierModel: identifierModel{
-						Type:  identifier.Type,
-						Value: identifier.Value,
+						Type:  ident.Type,
+						Value: ident.Value,
 					},
 				})
 				if err != nil && !db.IsDuplicate(err) {
@@ -1395,8 +1395,8 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 					unpausedAt IS NOT NULL`,
 					ssa.clk.Now().Truncate(time.Second),
 					req.RegistrationID,
-					identifier.Type,
-					identifier.Value,
+					ident.Type,
+					ident.Value,
 				)
 				if err != nil {
 					return nil, pauseError("repausing", err)
@@ -1409,7 +1409,7 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 			default:
 				// This indicates a database state which should never occur.
 				return nil, fmt.Errorf("impossible database state encountered while pausing identifier %s",
-					identifier.Value,
+					ident.Value,
 				)
 			}
 		}
