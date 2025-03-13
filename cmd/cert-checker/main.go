@@ -406,6 +406,8 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		// Check that the PA is still willing to issue for each name in DNSNames.
 		// We do not check the CommonName here, as (if it exists) we already checked
 		// that it is identical to one of the DNSNames in the SAN.
+		//
+		// TODO(#7311): We'll need to iterate over IP address identifiers too.
 		for _, name := range parsedCert.DNSNames {
 			err = c.pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS(name)})
 			if err != nil {

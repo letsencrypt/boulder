@@ -35,7 +35,7 @@ var (
 	invalidSig          = berrors.BadCSRError("invalid signature on CSR")
 	invalidEmailPresent = berrors.BadCSRError("CSR contains one or more email address fields")
 	invalidIPPresent    = berrors.BadCSRError("CSR contains one or more IP address fields")
-	invalidNoIdentifier = berrors.BadCSRError("at least one identifier is required")
+	invalidNoIdent      = berrors.BadCSRError("at least one identifier is required")
 )
 
 // VerifyCSR checks the validity of a x509.CertificateRequest. It uses
@@ -73,7 +73,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	names := NamesFromCSR(csr)
 
 	if len(names.SANs) == 0 && names.CN == "" {
-		return invalidNoIdentifier
+		return invalidNoIdent
 	}
 	if len(names.CN) > maxCNLength {
 		return berrors.BadCSRError("CN was longer than %d bytes", maxCNLength)
