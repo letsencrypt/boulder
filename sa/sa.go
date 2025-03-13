@@ -472,8 +472,13 @@ func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req 
 			return nil, fmt.Errorf("deactivating account %d: %w", req.Id, err)
 		}
 		rowsAffected, err := result.RowsAffected()
-		if err != nil || rowsAffected != 1 {
-			return nil, fmt.Errorf("deactivating account %d: no rows updated", req.Id)
+		if err != nil {
+			return nil, fmt.Errorf("deactivating account %d: %w", req.Id, err)
+		}
+		if rowsAffected == 0 {
+			return nil, berrors.NotFoundError("no active account with id %d", req.Id)
+		} else if rowsAffected > 1 {
+			return nil, berrors.InternalServerError("unexpectedly deactivated multiple accounts with id %d", req.Id)
 		}
 
 		updatedRegistrationModel, err := selectRegistration(ctx, tx, "id", req.Id)

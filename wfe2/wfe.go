@@ -1441,6 +1441,7 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		} else {
 			// The request was handled by an old RA/SA, which returned nothing.
 			// Instead, modify the existing account object in place and return it.
+			// TODO(#5554): Remove this after all RAs and SAs are updated.
 			currAcct.Status = core.StatusDeactivated
 			currAcct.Contact = nil
 			return currAcct, nil
