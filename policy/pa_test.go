@@ -125,7 +125,7 @@ func TestWellFormedIdentifiers(t *testing.T) {
 	test.AssertError(t, err, "Expected error for IP, but got none")
 	var berr *berrors.BoulderError
 	test.AssertErrorWraps(t, err, &berr)
-	test.AssertContains(t, berr.Error(), errUnsupportedIdentifier.Error())
+	test.AssertContains(t, berr.Error(), errUnsupportedIdent.Error())
 }
 
 func TestWillingToIssue(t *testing.T) {
