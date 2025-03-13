@@ -444,6 +444,8 @@ func (pa *AuthorityImpl) WillingToIssue(idents []identifier.ACMEIdentifier) erro
 func WellFormedIdentifiers(idents []identifier.ACMEIdentifier) error {
 	var subErrors []berrors.SubBoulderError
 	for _, ident := range idents {
+		// TODO(#7311): When this gets a third case for TypeIP, this will be
+		// more elegant as a switch/case.
 		if ident.Type == identifier.TypeDNS {
 			err := ValidDomain(ident.Value)
 			if err != nil {
