@@ -256,7 +256,7 @@ func TestUniqueLowerNames(t *testing.T) {
 }
 
 func TestNormalizeIdentifiers(t *testing.T) {
-	identifiers := []identifier.ACMEIdentifier{
+	idents := []identifier.ACMEIdentifier{
 		{Type: "DNS", Value: "foobar.com"},
 		{Type: "DNS", Value: "fooBAR.com"},
 		{Type: "DNS", Value: "baz.com"},
@@ -271,7 +271,7 @@ func TestNormalizeIdentifiers(t *testing.T) {
 		{Type: "DNS", Value: "baz.com"},
 		{Type: "DNS", Value: "foobar.com"},
 	}
-	u := NormalizeIdentifiers(identifiers)
+	u := NormalizeIdentifiers(idents)
 	test.AssertDeepEquals(t, expected, u)
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 )
 
@@ -70,7 +71,7 @@ type JWTClaims struct {
 }
 
 // GenerateJWT generates a serialized unpause JWT with the provided claims.
-func GenerateJWT(signer JWTSigner, regID int64, identifiers []string, lifetime time.Duration, clk clock.Clock) (string, error) {
+func GenerateJWT(signer JWTSigner, regID int64, idents []string, lifetime time.Duration, clk clock.Clock) (string, error) {
 	claims := JWTClaims{
 		Claims: jwt.Claims{
 			Issuer:   defaultIssuer,
@@ -81,7 +82,7 @@ func GenerateJWT(signer JWTSigner, regID int64, identifiers []string, lifetime t
 			Expiry:   jwt.NewNumericDate(clk.Now().Add(lifetime)),
 		},
 		V: APIVersion,
-		I: strings.Join(identifiers, ","),
+		I: strings.Join(idents, ","),
 	}
 
 	serialized, err := jwt.Signed(signer).Claims(&claims).Serialize()
