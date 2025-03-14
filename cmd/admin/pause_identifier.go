@@ -39,12 +39,12 @@ func (p *subcommandPauseIdentifier) Run(ctx context.Context, a *admin) error {
 		return errors.New("the -batch-file flag is required")
 	}
 
-	identifiers, err := a.readPausedAccountFile(p.batchFile)
+	idents, err := a.readPausedAccountFile(p.batchFile)
 	if err != nil {
 		return err
 	}
 
-	_, err = a.pauseIdentifiers(ctx, identifiers, p.parallelism)
+	_, err = a.pauseIdentifiers(ctx, idents, p.parallelism)
 	if err != nil {
 		return err
 	}
@@ -60,19 +60,19 @@ func (a *admin) pauseIdentifiers(ctx context.Context, entries []pauseCSVData, pa
 		return nil, errors.New("cannot pause identifiers because no pauseData was sent")
 	}
 
-	accountToIdentifiers := make(map[int64][]*corepb.Identifier)
+	accountToIdents := make(map[int64][]*corepb.Identifier)
 	for _, entry := range entries {
-		accountToIdentifiers[entry.accountID] = append(accountToIdentifiers[entry.accountID], &corepb.Identifier{
+		accountToIdents[entry.accountID] = append(accountToIdents[entry.accountID], &corepb.Identifier{
 			Type:  string(entry.identifierType),
 			Value: entry.identifierValue,
 		})
 	}
 
 	var errCount atomic.Uint64
-	respChan := make(chan *sapb.PauseIdentifiersResponse, len(accountToIdentifiers))
+	respChan := make(chan *sapb.PauseIdentifiersResponse, len(accountToIdents))
 	work := make(chan struct {
-		accountID   int64
-		identifiers []*corepb.Identifier
+		accountID int64
+		idents    []*corepb.Identifier
 	}, parallelism)
 
 	var wg sync.WaitGroup
@@ -83,11 +83,11 @@ func (a *admin) pauseIdentifiers(ctx context.Context, entries []pauseCSVData, pa
 			for data := range work {
 				response, err := a.sac.PauseIdentifiers(ctx, &sapb.PauseRequest{
 					RegistrationID: data.accountID,
-					Identifiers:    data.identifiers,
+					Identifiers:    data.idents,
 				})
 				if err != nil {
 					errCount.Add(1)
-					a.log.Errf("error pausing identifier(s) %q for account %d: %v", data.identifiers, data.accountID, err)
+					a.log.Errf("error pausing identifier(s) %q for account %d: %v", data.idents, data.accountID, err)
 				} else {
 					respChan <- response
 				}
@@ -95,11 +95,11 @@ func (a *admin) pauseIdentifiers(ctx context.Context, entries []pauseCSVData, pa
 		}()
 	}
 
-	for accountID, identifiers := range accountToIdentifiers {
+	for accountID, idents := range accountToIdents {
 		work <- struct {
-			accountID   int64
-			identifiers []*corepb.Identifier
-		}{accountID, identifiers}
+			accountID int64
+			idents    []*corepb.Identifier
+		}{accountID, idents}
 	}
 	close(work)
 	wg.Wait()

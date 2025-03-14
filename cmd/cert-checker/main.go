@@ -29,7 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
-	_ "github.com/letsencrypt/boulder/linter"
+	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/precert"
@@ -105,6 +105,7 @@ type certChecker struct {
 	issuedReport                report
 	checkPeriod                 time.Duration
 	acceptableValidityDurations map[time.Duration]bool
+	lints                       lint.Registry
 	logger                      blog.Logger
 }
 
@@ -114,6 +115,7 @@ func newChecker(saDbMap certDB,
 	kp goodkey.KeyPolicy,
 	period time.Duration,
 	avd map[time.Duration]bool,
+	lints lint.Registry,
 	logger blog.Logger,
 ) certChecker {
 	precertGetter := func(ctx context.Context, serial string) ([]byte, error) {
@@ -134,6 +136,7 @@ func newChecker(saDbMap certDB,
 		issuedReport:                report{Entries: make(map[string]reportEntry)},
 		checkPeriod:                 period,
 		acceptableValidityDurations: avd,
+		lints:                       lints,
 		logger:                      logger,
 	}
 }
@@ -252,9 +255,9 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 	return nil
 }
 
-func (c *certChecker) processCerts(ctx context.Context, wg *sync.WaitGroup, badResultsOnly bool, ignoredLints map[string]bool) {
+func (c *certChecker) processCerts(ctx context.Context, wg *sync.WaitGroup, badResultsOnly bool) {
 	for cert := range c.certs {
-		dnsNames, problems := c.checkCert(ctx, cert, ignoredLints)
+		dnsNames, problems := c.checkCert(ctx, cert)
 		valid := len(problems) == 0
 		c.rMu.Lock()
 		if !badResultsOnly || (badResultsOnly && !valid) {
@@ -330,7 +333,7 @@ func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificat
 }
 
 // checkCert returns a list of DNS names in the certificate and a list of problems with the certificate.
-func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, ignoredLints map[string]bool) ([]string, []string) {
+func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate) ([]string, []string) {
 	var dnsNames []string
 	var problems []string
 
@@ -345,9 +348,9 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 	} else {
 		dnsNames = parsedCert.DNSNames
 		// Run zlint checks.
-		results := zlint.LintCertificate(parsedCert)
+		results := zlint.LintCertificateEx(parsedCert, c.lints)
 		for name, res := range results.Results {
-			if ignoredLints[name] || res.Status <= lint.Pass {
+			if res.Status <= lint.Pass {
 				continue
 			}
 			prob := fmt.Sprintf("zlint %s: %s", res.Status, name)
@@ -502,6 +505,9 @@ type Config struct {
 		// public keys in the certs it checks.
 		GoodKey goodkey.Config
 
+		// LintConfig is a path to a zlint config file, which can be used to control
+		// the behavior of zlint's "customizable lints".
+		LintConfig string
 		// IgnoredLints is a list of zlint names. Any lint results from a lint in
 		// the IgnoredLists list are ignored regardless of LintStatus level.
 		IgnoredLints []string
@@ -572,6 +578,14 @@ func main() {
 		cmd.FailOnError(err, "Failed to load CT Log List")
 	}
 
+	lints, err := linter.NewRegistry(config.CertChecker.IgnoredLints)
+	cmd.FailOnError(err, "Failed to create zlint registry")
+	if config.CertChecker.LintConfig != "" {
+		lintconfig, err := lint.NewConfigFromFile(config.CertChecker.LintConfig)
+		cmd.FailOnError(err, "Failed to load zlint config file")
+		lints.SetConfiguration(lintconfig)
+	}
+
 	checker := newChecker(
 		saDbMap,
 		cmd.Clock(),
@@ -579,14 +593,10 @@ func main() {
 		kp,
 		config.CertChecker.CheckPeriod.Duration,
 		acceptableValidityDurations,
+		lints,
 		logger,
 	)
 	fmt.Fprintf(os.Stderr, "# Getting certificates issued in the last %s\n", config.CertChecker.CheckPeriod)
-
-	ignoredLintsMap := make(map[string]bool)
-	for _, name := range config.CertChecker.IgnoredLints {
-		ignoredLintsMap[name] = true
-	}
 
 	// Since we grab certificates in batches we don't want this to block, when it
 	// is finished it will close the certificate channel which allows the range
@@ -602,7 +612,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			s := checker.clock.Now()
-			checker.processCerts(context.TODO(), wg, config.CertChecker.BadResultsOnly, ignoredLintsMap)
+			checker.processCerts(context.TODO(), wg, config.CertChecker.BadResultsOnly)
 			checkerLatency.Observe(checker.clock.Since(s).Seconds())
 		}()
 	}

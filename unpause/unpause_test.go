@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4/jwt"
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -21,12 +22,12 @@ func TestUnpauseJWT(t *testing.T) {
 	test.AssertNotError(t, err, "unexpected error from Load()")
 
 	type args struct {
-		key         []byte
-		version     string
-		account     int64
-		identifiers []string
-		lifetime    time.Duration
-		clk         clock.Clock
+		key      []byte
+		version  string
+		account  int64
+		idents   []string
+		lifetime time.Duration
+		clk      clock.Clock
 	}
 
 	tests := []struct {
@@ -39,12 +40,12 @@ func TestUnpauseJWT(t *testing.T) {
 		{
 			name: "valid one identifier",
 			args: args{
-				key:         hmacKey,
-				version:     APIVersion,
-				account:     1234567890,
-				identifiers: []string{"example.com"},
-				lifetime:    time.Hour,
-				clk:         fc,
+				key:      hmacKey,
+				version:  APIVersion,
+				account:  1234567890,
+				idents:   []string{"example.com"},
+				lifetime: time.Hour,
+				clk:      fc,
 			},
 			want: JWTClaims{
 				Claims: jwt.Claims{
@@ -62,12 +63,12 @@ func TestUnpauseJWT(t *testing.T) {
 		{
 			name: "valid multiple identifiers",
 			args: args{
-				key:         hmacKey,
-				version:     APIVersion,
-				account:     1234567890,
-				identifiers: []string{"example.com", "example.org", "example.net"},
-				lifetime:    time.Hour,
-				clk:         fc,
+				key:      hmacKey,
+				version:  APIVersion,
+				account:  1234567890,
+				idents:   []string{"example.com", "example.org", "example.net"},
+				lifetime: time.Hour,
+				clk:      fc,
 			},
 			want: JWTClaims{
 				Claims: jwt.Claims{
@@ -85,12 +86,12 @@ func TestUnpauseJWT(t *testing.T) {
 		{
 			name: "invalid no account",
 			args: args{
-				key:         hmacKey,
-				version:     APIVersion,
-				account:     0,
-				identifiers: []string{"example.com"},
-				lifetime:    time.Hour,
-				clk:         fc,
+				key:      hmacKey,
+				version:  APIVersion,
+				account:  0,
+				idents:   []string{"example.com"},
+				lifetime: time.Hour,
+				clk:      fc,
 			},
 			want:               JWTClaims{},
 			wantGenerateJWTErr: false,
@@ -102,12 +103,12 @@ func TestUnpauseJWT(t *testing.T) {
 			// the key is loaded to initialize a signer.
 			name: "invalid key too small",
 			args: args{
-				key:         []byte("key"),
-				version:     APIVersion,
-				account:     1234567890,
-				identifiers: []string{"example.com"},
-				lifetime:    time.Hour,
-				clk:         fc,
+				key:      []byte("key"),
+				version:  APIVersion,
+				account:  1234567890,
+				idents:   []string{"example.com"},
+				lifetime: time.Hour,
+				clk:      fc,
 			},
 			want:               JWTClaims{},
 			wantGenerateJWTErr: false,
@@ -116,12 +117,12 @@ func TestUnpauseJWT(t *testing.T) {
 		{
 			name: "invalid no identifiers",
 			args: args{
-				key:         hmacKey,
-				version:     APIVersion,
-				account:     1234567890,
-				identifiers: nil,
-				lifetime:    time.Hour,
-				clk:         fc,
+				key:      hmacKey,
+				version:  APIVersion,
+				account:  1234567890,
+				idents:   nil,
+				lifetime: time.Hour,
+				clk:      fc,
 			},
 			want:               JWTClaims{},
 			wantGenerateJWTErr: false,
@@ -131,7 +132,7 @@ func TestUnpauseJWT(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			token, err := GenerateJWT(signer, tt.args.account, tt.args.identifiers, tt.args.lifetime, tt.args.clk)
+			token, err := GenerateJWT(signer, tt.args.account, tt.args.idents, tt.args.lifetime, tt.args.clk)
 			if tt.wantGenerateJWTErr {
 				test.AssertError(t, err, "expected error from GenerateJWT()")
 				return
