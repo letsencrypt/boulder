@@ -67,14 +67,14 @@ func TestSubProblems(t *testing.T) {
 	}).WithSubErrors(
 		[]berrors.SubBoulderError{
 			{
-				Identifier: identifier.NewDNS("threeletter.agency"),
+				Identifier: identifier.FromDNS("threeletter.agency"),
 				BoulderError: &berrors.BoulderError{
 					Type:   berrors.CAA,
 					Detail: "Forbidden by ■■■■■■■■■■■ and directive ■■■■",
 				},
 			},
 			{
-				Identifier: identifier.NewDNS("area51.threeletter.agency"),
+				Identifier: identifier.FromDNS("area51.threeletter.agency"),
 				BoulderError: &berrors.BoulderError{
 					Type:   berrors.NotFound,
 					Detail: "No Such Area...",

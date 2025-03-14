@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/identifiers"
 	"github.com/letsencrypt/boulder/policy"
 )
 
@@ -200,7 +200,7 @@ func validateFQDNSet(id string) error {
 		return fmt.Errorf(
 			"invalid fqdnSet, %q must be formatted 'fqdnSet'", id)
 	}
-	return policy.WellFormedIdentifiers(identifier.FromDNSNames(domains))
+	return policy.WellFormedIdentifiers(identifiers.FromDNS(domains))
 }
 
 func validateIdForName(name Name, id string) error {

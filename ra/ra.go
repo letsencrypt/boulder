@@ -40,6 +40,7 @@ import (
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/identifiers"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -711,7 +712,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	for _, name := range names {
 		// TODO(#7647): Iterate directly over identifiers here, once the rest of the
 		// finalization flow supports non-dnsName identifiers.
-		ident := identifier.NewDNS(name)
+		ident := identifier.FromDNS(name)
 
 		authz, ok := authzs[ident]
 		if !ok || authz == nil {
@@ -1851,7 +1852,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 
 		// TODO(#7647): Support other kinds of SANs/identifiers here.
 		for _, name := range cert.DNSNames {
-			if _, present := authzMap[identifier.NewDNS(name)]; !present {
+			if _, present := authzMap[identifier.FromDNS(name)]; !present {
 				return nil, berrors.UnauthorizedError("requester does not control all names in cert with serial %q", serialString)
 			}
 		}
@@ -2202,7 +2203,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context
 		// internal errors in the client. From our perspective this uses storage
 		// resources similar to how failed authorizations do, so we increment the
 		// failed authorizations limit.
-		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.NewDNS(req.DnsName))
+		err = ra.countFailedValidations(ctx, req.RegistrationID, identifier.FromDNS(req.DnsName))
 		if err != nil {
 			return nil, fmt.Errorf("failed to update rate limits: %w", err)
 		}
@@ -2281,7 +2282,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
-	err = ra.PA.WillingToIssue(identifier.FromDNSNames(newOrder.DnsNames))
+	err = ra.PA.WillingToIssue(identifiers.FromDNS(newOrder.DnsNames))
 	if err != nil {
 		return nil, err
 	}
@@ -2368,7 +2369,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// TODO(#7647): Support non-dnsName identifier types here.
 	var missingAuthzIdents []identifier.ACMEIdentifier
 	for _, name := range newOrder.DnsNames {
-		ident := identifier.NewDNS(name)
+		ident := identifier.FromDNS(name)
 		// If there isn't an existing authz, note that its missing and continue
 		authz, exists := identToExistingAuthz[ident]
 		if !exists {

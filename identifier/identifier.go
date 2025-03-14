@@ -1,6 +1,6 @@
-// The identifier package defines types for RFC 8555 ACME identifiers.
-// It exists as a separate package to prevent an import loop between the core
-// and probs packages.
+// The identifier package defines types and functions for handling singular RFC
+// 8555 ACME identifiers. It exists as a separate package to prevent an import
+// loop between the core and probs packages.
 package identifier
 
 import (
@@ -50,33 +50,23 @@ func FromProto(ident *corepb.Identifier) ACMEIdentifier {
 // RPCs. TODO(#8023)
 func FromProtoWithDefault(ident *corepb.Identifier, name string) ACMEIdentifier {
 	if ident == nil {
-		return NewDNS(name)
+		return FromDNS(name)
 	}
 	return FromProto(ident)
 }
 
-// NewDNS is a convenience function for creating an ACMEIdentifier with Type
+// FromDNS is a convenience function for creating an ACMEIdentifier with Type
 // "dns" for a given domain name.
-func NewDNS(domain string) ACMEIdentifier {
+func FromDNS(domain string) ACMEIdentifier {
 	return ACMEIdentifier{
 		Type:  TypeDNS,
 		Value: domain,
 	}
 }
 
-// FromDNSNames is a convenience function for creating a slice of ACMEIdentifier
-// with Type "dns" for a given slice of domain names.
-func FromDNSNames(input []string) []ACMEIdentifier {
-	var out []ACMEIdentifier
-	for _, in := range input {
-		out = append(out, NewDNS(in))
-	}
-	return out
-}
-
-// NewIP is a convenience function for creating an ACMEIdentifier with Type "ip"
+// FromIP is a convenience function for creating an ACMEIdentifier with Type "ip"
 // for a given IP address.
-func NewIP(ip netip.Addr) ACMEIdentifier {
+func FromIP(ip netip.Addr) ACMEIdentifier {
 	return ACMEIdentifier{
 		Type: TypeIP,
 		// RFC 8738, Sec. 3: The identifier value MUST contain the textual form
