@@ -1247,7 +1247,7 @@ type StorageAuthorityClient interface {
 	SetCertificateStatusReady(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddSerial(ctx context.Context, in *AddSerialRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeactivateAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*proto.Registration, error)
 	FinalizeAuthorization2(ctx context.Context, in *FinalizeAuthorizationRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	NewOrderAndAuthzs(ctx context.Context, in *NewOrderAndAuthzsRequest, opts ...grpc.CallOption) (*proto.Order, error)
@@ -1657,9 +1657,9 @@ func (c *storageAuthorityClient) DeactivateAuthorization2(ctx context.Context, i
 	return out, nil
 }
 
-func (c *storageAuthorityClient) DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *storageAuthorityClient) DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*proto.Registration, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
+	out := new(proto.Registration)
 	err := c.cc.Invoke(ctx, StorageAuthority_DeactivateRegistration_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -1847,7 +1847,7 @@ type StorageAuthorityServer interface {
 	SetCertificateStatusReady(context.Context, *Serial) (*emptypb.Empty, error)
 	AddSerial(context.Context, *AddSerialRequest) (*emptypb.Empty, error)
 	DeactivateAuthorization2(context.Context, *AuthorizationID2) (*emptypb.Empty, error)
-	DeactivateRegistration(context.Context, *RegistrationID) (*emptypb.Empty, error)
+	DeactivateRegistration(context.Context, *RegistrationID) (*proto.Registration, error)
 	FinalizeAuthorization2(context.Context, *FinalizeAuthorizationRequest) (*emptypb.Empty, error)
 	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*emptypb.Empty, error)
 	NewOrderAndAuthzs(context.Context, *NewOrderAndAuthzsRequest) (*proto.Order, error)
@@ -1971,7 +1971,7 @@ func (UnimplementedStorageAuthorityServer) AddSerial(context.Context, *AddSerial
 func (UnimplementedStorageAuthorityServer) DeactivateAuthorization2(context.Context, *AuthorizationID2) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateAuthorization2 not implemented")
 }
-func (UnimplementedStorageAuthorityServer) DeactivateRegistration(context.Context, *RegistrationID) (*emptypb.Empty, error) {
+func (UnimplementedStorageAuthorityServer) DeactivateRegistration(context.Context, *RegistrationID) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateRegistration not implemented")
 }
 func (UnimplementedStorageAuthorityServer) FinalizeAuthorization2(context.Context, *FinalizeAuthorizationRequest) (*emptypb.Empty, error) {
