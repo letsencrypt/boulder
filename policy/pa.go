@@ -21,7 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
