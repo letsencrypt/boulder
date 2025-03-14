@@ -35,6 +35,11 @@ func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResu
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	apiURL, err := url.JoinPath(pkim.Addr, endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("constructing pkimetal url: %w", err)
+	}
+
 	// reqForm matches PKIMetal's documented form-urlencoded request format. It
 	// does not include the "profile" field, as its default value ("autodetect")
 	// is good for our purposes.
@@ -44,8 +49,7 @@ func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResu
 	reqForm.Set("severity", pkim.Severity)
 	reqForm.Set("format", "json")
 
-	url := fmt.Sprintf("%s/%s", pkim.Addr, endpoint)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(reqForm.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, strings.NewReader(reqForm.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("creating pkimetal request: %w", err)
 	}
