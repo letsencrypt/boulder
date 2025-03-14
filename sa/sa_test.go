@@ -914,12 +914,31 @@ func TestDeactivateAccount(t *testing.T) {
 
 	reg := createWorkingRegistration(t, sa)
 
-	_, err := sa.DeactivateRegistration(context.Background(), &sapb.RegistrationID{Id: reg.Id})
-	test.AssertNotError(t, err, "DeactivateRegistration failed")
+	// An incomplete request should be rejected.
+	_, err := sa.DeactivateRegistration(context.Background(), &sapb.RegistrationID{})
+	test.AssertError(t, err, "Incomplete request should fail")
+	test.AssertContains(t, err.Error(), "incomplete")
 
-	dbReg, err := sa.GetRegistration(context.Background(), &sapb.RegistrationID{Id: reg.Id})
+	// Deactivating should work, and return the same account but with updated
+	// status and cleared contacts.
+	got, err := sa.DeactivateRegistration(context.Background(), &sapb.RegistrationID{Id: reg.Id})
+	test.AssertNotError(t, err, "DeactivateRegistration failed")
+	test.AssertEquals(t, got.Id, reg.Id)
+	test.AssertEquals(t, core.AcmeStatus(got.Status), core.StatusDeactivated)
+	test.AssertEquals(t, len(got.Contact), 0)
+
+	// Double-check that the DeactivateRegistration method returned the right
+	// thing, by fetching the same account ourselves.
+	got, err = sa.GetRegistration(context.Background(), &sapb.RegistrationID{Id: reg.Id})
 	test.AssertNotError(t, err, "GetRegistration failed")
-	test.AssertEquals(t, core.AcmeStatus(dbReg.Status), core.StatusDeactivated)
+	test.AssertEquals(t, got.Id, reg.Id)
+	test.AssertEquals(t, core.AcmeStatus(got.Status), core.StatusDeactivated)
+	test.AssertEquals(t, len(got.Contact), 0)
+
+	// Attempting to deactivate it a second time should fail, since it is already
+	// deactivated.
+	_, err = sa.DeactivateRegistration(context.Background(), &sapb.RegistrationID{Id: reg.Id})
+	test.AssertError(t, err, "Deactivating an already-deactivated account should fail")
 }
 
 func TestReverseName(t *testing.T) {

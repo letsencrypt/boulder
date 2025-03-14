@@ -212,6 +212,13 @@ func (ra *MockRegistrationAuthority) UpdateRegistrationKey(ctx context.Context, 
 	}, nil
 }
 
+func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *rapb.DeactivateRegistrationRequest, ...grpc.CallOption) (*corepb.Registration, error) {
+	return &corepb.Registration{
+		Status: string(core.StatusDeactivated),
+		Key:    []byte(test1KeyPublicJSON),
+	}, nil
+}
+
 func (ra *MockRegistrationAuthority) PerformValidation(context.Context, *rapb.PerformValidationRequest, ...grpc.CallOption) (*corepb.Authorization, error) {
 	return &corepb.Authorization{}, nil
 }
@@ -292,10 +299,6 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 }
 
 func (ra *MockRegistrationAuthority) DeactivateAuthorization(context.Context, *corepb.Authorization, ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, nil
-}
-
-func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *corepb.Registration, ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
