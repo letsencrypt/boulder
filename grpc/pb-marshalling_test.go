@@ -227,7 +227,7 @@ func TestRegistration(t *testing.T) {
 
 func TestAuthz(t *testing.T) {
 	exp := time.Now().AddDate(0, 0, 1).UTC()
-	identifier := identifier.FromDNS("example.com")
+	ident := identifier.FromDNS("example.com")
 	challA := core.Challenge{
 		Type:   core.ChallengeTypeDNS01,
 		Status: core.StatusPending,
@@ -240,7 +240,7 @@ func TestAuthz(t *testing.T) {
 	}
 	inAuthz := core.Authorization{
 		ID:             "1",
-		Identifier:     identifier,
+		Identifier:     ident,
 		RegistrationID: 5,
 		Status:         core.StatusPending,
 		Expires:        &exp,
@@ -254,7 +254,7 @@ func TestAuthz(t *testing.T) {
 
 	inAuthzNilExpires := core.Authorization{
 		ID:             "1",
-		Identifier:     identifier,
+		Identifier:     ident,
 		RegistrationID: 5,
 		Status:         core.StatusPending,
 		Expires:        nil,

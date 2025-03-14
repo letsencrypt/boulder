@@ -152,7 +152,7 @@ func (sfe *SelfServiceFrontEndImpl) BuildID(response http.ResponseWriter, reques
 func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, request *http.Request) {
 	incomingJWT := request.URL.Query().Get("jwt")
 
-	accountID, identifiers, err := sfe.parseUnpauseJWT(incomingJWT)
+	accountID, idents, err := sfe.parseUnpauseJWT(incomingJWT)
 	if err != nil {
 		if errors.Is(err, jwt.ErrExpired) {
 			// JWT expired before the Subscriber visited the unpause page.
@@ -170,14 +170,14 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, re
 	}
 
 	type tmplData struct {
-		PostPath    string
-		JWT         string
-		AccountID   int64
-		Identifiers []string
+		PostPath  string
+		JWT       string
+		AccountID int64
+		Idents    []string
 	}
 
 	// Present the unpause form to the Subscriber.
-	sfe.renderTemplate(response, "unpause-form.html", tmplData{unpausePostForm, incomingJWT, accountID, identifiers})
+	sfe.renderTemplate(response, "unpause-form.html", tmplData{unpausePostForm, incomingJWT, accountID, idents})
 }
 
 // UnpauseSubmit serves a page showing the result of the unpause form submission.

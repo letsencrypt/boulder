@@ -392,7 +392,7 @@ func (pa *AuthorityImpl) WillingToIssue(idents []identifier.ACMEIdentifier) erro
 	var subErrors []berrors.SubBoulderError
 	for _, ident := range idents {
 		if ident.Type != identifier.TypeDNS {
-			subErrors = append(subErrors, subError(ident, probs.UnsupportedIdentifier("invalid non-DNS type identifier")))
+			subErrors = append(subErrors, subError(ident, errUnsupportedIdent))
 			continue
 		}
 
@@ -453,7 +453,7 @@ func WellFormedIdentifiers(idents []identifier.ACMEIdentifier) error {
 				subErrors = append(subErrors, subError(ident, err))
 			}
 		} else {
-			subErrors = append(subErrors, subError(ident, probs.UnsupportedIdentifier("invalid non-DNS type identifier")))
+			subErrors = append(subErrors, subError(ident, errUnsupportedIdent))
 		}
 	}
 	return combineSubErrors(subErrors)

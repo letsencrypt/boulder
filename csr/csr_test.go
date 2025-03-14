@@ -22,7 +22,7 @@ import (
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengeTypesFor(identifier identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
+func (pa *mockPA) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
 	return []core.AcmeChallenge{}, nil
 }
 
