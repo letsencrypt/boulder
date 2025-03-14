@@ -1360,25 +1360,26 @@ func (wfe *WebFrontEndImpl) Account(
 	idStr := request.URL.Path
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Account ID must be an integer"), err)
+		wfe.sendError(response, logEvent, probs.Malformed(fmt.Sprintf("Account ID must be an integer, was %q", idStr)), err)
 		return
 	} else if id <= 0 {
-		msg := fmt.Sprintf("Account ID must be a positive non-zero integer, was %d", id)
-		wfe.sendError(response, logEvent, probs.Malformed(msg), nil)
+		wfe.sendError(response, logEvent, probs.Malformed(fmt.Sprintf("Account ID must be a positive non-zero integer, was %d", id)), nil)
 		return
 	} else if id != currAcct.ID {
-		wfe.sendError(response, logEvent,
-			probs.Unauthorized("Request signing key did not match account key"), nil)
+		wfe.sendError(response, logEvent, probs.Unauthorized("Request signing key did not match account key"), nil)
 		return
 	}
 
-	// An empty string means POST-as-GET (i.e. no update). A body of "{}" means
-	// an update of zero fields, returning the unchanged object. This was the
-	// recommended way to fetch the account object in ACMEv1.
-	if string(body) != "" && string(body) != "{}" {
-		currAcct, prob = wfe.updateAccount(ctx, body, currAcct)
-		if prob != nil {
-			wfe.sendError(response, logEvent, prob, nil)
+	var acct *core.Registration
+	if string(body) == "" || string(body) == "{}" {
+		// An empty string means POST-as-GET (i.e. no update). A body of "{}" means
+		// an update of zero fields, returning the unchanged object. This was the
+		// recommended way to fetch the account object in ACMEv1.
+		acct = currAcct
+	} else {
+		acct, err = wfe.updateAccount(ctx, body, currAcct)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update account"), nil)
 			return
 		}
 	}
@@ -1387,13 +1388,11 @@ func (wfe *WebFrontEndImpl) Account(
 		response.Header().Add("Link", link(wfe.SubscriberAgreementURL, "terms-of-service"))
 	}
 
-	prepAccountForDisplay(currAcct)
+	prepAccountForDisplay(acct)
 
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, currAcct)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
 	if err != nil {
-		// ServerInternal because we just generated the account, it should be OK
-		wfe.sendError(response, logEvent,
-			probs.ServerInternal("Failed to marshal account"), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal account"), err)
 		return
 	}
 }
@@ -1403,10 +1402,7 @@ func (wfe *WebFrontEndImpl) Account(
 // request has already been authenticated by the caller. If the request is a
 // valid update the resulting updated account is returned, otherwise a problem
 // is returned.
-func (wfe *WebFrontEndImpl) updateAccount(
-	ctx context.Context,
-	requestBody []byte,
-	currAcct *core.Registration) (*core.Registration, *probs.ProblemDetails) {
+func (wfe *WebFrontEndImpl) updateAccount(ctx context.Context, requestBody []byte, currAcct *core.Registration) (*core.Registration, error) {
 	// Only the Contact and Status fields of an account may be updated this way.
 	// For key updates clients should be using the key change endpoint.
 	var accountUpdateRequest struct {
@@ -1416,7 +1412,7 @@ func (wfe *WebFrontEndImpl) updateAccount(
 
 	err := json.Unmarshal(requestBody, &accountUpdateRequest)
 	if err != nil {
-		return nil, probs.Malformed("Error unmarshaling account")
+		return nil, berrors.MalformedError("parsing account update request: %s", err)
 	}
 
 	// If a user tries to send both a deactivation request and an update to
@@ -1426,7 +1422,7 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		updatedAcct, err := wfe.ra.DeactivateRegistration(
 			ctx, &rapb.DeactivateRegistrationRequest{RegistrationID: currAcct.ID})
 		if err != nil {
-			return nil, web.ProblemDetailsForError(err, "Unable to deactivate account")
+			return nil, fmt.Errorf("deactivating account: %w", err)
 		}
 
 		if updatedAcct.Status == string(core.StatusDeactivated) {
@@ -1434,9 +1430,8 @@ func (wfe *WebFrontEndImpl) updateAccount(
 			// account object.
 			updatedReg, err := bgrpc.PbToRegistration(updatedAcct)
 			if err != nil {
-				return nil, probs.ServerInternal("Error updating account")
+				return nil, fmt.Errorf("parsing deactivated account: %w", err)
 			}
-
 			return &updatedReg, nil
 		} else {
 			// The request was handled by an old RA/SA, which returned nothing.
@@ -1449,7 +1444,7 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	}
 
 	if accountUpdateRequest.Status != core.StatusValid && accountUpdateRequest.Status != "" {
-		return nil, probs.Malformed("Invalid value provided for status field")
+		return nil, berrors.MalformedError("invalid status %q for account update request, must be %q or %q", accountUpdateRequest.Status, core.StatusValid, core.StatusDeactivated)
 	}
 
 	if accountUpdateRequest.Contact == nil {
@@ -1463,13 +1458,13 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	updatedAcct, err := wfe.ra.UpdateRegistrationContact(ctx, &rapb.UpdateRegistrationContactRequest{
 		RegistrationID: currAcct.ID, Contacts: *accountUpdateRequest.Contact})
 	if err != nil {
-		return nil, web.ProblemDetailsForError(err, "Unable to update account")
+		return nil, fmt.Errorf("updating account: %w", err)
 	}
 
 	// Convert proto to core.Registration for return
 	updatedReg, err := bgrpc.PbToRegistration(updatedAcct)
 	if err != nil {
-		return nil, probs.ServerInternal("Error updating account")
+		return nil, fmt.Errorf("parsing updated account: %w", err)
 	}
 
 	return &updatedReg, nil

@@ -2521,7 +2521,7 @@ func TestDeactivateAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type": "`+probs.ErrorNS+`malformed","detail": "Invalid value provided for status field","status": 400}`)
+		`{"type": "`+probs.ErrorNS+`malformed","detail": "Unable to update account :: invalid status \"asd\" for account update request, must be \"valid\" or \"deactivated\"","status": 400}`)
 
 	responseWriter.Body.Reset()
 	payload = `{"status":"deactivated"}`
