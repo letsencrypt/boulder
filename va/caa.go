@@ -41,7 +41,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	logEvent := validationLogEvent{
 		AuthzID:    req.AuthzID,
 		Requester:  req.AccountURIID,
-		Identifier: identifier.NewDNS(req.Domain),
+		Identifier: identifier.FromDNS(req.Domain),
 	}
 
 	challType := core.AcmeChallenge(req.ValidationMethod)
@@ -49,7 +49,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		return nil, berrors.InternalServerError("unrecognized validation method %q", req.ValidationMethod)
 	}
 
-	acmeID := identifier.NewDNS(req.Domain)
+	acmeID := identifier.FromDNS(req.Domain)
 	params := &caaParams{
 		accountURIID:     req.AccountURIID,
 		validationMethod: challType,

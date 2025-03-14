@@ -19,7 +19,7 @@ import (
 
 func TestDNSValidationWrong(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
-	_, err := va.validateDNS01(context.Background(), identifier.NewDNS("wrong-dns01.com"), expectedKeyAuthorization)
+	_, err := va.validateDNS01(context.Background(), identifier.FromDNS("wrong-dns01.com"), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
 	}
@@ -30,7 +30,7 @@ func TestDNSValidationWrong(t *testing.T) {
 func TestDNSValidationWrongMany(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNS01(context.Background(), identifier.NewDNS("wrong-many-dns01.com"), expectedKeyAuthorization)
+	_, err := va.validateDNS01(context.Background(), identifier.FromDNS("wrong-many-dns01.com"), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
 	}
@@ -41,7 +41,7 @@ func TestDNSValidationWrongMany(t *testing.T) {
 func TestDNSValidationWrongLong(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNS01(context.Background(), identifier.NewDNS("long-dns01.com"), expectedKeyAuthorization)
+	_, err := va.validateDNS01(context.Background(), identifier.FromDNS("long-dns01.com"), expectedKeyAuthorization)
 	if err == nil {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
 	}
@@ -52,7 +52,7 @@ func TestDNSValidationWrongLong(t *testing.T) {
 func TestDNSValidationFailure(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNS01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization)
+	_, err := va.validateDNS01(ctx, identifier.FromDNS("localhost"), expectedKeyAuthorization)
 	prob := detailedError(err)
 
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
@@ -61,7 +61,7 @@ func TestDNSValidationFailure(t *testing.T) {
 func TestDNSValidationIP(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNS01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
+	_, err := va.validateDNS01(ctx, identifier.FromIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
 	prob := detailedError(err)
 
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
@@ -84,7 +84,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 func TestDNSValidationServFail(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateDNS01(ctx, identifier.NewDNS("servfail.com"), expectedKeyAuthorization)
+	_, err := va.validateDNS01(ctx, identifier.FromDNS("servfail.com"), expectedKeyAuthorization)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
@@ -104,7 +104,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 		log,
 		nil)
 
-	_, err = va.validateDNS01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization)
+	_, err = va.validateDNS01(ctx, identifier.FromDNS("localhost"), expectedKeyAuthorization)
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
@@ -112,7 +112,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 func TestDNSValidationOK(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, prob := va.validateDNS01(ctx, identifier.NewDNS("good-dns01.com"), expectedKeyAuthorization)
+	_, prob := va.validateDNS01(ctx, identifier.FromDNS("good-dns01.com"), expectedKeyAuthorization)
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }
@@ -120,7 +120,7 @@ func TestDNSValidationOK(t *testing.T) {
 func TestDNSValidationNoAuthorityOK(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, prob := va.validateDNS01(ctx, identifier.NewDNS("no-authority-dns01.com"), expectedKeyAuthorization)
+	_, prob := va.validateDNS01(ctx, identifier.FromDNS("no-authority-dns01.com"), expectedKeyAuthorization)
 
 	test.Assert(t, prob == nil, "Should be valid.")
 }

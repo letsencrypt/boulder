@@ -10,7 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
-	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/identifiers"
 )
 
 // maxCNLength is the maximum length allowed for the common name as specified in RFC 5280
@@ -82,7 +82,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return berrors.BadCSRError("CSR contains more than %d DNS names", maxNames)
 	}
 
-	err = pa.WillingToIssue(identifier.FromDNSNames(names.SANs))
+	err = pa.WillingToIssue(identifiers.FromDNS(names.SANs))
 	if err != nil {
 		return err
 	}

@@ -33,6 +33,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	_ "github.com/letsencrypt/boulder/grpc/noncebalancer" // imported for its init function.
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/identifiers"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
@@ -1985,7 +1986,7 @@ type orderJSON struct {
 func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corepb.Order) orderJSON {
 	idents := make([]identifier.ACMEIdentifier, len(order.DnsNames))
 	for i, name := range order.DnsNames {
-		idents[i] = identifier.NewDNS(name)
+		idents[i] = identifier.FromDNS(name)
 	}
 	finalizeURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", finalizeOrderPath, order.RegistrationID, order.Id))
@@ -2298,7 +2299,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	names = core.UniqueLowerNames(names)
-	err = policy.WellFormedIdentifiers(identifier.FromDNSNames(names))
+	err = policy.WellFormedIdentifiers(identifiers.FromDNS(names))
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Invalid identifiers requested"), nil)
 		return

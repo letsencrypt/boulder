@@ -17,14 +17,14 @@ func TestWithSubErrors(t *testing.T) {
 
 	subErrs := []SubBoulderError{
 		{
-			Identifier: identifier.NewDNS("example.com"),
+			Identifier: identifier.FromDNS("example.com"),
 			BoulderError: &BoulderError{
 				Type:   RateLimit,
 				Detail: "everyone uses this example domain",
 			},
 		},
 		{
-			Identifier: identifier.NewDNS("what about example.com"),
+			Identifier: identifier.FromDNS("what about example.com"),
 			BoulderError: &BoulderError{
 				Type:   RateLimit,
 				Detail: "try a real identifier value next time",
@@ -39,7 +39,7 @@ func TestWithSubErrors(t *testing.T) {
 	test.AssertDeepEquals(t, outResult.SubErrors, subErrs)
 	// Adding another suberr shouldn't squash the original sub errors
 	anotherSubErr := SubBoulderError{
-		Identifier: identifier.NewDNS("another ident"),
+		Identifier: identifier.FromDNS("another ident"),
 		BoulderError: &BoulderError{
 			Type:   RateLimit,
 			Detail: "another rate limit err",
