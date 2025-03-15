@@ -67,7 +67,7 @@ func TestWithSubProblems(t *testing.T) {
 	}
 	subProbs := []SubProblemDetails{
 		{
-			Identifier: identifier.NewDNS("example.com"),
+			Identifier: identifier.FromDNS("example.com"),
 			ProblemDetails: ProblemDetails{
 				Type:       RateLimitedProblem,
 				Detail:     "don't you think you have enough certificates already?",
@@ -75,7 +75,7 @@ func TestWithSubProblems(t *testing.T) {
 			},
 		},
 		{
-			Identifier: identifier.NewDNS("what about example.com"),
+			Identifier: identifier.FromDNS("what about example.com"),
 			ProblemDetails: ProblemDetails{
 				Type:       MalformedProblem,
 				Detail:     "try a real identifier value next time",
@@ -92,7 +92,7 @@ func TestWithSubProblems(t *testing.T) {
 	test.AssertDeepEquals(t, outResult.SubProblems, subProbs)
 	// Adding another sub problem shouldn't squash the original sub problems
 	anotherSubProb := SubProblemDetails{
-		Identifier: identifier.NewDNS("another ident"),
+		Identifier: identifier.FromDNS("another ident"),
 		ProblemDetails: ProblemDetails{
 			Type:       RateLimitedProblem,
 			Detail:     "yet another rate limit err",

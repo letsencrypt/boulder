@@ -334,14 +334,14 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 		if va.isReservedIPFunc(reqIP.AsSlice()) {
 			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target, must not be a reserved IP address")
 		}
-		return identifier.NewIP(reqIP), reqPort, nil
+		return identifier.FromIP(reqIP), reqPort, nil
 	}
 
 	if _, err := iana.ExtractSuffix(reqHost); err != nil {
 		return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target, must end in IANA registered TLD")
 	}
 
-	return identifier.NewDNS(reqHost), reqPort, nil
+	return identifier.FromDNS(reqHost), reqPort, nil
 }
 
 // setupHTTPValidation sets up a preresolvedDialer and a validation record for

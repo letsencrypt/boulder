@@ -669,7 +669,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	if req.Identifier != nil && req.DnsName != "" {
 		return nil, errors.New("both Identifier and DNSName are set")
 	}
-	ident := identifier.FromProtoWithDefault(req.Identifier, req.DnsName)
+	ident := identifier.FromProto(identifier.WithDefault(req))
 
 	if core.IsAnyNilOrZero(req, ident, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
