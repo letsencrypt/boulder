@@ -82,7 +82,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return berrors.BadCSRError("CSR contains more than %d DNS names", maxNames)
 	}
 
-	err = pa.WillingToIssue(identifier.FromDNSNames(names.SANs))
+	err = pa.WillingToIssue(identifier.NewDNSSlice(names.SANs))
 	if err != nil {
 		return err
 	}

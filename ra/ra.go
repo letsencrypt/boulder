@@ -2281,7 +2281,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
-	err = ra.PA.WillingToIssue(identifier.FromDNSNames(newOrder.DnsNames))
+	err = ra.PA.WillingToIssue(identifier.NewDNSSlice(newOrder.DnsNames))
 	if err != nil {
 		return nil, err
 	}
@@ -2435,7 +2435,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 
 		newAuthzs = append(newAuthzs, &sapb.NewAuthzRequest{
-			Identifier:     ident.AsProto(),
+			Identifier:     ident.ToProto(),
 			RegistrationID: newOrder.RegistrationID,
 			Expires:        timestamppb.New(ra.clk.Now().Add(profile.pendingAuthzLifetime).Truncate(time.Second)),
 			ChallengeTypes: challStrs,

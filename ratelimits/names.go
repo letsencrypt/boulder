@@ -200,7 +200,7 @@ func validateFQDNSet(id string) error {
 		return fmt.Errorf(
 			"invalid fqdnSet, %q must be formatted 'fqdnSet'", id)
 	}
-	return policy.WellFormedIdentifiers(identifier.FromDNSNames(domains))
+	return policy.WellFormedIdentifiers(identifier.NewDNSSlice(domains))
 }
 
 func validateIdForName(name Name, id string) error {
