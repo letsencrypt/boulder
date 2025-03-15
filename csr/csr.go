@@ -101,7 +101,9 @@ type names struct {
 // compatibility with prior Let's Encrypt behaviour. The resulting SANs will
 // always include the original CN, if any.
 //
-// Deprecated: TODO(#7311): Use identifier.FromCSR instead.
+// TODO(#7311): For callers that don't care about CNs, use identifier.FromCSR.
+// For the rest, either revise the names struct to hold identifiers instead of
+// strings, or add an ipSANs field (and rename SANs to dnsSANs).
 func NamesFromCSR(csr *x509.CertificateRequest) names {
 	// Produce a new "sans" slice with the same memory address as csr.DNSNames
 	// but force a new allocation if an append happens so that we don't
