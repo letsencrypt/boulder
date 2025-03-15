@@ -69,6 +69,16 @@ func NewDNS(domain string) ACMEIdentifier {
 	}
 }
 
+// FromDNSNames is a convenience function for creating a slice of ACMEIdentifier
+// with Type "dns" for a given slice of domain names.
+func FromDNSNames(input []string) []ACMEIdentifier {
+	var out []ACMEIdentifier
+	for _, in := range input {
+		out = append(out, NewDNS(in))
+	}
+	return out
+}
+
 // NewIP is a convenience function for creating an ACMEIdentifier with Type "ip"
 // for a given IP address.
 func NewIP(ip netip.Addr) ACMEIdentifier {

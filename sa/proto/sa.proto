@@ -78,7 +78,7 @@ service StorageAuthority {
   rpc SetCertificateStatusReady(Serial) returns (google.protobuf.Empty) {}
   rpc AddSerial(AddSerialRequest) returns (google.protobuf.Empty) {}
   rpc DeactivateAuthorization2(AuthorizationID2) returns (google.protobuf.Empty) {}
-  rpc DeactivateRegistration(RegistrationID) returns (google.protobuf.Empty) {}
+  rpc DeactivateRegistration(RegistrationID) returns (core.Registration) {}
   rpc FinalizeAuthorization2(FinalizeAuthorizationRequest) returns (google.protobuf.Empty) {}
   rpc FinalizeOrder(FinalizeOrderRequest) returns (google.protobuf.Empty) {}
   rpc NewOrderAndAuthzs(NewOrderAndAuthzsRequest) returns (core.Order) {}

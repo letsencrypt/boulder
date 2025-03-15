@@ -26,9 +26,9 @@ func (pa *mockPA) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]core.Acm
 	return []core.AcmeChallenge{}, nil
 }
 
-func (pa *mockPA) WillingToIssue(domains []string) error {
-	for _, domain := range domains {
-		if domain == "bad-name.com" || domain == "other-bad-name.com" {
+func (pa *mockPA) WillingToIssue(idents []identifier.ACMEIdentifier) error {
+	for _, ident := range idents {
+		if ident.Value == "bad-name.com" || ident.Value == "other-bad-name.com" {
 			return errors.New("policy forbids issuing for identifier")
 		}
 	}
@@ -103,7 +103,7 @@ func TestVerifyCSR(t *testing.T) {
 			signedReq,
 			100,
 			&mockPA{},
-			invalidNoDNS,
+			invalidNoIdent,
 		},
 		{
 			signedReqWithLongCN,

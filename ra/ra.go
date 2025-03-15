@@ -2171,23 +2171,17 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 }
 
 // DeactivateRegistration deactivates a valid registration
-func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context, reg *corepb.Registration) (*emptypb.Empty, error) {
-	if reg == nil || reg.Id == 0 {
+func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context, req *rapb.DeactivateRegistrationRequest) (*corepb.Registration, error) {
+	if req == nil || req.RegistrationID == 0 {
 		return nil, errIncompleteGRPCRequest
 	}
-	// TODO(#5554): Remove this check: this is only enforcing that the WFE has
-	// told us the correct status. The SA will enforce that the current status is
-	// valid during its database update.
-	if reg.Status != string(core.StatusValid) {
-		return nil, berrors.MalformedError("only valid registrations can be deactivated")
-	}
-	_, err := ra.SA.DeactivateRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
+
+	updatedAcct, err := ra.SA.DeactivateRegistration(ctx, &sapb.RegistrationID{Id: req.RegistrationID})
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO(#5554): Return the updated account object.
-	return &emptypb.Empty{}, nil
+	return updatedAcct, nil
 }
 
 // DeactivateAuthorization deactivates a currently valid authorization
@@ -2287,7 +2281,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
-	err = ra.PA.WillingToIssue(newOrder.DnsNames)
+	err = ra.PA.WillingToIssue(identifier.FromDNSNames(newOrder.DnsNames))
 	if err != nil {
 		return nil, err
 	}
