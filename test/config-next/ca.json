@@ -118,7 +118,8 @@
 			},
 			"crlProfile": {
 				"validityInterval": "216h",
-				"maxBackdate": "1h5m"
+				"maxBackdate": "1h5m",
+				"lintConfig": "test/config-next/zlint.toml"
 			},
 			"issuers": [
 				{

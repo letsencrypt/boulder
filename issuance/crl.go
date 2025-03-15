@@ -17,6 +17,13 @@ import (
 type CRLProfileConfig struct {
 	ValidityInterval config.Duration
 	MaxBackdate      config.Duration
+
+	// LintConfig is a path to a zlint config file, which can be used to control
+	// the behavior of zlint's "customizable lints".
+	LintConfig string
+	// IgnoredLints is a list of lint names that we know will fail for this
+	// profile, and which we know it is safe to ignore.
+	IgnoredLints []string
 }
 
 type CRLProfile struct {
@@ -38,9 +45,16 @@ func NewCRLProfile(config CRLProfileConfig) (*CRLProfile, error) {
 		return nil, fmt.Errorf("crl max backdate must be non-negative, got %q", config.MaxBackdate)
 	}
 
-	reg, err := linter.NewRegistry(nil)
+	reg, err := linter.NewRegistry(config.IgnoredLints)
 	if err != nil {
 		return nil, fmt.Errorf("creating lint registry: %w", err)
+	}
+	if config.LintConfig != "" {
+		lintconfig, err := lint.NewConfigFromFile(config.LintConfig)
+		if err != nil {
+			return nil, fmt.Errorf("loading zlint config file: %w", err)
+		}
+		reg.SetConfiguration(lintconfig)
 	}
 
 	return &CRLProfile{
