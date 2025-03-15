@@ -1,6 +1,11 @@
 // The identifier package defines types for RFC 8555 ACME identifiers.
+//
 // It exists as a separate package to prevent an import loop between the core
 // and probs packages.
+//
+// Function naming conventions:
+// - "New" creates a new instance from one or more simple base type inputs.
+// - "From" and "To" extract information from, or compose, a more complex object.
 package identifier
 
 import (
@@ -32,7 +37,11 @@ type ACMEIdentifier struct {
 	Value string `json:"value"`
 }
 
-func (i ACMEIdentifier) AsProto() *corepb.Identifier {
+// ACMEIdentifiers is a named type for a slice of ACME identifiers, so that
+// methods can be applied to these slices.
+type ACMEIdentifiers []ACMEIdentifier
+
+func (i ACMEIdentifier) ToProto() *corepb.Identifier {
 	return &corepb.Identifier{
 		Type:  string(i.Type),
 		Value: i.Value,
@@ -64,9 +73,9 @@ func NewDNS(domain string) ACMEIdentifier {
 	}
 }
 
-// FromDNSNames is a convenience function for creating a slice of ACMEIdentifier
+// NewDNSSlice is a convenience function for creating a slice of ACMEIdentifier
 // with Type "dns" for a given slice of domain names.
-func FromDNSNames(input []string) []ACMEIdentifier {
+func NewDNSSlice(input []string) ACMEIdentifiers {
 	var out []ACMEIdentifier
 	for _, in := range input {
 		out = append(out, NewDNS(in))
