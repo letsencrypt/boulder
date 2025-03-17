@@ -10,8 +10,9 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-// TestFromCertAndCSR covers both FromCert and FromCSR; their logic is exactly the same.
-func TestFromCertAndCSR(t *testing.T) {
+// TestFromX509 tests FromCert and FromCSR, which are fromX509's public
+// wrappers.
+func TestFromX509(t *testing.T) {
 	cases := []struct {
 		name           string
 		subject        pkix.Name
