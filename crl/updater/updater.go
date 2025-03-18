@@ -314,7 +314,7 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 
 	// Query for unexpired certificates, with padding to ensure that revoked certificates show
 	// up in at least one CRL, even if they expire between revocation and CRL generation.
-	expiresAfter := cu.clk.Now().Add(cu.lookbackPeriod)
+	expiresAfter := cu.clk.Now().Add(-1 * cu.lookbackPeriod)
 
 	saStream, err := cu.sa.GetRevokedCertsByShard(ctx, &sapb.GetRevokedCertsByShardRequest{
 		IssuerNameID:  int64(issuerNameID),
