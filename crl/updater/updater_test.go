@@ -62,7 +62,7 @@ type fakeSAC struct {
 	leaseError          error
 }
 
-func (f *fakeSAC) GetRevokedCerts(ctx context.Context, req *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[corepb.CRLEntry], error) {
+func (f *fakeSAC) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[corepb.CRLEntry], error) {
 	return &f.revokedCerts, nil
 }
 
