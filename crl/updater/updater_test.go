@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
 	"testing"
@@ -61,12 +62,21 @@ type fakeSAC struct {
 	leaseError          error
 }
 
-func (f *fakeSAC) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[corepb.CRLEntry], error) {
+func (f *fakeSAC) GetRevokedCerts(ctx context.Context, req *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[corepb.CRLEntry], error) {
 	return &f.revokedCerts, nil
 }
 
 // Return some configured contents, but only for shard 2.
 func (f *fakeSAC) GetRevokedCertsByShard(ctx context.Context, req *sapb.GetRevokedCertsByShardRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[corepb.CRLEntry], error) {
+	// This time is based on the setting of `clk` in TestUpdateShard,
+	// minus the setting of `lookbackPeriod` in that same function (24h).
+	want := time.Date(2020, time.January, 17, 0, 0, 0, 0, time.UTC)
+	got := req.ExpiresAfter.AsTime().UTC()
+	if !got.Equal(want) {
+		return nil, fmt.Errorf("fakeSAC.GetRevokedCertsByShard called with ExpiresAfter=%s, want %s",
+			got, want)
+	}
+
 	if req.ShardIdx == 2 {
 		return &f.revokedCertsByShard, nil
 	}
@@ -220,11 +230,15 @@ func TestUpdateShard(t *testing.T) {
 	defer cancel()
 
 	clk := clock.NewFake()
-	clk.Set(time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC))
+	clk.Set(time.Date(2020, time.January, 18, 0, 0, 0, 0, time.UTC))
 	cu, err := NewUpdater(
 		[]*issuance.Certificate{e1, r3},
-		2, 18*time.Hour, 24*time.Hour,
-		6*time.Hour, time.Minute, 1, 1,
+		2,
+		18*time.Hour, // shardWidth
+		24*time.Hour, // lookbackPeriod
+		6*time.Hour,  // updatePeriod
+		time.Minute,  // updateTimeout
+		1, 1,
 		"stale-if-error=60",
 		5*time.Minute,
 		nil,
