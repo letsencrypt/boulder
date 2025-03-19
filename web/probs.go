@@ -52,6 +52,12 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		outProb = probs.Conflict(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.InvalidProfile:
 		outProb = probs.InvalidProfile(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.BadSignatureAlgorithm:
+		outProb = probs.BadSignatureAlgorithm(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.AccountDoesNotExist:
+		outProb = probs.AccountDoesNotExist(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.BadNonce:
+		outProb = probs.BadNonce(fmt.Sprintf("%s :: %s", msg, err))
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.

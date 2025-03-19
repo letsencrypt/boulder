@@ -506,9 +506,9 @@ func (wfe *WebFrontEndImpl) Directory(
 	}
 
 	if request.Method == http.MethodPost {
-		acct, prob := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
-		if prob != nil {
-			wfe.sendError(response, logEvent, prob, nil)
+		acct, err := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 			return
 		}
 		logEvent.Requester = acct.ID
@@ -566,9 +566,9 @@ func (wfe *WebFrontEndImpl) Nonce(
 	response http.ResponseWriter,
 	request *http.Request) {
 	if request.Method == http.MethodPost {
-		acct, prob := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
-		if prob != nil {
-			wfe.sendError(response, logEvent, prob, nil)
+		acct, err := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 			return
 		}
 		logEvent.Requester = acct.ID
@@ -676,10 +676,10 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	// NewAccount uses `validSelfAuthenticatedPOST` instead of
 	// `validPOSTforAccount` because there is no account to authenticate against
 	// until after it is created!
-	body, key, prob := wfe.validSelfAuthenticatedPOST(ctx, request)
-	if prob != nil {
+	body, key, err := wfe.validSelfAuthenticatedPOST(ctx, request)
+	if err != nil {
 		// validSelfAuthenticatedPOST handles its own setting of logEvent.Errors
-		wfe.sendError(response, logEvent, prob, nil)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 		return
 	}
 
@@ -689,7 +689,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		OnlyReturnExisting   bool      `json:"onlyReturnExisting"`
 	}
 
-	err := json.Unmarshal(body, &accountCreateRequest)
+	err = json.Unmarshal(body, &accountCreateRequest)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
 		return
@@ -939,9 +939,9 @@ func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
 	logEvent *web.RequestEvent) error {
 	// For Key ID revocations we authenticate the outer JWS by using
 	// `validJWSForAccount` similar to other WFE endpoints
-	jwsBody, _, acct, prob := wfe.validJWSForAccount(outerJWS, request, ctx, logEvent)
-	if prob != nil {
-		return prob
+	jwsBody, _, acct, err := wfe.validJWSForAccount(outerJWS, request, ctx, logEvent)
+	if err != nil {
+		return err
 	}
 
 	cert, reason, err := wfe.parseRevocation(jwsBody, logEvent)
@@ -1038,22 +1038,21 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 	// certificates are authorized to be revoked by the requester
 
 	// Parse the JWS from the HTTP Request
-	jws, prob := wfe.parseJWSRequest(request)
-	if prob != nil {
-		wfe.sendError(response, logEvent, prob, nil)
+	jws, err := wfe.parseJWSRequest(request)
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 		return
 	}
 
 	// Figure out which type of authentication this JWS uses
-	authType, prob := checkJWSAuthType(jws.Signatures[0].Header)
-	if prob != nil {
-		wfe.sendError(response, logEvent, prob, nil)
+	authType, err := checkJWSAuthType(jws.Signatures[0].Header)
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 		return
 	}
 
 	// Handle the revocation request according to how it is authenticated, or if
 	// the authentication type is unknown, error immediately
-	var err error
 	switch authType {
 	case embeddedKeyID:
 		err = wfe.revokeCertBySubscriberKey(ctx, jws, request, logEvent)
@@ -1063,7 +1062,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 		err = berrors.MalformedError("Malformed JWS, no KeyID or embedded JWK")
 	}
 	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to revoke"), nil)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to revoke"), err)
 		return
 	}
 
@@ -1247,11 +1246,11 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	authz core.Authorization,
 	challengeIndex int,
 	logEvent *web.RequestEvent) {
-	body, _, currAcct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, _, currAcct, err := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
-	if prob != nil {
+	if err != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors
-		wfe.sendError(response, logEvent, prob, nil)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 		return
 	}
 
@@ -1325,7 +1324,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	response.Header().Add("Location", challenge.URL)
 	response.Header().Add("Link", link(authzURL, "up"))
 
-	err := wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
+	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, challenge)
 	if err != nil {
 		// ServerInternal because we made the challenges, they should be OK
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to marshal challenge"), err)
@@ -1339,11 +1338,11 @@ func (wfe *WebFrontEndImpl) Account(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	body, _, currAcct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, _, currAcct, err := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
-	if prob != nil {
+	if err != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors
-		wfe.sendError(response, logEvent, prob, nil)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 		return
 	}
 
@@ -1527,10 +1526,10 @@ func (wfe *WebFrontEndImpl) Authorization(
 	//   B) a POST-as-GET to query the authorization details
 	if request.Method == "POST" {
 		// Both POST options need to be authenticated by an account
-		body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+		body, _, acct, err := wfe.validPOSTForAccount(request, ctx, logEvent)
 		addRequesterHeader(response, logEvent.Requester)
-		if prob != nil {
-			wfe.sendError(response, logEvent, prob, nil)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 			return
 		}
 		requestAccount = acct
@@ -1615,9 +1614,9 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	// Any POSTs to the Certificate endpoint should be POST-as-GET requests. There are
 	// no POSTs with a body allowed for this endpoint.
 	if request.Method == "POST" {
-		acct, prob := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
-		if prob != nil {
-			wfe.sendError(response, logEvent, prob, nil)
+		acct, err := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 			return
 		}
 		requesterAccount = acct
@@ -1846,25 +1845,25 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	request *http.Request) {
 	// Validate the outer JWS on the key rollover in standard fashion using
 	// validPOSTForAccount
-	outerBody, outerJWS, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	outerBody, outerJWS, acct, err := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
-	if prob != nil {
-		wfe.sendError(response, logEvent, prob, nil)
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 		return
 	}
 	oldKey := acct.Key
 
 	// Parse the inner JWS from the validated outer JWS body
-	innerJWS, prob := wfe.parseJWS(outerBody)
-	if prob != nil {
-		wfe.sendError(response, logEvent, prob, nil)
+	innerJWS, err := wfe.parseJWS(outerBody)
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 		return
 	}
 
 	// Validate the inner JWS as a key rollover request for the outer JWS
-	rolloverOperation, prob := wfe.validKeyRollover(ctx, outerJWS, innerJWS, oldKey)
-	if prob != nil {
-		wfe.sendError(response, logEvent, prob, nil)
+	rolloverOperation, err := wfe.validKeyRollover(ctx, outerJWS, innerJWS, oldKey)
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 		return
 	}
 	newKey := rolloverOperation.NewKey
@@ -2229,11 +2228,11 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, _, acct, err := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
-	if prob != nil {
+	if err != nil {
 		// validPOSTForAccount handles its own setting of logEvent.Errors
-		wfe.sendError(response, logEvent, prob, nil)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 		return
 	}
 
@@ -2247,7 +2246,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		Replaces    string
 		Profile     string
 	}
-	err := json.Unmarshal(body, &newOrderRequest)
+	err = json.Unmarshal(body, &newOrderRequest)
 	if err != nil {
 		wfe.sendError(response, logEvent,
 			probs.Malformed("Unable to unmarshal NewOrder request body"), err)
@@ -2405,9 +2404,9 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	// Any POSTs to the Order endpoint should be POST-as-GET requests. There are
 	// no POSTs with a body allowed for this endpoint.
 	if request.Method == http.MethodPost {
-		acct, prob := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
-		if prob != nil {
-			wfe.sendError(response, logEvent, prob, nil)
+		acct, err := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
+		if err != nil {
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 			return
 		}
 		requesterAccount = acct
@@ -2478,10 +2477,10 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	// Validate the POST body signature and get the authenticated account for this
 	// finalize order request
-	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	body, _, acct, err := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
-	if prob != nil {
-		wfe.sendError(response, logEvent, prob, nil)
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to validate JWS"), err)
 		return
 	}
 

@@ -31,7 +31,7 @@ const (
 	// InternalServer is deprecated. Instead, pass a plain Go error. That will get
 	// turned into a probs.InternalServerError by the WFE.
 	InternalServer ErrorType = iota
-	_
+	_                        // Reserved, previously NotSupported
 	Malformed
 	Unauthorized
 	NotFound
@@ -58,6 +58,9 @@ const (
 	// The certificate being indicated for replacement already has a replacement
 	// order.
 	AlreadyReplaced
+	BadSignatureAlgorithm
+	AccountDoesNotExist
+	BadNonce
 )
 
 func (ErrorType) Error() string {
@@ -302,4 +305,16 @@ func UnknownSerialError() error {
 
 func InvalidProfileError(msg string, args ...interface{}) error {
 	return newf(InvalidProfile, msg, args...)
+}
+
+func BadSignatureAlgorithmError(msg string, args ...interface{}) error {
+	return newf(BadSignatureAlgorithm, msg, args...)
+}
+
+func AccountDoesNotExistError(msg string, args ...interface{}) error {
+	return newf(AccountDoesNotExist, msg, args...)
+}
+
+func BadNonceError(msg string, args ...interface{}) error {
+	return newf(BadNonce, msg, args...)
 }
