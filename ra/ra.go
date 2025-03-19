@@ -1068,7 +1068,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// There should never be an order with 0 identifiers at the stage, but we check to
 	// be on the safe side, throwing an internal server error if this assumption
 	// is ever violated.
-	orderIdents := identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaults(req.Order)))
+	orderIdents := identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaultSlice(req.Order)))
 	if len(orderIdents) == 0 {
 		return nil, berrors.InternalServerError("Order has no associated identifiers")
 	}
@@ -1177,7 +1177,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ra.inflightFinalizes.Inc()
 	defer ra.inflightFinalizes.Dec()
 
-	idents := identifier.WithDefaults(order)
+	idents := identifier.WithDefaultSlice(order)
 
 	// TODO(#7311): Remove this once all RPC users can handle Identifiers.
 	var dnsNames []string
@@ -2274,7 +2274,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	idents := identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaults(req)))
+	idents := identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaultSlice(req)))
 
 	profile, err := ra.profiles.get(req.CertificateProfileName)
 	if err != nil {
@@ -2330,7 +2330,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Error if an incomplete order is returned.
 	if existingOrder != nil {
 		// Check to see if the expected fields of the existing order are set.
-		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, identifier.WithDefaults(existingOrder), existingOrder.Created, existingOrder.Expires) {
+		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, identifier.WithDefaultSlice(existingOrder), existingOrder.Created, existingOrder.Expires) {
 			return nil, errIncompleteGRPCResponse
 		}
 
@@ -2520,7 +2520,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, identifier.WithDefaults(storedOrder), storedOrder.Created, storedOrder.Expires) {
+	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, identifier.WithDefaultSlice(storedOrder), storedOrder.Created, storedOrder.Expires) {
 		return nil, errIncompleteGRPCResponse
 	}
 	ra.orderAges.WithLabelValues("NewOrder").Observe(0)

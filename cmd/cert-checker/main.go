@@ -323,7 +323,7 @@ func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificat
 	for _, ident := range idents {
 		_, ok := identToAuthz[ident]
 		if !ok {
-			errors = append(errors, fmt.Errorf("missing authz for %q", ident))
+			errors = append(errors, fmt.Errorf("missing authz for %q", ident.Value))
 			continue
 		}
 	}

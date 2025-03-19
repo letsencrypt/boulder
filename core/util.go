@@ -334,10 +334,8 @@ func HashNames(names []string) []byte {
 // HashIdentifiers returns a hash of the identifiers requested. This is intended
 // for use when interacting with the orderFqdnSets table and rate limiting.
 func HashIdentifiers(idents identifier.ACMEIdentifiers) []byte {
-	idents = identifier.Normalize(idents)
-
 	var values []string
-	for _, ident := range idents {
+	for _, ident := range identifier.Normalize(idents) {
 		values = append(values, ident.Value)
 	}
 

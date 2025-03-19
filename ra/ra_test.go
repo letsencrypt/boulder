@@ -2101,7 +2101,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
 	test.AssertDeepEquals(t,
-		identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaults(order))),
+		identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaultSlice(order))),
 		identifier.Normalize(orderIdents))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
@@ -2160,7 +2160,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
 	test.AssertDeepEquals(t,
-		identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaults(order))),
+		identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaultSlice(order))),
 		identifier.Normalize(orderIdents))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 

@@ -211,9 +211,9 @@ type HasIdentifiers interface {
 	GetDnsNames() []string
 }
 
-// WithDefaults can be removed after DnsNames are no longer used in
+// WithDefaultSlice can be removed after DnsNames are no longer used in
 // RPCs. TODO(#8023)
-func WithDefaults(input HasIdentifiers) []*corepb.Identifier {
+func WithDefaultSlice(input HasIdentifiers) []*corepb.Identifier {
 	if len(input.GetIdentifiers()) > 0 {
 		return input.GetIdentifiers()
 	}

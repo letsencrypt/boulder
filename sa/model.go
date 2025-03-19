@@ -1118,7 +1118,7 @@ func statusForOrder(order *corepb.Order, authzValidityInfo []authzValidity, now 
 
 	// An order is fully authorized if it has valid authzs for each of the order
 	// identifiers
-	fullyAuthorized := len(identifier.WithDefaults(order)) == validAuthzs
+	fullyAuthorized := len(identifier.WithDefaultSlice(order)) == validAuthzs
 
 	// If the order isn't fully authorized we've encountered an internal error:
 	// Above we checked for any invalid or pending authzs and should have returned
