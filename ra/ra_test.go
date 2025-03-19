@@ -1435,7 +1435,7 @@ func TestNewOrder_OrderReuse(t *testing.T) {
 
 	// Create an initial order with regA and names
 	names := []string{"zombo.com", "welcome.to.zombo.com"}
-	idents := []identifier.ACMEIdentifier{
+	idents := identifier.ACMEIdentifiers{
 		identifier.NewDNS("zombo.com"),
 		identifier.NewDNS("welcome.to.zombo.com"),
 	}
@@ -1463,7 +1463,7 @@ func TestNewOrder_OrderReuse(t *testing.T) {
 		Name           string
 		RegistrationID int64
 		DnsNames       []string
-		Identifiers    []identifier.ACMEIdentifier
+		Identifiers    identifier.ACMEIdentifiers
 		Profile        string
 		ExpectReuse    bool
 	}{
@@ -1995,7 +1995,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 
 	ctx := context.Background()
 	names := []string{"*.zombo.com"}
-	idents := []identifier.ACMEIdentifier{identifier.NewDNS("*.zombo.com")}
+	idents := identifier.ACMEIdentifiers{identifier.NewDNS("*.zombo.com")}
 
 	// Use a mock SA that always returns a valid HTTP-01 authz for the name
 	// "zombo.com"
@@ -2072,7 +2072,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	defer cleanUp()
 
 	orderNames := []string{"example.com", "*.welcome.zombo.com"}
-	orderIdents := []identifier.ACMEIdentifier{
+	orderIdents := identifier.ACMEIdentifiers{
 		identifier.NewDNS("example.com"),
 		identifier.NewDNS("*.welcome.zombo.com"),
 	}
@@ -2133,7 +2133,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// return just 2 authz's, one for the wildcard with a DNS-01
 	// challenge and one for the base domain with the normal challenges.
 	orderNames = []string{"zombo.com", "*.zombo.com"}
-	orderIdents = []identifier.ACMEIdentifier{
+	orderIdents = identifier.ACMEIdentifiers{
 		identifier.NewDNS("zombo.com"),
 		identifier.NewDNS("*.zombo.com"),
 	}
@@ -2214,7 +2214,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// order for. We should **NOT** reuse the authorization from the previous
 	// order since we now require a DNS-01 challenge for the `*.` prefixed name.
 	orderNames = []string{"*.everything.is.possible.zombo.com"}
-	orderIdents = []identifier.ACMEIdentifier{identifier.NewDNS("*.everything.is.possible.zombo.com")}
+	orderIdents = identifier.ACMEIdentifiers{identifier.NewDNS("*.everything.is.possible.zombo.com")}
 	wildcardOrderRequest = &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
@@ -2261,7 +2261,7 @@ func TestNewOrderExpiry(t *testing.T) {
 
 	ctx := context.Background()
 	names := []string{"zombo.com"}
-	idents := []identifier.ACMEIdentifier{identifier.NewDNS("zombo.com")}
+	idents := identifier.ACMEIdentifiers{identifier.NewDNS("zombo.com")}
 
 	// Set the order lifetime to 48 hours.
 	ra.profiles.def().orderLifetime = 48 * time.Hour
@@ -2779,7 +2779,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 
 	// Create a new order for a wildcard domain
 	orderNames := []string{"*.zombo.com"}
-	orderIdents := []identifier.ACMEIdentifier{identifier.NewDNS("*.zombo.com")}
+	orderIdents := identifier.ACMEIdentifiers{identifier.NewDNS("*.zombo.com")}
 	wildcardOrderRequest := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
@@ -3016,7 +3016,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 
 	// Make some valid authorizations for some names using different challenge types
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	idents := []identifier.ACMEIdentifier{
+	idents := identifier.ACMEIdentifiers{
 		identifier.NewDNS("not-example.com"),
 		identifier.NewDNS("www.not-example.com"),
 		identifier.NewDNS("still.not-example.com"),
@@ -3149,7 +3149,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 	// Make some valid authzs for four names. Half of them were validated
 	// recently and half were validated in excess of our CAA recheck time.
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
-	idents := []identifier.ACMEIdentifier{
+	idents := identifier.ACMEIdentifiers{
 		identifier.NewDNS("not-example.com"),
 		identifier.NewDNS("www.not-example.com"),
 		identifier.NewDNS("still.not-example.com"),

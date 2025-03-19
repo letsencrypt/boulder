@@ -49,13 +49,13 @@ type OrderJSON struct {
 	// The URL field isn't returned by the API, we populate it manually with the
 	// `Location` header.
 	URL            string
-	Status         core.AcmeStatus             `json:"status"`
-	Expires        time.Time                   `json:"expires"`
-	Identifiers    []identifier.ACMEIdentifier `json:"identifiers"`
-	Authorizations []string                    `json:"authorizations"`
-	Finalize       string                      `json:"finalize"`
-	Certificate    string                      `json:"certificate,omitempty"`
-	Error          *probs.ProblemDetails       `json:"error,omitempty"`
+	Status         core.AcmeStatus            `json:"status"`
+	Expires        time.Time                  `json:"expires"`
+	Identifiers    identifier.ACMEIdentifiers `json:"identifiers"`
+	Authorizations []string                   `json:"authorizations"`
+	Finalize       string                     `json:"finalize"`
+	Certificate    string                     `json:"certificate,omitempty"`
+	Error          *probs.ProblemDetails      `json:"error,omitempty"`
 }
 
 // getAccount takes a randomly selected v2 account from `state.accts` and puts it
@@ -164,14 +164,14 @@ func newOrder(s *State, c *acmeCache) error {
 	orderSize := 1 + mrand.IntN(s.maxNamesPerCert-1)
 	// Generate that many random domain names. There may be some duplicates, we
 	// don't care. The ACME server will collapse those down for us, how handy!
-	dnsNames := []identifier.ACMEIdentifier{}
+	dnsNames := identifier.ACMEIdentifiers{}
 	for range orderSize {
 		dnsNames = append(dnsNames, identifier.NewDNS(randDomain(s.domainBase)))
 	}
 
 	// create the new order request object
 	initOrder := struct {
-		Identifiers []identifier.ACMEIdentifier
+		Identifiers identifier.ACMEIdentifiers
 	}{
 		Identifiers: dnsNames,
 	}

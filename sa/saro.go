@@ -345,7 +345,7 @@ type oneSelectorFunc func(ctx context.Context, holder interface{}, query string,
 
 // checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
 // for the given names exists.
-func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(ctx context.Context, selector oneSelectorFunc, idents []identifier.ACMEIdentifier) (bool, error) {
+func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(ctx context.Context, selector oneSelectorFunc, idents identifier.ACMEIdentifiers) (bool, error) {
 	namehash := core.HashIdentifiers(idents)
 	var exists bool
 	err := selector(
@@ -398,7 +398,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, err
 		}
 
-		idents := make([]identifier.ACMEIdentifier, 0, len(authzValidityInfo))
+		idents := make(identifier.ACMEIdentifiers, 0, len(authzValidityInfo))
 		names := make([]string, 0, len(authzValidityInfo))
 		for _, a := range authzValidityInfo {
 			idents = append(idents, identifier.ACMEIdentifier{Type: uintToIdentifierType[a.IdentifierType], Value: a.IdentifierValue})

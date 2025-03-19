@@ -1138,7 +1138,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		return
 	}
 
-	logEvent.Identifiers = []identifier.ACMEIdentifier{authz.Identifier}
+	logEvent.Identifiers = identifier.ACMEIdentifiers{authz.Identifier}
 	logEvent.Status = string(authz.Status)
 
 	challenge := authz.Challenges[challengeIndex]
@@ -1569,7 +1569,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
-	logEvent.Identifiers = []identifier.ACMEIdentifier{ident}
+	logEvent.Identifiers = identifier.ACMEIdentifiers{ident}
 	logEvent.Status = authzPB.Status
 
 	// After expiring, authorizations are inaccessible
@@ -1960,15 +1960,15 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 }
 
 type orderJSON struct {
-	Status         core.AcmeStatus             `json:"status"`
-	Expires        time.Time                   `json:"expires"`
-	Identifiers    []identifier.ACMEIdentifier `json:"identifiers"`
-	Authorizations []string                    `json:"authorizations"`
-	Finalize       string                      `json:"finalize"`
-	Profile        string                      `json:"profile,omitempty"`
-	Certificate    string                      `json:"certificate,omitempty"`
-	Error          *probs.ProblemDetails       `json:"error,omitempty"`
-	Replaces       string                      `json:"replaces,omitempty"`
+	Status         core.AcmeStatus            `json:"status"`
+	Expires        time.Time                  `json:"expires"`
+	Identifiers    identifier.ACMEIdentifiers `json:"identifiers"`
+	Authorizations []string                   `json:"authorizations"`
+	Finalize       string                     `json:"finalize"`
+	Profile        string                     `json:"profile,omitempty"`
+	Certificate    string                     `json:"certificate,omitempty"`
+	Error          *probs.ProblemDetails      `json:"error,omitempty"`
+	Replaces       string                     `json:"replaces,omitempty"`
 }
 
 // orderToOrderJSON converts a *corepb.Order instance into an orderJSON struct
@@ -2014,7 +2014,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 // created, the func will be nil if any error was encountered during the check.
 //
 // TODO(#7311): Handle IP address identifiers.
-func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, idents []identifier.ACMEIdentifier, isRenewal bool) (func(), error) {
+func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, idents identifier.ACMEIdentifiers, isRenewal bool) (func(), error) {
 	var names []string
 	for _, ident := range idents {
 		if ident.Type != identifier.TypeDNS {
@@ -2051,7 +2051,7 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 //   - the requesting account owns that certificate, and
 //   - a name in this new order matches a name in the certificate being
 //     replaced.
-func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *core.Registration, idents []identifier.ACMEIdentifier, serial string) error {
+func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *core.Registration, idents identifier.ACMEIdentifiers, serial string) error {
 	// It's okay to use GetCertificate (vs trying to get a precertificate),
 	// because we don't intend to serve ARI for certs that never made it past
 	// the precert stage.
@@ -2148,7 +2148,7 @@ func (wfe *WebFrontEndImpl) determineARIWindow(ctx context.Context, serial strin
 //     Otherwise, this value is false.
 //   - The last value is an error, this is non-nil unless the order is not a
 //     replacement or there was an error while validating the replacement.
-func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *core.Registration, idents []identifier.ACMEIdentifier, replaces string) (string, bool, error) {
+func (wfe *WebFrontEndImpl) validateReplacementOrder(ctx context.Context, acct *core.Registration, idents identifier.ACMEIdentifiers, replaces string) (string, bool, error) {
 	if replaces == "" {
 		// No replacement indicated.
 		return "", false, nil
@@ -2203,7 +2203,7 @@ func (wfe *WebFrontEndImpl) validateCertificateProfileName(profile string) error
 	return nil
 }
 
-func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIdents []identifier.ACMEIdentifier, regID int64) ([]string, error) {
+func (wfe *WebFrontEndImpl) checkIdentifiersPaused(ctx context.Context, orderIdents identifier.ACMEIdentifiers, regID int64) ([]string, error) {
 	uniqueOrderIdents := identifier.Normalize(orderIdents)
 	var idents []*corepb.Identifier
 	for _, ident := range uniqueOrderIdents {
@@ -2253,7 +2253,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// support the identifiers and replaces fields. If notBefore or notAfter are
 	// sent we return a probs.Malformed as we do not support them.
 	var newOrderRequest struct {
-		Identifiers []identifier.ACMEIdentifier `json:"identifiers"`
+		Identifiers identifier.ACMEIdentifiers `json:"identifiers"`
 		NotBefore   string
 		NotAfter    string
 		Replaces    string

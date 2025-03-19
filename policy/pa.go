@@ -382,7 +382,7 @@ func subError(ident identifier.ACMEIdentifier, err error) berrors.SubBoulderErro
 // specific to each identifier.
 //
 // Precondition: all input identifier values must be in lowercase.
-func (pa *AuthorityImpl) WillingToIssue(idents []identifier.ACMEIdentifier) error {
+func (pa *AuthorityImpl) WillingToIssue(idents identifier.ACMEIdentifiers) error {
 	err := WellFormedIdentifiers(idents)
 	if err != nil {
 		return err
@@ -441,7 +441,7 @@ func (pa *AuthorityImpl) WillingToIssue(idents []identifier.ACMEIdentifier) erro
 //
 // If multiple domains are invalid, the error will contain suberrors specific to
 // each domain.
-func WellFormedIdentifiers(idents []identifier.ACMEIdentifier) error {
+func WellFormedIdentifiers(idents identifier.ACMEIdentifiers) error {
 	var subErrors []berrors.SubBoulderError
 	for _, ident := range idents {
 		// TODO(#7311): When this gets a third case for TypeIP, this will be

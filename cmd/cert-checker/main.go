@@ -302,7 +302,7 @@ var expectedExtensionContent = map[string][]byte{
 // likely valid at the time the certificate was issued. Authorizations with
 // status = "deactivated" are counted for this, so long as their validatedAt
 // is before the issuance and expiration is after.
-func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificate, idents []identifier.ACMEIdentifier) error {
+func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificate, idents identifier.ACMEIdentifiers) error {
 	authzs, err := sa.SelectAuthzsMatchingIssuance(ctx, c.dbMap, cert.RegistrationID, cert.Issued, idents)
 	if err != nil {
 		return fmt.Errorf("error checking authzs for certificate %s: %w", cert.Serial, err)
@@ -412,7 +412,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate) ([]s
 		//
 		// TODO(#7311): We'll need to iterate over IP address identifiers too.
 		for _, name := range parsedCert.DNSNames {
-			err = c.pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS(name)})
+			err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(name)})
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
 			} else {

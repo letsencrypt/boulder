@@ -3872,23 +3872,23 @@ func TestOrderMatchesReplacement(t *testing.T) {
 	}
 
 	// Working with a single matching identifier.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []identifier.ACMEIdentifier{identifier.NewDNS("example.com")}, expectSerial.String())
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, identifier.ACMEIdentifiers{identifier.NewDNS("example.com")}, expectSerial.String())
 	test.AssertNotError(t, err, "failed to check order is replacement")
 
 	// Working with a different matching identifier.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []identifier.ACMEIdentifier{identifier.NewDNS("example-a.com")}, expectSerial.String())
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, identifier.ACMEIdentifiers{identifier.NewDNS("example-a.com")}, expectSerial.String())
 	test.AssertNotError(t, err, "failed to check order is replacement")
 
 	// No matching identifiers.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []identifier.ACMEIdentifier{identifier.NewDNS("example-b.com")}, expectSerial.String())
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, identifier.ACMEIdentifiers{identifier.NewDNS("example-b.com")}, expectSerial.String())
 	test.AssertErrorIs(t, err, berrors.Malformed)
 
 	// RegID for predecessor order does not match.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 2}, []identifier.ACMEIdentifier{identifier.NewDNS("example.com")}, expectSerial.String())
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 2}, identifier.ACMEIdentifiers{identifier.NewDNS("example.com")}, expectSerial.String())
 	test.AssertErrorIs(t, err, berrors.Unauthorized)
 
 	// Predecessor certificate not found.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []identifier.ACMEIdentifier{identifier.NewDNS("example.com")}, "1")
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, identifier.ACMEIdentifiers{identifier.NewDNS("example.com")}, "1")
 	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 

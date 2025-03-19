@@ -435,7 +435,7 @@ type certificateRequestEvent struct {
 	// CommonName is the subject common name from the issued cert
 	CommonName string `json:",omitempty"`
 	// Identifiers are the identifiers from the issued cert
-	Identifiers []identifier.ACMEIdentifier `json:",omitempty"`
+	Identifiers identifier.ACMEIdentifiers `json:",omitempty"`
 	// NotBefore is the starting timestamp of the issued cert's validity period
 	NotBefore time.Time `json:",omitempty"`
 	// NotAfter is the ending timestamp of the issued cert's validity period
@@ -685,7 +685,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	ctx context.Context,
 	orderID orderID,
 	acctID accountID,
-	idents []identifier.ACMEIdentifier,
+	idents identifier.ACMEIdentifiers,
 	now time.Time) (map[identifier.ACMEIdentifier]*core.Authorization, error) {
 	// Get all of the valid authorizations for this account/order
 	req := &sapb.GetValidOrderAuthorizationsRequest{
@@ -1255,7 +1255,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 // best effort.
 //
 // TODO(#7311): Handle IP address identifiers.
-func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderIdents []identifier.ACMEIdentifier, isRenewal bool) {
+func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderIdents identifier.ACMEIdentifiers, isRenewal bool) {
 	var names []string
 	for _, orderIdent := range orderIdents {
 		names = append(names, orderIdent.Value)
@@ -2401,7 +2401,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// there is a missing authz for that identifier.
 	//
 	// TODO(#7311): TODO(#7647): Support non-dnsName identifier types here.
-	var missingAuthzIdents []identifier.ACMEIdentifier
+	var missingAuthzIdents identifier.ACMEIdentifiers
 	for _, ident := range idents {
 		name := ident.Value
 		// If there isn't an existing authz, note that its missing and continue

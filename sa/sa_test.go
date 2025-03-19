@@ -622,7 +622,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to open transaction")
 
 	names := []string{"a.example.com", "B.example.com"}
-	idents := []identifier.ACMEIdentifier{
+	idents := identifier.ACMEIdentifiers{
 		identifier.NewDNS("a.example.com"),
 		identifier.NewDNS("B.example.com"),
 	}
@@ -734,7 +734,7 @@ func TestFQDNSetExists(t *testing.T) {
 	defer cleanUp()
 
 	names := []string{"a.example.com", "B.example.com"}
-	idents := []identifier.ACMEIdentifier{
+	idents := identifier.ACMEIdentifiers{
 		identifier.NewDNS("a.example.com"),
 		identifier.NewDNS("B.example.com"),
 	}
@@ -1411,7 +1411,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	identA := identifier.NewDNS(nameA)
 	identB := identifier.NewDNS(nameB)
 	identC := identifier.NewDNS(nameC)
-	idents := []identifier.ACMEIdentifier{identA, identB, identC}
+	idents := identifier.ACMEIdentifiers{identA, identB, identC}
 	nameD := "ddd"
 	identD := identifier.NewDNS(nameD)
 
@@ -1518,7 +1518,7 @@ func TestGetOrderForNames(t *testing.T) {
 
 	ctx := context.Background()
 	names := []string{"example.com", "just.another.example.com"}
-	idents := []identifier.ACMEIdentifier{
+	idents := identifier.ACMEIdentifiers{
 		identifier.NewDNS("example.com"),
 		identifier.NewDNS("just.another.example.com"),
 	}
@@ -1684,7 +1684,7 @@ func TestStatusForOrder(t *testing.T) {
 		Name             string
 		AuthorizationIDs []int64
 		OrderNames       []string
-		OrderIdents      []identifier.ACMEIdentifier
+		OrderIdents      identifier.ACMEIdentifiers
 		OrderExpires     *timestamppb.Timestamp
 		ExpectedStatus   string
 		SetProcessing    bool
@@ -1693,7 +1693,7 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:       "Order with an invalid authz",
 			OrderNames: []string{"pending.your.order.is.up", "invalid.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
-			OrderIdents: []identifier.ACMEIdentifier{
+			OrderIdents: identifier.ACMEIdentifiers{
 				identifier.NewDNS("pending.your.order.is.up"),
 				identifier.NewDNS("invalid.your.order.is.up"),
 				identifier.NewDNS("deactivated.your.order.is.up"),
@@ -1705,7 +1705,7 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:       "Order with an expired authz",
 			OrderNames: []string{"pending.your.order.is.up", "expired.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
-			OrderIdents: []identifier.ACMEIdentifier{
+			OrderIdents: identifier.ACMEIdentifiers{
 				identifier.NewDNS("pending.your.order.is.up"),
 				identifier.NewDNS("expired.your.order.is.up"),
 				identifier.NewDNS("deactivated.your.order.is.up"),
@@ -1717,7 +1717,7 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:       "Order with a deactivated authz",
 			OrderNames: []string{"pending.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
-			OrderIdents: []identifier.ACMEIdentifier{
+			OrderIdents: identifier.ACMEIdentifiers{
 				identifier.NewDNS("pending.your.order.is.up"),
 				identifier.NewDNS("deactivated.your.order.is.up"),
 				identifier.NewDNS("valid.your.order.is.up"),
@@ -1728,7 +1728,7 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:       "Order with a pending authz",
 			OrderNames: []string{"valid.your.order.is.up", "pending.your.order.is.up"},
-			OrderIdents: []identifier.ACMEIdentifier{
+			OrderIdents: identifier.ACMEIdentifiers{
 				identifier.NewDNS("valid.your.order.is.up"),
 				identifier.NewDNS("pending.your.order.is.up"),
 			},
@@ -1738,14 +1738,14 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:             "Order with only valid authzs, not yet processed or finalized",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
+			OrderIdents:      identifier.ACMEIdentifiers{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			ExpectedStatus:   string(core.StatusReady),
 		},
 		{
 			Name:             "Order with only valid authzs, set processing",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
+			OrderIdents:      identifier.ACMEIdentifiers{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			SetProcessing:    true,
 			ExpectedStatus:   string(core.StatusProcessing),
@@ -1753,14 +1753,14 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:             "Order with only valid authzs, not yet processed or finalized, OrderReadyStatus feature flag",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
+			OrderIdents:      identifier.ACMEIdentifiers{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			ExpectedStatus:   string(core.StatusReady),
 		},
 		{
 			Name:             "Order with only valid authzs, set processing",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
+			OrderIdents:      identifier.ACMEIdentifiers{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			SetProcessing:    true,
 			ExpectedStatus:   string(core.StatusProcessing),
@@ -1768,7 +1768,7 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:             "Order with only valid authzs, set processing and finalized",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
+			OrderIdents:      identifier.ACMEIdentifiers{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			SetProcessing:    true,
 			Finalize:         true,
@@ -1777,7 +1777,7 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:             "Order with only valid authzs, set processing and finalized, Identifiers overriding DnsNames",
 			OrderNames:       []string{"deactivated.your.order.is.up"},
-			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
+			OrderIdents:      identifier.ACMEIdentifiers{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			SetProcessing:    true,
 			Finalize:         true,

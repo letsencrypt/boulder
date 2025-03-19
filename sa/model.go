@@ -580,7 +580,7 @@ func SelectAuthzsMatchingIssuance(
 	s db.Selector,
 	regID int64,
 	issued time.Time,
-	idents []identifier.ACMEIdentifier,
+	idents identifier.ACMEIdentifiers,
 ) ([]*corepb.Authorization, error) {
 	identConditions, identArgs := buildIdentifierQueryConditions(idents)
 	query := fmt.Sprintf(`SELECT %s FROM authz2 WHERE
@@ -941,7 +941,7 @@ type orderFQDNSet struct {
 	Expires        time.Time
 }
 
-func addFQDNSet(ctx context.Context, db db.Inserter, idents []identifier.ACMEIdentifier, serial string, issued time.Time, expires time.Time) error {
+func addFQDNSet(ctx context.Context, db db.Inserter, idents identifier.ACMEIdentifiers, serial string, issued time.Time, expires time.Time) error {
 	return db.Insert(ctx, &core.FQDNSet{
 		SetHash: core.HashIdentifiers(idents),
 		Serial:  serial,
@@ -957,7 +957,7 @@ func addFQDNSet(ctx context.Context, db db.Inserter, idents []identifier.ACMEIde
 func addOrderFQDNSet(
 	ctx context.Context,
 	db db.Inserter,
-	idents []identifier.ACMEIdentifier,
+	idents identifier.ACMEIdentifiers,
 	orderID int64,
 	regID int64,
 	expires time.Time) error {
@@ -1354,7 +1354,7 @@ func newPBFromIdentifierModels(ids []identifierModel) (*sapb.Identifiers, error)
 // string (conditions to use within the prepared statement) and a slice of
 // anys (arguments for the prepared statement), both to use within a WHERE
 // clause for queries against the authz2 table.
-func buildIdentifierQueryConditions(idents []identifier.ACMEIdentifier) (string, []any) {
+func buildIdentifierQueryConditions(idents identifier.ACMEIdentifiers) (string, []any) {
 	if len(idents) == 0 {
 		// No identifier values to check.
 		return "FALSE", []any{}

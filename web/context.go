@@ -70,7 +70,7 @@ type RequestEvent struct {
 	Status string `json:",omitempty"`
 	// The set of identifiers, for instance in an authorization, challenge,
 	// new-order, finalize, or revoke request.
-	Identifiers []identifier.ACMEIdentifier `json:",omitempty"`
+	Identifiers identifier.ACMEIdentifiers `json:",omitempty"`
 
 	// For challenge POSTs, the challenge type.
 	ChallengeType string `json:",omitempty"`

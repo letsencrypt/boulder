@@ -333,72 +333,72 @@ func TestHashIdentifiers(t *testing.T) {
 
 	testCases := []struct {
 		Name          string
-		Identifiers1  []identifier.ACMEIdentifier
-		Identifiers2  []identifier.ACMEIdentifier
+		Identifiers1  identifier.ACMEIdentifiers
+		Identifiers2  identifier.ACMEIdentifiers
 		ExpectedEqual bool
 	}{
 		{
 			Name:          "Deterministic for DNS",
-			Identifiers1:  []identifier.ACMEIdentifier{dns1},
-			Identifiers2:  []identifier.ACMEIdentifier{dns1},
+			Identifiers1:  identifier.ACMEIdentifiers{dns1},
+			Identifiers2:  identifier.ACMEIdentifiers{dns1},
 			ExpectedEqual: true,
 		},
 		{
 			Name:          "Deterministic for IPv4",
-			Identifiers1:  []identifier.ACMEIdentifier{ipv4_1},
-			Identifiers2:  []identifier.ACMEIdentifier{ipv4_1},
+			Identifiers1:  identifier.ACMEIdentifiers{ipv4_1},
+			Identifiers2:  identifier.ACMEIdentifiers{ipv4_1},
 			ExpectedEqual: true,
 		},
 		{
 			Name:          "Deterministic for IPv6",
-			Identifiers1:  []identifier.ACMEIdentifier{ipv6_1},
-			Identifiers2:  []identifier.ACMEIdentifier{ipv6_1},
+			Identifiers1:  identifier.ACMEIdentifiers{ipv6_1},
+			Identifiers2:  identifier.ACMEIdentifiers{ipv6_1},
 			ExpectedEqual: true,
 		},
 		{
 			Name:          "Differentiates for DNS",
-			Identifiers1:  []identifier.ACMEIdentifier{dns1},
-			Identifiers2:  []identifier.ACMEIdentifier{dns2},
+			Identifiers1:  identifier.ACMEIdentifiers{dns1},
+			Identifiers2:  identifier.ACMEIdentifiers{dns2},
 			ExpectedEqual: false,
 		},
 		{
 			Name:          "Differentiates for IPv4",
-			Identifiers1:  []identifier.ACMEIdentifier{ipv4_1},
-			Identifiers2:  []identifier.ACMEIdentifier{ipv4_2},
+			Identifiers1:  identifier.ACMEIdentifiers{ipv4_1},
+			Identifiers2:  identifier.ACMEIdentifiers{ipv4_2},
 			ExpectedEqual: false,
 		},
 		{
 			Name:          "Differentiates for IPv6",
-			Identifiers1:  []identifier.ACMEIdentifier{ipv6_1},
-			Identifiers2:  []identifier.ACMEIdentifier{ipv6_2},
+			Identifiers1:  identifier.ACMEIdentifiers{ipv6_1},
+			Identifiers2:  identifier.ACMEIdentifiers{ipv6_2},
 			ExpectedEqual: false,
 		},
 		{
 			Name: "Not subject to ordering",
-			Identifiers1: []identifier.ACMEIdentifier{
+			Identifiers1: identifier.ACMEIdentifiers{
 				dns1, dns2, ipv4_1, ipv4_2, ipv6_1, ipv6_2,
 			},
-			Identifiers2: []identifier.ACMEIdentifier{
+			Identifiers2: identifier.ACMEIdentifiers{
 				ipv6_1, dns2, ipv4_2, dns1, ipv4_1, ipv6_2,
 			},
 			ExpectedEqual: true,
 		},
 		{
 			Name: "Not case sensitive",
-			Identifiers1: []identifier.ACMEIdentifier{
+			Identifiers1: identifier.ACMEIdentifiers{
 				dns1, dns2,
 			},
-			Identifiers2: []identifier.ACMEIdentifier{
+			Identifiers2: identifier.ACMEIdentifiers{
 				dns1_caps, dns2_caps,
 			},
 			ExpectedEqual: true,
 		},
 		{
 			Name: "Not subject to duplication",
-			Identifiers1: []identifier.ACMEIdentifier{
+			Identifiers1: identifier.ACMEIdentifiers{
 				dns1, dns1,
 			},
-			Identifiers2:  []identifier.ACMEIdentifier{dns1},
+			Identifiers2:  identifier.ACMEIdentifiers{dns1},
 			ExpectedEqual: true,
 		},
 	}

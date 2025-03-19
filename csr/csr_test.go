@@ -26,7 +26,7 @@ func (pa *mockPA) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]core.Acm
 	return []core.AcmeChallenge{}, nil
 }
 
-func (pa *mockPA) WillingToIssue(idents []identifier.ACMEIdentifier) error {
+func (pa *mockPA) WillingToIssue(idents identifier.ACMEIdentifiers) error {
 	for _, ident := range idents {
 		if ident.Value == "bad-name.com" || ident.Value == "other-bad-name.com" {
 			return errors.New("policy forbids issuing for identifier")
