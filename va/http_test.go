@@ -1658,3 +1658,81 @@ func TestLimitedReader(t *testing.T) {
 		t.Errorf("Problem Detail contained an invalid UTF-8 string")
 	}
 }
+
+type hostHeaderHandler struct {
+	host string
+}
+
+func (handler *hostHeaderHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
+	handler.host = req.Host
+}
+
+func TestHTTPHostHeader(t *testing.T) {
+	handlerIPv4 := hostHeaderHandler{}
+	handlerIPv6 := hostHeaderHandler{}
+
+	testSrvIPv4 := httptest.NewUnstartedServer(&handlerIPv4)
+	testSrvIPv6 := httptest.NewUnstartedServer(&handlerIPv6)
+
+	l, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		panic(fmt.Sprintf("httptest: failed to listen on a port: %v", err))
+	}
+	testSrvIPv6.Listener = l
+
+	testSrvIPv4.Start()
+	testSrvIPv6.Start()
+
+	defer testSrvIPv4.Close()
+	defer testSrvIPv6.Close()
+
+	// Setup VAs. By providing the testSrv to setup the VA will use the testSrv's
+	// randomly assigned port as its HTTP port.
+	vaIPv4, _ := setup(testSrvIPv4, "", nil, nil)
+	vaIPv6, _ := setup(testSrvIPv6, "", nil, nil)
+
+	testCases := []struct {
+		Name  string
+		Ident identifier.ACMEIdentifier
+		IPv6  bool
+		want  string
+	}{
+		{
+			Name:  "DNS name",
+			Ident: identifier.NewDNS("example.com"),
+			want:  "example.com",
+		},
+		{
+			// RFC 8738, Sec. 5.
+			Name:  "IPv4 address",
+			Ident: identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
+			want:  "127.0.0.1",
+		},
+		{
+			// RFC 8738, Sec. 5.
+			Name:  "IPv6 address",
+			Ident: identifier.NewIP(netip.MustParseAddr("::1")),
+			IPv6:  true,
+			want:  "[::1]",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+			defer cancel()
+
+			var got string
+			if tc.IPv6 {
+				_, _, _ = vaIPv6.processHTTPValidation(ctx, tc.Ident, "/ok")
+				got = handlerIPv6.host
+			} else {
+				_, _, _ = vaIPv4.processHTTPValidation(ctx, tc.Ident, "/ok")
+				got = handlerIPv4.host
+			}
+			if got != tc.want {
+				t.Errorf("Got host %#v, but want %#v", got, tc.want)
+			}
+		})
+	}
+}
