@@ -1852,7 +1852,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		var authzPB *sapb.Authorizations
 		authzPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
-			Identifiers:    identifier.SliceAsProto(identifier.FromDNSNames(cert.DNSNames)),
+			Identifiers:    identifier.SliceAsProto(identifier.NewDNSSlice(cert.DNSNames)),
 			DnsNames:       cert.DNSNames,
 			ValidUntil:     timestamppb.New(ra.clk.Now()),
 		})
@@ -1868,7 +1868,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 
 		// TODO(#7311): TODO(#7647): Support other kinds of SANs/identifiers here.
 		for _, name := range cert.DNSNames {
-			if _, present := authzMap[identifier.FromDNS(name)]; !present {
+			if _, present := authzMap[identifier.NewDNS(name)]; !present {
 				return nil, berrors.UnauthorizedError("requester does not control all names in cert with serial %q", serialString)
 			}
 		}
@@ -2470,7 +2470,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		}
 
 		newAuthzs = append(newAuthzs, &sapb.NewAuthzRequest{
-			Identifier:     ident.AsProto(),
+			Identifier:     ident.ToProto(),
 			RegistrationID: newOrder.RegistrationID,
 			Expires:        timestamppb.New(ra.clk.Now().Add(profile.pendingAuthzLifetime).Truncate(time.Second)),
 			ChallengeTypes: challStrs,

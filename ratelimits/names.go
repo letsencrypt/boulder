@@ -204,7 +204,7 @@ func validateFQDNSet(id string) error {
 	}
 	var idents []identifier.ACMEIdentifier
 	for _, domain := range domains {
-		idents = append(idents, identifier.FromDNS(domain))
+		idents = append(idents, identifier.NewDNS(domain))
 	}
 	return policy.WellFormedIdentifiers(idents)
 }

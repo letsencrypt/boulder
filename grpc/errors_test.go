@@ -97,7 +97,7 @@ func TestSubErrorWrapping(t *testing.T) {
 
 	subErrors := []berrors.SubBoulderError{
 		{
-			Identifier: identifier.FromDNS("chillserver.com"),
+			Identifier: identifier.NewDNS("chillserver.com"),
 			BoulderError: &berrors.BoulderError{
 				Type:   berrors.RejectedIdentifier,
 				Detail: "2 ill 2 chill",

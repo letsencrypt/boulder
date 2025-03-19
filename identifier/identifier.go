@@ -37,7 +37,7 @@ type ACMEIdentifier struct {
 	Value string `json:"value"`
 }
 
-func (i ACMEIdentifier) AsProto() *corepb.Identifier {
+func (i ACMEIdentifier) ToProto() *corepb.Identifier {
 	return &corepb.Identifier{
 		Type:  string(i.Type),
 		Value: i.Value,
@@ -56,7 +56,7 @@ func FromProto(ident *corepb.Identifier) ACMEIdentifier {
 func SliceAsProto(idents []ACMEIdentifier) []*corepb.Identifier {
 	var pbIdents []*corepb.Identifier
 	for _, ident := range idents {
-		pbIdents = append(pbIdents, ident.AsProto())
+		pbIdents = append(pbIdents, ident.ToProto())
 	}
 	return pbIdents
 }
@@ -72,21 +72,21 @@ func SliceFromProto(pbIdents []*corepb.Identifier) []ACMEIdentifier {
 	return idents
 }
 
-// FromDNS is a convenience function for creating an ACMEIdentifier with Type
+// NewDNS is a convenience function for creating an ACMEIdentifier with Type
 // "dns" for a given domain name.
-func FromDNS(domain string) ACMEIdentifier {
+func NewDNS(domain string) ACMEIdentifier {
 	return ACMEIdentifier{
 		Type:  TypeDNS,
 		Value: domain,
 	}
 }
 
-// FromDNSNames is a convenience function for creating a slice of ACMEIdentifier
+// NewDNSSlice is a convenience function for creating a slice of ACMEIdentifier
 // with Type "dns" for a given slice of domain names.
-func FromDNSNames(input []string) []ACMEIdentifier {
+func NewDNSSlice(input []string) []ACMEIdentifier {
 	var out []ACMEIdentifier
 	for _, in := range input {
-		out = append(out, FromDNS(in))
+		out = append(out, NewDNS(in))
 	}
 	return out
 }
@@ -104,9 +104,9 @@ func AsDNSNames(input []ACMEIdentifier) ([]string, error) {
 	return out, nil
 }
 
-// FromIP is a convenience function for creating an ACMEIdentifier with Type "ip"
+// NewIP is a convenience function for creating an ACMEIdentifier with Type "ip"
 // for a given IP address.
-func FromIP(ip netip.Addr) ACMEIdentifier {
+func NewIP(ip netip.Addr) ACMEIdentifier {
 	return ACMEIdentifier{
 		Type: TypeIP,
 		// RFC 8738, Sec. 3: The identifier value MUST contain the textual form
@@ -125,7 +125,7 @@ func FromIP(ip netip.Addr) ACMEIdentifier {
 func FromCert(cert *x509.Certificate) []ACMEIdentifier {
 	var sans []ACMEIdentifier
 	for _, name := range cert.DNSNames {
-		sans = append(sans, FromDNS(name))
+		sans = append(sans, NewDNS(name))
 	}
 
 	for _, ip := range cert.IPAddresses {
@@ -146,7 +146,7 @@ func FromCert(cert *x509.Certificate) []ACMEIdentifier {
 func FromCSR(csr *x509.CertificateRequest) []ACMEIdentifier {
 	var sans []ACMEIdentifier
 	for _, name := range csr.DNSNames {
-		sans = append(sans, FromDNS(name))
+		sans = append(sans, NewDNS(name))
 	}
 	if csr.Subject.CommonName != "" {
 		// Boulder won't generate certificates with a CN that's not also present
@@ -155,7 +155,7 @@ func FromCSR(csr *x509.CertificateRequest) []ACMEIdentifier {
 		// because CNs are untyped strings without metadata, and we will never
 		// configure a Boulder profile to issue a certificate that contains both
 		// an IP address identifier and a CN.
-		sans = append(sans, FromDNS(csr.Subject.CommonName))
+		sans = append(sans, NewDNS(csr.Subject.CommonName))
 	}
 
 	for _, ip := range csr.IPAddresses {
@@ -194,7 +194,7 @@ func WithDefault(input HasIdentifier) *corepb.Identifier {
 	if input.GetIdentifier() != nil {
 		return input.GetIdentifier()
 	}
-	return FromDNS(input.GetDnsName()).AsProto()
+	return NewDNS(input.GetDnsName()).ToProto()
 }
 
 type HasIdentifiers interface {
@@ -208,5 +208,5 @@ func WithDefaults(input HasIdentifiers) []*corepb.Identifier {
 	if len(input.GetIdentifiers()) > 0 {
 		return input.GetIdentifiers()
 	}
-	return SliceAsProto(FromDNSNames(input.GetDnsNames()))
+	return SliceAsProto(NewDNSSlice(input.GetDnsNames()))
 }

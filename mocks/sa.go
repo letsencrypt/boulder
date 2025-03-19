@@ -370,7 +370,7 @@ func (sa *StorageAuthorityReadOnly) GetOrder(_ context.Context, req *sapb.OrderR
 		Created:                timestamppb.New(created),
 		Expires:                timestamppb.New(exp),
 		DnsNames:               []string{"example.com"},
-		Identifiers:            []*corepb.Identifier{identifier.FromDNS("example.com").AsProto()},
+		Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 		Status:                 string(core.StatusValid),
 		V2Authorizations:       []int64{1},
 		CertificateSerial:      "serial",

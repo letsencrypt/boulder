@@ -201,7 +201,7 @@ func TestCAATimeout(t *testing.T) {
 		validationMethod: core.ChallengeTypeHTTP01,
 	}
 
-	err := va.checkCAA(ctx, identifier.FromDNS("caa-timeout.com"), params)
+	err := va.checkCAA(ctx, identifier.NewDNS("caa-timeout.com"), params)
 	test.AssertErrorIs(t, err, berrors.DNS)
 	test.AssertContains(t, err.Error(), "error")
 }
@@ -424,7 +424,7 @@ func TestCAAChecking(t *testing.T) {
 		mockLog := va.log.(*blog.Mock)
 		defer mockLog.Clear()
 		t.Run(caaTest.Name, func(t *testing.T) {
-			ident := identifier.FromDNS(caaTest.Domain)
+			ident := identifier.NewDNS(caaTest.Domain)
 			foundAt, valid, _, err := va.checkCAARecords(ctx, ident, params)
 			if err != nil {
 				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
@@ -514,7 +514,7 @@ func TestCAALogging(t *testing.T) {
 				accountURIID:     tc.AccountURIID,
 				validationMethod: tc.ChallengeType,
 			}
-			_ = va.checkCAA(ctx, identifier.FromDNS(tc.Domain), params)
+			_ = va.checkCAA(ctx, identifier.NewDNS(tc.Domain), params)
 
 			caaLogLines := mockLog.GetAllMatching(`Checked CAA records for`)
 			if len(caaLogLines) != 1 {
@@ -1127,13 +1127,13 @@ func TestCAAFailure(t *testing.T) {
 
 	va, _ := setup(hs, "", nil, caaMockDNS{})
 
-	err := va.checkCAA(ctx, identifier.FromDNS("reserved.com"), &caaParams{1, core.ChallengeTypeHTTP01})
+	err := va.checkCAA(ctx, identifier.NewDNS("reserved.com"), &caaParams{1, core.ChallengeTypeHTTP01})
 	if err == nil {
 		t.Fatalf("Expected CAA rejection for reserved.com, got success")
 	}
 	test.AssertErrorIs(t, err, berrors.CAA)
 
-	err = va.checkCAA(ctx, identifier.FromDNS("example.gonetld"), &caaParams{1, core.ChallengeTypeHTTP01})
+	err = va.checkCAA(ctx, identifier.NewDNS("example.gonetld"), &caaParams{1, core.ChallengeTypeHTTP01})
 	if err == nil {
 		t.Fatalf("Expected CAA rejection for gonetld, got success")
 	}

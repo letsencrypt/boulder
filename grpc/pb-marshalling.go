@@ -291,7 +291,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	return &corepb.Authorization{
 		Id:                     authz.ID,
 		DnsName:                authz.Identifier.Value,
-		Identifier:             authz.Identifier.AsProto(),
+		Identifier:             authz.Identifier.ToProto(),
 		RegistrationID:         authz.RegistrationID,
 		Status:                 string(authz.Status),
 		Expires:                expires,

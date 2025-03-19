@@ -151,32 +151,32 @@ func TestFromCSR(t *testing.T) {
 		{
 			"no explicit CN",
 			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
-			[]ACMEIdentifier{FromDNS("a.com")},
+			[]ACMEIdentifier{NewDNS("a.com")},
 		},
 		{
 			"explicit uppercase CN",
 			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"a.com"}},
-			[]ACMEIdentifier{FromDNS("a.com")},
+			[]ACMEIdentifier{NewDNS("a.com")},
 		},
 		{
 			"no explicit CN, uppercase SAN",
 			&x509.CertificateRequest{DNSNames: []string{"A.com"}},
-			[]ACMEIdentifier{FromDNS("a.com")},
+			[]ACMEIdentifier{NewDNS("a.com")},
 		},
 		{
 			"duplicate SANs",
 			&x509.CertificateRequest{DNSNames: []string{"b.com", "b.com", "a.com", "a.com"}},
-			[]ACMEIdentifier{FromDNS("a.com"), FromDNS("b.com")},
+			[]ACMEIdentifier{NewDNS("a.com"), NewDNS("b.com")},
 		},
 		{
 			"explicit CN not found in SANs",
 			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "a.com"}, DNSNames: []string{"b.com"}},
-			[]ACMEIdentifier{FromDNS("a.com"), FromDNS("b.com")},
+			[]ACMEIdentifier{NewDNS("a.com"), NewDNS("b.com")},
 		},
 		{
 			"mix of DNSNames and IPAddresses",
 			&x509.CertificateRequest{DNSNames: []string{"a.com"}, IPAddresses: []net.IP{{192, 168, 1, 1}}},
-			[]ACMEIdentifier{FromDNS("a.com"), FromIP(netip.MustParseAddr("192.168.1.1"))},
+			[]ACMEIdentifier{NewDNS("a.com"), NewIP(netip.MustParseAddr("192.168.1.1"))},
 		},
 	}
 	for _, tc := range cases {

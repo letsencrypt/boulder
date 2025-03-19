@@ -110,7 +110,7 @@ func TestWellFormedIdentifiers(t *testing.T) {
 
 	// Test syntax errors
 	for _, tc := range testCases {
-		err := WellFormedIdentifiers([]identifier.ACMEIdentifier{identifier.FromDNS(tc.domain)})
+		err := WellFormedIdentifiers([]identifier.ACMEIdentifier{identifier.NewDNS(tc.domain)})
 		if tc.err == nil {
 			test.AssertNil(t, err, fmt.Sprintf("Unexpected error for domain %q, got %s", tc.domain, err))
 		} else {
@@ -121,7 +121,7 @@ func TestWellFormedIdentifiers(t *testing.T) {
 		}
 	}
 
-	err := WellFormedIdentifiers([]identifier.ACMEIdentifier{identifier.FromIP(netip.MustParseAddr("9.9.9.9"))})
+	err := WellFormedIdentifiers([]identifier.ACMEIdentifier{identifier.NewIP(netip.MustParseAddr("9.9.9.9"))})
 	test.AssertError(t, err, "Expected error for IP, but got none")
 	var berr *berrors.BoulderError
 	test.AssertErrorWraps(t, err, &berr)
@@ -183,22 +183,22 @@ func TestWillingToIssue(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	// Invalid encoding
-	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.FromDNS("www.xn--m.com")})
+	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS("www.xn--m.com")})
 	test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
 	// Invalid identifier type
-	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.FromIP(netip.MustParseAddr("1.1.1.1"))})
+	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewIP(netip.MustParseAddr("1.1.1.1"))})
 	test.AssertError(t, err, "WillingToIssue didn't fail on an IP address")
 	// Valid encoding
-	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.FromDNS("www.xn--mnich-kva.com")})
+	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS("www.xn--mnich-kva.com")})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
 	// IDN TLD
-	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.FromDNS("xn--example--3bhk5a.xn--p1ai")})
+	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS("xn--example--3bhk5a.xn--p1ai")})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
 	features.Reset()
 
 	// Test expected blocked domains
 	for _, domain := range shouldBeBlocked {
-		err := pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.FromDNS(domain)})
+		err := pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS(domain)})
 		test.AssertError(t, err, "domain was not correctly forbidden")
 		var berr *berrors.BoulderError
 		test.AssertErrorWraps(t, err, &berr)
@@ -207,7 +207,7 @@ func TestWillingToIssue(t *testing.T) {
 
 	// Test acceptance of good names
 	for _, domain := range shouldBeAccepted {
-		err := pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.FromDNS(domain)})
+		err := pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS(domain)})
 		test.AssertNotError(t, err, "domain was incorrectly forbidden")
 	}
 }
@@ -293,7 +293,7 @@ func TestWillingToIssue_Wildcards(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			err := pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.FromDNS(tc.Domain)})
+			err := pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS(tc.Domain)})
 			if tc.ExpectedErr == nil {
 				test.AssertNil(t, err, fmt.Sprintf("Unexpected error for domain %q, got %s", tc.Domain, err))
 			} else {
@@ -329,11 +329,11 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 
 	// Test multiple malformed domains and one banned domain; only the malformed ones will generate errors
 	err = pa.WillingToIssue([]identifier.ACMEIdentifier{
-		identifier.FromDNS("perfectly-fine.com"),      // fine
-		identifier.FromDNS("letsdecrypt_org"),         // malformed
-		identifier.FromDNS("example.comm"),            // malformed
-		identifier.FromDNS("letsdecrypt.org"),         // banned
-		identifier.FromDNS("also-perfectly-fine.com"), // fine
+		identifier.NewDNS("perfectly-fine.com"),      // fine
+		identifier.NewDNS("letsdecrypt_org"),         // malformed
+		identifier.NewDNS("example.comm"),            // malformed
+		identifier.NewDNS("letsdecrypt.org"),         // banned
+		identifier.NewDNS("also-perfectly-fine.com"), // fine
 	})
 	test.AssertDeepEquals(t, err,
 		&berrors.BoulderError{
@@ -345,24 +345,24 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 						Type:   berrors.Malformed,
 						Detail: "Domain name contains an invalid character",
 					},
-					Identifier: identifier.FromDNS("letsdecrypt_org"),
+					Identifier: identifier.NewDNS("letsdecrypt_org"),
 				},
 				{
 					BoulderError: &berrors.BoulderError{
 						Type:   berrors.Malformed,
 						Detail: "Domain name does not end with a valid public suffix (TLD)",
 					},
-					Identifier: identifier.FromDNS("example.comm"),
+					Identifier: identifier.NewDNS("example.comm"),
 				},
 			},
 		})
 
 	// Test multiple banned domains.
 	err = pa.WillingToIssue([]identifier.ACMEIdentifier{
-		identifier.FromDNS("perfectly-fine.com"),      // fine
-		identifier.FromDNS("letsdecrypt.org"),         // banned
-		identifier.FromDNS("example.com"),             // banned
-		identifier.FromDNS("also-perfectly-fine.com"), // fine
+		identifier.NewDNS("perfectly-fine.com"),      // fine
+		identifier.NewDNS("letsdecrypt.org"),         // banned
+		identifier.NewDNS("example.com"),             // banned
+		identifier.NewDNS("also-perfectly-fine.com"), // fine
 	})
 	test.AssertError(t, err, "Expected err from WillingToIssueWildcards")
 
@@ -376,20 +376,20 @@ func TestWillingToIssue_SubErrors(t *testing.T) {
 						Type:   berrors.RejectedIdentifier,
 						Detail: "The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
 					},
-					Identifier: identifier.FromDNS("letsdecrypt.org"),
+					Identifier: identifier.NewDNS("letsdecrypt.org"),
 				},
 				{
 					BoulderError: &berrors.BoulderError{
 						Type:   berrors.RejectedIdentifier,
 						Detail: "The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy",
 					},
-					Identifier: identifier.FromDNS("example.com"),
+					Identifier: identifier.NewDNS("example.com"),
 				},
 			},
 		})
 
 	// Test willing to issue with only *one* bad identifier.
-	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.FromDNS("letsdecrypt.org")})
+	err = pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS("letsdecrypt.org")})
 	test.AssertDeepEquals(t, err,
 		&berrors.BoulderError{
 			Type:   berrors.RejectedIdentifier,
@@ -409,21 +409,21 @@ func TestChallengeTypesFor(t *testing.T) {
 	}{
 		{
 			name:  "dns",
-			ident: identifier.FromDNS("example.com"),
+			ident: identifier.NewDNS("example.com"),
 			wantChalls: []core.AcmeChallenge{
 				core.ChallengeTypeHTTP01, core.ChallengeTypeDNS01, core.ChallengeTypeTLSALPN01,
 			},
 		},
 		{
 			name:  "wildcard",
-			ident: identifier.FromDNS("*.example.com"),
+			ident: identifier.NewDNS("*.example.com"),
 			wantChalls: []core.AcmeChallenge{
 				core.ChallengeTypeDNS01,
 			},
 		},
 		{
 			name:    "other",
-			ident:   identifier.FromIP(netip.MustParseAddr("1.2.3.4")),
+			ident:   identifier.NewIP(netip.MustParseAddr("1.2.3.4")),
 			wantErr: "unrecognized identifier type",
 		},
 	}
@@ -514,7 +514,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "no challenges",
 			authz: core.Authorization{
-				Identifier: identifier.FromDNS("example.com"),
+				Identifier: identifier.NewDNS("example.com"),
 				Challenges: []core.Challenge{},
 			},
 			wantErr: "has no challenges",
@@ -522,7 +522,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "no valid challenges",
 			authz: core.Authorization{
-				Identifier: identifier.FromDNS("example.com"),
+				Identifier: identifier.NewDNS("example.com"),
 				Challenges: []core.Challenge{{Type: core.ChallengeTypeDNS01, Status: core.StatusPending}},
 			},
 			wantErr: "not solved by any challenge",
@@ -530,7 +530,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "solved by disabled challenge",
 			authz: core.Authorization{
-				Identifier: identifier.FromDNS("example.com"),
+				Identifier: identifier.NewDNS("example.com"),
 				Challenges: []core.Challenge{{Type: core.ChallengeTypeDNS01, Status: core.StatusValid}},
 			},
 			enabled: map[core.AcmeChallenge]bool{core.ChallengeTypeHTTP01: true},
@@ -539,7 +539,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "solved by wrong kind of challenge",
 			authz: core.Authorization{
-				Identifier: identifier.FromDNS("*.example.com"),
+				Identifier: identifier.NewDNS("*.example.com"),
 				Challenges: []core.Challenge{{Type: core.ChallengeTypeHTTP01, Status: core.StatusValid}},
 			},
 			wantErr: "inapplicable challenge type",
@@ -547,7 +547,7 @@ func TestCheckAuthzChallenges(t *testing.T) {
 		{
 			name: "valid authz",
 			authz: core.Authorization{
-				Identifier: identifier.FromDNS("example.com"),
+				Identifier: identifier.NewDNS("example.com"),
 				Challenges: []core.Challenge{{Type: core.ChallengeTypeTLSALPN01, Status: core.StatusValid}},
 			},
 		},

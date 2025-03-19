@@ -61,7 +61,7 @@ func TestAuthzModel(t *testing.T) {
 	authzPB := &corepb.Authorization{
 		Id:                     "1",
 		DnsName:                "example.com",
-		Identifier:             identifier.FromDNS("example.com").AsProto(),
+		Identifier:             identifier.NewDNS("example.com").ToProto(),
 		RegistrationID:         1,
 		Status:                 string(core.StatusValid),
 		Expires:                timestamppb.New(expires),
@@ -123,7 +123,7 @@ func TestAuthzModel(t *testing.T) {
 	authzPB = &corepb.Authorization{
 		Id:             "1",
 		DnsName:        "example.com",
-		Identifier:     identifier.FromDNS("example.com").AsProto(),
+		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
 		Expires:        timestamppb.New(expires),
@@ -188,7 +188,7 @@ func TestAuthzModel(t *testing.T) {
 	authzPB = &corepb.Authorization{
 		Id:             "1",
 		DnsName:        "example.com",
-		Identifier:     identifier.FromDNS("example.com").AsProto(),
+		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		RegistrationID: 1,
 		Status:         string(core.StatusInvalid),
 		Expires:        timestamppb.New(expires),
@@ -230,7 +230,7 @@ func TestAuthzModel(t *testing.T) {
 	authzPB = &corepb.Authorization{
 		Id:             "1",
 		DnsName:        "example.com",
-		Identifier:     identifier.FromDNS("example.com").AsProto(),
+		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
 		Expires:        timestamppb.New(expires),

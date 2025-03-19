@@ -623,8 +623,8 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 
 	names := []string{"a.example.com", "B.example.com"}
 	idents := []identifier.ACMEIdentifier{
-		identifier.FromDNS("a.example.com"),
-		identifier.FromDNS("B.example.com"),
+		identifier.NewDNS("a.example.com"),
+		identifier.NewDNS("B.example.com"),
 	}
 
 	// Invalid Window
@@ -664,8 +664,8 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	// Ensure that the hash isn't affected by changing name order/casing.
 	req.DnsNames = []string{"b.example.com", "A.example.COM"}
 	req.Identifiers = []*corepb.Identifier{
-		identifier.FromDNS("b.example.com").AsProto(),
-		identifier.FromDNS("A.example.COM").AsProto(),
+		identifier.NewDNS("b.example.com").ToProto(),
+		identifier.NewDNS("A.example.COM").ToProto(),
 	}
 	resp, err = sa.FQDNSetTimestampsForWindow(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
@@ -735,8 +735,8 @@ func TestFQDNSetExists(t *testing.T) {
 
 	names := []string{"a.example.com", "B.example.com"}
 	idents := []identifier.ACMEIdentifier{
-		identifier.FromDNS("a.example.com"),
-		identifier.FromDNS("B.example.com"),
+		identifier.NewDNS("a.example.com"),
+		identifier.NewDNS("B.example.com"),
 	}
 	exists, err := sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names, Identifiers: identifier.SliceAsProto(idents)})
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
@@ -898,12 +898,12 @@ func TestDeactivateAuthorization2(t *testing.T) {
 	// deactivate a pending authorization
 	expires := fc.Now().Add(time.Hour).UTC()
 	attemptedAt := fc.Now()
-	authzID := createPendingAuthorization(t, sa, identifier.FromDNS("example.com"), expires)
+	authzID := createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), expires)
 	_, err := sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
 
 	// deactivate a valid authorization
-	authzID = createFinalizedAuthorization(t, sa, identifier.FromDNS("example.com"), expires, "valid", attemptedAt)
+	authzID = createFinalizedAuthorization(t, sa, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
 	_, err = sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
 }
@@ -967,8 +967,8 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 
 	// Insert two pre-existing authorizations to reference
-	idA := createPendingAuthorization(t, sa, identifier.FromDNS("a.com"), sa.clk.Now().Add(time.Hour))
-	idB := createPendingAuthorization(t, sa, identifier.FromDNS("b.com"), sa.clk.Now().Add(time.Hour))
+	idA := createPendingAuthorization(t, sa, identifier.NewDNS("a.com"), sa.clk.Now().Add(time.Hour))
+	idB := createPendingAuthorization(t, sa, identifier.NewDNS("b.com"), sa.clk.Now().Add(time.Hour))
 	test.AssertEquals(t, idA, int64(1))
 	test.AssertEquals(t, idB, int64(2))
 
@@ -982,10 +982,10 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 			Expires:        timestamppb.New(expires),
 			DnsNames:       []string{"a.com", "b.com", "c.com", "d.com"},
 			Identifiers: []*corepb.Identifier{
-				identifier.FromDNS("a.com").AsProto(),
-				identifier.FromDNS("b.com").AsProto(),
-				identifier.FromDNS("c.com").AsProto(),
-				identifier.FromDNS("d.com").AsProto(),
+				identifier.NewDNS("a.com").ToProto(),
+				identifier.NewDNS("b.com").ToProto(),
+				identifier.NewDNS("c.com").ToProto(),
+				identifier.NewDNS("d.com").ToProto(),
 			},
 			V2Authorizations: []int64{1, 2},
 		},
@@ -1094,7 +1094,7 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 			RegistrationID: reg.Id,
 			Expires:        timestamppb.New(expires),
 			DnsNames:       []string{domain},
-			Identifiers:    []*corepb.Identifier{identifier.FromDNS(domain).AsProto()},
+			Identifiers:    []*corepb.Identifier{identifier.NewDNS(domain).ToProto()},
 		},
 	})
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
@@ -1181,7 +1181,7 @@ func TestSetOrderProcessing(t *testing.T) {
 	// Add one valid authz
 	expires := fc.Now().Add(time.Hour)
 	attemptedAt := fc.Now()
-	authzID := createFinalizedAuthorization(t, sa, identifier.FromDNS("example.com"), expires, "valid", attemptedAt)
+	authzID := createFinalizedAuthorization(t, sa, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
 
 	// Add a new order in pending status with no certificate serial
 	expires1Year := sa.clk.Now().Add(365 * 24 * time.Hour)
@@ -1190,7 +1190,7 @@ func TestSetOrderProcessing(t *testing.T) {
 			RegistrationID:   reg.Id,
 			Expires:          timestamppb.New(expires1Year),
 			DnsNames:         []string{"example.com"},
-			Identifiers:      []*corepb.Identifier{identifier.FromDNS("example.com").AsProto()},
+			Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 			V2Authorizations: []int64{authzID},
 		},
 	})
@@ -1222,7 +1222,7 @@ func TestFinalizeOrder(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 	expires := fc.Now().Add(time.Hour)
 	attemptedAt := fc.Now()
-	authzID := createFinalizedAuthorization(t, sa, identifier.FromDNS("example.com"), expires, "valid", attemptedAt)
+	authzID := createFinalizedAuthorization(t, sa, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
 
 	// Add a new order in pending status with no certificate serial
 	expires1Year := sa.clk.Now().Add(365 * 24 * time.Hour)
@@ -1231,7 +1231,7 @@ func TestFinalizeOrder(t *testing.T) {
 			RegistrationID:   reg.Id,
 			Expires:          timestamppb.New(expires1Year),
 			DnsNames:         []string{"example.com"},
-			Identifiers:      []*corepb.Identifier{identifier.FromDNS("example.com").AsProto()},
+			Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 			V2Authorizations: []int64{authzID},
 		},
 	})
@@ -1263,7 +1263,7 @@ func TestGetOrder(t *testing.T) {
 	defer cleanup()
 
 	reg := createWorkingRegistration(t, sa)
-	ident := identifier.FromDNS("example.com")
+	ident := identifier.NewDNS("example.com")
 	authzExpires := fc.Now().Add(time.Hour)
 	authzID := createPendingAuthorization(t, sa, ident, authzExpires)
 
@@ -1274,7 +1274,7 @@ func TestGetOrder(t *testing.T) {
 		RegistrationID:   reg.Id,
 		Expires:          timestamppb.New(expires),
 		DnsNames:         []string{"example.com"},
-		Identifiers:      []*corepb.Identifier{ident.AsProto()},
+		Identifiers:      []*corepb.Identifier{ident.ToProto()},
 		V2Authorizations: []int64{authzID},
 	}
 
@@ -1325,7 +1325,7 @@ func TestGetOrderWithProfile(t *testing.T) {
 	defer cleanup()
 
 	reg := createWorkingRegistration(t, sa)
-	ident := identifier.FromDNS("example.com")
+	ident := identifier.NewDNS("example.com")
 	authzExpires := fc.Now().Add(time.Hour)
 	authzID := createPendingAuthorization(t, sa, ident, authzExpires)
 
@@ -1336,7 +1336,7 @@ func TestGetOrderWithProfile(t *testing.T) {
 		RegistrationID:         reg.Id,
 		Expires:                timestamppb.New(expires),
 		DnsNames:               []string{"example.com"},
-		Identifiers:            []*corepb.Identifier{ident.AsProto()},
+		Identifiers:            []*corepb.Identifier{ident.ToProto()},
 		V2Authorizations:       []int64{authzID},
 		CertificateProfileName: "tbiapb",
 	}
@@ -1408,12 +1408,12 @@ func TestGetAuthorizations2(t *testing.T) {
 	nameB := "bbb"
 	nameC := "ccc"
 	names := []string{nameA, nameB, nameC}
-	identA := identifier.FromDNS(nameA)
-	identB := identifier.FromDNS(nameB)
-	identC := identifier.FromDNS(nameC)
+	identA := identifier.NewDNS(nameA)
+	identB := identifier.NewDNS(nameB)
+	identC := identifier.NewDNS(nameC)
 	idents := []identifier.ACMEIdentifier{identA, identB, identC}
 	nameD := "ddd"
-	identD := identifier.FromDNS(nameD)
+	identD := identifier.NewDNS(nameD)
 
 	createFinalizedAuthorization(t, sa, identA, exp, "valid", attemptedAt)
 	createPendingAuthorization(t, sa, identB, exp)
@@ -1441,7 +1441,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID: reg.Id,
 		DnsNames:       append(names, nameD),
-		Identifiers:    append(identifier.SliceAsProto(idents), identD.AsProto()),
+		Identifiers:    append(identifier.SliceAsProto(idents), identD.ToProto()),
 		ValidUntil:     timestamppb.New(expiryCutoff),
 	})
 	// It should not fail
@@ -1454,7 +1454,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	ident := identifier.FromDNS("example.com")
+	ident := identifier.NewDNS("example.com")
 	expires := fc.Now().Add(time.Hour)
 
 	key, _ := goodTestJWK().MarshalJSON()
@@ -1471,7 +1471,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 			Expires:          timestamppb.New(expires),
 			V2Authorizations: []int64{authzIDs},
 			DnsNames:         []string{ident.Value},
-			Identifiers:      []*corepb.Identifier{ident.AsProto()},
+			Identifiers:      []*corepb.Identifier{ident.ToProto()},
 		},
 	})
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
@@ -1482,7 +1482,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 			Expires:          timestamppb.New(expires),
 			V2Authorizations: []int64{authzIDs},
 			DnsNames:         []string{ident.Value},
-			Identifiers:      []*corepb.Identifier{ident.AsProto()},
+			Identifiers:      []*corepb.Identifier{ident.ToProto()},
 		},
 	})
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
@@ -1490,7 +1490,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 	_, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      reg.Id,
 		DnsNames:    []string{ident.Value},
-		Identifiers: []*corepb.Identifier{ident.AsProto()},
+		Identifiers: []*corepb.Identifier{ident.ToProto()},
 	})
 	test.AssertNotError(t, err, "sa.GetOrderForNames failed")
 }
@@ -1513,14 +1513,14 @@ func TestGetOrderForNames(t *testing.T) {
 	// Add one pending authz for the first name for regA and one
 	// pending authz for the second name for regA
 	authzExpires := fc.Now().Add(time.Hour)
-	authzIDA := createPendingAuthorization(t, sa, identifier.FromDNS("example.com"), authzExpires)
-	authzIDB := createPendingAuthorization(t, sa, identifier.FromDNS("just.another.example.com"), authzExpires)
+	authzIDA := createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), authzExpires)
+	authzIDB := createPendingAuthorization(t, sa, identifier.NewDNS("just.another.example.com"), authzExpires)
 
 	ctx := context.Background()
 	names := []string{"example.com", "just.another.example.com"}
 	idents := []identifier.ACMEIdentifier{
-		identifier.FromDNS("example.com"),
-		identifier.FromDNS("just.another.example.com"),
+		identifier.NewDNS("example.com"),
+		identifier.NewDNS("just.another.example.com"),
 	}
 
 	// Call GetOrderForNames for a set of names we haven't created an order for
@@ -1600,8 +1600,8 @@ func TestGetOrderForNames(t *testing.T) {
 	// Create two valid authorizations
 	authzExpires = fc.Now().Add(time.Hour)
 	attemptedAt := fc.Now()
-	authzIDC := createFinalizedAuthorization(t, sa, identifier.FromDNS("zombo.com"), authzExpires, "valid", attemptedAt)
-	authzIDD := createFinalizedAuthorization(t, sa, identifier.FromDNS("welcome.to.zombo.com"), authzExpires, "valid", attemptedAt)
+	authzIDC := createFinalizedAuthorization(t, sa, identifier.NewDNS("zombo.com"), authzExpires, "valid", attemptedAt)
+	authzIDD := createFinalizedAuthorization(t, sa, identifier.NewDNS("welcome.to.zombo.com"), authzExpires, "valid", attemptedAt)
 
 	// Add a fresh order that uses the authorizations created above
 	names = []string{"zombo.com", "welcome.to.zombo.com"}
@@ -1672,11 +1672,11 @@ func TestStatusForOrder(t *testing.T) {
 
 	// Create a pending authz, an expired authz, an invalid authz, a deactivated authz,
 	// and a valid authz
-	pendingID := createPendingAuthorization(t, sa, identifier.FromDNS("pending.your.order.is.up"), expires)
-	expiredID := createPendingAuthorization(t, sa, identifier.FromDNS("expired.your.order.is.up"), alreadyExpired)
-	invalidID := createFinalizedAuthorization(t, sa, identifier.FromDNS("invalid.your.order.is.up"), expires, "invalid", attemptedAt)
-	validID := createFinalizedAuthorization(t, sa, identifier.FromDNS("valid.your.order.is.up"), expires, "valid", attemptedAt)
-	deactivatedID := createPendingAuthorization(t, sa, identifier.FromDNS("deactivated.your.order.is.up"), expires)
+	pendingID := createPendingAuthorization(t, sa, identifier.NewDNS("pending.your.order.is.up"), expires)
+	expiredID := createPendingAuthorization(t, sa, identifier.NewDNS("expired.your.order.is.up"), alreadyExpired)
+	invalidID := createFinalizedAuthorization(t, sa, identifier.NewDNS("invalid.your.order.is.up"), expires, "invalid", attemptedAt)
+	validID := createFinalizedAuthorization(t, sa, identifier.NewDNS("valid.your.order.is.up"), expires, "valid", attemptedAt)
+	deactivatedID := createPendingAuthorization(t, sa, identifier.NewDNS("deactivated.your.order.is.up"), expires)
 	_, err := sa.DeactivateAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: deactivatedID})
 	test.AssertNotError(t, err, "sa.DeactivateAuthorization2 failed")
 
@@ -1694,10 +1694,10 @@ func TestStatusForOrder(t *testing.T) {
 			Name:       "Order with an invalid authz",
 			OrderNames: []string{"pending.your.order.is.up", "invalid.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
 			OrderIdents: []identifier.ACMEIdentifier{
-				identifier.FromDNS("pending.your.order.is.up"),
-				identifier.FromDNS("invalid.your.order.is.up"),
-				identifier.FromDNS("deactivated.your.order.is.up"),
-				identifier.FromDNS("valid.your.order.is.up"),
+				identifier.NewDNS("pending.your.order.is.up"),
+				identifier.NewDNS("invalid.your.order.is.up"),
+				identifier.NewDNS("deactivated.your.order.is.up"),
+				identifier.NewDNS("valid.your.order.is.up"),
 			},
 			AuthorizationIDs: []int64{pendingID, invalidID, deactivatedID, validID},
 			ExpectedStatus:   string(core.StatusInvalid),
@@ -1706,10 +1706,10 @@ func TestStatusForOrder(t *testing.T) {
 			Name:       "Order with an expired authz",
 			OrderNames: []string{"pending.your.order.is.up", "expired.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
 			OrderIdents: []identifier.ACMEIdentifier{
-				identifier.FromDNS("pending.your.order.is.up"),
-				identifier.FromDNS("expired.your.order.is.up"),
-				identifier.FromDNS("deactivated.your.order.is.up"),
-				identifier.FromDNS("valid.your.order.is.up"),
+				identifier.NewDNS("pending.your.order.is.up"),
+				identifier.NewDNS("expired.your.order.is.up"),
+				identifier.NewDNS("deactivated.your.order.is.up"),
+				identifier.NewDNS("valid.your.order.is.up"),
 			},
 			AuthorizationIDs: []int64{pendingID, expiredID, deactivatedID, validID},
 			ExpectedStatus:   string(core.StatusInvalid),
@@ -1718,9 +1718,9 @@ func TestStatusForOrder(t *testing.T) {
 			Name:       "Order with a deactivated authz",
 			OrderNames: []string{"pending.your.order.is.up", "deactivated.your.order.is.up", "valid.your.order.is.up"},
 			OrderIdents: []identifier.ACMEIdentifier{
-				identifier.FromDNS("pending.your.order.is.up"),
-				identifier.FromDNS("deactivated.your.order.is.up"),
-				identifier.FromDNS("valid.your.order.is.up"),
+				identifier.NewDNS("pending.your.order.is.up"),
+				identifier.NewDNS("deactivated.your.order.is.up"),
+				identifier.NewDNS("valid.your.order.is.up"),
 			},
 			AuthorizationIDs: []int64{pendingID, deactivatedID, validID},
 			ExpectedStatus:   string(core.StatusInvalid),
@@ -1729,8 +1729,8 @@ func TestStatusForOrder(t *testing.T) {
 			Name:       "Order with a pending authz",
 			OrderNames: []string{"valid.your.order.is.up", "pending.your.order.is.up"},
 			OrderIdents: []identifier.ACMEIdentifier{
-				identifier.FromDNS("valid.your.order.is.up"),
-				identifier.FromDNS("pending.your.order.is.up"),
+				identifier.NewDNS("valid.your.order.is.up"),
+				identifier.NewDNS("pending.your.order.is.up"),
 			},
 			AuthorizationIDs: []int64{validID, pendingID},
 			ExpectedStatus:   string(core.StatusPending),
@@ -1738,14 +1738,14 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:             "Order with only valid authzs, not yet processed or finalized",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdents:      []identifier.ACMEIdentifier{identifier.FromDNS("valid.your.order.is.up")},
+			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			ExpectedStatus:   string(core.StatusReady),
 		},
 		{
 			Name:             "Order with only valid authzs, set processing",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdents:      []identifier.ACMEIdentifier{identifier.FromDNS("valid.your.order.is.up")},
+			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			SetProcessing:    true,
 			ExpectedStatus:   string(core.StatusProcessing),
@@ -1753,14 +1753,14 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:             "Order with only valid authzs, not yet processed or finalized, OrderReadyStatus feature flag",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdents:      []identifier.ACMEIdentifier{identifier.FromDNS("valid.your.order.is.up")},
+			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			ExpectedStatus:   string(core.StatusReady),
 		},
 		{
 			Name:             "Order with only valid authzs, set processing",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdents:      []identifier.ACMEIdentifier{identifier.FromDNS("valid.your.order.is.up")},
+			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			SetProcessing:    true,
 			ExpectedStatus:   string(core.StatusProcessing),
@@ -1768,7 +1768,7 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:             "Order with only valid authzs, set processing and finalized",
 			OrderNames:       []string{"valid.your.order.is.up"},
-			OrderIdents:      []identifier.ACMEIdentifier{identifier.FromDNS("valid.your.order.is.up")},
+			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			SetProcessing:    true,
 			Finalize:         true,
@@ -1777,7 +1777,7 @@ func TestStatusForOrder(t *testing.T) {
 		{
 			Name:             "Order with only valid authzs, set processing and finalized, Identifiers overriding DnsNames",
 			OrderNames:       []string{"deactivated.your.order.is.up"},
-			OrderIdents:      []identifier.ACMEIdentifier{identifier.FromDNS("valid.your.order.is.up")},
+			OrderIdents:      []identifier.ACMEIdentifier{identifier.NewDNS("valid.your.order.is.up")},
 			AuthorizationIDs: []int64{validID},
 			SetProcessing:    true,
 			Finalize:         true,
@@ -1836,7 +1836,7 @@ func TestUpdateChallengesDeleteUnused(t *testing.T) {
 	attemptedAt := fc.Now()
 
 	// Create a valid authz
-	authzID := createFinalizedAuthorization(t, sa, identifier.FromDNS("example.com"), expires, "valid", attemptedAt)
+	authzID := createFinalizedAuthorization(t, sa, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
 
 	result, err := sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
@@ -2261,7 +2261,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 
 	fc.Set(mustTime("2021-01-01 00:00"))
 
-	authzID := createPendingAuthorization(t, sa, identifier.FromDNS("aaa"), fc.Now().Add(time.Hour))
+	authzID := createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	expires := fc.Now().Add(time.Hour * 2).UTC()
 	attemptedAt := fc.Now()
 	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
@@ -2295,7 +2295,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].ResolverAddrs[0], "resolver:5353")
 	test.AssertEquals(t, dbVer.Challenges[0].Validated.AsTime(), attemptedAt)
 
-	authzID = createPendingAuthorization(t, sa, identifier.FromDNS("aaa"), fc.Now().Add(time.Hour))
+	authzID = createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	prob, _ := bgrpc.ProblemDetailsToPB(probs.Connection("it went bad captain"))
 
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
@@ -2338,7 +2338,7 @@ func TestRehydrateHostPort(t *testing.T) {
 	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
 
 	// Implicit good port with good scheme
-	authzID := createPendingAuthorization(t, sa, identifier.FromDNS("aaa"), fc.Now().Add(time.Hour))
+	authzID := createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
@@ -2359,7 +2359,7 @@ func TestRehydrateHostPort(t *testing.T) {
 	test.AssertNotError(t, err, "rehydration failed in some fun and interesting way")
 
 	// Explicit good port with good scheme
-	authzID = createPendingAuthorization(t, sa, identifier.FromDNS("aaa"), fc.Now().Add(time.Hour))
+	authzID = createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
@@ -2380,7 +2380,7 @@ func TestRehydrateHostPort(t *testing.T) {
 	test.AssertNotError(t, err, "rehydration failed in some fun and interesting way")
 
 	// Explicit bad port with good scheme
-	authzID = createPendingAuthorization(t, sa, identifier.FromDNS("aaa"), fc.Now().Add(time.Hour))
+	authzID = createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
@@ -2401,7 +2401,7 @@ func TestRehydrateHostPort(t *testing.T) {
 	test.AssertError(t, err, "only ports 80/tcp and 443/tcp are allowed in URL \"http://example.com:444\"")
 
 	// Explicit bad port with bad scheme
-	authzID = createPendingAuthorization(t, sa, identifier.FromDNS("aaa"), fc.Now().Add(time.Hour))
+	authzID = createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
@@ -2422,7 +2422,7 @@ func TestRehydrateHostPort(t *testing.T) {
 	test.AssertError(t, err, "unknown scheme \"httpx\" in URL \"httpx://example.com\"")
 
 	// Missing URL field
-	authzID = createPendingAuthorization(t, sa, identifier.FromDNS("aaa"), fc.Now().Add(time.Hour))
+	authzID = createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
@@ -2448,8 +2448,8 @@ func TestCountPendingAuthorizations2(t *testing.T) {
 
 	expiresA := fc.Now().Add(time.Hour).UTC()
 	expiresB := fc.Now().Add(time.Hour * 3).UTC()
-	_ = createPendingAuthorization(t, sa, identifier.FromDNS("example.com"), expiresA)
-	_ = createPendingAuthorization(t, sa, identifier.FromDNS("example.com"), expiresB)
+	_ = createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), expiresA)
+	_ = createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), expiresB)
 
 	// Registration has two new style pending authorizations
 	regID := int64(1)
@@ -2555,8 +2555,8 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 
 	// Create two new valid authorizations
 	reg := createWorkingRegistration(t, sa)
-	identA := identifier.FromDNS("a.example.com")
-	identB := identifier.FromDNS("b.example.com")
+	identA := identifier.NewDNS("a.example.com")
+	identB := identifier.NewDNS("b.example.com")
 	expires := fc.Now().Add(time.Hour * 24 * 7).UTC()
 	attemptedAt := fc.Now()
 
@@ -2570,8 +2570,8 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 			Expires:        timestamppb.New(orderExpr),
 			DnsNames:       []string{"a.example.com", "b.example.com"},
 			Identifiers: []*corepb.Identifier{
-				identifier.FromDNS("a.example.com").AsProto(),
-				identifier.FromDNS("b.example.com").AsProto(),
+				identifier.NewDNS("a.example.com").ToProto(),
+				identifier.NewDNS("b.example.com").ToProto(),
 			},
 			V2Authorizations: []int64{authzIDA, authzIDB},
 		},
@@ -2617,7 +2617,7 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 	fc.Add(time.Hour)
 	reg := createWorkingRegistration(t, sa)
 	name := "aaa"
-	ident := identifier.FromDNS("aaa")
+	ident := identifier.NewDNS("aaa")
 	expiresA := fc.Now().Add(time.Hour).UTC()
 	expiresB := fc.Now().Add(time.Hour * 3).UTC()
 	attemptedAt := fc.Now()
@@ -2629,7 +2629,7 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 	count, err := sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
 		RegistrationID: reg.Id,
 		DnsName:        name,
-		Identifier:     ident.AsProto(),
+		Identifier:     ident.ToProto(),
 		Range: &sapb.Range{
 			Earliest: timestamppb.New(earliest),
 			Latest:   timestamppb.New(latest),
@@ -2651,7 +2651,7 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 
 	count, err = sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
 		RegistrationID: reg.Id,
-		Identifier:     ident.AsProto(),
+		Identifier:     ident.ToProto(),
 		Range: &sapb.Range{
 			Earliest: timestamppb.New(earliest),
 			Latest:   timestamppb.New(latest),
@@ -2665,7 +2665,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	aaa := createFinalizedAuthorization(t, sa, identifier.FromDNS("aaa"), fc.Now().Add(24*time.Hour), "valid", fc.Now())
+	aaa := createFinalizedAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(24*time.Hour), "valid", fc.Now())
 
 	for _, tc := range []struct {
 		name        string
@@ -2680,7 +2680,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			name:        "happy path",
 			regID:       1,
 			dnsNames:    []string{"aaa"},
-			identifiers: []*corepb.Identifier{identifier.FromDNS("aaa").AsProto()},
+			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
 			profile:     "",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{aaa},
@@ -2696,7 +2696,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 		{
 			name:        "happy path, no DnsNames",
 			regID:       1,
-			identifiers: []*corepb.Identifier{identifier.FromDNS("aaa").AsProto()},
+			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
 			profile:     "",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{aaa},
@@ -2705,7 +2705,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			name:        "different regID",
 			regID:       2,
 			dnsNames:    []string{"aaa"},
-			identifiers: []*corepb.Identifier{identifier.FromDNS("aaa").AsProto()},
+			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
 			profile:     "",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{},
@@ -2714,7 +2714,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			name:        "different dnsName",
 			regID:       1,
 			dnsNames:    []string{"bbb"},
-			identifiers: []*corepb.Identifier{identifier.FromDNS("bbb").AsProto()},
+			identifiers: []*corepb.Identifier{identifier.NewDNS("bbb").ToProto()},
 			profile:     "",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{},
@@ -2723,7 +2723,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			name:        "different profile",
 			regID:       1,
 			dnsNames:    []string{"aaa"},
-			identifiers: []*corepb.Identifier{identifier.FromDNS("aaa").AsProto()},
+			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
 			profile:     "test",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{},
@@ -2732,7 +2732,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			name:        "too-far-out validUntil",
 			regID:       2,
 			dnsNames:    []string{"aaa"},
-			identifiers: []*corepb.Identifier{identifier.FromDNS("aaa").AsProto()},
+			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
 			profile:     "",
 			validUntil:  fc.Now().Add(25 * time.Hour),
 			wantIDs:     []int64{},
@@ -2779,7 +2779,7 @@ func TestGetOrderExpired(t *testing.T) {
 			RegistrationID:   reg.Id,
 			Expires:          timestamppb.New(now.Add(-time.Hour)),
 			DnsNames:         []string{"example.com"},
-			Identifiers:      []*corepb.Identifier{identifier.FromDNS("example.com").AsProto()},
+			Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 			V2Authorizations: []int64{666},
 		},
 	})
@@ -3705,7 +3705,7 @@ func TestReplacementOrderExists(t *testing.T) {
 	// Add one valid authz.
 	expires := fc.Now().Add(time.Hour)
 	attemptedAt := fc.Now()
-	authzID := createFinalizedAuthorization(t, sa, identifier.FromDNS("example.com"), expires, "valid", attemptedAt)
+	authzID := createFinalizedAuthorization(t, sa, identifier.NewDNS("example.com"), expires, "valid", attemptedAt)
 
 	// Add a new order in pending status with no certificate serial.
 	expires1Year := sa.clk.Now().Add(365 * 24 * time.Hour)
@@ -3714,7 +3714,7 @@ func TestReplacementOrderExists(t *testing.T) {
 			RegistrationID:   reg.Id,
 			Expires:          timestamppb.New(expires1Year),
 			DnsNames:         []string{"example.com"},
-			Identifiers:      []*corepb.Identifier{identifier.FromDNS("example.com").AsProto()},
+			Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 			V2Authorizations: []int64{authzID},
 		},
 	})
@@ -3735,7 +3735,7 @@ func TestReplacementOrderExists(t *testing.T) {
 			RegistrationID:   reg.Id,
 			Expires:          timestamppb.New(expires1Year),
 			DnsNames:         []string{"example.com"},
-			Identifiers:      []*corepb.Identifier{identifier.FromDNS("example.com").AsProto()},
+			Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 			V2Authorizations: []int64{authzID},
 			ReplacesSerial:   oldCertSerial,
 		},
@@ -3773,7 +3773,7 @@ func TestReplacementOrderExists(t *testing.T) {
 			RegistrationID:   reg.Id,
 			Expires:          timestamppb.New(expires1Year),
 			DnsNames:         []string{"example.com"},
-			Identifiers:      []*corepb.Identifier{identifier.FromDNS("example.com").AsProto()},
+			Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 			V2Authorizations: []int64{authzID},
 			ReplacesSerial:   oldCertSerial,
 		},

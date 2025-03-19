@@ -227,7 +227,7 @@ func TestRegistration(t *testing.T) {
 
 func TestAuthz(t *testing.T) {
 	exp := time.Now().AddDate(0, 0, 1).UTC()
-	ident := identifier.FromDNS("example.com")
+	ident := identifier.NewDNS("example.com")
 	challA := core.Challenge{
 		Type:   core.ChallengeTypeDNS01,
 		Status: core.StatusPending,
@@ -301,7 +301,7 @@ func TestOrderValid(t *testing.T) {
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				DnsNames:          []string{"example.com"},
-				Identifiers:       []*corepb.Identifier{identifier.FromDNS("example.com").AsProto()},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:   false,
 				Created:           timestamppb.New(created),
 			},
@@ -329,7 +329,7 @@ func TestOrderValid(t *testing.T) {
 				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				Identifiers:       []*corepb.Identifier{identifier.FromDNS("example.com").AsProto()},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:   false,
 				Created:           timestamppb.New(created),
 			},
@@ -343,7 +343,7 @@ func TestOrderValid(t *testing.T) {
 				Expires:          timestamppb.New(expires),
 				V2Authorizations: []int64{},
 				DnsNames:         []string{"example.com"},
-				Identifiers:      []*corepb.Identifier{identifier.FromDNS("example.com").AsProto()},
+				Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:  false,
 				Created:          timestamppb.New(created),
 			},
@@ -362,7 +362,7 @@ func TestOrderValid(t *testing.T) {
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				DnsNames:          []string{"example.com"},
-				Identifiers:       []*corepb.Identifier{identifier.FromDNS("example.com").AsProto()},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:   false,
 			},
 		},
@@ -375,7 +375,7 @@ func TestOrderValid(t *testing.T) {
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				DnsNames:          []string{"example.com"},
-				Identifiers:       []*corepb.Identifier{identifier.FromDNS("example.com").AsProto()},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:   false,
 			},
 		},
@@ -388,7 +388,7 @@ func TestOrderValid(t *testing.T) {
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				DnsNames:          []string{"example.com"},
-				Identifiers:       []*corepb.Identifier{identifier.FromDNS("example.com").AsProto()},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:   false,
 			},
 		},

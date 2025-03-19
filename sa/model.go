@@ -672,7 +672,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 	ident := identifier.FromProto(identifier.WithDefault(authz))
 
 	am := &authzModel{
-		IdentifierType:  identifierTypeToUint[ident.AsProto().Type],
+		IdentifierType:  identifierTypeToUint[ident.ToProto().Type],
 		IdentifierValue: ident.Value,
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.AcmeStatus(authz.Status)],
@@ -832,7 +832,7 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 		Id:                     fmt.Sprintf("%d", am.ID),
 		Status:                 string(uintToStatus[am.Status]),
 		DnsName:                am.IdentifierValue,
-		Identifier:             identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}.AsProto(),
+		Identifier:             identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}.ToProto(),
 		RegistrationID:         am.RegistrationID,
 		Expires:                timestamppb.New(am.Expires),
 		CertificateProfileName: profile,
