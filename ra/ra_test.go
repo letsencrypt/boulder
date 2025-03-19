@@ -1416,14 +1416,18 @@ func TestNewOrder_Identifiers(t *testing.T) {
 		CertificateProfileName: "test",
 		DnsNames:               []string{"a.com"},
 	})
-	test.AssertNotError(t, err, "ra.NewOrder failed without Identifiers")
+	if err != nil {
+		t.Errorf("ra.NewOrder failed without Identifiers: %#v", err)
+	}
 
 	_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID:         Registration.Id,
 		CertificateProfileName: "test",
 		Identifiers:            []*corepb.Identifier{identifier.NewDNS("a.com").ToProto()},
 	})
-	test.AssertNotError(t, err, "ra.NewOrder failed without DnsNames")
+	if err != nil {
+		t.Errorf("ra.NewOrder failed without DnsNames: %#v", err)
+	}
 }
 
 // TestNewOrder_OrderReuse tests that subsequent requests by an ACME account to create

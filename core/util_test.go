@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +9,7 @@ import (
 	"math/big"
 	"net/netip"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -333,84 +333,83 @@ func TestHashIdentifiers(t *testing.T) {
 
 	testCases := []struct {
 		Name          string
-		Identifiers1  identifier.ACMEIdentifiers
-		Identifiers2  identifier.ACMEIdentifiers
+		Idents1       identifier.ACMEIdentifiers
+		Idents2       identifier.ACMEIdentifiers
 		ExpectedEqual bool
 	}{
 		{
 			Name:          "Deterministic for DNS",
-			Identifiers1:  identifier.ACMEIdentifiers{dns1},
-			Identifiers2:  identifier.ACMEIdentifiers{dns1},
+			Idents1:       identifier.ACMEIdentifiers{dns1},
+			Idents2:       identifier.ACMEIdentifiers{dns1},
 			ExpectedEqual: true,
 		},
 		{
 			Name:          "Deterministic for IPv4",
-			Identifiers1:  identifier.ACMEIdentifiers{ipv4_1},
-			Identifiers2:  identifier.ACMEIdentifiers{ipv4_1},
+			Idents1:       identifier.ACMEIdentifiers{ipv4_1},
+			Idents2:       identifier.ACMEIdentifiers{ipv4_1},
 			ExpectedEqual: true,
 		},
 		{
 			Name:          "Deterministic for IPv6",
-			Identifiers1:  identifier.ACMEIdentifiers{ipv6_1},
-			Identifiers2:  identifier.ACMEIdentifiers{ipv6_1},
+			Idents1:       identifier.ACMEIdentifiers{ipv6_1},
+			Idents2:       identifier.ACMEIdentifiers{ipv6_1},
 			ExpectedEqual: true,
 		},
 		{
 			Name:          "Differentiates for DNS",
-			Identifiers1:  identifier.ACMEIdentifiers{dns1},
-			Identifiers2:  identifier.ACMEIdentifiers{dns2},
+			Idents1:       identifier.ACMEIdentifiers{dns1},
+			Idents2:       identifier.ACMEIdentifiers{dns2},
 			ExpectedEqual: false,
 		},
 		{
 			Name:          "Differentiates for IPv4",
-			Identifiers1:  identifier.ACMEIdentifiers{ipv4_1},
-			Identifiers2:  identifier.ACMEIdentifiers{ipv4_2},
+			Idents1:       identifier.ACMEIdentifiers{ipv4_1},
+			Idents2:       identifier.ACMEIdentifiers{ipv4_2},
 			ExpectedEqual: false,
 		},
 		{
 			Name:          "Differentiates for IPv6",
-			Identifiers1:  identifier.ACMEIdentifiers{ipv6_1},
-			Identifiers2:  identifier.ACMEIdentifiers{ipv6_2},
+			Idents1:       identifier.ACMEIdentifiers{ipv6_1},
+			Idents2:       identifier.ACMEIdentifiers{ipv6_2},
 			ExpectedEqual: false,
 		},
 		{
 			Name: "Not subject to ordering",
-			Identifiers1: identifier.ACMEIdentifiers{
+			Idents1: identifier.ACMEIdentifiers{
 				dns1, dns2, ipv4_1, ipv4_2, ipv6_1, ipv6_2,
 			},
-			Identifiers2: identifier.ACMEIdentifiers{
+			Idents2: identifier.ACMEIdentifiers{
 				ipv6_1, dns2, ipv4_2, dns1, ipv4_1, ipv6_2,
 			},
 			ExpectedEqual: true,
 		},
 		{
 			Name: "Not case sensitive",
-			Identifiers1: identifier.ACMEIdentifiers{
+			Idents1: identifier.ACMEIdentifiers{
 				dns1, dns2,
 			},
-			Identifiers2: identifier.ACMEIdentifiers{
+			Idents2: identifier.ACMEIdentifiers{
 				dns1_caps, dns2_caps,
 			},
 			ExpectedEqual: true,
 		},
 		{
 			Name: "Not subject to duplication",
-			Identifiers1: identifier.ACMEIdentifiers{
+			Idents1: identifier.ACMEIdentifiers{
 				dns1, dns1,
 			},
-			Identifiers2:  identifier.ACMEIdentifiers{dns1},
+			Idents2:       identifier.ACMEIdentifiers{dns1},
 			ExpectedEqual: true,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			h1 := HashIdentifiers(tc.Identifiers1)
-			h2 := HashIdentifiers(tc.Identifiers2)
-			if tc.ExpectedEqual {
-				test.AssertByteEquals(t, h1, h2)
-			} else {
-				test.Assert(t, !bytes.Equal(h1, h2), "Should have been different")
+			t.Parallel()
+			h1 := HashIdentifiers(tc.Idents1)
+			h2 := HashIdentifiers(tc.Idents2)
+			if slices.Equal(h1, h2) != tc.ExpectedEqual {
+				t.Errorf("Comparing hashes of idents %#v and %#v, expected equality to be %v", tc.Idents1, tc.Idents2, tc.ExpectedEqual)
 			}
 		})
 	}
