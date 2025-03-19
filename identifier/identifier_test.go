@@ -5,37 +5,17 @@ import (
 	"crypto/x509/pkix"
 	"net"
 	"net/netip"
+	"slices"
 	"testing"
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/test"
 )
 
-func TestNormalize(t *testing.T) {
-	idents := []ACMEIdentifier{
-		{Type: "DNS", Value: "foobar.com"},
-		{Type: "DNS", Value: "fooBAR.com"},
-		{Type: "DNS", Value: "baz.com"},
-		{Type: "DNS", Value: "foobar.com"},
-		{Type: "DNS", Value: "bar.com"},
-		{Type: "DNS", Value: "bar.com"},
-		{Type: "DNS", Value: "a.com"},
-	}
-	expected := []ACMEIdentifier{
-		{Type: "DNS", Value: "a.com"},
-		{Type: "DNS", Value: "bar.com"},
-		{Type: "DNS", Value: "baz.com"},
-		{Type: "DNS", Value: "foobar.com"},
-	}
-	u := Normalize(idents)
-	test.AssertDeepEquals(t, expected, u)
-}
-
 type protoToProtoTestCases struct {
-	Name         string
-	InputIdents  []*corepb.Identifier
-	InputNames   []string
-	ExpectIdents []ACMEIdentifier
+	Name        string
+	InputIdents []*corepb.Identifier
+	InputNames  []string
+	want        []ACMEIdentifier
 }
 
 func (tc protoToProtoTestCases) GetIdentifiers() []*corepb.Identifier {
@@ -55,7 +35,7 @@ func TestProtoToProtoWithDefault(t *testing.T) {
 				{Type: "dns", Value: "b.example.com"},
 			},
 			InputNames: []string{"a.example.com", "b.example.com"},
-			ExpectIdents: []ACMEIdentifier{
+			want: []ACMEIdentifier{
 				{Type: TypeDNS, Value: "a.example.com"},
 				{Type: TypeDNS, Value: "b.example.com"},
 			},
@@ -66,7 +46,7 @@ func TestProtoToProtoWithDefault(t *testing.T) {
 				{Type: "dns", Value: "coffee.example.com"},
 			},
 			InputNames: []string{"tea.example.com"},
-			ExpectIdents: []ACMEIdentifier{
+			want: []ACMEIdentifier{
 				{Type: TypeDNS, Value: "coffee.example.com"},
 			},
 		},
@@ -76,7 +56,7 @@ func TestProtoToProtoWithDefault(t *testing.T) {
 				{Type: "dns", Value: "example.com"},
 			},
 			InputNames: []string{},
-			ExpectIdents: []ACMEIdentifier{
+			want: []ACMEIdentifier{
 				{Type: TypeDNS, Value: "example.com"},
 			},
 		},
@@ -86,7 +66,7 @@ func TestProtoToProtoWithDefault(t *testing.T) {
 				{Type: "dns", Value: "example.com"},
 			},
 			InputNames: nil,
-			ExpectIdents: []ACMEIdentifier{
+			want: []ACMEIdentifier{
 				{Type: TypeDNS, Value: "example.com"},
 			},
 		},
@@ -94,94 +74,189 @@ func TestProtoToProtoWithDefault(t *testing.T) {
 			Name:        "Empty identifiers, populated names",
 			InputIdents: []*corepb.Identifier{},
 			InputNames:  []string{"a.example.com", "b.example.com"},
-			ExpectIdents: []ACMEIdentifier{
+			want: []ACMEIdentifier{
 				{Type: TypeDNS, Value: "a.example.com"},
 				{Type: TypeDNS, Value: "b.example.com"},
 			},
 		},
 		{
-			Name:         "Empty identifiers, empty names",
-			InputIdents:  []*corepb.Identifier{},
-			InputNames:   []string{},
-			ExpectIdents: nil,
+			Name:        "Empty identifiers, empty names",
+			InputIdents: []*corepb.Identifier{},
+			InputNames:  []string{},
+			want:        nil,
 		},
 		{
-			Name:         "Empty identifiers, nil names",
-			InputIdents:  []*corepb.Identifier{},
-			InputNames:   nil,
-			ExpectIdents: nil,
+			Name:        "Empty identifiers, nil names",
+			InputIdents: []*corepb.Identifier{},
+			InputNames:  nil,
+			want:        nil,
 		},
 		{
 			Name:        "Nil identifiers, populated names",
 			InputIdents: nil,
 			InputNames:  []string{"a.example.com", "b.example.com"},
-			ExpectIdents: []ACMEIdentifier{
+			want: []ACMEIdentifier{
 				{Type: TypeDNS, Value: "a.example.com"},
 				{Type: TypeDNS, Value: "b.example.com"},
 			},
 		},
 		{
-			Name:         "Nil identifiers, empty names",
-			InputIdents:  nil,
-			InputNames:   []string{},
-			ExpectIdents: nil,
+			Name:        "Nil identifiers, empty names",
+			InputIdents: nil,
+			InputNames:  []string{},
+			want:        nil,
 		},
 		{
-			Name:         "Nil identifiers, nil names",
-			InputIdents:  nil,
-			InputNames:   nil,
-			ExpectIdents: nil,
+			Name:        "Nil identifiers, nil names",
+			InputIdents: nil,
+			InputNames:  nil,
+			want:        nil,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			test.AssertDeepEquals(t, SliceFromProto(WithDefaults(tc)), tc.ExpectIdents)
+			got := FromProtoSlice(WithDefaults(tc))
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("Got %#v, but want %#v", got, tc.want)
+			}
 		})
 	}
 }
 
-// TestFromCSR covers TestFromCert as well, because their logic is exactly the same.
-func TestFromCSR(t *testing.T) {
+// TestFromX509 tests FromCert and FromCSR, which are fromX509's public
+// wrappers.
+func TestFromX509(t *testing.T) {
 	cases := []struct {
-		name           string
-		csr            *x509.CertificateRequest
-		expectedIdents []ACMEIdentifier
+		name        string
+		subject     pkix.Name
+		dnsNames    []string
+		ipAddresses []net.IP
+		want        []ACMEIdentifier
 	}{
 		{
-			"no explicit CN",
-			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
-			[]ACMEIdentifier{NewDNS("a.com")},
+			name:     "no explicit CN",
+			dnsNames: []string{"a.com"},
+			want:     []ACMEIdentifier{NewDNS("a.com")},
 		},
 		{
-			"explicit uppercase CN",
-			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"a.com"}},
-			[]ACMEIdentifier{NewDNS("a.com")},
+			name:     "explicit uppercase CN",
+			subject:  pkix.Name{CommonName: "A.com"},
+			dnsNames: []string{"a.com"},
+			want:     []ACMEIdentifier{NewDNS("a.com")},
 		},
 		{
-			"no explicit CN, uppercase SAN",
-			&x509.CertificateRequest{DNSNames: []string{"A.com"}},
-			[]ACMEIdentifier{NewDNS("a.com")},
+			name:     "no explicit CN, uppercase SAN",
+			dnsNames: []string{"A.com"},
+			want:     []ACMEIdentifier{NewDNS("a.com")},
 		},
 		{
-			"duplicate SANs",
-			&x509.CertificateRequest{DNSNames: []string{"b.com", "b.com", "a.com", "a.com"}},
-			[]ACMEIdentifier{NewDNS("a.com"), NewDNS("b.com")},
+			name:     "duplicate SANs",
+			dnsNames: []string{"b.com", "b.com", "a.com", "a.com"},
+			want:     []ACMEIdentifier{NewDNS("a.com"), NewDNS("b.com")},
 		},
 		{
-			"explicit CN not found in SANs",
-			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "a.com"}, DNSNames: []string{"b.com"}},
-			[]ACMEIdentifier{NewDNS("a.com"), NewDNS("b.com")},
+			name:     "explicit CN not found in SANs",
+			subject:  pkix.Name{CommonName: "a.com"},
+			dnsNames: []string{"b.com"},
+			want:     []ACMEIdentifier{NewDNS("a.com"), NewDNS("b.com")},
 		},
 		{
-			"mix of DNSNames and IPAddresses",
-			&x509.CertificateRequest{DNSNames: []string{"a.com"}, IPAddresses: []net.IP{{192, 168, 1, 1}}},
-			[]ACMEIdentifier{NewDNS("a.com"), NewIP(netip.MustParseAddr("192.168.1.1"))},
+			name:        "mix of DNSNames and IPAddresses",
+			dnsNames:    []string{"a.com"},
+			ipAddresses: []net.IP{{192, 168, 1, 1}},
+			want:        []ACMEIdentifier{NewDNS("a.com"), NewIP(netip.MustParseAddr("192.168.1.1"))},
+		},
+	}
+	for _, tc := range cases {
+		t.Run("cert/"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := FromCert(&x509.Certificate{Subject: tc.subject, DNSNames: tc.dnsNames, IPAddresses: tc.ipAddresses})
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("FromCert() got %#v, but want %#v", got, tc.want)
+			}
+		})
+		t.Run("csr/"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := FromCSR(&x509.CertificateRequest{Subject: tc.subject, DNSNames: tc.dnsNames, IPAddresses: tc.ipAddresses})
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("FromCSR() got %#v, but want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNormalize(t *testing.T) {
+	cases := []struct {
+		name   string
+		idents []ACMEIdentifier
+		want   []ACMEIdentifier
+	}{
+		{
+			name: "convert to lowercase",
+			idents: []ACMEIdentifier{
+				{Type: TypeDNS, Value: "AlPha.example.coM"},
+				{Type: TypeIP, Value: "fe80::CAFE"},
+			},
+			want: []ACMEIdentifier{
+				{Type: TypeDNS, Value: "alpha.example.com"},
+				{Type: TypeIP, Value: "fe80::cafe"},
+			},
+		},
+		{
+			name: "sort",
+			idents: []ACMEIdentifier{
+				{Type: TypeDNS, Value: "foobar.com"},
+				{Type: TypeDNS, Value: "bar.com"},
+				{Type: TypeDNS, Value: "baz.com"},
+				{Type: TypeDNS, Value: "a.com"},
+				{Type: TypeIP, Value: "fe80::cafe"},
+				{Type: TypeIP, Value: "2001:db8::1dea"},
+				{Type: TypeIP, Value: "192.168.1.1"},
+			},
+			want: []ACMEIdentifier{
+				{Type: TypeDNS, Value: "a.com"},
+				{Type: TypeDNS, Value: "bar.com"},
+				{Type: TypeDNS, Value: "baz.com"},
+				{Type: TypeDNS, Value: "foobar.com"},
+				{Type: TypeIP, Value: "192.168.1.1"},
+				{Type: TypeIP, Value: "2001:db8::1dea"},
+				{Type: TypeIP, Value: "fe80::cafe"},
+			},
+		},
+		{
+			name: "de-duplicate",
+			idents: []ACMEIdentifier{
+				{Type: TypeDNS, Value: "AlPha.example.coM"},
+				{Type: TypeIP, Value: "fe80::CAFE"},
+				{Type: TypeDNS, Value: "alpha.example.com"},
+				{Type: TypeIP, Value: "fe80::cafe"},
+				NewIP(netip.MustParseAddr("fe80:0000:0000:0000:0000:0000:0000:cafe")),
+			},
+			want: []ACMEIdentifier{
+				{Type: TypeDNS, Value: "alpha.example.com"},
+				{Type: TypeIP, Value: "fe80::cafe"},
+			},
+		},
+		{
+			name: "DNS before IP",
+			idents: []ACMEIdentifier{
+				{Type: TypeIP, Value: "fe80::cafe"},
+				{Type: TypeDNS, Value: "alpha.example.com"},
+			},
+			want: []ACMEIdentifier{
+				{Type: TypeDNS, Value: "alpha.example.com"},
+				{Type: TypeIP, Value: "fe80::cafe"},
+			},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			test.AssertDeepEquals(t, FromCSR(tc.csr), tc.expectedIdents)
+			t.Parallel()
+			got := Normalize(tc.idents)
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("Got %#v, but want %#v", got, tc.want)
+			}
 		})
 	}
 }

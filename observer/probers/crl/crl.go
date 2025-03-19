@@ -59,7 +59,7 @@ func (p CRLProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 		if err != nil {
 			return false, dur
 		}
-		if len(idps) != 0 && !slices.Contains(idps, p.url) {
+		if !slices.Contains(idps, p.url) {
 			return false, dur
 		}
 	}

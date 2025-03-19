@@ -630,7 +630,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	// Invalid Window
 	req := &sapb.CountFQDNSetsRequest{
 		DnsNames:    names,
-		Identifiers: identifier.SliceAsProto(idents),
+		Identifiers: identifier.ToProtoSlice(idents),
 		Window:      nil,
 	}
 	_, err = sa.FQDNSetTimestampsForWindow(ctx, req)
@@ -639,7 +639,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	window := time.Hour * 3
 	req = &sapb.CountFQDNSetsRequest{
 		DnsNames:    names,
-		Identifiers: identifier.SliceAsProto(idents),
+		Identifiers: identifier.ToProtoSlice(idents),
 		Window:      durationpb.New(window),
 	}
 
@@ -681,7 +681,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 
 	// Ensure there are two issuance timestamps for names inside the window.
 	req.DnsNames = names
-	req.Identifiers = identifier.SliceAsProto(idents)
+	req.Identifiers = identifier.ToProtoSlice(idents)
 	resp, err = sa.FQDNSetTimestampsForWindow(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, len(resp.Timestamps), 2)
@@ -702,7 +702,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 
 	resp, err = sa.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
 		DnsNames:    names,
-		Identifiers: identifier.SliceAsProto(idents),
+		Identifiers: identifier.ToProtoSlice(idents),
 		Window:      durationpb.New(window),
 		Limit:       1,
 	})
@@ -720,7 +720,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	test.AssertEquals(t, firstIssued, resp.Timestamps[len(resp.Timestamps)-1].AsTime())
 
 	resp, err = sa.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
-		Identifiers: identifier.SliceAsProto(idents),
+		Identifiers: identifier.ToProtoSlice(idents),
 		Window:      durationpb.New(window),
 		Limit:       1,
 	})
@@ -738,7 +738,7 @@ func TestFQDNSetExists(t *testing.T) {
 		identifier.NewDNS("a.example.com"),
 		identifier.NewDNS("B.example.com"),
 	}
-	exists, err := sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names, Identifiers: identifier.SliceAsProto(idents)})
+	exists, err := sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names, Identifiers: identifier.ToProtoSlice(idents)})
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
 	test.Assert(t, !exists.Exists, "FQDN set shouldn't exist")
 
@@ -750,7 +750,7 @@ func TestFQDNSetExists(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to add name set")
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
-	exists, err = sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names, Identifiers: identifier.SliceAsProto(idents)})
+	exists, err = sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names, Identifiers: identifier.ToProtoSlice(idents)})
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
 	test.Assert(t, exists.Exists, "FQDN set does exist")
 
@@ -758,7 +758,7 @@ func TestFQDNSetExists(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to check FQDN set existence without Identifiers")
 	test.Assert(t, exists.Exists, "FQDN set does exist without Identifiers")
 
-	exists, err = sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Identifiers: identifier.SliceAsProto(idents)})
+	exists, err = sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Identifiers: identifier.ToProtoSlice(idents)})
 	test.AssertNotError(t, err, "Failed to check FQDN set existence without DnsNames")
 	test.Assert(t, exists.Exists, "FQDN set does exist without DnsNames")
 }
@@ -1428,7 +1428,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	authz, err := sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID: reg.Id,
 		DnsNames:       names,
-		Identifiers:    identifier.SliceAsProto(idents),
+		Identifiers:    identifier.ToProtoSlice(idents),
 		ValidUntil:     timestamppb.New(expiryCutoff),
 	})
 	// It should not fail
@@ -1441,7 +1441,7 @@ func TestGetAuthorizations2(t *testing.T) {
 	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID: reg.Id,
 		DnsNames:       append(names, nameD),
-		Identifiers:    append(identifier.SliceAsProto(idents), identD.ToProto()),
+		Identifiers:    append(identifier.ToProtoSlice(idents), identD.ToProto()),
 		ValidUntil:     timestamppb.New(expiryCutoff),
 	})
 	// It should not fail
@@ -1528,7 +1528,7 @@ func TestGetOrderForNames(t *testing.T) {
 	result, err := sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      regA.Id,
 		DnsNames:    names,
-		Identifiers: identifier.SliceAsProto(idents),
+		Identifiers: identifier.ToProtoSlice(idents),
 	})
 	// We expect the result to return an error
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
@@ -1544,7 +1544,7 @@ func TestGetOrderForNames(t *testing.T) {
 			Expires:          timestamppb.New(expires),
 			V2Authorizations: []int64{authzIDA, authzIDB},
 			DnsNames:         names,
-			Identifiers:      identifier.SliceAsProto(idents),
+			Identifiers:      identifier.ToProtoSlice(idents),
 		},
 	})
 	// It shouldn't error
@@ -1557,7 +1557,7 @@ func TestGetOrderForNames(t *testing.T) {
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      regA.Id,
 		DnsNames:    names,
-		Identifiers: identifier.SliceAsProto(idents),
+		Identifiers: identifier.ToProtoSlice(idents),
 	})
 	// It shouldn't error
 	test.AssertNotError(t, err, "sa.GetOrderForNames failed")
@@ -1570,7 +1570,7 @@ func TestGetOrderForNames(t *testing.T) {
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      regB,
 		DnsNames:    names,
-		Identifiers: identifier.SliceAsProto(idents),
+		Identifiers: identifier.ToProtoSlice(idents),
 	})
 	// It should error
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
@@ -1587,7 +1587,7 @@ func TestGetOrderForNames(t *testing.T) {
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      regA.Id,
 		DnsNames:    names,
-		Identifiers: identifier.SliceAsProto(idents),
+		Identifiers: identifier.ToProtoSlice(idents),
 	})
 	// It should error since there is no result
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
@@ -1612,7 +1612,7 @@ func TestGetOrderForNames(t *testing.T) {
 			Expires:          timestamppb.New(expires),
 			V2Authorizations: []int64{authzIDC, authzIDD},
 			DnsNames:         names,
-			Identifiers:      identifier.SliceAsProto(idents),
+			Identifiers:      identifier.ToProtoSlice(idents),
 		},
 	})
 	// It shouldn't error
@@ -1625,7 +1625,7 @@ func TestGetOrderForNames(t *testing.T) {
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      regA.Id,
 		DnsNames:    names,
-		Identifiers: identifier.SliceAsProto(idents),
+		Identifiers: identifier.ToProtoSlice(idents),
 	})
 	// It should not error since a ready order can be reused.
 	test.AssertNotError(t, err, "sa.GetOrderForNames returned an unexpected error for ready order reuse")
@@ -1647,7 +1647,7 @@ func TestGetOrderForNames(t *testing.T) {
 	result, err = sa.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      regA.Id,
 		DnsNames:    names,
-		Identifiers: identifier.SliceAsProto(idents),
+		Identifiers: identifier.ToProtoSlice(idents),
 	})
 	// It should error since a valid order should not be reused.
 	test.AssertError(t, err, "sa.GetOrderForNames did not return an error for an empty result")
@@ -1800,7 +1800,7 @@ func TestStatusForOrder(t *testing.T) {
 					Expires:          orderExpiry,
 					V2Authorizations: tc.AuthorizationIDs,
 					DnsNames:         tc.OrderNames,
-					Identifiers:      identifier.SliceAsProto(tc.OrderIdents),
+					Identifiers:      identifier.ToProtoSlice(tc.OrderIdents),
 				},
 			})
 			test.AssertNotError(t, err, "NewOrderAndAuthzs errored unexpectedly")

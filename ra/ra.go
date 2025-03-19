@@ -1068,7 +1068,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// There should never be an order with 0 identifiers at the stage, but we check to
 	// be on the safe side, throwing an internal server error if this assumption
 	// is ever violated.
-	orderIdents := identifier.Normalize(identifier.SliceFromProto(identifier.WithDefaults(req.Order)))
+	orderIdents := identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaults(req.Order)))
 	if len(orderIdents) == 0 {
 		return nil, berrors.InternalServerError("Order has no associated identifiers")
 	}
@@ -1852,7 +1852,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		var authzPB *sapb.Authorizations
 		authzPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
-			Identifiers:    identifier.SliceAsProto(identifier.NewDNSSlice(cert.DNSNames)),
+			Identifiers:    identifier.ToProtoSlice(identifier.NewDNSSlice(cert.DNSNames)),
 			DnsNames:       cert.DNSNames,
 			ValidUntil:     timestamppb.New(ra.clk.Now()),
 		})
@@ -2274,7 +2274,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	idents := identifier.Normalize(identifier.SliceFromProto(identifier.WithDefaults(req)))
+	idents := identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaults(req)))
 
 	profile, err := ra.profiles.get(req.CertificateProfileName)
 	if err != nil {
@@ -2318,7 +2318,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      req.RegistrationID,
 		DnsNames:    dnsNames,
-		Identifiers: identifier.SliceAsProto(idents),
+		Identifiers: identifier.ToProtoSlice(idents),
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
 	// immediately
@@ -2364,7 +2364,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			RegistrationID: req.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
 			DnsNames:       dnsNames,
-			Identifiers:    identifier.SliceAsProto(idents),
+			Identifiers:    identifier.ToProtoSlice(idents),
 			Profile:        req.CertificateProfileName,
 		}
 		existingAuthz, err = ra.SA.GetValidAuthorizations2(ctx, getAuthReq)
@@ -2373,7 +2373,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			RegistrationID: req.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
 			DnsNames:       dnsNames,
-			Identifiers:    identifier.SliceAsProto(idents),
+			Identifiers:    identifier.ToProtoSlice(idents),
 			Profile:        req.CertificateProfileName,
 		}
 		existingAuthz, err = ra.SA.GetAuthorizations2(ctx, getAuthReq)
@@ -2390,7 +2390,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	newOrder := &sapb.NewOrderRequest{
 		RegistrationID:         req.RegistrationID,
 		DnsNames:               dnsNames,
-		Identifiers:            identifier.SliceAsProto(idents),
+		Identifiers:            identifier.ToProtoSlice(idents),
 		CertificateProfileName: req.CertificateProfileName,
 		Replaces:               req.Replaces,
 		ReplacesSerial:         req.ReplacesSerial,

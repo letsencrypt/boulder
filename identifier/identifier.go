@@ -1,14 +1,19 @@
 // The identifier package defines types for RFC 8555 ACME identifiers.
+//
 // It exists as a separate package to prevent an import loop between the core
 // and probs packages.
+//
+// Function naming conventions:
+// - "New" creates a new instance from one or more simple base type inputs.
+// - "From" and "To" extract information from, or compose, a more complex object.
 package identifier
 
 import (
 	"crypto/x509"
 	"fmt"
+	"net"
 	"net/netip"
 	"slices"
-	"sort"
 	"strings"
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -37,6 +42,10 @@ type ACMEIdentifier struct {
 	Value string `json:"value"`
 }
 
+// ACMEIdentifiers is a named type for a slice of ACME identifiers, so that
+// methods can be applied to these slices.
+type ACMEIdentifiers []ACMEIdentifier
+
 func (i ACMEIdentifier) ToProto() *corepb.Identifier {
 	return &corepb.Identifier{
 		Type:  string(i.Type),
@@ -51,9 +60,9 @@ func FromProto(ident *corepb.Identifier) ACMEIdentifier {
 	}
 }
 
-// SliceAsProto is a convenience function for converting a slice of
+// ToProtoSlice is a convenience function for converting a slice of
 // ACMEIdentifier into a slice of *corepb.Identifier, to use for RPCs.
-func SliceAsProto(idents []ACMEIdentifier) []*corepb.Identifier {
+func ToProtoSlice(idents ACMEIdentifiers) []*corepb.Identifier {
 	var pbIdents []*corepb.Identifier
 	for _, ident := range idents {
 		pbIdents = append(pbIdents, ident.ToProto())
@@ -61,10 +70,10 @@ func SliceAsProto(idents []ACMEIdentifier) []*corepb.Identifier {
 	return pbIdents
 }
 
-// SliceFromProto is a convenience function for converting a slice of
+// FromProtoSlice is a convenience function for converting a slice of
 // *corepb.Identifier from RPCs into a slice of ACMEIdentifier.
-func SliceFromProto(pbIdents []*corepb.Identifier) []ACMEIdentifier {
-	var idents []ACMEIdentifier
+func FromProtoSlice(pbIdents []*corepb.Identifier) ACMEIdentifiers {
+	var idents ACMEIdentifiers
 
 	for _, pbIdent := range pbIdents {
 		idents = append(idents, FromProto(pbIdent))
@@ -83,17 +92,17 @@ func NewDNS(domain string) ACMEIdentifier {
 
 // NewDNSSlice is a convenience function for creating a slice of ACMEIdentifier
 // with Type "dns" for a given slice of domain names.
-func NewDNSSlice(input []string) []ACMEIdentifier {
-	var out []ACMEIdentifier
+func NewDNSSlice(input []string) ACMEIdentifiers {
+	var out ACMEIdentifiers
 	for _, in := range input {
 		out = append(out, NewDNS(in))
 	}
 	return out
 }
 
-// AsDNSNames returns a list of DNS names from the input, if the input contains
+// ToDNSSlice returns a list of DNS names from the input, if the input contains
 // only DNS identifiers. Otherwise, it returns an error.
-func AsDNSNames(input []ACMEIdentifier) ([]string, error) {
+func ToDNSSlice(input ACMEIdentifiers) ([]string, error) {
 	var out []string
 	for _, in := range input {
 		if in.Type != "dns" {
@@ -116,49 +125,24 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 	}
 }
 
-// FromCert extracts the Subject Alternative Names from a certificate, and
-// returns a slice of ACMEIdentifiers and an error. It does not extract the
-// Subject Common Name.
-//
-// FromCSR is similar but handles CSRs, and is kept separate so that it's always
-// clear we are handling an untrusted CSR.
-func FromCert(cert *x509.Certificate) []ACMEIdentifier {
-	var sans []ACMEIdentifier
-	for _, name := range cert.DNSNames {
+// fromX509 extracts the Subject Alternative Names from a certificate or CSR's fields, and
+// returns a slice of ACMEIdentifiers.
+func fromX509(commonName string, dnsNames []string, ipAddresses []net.IP) ACMEIdentifiers {
+	var sans ACMEIdentifiers
+	for _, name := range dnsNames {
 		sans = append(sans, NewDNS(name))
 	}
-
-	for _, ip := range cert.IPAddresses {
-		sans = append(sans, ACMEIdentifier{
-			Type:  TypeIP,
-			Value: ip.String(),
-		})
-	}
-
-	return Normalize(sans)
-}
-
-// FromCSR extracts the Subject Common Name and Subject Alternative Names from a
-// CSR, and returns a slice of ACMEIdentifiers and an error.
-//
-// FromCert is similar but handles certs, and is kept separate so that it's
-// always clear we are handling an untrusted CSR.
-func FromCSR(csr *x509.CertificateRequest) []ACMEIdentifier {
-	var sans []ACMEIdentifier
-	for _, name := range csr.DNSNames {
-		sans = append(sans, NewDNS(name))
-	}
-	if csr.Subject.CommonName != "" {
+	if commonName != "" {
 		// Boulder won't generate certificates with a CN that's not also present
 		// in the SANs, but such a certificate is possible. If appended, this is
 		// deduplicated later with Normalize(). We assume the CN is a DNSName,
 		// because CNs are untyped strings without metadata, and we will never
 		// configure a Boulder profile to issue a certificate that contains both
 		// an IP address identifier and a CN.
-		sans = append(sans, NewDNS(csr.Subject.CommonName))
+		sans = append(sans, NewDNS(commonName))
 	}
 
-	for _, ip := range csr.IPAddresses {
+	for _, ip := range ipAddresses {
 		sans = append(sans, ACMEIdentifier{
 			Type:  TypeIP,
 			Value: ip.String(),
@@ -168,16 +152,41 @@ func FromCSR(csr *x509.CertificateRequest) []ACMEIdentifier {
 	return Normalize(sans)
 }
 
-// Normalize returns the set of all unique ACME identifiers in the
-// input after all of them are lowercased. The returned identifier values will
-// be in their lowercased form and sorted alphabetically by value.
-func Normalize(idents []ACMEIdentifier) []ACMEIdentifier {
+// FromCert extracts the Subject Common Name and Subject Alternative Names from
+// a certificate, and returns a slice of ACMEIdentifiers.
+func FromCert(cert *x509.Certificate) ACMEIdentifiers {
+	return fromX509(cert.Subject.CommonName, cert.DNSNames, cert.IPAddresses)
+}
+
+// FromCSR extracts the Subject Common Name and Subject Alternative Names from a
+// CSR, and returns a slice of ACMEIdentifiers.
+func FromCSR(csr *x509.CertificateRequest) ACMEIdentifiers {
+	return fromX509(csr.Subject.CommonName, csr.DNSNames, csr.IPAddresses)
+}
+
+// Normalize returns the set of all unique ACME identifiers in the input after
+// all of them are lowercased. The returned identifier values will be in their
+// lowercased form and sorted alphabetically by value. DNS identifiers will
+// precede IP address identifiers.
+func Normalize(idents ACMEIdentifiers) ACMEIdentifiers {
 	for i := range idents {
 		idents[i].Value = strings.ToLower(idents[i].Value)
 	}
 
-	sort.Slice(idents, func(i, j int) bool {
-		return fmt.Sprintf("%s:%s", idents[i].Type, idents[i].Value) < fmt.Sprintf("%s:%s", idents[j].Type, idents[j].Value)
+	slices.SortFunc(idents, func(a, b ACMEIdentifier) int {
+		if a.Type == b.Type {
+			if a.Value == b.Value {
+				return 0
+			}
+			if a.Value < b.Value {
+				return -1
+			}
+			return 1
+		}
+		if a.Type == "dns" && b.Type == "ip" {
+			return -1
+		}
+		return 1
 	})
 
 	return slices.Compact(idents)
@@ -208,5 +217,5 @@ func WithDefaults(input HasIdentifiers) []*corepb.Identifier {
 	if len(input.GetIdentifiers()) > 0 {
 		return input.GetIdentifiers()
 	}
-	return SliceAsProto(NewDNSSlice(input.GetDnsNames()))
+	return ToProtoSlice(NewDNSSlice(input.GetDnsNames()))
 }

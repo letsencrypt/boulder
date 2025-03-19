@@ -1443,7 +1443,7 @@ func TestNewOrder_OrderReuse(t *testing.T) {
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID:         Registration.Id,
 		DnsNames:               names,
-		Identifiers:            identifier.SliceAsProto(idents),
+		Identifiers:            identifier.ToProtoSlice(idents),
 		CertificateProfileName: "test",
 	}
 	firstOrder, err := ra.NewOrder(context.Background(), orderReq)
@@ -1529,7 +1529,7 @@ func TestNewOrder_OrderReuse(t *testing.T) {
 			order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 				RegistrationID:         tc.RegistrationID,
 				DnsNames:               tc.DnsNames,
-				Identifiers:            identifier.SliceAsProto(tc.Identifiers),
+				Identifiers:            identifier.ToProtoSlice(tc.Identifiers),
 				CertificateProfileName: tc.Profile,
 			})
 			test.AssertNotError(t, err, "NewOrder returned an unexpected error")
@@ -2055,7 +2055,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       names,
-		Identifiers:    identifier.SliceAsProto(idents),
+		Identifiers:    identifier.ToProtoSlice(idents),
 	}
 
 	// Create an order for that request
@@ -2079,7 +2079,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	wildcardOrderRequest := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
-		Identifiers:    identifier.SliceAsProto(orderIdents),
+		Identifiers:    identifier.ToProtoSlice(orderIdents),
 	}
 
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
@@ -2097,7 +2097,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
 	test.AssertDeepEquals(t,
-		identifier.Normalize(identifier.SliceFromProto(identifier.WithDefaults(order))),
+		identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaults(order))),
 		identifier.Normalize(orderIdents))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
@@ -2140,7 +2140,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	wildcardOrderRequest = &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
-		Identifiers:    identifier.SliceAsProto(orderIdents),
+		Identifiers:    identifier.ToProtoSlice(orderIdents),
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
@@ -2156,7 +2156,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
 	test.AssertDeepEquals(t,
-		identifier.Normalize(identifier.SliceFromProto(identifier.WithDefaults(order))),
+		identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaults(order))),
 		identifier.Normalize(orderIdents))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
@@ -2218,7 +2218,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	wildcardOrderRequest = &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
-		Identifiers:    identifier.SliceAsProto(orderIdents),
+		Identifiers:    identifier.ToProtoSlice(orderIdents),
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
@@ -2296,7 +2296,7 @@ func TestNewOrderExpiry(t *testing.T) {
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       names,
-		Identifiers:    identifier.SliceAsProto(idents),
+		Identifiers:    identifier.ToProtoSlice(idents),
 	}
 
 	// Create an order for that request
@@ -2783,7 +2783,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	wildcardOrderRequest := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
-		Identifiers:    identifier.SliceAsProto(orderIdents),
+		Identifiers:    identifier.ToProtoSlice(orderIdents),
 	}
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
@@ -3035,7 +3035,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
 			DnsNames:         names,
-			Identifiers:      identifier.SliceAsProto(idents),
+			Identifiers:      identifier.ToProtoSlice(idents),
 			V2Authorizations: authzIDs,
 		},
 	})
@@ -3119,7 +3119,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	// The event CommonName should match the expected common name
 	test.AssertEquals(t, event.CommonName, "not-example.com")
 	// The event identifiers should match the order identifiers
-	test.AssertDeepEquals(t, identifier.Normalize(event.Identifiers), identifier.Normalize(identifier.SliceFromProto(order.Identifiers)))
+	test.AssertDeepEquals(t, identifier.Normalize(event.Identifiers), identifier.Normalize(identifier.FromProtoSlice(order.Identifiers)))
 	// The event's NotBefore and NotAfter should match the cert's
 	test.AssertEquals(t, event.NotBefore, parsedCert.NotBefore)
 	test.AssertEquals(t, event.NotAfter, parsedCert.NotAfter)
@@ -3170,7 +3170,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
 			DnsNames:         names,
-			Identifiers:      identifier.SliceAsProto(idents),
+			Identifiers:      identifier.ToProtoSlice(idents),
 			V2Authorizations: authzIDs,
 		},
 	})
