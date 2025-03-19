@@ -9,7 +9,11 @@
 package identifier
 
 import (
+	"crypto/x509"
+	"net"
 	"net/netip"
+	"slices"
+	"strings"
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
 )
@@ -93,4 +97,71 @@ func NewIP(ip netip.Addr) ACMEIdentifier {
 		// 5952, Sec. 4 for IPv6.
 		Value: ip.String(),
 	}
+}
+
+// fromX509 extracts the Subject Alternative Names from a certificate or CSR's fields, and
+// returns a slice of ACMEIdentifiers.
+func fromX509(commonName string, dnsNames []string, ipAddresses []net.IP) []ACMEIdentifier {
+	var sans []ACMEIdentifier
+	for _, name := range dnsNames {
+		sans = append(sans, NewDNS(name))
+	}
+	if commonName != "" {
+		// Boulder won't generate certificates with a CN that's not also present
+		// in the SANs, but such a certificate is possible. If appended, this is
+		// deduplicated later with Normalize(). We assume the CN is a DNSName,
+		// because CNs are untyped strings without metadata, and we will never
+		// configure a Boulder profile to issue a certificate that contains both
+		// an IP address identifier and a CN.
+		sans = append(sans, NewDNS(commonName))
+	}
+
+	for _, ip := range ipAddresses {
+		sans = append(sans, ACMEIdentifier{
+			Type:  TypeIP,
+			Value: ip.String(),
+		})
+	}
+
+	return Normalize(sans)
+}
+
+// FromCert extracts the Subject Common Name and Subject Alternative Names from
+// a certificate, and returns a slice of ACMEIdentifiers.
+func FromCert(cert *x509.Certificate) []ACMEIdentifier {
+	return fromX509(cert.Subject.CommonName, cert.DNSNames, cert.IPAddresses)
+}
+
+// FromCSR extracts the Subject Common Name and Subject Alternative Names from a
+// CSR, and returns a slice of ACMEIdentifiers.
+func FromCSR(csr *x509.CertificateRequest) []ACMEIdentifier {
+	return fromX509(csr.Subject.CommonName, csr.DNSNames, csr.IPAddresses)
+}
+
+// Normalize returns the set of all unique ACME identifiers in the input after
+// all of them are lowercased. The returned identifier values will be in their
+// lowercased form and sorted alphabetically by value. DNS identifiers will
+// precede IP address identifiers.
+func Normalize(idents []ACMEIdentifier) []ACMEIdentifier {
+	for i := range idents {
+		idents[i].Value = strings.ToLower(idents[i].Value)
+	}
+
+	slices.SortFunc(idents, func(a, b ACMEIdentifier) int {
+		if a.Type == b.Type {
+			if a.Value == b.Value {
+				return 0
+			}
+			if a.Value < b.Value {
+				return -1
+			}
+			return 1
+		}
+		if a.Type == "dns" && b.Type == "ip" {
+			return -1
+		}
+		return 1
+	})
+
+	return slices.Compact(idents)
 }
