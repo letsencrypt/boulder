@@ -1065,10 +1065,11 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		return nil, err
 	}
 
+	orderIdents := identifier.Normalize(identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(req.Order)))
+
 	// There should never be an order with 0 identifiers at the stage, but we check to
 	// be on the safe side, throwing an internal server error if this assumption
 	// is ever violated.
-	orderIdents := identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaultSlice(req.Order)))
 	if len(orderIdents) == 0 {
 		return nil, berrors.InternalServerError("Order has no associated identifiers")
 	}
@@ -1177,7 +1178,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ra.inflightFinalizes.Inc()
 	defer ra.inflightFinalizes.Dec()
 
-	idents := identifier.WithDefaultSlice(order)
+	idents := identifier.ToProtoSliceWithDefault(order)
 
 	// TODO(#7311): Remove this once all RPC users can handle Identifiers.
 	var dnsNames []string
@@ -1336,9 +1337,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		return nil, wrapError(err, "parsing final certificate")
 	}
-	idents := identifier.FromCert(parsedCertificate)
 
-	ra.countCertificateIssued(ctx, int64(acctID), idents, isRenewal)
+	ra.countCertificateIssued(ctx, int64(acctID), identifier.FromCert(parsedCertificate), isRenewal)
 
 	// Asynchronously submit the final certificate to any configured logs
 	go ra.ctpolicy.SubmitFinalCert(resp.DER, parsedCertificate.NotAfter)
@@ -1463,9 +1463,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 //
 // TODO(#7311): Handle IP address identifiers.
 func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) error {
-	name := ident.Value
-
-	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, name)
+	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, ident.Value)
 	if err != nil {
 		return fmt.Errorf("building rate limit transaction for the %s rate limit: %w", ratelimits.FailedAuthorizationsPerDomainPerAccount, err)
 	}
@@ -1476,7 +1474,7 @@ func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context,
 	}
 
 	if features.Get().AutomaticallyPauseZombieClients {
-		txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, name)
+		txn, err = ra.txnBuilder.FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId, ident.Value)
 		if err != nil {
 			return fmt.Errorf("building rate limit transaction for the %s rate limit: %w", ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, err)
 		}
@@ -1553,7 +1551,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, identifier.WithDefault(req.Authz), req.Authz.Status, req.Authz.Expires) {
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, identifier.ToProtoWithDefault(req.Authz), req.Authz.Status, req.Authz.Expires) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -2203,7 +2201,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
-	ident := identifier.FromProto(identifier.WithDefault(req))
+	ident := identifier.FromProto(identifier.ToProtoWithDefault(req))
 
 	if core.IsAnyNilOrZero(req, req.Id, ident, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
@@ -2274,7 +2272,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	idents := identifier.Normalize(identifier.FromProtoSlice(identifier.WithDefaultSlice(req)))
+	idents := identifier.Normalize(identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(req)))
 
 	profile, err := ra.profiles.get(req.CertificateProfileName)
 	if err != nil {
@@ -2330,7 +2328,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Error if an incomplete order is returned.
 	if existingOrder != nil {
 		// Check to see if the expected fields of the existing order are set.
-		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, identifier.WithDefaultSlice(existingOrder), existingOrder.Created, existingOrder.Expires) {
+		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, identifier.ToProtoSliceWithDefault(existingOrder), existingOrder.Created, existingOrder.Expires) {
 			return nil, errIncompleteGRPCResponse
 		}
 
@@ -2520,7 +2518,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, identifier.WithDefaultSlice(storedOrder), storedOrder.Created, storedOrder.Expires) {
+	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, identifier.ToProtoSliceWithDefault(storedOrder), storedOrder.Created, storedOrder.Expires) {
 		return nil, errIncompleteGRPCResponse
 	}
 	ra.orderAges.WithLabelValues("NewOrder").Observe(0)

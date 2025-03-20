@@ -118,7 +118,7 @@ func TestProtoToProtoWithDefault(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			t.Parallel()
 
-			got := FromProtoSlice(WithDefaultSlice(tc))
+			got := FromProtoSlice(ToProtoSliceWithDefault(tc))
 			if !slices.Equal(got, tc.want) {
 				t.Errorf("Got %#v, but want %#v", got, tc.want)
 			}

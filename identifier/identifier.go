@@ -197,9 +197,9 @@ type HasIdentifier interface {
 	GetDnsName() string
 }
 
-// WithDefault can be removed after DnsNames are no longer used in RPCs.
+// ToProtoWithDefault can be removed after DnsNames are no longer used in RPCs.
 // TODO(#8023)
-func WithDefault(input HasIdentifier) *corepb.Identifier {
+func ToProtoWithDefault(input HasIdentifier) *corepb.Identifier {
 	if input.GetIdentifier() != nil {
 		return input.GetIdentifier()
 	}
@@ -211,9 +211,9 @@ type HasIdentifiers interface {
 	GetDnsNames() []string
 }
 
-// WithDefaultSlice can be removed after DnsNames are no longer used in
+// ToProtoSliceWithDefault can be removed after DnsNames are no longer used in
 // RPCs. TODO(#8023)
-func WithDefaultSlice(input HasIdentifiers) []*corepb.Identifier {
+func ToProtoSliceWithDefault(input HasIdentifiers) []*corepb.Identifier {
 	if len(input.GetIdentifiers()) > 0 {
 		return input.GetIdentifiers()
 	}

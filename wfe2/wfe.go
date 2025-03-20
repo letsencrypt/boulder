@@ -1117,7 +1117,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Ensure gRPC response is complete.
-	if core.IsAnyNilOrZero(authzPB.Id, identifier.WithDefault(authzPB), authzPB.Status, authzPB.Expires) {
+	if core.IsAnyNilOrZero(authzPB.Id, identifier.ToProtoWithDefault(authzPB), authzPB.Status, authzPB.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -1310,7 +1310,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
 		})
-		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, identifier.WithDefault(authzPB), authzPB.Status, authzPB.Expires) {
+		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, identifier.ToProtoWithDefault(authzPB), authzPB.Status, authzPB.Expires) {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
 		}
@@ -1561,7 +1561,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
-	ident := identifier.FromProto(identifier.WithDefault(authzPB))
+	ident := identifier.FromProto(identifier.ToProtoWithDefault(authzPB))
 
 	// Ensure gRPC response is complete.
 	if core.IsAnyNilOrZero(authzPB.Id, ident, authzPB.Status, authzPB.Expires) {
@@ -1981,7 +1981,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	respObj := orderJSON{
 		Status:      core.AcmeStatus(order.Status),
 		Expires:     order.Expires.AsTime(),
-		Identifiers: identifier.FromProtoSlice(identifier.WithDefaultSlice(order)),
+		Identifiers: identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(order)),
 		Finalize:    finalizeURL,
 		Profile:     order.CertificateProfileName,
 		Replaces:    order.Replaces,
@@ -2395,7 +2395,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		ReplacesSerial:         replacesSerial,
 	})
 
-	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, identifier.WithDefaultSlice(order), order.Created, order.Expires) {
+	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, identifier.ToProtoSliceWithDefault(order), order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
@@ -2456,7 +2456,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, identifier.WithDefaultSlice(order), order.Created, order.Expires) {
+	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, identifier.ToProtoSliceWithDefault(order), order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2534,7 +2534,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	orderIdents := identifier.FromProtoSlice(identifier.WithDefaultSlice(order))
+	orderIdents := identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(order))
 	if core.IsAnyNilOrZero(order.Id, order.Status, order.RegistrationID, orderIdents, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
@@ -2597,7 +2597,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error finalizing order"), err)
 		return
 	}
-	if core.IsAnyNilOrZero(updatedOrder.Id, updatedOrder.RegistrationID, identifier.WithDefaultSlice(updatedOrder), updatedOrder.Created, updatedOrder.Expires) {
+	if core.IsAnyNilOrZero(updatedOrder.Id, updatedOrder.RegistrationID, identifier.ToProtoSliceWithDefault(updatedOrder), updatedOrder.Created, updatedOrder.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}
