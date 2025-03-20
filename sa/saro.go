@@ -398,14 +398,15 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, err
 		}
 
-		idents := make(identifier.ACMEIdentifiers, 0, len(authzValidityInfo))
-		names := make([]string, 0, len(authzValidityInfo))
+		var idents identifier.ACMEIdentifiers
 		for _, a := range authzValidityInfo {
 			idents = append(idents, identifier.ACMEIdentifier{Type: uintToIdentifierType[a.IdentifierType], Value: a.IdentifierValue})
-			names = append(names, a.IdentifierValue)
 		}
 		order.Identifiers = identifier.ToProtoSlice(idents)
-		order.DnsNames = names
+		order.DnsNames, err = identifier.ToDNSSlice(idents)
+		if err != nil {
+			return nil, err
+		}
 
 		// Calculate the status for the order
 		status, err := statusForOrder(order, authzValidityInfo, ssa.clk.Now())

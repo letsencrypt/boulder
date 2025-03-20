@@ -2782,8 +2782,9 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	ra.CA = ca
 
 	// Create a new order for a wildcard domain
-	orderNames := []string{"*.zombo.com"}
 	orderIdents := identifier.ACMEIdentifiers{identifier.NewDNS("*.zombo.com")}
+	orderNames, err := identifier.ToDNSSlice(orderIdents)
+	test.AssertNotError(t, err, "Converting identifiers to DNS names")
 	wildcardOrderRequest := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
@@ -3152,13 +3153,14 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 
 	// Make some valid authzs for four names. Half of them were validated
 	// recently and half were validated in excess of our CAA recheck time.
-	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
 	idents := identifier.ACMEIdentifiers{
 		identifier.NewDNS("not-example.com"),
 		identifier.NewDNS("www.not-example.com"),
 		identifier.NewDNS("still.not-example.com"),
 		identifier.NewDNS("definitely.not-example.com"),
 	}
+	names, err := identifier.ToDNSSlice(idents)
+	test.AssertNotError(t, err, "Converting identifiers to DNS names")
 	var authzIDs []int64
 	for i, ident := range idents {
 		attemptedAt := older

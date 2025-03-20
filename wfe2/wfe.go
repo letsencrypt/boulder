@@ -2015,12 +2015,9 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 //
 // TODO(#7311): Handle IP address identifiers.
 func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, idents identifier.ACMEIdentifiers, isRenewal bool) (func(), error) {
-	var names []string
-	for _, ident := range idents {
-		if ident.Type != identifier.TypeDNS {
-			return nil, fmt.Errorf("invalid non-DNS type identifier: type %q, value %q", ident.Type, ident.Value)
-		}
-		names = append(names, ident.Value)
+	names, err := identifier.ToDNSSlice(idents)
+	if err != nil {
+		return nil, err
 	}
 	txns, err := wfe.txnBuilder.NewOrderLimitTransactions(regId, names, isRenewal)
 	if err != nil {
@@ -2300,9 +2297,10 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	}
 
 	pbIdents := identifier.ToProtoSlice(idents)
-	var names []string
-	for _, ident := range idents {
-		names = append(names, ident.Value)
+	// TODO(#7311): Handle non-DNS identifiers.
+	names, err := identifier.ToDNSSlice(identifier.FromProtoSlice(pbIdents))
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "non-DNS identifiers requested"), nil)
 	}
 
 	if features.Get().CheckIdentifiersPaused {

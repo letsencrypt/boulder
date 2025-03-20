@@ -2297,14 +2297,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	var dnsNames []string
-	for _, ident := range idents {
-		if ident.Type == identifier.TypeDNS {
-			dnsNames = append(dnsNames, ident.Value)
-		} else {
-			return nil, berrors.MalformedError(
-				"invalid non-DNS type identifier %s", ident.Value)
-		}
+	dnsNames, err := identifier.ToDNSSlice(idents)
+	if err != nil {
+		return nil, err
 	}
 	err = wildcardOverlap(dnsNames)
 	if err != nil {

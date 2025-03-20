@@ -621,11 +621,12 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	tx, err := sa.dbMap.BeginTx(ctx)
 	test.AssertNotError(t, err, "Failed to open transaction")
 
-	names := []string{"a.example.com", "B.example.com"}
 	idents := identifier.ACMEIdentifiers{
 		identifier.NewDNS("a.example.com"),
 		identifier.NewDNS("B.example.com"),
 	}
+	names, err := identifier.ToDNSSlice(idents)
+	test.AssertNotError(t, err, "Converting identifiers to DNS names")
 
 	// Invalid Window
 	req := &sapb.CountFQDNSetsRequest{
@@ -662,11 +663,12 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	test.AssertEquals(t, firstIssued, resp.Timestamps[len(resp.Timestamps)-1].AsTime())
 
 	// Ensure that the hash isn't affected by changing name order/casing.
-	req.DnsNames = []string{"b.example.com", "A.example.COM"}
 	req.Identifiers = []*corepb.Identifier{
 		identifier.NewDNS("b.example.com").ToProto(),
 		identifier.NewDNS("A.example.COM").ToProto(),
 	}
+	req.DnsNames, err = identifier.ToDNSSlice(identifier.FromProtoSlice(req.Identifiers))
+	test.AssertNotError(t, err, "Converting identifiers to DNS names")
 	resp, err = sa.FQDNSetTimestampsForWindow(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, len(resp.Timestamps), 1)
@@ -733,11 +735,13 @@ func TestFQDNSetExists(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	names := []string{"a.example.com", "B.example.com"}
 	idents := identifier.ACMEIdentifiers{
 		identifier.NewDNS("a.example.com"),
 		identifier.NewDNS("B.example.com"),
 	}
+	names, err := identifier.ToDNSSlice(idents)
+	test.AssertNotError(t, err, "Converting identifiers to DNS names")
+
 	exists, err := sa.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{DnsNames: names, Identifiers: identifier.ToProtoSlice(idents)})
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
 	test.Assert(t, !exists.Exists, "FQDN set shouldn't exist")
@@ -1517,11 +1521,12 @@ func TestGetOrderForNames(t *testing.T) {
 	authzIDB := createPendingAuthorization(t, sa, identifier.NewDNS("just.another.example.com"), authzExpires)
 
 	ctx := context.Background()
-	names := []string{"example.com", "just.another.example.com"}
 	idents := identifier.ACMEIdentifiers{
 		identifier.NewDNS("example.com"),
 		identifier.NewDNS("just.another.example.com"),
 	}
+	names, err := identifier.ToDNSSlice(idents)
+	test.AssertNotError(t, err, "Converting identifiers to DNS names")
 
 	// Call GetOrderForNames for a set of names we haven't created an order for
 	// yet
@@ -2616,7 +2621,6 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 	// Create two authorizations, one pending, one invalid
 	fc.Add(time.Hour)
 	reg := createWorkingRegistration(t, sa)
-	name := "aaa"
 	ident := identifier.NewDNS("aaa")
 	expiresA := fc.Now().Add(time.Hour).UTC()
 	expiresB := fc.Now().Add(time.Hour * 3).UTC()
@@ -2628,7 +2632,7 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 	latest := fc.Now().Add(time.Hour * 5).UTC()
 	count, err := sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
 		RegistrationID: reg.Id,
-		DnsName:        name,
+		DnsName:        ident.Value,
 		Identifier:     ident.ToProto(),
 		Range: &sapb.Range{
 			Earliest: timestamppb.New(earliest),
@@ -2640,7 +2644,7 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 
 	count, err = sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
 		RegistrationID: reg.Id,
-		DnsName:        name,
+		DnsName:        ident.Value,
 		Range: &sapb.Range{
 			Earliest: timestamppb.New(earliest),
 			Latest:   timestamppb.New(latest),
