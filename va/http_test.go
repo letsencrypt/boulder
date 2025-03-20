@@ -1667,30 +1667,9 @@ func (handler *hostHeaderHandler) ServeHTTP(resp http.ResponseWriter, req *http.
 	handler.host = req.Host
 }
 
+// TestHTTPHostHeader tests compliance with RFC 8555, Sec. 8.3 & RFC 8738, Sec.
+// 5.
 func TestHTTPHostHeader(t *testing.T) {
-	handlerIPv4 := hostHeaderHandler{}
-	handlerIPv6 := hostHeaderHandler{}
-
-	testSrvIPv4 := httptest.NewUnstartedServer(&handlerIPv4)
-	testSrvIPv6 := httptest.NewUnstartedServer(&handlerIPv6)
-
-	l, err := net.Listen("tcp", "[::1]:0")
-	if err != nil {
-		panic(fmt.Sprintf("httptest: failed to listen on a port: %v", err))
-	}
-	testSrvIPv6.Listener = l
-
-	testSrvIPv4.Start()
-	testSrvIPv6.Start()
-
-	defer testSrvIPv4.Close()
-	defer testSrvIPv6.Close()
-
-	// Setup VAs. By providing the testSrv to setup the VA will use the testSrv's
-	// randomly assigned port as its HTTP port.
-	vaIPv4, _ := setup(testSrvIPv4, "", nil, nil)
-	vaIPv6, _ := setup(testSrvIPv6, "", nil, nil)
-
 	testCases := []struct {
 		Name  string
 		Ident identifier.ACMEIdentifier
@@ -1703,13 +1682,11 @@ func TestHTTPHostHeader(t *testing.T) {
 			want:  "example.com",
 		},
 		{
-			// RFC 8738, Sec. 5.
 			Name:  "IPv4 address",
 			Ident: identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
 			want:  "127.0.0.1",
 		},
 		{
-			// RFC 8738, Sec. 5.
 			Name:  "IPv6 address",
 			Ident: identifier.NewIP(netip.MustParseAddr("::1")),
 			IPv6:  true,
@@ -1722,14 +1699,27 @@ func TestHTTPHostHeader(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 			defer cancel()
 
-			var got string
+			handler := hostHeaderHandler{}
+			testSrv := httptest.NewUnstartedServer(&handler)
+
 			if tc.IPv6 {
-				_, _, _ = vaIPv6.processHTTPValidation(ctx, tc.Ident, "/ok")
-				got = handlerIPv6.host
-			} else {
-				_, _, _ = vaIPv4.processHTTPValidation(ctx, tc.Ident, "/ok")
-				got = handlerIPv4.host
+				l, err := net.Listen("tcp", "[::1]:0")
+				if err != nil {
+					panic(fmt.Sprintf("httptest: failed to listen on a port: %v", err))
+				}
+				testSrv.Listener = l
 			}
+
+			testSrv.Start()
+			defer testSrv.Close()
+
+			// Setup VA. By providing the testSrv to setup the VA will use the
+			// testSrv's randomly assigned port as its HTTP port.
+			va, _ := setup(testSrv, "", nil, nil)
+
+			var got string
+			_, _, _ = va.processHTTPValidation(ctx, tc.Ident, "/ok")
+			got = handler.host
 			if got != tc.want {
 				t.Errorf("Got host %#v, but want %#v", got, tc.want)
 			}

@@ -860,13 +860,9 @@ func TestTLSALPN01BadIdentifier(t *testing.T) {
 	test.AssertContains(t, prob.Error(), "Identifier type for TLS-ALPN-01 challenge was not DNS or IP")
 }
 
+// TestTLSALPN01ServerName tests compliance with RFC 8737, Sec. 3 (step 3) & RFC
+// 8738, Sec. 6.
 func TestTLSALPN01ServerName(t *testing.T) {
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{},
-		ClientAuth:   tls.NoClientCert,
-		NextProtos:   []string{"http/1.1", ACMETLS1Protocol},
-	}
-
 	testCases := []struct {
 		Name      string
 		Ident     identifier.ACMEIdentifier
@@ -903,12 +899,17 @@ func TestTLSALPN01ServerName(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
 			defer cancel()
 
-			tlsConfig.GetCertificate = func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-				got := clientHello.ServerName
-				if got != tc.want {
-					return nil, fmt.Errorf("Got host %#v, but want %#v", got, tc.want)
-				}
-				return testTLSCert(tc.CertNames, tc.CertIPs, []pkix.Extension{testACMEExt}), nil
+			tlsConfig := &tls.Config{
+				Certificates: []tls.Certificate{},
+				ClientAuth:   tls.NoClientCert,
+				NextProtos:   []string{"http/1.1", ACMETLS1Protocol},
+				GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+					got := clientHello.ServerName
+					if got != tc.want {
+						return nil, fmt.Errorf("Got host %#v, but want %#v", got, tc.want)
+					}
+					return testTLSCert(tc.CertNames, tc.CertIPs, []pkix.Extension{testACMEExt}), nil
+				},
 			}
 
 			hs := httptest.NewUnstartedServer(http.DefaultServeMux)
@@ -926,15 +927,16 @@ func TestTLSALPN01ServerName(t *testing.T) {
 				hs.Listener = l
 			}
 			hs.StartTLS()
+			defer hs.Close()
 
 			va, _ := setup(hs, "", nil, nil)
 
+			// The actual test happens in the tlsConfig.GetCertificate function,
+			// which the validation will call and depend on for its success.
 			_, err := va.validateTLSALPN01(ctx, tc.Ident, expectedKeyAuthorization)
 			if err != nil {
 				t.Errorf("Validation failed: %v", err)
 			}
-
-			hs.Close()
 		})
 	}
 }
