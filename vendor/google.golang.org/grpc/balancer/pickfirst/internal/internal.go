@@ -1,6 +1,5 @@
 /*
- *
- * Copyright 2022 gRPC authors.
+ * Copyright 2024 gRPC authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,17 +15,21 @@
  *
  */
 
-package grpcsync
+// Package internal contains code internal to the pickfirst package.
+package internal
 
 import (
-	"sync"
+	rand "math/rand/v2"
+	"time"
 )
 
-// OnceFunc returns a function wrapping f which ensures f is only executed
-// once even if the returned function is executed multiple times.
-func OnceFunc(f func()) func() {
-	var once sync.Once
-	return func() {
-		once.Do(f)
+var (
+	// RandShuffle pseudo-randomizes the order of addresses.
+	RandShuffle = rand.Shuffle
+	// TimeAfterFunc allows mocking the timer for testing connection delay
+	// related functionality.
+	TimeAfterFunc = func(d time.Duration, f func()) func() {
+		timer := time.AfterFunc(d, f)
+		return func() { timer.Stop() }
 	}
-}
+)
