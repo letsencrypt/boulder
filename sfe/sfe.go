@@ -169,6 +169,8 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, re
 		return
 	}
 
+	// If any of these values change, ensure any relevant pages in //sfe/pages/
+	// are also updated.
 	type tmplData struct {
 		PostPath  string
 		JWT       string
