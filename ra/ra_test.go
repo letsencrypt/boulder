@@ -851,7 +851,7 @@ func TestPerformValidationVAError(t *testing.T) {
 	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
 	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
 	test.Assert(t, challenge.Status == core.StatusInvalid, "challenge was not marked as invalid")
-	test.AssertContains(t, challenge.Error.Error(), "Could not communicate with VA")
+	test.AssertContains(t, challenge.Error.String(), "Could not communicate with VA")
 	test.Assert(t, challenge.ValidationRecord == nil, "challenge had a ValidationRecord")
 
 	// Check that validated timestamp was recorded, stored, and retrieved

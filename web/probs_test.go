@@ -11,7 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestProblemDetailsFromError(t *testing.T) {
+func TestProblemDetailsForError(t *testing.T) {
 	// errMsg is used as the msg argument for `ProblemDetailsForError` and is
 	// always returned in the problem detail.
 	const errMsg = "testError"
@@ -50,14 +50,6 @@ func TestProblemDetailsFromError(t *testing.T) {
 			t.Errorf("Expected detailed message %q, got %q", c.detail, p.Detail)
 		}
 	}
-
-	expected := &probs.ProblemDetails{
-		Type:       probs.MalformedProblem,
-		HTTPStatus: 200,
-		Detail:     "gotcha",
-	}
-	p := ProblemDetailsForError(expected, "k")
-	test.AssertDeepEquals(t, expected, p)
 }
 
 func TestSubProblems(t *testing.T) {

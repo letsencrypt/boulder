@@ -24,7 +24,7 @@ func TestDNSValidationWrong(t *testing.T) {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
 	}
 	prob := detailedError(err)
-	test.AssertEquals(t, prob.Error(), "unauthorized :: Incorrect TXT record \"a\" found at _acme-challenge.wrong-dns01.com")
+	test.AssertEquals(t, prob.String(), "unauthorized :: Incorrect TXT record \"a\" found at _acme-challenge.wrong-dns01.com")
 }
 
 func TestDNSValidationWrongMany(t *testing.T) {
@@ -35,7 +35,7 @@ func TestDNSValidationWrongMany(t *testing.T) {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
 	}
 	prob := detailedError(err)
-	test.AssertEquals(t, prob.Error(), "unauthorized :: Incorrect TXT record \"a\" (and 4 more) found at _acme-challenge.wrong-many-dns01.com")
+	test.AssertEquals(t, prob.String(), "unauthorized :: Incorrect TXT record \"a\" (and 4 more) found at _acme-challenge.wrong-many-dns01.com")
 }
 
 func TestDNSValidationWrongLong(t *testing.T) {
@@ -46,7 +46,7 @@ func TestDNSValidationWrongLong(t *testing.T) {
 		t.Fatalf("Successful DNS validation with wrong TXT record")
 	}
 	prob := detailedError(err)
-	test.AssertEquals(t, prob.Error(), "unauthorized :: Incorrect TXT record \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...\" found at _acme-challenge.long-dns01.com")
+	test.AssertEquals(t, prob.String(), "unauthorized :: Incorrect TXT record \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...\" found at _acme-challenge.long-dns01.com")
 }
 
 func TestDNSValidationFailure(t *testing.T) {
