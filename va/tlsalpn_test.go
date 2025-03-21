@@ -11,7 +11,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -92,11 +91,6 @@ func tlsalpn01SrvWithCert(t *testing.T, acmeCert *tls.Certificate, tlsVersion ui
 		Certificates: []tls.Certificate{},
 		ClientAuth:   tls.NoClientCert,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			// This is a backstop test for RFC 8738, Section 6. Go's
-			// tls.hostnameInSNI already does the right thing.
-			if net.ParseIP(clientHello.ServerName) != nil {
-				return nil, errors.New("TLS client used a bare IP address for SNI")
-			}
 			return acmeCert, nil
 		},
 		NextProtos: []string{"http/1.1", ACMETLS1Protocol},
@@ -864,4 +858,85 @@ func TestTLSALPN01BadIdentifier(t *testing.T) {
 	test.AssertError(t, err, "Server accepted a hypothetical S/MIME identifier")
 	prob := detailedError(err)
 	test.AssertContains(t, prob.Error(), "Identifier type for TLS-ALPN-01 challenge was not DNS or IP")
+}
+
+// TestTLSALPN01ServerName tests compliance with RFC 8737, Sec. 3 (step 3) & RFC
+// 8738, Sec. 6.
+func TestTLSALPN01ServerName(t *testing.T) {
+	testCases := []struct {
+		Name      string
+		Ident     identifier.ACMEIdentifier
+		CertNames []string
+		CertIPs   []net.IP
+		IPv6      bool
+		want      string
+	}{
+		{
+			Name:      "DNS name",
+			Ident:     identifier.NewDNS("example.com"),
+			CertNames: []string{"example.com"},
+			want:      "example.com",
+		},
+		{
+			// RFC 8738, Sec. 6.
+			Name:    "IPv4 address",
+			Ident:   identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
+			CertIPs: []net.IP{net.ParseIP("127.0.0.1")},
+			want:    "1.0.0.127.in-addr.arpa",
+		},
+		{
+			// RFC 8738, Sec. 6.
+			Name:    "IPv6 address",
+			Ident:   identifier.NewIP(netip.MustParseAddr("::1")),
+			CertIPs: []net.IP{net.ParseIP("::1")},
+			IPv6:    true,
+			want:    "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+			defer cancel()
+
+			tlsConfig := &tls.Config{
+				Certificates: []tls.Certificate{},
+				ClientAuth:   tls.NoClientCert,
+				NextProtos:   []string{"http/1.1", ACMETLS1Protocol},
+				GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+					got := clientHello.ServerName
+					if got != tc.want {
+						return nil, fmt.Errorf("Got host %#v, but want %#v", got, tc.want)
+					}
+					return testTLSCert(tc.CertNames, tc.CertIPs, []pkix.Extension{testACMEExt}), nil
+				},
+			}
+
+			hs := httptest.NewUnstartedServer(http.DefaultServeMux)
+			hs.TLS = tlsConfig
+			hs.Config.TLSNextProto = map[string]func(*http.Server, *tls.Conn, http.Handler){
+				ACMETLS1Protocol: func(_ *http.Server, conn *tls.Conn, _ http.Handler) {
+					_ = conn.Close()
+				},
+			}
+			if tc.IPv6 {
+				l, err := net.Listen("tcp", "[::1]:0")
+				if err != nil {
+					panic(fmt.Sprintf("httptest: failed to listen on a port: %v", err))
+				}
+				hs.Listener = l
+			}
+			hs.StartTLS()
+			defer hs.Close()
+
+			va, _ := setup(hs, "", nil, nil)
+
+			// The actual test happens in the tlsConfig.GetCertificate function,
+			// which the validation will call and depend on for its success.
+			_, err := va.validateTLSALPN01(ctx, tc.Ident, expectedKeyAuthorization)
+			if err != nil {
+				t.Errorf("Validation failed: %v", err)
+			}
+		})
+	}
 }
