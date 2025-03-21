@@ -124,6 +124,7 @@ func (sfe *SelfServiceFrontEndImpl) renderTemplate(w http.ResponseWriter, filena
 		return
 	}
 
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err := sfe.templatePages.ExecuteTemplate(w, filename, dynamicData)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
