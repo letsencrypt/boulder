@@ -15,7 +15,7 @@ func TestProblemDetails(t *testing.T) {
 		Detail:     "Wat? o.O",
 		HTTPStatus: 403,
 	}
-	test.AssertEquals(t, pd.Error(), "malformed :: Wat? o.O")
+	test.AssertEquals(t, pd.String(), "malformed :: Wat? o.O")
 }
 
 func TestProblemDetailsConvenience(t *testing.T) {

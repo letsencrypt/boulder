@@ -1139,7 +1139,7 @@ func TestCAAFailure(t *testing.T) {
 	}
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
-	test.AssertContains(t, prob.Error(), "NXDOMAIN")
+	test.AssertContains(t, prob.String(), "NXDOMAIN")
 }
 
 func TestFilterCAA(t *testing.T) {

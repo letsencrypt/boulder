@@ -70,7 +70,7 @@ type SubProblemDetails struct {
 	Identifier identifier.ACMEIdentifier `json:"identifier"`
 }
 
-func (pd *ProblemDetails) Error() string {
+func (pd *ProblemDetails) String() string {
 	return fmt.Sprintf("%s :: %s", pd.Type, pd.Detail)
 }
 
@@ -326,26 +326,6 @@ func Conflict(detail string) *ProblemDetails {
 		Type:       ConflictProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusConflict,
-	}
-}
-
-// ContentLengthRequired returns a ProblemDetails representing a missing
-// Content-Length header error
-func ContentLengthRequired() *ProblemDetails {
-	return &ProblemDetails{
-		Type:       MalformedProblem,
-		Detail:     "missing Content-Length header",
-		HTTPStatus: http.StatusLengthRequired,
-	}
-}
-
-// InvalidContentType returns a ProblemDetails suitable for a missing
-// ContentType header, or an incorrect ContentType header
-func InvalidContentType(detail string) *ProblemDetails {
-	return &ProblemDetails{
-		Type:       MalformedProblem,
-		Detail:     detail,
-		HTTPStatus: http.StatusUnsupportedMediaType,
 	}
 }
 
