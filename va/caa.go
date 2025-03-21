@@ -2,6 +2,7 @@ package va
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -70,7 +71,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		if prob != nil {
 			// CAA check failed.
 			probType = string(prob.Type)
-			logEvent.Error = prob.Error()
+			logEvent.Error = prob.String()
 		} else {
 			// CAA check passed.
 			outcome = pass
@@ -145,7 +146,7 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	identifier identifier.ACMEIdentifier,
 	params *caaParams) error {
 	if core.IsAnyNilOrZero(params, params.validationMethod, params.accountURIID) {
-		return probs.ServerInternal("expected validationMethod or accountURIID not provided to checkCAA")
+		return errors.New("expected validationMethod or accountURIID not provided to checkCAA")
 	}
 
 	foundAt, valid, response, err := va.checkCAARecords(ctx, identifier, params)

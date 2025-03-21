@@ -75,16 +75,12 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 	return outProb
 }
 
-// ProblemDetailsForError turns an error into a ProblemDetails with the special
-// case of returning the same error back if its already a ProblemDetails. If the
-// error is of an type unknown to ProblemDetailsForError, it will return a
-// ServerInternal ProblemDetails.
+// ProblemDetailsForError turns an error into a ProblemDetails. If the error is
+// of an type unknown to ProblemDetailsForError, it will return a ServerInternal
+// ProblemDetails.
 func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
-	var probsProblemDetails *probs.ProblemDetails
 	var berrorsBoulderError *berrors.BoulderError
-	if errors.As(err, &probsProblemDetails) {
-		return probsProblemDetails
-	} else if errors.As(err, &berrorsBoulderError) {
+	if errors.As(err, &berrorsBoulderError) {
 		return problemDetailsForBoulderError(berrorsBoulderError, msg)
 	} else {
 		// Internal server error messages may include sensitive data, so we do
