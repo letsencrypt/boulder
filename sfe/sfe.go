@@ -124,6 +124,7 @@ func (sfe *SelfServiceFrontEndImpl) renderTemplate(w http.ResponseWriter, filena
 		return
 	}
 
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	err := sfe.templatePages.ExecuteTemplate(w, filename, dynamicData)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -169,6 +170,8 @@ func (sfe *SelfServiceFrontEndImpl) UnpauseForm(response http.ResponseWriter, re
 		return
 	}
 
+	// If any of these values change, ensure any relevant pages in //sfe/pages/
+	// are also updated.
 	type tmplData struct {
 		PostPath  string
 		JWT       string
