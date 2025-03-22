@@ -1447,7 +1447,7 @@ func TestNewOrder_OrderReuse(t *testing.T) {
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID:         Registration.Id,
 		DnsNames:               names,
-		Identifiers:            identifier.ToProtoSlice(idents),
+		Identifiers:            idents.ToProtoSlice(),
 		CertificateProfileName: "test",
 	}
 	firstOrder, err := ra.NewOrder(context.Background(), orderReq)
@@ -1533,7 +1533,7 @@ func TestNewOrder_OrderReuse(t *testing.T) {
 			order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 				RegistrationID:         tc.RegistrationID,
 				DnsNames:               tc.DnsNames,
-				Identifiers:            identifier.ToProtoSlice(tc.Identifiers),
+				Identifiers:            tc.Identifiers.ToProtoSlice(),
 				CertificateProfileName: tc.Profile,
 			})
 			test.AssertNotError(t, err, "NewOrder returned an unexpected error")
@@ -2059,7 +2059,7 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       names,
-		Identifiers:    identifier.ToProtoSlice(idents),
+		Identifiers:    idents.ToProtoSlice(),
 	}
 
 	// Create an order for that request
@@ -2083,7 +2083,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	wildcardOrderRequest := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
-		Identifiers:    identifier.ToProtoSlice(orderIdents),
+		Identifiers:    orderIdents.ToProtoSlice(),
 	}
 
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
@@ -2101,7 +2101,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
 	test.AssertDeepEquals(t,
-		identifier.Normalize(identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(order))),
+		identifier.Normalize(identifier.FromProtoSliceWithDefault(order)),
 		identifier.Normalize(orderIdents))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
@@ -2144,7 +2144,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	wildcardOrderRequest = &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
-		Identifiers:    identifier.ToProtoSlice(orderIdents),
+		Identifiers:    orderIdents.ToProtoSlice(),
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
@@ -2160,7 +2160,7 @@ func TestNewOrderWildcard(t *testing.T) {
 		core.UniqueLowerNames(order.DnsNames),
 		core.UniqueLowerNames(orderNames))
 	test.AssertDeepEquals(t,
-		identifier.Normalize(identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(order))),
+		identifier.Normalize(identifier.FromProtoSliceWithDefault(order)),
 		identifier.Normalize(orderIdents))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
@@ -2222,7 +2222,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	wildcardOrderRequest = &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
-		Identifiers:    identifier.ToProtoSlice(orderIdents),
+		Identifiers:    orderIdents.ToProtoSlice(),
 	}
 	order, err = ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for a wildcard order request")
@@ -2300,7 +2300,7 @@ func TestNewOrderExpiry(t *testing.T) {
 	orderReq := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       names,
-		Identifiers:    identifier.ToProtoSlice(idents),
+		Identifiers:    idents.ToProtoSlice(),
 	}
 
 	// Create an order for that request
@@ -2783,12 +2783,12 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 
 	// Create a new order for a wildcard domain
 	orderIdents := identifier.ACMEIdentifiers{identifier.NewDNS("*.zombo.com")}
-	orderNames, err := identifier.ToDNSSlice(orderIdents)
+	orderNames, err := orderIdents.ToDNSSlice()
 	test.AssertNotError(t, err, "Converting identifiers to DNS names")
 	wildcardOrderRequest := &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		DnsNames:       orderNames,
-		Identifiers:    identifier.ToProtoSlice(orderIdents),
+		Identifiers:    orderIdents.ToProtoSlice(),
 	}
 	order, err := ra.NewOrder(context.Background(), wildcardOrderRequest)
 	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
@@ -3040,7 +3040,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
 			DnsNames:         names,
-			Identifiers:      identifier.ToProtoSlice(idents),
+			Identifiers:      idents.ToProtoSlice(),
 			V2Authorizations: authzIDs,
 		},
 	})
@@ -3159,7 +3159,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 		identifier.NewDNS("still.not-example.com"),
 		identifier.NewDNS("definitely.not-example.com"),
 	}
-	names, err := identifier.ToDNSSlice(idents)
+	names, err := idents.ToDNSSlice()
 	test.AssertNotError(t, err, "Converting identifiers to DNS names")
 	var authzIDs []int64
 	for i, ident := range idents {
@@ -3176,7 +3176,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
 			DnsNames:         names,
-			Identifiers:      identifier.ToProtoSlice(idents),
+			Identifiers:      idents.ToProtoSlice(),
 			V2Authorizations: authzIDs,
 		},
 	})
@@ -3341,27 +3341,27 @@ func TestCTPolicyMeasurements(t *testing.T) {
 }
 
 func TestWildcardOverlap(t *testing.T) {
-	err := wildcardOverlap([]string{
-		"*.example.com",
-		"*.example.net",
+	err := wildcardOverlap(identifier.ACMEIdentifiers{
+		identifier.NewDNS("*.example.com"),
+		identifier.NewDNS("*.example.net"),
 	})
 	if err != nil {
 		t.Errorf("Got error %q, expected none", err)
 	}
-	err = wildcardOverlap([]string{
-		"*.example.com",
-		"*.example.net",
-		"www.example.com",
+	err = wildcardOverlap(identifier.ACMEIdentifiers{
+		identifier.NewDNS("*.example.com"),
+		identifier.NewDNS("*.example.net"),
+		identifier.NewDNS("www.example.com"),
 	})
 	if err == nil {
 		t.Errorf("Got no error, expected one")
 	}
 	test.AssertErrorIs(t, err, berrors.Malformed)
 
-	err = wildcardOverlap([]string{
-		"*.foo.example.com",
-		"*.example.net",
-		"www.example.com",
+	err = wildcardOverlap(identifier.ACMEIdentifiers{
+		identifier.NewDNS("*.foo.example.com"),
+		identifier.NewDNS("*.example.net"),
+		identifier.NewDNS("www.example.com"),
 	})
 	if err != nil {
 		t.Errorf("Got error %q, expected none", err)

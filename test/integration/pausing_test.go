@@ -59,7 +59,7 @@ func TestIdentifiersPausedForAccount(t *testing.T) {
 
 	_, err = saClient.PauseIdentifiers(context.Background(), &sapb.PauseRequest{
 		RegistrationID: regID,
-		Identifiers:    identifier.ToProtoSlice(serverIdents),
+		Identifiers:    serverIdents.ToProtoSlice(),
 	})
 	test.AssertNotError(t, err, "Failed to pause domain")
 

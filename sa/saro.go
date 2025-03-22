@@ -289,7 +289,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 //
 // If req.Limit is nonzero, it returns only the most recent `Limit` results
 func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
-	idents := identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(req))
+	idents := identifier.FromProtoSliceWithDefault(req)
 
 	if core.IsAnyNilOrZero(req.Window) || len(idents) == 0 {
 		return nil, errIncompleteRequest
@@ -328,7 +328,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
 func (ssa *SQLStorageAuthorityRO) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
-	idents := identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(req))
+	idents := identifier.FromProtoSliceWithDefault(req)
 	if len(idents) == 0 {
 		return nil, errIncompleteRequest
 	}
@@ -402,8 +402,8 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		for _, a := range authzValidityInfo {
 			idents = append(idents, identifier.ACMEIdentifier{Type: uintToIdentifierType[a.IdentifierType], Value: a.IdentifierValue})
 		}
-		order.Identifiers = identifier.ToProtoSlice(idents)
-		order.DnsNames, err = identifier.ToDNSSlice(idents)
+		order.Identifiers = idents.ToProtoSlice()
+		order.DnsNames, err = idents.ToDNSSlice()
 		if err != nil {
 			return nil, err
 		}
@@ -452,7 +452,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 // unexpired orders are considered. If no order meeting these requirements is
 // found a nil corepb.Order pointer is returned.
 func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
-	idents := identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(req))
+	idents := identifier.FromProtoSliceWithDefault(req)
 
 	if req.AcctID == 0 || len(idents) == 0 {
 		return nil, errIncompleteRequest
@@ -563,7 +563,7 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 //
 // Deprecated: Use GetValidAuthorizations2, as we stop pending authz reuse.
 func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	idents := identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(req))
+	idents := identifier.FromProtoSliceWithDefault(req)
 
 	if core.IsAnyNilOrZero(req, req.RegistrationID, idents, req.ValidUntil) {
 		return nil, errIncompleteRequest
@@ -706,7 +706,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
 // in a given time range. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	ident := identifier.FromProto(identifier.ToProtoWithDefault(req))
+	ident := identifier.FromProtoWithDefault(req)
 
 	if core.IsAnyNilOrZero(req.RegistrationID, ident, req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
@@ -743,7 +743,7 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 // exists, only the one with the latest expiry will be returned. Currently only
 // dns identifiers are supported.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	idents := identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(req))
+	idents := identifier.FromProtoSliceWithDefault(req)
 
 	if core.IsAnyNilOrZero(req, req.RegistrationID, idents, req.ValidUntil) {
 		return nil, errIncompleteRequest

@@ -386,7 +386,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	}
 	digest := core.Fingerprint256(req.Der)
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
-	idents := identifier.FromCert(parsedCertificate)
 
 	cert := &core.Certificate{
 		RegistrationID: req.RegID,
@@ -432,7 +431,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		err = addFQDNSet(
 			ctx,
 			tx,
-			idents,
+			identifier.FromCert(parsedCertificate),
 			core.SerialToString(parsedCertificate.SerialNumber),
 			parsedCertificate.NotBefore,
 			parsedCertificate.NotAfter,
@@ -595,7 +594,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fourth, insert the FQDNSet entry for the order.
-		err = addOrderFQDNSet(ctx, tx, identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(req.NewOrder)), orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
+		err = addOrderFQDNSet(ctx, tx, identifier.FromProtoSliceWithDefault(req.NewOrder), orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {
 			return nil, err
 		}

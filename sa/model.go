@@ -669,7 +669,7 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest, profile string) (*authzMode
 // Deprecated: this function is only used as part of test setup, do not
 // introduce any new uses in production code.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
-	ident := identifier.FromProto(identifier.ToProtoWithDefault(authz))
+	ident := identifier.FromProtoWithDefault(authz)
 
 	am := &authzModel{
 		IdentifierType:  identifierTypeToUint[ident.ToProto().Type],
@@ -1118,7 +1118,7 @@ func statusForOrder(order *corepb.Order, authzValidityInfo []authzValidity, now 
 
 	// An order is fully authorized if it has valid authzs for each of the order
 	// identifiers
-	fullyAuthorized := len(identifier.ToProtoSliceWithDefault(order)) == validAuthzs
+	fullyAuthorized := len(identifier.FromProtoSliceWithDefault(order)) == validAuthzs
 
 	// If the order isn't fully authorized we've encountered an internal error:
 	// Above we checked for any invalid or pending authzs and should have returned

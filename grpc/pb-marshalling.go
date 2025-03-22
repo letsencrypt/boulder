@@ -316,7 +316,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	}
 	authz := core.Authorization{
 		ID:                     pb.Id,
-		Identifier:             identifier.FromProto(identifier.ToProtoWithDefault(pb)),
+		Identifier:             identifier.FromProtoWithDefault(pb),
 		RegistrationID:         pb.RegistrationID,
 		Status:                 core.AcmeStatus(pb.Status),
 		Expires:                expires,

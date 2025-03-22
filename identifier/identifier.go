@@ -62,7 +62,7 @@ func FromProto(ident *corepb.Identifier) ACMEIdentifier {
 
 // ToProtoSlice is a convenience function for converting a slice of
 // ACMEIdentifier into a slice of *corepb.Identifier, to use for RPCs.
-func ToProtoSlice(idents ACMEIdentifiers) []*corepb.Identifier {
+func (idents ACMEIdentifiers) ToProtoSlice() []*corepb.Identifier {
 	var pbIdents []*corepb.Identifier
 	for _, ident := range idents {
 		pbIdents = append(pbIdents, ident.ToProto())
@@ -102,9 +102,11 @@ func NewDNSSlice(input []string) ACMEIdentifiers {
 
 // ToDNSSlice returns a list of DNS names from the input, if the input contains
 // only DNS identifiers. Otherwise, it returns an error.
-func ToDNSSlice(input ACMEIdentifiers) ([]string, error) {
+//
+// TODO(#8023): Remove this when we no longer have any bare dnsNames slices.
+func (idents ACMEIdentifiers) ToDNSSlice() ([]string, error) {
 	var out []string
-	for _, in := range input {
+	for _, in := range idents {
 		if in.Type != "dns" {
 			return nil, fmt.Errorf("identifier '%s' is of type '%s', not DNS", in.Value, in.Type)
 		}
@@ -192,30 +194,36 @@ func Normalize(idents ACMEIdentifiers) ACMEIdentifiers {
 	return slices.Compact(idents)
 }
 
-type HasIdentifier interface {
+// hasIdentifier matches any protobuf struct that has both Identifier and
+// DnsName fields, like Authorization, Order, or many SA requests. This lets us
+// convert these to ACMEIdentifier, vice versa, etc.
+type hasIdentifier interface {
 	GetIdentifier() *corepb.Identifier
 	GetDnsName() string
 }
 
-// ToProtoWithDefault can be removed after DnsNames are no longer used in RPCs.
+// FromProtoWithDefault can be removed after DnsNames are no longer used in RPCs.
 // TODO(#8023)
-func ToProtoWithDefault(input HasIdentifier) *corepb.Identifier {
+func FromProtoWithDefault(input hasIdentifier) ACMEIdentifier {
 	if input.GetIdentifier() != nil {
-		return input.GetIdentifier()
+		return FromProto(input.GetIdentifier())
 	}
-	return NewDNS(input.GetDnsName()).ToProto()
+	return NewDNS(input.GetDnsName())
 }
 
-type HasIdentifiers interface {
+// hasIdentifiers matches any protobuf struct that has both Identifiers and
+// DnsNames fields, like NewOrderRequest or many SA requests. This lets us
+// convert these to ACMEIdentifiers, vice versa, etc.
+type hasIdentifiers interface {
 	GetIdentifiers() []*corepb.Identifier
 	GetDnsNames() []string
 }
 
-// ToProtoSliceWithDefault can be removed after DnsNames are no longer used in
+// FromProtoSliceWithDefault can be removed after DnsNames are no longer used in
 // RPCs. TODO(#8023)
-func ToProtoSliceWithDefault(input HasIdentifiers) []*corepb.Identifier {
+func FromProtoSliceWithDefault(input hasIdentifiers) ACMEIdentifiers {
 	if len(input.GetIdentifiers()) > 0 {
-		return input.GetIdentifiers()
+		return FromProtoSlice(input.GetIdentifiers())
 	}
-	return ToProtoSlice(NewDNSSlice(input.GetDnsNames()))
+	return NewDNSSlice(input.GetDnsNames())
 }

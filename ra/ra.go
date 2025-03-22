@@ -631,14 +631,7 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 		// Only check that the issued common name matches one of the SANs if there
 		// is an issued CN at all: this allows flexibility on whether we include
 		// the CN.
-		cnFound := false
-		for _, ident := range csrIdents {
-			if ident.Value == parsedCertificate.Subject.CommonName && ident.Type == identifier.TypeDNS {
-				cnFound = true
-				break
-			}
-		}
-		if !cnFound {
+		if !slices.Contains(csrIdents, identifier.NewDNS(parsedCertificate.Subject.CommonName)) {
 			return berrors.InternalServerError("generated certificate CommonName doesn't match any CSR name")
 		}
 	}
@@ -646,6 +639,14 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 	parsedIdents := identifier.FromCert(parsedCertificate)
 	if !slices.Equal(csrIdents, parsedIdents) {
 		return berrors.InternalServerError("generated certificate identifiers don't match CSR identifiers")
+	}
+
+	if !slices.Equal(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
+		return berrors.InternalServerError("generated certificate EmailAddresses don't match CSR EmailAddresses")
+	}
+
+	if !slices.Equal(parsedCertificate.URIs, csr.URIs) {
+		return berrors.InternalServerError("generated certificate URIs don't match CSR URIs")
 	}
 
 	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
@@ -1065,7 +1066,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		return nil, err
 	}
 
-	orderIdents := identifier.Normalize(identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(req.Order)))
+	orderIdents := identifier.Normalize(identifier.FromProtoSliceWithDefault(req.Order))
 
 	// There should never be an order with 0 identifiers at the stage, but we check to
 	// be on the safe side, throwing an internal server error if this assumption
@@ -1178,18 +1179,18 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ra.inflightFinalizes.Inc()
 	defer ra.inflightFinalizes.Dec()
 
-	idents := identifier.ToProtoSliceWithDefault(order)
+	idents := identifier.FromProtoSliceWithDefault(order)
 
-	// TODO(#7311): Remove this once all RPC users can handle Identifiers.
-	var dnsNames []string
-	for _, orderIdent := range idents {
-		dnsNames = append(dnsNames, orderIdent.Value)
+	// TODO(#7311): Remove this once all SA instances can handle Identifiers.
+	dnsNames, err := idents.ToDNSSlice()
+	if err != nil {
+		return nil, fmt.Errorf("parsing identifiers: %w", err)
 	}
 
 	isRenewal := false
 	timestamps, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
 		DnsNames:    dnsNames,
-		Identifiers: idents,
+		Identifiers: idents.ToProtoSlice(),
 		Window:      durationpb.New(120 * 24 * time.Hour),
 		Limit:       1,
 	})
@@ -1255,11 +1256,13 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 // errors from this function to the Subscriber, spends against these limit are
 // best effort.
 //
-// TODO(#7311): Handle IP address identifiers.
+// TODO(#7311): Handle IP address identifiers properly; don't just trust that
+// the value will always make sense in context.
 func (ra *RegistrationAuthorityImpl) countCertificateIssued(ctx context.Context, regId int64, orderIdents identifier.ACMEIdentifiers, isRenewal bool) {
-	var names []string
-	for _, orderIdent := range orderIdents {
-		names = append(names, orderIdent.Value)
+	names, err := orderIdents.ToDNSSlice()
+	if err != nil {
+		ra.log.Warningf("parsing identifiers at finalize: %s", err)
+		return
 	}
 
 	var transactions []ratelimits.Transaction
@@ -1551,7 +1554,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, identifier.ToProtoWithDefault(req.Authz), req.Authz.Status, req.Authz.Expires) {
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, identifier.FromProtoWithDefault(req.Authz), req.Authz.Status, req.Authz.Expires) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -1850,7 +1853,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		var authzPB *sapb.Authorizations
 		authzPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
-			Identifiers:    identifier.ToProtoSlice(identifier.NewDNSSlice(cert.DNSNames)),
+			Identifiers:    identifier.NewDNSSlice(cert.DNSNames).ToProtoSlice(),
 			DnsNames:       cert.DNSNames,
 			ValidUntil:     timestamppb.New(ra.clk.Now()),
 		})
@@ -2201,7 +2204,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
-	ident := identifier.FromProto(identifier.ToProtoWithDefault(req))
+	ident := identifier.FromProtoWithDefault(req)
 
 	if core.IsAnyNilOrZero(req, req.Id, ident, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
@@ -2272,7 +2275,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	idents := identifier.Normalize(identifier.FromProtoSlice(identifier.ToProtoSliceWithDefault(req)))
+	idents := identifier.Normalize(identifier.FromProtoSliceWithDefault(req))
 
 	profile, err := ra.profiles.get(req.CertificateProfileName)
 	if err != nil {
@@ -2297,11 +2300,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	dnsNames, err := identifier.ToDNSSlice(idents)
+	err = wildcardOverlap(idents)
 	if err != nil {
 		return nil, err
 	}
-	err = wildcardOverlap(dnsNames)
+
+	dnsNames, err := idents.ToDNSSlice()
 	if err != nil {
 		return nil, err
 	}
@@ -2311,7 +2315,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      req.RegistrationID,
 		DnsNames:    dnsNames,
-		Identifiers: identifier.ToProtoSlice(idents),
+		Identifiers: idents.ToProtoSlice(),
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
 	// immediately
@@ -2323,7 +2327,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Error if an incomplete order is returned.
 	if existingOrder != nil {
 		// Check to see if the expected fields of the existing order are set.
-		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, identifier.ToProtoSliceWithDefault(existingOrder), existingOrder.Created, existingOrder.Expires) {
+		if core.IsAnyNilOrZero(existingOrder.Id, existingOrder.Status, existingOrder.RegistrationID, identifier.FromProtoSliceWithDefault(existingOrder), existingOrder.Created, existingOrder.Expires) {
 			return nil, errIncompleteGRPCResponse
 		}
 
@@ -2357,7 +2361,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			RegistrationID: req.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
 			DnsNames:       dnsNames,
-			Identifiers:    identifier.ToProtoSlice(idents),
+			Identifiers:    idents.ToProtoSlice(),
 			Profile:        req.CertificateProfileName,
 		}
 		existingAuthz, err = ra.SA.GetValidAuthorizations2(ctx, getAuthReq)
@@ -2366,7 +2370,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			RegistrationID: req.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
 			DnsNames:       dnsNames,
-			Identifiers:    identifier.ToProtoSlice(idents),
+			Identifiers:    idents.ToProtoSlice(),
 			Profile:        req.CertificateProfileName,
 		}
 		existingAuthz, err = ra.SA.GetAuthorizations2(ctx, getAuthReq)
@@ -2380,20 +2384,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	newOrder := &sapb.NewOrderRequest{
-		RegistrationID:         req.RegistrationID,
-		DnsNames:               dnsNames,
-		Identifiers:            identifier.ToProtoSlice(idents),
-		CertificateProfileName: req.CertificateProfileName,
-		Replaces:               req.Replaces,
-		ReplacesSerial:         req.ReplacesSerial,
-	}
-
 	// For each of the identifiers in the order, if there is an acceptable
 	// existing authz, append it to the order to reuse it. Otherwise track that
 	// there is a missing authz for that identifier.
 	//
 	// TODO(#7311): TODO(#7647): Support non-dnsName identifier types here.
+	var newOrderAuthzs []int64
 	var missingAuthzIdents identifier.ACMEIdentifiers
 	for _, ident := range idents {
 		name := ident.Value
@@ -2427,7 +2423,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			if err != nil {
 				return nil, err
 			}
-			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
+			newOrderAuthzs = append(newOrderAuthzs, authzID)
 			ra.authzAges.WithLabelValues("NewOrder", string(authz.Status)).Observe(authzAge)
 			continue
 		} else if !strings.HasPrefix(name, "*.") {
@@ -2436,7 +2432,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			if err != nil {
 				return nil, err
 			}
-			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
+			newOrderAuthzs = append(newOrderAuthzs, authzID)
 			ra.authzAges.WithLabelValues("NewOrder", string(authz.Status)).Observe(authzAge)
 			continue
 		}
@@ -2464,7 +2460,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 		newAuthzs = append(newAuthzs, &sapb.NewAuthzRequest{
 			Identifier:     ident.ToProto(),
-			RegistrationID: newOrder.RegistrationID,
+			RegistrationID: req.RegistrationID,
 			Expires:        timestamppb.New(ra.clk.Now().Add(profile.pendingAuthzLifetime).Truncate(time.Second)),
 			ChallengeTypes: challStrs,
 			Token:          core.NewToken(),
@@ -2500,10 +2496,19 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			minExpiry = newPendingAuthzExpires
 		}
 	}
-	// Set the order's expiry to the minimum expiry. The db doesn't store
-	// sub-second values, so truncate here.
-	newOrder.Expires = timestamppb.New(minExpiry.Truncate(time.Second))
 
+	newOrder := &sapb.NewOrderRequest{
+		RegistrationID:         req.RegistrationID,
+		DnsNames:               dnsNames,
+		Identifiers:            idents.ToProtoSlice(),
+		CertificateProfileName: req.CertificateProfileName,
+		Replaces:               req.Replaces,
+		ReplacesSerial:         req.ReplacesSerial,
+		// Set the order's expiry to the minimum expiry. The db doesn't store
+		// sub-second values, so truncate here.
+		Expires:          timestamppb.New(minExpiry.Truncate(time.Second)),
+		V2Authorizations: newOrderAuthzs,
+	}
 	newOrderAndAuthzsReq := &sapb.NewOrderAndAuthzsRequest{
 		NewOrder:  newOrder,
 		NewAuthzs: newAuthzs,
@@ -2513,7 +2518,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, identifier.ToProtoSliceWithDefault(storedOrder), storedOrder.Created, storedOrder.Expires) {
+	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, identifier.FromProtoSliceWithDefault(storedOrder), storedOrder.Created, storedOrder.Expires) {
 		return nil, errIncompleteGRPCResponse
 	}
 	ra.orderAges.WithLabelValues("NewOrder").Observe(0)
@@ -2524,12 +2529,14 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	return storedOrder, nil
 }
 
-// wildcardOverlap takes a slice of domain names and returns an error if any of
+// wildcardOverlap takes a slice of identifiers and returns an error if any of
 // them is a non-wildcard FQDN that overlaps with a wildcard domain in the map.
-func wildcardOverlap(dnsNames []string) error {
-	nameMap := make(map[string]bool, len(dnsNames))
-	for _, v := range dnsNames {
-		nameMap[v] = true
+func wildcardOverlap(idents identifier.ACMEIdentifiers) error {
+	nameMap := make(map[string]bool, len(idents))
+	for _, v := range idents {
+		if v.Type == identifier.TypeDNS {
+			nameMap[v.Value] = true
+		}
 	}
 	for name := range nameMap {
 		if name[0] == '*' {

@@ -11,23 +11,23 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 )
 
-type protoToProtoTestCases struct {
+type withDefaultTestCases struct {
 	Name        string
 	InputIdents []*corepb.Identifier
 	InputNames  []string
 	want        ACMEIdentifiers
 }
 
-func (tc protoToProtoTestCases) GetIdentifiers() []*corepb.Identifier {
+func (tc withDefaultTestCases) GetIdentifiers() []*corepb.Identifier {
 	return tc.InputIdents
 }
 
-func (tc protoToProtoTestCases) GetDnsNames() []string {
+func (tc withDefaultTestCases) GetDnsNames() []string {
 	return tc.InputNames
 }
 
-func TestProtoToProtoWithDefault(t *testing.T) {
-	testCases := []protoToProtoTestCases{
+func TestFromProtoSliceWithDefault(t *testing.T) {
+	testCases := []withDefaultTestCases{
 		{
 			Name: "Populated identifiers, populated names, same values",
 			InputIdents: []*corepb.Identifier{
@@ -118,7 +118,7 @@ func TestProtoToProtoWithDefault(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			t.Parallel()
 
-			got := FromProtoSlice(ToProtoSliceWithDefault(tc))
+			got := FromProtoSliceWithDefault(tc)
 			if !slices.Equal(got, tc.want) {
 				t.Errorf("Got %#v, but want %#v", got, tc.want)
 			}
