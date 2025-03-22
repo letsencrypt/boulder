@@ -285,6 +285,9 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 	// to pick the port based on the reqScheme default port.
 	reqHost := req.URL.Hostname()
 	var reqPort int
+	// URL.Port() will return "" for an invalid port, not just an empty port. To
+	// reject invalid ports, we rely on the calling function having used
+	// URL.Parse(), which does enforce validity.
 	if req.URL.Port() != "" {
 		parsedPort, err := strconv.Atoi(req.URL.Port())
 		if err != nil {

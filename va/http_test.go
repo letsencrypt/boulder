@@ -1658,3 +1658,71 @@ func TestLimitedReader(t *testing.T) {
 		t.Errorf("Problem Detail contained an invalid UTF-8 string")
 	}
 }
+
+type hostHeaderHandler struct {
+	host string
+}
+
+func (handler *hostHeaderHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
+	handler.host = req.Host
+}
+
+// TestHTTPHostHeader tests compliance with RFC 8555, Sec. 8.3 & RFC 8738, Sec.
+// 5.
+func TestHTTPHostHeader(t *testing.T) {
+	testCases := []struct {
+		Name  string
+		Ident identifier.ACMEIdentifier
+		IPv6  bool
+		want  string
+	}{
+		{
+			Name:  "DNS name",
+			Ident: identifier.NewDNS("example.com"),
+			want:  "example.com",
+		},
+		{
+			Name:  "IPv4 address",
+			Ident: identifier.NewIP(netip.MustParseAddr("127.0.0.1")),
+			want:  "127.0.0.1",
+		},
+		{
+			Name:  "IPv6 address",
+			Ident: identifier.NewIP(netip.MustParseAddr("::1")),
+			IPv6:  true,
+			want:  "[::1]",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+			defer cancel()
+
+			handler := hostHeaderHandler{}
+			testSrv := httptest.NewUnstartedServer(&handler)
+
+			if tc.IPv6 {
+				l, err := net.Listen("tcp", "[::1]:0")
+				if err != nil {
+					panic(fmt.Sprintf("httptest: failed to listen on a port: %v", err))
+				}
+				testSrv.Listener = l
+			}
+
+			testSrv.Start()
+			defer testSrv.Close()
+
+			// Setup VA. By providing the testSrv to setup the VA will use the
+			// testSrv's randomly assigned port as its HTTP port.
+			va, _ := setup(testSrv, "", nil, nil)
+
+			var got string
+			_, _, _ = va.processHTTPValidation(ctx, tc.Ident, "/ok")
+			got = handler.host
+			if got != tc.want {
+				t.Errorf("Got host %#v, but want %#v", got, tc.want)
+			}
+		})
+	}
+}
