@@ -51,7 +51,7 @@ func main() {
 	var errors bool
 	for scanner.Scan() {
 		n := sa.ReverseName(scanner.Text())
-		err := pa.WillingToIssue([]identifier.ACMEIdentifier{identifier.NewDNS(n)})
+		err := pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(n)})
 		if err != nil {
 			errors = true
 			fmt.Printf("%s: %s\n", n, err)

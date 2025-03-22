@@ -291,6 +291,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	return &corepb.Authorization{
 		Id:                     authz.ID,
 		DnsName:                authz.Identifier.Value,
+		Identifier:             authz.Identifier.ToProto(),
 		RegistrationID:         authz.RegistrationID,
 		Status:                 string(authz.Status),
 		Expires:                expires,
@@ -315,7 +316,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	}
 	authz := core.Authorization{
 		ID:                     pb.Id,
-		Identifier:             identifier.NewDNS(pb.DnsName),
+		Identifier:             identifier.FromProtoWithDefault(pb),
 		RegistrationID:         pb.RegistrationID,
 		Status:                 core.AcmeStatus(pb.Status),
 		Expires:                expires,
@@ -340,7 +341,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.DnsNames) == 0)
+	return !(order.RegistrationID == 0 || order.Expires == nil || (len(order.Identifiers) == 0 && len(order.DnsNames) == 0))
 }
 
 func CertToPB(cert core.Certificate) *corepb.Certificate {

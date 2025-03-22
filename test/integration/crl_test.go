@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/eggsampler/acme/v3"
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/core"
@@ -132,7 +133,7 @@ func TestCRLPipeline(t *testing.T) {
 	// Issue a test certificate and save its serial number.
 	client, err := makeClient()
 	test.AssertNotError(t, err, "creating acme client")
-	res, err := authAndIssue(client, nil, []string{random_domain()}, true, "")
+	res, err := authAndIssue(client, nil, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 	test.AssertNotError(t, err, "failed to create test certificate")
 	cert := res.certs[0]
 	serial := core.SerialToString(cert.SerialNumber)
@@ -203,7 +204,7 @@ func TestCRLTemporalAndExplicitShardingCoexist(t *testing.T) {
 	// (until we move `config` to explicit sharding). This means that in the config world,
 	// this test only handles temporal sharding, but we don't config-gate it because it passes
 	// in both worlds.
-	result, err := authAndIssue(client, certKey, []string{random_domain()}, true, "")
+	result, err := authAndIssue(client, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 	if err != nil {
 		t.Fatalf("authAndIssue: %s", err)
 	}
