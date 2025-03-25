@@ -100,7 +100,7 @@ func NewDNSSlice(input []string) ACMEIdentifiers {
 	return out
 }
 
-// ToDNSSlice returns a list of DNS names from the input, if the input contains
+// ToDNSSlice returns a list of DNS names from the input if the input contains
 // only DNS identifiers. Otherwise, it returns an error.
 //
 // TODO(#8023): Remove this when we no longer have any bare dnsNames slices.

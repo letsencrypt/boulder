@@ -1,12 +1,12 @@
 package ratelimits
 
 import (
-	"crypto/sha256"
 	"strings"
 
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 // joinWithColon joins the provided args with a colon.
@@ -39,7 +39,5 @@ func FQDNsToETLDsPlusOne(names []string) []string {
 //
 // Deprecated: TODO(#7311): Use HashIdentifiers instead.
 func hashNames(names []string) []byte {
-	names = core.UniqueLowerNames(names)
-	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
-	return hash[:]
+	return core.HashIdentifiers(identifier.NewDNSSlice(names))
 }
