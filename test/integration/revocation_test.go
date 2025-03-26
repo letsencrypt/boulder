@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 	"sync"
@@ -24,7 +25,9 @@ import (
 	"github.com/eggsampler/acme/v3"
 	"golang.org/x/crypto/ocsp"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/idp"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 )
@@ -182,6 +185,7 @@ func TestRevocation(t *testing.T) {
 		byAccount authMethod = "byAccount"
 		byAuth    authMethod = "byAuth"
 		byKey     authMethod = "byKey"
+		byAdmin   authMethod = "byAdmin"
 	)
 
 	type certKind string
@@ -246,44 +250,66 @@ func TestRevocation(t *testing.T) {
 		test.AssertNotError(t, err, "requesting OCSP for precert")
 
 		// Set up the account and key that we'll use to revoke the cert.
-		var revokeClient *client
-		var revokeKey crypto.Signer
 		switch tc.method {
 		case byAccount:
 			// When revoking by account, use the same client and key as were used
 			// for the original issuance.
-			revokeClient = issueClient
-			revokeKey = revokeClient.PrivateKey
+			err = issueClient.RevokeCertificate(
+				issueClient.Account,
+				cert,
+				issueClient.PrivateKey,
+				tc.reason,
+			)
+			test.AssertNotError(t, err, "revocation should have succeeded")
 
 		case byAuth:
 			// When revoking by auth, create a brand new client, authorize it for
 			// the same domain, and use that account and key for revocation. Ignore
 			// errors from authAndIssue because all we need is the auth, not the
 			// issuance.
-			revokeClient, err = makeClient()
+			newClient, err := makeClient()
 			test.AssertNotError(t, err, "creating second acme client")
-			_, _ = authAndIssue(revokeClient, certKey, []acme.Identifier{{Type: "dns", Value: domain}}, true, "")
-			revokeKey = revokeClient.PrivateKey
+			_, _ = authAndIssue(newClient, certKey, []acme.Identifier{{Type: "dns", Value: domain}}, true, "")
+
+			err = newClient.RevokeCertificate(
+				newClient.Account,
+				cert,
+				newClient.PrivateKey,
+				tc.reason,
+			)
+			test.AssertNotError(t, err, "revocation should have succeeded")
 
 		case byKey:
 			// When revoking by key, create a brand new client and use it with
 			// the cert's key for revocation.
-			revokeClient, err = makeClient()
+			newClient, err := makeClient()
 			test.AssertNotError(t, err, "creating second acme client")
-			revokeKey = certKey
+			err = newClient.RevokeCertificate(
+				newClient.Account,
+				cert,
+				certKey,
+				tc.reason,
+			)
+			test.AssertNotError(t, err, "revocation should have succeeded")
+
+		case byAdmin:
+			// Invoke the admin tool to perform the revocation via gRPC, rather than
+			// using the external-facing ACME API.
+			config := fmt.Sprintf("%s/%s", os.Getenv("BOULDER_CONFIG_DIR"), "admin.json")
+			cmd := exec.Command(
+				"./bin/admin",
+				"-config", config,
+				"-dry-run=false",
+				"revoke-cert",
+				"-serial", core.SerialToString(cert.SerialNumber),
+				"-reason", revocation.ReasonToString[revocation.Reason(tc.reason)])
+			output, err := cmd.CombinedOutput()
+			t.Logf("admin revoke-cert output: %s\n", string(output))
+			test.AssertNotError(t, err, "revocation should have succeeded")
 
 		default:
 			t.Fatalf("unrecognized revocation method %q", tc.method)
 		}
-
-		// Revoke the cert using the specified key and client.
-		err = revokeClient.RevokeCertificate(
-			revokeClient.Account,
-			cert,
-			revokeKey,
-			tc.reason,
-		)
-		test.AssertNotError(t, err, "revocation should have succeeded")
 
 		return cert
 	}
@@ -298,8 +324,8 @@ func TestRevocation(t *testing.T) {
 	var wg sync.WaitGroup
 
 	for _, kind := range []certKind{precert, finalcert} {
-		for _, reason := range []int{ocsp.Unspecified, ocsp.KeyCompromise} {
-			for _, method := range []authMethod{byAccount, byAuth, byKey} {
+		for _, reason := range []int{ocsp.Unspecified, ocsp.KeyCompromise, ocsp.Superseded} {
+			for _, method := range []authMethod{byAccount, byAuth, byKey, byAdmin} {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()

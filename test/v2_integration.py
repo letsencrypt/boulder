@@ -1355,48 +1355,6 @@ def test_oversized_csr():
 def parse_cert(order):
     return x509.load_pem_x509_certificate(order.fullchain_pem.encode(), default_backend())
 
-def test_admin_revoker_cert():
-    cert_file = temppath('test_admin_revoker_cert.pem')
-    order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
-    parsed_cert = parse_cert(order)
-
-    # Revoke certificate by serial
-    reset_akamai_purges()
-    run(["./bin/admin", 
-        "-config", "%s/admin.json" % config_dir,
-        "-dry-run=false",
-        "revoke-cert",
-        "-serial", '%x' % parsed_cert.serial_number,
-        "-reason", "keyCompromise"])
-
-    # Wait for OCSP response to indicate revocation took place
-    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
-    verify_akamai_purge()
-
-def test_admin_revoker_batched():
-    serialFile = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_admin_revoker_batched.serials.hex',
-        mode='w+', delete=False)
-    cert_files = [
-        temppath('test_admin_revoker_batched.%d.pem' % x) for x in range(3)
-    ]
-
-    for cert_file in cert_files:
-        order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
-        serialFile.write("%x\n" % parse_cert(order).serial_number)
-    serialFile.close()
-
-    run(["./bin/admin", 
-        "-config", "%s/admin.json" % config_dir,
-        "-dry-run=false",
-        "revoke-cert",
-        "-serials-file", serialFile.name,
-        "-reason", "unspecified",
-        "-parallelism", "2"])
-
-    for cert_file in cert_files:
-        verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "unspecified")
-
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])
     cert = parse_cert(order)
