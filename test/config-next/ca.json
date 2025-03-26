@@ -55,17 +55,7 @@
 			"certProfiles": {
 				"legacy": {
 					"allowMustStaple": true,
-					"maxValidityPeriod": "7776000s",
-					"maxValidityBackdate": "1h5m",
 					"includeCRLDistributionPoints": true,
-					"lintConfig": "test/config-next/zlint.toml",
-					"ignoredLints": [
-						"w_subject_common_name_included",
-						"w_ext_subject_key_identifier_not_recommended_subscriber"
-					]
-				},
-				"legacyRenamedPriorToDeletion": {
-					"allowMustStaple": true,
 					"maxValidityPeriod": "7776000s",
 					"maxValidityBackdate": "1h5m",
 					"lintConfig": "test/config-next/zlint.toml",
@@ -81,19 +71,6 @@
 					"omitClientAuth": true,
 					"omitSKID": true,
 					"includeCRLDistributionPoints": true,
-					"maxValidityPeriod": "583200s",
-					"maxValidityBackdate": "1h5m",
-					"lintConfig": "test/config-next/zlint.toml",
-					"ignoredLints": [
-						"w_ext_subject_key_identifier_missing_sub_cert"
-					]
-				},
-				"modernRenamedPriorToDeletion": {
-					"allowMustStaple": true,
-					"omitCommonName": true,
-					"omitKeyEncipherment": true,
-					"omitClientAuth": true,
-					"omitSKID": true,
 					"maxValidityPeriod": "583200s",
 					"maxValidityBackdate": "1h5m",
 					"lintConfig": "test/config-next/zlint.toml",

@@ -102,7 +102,7 @@ type testCtx struct {
 	pa             core.PolicyAuthority
 	ocsp           *ocspImpl
 	crl            *crlImpl
-	certProfiles   map[string]*issuance.ProfileConfigNew
+	certProfiles   map[string]*issuance.ProfileConfig
 	serialPrefix   byte
 	maxNames       int
 	boulderIssuers []*issuance.Issuer
@@ -153,14 +153,14 @@ func setup(t *testing.T) *testCtx {
 	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
-	certProfiles := make(map[string]*issuance.ProfileConfigNew, 0)
-	certProfiles["legacy"] = &issuance.ProfileConfigNew{
+	certProfiles := make(map[string]*issuance.ProfileConfig, 0)
+	certProfiles["legacy"] = &issuance.ProfileConfig{
 		AllowMustStaple:     true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 		IgnoredLints:        []string{"w_subject_common_name_included"},
 	}
-	certProfiles["modern"] = &issuance.ProfileConfigNew{
+	certProfiles["modern"] = &issuance.ProfileConfig{
 		AllowMustStaple:     true,
 		OmitCommonName:      true,
 		OmitKeyEncipherment: true,
@@ -552,7 +552,7 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 	testCtx := setup(t)
 	test.AssertEquals(t, len(testCtx.certProfiles), 2)
 
-	testProfile := issuance.ProfileConfigNew{
+	testProfile := issuance.ProfileConfig{
 		AllowMustStaple:     false,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
@@ -565,7 +565,7 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 
 	testCases := []struct {
 		name              string
-		profileConfigs    map[string]*issuance.ProfileConfigNew
+		profileConfigs    map[string]*issuance.ProfileConfig
 		expectedErrSubstr string
 		expectedProfiles  []nameToHash
 	}{
@@ -576,12 +576,12 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 		},
 		{
 			name:              "no profiles",
-			profileConfigs:    map[string]*issuance.ProfileConfigNew{},
+			profileConfigs:    map[string]*issuance.ProfileConfig{},
 			expectedErrSubstr: "at least one certificate profile",
 		},
 		{
 			name: "duplicate hash",
-			profileConfigs: map[string]*issuance.ProfileConfigNew{
+			profileConfigs: map[string]*issuance.ProfileConfig{
 				"default":  &testProfile,
 				"default2": &testProfile,
 			},
@@ -589,13 +589,13 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 		},
 		{
 			name: "empty profile config",
-			profileConfigs: map[string]*issuance.ProfileConfigNew{
+			profileConfigs: map[string]*issuance.ProfileConfig{
 				"empty": {},
 			},
 			expectedProfiles: []nameToHash{
 				{
 					name: "empty",
-					hash: [32]byte{0x25, 0x27, 0x72, 0xa1, 0xaf, 0x95, 0xfe, 0xc7, 0x32, 0x78, 0x38, 0x97, 0xd0, 0xf1, 0x83, 0x92, 0xc3, 0xac, 0x60, 0x91, 0x68, 0x4f, 0x22, 0xb6, 0x57, 0x2f, 0x89, 0x1a, 0x54, 0xe5, 0xd8, 0xa3},
+					hash: [32]byte{0xe4, 0xf6, 0xd, 0xa, 0xa6, 0xd7, 0xf3, 0xd3, 0xb6, 0xa6, 0x49, 0x4b, 0x1c, 0x86, 0x1b, 0x99, 0xf6, 0x49, 0xc6, 0xf9, 0xec, 0x51, 0xab, 0xaf, 0x20, 0x1b, 0x20, 0xf2, 0x97, 0x32, 0x7c, 0x95},
 				},
 			},
 		},
@@ -605,11 +605,11 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 			expectedProfiles: []nameToHash{
 				{
 					name: "legacy",
-					hash: [32]byte{0x44, 0xc5, 0xbc, 0x73, 0x8, 0x95, 0xba, 0x4c, 0x13, 0x12, 0xc4, 0xc, 0x5d, 0x77, 0x2f, 0x54, 0xf8, 0x54, 0x1, 0xb8, 0x84, 0xaf, 0x6c, 0x58, 0x74, 0x6, 0xac, 0xda, 0x3e, 0x37, 0xfc, 0x88},
+					hash: [32]byte{0xb7, 0xd9, 0x7e, 0xfc, 0x5a, 0xdd, 0xc7, 0xfe, 0xc, 0xea, 0xed, 0x7b, 0x8c, 0xf5, 0x4, 0x57, 0x71, 0x97, 0x42, 0x80, 0xbe, 0x4d, 0x14, 0xa, 0x35, 0x9a, 0x89, 0xc3, 0x7a, 0x57, 0x41, 0xb7},
 				},
 				{
 					name: "modern",
-					hash: [32]byte{0x58, 0x7, 0xea, 0x3a, 0x85, 0xcd, 0xf9, 0xd1, 0x7a, 0x9a, 0x59, 0x76, 0xfc, 0x92, 0xea, 0x1b, 0x69, 0x54, 0xe4, 0xbe, 0xcf, 0xe3, 0x91, 0xfa, 0x85, 0x4, 0xbf, 0x1f, 0x55, 0x97, 0x2c, 0x8b},
+					hash: [32]byte{0x2e, 0x82, 0x9b, 0xe4, 0x4d, 0xac, 0xfc, 0x2d, 0x83, 0xbf, 0x62, 0xe5, 0xe1, 0x50, 0xe8, 0xba, 0xd2, 0x66, 0x1a, 0xb3, 0xf2, 0xe7, 0xb5, 0xf2, 0x24, 0x94, 0x1f, 0x83, 0xc6, 0x57, 0xe, 0x58},
 				},
 			},
 		},

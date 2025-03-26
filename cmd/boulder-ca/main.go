@@ -46,7 +46,7 @@ type Config struct {
 
 			// One of the profile names must match the value of ra.defaultProfileName
 			// or large amounts of issuance will fail.
-			CertProfiles map[string]*issuance.ProfileConfigNew `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
+			CertProfiles map[string]*issuance.ProfileConfig `validate:"dive,keys,alphanum,min=1,max=32,endkeys,required_without=Profile,structonly"`
 
 			// TODO(#7159): Make this required once all live configs are using it.
 			CRLProfile issuance.CRLProfileConfig `validate:"-"`

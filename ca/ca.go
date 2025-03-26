@@ -200,7 +200,7 @@ func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 //   - CA1 returns the precertificate DER bytes and profile hash to the RA
 //   - RA instructs CA2 to issue a final certificate, but CA2 does not contain a
 //     profile corresponding to that hash and an issuance is prevented.
-func makeCertificateProfilesMap(profiles map[string]*issuance.ProfileConfigNew) (certProfilesMaps, error) {
+func makeCertificateProfilesMap(profiles map[string]*issuance.ProfileConfig) (certProfilesMaps, error) {
 	if len(profiles) <= 0 {
 		return certProfilesMaps{}, fmt.Errorf("must pass at least one certificate profile")
 	}
@@ -241,7 +241,7 @@ func NewCertificateAuthorityImpl(
 	sctService rapb.SCTProviderClient,
 	pa core.PolicyAuthority,
 	boulderIssuers []*issuance.Issuer,
-	certificateProfiles map[string]*issuance.ProfileConfigNew,
+	certificateProfiles map[string]*issuance.ProfileConfig,
 	serialPrefix byte,
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
