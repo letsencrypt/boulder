@@ -582,6 +582,9 @@ func SelectAuthzsMatchingIssuance(
 	issued time.Time,
 	idents identifier.ACMEIdentifiers,
 ) ([]*corepb.Authorization, error) {
+	// The WHERE clause returned by this function does not contain any
+	// user-controlled strings; all user-controlled input ends up in the
+	// returned placeholder args.
 	identConditions, identArgs := buildIdentifierQueryConditions(idents)
 	query := fmt.Sprintf(`SELECT %s FROM authz2 WHERE
 			registrationID = ? AND
@@ -1351,9 +1354,13 @@ func newPBFromIdentifierModels(ids []identifierModel) (*sapb.Identifiers, error)
 }
 
 // buildIdentifierQueryConditions takes a slice of identifiers and returns a
-// string (conditions to use within the prepared statement) and a slice of
-// anys (arguments for the prepared statement), both to use within a WHERE
-// clause for queries against the authz2 table.
+// string (conditions to use within the prepared statement) and a slice of anys
+// (arguments for the prepared statement), both to use within a WHERE clause for
+// queries against the authz2 table.
+//
+// Although this function takes user-controlled input, it does not include any
+// of that input directly in the returned SQL string. The resulting string
+// contains only column names, boolean operators, and questionmark placeholders.
 func buildIdentifierQueryConditions(idents identifier.ACMEIdentifiers) (string, []any) {
 	if len(idents) == 0 {
 		// No identifier values to check.

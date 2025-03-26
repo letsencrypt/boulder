@@ -569,6 +569,9 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		return nil, errIncompleteRequest
 	}
 
+	// The WHERE clause returned by this function does not contain any
+	// user-controlled strings; all user-controlled input ends up in the
+	// returned placeholder args.
 	identConditions, identArgs := buildIdentifierQueryConditions(idents)
 	query := fmt.Sprintf(
 		`SELECT %s FROM authz2
@@ -749,6 +752,9 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 		return nil, errIncompleteRequest
 	}
 
+	// The WHERE clause returned by this function does not contain any
+	// user-controlled strings; all user-controlled input ends up in the
+	// returned placeholder args.
 	identConditions, identArgs := buildIdentifierQueryConditions(idents)
 	query := fmt.Sprintf(
 		`SELECT %s FROM authz2
