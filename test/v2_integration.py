@@ -1039,11 +1039,6 @@ def test_auth_deactivation_v2():
     if resp.body.status is not messages.STATUS_DEACTIVATED:
         raise(Exception("unexpected authorization status"))
 
-def test_ocsp():
-    cert_file = temppath('test_ocsp.pem')
-    chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
-    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "good")
-
 def test_ct_submission():
     hostname = random_domain()
 
