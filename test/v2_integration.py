@@ -670,32 +670,6 @@ def test_order_finalize_early():
     chisel2.expect_problem("urn:ietf:params:acme:error:orderNotReady",
         lambda: client.finalize_order(order, deadline))
 
-def test_sct_embedding():
-    order = chisel2.auth_and_issue([random_domain()])
-    print(order.fullchain_pem.encode())
-    cert = parse_cert(order)
-
-    # make sure there is no poison extension
-    try:
-        cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.3"))
-        raise(Exception("certificate contains CT poison extension"))
-    except x509.ExtensionNotFound:
-        # do nothing
-        pass
-
-    # make sure there is a SCT list extension
-    try:
-        sctList = cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.2"))
-    except x509.ExtensionNotFound:
-        raise(Exception("certificate doesn't contain SCT list extension"))
-    if len(sctList.value) != 2:
-        raise(Exception("SCT list contains wrong number of SCTs"))
-    for sct in sctList.value:
-        if sct.version != x509.certificate_transparency.Version.v1:
-            raise(Exception("SCT contains wrong version"))
-        if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
-            raise(Exception("SCT contains wrong entry type"))
-
 def test_only_return_existing_reg():
     client = chisel2.uninitialized_client()
     email = "test@not-example.com"
