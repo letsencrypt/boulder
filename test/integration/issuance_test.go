@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/eggsampler/acme/v3"
+
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -30,9 +32,14 @@ func TestCommonNameInCSR(t *testing.T) {
 	cn := random_domain()
 	san1 := random_domain()
 	san2 := random_domain()
+	idents := []acme.Identifier{
+		{Type: "dns", Value: cn},
+		{Type: "dns", Value: san1},
+		{Type: "dns", Value: san2},
+	}
 
 	// Issue a cert. authAndIssue includes the 0th name as the CN by default.
-	ir, err := authAndIssue(client, key, []string{cn, san1, san2}, true, "")
+	ir, err := authAndIssue(client, key, idents, true, "")
 	test.AssertNotError(t, err, "failed to issue test cert")
 	cert := ir.certs[0]
 
@@ -61,9 +68,13 @@ func TestFirstCSRSANHoistedToCN(t *testing.T) {
 	// Create some names that we can sort.
 	san1 := "a" + random_domain()
 	san2 := "b" + random_domain()
+	idents := []acme.Identifier{
+		{Type: "dns", Value: san2},
+		{Type: "dns", Value: san1},
+	}
 
 	// Issue a cert using a CSR with no CN set, and the SANs in *non*-alpha order.
-	ir, err := authAndIssue(client, key, []string{san2, san1}, false, "")
+	ir, err := authAndIssue(client, key, idents, false, "")
 	test.AssertNotError(t, err, "failed to issue test cert")
 	cert := ir.certs[0]
 
@@ -91,9 +102,13 @@ func TestCommonNameSANsTooLong(t *testing.T) {
 	// Put together some names.
 	san1 := fmt.Sprintf("thisdomainnameis.morethan64characterslong.forthesakeoftesting.%s", random_domain())
 	san2 := fmt.Sprintf("thisdomainnameis.morethan64characterslong.forthesakeoftesting.%s", random_domain())
+	idents := []acme.Identifier{
+		{Type: "dns", Value: san1},
+		{Type: "dns", Value: san2},
+	}
 
 	// Issue a cert using a CSR with no CN set.
-	ir, err := authAndIssue(client, key, []string{san1, san2}, false, "")
+	ir, err := authAndIssue(client, key, idents, false, "")
 	test.AssertNotError(t, err, "failed to issue test cert")
 	cert := ir.certs[0]
 
@@ -127,21 +142,23 @@ func TestIssuanceProfiles(t *testing.T) {
 	test.AssertNotError(t, err, "creating random cert key")
 
 	// Create a set of identifiers to request.
-	names := []string{random_domain()}
+	idents := []acme.Identifier{
+		{Type: "dns", Value: random_domain()},
+	}
 
 	// Get one cert for each profile that we know the test server advertises.
-	res, err := authAndIssue(client, key, names, true, "legacy")
+	res, err := authAndIssue(client, key, idents, true, "legacy")
 	test.AssertNotError(t, err, "failed to issue under legacy profile")
 	test.AssertEquals(t, res.Order.Profile, "legacy")
 	legacy := res.certs[0]
 
-	res, err = authAndIssue(client, key, names, true, "modern")
+	res, err = authAndIssue(client, key, idents, true, "modern")
 	test.AssertNotError(t, err, "failed to issue under modern profile")
 	test.AssertEquals(t, res.Order.Profile, "modern")
 	modern := res.certs[0]
 
 	// Check that each profile worked as expected.
-	test.AssertEquals(t, legacy.Subject.CommonName, names[0])
+	test.AssertEquals(t, legacy.Subject.CommonName, idents[0].Value)
 	test.AssertEquals(t, modern.Subject.CommonName, "")
 
 	test.AssertDeepEquals(t, legacy.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth})

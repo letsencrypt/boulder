@@ -194,6 +194,8 @@ func validateRegIdDomain(id string) error {
 
 // validateFQDNSet validates that the provided string is formatted 'fqdnSet',
 // where fqdnSet is a comma-separated list of domain names.
+//
+// TODO(#7311): Support non-DNS identifiers.
 func validateFQDNSet(id string) error {
 	domains := strings.Split(id, ",")
 	if len(domains) == 0 {

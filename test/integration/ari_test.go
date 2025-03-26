@@ -38,7 +38,7 @@ func TestARIAndReplacement(t *testing.T) {
 	// the retry-after header are approximately the right amount of time in the
 	// future.
 	name := random_domain()
-	ir, err := authAndIssue(client, key, []string{name}, true, "")
+	ir, err := authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: name}}, true, "")
 	test.AssertNotError(t, err, "failed to issue test cert")
 
 	cert := ir.certs[0]
@@ -50,7 +50,7 @@ func TestARIAndReplacement(t *testing.T) {
 
 	// Make a new order which indicates that it replaces the cert issued above,
 	// and verify that the replacement order succeeds.
-	_, order, err := makeClientAndOrder(client, key, []string{name}, true, "", cert)
+	_, order, err := makeClientAndOrder(client, key, []acme.Identifier{{Type: "dns", Value: name}}, true, "", cert)
 	test.AssertNotError(t, err, "failed to issue test cert")
 	replaceID, err := acme.GenerateARICertID(cert)
 	test.AssertNotError(t, err, "failed to generate ARI certID")
@@ -67,7 +67,7 @@ func TestARIAndReplacement(t *testing.T) {
 	}
 
 	// Try another replacement order and verify that it fails.
-	_, order, err = makeClientAndOrder(client, key, []string{name}, true, "", cert)
+	_, order, err = makeClientAndOrder(client, key, []acme.Identifier{{Type: "dns", Value: name}}, true, "", cert)
 	test.AssertError(t, err, "subsequent ARI replacements for a replaced cert should fail, but didn't")
 	test.AssertContains(t, err.Error(), "urn:ietf:params:acme:error:alreadyReplaced")
 	test.AssertContains(t, err.Error(), "already has a replacement order")
@@ -86,8 +86,7 @@ func TestARIShortLived(t *testing.T) {
 	// Issue a short-lived cert, request ARI, and check that both the suggested
 	// window and the retry-after header are approximately the right amount of
 	// time in the future.
-	name := random_domain()
-	ir, err := authAndIssue(client, key, []string{name}, true, "shortlived")
+	ir, err := authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "shortlived")
 	test.AssertNotError(t, err, "failed to issue test cert")
 
 	cert := ir.certs[0]
@@ -109,8 +108,7 @@ func TestARIRevoked(t *testing.T) {
 
 	// Issue a cert, revoke it, request ARI, and check that the suggested window
 	// is in the past, indicating that a renewal should happen immediately.
-	name := random_domain()
-	ir, err := authAndIssue(client, key, []string{name}, true, "")
+	ir, err := authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 	test.AssertNotError(t, err, "failed to issue test cert")
 
 	cert := ir.certs[0]
@@ -137,7 +135,7 @@ func TestARIForPrecert(t *testing.T) {
 	name := random_domain()
 	err = ctAddRejectHost(name)
 	test.AssertNotError(t, err, "failed to add ct-test-srv reject host")
-	_, err = authAndIssue(client, key, []string{name}, true, "")
+	_, err = authAndIssue(client, key, []acme.Identifier{{Type: "dns", Value: name}}, true, "")
 	test.AssertError(t, err, "expected error from authAndIssue, was nil")
 
 	// Recover the precert from CT, then request ARI and check

@@ -3,8 +3,10 @@ package ratelimits
 import (
 	"strings"
 
-	"github.com/letsencrypt/boulder/core"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
+
+	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 // joinWithColon joins the provided args with a colon.
@@ -30,4 +32,12 @@ func FQDNsToETLDsPlusOne(names []string) []string {
 		}
 	}
 	return core.UniqueLowerNames(domains)
+}
+
+// hashNames returns a hash of the names requested. This is intended for use
+// when interacting with the orderFqdnSets table and rate limiting.
+//
+// Deprecated: TODO(#7311): Use HashIdentifiers instead.
+func hashNames(names []string) []byte {
+	return core.HashIdentifiers(identifier.NewDNSSlice(names))
 }

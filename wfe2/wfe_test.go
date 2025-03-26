@@ -242,6 +242,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 			Id:             "1",
 			RegistrationID: 1,
 			DnsName:        "not-an-example.com",
+			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusValid),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
 			Challenges: []*corepb.Challenge{
@@ -253,6 +254,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 			Id:             "2",
 			RegistrationID: 1,
 			DnsName:        "not-an-example.com",
+			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
 			Challenges: []*corepb.Challenge{
@@ -266,6 +268,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 			Id:             "3",
 			RegistrationID: 1,
 			DnsName:        "not-an-example.com",
+			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(-1, 0, 0)),
 			Challenges: []*corepb.Challenge{
@@ -281,6 +284,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 			Id:             "5",
 			RegistrationID: 2,
 			DnsName:        "not-an-example.com",
+			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
 			Challenges: []*corepb.Challenge{
@@ -308,6 +312,7 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewO
 		Created:          timestamppb.New(created),
 		Expires:          timestamppb.New(expires),
 		DnsNames:         in.DnsNames,
+		Identifiers:      in.Identifiers,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
 	}, nil
@@ -1743,6 +1748,7 @@ func (ra *RAWithFailedChallenge) GetAuthorization(ctx context.Context, id *rapb.
 		Id:             "6",
 		RegistrationID: 1,
 		DnsName:        "not-an-example.com",
+		Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 		Status:         string(core.StatusInvalid),
 		Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
 		Challenges: []*corepb.Challenge{
@@ -2667,7 +2673,7 @@ func TestNewOrder(t *testing.T) {
 		{
 			Name:         "POST, empty domain name identifier",
 			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":""}]}`),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request included empty domain name","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request included empty identifier","status":400}`,
 		},
 		{
 			Name:         "POST, invalid domain name identifier",
@@ -3593,6 +3599,7 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 		Id:               1,
 		RegistrationID:   1,
 		DnsNames:         []string{"a"},
+		Identifiers:      []*corepb.Identifier{identifier.NewDNS("a").ToProto()},
 		Status:           string(core.StatusPending),
 		Expires:          timestamppb.New(expires),
 		V2Authorizations: []int64{1, 2},
@@ -3865,23 +3872,23 @@ func TestOrderMatchesReplacement(t *testing.T) {
 	}
 
 	// Working with a single matching identifier.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example.com"}, expectSerial.String())
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, identifier.ACMEIdentifiers{identifier.NewDNS("example.com")}, expectSerial.String())
 	test.AssertNotError(t, err, "failed to check order is replacement")
 
 	// Working with a different matching identifier.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example-a.com"}, expectSerial.String())
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, identifier.ACMEIdentifiers{identifier.NewDNS("example-a.com")}, expectSerial.String())
 	test.AssertNotError(t, err, "failed to check order is replacement")
 
 	// No matching identifiers.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example-b.com"}, expectSerial.String())
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, identifier.ACMEIdentifiers{identifier.NewDNS("example-b.com")}, expectSerial.String())
 	test.AssertErrorIs(t, err, berrors.Malformed)
 
 	// RegID for predecessor order does not match.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 2}, []string{"example.com"}, expectSerial.String())
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 2}, identifier.ACMEIdentifiers{identifier.NewDNS("example.com")}, expectSerial.String())
 	test.AssertErrorIs(t, err, berrors.Unauthorized)
 
 	// Predecessor certificate not found.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example.com"}, "1")
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, identifier.ACMEIdentifiers{identifier.NewDNS("example.com")}, "1")
 	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
@@ -3904,6 +3911,7 @@ func (sa *mockRA) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, opts .
 		Created:                timestamppb.New(created),
 		Expires:                timestamppb.New(exp),
 		DnsNames:               []string{"example.com"},
+		Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 		Status:                 string(core.StatusValid),
 		V2Authorizations:       []int64{1},
 		CertificateSerial:      "serial",
