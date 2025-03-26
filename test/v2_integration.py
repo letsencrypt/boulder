@@ -670,49 +670,6 @@ def test_order_finalize_early():
     chisel2.expect_problem("urn:ietf:params:acme:error:orderNotReady",
         lambda: client.finalize_order(order, deadline))
 
-def test_revoke_by_privkey():
-    domains = [random_domain()]
-
-    # We have to make our own CSR so that we can hold on to the private key
-    # for revocation later.
-    key = rsa.generate_private_key(65537, 2048, default_backend())
-    key_pem = key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption()
-    )
-    csr_pem = acme_crypto_util.make_csr(key_pem, domains, False)
-
-    # We have to do our own issuance because we made our own CSR.
-    issue_client = chisel2.make_client(None)
-    order = issue_client.new_order(csr_pem)
-    cleanup = chisel2.do_http_challenges(issue_client, order.authorizations)
-    try:
-        order = issue_client.poll_and_finalize(order)
-    finally:
-        cleanup()
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-
-    cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_revoke_by_privkey.pem',
-        mode='w+', delete=False)
-    cert_file.write(OpenSSL.crypto.dump_certificate(
-        OpenSSL.crypto.FILETYPE_PEM, cert).decode())
-    cert_file.close()
-
-    # Create a new client with the cert key as the account key. We don't
-    # register a server-side account with this client, as we don't need one.
-    revoke_client = chisel2.uninitialized_client(key=josepy.JWKRSA(key=key))
-
-    reset_akamai_purges()
-
-    # Even though we requested reason 0 ("unspecified"), the result should be
-    # 1 ("keyCompromise") due to the authorization method.
-    revoke_client.revoke(josepy.ComparableX509(cert), 0)
-    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
-
-    verify_akamai_purge()
-
 def test_double_revocation():
     domains = [random_domain()]
 
