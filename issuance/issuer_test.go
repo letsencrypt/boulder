@@ -22,8 +22,8 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func defaultProfileConfig() *ProfileConfigNew {
-	return &ProfileConfigNew{
+func defaultProfileConfig() *ProfileConfig {
+	return &ProfileConfig{
 		AllowMustStaple:     true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},

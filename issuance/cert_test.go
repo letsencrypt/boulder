@@ -870,32 +870,9 @@ func TestMismatchedProfiles(t *testing.T) {
 }
 
 func TestProfileHash(t *testing.T) {
-	// A profile without IncludeCRLDistributionPoints.
-	// Hash calculated over the gob encoding of the old `ProfileConfig`.
-	profile := ProfileConfigNew{
-		IncludeCRLDistributionPoints: false,
-		AllowMustStaple:              true,
-		OmitCommonName:               true,
-		OmitKeyEncipherment:          false,
-		OmitClientAuth:               false,
-		OmitSKID:                     true,
-		MaxValidityPeriod:            config.Duration{Duration: time.Hour},
-		MaxValidityBackdate:          config.Duration{Duration: time.Second},
-		LintConfig:                   "example/config.toml",
-		IgnoredLints:                 []string{"one", "two"},
-	}
-	hash, err := profile.Hash()
-	if err != nil {
-		t.Fatalf("hashing %+v: %s", profile, err)
-	}
-	expectedHash := "f6b5766141fdc066824e781347095ffb3c86fa97a174e21123a323a93b078f46"
-	if expectedHash != fmt.Sprintf("%x", hash) {
-		t.Errorf("%+v.Hash()=%x, want %s", profile, hash, expectedHash)
-	}
-
 	// A profile _with_ IncludeCRLDistributionPoints.
 	// Hash calculated over the ASN.1 encoding of the `ProfileConfigNew`.
-	profile = ProfileConfigNew{
+	profile := ProfileConfig{
 		IncludeCRLDistributionPoints: true,
 		AllowMustStaple:              true,
 		OmitCommonName:               true,
@@ -907,11 +884,11 @@ func TestProfileHash(t *testing.T) {
 		LintConfig:                   "example/config.toml",
 		IgnoredLints:                 []string{"one", "two"},
 	}
-	hash, err = profile.Hash()
+	hash, err := profile.hash()
 	if err != nil {
 		t.Fatalf("hashing %+v: %s", profile, err)
 	}
-	expectedHash = "d2a6c9f0aa37d2ac0b15476cb6e0ae9b98ba59b1321d8d6da26efc620581c53d"
+	expectedHash := "d2a6c9f0aa37d2ac0b15476cb6e0ae9b98ba59b1321d8d6da26efc620581c53d"
 	if expectedHash != fmt.Sprintf("%x", hash) {
 		t.Errorf("%+v.Hash()=%x, want %s", profile, hash, expectedHash)
 	}

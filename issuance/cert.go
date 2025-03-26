@@ -10,7 +10,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,72 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/precert"
 )
 
-// ProfileConfig is a subset of ProfileConfigNew used for hashing.
-//
-// Deprecated: Use ProfileConfigNew instead.
-//
-// This struct exists for backwards-compatibility purposes when generating hashes
-// of profile configs.
-//
-// The CA uses a hash of the gob encoding of ProfileConfig to ensure precert
-// and final cert issuance use the exact same profile settings. Gob encodes all
-// fields, including zero values, which means adding fields immediately changes all
-// hashes, causing a deployability problem. It also encodes the struct name.
-//
-// To solve the deployability problem, we're switching to ASN.1 encoding. However,
-// while deploying that we still need the ability to hash old configs the same way
-// they've always been hashed. So this struct (with the same name it always had)
-// gets hashed, only when `ProfileConfigNew.IncludeCRLDistributionPoints` (the
-// newly added field) is false.
-//
-// Note that gob encodes the names of structs, not just their fields, so we needed
-// to retain the name as well.
-type ProfileConfig struct {
-	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
-	// OCSP Must Staple extension to be rejected.
-	AllowMustStaple bool
-	// AllowCTPoison has no effect.
-	// Deprecated: We will always allow the CT Poison extension because it is
-	// mandated for Precertificates.
-	AllowCTPoison bool
-	// AllowSCTList has no effect.
-	// Deprecated: We intend to include SCTs in all final Certificates for the
-	// foreseeable future.
-	AllowSCTList bool
-	// AllowCommonName has no effect.
-	// Deprecated: Rather than rejecting IssuanceRequests which include a common
-	// name, we would prefer to simply drop the CN. Use `OmitCommonName` instead.
-	AllowCommonName bool
-
-	// OmitCommonName causes the CN field to be excluded from the resulting
-	// certificate, regardless of its inclusion in the IssuanceRequest.
-	OmitCommonName bool
-	// OmitKeyEncipherment causes the keyEncipherment bit to be omitted from the
-	// Key Usage field of all certificates (instead of only from ECDSA certs).
-	OmitKeyEncipherment bool
-	// OmitClientAuth causes the id-kp-clientAuth OID (TLS Client Authentication)
-	// to be omitted from the EKU extension.
-	OmitClientAuth bool
-	// OmitSKID causes the Subject Key Identifier extension to be omitted.
-	OmitSKID bool
-
-	MaxValidityPeriod   config.Duration
-	MaxValidityBackdate config.Duration
-
-	// LintConfig is a path to a zlint config file, which can be used to control
-	// the behavior of zlint's "customizable lints".
-	LintConfig string
-	// IgnoredLints is a list of lint names that we know will fail for this
-	// profile, and which we know it is safe to ignore.
-	IgnoredLints []string
-
-	// Deprecated: we do not respect this field.
-	Policies []PolicyConfig `validate:"-"`
-}
-
-// ProfileConfigNew describes the certificate issuance constraints for all issuers.
-//
-// See ProfileConfig for why this is called "New".
+// ProfileConfig describes the certificate issuance constraints for all issuers.
 //
 // This struct gets hashed in the CA to allow matching up precert and final cert
 // issuance by the exact profile config. We compute the hash over an ASN.1 encoding
@@ -106,7 +40,7 @@ type ProfileConfig struct {
 //
 // Note: even though these fields have encoding instructions (tag:N), they will
 // be encoded in the order they appear in the struct, so do not reorder them.
-type ProfileConfigNew struct {
+type ProfileConfig struct {
 	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
 	// OCSP Must Staple extension to be rejected.
 	AllowMustStaple bool `asn1:"tag:1,optional"`
@@ -137,32 +71,8 @@ type ProfileConfigNew struct {
 	IgnoredLints []string `asn1:"tag:10,optional"`
 }
 
-func (pcn ProfileConfigNew) Hash() ([32]byte, error) {
-	var encodedBytes []byte
-	var err error
-	if !pcn.IncludeCRLDistributionPoints {
-		old := ProfileConfig{
-			AllowMustStaple:     pcn.AllowMustStaple,
-			AllowCTPoison:       false,
-			AllowSCTList:        false,
-			AllowCommonName:     false,
-			OmitCommonName:      pcn.OmitCommonName,
-			OmitKeyEncipherment: pcn.OmitKeyEncipherment,
-			OmitClientAuth:      pcn.OmitClientAuth,
-			OmitSKID:            pcn.OmitSKID,
-			MaxValidityPeriod:   pcn.MaxValidityPeriod,
-			MaxValidityBackdate: pcn.MaxValidityBackdate,
-			LintConfig:          pcn.LintConfig,
-			IgnoredLints:        pcn.IgnoredLints,
-			Policies:            nil,
-		}
-		var encoded bytes.Buffer
-		enc := gob.NewEncoder(&encoded)
-		err = enc.Encode(old)
-		encodedBytes = encoded.Bytes()
-	} else {
-		encodedBytes, err = asn1.Marshal(pcn)
-	}
+func (pcn ProfileConfig) hash() ([32]byte, error) {
+	encodedBytes, err := asn1.Marshal(pcn)
 	if err != nil {
 		return [32]byte{}, err
 	}
@@ -193,7 +103,7 @@ type Profile struct {
 }
 
 // NewProfile converts the profile config into a usable profile.
-func NewProfile(profileConfig *ProfileConfigNew) (*Profile, error) {
+func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 	// The Baseline Requirements, Section 7.1.2.7, says that the notBefore time
 	// must be "within 48 hours of the time of signing". We can be even stricter.
 	if profileConfig.MaxValidityBackdate.Duration >= 24*time.Hour {
@@ -214,7 +124,7 @@ func NewProfile(profileConfig *ProfileConfigNew) (*Profile, error) {
 		lints.SetConfiguration(lintconfig)
 	}
 
-	hash, err := profileConfig.Hash()
+	hash, err := profileConfig.hash()
 	if err != nil {
 		return nil, err
 	}

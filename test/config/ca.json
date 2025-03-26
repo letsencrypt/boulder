@@ -58,6 +58,7 @@
 			"certProfiles": {
 				"legacy": {
 					"allowMustStaple": true,
+					"includeCRLDistributionPoints": true,
 					"maxValidityPeriod": "7776000s",
 					"maxValidityBackdate": "1h5m",
 					"lintConfig": "test/config-next/zlint.toml",
@@ -72,6 +73,7 @@
 					"omitKeyEncipherment": true,
 					"omitClientAuth": true,
 					"omitSKID": true,
+					"includeCRLDistributionPoints": true,
 					"maxValidityPeriod": "583200s",
 					"maxValidityBackdate": "1h5m",
 					"lintConfig": "test/config-next/zlint.toml",
@@ -85,6 +87,7 @@
 					"omitKeyEncipherment": true,
 					"omitClientAuth": true,
 					"omitSKID": true,
+					"includeCRLDistributionPoints": true,
 					"maxValidityPeriod": "160h",
 					"maxValidityBackdate": "1h5m",
 					"lintConfig": "test/config-next/zlint.toml",
@@ -101,6 +104,7 @@
 			"issuers": [
 				{
 					"active": true,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-a",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/43104258997432926/",
@@ -112,6 +116,7 @@
 				},
 				{
 					"active": true,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-b",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/17302365692836921/",
@@ -123,6 +128,7 @@
 				},
 				{
 					"active": false,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-ecdsa-c",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/56560759852043581/",
@@ -134,6 +140,7 @@
 				},
 				{
 					"active": true,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-a",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/29947985078257530/",
@@ -145,6 +152,7 @@
 				},
 				{
 					"active": true,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-b",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/6762885421992935/",
@@ -156,6 +164,7 @@
 				},
 				{
 					"active": false,
+					"crlShards": 10,
 					"issuerURL": "http://ca.example.org:4502/int-rsa-c",
 					"ocspURL": "http://ca.example.org:4002/",
 					"crlURLBase": "http://ca.example.org:4501/lets-encrypt-crls/56183656833365902/",
@@ -167,7 +176,7 @@
 				}
 			]
 		},
-		"serialPrefix": 127,
+		"serialPrefixHex": "6e",
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
 		"goodkey": {

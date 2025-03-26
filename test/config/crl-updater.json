@@ -46,9 +46,15 @@
 		"numShards": 10,
 		"shardWidth": "240h",
 		"lookbackPeriod": "24h",
-		"updatePeriod": "6h",
+		"updatePeriod": "10m",
+		"updateTimeout": "1m",
+		"expiresMargin": "5m",
+		"cacheControl": "stale-if-error=60",
+		"temporallyShardedSerialPrefixes": [
+			"7f"
+		],
 		"maxParallelism": 10,
-		"maxAttempts": 5,
+		"maxAttempts": 2,
 		"features": {}
 	},
 	"syslog": {
