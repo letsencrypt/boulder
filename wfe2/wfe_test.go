@@ -1354,7 +1354,7 @@ func TestBadNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("nonce", result.FullSerialize()))
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.ErrorNS+`badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.ErrorNS+`badNonce","detail":"Unable to validate JWS :: JWS has no anti-replay nonce","status":400}`)
 }
 
 func TestNewECDSAAccount(t *testing.T) {
@@ -1535,19 +1535,19 @@ func TestNewAccount(t *testing.T) {
 					"Content-Type":   {expectedJWSContentType},
 				},
 			},
-			`{"type":"` + probs.ErrorNS + `malformed","detail":"No body on POST","status":400}`,
+			`{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: No body on POST","status":400}`,
 		},
 
 		// POST, but body that isn't valid JWS
 		{
 			makePostRequestWithPath(newAcctPath, "hi"),
-			`{"type":"` + probs.ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
+			`{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: Parse error reading JWS","status":400}`,
 		},
 
 		// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 		{
 			makePostRequestWithPath(newAcctPath, fooBody),
-			`{"type":"` + probs.ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
+			`{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: Request payload did not parse as JSON","status":400}`,
 		},
 
 		// Same signed body, but payload modified by one byte, breaking signature.
@@ -1555,7 +1555,7 @@ func TestNewAccount(t *testing.T) {
 		{
 			makePostRequestWithPath(newAcctPath,
 				`{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoicW5BUkxyVDdYejRnUmNLeUxkeWRtQ3ItZXk5T3VQSW1YNFg0MHRoazNvbjI2RmtNem5SM2ZSanM2NmVMSzdtbVBjQlo2dU9Kc2VVUlU2d0FhWk5tZW1vWXgxZE12cXZXV0l5aVFsZUhTRDdROHZCcmhSNnVJb080akF6SlpSLUNoelp1U0R0N2lITi0zeFVWc3B1NVhHd1hVX01WSlpzaFR3cDRUYUZ4NWVsSElUX09iblR2VE9VM1hoaXNoMDdBYmdaS21Xc1ZiWGg1cy1DcklpY1U0T2V4SlBndW5XWl9ZSkp1ZU9LbVR2bkxsVFY0TXpLUjJvWmxCS1oyN1MwLVNmZFZfUUR4X3lkbGU1b01BeUtWdGxBVjM1Y3lQTUlzWU53Z1VHQkNkWV8yVXppNWVYMGxUYzdNUFJ3ejZxUjFraXAtaTU5VmNHY1VRZ3FIVjZGeXF3IiwiZSI6IkFRQUIifSwia2lkIjoiIiwibm9uY2UiOiJyNHpuenZQQUVwMDlDN1JwZUtYVHhvNkx3SGwxZVBVdmpGeXhOSE1hQnVvIiwidXJsIjoiaHR0cDovL2xvY2FsaG9zdC9hY21lL25ldy1yZWcifQ","signature":"jcTdxSygm_cvD7KbXqsxgnoPApCTSkV4jolToSOd2ciRkg5W7Yl0ZKEEKwOc-dYIbQiwGiDzisyPCicwWsOUA1WSqHylKvZ3nxSMc6KtwJCW2DaOqcf0EEjy5VjiZJUrOt2c-r6b07tbn8sfOJKwlF2lsOeGi4s-rtvvkeQpAU-AWauzl9G4bv2nDUeCviAZjHx_PoUC-f9GmZhYrbDzAvXZ859ktM6RmMeD0OqPN7bhAeju2j9Gl0lnryZMtq2m0J2m1ucenQBL1g4ZkP1JiJvzd2cAz5G7Ftl2YeJJyWhqNd3qq0GVOt1P11s8PTGNaSoM0iR9QfUxT9A6jxARtg"}`),
-			`{"type":"` + probs.ErrorNS + `malformed","detail":"JWS verification error","status":400}`,
+			`{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: JWS verification error","status":400}`,
 		},
 		{
 			makePostRequestWithPath(newAcctPath, wrongAgreementBody),
@@ -1807,7 +1807,7 @@ func TestAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("2", "invalid"))
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"`+probs.ErrorNS+`malformed","detail":"Parse error reading JWS","status":400}`)
+		`{"type":"`+probs.ErrorNS+`malformed","detail":"Unable to validate JWS :: Parse error reading JWS","status":400}`)
 	responseWriter.Body.Reset()
 
 	key := loadKey(t, []byte(test2KeyPrivatePEM))
@@ -1825,7 +1825,7 @@ func TestAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"`+probs.ErrorNS+`accountDoesNotExist","detail":"Account \"http://localhost/acme/acct/102\" not found","status":400}`)
+		`{"type":"`+probs.ErrorNS+`accountDoesNotExist","detail":"Unable to validate JWS :: Account \"http://localhost/acme/acct/102\" not found","status":400}`)
 	responseWriter.Body.Reset()
 
 	key = loadKey(t, []byte(test1KeyPrivatePEM))
@@ -2086,7 +2086,7 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedBody: `{
 				"type": "urn:ietf:params:acme:error:malformed",
 				"status": 400,
-				"detail": "POST-as-GET requests must have an empty payload"
+				"detail": "Unable to validate JWS :: POST-as-GET requests must have an empty payload"
 			}`,
 		},
 		{
@@ -2579,7 +2579,7 @@ func TestDeactivateAccount(t *testing.T) {
 		responseWriter.Body.String(),
 		`{
 		  "type": "`+probs.ErrorNS+`unauthorized",
-		  "detail": "Account is not valid, has status \"deactivated\"",
+		  "detail": "Unable to validate JWS :: Account is not valid, has status \"deactivated\"",
 		  "status": 403
 		}`)
 }
@@ -2658,17 +2658,17 @@ func TestNewOrder(t *testing.T) {
 					"Content-Type":   {expectedJWSContentType},
 				},
 			},
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"No body on POST","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: No body on POST","status":400}`,
 		},
 		{
 			Name:         "POST, with an invalid JWS body",
 			Request:      makePostRequestWithPath("hi", "hi"),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: Parse error reading JWS","status":400}`,
 		},
 		{
 			Name:         "POST, properly signed JWS, payload isn't valid",
 			Request:      signAndPost(signer, targetPath, signedURL, "foo"),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: Request payload did not parse as JSON","status":400}`,
 		},
 		{
 			Name:         "POST, empty domain name identifier",
@@ -2821,17 +2821,17 @@ func TestFinalizeOrder(t *testing.T) {
 					"Content-Type":   {expectedJWSContentType},
 				},
 			},
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"No body on POST","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: No body on POST","status":400}`,
 		},
 		{
 			Name:         "POST, with an invalid JWS body",
 			Request:      makePostRequestWithPath(targetPath, "hi"),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: Parse error reading JWS","status":400}`,
 		},
 		{
 			Name:         "POST, properly signed JWS, payload isn't valid",
 			Request:      signAndPost(signer, targetPath, signedURL, "foo"),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: Request payload did not parse as JSON","status":400}`,
 		},
 		{
 			Name:         "Invalid path",
@@ -2948,7 +2948,7 @@ func TestKeyRollover(t *testing.T) {
 		responseWriter.Body.String(),
 		`{
 		  "type": "`+probs.ErrorNS+`malformed",
-		  "detail": "Parse error reading JWS",
+		  "detail": "Unable to validate JWS :: Parse error reading JWS",
 		  "status": 400
 		}`)
 
@@ -2975,7 +2975,7 @@ func TestKeyRollover(t *testing.T) {
 			Payload: `{"oldKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "type": "` + probs.ErrorNS + `malformed",
-		     "detail": "Inner JWS does not contain old key field matching current account key",
+		     "detail": "Unable to validate JWS :: Inner JWS does not contain old key field matching current account key",
 		     "status": 400
 		   }`,
 			NewKey:        newKeyPriv,
@@ -3035,7 +3035,7 @@ func TestKeyRolloverMismatchedJWSURLs(t *testing.T) {
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `
 		{
 			"type": "urn:ietf:params:acme:error:malformed",
-			"detail": "Outer JWS 'url' value \"http://localhost/key-change\" does not match inner JWS 'url' value \"http://localhost/wrong-url\"",
+			"detail": "Unable to validate JWS :: Outer JWS 'url' value \"http://localhost/key-change\" does not match inner JWS 'url' value \"http://localhost/wrong-url\"",
 			"status": 400
 		}`)
 }
@@ -3096,7 +3096,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "Invalid POST-as-GET",
 			Request:  makePost(1, "1/1", "{}"),
-			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"POST-as-GET requests must have an empty payload", "status":400}`,
+			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: POST-as-GET requests must have an empty payload", "status":400}`,
 		},
 		{
 			Name:     "Valid POST-as-GET, wrong account",

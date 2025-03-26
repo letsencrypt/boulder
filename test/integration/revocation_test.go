@@ -536,7 +536,7 @@ func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 			test.AssertNotError(t, err, "NewAccount failed with a non-blocklisted key")
 		case byKey:
 			test.AssertError(t, err, "NewAccount didn't fail with a blocklisted key")
-			test.AssertEquals(t, err.Error(), `acme: error code 400 "urn:ietf:params:acme:error:badPublicKey": public key is forbidden`)
+			test.AssertEquals(t, err.Error(), `acme: error code 400 "urn:ietf:params:acme:error:badPublicKey": Unable to validate JWS :: invalid request signing key: public key is forbidden`)
 		}
 	}
 }
