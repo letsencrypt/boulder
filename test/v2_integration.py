@@ -670,18 +670,6 @@ def test_order_finalize_early():
     chisel2.expect_problem("urn:ietf:params:acme:error:orderNotReady",
         lambda: client.finalize_order(order, deadline))
 
-def test_revoke_by_account_unspecified():
-    client = chisel2.make_client()
-    cert_file = temppath('test_revoke_by_account_0.pem')
-    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-
-    reset_akamai_purges()
-    client.revoke(josepy.ComparableX509(cert), 0)
-
-    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked")
-    verify_akamai_purge()
-
 def test_revoke_by_account_with_reason():
     client = chisel2.make_client(None)
     cert_file = temppath('test_revoke_by_account_1.pem')
