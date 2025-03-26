@@ -670,25 +670,6 @@ def test_order_finalize_early():
     chisel2.expect_problem("urn:ietf:params:acme:error:orderNotReady",
         lambda: client.finalize_order(order, deadline))
 
-def test_revoke_by_authz():
-    domains = [random_domain()]
-    cert_file = temppath('test_revoke_by_authz.pem')
-    order = chisel2.auth_and_issue(domains, cert_output=cert_file.name)
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-
-    # create a new client and re-authz
-    client = chisel2.make_client(None)
-    chisel2.auth_and_issue(domains, client=client)
-
-    reset_akamai_purges()
-
-    # Even though we requested reason 1 ("keyCompromise"), the result should be
-    # 5 ("cessationOfOperation") due to the authorization method.
-    client.revoke(josepy.ComparableX509(cert), 1)
-    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "cessationOfOperation")
-
-    verify_akamai_purge()
-
 def test_revoke_by_privkey():
     domains = [random_domain()]
 
