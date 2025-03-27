@@ -598,13 +598,13 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *we
 	// that. For now, though, the third argument has to be `any` so that it can
 	// be either an error or a problem, and this function can handle either one.
 	var prob *probs.ProblemDetails
-	prob, ok := eerr.(*probs.ProblemDetails)
-	if !ok {
-		err, ok := eerr.(error)
-		if !ok {
-			panic("wfe.sendError got %#v (type %T), but expected ProblemDetails or error")
-		}
-		prob = web.ProblemDetailsForError(err, "")
+	switch v := eerr.(type) {
+	case *probs.ProblemDetails:
+		prob = v
+	case error:
+		prob = web.ProblemDetailsForError(v, "")
+	default:
+		panic(fmt.Sprintf("wfe.sendError got %#v (type %T), but expected ProblemDetails or error", eerr, eerr))
 	}
 
 	var bErr *berrors.BoulderError

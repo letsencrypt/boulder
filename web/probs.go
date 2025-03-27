@@ -79,9 +79,9 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 // of an type unknown to ProblemDetailsForError, it will return a ServerInternal
 // ProblemDetails.
 func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
-	var berrorsBoulderError *berrors.BoulderError
-	if errors.As(err, &berrorsBoulderError) {
-		return problemDetailsForBoulderError(berrorsBoulderError, msg)
+	var bErr *berrors.BoulderError
+	if errors.As(err, &bErr) {
+		return problemDetailsForBoulderError(bErr, msg)
 	} else {
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
