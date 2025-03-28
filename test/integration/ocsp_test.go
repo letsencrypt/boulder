@@ -14,29 +14,19 @@ import (
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 )
 
-// TODO(#5172): Fill out these test stubs.
-func TestOCSPBadRequestMethod(t *testing.T) {
-	return
-}
-
-func TestOCSPBadGetUrl(t *testing.T) {
-	return
-}
-
-func TestOCSPBadGetBody(t *testing.T) {
-	return
-}
-
-func TestOCSPBadPostBody(t *testing.T) {
-	return
-}
-
-func TestOCSPBadHashAlgorithm(t *testing.T) {
-	return
-}
-
-func TestOCSPBadIssuerCert(t *testing.T) {
-	return
+func TestOCSPHappyPath(t *testing.T) {
+	t.Parallel()
+	cert, err := authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
+	if err != nil || len(cert.certs) < 1 {
+		t.Fatal("failed to issue cert for OCSP testing")
+	}
+	resp, err := ocsp_helper.Req(cert.certs[0], ocsp_helper.DefaultConfig)
+	if err != nil {
+		t.Fatalf("want ocsp response, but got error: %s", err)
+	}
+	if resp.Status != ocsp.Good {
+		t.Errorf("want ocsp status %#v, got %#v", ocsp.Good, resp.Status)
+	}
 }
 
 func TestOCSPBadSerialPrefix(t *testing.T) {
@@ -56,14 +46,6 @@ func TestOCSPBadSerialPrefix(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected error getting OCSP for request with invalid serial")
 	}
-}
-
-func TestOCSPNonexistentSerial(t *testing.T) {
-	return
-}
-
-func TestOCSPExpiredCert(t *testing.T) {
-	return
 }
 
 func TestOCSPRejectedPrecertificate(t *testing.T) {
