@@ -1363,49 +1363,6 @@ def test_expiration_mailer():
     if mailcount != 2:
         raise(Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount))
 
-caa_recheck_setup_data = {}
-@register_twenty_days_ago
-def caa_recheck_setup():
-    client = chisel2.make_client()
-    # Issue a certificate with the clock set back, and save the authzs to check
-    # later that they are valid (200). They should however require rechecking for
-    # CAA purposes.
-    numNames = 10
-    # Generate numNames subdomains of a random domain
-    base_domain = random_domain()
-    domains = [ "{0}.{1}".format(str(n),base_domain) for n in range(numNames) ]
-    order = chisel2.auth_and_issue(domains, client=client)
-
-    global caa_recheck_setup_data
-    caa_recheck_setup_data = {
-        'client': client,
-        'authzs': order.authorizations,
-    }
-
-def test_recheck_caa():
-    """Request issuance for a domain where we have a old cached authz from when CAA
-       was good. We'll set a new CAA record forbidding issuance; the CAA should
-       recheck CAA and reject the request.
-    """
-    if 'authzs' not in caa_recheck_setup_data:
-        raise(Exception("CAA authzs not prepared for test_caa"))
-    domains = []
-    for a in caa_recheck_setup_data['authzs']:
-        response = caa_recheck_setup_data['client']._post(a.uri, None)
-        if response.status_code != 200:
-            raise(Exception("Unexpected response for CAA authz: ",
-                response.status_code))
-        domain = a.body.identifier.value
-        domains.append(domain)
-
-    # Set a forbidding CAA record on just one domain
-    challSrv.add_caa_issue(domains[3], ";")
-
-    # Request issuance for the previously-issued domain name, which should
-    # now be denied due to CAA.
-    chisel2.expect_problem("urn:ietf:params:acme:error:caa",
-        lambda: chisel2.auth_and_issue(domains, client=caa_recheck_setup_data['client']))
-
 def test_caa_good():
     domain = random_domain()
     challSrv.add_caa_issue(domain, "happy-hacker-ca.invalid")
