@@ -130,8 +130,6 @@ func TestCRLUpdaterStartup(t *testing.T) {
 // that the correct number of properly-formed and validly-signed CRLs are sent
 // to our fake S3 service.
 func TestCRLPipeline(t *testing.T) {
-	t.Parallel()
-
 	// Basic setup.
 	configDir, ok := os.LookupEnv("BOULDER_CONFIG_DIR")
 	t.Log(configDir)
@@ -209,8 +207,6 @@ func TestCRLPipeline(t *testing.T) {
 }
 
 func TestCRLTemporalAndExplicitShardingCoexist(t *testing.T) {
-	t.Parallel()
-
 	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
 	if err != nil {
 		t.Fatalf("sql.Open: %s", err)
