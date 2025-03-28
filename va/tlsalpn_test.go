@@ -254,7 +254,7 @@ func TestTLSALPN01TalkingToHTTP(t *testing.T) {
 	test.AssertError(t, err, "TLS-SNI-01 validation passed when talking to a HTTP-only server")
 	prob := detailedError(err)
 	expected := "Server only speaks HTTP, not TLS"
-	if !strings.HasSuffix(prob.Error(), expected) {
+	if !strings.HasSuffix(prob.String(), expected) {
 		t.Errorf("Got wrong error detail. Expected %q, got %q", expected, prob)
 	}
 }
@@ -780,7 +780,7 @@ func TestTLSALPN01ExtraSANs(t *testing.T) {
 	// In go >= 1.19, the TLS client library detects that the certificate has
 	// a duplicate extension and terminates the connection itself.
 	prob := detailedError(err)
-	test.AssertContains(t, prob.Error(), "Error getting validation data")
+	test.AssertContains(t, prob.String(), "Error getting validation data")
 }
 
 func TestTLSALPN01ExtraAcmeExtensions(t *testing.T) {
@@ -795,7 +795,7 @@ func TestTLSALPN01ExtraAcmeExtensions(t *testing.T) {
 	// In go >= 1.19, the TLS client library detects that the certificate has
 	// a duplicate extension and terminates the connection itself.
 	prob := detailedError(err)
-	test.AssertContains(t, prob.Error(), "Error getting validation data")
+	test.AssertContains(t, prob.String(), "Error getting validation data")
 }
 
 func TestAcceptableExtensions(t *testing.T) {
@@ -857,7 +857,7 @@ func TestTLSALPN01BadIdentifier(t *testing.T) {
 	_, err := va.validateTLSALPN01(ctx, identifier.ACMEIdentifier{Type: "smime", Value: "dobber@bad.horse"}, expectedKeyAuthorization)
 	test.AssertError(t, err, "Server accepted a hypothetical S/MIME identifier")
 	prob := detailedError(err)
-	test.AssertContains(t, prob.Error(), "Identifier type for TLS-ALPN-01 challenge was not DNS or IP")
+	test.AssertContains(t, prob.String(), "Identifier type for TLS-ALPN-01 challenge was not DNS or IP")
 }
 
 // TestTLSALPN01ServerName tests compliance with RFC 8737, Sec. 3 (step 3) & RFC

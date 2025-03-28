@@ -703,7 +703,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		outcome := fail
 		if prob != nil {
 			probType = string(prob.Type)
-			logEvent.Error = prob.Error()
+			logEvent.Error = prob.String()
 			logEvent.Challenge.Error = prob
 			logEvent.Challenge.Status = core.StatusInvalid
 		} else {

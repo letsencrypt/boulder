@@ -592,7 +592,21 @@ func (wfe *WebFrontEndImpl) Nonce(
 }
 
 // sendError wraps web.SendError
-func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *web.RequestEvent, prob *probs.ProblemDetails, ierr error) {
+func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *web.RequestEvent, eerr any, ierr error) {
+	// TODO(#4980): Simplify this function to only take a single error argument,
+	// and use web.ProblemDetailsForError to extract the corresponding prob from
+	// that. For now, though, the third argument has to be `any` so that it can
+	// be either an error or a problem, and this function can handle either one.
+	var prob *probs.ProblemDetails
+	switch v := eerr.(type) {
+	case *probs.ProblemDetails:
+		prob = v
+	case error:
+		prob = web.ProblemDetailsForError(v, "")
+	default:
+		panic(fmt.Sprintf("wfe.sendError got %#v (type %T), but expected ProblemDetails or error", eerr, eerr))
+	}
+
 	var bErr *berrors.BoulderError
 	if errors.As(ierr, &bErr) {
 		retryAfterSeconds := int(bErr.RetryAfter.Round(time.Second).Seconds())
@@ -998,7 +1012,7 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 	// certificate by checking that to-be-revoked certificate has the same public
 	// key as the JWK that was used to authenticate the request
 	if !core.KeyDigestEquals(jwk, cert.PublicKey) {
-		return probs.Unauthorized(
+		return berrors.UnauthorizedError(
 			"JWK embedded in revocation request must be the same public key as the cert to be revoked")
 	}
 
