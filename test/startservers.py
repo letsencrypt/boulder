@@ -199,16 +199,14 @@ def install(race_detection):
 
     return subprocess.call(["/usr/bin/make", "GO_BUILD_FLAGS=%s" % go_build_flags]) == 0
 
-def run(cmd, fakeclock):
+def run(cmd):
     e = os.environ.copy()
     e.setdefault("GORACE", "halt_on_error=1")
-    if fakeclock:
-        e.setdefault("FAKECLOCK", fakeclock)
     p = subprocess.Popen(cmd, env=e)
     p.cmd = cmd
     return p
 
-def start(fakeclock):
+def start():
     """Return True if everything builds and starts.
 
     Give up and return False if anything fails to build, or dies at
@@ -237,7 +235,7 @@ def start(fakeclock):
         print("Starting service", service.name)
         try:
             global processes
-            p = run(service.cmd, fakeclock)
+            p = run(service.cmd)
             processes.append(p)
             if service.grpc_port is not None:
                 waithealth(' '.join(p.args), service.grpc_port, service.host_override)
@@ -297,8 +295,7 @@ def startChallSrv():
         '--management', ':8055',
         '--http01', '10.77.77.77:80',
         '-https01', '10.77.77.77:443',
-        '--tlsalpn01', '10.88.88.88:443'],
-        None)
+        '--tlsalpn01', '10.88.88.88:443'])
     # Wait for the pebble-challtestsrv management port.
     if not waitport(8055, ' '.join(challSrvProcess.args)):
         return False
