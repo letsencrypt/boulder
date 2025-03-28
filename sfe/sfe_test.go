@@ -128,7 +128,7 @@ func TestUnpausePaths(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "Expired unpause URL")
 
-	// GET with a valid JWT
+	// GET with a valid JWT and a single identifier
 	validJWT, err := unpause.GenerateJWT(unpauseSigner, 1234567890, []string{"example.com"}, time.Hour, fc)
 	test.AssertNotError(t, err, "Should have been able to create JWT, but could not")
 	responseWriter = httptest.NewRecorder()
@@ -138,6 +138,21 @@ func TestUnpausePaths(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 	test.AssertContains(t, responseWriter.Body.String(), "Action required to unpause your account")
+	test.AssertContains(t, responseWriter.Body.String(), "example.com")
+
+	// GET with a valid JWT and multiple identifiers
+	validJWT, err = unpause.GenerateJWT(unpauseSigner, 1234567890, []string{"example.com", "example.net", "example.org"}, time.Hour, fc)
+	test.AssertNotError(t, err, "Should have been able to create JWT, but could not")
+	responseWriter = httptest.NewRecorder()
+	sfe.UnpauseForm(responseWriter, &http.Request{
+		Method: "GET",
+		URL:    mustParseURL(unpause.GetForm + "?jwt=" + validJWT),
+	})
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+	test.AssertContains(t, responseWriter.Body.String(), "Action required to unpause your account")
+	test.AssertContains(t, responseWriter.Body.String(), "example.com")
+	test.AssertContains(t, responseWriter.Body.String(), "example.net")
+	test.AssertContains(t, responseWriter.Body.String(), "example.org")
 
 	// POST with an expired JWT
 	responseWriter = httptest.NewRecorder()
