@@ -93,6 +93,21 @@ func (srv *s3TestSrv) handleQuery(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(fmt.Sprintf("%d", reason)))
 }
 
+func (srv *s3TestSrv) handleReset(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.WriteHeader(405)
+		return
+	}
+
+	srv.Lock()
+	defer srv.Unlock()
+	srv.allSerials = make(map[string]revocation.Reason)
+	srv.allShards = make(map[string][]byte)
+
+	w.WriteHeader(200)
+	return
+}
+
 func main() {
 	listenAddr := flag.String("listen", "0.0.0.0:4501", "Address to listen on")
 	flag.Parse()
@@ -104,6 +119,7 @@ func main() {
 
 	http.HandleFunc("/", srv.handleS3)
 	http.HandleFunc("/query", srv.handleQuery)
+	http.HandleFunc("/reset", srv.handleReset)
 
 	s := http.Server{
 		ReadTimeout: 30 * time.Second,

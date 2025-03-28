@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -41,6 +42,12 @@ func runUpdater(t *testing.T, configFile string) {
 	t.Helper()
 	crlUpdaterMu.Lock()
 	defer crlUpdaterMu.Unlock()
+
+	// Reset the s3-test-srv so that it only knows about serials contained in
+	// this new batch of CRLs.
+	resp, err := http.Post("http://localhost:4501/reset", "", bytes.NewReader([]byte{}))
+	test.AssertNotError(t, err, "opening database connection")
+	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 
 	// Reset the "leasedUntil" column so this can be done alongside other
 	// updater runs without worrying about unclean state.
@@ -127,8 +134,13 @@ func TestCRLPipeline(t *testing.T) {
 
 	// Basic setup.
 	configDir, ok := os.LookupEnv("BOULDER_CONFIG_DIR")
+	t.Log(configDir)
 	test.Assert(t, ok, "failed to look up test config directory")
 	configFile := path.Join(configDir, "crl-updater.json")
+
+	// Create a database connection so we can pretend to jump forward in time.
+	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
+	test.AssertNotError(t, err, "creating database connection")
 
 	// Issue a test certificate and save its serial number.
 	client, err := makeClient()
@@ -149,16 +161,50 @@ func TestCRLPipeline(t *testing.T) {
 	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 5)
 	test.AssertNotError(t, err, "failed to revoke test certificate")
 
-	// Confirm that the cert now *does* show up in the CRLs.
+	// Confirm that the cert now *does* show up in the CRLs, with the right reason.
 	runUpdater(t, configFile)
 	resp, err = http.Get("http://localhost:4501/query?serial=" + serial)
 	test.AssertNotError(t, err, "s3-test-srv GET /query failed")
 	test.AssertEquals(t, resp.StatusCode, 200)
-
-	// Confirm that the revoked certificate entry has the correct reason.
 	reason, err := io.ReadAll(resp.Body)
 	test.AssertNotError(t, err, "reading revocation reason")
 	test.AssertEquals(t, string(reason), "5")
+	resp.Body.Close()
+
+	// Manipulate the database so it appears that the certificate is going to
+	// expire very soon. The cert should still appear on the CRL.
+	_, err = db.Exec("UPDATE revokedCertificates SET notAfterHour = ? WHERE serial = ?", time.Now().Add(time.Hour).Truncate(time.Hour).Format(time.DateTime), serial)
+	test.AssertNotError(t, err, "updating expiry to near future")
+	runUpdater(t, configFile)
+	resp, err = http.Get("http://localhost:4501/query?serial=" + serial)
+	test.AssertNotError(t, err, "s3-test-srv GET /query failed")
+	test.AssertEquals(t, resp.StatusCode, 200)
+	reason, err = io.ReadAll(resp.Body)
+	test.AssertNotError(t, err, "reading revocation reason")
+	test.AssertEquals(t, string(reason), "5")
+	resp.Body.Close()
+
+	// Again update the database so that the certificate has expired in the
+	// very recent past. The cert should still appear on the CRL.
+	_, err = db.Exec("UPDATE revokedCertificates SET notAfterHour = ? WHERE serial = ?", time.Now().Add(-time.Hour).Truncate(time.Hour).Format(time.DateTime), serial)
+	test.AssertNotError(t, err, "updating expiry to near future")
+	runUpdater(t, configFile)
+	resp, err = http.Get("http://localhost:4501/query?serial=" + serial)
+	test.AssertNotError(t, err, "s3-test-srv GET /query failed")
+	test.AssertEquals(t, resp.StatusCode, 200)
+	reason, err = io.ReadAll(resp.Body)
+	test.AssertNotError(t, err, "reading revocation reason")
+	test.AssertEquals(t, string(reason), "5")
+	resp.Body.Close()
+
+	// Finally update the database so that the certificate expired several CRL
+	// update cycles ago. The cert should now vanish from the CRL.
+	_, err = db.Exec("UPDATE revokedCertificates SET notAfterHour = ? WHERE serial = ?", time.Now().Add(-48*time.Hour).Truncate(time.Hour).Format(time.DateTime), serial)
+	test.AssertNotError(t, err, "updating expiry to near future")
+	runUpdater(t, configFile)
+	resp, err = http.Get("http://localhost:4501/query?serial=" + serial)
+	test.AssertNotError(t, err, "s3-test-srv GET /query failed")
+	test.AssertEquals(t, resp.StatusCode, 404)
 	resp.Body.Close()
 }
 
