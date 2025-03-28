@@ -90,6 +90,23 @@ func delHTTP01Response(token string) error {
 	return nil
 }
 
+func addCAAIssueRecord(host string, issue string) error {
+	resp, err := http.Post("http://boulder.service.consul:8055/add-caa", "",
+		bytes.NewBufferString(fmt.Sprintf(`{
+			"host": "%s",
+			"policies": [{"tag": "issue", "value": "%s"}]
+		}`, host, issue)))
+	if err != nil {
+		return fmt.Errorf("adding CAA record: %s", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("adding CAA record: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Identifier, cn bool, profile string, certToReplace *x509.Certificate) (*client, *acme.Order, error) {
 	var err error
 	if c == nil {

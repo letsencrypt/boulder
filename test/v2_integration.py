@@ -1085,69 +1085,6 @@ def test_ct_submission():
     if total_count < 2:
         raise(Exception("Got %d total submissions, expected at least 2" % total_count))
 
-def check_ocsp_basic_oid(cert_file, issuer_file, url):
-    """
-    This function checks if an OCSP response was successful, but doesn't verify
-    the signature or timestamp. This is useful when simulating the past, so we
-    don't incorrectly reject a response for being in the past.
-    """
-    ocsp_request = make_ocsp_req(cert_file, issuer_file)
-    responses = fetch_ocsp(ocsp_request, url)
-    # An unauthorized response (for instance, if the OCSP responder doesn't know
-    # about this cert) will just be 30 03 0A 01 06. A "good" or "revoked"
-    # response will contain, among other things, the id-pkix-ocsp-basic OID
-    # identifying the response type. We look for that OID to confirm we got a
-    # successful response.
-    expected = bytearray.fromhex("06 09 2B 06 01 05 05 07 30 01 01")
-    for resp in responses:
-        if not expected in bytearray(resp):
-            raise(Exception("Did not receive successful OCSP response: %s doesn't contain %s" %
-                (base64.b64encode(resp), base64.b64encode(expected))))
-
-ocsp_exp_unauth_setup_data = {}
-@register_six_months_ago
-def ocsp_exp_unauth_setup():
-    client = chisel2.make_client(None)
-    cert_file = temppath('ocsp_exp_unauth_setup.pem')
-    chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
-
-    # Since our servers are pretending to be in the past, but the openssl cli
-    # isn't, we'll get an expired OCSP response. Just check that it exists;
-    # don't do the full verification (which would fail).
-    lastException = None
-    for issuer_file in glob.glob("test/certs/webpki/int-rsa-*.cert.pem"):
-        try:
-            check_ocsp_basic_oid(cert_file.name, issuer_file, "http://localhost:4002")
-            global ocsp_exp_unauth_setup_data
-            ocsp_exp_unauth_setup_data['cert_file'] = cert_file.name
-            return
-        except Exception as e:
-            lastException = e
-            continue
-    raise(lastException)
-
-def test_ocsp_exp_unauth():
-    tries = 0
-    if 'cert_file' not in ocsp_exp_unauth_setup_data:
-        raise Exception("ocsp_exp_unauth_setup didn't run")
-    cert_file = ocsp_exp_unauth_setup_data['cert_file']
-    last_error = ""
-    while tries < 5:
-        try:
-            verify_ocsp(cert_file, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "XXX")
-            raise(Exception("Unexpected return from verify_ocsp"))
-        except subprocess.CalledProcessError as cpe:
-            last_error = cpe.output
-            if cpe.output == b"Responder Error: unauthorized (6)\n":
-                break
-        except e:
-            last_error = e
-            pass
-        tries += 1
-        time.sleep(0.25)
-    else:
-        raise(Exception("timed out waiting for unauthorized OCSP response for expired certificate. Last error: {}".format(last_error)))
-
 def test_expiration_mailer():
     email_addr = "integration.%x@letsencrypt.org" % random.randrange(2**16)
     order = chisel2.auth_and_issue([random_domain()], email=email_addr)
@@ -1169,49 +1106,6 @@ def test_expiration_mailer():
     mailcount = int(resp.text)
     if mailcount != 2:
         raise(Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount))
-
-caa_recheck_setup_data = {}
-@register_twenty_days_ago
-def caa_recheck_setup():
-    client = chisel2.make_client()
-    # Issue a certificate with the clock set back, and save the authzs to check
-    # later that they are valid (200). They should however require rechecking for
-    # CAA purposes.
-    numNames = 10
-    # Generate numNames subdomains of a random domain
-    base_domain = random_domain()
-    domains = [ "{0}.{1}".format(str(n),base_domain) for n in range(numNames) ]
-    order = chisel2.auth_and_issue(domains, client=client)
-
-    global caa_recheck_setup_data
-    caa_recheck_setup_data = {
-        'client': client,
-        'authzs': order.authorizations,
-    }
-
-def test_recheck_caa():
-    """Request issuance for a domain where we have a old cached authz from when CAA
-       was good. We'll set a new CAA record forbidding issuance; the CAA should
-       recheck CAA and reject the request.
-    """
-    if 'authzs' not in caa_recheck_setup_data:
-        raise(Exception("CAA authzs not prepared for test_caa"))
-    domains = []
-    for a in caa_recheck_setup_data['authzs']:
-        response = caa_recheck_setup_data['client']._post(a.uri, None)
-        if response.status_code != 200:
-            raise(Exception("Unexpected response for CAA authz: ",
-                response.status_code))
-        domain = a.body.identifier.value
-        domains.append(domain)
-
-    # Set a forbidding CAA record on just one domain
-    challSrv.add_caa_issue(domains[3], ";")
-
-    # Request issuance for the previously-issued domain name, which should
-    # now be denied due to CAA.
-    chisel2.expect_problem("urn:ietf:params:acme:error:caa",
-        lambda: chisel2.auth_and_issue(domains, client=caa_recheck_setup_data['client']))
 
 def test_caa_good():
     domain = random_domain()
@@ -1367,59 +1261,3 @@ def test_auth_deactivation():
     resp = client.deactivate_authorization(order.authorizations[0])
     if resp.body.status is not messages.STATUS_DEACTIVATED:
         raise Exception("unexpected authorization status")
-
-def get_ocsp_response_and_reason(cert_file, issuer_glob, url):
-    """Returns the ocsp response output and revocation reason."""
-    output = verify_ocsp(cert_file, issuer_glob, url, None)
-    m = re.search('Reason: (\w+)', output)
-    reason = m.group(1) if m is not None else ""
-    return output, reason
-
-ocsp_resigning_setup_data = {}
-@register_twenty_days_ago
-def ocsp_resigning_setup():
-    """Issue and then revoke a cert in the past.
-
-    Useful setup for test_ocsp_resigning, which needs to check that the
-    revocation reason is still correctly set after re-signing and old OCSP
-    response.
-    """
-    client = chisel2.make_client(None)
-    cert_file = temppath('ocsp_resigning_setup.pem')
-    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
-
-    cert = OpenSSL.crypto.load_certificate(
-        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    # Revoke for reason 5: cessationOfOperation
-    client.revoke(josepy.ComparableX509(cert), 5)
-
-    ocsp_response, reason = get_ocsp_response_and_reason(
-        cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002")
-    global ocsp_resigning_setup_data
-    ocsp_resigning_setup_data = {
-        'cert_file': cert_file.name,
-        'response': ocsp_response,
-        'reason': reason
-    }
-
-def test_ocsp_resigning():
-    """Check that, after re-signing an OCSP, the reason is still set."""
-    if 'response' not in ocsp_resigning_setup_data:
-        raise Exception("ocsp_resigning_setup didn't run")
-
-    tries = 0
-    while tries < 5:
-        resp, reason = get_ocsp_response_and_reason(
-            ocsp_resigning_setup_data['cert_file'], "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002")
-        if resp != ocsp_resigning_setup_data['response']:
-            break
-        tries += 1
-        time.sleep(0.25)
-    else:
-        raise(Exception("timed out waiting for re-signed OCSP response for certificate"))
-
-    if reason != ocsp_resigning_setup_data['reason']:
-        raise(Exception("re-signed ocsp response has different reason %s expected %s" % (
-            reason, ocsp_resigning_setup_data['reason'])))
-    if reason != "cessationOfOperation":
-        raise(Exception("re-signed ocsp response has wrong reason %s" % reason))
