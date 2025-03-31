@@ -178,8 +178,6 @@ func checkRevoked(t *testing.T, revocations map[string][]*x509.RevocationList, c
 // precerts (with no corresponding final cert), and for both the Unspecified and
 // keyCompromise revocation reasons.
 func TestRevocation(t *testing.T) {
-	t.Parallel()
-
 	type authMethod string
 	var (
 		byAccount authMethod = "byAccount"
