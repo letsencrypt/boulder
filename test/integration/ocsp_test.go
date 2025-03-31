@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -16,6 +17,12 @@ import (
 
 func TestOCSPHappyPath(t *testing.T) {
 	t.Parallel()
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		// We no longer include AIA OCSP URIs in certificates issued by the
+		// config-next integration test environment.
+		t.Skip()
+	}
+
 	cert, err := authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 	if err != nil || len(cert.certs) < 1 {
 		t.Fatal("failed to issue cert for OCSP testing")
@@ -31,6 +38,12 @@ func TestOCSPHappyPath(t *testing.T) {
 
 func TestOCSPBadSerialPrefix(t *testing.T) {
 	t.Parallel()
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		// We no longer include AIA OCSP URIs in certificates issued by the
+		// config-next integration test environment.
+		t.Skip()
+	}
+
 	res, err := authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 	if err != nil || len(res.certs) < 1 {
 		t.Fatal("Failed to issue dummy cert for OCSP testing")
@@ -50,6 +63,12 @@ func TestOCSPBadSerialPrefix(t *testing.T) {
 
 func TestOCSPRejectedPrecertificate(t *testing.T) {
 	t.Parallel()
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
+		// We no longer include AIA OCSP URIs in certificates issued by the
+		// config-next integration test environment.
+		t.Skip()
+	}
+
 	domain := random_domain()
 	err := ctAddRejectHost(domain)
 	if err != nil {

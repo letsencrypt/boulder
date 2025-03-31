@@ -56,6 +56,11 @@ type ProfileConfig struct {
 	OmitClientAuth bool `asn1:"tag:4,optional"`
 	// OmitSKID causes the Subject Key Identifier extension to be omitted.
 	OmitSKID bool `asn1:"tag:5,optional"`
+	// OmitOCSP causes the OCSP URI field to be omitted from the Authority
+	// Information Access extension. This cannot be true unless
+	// IncludeCRLDistributionPoints is also true, to ensure that every
+	// certificate has at least one revocation mechanism included.
+	OmitOCSP bool `asn1:"tag:11,optional"`
 	// IncludeCRLDistributionPoints causes the CRLDistributionPoints extension to
 	// be added to all certificates issued by this profile.
 	IncludeCRLDistributionPoints bool `asn1:"tag:6,optional"`
@@ -91,6 +96,7 @@ type Profile struct {
 	omitKeyEncipherment bool
 	omitClientAuth      bool
 	omitSKID            bool
+	omitOCSP            bool
 
 	includeCRLDistributionPoints bool
 
@@ -116,6 +122,13 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
 	}
 
+	// Although the Baseline Requirements say that revocation information may be
+	// omitted entirely *for short-lived certs*, the Microsoft root program still
+	// requires that at least one revocation mechanism be included in all certs.
+	if profileConfig.OmitOCSP && !profileConfig.IncludeCRLDistributionPoints {
+		return nil, fmt.Errorf("at least one revocation mechanism must be included")
+	}
+
 	lints, err := linter.NewRegistry(profileConfig.IgnoredLints)
 	cmd.FailOnError(err, "Failed to create zlint registry")
 	if profileConfig.LintConfig != "" {
@@ -135,6 +148,7 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 		omitKeyEncipherment:          profileConfig.OmitKeyEncipherment,
 		omitClientAuth:               profileConfig.OmitClientAuth,
 		omitSKID:                     profileConfig.OmitSKID,
+		omitOCSP:                     profileConfig.OmitOCSP,
 		includeCRLDistributionPoints: profileConfig.IncludeCRLDistributionPoints,
 		maxBackdate:                  profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:                  profileConfig.MaxValidityPeriod.Duration,
@@ -227,7 +241,6 @@ var domainValidatedOID = func() x509.OID {
 func (i *Issuer) generateTemplate() *x509.Certificate {
 	template := &x509.Certificate{
 		SignatureAlgorithm:    i.sigAlg,
-		OCSPServer:            []string{i.ocspURL},
 		IssuingCertificateURL: []string{i.issuerURL},
 		BasicConstraintsValid: true,
 		// Baseline Requirements, Section 7.1.6.1: domain-validated
@@ -406,6 +419,10 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
 	} else {
 		return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
+	}
+
+	if !prof.omitOCSP {
+		template.OCSPServer = []string{i.ocspURL}
 	}
 
 	// If explicit CRL sharding is enabled, pick a shard based on the serial number

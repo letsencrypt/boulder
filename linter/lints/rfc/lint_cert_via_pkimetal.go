@@ -89,14 +89,16 @@ func (pkim *PKIMetalConfig) execute(endpoint string, der []byte) (*lint.LintResu
 
 	var findings []string
 	for _, finding := range res {
-		id := fmt.Sprintf("%s:%s", finding.Linter, finding.Code)
+		var id string
+		if finding.Code != "" {
+			id = fmt.Sprintf("%s:%s", finding.Linter, finding.Code)
+		} else {
+			id = fmt.Sprintf("%s:%s", finding.Linter, strings.ReplaceAll(strings.ToLower(finding.Finding), " ", "_"))
+		}
 		if slices.Contains(pkim.IgnoreLints, id) {
 			continue
 		}
-		desc := fmt.Sprintf("%s from %s at %s", finding.Severity, id, finding.Field)
-		if finding.Finding != "" {
-			desc = fmt.Sprintf("%s: %s", desc, finding.Finding)
-		}
+		desc := fmt.Sprintf("%s from %s: %s", finding.Severity, id, finding.Finding)
 		findings = append(findings, desc)
 	}
 

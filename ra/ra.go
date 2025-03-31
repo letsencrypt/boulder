@@ -1772,6 +1772,12 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 // purgeOCSPCache makes a request to akamai-purger to purge the cache entries
 // for the given certificate.
 func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x509.Certificate, issuerID issuance.NameID) error {
+	if len(cert.OCSPServer) == 0 {
+		// We can't purge the cache (and there should be no responses in the cache)
+		// for certs that have no AIA OCSP URI.
+		return nil
+	}
+
 	issuer, ok := ra.issuersByNameID[issuerID]
 	if !ok {
 		return fmt.Errorf("unable to identify issuer of cert with serial %q", core.SerialToString(cert.SerialNumber))
