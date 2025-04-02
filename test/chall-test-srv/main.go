@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/letsencrypt/challtestsrv"
 
@@ -107,7 +108,8 @@ func main() {
 	// Create a new management server with the provided config
 	oobSrv := managementServer{
 		Server: &http.Server{
-			Addr: *managementBind,
+			Addr:        *managementBind,
+			ReadTimeout: 30 * time.Second,
 		},
 		challSrv: srv,
 		log:      logger,
