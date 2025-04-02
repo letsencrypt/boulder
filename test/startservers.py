@@ -226,7 +226,7 @@ def start(fakeclock):
         print("Error querying DNS. Is consul running? `docker compose ps bconsul`. %s" % (e))
         return False
 
-    # Start the pebble-challtestsrv first so it can be used to resolve DNS for
+    # Start the chall-test-srv first so it can be used to resolve DNS for
     # gRPC.
     startChallSrv()
 
@@ -254,7 +254,7 @@ def start(fakeclock):
 def check():
     """Return true if all started processes are still alive.
 
-    Log about anything that died. The pebble-challtestsrv is not considered when
+    Log about anything that died. The chall-test-srv is not considered when
     checking processes.
     """
     global processes
@@ -274,7 +274,7 @@ def check():
 
 def startChallSrv():
     """
-    Start the pebble-challtestsrv and wait for it to become available. See also
+    Start the chall-test-srv and wait for it to become available. See also
     stopChallSrv.
     """
     global challSrvProcess
@@ -287,7 +287,7 @@ def startChallSrv():
     # which is used is controlled by mock DNS data added by the relevant
     # integration tests.
     challSrvProcess = run([
-        'pebble-challtestsrv',
+        './bin/chall-test-srv',
         '--defaultIPv4', os.environ.get("FAKE_DNS"),
         '-defaultIPv6', '',
         '--dns01', ':8053,:8054',
@@ -299,13 +299,13 @@ def startChallSrv():
         '-https01', '10.77.77.77:443',
         '--tlsalpn01', '10.88.88.88:443'],
         None)
-    # Wait for the pebble-challtestsrv management port.
+    # Wait for the chall-test-srv management port.
     if not waitport(8055, ' '.join(challSrvProcess.args)):
         return False
 
 def stopChallSrv():
     """
-    Stop the running pebble-challtestsrv (if any) and wait for it to terminate.
+    Stop the running chall-test-srv (if any) and wait for it to terminate.
     See also startChallSrv.
     """
     global challSrvProcess
