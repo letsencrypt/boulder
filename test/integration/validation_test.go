@@ -43,11 +43,16 @@ func TestCAARechecking(t *testing.T) {
 		t.Fatalf("no HTTP challenge found in %#v", authz)
 	}
 
-	err = addHTTP01Response(chal.Token, chal.KeyAuthorization)
+	_, err = testSrvClient.AddHTTP01Response(chal.Token, chal.KeyAuthorization)
 	if err != nil {
-		t.Fatalf("setting HTTP-01 challenge token: %s", err)
+		t.Fatal(err)
 	}
-	defer delHTTP01Response(chal.Token)
+	defer func() {
+		_, err = testSrvClient.RemoveHTTP01Response(chal.Token)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	chal, err = client.Client.UpdateChallenge(client.Account, chal)
 	if err != nil {
@@ -67,9 +72,9 @@ func TestCAARechecking(t *testing.T) {
 	}
 
 	// Change the CAA record to now forbid issuance.
-	err = addCAAIssueRecord(domain, ";")
+	_, err = testSrvClient.AddCAAIssue(domain, ";")
 	if err != nil {
-		t.Fatalf("updating CAA record: %s", err)
+		t.Fatal(err)
 	}
 
 	// Try to finalize the order created above. Due to our db manipulation, this
