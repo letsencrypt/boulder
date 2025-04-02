@@ -36,8 +36,11 @@ var (
 // Config contains fields which control various behaviors of the
 // checker's behavior.
 type Config struct {
-	method             string
-	urlOverride        string
+	method string
+	// This URL will always be used in place of the URL in a certificate.
+	urlOverride string
+	// This URL will be used if no urlOverride is present and no OCSP URL is in the certificate.
+	urlFallback        string
 	hostOverride       string
 	tooSoon            int
 	ignoreExpiredCerts bool
@@ -52,6 +55,7 @@ type Config struct {
 var DefaultConfig = Config{
 	method:             "GET",
 	urlOverride:        "",
+	urlFallback:        "",
 	hostOverride:       "",
 	tooSoon:            76,
 	ignoreExpiredCerts: false,
@@ -112,6 +116,12 @@ func (template Config) WithExpectStatus(status int) Config {
 func (template Config) WithExpectReason(reason int) Config {
 	ret := template
 	ret.expectReason = reason
+	return ret
+}
+
+func (template Config) WithURLFallback(url string) Config {
+	ret := template
+	ret.urlFallback = url
 	return ret
 }
 
@@ -268,7 +278,7 @@ func Req(cert *x509.Certificate, config Config) (*ocsp.Response, error) {
 		return nil, fmt.Errorf("creating OCSP request: %s", err)
 	}
 
-	ocspURL, err := getOCSPURL(cert, config.urlOverride)
+	ocspURL, err := getOCSPURL(cert, config.urlOverride, config.urlFallback)
 	if err != nil {
 		return nil, err
 	}
@@ -341,12 +351,14 @@ func sendHTTPRequest(
 	return client.Do(httpRequest)
 }
 
-func getOCSPURL(cert *x509.Certificate, urlOverride string) (*url.URL, error) {
+func getOCSPURL(cert *x509.Certificate, urlOverride, urlFallback string) (*url.URL, error) {
 	var ocspServer string
 	if urlOverride != "" {
 		ocspServer = urlOverride
 	} else if len(cert.OCSPServer) > 0 {
 		ocspServer = cert.OCSPServer[0]
+	} else if len(urlFallback) > 0 {
+		ocspServer = urlFallback
 	} else {
 		return nil, fmt.Errorf("no ocsp servers in cert")
 	}

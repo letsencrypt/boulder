@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -63,7 +64,8 @@ func getPrecertByName(db *sql.DB, name string) (*x509.Certificate, error) {
 
 // expectOCSP500 queries OCSP for the given certificate and expects a 500 error.
 func expectOCSP500(cert *x509.Certificate) error {
-	_, err := ocsp_helper.Req(cert, ocsp_helper.DefaultConfig)
+	// Provide a fallback, so even when the AIA OCSP URI is not present, we can test this behavior.
+	_, err := ocsp_helper.Req(cert, ocsp_helper.DefaultConfig.WithURLFallback("http://ca.example.org:4002/"))
 	if err == nil {
 		return errors.New("Expected error getting OCSP for certificate that failed status storage")
 	}
@@ -190,9 +192,12 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "revoking second certificate")
 
+	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
+	fetchAndCheckRevoked(t, successfulCert, ocsp.KeyCompromise)
+
 	for range 300 {
 		_, err = ocsp_helper.Req(successfulCert,
-			ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise))
+			ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise).WithURLFallback("http://ca.example.org:4002/"))
 		if err == nil {
 			break
 		}

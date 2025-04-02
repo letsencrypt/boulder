@@ -441,11 +441,6 @@ func TestReRevocation(t *testing.T) {
 			cert := res.certs[0]
 			issuer := res.certs[1]
 
-			// Initially, the cert should have a Good OCSP response.
-			ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
-			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
-			test.AssertNotError(t, err, "requesting OCSP for precert")
-
 			// Set up the account and key that we'll use to revoke the cert.
 			var revokeClient *client
 			var revokeKey crypto.Signer
@@ -647,7 +642,7 @@ func TestBadKeyRevoker(t *testing.T) {
 
 		// Give the bad-key-revoker daemon a moment to catch up. Note: sleeping in tests
 		// is bad practice, but we're giving this one a pass because we'll delete these email-based checks soon.
-		time.Sleep(time.Second)
+		time.Sleep(2 * time.Second)
 
 		for _, email := range []string{revokerEmail, revokeeEmail, sharedEmail} {
 			count, err := http.Get(fmt.Sprintf("http://boulder.service.consul:9381/count?to=%s&from=bad-key-revoker@test.org", email))
