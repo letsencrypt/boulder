@@ -1754,12 +1754,27 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 		return berrors.AlreadyRevokedError("unable to re-revoke serial %q which is already revoked for keyCompromise", serialString)
 	}
 
+	cert, err := ra.SA.GetCertificate(ctx, &sapb.Serial{Serial: serialString})
+	if err != nil {
+		return berrors.NotFoundError("unable to confirm that serial %q was ever issued: %s", serialString, err)
+	}
+	x509Cert, err := x509.ParseCertificate(cert.Der)
+	if err != nil {
+		return err
+	}
+
+	shardIdx, err := crlShard(x509Cert)
+	if err != nil {
+		return err
+	}
+
 	_, err = ra.SA.UpdateRevokedCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
 		Reason:   int64(ocsp.KeyCompromise),
 		Date:     timestamppb.New(ra.clk.Now()),
 		Backdate: status.RevokedDate,
 		IssuerID: int64(issuerID),
+		ShardIdx: shardIdx,
 	})
 	if err != nil {
 		return err
