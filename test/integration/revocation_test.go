@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/eggsampler/acme/v3"
 	"golang.org/x/crypto/ocsp"
@@ -643,6 +644,10 @@ func TestBadKeyRevoker(t *testing.T) {
 			err = revokerClient.RevokeCertificate(revokerClient.Account, badCert, revokerClient.PrivateKey, ocsp.KeyCompromise)
 			test.AssertNotError(t, err, "failed to revoke certificate")
 		}
+
+		// Give the bad-key-revoker daemon a moment to catch up. Note: sleeping in tests
+		// is bad practice, but we're giving this one a pass because we'll delete these email-based checks soon.
+		time.Sleep(time.Second)
 
 		for _, email := range []string{revokerEmail, revokeeEmail, sharedEmail} {
 			count, err := http.Get(fmt.Sprintf("http://boulder.service.consul:9381/count?to=%s&from=bad-key-revoker@test.org", email))
