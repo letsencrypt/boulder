@@ -8,8 +8,6 @@ import "google/protobuf/timestamp.proto";
 
 // CertificateAuthority issues certificates.
 service CertificateAuthority {
-  rpc IssuePrecertificate(IssueCertificateRequest) returns (IssuePrecertificateResponse) {}
-  rpc IssueCertificateForPrecertificate(IssueCertificateForPrecertificateRequest) returns (core.Certificate) {}
   // IssueCertificate issues a precertificate, gets SCTs, issues a certificate, and returns that.
   rpc IssueCertificate(IssueCertificateRequest) returns (IssueCertificateResponse) {}
 }

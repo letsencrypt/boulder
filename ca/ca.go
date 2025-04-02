@@ -295,7 +295,7 @@ var ocspStatusToCode = map[string]int{
 	"unknown": ocsp.Unknown,
 }
 
-// IssuePrecertificate is the first step in the [issuance cycle]. It allocates and stores a serial number,
+// issuePrecertificate is the first step in the [issuance cycle]. It allocates and stores a serial number,
 // selects a certificate profile, generates and stores a linting certificate, sets the serial's status to
 // "wait", signs and stores a precertificate, updates the serial's status to "good", then returns the
 // precertificate.
@@ -305,7 +305,7 @@ var ocspStatusToCode = map[string]int{
 // the configuration for a specific profile _name_ changes.
 //
 // [issuance cycle]: https://github.com/letsencrypt/boulder/blob/main/docs/ISSUANCE-CYCLE.md
-func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
+func (ca *certificateAuthorityImpl) issuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
 	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID, issueReq.CertProfileName) {
 		return nil, berrors.InternalServerError("Incomplete issue certificate request")
@@ -360,7 +360,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 	if ca.sctClient == nil {
 		return nil, errors.New("IssueCertificate called with a nil SCT service")
 	}
-	precert, err := ca.IssuePrecertificate(ctx, issueReq)
+	precert, err := ca.issuePrecertificate(ctx, issueReq)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +368,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 	if err != nil {
 		return nil, err
 	}
-	cert, err := ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
+	cert, err := ca.issueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:             precert.DER,
 		SCTs:            scts.SctDER,
 		RegistrationID:  issueReq.RegistrationID,
@@ -381,7 +381,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 	return &capb.IssueCertificateResponse{DER: cert.Der}, nil
 }
 
-// IssueCertificateForPrecertificate final step in the [issuance cycle].
+// issueCertificateForPrecertificate final step in the [issuance cycle].
 //
 // Given a precertificate and a set of SCTs for that precertificate, it generates
 // a linting final certificate, then signs a final certificate using a real issuer.
@@ -391,10 +391,10 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 //
 // It's critical not to sign two different final certificates for the same
 // precertificate. This can happen, for instance, if the caller provides a
-// different set of SCTs on subsequent calls to  IssueCertificateForPrecertificate.
-// We rely on the RA not to call IssueCertificateForPrecertificate twice for the
+// different set of SCTs on subsequent calls to  issueCertificateForPrecertificate.
+// We rely on the RA not to call issueCertificateForPrecertificate twice for the
 // same serial. This is accomplished by the fact that
-// IssueCertificateForPrecertificate is only ever called in a straight-through
+// issueCertificateForPrecertificate is only ever called in a straight-through
 // RPC path without retries. If there is any error, including a networking
 // error, the whole certificate issuance attempt fails and any subsequent
 // issuance will use a different serial number.
@@ -405,7 +405,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 // serial number at the same time.
 //
 // [issuance cycle]: https://github.com/letsencrypt/boulder/blob/main/docs/ISSUANCE-CYCLE.md
-func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
+func (ca *certificateAuthorityImpl) issueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
 	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID, req.CertProfileHash) {
 		return nil, berrors.InternalServerError("Incomplete cert for precertificate request")
