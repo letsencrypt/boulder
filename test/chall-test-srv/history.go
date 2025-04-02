@@ -20,7 +20,7 @@ import (
 func (srv *managementServer) clearHistory(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Host string
-		Typ  string `json:"type"`
+		Type string `json:"type"`
 	}
 	if err := mustParsePOST(&request, r); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -35,15 +35,15 @@ func (srv *managementServer) clearHistory(w http.ResponseWriter, r *http.Request
 		http.Error(w, "host parameter must not be empty", http.StatusBadRequest)
 		return
 	}
-	if code, ok := typeMap[request.Typ]; ok {
+	if code, ok := typeMap[request.Type]; ok {
 		srv.challSrv.ClearRequestHistory(request.Host, code)
 		srv.log.Printf("Cleared challenge server request history for %q %q events\n",
-			request.Host, request.Typ)
+			request.Host, request.Type)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	http.Error(w, fmt.Sprintf("%q event type unknown", request.Typ), http.StatusBadRequest)
+	http.Error(w, fmt.Sprintf("%q event type unknown", request.Type), http.StatusBadRequest)
 }
 
 // getHTTPHistory returns only the HTTPRequestEvents for the given hostname
