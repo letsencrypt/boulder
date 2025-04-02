@@ -3616,6 +3616,35 @@ func (msar *mockSARevocation) GetCertificateStatus(_ context.Context, req *sapb.
 	return nil, berrors.UnknownSerialError()
 }
 
+func (msar *mockSARevocation) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	var serialBytes [16]byte
+	_, _ = rand.Read(serialBytes[:])
+	serial := big.NewInt(0).SetBytes(serialBytes[:])
+
+	key, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+
+	template := &x509.Certificate{
+		SerialNumber:          serial,
+		DNSNames:              []string{"revokememaybe.example.com"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(6 * 24 * time.Hour),
+		IssuingCertificateURL: []string{"http://localhost:4001/acme/issuer-cert/1234"},
+		CRLDistributionPoints: []string{"http://example.com/123.crl"},
+	}
+
+	testCertDER, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
+	if err != nil {
+		return nil, err
+	}
+
+	return &corepb.Certificate{
+		Der: testCertDER,
+	}, nil
+}
+
 func (msar *mockSARevocation) RevokeCertificate(_ context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	if _, present := msar.revoked[req.Serial]; present {
 		return nil, berrors.AlreadyRevokedError("already revoked")
