@@ -1,6 +1,3 @@
-// The boulder-chall-test-srv command line tool exposes the
-// github.com/letsencrypt/pebble/v2/challtestsrv package as
-// a stand-alone binary with an HTTP management interface.
 package main
 
 import (
@@ -90,7 +87,7 @@ func main() {
 	dnsOneAddresses := filterEmpty(strings.Split(*dnsOneBind, ","))
 	tlsAlpnOneAddresses := filterEmpty(strings.Split(*tlsAlpnOneBind, ","))
 
-	logger := log.New(os.Stdout, "boulder-chall-test-srv - ", log.Ldate|log.Ltime)
+	logger := log.New(os.Stdout, "chall-test-srv - ", log.Ldate|log.Ltime)
 
 	// Create a new challenge server with the provided config
 	srv, err := challtestsrv.New(challtestsrv.Config{

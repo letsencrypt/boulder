@@ -1,10 +1,10 @@
 # Boulder Challenge Test Server
 
-**Important note: The `boulder-chall-test-srv` command is for TEST USAGE ONLY. It
+**Important note: The `chall-test-srv` command is for TEST USAGE ONLY. It
 is trivially insecure, offering no authentication. Only use
-`boulder-chall-test-srv` in a controlled test environment.**
+`chall-test-srv` in a controlled test environment.**
 
-The standalone `boulder-chall-test-srv` binary lets you run HTTP-01, HTTPS HTTP-01,
+The standalone `chall-test-srv` binary lets you run HTTP-01, HTTPS HTTP-01,
 DNS-01, and TLS-ALPN-01 challenge servers that external programs can add/remove
 challenge responses to using a HTTP management API.
 
@@ -15,7 +15,7 @@ redirect behaviour for HTTP-01 challenge validation.
 ### Usage
 
 ```
-Usage of boulder-chall-test-srv:
+Usage of chall-test-srv:
   -defaultIPv4 string
     Default IPv4 address for mock DNS responses to A queries (default "127.0.0.1")
   -defaultIPv6 string
@@ -34,10 +34,10 @@ Usage of boulder-chall-test-srv:
 
 To disable a challenge type, set the bind address to `""`. E.g.:
 
-* To run HTTP-01 only: `boulder-chall-test-srv -https01 "" -dns01 "" -tlsalpn01 ""`
-* To run HTTPS-01 only: `boulder-chall-test-srv -http01 "" -dns01 "" -tlsalpn01 ""`
-* To run DNS-01 only: `boulder-chall-test-srv -http01 "" -https01 "" -tlsalpn01 ""`
-* To run TLS-ALPN-01 only: `boulder-chall-test-srv -http01 "" -https01 "" -dns01 ""`
+* To run HTTP-01 only: `chall-test-srv -https01 "" -dns01 "" -tlsalpn01 ""`
+* To run HTTPS-01 only: `chall-test-srv -http01 "" -dns01 "" -tlsalpn01 ""`
+* To run DNS-01 only: `chall-test-srv -http01 "" -https01 "" -tlsalpn01 ""`
+* To run TLS-ALPN-01 only: `chall-test-srv -http01 "" -https01 "" -dns01 ""`
 
 ### Management Interface
 
@@ -172,7 +172,7 @@ To remove the mocked TLS-ALPN-01 challenge response run:
 
 #### Request History
 
-`boulder-chall-test-srv` keeps track of the requests processed by each of the
+`chall-test-srv` keeps track of the requests processed by each of the
 challenge servers and exposes this information via JSON.
 
 To get the history of HTTP requests to `example.com` run:
