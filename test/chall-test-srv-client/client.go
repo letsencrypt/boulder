@@ -235,7 +235,7 @@ func (c *Client) HTTPRequestHistory(host string) ([]HTTPRequest, error) {
 		)
 	}
 	var data []HTTPRequest
-	err = json.Unmarshal([]byte(raw), &data)
+	err = json.Unmarshal(raw, &data)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshalling HTTP request history: %w", err)
 	}
@@ -409,7 +409,7 @@ func (c *Client) DNSRequestHistory(host string) ([]DNSRequest, error) {
 		)
 	}
 	var data []DNSRequest
-	err = json.Unmarshal([]byte(raw), &data)
+	err = json.Unmarshal(raw, &data)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshalling DNS request history: %w", err)
 	}
@@ -483,7 +483,7 @@ func (c *Client) TLSALPN01RequestHistory(host string) ([]TLSALPN01Request, error
 		)
 	}
 	var data []TLSALPN01Request
-	err = json.Unmarshal([]byte(raw), &data)
+	err = json.Unmarshal(raw, &data)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshalling TLS-ALPN-01 request history: %w", err)
 	}
