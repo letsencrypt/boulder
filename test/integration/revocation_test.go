@@ -142,7 +142,7 @@ func fetchAndCheckRevoked(t *testing.T, cert, issuer *x509.Certificate, expected
 		t.Errorf("expected certificate to have one CRLDistributionPoints field")
 	}
 	crlURL := cert.CRLDistributionPoints[0]
-	list := getCRL(t, crlURL, nil)
+	list := getCRL(t, crlURL, issuer)
 	for _, entry := range list.RevokedCertificateEntries {
 		if entry.SerialNumber.Cmp(cert.SerialNumber) == 0 {
 			if entry.ReasonCode != expectedReason {
