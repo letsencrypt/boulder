@@ -20,7 +20,7 @@ import startservers
 if not startservers.install(race_detection=False):
     raise(Exception("failed to build"))
 
-if not startservers.start(fakeclock=None):
+if not startservers.start():
     sys.exit(1)
 try:
     os.wait()
