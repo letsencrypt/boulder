@@ -297,7 +297,7 @@ func (c *Client) RemoveHTTPRedirect(path string) ([]byte, error) {
 // error that includes both the relevant operation and the payload.
 func (c *Client) AddHTTP01Response(token, keyauth string) ([]byte, error) {
 	payload := map[string]string{"token": token, "content": keyauth}
-	resp, err := c.postURL("add-http", payload)
+	resp, err := c.postURL(addHTTP, payload)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"while adding HTTP-01 challenge response for token %q (payload: %v): %w",
