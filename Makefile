@@ -6,7 +6,7 @@ VERSION ?= 1.0.0
 EPOCH ?= 1
 MAINTAINER ?= "Community"
 
-CMDS = admin boulder ceremony ct-test-srv pardot-test-srv
+CMDS = admin boulder ceremony ct-test-srv pardot-test-srv chall-test-srv
 CMD_BINS = $(addprefix bin/, $(CMDS) )
 OBJECTS = $(CMD_BINS)
 

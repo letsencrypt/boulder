@@ -1,7 +1,10 @@
 package challtestsrv
 
 import (
+	"fmt"
+	"io"
 	"net"
+	"net/http"
 
 	"github.com/miekg/dns"
 )
@@ -154,12 +157,57 @@ func (s *ChallSrv) caaAnswers(q dns.Question) []dns.RR {
 	return records
 }
 
+type writeMsg interface {
+	WriteMsg(*dns.Msg) error
+}
+
+type dnsToHTTPWriter struct {
+	http.ResponseWriter
+}
+
+func (d *dnsToHTTPWriter) WriteMsg(m *dns.Msg) error {
+	d.Header().Set("Content-Type", "application/dns-message")
+	d.WriteHeader(http.StatusOK)
+	b, err := m.Pack()
+	if err != nil {
+		return err
+	}
+	_, err = d.Write(b)
+	return err
+}
+
+// dohHandler handles a DoH request by POST only.
+func (s *ChallSrv) dohHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	msg := new(dns.Msg)
+	err = msg.Unpack(body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(w, err)
+		return
+	}
+
+	s.dnsHandlerInner(&dnsToHTTPWriter{w}, msg)
+}
+
 // dnsHandler is a miekg/dns handler that can process a dns.Msg request and
 // write a response to the provided dns.ResponseWriter. TXT, A, AAAA, CNAME,
 // and CAA queries types are supported and answered using the ChallSrv's mock
 // DNS data. A host that is aliased by a CNAME record will follow that alias
 // one level and return the requested record types for that alias' target
 func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
+	s.dnsHandlerInner(w, r)
+}
+
+func (s *ChallSrv) dnsHandlerInner(w writeMsg, r *dns.Msg) {
 	m := new(dns.Msg)
 	m.SetReply(r)
 	m.Compress = false

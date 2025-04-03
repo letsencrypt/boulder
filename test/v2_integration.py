@@ -447,7 +447,7 @@ def test_http_challenge_timeout():
     to a slow HTTP server appropriately.
     """
     # Start a simple python HTTP server on port 80 in its own thread.
-    # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:80 for HTTP-01
+    # NOTE(@cpu): The chall-test-srv binds 10.77.77.77:80 for HTTP-01
     # challenges so we must use the 10.88.88.88 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
     httpd = SlowHTTPServer(("10.88.88.88", 80), SlowHTTPRequestHandler)
@@ -786,11 +786,11 @@ def multiva_setup(client, guestlist):
 
     # Add an A record for the redirect target that sends it to the real chall
     # test srv for a valid HTTP-01 response.
-    redirHostname = "pebble-challtestsrv.example.com"
+    redirHostname = "chall-test-srv.example.com"
     challSrv.add_a_record(redirHostname, ["10.77.77.77"])
 
     # Start a simple python HTTP server on port 80 in its own thread.
-    # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:80 for HTTP-01
+    # NOTE(@cpu): The chall-test-srv binds 10.77.77.77:80 for HTTP-01
     # challenges so we must use the 10.88.88.88 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
     redirect = "http://{0}/.well-known/acme-challenge/{1}".format(
