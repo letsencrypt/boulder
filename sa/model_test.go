@@ -55,36 +55,42 @@ func TestRegistrationModelToPb(t *testing.T) {
 func TestRegistrationPbToModel(t *testing.T) {}
 
 func TestAuthzModel(t *testing.T) {
-	clk := clock.New()
-	now := clk.Now()
-	expires := now.Add(24 * time.Hour)
-	authzPB := &corepb.Authorization{
-		Id:                     "1",
-		DnsName:                "example.com",
-		Identifier:             identifier.NewDNS("example.com").ToProto(),
-		RegistrationID:         1,
-		Status:                 string(core.StatusValid),
-		Expires:                timestamppb.New(expires),
-		CertificateProfileName: "test",
-		Challenges: []*corepb.Challenge{
-			{
-				Type:      string(core.ChallengeTypeHTTP01),
-				Status:    string(core.StatusValid),
-				Token:     "MTIz",
-				Validated: timestamppb.New(now),
-				Validationrecords: []*corepb.ValidationRecord{
-					{
-						AddressUsed:       []byte("1.2.3.4"),
-						Url:               "https://example.com",
-						Hostname:          "example.com",
-						Port:              "443",
-						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
-						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+	// newTestAuthzPB returns a new *corepb.Authorization for `example.com` that
+	// is valid, and contains a single valid HTTP-01 challenge. These are the
+	// most common authorization attributes used in tests. Some tests will
+	// customize them after calling this.
+	newTestAuthzPB := func(validated time.Time) *corepb.Authorization {
+		return &corepb.Authorization{
+			Id:             "1",
+			Identifier:     identifier.NewDNS("example.com").ToProto(),
+			RegistrationID: 1,
+			Status:         string(core.StatusValid),
+			Expires:        timestamppb.New(validated.Add(24 * time.Hour)),
+			Challenges: []*corepb.Challenge{
+				{
+					Type:      string(core.ChallengeTypeHTTP01),
+					Status:    string(core.StatusValid),
+					Token:     "MTIz",
+					Validated: timestamppb.New(validated),
+					Validationrecords: []*corepb.ValidationRecord{
+						{
+							AddressUsed:       []byte("1.2.3.4"),
+							Url:               "https://example.com",
+							Hostname:          "example.com",
+							Port:              "443",
+							AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+							AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+						},
 					},
 				},
 			},
-		},
+		}
 	}
+
+	clk := clock.New()
+
+	authzPB := newTestAuthzPB(clk.Now())
+	authzPB.CertificateProfileName = "test"
 
 	model, err := authzPBToModel(authzPB)
 	test.AssertNotError(t, err, "authzPBToModel failed")
@@ -97,55 +103,15 @@ func TestAuthzModel(t *testing.T) {
 	if authzPB.Challenges[0].Validationrecords[0].Port != "" {
 		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected port field to be missing, but found %v", authzPB.Challenges[0].Validationrecords[0].Port))
 	}
-	// Shoving the Hostname and Port backinto the validation record should
-	// succeed because authzPB validation record will should match the retrieved
+	// Shoving the Hostname and Port back into the validation record should
+	// succeed because authzPB validation record should match the retrieved
 	// model from the database with the rehydrated Hostname and Port.
 	authzPB.Challenges[0].Validationrecords[0].Hostname = "example.com"
 	authzPB.Challenges[0].Validationrecords[0].Port = "443"
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 	test.AssertEquals(t, authzPBOut.CertificateProfileName, authzPB.CertificateProfileName)
 
-	authzPBNoIdentifier := authzPB
-	authzPBNoIdentifier.Identifier = nil
-	model, err = authzPBToModel(authzPBNoIdentifier)
-	test.AssertNotError(t, err, "authzPBToModel failed without Identifier")
-	_, err = modelToAuthzPB(*model)
-	test.AssertNotError(t, err, "modelToAuthzPB failed without Identifier")
-	authzPBNoDnsName := authzPB
-	authzPBNoDnsName.DnsName = ""
-	model, err = authzPBToModel(authzPBNoDnsName)
-	test.AssertNotError(t, err, "authzPBToModel failed without DnsName")
-	_, err = modelToAuthzPB(*model)
-	test.AssertNotError(t, err, "modelToAuthzPB failed without DnsName")
-
-	now = clk.Now()
-	expires = now.Add(24 * time.Hour)
-	authzPB = &corepb.Authorization{
-		Id:             "1",
-		DnsName:        "example.com",
-		Identifier:     identifier.NewDNS("example.com").ToProto(),
-		RegistrationID: 1,
-		Status:         string(core.StatusValid),
-		Expires:        timestamppb.New(expires),
-		Challenges: []*corepb.Challenge{
-			{
-				Type:      string(core.ChallengeTypeHTTP01),
-				Status:    string(core.StatusValid),
-				Token:     "MTIz",
-				Validated: timestamppb.New(now),
-				Validationrecords: []*corepb.ValidationRecord{
-					{
-						AddressUsed:       []byte("1.2.3.4"),
-						Url:               "https://example.com",
-						Hostname:          "example.com",
-						Port:              "443",
-						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
-						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
-					},
-				},
-			},
-		},
-	}
+	authzPB = newTestAuthzPB(clk.Now())
 
 	validationErr := probs.Connection("weewoo")
 
@@ -164,59 +130,38 @@ func TestAuthzModel(t *testing.T) {
 		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected port field to be missing, but found %v", authzPB.Challenges[0].Validationrecords[0].Port))
 	}
 	// Shoving the Hostname and Port back into the validation record should
-	// succeed because authzPB validation record will should match the retrieved
+	// succeed because authzPB validation record should match the retrieved
 	// model from the database with the rehydrated Hostname and Port.
 	authzPB.Challenges[0].Validationrecords[0].Hostname = "example.com"
 	authzPB.Challenges[0].Validationrecords[0].Port = "443"
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
-	authzPBNoIdentifier = authzPB
-	authzPBNoIdentifier.Identifier = nil
-	model, err = authzPBToModel(authzPBNoIdentifier)
-	test.AssertNotError(t, err, "authzPBToModel failed without Identifier")
-	_, err = modelToAuthzPB(*model)
-	test.AssertNotError(t, err, "modelToAuthzPB failed without Identifier")
-	authzPBNoDnsName = authzPB
-	authzPBNoDnsName.DnsName = ""
-	model, err = authzPBToModel(authzPBNoDnsName)
-	test.AssertNotError(t, err, "authzPBToModel failed without DnsName")
-	_, err = modelToAuthzPB(*model)
-	test.AssertNotError(t, err, "modelToAuthzPB failed without DnsName")
-
-	now = clk.Now()
-	expires = now.Add(24 * time.Hour)
-	authzPB = &corepb.Authorization{
-		Id:             "1",
-		DnsName:        "example.com",
-		Identifier:     identifier.NewDNS("example.com").ToProto(),
-		RegistrationID: 1,
-		Status:         string(core.StatusInvalid),
-		Expires:        timestamppb.New(expires),
-		Challenges: []*corepb.Challenge{
-			{
-				Type:   string(core.ChallengeTypeHTTP01),
-				Status: string(core.StatusInvalid),
-				Token:  "MTIz",
-				Validationrecords: []*corepb.ValidationRecord{
-					{
-						AddressUsed:       []byte("1.2.3.4"),
-						Url:               "url",
-						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
-						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
-					},
+	authzPB = newTestAuthzPB(clk.Now())
+	authzPB.Status = string(core.StatusInvalid)
+	authzPB.Challenges = []*corepb.Challenge{
+		{
+			Type:   string(core.ChallengeTypeHTTP01),
+			Status: string(core.StatusInvalid),
+			Token:  "MTIz",
+			Validationrecords: []*corepb.ValidationRecord{
+				{
+					AddressUsed:       []byte("1.2.3.4"),
+					Url:               "url",
+					AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+					AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 				},
 			},
-			{
-				Type:   string(core.ChallengeTypeDNS01),
-				Status: string(core.StatusInvalid),
-				Token:  "MTIz",
-				Validationrecords: []*corepb.ValidationRecord{
-					{
-						AddressUsed:       []byte("1.2.3.4"),
-						Url:               "url",
-						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
-						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
-					},
+		},
+		{
+			Type:   string(core.ChallengeTypeDNS01),
+			Status: string(core.StatusInvalid),
+			Token:  "MTIz",
+			Validationrecords: []*corepb.ValidationRecord{
+				{
+					AddressUsed:       []byte("1.2.3.4"),
+					Url:               "url",
+					AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+					AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 				},
 			},
 		},
@@ -224,33 +169,9 @@ func TestAuthzModel(t *testing.T) {
 	_, err = authzPBToModel(authzPB)
 	test.AssertError(t, err, "authzPBToModel didn't fail with multiple non-pending challenges")
 
-	// Test that the caller Hostname and Port rehydration returns the expected data in the expected fields.
-	now = clk.Now()
-	expires = now.Add(24 * time.Hour)
-	authzPB = &corepb.Authorization{
-		Id:             "1",
-		DnsName:        "example.com",
-		Identifier:     identifier.NewDNS("example.com").ToProto(),
-		RegistrationID: 1,
-		Status:         string(core.StatusValid),
-		Expires:        timestamppb.New(expires),
-		Challenges: []*corepb.Challenge{
-			{
-				Type:      string(core.ChallengeTypeHTTP01),
-				Status:    string(core.StatusValid),
-				Token:     "MTIz",
-				Validated: timestamppb.New(now),
-				Validationrecords: []*corepb.ValidationRecord{
-					{
-						AddressUsed:       []byte("1.2.3.4"),
-						Url:               "https://example.com",
-						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
-						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
-					},
-				},
-			},
-		},
-	}
+	// Test that the caller Hostname and Port rehydration returns the expected
+	// data in the expected fields.
+	authzPB = newTestAuthzPB(clk.Now())
 
 	model, err = authzPBToModel(authzPB)
 	test.AssertNotError(t, err, "authzPBToModel failed")
@@ -263,19 +184,6 @@ func TestAuthzModel(t *testing.T) {
 	if authzPBOut.Challenges[0].Validationrecords[0].Port != "443" {
 		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected port 443 but found %v", authzPBOut.Challenges[0].Validationrecords[0].Port))
 	}
-
-	authzPBNoIdentifier = authzPB
-	authzPBNoIdentifier.Identifier = nil
-	model, err = authzPBToModel(authzPBNoIdentifier)
-	test.AssertNotError(t, err, "authzPBToModel failed without Identifier")
-	_, err = modelToAuthzPB(*model)
-	test.AssertNotError(t, err, "modelToAuthzPB failed without Identifier")
-	authzPBNoDnsName = authzPB
-	authzPBNoDnsName.DnsName = ""
-	model, err = authzPBToModel(authzPBNoDnsName)
-	test.AssertNotError(t, err, "authzPBToModel failed without DnsName")
-	_, err = modelToAuthzPB(*model)
-	test.AssertNotError(t, err, "modelToAuthzPB failed without DnsName")
 }
 
 // TestModelToOrderBADJSON tests that converting an order model with an invalid
