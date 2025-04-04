@@ -2035,7 +2035,7 @@ func TestNewOrderWildcard(t *testing.T) {
 
 	// We expect the order to have the identifiers we requested
 	test.AssertDeepEquals(t,
-		identifier.Normalize(identifier.FromProtoSliceWithDefault(order)),
+		identifier.Normalize(identifier.FromProtoSlice(order.Identifiers)),
 		identifier.Normalize(orderIdents))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
@@ -2087,7 +2087,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertEquals(t, len(order.Identifiers), 2)
 	// We expect the order to have the identifiers we requested
 	test.AssertDeepEquals(t,
-		identifier.Normalize(identifier.FromProtoSliceWithDefault(order)),
+		identifier.Normalize(identifier.FromProtoSlice(order.Identifiers)),
 		identifier.Normalize(orderIdents))
 	test.AssertEquals(t, numAuthorizations(order), 2)
 
