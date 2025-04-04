@@ -654,7 +654,7 @@ func TestBadKeyRevoker(t *testing.T) {
 	for _, bundle := range bundles {
 		cert := bundle.certs[0]
 		for i := range 5 {
-			t.Logf("TestBadKeyRevoker: Requesting OCSP for cert with serial %x (attempt %d)", bundle.SerialNumber, i)
+			t.Logf("TestBadKeyRevoker: Requesting OCSP for cert with serial %x (attempt %d)", cert.SerialNumber, i)
 			_, err := ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			if err != nil {
 				t.Logf("TestBadKeyRevoker: Got bad response: %s", err.Error())
@@ -720,7 +720,7 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	bundles := []*issuanceResult{}
 	for _, c := range []*client{revokerClient, revokeeClient, noContactClient} {
 		bundle, err := authAndIssue(c, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
-		t.Logf("TestBadKeyRevokerByAccount: Issued cert with serial %x", cert.certs[0].SerialNumber)
+		t.Logf("TestBadKeyRevokerByAccount: Issued cert with serial %x", bundle.certs[0].SerialNumber)
 		test.AssertNotError(t, err, "authAndIssue failed")
 		bundles = append(bundles, bundle)
 	}
