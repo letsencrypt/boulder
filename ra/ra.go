@@ -2290,7 +2290,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	idents := identifier.Normalize(identifier.FromProtoSliceWithDefault(req))
+	idents := identifier.Normalize(identifier.FromProtoSlice(req.Identifiers))
 
 	profile, err := ra.profiles.get(req.CertificateProfileName)
 	if err != nil {

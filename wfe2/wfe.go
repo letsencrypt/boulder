@@ -2390,7 +2390,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID:         acct.ID,
-		DnsNames:               names,
 		Identifiers:            idents.ToProtoSlice(),
 		CertificateProfileName: newOrderRequest.Profile,
 		Replaces:               newOrderRequest.Replaces,
