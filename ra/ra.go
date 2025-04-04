@@ -2514,7 +2514,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	newOrder := &sapb.NewOrderRequest{
 		RegistrationID:         req.RegistrationID,
-		DnsNames:               dnsNames,
 		Identifiers:            idents.ToProtoSlice(),
 		CertificateProfileName: req.CertificateProfileName,
 		Replaces:               req.Replaces,
@@ -2533,7 +2532,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, identifier.FromProtoSliceWithDefault(storedOrder), storedOrder.Created, storedOrder.Expires) {
+	if core.IsAnyNilOrZero(storedOrder.Id, storedOrder.Status, storedOrder.RegistrationID, storedOrder.Identifiers, storedOrder.Created, storedOrder.Expires) {
 		return nil, errIncompleteGRPCResponse
 	}
 	ra.orderAges.WithLabelValues("NewOrder").Observe(0)

@@ -594,7 +594,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fourth, insert the FQDNSet entry for the order.
-		err = addOrderFQDNSet(ctx, tx, identifier.FromProtoSliceWithDefault(req.NewOrder), orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
+		err = addOrderFQDNSet(ctx, tx, identifier.FromProtoSlice(req.NewOrder.Identifiers), orderID, req.NewOrder.RegistrationID, req.NewOrder.Expires.AsTime())
 		if err != nil {
 			return nil, err
 		}
@@ -623,7 +623,6 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			// These are carried over from the original request unchanged.
 			RegistrationID: req.NewOrder.RegistrationID,
 			Expires:        req.NewOrder.Expires,
-			DnsNames:       req.NewOrder.DnsNames,
 			Identifiers:    req.NewOrder.Identifiers,
 			// This includes both reused and newly created authz IDs.
 			V2Authorizations: allAuthzIds,
