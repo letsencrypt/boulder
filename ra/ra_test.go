@@ -1383,8 +1383,8 @@ func TestNewOrder(t *testing.T) {
 	test.AssertEquals(t, orderA.Expires.AsTime(), now.Add(ra.profiles.def().orderLifetime))
 	test.AssertEquals(t, len(orderA.Identifiers), 3)
 	test.AssertEquals(t, orderA.CertificateProfileName, "test")
-	// We expect the order identifiers' values to have been sorted, deduped, and
-	// lowercased
+	// We expect the order's identifier values to have been sorted,
+	// deduplicated, and lowercased.
 	test.AssertDeepEquals(t, orderA.Identifiers, []*corepb.Identifier{
 		identifier.NewDNS("a.com").ToProto(),
 		identifier.NewDNS("b.com").ToProto(),
