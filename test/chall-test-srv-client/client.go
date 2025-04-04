@@ -2,11 +2,14 @@ package challtestsrvclient
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -353,13 +356,22 @@ func (c *Client) RemoveServfailResponse(host string) ([]byte, error) {
 	return resp, nil
 }
 
+var unencodedKeyAuthRegex = regexp.MustCompile(`^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`)
+
 // AddDNS01Response adds an ACME DNS-01 challenge response for the provided host
 // to the challenge test server's DNS interfaces. The provided value will be
 // served for TXT queries for _acme-challenge.<host>. Any failure returns an
 // error that includes both the relevant operation and the payload.
 func (c *Client) AddDNS01Response(host, value string) ([]byte, error) {
+	if !strings.HasPrefix(host, "_acme-challenge.") {
+		host = "_acme-challenge." + host
+	}
 	if !strings.HasSuffix(host, ".") {
 		host += "."
+	}
+	if unencodedKeyAuthRegex.MatchString(value) {
+		h := sha256.Sum256([]byte(value))
+		value = base64.RawURLEncoding.EncodeToString(h[:])
 	}
 	payload := map[string]string{"host": host, "value": value}
 	resp, err := c.postURL(addTXT, payload)
@@ -376,6 +388,12 @@ func (c *Client) AddDNS01Response(host, value string) ([]byte, error) {
 // provided host from the challenge test server's DNS interfaces. Any failure
 // returns an error that includes both the relevant operation and the payload.
 func (c *Client) RemoveDNS01Response(host string) ([]byte, error) {
+	if !strings.HasPrefix(host, "_acme-challenge.") {
+		host = "_acme-challenge." + host
+	}
+	if !strings.HasSuffix(host, ".") {
+		host += "."
+	}
 	payload := map[string]string{"host": host}
 	resp, err := c.postURL(delTXT, payload)
 	if err != nil {
@@ -391,8 +409,8 @@ func (c *Client) RemoveDNS01Response(host string) ([]byte, error) {
 type DNSRequest struct {
 	Question struct {
 		Name   string `json:"Name"`
-		Qtype  int    `json:"Qtype"`
-		Qclass int    `json:"Qclass"`
+		Qtype  uint16 `json:"Qtype"`
+		Qclass uint16 `json:"Qclass"`
 	} `json:"Question"`
 }
 
