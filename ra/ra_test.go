@@ -958,7 +958,6 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
 		Id:             "1",
 		RegistrationID: 1,
-		DnsName:        "example.com",
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusPending),
 	})
@@ -969,7 +968,6 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
 		Id:             "2",
 		RegistrationID: 1,
-		DnsName:        "example.com",
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusValid),
 	})
@@ -981,7 +979,6 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
 		Id:             "3",
 		RegistrationID: 1,
-		DnsName:        "example.com",
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusPending),
 	})
@@ -1948,7 +1945,6 @@ func (msa *mockSAWithAuthzs) GetValidAuthorizations2(ctx context.Context, req *s
 func (msa *mockSAWithAuthzs) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return msa.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 		RegistrationID: req.RegistrationID,
-		DnsNames:       req.DnsNames,
 		Identifiers:    req.Identifiers,
 		ValidUntil:     req.ValidUntil,
 	})
@@ -3859,8 +3855,8 @@ func (msa *mockSARevocationWithAuthzs) GetValidAuthorizations2(ctx context.Conte
 		return authzs, nil
 	}
 
-	for _, name := range req.DnsNames {
-		authzs.Authzs = append(authzs.Authzs, &corepb.Authorization{DnsName: name, Identifier: identifier.NewDNS(name).ToProto()})
+	for _, ident := range req.Identifiers {
+		authzs.Authzs = append(authzs.Authzs, &corepb.Authorization{Identifier: ident})
 	}
 
 	return authzs, nil
