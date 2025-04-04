@@ -1285,6 +1285,7 @@ func TestGetOrder(t *testing.T) {
 		// input to NewOrderAndAuthzs
 		RegistrationID:   inputOrder.RegistrationID,
 		V2Authorizations: inputOrder.V2Authorizations,
+		DnsNames:         []string{"example.com"},
 		Identifiers:      inputOrder.Identifiers,
 		Expires:          inputOrder.Expires,
 		// The ID should have been set to 1 by the SA
@@ -1346,6 +1347,7 @@ func TestGetOrderWithProfile(t *testing.T) {
 		// input to NewOrderAndAuthzs
 		RegistrationID:   inputOrder.RegistrationID,
 		V2Authorizations: inputOrder.V2Authorizations,
+		DnsNames:         []string{"example.com"},
 		Identifiers:      inputOrder.Identifiers,
 		Expires:          inputOrder.Expires,
 		// The ID should have been set to 1 by the SA
