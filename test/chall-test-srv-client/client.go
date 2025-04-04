@@ -2,15 +2,15 @@ package challtestsrvclient
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
-
-	"github.com/eggsampler/acme/v3"
 )
 
 // Client is an HTTP client for https://github.com/letsencrypt/challtestsrv's
@@ -356,9 +356,11 @@ func (c *Client) RemoveServfailResponse(host string) ([]byte, error) {
 	return resp, nil
 }
 
+var unencodedKeyAuthRegex = regexp.MustCompile(`^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`)
+
 // AddDNS01Response adds an ACME DNS-01 challenge response for the provided host
 // to the challenge test server's DNS interfaces. The provided value will be
-// served for TXT queries for _acme-challenge.<host>.  Any failure returns an
+// served for TXT queries for _acme-challenge.<host>. Any failure returns an
 // error that includes both the relevant operation and the payload.
 func (c *Client) AddDNS01Response(host, value string) ([]byte, error) {
 	if !strings.HasPrefix(host, "_acme-challenge.") {
@@ -367,10 +369,9 @@ func (c *Client) AddDNS01Response(host, value string) ([]byte, error) {
 	if !strings.HasSuffix(host, ".") {
 		host += "."
 	}
-	_, err := base64.RawURLEncoding.DecodeString(value)
-	if err != nil {
-		// Found raw key authorization, encode it.
-		value = acme.EncodeDNS01KeyAuthorization(value)
+	if unencodedKeyAuthRegex.MatchString(value) {
+		h := sha256.Sum256([]byte(value))
+		value = base64.RawURLEncoding.EncodeToString(h[:])
 	}
 	payload := map[string]string{"host": host, "value": value}
 	resp, err := c.postURL(addTXT, payload)
