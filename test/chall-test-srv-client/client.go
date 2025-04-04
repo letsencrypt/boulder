@@ -2,12 +2,16 @@ package challtestsrvclient
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/eggsampler/acme/v3"
+	"github.com/miekg/dns"
 )
 
 // Client is an HTTP client for https://github.com/letsencrypt/challtestsrv's
@@ -355,11 +359,19 @@ func (c *Client) RemoveServfailResponse(host string) ([]byte, error) {
 
 // AddDNS01Response adds an ACME DNS-01 challenge response for the provided host
 // to the challenge test server's DNS interfaces. The provided value will be
-// served for TXT queries for _acme-challenge.<host>. Any failure returns an
+// served for TXT queries for _acme-challenge.<host>.  Any failure returns an
 // error that includes both the relevant operation and the payload.
 func (c *Client) AddDNS01Response(host, value string) ([]byte, error) {
+	if !strings.HasPrefix(host, "_acme-challenge.") {
+		host = "_acme-challenge." + host
+	}
 	if !strings.HasSuffix(host, ".") {
 		host += "."
+	}
+	_, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		// Found raw key authorization, encode it.
+		value = acme.EncodeDNS01KeyAuthorization(value)
 	}
 	payload := map[string]string{"host": host, "value": value}
 	resp, err := c.postURL(addTXT, payload)
@@ -376,6 +388,12 @@ func (c *Client) AddDNS01Response(host, value string) ([]byte, error) {
 // provided host from the challenge test server's DNS interfaces. Any failure
 // returns an error that includes both the relevant operation and the payload.
 func (c *Client) RemoveDNS01Response(host string) ([]byte, error) {
+	if !strings.HasPrefix(host, "_acme-challenge.") {
+		host = "_acme-challenge." + host
+	}
+	if !strings.HasSuffix(host, ".") {
+		host += "."
+	}
 	payload := map[string]string{"host": host}
 	resp, err := c.postURL(delTXT, payload)
 	if err != nil {
@@ -387,13 +405,23 @@ func (c *Client) RemoveDNS01Response(host string) ([]byte, error) {
 	return resp, nil
 }
 
+type dnsQuestion struct {
+	Name   string `json:"Name"`
+	Qtype  uint16 `json:"Qtype"`
+	Qclass uint16 `json:"Qclass"`
+}
+
+func (d *dnsQuestion) QtypeString() string {
+	return dns.TypeToString[d.Qtype]
+}
+
+func (d *dnsQuestion) QclassString() string {
+	return dns.ClassToString[d.Qclass]
+}
+
 // DNSRequest is a single DNS request in the request history.
 type DNSRequest struct {
-	Question struct {
-		Name   string `json:"Name"`
-		Qtype  int    `json:"Qtype"`
-		Qclass int    `json:"Qclass"`
-	} `json:"Question"`
+	Question dnsQuestion `json:"Question"`
 }
 
 // DNSRequestHistory returns the history of DNS requests made to the challenge
