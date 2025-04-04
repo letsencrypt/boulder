@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -17,17 +16,11 @@ import (
 
 func TestOCSPHappyPath(t *testing.T) {
 	t.Parallel()
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		// We no longer include AIA OCSP URIs in certificates issued by the
-		// config-next integration test environment.
-		t.Skip()
-	}
-
 	cert, err := authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 	if err != nil || len(cert.certs) < 1 {
 		t.Fatal("failed to issue cert for OCSP testing")
 	}
-	resp, err := ocsp_helper.Req(cert.certs[0], ocsp_helper.DefaultConfig)
+	resp, err := ocsp_helper.Req(cert.certs[0], ocspConf())
 	if err != nil {
 		t.Fatalf("want ocsp response, but got error: %s", err)
 	}
@@ -38,12 +31,6 @@ func TestOCSPHappyPath(t *testing.T) {
 
 func TestOCSPBadSerialPrefix(t *testing.T) {
 	t.Parallel()
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		// We no longer include AIA OCSP URIs in certificates issued by the
-		// config-next integration test environment.
-		t.Skip()
-	}
-
 	res, err := authAndIssue(nil, nil, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 	if err != nil || len(res.certs) < 1 {
 		t.Fatal("Failed to issue dummy cert for OCSP testing")
@@ -55,7 +42,7 @@ func TestOCSPBadSerialPrefix(t *testing.T) {
 	serialStr := []byte(core.SerialToString(cert.SerialNumber))
 	serialStr[0] = serialStr[0] + 1
 	cert.SerialNumber.SetString(string(serialStr), 16)
-	_, err = ocsp_helper.Req(cert, ocsp_helper.DefaultConfig)
+	_, err = ocsp_helper.Req(cert, ocspConf())
 	if err == nil {
 		t.Fatal("Expected error getting OCSP for request with invalid serial")
 	}
@@ -63,12 +50,6 @@ func TestOCSPBadSerialPrefix(t *testing.T) {
 
 func TestOCSPRejectedPrecertificate(t *testing.T) {
 	t.Parallel()
-	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "config-next") {
-		// We no longer include AIA OCSP URIs in certificates issued by the
-		// config-next integration test environment.
-		t.Skip()
-	}
-
 	domain := random_domain()
 	err := ctAddRejectHost(domain)
 	if err != nil {
@@ -93,7 +74,7 @@ func TestOCSPRejectedPrecertificate(t *testing.T) {
 		t.Fatalf("couldn't find rejected precert for %q", domain)
 	}
 
-	ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+	ocspConfig := ocspConf().WithExpectStatus(ocsp.Good)
 	_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 	if err != nil {
 		t.Errorf("requesting OCSP for rejected precertificate: %s", err)
