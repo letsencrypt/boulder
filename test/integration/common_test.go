@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -13,11 +12,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
-	"net/http"
 	"os"
+
+	challTestSrvClient "github.com/letsencrypt/boulder/test/chall-test-srv-client"
 
 	"github.com/eggsampler/acme/v3"
 )
+
+var testSrvClient = challTestSrvClient.NewClient("")
 
 func init() {
 	// Go tests get run in the directory their source code lives in. For these
@@ -58,55 +60,6 @@ func makeClient(contacts ...string) (*client, error) {
 	return &client{account, c}, nil
 }
 
-func addHTTP01Response(token, keyAuthorization string) error {
-	resp, err := http.Post("http://boulder.service.consul:8055/add-http01", "",
-		bytes.NewBufferString(fmt.Sprintf(`{
-		"token": "%s",
-		"content": "%s"
-	}`, token, keyAuthorization)))
-	if err != nil {
-		return fmt.Errorf("adding http-01 response: %s", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("adding http-01 response: status %d", resp.StatusCode)
-	}
-	resp.Body.Close()
-	return nil
-}
-
-func delHTTP01Response(token string) error {
-	resp, err := http.Post("http://boulder.service.consul:8055/del-http01", "",
-		bytes.NewBufferString(fmt.Sprintf(`{
-		"token": "%s"
-	}`, token)))
-	if err != nil {
-		return fmt.Errorf("deleting http-01 response: %s", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("deleting http-01 response: status %d", resp.StatusCode)
-	}
-	return nil
-}
-
-func addCAAIssueRecord(host string, issue string) error {
-	resp, err := http.Post("http://boulder.service.consul:8055/add-caa", "",
-		bytes.NewBufferString(fmt.Sprintf(`{
-			"host": "%s",
-			"policies": [{"tag": "issue", "value": "%s"}]
-		}`, host, issue)))
-	if err != nil {
-		return fmt.Errorf("adding CAA record: %s", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("adding CAA record: status %d", resp.StatusCode)
-	}
-	return nil
-}
-
 func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Identifier, cn bool, profile string, certToReplace *x509.Certificate) (*client, *acme.Order, error) {
 	var err error
 	if c == nil {
@@ -141,16 +94,22 @@ func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Ident
 			return nil, nil, fmt.Errorf("no HTTP challenge at %s", authUrl)
 		}
 
-		err = addHTTP01Response(chal.Token, chal.KeyAuthorization)
+		_, err = testSrvClient.AddHTTP01Response(chal.Token, chal.KeyAuthorization)
 		if err != nil {
-			return nil, nil, fmt.Errorf("adding HTTP-01 response: %s", err)
+			return nil, nil, err
 		}
 		chal, err = c.Client.UpdateChallenge(c.Account, chal)
 		if err != nil {
-			delHTTP01Response(chal.Token)
-			return nil, nil, fmt.Errorf("updating challenge: %s", err)
+			_, err = testSrvClient.RemoveHTTP01Response(chal.Token)
+			if err != nil {
+				return nil, nil, err
+			}
+			return nil, nil, err
 		}
-		delHTTP01Response(chal.Token)
+		_, err = testSrvClient.RemoveHTTP01Response(chal.Token)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	csr, err := makeCSR(csrKey, idents, cn)
