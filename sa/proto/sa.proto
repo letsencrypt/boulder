@@ -153,8 +153,7 @@ message Timestamps {
 message CountInvalidAuthorizationsRequest {
   // Next unused field number: 5
   int64 registrationID = 1;
-  // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
-  string dnsName = 2;
+  reserved 2; // Previously dnsName
   core.Identifier identifier = 4;
   // Count authorizations that expire in this range.
   Range range = 3;
