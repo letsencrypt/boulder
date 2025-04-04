@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/eggsampler/acme/v3"
-	"github.com/miekg/dns"
 )
 
 // Client is an HTTP client for https://github.com/letsencrypt/challtestsrv's
@@ -405,23 +404,13 @@ func (c *Client) RemoveDNS01Response(host string) ([]byte, error) {
 	return resp, nil
 }
 
-type dnsQuestion struct {
-	Name   string `json:"Name"`
-	Qtype  uint16 `json:"Qtype"`
-	Qclass uint16 `json:"Qclass"`
-}
-
-func (d *dnsQuestion) QtypeString() string {
-	return dns.TypeToString[d.Qtype]
-}
-
-func (d *dnsQuestion) QclassString() string {
-	return dns.ClassToString[d.Qclass]
-}
-
 // DNSRequest is a single DNS request in the request history.
 type DNSRequest struct {
-	Question dnsQuestion `json:"Question"`
+	Question struct {
+		Name   string `json:"Name"`
+		Qtype  uint16 `json:"Qtype"`
+		Qclass uint16 `json:"Qclass"`
+	} `json:"Question"`
 }
 
 // DNSRequestHistory returns the history of DNS requests made to the challenge

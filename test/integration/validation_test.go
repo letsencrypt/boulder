@@ -13,6 +13,7 @@ import (
 
 	"github.com/eggsampler/acme/v3"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/miekg/dns"
 )
 
 func TestMPICTLSALPN01(t *testing.T) {
@@ -86,7 +87,7 @@ func TestMPICTLSALPN01(t *testing.T) {
 
 	caaCount := 0
 	for _, event := range dnsEvents {
-		if event.Question.QtypeString() == "CAA" {
+		if event.Question.Qtype == dns.TypeCAA {
 			caaCount++
 		}
 	}
@@ -143,7 +144,7 @@ func TestMPICDNS01(t *testing.T) {
 
 	validationCount := 0
 	for _, event := range challDomainDNSEvents {
-		if event.Question.QtypeString() == "TXT" && strings.Contains(event.Question.Name, "_acme-challenge."+domain) {
+		if event.Question.Qtype == dns.TypeTXT && strings.Contains(event.Question.Name, "_acme-challenge."+domain) {
 			validationCount++
 		}
 	}
@@ -158,7 +159,7 @@ func TestMPICDNS01(t *testing.T) {
 
 	caaCount := 0
 	for _, event := range domainDNSEvents {
-		if event.Question.QtypeString() == "CAA" {
+		if event.Question.Qtype == dns.TypeCAA {
 			caaCount++
 		}
 	}
@@ -230,7 +231,7 @@ func TestMPICHTTP01(t *testing.T) {
 
 	caaCount := 0
 	for _, event := range dnsEvents {
-		if event.Question.QtypeString() == "CAA" {
+		if event.Question.Qtype == dns.TypeCAA {
 			caaCount++
 		}
 	}
