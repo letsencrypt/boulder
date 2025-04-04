@@ -311,7 +311,6 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewO
 		RegistrationID:   in.RegistrationID,
 		Created:          timestamppb.New(created),
 		Expires:          timestamppb.New(expires),
-		DnsNames:         in.DnsNames,
 		Identifiers:      in.Identifiers,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
