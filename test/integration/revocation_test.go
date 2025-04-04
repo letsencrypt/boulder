@@ -430,8 +430,6 @@ func TestRevocation(t *testing.T) {
 // In which case the revocation reason (but not revocation date) will be
 // updated to be keyCompromise.
 func TestReRevocation(t *testing.T) {
-	t.Parallel()
-
 	type authMethod string
 	var (
 		byAccount authMethod = "byAccount"
@@ -560,8 +558,6 @@ func TestReRevocation(t *testing.T) {
 }
 
 func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
-	t.Parallel()
-
 	type authMethod string
 	var (
 		byAccount authMethod = "byAccount"

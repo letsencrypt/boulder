@@ -65,7 +65,7 @@ func getPrecertByName(db *sql.DB, name string) (*x509.Certificate, error) {
 // expectOCSP500 queries OCSP for the given certificate and expects a 500 error.
 func expectOCSP500(cert *x509.Certificate) error {
 	// Provide a fallback, so even when the AIA OCSP URI is not present, we can test this behavior.
-	_, err := ocsp_helper.Req(cert, ocsp_helper.DefaultConfig.WithURLFallback("http://ca.example.org:4002/"))
+	_, err := ocsp_helper.Req(cert, ocspConf())
 	if err == nil {
 		return errors.New("Expected error getting OCSP for certificate that failed status storage")
 	}
@@ -94,7 +94,6 @@ func expectOCSP500(cert *x509.Certificate) error {
 // that a final certificate exists for any precertificate, though it is
 // similar in spirit).
 func TestIssuanceCertStorageFailed(t *testing.T) {
-	t.Parallel()
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	ctx := context.Background()
@@ -198,7 +197,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 
 	for range 300 {
 		_, err = ocsp_helper.Req(successfulCert,
-			ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise).WithURLFallback("http://ca.example.org:4002/"))
+			ocspConf().WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise))
 		if err == nil {
 			break
 		}
