@@ -1122,7 +1122,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Ensure gRPC response is complete.
-	if core.IsAnyNilOrZero(authzPB.Id, identifier.FromProtoWithDefault(authzPB), authzPB.Status, authzPB.Expires) {
+	if core.IsAnyNilOrZero(authzPB.Id, authzPB.Identifier, authzPB.Status, authzPB.Expires) {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -1315,7 +1315,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
 		})
-		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, identifier.FromProtoWithDefault(authzPB), authzPB.Status, authzPB.Expires) {
+		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, authzPB.Identifier, authzPB.Status, authzPB.Expires) {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
 		}
@@ -1566,7 +1566,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
-	ident := identifier.FromProtoWithDefault(authzPB)
+	ident := identifier.FromProto(authzPB.Identifier)
 
 	// Ensure gRPC response is complete.
 	if core.IsAnyNilOrZero(authzPB.Id, ident, authzPB.Status, authzPB.Expires) {
