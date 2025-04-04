@@ -104,6 +104,7 @@ type revocationCheck struct {
 
 // getCRL fetches a CRL, parses it, and checks the signature.
 func getCRL(t *testing.T, crlURL string, issuerCert *x509.Certificate) *x509.RevocationList {
+	t.Helper()
 	resp, err := http.Get(crlURL)
 	if err != nil {
 		t.Fatalf("getting CRL from %s: %s", crlURL, err)
@@ -509,7 +510,7 @@ func TestReRevocation(t *testing.T) {
 
 				// Check the OCSP response for the certificate again. It should still be
 				// revoked, with the same reason.
-				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason1)
+				ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason1).WithURLFallback("http://ca.example.org:4002/")
 				_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 				// Check the CRL for the certificate again. It should still be
 				// revoked, with the same reason.
@@ -521,7 +522,7 @@ func TestReRevocation(t *testing.T) {
 
 				// Check the OCSP response for the certificate again. It should now be
 				// revoked with reason keyCompromise.
-				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason2)
+				ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason2).WithURLFallback("http://ca.example.org:4002/")
 				_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 				// Check the CRL for the certificate again. It should now be
 				// revoked with reason keyCompromise.
@@ -554,6 +555,11 @@ func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 		res, err := authAndIssue(c, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 		test.AssertNotError(t, err, "authAndIssue failed")
 		cert := res.certs[0]
+		issuer := res.certs[1]
+
+		ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good).WithURLFallback("http://ca.example.org:4002/")
+		_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+		test.AssertNotError(t, err, "requesting OCSP for not yet revoked cert")
 
 		// Revoke the cert with reason keyCompromise, either authenticated via the
 		// issuing account, or via the certificate key itself.
@@ -566,9 +572,12 @@ func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 		test.AssertNotError(t, err, "failed to revoke certificate")
 
 		// Check the OCSP response. It should be revoked with reason = 1 (keyCompromise).
-		ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise)
+		ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise).WithURLFallback("http://ca.example.org:4002/")
 		_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 		test.AssertNotError(t, err, "requesting OCSP for revoked cert")
+
+		runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
+		fetchAndCheckRevoked(t, cert, issuer, ocsp.KeyCompromise)
 
 		// Attempt to create a new account using the compromised key. This should
 		// work when the key was just *reported* as compromised, but fail when

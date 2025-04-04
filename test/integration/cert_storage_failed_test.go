@@ -184,6 +184,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	test.AssertNotError(t, err, "issuing second cert")
 
 	successfulCert := res.certs[0]
+	successfulCertIssuer := res.certs[1]
 	err = revokeClient.RevokeCertificate(
 		revokeClient.Account,
 		successfulCert,
@@ -193,7 +194,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	test.AssertNotError(t, err, "revoking second certificate")
 
 	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
-	fetchAndCheckRevoked(t, successfulCert, ocsp.KeyCompromise)
+	fetchAndCheckRevoked(t, successfulCert, successfulCertIssuer, ocsp.KeyCompromise)
 
 	for range 300 {
 		_, err = ocsp_helper.Req(successfulCert,
