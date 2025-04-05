@@ -822,7 +822,7 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 
 func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	identType, ok := uintToIdentifierType[am.IdentifierType]
-	if !ok || identType != identifier.TypeDNS {
+	if !ok {
 		return nil, fmt.Errorf("unrecognized identifier type encoding %d", am.IdentifierType)
 	}
 

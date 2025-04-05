@@ -1948,7 +1948,6 @@ func (msa *mockSAWithAuthzs) GetValidAuthorizations2(ctx context.Context, req *s
 func (msa *mockSAWithAuthzs) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return msa.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 		RegistrationID: req.RegistrationID,
-		DnsNames:       req.DnsNames,
 		Identifiers:    req.Identifiers,
 		ValidUntil:     req.ValidUntil,
 	})
@@ -3859,8 +3858,8 @@ func (msa *mockSARevocationWithAuthzs) GetValidAuthorizations2(ctx context.Conte
 		return authzs, nil
 	}
 
-	for _, name := range req.DnsNames {
-		authzs.Authzs = append(authzs.Authzs, &corepb.Authorization{DnsName: name, Identifier: identifier.NewDNS(name).ToProto()})
+	for _, ident := range req.Identifiers {
+		authzs.Authzs = append(authzs.Authzs, &corepb.Authorization{Identifier: ident})
 	}
 
 	return authzs, nil
