@@ -2342,7 +2342,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount
 		// and CertificatesPerDomain limits.
 		timestamps, err := wfe.sa.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
-			DnsNames:    names,
 			Identifiers: idents.ToProtoSlice(),
 			Window:      durationpb.New(120 * 24 * time.Hour),
 			Limit:       1,
