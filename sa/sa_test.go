@@ -1355,50 +1355,45 @@ func TestGetAuthorizations2(t *testing.T) {
 	exp := fc.Now().AddDate(0, 0, 10).UTC()
 	attemptedAt := fc.Now()
 
-	nameA := "aaa"
-	nameB := "bbb"
-	nameC := "ccc"
-	names := []string{nameA, nameB, nameC}
-	identA := identifier.NewDNS(nameA)
-	identB := identifier.NewDNS(nameB)
-	identC := identifier.NewDNS(nameC)
-	idents := identifier.ACMEIdentifiers{identA, identB, identC}
-	nameD := "ddd"
-	identD := identifier.NewDNS(nameD)
+	identA := identifier.NewDNS("aaa")
+	identB := identifier.NewDNS("bbb")
+	identC := identifier.NewDNS("ccc")
+	identD := identifier.NewIP(netip.MustParseAddr("10.10.10.10"))
+	idents := identifier.ACMEIdentifiers{identA, identB, identC, identD}
+	identE := identifier.NewDNS("ddd")
 
 	createFinalizedAuthorization(t, sa, identA, exp, "valid", attemptedAt)
 	createPendingAuthorization(t, sa, identB, exp)
 	nearbyExpires := fc.Now().UTC().Add(time.Hour)
 	createPendingAuthorization(t, sa, identC, nearbyExpires)
+	createFinalizedAuthorization(t, sa, identD, exp, "valid", attemptedAt)
 
 	// Set an expiry cut off of 1 day in the future similar to `RA.NewOrderAndAuthzs`. This
 	// should exclude pending authorization C based on its nearbyExpires expiry
 	// value.
 	expiryCutoff := fc.Now().AddDate(0, 0, 1)
-	// Get authorizations for the names used above.
+	// Get authorizations for the identifiers used above.
 	authz, err := sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID: reg.Id,
-		DnsNames:       names,
 		Identifiers:    idents.ToProtoSlice(),
 		ValidUntil:     timestamppb.New(expiryCutoff),
 	})
 	// It should not fail
 	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
-	// We should get back two authorizations since one of the three authorizations
-	// created above expires too soon.
-	test.AssertEquals(t, len(authz.Authzs), 2)
+	// We should get back three authorizations since one of the four
+	// authorizations created above expires too soon.
+	test.AssertEquals(t, len(authz.Authzs), 3)
 
-	// Get authorizations for the names used above, and one name that doesn't exist
+	// Get authorizations for the identifiers used above, and one that doesn't exist
 	authz, err = sa.GetAuthorizations2(context.Background(), &sapb.GetAuthorizationsRequest{
 		RegistrationID: reg.Id,
-		DnsNames:       append(names, nameD),
-		Identifiers:    append(idents.ToProtoSlice(), identD.ToProto()),
+		Identifiers:    append(idents.ToProtoSlice(), identE.ToProto()),
 		ValidUntil:     timestamppb.New(expiryCutoff),
 	})
 	// It should not fail
 	test.AssertNotError(t, err, "sa.GetAuthorizations2 failed")
-	// It should still return only two authorizations
-	test.AssertEquals(t, len(authz.Authzs), 2)
+	// It should still return only three authorizations
+	test.AssertEquals(t, len(authz.Authzs), 3)
 }
 
 func TestFasterGetOrderForNames(t *testing.T) {
@@ -2396,8 +2391,8 @@ func TestCountPendingAuthorizations2(t *testing.T) {
 
 func TestAuthzModelMapToPB(t *testing.T) {
 	baseExpires := time.Now()
-	input := map[string]authzModel{
-		"example.com": {
+	input := map[identifier.ACMEIdentifier]authzModel{
+		identifier.NewDNS("example.com"): {
 			ID:              123,
 			IdentifierType:  0,
 			IdentifierValue: "example.com",
@@ -2406,7 +2401,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 			Expires:         baseExpires,
 			Challenges:      4,
 		},
-		"www.example.com": {
+		identifier.NewDNS("www.example.com"): {
 			ID:              124,
 			IdentifierType:  0,
 			IdentifierValue: "www.example.com",
@@ -2415,7 +2410,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 			Expires:         baseExpires,
 			Challenges:      1,
 		},
-		"other.example.net": {
+		identifier.NewDNS("other.example.net"): {
 			ID:              125,
 			IdentifierType:  0,
 			IdentifierValue: "other.example.net",
@@ -2423,6 +2418,15 @@ func TestAuthzModelMapToPB(t *testing.T) {
 			Status:          1,
 			Expires:         baseExpires,
 			Challenges:      3,
+		},
+		identifier.NewIP(netip.MustParseAddr("10.10.10.10")): {
+			ID:              126,
+			IdentifierType:  1,
+			IdentifierValue: "10.10.10.10",
+			RegistrationID:  77,
+			Status:          1,
+			Expires:         baseExpires,
+			Challenges:      5,
 		},
 	}
 
@@ -2432,11 +2436,12 @@ func TestAuthzModelMapToPB(t *testing.T) {
 	}
 
 	for _, authzPB := range out.Authzs {
-		model, ok := input[authzPB.Identifier.Value]
+		model, ok := input[identifier.FromProto(authzPB.Identifier)]
 		if !ok {
 			t.Errorf("output had element for %q, an identifier not present in input", authzPB.Identifier.Value)
 		}
 		test.AssertEquals(t, authzPB.Id, fmt.Sprintf("%d", model.ID))
+		test.AssertEquals(t, authzPB.Identifier.Type, string(uintToIdentifierType[model.IdentifierType]))
 		test.AssertEquals(t, authzPB.Identifier.Value, model.IdentifierValue)
 		test.AssertEquals(t, authzPB.RegistrationID, model.RegistrationID)
 		test.AssertEquals(t, authzPB.Status, string(uintToStatus[model.Status]))
@@ -2458,7 +2463,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 			test.AssertEquals(t, authzPB.Challenges[0].Type, "tls-alpn-01")
 		}
 
-		delete(input, authzPB.Identifier.Value)
+		delete(input, identifier.FromProto(authzPB.Identifier))
 	}
 
 	for k := range input {
@@ -2470,15 +2475,17 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
-	// Create two new valid authorizations
+	// Create three new valid authorizations
 	reg := createWorkingRegistration(t, sa)
 	identA := identifier.NewDNS("a.example.com")
 	identB := identifier.NewDNS("b.example.com")
+	identC := identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee"))
 	expires := fc.Now().Add(time.Hour * 24 * 7).UTC()
 	attemptedAt := fc.Now()
 
 	authzIDA := createFinalizedAuthorization(t, sa, identA, expires, "valid", attemptedAt)
 	authzIDB := createFinalizedAuthorization(t, sa, identB, expires, "valid", attemptedAt)
+	authzIDC := createFinalizedAuthorization(t, sa, identC, expires, "valid", attemptedAt)
 
 	orderExpr := fc.Now().Truncate(time.Second)
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
@@ -2488,8 +2495,9 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 			Identifiers: []*corepb.Identifier{
 				identifier.NewDNS("a.example.com").ToProto(),
 				identifier.NewDNS("b.example.com").ToProto(),
+				identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")).ToProto(),
 			},
-			V2Authorizations: []int64{authzIDA, authzIDB},
+			V2Authorizations: []int64{authzIDA, authzIDB, authzIDC},
 		},
 	})
 	test.AssertNotError(t, err, "AddOrder failed")
@@ -2502,15 +2510,20 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 		})
 	test.AssertNotError(t, err, "sa.GetValidOrderAuthorizations failed")
 	test.AssertNotNil(t, authzPBs, "sa.GetValidOrderAuthorizations result was nil")
-	test.AssertEquals(t, len(authzPBs.Authzs), 2)
+	test.AssertEquals(t, len(authzPBs.Authzs), 3)
 
-	namesToCheck := map[string]int64{"a.example.com": authzIDA, "b.example.com": authzIDB}
+	identsToCheck := map[identifier.ACMEIdentifier]int64{
+		identifier.NewDNS("a.example.com"):                                              authzIDA,
+		identifier.NewDNS("b.example.com"):                                              authzIDB,
+		identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")): authzIDC,
+	}
 	for _, a := range authzPBs.Authzs {
-		if fmt.Sprintf("%d", namesToCheck[a.Identifier.Value]) != a.Id {
+		ident := identifier.ACMEIdentifier{Type: identifier.IdentifierType(a.Identifier.Type), Value: a.Identifier.Value}
+		if fmt.Sprintf("%d", identsToCheck[ident]) != a.Id {
 			t.Fatalf("incorrect identifier %q with id %s", a.Identifier.Value, a.Id)
 		}
 		test.AssertEquals(t, a.Expires.AsTime(), expires)
-		delete(namesToCheck, a.Identifier.Value)
+		delete(identsToCheck, ident)
 	}
 
 	// Getting the order authorizations for an order that doesn't exist should return nothing
@@ -2567,51 +2580,47 @@ func TestGetValidAuthorizations2(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		regID       int64
-		dnsNames    []string
 		identifiers []*corepb.Identifier
 		profile     string
 		validUntil  time.Time
 		wantIDs     []int64
 	}{
 		{
-			name:        "happy path",
+			name:        "happy path, DNS identifier",
 			regID:       1,
-			dnsNames:    []string{"aaa"},
 			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
 			profile:     "",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{aaa},
 		},
 		{
-			name:       "happy path, no Identifiers",
-			regID:      1,
-			dnsNames:   []string{"aaa"},
-			profile:    "",
-			validUntil: fc.Now().Add(time.Hour),
-			wantIDs:    []int64{aaa},
-		},
-		{
-			name:        "happy path, no DnsNames",
+			name:        "happy path, IP identifier",
 			regID:       1,
-			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
+			identifiers: []*corepb.Identifier{identifier.NewIP(netip.MustParseAddr("10.10.10.10")).ToProto()},
 			profile:     "",
 			validUntil:  fc.Now().Add(time.Hour),
-			wantIDs:     []int64{aaa},
+			wantIDs:     []int64{},
 		},
 		{
 			name:        "different regID",
 			regID:       2,
-			dnsNames:    []string{"aaa"},
 			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
 			profile:     "",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{},
 		},
 		{
-			name:        "different dnsName",
+			name:        "different DNS identifier",
 			regID:       1,
-			dnsNames:    []string{"bbb"},
 			identifiers: []*corepb.Identifier{identifier.NewDNS("bbb").ToProto()},
+			profile:     "",
+			validUntil:  fc.Now().Add(time.Hour),
+			wantIDs:     []int64{},
+		},
+		{
+			name:        "different IP identifier",
+			regID:       1,
+			identifiers: []*corepb.Identifier{identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")).ToProto()},
 			profile:     "",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{},
@@ -2619,7 +2628,6 @@ func TestGetValidAuthorizations2(t *testing.T) {
 		{
 			name:        "different profile",
 			regID:       1,
-			dnsNames:    []string{"aaa"},
 			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
 			profile:     "test",
 			validUntil:  fc.Now().Add(time.Hour),
@@ -2628,7 +2636,6 @@ func TestGetValidAuthorizations2(t *testing.T) {
 		{
 			name:        "too-far-out validUntil",
 			regID:       2,
-			dnsNames:    []string{"aaa"},
 			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
 			profile:     "",
 			validUntil:  fc.Now().Add(25 * time.Hour),
@@ -2638,7 +2645,6 @@ func TestGetValidAuthorizations2(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := sa.GetValidAuthorizations2(context.Background(), &sapb.GetValidAuthorizationsRequest{
 				RegistrationID: tc.regID,
-				DnsNames:       tc.dnsNames,
 				Identifiers:    tc.identifiers,
 				Profile:        tc.profile,
 				ValidUntil:     timestamppb.New(tc.validUntil),
