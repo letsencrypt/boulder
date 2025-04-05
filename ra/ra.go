@@ -1181,15 +1181,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 
 	idents := identifier.FromProtoSliceWithDefault(order)
 
-	// TODO(#7311): Remove this once all SA instances can handle Identifiers.
-	dnsNames, err := idents.ToDNSSlice()
-	if err != nil {
-		return nil, fmt.Errorf("parsing identifiers: %w", err)
-	}
-
 	isRenewal := false
 	timestamps, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
-		DnsNames:    dnsNames,
 		Identifiers: idents.ToProtoSlice(),
 		Window:      durationpb.New(120 * 24 * time.Hour),
 		Limit:       1,
@@ -2329,7 +2322,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// for this account
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
 		AcctID:      req.RegistrationID,
-		DnsNames:    dnsNames,
 		Identifiers: idents.ToProtoSlice(),
 	})
 	// If there was an error and it wasn't an acceptable "NotFound" error, return
