@@ -241,7 +241,6 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		return &corepb.Authorization{
 			Id:             "1",
 			RegistrationID: 1,
-			DnsName:        "not-an-example.com",
 			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusValid),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
@@ -253,7 +252,6 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		return &corepb.Authorization{
 			Id:             "2",
 			RegistrationID: 1,
-			DnsName:        "not-an-example.com",
 			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
@@ -267,7 +265,6 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		return &corepb.Authorization{
 			Id:             "3",
 			RegistrationID: 1,
-			DnsName:        "not-an-example.com",
 			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(-1, 0, 0)),
@@ -283,7 +280,6 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		return &corepb.Authorization{
 			Id:             "5",
 			RegistrationID: 2,
-			DnsName:        "not-an-example.com",
 			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
@@ -1747,7 +1743,6 @@ func (ra *RAWithFailedChallenge) GetAuthorization(ctx context.Context, id *rapb.
 	return &corepb.Authorization{
 		Id:             "6",
 		RegistrationID: 1,
-		DnsName:        "not-an-example.com",
 		Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 		Status:         string(core.StatusInvalid),
 		Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
