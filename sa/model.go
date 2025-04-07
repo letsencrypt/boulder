@@ -672,7 +672,7 @@ func newAuthzReqToModel(authz *sapb.NewAuthzRequest, profile string) (*authzMode
 // Deprecated: this function is only used as part of test setup, do not
 // introduce any new uses in production code.
 func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
-	ident := identifier.FromProtoWithDefault(authz)
+	ident := identifier.FromProto(authz.Identifier)
 
 	am := &authzModel{
 		IdentifierType:  identifierTypeToUint[ident.ToProto().Type],
@@ -834,7 +834,6 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	pb := &corepb.Authorization{
 		Id:                     fmt.Sprintf("%d", am.ID),
 		Status:                 string(uintToStatus[am.Status]),
-		DnsName:                am.IdentifierValue,
 		Identifier:             identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}.ToProto(),
 		RegistrationID:         am.RegistrationID,
 		Expires:                timestamppb.New(am.Expires),

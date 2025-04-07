@@ -37,9 +37,12 @@ func TestFermat(t *testing.T) {
 	chal, ok := auth.ChallengeMap[acme.ChallengeTypeHTTP01]
 	test.Assert(t, ok, "getting HTTP-01 challenge")
 
-	err = addHTTP01Response(chal.Token, chal.KeyAuthorization)
-	defer delHTTP01Response(chal.Token)
-	test.AssertNotError(t, err, "adding HTTP-01 response")
+	_, err = testSrvClient.AddHTTP01Response(chal.Token, chal.KeyAuthorization)
+	test.AssertNotError(t, err, "")
+	defer func() {
+		_, err = testSrvClient.RemoveHTTP01Response(chal.Token)
+		test.AssertNotError(t, err, "")
+	}()
 
 	chal, err = c.Client.UpdateChallenge(c.Account, chal)
 	test.AssertNotError(t, err, "updating HTTP-01 challenge")
