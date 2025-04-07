@@ -288,7 +288,7 @@ func TestRevocation(t *testing.T) {
 		}
 
 		// Initially, the cert should have a Good OCSP response (only via OCSP; the CRL is unchanged by issuance).
-		ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+		ocspConfig := ocspConf().WithExpectStatus(ocsp.Good)
 		_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 		test.AssertNotError(t, err, "requesting OCSP for precert")
 
