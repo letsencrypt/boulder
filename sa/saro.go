@@ -715,6 +715,11 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 		return nil, errIncompleteRequest
 	}
 
+	idType, ok := identifierTypeToUint[ident.ToProto().Type]
+	if !ok {
+		return nil, fmt.Errorf("unsupported identifier type %q", ident.ToProto().Type)
+	}
+
 	var count int64
 	err := ssa.dbReadOnlyMap.SelectOne(
 		ctx,
@@ -728,7 +733,7 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 		identifierValue = :identValue`,
 		map[string]interface{}{
 			"regID":           req.RegistrationID,
-			"identType":       identifierTypeToUint[ident.ToProto().Type],
+			"identType":       idType,
 			"identValue":      ident.Value,
 			"expiresEarliest": req.Range.Earliest.AsTime(),
 			"expiresLatest":   req.Range.Latest.AsTime(),
