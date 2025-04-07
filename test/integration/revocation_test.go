@@ -44,8 +44,9 @@ func isPrecert(cert *x509.Certificate) bool {
 }
 
 // ocspConf returns an OCSP helper config with a fallback URL that matches what is
-// configured for our CA / OCSP responder. This allows continuing to test OCSP
-// service even after we stop including OCSP URLs in certificates.
+// configured for our CA / OCSP responder. If an OCSP URL is present in a certificate,
+// ocsp_helper will use that; otherwise it will use the URLFallback. This allows
+// continuing to test OCSP service even after we stop including OCSP URLs in certificates.
 func ocspConf() ocsp_helper.Config {
 	return ocsp_helper.DefaultConfig.WithURLFallback("http://ca.example.org:4002/")
 }
@@ -286,6 +287,11 @@ func TestRevocation(t *testing.T) {
 			t.Fatalf("unrecognized cert kind %q", tc.kind)
 		}
 
+		// Initially, the cert should have a Good OCSP response (only via OCSP; the CRL is unchanged by issuance).
+		ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+		_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+		test.AssertNotError(t, err, "requesting OCSP for precert")
+
 		// Set up the account and key that we'll use to revoke the cert.
 		switch tc.method {
 		case byAccount:
@@ -460,6 +466,11 @@ func TestReRevocation(t *testing.T) {
 			test.AssertNotError(t, err, "authAndIssue failed")
 			cert := res.certs[0]
 			issuer := res.certs[1]
+
+			// Initially, the cert should have a Good OCSP response (only via OCSP; the CRL is unchanged by issuance).
+			ocspConfig := ocspConf().WithExpectStatus(ocsp.Good)
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+			test.AssertNotError(t, err, "requesting OCSP for precert")
 
 			// Set up the account and key that we'll use to revoke the cert.
 			var revokeClient *client
