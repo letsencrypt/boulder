@@ -1554,7 +1554,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, identifier.FromProtoWithDefault(req.Authz), req.Authz.Status, req.Authz.Expires) {
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, req.Authz.Identifier, req.Authz.Status, req.Authz.Expires) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -1754,12 +1754,27 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 		return berrors.AlreadyRevokedError("unable to re-revoke serial %q which is already revoked for keyCompromise", serialString)
 	}
 
+	cert, err := ra.SA.GetCertificate(ctx, &sapb.Serial{Serial: serialString})
+	if err != nil {
+		return berrors.NotFoundError("unable to confirm that serial %q was ever issued: %s", serialString, err)
+	}
+	x509Cert, err := x509.ParseCertificate(cert.Der)
+	if err != nil {
+		return err
+	}
+
+	shardIdx, err := crlShard(x509Cert)
+	if err != nil {
+		return err
+	}
+
 	_, err = ra.SA.UpdateRevokedCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
 		Reason:   int64(ocsp.KeyCompromise),
 		Date:     timestamppb.New(ra.clk.Now()),
 		Backdate: status.RevokedDate,
 		IssuerID: int64(issuerID),
+		ShardIdx: shardIdx,
 	})
 	if err != nil {
 		return err
@@ -2204,7 +2219,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
-	ident := identifier.FromProtoWithDefault(req)
+	ident := identifier.FromProto(req.Identifier)
 
 	if core.IsAnyNilOrZero(req, req.Id, ident, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest

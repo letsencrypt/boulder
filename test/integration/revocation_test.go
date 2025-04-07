@@ -89,45 +89,69 @@ func getAllCRLs(t *testing.T) map[string][]*x509.RevocationList {
 		// 10 is the number of shards configured in test/config*/crl-updater.json
 		for i := range 10 {
 			crlURL := fmt.Sprintf("%s%d.crl", issuer.CRLURLBase, i+1)
-			resp, err := http.Get(crlURL)
-			if err != nil {
-				t.Fatalf("getting CRL from %s: %s", crlURL, err)
-			}
-			if resp.StatusCode != http.StatusOK {
-				t.Fatalf("fetching %s: status code %d", crlURL, resp.StatusCode)
-			}
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				t.Fatalf("reading CRL from %s: %s", crlURL, err)
-			}
-			resp.Body.Close()
-
-			list, err := x509.ParseRevocationList(body)
-			if err != nil {
-				t.Fatalf("parsing CRL from %s: %s (bytes: %x)", crlURL, err, body)
-			}
-
-			err = list.CheckSignatureFrom(issuerCert)
-			if err != nil {
-				t.Errorf("checking CRL signature on %s from %s: %s",
-					crlURL, issuerCert.Subject, err)
-			}
-
-			idpURIs, err := idp.GetIDPURIs(list.Extensions)
-			if err != nil {
-				t.Fatalf("getting IDP URIs: %s", err)
-			}
-			if len(idpURIs) != 1 {
-				t.Errorf("CRL at %s: expected 1 IDP URI, got %s", crlURL, idpURIs)
-			}
-			if idpURIs[0] != crlURL {
-				t.Errorf("fetched CRL from %s, got IDP of %s (should be same)", crlURL, idpURIs[0])
-			}
+			list := getCRL(t, crlURL, issuerCert)
 
 			ret[issuerSKID] = append(ret[issuerSKID], list)
 		}
 	}
 	return ret
+}
+
+// getCRL fetches a CRL, parses it, and checks the signature.
+func getCRL(t *testing.T, crlURL string, issuerCert *x509.Certificate) *x509.RevocationList {
+	resp, err := http.Get(crlURL)
+	if err != nil {
+		t.Fatalf("getting CRL from %s: %s", crlURL, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("fetching %s: status code %d", crlURL, resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading CRL from %s: %s", crlURL, err)
+	}
+	resp.Body.Close()
+
+	list, err := x509.ParseRevocationList(body)
+	if err != nil {
+		t.Fatalf("parsing CRL from %s: %s (bytes: %x)", crlURL, err, body)
+	}
+
+	err = list.CheckSignatureFrom(issuerCert)
+	if err != nil {
+		t.Errorf("checking CRL signature on %s from %s: %s",
+			crlURL, issuerCert.Subject, err)
+	}
+
+	idpURIs, err := idp.GetIDPURIs(list.Extensions)
+	if err != nil {
+		t.Fatalf("getting IDP URIs: %s", err)
+	}
+	if len(idpURIs) != 1 {
+		t.Errorf("CRL at %s: expected 1 IDP URI, got %s", crlURL, idpURIs)
+	}
+	if idpURIs[0] != crlURL {
+		t.Errorf("fetched CRL from %s, got IDP of %s (should be same)", crlURL, idpURIs[0])
+	}
+	return list
+}
+
+func fetchAndCheckRevoked(t *testing.T, cert, issuer *x509.Certificate, expectedReason int) {
+	t.Helper()
+	if len(cert.CRLDistributionPoints) != 1 {
+		t.Errorf("expected certificate to have one CRLDistributionPoints field")
+	}
+	crlURL := cert.CRLDistributionPoints[0]
+	list := getCRL(t, crlURL, issuer)
+	for _, entry := range list.RevokedCertificateEntries {
+		if entry.SerialNumber.Cmp(cert.SerialNumber) == 0 {
+			if entry.ReasonCode != expectedReason {
+				t.Errorf("serial %x found on CRL %s with reason %d, want %d", entry.SerialNumber, crlURL, entry.ReasonCode, expectedReason)
+			}
+			return
+		}
+	}
+	t.Errorf("serial %x not found on CRL %s, expected it to be revoked with reason %d", cert.SerialNumber, crlURL, expectedReason)
 }
 
 func checkRevoked(t *testing.T, revocations map[string][]*x509.RevocationList, cert *x509.Certificate, expectedReason int) {
@@ -421,6 +445,7 @@ func TestReRevocation(t *testing.T) {
 			res, err := authAndIssue(issueClient, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 			test.AssertNotError(t, err, "authAndIssue failed")
 			cert := res.certs[0]
+			issuer := res.certs[1]
 
 			// Initially, the cert should have a Good OCSP response.
 			ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
@@ -457,11 +482,10 @@ func TestReRevocation(t *testing.T) {
 			)
 			test.AssertNotError(t, err, "initial revocation should have succeeded")
 
-			// Check the OCSP response for the certificate again. It should now be
+			// Check the CRL for the certificate again. It should now be
 			// revoked.
-			ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason1)
-			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
-			test.AssertNotError(t, err, "requesting OCSP for revoked cert")
+			runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
+			fetchAndCheckRevoked(t, cert, issuer, tc.reason1)
 
 			// Set up the account and key that we'll use to *re*-revoke the cert.
 			switch tc.method2 {
@@ -498,7 +522,10 @@ func TestReRevocation(t *testing.T) {
 				// revoked, with the same reason.
 				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason1)
 				_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
-				test.AssertNotError(t, err, "requesting OCSP for revoked cert")
+				// Check the CRL for the certificate again. It should still be
+				// revoked, with the same reason.
+				runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
+				fetchAndCheckRevoked(t, cert, issuer, tc.reason1)
 
 			case false:
 				test.AssertNotError(t, err, "second revocation should have succeeded")
@@ -507,7 +534,10 @@ func TestReRevocation(t *testing.T) {
 				// revoked with reason keyCompromise.
 				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason2)
 				_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
-				test.AssertNotError(t, err, "requesting OCSP for revoked cert")
+				// Check the CRL for the certificate again. It should now be
+				// revoked with reason keyCompromise.
+				runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
+				fetchAndCheckRevoked(t, cert, issuer, tc.reason2)
 			}
 		})
 	}

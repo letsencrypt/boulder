@@ -958,7 +958,6 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
 		Id:             "1",
 		RegistrationID: 1,
-		DnsName:        "example.com",
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusPending),
 	})
@@ -969,7 +968,6 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
 		Id:             "2",
 		RegistrationID: 1,
-		DnsName:        "example.com",
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusValid),
 	})
@@ -981,7 +979,6 @@ func TestDeactivateAuthorization_Pausing(t *testing.T) {
 	_, err = ra.DeactivateAuthorization(ctx, &corepb.Authorization{
 		Id:             "3",
 		RegistrationID: 1,
-		DnsName:        "example.com",
 		Identifier:     identifier.NewDNS("example.com").ToProto(),
 		Status:         string(core.StatusPending),
 	})
@@ -1948,7 +1945,6 @@ func (msa *mockSAWithAuthzs) GetValidAuthorizations2(ctx context.Context, req *s
 func (msa *mockSAWithAuthzs) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	return msa.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 		RegistrationID: req.RegistrationID,
-		DnsNames:       req.DnsNames,
 		Identifiers:    req.Identifiers,
 		ValidUntil:     req.ValidUntil,
 	})
@@ -3616,6 +3612,35 @@ func (msar *mockSARevocation) GetCertificateStatus(_ context.Context, req *sapb.
 	return nil, berrors.UnknownSerialError()
 }
 
+func (msar *mockSARevocation) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	var serialBytes [16]byte
+	_, _ = rand.Read(serialBytes[:])
+	serial := big.NewInt(0).SetBytes(serialBytes[:])
+
+	key, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+
+	template := &x509.Certificate{
+		SerialNumber:          serial,
+		DNSNames:              []string{"revokememaybe.example.com"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(6 * 24 * time.Hour),
+		IssuingCertificateURL: []string{"http://localhost:4001/acme/issuer-cert/1234"},
+		CRLDistributionPoints: []string{"http://example.com/123.crl"},
+	}
+
+	testCertDER, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
+	if err != nil {
+		return nil, err
+	}
+
+	return &corepb.Certificate{
+		Der: testCertDER,
+	}, nil
+}
+
 func (msar *mockSARevocation) RevokeCertificate(_ context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	if _, present := msar.revoked[req.Serial]; present {
 		return nil, berrors.AlreadyRevokedError("already revoked")
@@ -3830,8 +3855,8 @@ func (msa *mockSARevocationWithAuthzs) GetValidAuthorizations2(ctx context.Conte
 		return authzs, nil
 	}
 
-	for _, name := range req.DnsNames {
-		authzs.Authzs = append(authzs.Authzs, &corepb.Authorization{DnsName: name, Identifier: identifier.NewDNS(name).ToProto()})
+	for _, ident := range req.Identifiers {
+		authzs.Authzs = append(authzs.Authzs, &corepb.Authorization{Identifier: ident})
 	}
 
 	return authzs, nil

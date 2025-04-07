@@ -23,11 +23,11 @@ type MockCA struct {
 
 // IssueCertificate is a mock
 func (ca *MockCA) IssueCertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssueCertificateResponse, error) {
-	precert, err := ca.IssuePrecertificate(ctx, req)
+	precert, err := ca.issuePrecertificate(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	cert, err := ca.IssueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
+	cert, err := ca.issueCertificateForPrecertificate(ctx, &capb.IssueCertificateForPrecertificateRequest{
 		DER:             precert.DER,
 		SCTs:            nil,
 		RegistrationID:  req.RegistrationID,
@@ -40,8 +40,8 @@ func (ca *MockCA) IssueCertificate(ctx context.Context, req *capb.IssueCertifica
 	return &capb.IssueCertificateResponse{DER: cert.Der}, nil
 }
 
-// IssuePrecertificate is a mock
-func (ca *MockCA) IssuePrecertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
+// issuePrecertificate is a mock
+func (ca *MockCA) issuePrecertificate(_ context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
 	if ca.PEM == nil {
 		return nil, fmt.Errorf("MockCA's PEM field must be set before calling IssueCertificate")
 	}
@@ -58,8 +58,8 @@ func (ca *MockCA) IssuePrecertificate(ctx context.Context, req *capb.IssueCertif
 	}, nil
 }
 
-// IssueCertificateForPrecertificate is a mock
-func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+// issueCertificateForPrecertificate is a mock
+func (ca *MockCA) issueCertificateForPrecertificate(_ context.Context, req *capb.IssueCertificateForPrecertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) { //nolint:unparam // `error` is always nil
 	now := time.Now()
 	expires := now.Add(1 * time.Hour)
 
