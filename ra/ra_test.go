@@ -889,7 +889,6 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	_, err = ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
 		Order: &corepb.Order{
 			Status:         string(core.StatusReady),
-			DnsNames:       []string{"www.example.com"},
 			Identifiers:    []*corepb.Identifier{identifier.NewDNS("www.example.com").ToProto()},
 			Id:             order.Id,
 			RegistrationID: Registration.Id,
@@ -1913,7 +1912,6 @@ func (msa *mockSAWithAuthzs) NewOrderAndAuthzs(ctx context.Context, req *sapb.Ne
 		// Fields from the input new order request.
 		RegistrationID:         req.NewOrder.RegistrationID,
 		Expires:                req.NewOrder.Expires,
-		DnsNames:               req.NewOrder.DnsNames,
 		Identifiers:            req.NewOrder.Identifiers,
 		V2Authorizations:       authzIDs,
 		CertificateProfileName: req.NewOrder.CertificateProfileName,
@@ -2336,28 +2334,6 @@ func TestFinalizeOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs, ready status")
 
-	validatedOrderNoIdents, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:   Registration.Id,
-			Expires:          timestamppb.New(exp),
-			DnsNames:         []string{"not-example.com", "www.not-example.com"},
-			V2Authorizations: []int64{authzIDA, authzIDB},
-		},
-	})
-	test.AssertNotError(t, err, "Could not add test order without Identifiers")
-	validatedOrderNoDnsNames, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID: Registration.Id,
-			Expires:        timestamppb.New(exp),
-			Identifiers: []*corepb.Identifier{
-				identifier.NewDNS("not-example.com").ToProto(),
-				identifier.NewDNS("www.not-example.com").ToProto(),
-			},
-			V2Authorizations: []int64{authzIDA, authzIDB},
-		},
-	})
-	test.AssertNotError(t, err, "Could not add test order without DnsNames")
-
 	testCases := []struct {
 		Name           string
 		OrderReq       *rapb.FinalizeOrderRequest
@@ -2389,7 +2365,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					DnsNames:       []string{},
 					Identifiers:    []*corepb.Identifier{},
 				},
 				Csr: oneDomainCSR,
@@ -2403,7 +2378,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusValid),
-					DnsNames:       []string{"a.com"},
 					Identifiers:    []*corepb.Identifier{identifier.NewDNS("a.com").ToProto()},
 				},
 				Csr: oneDomainCSR,
@@ -2417,7 +2391,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusPending),
-					DnsNames:       []string{"a.com"},
 					Identifiers:    []*corepb.Identifier{identifier.NewDNS("a.com").ToProto()},
 				},
 				Csr: oneDomainCSR,
@@ -2432,7 +2405,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					DnsNames:       []string{"a.com"},
 					Identifiers:    []*corepb.Identifier{identifier.NewDNS("a.com").ToProto()},
 				},
 				Csr: []byte{0xC0, 0xFF, 0xEE},
@@ -2446,7 +2418,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					DnsNames:       []string{"a.com", "b.com"},
 					Identifiers: []*corepb.Identifier{
 						identifier.NewDNS("a.com").ToProto(),
 						identifier.NewDNS("b.com").ToProto(),
@@ -2463,7 +2434,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					DnsNames:       []string{"a.com"},
 					Identifiers:    []*corepb.Identifier{identifier.NewDNS("a.com").ToProto()},
 				},
 				Csr: twoDomainCSR,
@@ -2477,7 +2447,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					DnsNames:       []string{"foobar.com"},
 					Identifiers:    []*corepb.Identifier{identifier.NewDNS("foobar.com").ToProto()},
 				},
 				Csr: oneDomainCSR,
@@ -2491,7 +2460,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:                1,
 					RegistrationID:    1,
 					Status:            string(core.StatusReady),
-					DnsNames:          []string{"example.org"},
 					Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.org").ToProto()},
 					Expires:           timestamppb.New(exp),
 					CertificateSerial: "",
@@ -2506,7 +2474,6 @@ func TestFinalizeOrder(t *testing.T) {
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
 					Status:            string(core.StatusReady),
-					DnsNames:          []string{"a.com"},
 					Identifiers:       []*corepb.Identifier{identifier.NewDNS("a.com").ToProto()},
 					Id:                fakeRegOrder.Id,
 					RegistrationID:    fakeRegID,
@@ -2523,8 +2490,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with missing authorizations",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:   string(core.StatusReady),
-					DnsNames: []string{"a.com", "b.com"},
+					Status: string(core.StatusReady),
 					Identifiers: []*corepb.Identifier{
 						identifier.NewDNS("a.com").ToProto(),
 						identifier.NewDNS("b.com").ToProto(),
@@ -2544,22 +2510,6 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with correct authorizations, ready status",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: validatedOrder,
-				Csr:   validCSR,
-			},
-			ExpectIssuance: true,
-		},
-		{
-			Name: "Order with no Identifiers",
-			OrderReq: &rapb.FinalizeOrderRequest{
-				Order: validatedOrderNoIdents,
-				Csr:   validCSR,
-			},
-			ExpectIssuance: true,
-		},
-		{
-			Name: "Order with no DnsNames",
-			OrderReq: &rapb.FinalizeOrderRequest{
-				Order: validatedOrderNoDnsNames,
 				Csr:   validCSR,
 			},
 			ExpectIssuance: true,
@@ -3365,7 +3315,6 @@ func TestIssueCertificateOuter(t *testing.T) {
 			order := &corepb.Order{
 				RegistrationID:         Registration.Id,
 				Expires:                timestamppb.New(fc.Now().Add(24 * time.Hour)),
-				DnsNames:               []string{"example.com"},
 				Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				CertificateProfileName: tc.profile,
 			}
@@ -4015,7 +3964,6 @@ func (sa *mockNewOrderMustBeReplacementAuthority) NewOrderAndAuthzs(ctx context.
 		Expires:        req.NewOrder.Expires,
 		Status:         string(core.StatusPending),
 		Created:        timestamppb.New(time.Now()),
-		DnsNames:       req.NewOrder.DnsNames,
 		Identifiers:    req.NewOrder.Identifiers,
 	}, nil
 }

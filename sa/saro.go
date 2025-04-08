@@ -403,10 +403,6 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			idents = append(idents, identifier.ACMEIdentifier{Type: uintToIdentifierType[a.IdentifierType], Value: a.IdentifierValue})
 		}
 		order.Identifiers = idents.ToProtoSlice()
-		order.DnsNames, err = idents.ToDNSSlice()
-		if err != nil {
-			return nil, err
-		}
 
 		// Calculate the status for the order
 		status, err := statusForOrder(order, authzValidityInfo, ssa.clk.Now())

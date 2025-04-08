@@ -340,7 +340,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == 0 || order.Expires == nil || (len(order.Identifiers) == 0 && len(order.DnsNames) == 0))
+	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.Identifiers) == 0)
 }
 
 func CertToPB(cert core.Certificate) *corepb.Certificate {

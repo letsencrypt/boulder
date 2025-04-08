@@ -1277,7 +1277,6 @@ func TestGetOrder(t *testing.T) {
 	inputOrder := &corepb.Order{
 		RegistrationID:   reg.Id,
 		Expires:          timestamppb.New(expires),
-		DnsNames:         []string{"example.com"},
 		Identifiers:      []*corepb.Identifier{ident.ToProto()},
 		V2Authorizations: []int64{authzID},
 	}
@@ -1287,7 +1286,6 @@ func TestGetOrder(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   inputOrder.RegistrationID,
 			Expires:          inputOrder.Expires,
-			DnsNames:         inputOrder.DnsNames,
 			Identifiers:      inputOrder.Identifiers,
 			V2Authorizations: inputOrder.V2Authorizations,
 		},
@@ -1301,7 +1299,6 @@ func TestGetOrder(t *testing.T) {
 		// input to NewOrderAndAuthzs
 		RegistrationID:   inputOrder.RegistrationID,
 		V2Authorizations: inputOrder.V2Authorizations,
-		DnsNames:         inputOrder.DnsNames,
 		Identifiers:      inputOrder.Identifiers,
 		Expires:          inputOrder.Expires,
 		// The ID should have been set to 1 by the SA
@@ -1339,7 +1336,6 @@ func TestGetOrderWithProfile(t *testing.T) {
 	inputOrder := &corepb.Order{
 		RegistrationID:         reg.Id,
 		Expires:                timestamppb.New(expires),
-		DnsNames:               []string{"example.com"},
 		Identifiers:            []*corepb.Identifier{ident.ToProto()},
 		V2Authorizations:       []int64{authzID},
 		CertificateProfileName: "tbiapb",
@@ -1350,7 +1346,6 @@ func TestGetOrderWithProfile(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:         inputOrder.RegistrationID,
 			Expires:                inputOrder.Expires,
-			DnsNames:               inputOrder.DnsNames,
 			Identifiers:            inputOrder.Identifiers,
 			V2Authorizations:       inputOrder.V2Authorizations,
 			CertificateProfileName: inputOrder.CertificateProfileName,
@@ -1365,7 +1360,6 @@ func TestGetOrderWithProfile(t *testing.T) {
 		// input to NewOrderAndAuthzs
 		RegistrationID:   inputOrder.RegistrationID,
 		V2Authorizations: inputOrder.V2Authorizations,
-		DnsNames:         inputOrder.DnsNames,
 		Identifiers:      inputOrder.Identifiers,
 		Expires:          inputOrder.Expires,
 		// The ID should have been set to 1 by the SA

@@ -623,7 +623,6 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			// These are carried over from the original request unchanged.
 			RegistrationID: req.NewOrder.RegistrationID,
 			Expires:        req.NewOrder.Expires,
-			DnsNames:       req.NewOrder.DnsNames,
 			Identifiers:    req.NewOrder.Identifiers,
 			// This includes both reused and newly created authz IDs.
 			V2Authorizations: allAuthzIds,

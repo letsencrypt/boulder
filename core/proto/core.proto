@@ -118,8 +118,7 @@ message Order {
   // finalize and certificate URLs from the id and certificateSerial fields.
   string status = 7;
   google.protobuf.Timestamp expires = 12;
-  // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
-  repeated string dnsNames = 8;
+  reserved 8; // Previously dnsNames
   repeated Identifier identifiers = 16;
   ProblemDetails error = 4;
   repeated int64 v2Authorizations = 11;
