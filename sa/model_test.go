@@ -195,12 +195,20 @@ func TestAuthzModel(t *testing.T) {
 	test.AssertNotError(t, err, "authzPBToModel failed")
 	authzPBOut, err = modelToAuthzPB(*model)
 	test.AssertNotError(t, err, "modelToAuthzPB failed")
+
 	identOut := identifier.FromProto(authzPBOut.Identifier)
 	if identOut.Type != identifier.TypeIP {
 		test.Assert(t, false, fmt.Sprintf("expected identifier type ip but found %s", identOut.Type))
 	}
 	if identOut.Value != "1.2.3.4" {
 		test.Assert(t, false, fmt.Sprintf("expected identifier value 1.2.3.4 but found %s", identOut.Value))
+	}
+
+	if authzPBOut.Challenges[0].Validationrecords[0].Hostname != "1.2.3.4" {
+		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected hostname 1.2.3.4 but found %v", authzPBOut.Challenges[0].Validationrecords[0].Hostname))
+	}
+	if authzPBOut.Challenges[0].Validationrecords[0].Port != "443" {
+		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected port 443 but found %v", authzPBOut.Challenges[0].Validationrecords[0].Port))
 	}
 }
 
