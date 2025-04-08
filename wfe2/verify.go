@@ -369,8 +369,6 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, error) {
 	bodyStr := string(body)
 	parsedJWS, err := jose.ParseSigned(bodyStr, getSupportedAlgs())
 	if err != nil {
-		// Special case needed to send right type of error when parser errors because of
-		// wrong signature algorithm.
 		var unexpectedSignAlgoErr *jose.ErrUnexpectedSignatureAlgorithm
 		if errors.As(err, &unexpectedSignAlgoErr) {
 			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSAlgorithmCheckFailed"}).Inc()
