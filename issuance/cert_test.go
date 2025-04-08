@@ -335,7 +335,7 @@ func TestGenerateTemplate(t *testing.T) {
 		SignatureAlgorithm:    x509.SHA256WithRSA,
 		IssuingCertificateURL: []string{"http://issuer"},
 		Policies:              []x509.OID{domainValidatedOID},
-		// These fields are only included if the profile wants them.
+		// These fields are only included if specified in the profile.
 		OCSPServer:            nil,
 		CRLDistributionPoints: nil,
 	}
