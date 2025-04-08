@@ -17,6 +17,7 @@ import (
 	"math/bits"
 	mrand "math/rand/v2"
 	"net"
+	"net/netip"
 	"reflect"
 	"slices"
 	"strconv"
@@ -2478,10 +2479,9 @@ func TestAuthzModelMapToPB(t *testing.T) {
 	for _, authzPB := range out.Authzs {
 		model, ok := input[authzPB.Identifier.Value]
 		if !ok {
-			t.Errorf("output had element for %q, an identifier not present in input", authzPB.DnsName)
+			t.Errorf("output had element for %q, an identifier not present in input", authzPB.Identifier.Value)
 		}
 		test.AssertEquals(t, authzPB.Id, fmt.Sprintf("%d", model.ID))
-		test.AssertEquals(t, authzPB.DnsName, model.IdentifierValue)
 		test.AssertEquals(t, authzPB.Identifier.Value, model.IdentifierValue)
 		test.AssertEquals(t, authzPB.RegistrationID, model.RegistrationID)
 		test.AssertEquals(t, authzPB.Status, string(uintToStatus[model.Status]))
@@ -2490,7 +2490,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 			t.Errorf("Times didn't match. Got %s, expected %s (%s)", gotTime, model.Expires, authzPB.Expires.AsTime())
 		}
 		if len(authzPB.Challenges) != bits.OnesCount(uint(model.Challenges)) {
-			t.Errorf("wrong number of challenges for %q: got %d, expected %d", authzPB.DnsName,
+			t.Errorf("wrong number of challenges for %q: got %d, expected %d", authzPB.Identifier.Value,
 				len(authzPB.Challenges), bits.OnesCount(uint(model.Challenges)))
 		}
 		switch model.Challenges {
@@ -2575,51 +2575,33 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	// Create two authorizations, one pending, one invalid
 	fc.Add(time.Hour)
 	reg := createWorkingRegistration(t, sa)
-	ident := identifier.NewDNS("aaa")
-	expiresA := fc.Now().Add(time.Hour).UTC()
-	expiresB := fc.Now().Add(time.Hour * 3).UTC()
-	attemptedAt := fc.Now()
-	_ = createFinalizedAuthorization(t, sa, ident, expiresA, "invalid", attemptedAt)
-	_ = createPendingAuthorization(t, sa, ident, expiresB)
+	idents := identifier.ACMEIdentifiers{
+		identifier.NewDNS("aaa"),
+		identifier.NewIP(netip.MustParseAddr("10.10.10.10")),
+	}
+	for _, ident := range idents {
+		// Create two authorizations, one pending, one invalid
+		expiresA := fc.Now().Add(time.Hour).UTC()
+		expiresB := fc.Now().Add(time.Hour * 3).UTC()
+		attemptedAt := fc.Now()
+		_ = createFinalizedAuthorization(t, sa, ident, expiresA, "invalid", attemptedAt)
+		_ = createPendingAuthorization(t, sa, ident, expiresB)
 
-	earliest := fc.Now().Add(-time.Hour).UTC()
-	latest := fc.Now().Add(time.Hour * 5).UTC()
-	count, err := sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
-		RegistrationID: reg.Id,
-		DnsName:        ident.Value,
-		Identifier:     ident.ToProto(),
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(earliest),
-			Latest:   timestamppb.New(latest),
-		},
-	})
-	test.AssertNotError(t, err, "sa.CountInvalidAuthorizations2 failed")
-	test.AssertEquals(t, count.Count, int64(1))
-
-	count, err = sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
-		RegistrationID: reg.Id,
-		DnsName:        ident.Value,
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(earliest),
-			Latest:   timestamppb.New(latest),
-		},
-	})
-	test.AssertNotError(t, err, "sa.CountInvalidAuthorizations2 failed without Identifier")
-	test.AssertEquals(t, count.Count, int64(1))
-
-	count, err = sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
-		RegistrationID: reg.Id,
-		Identifier:     ident.ToProto(),
-		Range: &sapb.Range{
-			Earliest: timestamppb.New(earliest),
-			Latest:   timestamppb.New(latest),
-		},
-	})
-	test.AssertNotError(t, err, "sa.CountInvalidAuthorizations2 failed without DnsName")
-	test.AssertEquals(t, count.Count, int64(1))
+		earliest := fc.Now().Add(-time.Hour).UTC()
+		latest := fc.Now().Add(time.Hour * 5).UTC()
+		count, err := sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
+			RegistrationID: reg.Id,
+			Identifier:     ident.ToProto(),
+			Range: &sapb.Range{
+				Earliest: timestamppb.New(earliest),
+				Latest:   timestamppb.New(latest),
+			},
+		})
+		test.AssertNotError(t, err, "sa.CountInvalidAuthorizations2 failed")
+		test.AssertEquals(t, count.Count, int64(1))
+	}
 }
 
 func TestGetValidAuthorizations2(t *testing.T) {

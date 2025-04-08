@@ -1547,7 +1547,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, identifier.FromProtoWithDefault(req.Authz), req.Authz.Status, req.Authz.Expires) {
+	if core.IsAnyNilOrZero(req.Authz, req.Authz.Id, req.Authz.Identifier, req.Authz.Status, req.Authz.Expires) {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -2212,7 +2212,7 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 
 // DeactivateAuthorization deactivates a currently valid authorization
 func (ra *RegistrationAuthorityImpl) DeactivateAuthorization(ctx context.Context, req *corepb.Authorization) (*emptypb.Empty, error) {
-	ident := identifier.FromProtoWithDefault(req)
+	ident := identifier.FromProto(req.Identifier)
 
 	if core.IsAnyNilOrZero(req, req.Id, ident, req.Status, req.RegistrationID) {
 		return nil, errIncompleteGRPCRequest
@@ -2283,7 +2283,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
-	idents := identifier.Normalize(identifier.FromProtoSliceWithDefault(req))
+	idents := identifier.Normalize(identifier.FromProtoSlice(req.Identifiers))
 
 	profile, err := ra.profiles.get(req.CertificateProfileName)
 	if err != nil {
