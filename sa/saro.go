@@ -289,7 +289,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 //
 // If req.Limit is nonzero, it returns only the most recent `Limit` results
 func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
-	idents := identifier.FromProtoSliceWithDefault(req)
+	idents := identifier.FromProtoSlice(req.Identifiers)
 
 	if core.IsAnyNilOrZero(req.Window) || len(idents) == 0 {
 		return nil, errIncompleteRequest
@@ -328,7 +328,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
 func (ssa *SQLStorageAuthorityRO) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
-	idents := identifier.FromProtoSliceWithDefault(req)
+	idents := identifier.FromProtoSlice(req.Identifiers)
 	if len(idents) == 0 {
 		return nil, errIncompleteRequest
 	}
@@ -452,7 +452,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 // unexpired orders are considered. If no order meeting these requirements is
 // found a nil corepb.Order pointer is returned.
 func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sapb.GetOrderForNamesRequest) (*corepb.Order, error) {
-	idents := identifier.FromProtoSliceWithDefault(req)
+	idents := identifier.FromProtoSlice(req.Identifiers)
 
 	if req.AcctID == 0 || len(idents) == 0 {
 		return nil, errIncompleteRequest

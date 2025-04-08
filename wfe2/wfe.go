@@ -2331,18 +2331,12 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	names, err := idents.ToDNSSlice()
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.UnsupportedIdentifier("NewOrder request included invalid non-DNS type identifier"), nil)
-	}
-
 	var isRenewal bool
 	if !isARIRenewal {
 		// The Subscriber does not have an ARI exemption. However, we can check
 		// if the order is a renewal, and thus exempt from the NewOrdersPerAccount
 		// and CertificatesPerDomain limits.
 		timestamps, err := wfe.sa.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
-			DnsNames:    names,
 			Identifiers: idents.ToProtoSlice(),
 			Window:      durationpb.New(120 * 24 * time.Hour),
 			Limit:       1,
