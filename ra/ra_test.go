@@ -85,7 +85,6 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, id
 			NewOrder: &sapb.NewOrderRequest{
 				RegistrationID: Registration.Id,
 				Expires:        timestamppb.New(exp),
-				DnsNames:       []string{ident.Value},
 				Identifiers:    []*corepb.Identifier{ident.ToProto()},
 			},
 			NewAuthzs: []*sapb.NewAuthzRequest{
@@ -871,7 +870,6 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
-			DnsNames:         []string{"www.example.com"},
 			Identifiers:      []*corepb.Identifier{identifier.NewDNS("www.example.com").ToProto()},
 			V2Authorizations: []int64{authzID},
 		},
@@ -2324,7 +2322,6 @@ func TestFinalizeOrder(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID: Registration.Id,
 			Expires:        timestamppb.New(exp),
-			DnsNames:       []string{"not-example.com", "www.not-example.com"},
 			Identifiers: []*corepb.Identifier{
 				identifier.NewDNS("not-example.com").ToProto(),
 				identifier.NewDNS("www.not-example.com").ToProto(),
@@ -2558,7 +2555,6 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID: Registration.Id,
 			Expires:        timestamppb.New(exp),
-			DnsNames:       []string{"not-example.com", "www.not-example.com"},
 			Identifiers: []*corepb.Identifier{
 				identifier.NewDNS("not-example.com").ToProto(),
 				identifier.NewDNS("www.not-example.com").ToProto(),
@@ -2901,7 +2897,6 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
-			DnsNames:         names,
 			Identifiers:      idents.ToProtoSlice(),
 			V2Authorizations: authzIDs,
 		},
@@ -3037,7 +3032,6 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
-			DnsNames:         names,
 			Identifiers:      idents.ToProtoSlice(),
 			V2Authorizations: authzIDs,
 		},

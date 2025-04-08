@@ -153,8 +153,7 @@ message Timestamps {
 message CountInvalidAuthorizationsRequest {
   // Next unused field number: 5
   int64 registrationID = 1;
-  // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
-  string dnsName = 2;
+  reserved 2; // Previously dnsName
   core.Identifier identifier = 4;
   // Count authorizations that expire in this range.
   Range range = 3;
@@ -227,8 +226,7 @@ message NewOrderRequest {
   int64 registrationID = 1;
   reserved 2; // Previously expiresNS
   google.protobuf.Timestamp expires = 5;
-  // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
-  repeated string dnsNames = 3;
+  reserved 3; // Previously dnsNames
   repeated core.Identifier identifiers = 9;
   repeated int64 v2Authorizations = 4;
   string certificateProfileName = 7;

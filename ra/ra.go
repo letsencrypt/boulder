@@ -2514,7 +2514,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	newOrder := &sapb.NewOrderRequest{
 		RegistrationID:         req.RegistrationID,
-		DnsNames:               dnsNames,
 		Identifiers:            idents.ToProtoSlice(),
 		CertificateProfileName: req.CertificateProfileName,
 		Replaces:               req.Replaces,

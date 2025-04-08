@@ -703,12 +703,17 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 }
 
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
-// in a given time range. This method only supports DNS identifier types.
+// in a given time range.
 func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	ident := identifier.FromProtoWithDefault(req)
+	ident := identifier.FromProto(req.Identifier)
 
 	if core.IsAnyNilOrZero(req.RegistrationID, ident, req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
+	}
+
+	idType, ok := identifierTypeToUint[ident.ToProto().Type]
+	if !ok {
+		return nil, fmt.Errorf("unsupported identifier type %q", ident.ToProto().Type)
 	}
 
 	var count int64
@@ -720,12 +725,12 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 		status = :status AND
 		expires > :expiresEarliest AND
 		expires <= :expiresLatest AND
-		identifierType = :dnsType AND
-		identifierValue = :ident`,
+		identifierType = :identType AND
+		identifierValue = :identValue`,
 		map[string]interface{}{
 			"regID":           req.RegistrationID,
-			"dnsType":         identifierTypeToUint[string(identifier.TypeDNS)],
-			"ident":           ident.Value,
+			"identType":       idType,
+			"identValue":      ident.Value,
 			"expiresEarliest": req.Range.Earliest.AsTime(),
 			"expiresLatest":   req.Range.Latest.AsTime(),
 			"status":          statusUint(core.StatusInvalid),
