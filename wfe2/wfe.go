@@ -2390,14 +2390,13 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID:         acct.ID,
-		DnsNames:               names,
 		Identifiers:            idents.ToProtoSlice(),
 		CertificateProfileName: newOrderRequest.Profile,
 		Replaces:               newOrderRequest.Replaces,
 		ReplacesSerial:         replacesSerial,
 	})
 
-	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, identifier.FromProtoSliceWithDefault(order), order.Created, order.Expires) {
+	if err != nil || core.IsAnyNilOrZero(order, order.Id, order.RegistrationID, order.Identifiers, order.Created, order.Expires) {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
