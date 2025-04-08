@@ -370,13 +370,12 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, error) {
 	parsedJWS, err := jose.ParseSigned(bodyStr, getSupportedAlgs())
 	if err != nil {
 		// Special case needed to send right type of error when parser errors because of
-		// wrong signature algorithm. upstream error format is :
-		// "go-jose/go-jose: unexpected signature algorithm %q; expected %q", quoted variable
-		if strings.HasPrefix(err.Error(), "go-jose/go-jose: unexpected signature algorithm ") {
+		// wrong signature algorithm.
+		if unexpectedSignAlgoErr, ok := err.(*jose.ErrUnexpectedSignatureAlgorithm); ok {
 			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSAlgorithmCheckFailed"}).Inc()
 			return nil, berrors.BadSignatureAlgorithmError(
 				"JWS signature header contains unsupported algorithm %q, expected one of %s",
-				strings.Split(err.Error()[49:], "\";")[0],
+				unexpectedSignAlgoErr.Got,
 				getSupportedAlgs(),
 			)
 		}
