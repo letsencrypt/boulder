@@ -887,7 +887,6 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	_, err = ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
 		Order: &corepb.Order{
 			Status:         string(core.StatusReady),
-			DnsNames:       []string{"www.example.com"},
 			Identifiers:    []*corepb.Identifier{identifier.NewDNS("www.example.com").ToProto()},
 			Id:             order.Id,
 			RegistrationID: Registration.Id,
@@ -2363,7 +2362,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					DnsNames:       []string{},
 					Identifiers:    []*corepb.Identifier{},
 				},
 				Csr: oneDomainCSR,
@@ -2377,7 +2375,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusValid),
-					DnsNames:       []string{"a.com"},
 					Identifiers:    []*corepb.Identifier{identifier.NewDNS("a.com").ToProto()},
 				},
 				Csr: oneDomainCSR,
@@ -2391,7 +2388,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusPending),
-					DnsNames:       []string{"a.com"},
 					Identifiers:    []*corepb.Identifier{identifier.NewDNS("a.com").ToProto()},
 				},
 				Csr: oneDomainCSR,
@@ -2406,7 +2402,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					DnsNames:       []string{"a.com"},
 					Identifiers:    []*corepb.Identifier{identifier.NewDNS("a.com").ToProto()},
 				},
 				Csr: []byte{0xC0, 0xFF, 0xEE},
@@ -2420,7 +2415,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					DnsNames:       []string{"a.com", "b.com"},
 					Identifiers: []*corepb.Identifier{
 						identifier.NewDNS("a.com").ToProto(),
 						identifier.NewDNS("b.com").ToProto(),
@@ -2437,7 +2431,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					DnsNames:       []string{"a.com"},
 					Identifiers:    []*corepb.Identifier{identifier.NewDNS("a.com").ToProto()},
 				},
 				Csr: twoDomainCSR,
@@ -2451,7 +2444,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:             1,
 					RegistrationID: 1,
 					Status:         string(core.StatusReady),
-					DnsNames:       []string{"foobar.com"},
 					Identifiers:    []*corepb.Identifier{identifier.NewDNS("foobar.com").ToProto()},
 				},
 				Csr: oneDomainCSR,
@@ -2465,7 +2457,6 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:                1,
 					RegistrationID:    1,
 					Status:            string(core.StatusReady),
-					DnsNames:          []string{"example.org"},
 					Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.org").ToProto()},
 					Expires:           timestamppb.New(exp),
 					CertificateSerial: "",
@@ -2480,7 +2471,6 @@ func TestFinalizeOrder(t *testing.T) {
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
 					Status:            string(core.StatusReady),
-					DnsNames:          []string{"a.com"},
 					Identifiers:       []*corepb.Identifier{identifier.NewDNS("a.com").ToProto()},
 					Id:                fakeRegOrder.Id,
 					RegistrationID:    fakeRegID,
@@ -2497,8 +2487,7 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Order with missing authorizations",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status:   string(core.StatusReady),
-					DnsNames: []string{"a.com", "b.com"},
+					Status: string(core.StatusReady),
 					Identifiers: []*corepb.Identifier{
 						identifier.NewDNS("a.com").ToProto(),
 						identifier.NewDNS("b.com").ToProto(),
@@ -3320,7 +3309,6 @@ func TestIssueCertificateOuter(t *testing.T) {
 			order := &corepb.Order{
 				RegistrationID:         Registration.Id,
 				Expires:                timestamppb.New(fc.Now().Add(24 * time.Hour)),
-				DnsNames:               []string{"example.com"},
 				Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				CertificateProfileName: tc.profile,
 			}

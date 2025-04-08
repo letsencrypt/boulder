@@ -3592,7 +3592,6 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	orderJSON := wfe.orderToOrderJSON(&http.Request{}, &corepb.Order{
 		Id:               1,
 		RegistrationID:   1,
-		DnsNames:         []string{"a"},
 		Identifiers:      []*corepb.Identifier{identifier.NewDNS("a").ToProto()},
 		Status:           string(core.StatusPending),
 		Expires:          timestamppb.New(expires),
@@ -3904,7 +3903,6 @@ func (sa *mockRA) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, opts .
 		RegistrationID:         987654321,
 		Created:                timestamppb.New(created),
 		Expires:                timestamppb.New(exp),
-		DnsNames:               []string{"example.com"},
 		Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 		Status:                 string(core.StatusValid),
 		V2Authorizations:       []int64{1},
