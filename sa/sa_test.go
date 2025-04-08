@@ -2479,10 +2479,9 @@ func TestAuthzModelMapToPB(t *testing.T) {
 	for _, authzPB := range out.Authzs {
 		model, ok := input[authzPB.Identifier.Value]
 		if !ok {
-			t.Errorf("output had element for %q, an identifier not present in input", authzPB.DnsName)
+			t.Errorf("output had element for %q, an identifier not present in input", authzPB.Identifier.Value)
 		}
 		test.AssertEquals(t, authzPB.Id, fmt.Sprintf("%d", model.ID))
-		test.AssertEquals(t, authzPB.DnsName, model.IdentifierValue)
 		test.AssertEquals(t, authzPB.Identifier.Value, model.IdentifierValue)
 		test.AssertEquals(t, authzPB.RegistrationID, model.RegistrationID)
 		test.AssertEquals(t, authzPB.Status, string(uintToStatus[model.Status]))
@@ -2491,7 +2490,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 			t.Errorf("Times didn't match. Got %s, expected %s (%s)", gotTime, model.Expires, authzPB.Expires.AsTime())
 		}
 		if len(authzPB.Challenges) != bits.OnesCount(uint(model.Challenges)) {
-			t.Errorf("wrong number of challenges for %q: got %d, expected %d", authzPB.DnsName,
+			t.Errorf("wrong number of challenges for %q: got %d, expected %d", authzPB.Identifier.Value,
 				len(authzPB.Challenges), bits.OnesCount(uint(model.Challenges)))
 		}
 		switch model.Challenges {
