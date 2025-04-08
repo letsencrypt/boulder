@@ -226,8 +226,7 @@ message NewOrderRequest {
   int64 registrationID = 1;
   reserved 2; // Previously expiresNS
   google.protobuf.Timestamp expires = 5;
-  // TODO(#7311): dnsNames are being deprecated in favour of identifiers.
-  repeated string dnsNames = 3;
+  reserved 3; // Previously dnsNames
   repeated core.Identifier identifiers = 9;
   repeated int64 v2Authorizations = 4;
   string certificateProfileName = 7;

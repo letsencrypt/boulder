@@ -85,7 +85,6 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, id
 			NewOrder: &sapb.NewOrderRequest{
 				RegistrationID: Registration.Id,
 				Expires:        timestamppb.New(exp),
-				DnsNames:       []string{ident.Value},
 				Identifiers:    []*corepb.Identifier{ident.ToProto()},
 			},
 			NewAuthzs: []*sapb.NewAuthzRequest{
@@ -871,7 +870,6 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
-			DnsNames:         []string{"www.example.com"},
 			Identifiers:      []*corepb.Identifier{identifier.NewDNS("www.example.com").ToProto()},
 			V2Authorizations: []int64{authzID},
 		},
@@ -1913,7 +1911,6 @@ func (msa *mockSAWithAuthzs) NewOrderAndAuthzs(ctx context.Context, req *sapb.Ne
 		// Fields from the input new order request.
 		RegistrationID:         req.NewOrder.RegistrationID,
 		Expires:                req.NewOrder.Expires,
-		DnsNames:               req.NewOrder.DnsNames,
 		Identifiers:            req.NewOrder.Identifiers,
 		V2Authorizations:       authzIDs,
 		CertificateProfileName: req.NewOrder.CertificateProfileName,
@@ -2326,7 +2323,6 @@ func TestFinalizeOrder(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID: Registration.Id,
 			Expires:        timestamppb.New(exp),
-			DnsNames:       []string{"not-example.com", "www.not-example.com"},
 			Identifiers: []*corepb.Identifier{
 				identifier.NewDNS("not-example.com").ToProto(),
 				identifier.NewDNS("www.not-example.com").ToProto(),
@@ -2335,28 +2331,6 @@ func TestFinalizeOrder(t *testing.T) {
 		},
 	})
 	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs, ready status")
-
-	validatedOrderNoIdents, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID:   Registration.Id,
-			Expires:          timestamppb.New(exp),
-			DnsNames:         []string{"not-example.com", "www.not-example.com"},
-			V2Authorizations: []int64{authzIDA, authzIDB},
-		},
-	})
-	test.AssertNotError(t, err, "Could not add test order without Identifiers")
-	validatedOrderNoDnsNames, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
-		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID: Registration.Id,
-			Expires:        timestamppb.New(exp),
-			Identifiers: []*corepb.Identifier{
-				identifier.NewDNS("not-example.com").ToProto(),
-				identifier.NewDNS("www.not-example.com").ToProto(),
-			},
-			V2Authorizations: []int64{authzIDA, authzIDB},
-		},
-	})
-	test.AssertNotError(t, err, "Could not add test order without DnsNames")
 
 	testCases := []struct {
 		Name           string
@@ -2548,22 +2522,6 @@ func TestFinalizeOrder(t *testing.T) {
 			},
 			ExpectIssuance: true,
 		},
-		{
-			Name: "Order with no Identifiers",
-			OrderReq: &rapb.FinalizeOrderRequest{
-				Order: validatedOrderNoIdents,
-				Csr:   validCSR,
-			},
-			ExpectIssuance: true,
-		},
-		{
-			Name: "Order with no DnsNames",
-			OrderReq: &rapb.FinalizeOrderRequest{
-				Order: validatedOrderNoDnsNames,
-				Csr:   validCSR,
-			},
-			ExpectIssuance: true,
-		},
 	}
 
 	for _, tc := range testCases {
@@ -2608,7 +2566,6 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID: Registration.Id,
 			Expires:        timestamppb.New(exp),
-			DnsNames:       []string{"not-example.com", "www.not-example.com"},
 			Identifiers: []*corepb.Identifier{
 				identifier.NewDNS("not-example.com").ToProto(),
 				identifier.NewDNS("www.not-example.com").ToProto(),
@@ -2951,7 +2908,6 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
-			DnsNames:         names,
 			Identifiers:      idents.ToProtoSlice(),
 			V2Authorizations: authzIDs,
 		},
@@ -3087,7 +3043,6 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			Expires:          timestamppb.New(exp),
-			DnsNames:         names,
 			Identifiers:      idents.ToProtoSlice(),
 			V2Authorizations: authzIDs,
 		},
@@ -4015,7 +3970,6 @@ func (sa *mockNewOrderMustBeReplacementAuthority) NewOrderAndAuthzs(ctx context.
 		Expires:        req.NewOrder.Expires,
 		Status:         string(core.StatusPending),
 		Created:        timestamppb.New(time.Now()),
-		DnsNames:       req.NewOrder.DnsNames,
 		Identifiers:    req.NewOrder.Identifiers,
 	}, nil
 }
