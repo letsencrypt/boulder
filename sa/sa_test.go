@@ -1469,8 +1469,6 @@ func TestGetOrderForNames(t *testing.T) {
 		identifier.NewDNS("example.com"),
 		identifier.NewDNS("just.another.example.com"),
 	}
-	names, err := idents.ToDNSSlice()
-	test.AssertNotError(t, err, "Converting identifiers to DNS names")
 
 	// Call GetOrderForNames for a set of names we haven't created an order for
 	// yet
@@ -1548,7 +1546,6 @@ func TestGetOrderForNames(t *testing.T) {
 	authzIDD := createFinalizedAuthorization(t, sa, identifier.NewDNS("welcome.to.zombo.com"), authzExpires, "valid", attemptedAt)
 
 	// Add a fresh order that uses the authorizations created above
-	names = []string{"zombo.com", "welcome.to.zombo.com"}
 	expires = fc.Now().Add(orderLifetime)
 	order, err = sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
