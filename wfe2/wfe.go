@@ -2331,11 +2331,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	names, err := idents.ToDNSSlice()
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.UnsupportedIdentifier("NewOrder request included invalid non-DNS type identifier"), nil)
-	}
-
 	var isRenewal bool
 	if !isARIRenewal {
 		// The Subscriber does not have an ARI exemption. However, we can check
