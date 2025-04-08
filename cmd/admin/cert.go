@@ -323,7 +323,7 @@ func (a *admin) revokeSerials(ctx context.Context, serials []string, reason revo
 		go func() {
 			defer wg.Done()
 			for serial := range work {
-				_, err = a.rac.AdministrativelyRevokeCertificate(
+				_, err := a.rac.AdministrativelyRevokeCertificate(
 					ctx,
 					&rapb.AdministrativelyRevokeCertificateRequest{
 						Serial:       serial,
