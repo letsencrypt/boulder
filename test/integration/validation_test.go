@@ -69,15 +69,8 @@ func TestMPICTLSALPN01(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	validationCount := 0
-	for _, event := range validationEvents {
-		if event.ServerName == domain {
-			validationCount++
-		}
-	}
-	if validationCount != 4 {
-		t.Fatalf("expected 4 validation events (VA=1 RVAs=3), got %d", validationCount)
+	if len(validationEvents) != 4 {
+		t.Errorf("expected 4 validation events (VA=1 RVAs=3), got %d", len(validationEvents))
 	}
 
 	dnsEvents, err := testSrvClient.DNSRequestHistory(domain)
@@ -144,12 +137,12 @@ func TestMPICDNS01(t *testing.T) {
 
 	validationCount := 0
 	for _, event := range challDomainDNSEvents {
-		if event.Question.Qtype == dns.TypeTXT && strings.Contains(event.Question.Name, "_acme-challenge."+domain) {
+		if event.Question.Qtype == dns.TypeTXT && event.Question.Name == "_acme-challenge."+domain+"." {
 			validationCount++
 		}
 	}
 	if validationCount != 4 {
-		t.Fatalf("expected 4 validation events (VA=1 RVAs=3), got %d", validationCount)
+		t.Errorf("expected 4 validation events (VA=1 RVAs=3), got %d", validationCount)
 	}
 
 	domainDNSEvents, err := testSrvClient.DNSRequestHistory(domain)
@@ -216,12 +209,12 @@ func TestMPICHTTP01(t *testing.T) {
 
 	validationCount := 0
 	for _, event := range validationEvents {
-		if strings.Contains(event.Host, domain) && strings.Contains(event.URL, chal.Token) {
+		if event.URL == "/.well-known/acme-challenge/"+chal.Token {
 			validationCount++
 		}
 	}
 	if validationCount != 4 {
-		t.Fatalf("expected 4 validation events (VA=1 RVAs=3), got %d", validationCount)
+		t.Errorf("expected 4 validation events (VA=1 RVAs=3), got %d", validationCount)
 	}
 
 	dnsEvents, err := testSrvClient.DNSRequestHistory(domain)
