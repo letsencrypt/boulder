@@ -369,6 +369,16 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, error) {
 	bodyStr := string(body)
 	parsedJWS, err := jose.ParseSigned(bodyStr, getSupportedAlgs())
 	if err != nil {
+		var unexpectedSignAlgoErr *jose.ErrUnexpectedSignatureAlgorithm
+		if errors.As(err, &unexpectedSignAlgoErr) {
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSAlgorithmCheckFailed"}).Inc()
+			return nil, berrors.BadSignatureAlgorithmError(
+				"JWS signature header contains unsupported algorithm %q, expected one of %s",
+				unexpectedSignAlgoErr.Got,
+				getSupportedAlgs(),
+			)
+		}
+
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSParseError"}).Inc()
 		return nil, berrors.MalformedError("Parse error reading JWS")
 	}

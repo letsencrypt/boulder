@@ -973,6 +973,13 @@ func TestParseJWSRequest(t *testing.T) {
   "signatures": ["PKWWclRsiHF4bm-nmpxDez6Y_3Mdtu263YeYklbGYt1EiMOLiKY_dr_EqhUUKAKEWysFLO-hQLXVU7kVkHeYWQFFOA18oFgcZgkSF2Pr3DNZrVj9e2gl0eZ2i2jk6X5GYPt1lIfok_DrL92wrxEKGcrmxqXXGm0JgP6Al2VGapKZK2HaYbCHoGvtzNmzUX9rC21sKewq5CquJRvTmvQp5bmU7Q9KeafGibFr0jl6IA3W5LBGgf6xftuUtEVEbKmKaKtaG7tXsQH1mIVOPUZZoLWz9sWJSFLmV0QSXm3ZHV0DrOhLfcADbOCoQBMeGdseBQZuUO541A3BEKGv2Aikjw"]
 }
 `
+	wrongSignatureTypeJWSBody := `
+{
+  "protected": "eyJhbGciOiJIUzI1NiJ9",
+  "payload" : "IiI",
+  "signature" : "5WiUupHzCWfpJza6EMteSxMDY8_6xIV7HnKaUqmykIQ"
+}
+`
 
 	testCases := []struct {
 		Name          string
@@ -1025,6 +1032,13 @@ func TestParseJWSRequest(t *testing.T) {
 			WantErrType:   berrors.Malformed,
 			WantErrDetail: "JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature",
 			WantStatType:  "JWSMultiSig",
+		},
+		{
+			Name:          "JWS with an invalid algorithm",
+			Request:       makePostRequestWithPath("test-path", wrongSignatureTypeJWSBody),
+			WantErrType:   berrors.BadSignatureAlgorithm,
+			WantErrDetail: "JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512]",
+			WantStatType:  "JWSAlgorithmCheckFailed",
 		},
 		{
 			Name:    "Valid JWS in POST request",
