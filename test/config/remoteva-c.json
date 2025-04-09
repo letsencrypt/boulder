@@ -39,7 +39,9 @@
 				}
 			}
 		},
-		"features": {},
+		"features": {
+			"DOH": true
+		},
 		"accountURIPrefixes": [
 			"http://boulder.service.consul:4000/acme/reg/",
 			"http://boulder.service.consul:4001/acme/acct/"
