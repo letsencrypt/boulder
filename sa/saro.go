@@ -605,8 +605,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		return &sapb.Authorizations{}, nil
 	}
 
-	// TODO(#7646): Stop constructing this map, as it's an inefficient wire
-	// format.
+	// TODO(#8111): Consider reducing the volume of data in this map.
 	authzModelMap := make(map[identifier.ACMEIdentifier]authzModel, len(authzModels))
 	for _, am := range authzModels {
 		if req.Profile != "" && am.CertificateProfileName != &req.Profile {
@@ -695,8 +694,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 		return nil, err
 	}
 
-	// TODO(#7646): Stop constructing this map, as it's an inefficient wire
-	// format.
+	// TODO(#8111): Consider reducing the volume of data in this map.
 	byIdent := make(map[identifier.ACMEIdentifier]authzModel)
 	for _, am := range ams {
 		identType, ok := uintToIdentifierType[am.IdentifierType]
@@ -801,8 +799,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 		return &sapb.Authorizations{}, nil
 	}
 
-	// TODO(#7646): Stop constructing this map, as it's an inefficient wire
-	// format.
+	// TODO(#8111): Consider reducing the volume of data in this map.
 	authzMap := make(map[identifier.ACMEIdentifier]authzModel, len(authzModels))
 	for _, am := range authzModels {
 		if req.Profile != "" && am.CertificateProfileName != &req.Profile {
