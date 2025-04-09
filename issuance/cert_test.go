@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -333,9 +334,10 @@ func TestGenerateTemplate(t *testing.T) {
 		BasicConstraintsValid: true,
 		SignatureAlgorithm:    x509.SHA256WithRSA,
 		IssuingCertificateURL: []string{"http://issuer"},
-		OCSPServer:            []string{"http://ocsp"},
-		CRLDistributionPoints: nil,
 		Policies:              []x509.OID{domainValidatedOID},
+		// These fields are only included if specified in the profile.
+		OCSPServer:            nil,
+		CRLDistributionPoints: nil,
 	}
 
 	test.AssertDeepEquals(t, actual, expected)
@@ -867,6 +869,73 @@ func TestMismatchedProfiles(t *testing.T) {
 	_, _, err = issuer2.Prepare(noCNProfile, request2)
 	test.AssertError(t, err, "preparing final cert issuance")
 	test.AssertContains(t, err.Error(), "precert does not correspond to linted final cert")
+}
+
+func TestNewProfile(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		config  ProfileConfig
+		wantErr string
+	}{
+		{
+			name: "happy path",
+			config: ProfileConfig{
+				MaxValidityBackdate: config.Duration{Duration: 1 * time.Hour},
+				MaxValidityPeriod:   config.Duration{Duration: 90 * 24 * time.Hour},
+			},
+		},
+		{
+			name: "crl but no ocsp",
+			config: ProfileConfig{
+				MaxValidityBackdate:          config.Duration{Duration: 1 * time.Hour},
+				MaxValidityPeriod:            config.Duration{Duration: 90 * 24 * time.Hour},
+				OmitOCSP:                     false,
+				IncludeCRLDistributionPoints: true,
+			},
+		},
+		{
+			name: "large backdate",
+			config: ProfileConfig{
+				MaxValidityBackdate: config.Duration{Duration: 24 * time.Hour},
+				MaxValidityPeriod:   config.Duration{Duration: 90 * 24 * time.Hour},
+			},
+			wantErr: "backdate \"24h0m0s\" is too large",
+		},
+		{
+			name: "large validity",
+			config: ProfileConfig{
+				MaxValidityBackdate: config.Duration{Duration: 1 * time.Hour},
+				MaxValidityPeriod:   config.Duration{Duration: 397 * 24 * time.Hour},
+			},
+			wantErr: "validity period \"9528h0m0s\" is too large",
+		},
+		{
+			name: "no revocation info",
+			config: ProfileConfig{
+				MaxValidityBackdate:          config.Duration{Duration: 1 * time.Hour},
+				MaxValidityPeriod:            config.Duration{Duration: 90 * 24 * time.Hour},
+				OmitOCSP:                     true,
+				IncludeCRLDistributionPoints: false,
+			},
+			wantErr: "revocation mechanism must be included",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gotProfile, gotErr := NewProfile(&tc.config)
+			if tc.wantErr != "" {
+				if gotErr == nil {
+					t.Errorf("NewProfile(%#v) = %#v, but want err %q", tc.config, gotProfile, tc.wantErr)
+				}
+				if !strings.Contains(gotErr.Error(), tc.wantErr) {
+					t.Errorf("NewProfile(%#v) = %q, but want %q", tc.config, gotErr, tc.wantErr)
+				}
+			} else {
+				if gotErr != nil {
+					t.Errorf("NewProfile(%#v) = %q, but want no error", tc.config, gotErr)
+				}
+			}
+		})
+	}
 }
 
 func TestProfileHash(t *testing.T) {

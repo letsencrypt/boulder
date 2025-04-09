@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -63,7 +64,7 @@ func getPrecertByName(db *sql.DB, name string) (*x509.Certificate, error) {
 
 // expectOCSP500 queries OCSP for the given certificate and expects a 500 error.
 func expectOCSP500(cert *x509.Certificate) error {
-	_, err := ocsp_helper.Req(cert, ocsp_helper.DefaultConfig)
+	_, err := ocsp_helper.Req(cert, ocspConf())
 	if err == nil {
 		return errors.New("Expected error getting OCSP for certificate that failed status storage")
 	}
@@ -92,7 +93,6 @@ func expectOCSP500(cert *x509.Certificate) error {
 // that a final certificate exists for any precertificate, though it is
 // similar in spirit).
 func TestIssuanceCertStorageFailed(t *testing.T) {
-	t.Parallel()
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	ctx := context.Background()
@@ -182,6 +182,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	test.AssertNotError(t, err, "issuing second cert")
 
 	successfulCert := res.certs[0]
+	successfulCertIssuer := res.certs[1]
 	err = revokeClient.RevokeCertificate(
 		revokeClient.Account,
 		successfulCert,
@@ -190,9 +191,12 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "revoking second certificate")
 
+	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
+	fetchAndCheckRevoked(t, successfulCert, successfulCertIssuer, ocsp.KeyCompromise)
+
 	for range 300 {
 		_, err = ocsp_helper.Req(successfulCert,
-			ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise))
+			ocspConf().WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise))
 		if err == nil {
 			break
 		}

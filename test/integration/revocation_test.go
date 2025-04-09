@@ -43,6 +43,14 @@ func isPrecert(cert *x509.Certificate) bool {
 	return false
 }
 
+// ocspConf returns an OCSP helper config with a fallback URL that matches what is
+// configured for our CA / OCSP responder. If an OCSP URL is present in a certificate,
+// ocsp_helper will use that; otherwise it will use the URLFallback. This allows
+// continuing to test OCSP service even after we stop including OCSP URLs in certificates.
+func ocspConf() ocsp_helper.Config {
+	return ocsp_helper.DefaultConfig.WithURLFallback("http://ca.example.org:4002/")
+}
+
 // getALLCRLs fetches and parses each certificate for each configured CA.
 // Returns a map from issuer SKID (hex) to a list of that issuer's CRLs.
 func getAllCRLs(t *testing.T) map[string][]*x509.RevocationList {
@@ -99,6 +107,7 @@ func getAllCRLs(t *testing.T) map[string][]*x509.RevocationList {
 
 // getCRL fetches a CRL, parses it, and checks the signature.
 func getCRL(t *testing.T, crlURL string, issuerCert *x509.Certificate) *x509.RevocationList {
+	t.Helper()
 	resp, err := http.Get(crlURL)
 	if err != nil {
 		t.Fatalf("getting CRL from %s: %s", crlURL, err)
@@ -152,6 +161,18 @@ func fetchAndCheckRevoked(t *testing.T, cert, issuer *x509.Certificate, expected
 		}
 	}
 	t.Errorf("serial %x not found on CRL %s, expected it to be revoked with reason %d", cert.SerialNumber, crlURL, expectedReason)
+}
+
+func checkUnrevoked(t *testing.T, revocations map[string][]*x509.RevocationList, cert *x509.Certificate) {
+	for _, singleIssuerCRLs := range revocations {
+		for _, crl := range singleIssuerCRLs {
+			for _, entry := range crl.RevokedCertificateEntries {
+				if entry.SerialNumber == cert.SerialNumber {
+					t.Errorf("expected %x to be unrevoked, but found it on a CRL", cert.SerialNumber)
+				}
+			}
+		}
+	}
 }
 
 func checkRevoked(t *testing.T, revocations map[string][]*x509.RevocationList, cert *x509.Certificate, expectedReason int) {
@@ -266,8 +287,8 @@ func TestRevocation(t *testing.T) {
 			t.Fatalf("unrecognized cert kind %q", tc.kind)
 		}
 
-		// Initially, the cert should have a Good OCSP response.
-		ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+		// Initially, the cert should have a Good OCSP response (only via OCSP; the CRL is unchanged by issuance).
+		ocspConfig := ocspConf().WithExpectStatus(ocsp.Good)
 		_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 		test.AssertNotError(t, err, "requesting OCSP for precert")
 
@@ -378,7 +399,8 @@ func TestRevocation(t *testing.T) {
 					}
 
 					check := func(t *testing.T, allCRLs map[string][]*x509.RevocationList) {
-						_, err := ocsp_helper.ReqDER(cert.Raw, ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(expectedReason))
+						ocspConfig := ocspConf().WithExpectStatus(ocsp.Revoked).WithExpectReason(expectedReason)
+						_, err := ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 						test.AssertNotError(t, err, "requesting OCSP for revoked cert")
 
 						checkRevoked(t, allCRLs, cert, expectedReason)
@@ -409,8 +431,6 @@ func TestRevocation(t *testing.T) {
 // In which case the revocation reason (but not revocation date) will be
 // updated to be keyCompromise.
 func TestReRevocation(t *testing.T) {
-	t.Parallel()
-
 	type authMethod string
 	var (
 		byAccount authMethod = "byAccount"
@@ -447,8 +467,8 @@ func TestReRevocation(t *testing.T) {
 			cert := res.certs[0]
 			issuer := res.certs[1]
 
-			// Initially, the cert should have a Good OCSP response.
-			ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+			// Initially, the cert should have a Good OCSP response (only via OCSP; the CRL is unchanged by issuance).
+			ocspConfig := ocspConf().WithExpectStatus(ocsp.Good)
 			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			test.AssertNotError(t, err, "requesting OCSP for precert")
 
@@ -520,7 +540,7 @@ func TestReRevocation(t *testing.T) {
 
 				// Check the OCSP response for the certificate again. It should still be
 				// revoked, with the same reason.
-				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason1)
+				ocspConfig := ocspConf().WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason1)
 				_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 				// Check the CRL for the certificate again. It should still be
 				// revoked, with the same reason.
@@ -532,7 +552,7 @@ func TestReRevocation(t *testing.T) {
 
 				// Check the OCSP response for the certificate again. It should now be
 				// revoked with reason keyCompromise.
-				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason2)
+				ocspConfig := ocspConf().WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason2)
 				_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 				// Check the CRL for the certificate again. It should now be
 				// revoked with reason keyCompromise.
@@ -544,8 +564,6 @@ func TestReRevocation(t *testing.T) {
 }
 
 func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
-	t.Parallel()
-
 	type authMethod string
 	var (
 		byAccount authMethod = "byAccount"
@@ -565,6 +583,11 @@ func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 		res, err := authAndIssue(c, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
 		test.AssertNotError(t, err, "authAndIssue failed")
 		cert := res.certs[0]
+		issuer := res.certs[1]
+
+		ocspConfig := ocspConf().WithExpectStatus(ocsp.Good)
+		_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+		test.AssertNotError(t, err, "requesting OCSP for not yet revoked cert")
 
 		// Revoke the cert with reason keyCompromise, either authenticated via the
 		// issuing account, or via the certificate key itself.
@@ -577,9 +600,12 @@ func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 		test.AssertNotError(t, err, "failed to revoke certificate")
 
 		// Check the OCSP response. It should be revoked with reason = 1 (keyCompromise).
-		ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise)
+		ocspConfig = ocspConf().WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise)
 		_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 		test.AssertNotError(t, err, "requesting OCSP for revoked cert")
+
+		runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
+		fetchAndCheckRevoked(t, cert, issuer, ocsp.KeyCompromise)
 
 		// Attempt to create a new account using the compromised key. This should
 		// work when the key was just *reported* as compromised, but fail when
@@ -616,12 +642,12 @@ func TestBadKeyRevoker(t *testing.T) {
 	badCert := res.certs[0]
 	t.Logf("Generated to-be-revoked cert with serial %x", badCert.SerialNumber)
 
-	certs := []*x509.Certificate{}
+	bundles := []*issuanceResult{}
 	for _, c := range []*client{revokerClient, revokeeClient, noContactClient} {
-		cert, err := authAndIssue(c, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
-		t.Logf("TestBadKeyRevoker: Issued cert with serial %x", cert.certs[0].SerialNumber)
+		bundle, err := authAndIssue(c, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
+		t.Logf("TestBadKeyRevoker: Issued cert with serial %x", bundle.certs[0].SerialNumber)
 		test.AssertNotError(t, err, "authAndIssue failed")
-		certs = append(certs, cert.certs[0])
+		bundles = append(bundles, bundle)
 	}
 
 	err = revokerClient.RevokeCertificate(
@@ -632,11 +658,12 @@ func TestBadKeyRevoker(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "failed to revoke certificate")
 
-	ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise)
+	ocspConfig := ocspConf().WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise)
 	_, err = ocsp_helper.ReqDER(badCert.Raw, ocspConfig)
 	test.AssertNotError(t, err, "ReqDER failed")
 
-	for _, cert := range certs {
+	for _, bundle := range bundles {
+		cert := bundle.certs[0]
 		for i := range 5 {
 			t.Logf("TestBadKeyRevoker: Requesting OCSP for cert with serial %x (attempt %d)", cert.SerialNumber, i)
 			_, err := ocsp_helper.ReqDER(cert.Raw, ocspConfig)
@@ -650,6 +677,13 @@ func TestBadKeyRevoker(t *testing.T) {
 			}
 			break
 		}
+	}
+
+	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
+	for _, bundle := range bundles {
+		cert := bundle.certs[0]
+		issuer := bundle.certs[1]
+		fetchAndCheckRevoked(t, cert, issuer, ocsp.KeyCompromise)
 	}
 
 	revokeeCount, err := http.Get("http://boulder.service.consul:9381/count?to=revokee@letsencrypt.org&from=bad-key-revoker@test.org")
@@ -694,12 +728,12 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	badCert := res.certs[0]
 	t.Logf("Generated to-be-revoked cert with serial %x", badCert.SerialNumber)
 
-	certs := []*x509.Certificate{}
+	bundles := []*issuanceResult{}
 	for _, c := range []*client{revokerClient, revokeeClient, noContactClient} {
-		cert, err := authAndIssue(c, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
-		t.Logf("TestBadKeyRevokerByAccount: Issued cert with serial %x", cert.certs[0].SerialNumber)
+		bundle, err := authAndIssue(c, certKey, []acme.Identifier{{Type: "dns", Value: random_domain()}}, true, "")
+		t.Logf("TestBadKeyRevokerByAccount: Issued cert with serial %x", bundle.certs[0].SerialNumber)
 		test.AssertNotError(t, err, "authAndIssue failed")
-		certs = append(certs, cert.certs[0])
+		bundles = append(bundles, bundle)
 	}
 
 	err = revokerClient.RevokeCertificate(
@@ -710,25 +744,26 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "failed to revoke certificate")
 
-	ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise)
+	ocspConfig := ocspConf().WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise)
 	_, err = ocsp_helper.ReqDER(badCert.Raw, ocspConfig)
 	test.AssertNotError(t, err, "ReqDER failed")
 
-	ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
-	for _, cert := range certs {
-		for i := range 5 {
-			t.Logf("TestBadKeyRevoker: Requesting OCSP for cert with serial %x (attempt %d)", cert.SerialNumber, i)
-			_, err := ocsp_helper.ReqDER(cert.Raw, ocspConfig)
-			if err != nil {
-				t.Logf("TestBadKeyRevoker: Got bad response: %s", err.Error())
-				if i >= 4 {
-					t.Fatal("timed out waiting for correct OCSP status")
-				}
-				time.Sleep(time.Second)
-				continue
-			}
-			break
+	// Note: this test is inherently racy because we don't have a signal
+	// for when the bad-key-revoker has completed a run after the revocation. However,
+	// the bad-key-revoker's configured interval is 50ms, so sleeping 1s should be good enough.
+	time.Sleep(time.Second)
+
+	runUpdater(t, path.Join(os.Getenv("BOULDER_CONFIG_DIR"), "crl-updater.json"))
+	allCRLs := getAllCRLs(t)
+	ocspConfig = ocspConf().WithExpectStatus(ocsp.Good)
+	for _, bundle := range bundles {
+		cert := bundle.certs[0]
+		t.Logf("TestBadKeyRevoker: Requesting OCSP for cert with serial %x", cert.SerialNumber)
+		_, err := ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+		if err != nil {
+			t.Error(err)
 		}
+		checkUnrevoked(t, allCRLs, cert)
 	}
 
 	revokeeCount, err := http.Get("http://boulder.service.consul:9381/count?to=revokee-moz@letsencrypt.org&from=bad-key-revoker@test.org")
