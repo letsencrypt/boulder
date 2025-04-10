@@ -60,7 +60,6 @@ type issuanceEvent struct {
 	Issuer          string
 	OrderID         int64
 	Profile         string
-	ProfileHash     string
 	Requester       int64
 	Result          struct {
 		Precertificate string `json:",omitempty"`
@@ -79,18 +78,8 @@ type issuerMaps struct {
 
 type certProfileWithID struct {
 	// name is a human readable name used to refer to the certificate profile.
-	name string
-	// hash is SHA256 sum over every exported field of an issuance.ProfileConfig
-	// used to generate the embedded *issuance.Profile.
-	hash    [32]byte
+	name    string
 	profile *issuance.Profile
-}
-
-// certProfilesMaps allows looking up the human-readable name of a certificate
-// profile to retrieve the actual profile.
-type certProfilesMaps struct {
-	profileByHash map[[32]byte]*certProfileWithID
-	profileByName map[string]*certProfileWithID
 }
 
 // caMetrics holds various metrics which are shared between caImpl, ocspImpl,
@@ -150,7 +139,7 @@ type certificateAuthorityImpl struct {
 	sctClient    rapb.SCTProviderClient
 	pa           core.PolicyAuthority
 	issuers      issuerMaps
-	certProfiles certProfilesMaps
+	certProfiles map[string]*certProfileWithID
 
 	// The prefix is prepended to the serial number.
 	prefix    byte
@@ -190,46 +179,27 @@ func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
 }
 
 // makeCertificateProfilesMap processes a set of named certificate issuance
-// profile configs into a two pre-computed maps: 1) a human-readable name to the
-// profile and 2) a unique hash over contents of the profile to the profile
-// itself. It returns the maps or an error if a duplicate name or hash is found.
-//
-// The unique hash is used in the case of
-//   - RA instructs CA1 to issue a precertificate
-//   - CA1 returns the precertificate DER bytes and profile hash to the RA
-//   - RA instructs CA2 to issue a final certificate, but CA2 does not contain a
-//     profile corresponding to that hash and an issuance is prevented.
-func makeCertificateProfilesMap(profiles map[string]*issuance.ProfileConfig) (certProfilesMaps, error) {
+// profile configs into a map from name to profile.
+func makeCertificateProfilesMap(profiles map[string]*issuance.ProfileConfig) (map[string]*certProfileWithID, error) {
 	if len(profiles) <= 0 {
-		return certProfilesMaps{}, fmt.Errorf("must pass at least one certificate profile")
+		return nil, fmt.Errorf("must pass at least one certificate profile")
 	}
 
 	profilesByName := make(map[string]*certProfileWithID, len(profiles))
-	profilesByHash := make(map[[32]byte]*certProfileWithID, len(profiles))
 
 	for name, profileConfig := range profiles {
 		profile, err := issuance.NewProfile(profileConfig)
 		if err != nil {
-			return certProfilesMaps{}, err
+			return nil, err
 		}
 
-		hash := profile.Hash()
-
-		withID := certProfileWithID{
+		profilesByName[name] = &certProfileWithID{
 			name:    name,
-			hash:    hash,
 			profile: profile,
 		}
-
-		profilesByName[name] = &withID
-		_, found := profilesByHash[hash]
-		if found {
-			return certProfilesMaps{}, fmt.Errorf("duplicate certificate profile hash %d", hash)
-		}
-		profilesByHash[hash] = &withID
 	}
 
-	return certProfilesMaps{profilesByHash, profilesByName}, nil
+	return profilesByName, nil
 }
 
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
@@ -300,8 +270,7 @@ var ocspStatusToCode = map[string]int{
 // precertificate.
 //
 // Subsequent final issuance based on this precertificate must happen at most once, and must use the same
-// certificate profile. The certificate profile is identified by a hash to ensure an exact match even if
-// the configuration for a specific profile _name_ changes.
+// certificate profile.
 //
 // Returns precertificate DER.
 //
@@ -350,7 +319,7 @@ func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueR
 	}
 
 	// All issuance requests must come with a profile name, and the RA handles selecting the default.
-	certProfile, ok := ca.certProfiles.profileByName[issueReq.CertProfileName]
+	certProfile, ok := ca.certProfiles[issueReq.CertProfileName]
 	if !ok {
 		return nil, fmt.Errorf("the CA is incapable of using a profile named %s", issueReq.CertProfileName)
 	}
@@ -449,7 +418,6 @@ func (ca *certificateAuthorityImpl) issueCertificateForPrecertificate(ctx contex
 		Issuer:          issuer.Name(),
 		OrderID:         orderID,
 		Profile:         certProfile.name,
-		ProfileHash:     hex.EncodeToString(certProfile.hash[:]),
 		Requester:       regID,
 	}
 	ca.log.AuditObject("Signing cert", logEvent)
@@ -616,7 +584,6 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		IssuanceRequest: req,
 		Issuer:          issuer.Name(),
 		Profile:         certProfile.name,
-		ProfileHash:     hex.EncodeToString(certProfile.hash[:]),
 		Requester:       issueReq.RegistrationID,
 		OrderID:         issueReq.OrderID,
 	}
@@ -650,7 +617,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	logEvent.CSR = ""
 	ca.log.AuditObject("Signing precert success", logEvent)
 
-	return certDER, &certProfileWithID{certProfile.name, certProfile.hash, nil}, nil
+	return certDER, &certProfileWithID{certProfile.name, nil}, nil
 }
 
 // verifyTBSCertIsDeterministic verifies that x509.CreateCertificate signing

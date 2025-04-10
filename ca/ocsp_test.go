@@ -44,7 +44,7 @@ func TestOCSP(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ocspi := testCtx.ocsp
 
-	profile := ca.certProfiles.profileByName["legacy"]
+	profile := ca.certProfiles["legacy"]
 	// Issue a certificate from an RSA issuer, request OCSP from the same issuer,
 	// and make sure it works.
 	rsaCertDER, err := ca.issuePrecertificate(ctx, profile, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, CertProfileName: "legacy"})
