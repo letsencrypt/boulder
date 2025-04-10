@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"reflect"
 	"strings"
 	"testing"
@@ -376,6 +377,7 @@ func TestIssue(t *testing.T) {
 				SubjectKeyId:    goodSKID,
 				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 				DNSNames:        []string{"example.com"},
+				IPAddresses:     []net.IP{net.ParseIP("128.101.101.101")},
 				NotBefore:       fc.Now(),
 				NotAfter:        fc.Now().Add(time.Hour - time.Second),
 				IncludeCTPoison: true,
@@ -390,6 +392,7 @@ func TestIssue(t *testing.T) {
 			err = cert.CheckSignatureFrom(issuerCert.Certificate)
 			test.AssertNotError(t, err, "signature validation failed")
 			test.AssertDeepEquals(t, cert.DNSNames, []string{"example.com"})
+			test.AssertDeepEquals(t, cert.IPAddresses, []net.IP{net.ParseIP("128.101.101.101")})
 			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 			test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 			test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Poison
