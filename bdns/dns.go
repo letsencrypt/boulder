@@ -147,6 +147,7 @@ func New(
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	maxTries int,
+	userAgent string,
 	log blog.Logger,
 	tlsConfig *tls.Config,
 ) Client {
@@ -167,6 +168,7 @@ func New(
 				Timeout:   readTimeout,
 				Transport: transport,
 			},
+			userAgent: userAgent,
 		}
 	} else {
 		client = &dns.Client{
@@ -230,10 +232,11 @@ func NewTest(
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	maxTries int,
+	userAgent string,
 	log blog.Logger,
 	tlsConfig *tls.Config,
 ) Client {
-	resolver := New(readTimeout, servers, stats, clk, maxTries, log, tlsConfig)
+	resolver := New(readTimeout, servers, stats, clk, maxTries, userAgent, log, tlsConfig)
 	resolver.(*impl).allowRestrictedAddresses = true
 	return resolver
 }
@@ -636,8 +639,9 @@ func logDNSError(
 }
 
 type dohExchanger struct {
-	clk clock.Clock
-	hc  http.Client
+	clk       clock.Clock
+	hc        http.Client
+	userAgent string
 }
 
 // Exchange sends a DoH query to the provided DoH server and returns the response.
@@ -655,6 +659,9 @@ func (d *dohExchanger) Exchange(query *dns.Msg, server string) (*dns.Msg, time.D
 	}
 	req.Header.Set("Content-Type", "application/dns-message")
 	req.Header.Set("Accept", "application/dns-message")
+	if len(d.userAgent) > 0 {
+		req.Header.Set("User-Agent", d.userAgent)
+	}
 
 	start := d.clk.Now()
 	resp, err := d.hc.Do(req)

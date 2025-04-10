@@ -38,6 +38,8 @@ type HTTPRequestEvent struct {
 	// The ServerName from the ClientHello. May be empty if there was no SNI or if
 	// the request was not HTTPS
 	ServerName string
+	// The User-Agent header from the request
+	UserAgent string
 }
 
 // HTTPRequestEvents always have type HTTPRequestEventType
@@ -59,6 +61,9 @@ func (e HTTPRequestEvent) Key() string {
 type DNSRequestEvent struct {
 	// The DNS question received.
 	Question dns.Question
+	// The User-Agent header from the request, may be empty
+	// if the request was not over DoH.
+	UserAgent string
 }
 
 // DNSRequestEvents always have type DNSRequestEventType

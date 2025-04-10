@@ -128,6 +128,7 @@ func (s *ChallSrv) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Host:       r.Host,
 		HTTPS:      r.TLS != nil,
 		ServerName: serverName,
+		UserAgent:  r.Header.Get("User-Agent"),
 	})
 
 	// If the request was not over HTTPS and we have a redirect, serve it.
