@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/hex"
+	mrand "math/rand"
 	"testing"
 	"time"
 
@@ -47,7 +48,7 @@ func TestOCSP(t *testing.T) {
 	profile := ca.certProfiles.profileByName["legacy"]
 	// Issue a certificate from an RSA issuer, request OCSP from the same issuer,
 	// and make sure it works.
-	rsaCertDER, err := ca.issuePrecertificate(ctx, profile, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID, CertProfileName: "legacy"})
+	rsaCertDER, err := ca.issuePrecertificate(ctx, profile, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63(), CertProfileName: "legacy"})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	rsaCert, err := x509.ParseCertificate(rsaCertDER)
 	test.AssertNotError(t, err, "Failed to parse rsaCert")
@@ -70,7 +71,7 @@ func TestOCSP(t *testing.T) {
 
 	// Issue a certificate from an ECDSA issuer, request OCSP from the same issuer,
 	// and make sure it works.
-	ecdsaCertDER, err := ca.issuePrecertificate(ctx, profile, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID, CertProfileName: "legacy"})
+	ecdsaCertDER, err := ca.issuePrecertificate(ctx, profile, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63(), CertProfileName: "legacy"})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	ecdsaCert, err := x509.ParseCertificate(ecdsaCertDER)
 	test.AssertNotError(t, err, "Failed to parse ecdsaCert")
