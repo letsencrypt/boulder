@@ -3234,14 +3234,6 @@ func (ca *MockCARecordingProfile) IssueCertificate(ctx context.Context, req *cap
 	return ca.inner.IssueCertificate(ctx, req)
 }
 
-func (ca *MockCARecordingProfile) IssuePrecertificate(ctx context.Context, req *capb.IssueCertificateRequest, _ ...grpc.CallOption) (*capb.IssuePrecertificateResponse, error) {
-	return nil, errors.New("nope")
-}
-
-func (ca *MockCARecordingProfile) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, errors.New("nope")
-}
-
 type mockSAWithFinalize struct {
 	sapb.StorageAuthorityClient
 }

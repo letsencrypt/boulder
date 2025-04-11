@@ -1868,7 +1868,6 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		authzPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
 			Identifiers:    identifier.NewDNSSlice(cert.DNSNames).ToProtoSlice(),
-			DnsNames:       cert.DNSNames,
 			ValidUntil:     timestamppb.New(ra.clk.Now()),
 		})
 		if err != nil {
@@ -2319,11 +2318,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, err
 	}
 
-	dnsNames, err := idents.ToDNSSlice()
-	if err != nil {
-		return nil, err
-	}
-
 	// See if there is an existing unexpired pending (or ready) order that can be reused
 	// for this account
 	existingOrder, err := ra.SA.GetOrderForNames(ctx, &sapb.GetOrderForNamesRequest{
@@ -2373,7 +2367,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		getAuthReq := &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
-			DnsNames:       dnsNames,
 			Identifiers:    idents.ToProtoSlice(),
 			Profile:        req.CertificateProfileName,
 		}
@@ -2382,7 +2375,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		getAuthReq := &sapb.GetAuthorizationsRequest{
 			RegistrationID: req.RegistrationID,
 			ValidUntil:     timestamppb.New(authzExpiryCutoff),
-			DnsNames:       dnsNames,
 			Identifiers:    idents.ToProtoSlice(),
 			Profile:        req.CertificateProfileName,
 		}
