@@ -392,7 +392,10 @@ func TestIssue(t *testing.T) {
 			err = cert.CheckSignatureFrom(issuerCert.Certificate)
 			test.AssertNotError(t, err, "signature validation failed")
 			test.AssertDeepEquals(t, cert.DNSNames, []string{"example.com"})
-			test.AssertDeepEquals(t, cert.IPAddresses, []net.IP{net.ParseIP("128.101.101.101")})
+			// net.ParseIP always returns a 16-byte address; IPv4 addresses are
+			// returned in IPv4-mapped IPv6 form. During issuance (in
+			// x509.marshalSANs) they are reduced back to 4 bytes.
+			test.AssertDeepEquals(t, cert.IPAddresses, []net.IP{net.ParseIP("128.101.101.101").To4()})
 			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 			test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 			test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Poison
