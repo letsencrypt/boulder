@@ -83,8 +83,15 @@ func TestMPICTLSALPN01(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(validationEvents) != 4 {
-		t.Errorf("expected 4 validation events (VA=1 RVAs=3), got %d", len(validationEvents))
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && len(validationEvents) != 4 {
+		t.Errorf("expected 4 validation events got %d", len(validationEvents))
+	} else if len(validationEvents) != 3 && len(validationEvents) != 4 {
+		// We only need 3 checks if the MPICFullResults feature-flag is not
+		// enabled.
+		//
+		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
+		// true.
+		t.Errorf("expected 3 or 4 validation events got %d", len(validationEvents))
 	}
 
 	dnsEvents, err := testSrvClient.DNSRequestHistory(domain)
@@ -98,8 +105,16 @@ func TestMPICTLSALPN01(t *testing.T) {
 			caaEvents = append(caaEvents, event)
 		}
 	}
-	if len(caaEvents) != 4 {
-		t.Fatalf("expected 4 CAA validation events (VA=1 RVAs=3), got %d", len(caaEvents))
+
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && len(caaEvents) != 4 {
+		t.Errorf("expected 4 CAA checks got %d", len(caaEvents))
+	} else if len(caaEvents) != 3 && len(caaEvents) != 4 {
+		// We only need 3 checks if the MPICFullResults feature-flag is not
+		// enabled.
+		//
+		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
+		// true.
+		t.Errorf("expected 3 or 4 CAA checks got %d", len(caaEvents))
 	}
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		// We can only check the user-agent for DNS requests if the DOH
@@ -168,8 +183,15 @@ func TestMPICDNS01(t *testing.T) {
 			validationEvents = append(validationEvents, event)
 		}
 	}
-	if len(validationEvents) != 4 {
-		t.Errorf("expected 4 validation events (VA=1 RVAs=3), got %d", len(validationEvents))
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && len(validationEvents) != 4 {
+		t.Errorf("expected 4 validation events got %d", len(validationEvents))
+	} else if len(validationEvents) != 3 && len(validationEvents) != 4 {
+		// We only need 3 checks if the MPICFullResults feature-flag is not
+		// enabled.
+		//
+		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
+		// true.
+		t.Errorf("expected 3 or 4 validation events got %d", len(validationEvents))
 	}
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		// We can only check the user-agent for DNS requests if the DOH
@@ -196,8 +218,16 @@ func TestMPICDNS01(t *testing.T) {
 			caaEvents = append(caaEvents, event)
 		}
 	}
-	if len(caaEvents) != 4 {
-		t.Errorf("expected 4 CAA validation events (VA=1 RVAs=3), got %d", len(caaEvents))
+
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && len(caaEvents) != 4 {
+		t.Errorf("expected 4 CAA checks got %d", len(caaEvents))
+	} else if len(caaEvents) != 3 && len(caaEvents) != 4 {
+		// We only need 3 checks if the MPICFullResults feature-flag is not
+		// enabled.
+		//
+		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
+		// true.
+		t.Errorf("expected 3 or 4 CAA checks got %d", len(caaEvents))
 	}
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		// We can only check the user-agent for DNS requests if the DOH
@@ -266,8 +296,16 @@ func TestMPICHTTP01(t *testing.T) {
 			validationCount++
 		}
 	}
-	if validationCount != 4 {
-		t.Errorf("expected 4 validation events (VA=1 RVAs=3), got %d", validationCount)
+
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && validationCount != 4 {
+		t.Errorf("expected 4 validation events got %d", validationCount)
+	} else if validationCount != 3 && validationCount != 4 {
+		// We only need 3 checks if the MPICFullResults feature-flag is not
+		// enabled.
+		//
+		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
+		// true.
+		t.Errorf("expected 3 or 4 validation events got %d", validationCount)
 	}
 
 	sort.Slice(validationEvents, func(i, j int) bool {
@@ -290,8 +328,16 @@ func TestMPICHTTP01(t *testing.T) {
 			caaEvents = append(caaEvents, event)
 		}
 	}
-	if len(caaEvents) != 4 {
-		t.Errorf("expected 4 CAA validation events (VA=1 RVAs=3), got %d", len(caaEvents))
+
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && len(caaEvents) != 4 {
+		t.Errorf("expected 4 CAA checks got %d", len(caaEvents))
+	} else if len(caaEvents) != 3 && len(caaEvents) != 4 {
+		// We only need 3 checks if the MPICFullResults feature-flag is not
+		// enabled.
+		//
+		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
+		// true.
+		t.Errorf("expected 3 or 4 CAA checks got %d", len(caaEvents))
 	}
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		// We can only check the user-agent for DNS requests if the DOH
