@@ -101,6 +101,9 @@ func TestMPICTLSALPN01(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		// We can only check the user-agent for DNS requests if the DOH
 		// feature-flag is enabled.
+		//
+		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
+		// to true.
 		sortDNSRequestsByUserAgent(caaEvents)
 		for i, event := range caaEvents {
 			if event.UserAgent != expectedUserAgents[i] {
@@ -168,6 +171,9 @@ func TestMPICDNS01(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		// We can only check the user-agent for DNS requests if the DOH
 		// feature-flag is enabled.
+		//
+		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
+		// to true.
 		sortDNSRequestsByUserAgent(validationEvents)
 		for i, event := range validationEvents {
 			if event.UserAgent != expectedUserAgents[i] {
@@ -193,6 +199,9 @@ func TestMPICDNS01(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		// We can only check the user-agent for DNS requests if the DOH
 		// feature-flag is enabled.
+		//
+		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
+		// to true.
 		sortDNSRequestsByUserAgent(caaEvents)
 		for i, event := range caaEvents {
 			if event.UserAgent != expectedUserAgents[i] {
@@ -284,6 +293,9 @@ func TestMPICHTTP01(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		// We can only check the user-agent for DNS requests if the DOH
 		// feature-flag is enabled.
+		//
+		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
+		// to true.
 		sort.Slice(caaEvents, func(i, j int) bool {
 			return caaEvents[i].UserAgent < caaEvents[j].UserAgent
 		})
