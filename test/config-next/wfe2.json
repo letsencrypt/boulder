@@ -135,7 +135,8 @@
 		"features": {
 			"PropagateCancels": true,
 			"ServeRenewalInfo": true,
-			"CheckIdentifiersPaused": true
+			"CheckIdentifiersPaused": true,
+			"DNSAccount01Enabled": true
 		},
 		"certProfiles": {
 			"legacy": "The normal profile you know and love",

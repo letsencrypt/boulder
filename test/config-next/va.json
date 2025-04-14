@@ -39,7 +39,8 @@
 		},
 		"features": {
 			"DOH": true,
-			"MPICFullResults": true
+			"MPICFullResults": true,
+			"DNSAccount01Enabled": true
 		},
 		"remoteVAs": [
 			{

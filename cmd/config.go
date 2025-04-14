@@ -100,7 +100,7 @@ type SMTPConfig struct {
 // it should offer.
 type PAConfig struct {
 	DBConfig   `validate:"-"`
-	Challenges map[core.AcmeChallenge]bool `validate:"omitempty,dive,keys,oneof=http-01 dns-01 tls-alpn-01,endkeys"`
+	Challenges map[core.AcmeChallenge]bool `validate:"omitempty,dive,keys,oneof=http-01 dns-01 tls-alpn-01 dns-account-01,endkeys"`
 }
 
 // CheckChallenges checks whether the list of challenges in the PA config

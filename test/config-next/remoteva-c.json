@@ -36,7 +36,8 @@
 			}
 		},
 		"features": {
-			"DOH": true
+			"DOH": true,
+			"DNSAccount01Enabled": true
 		},
 		"accountURIPrefixes": [
 			"http://boulder.service.consul:4000/acme/reg/",

@@ -149,7 +149,8 @@
 		"features": {
 			"AsyncFinalize": true,
 			"AutomaticallyPauseZombieClients": true,
-			"NoPendingAuthzReuse": true
+			"NoPendingAuthzReuse": true,
+			"DNSAccount01Enabled": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",
@@ -180,7 +181,8 @@
 		"challenges": {
 			"http-01": true,
 			"dns-01": true,
-			"tls-alpn-01": true
+			"tls-alpn-01": true,
+			"dns-account-01": true
 		}
 	},
 	"syslog": {
