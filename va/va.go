@@ -407,13 +407,17 @@ func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 
 // validateChallenge simply passes through to the appropriate validation method
 // depending on the challenge type.
+// The accountURL parameter is required for dns-account-01 challenges to
+// calculate the account-specific label.
 func (va *ValidationAuthorityImpl) validateChallenge(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
 	kind core.AcmeChallenge,
 	token string,
 	keyAuthorization string,
+	accountURL string,
 ) ([]core.ValidationRecord, error) {
+	va.log.Infof("validateChallenge called with challenge type %s and account URL: %s", kind, accountURL)
 	switch kind {
 	case core.ChallengeTypeHTTP01:
 		return va.validateHTTP01(ctx, ident, token, keyAuthorization)
@@ -423,6 +427,10 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 		return va.validateDNS01(ctx, ident, keyAuthorization)
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, ident, keyAuthorization)
+	case core.ChallengeTypeDNSAccount01:
+		// Strip a (potential) leading wildcard token from the identifier.
+		ident.Value = strings.TrimPrefix(ident.Value, "*.")
+		return va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURL)
 	}
 	return nil, berrors.MalformedError("invalid challenge type %s", kind)
 }
@@ -727,12 +735,15 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 	// *before* checking whether it returned an error. These few checks are
 	// carefully written to ensure that they work whether the local validation
 	// was successful or not, and cannot themselves fail.
+	accountURL := req.Authz.AccountURI
+	va.log.Infof("DoDCV received account URI: %s", accountURL)
 	records, err := va.validateChallenge(
 		ctx,
 		ident,
 		chall.Type,
 		chall.Token,
 		req.ExpectedKeyAuthorization,
+		accountURL,
 	)
 
 	// Stop the clock for local validation latency.
