@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -21,10 +22,12 @@ import (
 
 var expectedUserAgents = []string{"boulder", "remoteva-a", "remoteva-b", "remoteva-c"}
 
-func sortDNSRequestsByUserAgent(requests []challtestsrvclient.DNSRequest) {
-	sort.Slice(requests, func(i, j int) bool {
-		return requests[i].UserAgent < requests[j].UserAgent
-	})
+func collectUserAgentsFromDNSRequests(requests []challtestsrvclient.DNSRequest) []string {
+	userAgents := make([]string, len(requests))
+	for i, request := range requests {
+		userAgents[i] = request.UserAgent
+	}
+	return userAgents
 }
 
 func TestMPICTLSALPN01(t *testing.T) {
@@ -104,10 +107,10 @@ func TestMPICTLSALPN01(t *testing.T) {
 		//
 		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
 		// to true.
-		sortDNSRequestsByUserAgent(caaEvents)
-		for i, event := range caaEvents {
-			if event.UserAgent != expectedUserAgents[i] {
-				t.Errorf("expected user agent %s, got %s", expectedUserAgents[i], event.UserAgent)
+		gotUserAgents := collectUserAgentsFromDNSRequests(caaEvents)
+		for _, ua := range expectedUserAgents {
+			if !slices.Contains(gotUserAgents, ua) {
+				t.Errorf("expected a query from User-Agent %q but did not get one (got %+v).", ua, gotUserAgents)
 			}
 		}
 	}
@@ -174,10 +177,10 @@ func TestMPICDNS01(t *testing.T) {
 		//
 		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
 		// to true.
-		sortDNSRequestsByUserAgent(validationEvents)
-		for i, event := range validationEvents {
-			if event.UserAgent != expectedUserAgents[i] {
-				t.Errorf("expected user agent %s, got %s", expectedUserAgents[i], event.UserAgent)
+		gotUserAgents := collectUserAgentsFromDNSRequests(validationEvents)
+		for _, ua := range expectedUserAgents {
+			if !slices.Contains(gotUserAgents, ua) {
+				t.Errorf("expected a query from User-Agent %q but did not get one (got %+v).", ua, gotUserAgents)
 			}
 		}
 	}
@@ -202,10 +205,10 @@ func TestMPICDNS01(t *testing.T) {
 		//
 		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
 		// to true.
-		sortDNSRequestsByUserAgent(caaEvents)
-		for i, event := range caaEvents {
-			if event.UserAgent != expectedUserAgents[i] {
-				t.Errorf("expected user agent %s, got %s", expectedUserAgents[i], event.UserAgent)
+		gotUserAgents := collectUserAgentsFromDNSRequests(caaEvents)
+		for _, ua := range expectedUserAgents {
+			if !slices.Contains(gotUserAgents, ua) {
+				t.Errorf("expected a query from User-Agent %q but did not get one (got %+v).", ua, gotUserAgents)
 			}
 		}
 	}
