@@ -44,6 +44,7 @@ message PerformValidationRequest {
 message AuthzMeta {
   string id = 1;
   int64 regID = 2;
+  string accountURI = 3;
 }
 
 message ValidationResult {

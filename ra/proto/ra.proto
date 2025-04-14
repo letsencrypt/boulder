@@ -64,6 +64,7 @@ message UpdateAuthorizationRequest {
 message PerformValidationRequest {
   core.Authorization authz = 1;
   int64 challengeIndex = 2;
+  string accountURI = 3;
 }
 
 message RevokeCertByApplicantRequest {
