@@ -7,14 +7,28 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"database/sql"
+	"os"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/eggsampler/acme/v3"
+	challtestsrvclient "github.com/letsencrypt/boulder/test/chall-test-srv-client"
 	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/miekg/dns"
 )
+
+var expectedUserAgents = []string{"boulder", "remoteva-a", "remoteva-b", "remoteva-c"}
+
+func collectUserAgentsFromDNSRequests(requests []challtestsrvclient.DNSRequest) []string {
+	userAgents := make([]string, len(requests))
+	for i, request := range requests {
+		userAgents[i] = request.UserAgent
+	}
+	return userAgents
+}
 
 func TestMPICTLSALPN01(t *testing.T) {
 	t.Parallel()
@@ -78,14 +92,27 @@ func TestMPICTLSALPN01(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	caaCount := 0
+	var caaEvents []challtestsrvclient.DNSRequest
 	for _, event := range dnsEvents {
 		if event.Question.Qtype == dns.TypeCAA {
-			caaCount++
+			caaEvents = append(caaEvents, event)
 		}
 	}
-	if caaCount != 4 {
-		t.Fatalf("expected 4 CAA validation events (VA=1 RVAs=3), got %d", caaCount)
+	if len(caaEvents) != 4 {
+		t.Fatalf("expected 4 CAA validation events (VA=1 RVAs=3), got %d", len(caaEvents))
+	}
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		// We can only check the user-agent for DNS requests if the DOH
+		// feature-flag is enabled.
+		//
+		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
+		// to true.
+		gotUserAgents := collectUserAgentsFromDNSRequests(caaEvents)
+		for _, ua := range expectedUserAgents {
+			if !slices.Contains(gotUserAgents, ua) {
+				t.Errorf("expected a query from User-Agent %q but did not get one (got %+v).", ua, gotUserAgents)
+			}
+		}
 	}
 }
 
@@ -135,14 +162,27 @@ func TestMPICDNS01(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	validationCount := 0
+	var validationEvents []challtestsrvclient.DNSRequest
 	for _, event := range challDomainDNSEvents {
 		if event.Question.Qtype == dns.TypeTXT && event.Question.Name == "_acme-challenge."+domain+"." {
-			validationCount++
+			validationEvents = append(validationEvents, event)
 		}
 	}
-	if validationCount != 4 {
-		t.Errorf("expected 4 validation events (VA=1 RVAs=3), got %d", validationCount)
+	if len(validationEvents) != 4 {
+		t.Errorf("expected 4 validation events (VA=1 RVAs=3), got %d", len(validationEvents))
+	}
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		// We can only check the user-agent for DNS requests if the DOH
+		// feature-flag is enabled.
+		//
+		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
+		// to true.
+		gotUserAgents := collectUserAgentsFromDNSRequests(validationEvents)
+		for _, ua := range expectedUserAgents {
+			if !slices.Contains(gotUserAgents, ua) {
+				t.Errorf("expected a query from User-Agent %q but did not get one (got %+v).", ua, gotUserAgents)
+			}
+		}
 	}
 
 	domainDNSEvents, err := testSrvClient.DNSRequestHistory(domain)
@@ -150,14 +190,27 @@ func TestMPICDNS01(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	caaCount := 0
+	var caaEvents []challtestsrvclient.DNSRequest
 	for _, event := range domainDNSEvents {
 		if event.Question.Qtype == dns.TypeCAA {
-			caaCount++
+			caaEvents = append(caaEvents, event)
 		}
 	}
-	if caaCount != 4 {
-		t.Fatalf("expected 4 CAA validation events (VA=1 RVAs=3), got %d", caaCount)
+	if len(caaEvents) != 4 {
+		t.Errorf("expected 4 CAA validation events (VA=1 RVAs=3), got %d", len(caaEvents))
+	}
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		// We can only check the user-agent for DNS requests if the DOH
+		// feature-flag is enabled.
+		//
+		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
+		// to true.
+		gotUserAgents := collectUserAgentsFromDNSRequests(caaEvents)
+		for _, ua := range expectedUserAgents {
+			if !slices.Contains(gotUserAgents, ua) {
+				t.Errorf("expected a query from User-Agent %q but did not get one (got %+v).", ua, gotUserAgents)
+			}
+		}
 	}
 }
 
@@ -217,19 +270,44 @@ func TestMPICHTTP01(t *testing.T) {
 		t.Errorf("expected 4 validation events (VA=1 RVAs=3), got %d", validationCount)
 	}
 
+	sort.Slice(validationEvents, func(i, j int) bool {
+		return validationEvents[i].UserAgent < validationEvents[j].UserAgent
+	})
+	for i, event := range validationEvents {
+		if event.UserAgent != expectedUserAgents[i] {
+			t.Errorf("expected user agent %s, got %s", expectedUserAgents[i], event.UserAgent)
+		}
+	}
+
 	dnsEvents, err := testSrvClient.DNSRequestHistory(domain)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	caaCount := 0
+	var caaEvents []challtestsrvclient.DNSRequest
 	for _, event := range dnsEvents {
 		if event.Question.Qtype == dns.TypeCAA {
-			caaCount++
+			caaEvents = append(caaEvents, event)
 		}
 	}
-	if caaCount != 4 {
-		t.Fatalf("expected 4 CAA validation events (VA=1 RVAs=3), got %d", caaCount)
+	if len(caaEvents) != 4 {
+		t.Errorf("expected 4 CAA validation events (VA=1 RVAs=3), got %d", len(caaEvents))
+	}
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		// We can only check the user-agent for DNS requests if the DOH
+		// feature-flag is enabled.
+		//
+		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
+		// to true.
+		sort.Slice(caaEvents, func(i, j int) bool {
+			return caaEvents[i].UserAgent < caaEvents[j].UserAgent
+		})
+
+		for i, event := range caaEvents {
+			if event.UserAgent != expectedUserAgents[i] {
+				t.Errorf("expected user agent %s, got %s", expectedUserAgents[i], event.UserAgent)
+			}
+		}
 	}
 }
 

@@ -106,6 +106,7 @@ func main() {
 			scope,
 			clk,
 			c.VA.DNSTries,
+			c.VA.UserAgent,
 			logger,
 			tlsConfig)
 	} else {
@@ -115,6 +116,7 @@ func main() {
 			scope,
 			clk,
 			c.VA.DNSTries,
+			c.VA.UserAgent,
 			logger,
 			tlsConfig)
 	}
