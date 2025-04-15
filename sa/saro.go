@@ -540,7 +540,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 
 // authzModelMapToPB converts a mapping of domain name to authzModels into a
 // protobuf authorizations map
-func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
+func authzModelMapToPB(m map[identifier.ACMEIdentifier]authzModel) (*sapb.Authorizations, error) {
 	resp := &sapb.Authorizations{}
 	for _, v := range m {
 		authzPB, err := modelToAuthzPB(v)
@@ -554,12 +554,11 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 
 // GetAuthorizations2 returns a single pending or valid authorization owned by
 // the given account for all given identifiers. If both a valid and pending
-// authorization exist only the valid one will be returned. Currently only dns
-// identifiers are supported.
+// authorization exist only the valid one will be returned.
 //
 // Deprecated: Use GetValidAuthorizations2, as we stop pending authz reuse.
 func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	idents := identifier.FromProtoSliceWithDefault(req)
+	idents := identifier.FromProtoSlice(req.Identifiers)
 
 	if core.IsAnyNilOrZero(req, req.RegistrationID, idents, req.ValidUntil) {
 		return nil, errIncompleteRequest
@@ -602,7 +601,8 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		return &sapb.Authorizations{}, nil
 	}
 
-	authzModelMap := make(map[string]authzModel, len(authzModels))
+	// TODO(#8111): Consider reducing the volume of data in this map.
+	authzModelMap := make(map[identifier.ACMEIdentifier]authzModel, len(authzModels))
 	for _, am := range authzModels {
 		if req.Profile != "" && am.CertificateProfileName != &req.Profile {
 			// Don't return authzs whose profile doesn't match that requested.
@@ -610,9 +610,14 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		}
 		// If there is an existing authorization in the map, only replace it with
 		// one which has a "better" validation state (valid instead of pending).
-		existing, present := authzModelMap[am.IdentifierValue]
+		identType, ok := uintToIdentifierType[am.IdentifierType]
+		if !ok {
+			return nil, fmt.Errorf("unrecognized identifier type encoding %d on authz id %d", am.IdentifierType, am.ID)
+		}
+		ident := identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}
+		existing, present := authzModelMap[ident]
 		if !present || uintToStatus[existing.Status] == core.StatusPending && uintToStatus[am.Status] == core.StatusValid {
-			authzModelMap[am.IdentifierValue] = am
+			authzModelMap[ident] = am
 		}
 	}
 
@@ -685,21 +690,22 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 		return nil, err
 	}
 
-	// TODO(#7646): Stop constructing this map, as it's not forward-compatible with
-	// other identifier types, and is an inefficient wire format.
-	byName := make(map[string]authzModel)
+	// TODO(#8111): Consider reducing the volume of data in this map.
+	byIdent := make(map[identifier.ACMEIdentifier]authzModel)
 	for _, am := range ams {
-		if uintToIdentifierType[am.IdentifierType] != identifier.TypeDNS {
-			return nil, fmt.Errorf("unknown identifier type: %q on authz id %d", am.IdentifierType, am.ID)
+		identType, ok := uintToIdentifierType[am.IdentifierType]
+		if !ok {
+			return nil, fmt.Errorf("unrecognized identifier type encoding %d on authz id %d", am.IdentifierType, am.ID)
 		}
-		_, present := byName[am.IdentifierValue]
+		ident := identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}
+		_, present := byIdent[ident]
 		if present {
 			return nil, fmt.Errorf("identifier %q appears twice in authzs for order %d", am.IdentifierValue, req.Id)
 		}
-		byName[am.IdentifierValue] = am
+		byIdent[ident] = am
 	}
 
-	return authzModelMapToPB(byName)
+	return authzModelMapToPB(byIdent)
 }
 
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
@@ -744,10 +750,9 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 
 // GetValidAuthorizations2 returns a single valid authorization owned by the
 // given account for all given identifiers. If more than one valid authorization
-// exists, only the one with the latest expiry will be returned. Currently only
-// dns identifiers are supported.
+// exists, only the one with the latest expiry will be returned.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	idents := identifier.FromProtoSliceWithDefault(req)
+	idents := identifier.FromProtoSlice(req.Identifiers)
 
 	if core.IsAnyNilOrZero(req, req.RegistrationID, idents, req.ValidUntil) {
 		return nil, errIncompleteRequest
@@ -790,7 +795,8 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 		return &sapb.Authorizations{}, nil
 	}
 
-	authzMap := make(map[string]authzModel, len(authzModels))
+	// TODO(#8111): Consider reducing the volume of data in this map.
+	authzMap := make(map[identifier.ACMEIdentifier]authzModel, len(authzModels))
 	for _, am := range authzModels {
 		if req.Profile != "" && am.CertificateProfileName != &req.Profile {
 			// Don't return authzs whose profile doesn't match that requested.
@@ -798,11 +804,16 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 		}
 		// If there is an existing authorization in the map only replace it with one
 		// which has a later expiry.
-		existing, present := authzMap[am.IdentifierValue]
+		identType, ok := uintToIdentifierType[am.IdentifierType]
+		if !ok {
+			return nil, fmt.Errorf("unrecognized identifier type encoding %d on authz id %d", am.IdentifierType, am.ID)
+		}
+		ident := identifier.ACMEIdentifier{Type: identType, Value: am.IdentifierValue}
+		existing, present := authzMap[ident]
 		if present && am.Expires.Before(existing.Expires) {
 			continue
 		}
-		authzMap[am.IdentifierValue] = am
+		authzMap[ident] = am
 	}
 
 	return authzModelMapToPB(authzMap)

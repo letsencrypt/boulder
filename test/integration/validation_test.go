@@ -317,6 +317,15 @@ func TestMPICHTTP01(t *testing.T) {
 		}
 	}
 
+	sort.Slice(validationEvents, func(i, j int) bool {
+		return validationEvents[i].UserAgent < validationEvents[j].UserAgent
+	})
+	for i, event := range validationEvents {
+		if event.UserAgent != expectedUserAgents[i] {
+			t.Errorf("expected user agent %s, got %s", expectedUserAgents[i], event.UserAgent)
+		}
+	}
+
 	dnsEvents, err := testSrvClient.DNSRequestHistory(domain)
 	if err != nil {
 		t.Fatal(err)
