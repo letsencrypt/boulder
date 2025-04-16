@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM buildpack-deps:focal-scm as godeps
+FROM buildpack-deps:noble-scm as godeps
 ARG GO_VERSION
 # Provided automatically by docker build.
 ARG TARGETPLATFORM
@@ -17,7 +17,7 @@ RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.0
 RUN go install honnef.co/go/tools/cmd/staticcheck@2025.1
 RUN go install github.com/jsha/minica@v1.1.0
 
-FROM rust:bullseye as rustdeps
+FROM rust:latest as rustdeps
 # Provided automatically by docker build.
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
@@ -31,7 +31,7 @@ RUN /tmp/build-rust-deps.sh
 # more information. 
 #
 # Run this command in each container: dpkg -l libc6
-FROM buildpack-deps:focal-scm
+FROM buildpack-deps:noble-scm
 # Provided automatically by docker build.
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
