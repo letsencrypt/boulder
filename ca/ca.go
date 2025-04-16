@@ -276,11 +276,6 @@ var ocspStatusToCode = map[string]int{
 //
 // [issuance cycle]: https://github.com/letsencrypt/boulder/blob/main/docs/ISSUANCE-CYCLE.md
 func (ca *certificateAuthorityImpl) issuePrecertificate(ctx context.Context, certProfile *certProfileWithID, issueReq *capb.IssueCertificateRequest) ([]byte, error) {
-	// issueReq.orderID may be zero, for ACMEv1 requests.
-	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID) {
-		return nil, berrors.InternalServerError("Incomplete issue certificate request")
-	}
-
 	serialBigInt, err := ca.generateSerialNumber()
 	if err != nil {
 		return nil, err
@@ -314,6 +309,10 @@ func (ca *certificateAuthorityImpl) issuePrecertificate(ctx context.Context, cer
 }
 
 func (ca *certificateAuthorityImpl) IssueCertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssueCertificateResponse, error) {
+	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID, issueReq.OrderID) {
+		return nil, berrors.InternalServerError("Incomplete issue certificate request")
+	}
+
 	if ca.sctClient == nil {
 		return nil, errors.New("IssueCertificate called with a nil SCT service")
 	}
@@ -367,13 +366,9 @@ func (ca *certificateAuthorityImpl) issueCertificateForPrecertificate(ctx contex
 	certProfile *certProfileWithID,
 	precertDER []byte,
 	sctBytes [][]byte,
-	regID int64, //nolint: unparam // unparam says "regID` always receives `arbitraryRegID` (`1001`)", which is wrong; that's just what happens in the unittests.
-	orderID int64, //nolint: unparam // same as above
+	regID int64,
+	orderID int64,
 ) ([]byte, error) {
-	if core.IsAnyNilOrZero(certProfile, precertDER, sctBytes, regID) {
-		return nil, berrors.InternalServerError("Incomplete cert for precertificate request")
-	}
-
 	precert, err := x509.ParseCertificate(precertDER)
 	if err != nil {
 		return nil, err

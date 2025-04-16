@@ -115,6 +115,7 @@ func main() {
 			scope,
 			clk,
 			c.RVA.DNSTries,
+			c.RVA.UserAgent,
 			logger,
 			tlsConfig)
 	} else {
@@ -124,6 +125,7 @@ func main() {
 			scope,
 			clk,
 			c.RVA.DNSTries,
+			c.RVA.UserAgent,
 			logger,
 			tlsConfig)
 	}
