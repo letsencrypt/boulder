@@ -25,7 +25,7 @@ export PATH=/usr/local/go/bin:$PATH
 # Build
 #
 LDFLAGS="-X \"github.com/letsencrypt/boulder/core.BuildID=${COMMIT_ID}\" -X \"github.com/letsencrypt/boulder/core.BuildTime=$(date -u)\" -X \"github.com/letsencrypt/boulder/core.BuildHost=$(whoami)@$(hostname)\""
-GOBIN=$PWD/bin/ GO111MODULE=on go install -mod=vendor -ldflags "${LDFLAGS}" ./...
+GOBIN=$PWD/bin/ GO111MODULE=on go install -mod=vendor -buildvcs=false -ldflags "${LDFLAGS}" ./...
 
 # Set $VERSION to be a simulacrum of what is set in other build environments.
 VERSION="${GO_VERSION}.$(date +%s)"
