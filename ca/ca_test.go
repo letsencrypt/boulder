@@ -444,7 +444,7 @@ func TestMultipleIssuers(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to remake CA")
 
 	// Test that an RSA CSR gets issuance from an RSA issuer.
-	profile := ca.certProfiles.profileByName["legacy"]
+	profile := ca.certProfiles["legacy"]
 	issuedCertDER, err := ca.issuePrecertificate(ctx, profile, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63()})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err := x509.ParseCertificate(issuedCertDER)
@@ -675,7 +675,7 @@ func TestInvalidCSRs(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 			serializedCSR := mustRead(testCase.csrPath)
-			profile := ca.certProfiles.profileByName["legacy"]
+			profile := ca.certProfiles["legacy"]
 			issueReq := &capb.IssueCertificateRequest{Csr: serializedCSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63(), CertProfileName: "legacy"}
 			_, err = ca.issuePrecertificate(ctx, profile, issueReq)
 
@@ -713,7 +713,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 
 	// Test that the CA rejects CSRs that would expire after the intermediate cert
-	profile := ca.certProfiles.profileByName["legacy"]
+	profile := ca.certProfiles["legacy"]
 	_, err = ca.issuePrecertificate(ctx, profile, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63(), CertProfileName: "legacy"})
 	test.AssertError(t, err, "Cannot issue a certificate that expires after the intermediate certificate")
 	test.AssertErrorIs(t, err, berrors.InternalServer)
@@ -806,9 +806,9 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.fc)
 	test.AssertNotError(t, err, "Failed to create CA")
 
-	profile := ca.certProfiles.profileByName["legacy"]
+	profile := ca.certProfiles["legacy"]
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63(), CertProfileName: "legacy"}
-  precertDER, err := ca.issuePrecertificate(ctx, profile, &issueReq)
+	precertDER, err := ca.issuePrecertificate(ctx, profile, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue precert")
 	parsedPrecert, err := x509.ParseCertificate(precertDER)
 	test.AssertNotError(t, err, "Failed to parse precert")
@@ -988,7 +988,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	profile := ca.certProfiles.profileByName["legacy"]
+	profile := ca.certProfiles["legacy"]
 	issueReq := capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63(), CertProfileName: "legacy"}
 	precertDER, err := ca.issuePrecertificate(ctx, profile, &issueReq)
 	test.AssertNotError(t, err, "Failed to issue precert")
