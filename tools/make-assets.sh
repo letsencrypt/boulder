@@ -28,12 +28,6 @@ export PATH=/usr/local/go/bin:$PATH
 # Set $VERSION to be a simulacrum of what is set in other build environments.
 VERSION="${GO_VERSION}.$(date +%s)"
 
-# Build Boulder.
-make
-
-# Produce a .deb and .tar.gz in $PWD without using `make` or `fpm`. The
-# resulting files will be named `boulder-newpkg-*`. Eventually this code
-# will be used to produce the regular `boulder-*` packages.
 BOULDER="${PWD}"
 BUILD="$(mktemp -d)"
 TARGET="${BUILD}/opt/boulder"
