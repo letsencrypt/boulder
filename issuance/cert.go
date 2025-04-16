@@ -6,7 +6,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -30,58 +29,40 @@ import (
 )
 
 // ProfileConfig describes the certificate issuance constraints for all issuers.
-//
-// This struct gets hashed in the CA to allow matching up precert and final cert
-// issuance by the exact profile config. We compute the hash over an ASN.1 encoding
-// because ASN.1 encoding has a canonical form and can omit optional fields (which
-// allows for gracefully adding new fields without changing the hash of existing
-// profile configs). This struct does not get embedded into any certs, CRLs, or
-// other objects, and does not get signed; it's only used internally.
-//
-// Note: even though these fields have encoding instructions (tag:N), they will
-// be encoded in the order they appear in the struct, so do not reorder them.
 type ProfileConfig struct {
 	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
 	// OCSP Must Staple extension to be rejected.
-	AllowMustStaple bool `asn1:"tag:1,optional"`
+	AllowMustStaple bool
 
 	// OmitCommonName causes the CN field to be excluded from the resulting
 	// certificate, regardless of its inclusion in the IssuanceRequest.
-	OmitCommonName bool `asn1:"tag:2,optional"`
+	OmitCommonName bool
 	// OmitKeyEncipherment causes the keyEncipherment bit to be omitted from the
 	// Key Usage field of all certificates (instead of only from ECDSA certs).
-	OmitKeyEncipherment bool `asn1:"tag:3,optional"`
+	OmitKeyEncipherment bool
 	// OmitClientAuth causes the id-kp-clientAuth OID (TLS Client Authentication)
 	// to be omitted from the EKU extension.
-	OmitClientAuth bool `asn1:"tag:4,optional"`
+	OmitClientAuth bool
 	// OmitSKID causes the Subject Key Identifier extension to be omitted.
-	OmitSKID bool `asn1:"tag:5,optional"`
+	OmitSKID bool
 	// OmitOCSP causes the OCSP URI field to be omitted from the Authority
 	// Information Access extension. This cannot be true unless
 	// IncludeCRLDistributionPoints is also true, to ensure that every
 	// certificate has at least one revocation mechanism included.
-	OmitOCSP bool `asn1:"tag:11,optional"`
+	OmitOCSP bool
 	// IncludeCRLDistributionPoints causes the CRLDistributionPoints extension to
 	// be added to all certificates issued by this profile.
-	IncludeCRLDistributionPoints bool `asn1:"tag:6,optional"`
+	IncludeCRLDistributionPoints bool
 
-	MaxValidityPeriod   config.Duration `asn1:"tag:7,optional"`
-	MaxValidityBackdate config.Duration `asn1:"tag:8,optional"`
+	MaxValidityPeriod   config.Duration
+	MaxValidityBackdate config.Duration
 
 	// LintConfig is a path to a zlint config file, which can be used to control
 	// the behavior of zlint's "customizable lints".
-	LintConfig string `asn1:"tag:9,optional"`
+	LintConfig string
 	// IgnoredLints is a list of lint names that we know will fail for this
 	// profile, and which we know it is safe to ignore.
-	IgnoredLints []string `asn1:"tag:10,optional"`
-}
-
-func (pcn ProfileConfig) hash() ([32]byte, error) {
-	encodedBytes, err := asn1.Marshal(pcn)
-	if err != nil {
-		return [32]byte{}, err
-	}
-	return sha256.Sum256(encodedBytes), nil
+	IgnoredLints []string
 }
 
 // PolicyConfig describes a policy
@@ -104,8 +85,6 @@ type Profile struct {
 	maxValidity time.Duration
 
 	lints lint.Registry
-
-	hash [32]byte
 }
 
 // NewProfile converts the profile config into a usable profile.
@@ -137,11 +116,6 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 		lints.SetConfiguration(lintconfig)
 	}
 
-	hash, err := profileConfig.hash()
-	if err != nil {
-		return nil, err
-	}
-
 	sp := &Profile{
 		allowMustStaple:              profileConfig.AllowMustStaple,
 		omitCommonName:               profileConfig.OmitCommonName,
@@ -153,14 +127,9 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 		maxBackdate:                  profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:                  profileConfig.MaxValidityPeriod.Duration,
 		lints:                        lints,
-		hash:                         hash,
 	}
 
 	return sp, nil
-}
-
-func (p *Profile) Hash() [32]byte {
-	return p.hash
 }
 
 // GenerateValidity returns a notBefore/notAfter pair bracketing the input time,
