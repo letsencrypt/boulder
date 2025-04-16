@@ -32,8 +32,6 @@ BOULDER="${PWD}"
 BUILD="$(mktemp -d)"
 TARGET="${BUILD}/opt/boulder"
 
-COMMIT_ID="$(git rev-parse --short=8 HEAD)"
-
 mkdir -p "${TARGET}/bin"
 for NAME in admin boulder ceremony ct-test-srv pardot-test-srv chall-test-srv ; do
   cp -a "bin/${NAME}" "${TARGET}/bin/"
