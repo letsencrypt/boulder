@@ -29,7 +29,7 @@ jobs:
         id: build
         env:
           GO_VERSION: ${{ matrix.GO_VERSION }}
-        run: docker run -v $PWD:/boulder -e GO_VERSION=$GO_VERSION -e COMMIT_ID="$(git rev-parse --short=8 HEAD)" ubuntu:20.04 bash -c 'apt update && apt -y install gnupg2 curl sudo git && cd /boulder/ && ./tools/make-assets.sh'
+        run: docker run -v $PWD:/boulder -e GO_VERSION=$GO_VERSION -e COMMIT_ID="$(git rev-parse --short=8 HEAD)" ubuntu:20.04 bash -c 'apt update && apt -y install gnupg2 curl sudo git gcc && cd /boulder/ && ./tools/make-assets.sh'
 
       - name: Compute checksums
         id: checksums
