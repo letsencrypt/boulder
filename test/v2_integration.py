@@ -10,8 +10,6 @@ import os
 import json
 import re
 
-import OpenSSL
-
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -1329,7 +1327,7 @@ def test_auth_deactivation():
 def get_ocsp_response_and_reason(cert_file, issuer_glob, url):
     """Returns the ocsp response output and revocation reason."""
     output = verify_ocsp(cert_file, issuer_glob, url, None)
-    m = re.search('Reason: (\w+)', output)
+    m = re.search(r'Reason: (\w+)', output)
     reason = m.group(1) if m is not None else ""
     return output, reason
 
@@ -1346,10 +1344,9 @@ def ocsp_resigning_setup():
     cert_file = temppath('ocsp_resigning_setup.pem')
     order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
 
-    cert = OpenSSL.crypto.load_certificate(
-        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    cert = x509.load_pem_x509_certificate(order.fullchain_pem.encode(), default_backend())
     # Revoke for reason 5: cessationOfOperation
-    client.revoke(josepy.ComparableX509(cert), 5)
+    client.revoke(cert, 5)
 
     ocsp_response, reason = get_ocsp_response_and_reason(
         cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002")

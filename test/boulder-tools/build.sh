@@ -4,7 +4,7 @@ apt-get update
 
 # Install system deps
 apt-get install -y --no-install-recommends \
-  mariadb-client-core-10.3 \
+  mariadb-client-core \
   rsyslog \
   build-essential \
   opensc \
@@ -23,7 +23,7 @@ fi
 curl -L https://github.com/google/protobuf/releases/download/v3.20.1/protoc-3.20.1-linux-"${PROTO_ARCH}".zip -o /tmp/protoc.zip
 unzip /tmp/protoc.zip -d /usr/local/protoc
 
-pip3 install -r /tmp/requirements.txt
+pip3 install --break-system-packages -r /tmp/requirements.txt
 
 apt-get clean -y
 
