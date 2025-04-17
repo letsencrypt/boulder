@@ -24,21 +24,15 @@ export PATH=/usr/local/go/bin:$PATH
 #
 # Build
 #
+LDFLAGS="-X \"github.com/letsencrypt/boulder/core.BuildID=${COMMIT_ID}\" -X \"github.com/letsencrypt/boulder/core.BuildTime=$(date -u)\" -X \"github.com/letsencrypt/boulder/core.BuildHost=$(whoami)@$(hostname)\""
+GOBIN=$PWD/bin/ GO111MODULE=on go install -mod=vendor -buildvcs=false -ldflags "${LDFLAGS}" ./...
 
 # Set $VERSION to be a simulacrum of what is set in other build environments.
 VERSION="${GO_VERSION}.$(date +%s)"
 
-# Build Boulder.
-make
-
-# Produce a .deb and .tar.gz in $PWD without using `make` or `fpm`. The
-# resulting files will be named `boulder-newpkg-*`. Eventually this code
-# will be used to produce the regular `boulder-*` packages.
 BOULDER="${PWD}"
 BUILD="$(mktemp -d)"
 TARGET="${BUILD}/opt/boulder"
-
-COMMIT_ID="$(git rev-parse --short=8 HEAD)"
 
 mkdir -p "${TARGET}/bin"
 for NAME in admin boulder ceremony ct-test-srv pardot-test-srv chall-test-srv ; do
