@@ -100,7 +100,7 @@ type certChecker struct {
 	kp                          goodkey.KeyPolicy
 	dbMap                       certDB
 	getPrecert                  precertGetter
-	certs                       chan core.Certificate
+	certs                       chan *corepb.Certificate
 	clock                       clock.Clock
 	rMu                         *sync.Mutex
 	issuedReport                report
@@ -124,14 +124,14 @@ func newChecker(saDbMap certDB,
 		if err != nil {
 			return nil, err
 		}
-		return precertPb.DER, nil
+		return precertPb.Der, nil
 	}
 	return certChecker{
 		pa:                          pa,
 		kp:                          kp,
 		dbMap:                       saDbMap,
 		getPrecert:                  precertGetter,
-		certs:                       make(chan core.Certificate, batchSize),
+		certs:                       make(chan *corepb.Certificate, batchSize),
 		rMu:                         new(sync.Mutex),
 		clock:                       clk,
 		issuedReport:                report{Entries: make(map[string]reportEntry)},
@@ -214,7 +214,7 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 	batchStartID := initialID
 	var retries int
 	for {
-		certs, err := sa.SelectCertificates(
+		certs, highestID, err := sa.SelectCertificates(
 			ctx,
 			c.dbMap,
 			`WHERE id > :id AND
@@ -239,14 +239,14 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 		}
 		retries = 0
 		for _, cert := range certs {
-			c.certs <- cert.Certificate
+			c.certs <- cert
 		}
 		if len(certs) == 0 {
 			break
 		}
 		lastCert := certs[len(certs)-1]
-		batchStartID = lastCert.ID
-		if lastCert.Issued.After(c.issuedReport.end) {
+		batchStartID = highestID
+		if lastCert.Issued.AsTime().After(c.issuedReport.end) {
 			break
 		}
 	}
@@ -302,8 +302,8 @@ var expectedExtensionContent = map[string][]byte{
 // likely valid at the time the certificate was issued. Authorizations with
 // status = "deactivated" are counted for this, so long as their validatedAt
 // is before the issuance and expiration is after.
-func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificate, idents identifier.ACMEIdentifiers) error {
-	authzs, err := sa.SelectAuthzsMatchingIssuance(ctx, c.dbMap, cert.RegistrationID, cert.Issued, idents)
+func (c *certChecker) checkValidations(ctx context.Context, cert *corepb.Certificate, idents identifier.ACMEIdentifiers) error {
+	authzs, err := sa.SelectAuthzsMatchingIssuance(ctx, c.dbMap, cert.RegistrationID, cert.Issued.AsTime(), idents)
 	if err != nil {
 		return fmt.Errorf("error checking authzs for certificate %s: %w", cert.Serial, err)
 	}
@@ -334,16 +334,16 @@ func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificat
 }
 
 // checkCert returns a list of DNS names in the certificate and a list of problems with the certificate.
-func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate) ([]string, []string) {
+func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) ([]string, []string) {
 	var dnsNames []string
 	var problems []string
 
 	// Check that the digests match.
-	if cert.Digest != core.Fingerprint256(cert.DER) {
+	if cert.Digest != core.Fingerprint256(cert.Der) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
 	}
 	// Parse the certificate.
-	parsedCert, err := zX509.ParseCertificate(cert.DER)
+	parsedCert, err := zX509.ParseCertificate(cert.Der)
 	if err != nil {
 		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
 	} else {
@@ -368,7 +368,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate) ([]s
 			problems = append(problems, "Stored serial doesn't match certificate serial")
 		}
 		// Check that we have the correct expiration time.
-		if !parsedCert.NotAfter.Equal(cert.Expires) {
+		if !parsedCert.NotAfter.Equal(cert.Expires.AsTime()) {
 			problems = append(problems, "Stored expiration doesn't match certificate NotAfter")
 		}
 		// Check if basic constraints are set.
@@ -388,7 +388,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate) ([]s
 			problems = append(problems, "Certificate has unacceptable validity period")
 		}
 		// Check that the stored issuance time isn't too far back/forward dated.
-		if parsedCert.NotBefore.Before(cert.Issued.Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.Add(6*time.Hour)) {
+		if parsedCert.NotBefore.Before(cert.Issued.AsTime().Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.AsTime().Add(6*time.Hour)) {
 			problems = append(problems, "Stored issuance date is outside of 6 hour window of certificate NotBefore")
 		}
 		if parsedCert.Subject.CommonName != "" {
@@ -451,7 +451,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate) ([]s
 		// checks which rely on external resources such as weak or blocked key
 		// lists, or the list of blocked keys in the database. This only performs
 		// static checks, such as against the RSA key size and the ECDSA curve.
-		p, err := x509.ParseCertificate(cert.DER)
+		p, err := x509.ParseCertificate(cert.Der)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
 		}
@@ -467,7 +467,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate) ([]s
 			c.logger.Errf("fetching linting precertificate for %s: %s", cert.Serial, err)
 			atomic.AddInt64(&c.issuedReport.DbErrs, 1)
 		} else {
-			err = precert.Correspond(precertDER, cert.DER)
+			err = precert.Correspond(precertDER, cert.Der)
 			if err != nil {
 				problems = append(problems,
 					fmt.Sprintf("Certificate does not correspond to precert for %s: %s", cert.Serial, err))

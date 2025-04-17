@@ -267,23 +267,6 @@ func TestAuthz(t *testing.T) {
 	test.AssertDeepEquals(t, inAuthzNilExpires, outAuthz2)
 }
 
-func TestCert(t *testing.T) {
-	now := time.Now().Round(0).UTC()
-	cert := core.Certificate{
-		RegistrationID: 1,
-		Serial:         "serial",
-		Digest:         "digest",
-		DER:            []byte{255},
-		Issued:         now,
-		Expires:        now.Add(time.Hour),
-	}
-
-	certPB := CertToPB(cert)
-	outCert := PBToCert(certPB)
-
-	test.AssertDeepEquals(t, cert, outCert)
-}
-
 func TestOrderValid(t *testing.T) {
 	created := time.Now()
 	expires := created.Add(1 * time.Hour)
