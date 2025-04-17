@@ -9,6 +9,7 @@ linters:
     - ineffassign
     - misspell
     - nolintlint
+    - sqlclosecheck
     - typecheck
     - unconvert
     - unparam

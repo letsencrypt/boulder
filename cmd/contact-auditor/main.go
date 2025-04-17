@@ -131,7 +131,7 @@ func (c contactAuditor) run(ctx context.Context, resChan chan *result) error {
 		}
 	}
 	// Ensure the query wasn't interrupted before it could complete.
-	err = rows.Close()
+	err = rows.Close() //nolint:sqlclosecheck // this is fine
 	if err != nil {
 		return err
 	} else {
