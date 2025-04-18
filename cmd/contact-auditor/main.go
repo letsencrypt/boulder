@@ -131,7 +131,7 @@ func (c contactAuditor) run(ctx context.Context, resChan chan *result) error {
 		}
 	}
 	// Ensure the query wasn't interrupted before it could complete.
-	err = rows.Close()
+	err = rows.Close() //nolint:sqlclosecheck // the lint wants us to do this in a defer instead, but we want to return the error
 	if err != nil {
 		return err
 	} else {

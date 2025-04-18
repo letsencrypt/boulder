@@ -113,6 +113,7 @@ func allTableNamesInDB(ctx context.Context, db CleanUpDB) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer r.Close()
 	var ts []string
 	for r.Next() {
 		tableName := ""
