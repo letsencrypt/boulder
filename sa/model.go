@@ -152,29 +152,7 @@ func SelectCertificate(ctx context.Context, s db.OneSelector, serial string) (*c
 		"SELECT "+certFields+" FROM certificates WHERE serial = ? LIMIT 1",
 		serial,
 	)
-	return certificateModelToPb(model), err
-}
-
-func certificateModelToPb(model certificateModel) *corepb.Certificate {
-	return &corepb.Certificate{
-		RegistrationID: model.RegistrationID,
-		Serial:         model.Serial,
-		Digest:         model.Digest,
-		Der:            model.DER,
-		Issued:         timestamppb.New(model.Issued),
-		Expires:        timestamppb.New(model.Expires),
-	}
-}
-
-func lintingCertModelToPb(model lintingCertModel) *corepb.Certificate {
-	return &corepb.Certificate{
-		RegistrationID: model.RegistrationID,
-		Serial:         model.Serial,
-		Digest:         "",
-		Der:            model.DER,
-		Issued:         timestamppb.New(model.Issued),
-		Expires:        timestamppb.New(model.Expires),
-	}
+	return model.toPb(), err
 }
 
 const precertFields = "registrationID, serial, der, issued, expires"
@@ -191,7 +169,7 @@ func SelectPrecertificate(ctx context.Context, s db.OneSelector, serial string) 
 	if err != nil {
 		return nil, err
 	}
-	return lintingCertModelToPb(model), nil
+	return model.toPb(), nil
 }
 
 // SelectCertificates selects all fields of multiple certificate objects
@@ -208,7 +186,7 @@ func SelectCertificates(ctx context.Context, s db.Selector, q string, args map[s
 	var pbs []*corepb.Certificate
 	var highestID int64
 	for _, m := range models {
-		pbs = append(pbs, certificateModelToPb(m))
+		pbs = append(pbs, m.toPb())
 		if m.ID > highestID {
 			highestID = m.ID
 		}
@@ -300,17 +278,6 @@ type regModel struct {
 	Status    string `db:"status"`
 }
 
-type certificateModel struct {
-	ID             int64 `db:"id"`
-	RegistrationID int64 `db:"registrationID"`
-
-	Serial  string    `db:"serial"`
-	Digest  string    `db:"digest"`
-	DER     []byte    `db:"der"`
-	Issued  time.Time `db:"issued"`
-	Expires time.Time `db:"expires"`
-}
-
 func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 	// Even though we don't need to convert from JSON to an in-memory JSONWebKey
 	// for the sake of the `Key` field, we do need to do the conversion in order
@@ -391,6 +358,38 @@ type lintingCertModel struct {
 	DER            []byte
 	Issued         time.Time
 	Expires        time.Time
+}
+
+func (model lintingCertModel) toPb() *corepb.Certificate {
+	return &corepb.Certificate{
+		RegistrationID: model.RegistrationID,
+		Serial:         model.Serial,
+		Digest:         "",
+		Der:            model.DER,
+		Issued:         timestamppb.New(model.Issued),
+		Expires:        timestamppb.New(model.Expires),
+	}
+}
+
+type certificateModel struct {
+	ID             int64     `db:"id"`
+	RegistrationID int64     `db:"registrationID"`
+	Serial         string    `db:"serial"`
+	Digest         string    `db:"digest"`
+	DER            []byte    `db:"der"`
+	Issued         time.Time `db:"issued"`
+	Expires        time.Time `db:"expires"`
+}
+
+func (model certificateModel) toPb() *corepb.Certificate {
+	return &corepb.Certificate{
+		RegistrationID: model.RegistrationID,
+		Serial:         model.Serial,
+		Digest:         model.Digest,
+		Der:            model.DER,
+		Issued:         timestamppb.New(model.Issued),
+		Expires:        timestamppb.New(model.Expires),
+	}
 }
 
 // orderModel represents one row in the orders table. The CertificateProfileName

@@ -245,10 +245,10 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 			break
 		}
 		lastCert := certs[len(certs)-1]
-		batchStartID = highestID
 		if lastCert.Issued.AsTime().After(c.issuedReport.end) {
 			break
 		}
+		batchStartID = highestID
 	}
 
 	// Close channel so range operations won't block once the channel empties out
