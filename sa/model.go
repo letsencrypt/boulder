@@ -139,65 +139,59 @@ func selectRegistration(ctx context.Context, s db.OneSelector, whereCol string, 
 	return &model, err
 }
 
-const certFields = "registrationID, serial, digest, der, issued, expires"
+const certFields = "id, registrationID, serial, digest, der, issued, expires"
 
 // SelectCertificate selects all fields of one certificate object identified by
 // a serial. If more than one row contains the same serial only the first is
 // returned.
-func SelectCertificate(ctx context.Context, s db.OneSelector, serial string) (core.Certificate, error) {
-	var model core.Certificate
+func SelectCertificate(ctx context.Context, s db.OneSelector, serial string) (*corepb.Certificate, error) {
+	var model certificateModel
 	err := s.SelectOne(
 		ctx,
 		&model,
 		"SELECT "+certFields+" FROM certificates WHERE serial = ? LIMIT 1",
 		serial,
 	)
-	return model, err
+	return model.toPb(), err
 }
 
 const precertFields = "registrationID, serial, der, issued, expires"
 
 // SelectPrecertificate selects all fields of one precertificate object
 // identified by serial.
-func SelectPrecertificate(ctx context.Context, s db.OneSelector, serial string) (core.Certificate, error) {
+func SelectPrecertificate(ctx context.Context, s db.OneSelector, serial string) (*corepb.Certificate, error) {
 	var model lintingCertModel
 	err := s.SelectOne(
 		ctx,
 		&model,
 		"SELECT "+precertFields+" FROM precertificates WHERE serial = ? LIMIT 1",
 		serial)
-	return core.Certificate{
-		RegistrationID: model.RegistrationID,
-		Serial:         model.Serial,
-		DER:            model.DER,
-		Issued:         model.Issued,
-		Expires:        model.Expires,
-	}, err
-}
-
-type CertWithID struct {
-	ID int64
-	core.Certificate
+	if err != nil {
+		return nil, err
+	}
+	return model.toPb(), nil
 }
 
 // SelectCertificates selects all fields of multiple certificate objects
-func SelectCertificates(ctx context.Context, s db.Selector, q string, args map[string]interface{}) ([]CertWithID, error) {
-	var models []CertWithID
+//
+// Returns a slice of *corepb.Certificate along with the highest ID field seen
+// (which can be used as input to a subsequent query when iterating in primary
+// key order).
+func SelectCertificates(ctx context.Context, s db.Selector, q string, args map[string]interface{}) ([]*corepb.Certificate, int64, error) {
+	var models []certificateModel
 	_, err := s.Select(
 		ctx,
 		&models,
-		"SELECT id, "+certFields+" FROM certificates "+q, args)
-	return models, err
-}
-
-// SelectPrecertificates selects all fields of multiple precertificate objects.
-func SelectPrecertificates(ctx context.Context, s db.Selector, q string, args map[string]interface{}) ([]CertWithID, error) {
-	var models []CertWithID
-	_, err := s.Select(
-		ctx,
-		&models,
-		"SELECT id, "+precertFields+" FROM precertificates "+q, args)
-	return models, err
+		"SELECT "+certFields+" FROM certificates "+q, args)
+	var pbs []*corepb.Certificate
+	var highestID int64
+	for _, m := range models {
+		pbs = append(pbs, m.toPb())
+		if m.ID > highestID {
+			highestID = m.ID
+		}
+	}
+	return pbs, highestID, err
 }
 
 type CertStatusMetadata struct {
@@ -364,6 +358,38 @@ type lintingCertModel struct {
 	DER            []byte
 	Issued         time.Time
 	Expires        time.Time
+}
+
+func (model lintingCertModel) toPb() *corepb.Certificate {
+	return &corepb.Certificate{
+		RegistrationID: model.RegistrationID,
+		Serial:         model.Serial,
+		Digest:         "",
+		Der:            model.DER,
+		Issued:         timestamppb.New(model.Issued),
+		Expires:        timestamppb.New(model.Expires),
+	}
+}
+
+type certificateModel struct {
+	ID             int64     `db:"id"`
+	RegistrationID int64     `db:"registrationID"`
+	Serial         string    `db:"serial"`
+	Digest         string    `db:"digest"`
+	DER            []byte    `db:"der"`
+	Issued         time.Time `db:"issued"`
+	Expires        time.Time `db:"expires"`
+}
+
+func (model certificateModel) toPb() *corepb.Certificate {
+	return &corepb.Certificate{
+		RegistrationID: model.RegistrationID,
+		Serial:         model.Serial,
+		Digest:         model.Digest,
+		Der:            model.DER,
+		Issued:         timestamppb.New(model.Issued),
+		Expires:        timestamppb.New(model.Expires),
+	}
 }
 
 // orderModel represents one row in the orders table. The CertificateProfileName

@@ -213,7 +213,7 @@ func (ssa *SQLStorageAuthorityRO) GetCertificate(ctx context.Context, req *sapb.
 	if err != nil {
 		return nil, err
 	}
-	return bgrpc.CertToPB(cert), nil
+	return cert, nil
 }
 
 // GetLintPrecertificate takes a serial number and returns the corresponding
@@ -235,7 +235,7 @@ func (ssa *SQLStorageAuthorityRO) GetLintPrecertificate(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
-	return bgrpc.CertToPB(cert), nil
+	return cert, nil
 }
 
 // GetCertificateStatus takes a hexadecimal string representing the full 128-bit serial
@@ -305,7 +305,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 	_, err := ssa.dbReadOnlyMap.Select(
 		ctx,
 		&rows,
-		`SELECT issued FROM fqdnSets 
+		`SELECT issued FROM fqdnSets
 		WHERE setHash = ?
 		AND issued > ?
 		ORDER BY issued DESC
@@ -1254,7 +1254,7 @@ func (ssa *SQLStorageAuthorityRO) GetPausedIdentifiers(ctx context.Context, req 
 	_, err := ssa.dbReadOnlyMap.Select(ctx, &matches, `
 		SELECT identifierType, identifierValue
 		FROM paused
-		WHERE 
+		WHERE
 			registrationID = ? AND
 			unpausedAt IS NULL
 		LIMIT 15`,

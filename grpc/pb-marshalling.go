@@ -343,28 +343,6 @@ func newOrderValid(order *corepb.Order) bool {
 	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.Identifiers) == 0)
 }
 
-func CertToPB(cert core.Certificate) *corepb.Certificate {
-	return &corepb.Certificate{
-		RegistrationID: cert.RegistrationID,
-		Serial:         cert.Serial,
-		Digest:         cert.Digest,
-		Der:            cert.DER,
-		Issued:         timestamppb.New(cert.Issued),
-		Expires:        timestamppb.New(cert.Expires),
-	}
-}
-
-func PBToCert(pb *corepb.Certificate) core.Certificate {
-	return core.Certificate{
-		RegistrationID: pb.RegistrationID,
-		Serial:         pb.Serial,
-		Digest:         pb.Digest,
-		DER:            pb.Der,
-		Issued:         pb.Issued.AsTime(),
-		Expires:        pb.Expires.AsTime(),
-	}
-}
-
 func CertStatusToPB(certStatus core.CertificateStatus) *corepb.CertificateStatus {
 	return &corepb.CertificateStatus{
 		Serial:                certStatus.Serial,
