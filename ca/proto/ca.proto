@@ -30,19 +30,6 @@ message IssueCertificateResponse {
   bytes DER = 1;
 }
 
-message IssueCertificateForPrecertificateRequest {
-  // Next unused field number: 6
-  bytes DER = 1;
-  repeated bytes SCTs = 2;
-  int64 registrationID = 3;
-  int64 orderID = 4;
-
-  // certProfileHash is a hash over the exported fields of a certificate profile
-  // to ensure that the profile remains unchanged after multiple roundtrips
-  // through the RA and CA.
-  bytes certProfileHash = 5;
-}
-
 // OCSPGenerator generates OCSP. We separate this out from
 // CertificateAuthority so that we can restrict access to a different subset of
 // hosts, so the hosts that need to request OCSP generation don't need to be
