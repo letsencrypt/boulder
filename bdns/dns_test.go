@@ -252,7 +252,7 @@ func TestDNSNoServers(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Hour, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
+	obj := NewTest(time.Hour, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), nil)
 
 	_, resolvers, err := obj.LookupHost(context.Background(), "letsencrypt.org")
 	test.AssertEquals(t, len(resolvers), 0)
@@ -269,7 +269,7 @@ func TestDNSOneServer(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), nil)
 
 	_, resolvers, err := obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 	test.AssertEquals(t, len(resolvers), 2)
@@ -282,7 +282,7 @@ func TestDNSDuplicateServers(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr, dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), nil)
 
 	_, resolvers, err := obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 	test.AssertEquals(t, len(resolvers), 2)
@@ -295,7 +295,7 @@ func TestDNSServFail(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), nil)
 	bad := "servfail.com"
 
 	_, _, err = obj.LookupTXT(context.Background(), bad)
@@ -313,7 +313,7 @@ func TestDNSLookupTXT(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), nil)
 
 	a, _, err := obj.LookupTXT(context.Background(), "letsencrypt.org")
 	t.Logf("A: %v", a)
@@ -330,7 +330,7 @@ func TestDNSLookupHost(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), nil)
 
 	ip, resolvers, err := obj.LookupHost(context.Background(), "servfail.com")
 	t.Logf("servfail.com - IP: %s, Err: %s", ip, err)
@@ -416,7 +416,7 @@ func TestDNSNXDOMAIN(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), nil)
 
 	hostname := "nxdomain.letsencrypt.org"
 	_, _, err = obj.LookupHost(context.Background(), hostname)
@@ -432,7 +432,7 @@ func TestDNSLookupCAA(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock(), nil)
+	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, "", blog.UseMock(), nil)
 	removeIDExp := regexp.MustCompile(" id: [[:digit:]]+")
 
 	caas, resp, resolvers, err := obj.LookupCAA(context.Background(), "bracewel.net")
@@ -673,7 +673,7 @@ func TestRetry(t *testing.T) {
 			staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 			test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-			testClient := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), tc.maxTries, blog.UseMock(), nil)
+			testClient := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), tc.maxTries, "", blog.UseMock(), nil)
 			dr := testClient.(*impl)
 			dr.dnsClient = tc.te
 			_, _, err = dr.LookupTXT(context.Background(), "example.com")
@@ -704,7 +704,7 @@ func TestRetry(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	testClient := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, blog.UseMock(), nil)
+	testClient := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 3, "", blog.UseMock(), nil)
 	dr := testClient.(*impl)
 	dr.dnsClient = &testExchanger{errs: []error{isTempErr, isTempErr, nil}}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -808,7 +808,7 @@ func TestRotateServerOnErr(t *testing.T) {
 	fmt.Println(staticProvider.servers)
 
 	maxTries := 5
-	client := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), maxTries, blog.UseMock(), nil)
+	client := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), maxTries, "", blog.UseMock(), nil)
 
 	// Configure a mock exchanger that will always return a retryable error for
 	// servers A and B. This will force server "[2606:4700:4700::1111]:53" to do
@@ -878,7 +878,7 @@ func TestDOHMetric(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
 
-	testClient := NewTest(time.Second*11, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 0, blog.UseMock(), nil)
+	testClient := NewTest(time.Second*11, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 0, "", blog.UseMock(), nil)
 	resolver := testClient.(*impl)
 	resolver.dnsClient = &dohAlwaysRetryExchanger{err: &url.Error{Op: "read", Err: tempError(true)}}
 

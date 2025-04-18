@@ -10,7 +10,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
-	"fmt"
 	"net"
 	"reflect"
 	"strings"
@@ -1023,30 +1022,5 @@ func TestNewProfile(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestProfileHash(t *testing.T) {
-	// A profile _with_ IncludeCRLDistributionPoints.
-	// Hash calculated over the ASN.1 encoding of the `ProfileConfigNew`.
-	profile := ProfileConfig{
-		IncludeCRLDistributionPoints: true,
-		AllowMustStaple:              true,
-		OmitCommonName:               true,
-		OmitKeyEncipherment:          false,
-		OmitClientAuth:               false,
-		OmitSKID:                     true,
-		MaxValidityPeriod:            config.Duration{Duration: time.Hour},
-		MaxValidityBackdate:          config.Duration{Duration: time.Second},
-		LintConfig:                   "example/config.toml",
-		IgnoredLints:                 []string{"one", "two"},
-	}
-	hash, err := profile.hash()
-	if err != nil {
-		t.Fatalf("hashing %+v: %s", profile, err)
-	}
-	expectedHash := "d2a6c9f0aa37d2ac0b15476cb6e0ae9b98ba59b1321d8d6da26efc620581c53d"
-	if expectedHash != fmt.Sprintf("%x", hash) {
-		t.Errorf("%+v.Hash()=%x, want %s", profile, hash, expectedHash)
 	}
 }

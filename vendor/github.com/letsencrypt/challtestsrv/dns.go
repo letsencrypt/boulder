@@ -195,7 +195,7 @@ func (s *ChallSrv) dohHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.dnsHandlerInner(&dnsToHTTPWriter{w}, msg)
+	s.dnsHandlerInner(&dnsToHTTPWriter{w}, msg, r.Header.Get("User-Agent"))
 }
 
 // dnsHandler is a miekg/dns handler that can process a dns.Msg request and
@@ -204,10 +204,10 @@ func (s *ChallSrv) dohHandler(w http.ResponseWriter, r *http.Request) {
 // DNS data. A host that is aliased by a CNAME record will follow that alias
 // one level and return the requested record types for that alias' target
 func (s *ChallSrv) dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
-	s.dnsHandlerInner(w, r)
+	s.dnsHandlerInner(w, r, "")
 }
 
-func (s *ChallSrv) dnsHandlerInner(w writeMsg, r *dns.Msg) {
+func (s *ChallSrv) dnsHandlerInner(w writeMsg, r *dns.Msg, userAgent string) {
 	m := new(dns.Msg)
 	m.SetReply(r)
 	m.Compress = false
@@ -215,7 +215,8 @@ func (s *ChallSrv) dnsHandlerInner(w writeMsg, r *dns.Msg) {
 	// For each question, add answers based on the type of question
 	for _, q := range r.Question {
 		s.AddRequestEvent(DNSRequestEvent{
-			Question: q,
+			Question:  q,
+			UserAgent: userAgent,
 		})
 
 		// If there is a ServFail mock set then ignore the question and set the
