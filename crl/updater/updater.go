@@ -80,8 +80,8 @@ func NewUpdater(
 		return nil, fmt.Errorf("must have positive number of shards, got: %d", numShards)
 	}
 
-	if updatePeriod >= 7*24*time.Hour {
-		return nil, fmt.Errorf("must update CRLs at least every 7 days, got: %s", updatePeriod)
+	if updatePeriod >= 24*time.Hour {
+		return nil, fmt.Errorf("must update CRLs at least every 24 hours, got: %s", updatePeriod)
 	}
 
 	if updateTimeout >= updatePeriod {
