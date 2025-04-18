@@ -1,5 +1,6 @@
 {
 	"wfe": {
+		"timeout": "30s",
 		"listenAddress": "0.0.0.0:4001",
 		"TLSListenAddress": "0.0.0.0:4431",
 		"serverCertificatePath": "test/certs/ipki/boulder/cert.pem",
@@ -100,8 +101,6 @@
 			]
 		],
 		"staleTimeout": "5m",
-		"authorizationLifetimeDays": 30,
-		"pendingAuthorizationLifetimeDays": 7,
 		"limiter": {
 			"redis": {
 				"username": "boulder-wfe",
@@ -127,9 +126,7 @@
 			"Overrides": "test/config/wfe2-ratelimit-overrides.yml"
 		},
 		"features": {
-			"UseKvLimitsForNewOrder": true,
 			"ServeRenewalInfo": true,
-			"IncrementRateLimits": true,
 			"CheckIdentifiersPaused": true
 		},
 		"certProfiles": {

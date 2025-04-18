@@ -20,10 +20,8 @@
 				"test/certs/webpki/root-ecdsa.cert.pem"
 			]
 		],
-		"debugAddr": ":8009",
 		"grpc": {
 			"maxConnectionAge": "30s",
-			"address": ":9091",
 			"services": {
 				"Publisher": {
 					"clientNames": [
