@@ -1314,6 +1314,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		authzPB, err = wfe.ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
+			AccountURI:     web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, currAcct.ID)),
 		})
 		if err != nil || core.IsAnyNilOrZero(authzPB, authzPB.Id, authzPB.Identifier, authzPB.Status, authzPB.Expires) {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)

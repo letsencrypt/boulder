@@ -448,15 +448,17 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 }
 
 var challTypeToUint = map[string]uint8{
-	"http-01":     0,
-	"dns-01":      1,
-	"tls-alpn-01": 2,
+	"http-01":        0,
+	"dns-01":         1,
+	"tls-alpn-01":    2,
+	"dns-account-01": 3,
 }
 
 var uintToChallType = map[uint8]string{
 	0: "http-01",
 	1: "dns-01",
 	2: "tls-alpn-01",
+	3: "dns-account-01",
 }
 
 var identifierTypeToUint = map[string]uint8{

@@ -1630,7 +1630,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			&vapb.PerformValidationRequest{
 				DnsName:                  authz.Identifier.Value,
 				Challenge:                chall,
-				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
+				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID, AccountURI: req.AccountURI},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
 			},
 			&vapb.IsCAAValidRequest{

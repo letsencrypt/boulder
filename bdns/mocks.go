@@ -47,6 +47,13 @@ func (mock *MockClient) LookupTXT(_ context.Context, hostname string) ([]string,
 	if hostname == "_acme-challenge.empty-txts.com" {
 		return []string{}, ResolverAddrs{"MockClient"}, nil
 	}
+	// "ujmmovf2vn55tgye" is the dns-account-01 label for "https://example.com/acme/acct/ExampleAccount"
+	if hostname == "_ujmmovf2vn55tgye._acme-challenge.good-dns01.com" {
+		return []string{"LPsIwTo7o8BoG0-vjCyGQGBWSVIPxI-i_X336eUOQZo"}, ResolverAddrs{"MockClient"}, nil
+	}
+	if hostname == "_ujmmovf2vn55tgye._acme-challenge.wrong-dns01.com" {
+		return []string{"a"}, ResolverAddrs{"MockClient"}, nil
+	}
 	return []string{"hostname"}, ResolverAddrs{"MockClient"}, nil
 }
 

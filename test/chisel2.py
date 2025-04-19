@@ -96,6 +96,16 @@ def get_chall(authz, typ):
             return chall_body
     raise Exception("No %s challenge found" % typ.typ)
 
+def get_any_supported_chall(authz):
+    """
+    Return the first supported challenge from the given authorization.
+    Supports HTTP01, DNS01, and TLSALPN01 challenges.
+    """
+    for chall_body in authz.body.challenges:
+        if isinstance(chall_body.chall, (challenges.HTTP01, challenges.DNS01, challenges.TLSALPN01)):
+            return chall_body
+    raise Exception("No supported challenge types found in authorization")
+
 def make_csr(domains):
     key = OpenSSL.crypto.PKey()
     key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
