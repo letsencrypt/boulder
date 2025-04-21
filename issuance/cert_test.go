@@ -441,11 +441,11 @@ func TestIssueDNSNamesOnly(t *testing.T) {
 		t.Fatalf("x509.ParseCertificate: %s", err)
 	}
 	if !reflect.DeepEqual(cert.DNSNames, []string{"example.com"}) {
-		t.Fatalf("got DNSNames %s, wanted example.com", cert.DNSNames)
+		t.Errorf("got DNSNames %s, wanted example.com", cert.DNSNames)
 	}
 	// BRs 7.1.2.7.12 requires iPAddress, if present, to contain an entry.
 	if cert.IPAddresses != nil {
-		t.Fatalf("got IPAddresses %s, wanted nil", cert.IPAddresses)
+		t.Errorf("got IPAddresses %s, wanted nil", cert.IPAddresses)
 	}
 }
 
@@ -481,10 +481,10 @@ func TestIssueIPAddressesOnly(t *testing.T) {
 	}
 	// BRs 7.1.2.7.12 requires dNSName, if present, to contain an entry.
 	if cert.DNSNames != nil {
-		t.Fatalf("got DNSNames %s, wanted nil", cert.DNSNames)
+		t.Errorf("got DNSNames %s, wanted nil", cert.DNSNames)
 	}
 	if !reflect.DeepEqual(cert.IPAddresses, []net.IP{net.ParseIP("128.101.101.101").To4(), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")}) {
-		t.Fatalf("got IPAddresses %s, wanted 128.101.101.101 (4-byte) & 3fff:aaa:a:c0ff:ee:a:bad:deed (16-byte)", cert.IPAddresses)
+		t.Errorf("got IPAddresses %s, wanted 128.101.101.101 (4-byte) & 3fff:aaa:a:c0ff:ee:a:bad:deed (16-byte)", cert.IPAddresses)
 	}
 }
 
