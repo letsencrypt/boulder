@@ -27,6 +27,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
@@ -79,12 +80,12 @@ func BenchmarkCheckCert(b *testing.B) {
 		SerialNumber: serial,
 	}
 	certDer, _ := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
-	cert := core.Certificate{
+	cert := &corepb.Certificate{
 		Serial:  core.SerialToString(serial),
 		Digest:  core.Fingerprint256(certDer),
-		DER:     certDer,
-		Issued:  time.Now(),
-		Expires: expiry,
+		Der:     certDer,
+		Issued:  timestamppb.New(time.Now()),
+		Expires: timestamppb.New(expiry),
 	}
 	b.ResetTimer()
 	for range b.N {
@@ -125,12 +126,12 @@ func TestCheckWildcardCert(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create certificate")
 	parsed, err := x509.ParseCertificate(wildcardCertDer)
 	test.AssertNotError(t, err, "Couldn't parse created certificate")
-	cert := core.Certificate{
+	cert := &corepb.Certificate{
 		Serial:  core.SerialToString(serial),
 		Digest:  core.Fingerprint256(wildcardCertDer),
-		Expires: parsed.NotAfter,
-		Issued:  parsed.NotBefore,
-		DER:     wildcardCertDer,
+		Expires: timestamppb.New(parsed.NotAfter),
+		Issued:  timestamppb.New(parsed.NotBefore),
+		Der:     wildcardCertDer,
 	}
 	_, problems := checker.checkCert(context.Background(), cert)
 	for _, p := range problems {
@@ -157,12 +158,12 @@ func TestCheckCertReturnsDNSNames(t *testing.T) {
 		t.Fatal("failed to parse cert PEM")
 	}
 
-	cert := core.Certificate{
+	cert := &corepb.Certificate{
 		Serial:  "00000000000",
 		Digest:  core.Fingerprint256(block.Bytes),
-		Expires: time.Now().Add(time.Hour),
-		Issued:  time.Now(),
-		DER:     block.Bytes,
+		Expires: timestamppb.New(time.Now().Add(time.Hour)),
+		Issued:  timestamppb.New(time.Now()),
+		Der:     block.Bytes,
 	}
 
 	names, problems := checker.checkCert(context.Background(), cert)
@@ -262,11 +263,11 @@ func TestCheckCert(t *testing.T) {
 			//   Serial doesn't match
 			//   Expiry doesn't match
 			//   Issued doesn't match
-			cert := core.Certificate{
+			cert := &corepb.Certificate{
 				Serial:  "8485f2687eba29ad455ae4e31c8679206fec",
-				DER:     brokenCertDer,
-				Issued:  issued.Add(12 * time.Hour),
-				Expires: goodExpiry.AddDate(0, 0, 2), // Expiration doesn't match
+				Der:     brokenCertDer,
+				Issued:  timestamppb.New(issued.Add(12 * time.Hour)),
+				Expires: timestamppb.New(goodExpiry.AddDate(0, 0, 2)), // Expiration doesn't match
 			}
 
 			_, problems := checker.checkCert(context.Background(), cert)
@@ -318,9 +319,9 @@ func TestCheckCert(t *testing.T) {
 			test.AssertNotError(t, err, "Couldn't parse created certificate")
 			cert.Serial = core.SerialToString(serial)
 			cert.Digest = core.Fingerprint256(goodCertDer)
-			cert.DER = goodCertDer
-			cert.Expires = parsed.NotAfter
-			cert.Issued = parsed.NotBefore
+			cert.Der = goodCertDer
+			cert.Expires = timestamppb.New(parsed.NotAfter)
+			cert.Issued = timestamppb.New(parsed.NotBefore)
 			_, problems = checker.checkCert(context.Background(), cert)
 			test.AssertEquals(t, len(problems), 0)
 		})
@@ -396,9 +397,6 @@ func (db mismatchedCountDB) SelectNullInt(_ context.Context, _ string, _ ...inte
 // `getCerts` then calls `Select` to retrieve the Certificate rows. We pull
 // a dastardly switch-a-roo here and return an empty set
 func (db mismatchedCountDB) Select(_ context.Context, output interface{}, _ string, _ ...interface{}) ([]interface{}, error) {
-	// But actually return nothing
-	outputPtr, _ := output.(*[]sa.CertWithID)
-	*outputPtr = []sa.CertWithID{}
 	return nil, nil
 }
 
@@ -624,12 +622,12 @@ func TestIgnoredLint(t *testing.T) {
 	subjectCert, err := x509.ParseCertificate(subjectCertDer)
 	test.AssertNotError(t, err, "failed to parse EE cert")
 
-	cert := core.Certificate{
+	cert := &corepb.Certificate{
 		Serial:  core.SerialToString(serial),
-		DER:     subjectCertDer,
+		Der:     subjectCertDer,
 		Digest:  core.Fingerprint256(subjectCertDer),
-		Issued:  subjectCert.NotBefore,
-		Expires: subjectCert.NotAfter,
+		Issued:  timestamppb.New(subjectCert.NotBefore),
+		Expires: timestamppb.New(subjectCert.NotAfter),
 	}
 
 	// Without any ignored lints we expect several errors and warnings about SCTs,
@@ -679,12 +677,12 @@ func TestPrecertCorrespond(t *testing.T) {
 		SerialNumber: serial,
 	}
 	certDer, _ := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
-	cert := core.Certificate{
+	cert := &corepb.Certificate{
 		Serial:  core.SerialToString(serial),
 		Digest:  core.Fingerprint256(certDer),
-		DER:     certDer,
-		Issued:  time.Now(),
-		Expires: expiry,
+		Der:     certDer,
+		Issued:  timestamppb.New(time.Now()),
+		Expires: timestamppb.New(expiry),
 	}
 	_, problems := checker.checkCert(context.Background(), cert)
 	if len(problems) == 0 {

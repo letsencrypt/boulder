@@ -1,6 +1,5 @@
 {
 	"ca": {
-		"debugAddr": ":8001",
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/ca.boulder/cert.pem",
@@ -54,7 +53,6 @@
 			"hostOverride": "sa.boulder"
 		},
 		"issuance": {
-			"defaultCertificateProfileName": "legacy",
 			"certProfiles": {
 				"legacy": {
 					"allowMustStaple": true,
@@ -179,11 +177,10 @@
 		"serialPrefixHex": "6e",
 		"maxNames": 100,
 		"lifespanOCSP": "96h",
-		"goodkey": {
-			"fermatRounds": 100
-		},
+		"goodkey": {},
 		"ocspLogMaxLength": 4000,
 		"ocspLogPeriod": "500ms",
+		"ctLogListFile": "test/ct-test-srv/log_list.json",
 		"features": {}
 	},
 	"pa": {

@@ -5,9 +5,6 @@
 			"maxOpenConns": 10
 		},
 		"hostnamePolicyFile": "test/hostname-policy.yaml",
-		"goodkey": {
-			"fermatRounds": 100
-		},
 		"workers": 16,
 		"unexpiredOnly": true,
 		"badResultsOnly": true,
@@ -17,8 +14,10 @@
 		],
 		"ignoredLints": [
 			"w_subject_common_name_included",
+			"w_ext_subject_key_identifier_missing_sub_cert",
 			"w_ext_subject_key_identifier_not_recommended_subscriber"
-		]
+		],
+		"ctLogListFile": "test/ct-test-srv/log_list.json"
 	},
 	"pa": {
 		"challenges": {

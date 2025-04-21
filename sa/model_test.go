@@ -305,7 +305,7 @@ func TestCertificatesTableContainsDuplicateSerials(t *testing.T) {
 	test.AssertNotError(t, err, "received an error for a valid query")
 
 	// Ensure that `certA` and `certB` are the same.
-	test.AssertByteEquals(t, certA.DER, certB.DER)
+	test.AssertByteEquals(t, certA.Der, certB.Der)
 }
 
 func insertCertificate(ctx context.Context, dbMap *db.WrappedMap, fc clock.FakeClock, hostname, cn string, serial, regID int64) error {

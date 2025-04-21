@@ -57,10 +57,9 @@ type Config struct {
 		LookbackPeriod config.Duration `validate:"-"`
 
 		// UpdatePeriod controls how frequently the crl-updater runs and publishes
-		// new versions of every CRL shard. The Baseline Requirements, Section 4.9.7
-		// state that this MUST NOT be more than 7 days. We believe that future
-		// updates may require that this not be more than 24 hours, and currently
-		// recommend an UpdatePeriod of 6 hours.
+		// new versions of every CRL shard. The Baseline Requirements, Section 4.9.7:
+		// "MUST update and publish a new CRL within twenty‐four (24) hours after
+		// recording a Certificate as revoked."
 		UpdatePeriod config.Duration
 
 		// UpdateTimeout controls how long a single CRL shard is allowed to attempt
