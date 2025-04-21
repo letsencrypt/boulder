@@ -608,7 +608,6 @@ func (m *mailer) getCerts(ctx context.Context, left, right time.Time, expiresIn 
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		var cert core.Certificate
 		cert, err := sa.SelectCertificate(ctx, m.dbMap, serial)
 		if err != nil {
 			// We can get a NoRowsErr when processing a serial number corresponding
@@ -623,13 +622,13 @@ func (m *mailer) getCerts(ctx context.Context, left, right time.Time, expiresIn 
 			continue
 		}
 		certs = append(certs, certDERWithRegID{
-			DER:   cert.DER,
+			DER:   cert.Der,
 			RegID: cert.RegistrationID,
 		})
 		if i == 0 {
 			// Report the send delay metric. Note: this is the worst-case send delay
 			// of any certificate in this batch because it's based on the first (oldest).
-			sendDelay := expiresIn - cert.Expires.Sub(m.clk.Now())
+			sendDelay := expiresIn - cert.Expires.AsTime().Sub(m.clk.Now())
 			m.stats.sendDelay.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(
 				sendDelay.Truncate(time.Second).Seconds())
 		}
