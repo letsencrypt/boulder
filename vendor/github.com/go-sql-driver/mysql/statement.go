@@ -10,6 +10,7 @@ package mysql
 
 import (
 	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"io"
 	"reflect"
@@ -22,12 +23,13 @@ type mysqlStmt struct {
 }
 
 func (stmt *mysqlStmt) Close() error {
-	if stmt.mc == nil || stmt.mc.closed.IsSet() {
-		// driver.Stmt.Close can be called more than once, thus this function
-		// has to be idempotent.
-		// See also Issue #450 and golang/go#16019.
-		//errLog.Print(ErrInvalidConn)
-		return driver.ErrBadConn
+	if stmt.mc == nil || stmt.mc.closed.Load() {
+		// driver.Stmt.Close could be called more than once, thus this function
+		// had to be idempotent. See also Issue #450 and golang/go#16019.
+		// This bug has been fixed in Go 1.8.
+		// https://github.com/golang/go/commit/90b8a0ca2d0b565c7c7199ffcf77b15ea6b6db3a
+		// But we keep this function idempotent because it is safer.
+		return nil
 	}
 
 	err := stmt.mc.writeCommandPacketUint32(comStmtClose, stmt.id)
@@ -43,9 +45,13 @@ func (stmt *mysqlStmt) ColumnConverter(idx int) driver.ValueConverter {
 	return converter{}
 }
 
+func (stmt *mysqlStmt) CheckNamedValue(nv *driver.NamedValue) (err error) {
+	nv.Value, err = converter{}.ConvertValue(nv.Value)
+	return
+}
+
 func (stmt *mysqlStmt) Exec(args []driver.Value) (driver.Result, error) {
-	if stmt.mc.closed.IsSet() {
-		errLog.Print(ErrInvalidConn)
+	if stmt.mc.closed.Load() {
 		return nil, driver.ErrBadConn
 	}
 	// Send command
@@ -55,12 +61,10 @@ func (stmt *mysqlStmt) Exec(args []driver.Value) (driver.Result, error) {
 	}
 
 	mc := stmt.mc
-
-	mc.affectedRows = 0
-	mc.insertId = 0
+	handleOk := stmt.mc.clearResult()
 
 	// Read Result
-	resLen, err := mc.readResultSetHeaderPacket()
+	resLen, err := handleOk.readResultSetHeaderPacket()
 	if err != nil {
 		return nil, err
 	}
@@ -77,14 +81,12 @@ func (stmt *mysqlStmt) Exec(args []driver.Value) (driver.Result, error) {
 		}
 	}
 
-	if err := mc.discardResults(); err != nil {
+	if err := handleOk.discardResults(); err != nil {
 		return nil, err
 	}
 
-	return &mysqlResult{
-		affectedRows: int64(mc.affectedRows),
-		insertId:     int64(mc.insertId),
-	}, nil
+	copied := mc.result
+	return &copied, nil
 }
 
 func (stmt *mysqlStmt) Query(args []driver.Value) (driver.Rows, error) {
@@ -92,8 +94,7 @@ func (stmt *mysqlStmt) Query(args []driver.Value) (driver.Rows, error) {
 }
 
 func (stmt *mysqlStmt) query(args []driver.Value) (*binaryRows, error) {
-	if stmt.mc.closed.IsSet() {
-		errLog.Print(ErrInvalidConn)
+	if stmt.mc.closed.Load() {
 		return nil, driver.ErrBadConn
 	}
 	// Send command
@@ -105,7 +106,8 @@ func (stmt *mysqlStmt) query(args []driver.Value) (*binaryRows, error) {
 	mc := stmt.mc
 
 	// Read Result
-	resLen, err := mc.readResultSetHeaderPacket()
+	handleOk := stmt.mc.clearResult()
+	resLen, err := handleOk.readResultSetHeaderPacket()
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +131,8 @@ func (stmt *mysqlStmt) query(args []driver.Value) (*binaryRows, error) {
 	return rows, err
 }
 
+var jsonType = reflect.TypeOf(json.RawMessage{})
+
 type converter struct{}
 
 // ConvertValue mirrors the reference/default converter in database/sql/driver
@@ -136,7 +140,7 @@ type converter struct{}
 // implementation does not.  This function should be kept in sync with
 // database/sql/driver defaultConverter.ConvertValue() except for that
 // deliberate difference.
-func (c converter) ConvertValue(v interface{}) (driver.Value, error) {
+func (c converter) ConvertValue(v any) (driver.Value, error) {
 	if driver.IsValue(v) {
 		return v, nil
 	}
@@ -146,12 +150,17 @@ func (c converter) ConvertValue(v interface{}) (driver.Value, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !driver.IsValue(sv) {
-			return nil, fmt.Errorf("non-Value type %T returned from Value", sv)
+		if driver.IsValue(sv) {
+			return sv, nil
 		}
-		return sv, nil
+		// A value returned from the Valuer interface can be "a type handled by
+		// a database driver's NamedValueChecker interface" so we should accept
+		// uint64 here as well.
+		if u, ok := sv.(uint64); ok {
+			return u, nil
+		}
+		return nil, fmt.Errorf("non-Value type %T returned from Value", sv)
 	}
-
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
 	case reflect.Ptr:
@@ -170,11 +179,14 @@ func (c converter) ConvertValue(v interface{}) (driver.Value, error) {
 	case reflect.Bool:
 		return rv.Bool(), nil
 	case reflect.Slice:
-		ek := rv.Type().Elem().Kind()
-		if ek == reflect.Uint8 {
+		switch t := rv.Type(); {
+		case t == jsonType:
+			return v, nil
+		case t.Elem().Kind() == reflect.Uint8:
 			return rv.Bytes(), nil
+		default:
+			return nil, fmt.Errorf("unsupported type %T, a slice of %s", v, t.Elem().Kind())
 		}
-		return nil, fmt.Errorf("unsupported type %T, a slice of %s", v, ek)
 	case reflect.String:
 		return rv.String(), nil
 	}
