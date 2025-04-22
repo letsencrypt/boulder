@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"math/big"
 	mrand "math/rand/v2"
-	"net"
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
@@ -544,22 +543,9 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 
 	serialHex := core.SerialToString(serialBigInt)
 
-	idents := identifier.FromCSR(csr)
-	var dnsNames []string
-	var ipAddresses []net.IP
-	for _, ident := range idents {
-		switch ident.Type {
-		case identifier.TypeDNS:
-			dnsNames = append(dnsNames, ident.Value)
-		case identifier.TypeIP:
-			ip := net.ParseIP(ident.Value)
-			if ip == nil {
-				return nil, nil, fmt.Errorf("parsing IP address: %s", ident.Value)
-			}
-			ipAddresses = append(ipAddresses, ip)
-		default:
-			return nil, nil, fmt.Errorf("evaluating identifier type: %s for %s", ident.Type, ident.Value)
-		}
+	dnsNames, ipAddresses, err := identifier.FromCSR(csr).ToValues()
+	if err != nil {
+		return nil, nil, err
 	}
 
 	req := &issuance.IssuanceRequest{
