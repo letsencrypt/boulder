@@ -274,15 +274,18 @@ func TestToValues(t *testing.T) {
 	}{
 		{
 			name: "DNS names and IP addresses",
+			// These are deliberately out of alphabetical and type order, to
+			// ensure ToValues doesn't do normalization, which ought to be done
+			// explicitly.
 			idents: ACMEIdentifiers{
-				{Type: TypeDNS, Value: "alpha.example.com"},
 				{Type: TypeDNS, Value: "beta.example.com"},
-				{Type: TypeIP, Value: "127.0.0.1"},
 				{Type: TypeIP, Value: "fe80::cafe"},
+				{Type: TypeDNS, Value: "alpha.example.com"},
+				{Type: TypeIP, Value: "127.0.0.1"},
 			},
 			wantErr:         "",
-			wantDnsNames:    []string{"alpha.example.com", "beta.example.com"},
-			wantIpAddresses: []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("fe80::cafe")},
+			wantDnsNames:    []string{"beta.example.com", "alpha.example.com"},
+			wantIpAddresses: []net.IP{net.ParseIP("fe80::cafe"), net.ParseIP("127.0.0.1")},
 		},
 		{
 			name: "DNS names only",
