@@ -40,6 +40,8 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		outProb = probs.BadPublicKey(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.BadCSR:
 		outProb = probs.BadCSR(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.AlreadyReplaced:
+		outProb = probs.AlreadyReplaced(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.AlreadyRevoked:
 		outProb = probs.AlreadyRevoked(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.BadRevocationReason:
@@ -48,6 +50,14 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		outProb = probs.UnsupportedContact(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.Conflict:
 		outProb = probs.Conflict(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.InvalidProfile:
+		outProb = probs.InvalidProfile(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.BadSignatureAlgorithm:
+		outProb = probs.BadSignatureAlgorithm(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.AccountDoesNotExist:
+		outProb = probs.AccountDoesNotExist(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.BadNonce:
+		outProb = probs.BadNonce(fmt.Sprintf("%s :: %s", msg, err))
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
@@ -65,17 +75,13 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 	return outProb
 }
 
-// ProblemDetailsForError turns an error into a ProblemDetails with the special
-// case of returning the same error back if its already a ProblemDetails. If the
-// error is of an type unknown to ProblemDetailsForError, it will return a
-// ServerInternal ProblemDetails.
+// ProblemDetailsForError turns an error into a ProblemDetails. If the error is
+// of an type unknown to ProblemDetailsForError, it will return a ServerInternal
+// ProblemDetails.
 func ProblemDetailsForError(err error, msg string) *probs.ProblemDetails {
-	var probsProblemDetails *probs.ProblemDetails
-	var berrorsBoulderError *berrors.BoulderError
-	if errors.As(err, &probsProblemDetails) {
-		return probsProblemDetails
-	} else if errors.As(err, &berrorsBoulderError) {
-		return problemDetailsForBoulderError(berrorsBoulderError, msg)
+	var bErr *berrors.BoulderError
+	if errors.As(err, &bErr) {
+		return problemDetailsForBoulderError(bErr, msg)
 	} else {
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.

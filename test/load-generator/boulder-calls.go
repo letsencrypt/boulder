@@ -1,16 +1,14 @@
 package main
 
 import (
-	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -51,13 +49,13 @@ type OrderJSON struct {
 	// The URL field isn't returned by the API, we populate it manually with the
 	// `Location` header.
 	URL            string
-	Status         core.AcmeStatus             `json:"status"`
-	Expires        time.Time                   `json:"expires"`
-	Identifiers    []identifier.ACMEIdentifier `json:"identifiers"`
-	Authorizations []string                    `json:"authorizations"`
-	Finalize       string                      `json:"finalize"`
-	Certificate    string                      `json:"certificate,omitempty"`
-	Error          *probs.ProblemDetails       `json:"error,omitempty"`
+	Status         core.AcmeStatus            `json:"status"`
+	Expires        time.Time                  `json:"expires"`
+	Identifiers    identifier.ACMEIdentifiers `json:"identifiers"`
+	Authorizations []string                   `json:"authorizations"`
+	Finalize       string                     `json:"finalize"`
+	Certificate    string                     `json:"certificate,omitempty"`
+	Error          *probs.ProblemDetails      `json:"error,omitempty"`
 }
 
 // getAccount takes a randomly selected v2 account from `state.accts` and puts it
@@ -153,10 +151,9 @@ func newAccount(s *State, c *acmeCache) error {
 func randDomain(base string) string {
 	// This approach will cause some repeat domains but not enough to make rate
 	// limits annoying!
-	n := time.Now().UnixNano()
-	b := new(bytes.Buffer)
-	binary.Write(b, binary.LittleEndian, n)
-	return fmt.Sprintf("%x.%s", sha1.Sum(b.Bytes()), base)
+	var bytes [3]byte
+	_, _ = rand.Read(bytes[:])
+	return hex.EncodeToString(bytes[:]) + base
 }
 
 // newOrder creates a new pending order object for a random set of domains using
@@ -167,14 +164,14 @@ func newOrder(s *State, c *acmeCache) error {
 	orderSize := 1 + mrand.IntN(s.maxNamesPerCert-1)
 	// Generate that many random domain names. There may be some duplicates, we
 	// don't care. The ACME server will collapse those down for us, how handy!
-	dnsNames := []identifier.ACMEIdentifier{}
+	dnsNames := identifier.ACMEIdentifiers{}
 	for range orderSize {
 		dnsNames = append(dnsNames, identifier.NewDNS(randDomain(s.domainBase)))
 	}
 
 	// create the new order request object
 	initOrder := struct {
-		Identifiers []identifier.ACMEIdentifier
+		Identifiers identifier.ACMEIdentifiers
 	}{
 		Identifiers: dnsNames,
 	}

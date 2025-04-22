@@ -1,6 +1,5 @@
 {
 	"ra": {
-		"rateLimitPoliciesFilename": "test/rate-limit-policies.yml",
 		"limiter": {
 			"redis": {
 				"username": "boulder-wfe",
@@ -28,13 +27,7 @@
 		"maxContactsPerRegistration": 3,
 		"debugAddr": ":8002",
 		"hostnamePolicyFile": "test/hostname-policy.yaml",
-		"maxNames": 100,
-		"authorizationLifetimeDays": 30,
-		"pendingAuthorizationLifetimeDays": 7,
-		"goodkey": {
-			"fermatRounds": 100
-		},
-		"orderLifetime": "168h",
+		"goodkey": {},
 		"issuerCerts": [
 			"test/certs/webpki/int-rsa-a.cert.pem",
 			"test/certs/webpki/int-rsa-b.cert.pem",
@@ -43,6 +36,27 @@
 			"test/certs/webpki/int-ecdsa-b.cert.pem",
 			"test/certs/webpki/int-ecdsa-c.cert.pem"
 		],
+		"validationProfiles": {
+			"legacy": {
+				"pendingAuthzLifetime": "168h",
+				"validAuthzLifetime": "720h",
+				"orderLifetime": "168h",
+				"maxNames": 100
+			},
+			"modern": {
+				"pendingAuthzLifetime": "7h",
+				"validAuthzLifetime": "7h",
+				"orderLifetime": "7h",
+				"maxNames": 10
+			},
+			"shortlived": {
+				"pendingAuthzLifetime": "7h",
+				"validAuthzLifetime": "7h",
+				"orderLifetime": "7h",
+				"maxNames": 10
+			}
+		},
+		"defaultProfileName": "legacy",
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/ra.boulder/cert.pem",
@@ -110,15 +124,19 @@
 		},
 		"grpc": {
 			"maxConnectionAge": "30s",
-			"address": ":9094",
 			"services": {
 				"ra.RegistrationAuthority": {
 					"clientNames": [
-						"admin-revoker.boulder",
+						"admin.boulder",
 						"bad-key-revoker.boulder",
 						"ocsp-responder.boulder",
-						"sfe.boulder",
-						"wfe.boulder"
+						"wfe.boulder",
+						"sfe.boulder"
+					]
+				},
+				"ra.SCTProvider": {
+					"clientNames": [
+						"ca.boulder"
 					]
 				},
 				"grpc.health.v1.Health": {
@@ -129,8 +147,10 @@
 			}
 		},
 		"features": {
-			"UseKvLimitsForNewOrder": true,
-			"IncrementRateLimits": true
+			"AutomaticallyPauseZombieClients": true,
+			"NoPendingAuthzReuse": true,
+			"EnforceMPIC": true,
+			"UnsplitIssuance": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/letsencrypt/boulder/strictyaml"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -17,7 +18,8 @@ const (
 
 // CRLConf is exported to receive YAML configuration
 type CRLConf struct {
-	URL string `yaml:"url"`
+	URL         string `yaml:"url"`
+	Partitioned bool   `yaml:"partitioned"`
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Configurer`.
@@ -87,7 +89,7 @@ func (c CRLConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, fmt.Errorf("crl prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", certCountName, coll)
 	}
 
-	return CRLProbe{c.URL, nextUpdateColl, thisUpdateColl, certCountColl}, nil
+	return CRLProbe{c.URL, c.Partitioned, nextUpdateColl, thisUpdateColl, certCountColl}, nil
 }
 
 // Instrument constructs any `prometheus.Collector` objects the `CRLProbe` will

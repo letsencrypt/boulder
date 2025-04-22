@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"sync"
 	"time"
 
@@ -33,18 +34,6 @@ type ProfileConfig struct {
 	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
 	// OCSP Must Staple extension to be rejected.
 	AllowMustStaple bool
-	// AllowCTPoison has no effect.
-	// Deprecated: We will always allow the CT Poison extension because it is
-	// mandated for Precertificates.
-	AllowCTPoison bool
-	// AllowSCTList has no effect.
-	// Deprecated: We intend to include SCTs in all final Certificates for the
-	// foreseeable future.
-	AllowSCTList bool
-	// AllowCommonName has no effect.
-	// Deprecated: Rather than rejecting IssuanceRequests which include a common
-	// name, we would prefer to simply drop the CN. Use `OmitCommonName` instead.
-	AllowCommonName bool
 
 	// OmitCommonName causes the CN field to be excluded from the resulting
 	// certificate, regardless of its inclusion in the IssuanceRequest.
@@ -57,6 +46,14 @@ type ProfileConfig struct {
 	OmitClientAuth bool
 	// OmitSKID causes the Subject Key Identifier extension to be omitted.
 	OmitSKID bool
+	// OmitOCSP causes the OCSP URI field to be omitted from the Authority
+	// Information Access extension. This cannot be true unless
+	// IncludeCRLDistributionPoints is also true, to ensure that every
+	// certificate has at least one revocation mechanism included.
+	OmitOCSP bool
+	// IncludeCRLDistributionPoints causes the CRLDistributionPoints extension to
+	// be added to all certificates issued by this profile.
+	IncludeCRLDistributionPoints bool
 
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
@@ -67,9 +64,6 @@ type ProfileConfig struct {
 	// IgnoredLints is a list of lint names that we know will fail for this
 	// profile, and which we know it is safe to ignore.
 	IgnoredLints []string
-
-	// Deprecated: we do not respect this field.
-	Policies []PolicyConfig `validate:"-"`
 }
 
 // PolicyConfig describes a policy
@@ -84,6 +78,9 @@ type Profile struct {
 	omitKeyEncipherment bool
 	omitClientAuth      bool
 	omitSKID            bool
+	omitOCSP            bool
+
+	includeCRLDistributionPoints bool
 
 	maxBackdate time.Duration
 	maxValidity time.Duration
@@ -105,6 +102,13 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 		return nil, fmt.Errorf("validity period %q is too large", profileConfig.MaxValidityPeriod.Duration)
 	}
 
+	// Although the Baseline Requirements say that revocation information may be
+	// omitted entirely *for short-lived certs*, the Microsoft root program still
+	// requires that at least one revocation mechanism be included in all certs.
+	if profileConfig.OmitOCSP && !profileConfig.IncludeCRLDistributionPoints {
+		return nil, fmt.Errorf("at least one revocation mechanism must be included")
+	}
+
 	lints, err := linter.NewRegistry(profileConfig.IgnoredLints)
 	cmd.FailOnError(err, "Failed to create zlint registry")
 	if profileConfig.LintConfig != "" {
@@ -114,14 +118,16 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 	}
 
 	sp := &Profile{
-		allowMustStaple:     profileConfig.AllowMustStaple,
-		omitCommonName:      profileConfig.OmitCommonName,
-		omitKeyEncipherment: profileConfig.OmitKeyEncipherment,
-		omitClientAuth:      profileConfig.OmitClientAuth,
-		omitSKID:            profileConfig.OmitSKID,
-		maxBackdate:         profileConfig.MaxValidityBackdate.Duration,
-		maxValidity:         profileConfig.MaxValidityPeriod.Duration,
-		lints:               lints,
+		allowMustStaple:              profileConfig.AllowMustStaple,
+		omitCommonName:               profileConfig.OmitCommonName,
+		omitKeyEncipherment:          profileConfig.OmitKeyEncipherment,
+		omitClientAuth:               profileConfig.OmitClientAuth,
+		omitSKID:                     profileConfig.OmitSKID,
+		omitOCSP:                     profileConfig.OmitOCSP,
+		includeCRLDistributionPoints: profileConfig.IncludeCRLDistributionPoints,
+		maxBackdate:                  profileConfig.MaxValidityBackdate.Duration,
+		maxValidity:                  profileConfig.MaxValidityPeriod.Duration,
+		lints:                        lints,
 	}
 
 	return sp, nil
@@ -192,18 +198,24 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 	return nil
 }
 
+// Baseline Requirements, Section 7.1.6.1: domain-validated
+var domainValidatedOID = func() x509.OID {
+	x509OID, err := x509.OIDFromInts([]uint64{2, 23, 140, 1, 2, 1})
+	if err != nil {
+		// This should never happen, as the OID is hardcoded.
+		panic(fmt.Errorf("failed to create OID using ints %v: %s", x509OID, err))
+	}
+	return x509OID
+}()
+
 func (i *Issuer) generateTemplate() *x509.Certificate {
 	template := &x509.Certificate{
 		SignatureAlgorithm:    i.sigAlg,
-		OCSPServer:            []string{i.ocspURL},
 		IssuingCertificateURL: []string{i.issuerURL},
 		BasicConstraintsValid: true,
 		// Baseline Requirements, Section 7.1.6.1: domain-validated
-		PolicyIdentifiers: []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
+		Policies: []x509.OID{domainValidatedOID},
 	}
-
-	// TODO(#7294): Use i.crlURLBase and a shard calculation to create a
-	// crlDistributionPoint.
 
 	return template
 }
@@ -285,8 +297,9 @@ type IssuanceRequest struct {
 	NotBefore time.Time
 	NotAfter  time.Time
 
-	CommonName string
-	DNSNames   []string
+	CommonName  string
+	DNSNames    []string
+	IPAddresses []net.IP
 
 	IncludeMustStaple bool
 	IncludeCTPoison   bool
@@ -348,6 +361,7 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		template.Subject.CommonName = req.CommonName
 	}
 	template.DNSNames = req.DNSNames
+	template.IPAddresses = req.IPAddresses
 
 	switch req.PublicKey.PublicKey.(type) {
 	case *rsa.PublicKey:
@@ -377,6 +391,23 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
 	} else {
 		return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
+	}
+
+	if !prof.omitOCSP {
+		template.OCSPServer = []string{i.ocspURL}
+	}
+
+	// If explicit CRL sharding is enabled, pick a shard based on the serial number
+	// modulus the number of shards. This gives us random distribution that is
+	// nonetheless consistent between precert and cert.
+	if prof.includeCRLDistributionPoints {
+		if i.crlShards <= 0 {
+			return nil, nil, errors.New("IncludeCRLDistributionPoints was set but CRLShards was not set")
+		}
+		shardZeroBased := big.NewInt(0).Mod(template.SerialNumber, big.NewInt(int64(i.crlShards)))
+		shard := int(shardZeroBased.Int64()) + 1
+		url := i.crlURL(shard)
+		template.CRLDistributionPoints = []string{url}
 	}
 
 	if req.IncludeMustStaple {
@@ -462,6 +493,7 @@ func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTi
 		NotAfter:          precert.NotAfter,
 		CommonName:        precert.Subject.CommonName,
 		DNSNames:          precert.DNSNames,
+		IPAddresses:       precert.IPAddresses,
 		IncludeMustStaple: ContainsMustStaple(precert.Extensions),
 		sctList:           scts,
 		precertDER:        precert.Raw,

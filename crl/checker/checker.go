@@ -59,11 +59,11 @@ func Diff(old, new *x509.RevocationList) (*diffResult, error) {
 		return nil, fmt.Errorf("CRLs were not issued by same issuer")
 	}
 
-	if !old.ThisUpdate.Before(new.ThisUpdate) {
+	if old.Number.Cmp(new.Number) >= 0 {
 		return nil, fmt.Errorf("old CRL does not precede new CRL")
 	}
 
-	if old.Number.Cmp(new.Number) >= 0 {
+	if new.ThisUpdate.Before(old.ThisUpdate) {
 		return nil, fmt.Errorf("old CRL does not precede new CRL")
 	}
 

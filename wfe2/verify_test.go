@@ -7,8 +7,10 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,11 +18,11 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
-	"github.com/letsencrypt/boulder/probs"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/web"
@@ -496,7 +498,7 @@ func TestValidPOSTRequest(t *testing.T) {
 		Headers            map[string][]string
 		Body               *string
 		HTTPStatus         int
-		ProblemDetail      string
+		ErrorDetail        string
 		ErrorStatType      string
 		EnforceContentType bool
 	}{
@@ -505,7 +507,7 @@ func TestValidPOSTRequest(t *testing.T) {
 			Name:          "POST without a Content-Length header",
 			Headers:       nil,
 			HTTPStatus:    http.StatusLengthRequired,
-			ProblemDetail: "missing Content-Length header",
+			ErrorDetail:   "missing Content-Length header",
 			ErrorStatType: "ContentLengthRequired",
 		},
 		// POST requests with a Replay-Nonce header should produce a problem
@@ -517,7 +519,7 @@ func TestValidPOSTRequest(t *testing.T) {
 				"Content-Type":   {expectedJWSContentType},
 			},
 			HTTPStatus:    http.StatusBadRequest,
-			ProblemDetail: "HTTP requests should NOT contain Replay-Nonce header. Use JWS nonce field",
+			ErrorDetail:   "HTTP requests should NOT contain Replay-Nonce header. Use JWS nonce field",
 			ErrorStatType: "ReplayNonceOutsideJWS",
 		},
 		// POST requests without a body should produce a problem
@@ -528,7 +530,7 @@ func TestValidPOSTRequest(t *testing.T) {
 				"Content-Type":   {expectedJWSContentType},
 			},
 			HTTPStatus:    http.StatusBadRequest,
-			ProblemDetail: "No body on POST",
+			ErrorDetail:   "No body on POST",
 			ErrorStatType: "NoPOSTBody",
 		},
 		{
@@ -537,7 +539,7 @@ func TestValidPOSTRequest(t *testing.T) {
 				"Content-Length": dummyContentLength,
 			},
 			HTTPStatus: http.StatusUnsupportedMediaType,
-			ProblemDetail: fmt.Sprintf(
+			ErrorDetail: fmt.Sprintf(
 				"No Content-Type header on POST. Content-Type must be %q",
 				expectedJWSContentType),
 			ErrorStatType:      "NoContentType",
@@ -550,7 +552,7 @@ func TestValidPOSTRequest(t *testing.T) {
 				"Content-Type":   {"fresh.and.rare"},
 			},
 			HTTPStatus: http.StatusUnsupportedMediaType,
-			ProblemDetail: fmt.Sprintf(
+			ErrorDetail: fmt.Sprintf(
 				"Invalid Content-Type header on POST. Content-Type must be %q",
 				expectedJWSContentType),
 			ErrorStatType:      "WrongContentType",
@@ -565,11 +567,10 @@ func TestValidPOSTRequest(t *testing.T) {
 			Header: tc.Headers,
 		}
 		t.Run(tc.Name, func(t *testing.T) {
-			prob := wfe.validPOSTRequest(input)
-			test.Assert(t, prob != nil, "No error returned for invalid POST")
-			test.AssertEquals(t, prob.Type, probs.MalformedProblem)
-			test.AssertEquals(t, prob.HTTPStatus, tc.HTTPStatus)
-			test.AssertEquals(t, prob.Detail, tc.ProblemDetail)
+			err := wfe.validPOSTRequest(input)
+			test.AssertError(t, err, "No error returned for invalid POST")
+			test.AssertErrorIs(t, err, berrors.Malformed)
+			test.AssertContains(t, err.Error(), tc.ErrorDetail)
 			test.AssertMetricWithLabelsEquals(
 				t, wfe.stats.httpErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
 		})
@@ -605,71 +606,72 @@ func TestEnforceJWSAuthType(t *testing.T) {
 	}
 
 	testCases := []struct {
-		Name             string
-		JWS              *jose.JSONWebSignature
-		ExpectedAuthType jwsAuthType
-		ExpectedResult   *probs.ProblemDetails
-		ErrorStatType    string
+		Name          string
+		JWS           *jose.JSONWebSignature
+		AuthType      jwsAuthType
+		WantErrType   berrors.ErrorType
+		WantErrDetail string
+		WantStatType  string
 	}{
 		{
-			Name:             "Key ID and embedded JWS",
-			JWS:              conflictJWS,
-			ExpectedAuthType: invalidAuthType,
-			ExpectedResult: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "jwk and kid header fields are mutually exclusive",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSAuthTypeInvalid",
+			Name:          "Key ID and embedded JWS",
+			JWS:           conflictJWS,
+			AuthType:      invalidAuthType,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "jwk and kid header fields are mutually exclusive",
+			WantStatType:  "JWSAuthTypeInvalid",
 		},
 		{
-			Name:             "Key ID when expected is embedded JWK",
-			JWS:              testKeyIDJWS,
-			ExpectedAuthType: embeddedJWK,
-			ExpectedResult: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "No embedded JWK in JWS header",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSAuthTypeWrong",
+			Name:          "Key ID when expected is embedded JWK",
+			JWS:           testKeyIDJWS,
+			AuthType:      embeddedJWK,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "No embedded JWK in JWS header",
+			WantStatType:  "JWSAuthTypeWrong",
 		},
 		{
-			Name:             "Embedded JWK when expected is Key ID",
-			JWS:              testEmbeddedJWS,
-			ExpectedAuthType: embeddedKeyID,
-			ExpectedResult: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "No Key ID in JWS header",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSAuthTypeWrong",
+			Name:          "Embedded JWK when expected is Key ID",
+			JWS:           testEmbeddedJWS,
+			AuthType:      embeddedKeyID,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "No Key ID in JWS header",
+			WantStatType:  "JWSAuthTypeWrong",
 		},
 		{
-			Name:             "Key ID when expected is KeyID",
-			JWS:              testKeyIDJWS,
-			ExpectedAuthType: embeddedKeyID,
-			ExpectedResult:   nil,
+			Name:     "Key ID when expected is KeyID",
+			JWS:      testKeyIDJWS,
+			AuthType: embeddedKeyID,
 		},
 		{
-			Name:             "Embedded JWK when expected is embedded JWK",
-			JWS:              testEmbeddedJWS,
-			ExpectedAuthType: embeddedJWK,
-			ExpectedResult:   nil,
+			Name:     "Embedded JWK when expected is embedded JWK",
+			JWS:      testEmbeddedJWS,
+			AuthType: embeddedJWK,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			prob := wfe.enforceJWSAuthType(tc.JWS.Signatures[0].Header, tc.ExpectedAuthType)
-			if tc.ExpectedResult == nil && prob != nil {
-				t.Fatalf("Expected nil result, got %#v", prob)
+			in := tc.JWS.Signatures[0].Header
+
+			gotErr := wfe.enforceJWSAuthType(in, tc.AuthType)
+			if tc.WantErrDetail == "" {
+				if gotErr != nil {
+					t.Fatalf("enforceJWSAuthType(%#v, %#v) = %#v, want nil", in, tc.AuthType, gotErr)
+				}
 			} else {
-				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
-			}
-			if tc.ErrorStatType != "" {
+				berr, ok := gotErr.(*berrors.BoulderError)
+				if !ok {
+					t.Fatalf("enforceJWSAuthType(%#v, %#v) returned %T, want BoulderError", in, tc.AuthType, gotErr)
+				}
+				if berr.Type != tc.WantErrType {
+					t.Errorf("enforceJWSAuthType(%#v, %#v) = %#v, want %#v", in, tc.AuthType, berr.Type, tc.WantErrType)
+				}
+				if !strings.Contains(berr.Detail, tc.WantErrDetail) {
+					t.Errorf("enforceJWSAuthType(%#v, %#v) = %q, want %q", in, tc.AuthType, berr.Detail, tc.WantErrDetail)
+				}
 				test.AssertMetricWithLabelsEquals(
-					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.WantStatType}, 1)
 			}
 		})
 	}
@@ -699,70 +701,69 @@ func TestValidNonce(t *testing.T) {
 	goodJWS, _, _ := signer.embeddedJWK(nil, "", "")
 
 	testCases := []struct {
-		Name           string
-		JWS            *jose.JSONWebSignature
-		ExpectedResult *probs.ProblemDetails
-		ErrorStatType  string
+		Name          string
+		JWS           *jose.JSONWebSignature
+		WantErrType   berrors.ErrorType
+		WantErrDetail string
+		WantStatType  string
 	}{
 		{
-			Name: "No nonce in JWS",
-			JWS:  signer.missingNonce(),
-			ExpectedResult: &probs.ProblemDetails{
-				Type:       probs.BadNonceProblem,
-				Detail:     "JWS has no anti-replay nonce",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSMissingNonce",
+			Name:          "No nonce in JWS",
+			JWS:           signer.missingNonce(),
+			WantErrType:   berrors.BadNonce,
+			WantErrDetail: "JWS has no anti-replay nonce",
+			WantStatType:  "JWSMissingNonce",
 		},
 		{
-			Name: "Malformed nonce in JWS",
-			JWS:  signer.malformedNonce(),
-			ExpectedResult: &probs.ProblemDetails{
-				Type:       probs.BadNonceProblem,
-				Detail:     "JWS has an invalid anti-replay nonce: \"im-a-nonce\"",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSMalformedNonce",
+			Name:          "Malformed nonce in JWS",
+			JWS:           signer.malformedNonce(),
+			WantErrType:   berrors.BadNonce,
+			WantErrDetail: "JWS has an invalid anti-replay nonce: \"im-a-nonce\"",
+			WantStatType:  "JWSMalformedNonce",
 		},
 		{
-			Name: "Canned nonce shorter than prefixLength in JWS",
-			JWS:  signer.shortNonce(),
-			ExpectedResult: &probs.ProblemDetails{
-				Type:       probs.BadNonceProblem,
-				Detail:     "JWS has an invalid anti-replay nonce: \"woww\"",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSMalformedNonce",
+			Name:          "Canned nonce shorter than prefixLength in JWS",
+			JWS:           signer.shortNonce(),
+			WantErrType:   berrors.BadNonce,
+			WantErrDetail: "JWS has an invalid anti-replay nonce: \"woww\"",
+			WantStatType:  "JWSMalformedNonce",
 		},
 		{
-			Name: "Invalid nonce in JWS (test/config-next)",
-			JWS:  signer.invalidNonce(),
-			ExpectedResult: &probs.ProblemDetails{
-				Type:       probs.BadNonceProblem,
-				Detail:     "JWS has an invalid anti-replay nonce: \"mlolmlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSInvalidNonce",
+			Name:          "Invalid nonce in JWS (test/config-next)",
+			JWS:           signer.invalidNonce(),
+			WantErrType:   berrors.BadNonce,
+			WantErrDetail: "JWS has an invalid anti-replay nonce: \"mlolmlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
+			WantStatType:  "JWSInvalidNonce",
 		},
 		{
-			Name:           "Valid nonce in JWS",
-			JWS:            goodJWS,
-			ExpectedResult: nil,
+			Name: "Valid nonce in JWS",
+			JWS:  goodJWS,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			in := tc.JWS.Signatures[0].Header
 			wfe.stats.joseErrorCount.Reset()
-			prob := wfe.validNonce(context.Background(), tc.JWS.Signatures[0].Header)
-			if tc.ExpectedResult == nil && prob != nil {
-				t.Fatalf("Expected nil result, got %#v", prob)
+
+			gotErr := wfe.validNonce(context.Background(), in)
+			if tc.WantErrDetail == "" {
+				if gotErr != nil {
+					t.Fatalf("validNonce(%#v) = %#v, want nil", in, gotErr)
+				}
 			} else {
-				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
-			}
-			if tc.ErrorStatType != "" {
+				berr, ok := gotErr.(*berrors.BoulderError)
+				if !ok {
+					t.Fatalf("validNonce(%#v) returned %T, want BoulderError", in, gotErr)
+				}
+				if berr.Type != tc.WantErrType {
+					t.Errorf("validNonce(%#v) = %#v, want %#v", in, berr.Type, tc.WantErrType)
+				}
+				if !strings.Contains(berr.Detail, tc.WantErrDetail) {
+					t.Errorf("validNonce(%#v) = %q, want %q", in, berr.Detail, tc.WantErrDetail)
+				}
 				test.AssertMetricWithLabelsEquals(
-					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.WantStatType}, 1)
 			}
 		})
 	}
@@ -783,11 +784,10 @@ func TestValidNonce_NoMatchingBackendFound(t *testing.T) {
 
 	// A valid JWS with a nonce whose prefix matches no known nonce provider should
 	// result in a BadNonceProblem.
-	prob := wfe.validNonce(context.Background(), goodJWS.Signatures[0].Header)
-	test.Assert(t, prob != nil, "Expected error for valid nonce with no backend")
-	test.AssertEquals(t, prob.Type, probs.BadNonceProblem)
-	test.AssertEquals(t, prob.HTTPStatus, http.StatusBadRequest)
-	test.AssertContains(t, prob.Detail, "JWS has an invalid anti-replay nonce")
+	err := wfe.validNonce(context.Background(), goodJWS.Signatures[0].Header)
+	test.AssertError(t, err, "Expected error for valid nonce with no backend")
+	test.AssertErrorIs(t, err, berrors.BadNonce)
+	test.AssertContains(t, err.Error(), "JWS has an invalid anti-replay nonce")
 	test.AssertMetricWithLabelsEquals(t, wfe.stats.nonceNoMatchingBackendCount, prometheus.Labels{}, 1)
 }
 
@@ -844,66 +844,68 @@ func TestValidPOSTURL(t *testing.T) {
 	correctURLHeaderRequest := makePostRequestWithPath("test-path", correctURLHeaderJWSBody)
 
 	testCases := []struct {
-		Name           string
-		JWS            *jose.JSONWebSignature
-		Request        *http.Request
-		ExpectedResult *probs.ProblemDetails
-		ErrorStatType  string
+		Name          string
+		JWS           *jose.JSONWebSignature
+		Request       *http.Request
+		WantErrType   berrors.ErrorType
+		WantErrDetail string
+		WantStatType  string
 	}{
 		{
-			Name:    "No extra headers in JWS",
-			JWS:     noHeadersJWS,
-			Request: noHeadersRequest,
-			ExpectedResult: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "JWS header parameter 'url' required",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSNoExtraHeaders",
+			Name:          "No extra headers in JWS",
+			JWS:           noHeadersJWS,
+			Request:       noHeadersRequest,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "JWS header parameter 'url' required",
+			WantStatType:  "JWSNoExtraHeaders",
 		},
 		{
-			Name:    "No URL header in JWS",
-			JWS:     noURLHeaderJWS,
-			Request: noURLHeaderRequest,
-			ExpectedResult: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "JWS header parameter 'url' required",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSMissingURL",
+			Name:          "No URL header in JWS",
+			JWS:           noURLHeaderJWS,
+			Request:       noURLHeaderRequest,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "JWS header parameter 'url' required",
+			WantStatType:  "JWSMissingURL",
 		},
 		{
-			Name:    "Wrong URL header in JWS",
-			JWS:     wrongURLHeaderJWS,
-			Request: wrongURLHeaderRequest,
-			ExpectedResult: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "JWS header parameter 'url' incorrect. Expected \"http://localhost/test-path\" got \"foobar\"",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSMismatchedURL",
+			Name:          "Wrong URL header in JWS",
+			JWS:           wrongURLHeaderJWS,
+			Request:       wrongURLHeaderRequest,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "JWS header parameter 'url' incorrect. Expected \"http://localhost/test-path\" got \"foobar\"",
+			WantStatType:  "JWSMismatchedURL",
 		},
 		{
-			Name:           "Correct URL header in JWS",
-			JWS:            correctURLHeaderJWS,
-			Request:        correctURLHeaderRequest,
-			ExpectedResult: nil,
+			Name:    "Correct URL header in JWS",
+			JWS:     correctURLHeaderJWS,
+			Request: correctURLHeaderRequest,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			in := tc.JWS.Signatures[0].Header
 			tc.Request.Header.Add("Content-Type", expectedJWSContentType)
 			wfe.stats.joseErrorCount.Reset()
-			prob := wfe.validPOSTURL(tc.Request, tc.JWS.Signatures[0].Header)
-			if tc.ExpectedResult == nil && prob != nil {
-				t.Fatalf("Expected nil result, got %#v", prob)
+
+			got := wfe.validPOSTURL(tc.Request, in)
+			if tc.WantErrDetail == "" {
+				if got != nil {
+					t.Fatalf("validPOSTURL(%#v) = %#v, want nil", in, got)
+				}
 			} else {
-				test.AssertMarshaledEquals(t, prob, tc.ExpectedResult)
-			}
-			if tc.ErrorStatType != "" {
+				berr, ok := got.(*berrors.BoulderError)
+				if !ok {
+					t.Fatalf("validPOSTURL(%#v) returned %T, want BoulderError", in, got)
+				}
+				if berr.Type != tc.WantErrType {
+					t.Errorf("validPOSTURL(%#v) = %#v, want %#v", in, berr.Type, tc.WantErrType)
+				}
+				if !strings.Contains(berr.Detail, tc.WantErrDetail) {
+					t.Errorf("validPOSTURL(%#v) = %q, want %q", in, berr.Detail, tc.WantErrDetail)
+				}
 				test.AssertMetricWithLabelsEquals(
-					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.WantStatType}, 1)
 			}
 		})
 	}
@@ -971,12 +973,20 @@ func TestParseJWSRequest(t *testing.T) {
   "signatures": ["PKWWclRsiHF4bm-nmpxDez6Y_3Mdtu263YeYklbGYt1EiMOLiKY_dr_EqhUUKAKEWysFLO-hQLXVU7kVkHeYWQFFOA18oFgcZgkSF2Pr3DNZrVj9e2gl0eZ2i2jk6X5GYPt1lIfok_DrL92wrxEKGcrmxqXXGm0JgP6Al2VGapKZK2HaYbCHoGvtzNmzUX9rC21sKewq5CquJRvTmvQp5bmU7Q9KeafGibFr0jl6IA3W5LBGgf6xftuUtEVEbKmKaKtaG7tXsQH1mIVOPUZZoLWz9sWJSFLmV0QSXm3ZHV0DrOhLfcADbOCoQBMeGdseBQZuUO541A3BEKGv2Aikjw"]
 }
 `
+	wrongSignatureTypeJWSBody := `
+{
+  "protected": "eyJhbGciOiJIUzI1NiJ9",
+  "payload" : "IiI",
+  "signature" : "5WiUupHzCWfpJza6EMteSxMDY8_6xIV7HnKaUqmykIQ"
+}
+`
 
 	testCases := []struct {
-		Name            string
-		Request         *http.Request
-		ExpectedProblem *probs.ProblemDetails
-		ErrorStatType   string
+		Name          string
+		Request       *http.Request
+		WantErrType   berrors.ErrorType
+		WantErrDetail string
+		WantStatType  string
 	}{
 		{
 			Name: "Invalid POST request",
@@ -985,91 +995,87 @@ func TestParseJWSRequest(t *testing.T) {
 				Method: "POST",
 				URL:    mustParseURL("/"),
 			},
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "missing Content-Length header",
-				HTTPStatus: http.StatusLengthRequired,
-			},
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "missing Content-Length header",
 		},
 		{
-			Name:    "Invalid JWS in POST body",
-			Request: makePostRequestWithPath("test-path", `{`),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "Parse error reading JWS",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSUnmarshalFailed",
+			Name:          "Invalid JWS in POST body",
+			Request:       makePostRequestWithPath("test-path", `{`),
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "Parse error reading JWS",
+			WantStatType:  "JWSUnmarshalFailed",
 		},
 		{
-			Name:    "Too few signatures in JWS",
-			Request: missingSigsJWSRequest,
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "POST JWS not signed",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSEmptySignature",
+			Name:          "Too few signatures in JWS",
+			Request:       missingSigsJWSRequest,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "POST JWS not signed",
+			WantStatType:  "JWSEmptySignature",
 		},
 		{
-			Name:    "Too many signatures in JWS",
-			Request: makePostRequestWithPath("test-path", tooManySigsJWSBody),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSMultiSig",
+			Name:          "Too many signatures in JWS",
+			Request:       makePostRequestWithPath("test-path", tooManySigsJWSBody),
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature",
+			WantStatType:  "JWSMultiSig",
 		},
 		{
-			Name:    "Unprotected JWS headers",
-			Request: makePostRequestWithPath("test-path", unprotectedHeadersJWSBody),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "JWS \"header\" field not allowed. All headers must be in \"protected\" field",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSUnprotectedHeaders",
+			Name:          "Unprotected JWS headers",
+			Request:       makePostRequestWithPath("test-path", unprotectedHeadersJWSBody),
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "JWS \"header\" field not allowed. All headers must be in \"protected\" field",
+			WantStatType:  "JWSUnprotectedHeaders",
 		},
 		{
-			Name:    "Unsupported signatures field in JWS",
-			Request: makePostRequestWithPath("test-path", wrongSignaturesFieldJWSBody),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSMultiSig",
+			Name:          "Unsupported signatures field in JWS",
+			Request:       makePostRequestWithPath("test-path", wrongSignaturesFieldJWSBody),
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature",
+			WantStatType:  "JWSMultiSig",
 		},
 		{
-			Name:            "Valid JWS in POST request",
-			Request:         validJWSRequest,
-			ExpectedProblem: nil,
+			Name:          "JWS with an invalid algorithm",
+			Request:       makePostRequestWithPath("test-path", wrongSignatureTypeJWSBody),
+			WantErrType:   berrors.BadSignatureAlgorithm,
+			WantErrDetail: "JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512]",
+			WantStatType:  "JWSAlgorithmCheckFailed",
 		},
 		{
-			Name: "POST body too large",
-			Request: makePostRequestWithPath("test-path",
-				fmt.Sprintf(`{"a":"%s"}`, strings.Repeat("a", 50000))),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.UnauthorizedProblem,
-				Detail:     "request body too large",
-				HTTPStatus: http.StatusForbidden,
-			},
+			Name:    "Valid JWS in POST request",
+			Request: validJWSRequest,
+		},
+		{
+			Name:          "POST body too large",
+			Request:       makePostRequestWithPath("test-path", fmt.Sprintf(`{"a":"%s"}`, strings.Repeat("a", 50000))),
+			WantErrType:   berrors.Unauthorized,
+			WantErrDetail: "request body too large",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			_, prob := wfe.parseJWSRequest(tc.Request)
-			if tc.ExpectedProblem == nil && prob != nil {
-				t.Fatalf("Expected nil problem, got %#v\n", prob)
+
+			_, gotErr := wfe.parseJWSRequest(tc.Request)
+			if tc.WantErrDetail == "" {
+				if gotErr != nil {
+					t.Fatalf("parseJWSRequest(%#v) = %#v, want nil", tc.Request, gotErr)
+				}
 			} else {
-				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
-			}
-			if tc.ErrorStatType != "" {
-				test.AssertMetricWithLabelsEquals(
-					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
+				berr, ok := gotErr.(*berrors.BoulderError)
+				if !ok {
+					t.Fatalf("parseJWSRequest(%#v) returned %T, want BoulderError", tc.Request, gotErr)
+				}
+				if berr.Type != tc.WantErrType {
+					t.Errorf("parseJWSRequest(%#v) = %#v, want %#v", tc.Request, berr.Type, tc.WantErrType)
+				}
+				if !strings.Contains(berr.Detail, tc.WantErrDetail) {
+					t.Errorf("parseJWSRequest(%#v) = %q, want %q", tc.Request, berr.Detail, tc.WantErrDetail)
+				}
+				if tc.WantStatType != "" {
+					test.AssertMetricWithLabelsEquals(
+						t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.WantStatType}, 1)
+				}
 			}
 		})
 	}
@@ -1082,36 +1088,46 @@ func TestExtractJWK(t *testing.T) {
 	goodJWS, goodJWK, _ := signer.embeddedJWK(nil, "", "")
 
 	testCases := []struct {
-		Name            string
-		JWS             *jose.JSONWebSignature
-		ExpectedKey     *jose.JSONWebKey
-		ExpectedProblem *probs.ProblemDetails
+		Name          string
+		JWS           *jose.JSONWebSignature
+		WantKey       *jose.JSONWebKey
+		WantErrType   berrors.ErrorType
+		WantErrDetail string
 	}{
 		{
-			Name: "JWS with wrong auth type (Key ID vs embedded JWK)",
-			JWS:  keyIDJWS,
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "No embedded JWK in JWS header",
-				HTTPStatus: http.StatusBadRequest,
-			},
+			Name:          "JWS with wrong auth type (Key ID vs embedded JWK)",
+			JWS:           keyIDJWS,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "No embedded JWK in JWS header",
 		},
 		{
-			Name:        "Valid JWS with embedded JWK",
-			JWS:         goodJWS,
-			ExpectedKey: goodJWK,
+			Name:    "Valid JWS with embedded JWK",
+			JWS:     goodJWS,
+			WantKey: goodJWK,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			jwkHeader, prob := wfe.extractJWK(tc.JWS.Signatures[0].Header)
-			if tc.ExpectedProblem == nil && prob != nil {
-				t.Fatalf("Expected nil problem, got %#v\n", prob)
-			} else if tc.ExpectedProblem == nil {
-				test.AssertMarshaledEquals(t, jwkHeader, tc.ExpectedKey)
+			in := tc.JWS.Signatures[0].Header
+
+			gotKey, gotErr := wfe.extractJWK(in)
+			if tc.WantErrDetail == "" {
+				if gotErr != nil {
+					t.Fatalf("extractJWK(%#v) = %#v, want nil", in, gotKey)
+				}
+				test.AssertMarshaledEquals(t, gotKey, tc.WantKey)
 			} else {
-				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
+				berr, ok := gotErr.(*berrors.BoulderError)
+				if !ok {
+					t.Fatalf("extractJWK(%#v) returned %T, want BoulderError", in, gotErr)
+				}
+				if berr.Type != tc.WantErrType {
+					t.Errorf("extractJWK(%#v) = %#v, want %#v", in, berr.Type, tc.WantErrType)
+				}
+				if !strings.Contains(berr.Detail, tc.WantErrDetail) {
+					t.Errorf("extractJWK(%#v) = %q, want %q", in, berr.Detail, tc.WantErrDetail)
+				}
 			}
 		})
 	}
@@ -1179,114 +1195,110 @@ func TestLookupJWK(t *testing.T) {
 	// good key, log event requester is set
 
 	testCases := []struct {
-		Name            string
-		JWS             *jose.JSONWebSignature
-		Request         *http.Request
-		ExpectedProblem *probs.ProblemDetails
-		ExpectedKey     *jose.JSONWebKey
-		ExpectedAccount *core.Registration
-		ErrorStatType   string
+		Name          string
+		JWS           *jose.JSONWebSignature
+		Request       *http.Request
+		WantJWK       *jose.JSONWebKey
+		WantAccount   *core.Registration
+		WantErrType   berrors.ErrorType
+		WantErrDetail string
+		WantStatType  string
 	}{
 		{
-			Name:    "JWS with wrong auth type (embedded JWK vs Key ID)",
-			JWS:     embeddedJWS,
-			Request: makePostRequestWithPath("test-path", embeddedJWSBody),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "No Key ID in JWS header",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSAuthTypeWrong",
+			Name:          "JWS with wrong auth type (embedded JWK vs Key ID)",
+			JWS:           embeddedJWS,
+			Request:       makePostRequestWithPath("test-path", embeddedJWSBody),
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "No Key ID in JWS header",
+			WantStatType:  "JWSAuthTypeWrong",
 		},
 		{
-			Name:    "JWS with invalid key ID URL",
-			JWS:     invalidKeyIDJWS,
-			Request: makePostRequestWithPath("test-path", invalidKeyIDJWSBody),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "KeyID header contained an invalid account URL: \"https://acme-99.lettuceencrypt.org/acme/reg/1\"",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSInvalidKeyID",
+			Name:          "JWS with invalid key ID URL",
+			JWS:           invalidKeyIDJWS,
+			Request:       makePostRequestWithPath("test-path", invalidKeyIDJWSBody),
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "KeyID header contained an invalid account URL: \"https://acme-99.lettuceencrypt.org/acme/reg/1\"",
+			WantStatType:  "JWSInvalidKeyID",
 		},
 		{
-			Name:    "JWS with non-numeric account ID in key ID URL",
-			JWS:     nonNumericKeyIDJWS,
-			Request: makePostRequestWithPath("test-path", nonNumericKeyIDJWSBody),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "Malformed account ID in KeyID header URL: \"https://acme-v00.lettuceencrypt.org/acme/reg/abcd\"",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSInvalidKeyID",
+			Name:          "JWS with non-numeric account ID in key ID URL",
+			JWS:           nonNumericKeyIDJWS,
+			Request:       makePostRequestWithPath("test-path", nonNumericKeyIDJWSBody),
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "Malformed account ID in KeyID header URL: \"https://acme-v00.lettuceencrypt.org/acme/reg/abcd\"",
+			WantStatType:  "JWSInvalidKeyID",
 		},
 		{
-			Name:    "JWS with account ID that causes GetRegistration error",
-			JWS:     errorIDJWS,
-			Request: makePostRequestWithPath("test-path", errorIDJWSBody),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.ServerInternalProblem,
-				Detail:     "Error retrieving account \"http://localhost/acme/acct/100\"",
-				HTTPStatus: http.StatusInternalServerError,
-			},
-			ErrorStatType: "JWSKeyIDLookupFailed",
+			Name:          "JWS with account ID that causes GetRegistration error",
+			JWS:           errorIDJWS,
+			Request:       makePostRequestWithPath("test-path", errorIDJWSBody),
+			WantErrType:   berrors.InternalServer,
+			WantErrDetail: "Error retrieving account \"http://localhost/acme/acct/100\"",
+			WantStatType:  "JWSKeyIDLookupFailed",
 		},
 		{
-			Name:    "JWS with account ID that doesn't exist",
-			JWS:     missingIDJWS,
-			Request: makePostRequestWithPath("test-path", missingIDJWSBody),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.AccountDoesNotExistProblem,
-				Detail:     "Account \"http://localhost/acme/acct/102\" not found",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSKeyIDNotFound",
+			Name:          "JWS with account ID that doesn't exist",
+			JWS:           missingIDJWS,
+			Request:       makePostRequestWithPath("test-path", missingIDJWSBody),
+			WantErrType:   berrors.AccountDoesNotExist,
+			WantErrDetail: "Account \"http://localhost/acme/acct/102\" not found",
+			WantStatType:  "JWSKeyIDNotFound",
 		},
 		{
-			Name:    "JWS with account ID that is deactivated",
-			JWS:     deactivatedIDJWS,
-			Request: makePostRequestWithPath("test-path", deactivatedIDJWSBody),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.UnauthorizedProblem,
-				Detail:     "Account is not valid, has status \"deactivated\"",
-				HTTPStatus: http.StatusForbidden,
-			},
-			ErrorStatType: "JWSKeyIDAccountInvalid",
+			Name:          "JWS with account ID that is deactivated",
+			JWS:           deactivatedIDJWS,
+			Request:       makePostRequestWithPath("test-path", deactivatedIDJWSBody),
+			WantErrType:   berrors.Unauthorized,
+			WantErrDetail: "Account is not valid, has status \"deactivated\"",
+			WantStatType:  "JWSKeyIDAccountInvalid",
 		},
 		{
-			Name:            "Valid JWS with legacy account ID",
-			JWS:             legacyKeyIDJWS,
-			Request:         makePostRequestWithPath("test-path", legacyKeyIDJWSBody),
-			ExpectedKey:     validKey,
-			ExpectedAccount: &validAccount,
+			Name:        "Valid JWS with legacy account ID",
+			JWS:         legacyKeyIDJWS,
+			Request:     makePostRequestWithPath("test-path", legacyKeyIDJWSBody),
+			WantJWK:     validKey,
+			WantAccount: &validAccount,
 		},
 		{
-			Name:            "Valid JWS with valid account ID",
-			JWS:             validJWS,
-			Request:         makePostRequestWithPath("test-path", validJWSBody),
-			ExpectedKey:     validKey,
-			ExpectedAccount: &validAccount,
+			Name:        "Valid JWS with valid account ID",
+			JWS:         validJWS,
+			Request:     makePostRequestWithPath("test-path", validJWSBody),
+			WantJWK:     validKey,
+			WantAccount: &validAccount,
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
+			in := tc.JWS.Signatures[0].Header
 			inputLogEvent := newRequestEvent()
-			jwkHeader, acct, prob := wfe.lookupJWK(tc.JWS.Signatures[0].Header, context.Background(), tc.Request, inputLogEvent)
-			if tc.ExpectedProblem == nil && prob != nil {
-				t.Fatalf("Expected nil problem, got %#v\n", prob)
-			} else if tc.ExpectedProblem == nil {
-				inThumb, _ := tc.ExpectedKey.Thumbprint(crypto.SHA256)
-				outThumb, _ := jwkHeader.Thumbprint(crypto.SHA256)
-				test.AssertDeepEquals(t, inThumb, outThumb)
-				test.AssertMarshaledEquals(t, acct, tc.ExpectedAccount)
-				test.AssertEquals(t, inputLogEvent.Requester, acct.ID)
+
+			gotJWK, gotAcct, gotErr := wfe.lookupJWK(in, context.Background(), tc.Request, inputLogEvent)
+			if tc.WantErrDetail == "" {
+				if gotErr != nil {
+					t.Fatalf("lookupJWK(%#v) = %#v, want nil", in, gotErr)
+				}
+				gotThumb, _ := gotJWK.Thumbprint(crypto.SHA256)
+				wantThumb, _ := tc.WantJWK.Thumbprint(crypto.SHA256)
+				if !slices.Equal(gotThumb, wantThumb) {
+					t.Fatalf("lookupJWK(%#v) = %#v, want %#v", tc.Request, gotThumb, wantThumb)
+				}
+				test.AssertMarshaledEquals(t, gotAcct, tc.WantAccount)
+				test.AssertEquals(t, inputLogEvent.Requester, gotAcct.ID)
 			} else {
-				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
-			}
-			if tc.ErrorStatType != "" {
+				var berr *berrors.BoulderError
+				ok := errors.As(gotErr, &berr)
+				if !ok {
+					t.Fatalf("lookupJWK(%#v) returned %T, want BoulderError", in, gotErr)
+				}
+				if berr.Type != tc.WantErrType {
+					t.Errorf("lookupJWK(%#v) = %#v, want %#v", in, berr.Type, tc.WantErrType)
+				}
+				if !strings.Contains(berr.Detail, tc.WantErrDetail) {
+					t.Errorf("lookupJWK(%#v) = %q, want %q", in, berr.Detail, tc.WantErrDetail)
+				}
 				test.AssertMetricWithLabelsEquals(
-					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.WantStatType}, 1)
 			}
 		})
 	}
@@ -1325,67 +1337,53 @@ func TestValidJWSForKey(t *testing.T) {
 	badJSONJWS, _, _ := signer.embeddedJWK(nil, testURL, `{`)
 
 	testCases := []struct {
-		Name            string
-		JWS             bJSONWebSignature
-		JWK             *jose.JSONWebKey
-		Body            string
-		ExpectedProblem *probs.ProblemDetails
-		ErrorStatType   string
+		Name          string
+		JWS           bJSONWebSignature
+		JWK           *jose.JSONWebKey
+		Body          string
+		WantErrType   berrors.ErrorType
+		WantErrDetail string
+		WantStatType  string
 	}{
 		{
-			Name: "JWS with an invalid algorithm",
-			JWS:  bJSONWebSignature{wrongAlgJWS},
-			JWK:  goodJWK,
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.BadSignatureAlgorithmProblem,
-				Detail:     "JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512]",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSAlgorithmCheckFailed",
+			Name:          "JWS with an invalid algorithm",
+			JWS:           bJSONWebSignature{wrongAlgJWS},
+			JWK:           goodJWK,
+			WantErrType:   berrors.BadSignatureAlgorithm,
+			WantErrDetail: "JWS signature header contains unsupported algorithm \"HS256\", expected one of [RS256 ES256 ES384 ES512]",
+			WantStatType:  "JWSAlgorithmCheckFailed",
 		},
 		{
-			Name: "JWS with an invalid nonce (test/config-next)",
-			JWS:  bJSONWebSignature{signer.invalidNonce()},
-			JWK:  goodJWK,
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.BadNonceProblem,
-				Detail:     "JWS has an invalid anti-replay nonce: \"mlolmlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSInvalidNonce",
+			Name:          "JWS with an invalid nonce (test/config-next)",
+			JWS:           bJSONWebSignature{signer.invalidNonce()},
+			JWK:           goodJWK,
+			WantErrType:   berrors.BadNonce,
+			WantErrDetail: "JWS has an invalid anti-replay nonce: \"mlolmlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
+			WantStatType:  "JWSInvalidNonce",
 		},
 		{
-			Name: "JWS with broken signature",
-			JWS:  bJSONWebSignature{badJWS},
-			JWK:  badJWS.Signatures[0].Header.JSONWebKey,
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "JWS verification error",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSVerifyFailed",
+			Name:          "JWS with broken signature",
+			JWS:           bJSONWebSignature{badJWS},
+			JWK:           badJWS.Signatures[0].Header.JSONWebKey,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "JWS verification error",
+			WantStatType:  "JWSVerifyFailed",
 		},
 		{
-			Name: "JWS with incorrect URL",
-			JWS:  bJSONWebSignature{wrongURLHeaderJWS},
-			JWK:  wrongURLHeaderJWS.Signatures[0].Header.JSONWebKey,
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "JWS header parameter 'url' incorrect. Expected \"http://localhost/test\" got \"foobar\"",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSMismatchedURL",
+			Name:          "JWS with incorrect URL",
+			JWS:           bJSONWebSignature{wrongURLHeaderJWS},
+			JWK:           wrongURLHeaderJWS.Signatures[0].Header.JSONWebKey,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "JWS header parameter 'url' incorrect. Expected \"http://localhost/test\" got \"foobar\"",
+			WantStatType:  "JWSMismatchedURL",
 		},
 		{
-			Name: "Valid JWS with invalid JSON in the protected body",
-			JWS:  bJSONWebSignature{badJSONJWS},
-			JWK:  goodJWK,
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "Request payload did not parse as JSON",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSBodyUnmarshalFailed",
+			Name:          "Valid JWS with invalid JSON in the protected body",
+			JWS:           bJSONWebSignature{badJSONJWS},
+			JWK:           goodJWK,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "Request payload did not parse as JSON",
+			WantStatType:  "JWSBodyUnmarshalFailed",
 		},
 		{
 			Name: "Good JWS and JWK",
@@ -1398,17 +1396,28 @@ func TestValidJWSForKey(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
 			request := makePostRequestWithPath("test", tc.Body)
-			outPayload, prob := wfe.validJWSForKey(context.Background(), &tc.JWS, tc.JWK, request)
-			if tc.ExpectedProblem == nil && prob != nil {
-				t.Fatalf("Expected nil problem, got %#v\n", prob)
-			} else if tc.ExpectedProblem == nil {
-				test.AssertEquals(t, string(outPayload), payload)
+
+			gotPayload, gotErr := wfe.validJWSForKey(context.Background(), &tc.JWS, tc.JWK, request)
+			if tc.WantErrDetail == "" {
+				if gotErr != nil {
+					t.Fatalf("validJWSForKey(%#v, %#v, %#v) = %#v, want nil", tc.JWS, tc.JWK, request, gotErr)
+				}
+				if string(gotPayload) != payload {
+					t.Fatalf("validJWSForKey(%#v, %#v, %#v) = %q, want %q", tc.JWS, tc.JWK, request, string(gotPayload), payload)
+				}
 			} else {
-				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
-			}
-			if tc.ErrorStatType != "" {
+				berr, ok := gotErr.(*berrors.BoulderError)
+				if !ok {
+					t.Fatalf("validJWSForKey(%#v, %#v, %#v) returned %T, want BoulderError", tc.JWS, tc.JWK, request, gotErr)
+				}
+				if berr.Type != tc.WantErrType {
+					t.Errorf("validJWSForKey(%#v, %#v, %#v) = %#v, want %#v", tc.JWS, tc.JWK, request, berr.Type, tc.WantErrType)
+				}
+				if !strings.Contains(berr.Detail, tc.WantErrDetail) {
+					t.Errorf("validJWSForKey(%#v, %#v, %#v) = %q, want %q", tc.JWS, tc.JWK, request, berr.Detail, tc.WantErrDetail)
+				}
 				test.AssertMetricWithLabelsEquals(
-					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.WantStatType}, 1)
 			}
 		})
 	}
@@ -1431,60 +1440,49 @@ func TestValidPOSTForAccount(t *testing.T) {
 	_, _, embeddedJWSBody := signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
 
 	testCases := []struct {
-		Name            string
-		Request         *http.Request
-		ExpectedProblem *probs.ProblemDetails
-		ExpectedPayload string
-		ExpectedAcct    *core.Registration
-		ExpectedJWS     *jose.JSONWebSignature
-		ErrorStatType   string
+		Name          string
+		Request       *http.Request
+		WantPayload   string
+		WantAcct      *core.Registration
+		WantJWS       *jose.JSONWebSignature
+		WantErrType   berrors.ErrorType
+		WantErrDetail string
+		WantStatType  string
 	}{
 		{
-			Name:    "Invalid JWS",
-			Request: makePostRequestWithPath("test", "foo"),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "Parse error reading JWS",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSUnmarshalFailed",
+			Name:          "Invalid JWS",
+			Request:       makePostRequestWithPath("test", "foo"),
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "Parse error reading JWS",
+			WantStatType:  "JWSUnmarshalFailed",
 		},
 		{
-			Name:    "Embedded Key JWS",
-			Request: makePostRequestWithPath("test", embeddedJWSBody),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "No Key ID in JWS header",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSAuthTypeWrong",
+			Name:          "Embedded Key JWS",
+			Request:       makePostRequestWithPath("test", embeddedJWSBody),
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "No Key ID in JWS header",
+			WantStatType:  "JWSAuthTypeWrong",
 		},
 		{
-			Name:    "JWS signed by account that doesn't exist",
-			Request: makePostRequestWithPath("test", missingJWSBody),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.AccountDoesNotExistProblem,
-				Detail:     "Account \"http://localhost/acme/acct/102\" not found",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSKeyIDNotFound",
+			Name:          "JWS signed by account that doesn't exist",
+			Request:       makePostRequestWithPath("test", missingJWSBody),
+			WantErrType:   berrors.AccountDoesNotExist,
+			WantErrDetail: "Account \"http://localhost/acme/acct/102\" not found",
+			WantStatType:  "JWSKeyIDNotFound",
 		},
 		{
-			Name:    "JWS signed by account that's deactivated",
-			Request: makePostRequestWithPath("test", deactivatedJWSBody),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.UnauthorizedProblem,
-				Detail:     "Account is not valid, has status \"deactivated\"",
-				HTTPStatus: http.StatusForbidden,
-			},
-			ErrorStatType: "JWSKeyIDAccountInvalid",
+			Name:          "JWS signed by account that's deactivated",
+			Request:       makePostRequestWithPath("test", deactivatedJWSBody),
+			WantErrType:   berrors.Unauthorized,
+			WantErrDetail: "Account is not valid, has status \"deactivated\"",
+			WantStatType:  "JWSKeyIDAccountInvalid",
 		},
 		{
-			Name:            "Valid JWS for account",
-			Request:         makePostRequestWithPath("test", validJWSBody),
-			ExpectedPayload: `{"test":"passed"}`,
-			ExpectedAcct:    &validAccount,
-			ExpectedJWS:     validJWS,
+			Name:        "Valid JWS for account",
+			Request:     makePostRequestWithPath("test", validJWSBody),
+			WantPayload: `{"test":"passed"}`,
+			WantAcct:    &validAccount,
+			WantJWS:     validJWS,
 		},
 	}
 
@@ -1492,19 +1490,30 @@ func TestValidPOSTForAccount(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
 			inputLogEvent := newRequestEvent()
-			outPayload, jws, acct, prob := wfe.validPOSTForAccount(tc.Request, context.Background(), inputLogEvent)
-			if tc.ExpectedProblem == nil && prob != nil {
-				t.Fatalf("Expected nil problem, got %#v\n", prob)
-			} else if tc.ExpectedProblem == nil {
-				test.AssertEquals(t, string(outPayload), tc.ExpectedPayload)
-				test.AssertMarshaledEquals(t, acct, tc.ExpectedAcct)
-				test.AssertMarshaledEquals(t, jws, tc.ExpectedJWS)
+
+			gotPayload, gotJWS, gotAcct, gotErr := wfe.validPOSTForAccount(tc.Request, context.Background(), inputLogEvent)
+			if tc.WantErrDetail == "" {
+				if gotErr != nil {
+					t.Fatalf("validPOSTForAccount(%#v) = %#v, want nil", tc.Request, gotErr)
+				}
+				if string(gotPayload) != tc.WantPayload {
+					t.Fatalf("validPOSTForAccount(%#v) = %q, want %q", tc.Request, string(gotPayload), tc.WantPayload)
+				}
+				test.AssertMarshaledEquals(t, gotJWS, tc.WantJWS)
+				test.AssertMarshaledEquals(t, gotAcct, tc.WantAcct)
 			} else {
-				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
-			}
-			if tc.ErrorStatType != "" {
+				berr, ok := gotErr.(*berrors.BoulderError)
+				if !ok {
+					t.Fatalf("validPOSTForAccount(%#v) returned %T, want BoulderError", tc.Request, gotErr)
+				}
+				if berr.Type != tc.WantErrType {
+					t.Errorf("validPOSTForAccount(%#v) = %#v, want %#v", tc.Request, berr.Type, tc.WantErrType)
+				}
+				if !strings.Contains(berr.Detail, tc.WantErrDetail) {
+					t.Errorf("validPOSTForAccount(%#v) = %q, want %q", tc.Request, berr.Detail, tc.WantErrDetail)
+				}
 				test.AssertMetricWithLabelsEquals(
-					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.WantStatType}, 1)
 			}
 		})
 	}
@@ -1524,38 +1533,50 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 	_, _, validRequest := signer.byKeyID(1, nil, "http://localhost/test", "")
 
 	testCases := []struct {
-		Name             string
-		Request          *http.Request
-		ExpectedProblem  *probs.ProblemDetails
-		ExpectedLogEvent web.RequestEvent
+		Name          string
+		Request       *http.Request
+		WantErrType   berrors.ErrorType
+		WantErrDetail string
+		WantLogEvent  web.RequestEvent
 	}{
 		{
-			Name:             "Non-empty JWS payload",
-			Request:          makePostRequestWithPath("test", invalidPayloadRequest),
-			ExpectedProblem:  probs.Malformed("POST-as-GET requests must have an empty payload"),
-			ExpectedLogEvent: web.RequestEvent{},
+			Name:          "Non-empty JWS payload",
+			Request:       makePostRequestWithPath("test", invalidPayloadRequest),
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "POST-as-GET requests must have an empty payload",
+			WantLogEvent:  web.RequestEvent{},
 		},
 		{
 			Name:    "Valid POST-as-GET",
 			Request: makePostRequestWithPath("test", validRequest),
-			ExpectedLogEvent: web.RequestEvent{
+			WantLogEvent: web.RequestEvent{
 				Method: "POST-as-GET",
 			},
 		},
 	}
 
 	for _, tc := range testCases {
-		ev := newRequestEvent()
-		_, prob := wfe.validPOSTAsGETForAccount(
-			tc.Request,
-			context.Background(),
-			ev)
-		if tc.ExpectedProblem == nil && prob != nil {
-			t.Fatalf("Expected nil problem, got %#v\n", prob)
-		} else if tc.ExpectedProblem != nil {
-			test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
-		}
-		test.AssertMarshaledEquals(t, *ev, tc.ExpectedLogEvent)
+		t.Run(tc.Name, func(t *testing.T) {
+			ev := newRequestEvent()
+			_, gotErr := wfe.validPOSTAsGETForAccount(tc.Request, context.Background(), ev)
+			if tc.WantErrDetail == "" {
+				if gotErr != nil {
+					t.Fatalf("validPOSTAsGETForAccount(%#v) = %#v, want nil", tc.Request, gotErr)
+				}
+			} else {
+				berr, ok := gotErr.(*berrors.BoulderError)
+				if !ok {
+					t.Fatalf("validPOSTAsGETForAccount(%#v) returned %T, want BoulderError", tc.Request, gotErr)
+				}
+				if berr.Type != tc.WantErrType {
+					t.Errorf("validPOSTAsGETForAccount(%#v) = %#v, want %#v", tc.Request, berr.Type, tc.WantErrType)
+				}
+				if !strings.Contains(berr.Detail, tc.WantErrDetail) {
+					t.Errorf("validPOSTAsGETForAccount(%#v) = %q, want %q", tc.Request, berr.Detail, tc.WantErrDetail)
+				}
+			}
+			test.AssertMarshaledEquals(t, *ev, tc.WantLogEvent)
+		})
 	}
 }
 
@@ -1586,10 +1607,10 @@ func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 	// Ensure that ValidPOSTForAccount produces an error since the
 	// mockSADifferentStoredKey will return a different key than the one we used to
 	// sign the request
-	_, _, _, prob := wfe.validPOSTForAccount(request, ctx, event)
-	test.Assert(t, prob != nil, "No error returned for request signed by wrong key")
-	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
-	test.AssertEquals(t, prob.Detail, "JWS verification error")
+	_, _, _, err := wfe.validPOSTForAccount(request, ctx, event)
+	test.AssertError(t, err, "No error returned for request signed by wrong key")
+	test.AssertErrorIs(t, err, berrors.Malformed)
+	test.AssertContains(t, err.Error(), "JWS verification error")
 }
 
 func TestValidSelfAuthenticatedPOSTGoodKeyErrors(t *testing.T) {
@@ -1607,8 +1628,8 @@ func TestValidSelfAuthenticatedPOSTGoodKeyErrors(t *testing.T) {
 	_, _, validJWSBody := signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
 	request := makePostRequestWithPath("test", validJWSBody)
 
-	_, _, prob := wfe.validSelfAuthenticatedPOST(context.Background(), request)
-	test.AssertEquals(t, prob.Type, probs.ServerInternalProblem)
+	_, _, err = wfe.validSelfAuthenticatedPOST(context.Background(), request)
+	test.AssertErrorIs(t, err, berrors.InternalServer)
 
 	badKeyCheckFunc := func(ctx context.Context, keyHash []byte) (bool, error) {
 		return false, fmt.Errorf("oh no: %w", goodkey.ErrBadKey)
@@ -1622,8 +1643,8 @@ func TestValidSelfAuthenticatedPOSTGoodKeyErrors(t *testing.T) {
 	_, _, validJWSBody = signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
 	request = makePostRequestWithPath("test", validJWSBody)
 
-	_, _, prob = wfe.validSelfAuthenticatedPOST(context.Background(), request)
-	test.AssertEquals(t, prob.Type, probs.BadPublicKeyProblem)
+	_, _, err = wfe.validSelfAuthenticatedPOST(context.Background(), request)
+	test.AssertErrorIs(t, err, berrors.BadPublicKey)
 }
 
 func TestValidSelfAuthenticatedPOST(t *testing.T) {
@@ -1634,58 +1655,65 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 	_, _, keyIDJWSBody := signer.byKeyID(1, nil, "http://localhost/test", `{"test":"passed"}`)
 
 	testCases := []struct {
-		Name            string
-		Request         *http.Request
-		ExpectedProblem *probs.ProblemDetails
-		ExpectedPayload string
-		ExpectedJWK     *jose.JSONWebKey
-		ErrorStatType   string
+		Name          string
+		Request       *http.Request
+		WantPayload   string
+		WantJWK       *jose.JSONWebKey
+		WantErrType   berrors.ErrorType
+		WantErrDetail string
+		WantStatType  string
 	}{
 		{
-			Name:    "Invalid JWS",
-			Request: makePostRequestWithPath("test", "foo"),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "Parse error reading JWS",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSUnmarshalFailed",
+			Name:          "Invalid JWS",
+			Request:       makePostRequestWithPath("test", "foo"),
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "Parse error reading JWS",
+			WantStatType:  "JWSUnmarshalFailed",
 		},
 		{
-			Name:    "JWS with key ID",
-			Request: makePostRequestWithPath("test", keyIDJWSBody),
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "No embedded JWK in JWS header",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "JWSAuthTypeWrong",
+			Name:          "JWS with key ID",
+			Request:       makePostRequestWithPath("test", keyIDJWSBody),
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "No embedded JWK in JWS header",
+			WantStatType:  "JWSAuthTypeWrong",
 		},
 		{
-			Name:            "Valid JWS",
-			Request:         makePostRequestWithPath("test", validJWSBody),
-			ExpectedPayload: `{"test":"passed"}`,
-			ExpectedJWK:     validKey,
+			Name:        "Valid JWS",
+			Request:     makePostRequestWithPath("test", validJWSBody),
+			WantPayload: `{"test":"passed"}`,
+			WantJWK:     validKey,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			outPayload, jwk, prob := wfe.validSelfAuthenticatedPOST(context.Background(), tc.Request)
-			if tc.ExpectedProblem == nil && prob != nil {
-				t.Fatalf("Expected nil problem, got %#v\n", prob)
-			} else if tc.ExpectedProblem == nil {
-				inThumb, _ := tc.ExpectedJWK.Thumbprint(crypto.SHA256)
-				outThumb, _ := jwk.Thumbprint(crypto.SHA256)
-				test.AssertDeepEquals(t, inThumb, outThumb)
-				test.AssertEquals(t, string(outPayload), tc.ExpectedPayload)
+			gotPayload, gotJWK, gotErr := wfe.validSelfAuthenticatedPOST(context.Background(), tc.Request)
+			if tc.WantErrDetail == "" {
+				if gotErr != nil {
+					t.Fatalf("validSelfAuthenticatedPOST(%#v) = %#v, want nil", tc.Request, gotErr)
+				}
+				if string(gotPayload) != tc.WantPayload {
+					t.Fatalf("validSelfAuthenticatedPOST(%#v) = %q, want %q", tc.Request, string(gotPayload), tc.WantPayload)
+				}
+				gotThumb, _ := gotJWK.Thumbprint(crypto.SHA256)
+				wantThumb, _ := tc.WantJWK.Thumbprint(crypto.SHA256)
+				if !slices.Equal(gotThumb, wantThumb) {
+					t.Fatalf("validSelfAuthenticatedPOST(%#v) = %#v, want %#v", tc.Request, gotThumb, wantThumb)
+				}
 			} else {
-				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
-			}
-			if tc.ErrorStatType != "" {
+				berr, ok := gotErr.(*berrors.BoulderError)
+				if !ok {
+					t.Fatalf("validSelfAuthenticatedPOST(%#v) returned %T, want BoulderError", tc.Request, gotErr)
+				}
+				if berr.Type != tc.WantErrType {
+					t.Errorf("validSelfAuthenticatedPOST(%#v) = %#v, want %#v", tc.Request, berr.Type, tc.WantErrType)
+				}
+				if !strings.Contains(berr.Detail, tc.WantErrDetail) {
+					t.Errorf("validSelfAuthenticatedPOST(%#v) = %q, want %q", tc.Request, berr.Detail, tc.WantErrDetail)
+				}
 				test.AssertMetricWithLabelsEquals(
-					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.WantStatType}, 1)
 			}
 		})
 	}
@@ -1699,56 +1727,44 @@ func TestMatchJWSURLs(t *testing.T) {
 	urlBJWS, _, _ := signer.embeddedJWK(nil, "example.org", "")
 
 	testCases := []struct {
-		Name            string
-		Outer           *jose.JSONWebSignature
-		Inner           *jose.JSONWebSignature
-		ExpectedProblem *probs.ProblemDetails
-		ErrorStatType   string
+		Name          string
+		Outer         *jose.JSONWebSignature
+		Inner         *jose.JSONWebSignature
+		WantErrType   berrors.ErrorType
+		WantErrDetail string
+		WantStatType  string
 	}{
 		{
-			Name:  "Outer JWS without URL",
-			Outer: noURLJWS,
-			Inner: urlAJWS,
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "Outer JWS header parameter 'url' required",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "KeyRolloverOuterJWSNoURL",
+			Name:          "Outer JWS without URL",
+			Outer:         noURLJWS,
+			Inner:         urlAJWS,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "Outer JWS header parameter 'url' required",
+			WantStatType:  "KeyRolloverOuterJWSNoURL",
 		},
 		{
-			Name:  "Inner JWS without URL",
-			Outer: urlAJWS,
-			Inner: noURLJWS,
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "Inner JWS header parameter 'url' required",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "KeyRolloverInnerJWSNoURL",
+			Name:          "Inner JWS without URL",
+			Outer:         urlAJWS,
+			Inner:         noURLJWS,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "Inner JWS header parameter 'url' required",
+			WantStatType:  "KeyRolloverInnerJWSNoURL",
 		},
 		{
-			Name:  "Inner and outer JWS without URL",
-			Outer: noURLJWS,
-			Inner: noURLJWS,
-			ExpectedProblem: &probs.ProblemDetails{
-				Type: probs.MalformedProblem,
-				// The Outer JWS is validated first
-				Detail:     "Outer JWS header parameter 'url' required",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "KeyRolloverOuterJWSNoURL",
+			Name:          "Inner and outer JWS without URL",
+			Outer:         noURLJWS,
+			Inner:         noURLJWS,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "Outer JWS header parameter 'url' required",
+			WantStatType:  "KeyRolloverOuterJWSNoURL",
 		},
 		{
-			Name:  "Mismatched inner and outer JWS URLs",
-			Outer: urlAJWS,
-			Inner: urlBJWS,
-			ExpectedProblem: &probs.ProblemDetails{
-				Type:       probs.MalformedProblem,
-				Detail:     "Outer JWS 'url' value \"example.com\" does not match inner JWS 'url' value \"example.org\"",
-				HTTPStatus: http.StatusBadRequest,
-			},
-			ErrorStatType: "KeyRolloverMismatchedURLs",
+			Name:          "Mismatched inner and outer JWS URLs",
+			Outer:         urlAJWS,
+			Inner:         urlBJWS,
+			WantErrType:   berrors.Malformed,
+			WantErrDetail: "Outer JWS 'url' value \"example.com\" does not match inner JWS 'url' value \"example.org\"",
+			WantStatType:  "KeyRolloverMismatchedURLs",
 		},
 		{
 			Name:  "Matching inner and outer JWS URLs",
@@ -1760,15 +1776,27 @@ func TestMatchJWSURLs(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			prob := wfe.matchJWSURLs(tc.Outer.Signatures[0].Header, tc.Inner.Signatures[0].Header)
-			if prob != nil && tc.ExpectedProblem == nil {
-				t.Errorf("matchJWSURLs failed. Expected no problem, got %#v", prob)
+			outer := tc.Outer.Signatures[0].Header
+			inner := tc.Inner.Signatures[0].Header
+
+			gotErr := wfe.matchJWSURLs(outer, inner)
+			if tc.WantErrDetail == "" {
+				if gotErr != nil {
+					t.Fatalf("matchJWSURLs(%#v, %#v) = %#v, want nil", outer, inner, gotErr)
+				}
 			} else {
-				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
-			}
-			if tc.ErrorStatType != "" {
+				berr, ok := gotErr.(*berrors.BoulderError)
+				if !ok {
+					t.Fatalf("matchJWSURLs(%#v, %#v) returned %T, want BoulderError", outer, inner, gotErr)
+				}
+				if berr.Type != tc.WantErrType {
+					t.Errorf("matchJWSURLs(%#v, %#v) = %#v, want %#v", outer, inner, berr.Type, tc.WantErrType)
+				}
+				if !strings.Contains(berr.Detail, tc.WantErrDetail) {
+					t.Errorf("matchJWSURLs(%#v, %#v) = %q, want %q", outer, inner, berr.Detail, tc.WantErrDetail)
+				}
 				test.AssertMetricWithLabelsEquals(
-					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.ErrorStatType}, 1)
+					t, wfe.stats.joseErrorCount, prometheus.Labels{"type": tc.WantStatType}, 1)
 			}
 		})
 	}

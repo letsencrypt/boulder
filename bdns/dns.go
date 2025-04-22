@@ -34,120 +34,71 @@ func parseCidr(network string, comment string) net.IPNet {
 }
 
 var (
-	// Private CIDRs to ignore
-	privateNetworks = []net.IPNet{
-		// RFC1918
-		// 10.0.0.0/8
-		{
-			IP:   []byte{10, 0, 0, 0},
-			Mask: []byte{255, 0, 0, 0},
-		},
-		// 172.16.0.0/12
-		{
-			IP:   []byte{172, 16, 0, 0},
-			Mask: []byte{255, 240, 0, 0},
-		},
-		// 192.168.0.0/16
-		{
-			IP:   []byte{192, 168, 0, 0},
-			Mask: []byte{255, 255, 0, 0},
-		},
-		// RFC5735
-		// 127.0.0.0/8
-		{
-			IP:   []byte{127, 0, 0, 0},
-			Mask: []byte{255, 0, 0, 0},
-		},
-		// RFC1122 Section 3.2.1.3
-		// 0.0.0.0/8
-		{
-			IP:   []byte{0, 0, 0, 0},
-			Mask: []byte{255, 0, 0, 0},
-		},
-		// RFC3927
-		// 169.254.0.0/16
-		{
-			IP:   []byte{169, 254, 0, 0},
-			Mask: []byte{255, 255, 0, 0},
-		},
-		// RFC 5736
-		// 192.0.0.0/24
-		{
-			IP:   []byte{192, 0, 0, 0},
-			Mask: []byte{255, 255, 255, 0},
-		},
-		// RFC 5737
-		// 192.0.2.0/24
-		{
-			IP:   []byte{192, 0, 2, 0},
-			Mask: []byte{255, 255, 255, 0},
-		},
-		// 198.51.100.0/24
-		{
-			IP:   []byte{198, 51, 100, 0},
-			Mask: []byte{255, 255, 255, 0},
-		},
-		// 203.0.113.0/24
-		{
-			IP:   []byte{203, 0, 113, 0},
-			Mask: []byte{255, 255, 255, 0},
-		},
-		// RFC 3068
-		// 192.88.99.0/24
-		{
-			IP:   []byte{192, 88, 99, 0},
-			Mask: []byte{255, 255, 255, 0},
-		},
-		// RFC 2544, Errata 423
-		// 198.18.0.0/15
-		{
-			IP:   []byte{198, 18, 0, 0},
-			Mask: []byte{255, 254, 0, 0},
-		},
-		// RFC 3171
-		// 224.0.0.0/4
-		{
-			IP:   []byte{224, 0, 0, 0},
-			Mask: []byte{240, 0, 0, 0},
-		},
-		// RFC 1112
-		// 240.0.0.0/4
-		{
-			IP:   []byte{240, 0, 0, 0},
-			Mask: []byte{240, 0, 0, 0},
-		},
-		// RFC 919 Section 7
-		// 255.255.255.255/32
-		{
-			IP:   []byte{255, 255, 255, 255},
-			Mask: []byte{255, 255, 255, 255},
-		},
-		// RFC 6598
-		// 100.64.0.0/10
-		{
-			IP:   []byte{100, 64, 0, 0},
-			Mask: []byte{255, 192, 0, 0},
-		},
+	// TODO(#8040): Rebuild these as structs that track the structure of IANA's
+	// CSV files, for better automated handling.
+	//
+	// Private CIDRs to ignore. Sourced from:
+	// https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
+	privateV4Networks = []net.IPNet{
+		parseCidr("0.0.0.0/8", "RFC 791, Section 3.2: This network"),
+		parseCidr("0.0.0.0/32", "RFC 1122, Section 3.2.1.3: This host on this network"),
+		parseCidr("10.0.0.0/8", "RFC 1918: Private-Use"),
+		parseCidr("100.64.0.0/10", "RFC 6598: Shared Address Space"),
+		parseCidr("127.0.0.0/8", "RFC 1122, Section 3.2.1.3: Loopback"),
+		parseCidr("169.254.0.0/16", "RFC 3927: Link Local"),
+		parseCidr("172.16.0.0/12", "RFC 1918: Private-Use"),
+		parseCidr("192.0.0.0/24", "RFC 6890, Section 2.1: IETF Protocol Assignments"),
+		parseCidr("192.0.0.0/29", "RFC 7335: IPv4 Service Continuity Prefix"),
+		parseCidr("192.0.0.8/32", "RFC 7600: IPv4 dummy address"),
+		parseCidr("192.0.0.9/32", "RFC 7723: Port Control Protocol Anycast"),
+		parseCidr("192.0.0.10/32", "RFC 8155: Traversal Using Relays around NAT Anycast"),
+		parseCidr("192.0.0.170/32", "RFC 8880 & RFC 7050, Section 2.2: NAT64/DNS64 Discovery"),
+		parseCidr("192.0.0.171/32", "RFC 8880 & RFC 7050, Section 2.2: NAT64/DNS64 Discovery"),
+		parseCidr("192.0.2.0/24", "RFC 5737: Documentation (TEST-NET-1)"),
+		parseCidr("192.31.196.0/24", "RFC 7535: AS112-v4"),
+		parseCidr("192.52.193.0/24", "RFC 7450: AMT"),
+		parseCidr("192.88.99.0/24", "RFC 7526: Deprecated (6to4 Relay Anycast)"),
+		parseCidr("192.168.0.0/16", "RFC 1918: Private-Use"),
+		parseCidr("192.175.48.0/24", "RFC 7534: Direct Delegation AS112 Service"),
+		parseCidr("198.18.0.0/15", "RFC 2544: Benchmarking"),
+		parseCidr("198.51.100.0/24", "RFC 5737: Documentation (TEST-NET-2)"),
+		parseCidr("203.0.113.0/24", "RFC 5737: Documentation (TEST-NET-3)"),
+		parseCidr("240.0.0.0/4", "RFC1112, Section 4: Reserved"),
+		parseCidr("255.255.255.255/32", "RFC 8190 & RFC 919, Section 7: Limited Broadcast"),
+		// 224.0.0.0/4 are multicast addresses as per RFC 3171. They are not
+		// present in the IANA registry.
+		parseCidr("224.0.0.0/4", "RFC 3171: Multicast Addresses"),
 	}
-	// Sourced from https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml
-	// where Global, Source, or Destination is False
+	// Sourced from:
+	// https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml
 	privateV6Networks = []net.IPNet{
 		parseCidr("::/128", "RFC 4291: Unspecified Address"),
 		parseCidr("::1/128", "RFC 4291: Loopback Address"),
 		parseCidr("::ffff:0:0/96", "RFC 4291: IPv4-mapped Address"),
-		parseCidr("100::/64", "RFC 6666: Discard Address Block"),
+		parseCidr("64:ff9b::/96", "RFC 6052: IPv4-IPv6 Translat."),
+		parseCidr("64:ff9b:1::/48", "RFC 8215: IPv4-IPv6 Translat."),
+		parseCidr("100::/64", "RFC 6666: Discard-Only Address Block"),
 		parseCidr("2001::/23", "RFC 2928: IETF Protocol Assignments"),
-		parseCidr("2001:2::/48", "RFC 5180: Benchmarking"),
+		parseCidr("2001::/32", "RFC 4380 & RFC 8190: TEREDO"),
+		parseCidr("2001:1::1/128", "RFC 7723: Port Control Protocol Anycast"),
+		parseCidr("2001:1::2/128", "RFC 8155: Traversal Using Relays around NAT Anycast"),
+		parseCidr("2001:1::3/128", "RFC-ietf-dnssd-srp-25: DNS-SD Service Registration Protocol Anycast"),
+		parseCidr("2001:2::/48", "RFC 5180 & RFC Errata 1752: Benchmarking"),
+		parseCidr("2001:3::/32", "RFC 7450: AMT"),
+		parseCidr("2001:4:112::/48", "RFC 7535: AS112-v6"),
+		parseCidr("2001:10::/28", "RFC 4843: Deprecated (previously ORCHID)"),
+		parseCidr("2001:20::/28", "RFC 7343: ORCHIDv2"),
+		parseCidr("2001:30::/28", "RFC 9374: Drone Remote ID Protocol Entity Tags (DETs) Prefix"),
 		parseCidr("2001:db8::/32", "RFC 3849: Documentation"),
-		parseCidr("2001::/32", "RFC 4380: TEREDO"),
-		parseCidr("fc00::/7", "RFC 4193: Unique-Local"),
-		parseCidr("fe80::/10", "RFC 4291: Section 2.5.6 Link-Scoped Unicast"),
-		parseCidr("ff00::/8", "RFC 4291: Section 2.7"),
-		// We disable validations to IPs under the 6to4 anycast prefix because
-		// there's too much risk of a malicious actor advertising the prefix and
-		// answering validations for a 6to4 host they do not control.
-		// https://community.letsencrypt.org/t/problems-validating-ipv6-against-host-running-6to4/18312/9
-		parseCidr("2002::/16", "RFC 7526: 6to4 anycast prefix deprecated"),
+		parseCidr("2002::/16", "RFC 3056: 6to4"),
+		parseCidr("2620:4f:8000::/48", "RFC 7534: Direct Delegation AS112 Service"),
+		parseCidr("3fff::/20", "RFC 9637: Documentation"),
+		parseCidr("5f00::/16", "RFC 9602: Segment Routing (SRv6) SIDs"),
+		parseCidr("fc00::/7", "RFC 4193 & RFC 8190: Unique-Local"),
+		parseCidr("fe80::/10", "RFC 4291: Link-Local Unicast"),
+		// ff00::/8 are multicast addresses as per RFC 4291, Sections 2.4 & 2.7.
+		// They are not present in the IANA registry.
+		parseCidr("ff00::/8", "RFC 4291: Multicast Addresses"),
 	}
 )
 
@@ -196,6 +147,7 @@ func New(
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	maxTries int,
+	userAgent string,
 	log blog.Logger,
 	tlsConfig *tls.Config,
 ) Client {
@@ -216,6 +168,7 @@ func New(
 				Timeout:   readTimeout,
 				Transport: transport,
 			},
+			userAgent: userAgent,
 		}
 	} else {
 		client = &dns.Client{
@@ -279,10 +232,11 @@ func NewTest(
 	stats prometheus.Registerer,
 	clk clock.Clock,
 	maxTries int,
+	userAgent string,
 	log blog.Logger,
 	tlsConfig *tls.Config,
 ) Client {
-	resolver := New(readTimeout, servers, stats, clk, maxTries, log, tlsConfig)
+	resolver := New(readTimeout, servers, stats, clk, maxTries, userAgent, log, tlsConfig)
 	resolver.(*impl).allowRestrictedAddresses = true
 	return resolver
 }
@@ -480,7 +434,7 @@ func (dnsClient *impl) LookupTXT(ctx context.Context, hostname string) ([]string
 }
 
 func isPrivateV4(ip net.IP) bool {
-	for _, net := range privateNetworks {
+	for _, net := range privateV4Networks {
 		if net.Contains(ip) {
 			return true
 		}
@@ -685,8 +639,9 @@ func logDNSError(
 }
 
 type dohExchanger struct {
-	clk clock.Clock
-	hc  http.Client
+	clk       clock.Clock
+	hc        http.Client
+	userAgent string
 }
 
 // Exchange sends a DoH query to the provided DoH server and returns the response.
@@ -704,6 +659,9 @@ func (d *dohExchanger) Exchange(query *dns.Msg, server string) (*dns.Msg, time.D
 	}
 	req.Header.Set("Content-Type", "application/dns-message")
 	req.Header.Set("Accept", "application/dns-message")
+	if len(d.userAgent) > 0 {
+		req.Header.Set("User-Agent", d.userAgent)
+	}
 
 	start := d.clk.Now()
 	resp, err := d.hc.Do(req)
@@ -728,4 +686,21 @@ func (d *dohExchanger) Exchange(query *dns.Msg, server string) (*dns.Msg, time.D
 	}
 
 	return response, d.clk.Since(start), nil
+}
+
+// IsReservedIP reports whether an IP address is part of a reserved range.
+//
+// TODO(#7311): Once we're fully ready to issue for IP address identifiers, dev
+// environments should have a way to bypass this check for their own Private-Use
+// IP addresses. Maybe plumb the DNSAllowLoopbackAddresses feature flag through
+// to here.
+//
+// TODO(#8040): Move this and its dependencies into the policy package. As part
+// of this, consider changing it to return an error and/or the description of
+// the reserved network.
+func IsReservedIP(ip net.IP) bool {
+	if ip.To4() == nil {
+		return isPrivateV6(ip)
+	}
+	return isPrivateV4(ip)
 }

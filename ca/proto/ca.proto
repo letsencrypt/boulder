@@ -8,8 +8,8 @@ import "google/protobuf/timestamp.proto";
 
 // CertificateAuthority issues certificates.
 service CertificateAuthority {
-  rpc IssuePrecertificate(IssueCertificateRequest) returns (IssuePrecertificateResponse) {}
-  rpc IssueCertificateForPrecertificate(IssueCertificateForPrecertificateRequest) returns (core.Certificate) {}
+  // IssueCertificate issues a precertificate, gets SCTs, issues a certificate, and returns that.
+  rpc IssueCertificate(IssueCertificateRequest) returns (IssueCertificateResponse) {}
 }
 
 message IssueCertificateRequest {
@@ -26,32 +26,8 @@ message IssueCertificateRequest {
   string certProfileName = 5;
 }
 
-message IssuePrecertificateResponse {
-  // Next unused field number: 4
+message IssueCertificateResponse {
   bytes DER = 1;
-
-  // certProfileHash is a hash over the exported fields of a certificate profile
-  // to ensure that the profile remains unchanged after multiple roundtrips
-  // through the RA and CA.
-  bytes certProfileHash = 2;
-
-  // certProfileName is a human readable name returned back to the RA for later
-  // use. If IssueCertificateRequest.certProfileName was an empty string, the
-  // CAs default profile name will be assigned.
-  string certProfileName = 3;
-}
-
-message IssueCertificateForPrecertificateRequest {
-  // Next unused field number: 6
-  bytes DER = 1;
-  repeated bytes SCTs = 2;
-  int64 registrationID = 3;
-  int64 orderID = 4;
-
-  // certProfileHash is a hash over the exported fields of a certificate profile
-  // to ensure that the profile remains unchanged after multiple roundtrips
-  // through the RA and CA.
-  bytes certProfileHash = 5;
 }
 
 // OCSPGenerator generates OCSP. We separate this out from

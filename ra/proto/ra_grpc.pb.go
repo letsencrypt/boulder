@@ -23,11 +23,10 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	RegistrationAuthority_NewRegistration_FullMethodName                   = "/ra.RegistrationAuthority/NewRegistration"
-	RegistrationAuthority_UpdateRegistration_FullMethodName                = "/ra.RegistrationAuthority/UpdateRegistration"
 	RegistrationAuthority_UpdateRegistrationContact_FullMethodName         = "/ra.RegistrationAuthority/UpdateRegistrationContact"
 	RegistrationAuthority_UpdateRegistrationKey_FullMethodName             = "/ra.RegistrationAuthority/UpdateRegistrationKey"
-	RegistrationAuthority_PerformValidation_FullMethodName                 = "/ra.RegistrationAuthority/PerformValidation"
 	RegistrationAuthority_DeactivateRegistration_FullMethodName            = "/ra.RegistrationAuthority/DeactivateRegistration"
+	RegistrationAuthority_PerformValidation_FullMethodName                 = "/ra.RegistrationAuthority/PerformValidation"
 	RegistrationAuthority_DeactivateAuthorization_FullMethodName           = "/ra.RegistrationAuthority/DeactivateAuthorization"
 	RegistrationAuthority_RevokeCertByApplicant_FullMethodName             = "/ra.RegistrationAuthority/RevokeCertByApplicant"
 	RegistrationAuthority_RevokeCertByKey_FullMethodName                   = "/ra.RegistrationAuthority/RevokeCertByKey"
@@ -44,11 +43,10 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RegistrationAuthorityClient interface {
 	NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error)
-	UpdateRegistration(ctx context.Context, in *UpdateRegistrationRequest, opts ...grpc.CallOption) (*proto.Registration, error)
 	UpdateRegistrationContact(ctx context.Context, in *UpdateRegistrationContactRequest, opts ...grpc.CallOption) (*proto.Registration, error)
 	UpdateRegistrationKey(ctx context.Context, in *UpdateRegistrationKeyRequest, opts ...grpc.CallOption) (*proto.Registration, error)
+	DeactivateRegistration(ctx context.Context, in *DeactivateRegistrationRequest, opts ...grpc.CallOption) (*proto.Registration, error)
 	PerformValidation(ctx context.Context, in *PerformValidationRequest, opts ...grpc.CallOption) (*proto.Authorization, error)
-	DeactivateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeactivateAuthorization(ctx context.Context, in *proto.Authorization, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RevokeCertByApplicant(ctx context.Context, in *RevokeCertByApplicantRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	RevokeCertByKey(ctx context.Context, in *RevokeCertByKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -79,16 +77,6 @@ func (c *registrationAuthorityClient) NewRegistration(ctx context.Context, in *p
 	return out, nil
 }
 
-func (c *registrationAuthorityClient) UpdateRegistration(ctx context.Context, in *UpdateRegistrationRequest, opts ...grpc.CallOption) (*proto.Registration, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(proto.Registration)
-	err := c.cc.Invoke(ctx, RegistrationAuthority_UpdateRegistration_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *registrationAuthorityClient) UpdateRegistrationContact(ctx context.Context, in *UpdateRegistrationContactRequest, opts ...grpc.CallOption) (*proto.Registration, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(proto.Registration)
@@ -109,20 +97,20 @@ func (c *registrationAuthorityClient) UpdateRegistrationKey(ctx context.Context,
 	return out, nil
 }
 
-func (c *registrationAuthorityClient) PerformValidation(ctx context.Context, in *PerformValidationRequest, opts ...grpc.CallOption) (*proto.Authorization, error) {
+func (c *registrationAuthorityClient) DeactivateRegistration(ctx context.Context, in *DeactivateRegistrationRequest, opts ...grpc.CallOption) (*proto.Registration, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(proto.Authorization)
-	err := c.cc.Invoke(ctx, RegistrationAuthority_PerformValidation_FullMethodName, in, out, cOpts...)
+	out := new(proto.Registration)
+	err := c.cc.Invoke(ctx, RegistrationAuthority_DeactivateRegistration_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *registrationAuthorityClient) DeactivateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *registrationAuthorityClient) PerformValidation(ctx context.Context, in *PerformValidationRequest, opts ...grpc.CallOption) (*proto.Authorization, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, RegistrationAuthority_DeactivateRegistration_FullMethodName, in, out, cOpts...)
+	out := new(proto.Authorization)
+	err := c.cc.Invoke(ctx, RegistrationAuthority_PerformValidation_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -224,11 +212,10 @@ func (c *registrationAuthorityClient) UnpauseAccount(ctx context.Context, in *Un
 // for forward compatibility
 type RegistrationAuthorityServer interface {
 	NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error)
-	UpdateRegistration(context.Context, *UpdateRegistrationRequest) (*proto.Registration, error)
 	UpdateRegistrationContact(context.Context, *UpdateRegistrationContactRequest) (*proto.Registration, error)
 	UpdateRegistrationKey(context.Context, *UpdateRegistrationKeyRequest) (*proto.Registration, error)
+	DeactivateRegistration(context.Context, *DeactivateRegistrationRequest) (*proto.Registration, error)
 	PerformValidation(context.Context, *PerformValidationRequest) (*proto.Authorization, error)
-	DeactivateRegistration(context.Context, *proto.Registration) (*emptypb.Empty, error)
 	DeactivateAuthorization(context.Context, *proto.Authorization) (*emptypb.Empty, error)
 	RevokeCertByApplicant(context.Context, *RevokeCertByApplicantRequest) (*emptypb.Empty, error)
 	RevokeCertByKey(context.Context, *RevokeCertByKeyRequest) (*emptypb.Empty, error)
@@ -249,20 +236,17 @@ type UnimplementedRegistrationAuthorityServer struct {
 func (UnimplementedRegistrationAuthorityServer) NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewRegistration not implemented")
 }
-func (UnimplementedRegistrationAuthorityServer) UpdateRegistration(context.Context, *UpdateRegistrationRequest) (*proto.Registration, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateRegistration not implemented")
-}
 func (UnimplementedRegistrationAuthorityServer) UpdateRegistrationContact(context.Context, *UpdateRegistrationContactRequest) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateRegistrationContact not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) UpdateRegistrationKey(context.Context, *UpdateRegistrationKeyRequest) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateRegistrationKey not implemented")
 }
+func (UnimplementedRegistrationAuthorityServer) DeactivateRegistration(context.Context, *DeactivateRegistrationRequest) (*proto.Registration, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeactivateRegistration not implemented")
+}
 func (UnimplementedRegistrationAuthorityServer) PerformValidation(context.Context, *PerformValidationRequest) (*proto.Authorization, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PerformValidation not implemented")
-}
-func (UnimplementedRegistrationAuthorityServer) DeactivateRegistration(context.Context, *proto.Registration) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeactivateRegistration not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) DeactivateAuthorization(context.Context, *proto.Authorization) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateAuthorization not implemented")
@@ -322,24 +306,6 @@ func _RegistrationAuthority_NewRegistration_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RegistrationAuthority_UpdateRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UpdateRegistrationRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RegistrationAuthorityServer).UpdateRegistration(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RegistrationAuthority_UpdateRegistration_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RegistrationAuthorityServer).UpdateRegistration(ctx, req.(*UpdateRegistrationRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _RegistrationAuthority_UpdateRegistrationContact_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpdateRegistrationContactRequest)
 	if err := dec(in); err != nil {
@@ -376,6 +342,24 @@ func _RegistrationAuthority_UpdateRegistrationKey_Handler(srv interface{}, ctx c
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RegistrationAuthority_DeactivateRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeactivateRegistrationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegistrationAuthorityServer).DeactivateRegistration(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RegistrationAuthority_DeactivateRegistration_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegistrationAuthorityServer).DeactivateRegistration(ctx, req.(*DeactivateRegistrationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _RegistrationAuthority_PerformValidation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PerformValidationRequest)
 	if err := dec(in); err != nil {
@@ -390,24 +374,6 @@ func _RegistrationAuthority_PerformValidation_Handler(srv interface{}, ctx conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RegistrationAuthorityServer).PerformValidation(ctx, req.(*PerformValidationRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RegistrationAuthority_DeactivateRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(proto.Registration)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RegistrationAuthorityServer).DeactivateRegistration(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RegistrationAuthority_DeactivateRegistration_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RegistrationAuthorityServer).DeactivateRegistration(ctx, req.(*proto.Registration))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -586,10 +552,6 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RegistrationAuthority_NewRegistration_Handler,
 		},
 		{
-			MethodName: "UpdateRegistration",
-			Handler:    _RegistrationAuthority_UpdateRegistration_Handler,
-		},
-		{
 			MethodName: "UpdateRegistrationContact",
 			Handler:    _RegistrationAuthority_UpdateRegistrationContact_Handler,
 		},
@@ -598,12 +560,12 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RegistrationAuthority_UpdateRegistrationKey_Handler,
 		},
 		{
-			MethodName: "PerformValidation",
-			Handler:    _RegistrationAuthority_PerformValidation_Handler,
-		},
-		{
 			MethodName: "DeactivateRegistration",
 			Handler:    _RegistrationAuthority_DeactivateRegistration_Handler,
+		},
+		{
+			MethodName: "PerformValidation",
+			Handler:    _RegistrationAuthority_PerformValidation_Handler,
 		},
 		{
 			MethodName: "DeactivateAuthorization",
@@ -640,6 +602,97 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UnpauseAccount",
 			Handler:    _RegistrationAuthority_UnpauseAccount_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "ra.proto",
+}
+
+const (
+	SCTProvider_GetSCTs_FullMethodName = "/ra.SCTProvider/GetSCTs"
+)
+
+// SCTProviderClient is the client API for SCTProvider service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type SCTProviderClient interface {
+	GetSCTs(ctx context.Context, in *SCTRequest, opts ...grpc.CallOption) (*SCTResponse, error)
+}
+
+type sCTProviderClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewSCTProviderClient(cc grpc.ClientConnInterface) SCTProviderClient {
+	return &sCTProviderClient{cc}
+}
+
+func (c *sCTProviderClient) GetSCTs(ctx context.Context, in *SCTRequest, opts ...grpc.CallOption) (*SCTResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SCTResponse)
+	err := c.cc.Invoke(ctx, SCTProvider_GetSCTs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SCTProviderServer is the server API for SCTProvider service.
+// All implementations must embed UnimplementedSCTProviderServer
+// for forward compatibility
+type SCTProviderServer interface {
+	GetSCTs(context.Context, *SCTRequest) (*SCTResponse, error)
+	mustEmbedUnimplementedSCTProviderServer()
+}
+
+// UnimplementedSCTProviderServer must be embedded to have forward compatible implementations.
+type UnimplementedSCTProviderServer struct {
+}
+
+func (UnimplementedSCTProviderServer) GetSCTs(context.Context, *SCTRequest) (*SCTResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSCTs not implemented")
+}
+func (UnimplementedSCTProviderServer) mustEmbedUnimplementedSCTProviderServer() {}
+
+// UnsafeSCTProviderServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to SCTProviderServer will
+// result in compilation errors.
+type UnsafeSCTProviderServer interface {
+	mustEmbedUnimplementedSCTProviderServer()
+}
+
+func RegisterSCTProviderServer(s grpc.ServiceRegistrar, srv SCTProviderServer) {
+	s.RegisterService(&SCTProvider_ServiceDesc, srv)
+}
+
+func _SCTProvider_GetSCTs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SCTRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SCTProviderServer).GetSCTs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SCTProvider_GetSCTs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SCTProviderServer).GetSCTs(ctx, req.(*SCTRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// SCTProvider_ServiceDesc is the grpc.ServiceDesc for SCTProvider service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var SCTProvider_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "ra.SCTProvider",
+	HandlerType: (*SCTProviderServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetSCTs",
+			Handler:    _SCTProvider_GetSCTs_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

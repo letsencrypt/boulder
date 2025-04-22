@@ -8,7 +8,6 @@ package proto
 
 import (
 	context "context"
-	proto "github.com/letsencrypt/boulder/core/proto"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -20,16 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	CertificateAuthority_IssuePrecertificate_FullMethodName               = "/ca.CertificateAuthority/IssuePrecertificate"
-	CertificateAuthority_IssueCertificateForPrecertificate_FullMethodName = "/ca.CertificateAuthority/IssueCertificateForPrecertificate"
+	CertificateAuthority_IssueCertificate_FullMethodName = "/ca.CertificateAuthority/IssueCertificate"
 )
 
 // CertificateAuthorityClient is the client API for CertificateAuthority service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CertificateAuthorityClient interface {
-	IssuePrecertificate(ctx context.Context, in *IssueCertificateRequest, opts ...grpc.CallOption) (*IssuePrecertificateResponse, error)
-	IssueCertificateForPrecertificate(ctx context.Context, in *IssueCertificateForPrecertificateRequest, opts ...grpc.CallOption) (*proto.Certificate, error)
+	// IssueCertificate issues a precertificate, gets SCTs, issues a certificate, and returns that.
+	IssueCertificate(ctx context.Context, in *IssueCertificateRequest, opts ...grpc.CallOption) (*IssueCertificateResponse, error)
 }
 
 type certificateAuthorityClient struct {
@@ -40,20 +38,10 @@ func NewCertificateAuthorityClient(cc grpc.ClientConnInterface) CertificateAutho
 	return &certificateAuthorityClient{cc}
 }
 
-func (c *certificateAuthorityClient) IssuePrecertificate(ctx context.Context, in *IssueCertificateRequest, opts ...grpc.CallOption) (*IssuePrecertificateResponse, error) {
+func (c *certificateAuthorityClient) IssueCertificate(ctx context.Context, in *IssueCertificateRequest, opts ...grpc.CallOption) (*IssueCertificateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(IssuePrecertificateResponse)
-	err := c.cc.Invoke(ctx, CertificateAuthority_IssuePrecertificate_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *certificateAuthorityClient) IssueCertificateForPrecertificate(ctx context.Context, in *IssueCertificateForPrecertificateRequest, opts ...grpc.CallOption) (*proto.Certificate, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(proto.Certificate)
-	err := c.cc.Invoke(ctx, CertificateAuthority_IssueCertificateForPrecertificate_FullMethodName, in, out, cOpts...)
+	out := new(IssueCertificateResponse)
+	err := c.cc.Invoke(ctx, CertificateAuthority_IssueCertificate_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -64,8 +52,8 @@ func (c *certificateAuthorityClient) IssueCertificateForPrecertificate(ctx conte
 // All implementations must embed UnimplementedCertificateAuthorityServer
 // for forward compatibility
 type CertificateAuthorityServer interface {
-	IssuePrecertificate(context.Context, *IssueCertificateRequest) (*IssuePrecertificateResponse, error)
-	IssueCertificateForPrecertificate(context.Context, *IssueCertificateForPrecertificateRequest) (*proto.Certificate, error)
+	// IssueCertificate issues a precertificate, gets SCTs, issues a certificate, and returns that.
+	IssueCertificate(context.Context, *IssueCertificateRequest) (*IssueCertificateResponse, error)
 	mustEmbedUnimplementedCertificateAuthorityServer()
 }
 
@@ -73,11 +61,8 @@ type CertificateAuthorityServer interface {
 type UnimplementedCertificateAuthorityServer struct {
 }
 
-func (UnimplementedCertificateAuthorityServer) IssuePrecertificate(context.Context, *IssueCertificateRequest) (*IssuePrecertificateResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method IssuePrecertificate not implemented")
-}
-func (UnimplementedCertificateAuthorityServer) IssueCertificateForPrecertificate(context.Context, *IssueCertificateForPrecertificateRequest) (*proto.Certificate, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method IssueCertificateForPrecertificate not implemented")
+func (UnimplementedCertificateAuthorityServer) IssueCertificate(context.Context, *IssueCertificateRequest) (*IssueCertificateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IssueCertificate not implemented")
 }
 func (UnimplementedCertificateAuthorityServer) mustEmbedUnimplementedCertificateAuthorityServer() {}
 
@@ -92,38 +77,20 @@ func RegisterCertificateAuthorityServer(s grpc.ServiceRegistrar, srv Certificate
 	s.RegisterService(&CertificateAuthority_ServiceDesc, srv)
 }
 
-func _CertificateAuthority_IssuePrecertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _CertificateAuthority_IssueCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(IssueCertificateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(CertificateAuthorityServer).IssuePrecertificate(ctx, in)
+		return srv.(CertificateAuthorityServer).IssueCertificate(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: CertificateAuthority_IssuePrecertificate_FullMethodName,
+		FullMethod: CertificateAuthority_IssueCertificate_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CertificateAuthorityServer).IssuePrecertificate(ctx, req.(*IssueCertificateRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _CertificateAuthority_IssueCertificateForPrecertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(IssueCertificateForPrecertificateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(CertificateAuthorityServer).IssueCertificateForPrecertificate(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: CertificateAuthority_IssueCertificateForPrecertificate_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CertificateAuthorityServer).IssueCertificateForPrecertificate(ctx, req.(*IssueCertificateForPrecertificateRequest))
+		return srv.(CertificateAuthorityServer).IssueCertificate(ctx, req.(*IssueCertificateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -136,12 +103,8 @@ var CertificateAuthority_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*CertificateAuthorityServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "IssuePrecertificate",
-			Handler:    _CertificateAuthority_IssuePrecertificate_Handler,
-		},
-		{
-			MethodName: "IssueCertificateForPrecertificate",
-			Handler:    _CertificateAuthority_IssueCertificateForPrecertificate_Handler,
+			MethodName: "IssueCertificate",
+			Handler:    _CertificateAuthority_IssueCertificate_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

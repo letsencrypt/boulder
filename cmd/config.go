@@ -3,6 +3,7 @@ package cmd
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -554,27 +555,32 @@ type DNSProvider struct {
 	SRVLookup ServiceDomain `validate:"required"`
 }
 
-// HMACKeyConfig specifies a path to a file containing an HMAC key. The key must
-// consist of 256 bits of random data to be suitable for use as a 256-bit
-// hashing key (e.g., the output of `openssl rand -hex 32`).
+// HMACKeyConfig specifies a path to a file containing a hexadecimal-encoded
+// HMAC key. The key must represent exactly 256 bits (32 bytes) of random data
+// to be suitable for use as a 256-bit hashing key (e.g., the output of `openssl
+// rand -hex 32`).
 type HMACKeyConfig struct {
 	KeyFile string `validate:"required"`
 }
 
-// Load loads the HMAC key from the file, ensures it is exactly 32 characters
-// in length, and returns it as a byte slice.
+// Load reads the HMAC key from the file, decodes it from hexadecimal, ensures
+// it represents exactly 256 bits (32 bytes), and returns it as a byte slice.
 func (hc *HMACKeyConfig) Load() ([]byte, error) {
 	contents, err := os.ReadFile(hc.KeyFile)
 	if err != nil {
 		return nil, err
 	}
-	trimmed := strings.TrimRight(string(contents), "\n")
 
-	if len(trimmed) != 32 {
+	decoded, err := hex.DecodeString(strings.TrimSpace(string(contents)))
+	if err != nil {
+		return nil, fmt.Errorf("invalid hexadecimal encoding: %w", err)
+	}
+
+	if len(decoded) != 32 {
 		return nil, fmt.Errorf(
-			"validating HMAC key, length must be 32 alphanumeric characters, got %d",
-			len(trimmed),
+			"validating HMAC key, must be exactly 256 bits (32 bytes) after decoding, got %d",
+			len(decoded),
 		)
 	}
-	return []byte(trimmed), nil
+	return decoded, nil
 }

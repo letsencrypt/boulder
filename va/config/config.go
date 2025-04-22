@@ -10,6 +10,8 @@ import (
 // Common contains all of the shared fields for a VA and a Remote VA (RVA).
 type Common struct {
 	cmd.ServiceConfig
+	// UserAgent is the "User-Agent" header sent during http-01 challenges and
+	// DoH queries.
 	UserAgent string
 
 	IssuerDomain string

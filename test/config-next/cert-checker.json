@@ -12,6 +12,7 @@
 		"acceptableValidityDurations": [
 			"7776000s"
 		],
+		"lintConfig": "test/config-next/zlint.toml",
 		"ignoredLints": [
 			"w_subject_common_name_included",
 			"w_ext_subject_key_identifier_missing_sub_cert",

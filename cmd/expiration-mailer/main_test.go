@@ -23,6 +23,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
@@ -352,8 +353,11 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 
 	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "setting up DB")
+	parsedCert, err := x509.ParseCertificate(cert.DER)
+	test.AssertNotError(t, err, "parsing certificate to x509")
+	idents := identifier.FromCert(parsedCert)
 	err = setupDBMap.Insert(ctx, &core.FQDNSet{
-		SetHash: core.HashNames(names),
+		SetHash: core.HashIdentifiers(idents),
 		Serial:  core.SerialToString(serial2),
 		Issued:  testCtx.fc.Now().Add(time.Hour),
 		Expires: expires.Add(time.Hour),
@@ -560,23 +564,26 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []certDERWithRegID {
 	test.AssertNotError(t, err, "creating cert C")
 
 	// Expires in 3d, renewed
-	certDNames := []string{"example-d.com"}
 	certD, err := makeCertificate(
 		regC.Id,
 		serial4,
-		certDNames,
+		[]string{"example-d.com"},
 		72*time.Hour,
 		ctx.fc)
 	test.AssertNotError(t, err, "creating cert D")
 
+	parsedCertD, err := x509.ParseCertificate(certD.DER)
+	test.AssertNotError(t, err, "parsing certificate to x509")
+	idents := identifier.FromCert(parsedCertD)
+
 	fqdnStatusD := &core.FQDNSet{
-		SetHash: core.HashNames(certDNames),
+		SetHash: core.HashIdentifiers(idents),
 		Serial:  serial4String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -87),
 		Expires: ctx.fc.Now().AddDate(0, 0, 3),
 	}
 	fqdnStatusDRenewed := &core.FQDNSet{
-		SetHash: core.HashNames(certDNames),
+		SetHash: core.HashIdentifiers(idents),
 		Serial:  serial5String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -3),
 		Expires: ctx.fc.Now().AddDate(0, 0, 87),
@@ -649,6 +656,7 @@ func TestCertIsRenewed(t *testing.T) {
 		DNS          []string
 		NotBefore    time.Time
 		NotAfter     time.Time
+		rawCert      x509.Certificate
 		// this field is the test assertion
 		IsRenewed bool
 	}{
@@ -725,19 +733,21 @@ func TestCertIsRenewed(t *testing.T) {
 	for _, testData := range testCerts {
 		testData.stringSerial = core.SerialToString(testData.Serial)
 
-		rawCert := x509.Certificate{
+		testData.rawCert = x509.Certificate{
 			NotBefore:    testData.NotBefore,
 			NotAfter:     testData.NotAfter,
 			DNSNames:     testData.DNS,
 			SerialNumber: testData.Serial,
 		}
 		// Can't use makeCertificate here because we also care about NotBefore
-		certDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
+		certDer, err := x509.CreateCertificate(rand.Reader, &testData.rawCert, &testData.rawCert, &testKey.PublicKey, testKey)
 		if err != nil {
 			t.Fatal(err)
 		}
+		parsedCert, err := x509.ParseCertificate(certDer)
+		test.AssertNotError(t, err, "parsing certificate to x509")
 		fqdnStatus := &core.FQDNSet{
-			SetHash: core.HashNames(testData.DNS),
+			SetHash: core.HashIdentifiers(identifier.FromCert(parsedCert)),
 			Serial:  testData.stringSerial,
 			Issued:  testData.NotBefore,
 			Expires: testData.NotAfter,
@@ -751,7 +761,7 @@ func TestCertIsRenewed(t *testing.T) {
 	}
 
 	for _, testData := range testCerts {
-		renewed, err := testCtx.m.certIsRenewed(context.Background(), testData.DNS, testData.NotBefore)
+		renewed, err := testCtx.m.certIsRenewed(context.Background(), &testData.rawCert)
 		if err != nil {
 			t.Errorf("error checking renewal state for %s: %v", testData.stringSerial, err)
 			continue

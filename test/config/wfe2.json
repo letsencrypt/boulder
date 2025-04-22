@@ -1,5 +1,6 @@
 {
 	"wfe": {
+		"timeout": "30s",
 		"listenAddress": "0.0.0.0:4001",
 		"TLSListenAddress": "0.0.0.0:4431",
 		"serverCertificatePath": "test/certs/ipki/boulder/cert.pem",
@@ -70,8 +71,8 @@
 			"noWaitForReady": true,
 			"hostOverride": "nonce.boulder"
 		},
-		"noncePrefixKey": {
-			"passwordFile": "test/secrets/nonce_prefix_key"
+		"nonceHMACKey": {
+			"keyFile": "test/secrets/nonce_prefix_key"
 		},
 		"chains": [
 			[
@@ -100,8 +101,6 @@
 			]
 		],
 		"staleTimeout": "5m",
-		"authorizationLifetimeDays": 30,
-		"pendingAuthorizationLifetimeDays": 7,
 		"limiter": {
 			"redis": {
 				"username": "boulder-wfe",
@@ -127,10 +126,13 @@
 			"Overrides": "test/config/wfe2-ratelimit-overrides.yml"
 		},
 		"features": {
-			"UseKvLimitsForNewOrder": true,
 			"ServeRenewalInfo": true,
-			"IncrementRateLimits": true,
 			"CheckIdentifiersPaused": true
+		},
+		"certProfiles": {
+			"legacy": "The normal profile you know and love",
+			"modern": "Profile 2: Electric Boogaloo",
+			"shortlived": "Like modern, but smaller"
 		},
 		"unpause": {
 			"hmacKey": {
@@ -141,7 +143,7 @@
 		}
 	},
 	"syslog": {
-		"stdoutlevel": 4,
+		"stdoutlevel": 7,
 		"sysloglevel": 6
 	}
 }

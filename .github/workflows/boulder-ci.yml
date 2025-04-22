@@ -36,7 +36,7 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.23.1_2024-09-05
+          - go1.24.1_2025-04-17
         # Tests command definitions. Use the entire "docker compose" command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
@@ -71,7 +71,7 @@ jobs:
       - name: Docker Login
         # You may pin to the exact commit or the version.
         # uses: docker/login-action@f3364599c6aa293cdc2b8391b1b56d0c30e45c8a
-        uses: docker/login-action@v3.3.0
+        uses: docker/login-action@v3.4.0
         with:
           # Username used to log against the Docker registry
           username: ${{ secrets.DOCKER_USERNAME}}
@@ -122,7 +122,7 @@ jobs:
       # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
       fail-fast: false
       matrix:
-        go-version: [ '1.22.5' ]
+        go-version: [ '1.24.1' ]
 
     steps:
       # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it

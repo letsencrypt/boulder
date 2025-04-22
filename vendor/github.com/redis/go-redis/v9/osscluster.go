@@ -86,10 +86,24 @@ type ClusterOptions struct {
 	ConnMaxIdleTime time.Duration
 	ConnMaxLifetime time.Duration
 
-	TLSConfig        *tls.Config
-	DisableIndentity bool // Disable set-lib on connect. Default is false.
+	TLSConfig *tls.Config
+
+	// DisableIndentity - Disable set-lib on connect.
+	//
+	// default: false
+	//
+	// Deprecated: Use DisableIdentity instead.
+	DisableIndentity bool
+
+	// DisableIdentity is used to disable CLIENT SETINFO command on connect.
+	//
+	// default: false
+	DisableIdentity bool
 
 	IdentitySuffix string // Add suffix to client name. Default is empty.
+
+	// UnstableResp3 enables Unstable mode for Redis Search module with RESP3.
+	UnstableResp3 bool
 }
 
 func (opt *ClusterOptions) init() {
@@ -296,7 +310,8 @@ func (opt *ClusterOptions) clientOptions() *Options {
 		MaxActiveConns:   opt.MaxActiveConns,
 		ConnMaxIdleTime:  opt.ConnMaxIdleTime,
 		ConnMaxLifetime:  opt.ConnMaxLifetime,
-		DisableIndentity: opt.DisableIndentity,
+		DisableIdentity:  opt.DisableIdentity,
+		DisableIndentity: opt.DisableIdentity,
 		IdentitySuffix:   opt.IdentitySuffix,
 		TLSConfig:        opt.TLSConfig,
 		// If ClusterSlots is populated, then we probably have an artificial
@@ -304,7 +319,8 @@ func (opt *ClusterOptions) clientOptions() *Options {
 		// much use for ClusterSlots config).  This means we cannot execute the
 		// READONLY command against that node -- setting readOnly to false in such
 		// situations in the options below will prevent that from happening.
-		readOnly: opt.ReadOnly && opt.ClusterSlots == nil,
+		readOnly:      opt.ReadOnly && opt.ClusterSlots == nil,
+		UnstableResp3: opt.UnstableResp3,
 	}
 }
 
@@ -341,6 +357,8 @@ func (n *clusterNode) Close() error {
 	return n.Client.Close()
 }
 
+const maximumNodeLatency = 1 * time.Minute
+
 func (n *clusterNode) updateLatency() {
 	const numProbe = 10
 	var dur uint64
@@ -361,7 +379,7 @@ func (n *clusterNode) updateLatency() {
 	if successes == 0 {
 		// If none of the pings worked, set latency to some arbitrarily high value so this node gets
 		// least priority.
-		latency = float64((1 * time.Minute) / time.Microsecond)
+		latency = float64((maximumNodeLatency) / time.Microsecond)
 	} else {
 		latency = float64(dur) / float64(successes)
 	}
@@ -463,9 +481,11 @@ func (c *clusterNodes) Addrs() ([]string, error) {
 	closed := c.closed //nolint:ifshort
 	if !closed {
 		if len(c.activeAddrs) > 0 {
-			addrs = c.activeAddrs
+			addrs = make([]string, len(c.activeAddrs))
+			copy(addrs, c.activeAddrs)
 		} else {
-			addrs = c.addrs
+			addrs = make([]string, len(c.addrs))
+			copy(addrs, c.addrs)
 		}
 	}
 	c.mu.RUnlock()
@@ -735,20 +755,40 @@ func (c *clusterState) slotClosestNode(slot int) (*clusterNode, error) {
 		return c.nodes.Random()
 	}
 
-	var node *clusterNode
+	var allNodesFailing = true
+	var (
+		closestNonFailingNode *clusterNode
+		closestNode           *clusterNode
+		minLatency            time.Duration
+	)
+
+	// setting the max possible duration as zerovalue for minlatency
+	minLatency = time.Duration(math.MaxInt64)
+
 	for _, n := range nodes {
-		if n.Failing() {
-			continue
+		if closestNode == nil || n.Latency() < minLatency {
+			closestNode = n
+			minLatency = n.Latency()
+			if !n.Failing() {
+				closestNonFailingNode = n
+				allNodesFailing = false
+			}
 		}
-		if node == nil || n.Latency() < node.Latency() {
-			node = n
-		}
-	}
-	if node != nil {
-		return node, nil
 	}
 
-	// If all nodes are failing - return random node
+	// pick the healthly node with the lowest latency
+	if !allNodesFailing && closestNonFailingNode != nil {
+		return closestNonFailingNode, nil
+	}
+
+	// if all nodes are failing, we will pick the temporarily failing node with lowest latency
+	if minLatency < maximumNodeLatency && closestNode != nil {
+		internal.Logger.Printf(context.TODO(), "redis: all nodes are marked as failed, picking the temporarily failing node with lowest latency")
+		return closestNode, nil
+	}
+
+	// If all nodes are having the maximum latency(all pings are failing) - return a random node across the cluster
+	internal.Logger.Printf(context.TODO(), "redis: pings to all nodes are failing, picking a random node across the cluster")
 	return c.nodes.Random()
 }
 
@@ -916,10 +956,13 @@ func (c *ClusterClient) Process(ctx context.Context, cmd Cmder) error {
 func (c *ClusterClient) process(ctx context.Context, cmd Cmder) error {
 	slot := c.cmdSlot(ctx, cmd)
 	var node *clusterNode
+	var moved bool
 	var ask bool
 	var lastErr error
 	for attempt := 0; attempt <= c.opt.MaxRedirects; attempt++ {
-		if attempt > 0 {
+		// MOVED and ASK responses are not transient errors that require retry delay; they
+		// should be attempted immediately.
+		if attempt > 0 && !moved && !ask {
 			if err := internal.Sleep(ctx, c.retryBackoff(attempt)); err != nil {
 				return err
 			}
@@ -963,7 +1006,6 @@ func (c *ClusterClient) process(ctx context.Context, cmd Cmder) error {
 			continue
 		}
 
-		var moved bool
 		var addr string
 		moved, ask, addr = isMovedError(lastErr)
 		if moved || ask {

@@ -16,9 +16,14 @@ import (
 // package's global Config.
 type Config struct {
 	// Deprecated flags.
-	IncrementRateLimits      bool
-	UseKvLimitsForNewOrder   bool
-	DisableLegacyLimitWrites bool
+	IncrementRateLimits         bool
+	UseKvLimitsForNewOrder      bool
+	DisableLegacyLimitWrites    bool
+	MultipleCertificateProfiles bool
+	InsertAuthzsIndividually    bool
+	EnforceMultiCAA             bool
+	EnforceMPIC                 bool
+	UnsplitIssuance             bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -50,19 +55,6 @@ type Config struct {
 	// DOH enables DNS-over-HTTPS queries for validation
 	DOH bool
 
-	// EnforceMultiCAA causes the VA to kick off remote CAA rechecks when true.
-	// When false, no remote CAA rechecks will be performed. The primary VA will
-	// make a valid/invalid decision with the results.
-	EnforceMultiCAA bool
-
-	// MultipleCertificateProfiles, when enabled, triggers the following
-	// behavior:
-	//   - SA.NewOrderAndAuthzs: upon receiving a NewOrderRequest with a
-	//     `certificateProfileName` value, will add that value to the database's
-	//     `orders.certificateProfileName` column. Values in this column are
-	//     allowed to be empty.
-	MultipleCertificateProfiles bool
-
 	// CheckIdentifiersPaused checks if any of the identifiers in the order are
 	// currently paused at NewOrder time. If any are paused, an error is
 	// returned to the Subscriber indicating that the order cannot be processed
@@ -78,13 +70,6 @@ type Config struct {
 	// queries waiting for an available connection may be cancelled.
 	PropagateCancels bool
 
-	// InsertAuthzsIndividually causes the SA's NewOrderAndAuthzs method to
-	// create each new authz one at a time, rather than using MultiInserter.
-	// Although this is expected to be a performance penalty, it is necessary to
-	// get the AUTO_INCREMENT ID of each new authz without relying on MariaDB's
-	// unique "INSERT ... RETURNING" functionality.
-	InsertAuthzsIndividually bool
-
 	// AutomaticallyPauseZombieClients configures the RA to automatically track
 	// and pause issuance for each (account, hostname) pair that repeatedly
 	// fails validation.
@@ -96,23 +81,14 @@ type Config struct {
 	// removing pending authz reuse.
 	NoPendingAuthzReuse bool
 
-	// EnforceMPIC enforces SC-067 V3: Require Multi-Perspective Issuance
-	// Corroboration by:
-	//  - Requiring at least three distinct perspectives, as outlined in the
-	//    "Phased Implementation Timeline" in BRs section 3.2.2.9 ("Effective
-	//    March 15, 2025").
-	//  - Ensuring that corroborating (passing) perspectives reside in at least
-	//    2 distinct Regional Internet Registries (RIRs) per the "Phased
-	//    Implementation Timeline" in BRs section 3.2.2.9 ("Effective March 15,
-	//    2026").
-	//  - Including an MPIC summary consisting of: passing perspectives, failing
-	//    perspectives, passing RIRs, and a quorum met for issuance (e.g., 2/3
-	//    or 3/3) in each validation audit log event, per BRs Section 5.4.1,
-	//    Requirement 2.8.
-	//
-	// This feature flag also causes CAA checks to happen after all remote VAs
-	// have passed DCV.
-	EnforceMPIC bool
+	// MPICFullResults causes the VA to wait for all remote (MPIC) results, rather
+	// than cancelling outstanding requests after enough successes or failures for
+	// the result to be determined.
+	MPICFullResults bool
+
+	// StoreARIReplacesInOrders causes the SA to store and retrieve the optional
+	// ARI replaces field in the orders table.
+	StoreARIReplacesInOrders bool
 }
 
 var fMu = new(sync.RWMutex)

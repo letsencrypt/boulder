@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/hex"
+	mrand "math/rand"
 	"testing"
 	"time"
 
@@ -31,9 +32,9 @@ func TestOCSP(t *testing.T) {
 	testCtx := setup(t)
 	ca, err := NewCertificateAuthorityImpl(
 		&mockSA{},
+		mockSCTService{},
 		testCtx.pa,
 		testCtx.boulderIssuers,
-		testCtx.defaultCertProfileName,
 		testCtx.certProfiles,
 		testCtx.serialPrefix,
 		testCtx.maxNames,
@@ -44,11 +45,12 @@ func TestOCSP(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create CA")
 	ocspi := testCtx.ocsp
 
+	profile := ca.certProfiles["legacy"]
 	// Issue a certificate from an RSA issuer, request OCSP from the same issuer,
 	// and make sure it works.
-	rsaCertPB, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID})
+	rsaCertDER, err := ca.issuePrecertificate(ctx, profile, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63(), CertProfileName: "legacy"})
 	test.AssertNotError(t, err, "Failed to issue certificate")
-	rsaCert, err := x509.ParseCertificate(rsaCertPB.DER)
+	rsaCert, err := x509.ParseCertificate(rsaCertDER)
 	test.AssertNotError(t, err, "Failed to parse rsaCert")
 	rsaIssuerID := issuance.IssuerNameID(rsaCert)
 	rsaOCSPPB, err := ocspi.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
@@ -69,9 +71,9 @@ func TestOCSP(t *testing.T) {
 
 	// Issue a certificate from an ECDSA issuer, request OCSP from the same issuer,
 	// and make sure it works.
-	ecdsaCertPB, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID})
+	ecdsaCertDER, err := ca.issuePrecertificate(ctx, profile, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: mrand.Int63(), OrderID: mrand.Int63(), CertProfileName: "legacy"})
 	test.AssertNotError(t, err, "Failed to issue certificate")
-	ecdsaCert, err := x509.ParseCertificate(ecdsaCertPB.DER)
+	ecdsaCert, err := x509.ParseCertificate(ecdsaCertDER)
 	test.AssertNotError(t, err, "Failed to parse ecdsaCert")
 	ecdsaIssuerID := issuance.IssuerNameID(ecdsaCert)
 	ecdsaOCSPPB, err := ocspi.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{

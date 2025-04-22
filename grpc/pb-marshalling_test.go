@@ -206,7 +206,9 @@ func TestRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "registrationToPB failed")
 	outReg, err = PbToRegistration(pbReg)
 	test.AssertNotError(t, err, "PbToRegistration failed")
-	test.Assert(t, *outReg.Contact != nil, "Empty slice was converted to a nil slice")
+	if outReg.Contact != nil {
+		t.Errorf("Empty contacts should be a nil slice")
+	}
 
 	inRegNilCreatedAt := core.Registration{
 		ID:        1,
@@ -225,7 +227,7 @@ func TestRegistration(t *testing.T) {
 
 func TestAuthz(t *testing.T) {
 	exp := time.Now().AddDate(0, 0, 1).UTC()
-	identifier := identifier.NewDNS("example.com")
+	ident := identifier.NewDNS("example.com")
 	challA := core.Challenge{
 		Type:   core.ChallengeTypeDNS01,
 		Status: core.StatusPending,
@@ -238,7 +240,7 @@ func TestAuthz(t *testing.T) {
 	}
 	inAuthz := core.Authorization{
 		ID:             "1",
-		Identifier:     identifier,
+		Identifier:     ident,
 		RegistrationID: 5,
 		Status:         core.StatusPending,
 		Expires:        &exp,
@@ -252,7 +254,7 @@ func TestAuthz(t *testing.T) {
 
 	inAuthzNilExpires := core.Authorization{
 		ID:             "1",
-		Identifier:     identifier,
+		Identifier:     ident,
 		RegistrationID: 5,
 		Status:         core.StatusPending,
 		Expires:        nil,
@@ -263,23 +265,6 @@ func TestAuthz(t *testing.T) {
 	outAuthz2, err := PBToAuthz(pbAuthz2)
 	test.AssertNotError(t, err, "PBToAuthz failed")
 	test.AssertDeepEquals(t, inAuthzNilExpires, outAuthz2)
-}
-
-func TestCert(t *testing.T) {
-	now := time.Now().Round(0).UTC()
-	cert := core.Certificate{
-		RegistrationID: 1,
-		Serial:         "serial",
-		Digest:         "digest",
-		DER:            []byte{255},
-		Issued:         now,
-		Expires:        now.Add(time.Hour),
-	}
-
-	certPB := CertToPB(cert)
-	outCert := PBToCert(certPB)
-
-	test.AssertDeepEquals(t, cert, outCert)
 }
 
 func TestOrderValid(t *testing.T) {
@@ -298,7 +283,7 @@ func TestOrderValid(t *testing.T) {
 				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				DnsNames:          []string{"example.com"},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:   false,
 				Created:           timestamppb.New(created),
 			},
@@ -311,7 +296,7 @@ func TestOrderValid(t *testing.T) {
 				RegistrationID:   1,
 				Expires:          timestamppb.New(expires),
 				V2Authorizations: []int64{},
-				DnsNames:         []string{"example.com"},
+				Identifiers:      []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:  false,
 				Created:          timestamppb.New(created),
 			},
@@ -329,7 +314,7 @@ func TestOrderValid(t *testing.T) {
 				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				DnsNames:          []string{"example.com"},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:   false,
 			},
 		},
@@ -341,7 +326,7 @@ func TestOrderValid(t *testing.T) {
 				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				DnsNames:          []string{"example.com"},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:   false,
 			},
 		},
@@ -353,7 +338,7 @@ func TestOrderValid(t *testing.T) {
 				Expires:           nil,
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				DnsNames:          []string{"example.com"},
+				Identifiers:       []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 				BeganProcessing:   false,
 			},
 		},
@@ -365,7 +350,7 @@ func TestOrderValid(t *testing.T) {
 				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
-				DnsNames:          []string{},
+				Identifiers:       []*corepb.Identifier{},
 				BeganProcessing:   false,
 			},
 		},

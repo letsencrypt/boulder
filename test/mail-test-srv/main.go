@@ -233,10 +233,7 @@ func main() {
 
 	srv.setupHTTP(http.DefaultServeMux)
 	go func() {
-		// The gosec linter complains that timeouts cannot be set here. That's fine,
-		// because this is test-only code.
-		////nolint:gosec
-		err := http.ListenAndServe(*listenAPI, http.DefaultServeMux)
+		err := http.ListenAndServe(*listenAPI, http.DefaultServeMux) //nolint: gosec // No request timeout is fine for test-only code.
 		if err != nil {
 			log.Fatalln("Couldn't start HTTP server", err)
 		}

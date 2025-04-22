@@ -22,13 +22,13 @@ import (
 
 type mockPA struct{}
 
-func (pa *mockPA) ChallengeTypesFor(identifier identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
+func (pa *mockPA) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
 	return []core.AcmeChallenge{}, nil
 }
 
-func (pa *mockPA) WillingToIssue(domains []string) error {
-	for _, domain := range domains {
-		if domain == "bad-name.com" || domain == "other-bad-name.com" {
+func (pa *mockPA) WillingToIssue(idents identifier.ACMEIdentifiers) error {
+	for _, ident := range idents {
+		if ident.Value == "bad-name.com" || ident.Value == "other-bad-name.com" {
 			return errors.New("policy forbids issuing for identifier")
 		}
 	}
@@ -103,7 +103,7 @@ func TestVerifyCSR(t *testing.T) {
 			signedReq,
 			100,
 			&mockPA{},
-			invalidNoDNS,
+			invalidNoIdent,
 		},
 		{
 			signedReqWithLongCN,

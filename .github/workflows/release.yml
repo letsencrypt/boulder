@@ -15,8 +15,8 @@ jobs:
       fail-fast: false
       matrix:
         GO_VERSION:
-          - "1.23.1"
-    runs-on: ubuntu-20.04
+          - "1.24.1"
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       packages: write
@@ -29,7 +29,7 @@ jobs:
         id: build
         env:
           GO_VERSION: ${{ matrix.GO_VERSION }}
-        run: ./tools/make-assets.sh
+        run: docker run -v $PWD:/boulder -e GO_VERSION=$GO_VERSION -e COMMIT_ID="$(git rev-parse --short=8 HEAD)" ubuntu:20.04 bash -c 'apt update && apt -y install gnupg2 curl sudo git gcc && cd /boulder/ && ./tools/make-assets.sh'
 
       - name: Compute checksums
         id: checksums
@@ -51,7 +51,7 @@ jobs:
         run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb boulder*.tar.gz boulder*.checksums.txt
 
       - name: Build ct-test-srv Container
-        run: docker buildx build . --build-arg "GO_VERSION=${{ matrix.GO_VERSION }}" -f test/ct-test-srv/Dockerfile -t "ghcr.io/letsencrypt/ct-test-srv:${{ github.ref_name }}"
+        run: docker buildx build . --build-arg "GO_VERSION=${{ matrix.GO_VERSION }}" -f test/ct-test-srv/Dockerfile -t "ghcr.io/letsencrypt/ct-test-srv:${{ github.ref_name }}-go${{ matrix.GO_VERSION }}"
 
       - name: Login to ghcr.io
         run: printenv GITHUB_TOKEN | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -59,4 +59,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push ct-test-srv Container
-        run: docker push "ghcr.io/letsencrypt/ct-test-srv:${{ github.ref_name }}"
+        run: docker push "ghcr.io/letsencrypt/ct-test-srv:${{ github.ref_name }}-go${{ matrix.GO_VERSION }}"

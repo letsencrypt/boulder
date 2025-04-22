@@ -273,9 +273,7 @@ func TestFailExit(t *testing.T) {
 		return
 	}
 
-	// gosec points out that os.Args[0] is tainted, but we only run this as a test
-	// so we are not worried about it containing an untrusted value.
-	//nolint:gosec
+	//nolint: gosec // Test-only code is not concerned about untrusted values in os.Args[0]
 	cmd := exec.Command(os.Args[0], "-test.run=TestFailExit")
 	cmd.Env = append(os.Environ(), "TIME_TO_DIE=1")
 	output, err := cmd.CombinedOutput()
@@ -288,7 +286,7 @@ func TestFailExit(t *testing.T) {
 
 func testPanicStackTraceHelper() {
 	var x *int
-	*x = 1 //nolint:govet
+	*x = 1 //nolint: govet // Purposeful nil pointer dereference to trigger a panic
 }
 
 func TestPanicStackTrace(t *testing.T) {
@@ -302,9 +300,7 @@ func TestPanicStackTrace(t *testing.T) {
 		return
 	}
 
-	// gosec points out that os.Args[0] is tainted, but we only run this as a test
-	// so we are not worried about it containing an untrusted value.
-	//nolint:gosec
+	//nolint: gosec // Test-only code is not concerned about untrusted values in os.Args[0]
 	cmd := exec.Command(os.Args[0], "-test.run=TestPanicStackTrace")
 	cmd.Env = append(os.Environ(), "AT_THE_DISCO=1")
 	output, err := cmd.CombinedOutput()

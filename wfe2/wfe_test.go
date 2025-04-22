@@ -21,6 +21,8 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -197,13 +199,24 @@ func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *co
 
 func (ra *MockRegistrationAuthority) UpdateRegistrationContact(ctx context.Context, in *rapb.UpdateRegistrationContactRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return &corepb.Registration{
+		Status:  string(core.StatusValid),
 		Contact: in.Contacts,
 		Key:     []byte(test1KeyPublicJSON),
 	}, nil
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistrationKey(ctx context.Context, in *rapb.UpdateRegistrationKeyRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	return &corepb.Registration{Key: in.Jwk}, nil
+	return &corepb.Registration{
+		Status: string(core.StatusValid),
+		Key:    in.Jwk,
+	}, nil
+}
+
+func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *rapb.DeactivateRegistrationRequest, ...grpc.CallOption) (*corepb.Registration, error) {
+	return &corepb.Registration{
+		Status: string(core.StatusDeactivated),
+		Key:    []byte(test1KeyPublicJSON),
+	}, nil
 }
 
 func (ra *MockRegistrationAuthority) PerformValidation(context.Context, *rapb.PerformValidationRequest, ...grpc.CallOption) (*corepb.Authorization, error) {
@@ -228,7 +241,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		return &corepb.Authorization{
 			Id:             "1",
 			RegistrationID: 1,
-			DnsName:        "not-an-example.com",
+			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusValid),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
 			Challenges: []*corepb.Challenge{
@@ -239,7 +252,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		return &corepb.Authorization{
 			Id:             "2",
 			RegistrationID: 1,
-			DnsName:        "not-an-example.com",
+			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
 			Challenges: []*corepb.Challenge{
@@ -252,7 +265,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		return &corepb.Authorization{
 			Id:             "3",
 			RegistrationID: 1,
-			DnsName:        "not-an-example.com",
+			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(-1, 0, 0)),
 			Challenges: []*corepb.Challenge{
@@ -267,7 +280,7 @@ func (ra *MockRegistrationAuthority) GetAuthorization(_ context.Context, in *rap
 		return &corepb.Authorization{
 			Id:             "5",
 			RegistrationID: 2,
-			DnsName:        "not-an-example.com",
+			Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 			Status:         string(core.StatusPending),
 			Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
 			Challenges: []*corepb.Challenge{
@@ -285,10 +298,6 @@ func (ra *MockRegistrationAuthority) DeactivateAuthorization(context.Context, *c
 	return &emptypb.Empty{}, nil
 }
 
-func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *corepb.Registration, ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, nil
-}
-
 func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	created := time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC)
 	expires := time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC)
@@ -298,7 +307,7 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewO
 		RegistrationID:   in.RegistrationID,
 		Created:          timestamppb.New(created),
 		Expires:          timestamppb.New(expires),
-		DnsNames:         in.DnsNames,
+		Identifiers:      in.Identifiers,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
 	}, nil
@@ -427,18 +436,16 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		blog.NewMock(),
 		10*time.Second,
 		10*time.Second,
-		30*24*time.Hour,
-		7*24*time.Hour,
 		&MockRegistrationAuthority{clk: fc},
 		mockSA,
+		nil,
 		gnc,
 		rnc,
 		rncKey,
 		mockSA,
 		limiter,
 		txnBuilder,
-		100,
-		nil,
+		map[string]string{"default": "a test profile"},
 		unpauseSigner,
 		unpauseLifetime,
 		unpauseURL,
@@ -809,7 +816,10 @@ func TestDirectory(t *testing.T) {
 			expectedJSON: `{
   "keyChange": "http://localhost:4300/acme/key-change",
   "meta": {
-    "termsOfService": "http://example.invalid/terms"
+    "termsOfService": "http://example.invalid/terms",
+		"profiles": {
+			"default": "a test profile"
+		}
   },
   "newNonce": "http://localhost:4300/acme/new-nonce",
   "newAccount": "http://localhost:4300/acme/new-acct",
@@ -831,7 +841,10 @@ func TestDirectory(t *testing.T) {
       "Radiant Lock"
     ],
     "termsOfService": "http://example.invalid/terms",
-    "website": "zombo.com"
+    "website": "zombo.com",
+		"profiles": {
+			"default": "a test profile"
+		}
   },
   "newAccount": "http://localhost:4300/acme/new-acct",
   "newNonce": "http://localhost:4300/acme/new-nonce",
@@ -852,7 +865,10 @@ func TestDirectory(t *testing.T) {
       "Radiant Lock"
     ],
     "termsOfService": "http://example.invalid/terms",
-    "website": "zombo.com"
+    "website": "zombo.com",
+		"profiles": {
+			"default": "a test profile"
+		}
   },
   "newAccount": "http://localhost/acme/new-acct",
   "newNonce": "http://localhost/acme/new-nonce",
@@ -900,7 +916,10 @@ func TestRelativeDirectory(t *testing.T) {
 		fmt.Fprintf(expected, `"newOrder":"%s/acme/new-order",`, hostname)
 		fmt.Fprintf(expected, `"revokeCert":"%s/acme/revoke-cert",`, hostname)
 		fmt.Fprintf(expected, `"AAAAAAAAAAA":"https://community.letsencrypt.org/t/adding-random-entries-to-the-directory/33417",`)
-		fmt.Fprintf(expected, `"meta":{"termsOfService":"http://example.invalid/terms"}`)
+		fmt.Fprintf(expected, `"meta":{`)
+		fmt.Fprintf(expected, `"termsOfService":"http://example.invalid/terms",`)
+		fmt.Fprintf(expected, `"profiles":{"default":"a test profile"}`)
+		fmt.Fprintf(expected, "}")
 		fmt.Fprintf(expected, "}")
 		return expected.String()
 	}
@@ -1330,7 +1349,7 @@ func TestBadNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("nonce", result.FullSerialize()))
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.ErrorNS+`badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.ErrorNS+`badNonce","detail":"Unable to validate JWS :: JWS has no anti-replay nonce","status":400}`)
 }
 
 func TestNewECDSAAccount(t *testing.T) {
@@ -1511,19 +1530,19 @@ func TestNewAccount(t *testing.T) {
 					"Content-Type":   {expectedJWSContentType},
 				},
 			},
-			`{"type":"` + probs.ErrorNS + `malformed","detail":"No body on POST","status":400}`,
+			`{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: No body on POST","status":400}`,
 		},
 
 		// POST, but body that isn't valid JWS
 		{
 			makePostRequestWithPath(newAcctPath, "hi"),
-			`{"type":"` + probs.ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
+			`{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: Parse error reading JWS","status":400}`,
 		},
 
 		// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 		{
 			makePostRequestWithPath(newAcctPath, fooBody),
-			`{"type":"` + probs.ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
+			`{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: Request payload did not parse as JSON","status":400}`,
 		},
 
 		// Same signed body, but payload modified by one byte, breaking signature.
@@ -1531,7 +1550,7 @@ func TestNewAccount(t *testing.T) {
 		{
 			makePostRequestWithPath(newAcctPath,
 				`{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoicW5BUkxyVDdYejRnUmNLeUxkeWRtQ3ItZXk5T3VQSW1YNFg0MHRoazNvbjI2RmtNem5SM2ZSanM2NmVMSzdtbVBjQlo2dU9Kc2VVUlU2d0FhWk5tZW1vWXgxZE12cXZXV0l5aVFsZUhTRDdROHZCcmhSNnVJb080akF6SlpSLUNoelp1U0R0N2lITi0zeFVWc3B1NVhHd1hVX01WSlpzaFR3cDRUYUZ4NWVsSElUX09iblR2VE9VM1hoaXNoMDdBYmdaS21Xc1ZiWGg1cy1DcklpY1U0T2V4SlBndW5XWl9ZSkp1ZU9LbVR2bkxsVFY0TXpLUjJvWmxCS1oyN1MwLVNmZFZfUUR4X3lkbGU1b01BeUtWdGxBVjM1Y3lQTUlzWU53Z1VHQkNkWV8yVXppNWVYMGxUYzdNUFJ3ejZxUjFraXAtaTU5VmNHY1VRZ3FIVjZGeXF3IiwiZSI6IkFRQUIifSwia2lkIjoiIiwibm9uY2UiOiJyNHpuenZQQUVwMDlDN1JwZUtYVHhvNkx3SGwxZVBVdmpGeXhOSE1hQnVvIiwidXJsIjoiaHR0cDovL2xvY2FsaG9zdC9hY21lL25ldy1yZWcifQ","signature":"jcTdxSygm_cvD7KbXqsxgnoPApCTSkV4jolToSOd2ciRkg5W7Yl0ZKEEKwOc-dYIbQiwGiDzisyPCicwWsOUA1WSqHylKvZ3nxSMc6KtwJCW2DaOqcf0EEjy5VjiZJUrOt2c-r6b07tbn8sfOJKwlF2lsOeGi4s-rtvvkeQpAU-AWauzl9G4bv2nDUeCviAZjHx_PoUC-f9GmZhYrbDzAvXZ859ktM6RmMeD0OqPN7bhAeju2j9Gl0lnryZMtq2m0J2m1ucenQBL1g4ZkP1JiJvzd2cAz5G7Ftl2YeJJyWhqNd3qq0GVOt1P11s8PTGNaSoM0iR9QfUxT9A6jxARtg"}`),
-			`{"type":"` + probs.ErrorNS + `malformed","detail":"JWS verification error","status":400}`,
+			`{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: JWS verification error","status":400}`,
 		},
 		{
 			makePostRequestWithPath(newAcctPath, wrongAgreementBody),
@@ -1723,7 +1742,7 @@ func (ra *RAWithFailedChallenge) GetAuthorization(ctx context.Context, id *rapb.
 	return &corepb.Authorization{
 		Id:             "6",
 		RegistrationID: 1,
-		DnsName:        "not-an-example.com",
+		Identifier:     identifier.NewDNS("not-an-example.com").ToProto(),
 		Status:         string(core.StatusInvalid),
 		Expires:        timestamppb.New(ra.clk.Now().AddDate(100, 0, 0)),
 		Challenges: []*corepb.Challenge{
@@ -1763,15 +1782,6 @@ func TestAuthorizationChallengeHandlerNamespace(t *testing.T) {
 	responseWriter.Body.Reset()
 }
 
-func contains(s []string, e string) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
-	}
-	return false
-}
-
 func TestAccount(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 	mux := wfe.Handler(metrics.NoopRegisterer)
@@ -1791,7 +1801,7 @@ func TestAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("2", "invalid"))
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"`+probs.ErrorNS+`malformed","detail":"Parse error reading JWS","status":400}`)
+		`{"type":"`+probs.ErrorNS+`malformed","detail":"Unable to validate JWS :: Parse error reading JWS","status":400}`)
 	responseWriter.Body.Reset()
 
 	key := loadKey(t, []byte(test2KeyPrivatePEM))
@@ -1809,7 +1819,7 @@ func TestAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"`+probs.ErrorNS+`accountDoesNotExist","detail":"Account \"http://localhost/acme/acct/102\" not found","status":400}`)
+		`{"type":"`+probs.ErrorNS+`accountDoesNotExist","detail":"Unable to validate JWS :: Account \"http://localhost/acme/acct/102\" not found","status":400}`)
 	responseWriter.Body.Reset()
 
 	key = loadKey(t, []byte(test1KeyPrivatePEM))
@@ -1826,7 +1836,7 @@ func TestAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertNotContains(t, responseWriter.Body.String(), probs.ErrorNS)
 	links := responseWriter.Header()["Link"]
-	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
+	test.AssertEquals(t, slices.Contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
 	responseWriter.Body.Reset()
 
 	// Test POST valid JSON with garbage in URL but valid account ID
@@ -1865,6 +1875,66 @@ func TestAccount(t *testing.T) {
 		"detail": "Request signing key did not match account key",
 		"status": 403
 	}`)
+}
+
+func TestUpdateAccount(t *testing.T) {
+	t.Parallel()
+	wfe, _, _ := setupWFE(t)
+
+	for _, tc := range []struct {
+		name     string
+		req      string
+		wantAcct *core.Registration
+	}{
+		{
+			name:     "deactivate clears contact",
+			req:      `{"status": "deactivated"}`,
+			wantAcct: &core.Registration{Status: core.StatusDeactivated},
+		},
+		{
+			name:     "deactivate takes priority over contact change",
+			req:      `{"status": "deactivated", "contact": ["mailto:admin@example.com"]}`,
+			wantAcct: &core.Registration{Status: core.StatusDeactivated},
+		},
+		{
+			name:     "change contact",
+			req:      `{"contact": ["mailto:admin@example.com"]}`,
+			wantAcct: &core.Registration{Status: core.StatusValid, Contact: &[]string{"mailto:admin@example.com"}},
+		},
+		{
+			name:     "change contact with unchanged status",
+			req:      `{"status": "valid", "contact": ["mailto:admin@example.com"]}`,
+			wantAcct: &core.Registration{Status: core.StatusValid, Contact: &[]string{"mailto:admin@example.com"}},
+		},
+		{
+			name:     "unchanged status leaves contact untouched",
+			req:      `{"status": "valid"}`,
+			wantAcct: &core.Registration{Status: core.StatusValid, Contact: &[]string{"mailto:webmaster@example.com"}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			acct := core.Registration{
+				Status:  core.StatusValid,
+				Contact: &[]string{"mailto:webmaster@example.com"},
+			}
+
+			gotAcct, gotProb := wfe.updateAccount(context.Background(), []byte(tc.req), &acct)
+			if gotProb != nil {
+				t.Fatalf("want success, got problem %s", gotProb)
+			}
+
+			if tc.wantAcct != nil {
+				if gotAcct.Status != tc.wantAcct.Status {
+					t.Errorf("want status %s, got %s", tc.wantAcct.Status, gotAcct.Status)
+				}
+				if !reflect.DeepEqual(gotAcct.Contact, tc.wantAcct.Contact) {
+					t.Errorf("want contact %v, got %v", tc.wantAcct.Contact, gotAcct.Contact)
+				}
+			}
+		})
+	}
 }
 
 type mockSAWithCert struct {
@@ -2010,7 +2080,7 @@ func TestGetCertificate(t *testing.T) {
 			ExpectedBody: `{
 				"type": "urn:ietf:params:acme:error:malformed",
 				"status": 400,
-				"detail": "POST-as-GET requests must have an empty payload"
+				"detail": "Unable to validate JWS :: POST-as-GET requests must have an empty payload"
 			}`,
 		},
 		{
@@ -2451,7 +2521,7 @@ func TestDeactivateAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type": "`+probs.ErrorNS+`malformed","detail": "Invalid value provided for status field","status": 400}`)
+		`{"type": "`+probs.ErrorNS+`malformed","detail": "Unable to update account :: invalid status \"asd\" for account update request, must be \"valid\" or \"deactivated\"","status": 400}`)
 
 	responseWriter.Body.Reset()
 	payload = `{"status":"deactivated"}`
@@ -2503,7 +2573,7 @@ func TestDeactivateAccount(t *testing.T) {
 		responseWriter.Body.String(),
 		`{
 		  "type": "`+probs.ErrorNS+`unauthorized",
-		  "detail": "Account is not valid, has status \"deactivated\"",
+		  "detail": "Unable to validate JWS :: Account is not valid, has status \"deactivated\"",
 		  "status": 403
 		}`)
 }
@@ -2582,22 +2652,22 @@ func TestNewOrder(t *testing.T) {
 					"Content-Type":   {expectedJWSContentType},
 				},
 			},
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"No body on POST","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: No body on POST","status":400}`,
 		},
 		{
 			Name:         "POST, with an invalid JWS body",
 			Request:      makePostRequestWithPath("hi", "hi"),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: Parse error reading JWS","status":400}`,
 		},
 		{
 			Name:         "POST, properly signed JWS, payload isn't valid",
 			Request:      signAndPost(signer, targetPath, signedURL, "foo"),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: Request payload did not parse as JSON","status":400}`,
 		},
 		{
 			Name:         "POST, empty domain name identifier",
 			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":""}]}`),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request included empty domain name","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request included empty identifier","status":400}`,
 		},
 		{
 			Name:         "POST, invalid domain name identifier",
@@ -2745,17 +2815,17 @@ func TestFinalizeOrder(t *testing.T) {
 					"Content-Type":   {expectedJWSContentType},
 				},
 			},
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"No body on POST","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: No body on POST","status":400}`,
 		},
 		{
 			Name:         "POST, with an invalid JWS body",
 			Request:      makePostRequestWithPath(targetPath, "hi"),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: Parse error reading JWS","status":400}`,
 		},
 		{
 			Name:         "POST, properly signed JWS, payload isn't valid",
 			Request:      signAndPost(signer, targetPath, signedURL, "foo"),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: Request payload did not parse as JSON","status":400}`,
 		},
 		{
 			Name:         "Invalid path",
@@ -2775,7 +2845,7 @@ func TestFinalizeOrder(t *testing.T) {
 			// stripped by the global WFE2 handler. We need the JWS URL to match the request
 			// URL so we fudge both such that the finalize-order prefix has been removed.
 			Request:      signAndPost(signer, "2/1", "http://localhost/2/1", "{}"),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"No order found for account ID 2","status":404}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Mismatched account ID","status":400}`,
 		},
 		{
 			Name:         "Order ID is invalid",
@@ -2872,7 +2942,7 @@ func TestKeyRollover(t *testing.T) {
 		responseWriter.Body.String(),
 		`{
 		  "type": "`+probs.ErrorNS+`malformed",
-		  "detail": "Parse error reading JWS",
+		  "detail": "Unable to validate JWS :: Parse error reading JWS",
 		  "status": 400
 		}`)
 
@@ -2899,7 +2969,7 @@ func TestKeyRollover(t *testing.T) {
 			Payload: `{"oldKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "type": "` + probs.ErrorNS + `malformed",
-		     "detail": "Inner JWS does not contain old key field matching current account key",
+		     "detail": "Unable to validate JWS :: Inner JWS does not contain old key field matching current account key",
 		     "status": 400
 		   }`,
 			NewKey:        newKeyPriv,
@@ -2920,7 +2990,7 @@ func TestKeyRollover(t *testing.T) {
 			Payload: `{"oldKey":` + test1KeyPublicJSON + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
 		     "key": ` + string(newJWKJSON) + `,
-		     "status": ""
+		     "status": "valid"
 		   }`,
 			NewKey: newKeyPriv,
 		},
@@ -2959,7 +3029,7 @@ func TestKeyRolloverMismatchedJWSURLs(t *testing.T) {
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `
 		{
 			"type": "urn:ietf:params:acme:error:malformed",
-			"detail": "Outer JWS 'url' value \"http://localhost/key-change\" does not match inner JWS 'url' value \"http://localhost/wrong-url\"",
+			"detail": "Unable to validate JWS :: Outer JWS 'url' value \"http://localhost/key-change\" does not match inner JWS 'url' value \"http://localhost/wrong-url\"",
 			"status": 400
 		}`)
 }
@@ -2981,7 +3051,6 @@ func TestGetOrder(t *testing.T) {
 		Request  *http.Request
 		Response string
 		Headers  map[string]string
-		Endpoint string
 	}{
 		{
 			Name:     "Good request",
@@ -3021,7 +3090,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "Invalid POST-as-GET",
 			Request:  makePost(1, "1/1", "{}"),
-			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"POST-as-GET requests must have an empty payload", "status":400}`,
+			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"Unable to validate JWS :: POST-as-GET requests must have an empty payload", "status":400}`,
 		},
 		{
 			Name:     "Valid POST-as-GET, wrong account",
@@ -3032,12 +3101,6 @@ func TestGetOrder(t *testing.T) {
 			Name:     "Valid POST-as-GET",
 			Request:  makePost(1, "1/1", ""),
 			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "profile": "default", "authorizations":["http://localhost/acme/authz/1/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
-		},
-		{
-			Name:     "GET new order",
-			Request:  makeGet("1/9"),
-			Response: `{"type":"` + probs.ErrorNS + `unauthorized","detail":"Order is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`,
-			Endpoint: "/get/order/",
 		},
 		{
 			Name:     "GET new order from old endpoint",
@@ -3060,11 +3123,7 @@ func TestGetOrder(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			responseWriter := httptest.NewRecorder()
-			if tc.Endpoint != "" {
-				wfe.GetOrder(ctx, &web.RequestEvent{Extra: make(map[string]interface{}), Endpoint: tc.Endpoint}, responseWriter, tc.Request)
-			} else {
-				wfe.GetOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
-			}
+			wfe.GetOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
 			t.Log(tc.Name)
 			t.Log("actual:", responseWriter.Body.String())
 			t.Log("expect:", tc.Response)
@@ -3187,7 +3246,7 @@ func TestRevokeCertificateNotIssued(t *testing.T) {
 		makePostRequestWithPath("revoke-cert", jwsBody))
 	// It should result in a 404 response with a problem body
 	test.AssertEquals(t, responseWriter.Code, 404)
-	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:malformed\",\n  \"detail\": \"Certificate from unrecognized issuer\",\n  \"status\": 404\n}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:malformed\",\n  \"detail\": \"Unable to revoke :: Certificate from unrecognized issuer\",\n  \"status\": 404\n}")
 }
 
 func TestRevokeCertificateExpired(t *testing.T) {
@@ -3212,7 +3271,7 @@ func TestRevokeCertificateExpired(t *testing.T) {
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("revoke-cert", jwsBody))
 	test.AssertEquals(t, responseWriter.Code, 403)
-	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:unauthorized\",\n  \"detail\": \"Certificate is expired\",\n  \"status\": 403\n}")
+	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:unauthorized\",\n  \"detail\": \"Unable to revoke :: Certificate is expired\",\n  \"status\": 403\n}")
 }
 
 func TestRevokeCertificateReasons(t *testing.T) {
@@ -3247,13 +3306,13 @@ func TestRevokeCertificateReasons(t *testing.T) {
 			Name:             "Unsupported reason",
 			Reason:           &reason2,
 			ExpectedHTTPCode: http.StatusBadRequest,
-			ExpectedBody:     `{"type":"` + probs.ErrorNS + `badRevocationReason","detail":"unsupported revocation reason code provided: cACompromise (2). Supported reasons: unspecified (0), keyCompromise (1), superseded (4), cessationOfOperation (5)","status":400}`,
+			ExpectedBody:     `{"type":"` + probs.ErrorNS + `badRevocationReason","detail":"Unable to revoke :: disallowed revocation reason: 2","status":400}`,
 		},
 		{
 			Name:             "Non-existent reason",
 			Reason:           &reason100,
 			ExpectedHTTPCode: http.StatusBadRequest,
-			ExpectedBody:     `{"type":"` + probs.ErrorNS + `badRevocationReason","detail":"unsupported revocation reason code provided: unknown (100). Supported reasons: unspecified (0), keyCompromise (1), superseded (4), cessationOfOperation (5)","status":400}`,
+			ExpectedBody:     `{"type":"` + probs.ErrorNS + `badRevocationReason","detail":"Unable to revoke :: disallowed revocation reason: 100","status":400}`,
 		},
 	}
 
@@ -3299,7 +3358,7 @@ func TestRevokeCertificateWrongCertificateKey(t *testing.T) {
 		makePostRequestWithPath("revoke-cert", jwsBody))
 	test.AssertEquals(t, responseWriter.Code, 403)
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.ErrorNS+`unauthorized","detail":"JWK embedded in revocation request must be the same public key as the cert to be revoked","status":403}`)
+		`{"type":"`+probs.ErrorNS+`unauthorized","detail":"Unable to revoke :: JWK embedded in revocation request must be the same public key as the cert to be revoked","status":403}`)
 }
 
 type mockSAGetRegByKeyFails struct {
@@ -3533,7 +3592,7 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	orderJSON := wfe.orderToOrderJSON(&http.Request{}, &corepb.Order{
 		Id:               1,
 		RegistrationID:   1,
-		DnsNames:         []string{"a"},
+		Identifiers:      []*corepb.Identifier{identifier.NewDNS("a").ToProto()},
 		Status:           string(core.StatusPending),
 		Expires:          timestamppb.New(expires),
 		V2Authorizations: []int64{1, 2},
@@ -3557,123 +3616,6 @@ func TestPrepAccountForDisplay(t *testing.T) {
 	test.AssertEquals(t, acct.Agreement, "")
 	// The ID field should be zeroed.
 	test.AssertEquals(t, acct.ID, int64(0))
-}
-
-func TestGETAPIAuthorizationHandler(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
-		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
-			&web.RequestEvent{Endpoint: endpoint}
-	}
-
-	testCases := []struct {
-		name              string
-		path              string
-		expectTooFreshErr bool
-	}{
-		{
-			name:              "fresh authz",
-			path:              "1/1",
-			expectTooFreshErr: true,
-		},
-		{
-			name:              "old authz",
-			path:              "1/2",
-			expectTooFreshErr: false,
-		},
-	}
-
-	tooFreshErr := `{"type":"` + probs.ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
-	for _, tc := range testCases {
-		responseWriter := httptest.NewRecorder()
-		req, logEvent := makeGet(tc.path, getAuthzPath)
-		wfe.AuthorizationHandler(context.Background(), logEvent, responseWriter, req)
-
-		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
-			t.Errorf("expected too fresh error, got http.StatusOK")
-		} else {
-			test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
-			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tooFreshErr)
-		}
-	}
-}
-
-func TestGETAPIAuthorizationHandlerWitAccount(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
-		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
-			&web.RequestEvent{Endpoint: endpoint}
-	}
-
-	testCases := []struct {
-		name              string
-		path              string
-		expectTooFreshErr bool
-	}{
-		{
-			name:              "fresh authz",
-			path:              "1/1",
-			expectTooFreshErr: true,
-		},
-		{
-			name:              "old authz",
-			path:              "1/2",
-			expectTooFreshErr: false,
-		},
-	}
-
-	tooFreshErr := `{"type":"` + probs.ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
-	for _, tc := range testCases {
-		responseWriter := httptest.NewRecorder()
-		req, logEvent := makeGet(tc.path, getAuthzPath)
-		wfe.AuthorizationHandler(context.Background(), logEvent, responseWriter, req)
-
-		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
-			t.Errorf("expected too fresh error, got http.StatusOK")
-		} else {
-			test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
-			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tooFreshErr)
-		}
-	}
-}
-
-func TestGETAPIChallenge(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
-		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
-			&web.RequestEvent{Endpoint: endpoint}
-	}
-
-	testCases := []struct {
-		name              string
-		path              string
-		expectTooFreshErr bool
-	}{
-		{
-			name:              "fresh authz challenge",
-			path:              "1/1/7TyhFQ",
-			expectTooFreshErr: true,
-		},
-		{
-			name:              "old authz challenge",
-			path:              "1/2/7TyhFQ",
-			expectTooFreshErr: false,
-		},
-	}
-
-	tooFreshErr := `{"type":"` + probs.ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
-	for _, tc := range testCases {
-		responseWriter := httptest.NewRecorder()
-		req, logEvent := makeGet(tc.path, getAuthzPath)
-		wfe.ChallengeHandler(context.Background(), logEvent, responseWriter, req)
-
-		if responseWriter.Code == http.StatusOK && tc.expectTooFreshErr {
-			t.Errorf("expected too fresh error, got http.StatusOK")
-		} else {
-			test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
-			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tooFreshErr)
-		}
-	}
 }
 
 // TestGet404 tests that a 404 is served and that the expected endpoint of
@@ -3923,23 +3865,23 @@ func TestOrderMatchesReplacement(t *testing.T) {
 	}
 
 	// Working with a single matching identifier.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example.com"}, expectSerial.String())
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, identifier.ACMEIdentifiers{identifier.NewDNS("example.com")}, expectSerial.String())
 	test.AssertNotError(t, err, "failed to check order is replacement")
 
 	// Working with a different matching identifier.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example-a.com"}, expectSerial.String())
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, identifier.ACMEIdentifiers{identifier.NewDNS("example-a.com")}, expectSerial.String())
 	test.AssertNotError(t, err, "failed to check order is replacement")
 
 	// No matching identifiers.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example-b.com"}, expectSerial.String())
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, identifier.ACMEIdentifiers{identifier.NewDNS("example-b.com")}, expectSerial.String())
 	test.AssertErrorIs(t, err, berrors.Malformed)
 
 	// RegID for predecessor order does not match.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 2}, []string{"example.com"}, expectSerial.String())
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 2}, identifier.ACMEIdentifiers{identifier.NewDNS("example.com")}, expectSerial.String())
 	test.AssertErrorIs(t, err, berrors.Unauthorized)
 
 	// Predecessor certificate not found.
-	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, []string{"example.com"}, "1")
+	err = wfe.orderMatchesReplacement(context.Background(), &core.Registration{ID: 1}, identifier.ACMEIdentifiers{identifier.NewDNS("example.com")}, "1")
 	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
@@ -3961,7 +3903,7 @@ func (sa *mockRA) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, opts .
 		RegistrationID:         987654321,
 		Created:                timestamppb.New(created),
 		Expires:                timestamppb.New(exp),
-		DnsNames:               []string{"example.com"},
+		Identifiers:            []*corepb.Identifier{identifier.NewDNS("example.com").ToProto()},
 		Status:                 string(core.StatusValid),
 		V2Authorizations:       []int64{1},
 		CertificateSerial:      "serial",
@@ -3994,8 +3936,8 @@ func TestNewOrderWithProfile(t *testing.T) {
 	var errorResp map[string]interface{}
 	err := json.Unmarshal(responseWriter.Body.Bytes(), &errorResp)
 	test.AssertNotError(t, err, "Failed to unmarshal error response")
-	test.AssertEquals(t, errorResp["type"], "urn:ietf:params:acme:error:malformed")
-	test.AssertEquals(t, errorResp["detail"], "Invalid certificate profile, \"bad-profile\": not a recognized profile name")
+	test.AssertEquals(t, errorResp["type"], "urn:ietf:params:acme:error:invalidProfile")
+	test.AssertEquals(t, errorResp["detail"], "profile name \"bad-profile\" not recognized")
 
 	// Test that the newOrder endpoint returns no error if the valid profile is specified.
 	validOrderBody := `
@@ -4023,8 +3965,8 @@ func TestNewOrderWithProfile(t *testing.T) {
 	var errorResp2 map[string]interface{}
 	err = json.Unmarshal(responseWriter.Body.Bytes(), &errorResp2)
 	test.AssertNotError(t, err, "Failed to unmarshal error response")
-	test.AssertEquals(t, errorResp2["type"], "urn:ietf:params:acme:error:malformed")
-	test.AssertEquals(t, errorResp2["detail"], "Invalid certificate profile, \"test-profile\": not a recognized profile name")
+	test.AssertEquals(t, errorResp2["type"], "urn:ietf:params:acme:error:invalidProfile")
+	test.AssertEquals(t, errorResp2["detail"], "profile name \"test-profile\" not recognized")
 }
 
 func makeARICertID(leaf *x509.Certificate) (string, error) {
@@ -4058,19 +4000,19 @@ func makeARICertID(leaf *x509.Certificate) (string, error) {
 }
 
 func TestCountNewOrderWithReplaces(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
+	wfe, fc, signer := setupWFE(t)
 
-	expectExpiry := time.Now().AddDate(0, 0, 1)
 	// Pick a random issuer to "issue" expectCert.
 	var issuer *issuance.Certificate
 	for _, v := range wfe.issuerCertificates {
 		issuer = v
 		break
 	}
-	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
+	testKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	expectSerial := big.NewInt(1337)
 	expectCert := &x509.Certificate{
-		NotAfter:       expectExpiry,
+		NotBefore:      fc.Now(),
+		NotAfter:       fc.Now().AddDate(0, 0, 90),
 		DNSNames:       []string{"example.com"},
 		SerialNumber:   expectSerial,
 		AuthorityKeyId: issuer.SubjectKeyId,
@@ -4086,10 +4028,17 @@ func TestCountNewOrderWithReplaces(t *testing.T) {
 			RegistrationID: 1,
 			Serial:         core.SerialToString(expectSerial),
 			Der:            expectDer,
+			Issued:         timestamppb.New(expectCert.NotBefore),
+			Expires:        timestamppb.New(expectCert.NotAfter),
 		},
 	}
 	mux := wfe.Handler(metrics.NoopRegisterer)
 	responseWriter := httptest.NewRecorder()
+
+	// Set the fake clock forward to 1s past the suggested renewal window start
+	// time.
+	renewalWindowStart := core.RenewalInfoSimple(expectCert.NotBefore, expectCert.NotAfter).SuggestedWindow.Start
+	fc.Set(renewalWindowStart.Add(time.Second))
 
 	body := fmt.Sprintf(`
 	{
@@ -4183,4 +4132,86 @@ func TestNewOrderRateLimits(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	mux.ServeHTTP(responseWriter, r)
 	test.AssertEquals(t, responseWriter.Code, http.StatusCreated)
+}
+
+func TestNewAccountCreatesContacts(t *testing.T) {
+	t.Parallel()
+
+	key := loadKey(t, []byte(test2KeyPrivatePEM))
+	_, ok := key.(*rsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load test2 key")
+
+	path := newAcctPath
+	signedURL := fmt.Sprintf("http://localhost%s", path)
+
+	testCases := []struct {
+		name     string
+		contacts []string
+		expected []string
+	}{
+		{
+			name:     "No email",
+			contacts: []string{},
+			expected: []string{},
+		},
+		{
+			name:     "One email",
+			contacts: []string{"mailto:person@mail.com"},
+			expected: []string{"person@mail.com"},
+		},
+		{
+			name:     "Two emails",
+			contacts: []string{"mailto:person1@mail.com", "mailto:person2@mail.com"},
+			expected: []string{"person1@mail.com", "person2@mail.com"},
+		},
+		{
+			name:     "Invalid email",
+			contacts: []string{"mailto:lol@%mail.com"},
+			expected: []string{},
+		},
+		{
+			name:     "One valid email, one invalid email",
+			contacts: []string{"mailto:person@mail.com", "mailto:lol@%mail.com"},
+			expected: []string{"person@mail.com"},
+		},
+		{
+			name:     "Valid email with non-email prefix",
+			contacts: []string{"heliograph:person@mail.com"},
+			expected: []string{},
+		},
+		{
+			name: "Non-email prefix with correct field signal instructions",
+			contacts: []string{`heliograph:STATION OF RECEPTION: High Ridge above Black Hollow, near Lone Pine.
+AZIMUTH TO SIGNAL STATION: Due West, bearing Twin Peaks.
+WATCH PERIOD: Third hour post-zenith; observation maintained for 30 minutes.
+SIGNAL CODE: Standard Morse, three-flash attention signal.
+ALTERNATE SITE: If no reply, move to Observation Point B at Broken Cairn.`},
+			expected: []string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			wfe, _, signer := setupWFE(t)
+
+			mockPardotClient, mockImpl := mocks.NewMockPardotClientImpl()
+			wfe.ee = mocks.NewMockExporterImpl(mockPardotClient)
+
+			contactsJSON, err := json.Marshal(tc.contacts)
+			test.AssertNotError(t, err, "Failed to marshal contacts")
+
+			payload := fmt.Sprintf(`{"contact":%s,"termsOfServiceAgreed":true}`, contactsJSON)
+			_, _, body := signer.embeddedJWK(key, signedURL, payload)
+			request := makePostRequestWithPath(path, body)
+
+			responseWriter := httptest.NewRecorder()
+			wfe.NewAccount(context.Background(), newRequestEvent(), responseWriter, request)
+
+			for _, email := range tc.expected {
+				test.AssertSliceContains(t, mockImpl.GetCreatedContacts(), email)
+			}
+		})
+	}
 }

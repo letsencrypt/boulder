@@ -6,16 +6,17 @@ option go_package = "github.com/letsencrypt/boulder/va/proto";
 import "core/proto/core.proto";
 
 service VA {
-  rpc PerformValidation(PerformValidationRequest) returns (ValidationResult) {}
   rpc DoDCV(PerformValidationRequest) returns (ValidationResult) {}
 }
 
 service CAA {
-  rpc IsCAAValid(IsCAAValidRequest) returns (IsCAAValidResponse) {}
   rpc DoCAA(IsCAAValidRequest) returns (IsCAAValidResponse) {}
 }
 
 message IsCAAValidRequest {
+  // TODO: Accept an identifier instead of a domain (purely for consistency,
+  // because only DNS identifiers support CAA checks).
+  //
   // NOTE: Domain may be a name with a wildcard prefix (e.g. `*.example.com`)
   string domain = 1;
   string validationMethod = 2;
@@ -31,7 +32,10 @@ message IsCAAValidResponse {
 }
 
 message PerformValidationRequest {
+  // Next unused field number: 6
+  // TODO(#8023): dnsNames are being deprecated in favour of identifiers.
   string dnsName = 1;
+  core.Identifier identifier = 5;
   core.Challenge challenge = 2;
   AuthzMeta authz = 3;
   string expectedKeyAuthorization = 4;

@@ -9,14 +9,17 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/asn1"
 	"encoding/base64"
+	"net"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/jmhodges/clock"
 
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/test"
@@ -65,6 +68,18 @@ func TestGenerateValidity(t *testing.T) {
 			test.AssertEquals(t, notBefore, tc.notBefore)
 			test.AssertEquals(t, notAfter, tc.notAfter)
 		})
+	}
+}
+
+func TestCRLURL(t *testing.T) {
+	issuer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, clock.NewFake())
+	if err != nil {
+		t.Fatalf("newIssuer: %s", err)
+	}
+	url := issuer.crlURL(4928)
+	want := "http://crl-url.example.org/4928.crl"
+	if url != want {
+		t.Errorf("crlURL(4928)=%s, want %s", url, want)
 	}
 }
 
@@ -319,9 +334,10 @@ func TestGenerateTemplate(t *testing.T) {
 		BasicConstraintsValid: true,
 		SignatureAlgorithm:    x509.SHA256WithRSA,
 		IssuingCertificateURL: []string{"http://issuer"},
-		OCSPServer:            []string{"http://ocsp"},
+		Policies:              []x509.OID{domainValidatedOID},
+		// These fields are only included if specified in the profile.
+		OCSPServer:            nil,
 		CRLDistributionPoints: nil,
-		PolicyIdentifiers:     []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
 	}
 
 	test.AssertDeepEquals(t, actual, expected)
@@ -360,6 +376,7 @@ func TestIssue(t *testing.T) {
 				SubjectKeyId:    goodSKID,
 				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 				DNSNames:        []string{"example.com"},
+				IPAddresses:     []net.IP{net.ParseIP("128.101.101.101"), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")},
 				NotBefore:       fc.Now(),
 				NotAfter:        fc.Now().Add(time.Hour - time.Second),
 				IncludeCTPoison: true,
@@ -374,11 +391,142 @@ func TestIssue(t *testing.T) {
 			err = cert.CheckSignatureFrom(issuerCert.Certificate)
 			test.AssertNotError(t, err, "signature validation failed")
 			test.AssertDeepEquals(t, cert.DNSNames, []string{"example.com"})
+			// net.ParseIP always returns a 16-byte address; IPv4 addresses are
+			// returned in IPv4-mapped IPv6 form. But RFC 5280, Sec. 4.2.1.6
+			// requires that IPv4 addresses be encoded as 4 bytes.
+			//
+			// The issuance pipeline calls x509.marshalSANs, which reduces IPv4
+			// addresses back to 4 bytes. Adding .To4() both allows this test to
+			// succeed, and covers this requirement.
+			test.AssertDeepEquals(t, cert.IPAddresses, []net.IP{net.ParseIP("128.101.101.101").To4(), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")})
 			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 			test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 			test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Poison
 			test.AssertEquals(t, cert.KeyUsage, tc.ku)
+			if len(cert.CRLDistributionPoints) > 0 {
+				t.Errorf("want CRLDistributionPoints=[], got %v", cert.CRLDistributionPoints)
+			}
 		})
+	}
+}
+
+func TestIssueDNSNamesOnly(t *testing.T) {
+	fc := clock.NewFake()
+	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
+	if err != nil {
+		t.Fatalf("newIssuer: %s", err)
+	}
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %s", err)
+	}
+	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
+		PublicKey:       MarshalablePublicKey{pk.Public()},
+		SubjectKeyId:    goodSKID,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:        []string{"example.com"},
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
+	})
+	if err != nil {
+		t.Fatalf("signer.Prepare: %s", err)
+	}
+	certBytes, err := signer.Issue(issuanceToken)
+	if err != nil {
+		t.Fatalf("signer.Issue: %s", err)
+	}
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		t.Fatalf("x509.ParseCertificate: %s", err)
+	}
+	if !reflect.DeepEqual(cert.DNSNames, []string{"example.com"}) {
+		t.Errorf("got DNSNames %s, wanted example.com", cert.DNSNames)
+	}
+	// BRs 7.1.2.7.12 requires iPAddress, if present, to contain an entry.
+	if cert.IPAddresses != nil {
+		t.Errorf("got IPAddresses %s, wanted nil", cert.IPAddresses)
+	}
+}
+
+func TestIssueIPAddressesOnly(t *testing.T) {
+	fc := clock.NewFake()
+	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
+	if err != nil {
+		t.Fatalf("newIssuer: %s", err)
+	}
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %s", err)
+	}
+	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
+		PublicKey:       MarshalablePublicKey{pk.Public()},
+		SubjectKeyId:    goodSKID,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		IPAddresses:     []net.IP{net.ParseIP("128.101.101.101"), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")},
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
+	})
+	if err != nil {
+		t.Fatalf("signer.Prepare: %s", err)
+	}
+	certBytes, err := signer.Issue(issuanceToken)
+	if err != nil {
+		t.Fatalf("signer.Issue: %s", err)
+	}
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		t.Fatalf("x509.ParseCertificate: %s", err)
+	}
+	// BRs 7.1.2.7.12 requires dNSName, if present, to contain an entry.
+	if cert.DNSNames != nil {
+		t.Errorf("got DNSNames %s, wanted nil", cert.DNSNames)
+	}
+	if !reflect.DeepEqual(cert.IPAddresses, []net.IP{net.ParseIP("128.101.101.101").To4(), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")}) {
+		t.Errorf("got IPAddresses %s, wanted 128.101.101.101 (4-byte) & 3fff:aaa:a:c0ff:ee:a:bad:deed (16-byte)", cert.IPAddresses)
+	}
+}
+
+func TestIssueWithCRLDP(t *testing.T) {
+	fc := clock.NewFake()
+	issuerConfig := defaultIssuerConfig()
+	issuerConfig.CRLURLBase = "http://crls.example.net/"
+	issuerConfig.CRLShards = 999
+	signer, err := newIssuer(issuerConfig, issuerCert, issuerSigner, fc)
+	if err != nil {
+		t.Fatalf("newIssuer: %s", err)
+	}
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %s", err)
+	}
+	profile := defaultProfile()
+	profile.includeCRLDistributionPoints = true
+	_, issuanceToken, err := signer.Prepare(profile, &IssuanceRequest{
+		PublicKey:       MarshalablePublicKey{pk.Public()},
+		SubjectKeyId:    goodSKID,
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:        []string{"example.com"},
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
+	})
+	if err != nil {
+		t.Fatalf("signer.Prepare: %s", err)
+	}
+	certBytes, err := signer.Issue(issuanceToken)
+	if err != nil {
+		t.Fatalf("signer.Issue: %s", err)
+	}
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		t.Fatalf("x509.ParseCertificate: %s", err)
+	}
+	// Because CRL shard is calculated deterministically from serial, we know which shard will be chosen.
+	expectedCRLDP := []string{"http://crls.example.net/919.crl"}
+	if !reflect.DeepEqual(cert.CRLDistributionPoints, expectedCRLDP) {
+		t.Errorf("CRLDP=%+v, want %+v", cert.CRLDistributionPoints, expectedCRLDP)
 	}
 }
 
@@ -779,7 +927,7 @@ func TestMismatchedProfiles(t *testing.T) {
 
 	// Create a new profile that differs slightly (no common name)
 	pc = defaultProfileConfig()
-	pc.AllowCommonName = false
+	pc.OmitCommonName = false
 	test.AssertNotError(t, err, "building test lint registry")
 	noCNProfile, err := NewProfile(pc)
 	test.AssertNotError(t, err, "NewProfile failed")
@@ -808,4 +956,71 @@ func TestMismatchedProfiles(t *testing.T) {
 	_, _, err = issuer2.Prepare(noCNProfile, request2)
 	test.AssertError(t, err, "preparing final cert issuance")
 	test.AssertContains(t, err.Error(), "precert does not correspond to linted final cert")
+}
+
+func TestNewProfile(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		config  ProfileConfig
+		wantErr string
+	}{
+		{
+			name: "happy path",
+			config: ProfileConfig{
+				MaxValidityBackdate: config.Duration{Duration: 1 * time.Hour},
+				MaxValidityPeriod:   config.Duration{Duration: 90 * 24 * time.Hour},
+			},
+		},
+		{
+			name: "crl but no ocsp",
+			config: ProfileConfig{
+				MaxValidityBackdate:          config.Duration{Duration: 1 * time.Hour},
+				MaxValidityPeriod:            config.Duration{Duration: 90 * 24 * time.Hour},
+				OmitOCSP:                     false,
+				IncludeCRLDistributionPoints: true,
+			},
+		},
+		{
+			name: "large backdate",
+			config: ProfileConfig{
+				MaxValidityBackdate: config.Duration{Duration: 24 * time.Hour},
+				MaxValidityPeriod:   config.Duration{Duration: 90 * 24 * time.Hour},
+			},
+			wantErr: "backdate \"24h0m0s\" is too large",
+		},
+		{
+			name: "large validity",
+			config: ProfileConfig{
+				MaxValidityBackdate: config.Duration{Duration: 1 * time.Hour},
+				MaxValidityPeriod:   config.Duration{Duration: 397 * 24 * time.Hour},
+			},
+			wantErr: "validity period \"9528h0m0s\" is too large",
+		},
+		{
+			name: "no revocation info",
+			config: ProfileConfig{
+				MaxValidityBackdate:          config.Duration{Duration: 1 * time.Hour},
+				MaxValidityPeriod:            config.Duration{Duration: 90 * 24 * time.Hour},
+				OmitOCSP:                     true,
+				IncludeCRLDistributionPoints: false,
+			},
+			wantErr: "revocation mechanism must be included",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gotProfile, gotErr := NewProfile(&tc.config)
+			if tc.wantErr != "" {
+				if gotErr == nil {
+					t.Errorf("NewProfile(%#v) = %#v, but want err %q", tc.config, gotProfile, tc.wantErr)
+				}
+				if !strings.Contains(gotErr.Error(), tc.wantErr) {
+					t.Errorf("NewProfile(%#v) = %q, but want %q", tc.config, gotErr, tc.wantErr)
+				}
+			} else {
+				if gotErr != nil {
+					t.Errorf("NewProfile(%#v) = %q, but want no error", tc.config, gotErr)
+				}
+			}
+		})
+	}
 }

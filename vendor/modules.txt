@@ -136,7 +136,7 @@ github.com/cespare/xxhash/v2
 # github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f
 ## explicit
 github.com/dgryski/go-rendezvous
-# github.com/eggsampler/acme/v3 v3.6.1
+# github.com/eggsampler/acme/v3 v3.6.2-0.20250208073118-0466a0230941
 ## explicit; go 1.11
 github.com/eggsampler/acme/v3
 # github.com/felixge/httpsnoop v1.0.4
@@ -145,8 +145,8 @@ github.com/felixge/httpsnoop
 # github.com/fsnotify/fsnotify v1.6.0
 ## explicit; go 1.16
 github.com/fsnotify/fsnotify
-# github.com/go-jose/go-jose/v4 v4.0.1
-## explicit; go 1.21
+# github.com/go-jose/go-jose/v4 v4.1.0
+## explicit; go 1.24
 github.com/go-jose/go-jose/v4
 github.com/go-jose/go-jose/v4/cipher
 github.com/go-jose/go-jose/v4/json
@@ -207,7 +207,7 @@ github.com/jmhodges/clock
 # github.com/letsencrypt/borp v0.0.0-20240620175310-a78493c6e2bd
 ## explicit; go 1.20
 github.com/letsencrypt/borp
-# github.com/letsencrypt/challtestsrv v1.2.1
+# github.com/letsencrypt/challtestsrv v1.3.3
 ## explicit; go 1.13
 github.com/letsencrypt/challtestsrv
 # github.com/letsencrypt/pkcs11key/v4 v4.0.0
@@ -262,7 +262,7 @@ github.com/redis/go-redis/extra/rediscmd/v9
 # github.com/redis/go-redis/extra/redisotel/v9 v9.5.3
 ## explicit; go 1.19
 github.com/redis/go-redis/extra/redisotel/v9
-# github.com/redis/go-redis/v9 v9.5.3
+# github.com/redis/go-redis/v9 v9.7.3
 ## explicit; go 1.18
 github.com/redis/go-redis/v9
 github.com/redis/go-redis/v9/internal
@@ -275,7 +275,7 @@ github.com/redis/go-redis/v9/internal/util
 # github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 ## explicit
 github.com/titanous/rocacheck
-# github.com/weppos/publicsuffix-go v0.40.3-0.20240815124645-a8ed110559c9
+# github.com/weppos/publicsuffix-go v0.40.3-0.20250307081557-c05521c3453a
 ## explicit; go 1.16
 github.com/weppos/publicsuffix-go/publicsuffix
 # github.com/zmap/zcrypto v0.0.0-20231219022726-a1f61fb1661c
@@ -366,49 +366,52 @@ go.opentelemetry.io/proto/otlp/collector/trace/v1
 go.opentelemetry.io/proto/otlp/common/v1
 go.opentelemetry.io/proto/otlp/resource/v1
 go.opentelemetry.io/proto/otlp/trace/v1
-# golang.org/x/crypto v0.27.0
-## explicit; go 1.20
+# golang.org/x/crypto v0.36.0
+## explicit; go 1.23.0
 golang.org/x/crypto/cryptobyte
 golang.org/x/crypto/cryptobyte/asn1
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ocsp
-golang.org/x/crypto/pbkdf2
 # golang.org/x/mod v0.18.0
 ## explicit; go 1.18
 golang.org/x/mod/semver
-# golang.org/x/net v0.29.0
-## explicit; go 1.18
+# golang.org/x/net v0.38.0
+## explicit; go 1.23.0
 golang.org/x/net/bpf
 golang.org/x/net/context/ctxhttp
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
 golang.org/x/net/http2/hpack
 golang.org/x/net/idna
+golang.org/x/net/internal/httpcommon
 golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
 golang.org/x/net/internal/timeseries
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 golang.org/x/net/trace
-# golang.org/x/sync v0.8.0
-## explicit; go 1.18
+# golang.org/x/sync v0.12.0
+## explicit; go 1.23.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.25.0
-## explicit; go 1.18
+# golang.org/x/sys v0.31.0
+## explicit; go 1.23.0
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/term v0.24.0
-## explicit; go 1.18
+# golang.org/x/term v0.30.0
+## explicit; go 1.23.0
 golang.org/x/term
-# golang.org/x/text v0.18.0
-## explicit; go 1.18
+# golang.org/x/text v0.23.0
+## explicit; go 1.23.0
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
+# golang.org/x/time v0.10.0
+## explicit; go 1.18
+golang.org/x/time/rate
 # golang.org/x/tools v0.22.0
 ## explicit; go 1.19
 golang.org/x/tools/go/gcexportdata

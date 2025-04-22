@@ -1,4 +1,5 @@
-FROM buildpack-deps:focal-scm as godeps
+# syntax=docker/dockerfile:1
+FROM buildpack-deps:noble-scm as godeps
 ARG GO_VERSION
 # Provided automatically by docker build.
 ARG TARGETPLATFORM
@@ -12,12 +13,11 @@ RUN curl "https://dl.google.com/go/go${GO_VERSION}.$(echo $TARGETPLATFORM | sed 
 RUN go install github.com/rubenv/sql-migrate/sql-migrate@v1.1.2
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.1
 RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@bb9882e6ae58f0a80a6390b50a5ec3bd63e46a3c
-RUN go install github.com/letsencrypt/pebble/v2/cmd/pebble-challtestsrv@17d64a3
-RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.60.0
-RUN go install honnef.co/go/tools/cmd/staticcheck@2024.1
+RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.0
+RUN go install honnef.co/go/tools/cmd/staticcheck@2025.1
 RUN go install github.com/jsha/minica@v1.1.0
 
-FROM rust:bullseye as rustdeps
+FROM rust:latest as rustdeps
 # Provided automatically by docker build.
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
@@ -31,7 +31,7 @@ RUN /tmp/build-rust-deps.sh
 # more information. 
 #
 # Run this command in each container: dpkg -l libc6
-FROM buildpack-deps:focal-scm
+FROM buildpack-deps:noble-scm
 # Provided automatically by docker build.
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM

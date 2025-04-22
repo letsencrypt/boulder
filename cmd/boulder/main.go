@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 
-	_ "github.com/letsencrypt/boulder/cmd/admin-revoker"
 	_ "github.com/letsencrypt/boulder/cmd/akamai-purger"
 	_ "github.com/letsencrypt/boulder/cmd/bad-key-revoker"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-ca"
@@ -20,6 +19,7 @@ import (
 	_ "github.com/letsencrypt/boulder/cmd/crl-checker"
 	_ "github.com/letsencrypt/boulder/cmd/crl-storer"
 	_ "github.com/letsencrypt/boulder/cmd/crl-updater"
+	_ "github.com/letsencrypt/boulder/cmd/email-exporter"
 	_ "github.com/letsencrypt/boulder/cmd/expiration-mailer"
 	_ "github.com/letsencrypt/boulder/cmd/id-exporter"
 	_ "github.com/letsencrypt/boulder/cmd/log-validator"

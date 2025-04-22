@@ -36,7 +36,7 @@ func ProblemDetailsToPB(prob *probs.ProblemDetails) (*corepb.ProblemDetails, err
 	return &corepb.ProblemDetails{
 		ProblemType: string(prob.Type),
 		Detail:      prob.Detail,
-		HttpStatus:  int32(prob.HTTPStatus),
+		HttpStatus:  int32(prob.HTTPStatus), //nolint: gosec // HTTP status codes are guaranteed to be small, no risk of overflow.
 	}, nil
 }
 
@@ -225,10 +225,6 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 		return nil, err
 	}
 	var contacts []string
-	// Since the default value of corepb.Registration.Contact is a slice
-	// we need a indicator as to if the value is actually important on
-	// the other side (pb -> reg).
-	contactsPresent := reg.Contact != nil
 	if reg.Contact != nil {
 		contacts = *reg.Contact
 	}
@@ -241,13 +237,12 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	}
 
 	return &corepb.Registration{
-		Id:              reg.ID,
-		Key:             keyBytes,
-		Contact:         contacts,
-		ContactsPresent: contactsPresent,
-		Agreement:       reg.Agreement,
-		CreatedAt:       createdAt,
-		Status:          string(reg.Status),
+		Id:        reg.ID,
+		Key:       keyBytes,
+		Contact:   contacts,
+		Agreement: reg.Agreement,
+		CreatedAt: createdAt,
+		Status:    string(reg.Status),
 	}, nil
 }
 
@@ -263,18 +258,8 @@ func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 		createdAt = &c
 	}
 	var contacts *[]string
-	if pb.ContactsPresent {
-		if len(pb.Contact) != 0 {
-			contacts = &pb.Contact
-		} else {
-			// When gRPC creates an empty slice it is actually a nil slice. Since
-			// certain things boulder uses, like encoding/json, differentiate between
-			// these we need to de-nil these slices. Without this we are unable to
-			// properly do registration updates as contacts would always be removed
-			// as we use the difference between a nil and empty slice in ra.mergeUpdate.
-			empty := []string{}
-			contacts = &empty
-		}
+	if len(pb.Contact) != 0 {
+		contacts = &pb.Contact
 	}
 	return core.Registration{
 		ID:        pb.Id,
@@ -304,12 +289,13 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 	}
 
 	return &corepb.Authorization{
-		Id:             authz.ID,
-		DnsName:        authz.Identifier.Value,
-		RegistrationID: authz.RegistrationID,
-		Status:         string(authz.Status),
-		Expires:        expires,
-		Challenges:     challs,
+		Id:                     authz.ID,
+		Identifier:             authz.Identifier.ToProto(),
+		RegistrationID:         authz.RegistrationID,
+		Status:                 string(authz.Status),
+		Expires:                expires,
+		Challenges:             challs,
+		CertificateProfileName: authz.CertificateProfileName,
 	}, nil
 }
 
@@ -328,12 +314,13 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		expires = &c
 	}
 	authz := core.Authorization{
-		ID:             pb.Id,
-		Identifier:     identifier.NewDNS(pb.DnsName),
-		RegistrationID: pb.RegistrationID,
-		Status:         core.AcmeStatus(pb.Status),
-		Expires:        expires,
-		Challenges:     challs,
+		ID:                     pb.Id,
+		Identifier:             identifier.FromProto(pb.Identifier),
+		RegistrationID:         pb.RegistrationID,
+		Status:                 core.AcmeStatus(pb.Status),
+		Expires:                expires,
+		Challenges:             challs,
+		CertificateProfileName: pb.CertificateProfileName,
 	}
 	return authz, nil
 }
@@ -353,29 +340,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.DnsNames) == 0)
-}
-
-func CertToPB(cert core.Certificate) *corepb.Certificate {
-	return &corepb.Certificate{
-		RegistrationID: cert.RegistrationID,
-		Serial:         cert.Serial,
-		Digest:         cert.Digest,
-		Der:            cert.DER,
-		Issued:         timestamppb.New(cert.Issued),
-		Expires:        timestamppb.New(cert.Expires),
-	}
-}
-
-func PBToCert(pb *corepb.Certificate) core.Certificate {
-	return core.Certificate{
-		RegistrationID: pb.RegistrationID,
-		Serial:         pb.Serial,
-		Digest:         pb.Digest,
-		DER:            pb.Der,
-		Issued:         pb.Issued.AsTime(),
-		Expires:        pb.Expires.AsTime(),
-	}
+	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.Identifiers) == 0)
 }
 
 func CertStatusToPB(certStatus core.CertificateStatus) *corepb.CertificateStatus {

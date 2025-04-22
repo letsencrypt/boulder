@@ -8,8 +8,13 @@
 			"dbConnectFile": "test/secrets/sa_ro_dburl",
 			"maxOpenConns": 100
 		},
+		"incidentsDB": {
+			"dbConnectFile": "test/secrets/incidents_dburl",
+			"maxOpenConns": 100
+		},
 		"ParallelismPerRPC": 20,
 		"debugAddr": ":8003",
+		"lagFactor": "200ms",
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/sa.boulder/cert.pem",
@@ -21,22 +26,19 @@
 			"services": {
 				"sa.StorageAuthority": {
 					"clientNames": [
-						"admin-revoker.boulder",
+						"admin.boulder",
 						"ca.boulder",
 						"crl-updater.boulder",
 						"expiration-mailer.boulder",
-						"ocsp-responder.boulder",
-						"ra.boulder",
-						"wfe.boulder"
+						"ra.boulder"
 					]
 				},
 				"sa.StorageAuthorityReadOnly": {
 					"clientNames": [
-						"admin-revoker.boulder",
-						"crl-updater.boulder",
+						"admin.boulder",
 						"ocsp-responder.boulder",
-						"sfe.boulder",
-						"wfe.boulder"
+						"wfe.boulder",
+						"sfe.boulder"
 					]
 				},
 				"grpc.health.v1.Health": {
@@ -48,7 +50,8 @@
 			}
 		},
 		"features": {
-			"UseKvLimitsForNewOrder": true
+			"MultipleCertificateProfiles": true,
+			"InsertAuthzsIndividually": true
 		}
 	},
 	"syslog": {

@@ -59,9 +59,11 @@
 		"liveSigningPeriod": "60h",
 		"timeout": "4.9s",
 		"shutdownStopTimeout": "10s",
+		"maxInflightSignings": 20,
 		"debugAddr": ":8005",
 		"requiredSerialPrefixes": [
-			"7f"
+			"7f",
+			"6e"
 		],
 		"features": {}
 	},

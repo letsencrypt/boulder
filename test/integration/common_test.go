@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -12,11 +11,15 @@ import (
 	"encoding/asn1"
 	"encoding/hex"
 	"fmt"
-	"net/http"
+	"net"
 	"os"
+
+	challTestSrvClient "github.com/letsencrypt/boulder/test/chall-test-srv-client"
 
 	"github.com/eggsampler/acme/v3"
 )
+
+var testSrvClient = challTestSrvClient.NewClient("")
 
 func init() {
 	// Go tests get run in the directory their source code lives in. For these
@@ -57,39 +60,7 @@ func makeClient(contacts ...string) (*client, error) {
 	return &client{account, c}, nil
 }
 
-func addHTTP01Response(token, keyAuthorization string) error {
-	resp, err := http.Post("http://boulder.service.consul:8055/add-http01", "",
-		bytes.NewBufferString(fmt.Sprintf(`{
-		"token": "%s",
-		"content": "%s"
-	}`, token, keyAuthorization)))
-	if err != nil {
-		return fmt.Errorf("adding http-01 response: %s", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("adding http-01 response: status %d", resp.StatusCode)
-	}
-	resp.Body.Close()
-	return nil
-}
-
-func delHTTP01Response(token string) error {
-	resp, err := http.Post("http://boulder.service.consul:8055/del-http01", "",
-		bytes.NewBufferString(fmt.Sprintf(`{
-		"token": "%s"
-	}`, token)))
-	if err != nil {
-		return fmt.Errorf("deleting http-01 response: %s", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("deleting http-01 response: status %d", resp.StatusCode)
-	}
-	return nil
-}
-
-func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool, certToReplace *x509.Certificate) (*client, *acme.Order, error) {
+func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Identifier, cn bool, profile string, certToReplace *x509.Certificate) (*client, *acme.Order, error) {
 	var err error
 	if c == nil {
 		c, err = makeClient()
@@ -99,14 +70,14 @@ func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, c
 	}
 
 	var ids []acme.Identifier
-	for _, domain := range domains {
-		ids = append(ids, acme.Identifier{Type: "dns", Value: domain})
+	for _, ident := range idents {
+		ids = append(ids, acme.Identifier{Type: string(ident.Type), Value: ident.Value})
 	}
 	var order acme.Order
 	if certToReplace != nil {
-		order, err = c.Client.ReplacementOrder(c.Account, certToReplace, ids)
+		order, err = c.Client.ReplacementOrderExtension(c.Account, certToReplace, ids, acme.OrderExtension{Profile: profile})
 	} else {
-		order, err = c.Client.NewOrder(c.Account, ids)
+		order, err = c.Client.NewOrderExtension(c.Account, ids, acme.OrderExtension{Profile: profile})
 	}
 	if err != nil {
 		return nil, nil, err
@@ -123,19 +94,25 @@ func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, c
 			return nil, nil, fmt.Errorf("no HTTP challenge at %s", authUrl)
 		}
 
-		err = addHTTP01Response(chal.Token, chal.KeyAuthorization)
+		_, err = testSrvClient.AddHTTP01Response(chal.Token, chal.KeyAuthorization)
 		if err != nil {
-			return nil, nil, fmt.Errorf("adding HTTP-01 response: %s", err)
+			return nil, nil, err
 		}
 		chal, err = c.Client.UpdateChallenge(c.Account, chal)
 		if err != nil {
-			delHTTP01Response(chal.Token)
-			return nil, nil, fmt.Errorf("updating challenge: %s", err)
+			_, err = testSrvClient.RemoveHTTP01Response(chal.Token)
+			if err != nil {
+				return nil, nil, err
+			}
+			return nil, nil, err
 		}
-		delHTTP01Response(chal.Token)
+		_, err = testSrvClient.RemoveHTTP01Response(chal.Token)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
-	csr, err := makeCSR(csrKey, domains, cn)
+	csr, err := makeCSR(csrKey, idents, cn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -153,10 +130,10 @@ type issuanceResult struct {
 	certs []*x509.Certificate
 }
 
-func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*issuanceResult, error) {
+func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Identifier, cn bool, profile string) (*issuanceResult, error) {
 	var err error
 
-	c, order, err := makeClientAndOrder(c, csrKey, domains, cn, nil)
+	c, order, err := makeClientAndOrder(c, csrKey, idents, cn, profile, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -173,8 +150,8 @@ type issuanceResultAllChains struct {
 	certs map[string][]*x509.Certificate
 }
 
-func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*issuanceResultAllChains, error) {
-	c, order, err := makeClientAndOrder(c, csrKey, domains, cn, nil)
+func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Identifier, cn bool) (*issuanceResultAllChains, error) {
+	c, order, err := makeClientAndOrder(c, csrKey, idents, cn, "", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +165,7 @@ func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, domains []s
 	return &issuanceResultAllChains{*order, certs}, nil
 }
 
-func makeCSR(k *ecdsa.PrivateKey, domains []string, cn bool) (*x509.CertificateRequest, error) {
+func makeCSR(k *ecdsa.PrivateKey, idents []acme.Identifier, cn bool) (*x509.CertificateRequest, error) {
 	var err error
 	if k == nil {
 		k, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -197,14 +174,28 @@ func makeCSR(k *ecdsa.PrivateKey, domains []string, cn bool) (*x509.CertificateR
 		}
 	}
 
+	var names []string
+	var ips []net.IP
+	for _, ident := range idents {
+		switch ident.Type {
+		case "dns":
+			names = append(names, ident.Value)
+		case "ip":
+			ips = append(ips, net.ParseIP(ident.Value))
+		default:
+			return nil, fmt.Errorf("unrecognized identifier type %q", ident.Type)
+		}
+	}
+
 	tmpl := &x509.CertificateRequest{
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 		PublicKeyAlgorithm: x509.ECDSA,
 		PublicKey:          k.Public(),
-		DNSNames:           domains,
+		DNSNames:           names,
+		IPAddresses:        ips,
 	}
 	if cn {
-		tmpl.Subject = pkix.Name{CommonName: domains[0]}
+		tmpl.Subject = pkix.Name{CommonName: names[0]}
 	}
 
 	csrDer, err := x509.CreateCertificateRequest(rand.Reader, tmpl, k)

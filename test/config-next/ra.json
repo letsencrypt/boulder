@@ -26,11 +26,7 @@
 		},
 		"maxContactsPerRegistration": 3,
 		"hostnamePolicyFile": "test/hostname-policy.yaml",
-		"maxNames": 100,
-		"authorizationLifetimeDays": 30,
-		"pendingAuthorizationLifetimeDays": 7,
 		"goodkey": {},
-		"orderLifetime": "168h",
 		"finalizeTimeout": "30s",
 		"issuerCerts": [
 			"test/certs/webpki/int-rsa-a.cert.pem",
@@ -40,6 +36,27 @@
 			"test/certs/webpki/int-ecdsa-b.cert.pem",
 			"test/certs/webpki/int-ecdsa-c.cert.pem"
 		],
+		"validationProfiles": {
+			"legacy": {
+				"pendingAuthzLifetime": "168h",
+				"validAuthzLifetime": "720h",
+				"orderLifetime": "168h",
+				"maxNames": 100
+			},
+			"modern": {
+				"pendingAuthzLifetime": "7h",
+				"validAuthzLifetime": "7h",
+				"orderLifetime": "7h",
+				"maxNames": 10
+			},
+			"shortlived": {
+				"pendingAuthzLifetime": "7h",
+				"validAuthzLifetime": "7h",
+				"orderLifetime": "7h",
+				"maxNames": 10
+			}
+		},
+		"defaultProfileName": "legacy",
 		"tls": {
 			"caCertFile": "test/certs/ipki/minica.pem",
 			"certFile": "test/certs/ipki/ra.boulder/cert.pem",
@@ -110,11 +127,16 @@
 			"services": {
 				"ra.RegistrationAuthority": {
 					"clientNames": [
-						"admin-revoker.boulder",
+						"admin.boulder",
 						"bad-key-revoker.boulder",
 						"ocsp-responder.boulder",
 						"wfe.boulder",
 						"sfe.boulder"
+					]
+				},
+				"ra.SCTProvider": {
+					"clientNames": [
+						"ca.boulder"
 					]
 				},
 				"grpc.health.v1.Health": {
@@ -127,8 +149,7 @@
 		"features": {
 			"AsyncFinalize": true,
 			"AutomaticallyPauseZombieClients": true,
-			"NoPendingAuthzReuse": true,
-			"EnforceMPIC": true
+			"NoPendingAuthzReuse": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

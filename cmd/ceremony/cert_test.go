@@ -2,8 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -126,7 +127,7 @@ func TestMakeTemplateRoot(t *testing.T) {
 	test.AssertEquals(t, len(cert.IssuingCertificateURL), 1)
 	test.AssertEquals(t, cert.IssuingCertificateURL[0], profile.IssuerURL)
 	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature|x509.KeyUsageCRLSign)
-	test.AssertEquals(t, len(cert.PolicyIdentifiers), 2)
+	test.AssertEquals(t, len(cert.Policies), 2)
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 0)
 
 	cert, err = makeTemplate(randReader, profile, pubKey, nil, intermediateCert)
@@ -551,7 +552,7 @@ func TestGenerateCSR(t *testing.T) {
 		Country:      "country",
 	}
 
-	signer, err := rsa.GenerateKey(rand.Reader, 1024)
+	signer, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
 
 	csrBytes, err := generateCSR(profile, &wrappedSigner{signer})

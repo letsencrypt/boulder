@@ -10,8 +10,6 @@ import os
 import json
 import re
 
-import OpenSSL
-
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -447,7 +445,7 @@ def test_http_challenge_timeout():
     to a slow HTTP server appropriately.
     """
     # Start a simple python HTTP server on port 80 in its own thread.
-    # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:80 for HTTP-01
+    # NOTE(@cpu): The chall-test-srv binds 10.77.77.77:80 for HTTP-01
     # challenges so we must use the 10.88.88.88 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
     httpd = SlowHTTPServer(("10.88.88.88", 80), SlowHTTPRequestHandler)
@@ -670,194 +668,6 @@ def test_order_finalize_early():
     chisel2.expect_problem("urn:ietf:params:acme:error:orderNotReady",
         lambda: client.finalize_order(order, deadline))
 
-def test_revoke_by_account_unspecified():
-    client = chisel2.make_client()
-    cert_file = temppath('test_revoke_by_account_0.pem')
-    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-
-    reset_akamai_purges()
-    client.revoke(josepy.ComparableX509(cert), 0)
-
-    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked")
-    verify_akamai_purge()
-
-def test_revoke_by_account_with_reason():
-    client = chisel2.make_client(None)
-    cert_file = temppath('test_revoke_by_account_1.pem')
-    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-
-    reset_akamai_purges()
-
-    # Requesting revocation for keyCompromise should work, but not block the
-    # key.
-    client.revoke(josepy.ComparableX509(cert), 1)
-    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
-
-    verify_akamai_purge()
-
-def test_revoke_by_authz():
-    domains = [random_domain()]
-    cert_file = temppath('test_revoke_by_authz.pem')
-    order = chisel2.auth_and_issue(domains, cert_output=cert_file.name)
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-
-    # create a new client and re-authz
-    client = chisel2.make_client(None)
-    chisel2.auth_and_issue(domains, client=client)
-
-    reset_akamai_purges()
-
-    # Even though we requested reason 1 ("keyCompromise"), the result should be
-    # 5 ("cessationOfOperation") due to the authorization method.
-    client.revoke(josepy.ComparableX509(cert), 1)
-    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "cessationOfOperation")
-
-    verify_akamai_purge()
-
-def test_revoke_by_privkey():
-    domains = [random_domain()]
-
-    # We have to make our own CSR so that we can hold on to the private key
-    # for revocation later.
-    key = rsa.generate_private_key(65537, 2048, default_backend())
-    key_pem = key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption()
-    )
-    csr_pem = acme_crypto_util.make_csr(key_pem, domains, False)
-
-    # We have to do our own issuance because we made our own CSR.
-    issue_client = chisel2.make_client(None)
-    order = issue_client.new_order(csr_pem)
-    cleanup = chisel2.do_http_challenges(issue_client, order.authorizations)
-    try:
-        order = issue_client.poll_and_finalize(order)
-    finally:
-        cleanup()
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-
-    cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_revoke_by_privkey.pem',
-        mode='w+', delete=False)
-    cert_file.write(OpenSSL.crypto.dump_certificate(
-        OpenSSL.crypto.FILETYPE_PEM, cert).decode())
-    cert_file.close()
-
-    # Create a new client with the cert key as the account key. We don't
-    # register a server-side account with this client, as we don't need one.
-    revoke_client = chisel2.uninitialized_client(key=josepy.JWKRSA(key=key))
-
-    reset_akamai_purges()
-
-    # Even though we requested reason 0 ("unspecified"), the result should be
-    # 1 ("keyCompromise") due to the authorization method.
-    revoke_client.revoke(josepy.ComparableX509(cert), 0)
-    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
-
-    verify_akamai_purge()
-
-def test_double_revocation():
-    domains = [random_domain()]
-
-    # We have to make our own CSR so that we can hold on to the private key
-    # for revocation later.
-    key = rsa.generate_private_key(65537, 2048, default_backend())
-    key_pem = key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption()
-    )
-    csr_pem = acme_crypto_util.make_csr(key_pem, domains, False)
-
-    # We have to do our own issuance because we made our own CSR.
-    sub_client = chisel2.make_client(None)
-    order = sub_client.new_order(csr_pem)
-    cleanup = chisel2.do_http_challenges(sub_client, order.authorizations)
-    try:
-        order = sub_client.poll_and_finalize(order)
-    finally:
-        cleanup()
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-
-    cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_double_revoke.pem',
-        mode='w+', delete=False)
-    cert_file.write(OpenSSL.crypto.dump_certificate(
-        OpenSSL.crypto.FILETYPE_PEM, cert).decode())
-    cert_file.close()
-
-    # Create a new client with the cert key as the account key. We don't
-    # register a server-side account with this client, as we don't need one.
-    cert_client = chisel2.uninitialized_client(key=josepy.JWKRSA(key=key))
-
-    reset_akamai_purges()
-
-    # First revoke for any reason.
-    sub_client.revoke(josepy.ComparableX509(cert), 0)
-    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked")
-    verify_akamai_purge()
-
-    # Re-revocation for anything other than keyCompromise should fail.
-    try:
-        sub_client.revoke(josepy.ComparableX509(cert), 3)
-    except messages.Error:
-        pass
-    else:
-        raise(Exception("Re-revoked for a bad reason"))
-
-    # Re-revocation for keyCompromise should work, as long as it is done
-    # via the cert key to demonstrate said compromise.
-    reset_akamai_purges()
-    cert_client.revoke(josepy.ComparableX509(cert), 1)
-    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
-    verify_akamai_purge()
-
-    # A subsequent attempt should fail, because the cert is already revoked
-    # for keyCompromise.
-    try:
-        cert_client.revoke(josepy.ComparableX509(cert), 1)
-    except messages.Error:
-        pass
-    else:
-        raise(Exception("Re-revoked already keyCompromise'd cert"))
-
-    # The same is true even when using the cert key.
-    try:
-        cert_client.revoke(josepy.ComparableX509(cert), 1)
-    except messages.Error:
-        pass
-    else:
-        raise(Exception("Re-revoked already keyCompromise'd cert"))
-
-def test_sct_embedding():
-    order = chisel2.auth_and_issue([random_domain()])
-    print(order.fullchain_pem.encode())
-    cert = parse_cert(order)
-
-    # make sure there is no poison extension
-    try:
-        cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.3"))
-        raise(Exception("certificate contains CT poison extension"))
-    except x509.ExtensionNotFound:
-        # do nothing
-        pass
-
-    # make sure there is a SCT list extension
-    try:
-        sctList = cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.2"))
-    except x509.ExtensionNotFound:
-        raise(Exception("certificate doesn't contain SCT list extension"))
-    if len(sctList.value) != 2:
-        raise(Exception("SCT list contains wrong number of SCTs"))
-    for sct in sctList.value:
-        if sct.version != x509.certificate_transparency.Version.v1:
-            raise(Exception("SCT contains wrong version"))
-        if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
-            raise(Exception("SCT contains wrong entry type"))
-
 def test_only_return_existing_reg():
     client = chisel2.uninitialized_client()
     email = "test@not-example.com"
@@ -974,11 +784,11 @@ def multiva_setup(client, guestlist):
 
     # Add an A record for the redirect target that sends it to the real chall
     # test srv for a valid HTTP-01 response.
-    redirHostname = "pebble-challtestsrv.example.com"
+    redirHostname = "chall-test-srv.example.com"
     challSrv.add_a_record(redirHostname, ["10.77.77.77"])
 
     # Start a simple python HTTP server on port 80 in its own thread.
-    # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:80 for HTTP-01
+    # NOTE(@cpu): The chall-test-srv binds 10.77.77.77:80 for HTTP-01
     # challenges so we must use the 10.88.88.88 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
     redirect = "http://{0}/.well-known/acme-challenge/{1}".format(
@@ -1227,11 +1037,6 @@ def test_auth_deactivation_v2():
     if resp.body.status is not messages.STATUS_DEACTIVATED:
         raise(Exception("unexpected authorization status"))
 
-def test_ocsp():
-    cert_file = temppath('test_ocsp.pem')
-    chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
-    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "good")
-
 def test_ct_submission():
     hostname = random_domain()
 
@@ -1363,49 +1168,6 @@ def test_expiration_mailer():
     if mailcount != 2:
         raise(Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount))
 
-caa_recheck_setup_data = {}
-@register_twenty_days_ago
-def caa_recheck_setup():
-    client = chisel2.make_client()
-    # Issue a certificate with the clock set back, and save the authzs to check
-    # later that they are valid (200). They should however require rechecking for
-    # CAA purposes.
-    numNames = 10
-    # Generate numNames subdomains of a random domain
-    base_domain = random_domain()
-    domains = [ "{0}.{1}".format(str(n),base_domain) for n in range(numNames) ]
-    order = chisel2.auth_and_issue(domains, client=client)
-
-    global caa_recheck_setup_data
-    caa_recheck_setup_data = {
-        'client': client,
-        'authzs': order.authorizations,
-    }
-
-def test_recheck_caa():
-    """Request issuance for a domain where we have a old cached authz from when CAA
-       was good. We'll set a new CAA record forbidding issuance; the CAA should
-       recheck CAA and reject the request.
-    """
-    if 'authzs' not in caa_recheck_setup_data:
-        raise(Exception("CAA authzs not prepared for test_caa"))
-    domains = []
-    for a in caa_recheck_setup_data['authzs']:
-        response = caa_recheck_setup_data['client']._post(a.uri, None)
-        if response.status_code != 200:
-            raise(Exception("Unexpected response for CAA authz: ",
-                response.status_code))
-        domain = a.body.identifier.value
-        domains.append(domain)
-
-    # Set a forbidding CAA record on just one domain
-    challSrv.add_caa_issue(domains[3], ";")
-
-    # Request issuance for the previously-issued domain name, which should
-    # now be denied due to CAA.
-    chisel2.expect_problem("urn:ietf:params:acme:error:caa",
-        lambda: chisel2.auth_and_issue(domains, client=caa_recheck_setup_data['client']))
-
 def test_caa_good():
     domain = random_domain()
     challSrv.add_caa_issue(domain, "happy-hacker-ca.invalid")
@@ -1517,48 +1279,6 @@ def test_oversized_csr():
 def parse_cert(order):
     return x509.load_pem_x509_certificate(order.fullchain_pem.encode(), default_backend())
 
-def test_admin_revoker_cert():
-    cert_file = temppath('test_admin_revoker_cert.pem')
-    order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
-    parsed_cert = parse_cert(order)
-
-    # Revoke certificate by serial
-    reset_akamai_purges()
-    run(["./bin/admin", 
-        "-config", "%s/admin.json" % config_dir,
-        "-dry-run=false",
-        "revoke-cert",
-        "-serial", '%x' % parsed_cert.serial_number,
-        "-reason", "keyCompromise"])
-
-    # Wait for OCSP response to indicate revocation took place
-    verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "keyCompromise")
-    verify_akamai_purge()
-
-def test_admin_revoker_batched():
-    serialFile = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_admin_revoker_batched.serials.hex',
-        mode='w+', delete=False)
-    cert_files = [
-        temppath('test_admin_revoker_batched.%d.pem' % x) for x in range(3)
-    ]
-
-    for cert_file in cert_files:
-        order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
-        serialFile.write("%x\n" % parse_cert(order).serial_number)
-    serialFile.close()
-
-    run(["./bin/admin", 
-        "-config", "%s/admin.json" % config_dir,
-        "-dry-run=false",
-        "revoke-cert",
-        "-serials-file", serialFile.name,
-        "-reason", "unspecified",
-        "-parallelism", "2"])
-
-    for cert_file in cert_files:
-        verify_ocsp(cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002", "revoked", "unspecified")
-
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])
     cert = parse_cert(order)
@@ -1606,7 +1326,7 @@ def test_auth_deactivation():
 def get_ocsp_response_and_reason(cert_file, issuer_glob, url):
     """Returns the ocsp response output and revocation reason."""
     output = verify_ocsp(cert_file, issuer_glob, url, None)
-    m = re.search('Reason: (\w+)', output)
+    m = re.search(r'Reason: (\w+)', output)
     reason = m.group(1) if m is not None else ""
     return output, reason
 
@@ -1623,10 +1343,9 @@ def ocsp_resigning_setup():
     cert_file = temppath('ocsp_resigning_setup.pem')
     order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
 
-    cert = OpenSSL.crypto.load_certificate(
-        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    cert = x509.load_pem_x509_certificate(order.fullchain_pem.encode(), default_backend())
     # Revoke for reason 5: cessationOfOperation
-    client.revoke(josepy.ComparableX509(cert), 5)
+    client.revoke(cert, 5)
 
     ocsp_response, reason = get_ocsp_response_and_reason(
         cert_file.name, "test/certs/webpki/int-rsa-*.cert.pem", "http://localhost:4002")

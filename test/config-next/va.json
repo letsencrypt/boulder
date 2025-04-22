@@ -38,8 +38,8 @@
 			}
 		},
 		"features": {
-			"EnforceMultiCAA": true,
-			"DOH": true
+			"DOH": true,
+			"MPICFullResults": true
 		},
 		"remoteVAs": [
 			{

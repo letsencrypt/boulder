@@ -3,8 +3,8 @@ import requests
 
 class ChallTestServer:
     """
-    ChallTestServer is a wrapper around pebble-challtestsrv's HTTP management
-    API. If the pebble-challtestsrv process you want to interact with is using
+    ChallTestServer is a wrapper around chall-test-srv's HTTP management
+    API. If the chall-test-srv process you want to interact with is using
     a -management argument other than the default ('http://10.77.77.77:8055') you
     can instantiate the ChallTestServer using the -management address in use. If
     no custom address is provided the default is assumed.
