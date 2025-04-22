@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"sync"
 	"time"
 
@@ -296,8 +297,9 @@ type IssuanceRequest struct {
 	NotBefore time.Time
 	NotAfter  time.Time
 
-	CommonName string
-	DNSNames   []string
+	CommonName  string
+	DNSNames    []string
+	IPAddresses []net.IP
 
 	IncludeMustStaple bool
 	IncludeCTPoison   bool
@@ -359,6 +361,7 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		template.Subject.CommonName = req.CommonName
 	}
 	template.DNSNames = req.DNSNames
+	template.IPAddresses = req.IPAddresses
 
 	switch req.PublicKey.PublicKey.(type) {
 	case *rsa.PublicKey:
@@ -490,6 +493,7 @@ func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTi
 		NotAfter:          precert.NotAfter,
 		CommonName:        precert.Subject.CommonName,
 		DNSNames:          precert.DNSNames,
+		IPAddresses:       precert.IPAddresses,
 		IncludeMustStaple: ContainsMustStaple(precert.Extensions),
 		sctList:           scts,
 		precertDER:        precert.Raw,

@@ -35,6 +35,7 @@ import (
 	csrlib "github.com/letsencrypt/boulder/csr"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
@@ -417,11 +418,17 @@ func (ca *certificateAuthorityImpl) issueCertificateForPrecertificate(ctx contex
 	}
 	ca.log.AuditObject("Signing cert", logEvent)
 
+	var ipStrings []string
+	for _, ip := range issuanceReq.IPAddresses {
+		ipStrings = append(ipStrings, ip.String())
+	}
+
 	_, span := ca.tracer.Start(ctx, "signing cert", trace.WithAttributes(
 		attribute.String("serial", serialHex),
 		attribute.String("issuer", issuer.Name()),
 		attribute.String("certProfileName", certProfile.name),
 		attribute.StringSlice("names", issuanceReq.DNSNames),
+		attribute.StringSlice("ipAddresses", ipStrings),
 	))
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
@@ -536,13 +543,18 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 
 	serialHex := core.SerialToString(serialBigInt)
 
-	names := csrlib.NamesFromCSR(csr)
+	dnsNames, ipAddresses, err := identifier.FromCSR(csr).ToValues()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	req := &issuance.IssuanceRequest{
 		PublicKey:         issuance.MarshalablePublicKey{PublicKey: csr.PublicKey},
 		SubjectKeyId:      subjectKeyId,
 		Serial:            serialBigInt.Bytes(),
-		DNSNames:          names.SANs,
-		CommonName:        names.CN,
+		DNSNames:          dnsNames,
+		IPAddresses:       ipAddresses,
+		CommonName:        csrlib.NamesFromCSR(csr).CN,
 		IncludeCTPoison:   true,
 		IncludeMustStaple: issuance.ContainsMustStaple(csr.Extensions),
 		NotBefore:         notBefore,
@@ -584,11 +596,17 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 	ca.log.AuditObject("Signing precert", logEvent)
 
+	var ipStrings []string
+	for _, ip := range csr.IPAddresses {
+		ipStrings = append(ipStrings, ip.String())
+	}
+
 	_, span := ca.tracer.Start(ctx, "signing precert", trace.WithAttributes(
 		attribute.String("serial", serialHex),
 		attribute.String("issuer", issuer.Name()),
 		attribute.String("certProfileName", certProfile.name),
 		attribute.StringSlice("names", csr.DNSNames),
+		attribute.StringSlice("ipAddresses", ipStrings),
 	))
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
