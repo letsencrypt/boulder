@@ -21,7 +21,7 @@ var (
 	ErrMalformPkt        = errors.New("malformed packet")
 	ErrNoTLS             = errors.New("TLS requested but server does not support TLS")
 	ErrCleartextPassword = errors.New("this user requires clear text authentication. If you still want to use it, please add 'allowCleartextPasswords=1' to your DSN")
-	ErrNativePassword    = errors.New("this user requires mysql native password authentication")
+	ErrNativePassword    = errors.New("this user requires mysql native password authentication.")
 	ErrOldPassword       = errors.New("this user requires old password authentication. If you still want to use it, please add 'allowOldPasswords=1' to your DSN. See also https://github.com/go-sql-driver/mysql/wiki/old_passwords")
 	ErrUnknownPlugin     = errors.New("this authentication plugin is not supported")
 	ErrOldProtocol       = errors.New("MySQL server does not support required protocol 41+")
@@ -32,31 +32,25 @@ var (
 
 	// errBadConnNoWrite is used for connection errors where nothing was sent to the database yet.
 	// If this happens first in a function starting a database interaction, it should be replaced by driver.ErrBadConn
-	// to trigger a resend. Use mc.markBadConn(err) to do this.
+	// to trigger a resend.
 	// See https://github.com/go-sql-driver/mysql/pull/302
 	errBadConnNoWrite = errors.New("bad connection")
 )
 
-var defaultLogger = Logger(log.New(os.Stderr, "[mysql] ", log.Ldate|log.Ltime))
+var errLog = Logger(log.New(os.Stderr, "[mysql] ", log.Ldate|log.Ltime|log.Lshortfile))
 
 // Logger is used to log critical error messages.
 type Logger interface {
-	Print(v ...any)
+	Print(v ...interface{})
 }
 
-// NopLogger is a nop implementation of the Logger interface.
-type NopLogger struct{}
-
-// Print implements Logger interface.
-func (nl *NopLogger) Print(_ ...any) {}
-
-// SetLogger is used to set the default logger for critical errors.
+// SetLogger is used to set the logger for critical errors.
 // The initial logger is os.Stderr.
 func SetLogger(logger Logger) error {
 	if logger == nil {
 		return errors.New("logger is nil")
 	}
-	defaultLogger = logger
+	errLog = logger
 	return nil
 }
 
