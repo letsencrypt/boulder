@@ -50,6 +50,9 @@ const (
 	StorageAuthorityReadOnly_SerialsForIncident_FullMethodName           = "/sa.StorageAuthorityReadOnly/SerialsForIncident"
 	StorageAuthorityReadOnly_CheckIdentifiersPaused_FullMethodName       = "/sa.StorageAuthorityReadOnly/CheckIdentifiersPaused"
 	StorageAuthorityReadOnly_GetPausedIdentifiers_FullMethodName         = "/sa.StorageAuthorityReadOnly/GetPausedIdentifiers"
+	StorageAuthorityReadOnly_GetRateLimitOverride_FullMethodName         = "/sa.StorageAuthorityReadOnly/GetRateLimitOverride"
+	StorageAuthorityReadOnly_GetEnabledRateLimitOverrides_FullMethodName = "/sa.StorageAuthorityReadOnly/GetEnabledRateLimitOverrides"
+	StorageAuthorityReadOnly_SearchRateLimitOverrides_FullMethodName     = "/sa.StorageAuthorityReadOnly/SearchRateLimitOverrides"
 )
 
 // StorageAuthorityReadOnlyClient is the client API for StorageAuthorityReadOnly service.
@@ -84,6 +87,9 @@ type StorageAuthorityReadOnlyClient interface {
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IncidentSerial], error)
 	CheckIdentifiersPaused(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*Identifiers, error)
 	GetPausedIdentifiers(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error)
+	GetRateLimitOverride(ctx context.Context, in *GetRateLimitOverrideRequest, opts ...grpc.CallOption) (*RateLimitOverrideResponse, error)
+	GetEnabledRateLimitOverrides(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RateLimitOverride], error)
+	SearchRateLimitOverrides(ctx context.Context, in *SearchRateLimitOverridesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RateLimitOverrideResponse], error)
 }
 
 type storageAuthorityReadOnlyClient struct {
@@ -419,6 +425,54 @@ func (c *storageAuthorityReadOnlyClient) GetPausedIdentifiers(ctx context.Contex
 	return out, nil
 }
 
+func (c *storageAuthorityReadOnlyClient) GetRateLimitOverride(ctx context.Context, in *GetRateLimitOverrideRequest, opts ...grpc.CallOption) (*RateLimitOverrideResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RateLimitOverrideResponse)
+	err := c.cc.Invoke(ctx, StorageAuthorityReadOnly_GetRateLimitOverride_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityReadOnlyClient) GetEnabledRateLimitOverrides(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RateLimitOverride], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &StorageAuthorityReadOnly_ServiceDesc.Streams[5], StorageAuthorityReadOnly_GetEnabledRateLimitOverrides_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[emptypb.Empty, RateLimitOverride]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthorityReadOnly_GetEnabledRateLimitOverridesClient = grpc.ServerStreamingClient[RateLimitOverride]
+
+func (c *storageAuthorityReadOnlyClient) SearchRateLimitOverrides(ctx context.Context, in *SearchRateLimitOverridesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RateLimitOverrideResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &StorageAuthorityReadOnly_ServiceDesc.Streams[6], StorageAuthorityReadOnly_SearchRateLimitOverrides_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[SearchRateLimitOverridesRequest, RateLimitOverrideResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthorityReadOnly_SearchRateLimitOverridesClient = grpc.ServerStreamingClient[RateLimitOverrideResponse]
+
 // StorageAuthorityReadOnlyServer is the server API for StorageAuthorityReadOnly service.
 // All implementations must embed UnimplementedStorageAuthorityReadOnlyServer
 // for forward compatibility
@@ -451,6 +505,9 @@ type StorageAuthorityReadOnlyServer interface {
 	SerialsForIncident(*SerialsForIncidentRequest, grpc.ServerStreamingServer[IncidentSerial]) error
 	CheckIdentifiersPaused(context.Context, *PauseRequest) (*Identifiers, error)
 	GetPausedIdentifiers(context.Context, *RegistrationID) (*Identifiers, error)
+	GetRateLimitOverride(context.Context, *GetRateLimitOverrideRequest) (*RateLimitOverrideResponse, error)
+	GetEnabledRateLimitOverrides(*emptypb.Empty, grpc.ServerStreamingServer[RateLimitOverride]) error
+	SearchRateLimitOverrides(*SearchRateLimitOverridesRequest, grpc.ServerStreamingServer[RateLimitOverrideResponse]) error
 	mustEmbedUnimplementedStorageAuthorityReadOnlyServer()
 }
 
@@ -541,6 +598,15 @@ func (UnimplementedStorageAuthorityReadOnlyServer) CheckIdentifiersPaused(contex
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) GetPausedIdentifiers(context.Context, *RegistrationID) (*Identifiers, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPausedIdentifiers not implemented")
+}
+func (UnimplementedStorageAuthorityReadOnlyServer) GetRateLimitOverride(context.Context, *GetRateLimitOverrideRequest) (*RateLimitOverrideResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetRateLimitOverride not implemented")
+}
+func (UnimplementedStorageAuthorityReadOnlyServer) GetEnabledRateLimitOverrides(*emptypb.Empty, grpc.ServerStreamingServer[RateLimitOverride]) error {
+	return status.Errorf(codes.Unimplemented, "method GetEnabledRateLimitOverrides not implemented")
+}
+func (UnimplementedStorageAuthorityReadOnlyServer) SearchRateLimitOverrides(*SearchRateLimitOverridesRequest, grpc.ServerStreamingServer[RateLimitOverrideResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method SearchRateLimitOverrides not implemented")
 }
 func (UnimplementedStorageAuthorityReadOnlyServer) mustEmbedUnimplementedStorageAuthorityReadOnlyServer() {
 }
@@ -1025,6 +1091,46 @@ func _StorageAuthorityReadOnly_GetPausedIdentifiers_Handler(srv interface{}, ctx
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageAuthorityReadOnly_GetRateLimitOverride_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRateLimitOverrideRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityReadOnlyServer).GetRateLimitOverride(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthorityReadOnly_GetRateLimitOverride_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityReadOnlyServer).GetRateLimitOverride(ctx, req.(*GetRateLimitOverrideRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthorityReadOnly_GetEnabledRateLimitOverrides_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(emptypb.Empty)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StorageAuthorityReadOnlyServer).GetEnabledRateLimitOverrides(m, &grpc.GenericServerStream[emptypb.Empty, RateLimitOverride]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthorityReadOnly_GetEnabledRateLimitOverridesServer = grpc.ServerStreamingServer[RateLimitOverride]
+
+func _StorageAuthorityReadOnly_SearchRateLimitOverrides_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SearchRateLimitOverridesRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StorageAuthorityReadOnlyServer).SearchRateLimitOverrides(m, &grpc.GenericServerStream[SearchRateLimitOverridesRequest, RateLimitOverrideResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthorityReadOnly_SearchRateLimitOverridesServer = grpc.ServerStreamingServer[RateLimitOverrideResponse]
+
 // StorageAuthorityReadOnly_ServiceDesc is the grpc.ServiceDesc for StorageAuthorityReadOnly service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1124,6 +1230,10 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetPausedIdentifiers",
 			Handler:    _StorageAuthorityReadOnly_GetPausedIdentifiers_Handler,
 		},
+		{
+			MethodName: "GetRateLimitOverride",
+			Handler:    _StorageAuthorityReadOnly_GetRateLimitOverride_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -1149,6 +1259,16 @@ var StorageAuthorityReadOnly_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "SerialsForIncident",
 			Handler:       _StorageAuthorityReadOnly_SerialsForIncident_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetEnabledRateLimitOverrides",
+			Handler:       _StorageAuthorityReadOnly_GetEnabledRateLimitOverrides_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "SearchRateLimitOverrides",
+			Handler:       _StorageAuthorityReadOnly_SearchRateLimitOverrides_Handler,
 			ServerStreams: true,
 		},
 	},
@@ -1184,6 +1304,9 @@ const (
 	StorageAuthority_SerialsForIncident_FullMethodName           = "/sa.StorageAuthority/SerialsForIncident"
 	StorageAuthority_CheckIdentifiersPaused_FullMethodName       = "/sa.StorageAuthority/CheckIdentifiersPaused"
 	StorageAuthority_GetPausedIdentifiers_FullMethodName         = "/sa.StorageAuthority/GetPausedIdentifiers"
+	StorageAuthority_GetRateLimitOverride_FullMethodName         = "/sa.StorageAuthority/GetRateLimitOverride"
+	StorageAuthority_GetEnabledRateLimitOverrides_FullMethodName = "/sa.StorageAuthority/GetEnabledRateLimitOverrides"
+	StorageAuthority_SearchRateLimitOverrides_FullMethodName     = "/sa.StorageAuthority/SearchRateLimitOverrides"
 	StorageAuthority_AddBlockedKey_FullMethodName                = "/sa.StorageAuthority/AddBlockedKey"
 	StorageAuthority_AddCertificate_FullMethodName               = "/sa.StorageAuthority/AddCertificate"
 	StorageAuthority_AddPrecertificate_FullMethodName            = "/sa.StorageAuthority/AddPrecertificate"
@@ -1205,6 +1328,9 @@ const (
 	StorageAuthority_UpdateCRLShard_FullMethodName               = "/sa.StorageAuthority/UpdateCRLShard"
 	StorageAuthority_PauseIdentifiers_FullMethodName             = "/sa.StorageAuthority/PauseIdentifiers"
 	StorageAuthority_UnpauseAccount_FullMethodName               = "/sa.StorageAuthority/UnpauseAccount"
+	StorageAuthority_AddRateLimitOverride_FullMethodName         = "/sa.StorageAuthority/AddRateLimitOverride"
+	StorageAuthority_DisableRateLimitOverride_FullMethodName     = "/sa.StorageAuthority/DisableRateLimitOverride"
+	StorageAuthority_EnableRateLimitOverride_FullMethodName      = "/sa.StorageAuthority/EnableRateLimitOverride"
 )
 
 // StorageAuthorityClient is the client API for StorageAuthority service.
@@ -1240,6 +1366,9 @@ type StorageAuthorityClient interface {
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[IncidentSerial], error)
 	CheckIdentifiersPaused(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*Identifiers, error)
 	GetPausedIdentifiers(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Identifiers, error)
+	GetRateLimitOverride(ctx context.Context, in *GetRateLimitOverrideRequest, opts ...grpc.CallOption) (*RateLimitOverrideResponse, error)
+	GetEnabledRateLimitOverrides(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RateLimitOverride], error)
+	SearchRateLimitOverrides(ctx context.Context, in *SearchRateLimitOverridesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RateLimitOverrideResponse], error)
 	// Adders
 	AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddCertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -1262,6 +1391,9 @@ type StorageAuthorityClient interface {
 	UpdateCRLShard(ctx context.Context, in *UpdateCRLShardRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	PauseIdentifiers(ctx context.Context, in *PauseRequest, opts ...grpc.CallOption) (*PauseIdentifiersResponse, error)
 	UnpauseAccount(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*Count, error)
+	AddRateLimitOverride(ctx context.Context, in *AddRateLimitOverrideRequest, opts ...grpc.CallOption) (*AddRateLimitOverrideResponse, error)
+	DisableRateLimitOverride(ctx context.Context, in *SetRateLimitOverrideRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	EnableRateLimitOverride(ctx context.Context, in *SetRateLimitOverrideRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type storageAuthorityClient struct {
@@ -1597,6 +1729,54 @@ func (c *storageAuthorityClient) GetPausedIdentifiers(ctx context.Context, in *R
 	return out, nil
 }
 
+func (c *storageAuthorityClient) GetRateLimitOverride(ctx context.Context, in *GetRateLimitOverrideRequest, opts ...grpc.CallOption) (*RateLimitOverrideResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RateLimitOverrideResponse)
+	err := c.cc.Invoke(ctx, StorageAuthority_GetRateLimitOverride_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityClient) GetEnabledRateLimitOverrides(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RateLimitOverride], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[5], StorageAuthority_GetEnabledRateLimitOverrides_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[emptypb.Empty, RateLimitOverride]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthority_GetEnabledRateLimitOverridesClient = grpc.ServerStreamingClient[RateLimitOverride]
+
+func (c *storageAuthorityClient) SearchRateLimitOverrides(ctx context.Context, in *SearchRateLimitOverridesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RateLimitOverrideResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[6], StorageAuthority_SearchRateLimitOverrides_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[SearchRateLimitOverridesRequest, RateLimitOverrideResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthority_SearchRateLimitOverridesClient = grpc.ServerStreamingClient[RateLimitOverrideResponse]
+
 func (c *storageAuthorityClient) AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
@@ -1807,6 +1987,36 @@ func (c *storageAuthorityClient) UnpauseAccount(ctx context.Context, in *Registr
 	return out, nil
 }
 
+func (c *storageAuthorityClient) AddRateLimitOverride(ctx context.Context, in *AddRateLimitOverrideRequest, opts ...grpc.CallOption) (*AddRateLimitOverrideResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AddRateLimitOverrideResponse)
+	err := c.cc.Invoke(ctx, StorageAuthority_AddRateLimitOverride_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityClient) DisableRateLimitOverride(ctx context.Context, in *SetRateLimitOverrideRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, StorageAuthority_DisableRateLimitOverride_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityClient) EnableRateLimitOverride(ctx context.Context, in *SetRateLimitOverrideRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, StorageAuthority_EnableRateLimitOverride_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StorageAuthorityServer is the server API for StorageAuthority service.
 // All implementations must embed UnimplementedStorageAuthorityServer
 // for forward compatibility
@@ -1840,6 +2050,9 @@ type StorageAuthorityServer interface {
 	SerialsForIncident(*SerialsForIncidentRequest, grpc.ServerStreamingServer[IncidentSerial]) error
 	CheckIdentifiersPaused(context.Context, *PauseRequest) (*Identifiers, error)
 	GetPausedIdentifiers(context.Context, *RegistrationID) (*Identifiers, error)
+	GetRateLimitOverride(context.Context, *GetRateLimitOverrideRequest) (*RateLimitOverrideResponse, error)
+	GetEnabledRateLimitOverrides(*emptypb.Empty, grpc.ServerStreamingServer[RateLimitOverride]) error
+	SearchRateLimitOverrides(*SearchRateLimitOverridesRequest, grpc.ServerStreamingServer[RateLimitOverrideResponse]) error
 	// Adders
 	AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error)
 	AddCertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error)
@@ -1862,6 +2075,9 @@ type StorageAuthorityServer interface {
 	UpdateCRLShard(context.Context, *UpdateCRLShardRequest) (*emptypb.Empty, error)
 	PauseIdentifiers(context.Context, *PauseRequest) (*PauseIdentifiersResponse, error)
 	UnpauseAccount(context.Context, *RegistrationID) (*Count, error)
+	AddRateLimitOverride(context.Context, *AddRateLimitOverrideRequest) (*AddRateLimitOverrideResponse, error)
+	DisableRateLimitOverride(context.Context, *SetRateLimitOverrideRequest) (*emptypb.Empty, error)
+	EnableRateLimitOverride(context.Context, *SetRateLimitOverrideRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedStorageAuthorityServer()
 }
 
@@ -1953,6 +2169,15 @@ func (UnimplementedStorageAuthorityServer) CheckIdentifiersPaused(context.Contex
 func (UnimplementedStorageAuthorityServer) GetPausedIdentifiers(context.Context, *RegistrationID) (*Identifiers, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPausedIdentifiers not implemented")
 }
+func (UnimplementedStorageAuthorityServer) GetRateLimitOverride(context.Context, *GetRateLimitOverrideRequest) (*RateLimitOverrideResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetRateLimitOverride not implemented")
+}
+func (UnimplementedStorageAuthorityServer) GetEnabledRateLimitOverrides(*emptypb.Empty, grpc.ServerStreamingServer[RateLimitOverride]) error {
+	return status.Errorf(codes.Unimplemented, "method GetEnabledRateLimitOverrides not implemented")
+}
+func (UnimplementedStorageAuthorityServer) SearchRateLimitOverrides(*SearchRateLimitOverridesRequest, grpc.ServerStreamingServer[RateLimitOverrideResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method SearchRateLimitOverrides not implemented")
+}
 func (UnimplementedStorageAuthorityServer) AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddBlockedKey not implemented")
 }
@@ -2015,6 +2240,15 @@ func (UnimplementedStorageAuthorityServer) PauseIdentifiers(context.Context, *Pa
 }
 func (UnimplementedStorageAuthorityServer) UnpauseAccount(context.Context, *RegistrationID) (*Count, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UnpauseAccount not implemented")
+}
+func (UnimplementedStorageAuthorityServer) AddRateLimitOverride(context.Context, *AddRateLimitOverrideRequest) (*AddRateLimitOverrideResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddRateLimitOverride not implemented")
+}
+func (UnimplementedStorageAuthorityServer) DisableRateLimitOverride(context.Context, *SetRateLimitOverrideRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DisableRateLimitOverride not implemented")
+}
+func (UnimplementedStorageAuthorityServer) EnableRateLimitOverride(context.Context, *SetRateLimitOverrideRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EnableRateLimitOverride not implemented")
 }
 func (UnimplementedStorageAuthorityServer) mustEmbedUnimplementedStorageAuthorityServer() {}
 
@@ -2498,6 +2732,46 @@ func _StorageAuthority_GetPausedIdentifiers_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageAuthority_GetRateLimitOverride_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRateLimitOverrideRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).GetRateLimitOverride(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthority_GetRateLimitOverride_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).GetRateLimitOverride(ctx, req.(*GetRateLimitOverrideRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthority_GetEnabledRateLimitOverrides_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(emptypb.Empty)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StorageAuthorityServer).GetEnabledRateLimitOverrides(m, &grpc.GenericServerStream[emptypb.Empty, RateLimitOverride]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthority_GetEnabledRateLimitOverridesServer = grpc.ServerStreamingServer[RateLimitOverride]
+
+func _StorageAuthority_SearchRateLimitOverrides_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SearchRateLimitOverridesRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StorageAuthorityServer).SearchRateLimitOverrides(m, &grpc.GenericServerStream[SearchRateLimitOverridesRequest, RateLimitOverrideResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StorageAuthority_SearchRateLimitOverridesServer = grpc.ServerStreamingServer[RateLimitOverrideResponse]
+
 func _StorageAuthority_AddBlockedKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AddBlockedKeyRequest)
 	if err := dec(in); err != nil {
@@ -2876,6 +3150,60 @@ func _StorageAuthority_UnpauseAccount_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageAuthority_AddRateLimitOverride_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddRateLimitOverrideRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).AddRateLimitOverride(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthority_AddRateLimitOverride_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).AddRateLimitOverride(ctx, req.(*AddRateLimitOverrideRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthority_DisableRateLimitOverride_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetRateLimitOverrideRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).DisableRateLimitOverride(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthority_DisableRateLimitOverride_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).DisableRateLimitOverride(ctx, req.(*SetRateLimitOverrideRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthority_EnableRateLimitOverride_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetRateLimitOverrideRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).EnableRateLimitOverride(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageAuthority_EnableRateLimitOverride_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).EnableRateLimitOverride(ctx, req.(*SetRateLimitOverrideRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StorageAuthority_ServiceDesc is the grpc.ServiceDesc for StorageAuthority service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2976,6 +3304,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthority_GetPausedIdentifiers_Handler,
 		},
 		{
+			MethodName: "GetRateLimitOverride",
+			Handler:    _StorageAuthority_GetRateLimitOverride_Handler,
+		},
+		{
 			MethodName: "AddBlockedKey",
 			Handler:    _StorageAuthority_AddBlockedKey_Handler,
 		},
@@ -3059,6 +3391,18 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "UnpauseAccount",
 			Handler:    _StorageAuthority_UnpauseAccount_Handler,
 		},
+		{
+			MethodName: "AddRateLimitOverride",
+			Handler:    _StorageAuthority_AddRateLimitOverride_Handler,
+		},
+		{
+			MethodName: "DisableRateLimitOverride",
+			Handler:    _StorageAuthority_DisableRateLimitOverride_Handler,
+		},
+		{
+			MethodName: "EnableRateLimitOverride",
+			Handler:    _StorageAuthority_EnableRateLimitOverride_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -3084,6 +3428,16 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "SerialsForIncident",
 			Handler:       _StorageAuthority_SerialsForIncident_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetEnabledRateLimitOverrides",
+			Handler:       _StorageAuthority_GetEnabledRateLimitOverrides_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "SearchRateLimitOverrides",
+			Handler:       _StorageAuthority_SearchRateLimitOverrides_Handler,
 			ServerStreams: true,
 		},
 	},

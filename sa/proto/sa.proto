@@ -38,6 +38,9 @@ service StorageAuthorityReadOnly {
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
   rpc CheckIdentifiersPaused (PauseRequest) returns (Identifiers) {}
   rpc GetPausedIdentifiers (RegistrationID) returns (Identifiers) {}
+  rpc GetRateLimitOverride(GetRateLimitOverrideRequest) returns (RateLimitOverrideResponse) {}
+  rpc GetEnabledRateLimitOverrides(google.protobuf.Empty) returns (stream RateLimitOverride) {}
+  rpc SearchRateLimitOverrides(SearchRateLimitOverridesRequest) returns (stream RateLimitOverrideResponse) {}
 }
 
 // StorageAuthority provides full read/write access to the database.
@@ -71,6 +74,10 @@ service StorageAuthority {
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
   rpc CheckIdentifiersPaused (PauseRequest) returns (Identifiers) {}
   rpc GetPausedIdentifiers (RegistrationID) returns (Identifiers) {}
+  rpc GetRateLimitOverride(GetRateLimitOverrideRequest) returns (RateLimitOverrideResponse) {}
+  rpc GetEnabledRateLimitOverrides(google.protobuf.Empty) returns (stream RateLimitOverride) {}
+  rpc SearchRateLimitOverrides(SearchRateLimitOverridesRequest) returns (stream RateLimitOverrideResponse) {}
+
   // Adders
   rpc AddBlockedKey(AddBlockedKeyRequest) returns (google.protobuf.Empty) {}
   rpc AddCertificate(AddCertificateRequest) returns (google.protobuf.Empty) {}
@@ -93,6 +100,9 @@ service StorageAuthority {
   rpc UpdateCRLShard(UpdateCRLShardRequest) returns (google.protobuf.Empty) {}
   rpc PauseIdentifiers(PauseRequest) returns (PauseIdentifiersResponse) {}
   rpc UnpauseAccount(RegistrationID) returns (Count) {}
+  rpc AddRateLimitOverride(AddRateLimitOverrideRequest) returns (AddRateLimitOverrideResponse) {}
+  rpc DisableRateLimitOverride(SetRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
+  rpc EnableRateLimitOverride(SetRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
 }
 
 message RegistrationID {
@@ -436,4 +446,47 @@ message UpdateRegistrationContactRequest {
 message UpdateRegistrationKeyRequest {
   int64 registrationID = 1;
   bytes jwk = 2;
+}
+
+message RateLimitOverride {
+  int64 limitEnum      = 1;
+  string bucketKey = 2;
+  string comment    = 3;
+  google.protobuf.Duration period = 4;
+  int64 count      = 5;
+  int64 burst      = 6;
+}
+
+message AddRateLimitOverrideRequest {
+  RateLimitOverride override = 1;
+}
+
+message AddRateLimitOverrideResponse {
+  bool inserted = 1;
+  bool enabled = 2;
+}
+
+message SetRateLimitOverrideRequest {
+  int64 limitEnum = 1;
+  string bucketKey = 2;
+}
+
+message GetRateLimitOverrideRequest {
+  int64 limitEnum = 1;
+  string bucketKey = 2;
+}
+
+message RateLimitOverrideResponse {
+  RateLimitOverride override  = 1;
+  bool enabled  = 2;
+  google.protobuf.Timestamp createdAt = 3;
+  google.protobuf.Timestamp updatedAt = 4;
+}
+
+message SearchRateLimitOverridesRequest {
+  repeated int64 limitEnums = 1;
+  string bucketKeyContains = 2;
+  string commentContains = 3;
+  google.protobuf.Timestamp earliest = 4;
+  google.protobuf.Timestamp latest = 5;
 }

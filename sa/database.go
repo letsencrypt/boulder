@@ -290,6 +290,7 @@ func initTables(dbMap *borp.DbMap) {
 	dbMap.AddTableWithName(revokedCertModel{}, "revokedCertificates").SetKeys(true, "ID")
 	dbMap.AddTableWithName(replacementOrderModel{}, "replacementOrders").SetKeys(true, "ID")
 	dbMap.AddTableWithName(pausedModel{}, "paused")
+	dbMap.AddTableWithName(overrideModel{}, "overrides").SetKeys(false, "limitEnum", "bucketKey")
 
 	// Read-only maps used for selecting subsets of columns.
 	dbMap.AddTableWithName(CertStatusMetadata{}, "certificateStatus")

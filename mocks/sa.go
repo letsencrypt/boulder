@@ -278,6 +278,36 @@ func (sa *StorageAuthorityReadOnly) GetMaxExpiration(_ context.Context, req *emp
 	return nil, nil
 }
 
+// AddRateLimitOverride is a mock
+func (sa *StorageAuthority) AddRateLimitOverride(_ context.Context, req *sapb.AddRateLimitOverrideRequest, _ ...grpc.CallOption) (*sapb.AddRateLimitOverrideResponse, error) {
+	return nil, nil
+}
+
+// DisableRateLimitOverride is a mock
+func (sa *StorageAuthority) DisableRateLimitOverride(ctx context.Context, req *sapb.SetRateLimitOverrideRequest) (*emptypb.Empty, error) {
+	return nil, nil
+}
+
+// EnableRateLimitOverride is a mock
+func (sa *StorageAuthority) EnableRateLimitOverride(ctx context.Context, req *sapb.SetRateLimitOverrideRequest) (*emptypb.Empty, error) {
+	return nil, nil
+}
+
+// GetRateLimitOverride is a mock
+func (sa *StorageAuthorityReadOnly) GetRateLimitOverride(_ context.Context, req *sapb.GetRateLimitOverrideRequest, _ ...grpc.CallOption) (*sapb.RateLimitOverrideResponse, error) {
+	return nil, nil
+}
+
+// GetEnabledRateLimitOverrides is a mock
+func (sa *StorageAuthorityReadOnly) GetEnabledRateLimitOverrides(_ context.Context, _ *emptypb.Empty, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetEnabledRateLimitOverridesClient, error) {
+	return nil, nil
+}
+
+// SearchRateLimitOverrides is a mock
+func (sa *StorageAuthorityReadOnly) SearchRateLimitOverrides(_ context.Context, _ *sapb.SearchRateLimitOverridesRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_SearchRateLimitOverridesClient, error) {
+	return nil, nil
+}
+
 // AddPrecertificate is a mock
 func (sa *StorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, nil

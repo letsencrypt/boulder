@@ -1493,3 +1493,131 @@ func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.Re
 
 	return total, nil
 }
+
+// AddRateLimitOverride adds a rate limit override to the database. Only the
+// comment field is optional. If the override already exists, it will be
+// updated. If the override does not exist, it will be inserted and enabled. If
+// the override exists but has been disabled, it will be updated but not be
+// re-enabled. The status of the override is returned in Enabled field of the
+// response. To re-enable an override, use the EnableRateLimitOverride method.
+func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *sapb.AddRateLimitOverrideRequest) (*sapb.AddRateLimitOverrideResponse, error) {
+	if core.IsAnyNilOrZero(req, req.Override, req.Override.LimitEnum, req.Override.BucketKey, req.Override.Count, req.Override.Burst, req.Override.Period) {
+		return nil, errIncompleteRequest
+	}
+
+	var inserted bool
+	var enabled bool
+	now := ssa.clk.Now()
+
+	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
+		var existing overrideModel
+		err := tx.SelectOne(ctx, &existing, `
+			SELECT createdAt, enabled
+			  FROM overrides
+			 WHERE limitEnum = ? AND
+			       bucketKey = ?`,
+			req.Override.LimitEnum,
+			req.Override.BucketKey,
+		)
+
+		switch {
+		case err != nil && !db.IsNoRows(err):
+			// Error querying the database.
+			return nil, fmt.Errorf("querying rate limit override: %w", err)
+
+		case db.IsNoRows(err):
+			// Insert a new overrides row.
+			new := newOverrideModelFromPB(req.Override, now, now, true)
+			err = tx.Insert(ctx, &new)
+			if err != nil && !db.IsDuplicate(err) {
+				return nil, err
+			}
+			inserted = true
+			enabled = true
+
+		default:
+			// Update the existing overrides row.
+			updated := newOverrideModelFromPB(req.Override, existing.CreatedAt, now, existing.Enabled)
+			_, err = tx.Update(ctx, &updated)
+			if err != nil {
+				return nil, fmt.Errorf("updating rate limit override: %w", err)
+			}
+			inserted = false
+			enabled = existing.Enabled
+		}
+		return nil, nil
+	})
+	if err != nil {
+		// Error occurred during transaction.
+		return nil, err
+	}
+	return &sapb.AddRateLimitOverrideResponse{Inserted: inserted, Enabled: enabled}, nil
+}
+
+// setRateLimitOverride sets the enabled field of a rate limit override to the
+// provided value and updates the updatedAt column. If the override does not
+// exist, a NotFoundError is returned. If the override exists but is already in
+// the requested state, this is a no-op.
+func (ssa *SQLStorageAuthority) setRateLimitOverride(ctx context.Context, req *sapb.SetRateLimitOverrideRequest, enabled bool) (*emptypb.Empty, error) {
+	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
+		var existing overrideModel
+		err := tx.SelectOne(ctx, &existing, `
+			SELECT * FROM overrides
+			 WHERE limitEnum = ? AND
+			       bucketKey = ?
+			 FOR UPDATE`,
+			req.LimitEnum,
+			req.BucketKey,
+		)
+		if err != nil {
+			if db.IsNoRows(err) {
+				return nil, berrors.NotFoundError(
+					"no rate limit override found for limit %d and bucket key %s",
+					req.LimitEnum,
+					req.BucketKey,
+				)
+			}
+			return nil, fmt.Errorf("querying rate limit override: %w", err)
+		}
+
+		if existing.Enabled == enabled {
+			// No-op
+			return nil, nil
+		}
+
+		// Update the existing overrides row.
+		updated := existing
+		updated.Enabled = enabled
+		updated.UpdatedAt = ssa.clk.Now()
+
+		_, err = tx.Update(ctx, &updated)
+		if err != nil {
+			return nil, fmt.Errorf("updating rate limit override: %w", err)
+		}
+		return nil, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// DisableRateLimitOverride disables a rate limit override. If the override does
+// not exist, a NotFoundError is returned. If the override exists but is already
+// disabled, this is a no-op.
+func (ssa *SQLStorageAuthority) DisableRateLimitOverride(ctx context.Context, req *sapb.SetRateLimitOverrideRequest) (*emptypb.Empty, error) {
+	if core.IsAnyNilOrZero(req, req.LimitEnum, req.BucketKey) {
+		return nil, errIncompleteRequest
+	}
+	return ssa.setRateLimitOverride(ctx, req, false)
+}
+
+// EnableRateLimitOverride enables a rate limit override. If the override does
+// not exist, a NotFoundError is returned. If the override exists but is already
+// enabled, this is a no-op.
+func (ssa *SQLStorageAuthority) EnableRateLimitOverride(ctx context.Context, req *sapb.SetRateLimitOverrideRequest) (*emptypb.Empty, error) {
+	if core.IsAnyNilOrZero(req, req.LimitEnum, req.BucketKey) {
+		return nil, errIncompleteRequest
+	}
+	return ssa.setRateLimitOverride(ctx, req, true)
+}
