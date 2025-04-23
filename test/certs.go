@@ -1,6 +1,7 @@
 package test
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -12,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"os"
 	"testing"
 	"time"
@@ -71,6 +73,11 @@ func ThrowAwayCert(t *testing.T, clk clock.Clock) (string, *x509.Certificate) {
 	_, _ = rand.Read(nameBytes[:])
 	name := fmt.Sprintf("%s.example.com", hex.EncodeToString(nameBytes[:]))
 
+	var ipBytes [12]byte
+	_, _ = rand.Read(ipBytes[:])
+	ipPrefix, _ := hex.DecodeString("20010db8")
+	ip := net.IP(bytes.Join([][]byte{ipPrefix, ipBytes[:]}, nil))
+
 	var serialBytes [16]byte
 	_, _ = rand.Read(serialBytes[:])
 	serial := big.NewInt(0).SetBytes(serialBytes[:])
@@ -81,6 +88,7 @@ func ThrowAwayCert(t *testing.T, clk clock.Clock) (string, *x509.Certificate) {
 	template := &x509.Certificate{
 		SerialNumber:          serial,
 		DNSNames:              []string{name},
+		IPAddresses:           []net.IP{ip},
 		NotBefore:             clk.Now(),
 		NotAfter:              clk.Now().Add(6 * 24 * time.Hour),
 		IssuingCertificateURL: []string{"http://localhost:4001/acme/issuer-cert/1234"},
