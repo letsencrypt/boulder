@@ -604,9 +604,11 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 	// TODO(#8111): Consider reducing the volume of data in this map.
 	authzModelMap := make(map[identifier.ACMEIdentifier]authzModel, len(authzModels))
 	for _, am := range authzModels {
-		if req.Profile != "" && am.CertificateProfileName != &req.Profile {
+		if req.Profile != "" {
 			// Don't return authzs whose profile doesn't match that requested.
-			continue
+			if am.CertificateProfileName == nil || *am.CertificateProfileName != req.Profile {
+				continue
+			}
 		}
 		// If there is an existing authorization in the map, only replace it with
 		// one which has a "better" validation state (valid instead of pending).
@@ -798,9 +800,11 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 	// TODO(#8111): Consider reducing the volume of data in this map.
 	authzMap := make(map[identifier.ACMEIdentifier]authzModel, len(authzModels))
 	for _, am := range authzModels {
-		if req.Profile != "" && am.CertificateProfileName != &req.Profile {
+		if req.Profile != "" {
 			// Don't return authzs whose profile doesn't match that requested.
-			continue
+			if am.CertificateProfileName == nil || *am.CertificateProfileName != req.Profile {
+				continue
+			}
 		}
 		// If there is an existing authorization in the map only replace it with one
 		// which has a later expiry.
