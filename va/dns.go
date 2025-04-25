@@ -4,9 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base32"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/netip"
+	"strings"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -46,6 +49,44 @@ func availableAddresses(allAddrs []netip.Addr) (v4 []netip.Addr, v6 []netip.Addr
 		}
 	}
 	return
+}
+
+// validateDNSAccount01 handles the dns-account-01 challenge by calculating
+// the account-specific DNS query domain and expected digest, then calling
+// the common DNS validation logic.
+func (va *ValidationAuthorityImpl) validateDNSAccount01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string, accountURI string) ([]core.ValidationRecord, error) {
+	if ident.Type != identifier.TypeDNS {
+		return nil, berrors.MalformedError("Identifier type for DNS-ACCOUNT-01 challenge was not DNS")
+	}
+	if accountURI == "" {
+		va.log.Infof("DNS-ACCOUNT-01 validation for %q failed: missing accountURI", ident.Value)
+		return nil, berrors.InternalServerError("accountURI must be provided for dns-account-01")
+	}
+
+	// Calculate the DNS prefix label based on the account URI
+	sha256sum := sha256.Sum256([]byte(accountURI))
+	prefixBytes := sha256sum[0:10] // First 10 bytes
+	prefixLabel := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(prefixBytes)
+	prefixLabel = strings.ToLower(prefixLabel)
+
+	// Construct the full query domain specific to DNS-ACCOUNT-01
+	challengeSubdomain := fmt.Sprintf("_%s.%s.%s", prefixLabel, core.DNSPrefix, ident.Value)
+	va.log.Debugf("DNS-ACCOUNT-01: Querying TXT for %q (derived from account URI %q)", challengeSubdomain, accountURI)
+
+	// Call the common validation logic
+	records, err := va.validateDNS(ctx, ident, challengeSubdomain, keyAuthorization)
+	if err != nil {
+		// Check if the error returned by validateDNS is of the Unauthorized type
+		if errors.Is(err, berrors.Unauthorized) {
+			// Enrich any UnauthorizedError from validateDNS with the account URI
+			enrichedError := berrors.UnauthorizedError("%s (account: %s)", err.Error(), accountURI)
+			return nil, enrichedError
+		}
+		// For other error types, return as is
+		return nil, err
+	}
+
+	return records, nil
 }
 
 func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident identifier.ACMEIdentifier, keyAuthorization string) ([]core.ValidationRecord, error) {
