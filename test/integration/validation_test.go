@@ -52,8 +52,9 @@ func assertExpectedUserAgents(t *testing.T, got []string, checkType string) {
 	t.Helper()
 
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		// We only need 3 checks if the MPICFullResults feature-flag is not
-		// enabled.
+		// One User-Agent may be missing if the MPICFullResults feature-flag is
+		// not enabled. This will need to be modified to 2 if we have not
+		// removed this feature-flag by the time we get to 6+ perspectives.
 		//
 		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
 		// true.
@@ -61,7 +62,7 @@ func assertExpectedUserAgents(t *testing.T, got []string, checkType string) {
 		for _, ua := range expectedUserAgents {
 			if !slices.Contains(got, ua) {
 				if alreadySkippedOne {
-					t.Errorf("During %s, expected 3 or 4 User-Agents in %s (got %v)", checkType, expectedUserAgents, got)
+					t.Errorf("During %s, missing more than 1 User-Agent in %s (got %v)", checkType, expectedUserAgents, got)
 				}
 				alreadySkippedOne = true
 			}
