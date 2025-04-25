@@ -297,14 +297,8 @@ func TestMPICHTTP01(t *testing.T) {
 		}
 	}
 	assertUserAgentsLength(t, validationUAs, "HTTP-01 validation")
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		// We only need 3 checks if the MPICFullResults feature-flag is not
-		// enabled.
-		//
-		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
-		// true.
-		assertExpectedUserAgents(t, validationUAs, "HTTP-01 validation")
-	}
+	assertExpectedUserAgents(t, validationUAs, "HTTP-01 validation")
+
 	dnsEvents, err := testSrvClient.DNSRequestHistory(domain)
 	if err != nil {
 		t.Fatal(err)
