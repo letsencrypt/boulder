@@ -91,8 +91,8 @@ type mockSAPaused struct {
 
 func (msa *mockSAPaused) PauseIdentifiers(ctx context.Context, in *sapb.PauseRequest, _ ...grpc.CallOption) (*sapb.PauseIdentifiersResponse, error) {
 	msa.mu.Lock()
+	defer msa.mu.Unlock()
 	msa.calls = append(msa.calls, in)
-	msa.mu.Unlock()
 	return &sapb.PauseIdentifiersResponse{Paused: int64(len(in.Identifiers))}, nil
 }
 
