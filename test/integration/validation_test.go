@@ -9,7 +9,6 @@ import (
 	"database/sql"
 	"os"
 	"slices"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -31,7 +30,8 @@ func collectUserAgentsFromDNSRequests(requests []challtestsrvclient.DNSRequest) 
 }
 
 func assertUserAgentsLength(t *testing.T, got []string, checkType string) {
-	sort.Strings(got)
+	t.Helper()
+
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		// We only need 3 checks if the MPICFullResults feature-flag is not
 		// enabled.
@@ -39,17 +39,18 @@ func assertUserAgentsLength(t *testing.T, got []string, checkType string) {
 		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
 		// true.
 		if len(got) != 4 && len(got) != 3 {
-			t.Errorf("During %s, expected 3 or 4 User-Agent checks, got %d", checkType, len(got))
+			t.Errorf("During %s, expected 3 or 4 User-Agents, got %d", checkType, len(got))
 		}
 	} else {
 		if len(got) != 4 {
-			t.Errorf("During %s, expected 4 User-Agent checks, got %d", checkType, len(got))
+			t.Errorf("During %s, expected 4 User-Agents, got %d", checkType, len(got))
 		}
 	}
 }
 
 func assertExpectedUserAgents(t *testing.T, got []string, checkType string) {
-	sort.Strings(got)
+	t.Helper()
+
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		// We only need 3 checks if the MPICFullResults feature-flag is not
 		// enabled.
@@ -60,7 +61,7 @@ func assertExpectedUserAgents(t *testing.T, got []string, checkType string) {
 		for _, ua := range expectedUserAgents {
 			if !slices.Contains(got, ua) {
 				if alreadySkippedOne {
-					t.Errorf("During %s, missing 3 or 4 expected User-Agents in %s (got %v)", checkType, expectedUserAgents, got)
+					t.Errorf("During %s, expected 3 or 4 User-Agents in %s (got %v)", checkType, expectedUserAgents, got)
 				}
 				alreadySkippedOne = true
 			}
@@ -68,7 +69,7 @@ func assertExpectedUserAgents(t *testing.T, got []string, checkType string) {
 	} else {
 		for _, ua := range expectedUserAgents {
 			if !slices.Contains(got, ua) {
-				t.Errorf("During %s, missing expected User-Agent %s in %s (got %v)", checkType, ua, expectedUserAgents, got)
+				t.Errorf("During %s, expected User-Agent %q in %s (got %v)", checkType, ua, expectedUserAgents, got)
 			}
 		}
 	}
