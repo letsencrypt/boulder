@@ -60,7 +60,7 @@ func assertExpectedUserAgents(t *testing.T, got []string, checkType string) {
 		for _, ua := range expectedUserAgents {
 			if !slices.Contains(got, ua) {
 				if alreadySkippedOne {
-					t.Errorf("During %s, missing 3 or 4 expected User-Agents in %s (got %s)", checkType, expectedUserAgents, got)
+					t.Errorf("During %s, missing 3 or 4 expected User-Agents in %s (got %v)", checkType, expectedUserAgents, got)
 				}
 				alreadySkippedOne = true
 			}
@@ -68,7 +68,7 @@ func assertExpectedUserAgents(t *testing.T, got []string, checkType string) {
 	} else {
 		for _, ua := range expectedUserAgents {
 			if !slices.Contains(got, ua) {
-				t.Errorf("During %s, unexpected User-Agent %q (got %v)", checkType, ua, got)
+				t.Errorf("During %s, missing expected User-Agent %s in %s (got %v)", checkType, ua, expectedUserAgents, got)
 			}
 		}
 	}
