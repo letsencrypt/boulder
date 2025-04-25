@@ -32,7 +32,7 @@ GRANT SELECT ON incidents TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON crlShards TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON revokedCertificates TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON replacementOrders TO 'sa'@'localhost';
-GRANT SELECT,INSERT,UPDATE,DROP ON overrides TO 'sa'@'localhost';
+GRANT SELECT,INSERT,UPDATE ON overrides TO 'sa'@'localhost';
 -- Tests need to be able to TRUNCATE this table, so DROP is necessary.
 GRANT SELECT,INSERT,UPDATE,DROP ON paused TO 'sa'@'localhost';
 

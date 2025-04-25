@@ -4586,6 +4586,7 @@ func (m *mockRLOStream) Send(ov *sapb.RateLimitOverride) error {
 
 func TestAddRateLimitOverrideInsertThenUpdate(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		// TODO(#8147): Remove this skip.
 		t.Skip("skipping, this overrides table must exist for this test to run")
 	}
 
@@ -4611,7 +4612,7 @@ func TestAddRateLimitOverrideInsertThenUpdate(t *testing.T) {
 	ov.Comment = "updated"
 	resp, err = sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov})
 	test.AssertNotError(t, err, "expected successful update, got error")
-	test.Assert(t, !resp.Inserted && resp.Enabled, fmt.Sprintf("expected (Inserted=false, Enabled=true) for update, got (%v,%v)", resp.Inserted, resp.Enabled))
+	test.Assert(t, !resp.Inserted && resp.Enabled, fmt.Sprintf("expected (Inserted=false, Enabled=true) for update, got (%v, %v)", resp.Inserted, resp.Enabled))
 
 	got, err := sa.GetRateLimitOverride(ctx, &sapb.GetRateLimitOverrideRequest{LimitEnum: 1, BucketKey: expectBucketKey})
 	test.AssertNotError(t, err, "expected GetRateLimitOverride to succeed, got error")
@@ -4658,6 +4659,7 @@ func (m *mockRLORStream) Send(ov *sapb.RateLimitOverrideResponse) error {
 
 func TestDisableEnableRateLimitOverride(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		// TODO(#8147): Remove this skip.
 		t.Skip("skipping, this overrides table must exist for this test to run")
 	}
 
@@ -4697,6 +4699,7 @@ func TestDisableEnableRateLimitOverride(t *testing.T) {
 
 func TestSearchRateLimitOverrides(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		// TODO(#8147): Remove this skip.
 		t.Skip("skipping, this overrides table must exist for this test to run")
 	}
 
@@ -4880,6 +4883,7 @@ func TestSearchRateLimitOverrides(t *testing.T) {
 
 func TestGetEnabledRateLimitOverrides(t *testing.T) {
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		// TODO(#8147): Remove this skip.
 		t.Skip("skipping, this overrides table must exist for this test to run")
 	}
 
