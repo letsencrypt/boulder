@@ -377,7 +377,7 @@ func TestPerformValidationWithMismatchedRemoteVARIRs(t *testing.T) {
 func TestValidateMalformedChallenge(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
-	_, err := va.validateChallenge(ctx, identifier.NewDNS("example.com"), "fake-type-01", expectedToken, expectedKeyAuthorization)
+	_, err := va.validateChallenge(ctx, identifier.NewDNS("example.com"), "fake-type-01", expectedToken, expectedKeyAuthorization, testAccountURL)
 
 	prob := detailedError(err)
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
