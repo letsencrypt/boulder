@@ -407,12 +407,15 @@ func (va *ValidationAuthorityImpl) isPrimaryVA() bool {
 
 // validateChallenge simply passes through to the appropriate validation method
 // depending on the challenge type.
+// The accountURI parameter is required for dns-account-01 challenges to
+// calculate the account-specific label.
 func (va *ValidationAuthorityImpl) validateChallenge(
 	ctx context.Context,
 	ident identifier.ACMEIdentifier,
 	kind core.AcmeChallenge,
 	token string,
 	keyAuthorization string,
+	accountURI string,
 ) ([]core.ValidationRecord, error) {
 	switch kind {
 	case core.ChallengeTypeHTTP01:
@@ -423,6 +426,12 @@ func (va *ValidationAuthorityImpl) validateChallenge(
 		return va.validateDNS01(ctx, ident, keyAuthorization)
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, ident, keyAuthorization)
+	case core.ChallengeTypeDNSAccount01:
+		if features.Get().DNSAccount01Enabled {
+			// Strip a (potential) leading wildcard token from the identifier.
+			ident.Value = strings.TrimPrefix(ident.Value, "*.")
+			return va.validateDNSAccount01(ctx, ident, keyAuthorization, accountURI)
+		}
 	}
 	return nil, berrors.MalformedError("invalid challenge type %s", kind)
 }
@@ -716,6 +725,7 @@ func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformV
 		chall.Type,
 		chall.Token,
 		req.ExpectedKeyAuthorization,
+		req.AccountURI,
 	)
 
 	// Stop the clock for local validation latency.
