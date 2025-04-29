@@ -11,8 +11,8 @@ ENV GOBIN /usr/local/bin/
 RUN curl "https://dl.google.com/go/go${GO_VERSION}.$(echo $TARGETPLATFORM | sed 's|\/|-|').tar.gz" |\
     tar -C /usr/local -xz
 RUN go install github.com/rubenv/sql-migrate/sql-migrate@v1.1.2
-RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.1
-RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@bb9882e6ae58f0a80a6390b50a5ec3bd63e46a3c
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.5
+RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.0
 RUN go install honnef.co/go/tools/cmd/staticcheck@2025.1
 RUN go install github.com/jsha/minica@v1.1.0
