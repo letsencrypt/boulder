@@ -39,14 +39,19 @@ const (
 	LogListURL = "https://www.gstatic.com/ct/log_list/v3/log_list.json"
 	// LogListSignatureURL has the URL for the signature over Google Chrome's log list.
 	LogListSignatureURL = "https://www.gstatic.com/ct/log_list/v3/log_list.sig"
-	// AllLogListURL has the URL for the list of all known logs (which isn't signed).
+	// AllLogListURL has the URL for the list of all known logs.
 	AllLogListURL = "https://www.gstatic.com/ct/log_list/v3/all_logs_list.json"
+	// AllLogListSignatureURL has the URL for the signature over the list of all known logs.
+	AllLogListSignatureURL = "https://www.gstatic.com/ct/log_list/v3/all_logs_list.sig"
 )
 
 // Manually mapped from https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 
 // LogList holds a collection of CT logs, grouped by operator.
 type LogList struct {
+	// IsAllLogs is set to true if the list contains all known logs, not
+	// only usable ones.
+	IsAllLogs bool `json:"is_all_logs,omitempty"`
 	// Version is the version of the log list.
 	Version string `json:"version,omitempty"`
 	// LogListTimestamp is the time at which the log list was published.
@@ -63,11 +68,14 @@ type Operator struct {
 	// Email lists the email addresses that can be used to contact this log
 	// operator.
 	Email []string `json:"email"`
-	// Logs is a list of CT logs run by this operator.
+	// Logs is a list of RFC 6962 CT logs run by this operator.
 	Logs []*Log `json:"logs"`
+	// TiledLogs is a list of Static CT API CT logs run by this operator.
+	TiledLogs []*TiledLog `json:"tiled_logs"`
 }
 
-// Log describes a single CT log.
+// Log describes a single RFC 6962 CT log. It is nearly the same as the TiledLog struct,
+// but has a single URL field instead of SubmissionURL and MonitoringURL fields.
 type Log struct {
 	// Description is a human-readable string that describes the log.
 	Description string `json:"description,omitempty"`
@@ -77,6 +85,37 @@ type Log struct {
 	Key []byte `json:"key"`
 	// URL is the address of the HTTPS API.
 	URL string `json:"url"`
+	// DNS is the address of the DNS API.
+	DNS string `json:"dns,omitempty"`
+	// MMD is the Maximum Merge Delay, in seconds. All submitted
+	// certificates must be incorporated into the log within this time.
+	MMD int32 `json:"mmd"`
+	// PreviousOperators is a list of previous operators and the timestamp
+	// of when they stopped running the log.
+	PreviousOperators []*PreviousOperator `json:"previous_operators,omitempty"`
+	// State is the current state of the log, from the perspective of the
+	// log list distributor.
+	State *LogStates `json:"state,omitempty"`
+	// TemporalInterval, if set, indicates that this log only accepts
+	// certificates with a NotAfter date in this time range.
+	TemporalInterval *TemporalInterval `json:"temporal_interval,omitempty"`
+	// Type indicates the purpose of this log, e.g. "test" or "prod".
+	Type string `json:"log_type,omitempty"`
+}
+
+// TiledLog describes a Static CT API log. It is nearly the same as the Log struct,
+// but has both SubmissionURL and MonitoringURL fields instead of a single URL field.
+type TiledLog struct {
+	// Description is a human-readable string that describes the log.
+	Description string `json:"description,omitempty"`
+	// LogID is the SHA-256 hash of the log's public key.
+	LogID []byte `json:"log_id"`
+	// Key is the public key with which signatures can be verified.
+	Key []byte `json:"key"`
+	// SubmissionURL
+	SubmissionURL string `json:"submission_url"`
+	// MonitoringURL
+	MonitoringURL string `json:"monitoring_url"`
 	// DNS is the address of the DNS API.
 	DNS string `json:"dns,omitempty"`
 	// MMD is the Maximum Merge Delay, in seconds. All submitted

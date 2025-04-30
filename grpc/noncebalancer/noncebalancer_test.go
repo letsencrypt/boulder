@@ -115,19 +115,12 @@ func setupTest(noSubConns bool) (*Balancer, balancer.Picker, []*subConn) {
 	return b, p, subConns
 }
 
-// subConn implements the balancer.SubConn interface.
+// subConn is a test mock which implements the balancer.SubConn interface.
 type subConn struct {
+	balancer.SubConn
 	addrs []resolver.Address
 }
 
 func (s *subConn) UpdateAddresses(addrs []resolver.Address) {
 	s.addrs = addrs
 }
-
-func (s *subConn) Connect() {}
-
-func (s *subConn) GetOrBuildProducer(balancer.ProducerBuilder) (p balancer.Producer, close func()) {
-	panic("unimplemented")
-}
-
-func (s *subConn) Shutdown() {}

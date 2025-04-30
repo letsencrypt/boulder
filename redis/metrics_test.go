@@ -40,16 +40,17 @@ func TestMetrics(t *testing.T) {
 	results := make(map[string]bool)
 	for range expectedMetrics {
 		metric := <-outChan
+		t.Log(metric.Desc().String())
 		results[metric.Desc().String()] = true
 	}
 
 	expected := strings.Split(
-		`Desc{fqName: "redis_connection_pool_lookups", help: "Number of lookups for a connection in the pool, labeled by hit/miss", constLabels: {foo="bar"}, variableLabels: [{result <nil>}]}
-Desc{fqName: "redis_connection_pool_lookups", help: "Number of lookups for a connection in the pool, labeled by hit/miss", constLabels: {foo="bar"}, variableLabels: [{result <nil>}]}
-Desc{fqName: "redis_connection_pool_lookups", help: "Number of lookups for a connection in the pool, labeled by hit/miss", constLabels: {foo="bar"}, variableLabels: [{result <nil>}]}
-Desc{fqName: "redis_connection_pool_total_conns", help: "Number of total connections in the pool.", constLabels: {foo="bar"}, variableLabels: []}
-Desc{fqName: "redis_connection_pool_idle_conns", help: "Number of idle connections in the pool.", constLabels: {foo="bar"}, variableLabels: []}
-Desc{fqName: "redis_connection_pool_stale_conns", help: "Number of stale connections removed from the pool.", constLabels: {foo="bar"}, variableLabels: []}`,
+		`Desc{fqName: "redis_connection_pool_lookups", help: "Number of lookups for a connection in the pool, labeled by hit/miss", constLabels: {foo="bar"}, variableLabels: {result}}
+Desc{fqName: "redis_connection_pool_lookups", help: "Number of lookups for a connection in the pool, labeled by hit/miss", constLabels: {foo="bar"}, variableLabels: {result}}
+Desc{fqName: "redis_connection_pool_lookups", help: "Number of lookups for a connection in the pool, labeled by hit/miss", constLabels: {foo="bar"}, variableLabels: {result}}
+Desc{fqName: "redis_connection_pool_total_conns", help: "Number of total connections in the pool.", constLabels: {foo="bar"}, variableLabels: {}}
+Desc{fqName: "redis_connection_pool_idle_conns", help: "Number of idle connections in the pool.", constLabels: {foo="bar"}, variableLabels: {}}
+Desc{fqName: "redis_connection_pool_stale_conns", help: "Number of stale connections removed from the pool.", constLabels: {foo="bar"}, variableLabels: {}}`,
 		"\n")
 
 	for _, e := range expected {

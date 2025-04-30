@@ -28,6 +28,10 @@ type LogRoots map[string]*x509util.PEMCertPool
 // root-acceptance and Log-status conditions.
 func (ll *LogList) Compatible(cert *x509.Certificate, certRoot *x509.Certificate, roots LogRoots) LogList {
 	active := ll.TemporallyCompatible(cert)
+	// Do not check root compatbility if roots are not being provided.
+	if certRoot == nil {
+		return active
+	}
 	return active.RootCompatible(certRoot, roots)
 }
 
