@@ -327,12 +327,8 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	})
 
 	ctp := ctpolicy.New(&mocks.PublisherClient{}, loglist.List{
-		"OperA": {
-			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
-		},
-		"OperB": {
-			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
-		},
+		{Name: "LogA1", Operator: "OperA", Url: "UrlA1", Key: []byte("KeyA1")},
+		{Name: "LogB1", Operator: "OperB", Url: "UrlB1", Key: []byte("KeyB1")},
 	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
 	rlSource := ratelimits.NewInmemSource()
@@ -3179,12 +3175,8 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	defer cleanup()
 
 	ra.ctpolicy = ctpolicy.New(&timeoutPub{}, loglist.List{
-		"OperA": {
-			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
-		},
-		"OperB": {
-			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
-		},
+		{Name: "LogA1", Operator: "OperA", Url: "UrlA1", Key: []byte("KeyA1")},
+		{Name: "LogB1", Operator: "OperB", Url: "UrlB1", Key: []byte("KeyB1")},
 	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
 	_, cert := test.ThrowAwayCert(t, clock.NewFake())
