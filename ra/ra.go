@@ -1631,9 +1631,8 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		chall, _ := bgrpc.ChallengeToPB(authz.Challenges[challIndex])
 		checkProb, checkRecords, err := ra.checkDCVAndCAA(
 			vaCtx,
-			// TODO(#7311): Use Identifiers instead of DnsNames.
 			&vapb.PerformValidationRequest{
-				DnsName:                  authz.Identifier.Value,
+				Identifier:               authz.Identifier.ToProto(),
 				Challenge:                chall,
 				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,

@@ -178,7 +178,7 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req 
 		return dcvRes, nil
 	}
 	caaResp, err := dva.DoCAA(ctx, &vapb.IsCAAValidRequest{
-		Domain:           req.DnsName,
+		Domain:           req.Identifier.Value,
 		ValidationMethod: req.Challenge.Type,
 		AccountURIID:     req.Authz.RegID,
 		AuthzID:          req.Authz.Id,
