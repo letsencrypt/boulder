@@ -37,9 +37,9 @@ func TestSubset(t *testing.T) {
 	test.AssertEquals(t, len(actual), 0)
 
 	expected := List{
+		Log{Name: "Log B1"},
 		Log{Name: "Log A1"},
 		Log{Name: "Log A2"},
-		Log{Name: "Log B1"},
 	}
 	actual, err = input.subset([]string{"Log B1", "Log A1", "Log A2"})
 	test.AssertNotError(t, err, "normal usage should not error")

@@ -8,7 +8,6 @@ import (
 	"math/rand/v2"
 	"os"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/google/certificate-transparency-go/loglist3"
@@ -153,18 +152,20 @@ func (ll List) SubsetForPurpose(names []string, p purpose) (List, error) {
 // not found.
 func (ll List) subset(names []string) (List, error) {
 	res := make(List, 0)
-	missing := slices.Clone(names)
-	for _, log := range ll {
-		if !slices.Contains(names, log.Name) {
-			continue
+	for _, name := range names {
+		found := false
+		for _, log := range ll {
+			if log.Name == name {
+				if found {
+					return nil, fmt.Errorf("found multiple logs matching name %q", name)
+				}
+				found = true
+				res = append(res, log)
+			}
 		}
-
-		res = append(res, log)
-		missing = slices.DeleteFunc(missing, func(name string) bool { return name == log.Name })
-	}
-
-	if len(missing) != 0 {
-		return nil, fmt.Errorf("failed to find logs matching name(s): %s", strings.Join(missing, ", "))
+		if !found {
+			return nil, fmt.Errorf("no log found matching name %q", name)
+		}
 	}
 	return res, nil
 }
