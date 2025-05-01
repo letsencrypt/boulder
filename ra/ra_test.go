@@ -178,7 +178,7 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req 
 		return dcvRes, nil
 	}
 	caaResp, err := dva.DoCAA(ctx, &vapb.IsCAAValidRequest{
-		Domain:           req.Identifier.Value,
+		Identifier:       req.Identifier,
 		ValidationMethod: req.Challenge.Type,
 		AccountURIID:     req.Authz.RegID,
 		AuthzID:          req.Authz.Id,
@@ -1033,7 +1033,7 @@ func (cr *caaRecorder) IsCAAValid(
 ) (*vapb.IsCAAValidResponse, error) {
 	cr.Lock()
 	defer cr.Unlock()
-	cr.names[in.Domain] = true
+	cr.names[in.Identifier.Value] = true
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
@@ -1044,7 +1044,7 @@ func (cr *caaRecorder) DoCAA(
 ) (*vapb.IsCAAValidResponse, error) {
 	cr.Lock()
 	defer cr.Unlock()
-	cr.names[in.Domain] = true
+	cr.names[in.Identifier.Value] = true
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
@@ -1225,7 +1225,7 @@ func (cf *caaFailer) IsCAAValid(
 	opts ...grpc.CallOption,
 ) (*vapb.IsCAAValidResponse, error) {
 	cvrpb := &vapb.IsCAAValidResponse{}
-	switch in.Domain {
+	switch in.Identifier.Value {
 	case "a.com":
 		cvrpb.Problem = &corepb.ProblemDetails{
 			Detail: "CAA invalid for a.com",
@@ -1246,7 +1246,7 @@ func (cf *caaFailer) DoCAA(
 	opts ...grpc.CallOption,
 ) (*vapb.IsCAAValidResponse, error) {
 	cvrpb := &vapb.IsCAAValidResponse{}
-	switch in.Domain {
+	switch in.Identifier.Value {
 	case "a.com":
 		cvrpb.Problem = &corepb.ProblemDetails{
 			Detail: "CAA invalid for a.com",
