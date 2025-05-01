@@ -3725,7 +3725,7 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 		RegID: 2,
 	})
 	test.AssertError(t, err, "should have failed with wrong RegID")
-	test.AssertContains(t, err.Error(), "requester does not control all identifiers")
+	test.AssertContains(t, err.Error(), "requester does not control all names")
 
 	// Revoking when the account does have valid authzs for the name should succeed,
 	// but override the revocation reason to cessationOfOperation.
