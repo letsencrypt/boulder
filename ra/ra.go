@@ -827,8 +827,6 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 // rechecked because their associated authorizations are sufficiently old and
 // performs the CAA checks required for each. If any of the rechecks fail an
 // error is returned.
-//
-// TODO(#7311): Handle IP address identifiers.
 func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*core.Authorization) error {
 	ra.recheckCAACounter.Add(float64(len(authzs)))
 
