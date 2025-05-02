@@ -36,6 +36,9 @@
 				}
 			}
 		},
+		"features": {
+			"DNSAccount01Enabled": true
+		},
 		"remoteVAs": [
 			{
 				"serverAddress": "rva1.service.consul:9397",
