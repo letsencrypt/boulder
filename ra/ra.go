@@ -2322,6 +2322,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			"Order cannot contain more than %d identifiers", profile.maxNames)
 	}
 
+	for _, ident := range idents {
+		if !slices.Contains(profile.identifierTypes, ident.Type) {
+			return nil, berrors.RejectedIdentifierError("Profile does not permit %s type identifiers", ident.Type)
+		}
+	}
+
 	// Validate that our policy allows issuing for each of the identifiers in
 	// the order
 	err = ra.PA.WillingToIssue(idents)
@@ -2332,12 +2338,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	err = wildcardOverlap(idents)
 	if err != nil {
 		return nil, err
-	}
-
-	for _, ident := range idents {
-		if !slices.Contains(profile.identifierTypes, ident.Type) {
-			return nil, berrors.RejectedIdentifierError("Profile does not permit %s type identifiers", ident.Type)
-		}
 	}
 
 	// See if there is an existing unexpired pending (or ready) order that can be reused
