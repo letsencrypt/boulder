@@ -57,7 +57,7 @@
 				"identifierTypes": [
 					"dns",
 					"ip"
-				],
+				]
 			}
 		},
 		"defaultProfileName": "legacy",
