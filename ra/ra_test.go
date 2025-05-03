@@ -347,6 +347,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 			validAuthzLifetime:   300 * 24 * time.Hour,
 			orderLifetime:        7 * 24 * time.Hour,
 			maxNames:             100,
+			identifierTypes:      []identifier.IdentifierType{identifier.TypeDNS},
 		}},
 	}
 
@@ -1727,12 +1728,14 @@ func TestNewOrder_ValidationProfiles(t *testing.T) {
 				validAuthzLifetime:   1 * 24 * time.Hour,
 				orderLifetime:        1 * 24 * time.Hour,
 				maxNames:             10,
+				identifierTypes:      []identifier.IdentifierType{identifier.TypeDNS},
 			},
 			"two": {
 				pendingAuthzLifetime: 2 * 24 * time.Hour,
 				validAuthzLifetime:   2 * 24 * time.Hour,
 				orderLifetime:        2 * 24 * time.Hour,
 				maxNames:             10,
+				identifierTypes:      []identifier.IdentifierType{identifier.TypeDNS},
 			},
 		},
 	}
@@ -1826,6 +1829,7 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.profile.maxNames = 1
+			tc.profile.identifierTypes = []identifier.IdentifierType{identifier.TypeDNS}
 			ra.profiles.byName = map[string]*validationProfile{
 				"test": &tc.profile,
 			}
