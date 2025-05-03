@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -17,6 +18,7 @@ import (
 	"math"
 	"math/big"
 	mrand "math/rand/v2"
+	"net/netip"
 	"regexp"
 	"strconv"
 	"strings"
@@ -74,6 +76,23 @@ func randomDomain() string {
 		panic(err)
 	}
 	return fmt.Sprintf("%x.example.com", bytes[:])
+}
+
+// randomIPv6 creates a random IPv6 netip.Addr for testing.
+//
+// panics if crypto/rand.Rand.Read or netip.AddrFromSlice fails.
+func randomIPv6() netip.Addr {
+	var ipBytes [12]byte
+	_, err := rand.Read(ipBytes[:])
+	if err != nil {
+		panic(err)
+	}
+	ipPrefix, _ := hex.DecodeString("20010db8")
+	ip, ok := netip.AddrFromSlice(bytes.Join([][]byte{ipPrefix, ipBytes[:]}, nil))
+	if !ok {
+		panic("Couldn't parse random IP to netip.Addr")
+	}
+	return ip
 }
 
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, ident identifier.ACMEIdentifier, exp time.Time) *corepb.Authorization {
@@ -1844,6 +1863,83 @@ func TestNewOrder_ProfileSelectionAllowList(t *testing.T) {
 			if tc.expectErrContains != "" {
 				test.AssertErrorIs(t, err, berrors.Unauthorized)
 				test.AssertContains(t, err.Error(), tc.expectErrContains)
+			} else {
+				test.AssertNotError(t, err, "NewOrder failed")
+			}
+		})
+	}
+}
+
+func TestNewOrder_ProfileIdentifierTypes(t *testing.T) {
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	testCases := []struct {
+		name       string
+		identTypes []identifier.IdentifierType
+		idents     []*corepb.Identifier
+		expectErr  string
+	}{
+		{
+			name:       "Permit DNS, provide DNS names",
+			identTypes: []identifier.IdentifierType{identifier.TypeDNS},
+			idents:     []*corepb.Identifier{identifier.NewDNS(randomDomain()).ToProto(), identifier.NewDNS(randomDomain()).ToProto()},
+		},
+		{
+			name:       "Permit IP, provide IPs",
+			identTypes: []identifier.IdentifierType{identifier.TypeIP},
+			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto(), identifier.NewIP(randomIPv6()).ToProto()},
+		},
+		{
+			name:       "Permit DNS & IP, provide DNS & IP",
+			identTypes: []identifier.IdentifierType{identifier.TypeDNS, identifier.TypeIP},
+			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto(), identifier.NewDNS(randomDomain()).ToProto()},
+		},
+		{
+			name:       "Permit DNS, provide IP",
+			identTypes: []identifier.IdentifierType{identifier.TypeDNS},
+			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto()},
+			expectErr:  "Profile does not permit ip type identifiers",
+		},
+		{
+			name:       "Permit DNS, provide DNS & IP",
+			identTypes: []identifier.IdentifierType{identifier.TypeDNS},
+			idents:     []*corepb.Identifier{identifier.NewDNS(randomDomain()).ToProto(), identifier.NewIP(randomIPv6()).ToProto()},
+			expectErr:  "Profile does not permit ip type identifiers",
+		},
+		{
+			name:       "Permit IP, provide DNS",
+			identTypes: []identifier.IdentifierType{identifier.TypeIP},
+			idents:     []*corepb.Identifier{identifier.NewDNS(randomDomain()).ToProto()},
+			expectErr:  "Profile does not permit dns type identifiers",
+		},
+		{
+			name:       "Permit IP, provide DNS & IP",
+			identTypes: []identifier.IdentifierType{identifier.TypeIP},
+			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto(), identifier.NewDNS(randomDomain()).ToProto()},
+			expectErr:  "Profile does not permit dns type identifiers",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var profile validationProfile
+			profile.maxNames = 2
+			profile.identifierTypes = tc.identTypes
+			ra.profiles.byName = map[string]*validationProfile{
+				"test": &profile,
+			}
+
+			orderReq := &rapb.NewOrderRequest{
+				RegistrationID:         Registration.Id,
+				Identifiers:            tc.idents,
+				CertificateProfileName: "test",
+			}
+			_, err := ra.NewOrder(context.Background(), orderReq)
+
+			if tc.expectErr != "" {
+				test.AssertErrorIs(t, err, berrors.RejectedIdentifier)
+				test.AssertContains(t, err.Error(), tc.expectErr)
 			} else {
 				test.AssertNotError(t, err, "NewOrder failed")
 			}
