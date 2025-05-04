@@ -182,7 +182,7 @@ func (ll List) forPurpose(p purpose, allowedTypes []string) (List, error) {
 	operators := make(map[string]struct{})
 	for _, log := range ll {
 		// For the Issuance purpose, if the log has a non-standard type,
-		// require that log type to be explicitally allowed instead of
+		// require that log type to be explicitly allowed instead of
 		// checking the log state
 		if p == Issuance && len(log.Type) > 0 {
 			if !slices.Contains(allowedTypes, log.Type) {
