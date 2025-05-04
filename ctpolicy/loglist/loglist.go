@@ -48,6 +48,7 @@ type Log struct {
 	EndExclusive   time.Time
 	State          loglist3.LogStatus
 	Tiled          bool
+	Type           string
 }
 
 // usableForPurpose returns true if the log state is acceptable for the given
@@ -95,6 +96,7 @@ func newHelper(file []byte) (List, error) {
 				Url:      log.URL,
 				State:    log.State.LogStatus(),
 				Tiled:    false,
+				Type:     log.Type,
 			}
 
 			if log.TemporalInterval != nil {
@@ -114,6 +116,7 @@ func newHelper(file []byte) (List, error) {
 				Url:      log.SubmissionURL,
 				State:    log.State.LogStatus(),
 				Tiled:    true,
+				Type:     log.Type,
 			}
 
 			if log.TemporalInterval != nil {
@@ -133,13 +136,13 @@ func newHelper(file []byte) (List, error) {
 // given purpose. It returns an error if any of the given names are not found
 // in the starting list, or if the resulting list is too small to satisfy the
 // Chrome "two operators" policy.
-func (ll List) SubsetForPurpose(names []string, p purpose) (List, error) {
+func (ll List) SubsetForPurpose(names []string, p purpose, allowedTypes []string) (List, error) {
 	sub, err := ll.subset(names)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := sub.forPurpose(p)
+	res, err := sub.forPurpose(p, allowedTypes)
 	if err != nil {
 		return nil, err
 	}
@@ -174,14 +177,20 @@ func (ll List) subset(names []string) (List, error) {
 // acceptable for the given purpose. It returns an error if the purpose is
 // Issuance or Validation and the set of remaining logs is too small to satisfy
 // the Google "two operators" log policy.
-func (ll List) forPurpose(p purpose) (List, error) {
+func (ll List) forPurpose(p purpose, allowedTypes []string) (List, error) {
 	res := make(List, 0)
 	operators := make(map[string]struct{})
 	for _, log := range ll {
 		if !usableForPurpose(log.State, p) {
 			continue
 		}
-
+		// For the Issuance purpose, if the log has a non-standard type,
+		// require it to be explicitally allowed
+		if p == Issuance && len(log.Type) > 0 {
+			if !slices.Contains(allowedTypes, log.Type) {
+				continue
+			}
+		}
 		res = append(res, log)
 		operators[log.Operator] = struct{}{}
 	}
