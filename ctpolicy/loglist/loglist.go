@@ -185,7 +185,7 @@ func (ll List) forPurpose(p purpose, allowedTypes []string) (List, error) {
 			continue
 		}
 		// For the Issuance purpose, if the log has a non-standard type,
-		// require it to be explicitally allowed
+		// require it to be explicitly allowed
 		if p == Issuance && len(log.Type) > 0 {
 			if !slices.Contains(allowedTypes, log.Type) {
 				continue
