@@ -1274,23 +1274,22 @@ func (ssa *SQLStorageAuthorityRO) GetRateLimitOverride(ctx context.Context, req 
 		return nil, errIncompleteRequest
 	}
 
-	var row overrideModel
-	err := ssa.dbReadOnlyMap.SelectOne(ctx, &row,
-		`SELECT * FROM overrides
-		  WHERE limitEnum = ? AND bucketKey = ? LIMIT 1`,
-		req.LimitEnum, req.BucketKey,
-	)
+	obj, err := ssa.dbReadOnlyMap.Get(ctx, overrideModel{}, req.LimitEnum, req.BucketKey)
 	if db.IsNoRows(err) {
-		return nil, berrors.NotFoundError("override not found")
+		return nil, berrors.NotFoundError(
+			"no rate limit override found for limit %d and bucket key %s",
+			req.LimitEnum,
+			req.BucketKey,
+		)
 	}
 	if err != nil {
 		return nil, err
 	}
+	row := obj.(*overrideModel)
 
 	return &sapb.RateLimitOverrideResponse{
 		Override:  newPBFromOverrideModel(row),
 		Enabled:   row.Enabled,
-		CreatedAt: timestamppb.New(row.CreatedAt),
 		UpdatedAt: timestamppb.New(row.UpdatedAt),
 	}, nil
 }
@@ -1310,78 +1309,6 @@ func (ssa *SQLStorageAuthorityRO) GetEnabledRateLimitOverrides(_ *emptypb.Empty,
 	}
 
 	return rows.ForEach(func(m *overrideModel) error {
-		return stream.Send(newPBFromOverrideModel(*m))
-	})
-}
-
-// SearchRateLimitOverrides queries the overrides table for entries matching the
-// provided parameters and returns a stream of results. If no overrides match,
-// an empty stream is returned.
-//
-// Only the LimitEnums field is required. If Latest is provided, Earliest must
-// also be set. If Earliest is provided without Latest, Latest defaults to the
-// current time.
-//
-// When a time range is specified, overrides are returned if either their
-// createdAt or updatedAt timestamps fall within the range.
-func (ssa *SQLStorageAuthorityRO) SearchRateLimitOverrides(req *sapb.SearchRateLimitOverridesRequest, stream sapb.StorageAuthorityReadOnly_SearchRateLimitOverridesServer) error {
-	if core.IsAnyNilOrZero(req, req.LimitEnums) {
-		return errIncompleteRequest
-	}
-	if req.Earliest == nil && req.Latest != nil {
-		return errIncompleteRequest
-	}
-
-	where := fmt.Sprintf("WHERE limitEnum IN (%s)", db.QuestionMarks(len(req.LimitEnums)))
-
-	var params []any
-	for _, limit := range req.LimitEnums {
-		params = append(params, limit)
-	}
-
-	if req.BucketKeyContains != "" {
-		where += " AND LOWER(bucketKey) LIKE LOWER(?)"
-		params = append(params, "%"+req.BucketKeyContains+"%")
-	}
-	if req.CommentContains != "" {
-		where += " AND LOWER(comment) LIKE LOWER(?)"
-		params = append(params, "%"+req.CommentContains+"%")
-	}
-
-	if req.Earliest != nil {
-		earliest := req.Earliest.AsTime()
-		latest := ssa.clk.Now()
-		if req.Latest != nil {
-			latest = req.Latest.AsTime()
-		}
-		where += `
-        AND (
-            (createdAt >= ? AND createdAt <= ?)
-            OR
-            (updatedAt >= ? AND updatedAt <= ?)
-        )`
-		params = append(params,
-			earliest, latest,
-			earliest, latest,
-		)
-	}
-
-	selector, err := db.NewMappedSelector[overrideModel](ssa.dbReadOnlyMap)
-	if err != nil {
-		return fmt.Errorf("initializing selector: %w", err)
-	}
-
-	rows, err := selector.QueryContext(stream.Context(), where, params...)
-	if err != nil {
-		return fmt.Errorf("querying overrides: %w", err)
-	}
-
-	return rows.ForEach(func(m *overrideModel) error {
-		return stream.Send(&sapb.RateLimitOverrideResponse{
-			Override:  newPBFromOverrideModel(*m),
-			Enabled:   m.Enabled,
-			CreatedAt: timestamppb.New(m.CreatedAt),
-			UpdatedAt: timestamppb.New(m.UpdatedAt),
-		})
+		return stream.Send(newPBFromOverrideModel(m))
 	})
 }

@@ -1435,12 +1435,11 @@ type overrideModel struct {
 	PeriodNS  int64     `db:"periodNS"`
 	Count     int64     `db:"count"`
 	Burst     int64     `db:"burst"`
-	CreatedAt time.Time `db:"createdAt"`
 	UpdatedAt time.Time `db:"updatedAt"`
 	Enabled   bool      `db:"enabled"`
 }
 
-func newOverrideModelFromPB(pb *sapb.RateLimitOverride, createdAt, updatedAt time.Time, enabled bool) overrideModel {
+func overrideModelForPB(pb *sapb.RateLimitOverride, updatedAt time.Time, enabled bool) overrideModel {
 	return overrideModel{
 		LimitEnum: pb.LimitEnum,
 		BucketKey: pb.BucketKey,
@@ -1448,13 +1447,12 @@ func newOverrideModelFromPB(pb *sapb.RateLimitOverride, createdAt, updatedAt tim
 		PeriodNS:  pb.Period.AsDuration().Nanoseconds(),
 		Count:     pb.Count,
 		Burst:     pb.Burst,
-		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
 		Enabled:   enabled,
 	}
 }
 
-func newPBFromOverrideModel(m overrideModel) *sapb.RateLimitOverride {
+func newPBFromOverrideModel(m *overrideModel) *sapb.RateLimitOverride {
 	return &sapb.RateLimitOverride{
 		LimitEnum: m.LimitEnum,
 		BucketKey: m.BucketKey,

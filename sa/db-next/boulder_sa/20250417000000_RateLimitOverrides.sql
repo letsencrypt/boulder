@@ -8,7 +8,6 @@ CREATE TABLE overrides (
    `periodNS`  bigint(20) UNSIGNED NOT NULL,
    `count`     int UNSIGNED NOT NULL,
    `burst`     int UNSIGNED DEFAULT NULL,
-   `createdAt` datetime NOT NULL,
    `updatedAt` datetime NOT NULL,
    `enabled`   boolean NOT NULL DEFAULT false,
   UNIQUE KEY `limitEnum_bucketKey` (`limitEnum`, `bucketKey`),

@@ -4619,7 +4619,7 @@ func TestAddRateLimitOverrideInsertThenUpdate(t *testing.T) {
 	test.AssertEquals(t, got.Override.Comment, "updated")
 
 	// Disable
-	_, err = sa.DisableRateLimitOverride(ctx, &sapb.SetRateLimitOverrideRequest{LimitEnum: 1, BucketKey: expectBucketKey})
+	_, err = sa.DisableRateLimitOverride(ctx, &sapb.DisableRateLimitOverrideRequest{LimitEnum: 1, BucketKey: expectBucketKey})
 	test.AssertNotError(t, err, "expected DisableRateLimitOverride to succeed, got error")
 
 	// Update and check that it's still disabled.
@@ -4639,22 +4639,6 @@ func TestAddRateLimitOverrideInsertThenUpdate(t *testing.T) {
 	test.AssertEquals(t, got.Override.Period.AsDuration(), 2*time.Hour)
 	test.AssertEquals(t, got.Override.Count, int64(200))
 	test.AssertEquals(t, got.Override.Burst, int64(200))
-}
-
-type mockRLORStream struct {
-	grpc.ServerStream
-	sent []*sapb.RateLimitOverrideResponse
-	ctx  context.Context
-}
-
-func newMockRLORStream() *mockRLORStream {
-	return &mockRLORStream{ctx: ctx}
-}
-func (m *mockRLORStream) Context() context.Context { return m.ctx }
-func (m *mockRLORStream) RecvMsg(any) error        { return io.EOF }
-func (m *mockRLORStream) Send(ov *sapb.RateLimitOverrideResponse) error {
-	m.sent = append(m.sent, ov)
-	return nil
 }
 
 func TestDisableEnableRateLimitOverride(t *testing.T) {
@@ -4678,7 +4662,7 @@ func TestDisableEnableRateLimitOverride(t *testing.T) {
 
 	// Disable
 	_, err := sa.DisableRateLimitOverride(ctx,
-		&sapb.SetRateLimitOverrideRequest{LimitEnum: 2, BucketKey: expectBucketKey})
+		&sapb.DisableRateLimitOverrideRequest{LimitEnum: 2, BucketKey: expectBucketKey})
 	test.AssertNotError(t, err, "expected DisableRateLimitOverride to succeed, got error")
 
 	st, _ := sa.GetRateLimitOverride(ctx,
@@ -4688,197 +4672,13 @@ func TestDisableEnableRateLimitOverride(t *testing.T) {
 
 	// Enable
 	_, err = sa.EnableRateLimitOverride(ctx,
-		&sapb.SetRateLimitOverrideRequest{LimitEnum: 2, BucketKey: expectBucketKey})
+		&sapb.EnableRateLimitOverrideRequest{LimitEnum: 2, BucketKey: expectBucketKey})
 	test.AssertNotError(t, err, "expected EnableRateLimitOverride to succeed, got error")
 
 	st, _ = sa.GetRateLimitOverride(ctx,
 		&sapb.GetRateLimitOverrideRequest{LimitEnum: 2, BucketKey: expectBucketKey})
 	test.Assert(t, st.Enabled,
 		fmt.Sprintf("expected Enabled=true after enable, got Enabled=%v", st.Enabled))
-}
-
-func TestSearchRateLimitOverrides(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		// TODO(#8147): Remove this skip.
-		t.Skip("skipping, this overrides table must exist for this test to run")
-	}
-
-	sa, fc, cleanup := initSA(t)
-	defer cleanup()
-
-	fc.Set(time.Date(2023, 10, 2, 0, 0, 0, 0, time.UTC))
-	for i := range 3 {
-		ov := &sapb.RateLimitOverride{
-			LimitEnum: 3,
-			BucketKey: fmt.Sprintf("foo-%d", i),
-			Comment:   fmt.Sprintf("%d-bar", i),
-			Period:    durationpb.New(time.Minute),
-			Count:     10,
-			Burst:     10,
-		}
-		_, err := sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov})
-		test.AssertNotError(t, err, fmt.Sprintf("expected successful insert for foo-%d, got error", i))
-	}
-
-	fc.Set(time.Date(2024, 10, 2, 0, 0, 0, 0, time.UTC))
-	for i := range 3 {
-		ov := &sapb.RateLimitOverride{
-			LimitEnum: 3,
-			BucketKey: fmt.Sprintf("baz-%d", i),
-			Comment:   fmt.Sprintf("%d-qux", i),
-			Period:    durationpb.New(time.Minute),
-			Count:     10,
-			Burst:     10,
-		}
-		_, err := sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov})
-		test.AssertNotError(t, err, fmt.Sprintf("expected successful insert for baz-%d, got error", i))
-	}
-
-	t.Run("LimitEnums is 3 and BucketKey contains 'foo-0'", func(t *testing.T) {
-		// This should return 1 result, as there is only one override with
-		// "foo-0" in the bucket key. Verify that fields are set correctly.
-		stream := newMockRLORStream()
-		err := sa.SearchRateLimitOverrides(&sapb.SearchRateLimitOverridesRequest{
-			LimitEnums:        []int64{3},
-			BucketKeyContains: "foo-1",
-		}, stream)
-		test.AssertNotError(t, err, "expected search to succeed, got error")
-		test.AssertEquals(t, len(stream.sent), 1)
-		test.AssertEquals(t, stream.sent[0].Override.BucketKey, "foo-1")
-		test.AssertEquals(t, stream.sent[0].Override.Comment, "1-bar")
-		test.AssertEquals(t, stream.sent[0].Override.LimitEnum, int64(3))
-		test.AssertEquals(t, stream.sent[0].Override.Period.AsDuration(), time.Minute)
-		test.AssertEquals(t, stream.sent[0].Override.Count, int64(10))
-		test.AssertEquals(t, stream.sent[0].Override.Burst, int64(10))
-		test.AssertNotNil(t, stream.sent[0].CreatedAt, "expected CreatedAt to be set, got nil")
-		test.AssertNotNil(t, stream.sent[0].UpdatedAt, "expected UpdatedAt to be set, got nil")
-		test.Assert(t, stream.sent[0].Enabled,
-			fmt.Sprintf("expected Enabled=true, got Enabled=%v", stream.sent[0].Enabled))
-	})
-
-	expectBucketKeys := []string{"foo-0", "foo-1", "foo-2"}
-
-	t.Run("LimitEnums is 3 and BucketKey contains 'foo'", func(t *testing.T) {
-		stream := newMockRLORStream()
-		err := sa.SearchRateLimitOverrides(&sapb.SearchRateLimitOverridesRequest{
-			LimitEnums:        []int64{3},
-			BucketKeyContains: "foo",
-		}, stream)
-		test.AssertNotError(t, err, "expected search to succeed, got error")
-
-		var got []string
-		for _, ov := range stream.sent {
-			got = append(got, ov.Override.BucketKey)
-		}
-
-		for _, expect := range expectBucketKeys {
-			test.AssertSliceContains(t, got, expect)
-		}
-	})
-
-	t.Run("LimitEnums is 3 and Comment contains 'bar'", func(t *testing.T) {
-		stream := newMockRLORStream()
-		err := sa.SearchRateLimitOverrides(&sapb.SearchRateLimitOverridesRequest{
-			LimitEnums:      []int64{3},
-			CommentContains: "bar",
-		}, stream)
-		test.AssertNotError(t, err, "expected search to succeed, got error")
-
-		var got []string
-		for _, ov := range stream.sent {
-			got = append(got, ov.Override.Comment)
-		}
-
-		expectComments := []string{"0-bar", "1-bar", "2-bar"}
-		for _, expect := range expectComments {
-			test.AssertSliceContains(t, got, expect)
-		}
-	})
-
-	t.Run("LimitEnums is 3, BucketKey contains 'foo', and Comment contains 'bar'", func(t *testing.T) {
-		stream := newMockRLORStream()
-		err := sa.SearchRateLimitOverrides(&sapb.SearchRateLimitOverridesRequest{
-			LimitEnums:        []int64{3},
-			BucketKeyContains: "foo",
-			CommentContains:   "bar",
-		}, stream)
-		test.AssertNotError(t, err, "expected search to succeed, got error")
-
-		var keys []string
-		var comments []string
-		for _, ov := range stream.sent {
-			keys = append(keys, ov.Override.BucketKey)
-			comments = append(comments, ov.Override.Comment)
-		}
-
-		for _, expect := range expectBucketKeys {
-			test.AssertSliceContains(t, keys, expect)
-		}
-		for _, expect := range []string{"0-bar", "1-bar", "2-bar"} {
-			test.AssertSliceContains(t, comments, expect)
-		}
-	})
-
-	t.Run("LimitEnums is 3", func(t *testing.T) {
-		// This should return 6 results, as there are 3 overrides with "foo" in
-		// the bucket key and 3 with "bar" in the comment, all of which are
-		// LimitEnum 3.
-		stream := newMockRLORStream()
-		err := sa.SearchRateLimitOverrides(&sapb.SearchRateLimitOverridesRequest{
-			LimitEnums: []int64{3},
-		}, stream)
-		test.AssertNotError(t, err, "expected search to succeed, got error")
-		test.AssertEquals(t, len(stream.sent), 6)
-	})
-
-	t.Run("LimitEnums is 4, BucketKey contains 'foo', and Comment contains 'bar'", func(t *testing.T) {
-		// This should return 0 results, as there are no LimitEnum 4 overrides.
-		stream := newMockRLORStream()
-		err := sa.SearchRateLimitOverrides(&sapb.SearchRateLimitOverridesRequest{
-			LimitEnums: []int64{4},
-		}, stream)
-		test.AssertNotError(t, err, "expected search to succeed, got error")
-		test.AssertEquals(t, len(stream.sent), 0)
-	})
-
-	t.Run("LimitEnums is 3, BucketKey contains 'foo', and Comment contains 'qux'", func(t *testing.T) {
-		// This should return 0 results, as there are no overrides with "qux" in
-		// the comment AND "foo" in the bucket key.
-		stream := newMockRLORStream()
-		err := sa.SearchRateLimitOverrides(&sapb.SearchRateLimitOverridesRequest{
-			LimitEnums:        []int64{3},
-			BucketKeyContains: "foo",
-			CommentContains:   "qux",
-		}, stream)
-		test.AssertNotError(t, err, "expected search to succeed, got error")
-		test.AssertEquals(t, len(stream.sent), 0)
-	})
-
-	t.Run("Find all overrides between 2023-10-01 and 2024-10-01", func(t *testing.T) {
-		// This should return 3 results, as there are 3 overrides created
-		// between 2023-10-01 and 2024-10-01.
-		stream := newMockRLORStream()
-		err := sa.SearchRateLimitOverrides(&sapb.SearchRateLimitOverridesRequest{
-			LimitEnums: []int64{3},
-			Earliest:   timestamppb.New(time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC)),
-			Latest:     timestamppb.New(time.Date(2024, 10, 1, 0, 0, 0, 0, time.UTC)),
-		}, stream)
-		test.AssertNotError(t, err, "expected search to succeed, got error")
-		test.AssertEquals(t, len(stream.sent), 3)
-	})
-
-	t.Run("Find all overrides between 2023-10-01 and 2024-10-02", func(t *testing.T) {
-		// This should return 6 results, as there are 3 overrides created on
-		// 2023-10-02 and 3 created on 2024-10-02.
-		stream := newMockRLORStream()
-		err := sa.SearchRateLimitOverrides(&sapb.SearchRateLimitOverridesRequest{
-			LimitEnums: []int64{3},
-			Earliest:   timestamppb.New(time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC)),
-			Latest:     timestamppb.New(time.Date(2024, 10, 2, 0, 0, 0, 0, time.UTC)),
-		}, stream)
-		test.AssertNotError(t, err, "expected search to succeed, got error")
-		test.AssertEquals(t, len(stream.sent), 6)
-	})
 }
 
 func TestGetEnabledRateLimitOverrides(t *testing.T) {
@@ -4903,9 +4703,9 @@ func TestGetEnabledRateLimitOverrides(t *testing.T) {
 	test.AssertNotError(t, err, "expected successful insert of ov1, got error")
 	_, err = sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov2})
 	test.AssertNotError(t, err, "expected successful insert of ov2, got error")
-	_, err = sa.DisableRateLimitOverride(ctx, &sapb.SetRateLimitOverrideRequest{LimitEnum: 11, BucketKey: "off"})
+	_, err = sa.DisableRateLimitOverride(ctx, &sapb.DisableRateLimitOverrideRequest{LimitEnum: 11, BucketKey: "off"})
 	test.AssertNotError(t, err, "expected DisableRateLimitOverride of ov2 to succeed, got error")
-	_, err = sa.EnableRateLimitOverride(ctx, &sapb.SetRateLimitOverrideRequest{LimitEnum: 10, BucketKey: "on"})
+	_, err = sa.EnableRateLimitOverride(ctx, &sapb.EnableRateLimitOverrideRequest{LimitEnum: 10, BucketKey: "on"})
 	test.AssertNotError(t, err, "expected EnableRateLimitOverride of ov1 to succeed, got error")
 
 	stream := newMockRLOStream()

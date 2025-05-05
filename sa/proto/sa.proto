@@ -40,7 +40,6 @@ service StorageAuthorityReadOnly {
   rpc GetPausedIdentifiers (RegistrationID) returns (Identifiers) {}
   rpc GetRateLimitOverride(GetRateLimitOverrideRequest) returns (RateLimitOverrideResponse) {}
   rpc GetEnabledRateLimitOverrides(google.protobuf.Empty) returns (stream RateLimitOverride) {}
-  rpc SearchRateLimitOverrides(SearchRateLimitOverridesRequest) returns (stream RateLimitOverrideResponse) {}
 }
 
 // StorageAuthority provides full read/write access to the database.
@@ -76,7 +75,6 @@ service StorageAuthority {
   rpc GetPausedIdentifiers (RegistrationID) returns (Identifiers) {}
   rpc GetRateLimitOverride(GetRateLimitOverrideRequest) returns (RateLimitOverrideResponse) {}
   rpc GetEnabledRateLimitOverrides(google.protobuf.Empty) returns (stream RateLimitOverride) {}
-  rpc SearchRateLimitOverrides(SearchRateLimitOverridesRequest) returns (stream RateLimitOverrideResponse) {}
 
   // Adders
   rpc AddBlockedKey(AddBlockedKeyRequest) returns (google.protobuf.Empty) {}
@@ -101,8 +99,8 @@ service StorageAuthority {
   rpc PauseIdentifiers(PauseRequest) returns (PauseIdentifiersResponse) {}
   rpc UnpauseAccount(RegistrationID) returns (Count) {}
   rpc AddRateLimitOverride(AddRateLimitOverrideRequest) returns (AddRateLimitOverrideResponse) {}
-  rpc DisableRateLimitOverride(SetRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
-  rpc EnableRateLimitOverride(SetRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
+  rpc DisableRateLimitOverride(DisableRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
+  rpc EnableRateLimitOverride(EnableRateLimitOverrideRequest) returns (google.protobuf.Empty) {}
 }
 
 message RegistrationID {
@@ -466,7 +464,12 @@ message AddRateLimitOverrideResponse {
   bool enabled = 2;
 }
 
-message SetRateLimitOverrideRequest {
+message EnableRateLimitOverrideRequest {
+  int64 limitEnum = 1;
+  string bucketKey = 2;
+}
+
+message DisableRateLimitOverrideRequest {
   int64 limitEnum = 1;
   string bucketKey = 2;
 }
@@ -479,14 +482,5 @@ message GetRateLimitOverrideRequest {
 message RateLimitOverrideResponse {
   RateLimitOverride override  = 1;
   bool enabled  = 2;
-  google.protobuf.Timestamp createdAt = 3;
-  google.protobuf.Timestamp updatedAt = 4;
-}
-
-message SearchRateLimitOverridesRequest {
-  repeated int64 limitEnums = 1;
-  string bucketKeyContains = 2;
-  string commentContains = 3;
-  google.protobuf.Timestamp earliest = 4;
-  google.protobuf.Timestamp latest = 5;
+  google.protobuf.Timestamp updatedAt = 3;
 }

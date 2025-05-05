@@ -54,6 +54,7 @@ GRANT SELECT ON crlShards TO 'sa_ro'@'localhost';
 GRANT SELECT ON revokedCertificates TO 'sa_ro'@'localhost';
 GRANT SELECT ON replacementOrders TO 'sa_ro'@'localhost';
 GRANT SELECT ON paused TO 'sa_ro'@'localhost';
+GRANT SELECT ON overrides TO 'sa_ro'@'localhost';
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
