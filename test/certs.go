@@ -73,6 +73,8 @@ func ThrowAwayCert(t *testing.T, clk clock.Clock) (string, *x509.Certificate) {
 	_, _ = rand.Read(nameBytes[:])
 	name := fmt.Sprintf("%s.example.com", hex.EncodeToString(nameBytes[:]))
 
+	// Generate a random IPv6 address under the RFC 3849 space.
+	// https://www.rfc-editor.org/rfc/rfc3849.txt
 	var ipBytes [12]byte
 	_, _ = rand.Read(ipBytes[:])
 	ipPrefix, _ := hex.DecodeString("20010db8")
