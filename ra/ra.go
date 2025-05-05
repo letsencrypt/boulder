@@ -2399,6 +2399,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// If there isn't an existing authz, note that its missing and continue
 		authz, exists := identToExistingAuthz[ident]
 		if !exists {
+			// The existing authz was not acceptable for reuse, and we need to
+			// mark the name as requiring a new pending authz.
 			missingAuthzIdents = append(missingAuthzIdents, ident)
 			continue
 		}
@@ -2406,6 +2408,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// If the authz is associated with the wrong profile, don't reuse it.
 		if authz.CertificateProfileName != req.CertificateProfileName {
 			missingAuthzIdents = append(missingAuthzIdents, ident)
+			// Delete the authz from the identToExistingAuthz map since we are not reusing it.
+			delete(identToExistingAuthz, ident)
 			continue
 		}
 
@@ -2415,30 +2419,24 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			authzAge = (profile.pendingAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		}
 
-		// If the identifier isn't a DNS name, or isn't a wildcard, we can
-		// reuse any authz.
-		//
-		// If the identifier is a wildcard DNS name and the existing authz only
-		// has one DNS-01 type challenge we can reuse it. In theory we will
-		// never get back an authorization for a DNS name with a wildcard prefix
-		// that doesn't meet this criteria from SA.GetAuthorizations but we
-		// verify again to be safe.
-		if ident.Type != identifier.TypeDNS || !strings.HasPrefix(ident.Value, "*.") ||
-			(len(authz.Challenges) == 1 && authz.Challenges[0].Type == core.ChallengeTypeDNS01) {
-			authzID, err := strconv.ParseInt(authz.ID, 10, 64)
-			if err != nil {
-				return nil, err
-			}
-			newOrderAuthzs = append(newOrderAuthzs, authzID)
-			ra.authzAges.WithLabelValues("NewOrder", string(authz.Status)).Observe(authzAge)
-			continue
+		// If the identifier is a wildcard DNS name, it must have exactly one
+		// DNS-01 type challenge. The PA guarantees this at order creation time,
+		// but we verify again to be safe.
+		if ident.Type == identifier.TypeDNS && strings.HasPrefix(ident.Value, "*.") &&
+			(len(authz.Challenges) != 1 || authz.Challenges[0].Type != core.ChallengeTypeDNS01) {
+			return nil, berrors.InternalServerError(
+				"SA.GetAuthorizations returned a DNS wildcard authz (%s) with invalid challenge(s)",
+				authz.ID)
 		}
 
-		// Delete the authz from the identToExistingAuthz map since we are not reusing it.
-		delete(identToExistingAuthz, ident)
-		// If we reached this point then the existing authz was not acceptable for
-		// reuse and we need to mark the name as requiring a new pending authz
-		missingAuthzIdents = append(missingAuthzIdents, ident)
+		// If we reached this point then the existing authz was acceptable for
+		// reuse.
+		authzID, err := strconv.ParseInt(authz.ID, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		newOrderAuthzs = append(newOrderAuthzs, authzID)
+		ra.authzAges.WithLabelValues("NewOrder", string(authz.Status)).Observe(authzAge)
 	}
 
 	// Loop through each of the identifiers missing authzs and create a new

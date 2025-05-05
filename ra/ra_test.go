@@ -1992,12 +1992,10 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	}
 
 	// Create an order for that request
-	order, err := ra.NewOrder(ctx, orderReq)
-	// It shouldn't fail
-	test.AssertNotError(t, err, "Adding an initial order for regA failed")
-	test.AssertEquals(t, numAuthorizations(order), 1)
-	// It should *not* be the bad authorization!
-	test.AssertNotEquals(t, order.V2Authorizations[0], int64(1))
+	_, err := ra.NewOrder(ctx, orderReq)
+	// It should fail
+	test.AssertError(t, err, "Added an initial order for regA with invalid challenge(s)")
+	test.AssertContains(t, err.Error(), "SA.GetAuthorizations returned a DNS wildcard authz (1) with invalid challenge(s)")
 }
 
 func TestNewOrderWildcard(t *testing.T) {
