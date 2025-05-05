@@ -2575,7 +2575,37 @@ func TestGetValidAuthorizations2(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	aaa := createFinalizedAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(24*time.Hour), "valid", fc.Now())
+	var aaa int64
+	{
+		tokenStr := core.NewToken()
+		token, err := base64.RawURLEncoding.DecodeString(tokenStr)
+		test.AssertNotError(t, err, "computing test authorization challenge token")
+
+		profile := "test"
+		attempted := challTypeToUint[string(core.ChallengeTypeHTTP01)]
+		attemptedAt := fc.Now()
+		vr, _ := json.Marshal([]core.ValidationRecord{})
+
+		am := authzModel{
+			IdentifierType:         identifierTypeToUint[string(identifier.TypeDNS)],
+			IdentifierValue:        "aaa",
+			RegistrationID:         1,
+			CertificateProfileName: &profile,
+			Status:                 statusToUint[core.StatusValid],
+			Expires:                fc.Now().Add(24 * time.Hour),
+			Challenges:             1 << challTypeToUint[string(core.ChallengeTypeHTTP01)],
+			Attempted:              &attempted,
+			AttemptedAt:            &attemptedAt,
+			Token:                  token,
+			ValidationError:        nil,
+			ValidationRecord:       vr,
+		}
+
+		err = sa.dbMap.Insert(context.Background(), &am)
+		test.AssertNotError(t, err, "failed to insert valid authz")
+
+		aaa = am.ID
+	}
 
 	for _, tc := range []struct {
 		name        string
@@ -2589,15 +2619,15 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			name:        "happy path, DNS identifier",
 			regID:       1,
 			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
-			profile:     "",
+			profile:     "test",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{aaa},
 		},
 		{
-			name:        "happy path, IP identifier",
+			name:        "different identifier type",
 			regID:       1,
 			identifiers: []*corepb.Identifier{identifier.NewIP(netip.MustParseAddr("10.10.10.10")).ToProto()},
-			profile:     "",
+			profile:     "test",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{},
 		},
@@ -2605,7 +2635,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			name:        "different regID",
 			regID:       2,
 			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
-			profile:     "",
+			profile:     "test",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{},
 		},
@@ -2613,15 +2643,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			name:        "different DNS identifier",
 			regID:       1,
 			identifiers: []*corepb.Identifier{identifier.NewDNS("bbb").ToProto()},
-			profile:     "",
-			validUntil:  fc.Now().Add(time.Hour),
-			wantIDs:     []int64{},
-		},
-		{
-			name:        "different IP identifier",
-			regID:       1,
-			identifiers: []*corepb.Identifier{identifier.NewIP(netip.MustParseAddr("3fff:aaa:aaaa:aaaa:abad:0ff1:cec0:ffee")).ToProto()},
-			profile:     "",
+			profile:     "test",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{},
 		},
@@ -2629,7 +2651,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			name:        "different profile",
 			regID:       1,
 			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
-			profile:     "test",
+			profile:     "other",
 			validUntil:  fc.Now().Add(time.Hour),
 			wantIDs:     []int64{},
 		},
@@ -2637,7 +2659,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			name:        "too-far-out validUntil",
 			regID:       2,
 			identifiers: []*corepb.Identifier{identifier.NewDNS("aaa").ToProto()},
-			profile:     "",
+			profile:     "test",
 			validUntil:  fc.Now().Add(25 * time.Hour),
 			wantIDs:     []int64{},
 		},

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/certificate-transparency-go/loglist3"
+	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/test"
 )
@@ -15,18 +16,12 @@ func TestNew(t *testing.T) {
 
 func TestSubset(t *testing.T) {
 	input := List{
-		"Operator A": {
-			"ID A1": Log{Name: "Log A1"},
-			"ID A2": Log{Name: "Log A2"},
-		},
-		"Operator B": {
-			"ID B1": Log{Name: "Log B1"},
-			"ID B2": Log{Name: "Log B2"},
-		},
-		"Operator C": {
-			"ID C1": Log{Name: "Log C1"},
-			"ID C2": Log{Name: "Log C2"},
-		},
+		Log{Name: "Log A1"},
+		Log{Name: "Log A2"},
+		Log{Name: "Log B1"},
+		Log{Name: "Log B2"},
+		Log{Name: "Log C1"},
+		Log{Name: "Log C2"},
 	}
 
 	actual, err := input.subset(nil)
@@ -42,13 +37,9 @@ func TestSubset(t *testing.T) {
 	test.AssertEquals(t, len(actual), 0)
 
 	expected := List{
-		"Operator A": {
-			"ID A1": Log{Name: "Log A1"},
-			"ID A2": Log{Name: "Log A2"},
-		},
-		"Operator B": {
-			"ID B1": Log{Name: "Log B1"},
-		},
+		Log{Name: "Log B1"},
+		Log{Name: "Log A1"},
+		Log{Name: "Log A2"},
 	}
 	actual, err = input.subset([]string{"Log B1", "Log A1", "Log A2"})
 	test.AssertNotError(t, err, "normal usage should not error")
@@ -57,154 +48,136 @@ func TestSubset(t *testing.T) {
 
 func TestForPurpose(t *testing.T) {
 	input := List{
-		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
-			"ID A2": Log{Name: "Log A2", State: loglist3.RejectedLogStatus},
-		},
-		"Operator B": {
-			"ID B1": Log{Name: "Log B1", State: loglist3.UsableLogStatus},
-			"ID B2": Log{Name: "Log B2", State: loglist3.RetiredLogStatus},
-		},
-		"Operator C": {
-			"ID C1": Log{Name: "Log C1", State: loglist3.PendingLogStatus},
-			"ID C2": Log{Name: "Log C2", State: loglist3.ReadOnlyLogStatus},
-		},
+		Log{Name: "Log A1", Operator: "A", State: loglist3.UsableLogStatus},
+		Log{Name: "Log A2", Operator: "A", State: loglist3.RejectedLogStatus},
+		Log{Name: "Log B1", Operator: "B", State: loglist3.UsableLogStatus},
+		Log{Name: "Log B2", Operator: "B", State: loglist3.RetiredLogStatus},
+		Log{Name: "Log C1", Operator: "C", State: loglist3.PendingLogStatus},
+		Log{Name: "Log C2", Operator: "C", State: loglist3.ReadOnlyLogStatus},
 	}
 	expected := List{
-		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
-		},
-		"Operator B": {
-			"ID B1": Log{Name: "Log B1", State: loglist3.UsableLogStatus},
-		},
+		Log{Name: "Log A1", Operator: "A", State: loglist3.UsableLogStatus},
+		Log{Name: "Log B1", Operator: "B", State: loglist3.UsableLogStatus},
 	}
 	actual, err := input.forPurpose(Issuance)
 	test.AssertNotError(t, err, "should have two acceptable logs")
 	test.AssertDeepEquals(t, actual, expected)
 
 	input = List{
-		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
-			"ID A2": Log{Name: "Log A2", State: loglist3.RejectedLogStatus},
-		},
-		"Operator B": {
-			"ID B1": Log{Name: "Log B1", State: loglist3.QualifiedLogStatus},
-			"ID B2": Log{Name: "Log B2", State: loglist3.RetiredLogStatus},
-		},
-		"Operator C": {
-			"ID C1": Log{Name: "Log C1", State: loglist3.PendingLogStatus},
-			"ID C2": Log{Name: "Log C2", State: loglist3.ReadOnlyLogStatus},
-		},
+		Log{Name: "Log A1", Operator: "A", State: loglist3.UsableLogStatus},
+		Log{Name: "Log A2", Operator: "A", State: loglist3.RejectedLogStatus},
+		Log{Name: "Log B1", Operator: "B", State: loglist3.QualifiedLogStatus},
+		Log{Name: "Log B2", Operator: "B", State: loglist3.RetiredLogStatus},
+		Log{Name: "Log C1", Operator: "C", State: loglist3.PendingLogStatus},
+		Log{Name: "Log C2", Operator: "C", State: loglist3.ReadOnlyLogStatus},
 	}
 	_, err = input.forPurpose(Issuance)
 	test.AssertError(t, err, "should only have one acceptable log")
 
 	expected = List{
-		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
-		},
-		"Operator C": {
-			"ID C2": Log{Name: "Log C2", State: loglist3.ReadOnlyLogStatus},
-		},
+		Log{Name: "Log A1", Operator: "A", State: loglist3.UsableLogStatus},
+		Log{Name: "Log C2", Operator: "C", State: loglist3.ReadOnlyLogStatus},
 	}
 	actual, err = input.forPurpose(Validation)
 	test.AssertNotError(t, err, "should have two acceptable logs")
 	test.AssertDeepEquals(t, actual, expected)
 
 	expected = List{
-		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
-		},
-		"Operator B": {
-			"ID B1": Log{Name: "Log B1", State: loglist3.QualifiedLogStatus},
-		},
-		"Operator C": {
-			"ID C1": Log{Name: "Log C1", State: loglist3.PendingLogStatus},
-		},
+		Log{Name: "Log A1", Operator: "A", State: loglist3.UsableLogStatus},
+		Log{Name: "Log B1", Operator: "B", State: loglist3.QualifiedLogStatus},
+		Log{Name: "Log C1", Operator: "C", State: loglist3.PendingLogStatus},
 	}
 	actual, err = input.forPurpose(Informational)
 	test.AssertNotError(t, err, "should have three acceptable logs")
 	test.AssertDeepEquals(t, actual, expected)
 }
 
-func TestOperatorForLogID(t *testing.T) {
+func TestForTime(t *testing.T) {
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+
 	input := List{
-		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
-		},
-		"Operator B": {
-			"ID B1": Log{Name: "Log B1", State: loglist3.QualifiedLogStatus},
-		},
+		Log{Name: "Fully Bound", StartInclusive: fc.Now().Add(-time.Hour), EndExclusive: fc.Now().Add(time.Hour)},
+		Log{Name: "Open End", StartInclusive: fc.Now().Add(-time.Hour)},
+		Log{Name: "Open Start", EndExclusive: fc.Now().Add(time.Hour)},
+		Log{Name: "Fully Open"},
 	}
 
-	actual, err := input.OperatorForLogID("ID B1")
-	test.AssertNotError(t, err, "should have found log")
-	test.AssertEquals(t, actual, "Operator B")
+	expected := List{
+		Log{Name: "Fully Bound", StartInclusive: fc.Now().Add(-time.Hour), EndExclusive: fc.Now().Add(time.Hour)},
+		Log{Name: "Open End", StartInclusive: fc.Now().Add(-time.Hour)},
+		Log{Name: "Open Start", EndExclusive: fc.Now().Add(time.Hour)},
+		Log{Name: "Fully Open"},
+	}
+	actual := input.ForTime(fc.Now())
+	test.AssertDeepEquals(t, actual, expected)
 
-	_, err = input.OperatorForLogID("Other ID")
-	test.AssertError(t, err, "should not have found log")
+	expected = List{
+		Log{Name: "Fully Bound", StartInclusive: fc.Now().Add(-time.Hour), EndExclusive: fc.Now().Add(time.Hour)},
+		Log{Name: "Open End", StartInclusive: fc.Now().Add(-time.Hour)},
+		Log{Name: "Open Start", EndExclusive: fc.Now().Add(time.Hour)},
+		Log{Name: "Fully Open"},
+	}
+	actual = input.ForTime(fc.Now().Add(-time.Hour))
+	test.AssertDeepEquals(t, actual, expected)
+
+	expected = List{
+		Log{Name: "Open Start", EndExclusive: fc.Now().Add(time.Hour)},
+		Log{Name: "Fully Open"},
+	}
+	actual = input.ForTime(fc.Now().Add(-2 * time.Hour))
+	test.AssertDeepEquals(t, actual, expected)
+
+	expected = List{
+		Log{Name: "Open End", StartInclusive: fc.Now().Add(-time.Hour)},
+		Log{Name: "Fully Open"},
+	}
+	actual = input.ForTime(fc.Now().Add(time.Hour))
+	test.AssertDeepEquals(t, actual, expected)
 }
 
 func TestPermute(t *testing.T) {
 	input := List{
-		"Operator A": {
-			"ID A1": Log{Name: "Log A1", State: loglist3.UsableLogStatus},
-			"ID A2": Log{Name: "Log A2", State: loglist3.RejectedLogStatus},
-		},
-		"Operator B": {
-			"ID B1": Log{Name: "Log B1", State: loglist3.QualifiedLogStatus},
-			"ID B2": Log{Name: "Log B2", State: loglist3.RetiredLogStatus},
-		},
-		"Operator C": {
-			"ID C1": Log{Name: "Log C1", State: loglist3.PendingLogStatus},
-			"ID C2": Log{Name: "Log C2", State: loglist3.ReadOnlyLogStatus},
-		},
+		Log{Name: "Log A1"},
+		Log{Name: "Log A2"},
+		Log{Name: "Log B1"},
+		Log{Name: "Log B2"},
+		Log{Name: "Log C1"},
+		Log{Name: "Log C2"},
 	}
 
-	actual := input.Permute()
-	test.AssertEquals(t, len(actual), 3)
-	test.AssertSliceContains(t, actual, "Operator A")
-	test.AssertSliceContains(t, actual, "Operator B")
-	test.AssertSliceContains(t, actual, "Operator C")
+	foundIndices := make(map[string]map[int]int)
+	for _, log := range input {
+		foundIndices[log.Name] = make(map[int]int)
+	}
+
+	for range 100 {
+		actual := input.Permute()
+		for index, log := range actual {
+			foundIndices[log.Name][index]++
+		}
+	}
+
+	for name, counts := range foundIndices {
+		for index, count := range counts {
+			if count == 0 {
+				t.Errorf("Log %s appeared at index %d too few times", name, index)
+			}
+		}
+	}
 }
 
-func TestPickOne(t *testing.T) {
-	date0 := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	date1 := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
-	date2 := time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
-
+func TestGetByID(t *testing.T) {
 	input := List{
-		"Operator A": {
-			"ID A1": Log{Name: "Log A1"},
-		},
+		Log{Name: "Log A1", Id: "ID A1"},
+		Log{Name: "Log B1", Id: "ID B1"},
 	}
-	_, _, err := input.PickOne("Operator B", date0)
-	test.AssertError(t, err, "should have failed to find operator")
 
-	input = List{
-		"Operator A": {
-			"ID A1": Log{Name: "Log A1", StartInclusive: date0, EndExclusive: date1},
-		},
-	}
-	_, _, err = input.PickOne("Operator A", date2)
-	test.AssertError(t, err, "should have failed to find log")
-	_, _, err = input.PickOne("Operator A", date1)
-	test.AssertError(t, err, "should have failed to find log")
-	_, _, err = input.PickOne("Operator A", date0)
-	test.AssertNotError(t, err, "should have found a log")
-	_, _, err = input.PickOne("Operator A", date0.Add(time.Hour))
-	test.AssertNotError(t, err, "should have found a log")
+	expected := Log{Name: "Log A1", Id: "ID A1"}
+	actual, err := input.GetByID("ID A1")
+	test.AssertNotError(t, err, "should have found log")
+	test.AssertDeepEquals(t, actual, expected)
 
-	input = List{
-		"Operator A": {
-			"ID A1": Log{Name: "Log A1", StartInclusive: date0, EndExclusive: date1, Key: "KA1", Url: "UA1"},
-			"ID A2": Log{Name: "Log A2", StartInclusive: date1, EndExclusive: date2, Key: "KA2", Url: "UA2"},
-			"ID B1": Log{Name: "Log B1", StartInclusive: date0, EndExclusive: date1, Key: "KB1", Url: "UB1"},
-			"ID B2": Log{Name: "Log B2", StartInclusive: date1, EndExclusive: date2, Key: "KB2", Url: "UB2"},
-		},
-	}
-	url, key, err := input.PickOne("Operator A", date0.Add(time.Hour))
-	test.AssertNotError(t, err, "should have found a log")
-	test.AssertSliceContains(t, []string{"UA1", "UB1"}, url)
-	test.AssertSliceContains(t, []string{"KA1", "KB1"}, key)
+	_, err = input.GetByID("Other ID")
+	test.AssertError(t, err, "should not have found log")
 }

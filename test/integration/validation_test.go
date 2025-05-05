@@ -9,7 +9,6 @@ import (
 	"database/sql"
 	"os"
 	"slices"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +27,53 @@ func collectUserAgentsFromDNSRequests(requests []challtestsrvclient.DNSRequest) 
 		userAgents[i] = request.UserAgent
 	}
 	return userAgents
+}
+
+func assertUserAgentsLength(t *testing.T, got []string, checkType string) {
+	t.Helper()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		// We only need 3 checks if the MPICFullResults feature-flag is not
+		// enabled.
+		//
+		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
+		// true.
+		if len(got) != 4 && len(got) != 3 {
+			t.Errorf("During %s, expected 3 or 4 User-Agents, got %d", checkType, len(got))
+		}
+	} else {
+		if len(got) != 4 {
+			t.Errorf("During %s, expected 4 User-Agents, got %d", checkType, len(got))
+		}
+	}
+}
+
+func assertExpectedUserAgents(t *testing.T, got []string, checkType string) {
+	t.Helper()
+
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		// One User-Agent may be missing if the MPICFullResults feature-flag is
+		// not enabled. This will need to be modified to 2 if we have not
+		// removed this feature-flag by the time we get to 6+ perspectives.
+		//
+		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
+		// true.
+		var alreadySkippedOne bool
+		for _, ua := range expectedUserAgents {
+			if !slices.Contains(got, ua) {
+				if alreadySkippedOne {
+					t.Errorf("During %s, missing more than 1 User-Agent in %s (got %v)", checkType, expectedUserAgents, got)
+				}
+				alreadySkippedOne = true
+			}
+		}
+	} else {
+		for _, ua := range expectedUserAgents {
+			if !slices.Contains(got, ua) {
+				t.Errorf("During %s, expected User-Agent %q in %s (got %v)", checkType, ua, expectedUserAgents, got)
+			}
+		}
+	}
 }
 
 func TestMPICTLSALPN01(t *testing.T) {
@@ -105,29 +151,14 @@ func TestMPICTLSALPN01(t *testing.T) {
 			caaEvents = append(caaEvents, event)
 		}
 	}
-
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && len(caaEvents) != 4 {
-		t.Errorf("expected 4 CAA checks got %d", len(caaEvents))
-	} else if len(caaEvents) != 3 && len(caaEvents) != 4 {
-		// We only need 3 checks if the MPICFullResults feature-flag is not
-		// enabled.
-		//
-		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
-		// true.
-		t.Errorf("expected 3 or 4 CAA checks got %d", len(caaEvents))
-	}
+	assertUserAgentsLength(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		// We can only check the user-agent for DNS requests if the DOH
 		// feature-flag is enabled.
 		//
-		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
-		// to true.
-		gotUserAgents := collectUserAgentsFromDNSRequests(caaEvents)
-		for _, ua := range expectedUserAgents {
-			if !slices.Contains(gotUserAgents, ua) {
-				t.Errorf("expected a query from User-Agent %q but did not get one (got %+v).", ua, gotUserAgents)
-			}
-		}
+		// TODO(#8120): Remove this conditional once the DoH feature flag has
+		// been defaulted to true.
+		assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
 	}
 }
 
@@ -183,28 +214,14 @@ func TestMPICDNS01(t *testing.T) {
 			validationEvents = append(validationEvents, event)
 		}
 	}
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && len(validationEvents) != 4 {
-		t.Errorf("expected 4 validation events got %d", len(validationEvents))
-	} else if len(validationEvents) != 3 && len(validationEvents) != 4 {
-		// We only need 3 checks if the MPICFullResults feature-flag is not
-		// enabled.
-		//
-		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
-		// true.
-		t.Errorf("expected 3 or 4 validation events got %d", len(validationEvents))
-	}
+	assertUserAgentsLength(t, collectUserAgentsFromDNSRequests(validationEvents), "DNS-01 validation")
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		// We can only check the user-agent for DNS requests if the DOH
 		// feature-flag is enabled.
 		//
 		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
 		// to true.
-		gotUserAgents := collectUserAgentsFromDNSRequests(validationEvents)
-		for _, ua := range expectedUserAgents {
-			if !slices.Contains(gotUserAgents, ua) {
-				t.Errorf("expected a query from User-Agent %q but did not get one (got %+v).", ua, gotUserAgents)
-			}
-		}
+		assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(validationEvents), "DNS-01 validation")
 	}
 
 	domainDNSEvents, err := testSrvClient.DNSRequestHistory(domain)
@@ -218,29 +235,14 @@ func TestMPICDNS01(t *testing.T) {
 			caaEvents = append(caaEvents, event)
 		}
 	}
-
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && len(caaEvents) != 4 {
-		t.Errorf("expected 4 CAA checks got %d", len(caaEvents))
-	} else if len(caaEvents) != 3 && len(caaEvents) != 4 {
-		// We only need 3 checks if the MPICFullResults feature-flag is not
-		// enabled.
-		//
-		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
-		// true.
-		t.Errorf("expected 3 or 4 CAA checks got %d", len(caaEvents))
-	}
+	assertUserAgentsLength(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		// We can only check the user-agent for DNS requests if the DOH
 		// feature-flag is enabled.
 		//
 		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
 		// to true.
-		gotUserAgents := collectUserAgentsFromDNSRequests(caaEvents)
-		for _, ua := range expectedUserAgents {
-			if !slices.Contains(gotUserAgents, ua) {
-				t.Errorf("expected a query from User-Agent %q but did not get one (got %+v).", ua, gotUserAgents)
-			}
-		}
+		assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
 	}
 }
 
@@ -290,41 +292,14 @@ func TestMPICHTTP01(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	validationCount := 0
+	var validationUAs []string
 	for _, event := range validationEvents {
 		if event.URL == "/.well-known/acme-challenge/"+chal.Token {
-			validationCount++
+			validationUAs = append(validationUAs, event.UserAgent)
 		}
 	}
-
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && validationCount != 4 {
-		t.Errorf("expected 4 validation events got %d", validationCount)
-	} else if validationCount != 3 && validationCount != 4 {
-		// We only need 3 checks if the MPICFullResults feature-flag is not
-		// enabled.
-		//
-		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
-		// true.
-		t.Errorf("expected 3 or 4 validation events got %d", validationCount)
-	}
-
-	sort.Slice(validationEvents, func(i, j int) bool {
-		return validationEvents[i].UserAgent < validationEvents[j].UserAgent
-	})
-	for i, event := range validationEvents {
-		if event.UserAgent != expectedUserAgents[i] {
-			t.Errorf("expected user agent %s, got %s", expectedUserAgents[i], event.UserAgent)
-		}
-	}
-
-	sort.Slice(validationEvents, func(i, j int) bool {
-		return validationEvents[i].UserAgent < validationEvents[j].UserAgent
-	})
-	for i, event := range validationEvents {
-		if event.UserAgent != expectedUserAgents[i] {
-			t.Errorf("expected user agent %s, got %s", expectedUserAgents[i], event.UserAgent)
-		}
-	}
+	assertUserAgentsLength(t, validationUAs, "HTTP-01 validation")
+	assertExpectedUserAgents(t, validationUAs, "HTTP-01 validation")
 
 	dnsEvents, err := testSrvClient.DNSRequestHistory(domain)
 	if err != nil {
@@ -338,31 +313,14 @@ func TestMPICHTTP01(t *testing.T) {
 		}
 	}
 
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && len(caaEvents) != 4 {
-		t.Errorf("expected 4 CAA checks got %d", len(caaEvents))
-	} else if len(caaEvents) != 3 && len(caaEvents) != 4 {
-		// We only need 3 checks if the MPICFullResults feature-flag is not
-		// enabled.
-		//
-		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
-		// true.
-		t.Errorf("expected 3 or 4 CAA checks got %d", len(caaEvents))
-	}
+	assertUserAgentsLength(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		// We can only check the user-agent for DNS requests if the DOH
 		// feature-flag is enabled.
 		//
 		// TODO(#8120): Remove this once the DoH feature flag has been defaulted
 		// to true.
-		sort.Slice(caaEvents, func(i, j int) bool {
-			return caaEvents[i].UserAgent < caaEvents[j].UserAgent
-		})
-
-		for i, event := range caaEvents {
-			if event.UserAgent != expectedUserAgents[i] {
-				t.Errorf("expected user agent %s, got %s", expectedUserAgents[i], event.UserAgent)
-			}
-		}
+		assertExpectedUserAgents(t, collectUserAgentsFromDNSRequests(caaEvents), "CAA check")
 	}
 }
 
