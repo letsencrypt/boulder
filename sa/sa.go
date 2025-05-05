@@ -329,7 +329,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		if req.OcspNotReady {
 			status = core.OCSPStatusNotReady
 		}
-		cs := &core.CertificateStatus{
+		cs := &certificateStatusModel{
 			Serial:                serialHex,
 			Status:                status,
 			OCSPLastUpdated:       ssa.clk.Now(),
@@ -338,7 +338,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			LastExpirationNagSent: time.Time{},
 			NotAfter:              parsed.NotAfter,
 			IsExpired:             false,
-			IssuerNameID:          req.IssuerNameID,
+			IssuerID:              req.IssuerNameID,
 		}
 		err = ssa.dbMap.Insert(ctx, cs)
 		if err != nil {
@@ -1373,9 +1373,9 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 			err := tx.SelectOne(ctx, &entry, `
 			SELECT pausedAt, unpausedAt
 			FROM paused
-			WHERE 
-				registrationID = ? AND 
-				identifierType = ? AND 
+			WHERE
+				registrationID = ? AND
+				identifierType = ? AND
 				identifierValue = ?`,
 				req.RegistrationID,
 				ident.Type,
@@ -1419,9 +1419,9 @@ func (ssa *SQLStorageAuthority) PauseIdentifiers(ctx context.Context, req *sapb.
 				UPDATE paused
 				SET pausedAt = ?,
 				    unpausedAt = NULL
-				WHERE 
-					registrationID = ? AND 
-					identifierType = ? AND 
+				WHERE
+					registrationID = ? AND
+					identifierType = ? AND
 					identifierValue = ? AND
 					unpausedAt IS NOT NULL`,
 					ssa.clk.Now().Truncate(time.Second),
@@ -1467,7 +1467,7 @@ func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.Re
 		result, err := ssa.dbMap.ExecContext(ctx, `
 			UPDATE paused
 			SET unpausedAt = ?
-			WHERE 
+			WHERE
 				registrationID = ? AND
 				unpausedAt IS NULL
 			LIMIT ?`,

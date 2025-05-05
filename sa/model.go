@@ -211,15 +211,15 @@ const certStatusFields = "id, serial, status, ocspLastUpdated, revokedDate, revo
 
 // SelectCertificateStatus selects all fields of one certificate status model
 // identified by serial
-func SelectCertificateStatus(ctx context.Context, s db.OneSelector, serial string) (core.CertificateStatus, error) {
-	var model core.CertificateStatus
+func SelectCertificateStatus(ctx context.Context, s db.OneSelector, serial string) (*corepb.CertificateStatus, error) {
+	var model certificateStatusModel
 	err := s.SelectOne(
 		ctx,
 		&model,
 		"SELECT "+certStatusFields+" FROM certificateStatus WHERE serial = ? LIMIT 1",
 		serial,
 	)
-	return model, err
+	return model.toPb(), err
 }
 
 // RevocationStatusModel represents a small subset of the columns in the
@@ -389,6 +389,33 @@ func (model certificateModel) toPb() *corepb.Certificate {
 		Der:            model.DER,
 		Issued:         timestamppb.New(model.Issued),
 		Expires:        timestamppb.New(model.Expires),
+	}
+}
+
+type certificateStatusModel struct {
+	ID                    int64             `db:"id"`
+	Serial                string            `db:"serial"`
+	Status                core.OCSPStatus   `db:"status"`
+	OCSPLastUpdated       time.Time         `db:"ocspLastUpdated"`
+	RevokedDate           time.Time         `db:"revokedDate"`
+	RevokedReason         revocation.Reason `db:"revokedReason"`
+	LastExpirationNagSent time.Time         `db:"lastExpirationNagSent"`
+	NotAfter              time.Time         `db:"notAfter"`
+	IsExpired             bool              `db:"isExpired"`
+	IssuerID              int64             `db:"issuerID"`
+}
+
+func (model certificateStatusModel) toPb() *corepb.CertificateStatus {
+	return &corepb.CertificateStatus{
+		Serial:                model.Serial,
+		Status:                string(model.Status),
+		OcspLastUpdated:       timestamppb.New(model.OCSPLastUpdated),
+		RevokedDate:           timestamppb.New(model.RevokedDate),
+		RevokedReason:         int64(model.RevokedReason),
+		LastExpirationNagSent: timestamppb.New(model.LastExpirationNagSent),
+		NotAfter:              timestamppb.New(model.NotAfter),
+		IsExpired:             model.IsExpired,
+		IssuerID:              model.IssuerID,
 	}
 }
 
