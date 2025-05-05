@@ -122,11 +122,6 @@ type Config struct {
 		// a `Stagger` value controlling how long we wait for one operator group
 		// to respond before trying a different one.
 		CTLogs ctconfig.CTConfig
-		// InformationalCTLogs are a set of CT logs we will always submit to
-		// but won't ever use the SCTs from. This may be because we want to
-		// test them or because they are not yet approved by a browser/root
-		// program but we still want our certs to end up there.
-		InformationalCTLogs []ctconfig.LogDescription
 
 		// IssuerCerts are paths to all intermediate certificates which may have
 		// been used to issue certificates in the last 90 days. These are used to
