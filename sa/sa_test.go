@@ -4679,6 +4679,7 @@ func TestDisableEnableRateLimitOverride(t *testing.T) {
 		Period:    durationpb.New(time.Hour),
 		Count:     1,
 		Burst:     1,
+		Comment:   "test",
 	}
 	_, _ = sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov})
 
@@ -4714,11 +4715,11 @@ func TestGetEnabledRateLimitOverrides(t *testing.T) {
 
 	// Enabled
 	ov1 := &sapb.RateLimitOverride{
-		LimitEnum: 10, BucketKey: "on", Period: durationpb.New(time.Second), Count: 1, Burst: 1,
+		LimitEnum: 10, BucketKey: "on", Period: durationpb.New(time.Second), Count: 1, Burst: 1, Comment: "on",
 	}
 	// Disabled
 	ov2 := &sapb.RateLimitOverride{
-		LimitEnum: 11, BucketKey: "off", Period: durationpb.New(time.Second), Count: 1, Burst: 1,
+		LimitEnum: 11, BucketKey: "off", Period: durationpb.New(time.Second), Count: 1, Burst: 1, Comment: "off",
 	}
 
 	_, err := sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov1})

@@ -1495,14 +1495,14 @@ func (ssa *SQLStorageAuthority) UnpauseAccount(ctx context.Context, req *sapb.Re
 	return total, nil
 }
 
-// AddRateLimitOverride adds a rate limit override to the database. Only the
-// comment field is optional. If the override already exists, it will be
-// updated. If the override does not exist, it will be inserted and enabled. If
-// the override exists but has been disabled, it will be updated but not be
-// re-enabled. The status of the override is returned in Enabled field of the
-// response. To re-enable an override, use the EnableRateLimitOverride method.
+// AddRateLimitOverride adds a rate limit override to the database. If the
+// override already exists, it will be updated. If the override does not exist,
+// it will be inserted and enabled. If the override exists but has been
+// disabled, it will be updated but not be re-enabled. The status of the
+// override is returned in Enabled field of the response. To re-enable an
+// override, use the EnableRateLimitOverride method.
 func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *sapb.AddRateLimitOverrideRequest) (*sapb.AddRateLimitOverrideResponse, error) {
-	if core.IsAnyNilOrZero(req, req.Override, req.Override.LimitEnum, req.Override.BucketKey, req.Override.Count, req.Override.Burst, req.Override.Period) {
+	if core.IsAnyNilOrZero(req, req.Override, req.Override.LimitEnum, req.Override.BucketKey, req.Override.Count, req.Override.Burst, req.Override.Period, req.Override.Comment) {
 		return nil, errIncompleteRequest
 	}
 
@@ -1511,8 +1511,8 @@ func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *s
 	now := ssa.clk.Now()
 
 	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
-		var existing overrideModel
-		err := tx.SelectOne(ctx, &existing, `
+		var alreadyEnabled bool
+		err := tx.SelectOne(ctx, &alreadyEnabled, `
 			SELECT enabled
 			  FROM overrides
 			 WHERE limitEnum = ? AND
@@ -1546,7 +1546,7 @@ func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *s
 
 		default:
 			// Update the existing overrides row.
-			updated := overrideModelForPB(req.Override, now, existing.Enabled)
+			updated := overrideModelForPB(req.Override, now, alreadyEnabled)
 			_, err = tx.Update(ctx, &updated)
 			if err != nil {
 				return nil, fmt.Errorf("updating override for rate limit %d and bucket key %s override: %w",
@@ -1556,7 +1556,7 @@ func (ssa *SQLStorageAuthority) AddRateLimitOverride(ctx context.Context, req *s
 				)
 			}
 			inserted = false
-			enabled = existing.Enabled
+			enabled = alreadyEnabled
 		}
 		return nil, nil
 	})

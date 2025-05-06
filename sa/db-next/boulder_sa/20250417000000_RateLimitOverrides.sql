@@ -4,10 +4,10 @@
 CREATE TABLE overrides (
    `limitEnum` tinyint(4) UNSIGNED NOT NULL,
    `bucketKey` varchar(255) NOT NULL,
-   `comment`   varchar(255) DEFAULT NULL,
+   `comment`   varchar(255) NOT NULL,
    `periodNS`  bigint(20) UNSIGNED NOT NULL,
    `count`     int UNSIGNED NOT NULL,
-   `burst`     int UNSIGNED DEFAULT NULL,
+   `burst`     int UNSIGNED NOT NULL,
    `updatedAt` datetime NOT NULL,
    `enabled`   boolean NOT NULL DEFAULT false,
   UNIQUE KEY `limitEnum_bucketKey` (`limitEnum`, `bucketKey`),
