@@ -607,6 +607,10 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *we
 		panic(fmt.Sprintf("wfe.sendError got %#v (type %T), but expected ProblemDetails or error", eerr, eerr))
 	}
 
+	if prob.Type == probs.BadSignatureAlgorithmProblem {
+		prob.Algorithms = getSupportedAlgs()
+	}
+
 	var bErr *berrors.BoulderError
 	if errors.As(ierr, &bErr) {
 		retryAfterSeconds := int(bErr.RetryAfter.Round(time.Second).Seconds())
