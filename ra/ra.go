@@ -802,12 +802,11 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 			return err
 		} else if staleCAA {
 			switch authz.Identifier.Type {
-			case "dns":
+			case identifier.TypeDNS:
 				// Ensure that CAA is rechecked for this name
 				recheckAuthzs = append(recheckAuthzs, authz)
-			case "ip":
-				ra.log.AuditInfof("Skipping CAA recheck for IP address identifier: %s", authz.Identifier.Value)
-			case "default":
+			case identifier.TypeIP:
+			default:
 				return berrors.MalformedError("invalid identifier type: %s", authz.Identifier.Type)
 			}
 		}
@@ -1538,15 +1537,14 @@ func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq 
 		return doDCVRes.Problem, doDCVRes.Records, nil
 	}
 
-	switch dcvReq.Identifier.Type {
-	case "dns":
+	switch identifier.FromProto(dcvReq.Identifier).Type {
+	case identifier.TypeDNS:
 		doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
 		if err != nil {
 			return nil, nil, err
 		}
 		return doCAAResp.Problem, doDCVRes.Records, nil
-	case "ip":
-		ra.log.AuditInfof("Skipping CAA check for IP address identifier: %s", dcvReq.Identifier.Value)
+	case identifier.TypeIP:
 		return nil, doDCVRes.Records, nil
 	default:
 		return nil, nil, berrors.MalformedError("invalid identifier type: %s", dcvReq.Identifier.Type)
