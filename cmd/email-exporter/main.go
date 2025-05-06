@@ -58,6 +58,9 @@ func main() {
 	configFile := flag.String("config", "", "Path to configuration file")
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
+	salesforceBaseURL := flag.String("salesforce-base-url", "", "Override for the Salesforce base URL, including scheme and optional port (e.g., https://login.salesforce.com or https://a.mock:9601)")
+	pardotBaseURL := flag.String("pardot-base-url", "", "Override for the Pardot base URL, including scheme and optional port (e.g., https://pi.pardot.com or https://a.mock:9602)")
+
 	flag.Parse()
 
 	if *configFile == "" {
@@ -74,6 +77,12 @@ func main() {
 	}
 	if *debugAddr != "" {
 		c.EmailExporter.ServiceConfig.DebugAddr = *debugAddr
+	}
+	if *salesforceBaseURL != "" {
+		c.EmailExporter.SalesforceBaseURL = *salesforceBaseURL
+	}
+	if *pardotBaseURL != "" {
+		c.EmailExporter.PardotBaseURL = *pardotBaseURL
 	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.EmailExporter.ServiceConfig.DebugAddr)
