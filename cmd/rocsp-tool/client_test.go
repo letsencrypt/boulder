@@ -137,13 +137,7 @@ func TestLoadFromDB(t *testing.T) {
 	defer test.ResetBoulderTestDatabase(t)
 
 	for i := range 100 {
-		insertCertificateStatus(
-			t,
-			dbMap,
-			fmt.Sprintf("%036x", i),
-			clk.Now().Add(200*time.Hour),
-			clk.Now(),
-		)
+		insertCertificateStatus(t, dbMap, fmt.Sprintf("%036x", i), clk.Now().Add(200*time.Hour), clk.Now())
 		if err != nil {
 			t.Fatalf("Failed to insert certificateStatus: %s", err)
 		}
