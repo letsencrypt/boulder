@@ -213,17 +213,17 @@ func TestBadSignatureAlgorithm(t *testing.T) {
 	}{
 		Alg:   string(jose.RS512), // This is the important bit; RS512 is unacceptable.
 		KID:   client.Account.URL,
-		Nonce: "deadbeef",
-		URL:   client.Directory().NewNonce,
+		Nonce: "deadbeef", // This nonce would fail, but that check comes after the alg check.
+		URL:   client.Directory().NewAccount,
 	})
 	if err != nil {
 		t.Fatalf("creating JWS protected header: %s", err)
 	}
-	phead := base64.RawStdEncoding.EncodeToString(header)
+	protected := base64.RawURLEncoding.EncodeToString(header)
 
 	payload := base64.RawURLEncoding.EncodeToString([]byte("{}"))
 	hash := crypto.SHA512.New()
-	hash.Write([]byte(phead + "." + payload))
+	hash.Write([]byte(protected + "." + payload))
 	sig, err := client.Account.PrivateKey.Sign(rand.Reader, hash.Sum(nil), crypto.SHA512)
 	if err != nil {
 		t.Fatalf("creating fake signature: %s", err)
@@ -234,12 +234,12 @@ func TestBadSignatureAlgorithm(t *testing.T) {
 		Payload   string `json:"payload"`
 		Signature string `json:"signature"`
 	}{
-		Protected: phead,
+		Protected: protected,
 		Payload:   payload,
 		Signature: base64.RawURLEncoding.EncodeToString(sig),
 	})
 
-	req, err := http.NewRequest(http.MethodPost, client.Directory().NewNonce, bytes.NewReader(data))
+	req, err := http.NewRequest(http.MethodPost, client.Directory().NewAccount, bytes.NewReader(data))
 	if err != nil {
 		t.Fatalf("creating HTTP request: %s", err)
 	}
