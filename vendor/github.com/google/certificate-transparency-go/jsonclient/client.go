@@ -34,7 +34,6 @@ import (
 
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/google/certificate-transparency-go/x509"
-	"k8s.io/klog/v2"
 )
 
 const maxJitter = 250 * time.Millisecond
@@ -182,7 +181,6 @@ func (c *JSONClient) GetAndParse(ctx context.Context, path string, params map[st
 		vals.Add(k, v)
 	}
 	fullURI := fmt.Sprintf("%s%s?%s", c.uri, path, vals.Encode())
-	klog.V(2).Infof("GET %s", fullURI)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURI, nil)
 	if err != nil {
 		return nil, nil, err
@@ -231,7 +229,6 @@ func (c *JSONClient) PostAndParse(ctx context.Context, path string, req, rsp int
 		return nil, nil, err
 	}
 	fullURI := fmt.Sprintf("%s%s", c.uri, path)
-	klog.V(2).Infof("POST %s", fullURI)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURI, bytes.NewReader(postBody))
 	if err != nil {
 		return nil, nil, err
