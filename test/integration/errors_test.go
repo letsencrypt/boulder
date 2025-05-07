@@ -221,7 +221,7 @@ func TestBadSignatureAlgorithm(t *testing.T) {
 	}
 	protected := base64.RawURLEncoding.EncodeToString(header)
 
-	payload := base64.RawURLEncoding.EncodeToString([]byte("{}"))
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"onlyReturnExisting": true}`))
 	hash := crypto.SHA512.New()
 	hash.Write([]byte(protected + "." + payload))
 	sig, err := client.Account.PrivateKey.Sign(rand.Reader, hash.Sum(nil), crypto.SHA512)
