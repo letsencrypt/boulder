@@ -44,11 +44,11 @@ type Config struct {
 
 		// SalesforceBaseURL is the base URL for the Salesforce API. (e.g.,
 		// "https://login.salesforce.com")
-		SalesforceBaseURL string `validate:"required"`
+		SalesforceBaseURL string
 
 		// PardotBaseURL is the base URL for the Pardot API. (e.g.,
 		// "https://pi.pardot.com")
-		PardotBaseURL string `validate:"required"`
+		PardotBaseURL string
 	}
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
@@ -81,8 +81,14 @@ func main() {
 	if *salesforceBaseURL != "" {
 		c.EmailExporter.SalesforceBaseURL = *salesforceBaseURL
 	}
+	if c.EmailExporter.SalesforceBaseURL == "" {
+		cmd.Fail("Salesforce base URL is required but not provided")
+	}
 	if *pardotBaseURL != "" {
 		c.EmailExporter.PardotBaseURL = *pardotBaseURL
+	}
+	if c.EmailExporter.PardotBaseURL == "" {
+		cmd.Fail("Pardot base URL is required but not provided")
 	}
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.EmailExporter.ServiceConfig.DebugAddr)
