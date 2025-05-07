@@ -70,11 +70,15 @@ func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Ident
 		}
 	}
 
+	var ids []acme.Identifier
+	for _, ident := range idents {
+		ids = append(ids, acme.Identifier{Type: string(ident.Type), Value: ident.Value})
+	}
 	var order acme.Order
 	if certToReplace != nil {
-		order, err = c.Client.ReplacementOrderExtension(c.Account, certToReplace, idents, acme.OrderExtension{Profile: profile})
+		order, err = c.Client.ReplacementOrderExtension(c.Account, certToReplace, ids, acme.OrderExtension{Profile: profile})
 	} else {
-		order, err = c.Client.NewOrderExtension(c.Account, idents, acme.OrderExtension{Profile: profile})
+		order, err = c.Client.NewOrderExtension(c.Account, ids, acme.OrderExtension{Profile: profile})
 	}
 	if err != nil {
 		return nil, nil, err
@@ -97,7 +101,10 @@ func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, idents []acme.Ident
 		}
 		chal, err = c.Client.UpdateChallenge(c.Account, chal)
 		if err != nil {
-			testSrvClient.RemoveHTTP01Response(chal.Token)
+			_, err = testSrvClient.RemoveHTTP01Response(chal.Token)
+			if err != nil {
+				return nil, nil, err
+			}
 			return nil, nil, err
 		}
 		_, err = testSrvClient.RemoveHTTP01Response(chal.Token)
@@ -188,7 +195,7 @@ func makeCSR(k *ecdsa.PrivateKey, idents []acme.Identifier, cn bool) (*x509.Cert
 		DNSNames:           names,
 		IPAddresses:        ips,
 	}
-	if cn && len(names) > 0 {
+	if cn {
 		tmpl.Subject = pkix.Name{CommonName: names[0]}
 	}
 
