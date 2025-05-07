@@ -33,8 +33,7 @@ message IsCAAValidResponse {
 
 message PerformValidationRequest {
   // Next unused field number: 6
-  // TODO(#8023): dnsNames are being deprecated in favour of identifiers.
-  string dnsName = 1;
+  reserved 1; // Previously dnsName
   core.Identifier identifier = 5;
   core.Challenge challenge = 2;
   AuthzMeta authz = 3;

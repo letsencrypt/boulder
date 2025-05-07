@@ -178,7 +178,7 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req 
 		return dcvRes, nil
 	}
 	caaResp, err := dva.DoCAA(ctx, &vapb.IsCAAValidRequest{
-		Domain:           req.DnsName,
+		Domain:           req.Identifier.Value,
 		ValidationMethod: req.Challenge.Type,
 		AccountURIID:     req.Authz.RegID,
 		AuthzID:          req.Authz.Id,
@@ -1992,12 +1992,10 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	}
 
 	// Create an order for that request
-	order, err := ra.NewOrder(ctx, orderReq)
-	// It shouldn't fail
-	test.AssertNotError(t, err, "Adding an initial order for regA failed")
-	test.AssertEquals(t, numAuthorizations(order), 1)
-	// It should *not* be the bad authorization!
-	test.AssertNotEquals(t, order.V2Authorizations[0], int64(1))
+	_, err := ra.NewOrder(ctx, orderReq)
+	// It should fail
+	test.AssertError(t, err, "Added an initial order for regA with invalid challenge(s)")
+	test.AssertContains(t, err.Error(), "SA.GetAuthorizations returned a DNS wildcard authz (1) with invalid challenge(s)")
 }
 
 func TestNewOrderWildcard(t *testing.T) {
@@ -3727,7 +3725,7 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 		RegID: 2,
 	})
 	test.AssertError(t, err, "should have failed with wrong RegID")
-	test.AssertContains(t, err.Error(), "requester does not control all names")
+	test.AssertContains(t, err.Error(), "requester does not control all identifiers")
 
 	// Revoking when the account does have valid authzs for the name should succeed,
 	// but override the revocation reason to cessationOfOperation.
