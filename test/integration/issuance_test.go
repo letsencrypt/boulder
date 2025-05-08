@@ -167,3 +167,45 @@ func TestIssuanceProfiles(t *testing.T) {
 	test.AssertEquals(t, len(legacy.SubjectKeyId), 20)
 	test.AssertEquals(t, len(modern.SubjectKeyId), 0)
 }
+
+// TestIPShortLived verifies that we will allow IP address identifiers only in
+// orders that use the shortlived profile.
+func TestIPShortLived(t *testing.T) {
+	t.Parallel()
+
+	// Create an account.
+	client, err := makeClient("mailto:example@letsencrypt.org")
+	test.AssertNotError(t, err, "creating acme client")
+
+	_, shortlived := client.Directory().Meta.Profiles["shortlived"]
+	if !shortlived {
+		t.Fatal("ACME server not advertising the shortlived profile")
+	}
+
+	// Create a private key.
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "creating random cert key")
+
+	// Create an IP address identifier to request.
+	idents := []acme.Identifier{
+		{Type: "ip", Value: random_ipv6()},
+	}
+
+	// Ensure we fail under each other profile that we know the test server advertises.
+	res, err := authAndIssue(client, key, idents, true, "legacy")
+	test.AssertError(t, err, "issued for IP address identifier under legacy profile")
+
+	res, err = authAndIssue(client, key, idents, true, "modern")
+	test.AssertError(t, err, "issued for IP address identifier under modern profile")
+
+	// Get one cert for the shortlived profile.
+	res, err = authAndIssue(client, key, idents, true, "shortlived")
+	test.AssertNotError(t, err, "failed to issue under shortlived profile")
+	test.AssertEquals(t, res.Order.Profile, "shortlived")
+	cert := res.certs[0]
+
+	// Check that the shortlived profile worked as expected.
+	test.AssertEquals(t, cert.Subject.CommonName, "")
+	test.AssertDeepEquals(t, cert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth})
+	test.AssertEquals(t, len(cert.SubjectKeyId), 0)
+}
