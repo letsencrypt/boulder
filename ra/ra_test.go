@@ -586,64 +586,71 @@ func TestPerformValidationSuccess(t *testing.T) {
 	va, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	// We know this is OK because of TestNewAuthorization
-	authzPB := createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), fc.Now().Add(12*time.Hour))
+	idents := identifier.ACMEIdentifiers{
+		identifier.NewDNS("example.com"),
+		identifier.NewIP(netip.MustParseAddr("192.168.0.1")),
+	}
 
-	va.doDCVResult = &vapb.ValidationResult{
-		Records: []*corepb.ValidationRecord{
-			{
-				AddressUsed:   []byte("192.168.0.1"),
-				Hostname:      "example.com",
-				Port:          "8080",
-				Url:           "http://example.com/",
-				ResolverAddrs: []string{"rebound"},
+	for _, ident := range idents {
+		// We know this is OK because of TestNewAuthorization
+		authzPB := createPendingAuthorization(t, sa, ident, fc.Now().Add(12*time.Hour))
+
+		va.doDCVResult = &vapb.ValidationResult{
+			Records: []*corepb.ValidationRecord{
+				{
+					AddressUsed:   []byte("192.168.0.1"),
+					Hostname:      "example.com",
+					Port:          "8080",
+					Url:           "http://example.com/",
+					ResolverAddrs: []string{"rebound"},
+				},
 			},
-		},
-		Problem: nil,
+			Problem: nil,
+		}
+		va.doCAAResponse = &vapb.IsCAAValidResponse{Problem: nil}
+
+		now := fc.Now()
+		challIdx := dnsChallIdx(t, authzPB.Challenges)
+		authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+			Authz:          authzPB,
+			ChallengeIndex: challIdx,
+		})
+		test.AssertNotError(t, err, "PerformValidation failed")
+
+		var vaRequest *vapb.PerformValidationRequest
+		select {
+		case r := <-va.doDCVRequest:
+			vaRequest = r
+		case <-time.After(time.Second):
+			t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+		}
+
+		// Verify that the VA got the request, and it's the same as the others
+		test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
+		test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
+
+		// Sleep so the RA has a chance to write to the SA
+		time.Sleep(100 * time.Millisecond)
+
+		dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
+		t.Log("dbAuthz:", dbAuthzPB)
+
+		// Verify that the responses are reflected
+		challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
+		challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
+		test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
+
+		test.AssertNotNil(t, vaRequest.Challenge, "Request passed to VA has no challenge")
+		test.Assert(t, challenge.Status == core.StatusValid, "challenge was not marked as valid")
+
+		// The DB authz's expiry should be equal to the current time plus the
+		// configured authorization lifetime
+		test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), now.Add(ra.profiles.def().validAuthzLifetime))
+
+		// Check that validated timestamp was recorded, stored, and retrieved
+		expectedValidated := fc.Now()
+		test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
 	}
-	va.doCAAResponse = &vapb.IsCAAValidResponse{Problem: nil}
-
-	now := fc.Now()
-	challIdx := dnsChallIdx(t, authzPB.Challenges)
-	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
-		Authz:          authzPB,
-		ChallengeIndex: challIdx,
-	})
-	test.AssertNotError(t, err, "PerformValidation failed")
-
-	var vaRequest *vapb.PerformValidationRequest
-	select {
-	case r := <-va.doDCVRequest:
-		vaRequest = r
-	case <-time.After(time.Second):
-		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
-	}
-
-	// Verify that the VA got the request, and it's the same as the others
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
-
-	// Sleep so the RA has a chance to write to the SA
-	time.Sleep(100 * time.Millisecond)
-
-	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
-	t.Log("dbAuthz:", dbAuthzPB)
-
-	// Verify that the responses are reflected
-	challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
-	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
-	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
-
-	test.AssertNotNil(t, vaRequest.Challenge, "Request passed to VA has no challenge")
-	test.Assert(t, challenge.Status == core.StatusValid, "challenge was not marked as valid")
-
-	// The DB authz's expiry should be equal to the current time plus the
-	// configured authorization lifetime
-	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), now.Add(ra.profiles.def().validAuthzLifetime))
-
-	// Check that validated timestamp was recorded, stored, and retrieved
-	expectedValidated := fc.Now()
-	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
 }
 
 // mockSAWithSyncPause is a mock sapb.StorageAuthorityClient that forwards all
