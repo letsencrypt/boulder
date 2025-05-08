@@ -1270,3 +1270,49 @@ func (ssa *SQLStorageAuthorityRO) GetPausedIdentifiers(ctx context.Context, req 
 
 	return newPBFromIdentifierModels(matches)
 }
+
+// GetRateLimitOverride retrieves a rate limit override for the given bucket key
+// and limit. If no override is found, a NotFound error is returned.
+func (ssa *SQLStorageAuthorityRO) GetRateLimitOverride(ctx context.Context, req *sapb.GetRateLimitOverrideRequest) (*sapb.RateLimitOverrideResponse, error) {
+	if core.IsAnyNilOrZero(req, req.LimitEnum, req.BucketKey) {
+		return nil, errIncompleteRequest
+	}
+
+	obj, err := ssa.dbReadOnlyMap.Get(ctx, overrideModel{}, req.LimitEnum, req.BucketKey)
+	if db.IsNoRows(err) {
+		return nil, berrors.NotFoundError(
+			"no rate limit override found for limit %d and bucket key %s",
+			req.LimitEnum,
+			req.BucketKey,
+		)
+	}
+	if err != nil {
+		return nil, err
+	}
+	row := obj.(*overrideModel)
+
+	return &sapb.RateLimitOverrideResponse{
+		Override:  newPBFromOverrideModel(row),
+		Enabled:   row.Enabled,
+		UpdatedAt: timestamppb.New(row.UpdatedAt),
+	}, nil
+}
+
+// GetEnabledRateLimitOverrides retrieves all enabled rate limit overrides from
+// the database. The results are returned as a stream. If no enabled overrides
+// are found, an empty stream is returned.
+func (ssa *SQLStorageAuthorityRO) GetEnabledRateLimitOverrides(_ *emptypb.Empty, stream sapb.StorageAuthorityReadOnly_GetEnabledRateLimitOverridesServer) error {
+	selector, err := db.NewMappedSelector[overrideModel](ssa.dbReadOnlyMap)
+	if err != nil {
+		return fmt.Errorf("initializing selector: %w", err)
+	}
+
+	rows, err := selector.QueryContext(stream.Context(), "WHERE enabled = true")
+	if err != nil {
+		return fmt.Errorf("querying enabled overrides: %w", err)
+	}
+
+	return rows.ForEach(func(m *overrideModel) error {
+		return stream.Send(newPBFromOverrideModel(m))
+	})
+}

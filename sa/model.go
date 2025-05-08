@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/core"
@@ -1425,4 +1426,39 @@ type pausedModel struct {
 	RegistrationID int64      `db:"registrationID"`
 	PausedAt       time.Time  `db:"pausedAt"`
 	UnpausedAt     *time.Time `db:"unpausedAt"`
+}
+
+type overrideModel struct {
+	LimitEnum int64     `db:"limitEnum"`
+	BucketKey string    `db:"bucketKey"`
+	Comment   string    `db:"comment"`
+	PeriodNS  int64     `db:"periodNS"`
+	Count     int64     `db:"count"`
+	Burst     int64     `db:"burst"`
+	UpdatedAt time.Time `db:"updatedAt"`
+	Enabled   bool      `db:"enabled"`
+}
+
+func overrideModelForPB(pb *sapb.RateLimitOverride, updatedAt time.Time, enabled bool) overrideModel {
+	return overrideModel{
+		LimitEnum: pb.LimitEnum,
+		BucketKey: pb.BucketKey,
+		Comment:   pb.Comment,
+		PeriodNS:  pb.Period.AsDuration().Nanoseconds(),
+		Count:     pb.Count,
+		Burst:     pb.Burst,
+		UpdatedAt: updatedAt,
+		Enabled:   enabled,
+	}
+}
+
+func newPBFromOverrideModel(m *overrideModel) *sapb.RateLimitOverride {
+	return &sapb.RateLimitOverride{
+		LimitEnum: m.LimitEnum,
+		BucketKey: m.BucketKey,
+		Comment:   m.Comment,
+		Period:    durationpb.New(time.Duration(m.PeriodNS)),
+		Count:     m.Count,
+		Burst:     m.Burst,
+	}
 }
