@@ -1231,6 +1231,7 @@ func (cf *caaFailer) IsCAAValid(
 		cvrpb.Problem = &corepb.ProblemDetails{
 			Detail: "CAA invalid for a.com",
 		}
+	case "b.com":
 	case "c.com":
 		cvrpb.Problem = &corepb.ProblemDetails{
 			Detail: "CAA invalid for c.com",
@@ -1254,12 +1255,15 @@ func (cf *caaFailer) DoCAA(
 		cvrpb.Problem = &corepb.ProblemDetails{
 			Detail: "CAA invalid for a.com",
 		}
+	case "b.com":
 	case "c.com":
 		cvrpb.Problem = &corepb.ProblemDetails{
 			Detail: "CAA invalid for c.com",
 		}
 	case "d.com":
 		return nil, fmt.Errorf("Error checking CAA for d.com")
+	default:
+		return nil, fmt.Errorf("Unexpected test case")
 	}
 	return cvrpb, nil
 }
@@ -1357,13 +1361,27 @@ func TestRecheckCAAInternalServerError(t *testing.T) {
 }
 
 func TestRecheckSkipIPAddress(t *testing.T) {
-	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ra.VA = va.RemoteClients{CAAClient: &caaFailer{}}
-	authzs := []*core.Authorization{
-		makeHTTP01Authorization(identifier.NewIP(netip.MustParseAddr("127.0.0.1"))),
+	ident := identifier.NewIP(netip.MustParseAddr("127.0.0.1"))
+	olderValidated := fc.Now().Add(-8 * time.Hour)
+	olderExpires := fc.Now().Add(5 * time.Hour)
+	authzs := map[identifier.ACMEIdentifier]*core.Authorization{
+		ident: {
+			Identifier: ident,
+			Expires:    &olderExpires,
+			Challenges: []core.Challenge{
+				{
+					Status:    core.StatusValid,
+					Type:      core.ChallengeTypeHTTP01,
+					Token:     "exampleToken",
+					Validated: &olderValidated,
+				},
+			},
+		},
 	}
-	err := ra.recheckCAA(context.Background(), authzs)
+	err := ra.checkAuthorizationsCAA(context.Background(), 1, authzs, fc.Now())
 	test.AssertNotError(t, err, "rechecking CAA for IP address, should have skipped")
 }
 
