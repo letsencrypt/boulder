@@ -801,8 +801,14 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 		if staleCAA, err := validatedBefore(authz, caaRecheckAfter); err != nil {
 			return err
 		} else if staleCAA {
-			// Ensure that CAA is rechecked for this name
-			recheckAuthzs = append(recheckAuthzs, authz)
+			switch authz.Identifier.Type {
+			case identifier.TypeDNS:
+				// Ensure that CAA is rechecked for this name
+				recheckAuthzs = append(recheckAuthzs, authz)
+			case identifier.TypeIP:
+			default:
+				return berrors.MalformedError("invalid identifier type: %s", authz.Identifier.Type)
+			}
 		}
 	}
 
@@ -837,8 +843,6 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 	ch := make(chan authzCAAResult, len(authzs))
 	for _, authz := range authzs {
 		go func(authz *core.Authorization) {
-			name := authz.Identifier.Value
-
 			// If an authorization has multiple valid challenges,
 			// the type of the first valid challenge is used for
 			// the purposes of CAA rechecking.
@@ -854,14 +858,15 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 					authz: authz,
 					err: berrors.InternalServerError(
 						"Internal error determining validation method for authorization ID %v (%v)",
-						authz.ID, name),
+						authz.ID, authz.Identifier.Value),
 				}
 				return
 			}
 			var resp *vapb.IsCAAValidResponse
 			var err error
 			resp, err = ra.VA.DoCAA(ctx, &vapb.IsCAAValidRequest{
-				Domain:           name,
+				Identifier:       authz.Identifier.ToProto(),
+				Domain:           authz.Identifier.Value,
 				ValidationMethod: method,
 				AccountURIID:     authz.RegistrationID,
 			})
@@ -869,7 +874,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				ra.log.AuditErrf("Rechecking CAA: %s", err)
 				err = berrors.InternalServerError(
 					"Internal error rechecking CAA for authorization ID %v (%v)",
-					authz.ID, name,
+					authz.ID, authz.Identifier.Value,
 				)
 			} else if resp.Problem != nil {
 				err = berrors.CAAError("rechecking caa: %s", resp.Problem.Detail)
@@ -1532,11 +1537,18 @@ func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq 
 		return doDCVRes.Problem, doDCVRes.Records, nil
 	}
 
-	doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
-	if err != nil {
-		return nil, nil, err
+	switch identifier.FromProto(dcvReq.Identifier).Type {
+	case identifier.TypeDNS:
+		doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
+		if err != nil {
+			return nil, nil, err
+		}
+		return doCAAResp.Problem, doDCVRes.Records, nil
+	case identifier.TypeIP:
+		return nil, doDCVRes.Records, nil
+	default:
+		return nil, nil, berrors.MalformedError("invalid identifier type: %s", dcvReq.Identifier.Type)
 	}
-	return doCAAResp.Problem, doDCVRes.Records, nil
 }
 
 // PerformValidation initiates validation for a specific challenge associated
@@ -1636,6 +1648,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
 			},
 			&vapb.IsCAAValidRequest{
+				Identifier:       authz.Identifier.ToProto(),
 				Domain:           authz.Identifier.Value,
 				ValidationMethod: chall.Type,
 				AccountURIID:     authz.RegistrationID,

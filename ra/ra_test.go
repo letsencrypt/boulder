@@ -17,6 +17,7 @@ import (
 	"math"
 	"math/big"
 	mrand "math/rand/v2"
+	"net/netip"
 	"regexp"
 	"strconv"
 	"strings"
@@ -178,7 +179,7 @@ func (dva *DummyValidationAuthority) PerformValidation(ctx context.Context, req 
 		return dcvRes, nil
 	}
 	caaResp, err := dva.DoCAA(ctx, &vapb.IsCAAValidRequest{
-		Domain:           req.Identifier.Value,
+		Identifier:       req.Identifier,
 		ValidationMethod: req.Challenge.Type,
 		AccountURIID:     req.Authz.RegID,
 		AuthzID:          req.Authz.Id,
@@ -585,64 +586,71 @@ func TestPerformValidationSuccess(t *testing.T) {
 	va, sa, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	// We know this is OK because of TestNewAuthorization
-	authzPB := createPendingAuthorization(t, sa, identifier.NewDNS("example.com"), fc.Now().Add(12*time.Hour))
+	idents := identifier.ACMEIdentifiers{
+		identifier.NewDNS("example.com"),
+		identifier.NewIP(netip.MustParseAddr("192.168.0.1")),
+	}
 
-	va.doDCVResult = &vapb.ValidationResult{
-		Records: []*corepb.ValidationRecord{
-			{
-				AddressUsed:   []byte("192.168.0.1"),
-				Hostname:      "example.com",
-				Port:          "8080",
-				Url:           "http://example.com/",
-				ResolverAddrs: []string{"rebound"},
+	for _, ident := range idents {
+		// We know this is OK because of TestNewAuthorization
+		authzPB := createPendingAuthorization(t, sa, ident, fc.Now().Add(12*time.Hour))
+
+		va.doDCVResult = &vapb.ValidationResult{
+			Records: []*corepb.ValidationRecord{
+				{
+					AddressUsed:   []byte("192.168.0.1"),
+					Hostname:      "example.com",
+					Port:          "8080",
+					Url:           "http://example.com/",
+					ResolverAddrs: []string{"rebound"},
+				},
 			},
-		},
-		Problem: nil,
+			Problem: nil,
+		}
+		va.doCAAResponse = &vapb.IsCAAValidResponse{Problem: nil}
+
+		now := fc.Now()
+		challIdx := dnsChallIdx(t, authzPB.Challenges)
+		authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+			Authz:          authzPB,
+			ChallengeIndex: challIdx,
+		})
+		test.AssertNotError(t, err, "PerformValidation failed")
+
+		var vaRequest *vapb.PerformValidationRequest
+		select {
+		case r := <-va.doDCVRequest:
+			vaRequest = r
+		case <-time.After(time.Second):
+			t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
+		}
+
+		// Verify that the VA got the request, and it's the same as the others
+		test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
+		test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
+
+		// Sleep so the RA has a chance to write to the SA
+		time.Sleep(100 * time.Millisecond)
+
+		dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
+		t.Log("dbAuthz:", dbAuthzPB)
+
+		// Verify that the responses are reflected
+		challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
+		challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
+		test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
+
+		test.AssertNotNil(t, vaRequest.Challenge, "Request passed to VA has no challenge")
+		test.Assert(t, challenge.Status == core.StatusValid, "challenge was not marked as valid")
+
+		// The DB authz's expiry should be equal to the current time plus the
+		// configured authorization lifetime
+		test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), now.Add(ra.profiles.def().validAuthzLifetime))
+
+		// Check that validated timestamp was recorded, stored, and retrieved
+		expectedValidated := fc.Now()
+		test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
 	}
-	va.doCAAResponse = &vapb.IsCAAValidResponse{Problem: nil}
-
-	now := fc.Now()
-	challIdx := dnsChallIdx(t, authzPB.Challenges)
-	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
-		Authz:          authzPB,
-		ChallengeIndex: challIdx,
-	})
-	test.AssertNotError(t, err, "PerformValidation failed")
-
-	var vaRequest *vapb.PerformValidationRequest
-	select {
-	case r := <-va.doDCVRequest:
-		vaRequest = r
-	case <-time.After(time.Second):
-		t.Fatal("Timed out waiting for DummyValidationAuthority.PerformValidation to complete")
-	}
-
-	// Verify that the VA got the request, and it's the same as the others
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
-	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
-
-	// Sleep so the RA has a chance to write to the SA
-	time.Sleep(100 * time.Millisecond)
-
-	dbAuthzPB := getAuthorization(t, authzPB.Id, sa)
-	t.Log("dbAuthz:", dbAuthzPB)
-
-	// Verify that the responses are reflected
-	challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
-	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
-	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
-
-	test.AssertNotNil(t, vaRequest.Challenge, "Request passed to VA has no challenge")
-	test.Assert(t, challenge.Status == core.StatusValid, "challenge was not marked as valid")
-
-	// The DB authz's expiry should be equal to the current time plus the
-	// configured authorization lifetime
-	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), now.Add(ra.profiles.def().validAuthzLifetime))
-
-	// Check that validated timestamp was recorded, stored, and retrieved
-	expectedValidated := fc.Now()
-	test.Assert(t, *challenge.Validated == expectedValidated, "Validated timestamp incorrect or missing")
 }
 
 // mockSAWithSyncPause is a mock sapb.StorageAuthorityClient that forwards all
@@ -1033,7 +1041,7 @@ func (cr *caaRecorder) IsCAAValid(
 ) (*vapb.IsCAAValidResponse, error) {
 	cr.Lock()
 	defer cr.Unlock()
-	cr.names[in.Domain] = true
+	cr.names[in.Identifier.Value] = true
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
@@ -1044,7 +1052,7 @@ func (cr *caaRecorder) DoCAA(
 ) (*vapb.IsCAAValidResponse, error) {
 	cr.Lock()
 	defer cr.Unlock()
-	cr.names[in.Domain] = true
+	cr.names[in.Identifier.Value] = true
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
@@ -1225,17 +1233,20 @@ func (cf *caaFailer) IsCAAValid(
 	opts ...grpc.CallOption,
 ) (*vapb.IsCAAValidResponse, error) {
 	cvrpb := &vapb.IsCAAValidResponse{}
-	switch in.Domain {
+	switch in.Identifier.Value {
 	case "a.com":
 		cvrpb.Problem = &corepb.ProblemDetails{
 			Detail: "CAA invalid for a.com",
 		}
+	case "b.com":
 	case "c.com":
 		cvrpb.Problem = &corepb.ProblemDetails{
 			Detail: "CAA invalid for c.com",
 		}
 	case "d.com":
 		return nil, fmt.Errorf("Error checking CAA for d.com")
+	default:
+		return nil, fmt.Errorf("Unexpected test case")
 	}
 	return cvrpb, nil
 }
@@ -1246,17 +1257,20 @@ func (cf *caaFailer) DoCAA(
 	opts ...grpc.CallOption,
 ) (*vapb.IsCAAValidResponse, error) {
 	cvrpb := &vapb.IsCAAValidResponse{}
-	switch in.Domain {
+	switch in.Identifier.Value {
 	case "a.com":
 		cvrpb.Problem = &corepb.ProblemDetails{
 			Detail: "CAA invalid for a.com",
 		}
+	case "b.com":
 	case "c.com":
 		cvrpb.Problem = &corepb.ProblemDetails{
 			Detail: "CAA invalid for c.com",
 		}
 	case "d.com":
 		return nil, fmt.Errorf("Error checking CAA for d.com")
+	default:
+		return nil, fmt.Errorf("Unexpected test case")
 	}
 	return cvrpb, nil
 }
@@ -1268,9 +1282,9 @@ func TestRecheckCAAEmpty(t *testing.T) {
 	test.AssertNotError(t, err, "expected nil")
 }
 
-func makeHTTP01Authorization(domain string) *core.Authorization {
+func makeHTTP01Authorization(ident identifier.ACMEIdentifier) *core.Authorization {
 	return &core.Authorization{
-		Identifier: identifier.NewDNS(domain),
+		Identifier: ident,
 		Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 	}
 }
@@ -1280,9 +1294,9 @@ func TestRecheckCAASuccess(t *testing.T) {
 	defer cleanUp()
 	ra.VA = va.RemoteClients{CAAClient: &noopCAA{}}
 	authzs := []*core.Authorization{
-		makeHTTP01Authorization("a.com"),
-		makeHTTP01Authorization("b.com"),
-		makeHTTP01Authorization("c.com"),
+		makeHTTP01Authorization(identifier.NewDNS("a.com")),
+		makeHTTP01Authorization(identifier.NewDNS("b.com")),
+		makeHTTP01Authorization(identifier.NewDNS("c.com")),
 	}
 	err := ra.recheckCAA(context.Background(), authzs)
 	test.AssertNotError(t, err, "expected nil")
@@ -1293,9 +1307,9 @@ func TestRecheckCAAFail(t *testing.T) {
 	defer cleanUp()
 	ra.VA = va.RemoteClients{CAAClient: &caaFailer{}}
 	authzs := []*core.Authorization{
-		makeHTTP01Authorization("a.com"),
-		makeHTTP01Authorization("b.com"),
-		makeHTTP01Authorization("c.com"),
+		makeHTTP01Authorization(identifier.NewDNS("a.com")),
+		makeHTTP01Authorization(identifier.NewDNS("b.com")),
+		makeHTTP01Authorization(identifier.NewDNS("c.com")),
 	}
 	err := ra.recheckCAA(context.Background(), authzs)
 
@@ -1328,7 +1342,7 @@ func TestRecheckCAAFail(t *testing.T) {
 
 	// Recheck CAA with just one bad authz
 	authzs = []*core.Authorization{
-		makeHTTP01Authorization("a.com"),
+		makeHTTP01Authorization(identifier.NewDNS("a.com")),
 	}
 	err = ra.recheckCAA(context.Background(), authzs)
 	// It should error
@@ -1344,13 +1358,67 @@ func TestRecheckCAAInternalServerError(t *testing.T) {
 	defer cleanUp()
 	ra.VA = va.RemoteClients{CAAClient: &caaFailer{}}
 	authzs := []*core.Authorization{
-		makeHTTP01Authorization("a.com"),
-		makeHTTP01Authorization("b.com"),
-		makeHTTP01Authorization("d.com"),
+		makeHTTP01Authorization(identifier.NewDNS("a.com")),
+		makeHTTP01Authorization(identifier.NewDNS("b.com")),
+		makeHTTP01Authorization(identifier.NewDNS("d.com")),
 	}
 	err := ra.recheckCAA(context.Background(), authzs)
 	test.AssertError(t, err, "expected err, got nil")
 	test.AssertErrorIs(t, err, berrors.InternalServer)
+}
+
+func TestRecheckSkipIPAddress(t *testing.T) {
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.VA = va.RemoteClients{CAAClient: &caaFailer{}}
+	ident := identifier.NewIP(netip.MustParseAddr("127.0.0.1"))
+	olderValidated := fc.Now().Add(-8 * time.Hour)
+	olderExpires := fc.Now().Add(5 * time.Hour)
+	authzs := map[identifier.ACMEIdentifier]*core.Authorization{
+		ident: {
+			Identifier: ident,
+			Expires:    &olderExpires,
+			Challenges: []core.Challenge{
+				{
+					Status:    core.StatusValid,
+					Type:      core.ChallengeTypeHTTP01,
+					Token:     "exampleToken",
+					Validated: &olderValidated,
+				},
+			},
+		},
+	}
+	err := ra.checkAuthorizationsCAA(context.Background(), 1, authzs, fc.Now())
+	test.AssertNotError(t, err, "rechecking CAA for IP address, should have skipped")
+}
+
+func TestRecheckInvalidIdentifierType(t *testing.T) {
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ident := identifier.ACMEIdentifier{
+		Type:  "fnord",
+		Value: "well this certainly shouldn't have happened",
+	}
+	olderValidated := fc.Now().Add(-8 * time.Hour)
+	olderExpires := fc.Now().Add(5 * time.Hour)
+	authzs := map[identifier.ACMEIdentifier]*core.Authorization{
+		ident: {
+			Identifier: ident,
+			Expires:    &olderExpires,
+			Challenges: []core.Challenge{
+				{
+					Status:    core.StatusValid,
+					Type:      core.ChallengeTypeHTTP01,
+					Token:     "exampleToken",
+					Validated: &olderValidated,
+				},
+			},
+		},
+	}
+	err := ra.checkAuthorizationsCAA(context.Background(), 1, authzs, fc.Now())
+	test.AssertError(t, err, "expected err, got nil")
+	test.AssertErrorIs(t, err, berrors.Malformed)
+	test.AssertContains(t, err.Error(), "invalid identifier type")
 }
 
 func TestNewOrder(t *testing.T) {

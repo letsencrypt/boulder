@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"regexp"
 	"slices"
 	"strings"
@@ -537,7 +538,7 @@ func TestDoCAAErrMessage(t *testing.T) {
 	// caaMockDNS.
 	domain := "caa-timeout.com"
 	resp, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
-		Domain:           domain,
+		Identifier:       identifier.NewDNS(domain).ToProto(),
 		ValidationMethod: string(core.ChallengeTypeHTTP01),
 		AccountURIID:     12345,
 	})
@@ -561,14 +562,14 @@ func TestDoCAAParams(t *testing.T) {
 
 	// Calling IsCAAValid without a ValidationMethod should fail.
 	_, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
-		Domain:       "present.com",
+		Identifier:   identifier.NewDNS("present.com").ToProto(),
 		AccountURIID: 12345,
 	})
 	test.AssertError(t, err, "calling IsCAAValid without a ValidationMethod")
 
 	// Calling IsCAAValid with an invalid ValidationMethod should fail.
 	_, err = va.DoCAA(ctx, &vapb.IsCAAValidRequest{
-		Domain:           "present.com",
+		Identifier:       identifier.NewDNS("present.com").ToProto(),
 		ValidationMethod: "tls-sni-01",
 		AccountURIID:     12345,
 	})
@@ -576,10 +577,18 @@ func TestDoCAAParams(t *testing.T) {
 
 	// Calling IsCAAValid without an AccountURIID should fail.
 	_, err = va.DoCAA(ctx, &vapb.IsCAAValidRequest{
-		Domain:           "present.com",
+		Identifier:       identifier.NewDNS("present.com").ToProto(),
 		ValidationMethod: string(core.ChallengeTypeHTTP01),
 	})
 	test.AssertError(t, err, "calling IsCAAValid without an AccountURIID")
+
+	// Calling IsCAAValid with a non-DNS identifier type should fail.
+	_, err = va.DoCAA(ctx, &vapb.IsCAAValidRequest{
+		Identifier:       identifier.NewIP(netip.MustParseAddr("127.0.0.1")).ToProto(),
+		ValidationMethod: string(core.ChallengeTypeHTTP01),
+		AccountURIID:     12345,
+	})
+	test.AssertError(t, err, "calling IsCAAValid with a non-DNS identifier type")
 }
 
 var errCAABrokenDNSClient = errors.New("dnsClient is broken")
@@ -673,7 +682,7 @@ func TestMultiCAARechecking(t *testing.T) {
 
 	testCases := []struct {
 		name                     string
-		domains                  string
+		ident                    identifier.ACMEIdentifier
 		remoteVAs                []remoteConf
 		expectedProbSubstring    string
 		expectedProbType         probs.ProblemType
@@ -684,7 +693,7 @@ func TestMultiCAARechecking(t *testing.T) {
 	}{
 		{
 			name:           "all VAs functional, no CAA records",
-			domains:        "present-dns-only.com",
+			ident:          identifier.NewDNS("present-dns-only.com"),
 			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: remoteUA, rir: arin},
@@ -701,7 +710,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                  "broken localVA, RVAs functional, no CAA records",
-			domains:               "present-dns-only.com",
+			ident:                 identifier.NewDNS("present-dns-only.com"),
 			localDNSClient:        caaBrokenDNS{},
 			expectedProbSubstring: "While processing CAA for present-dns-only.com: dnsClient is broken",
 			expectedProbType:      probs.DNSProblem,
@@ -720,7 +729,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "functional localVA, 1 broken RVA, no CAA records",
-			domains:                  "present-dns-only.com",
+			ident:                    identifier.NewDNS("present-dns-only.com"),
 			localDNSClient:           caaMockDNS{},
 			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
 			expectedSummary: &mpicSummary{
@@ -744,7 +753,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "functional localVA, 2 broken RVA, no CAA records",
-			domains:                  "present-dns-only.com",
+			ident:                    identifier.NewDNS("present-dns-only.com"),
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
@@ -770,7 +779,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "functional localVA, all broken RVAs, no CAA records",
-			domains:                  "present-dns-only.com",
+			ident:                    identifier.NewDNS("present-dns-only.com"),
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
@@ -796,7 +805,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:           "all VAs functional, CAA issue type present",
-			domains:        "present.com",
+			ident:          identifier.NewDNS("present.com"),
 			localDNSClient: caaMockDNS{},
 			remoteVAs: []remoteConf{
 				{ua: remoteUA, rir: arin},
@@ -813,7 +822,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "functional localVA, 1 broken RVA, CAA issue type present",
-			domains:                  "present.com",
+			ident:                    identifier.NewDNS("present.com"),
 			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
 			expectedSummary: &mpicSummary{
 				Passed:       []string{"dc-1-RIPE", "dc-2-APNIC"},
@@ -837,7 +846,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "functional localVA, 2 broken RVA, CAA issue type present",
-			domains:                  "present.com",
+			ident:                    identifier.NewDNS("present.com"),
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
@@ -863,7 +872,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "functional localVA, all broken RVAs, CAA issue type present",
-			domains:                  "present.com",
+			ident:                    identifier.NewDNS("present.com"),
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.DNSProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
@@ -891,7 +900,7 @@ func TestMultiCAARechecking(t *testing.T) {
 			// The localVA returns early with a problem before kicking off the
 			// remote checks.
 			name:                  "all VAs functional, CAA issue type forbids issuance",
-			domains:               "unsatisfiable.com",
+			ident:                 identifier.NewDNS("unsatisfiable.com"),
 			expectedProbSubstring: "CAA record for unsatisfiable.com prevents issuance",
 			expectedProbType:      probs.CAAProblem,
 			localDNSClient:        caaMockDNS{},
@@ -903,7 +912,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "1 hijacked RVA, CAA issue type present",
-			domains:                  "present.com",
+			ident:                    identifier.NewDNS("present.com"),
 			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
 			expectedSummary: &mpicSummary{
 				Passed:       []string{"dc-1-RIPE", "dc-2-APNIC"},
@@ -920,7 +929,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "2 hijacked RVAs, CAA issue type present",
-			domains:                  "present.com",
+			ident:                    identifier.NewDNS("present.com"),
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
@@ -939,7 +948,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "3 hijacked RVAs, CAA issue type present",
-			domains:                  "present.com",
+			ident:                    identifier.NewDNS("present.com"),
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
@@ -958,7 +967,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "1 hijacked RVA, CAA issuewild type present",
-			domains:                  "satisfiable-wildcard.com",
+			ident:                    identifier.NewDNS("satisfiable-wildcard.com"),
 			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
 			expectedSummary: &mpicSummary{
 				Passed:       []string{"dc-1-RIPE", "dc-2-APNIC"},
@@ -975,7 +984,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "2 hijacked RVAs, CAA issuewild type present",
-			domains:                  "satisfiable-wildcard.com",
+			ident:                    identifier.NewDNS("satisfiable-wildcard.com"),
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
@@ -994,7 +1003,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "3 hijacked RVAs, CAA issuewild type present",
-			domains:                  "satisfiable-wildcard.com",
+			ident:                    identifier.NewDNS("satisfiable-wildcard.com"),
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
@@ -1013,7 +1022,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "1 hijacked RVA, CAA issuewild type present, 1 failure allowed",
-			domains:                  "satisfiable-wildcard.com",
+			ident:                    identifier.NewDNS("satisfiable-wildcard.com"),
 			expectedDiffLogSubstring: `"RemoteSuccesses":2,"RemoteFailures":1`,
 			expectedSummary: &mpicSummary{
 				Passed:       []string{"dc-1-RIPE", "dc-2-APNIC"},
@@ -1030,7 +1039,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "2 hijacked RVAs, CAA issuewild type present, 1 failure allowed",
-			domains:                  "satisfiable-wildcard.com",
+			ident:                    identifier.NewDNS("satisfiable-wildcard.com"),
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":1,"RemoteFailures":2`,
@@ -1049,7 +1058,7 @@ func TestMultiCAARechecking(t *testing.T) {
 		},
 		{
 			name:                     "3 hijacked RVAs, CAA issuewild type present, 1 failure allowed",
-			domains:                  "satisfiable-wildcard.com",
+			ident:                    identifier.NewDNS("satisfiable-wildcard.com"),
 			expectedProbSubstring:    "During secondary validation: While processing CAA",
 			expectedProbType:         probs.CAAProblem,
 			expectedDiffLogSubstring: `"RemoteSuccesses":0,"RemoteFailures":3`,
@@ -1079,7 +1088,7 @@ func TestMultiCAARechecking(t *testing.T) {
 			defer features.Reset()
 
 			isValidRes, err := va.DoCAA(context.TODO(), &vapb.IsCAAValidRequest{
-				Domain:           tc.domains,
+				Identifier:       tc.ident.ToProto(),
 				ValidationMethod: string(core.ChallengeTypeDNS01),
 				AccountURIID:     1,
 			})
@@ -1717,5 +1726,23 @@ func TestExtractIssuerDomainAndParameters(t *testing.T) {
 				test.AssertDeepEquals(t, gotParameters, tc.wantParameters)
 			}
 		})
+	}
+}
+
+// TestDoCAADomain tests that DoCAA (IsCAAValid) still handles requests with a
+// (deprecated) DnsName and no (new) Identifier.
+//
+// TODO(#8023): Remove this test when removing DnsName from the protobuf struct.
+func TestDoCAADomain(t *testing.T) {
+	t.Parallel()
+	va, _ := setup(nil, "", nil, caaMockDNS{})
+
+	_, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
+		Domain:           "present.com",
+		ValidationMethod: string(core.ChallengeTypeDNS01),
+		AccountURIID:     12345,
+	})
+	if err != nil {
+		t.Errorf("calling IsCAAValid without an Identifier: %s", err)
 	}
 }
