@@ -17,6 +17,7 @@ import (
 	"math"
 	"math/big"
 	mrand "math/rand/v2"
+	"net/netip"
 	"regexp"
 	"strconv"
 	"strings"
@@ -1236,6 +1237,8 @@ func (cf *caaFailer) IsCAAValid(
 		}
 	case "d.com":
 		return nil, fmt.Errorf("Error checking CAA for d.com")
+	default:
+		return nil, fmt.Errorf("Unexpected test case")
 	}
 	return cvrpb, nil
 }
@@ -1268,9 +1271,9 @@ func TestRecheckCAAEmpty(t *testing.T) {
 	test.AssertNotError(t, err, "expected nil")
 }
 
-func makeHTTP01Authorization(domain string) *core.Authorization {
+func makeHTTP01Authorization(ident identifier.ACMEIdentifier) *core.Authorization {
 	return &core.Authorization{
-		Identifier: identifier.NewDNS(domain),
+		Identifier: ident,
 		Challenges: []core.Challenge{{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01}},
 	}
 }
@@ -1280,9 +1283,9 @@ func TestRecheckCAASuccess(t *testing.T) {
 	defer cleanUp()
 	ra.VA = va.RemoteClients{CAAClient: &noopCAA{}}
 	authzs := []*core.Authorization{
-		makeHTTP01Authorization("a.com"),
-		makeHTTP01Authorization("b.com"),
-		makeHTTP01Authorization("c.com"),
+		makeHTTP01Authorization(identifier.NewDNS("a.com")),
+		makeHTTP01Authorization(identifier.NewDNS("b.com")),
+		makeHTTP01Authorization(identifier.NewDNS("c.com")),
 	}
 	err := ra.recheckCAA(context.Background(), authzs)
 	test.AssertNotError(t, err, "expected nil")
@@ -1293,9 +1296,9 @@ func TestRecheckCAAFail(t *testing.T) {
 	defer cleanUp()
 	ra.VA = va.RemoteClients{CAAClient: &caaFailer{}}
 	authzs := []*core.Authorization{
-		makeHTTP01Authorization("a.com"),
-		makeHTTP01Authorization("b.com"),
-		makeHTTP01Authorization("c.com"),
+		makeHTTP01Authorization(identifier.NewDNS("a.com")),
+		makeHTTP01Authorization(identifier.NewDNS("b.com")),
+		makeHTTP01Authorization(identifier.NewDNS("c.com")),
 	}
 	err := ra.recheckCAA(context.Background(), authzs)
 
@@ -1328,7 +1331,7 @@ func TestRecheckCAAFail(t *testing.T) {
 
 	// Recheck CAA with just one bad authz
 	authzs = []*core.Authorization{
-		makeHTTP01Authorization("a.com"),
+		makeHTTP01Authorization(identifier.NewDNS("a.com")),
 	}
 	err = ra.recheckCAA(context.Background(), authzs)
 	// It should error
@@ -1344,13 +1347,53 @@ func TestRecheckCAAInternalServerError(t *testing.T) {
 	defer cleanUp()
 	ra.VA = va.RemoteClients{CAAClient: &caaFailer{}}
 	authzs := []*core.Authorization{
-		makeHTTP01Authorization("a.com"),
-		makeHTTP01Authorization("b.com"),
-		makeHTTP01Authorization("d.com"),
+		makeHTTP01Authorization(identifier.NewDNS("a.com")),
+		makeHTTP01Authorization(identifier.NewDNS("b.com")),
+		makeHTTP01Authorization(identifier.NewDNS("d.com")),
 	}
 	err := ra.recheckCAA(context.Background(), authzs)
 	test.AssertError(t, err, "expected err, got nil")
 	test.AssertErrorIs(t, err, berrors.InternalServer)
+}
+
+func TestRecheckSkipIPAddress(t *testing.T) {
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.VA = va.RemoteClients{CAAClient: &caaFailer{}}
+	authzs := []*core.Authorization{
+		makeHTTP01Authorization(identifier.NewIP(netip.MustParseAddr("127.0.0.1"))),
+	}
+	err := ra.recheckCAA(context.Background(), authzs)
+	test.AssertNotError(t, err, "rechecking CAA for IP address, should have skipped")
+}
+
+func TestRecheckInvalidIdentifierType(t *testing.T) {
+	_, _, ra, _, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ident := identifier.ACMEIdentifier{
+		Type:  "fnord",
+		Value: "well this certainly shouldn't have happened",
+	}
+	olderValidated := fc.Now().Add(-8 * time.Hour)
+	olderExpires := fc.Now().Add(5 * time.Hour)
+	authzs := map[identifier.ACMEIdentifier]*core.Authorization{
+		ident: {
+			Identifier: ident,
+			Expires:    &olderExpires,
+			Challenges: []core.Challenge{
+				{
+					Status:    core.StatusValid,
+					Type:      core.ChallengeTypeHTTP01,
+					Token:     "exampleToken",
+					Validated: &olderValidated,
+				},
+			},
+		},
+	}
+	err := ra.checkAuthorizationsCAA(context.Background(), 1, authzs, fc.Now())
+	test.AssertError(t, err, "expected err, got nil")
+	test.AssertErrorIs(t, err, berrors.Malformed)
+	test.AssertContains(t, err.Error(), "invalid identifier type")
 }
 
 func TestNewOrder(t *testing.T) {
