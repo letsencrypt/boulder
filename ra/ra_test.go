@@ -266,6 +266,8 @@ var (
 var ctx = context.Background()
 
 func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAuthorityClient, *RegistrationAuthorityImpl, ratelimits.Source, clock.FakeClock, func()) {
+	features.Set(features.Config{DNSAccount01Enabled: true})
+
 	err := json.Unmarshal(AccountKeyJSONA, &AccountKeyA)
 	test.AssertNotError(t, err, "Failed to unmarshal public JWK")
 	err = json.Unmarshal(AccountKeyJSONB, &AccountKeyB)
@@ -302,8 +304,9 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	va := va.RemoteClients{VAClient: dummyVA, CAAClient: dummyVA}
 
 	pa, err := policy.New(map[core.AcmeChallenge]bool{
-		core.ChallengeTypeHTTP01: true,
-		core.ChallengeTypeDNS01:  true,
+		core.ChallengeTypeHTTP01:       true,
+		core.ChallengeTypeDNS01:        true,
+		core.ChallengeTypeDNSAccount01: true,
 	}, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
 	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
@@ -611,9 +614,11 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 		now := fc.Now()
 		challIdx := dnsChallIdx(t, authzPB.Challenges)
+		testAccountURI := "https://example.com/acme/acct/1"
 		authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 			Authz:          authzPB,
 			ChallengeIndex: challIdx,
+			AccountURI:     testAccountURI,
 		})
 		test.AssertNotError(t, err, "PerformValidation failed")
 
@@ -628,6 +633,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 		// Verify that the VA got the request, and it's the same as the others
 		test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
 		test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
+		test.AssertEquals(t, testAccountURI, vaRequest.AccountURI)
 
 		// Sleep so the RA has a chance to write to the SA
 		time.Sleep(100 * time.Millisecond)
@@ -824,9 +830,11 @@ func TestPerformValidationVAError(t *testing.T) {
 	va.doDCVError = fmt.Errorf("Something went wrong")
 
 	challIdx := dnsChallIdx(t, authzPB.Challenges)
+	testAccountURI := "https://example.com/acme/acct/1"
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: challIdx,
+		AccountURI:     testAccountURI,
 	})
 
 	test.AssertNotError(t, err, "PerformValidation completely failed")
@@ -842,6 +850,7 @@ func TestPerformValidationVAError(t *testing.T) {
 	// Verify that the VA got the request, and it's the same as the others
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Type, vaRequest.Challenge.Type)
 	test.AssertEquals(t, authzPB.Challenges[challIdx].Token, vaRequest.Challenge.Token)
+	test.AssertEquals(t, testAccountURI, vaRequest.AccountURI)
 
 	// Sleep so the RA has a chance to write to the SA
 	time.Sleep(100 * time.Millisecond)
@@ -1989,8 +1998,8 @@ func (msa *mockSAWithAuthzs) NewOrderAndAuthzs(ctx context.Context, req *sapb.Ne
 // TestNewOrderAuthzReuseSafety checks that the RA's safety check for reusing an
 // authorization for a new-order request with a wildcard name works correctly.
 // We want to ensure that we never reuse a non-Wildcard authorization (e.g. one
-// with more than just a DNS-01 challenge) for a wildcard name. See Issue #3420
-// for background - this safety check was previously broken!
+// with more than just DNS-01 and DNS-ACCOUNT-1 challenges) for a wildcard name.
+// See Issue #3420 for background - this safety check was previously broken!
 // https://github.com/letsencrypt/boulder/issues/3420
 func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	_, _, ra, _, _, cleanUp := initAuthorities(t)
@@ -2108,14 +2117,27 @@ func TestNewOrderWildcard(t *testing.T) {
 		name := authz.Identifier.Value
 		switch name {
 		case "*.welcome.zombo.com":
-			// If the authz is for *.welcome.zombo.com, we expect that it only has one
-			// pending challenge with DNS-01 type
-			test.AssertEquals(t, len(authz.Challenges), 1)
-			test.AssertEquals(t, authz.Challenges[0].Status, core.StatusPending)
-			test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01)
+			// If the authz is for *.welcome.zombo.com, we expect that it has
+			// exactly two pending challenges with DNS-01 and DNS-ACCOUNT-01
+			// types
+			test.AssertEquals(t, len(authz.Challenges), 2)
+
+			foundDNS01 := false
+			foundDNSAccount01 := false
+			for _, ch := range authz.Challenges {
+				test.AssertEquals(t, ch.Status, core.StatusPending)
+				if ch.Type == core.ChallengeTypeDNS01 {
+					foundDNS01 = true
+				}
+				if ch.Type == core.ChallengeTypeDNSAccount01 {
+					foundDNSAccount01 = true
+				}
+			}
+			test.Assert(t, foundDNS01, "Expected to find DNS-01 challenge")
+			test.Assert(t, foundDNSAccount01, "Expected to find DNS-ACCOUNT-01 challenge")
 		case "example.com":
 			// If the authz is for example.com, we expect it has normal challenges
-			test.AssertEquals(t, len(authz.Challenges), 3)
+			test.AssertEquals(t, len(authz.Challenges), 4)
 		default:
 			t.Fatalf("Received an authorization for a name not requested: %q", name)
 		}
@@ -2158,13 +2180,26 @@ func TestNewOrderWildcard(t *testing.T) {
 		case "zombo.com":
 			// We expect that the base domain identifier auth has the normal number of
 			// challenges
-			test.AssertEquals(t, len(authz.Challenges), 3)
+			test.AssertEquals(t, len(authz.Challenges), 4)
 		case "*.zombo.com":
-			// We expect that the wildcard identifier auth has only a pending
-			// DNS-01 type challenge
-			test.AssertEquals(t, len(authz.Challenges), 1)
-			test.AssertEquals(t, authz.Challenges[0].Status, core.StatusPending)
-			test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01)
+			// We expect that the wildcard identifier auth has exactly
+			// two pending challenges with DNS-01 and DNS-ACCOUNT-01
+			// types
+			test.AssertEquals(t, len(authz.Challenges), 2)
+
+			foundDNS01 := false
+			foundDNSAccount01 := false
+			for _, ch := range authz.Challenges {
+				test.AssertEquals(t, ch.Status, core.StatusPending)
+				if ch.Type == core.ChallengeTypeDNS01 {
+					foundDNS01 = true
+				}
+				if ch.Type == core.ChallengeTypeDNSAccount01 {
+					foundDNSAccount01 = true
+				}
+			}
+			test.Assert(t, foundDNS01, "Expected to find DNS-01 challenge")
+			test.Assert(t, foundDNSAccount01, "Expected to find DNS-ACCOUNT-01 challenge")
 		default:
 			t.Fatal("Unexpected authorization value returned from new-order")
 		}
@@ -2192,7 +2227,7 @@ func TestNewOrderWildcard(t *testing.T) {
 	// We expect the authz is for the identifier the correct domain
 	test.AssertEquals(t, authz.Identifier.Value, "everything.is.possible.zombo.com")
 	// We expect the authz has the normal # of challenges
-	test.AssertEquals(t, len(authz.Challenges), 3)
+	test.AssertEquals(t, len(authz.Challenges), 4)
 
 	// Now submit an order request for a wildcard of the domain we just created an
 	// order for. We should **NOT** reuse the authorization from the previous
@@ -2218,12 +2253,25 @@ func TestNewOrderWildcard(t *testing.T) {
 	test.AssertEquals(t, authz.Status, core.StatusPending)
 	// We expect the authz is for a identifier with the correct domain
 	test.AssertEquals(t, authz.Identifier.Value, "*.everything.is.possible.zombo.com")
-	// We expect the authz has only one challenge
-	test.AssertEquals(t, len(authz.Challenges), 1)
-	// We expect the one challenge is pending
-	test.AssertEquals(t, authz.Challenges[0].Status, core.StatusPending)
-	// We expect that the one challenge is a DNS01 type challenge
-	test.AssertEquals(t, authz.Challenges[0].Type, core.ChallengeTypeDNS01)
+
+	// We expect that the wildcard identifier auth has exactly
+	// two pending challenges with DNS-01 and DNS-ACCOUNT-01
+	// types
+	test.AssertEquals(t, len(authz.Challenges), 2)
+
+	foundDNS01 := false
+	foundDNSAccount01 := false
+	for _, ch := range authz.Challenges {
+		test.AssertEquals(t, ch.Status, core.StatusPending)
+		if ch.Type == core.ChallengeTypeDNS01 {
+			foundDNS01 = true
+		}
+		if ch.Type == core.ChallengeTypeDNSAccount01 {
+			foundDNSAccount01 = true
+		}
+	}
+	test.Assert(t, foundDNS01, "Expected to find DNS-01 challenge")
+	test.Assert(t, foundDNSAccount01, "Expected to find DNS-ACCOUNT-01 challenge")
 
 	// Submit an identical wildcard order request
 	dupeOrder, err := ra.NewOrder(context.Background(), wildcardOrderRequest)

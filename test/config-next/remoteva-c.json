@@ -36,6 +36,7 @@
 			}
 		},
 		"features": {
+			"DNSAccount01Enabled": true,
 			"DOH": true
 		},
 		"accountURIPrefixes": [

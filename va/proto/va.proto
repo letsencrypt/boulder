@@ -37,12 +37,13 @@ message IsCAAValidResponse {
 }
 
 message PerformValidationRequest {
-  // Next unused field number: 6
+  // Next unused field number: 7
   reserved 1; // Previously dnsName
   core.Identifier identifier = 5;
   core.Challenge challenge = 2;
   AuthzMeta authz = 3;
   string expectedKeyAuthorization = 4;
+  string accountURI = 6;
 }
 
 message AuthzMeta {
