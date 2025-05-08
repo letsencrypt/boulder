@@ -1581,6 +1581,8 @@ func (ssa *SQLStorageAuthority) setRateLimitOverride(ctx context.Context, limitE
 	_, err = db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		var existing overrideModel
 		err := tx.SelectOne(ctx, &existing,
+			// Use SELECT FOR UPDATE to both verify the row exists and lock it
+			// for the duration of the transaction.
 			`SELECT `+overrideColumns+` FROM overrides
 			 WHERE limitEnum = ? AND
 			       bucketKey = ?
