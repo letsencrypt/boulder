@@ -15,6 +15,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rocsp"
@@ -50,29 +51,34 @@ func makeClient() (*rocsp.RWClient, clock.Clock) {
 	return rocsp.NewWritingClient(rdb, 500*time.Millisecond, clk, metrics.NoopRegisterer), clk
 }
 
-func TestGetStartingID(t *testing.T) {
-	ctx := context.Background()
+func insertCertificateStatus(t *testing.T, dbMap db.Executor, serial string, notAfter, ocspLastUpdated time.Time) int64 {
+	result, err := dbMap.ExecContext(context.Background(),
+		`INSERT INTO certificateStatus
+		(serial, notAfter, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, issuerID)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		serial,
+		notAfter,
+		core.OCSPStatusGood,
+		ocspLastUpdated,
+		time.Time{},
+		0,
+		time.Time{},
+		99)
+	test.AssertNotError(t, err, "inserting certificate status")
+	id, err := result.LastInsertId()
+	test.AssertNotError(t, err, "getting last insert ID")
+	return id
+}
 
+func TestGetStartingID(t *testing.T) {
 	clk := clock.NewFake()
 	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetBoulderTestDatabase(t)()
 
-	cs := core.CertificateStatus{
-		Serial:   "1337",
-		NotAfter: clk.Now().Add(12 * time.Hour),
-	}
-	err = dbMap.Insert(ctx, &cs)
-	test.AssertNotError(t, err, "inserting certificate status")
-	firstID := cs.ID
+	firstID := insertCertificateStatus(t, dbMap, "1337", clk.Now().Add(12*time.Hour), time.Time{})
+	secondID := insertCertificateStatus(t, dbMap, "1338", clk.Now().Add(36*time.Hour), time.Time{})
 
-	cs = core.CertificateStatus{
-		Serial:   "1338",
-		NotAfter: clk.Now().Add(36 * time.Hour),
-	}
-	err = dbMap.Insert(ctx, &cs)
-	test.AssertNotError(t, err, "inserting certificate status")
-	secondID := cs.ID
 	t.Logf("first ID %d, second ID %d", firstID, secondID)
 
 	clk.Sleep(48 * time.Hour)
@@ -131,11 +137,7 @@ func TestLoadFromDB(t *testing.T) {
 	defer test.ResetBoulderTestDatabase(t)
 
 	for i := range 100 {
-		err = dbMap.Insert(context.Background(), &core.CertificateStatus{
-			Serial:          fmt.Sprintf("%036x", i),
-			NotAfter:        clk.Now().Add(200 * time.Hour),
-			OCSPLastUpdated: clk.Now(),
-		})
+		insertCertificateStatus(t, dbMap, fmt.Sprintf("%036x", i), clk.Now().Add(200*time.Hour), clk.Now())
 		if err != nil {
 			t.Fatalf("Failed to insert certificateStatus: %s", err)
 		}
