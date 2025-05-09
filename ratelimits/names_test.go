@@ -205,7 +205,7 @@ func TestValidateIdForName(t *testing.T) {
 			limit: CertificatesPerDomain,
 			desc:  "empty domain",
 			id:    "",
-			err:   "name is empty",
+			err:   "Identifier value (name) is empty",
 		},
 		{
 			limit: CertificatesPerFQDNSet,
