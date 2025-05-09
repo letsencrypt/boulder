@@ -16,6 +16,7 @@ import (
 	"golang.org/x/net/idna"
 	"golang.org/x/text/unicode/norm"
 
+	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
@@ -167,9 +168,11 @@ var (
 	errPolicyForbidden      = berrors.RejectedIdentifierError("The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy")
 	errInvalidDNSCharacter  = berrors.MalformedError("Domain name contains an invalid character")
 	errNameTooLong          = berrors.MalformedError("Domain name is longer than 253 bytes")
-	errIPAddress            = berrors.MalformedError("The ACME server can not issue a certificate for an IP address")
+	errIPAddressInDNS       = berrors.MalformedError("Identifier type is DNS but value is an IP address")
+	errIPInvalid            = berrors.MalformedError("IP address is invalid")
+	errIPSpecialPurpose     = berrors.MalformedError("IP address is in a special-purpose address block")
 	errTooManyLabels        = berrors.MalformedError("Domain name has more than 10 labels (parts)")
-	errEmptyName            = berrors.MalformedError("Domain name is empty")
+	errEmptyIdentifier      = berrors.MalformedError("Identifier value (name) is empty")
 	errNameEndsInDot        = berrors.MalformedError("Domain name ends in a dot")
 	errTooFewLabels         = berrors.MalformedError("Domain name needs at least one dot")
 	errLabelTooShort        = berrors.MalformedError("Domain name can not have two dots in a row")
@@ -180,7 +183,7 @@ var (
 	errMalformedWildcard    = berrors.MalformedError("Domain name contains an invalid wildcard. A wildcard is only permitted before the first dot in a domain name")
 	errICANNTLDWildcard     = berrors.MalformedError("Domain name is a wildcard for an ICANN TLD")
 	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
-	errUnsupportedIdent     = berrors.MalformedError("invalid non-DNS type identifier")
+	errUnsupportedIdent     = berrors.MalformedError("Invalid identifier type")
 )
 
 // validNonWildcardDomain checks that a domain isn't:
@@ -198,7 +201,7 @@ var (
 // It does NOT ensure that the domain is absent from any PA blocked lists.
 func validNonWildcardDomain(domain string) error {
 	if domain == "" {
-		return errEmptyName
+		return errEmptyIdentifier
 	}
 
 	if strings.HasPrefix(domain, "*.") {
@@ -216,7 +219,7 @@ func validNonWildcardDomain(domain string) error {
 	}
 
 	if ip := net.ParseIP(domain); ip != nil {
-		return errIPAddress
+		return errIPAddressInDNS
 	}
 
 	if strings.HasSuffix(domain, ".") {
@@ -319,6 +322,29 @@ func ValidDomain(domain string) error {
 	return validNonWildcardDomain(baseDomain)
 }
 
+// validIP checks that an IP address:
+//   - isn't empty
+//   - is an IPv4 or IPv6 address
+//   - isn't in an IANA special-purpose address registry
+//
+// It does NOT ensure that the IP address is absent from any PA blocked lists.
+func validIP(ip string) error {
+	if ip == "" {
+		return errEmptyIdentifier
+	}
+
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return errIPInvalid
+	}
+
+	if bdns.IsReservedIP(parsedIP) {
+		return errIPSpecialPurpose
+	}
+
+	return nil
+}
+
 // forbiddenMailDomains is a map of domain names we do not allow after the
 // @ symbol in contact mailto addresses. These are frequently used when
 // copy-pasting example configurations and would not result in expiration
@@ -390,42 +416,45 @@ func (pa *AuthorityImpl) WillingToIssue(idents identifier.ACMEIdentifiers) error
 
 	var subErrors []berrors.SubBoulderError
 	for _, ident := range idents {
-		if ident.Type != identifier.TypeDNS {
-			subErrors = append(subErrors, subError(ident, errUnsupportedIdent))
-			continue
-		}
+		// Only DNS identifiers are subject to wildcard and blocklist checks.
+		// Unsupported identifier types will have been caught by
+		// WellFormedIdentifiers().
+		//
+		// TODO(#7311): We may want to implement IP address blocklists too.
+		if ident.Type == identifier.TypeDNS {
+			if strings.Count(ident.Value, "*") > 0 {
+				// The base domain is the wildcard request with the `*.` prefix removed
+				baseDomain := strings.TrimPrefix(ident.Value, "*.")
 
-		if strings.Count(ident.Value, "*") > 0 {
-			// The base domain is the wildcard request with the `*.` prefix removed
-			baseDomain := strings.TrimPrefix(ident.Value, "*.")
+				// The base domain can't be in the wildcard exact blocklist
+				err = pa.checkWildcardHostList(baseDomain)
+				if err != nil {
+					subErrors = append(subErrors, subError(ident, err))
+					continue
+				}
+			}
 
-			// The base domain can't be in the wildcard exact blocklist
-			err = pa.checkWildcardHostList(baseDomain)
+			// For both wildcard and non-wildcard domains, check whether any parent domain
+			// name is on the regular blocklist.
+			err := pa.checkHostLists(ident.Value)
 			if err != nil {
 				subErrors = append(subErrors, subError(ident, err))
 				continue
 			}
 		}
-
-		// For both wildcard and non-wildcard domains, check whether any parent domain
-		// name is on the regular blocklist.
-		err := pa.checkHostLists(ident.Value)
-		if err != nil {
-			subErrors = append(subErrors, subError(ident, err))
-			continue
-		}
 	}
 	return combineSubErrors(subErrors)
 }
 
-// WellFormedIdentifiers returns an error if any of the provided domains do not
-// meet these criteria:
+// WellFormedIdentifiers returns an error if any of the provided identifiers do
+// not meet these criteria:
 //
+// For DNS identifiers:
 //   - MUST contains only lowercase characters, numbers, hyphens, and dots
 //   - MUST NOT have more than maxLabels labels
 //   - MUST follow the DNS hostname syntax rules in RFC 1035 and RFC 2181
 //
-// In particular, it:
+// In particular, DNS identifiers:
 //   - MUST NOT contain underscores
 //   - MUST NOT match the syntax of an IP address
 //   - MUST end in a public suffix
@@ -433,25 +462,33 @@ func (pa *AuthorityImpl) WillingToIssue(idents identifier.ACMEIdentifiers) error
 //   - MUST NOT be a label-wise suffix match for a name on the block list,
 //     where comparison is case-independent (normalized to lower case)
 //
-// If a domain contains a *, we additionally require:
+// If a DNS identifier contains a *, we additionally require:
 //   - There is at most one `*` wildcard character
 //   - That the wildcard character is the leftmost label
 //   - That the wildcard label is not immediately adjacent to a top level ICANN
 //     TLD
 //
-// If multiple domains are invalid, the error will contain suberrors specific to
-// each domain.
+// For IP identifiers:
+//   - MUST match the syntax of an IP address
+//   - MUST NOT be in an IANA special-purpose address registry
+//
+// If multiple identifiers are invalid, the error will contain suberrors
+// specific to each identifier.
 func WellFormedIdentifiers(idents identifier.ACMEIdentifiers) error {
 	var subErrors []berrors.SubBoulderError
 	for _, ident := range idents {
-		// TODO(#7311): When this gets a third case for TypeIP, this will be
-		// more elegant as a switch/case.
-		if ident.Type == identifier.TypeDNS {
+		switch ident.Type {
+		case identifier.TypeDNS:
 			err := ValidDomain(ident.Value)
 			if err != nil {
 				subErrors = append(subErrors, subError(ident, err))
 			}
-		} else {
+		case identifier.TypeIP:
+			err := validIP(ident.Value)
+			if err != nil {
+				subErrors = append(subErrors, subError(ident, err))
+			}
+		default:
 			subErrors = append(subErrors, subError(ident, errUnsupportedIdent))
 		}
 	}
@@ -530,26 +567,34 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 // filtering can happen dynamically at request rather than being set in stone
 // at creation time.
 func (pa *AuthorityImpl) ChallengeTypesFor(ident identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
-	// If the identifier is for a DNS wildcard name we only provide a DNS-01
-	// challenge, to comply with the BRs Sections 3.2.2.4.19 and 3.2.2.4.20
-	// stating that ACME HTTP-01 and TLS-ALPN-01 are not suitable for validating
-	// Wildcard Domains.
-	if ident.Type == identifier.TypeDNS && strings.HasPrefix(ident.Value, "*.") {
-		return []core.AcmeChallenge{core.ChallengeTypeDNS01}, nil
-	}
+	switch ident.Type {
+	case identifier.TypeDNS:
+		// If the identifier is for a DNS wildcard name we only provide a DNS-01
+		// challenge, to comply with the BRs Sections 3.2.2.4.19 and 3.2.2.4.20
+		// stating that ACME HTTP-01 and TLS-ALPN-01 are not suitable for validating
+		// Wildcard Domains.
+		if strings.HasPrefix(ident.Value, "*.") {
+			return []core.AcmeChallenge{core.ChallengeTypeDNS01}, nil
+		}
 
-	// Return all challenge types we support for non-wildcard DNS identifiers.
-	if ident.Type == identifier.TypeDNS {
+		// Return all challenge types we support for non-wildcard DNS identifiers.
 		return []core.AcmeChallenge{
 			core.ChallengeTypeHTTP01,
 			core.ChallengeTypeDNS01,
 			core.ChallengeTypeTLSALPN01,
 		}, nil
+	case identifier.TypeIP:
+		// Only HTTP-01 and TLS-ALPN-01 are suitable for IP address identifiers
+		// per RFC 8738, Sec. 4.
+		return []core.AcmeChallenge{
+			core.ChallengeTypeHTTP01,
+			core.ChallengeTypeTLSALPN01,
+		}, nil
+	default:
+		// Otherwise return an error because we don't support any challenges for this
+		// identifier type.
+		return nil, fmt.Errorf("unrecognized identifier type %q", ident.Type)
 	}
-
-	// Otherwise return an error because we don't support any challenges for this
-	// identifier type.
-	return nil, fmt.Errorf("unrecognized identifier type %q", ident.Type)
 }
 
 // ChallengeTypeEnabled returns whether the specified challenge type is enabled

@@ -32,110 +32,126 @@ func paImpl(t *testing.T) *AuthorityImpl {
 
 func TestWellFormedIdentifiers(t *testing.T) {
 	testCases := []struct {
-		domain string
-		err    error
+		ident identifier.ACMEIdentifier
+		err   error
 	}{
-		{``, errEmptyName},                    // Empty name
-		{`zomb!.com`, errInvalidDNSCharacter}, // ASCII character out of range
-		{`emailaddress@myseriously.present.com`, errInvalidDNSCharacter},
-		{`user:pass@myseriously.present.com`, errInvalidDNSCharacter},
-		{`zömbo.com`, errInvalidDNSCharacter},                              // non-ASCII character
-		{`127.0.0.1`, errIPAddress},                                        // IPv4 address
-		{`fe80::1:1`, errInvalidDNSCharacter},                              // IPv6 addresses
-		{`[2001:db8:85a3:8d3:1319:8a2e:370:7348]`, errInvalidDNSCharacter}, // unexpected IPv6 variants
-		{`[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443`, errInvalidDNSCharacter},
-		{`2001:db8::/32`, errInvalidDNSCharacter},
-		{`a.b.c.d.e.f.g.h.i.j.k`, errTooManyLabels}, // Too many labels (>10)
+		// Invalid identifier types
+		{identifier.ACMEIdentifier{}, errUnsupportedIdent}, // Empty identifier type
+		{identifier.ACMEIdentifier{Type: "fnord", Value: "uh-oh, Spaghetti-Os[tm]"}, errUnsupportedIdent},
 
-		{`www.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef012345.com`, errNameTooLong}, // Too long (254 characters)
+		// Empty identifier values
+		{identifier.NewDNS(``), errEmptyIdentifier},                 // Empty DNS identifier
+		{identifier.ACMEIdentifier{Type: "ip"}, errEmptyIdentifier}, // Empty IP identifier
 
-		{`www.ef0123456789abcdef013456789abcdef012345.789abcdef012345679abcdef0123456789abcdef01234.6789abcdef0123456789abcdef0.23456789abcdef0123456789a.cdef0123456789abcdef0123456789ab.def0123456789abcdef0123456789.bcdef0123456789abcdef012345.com`, nil}, // OK, not too long (240 characters)
+		// DNS follies
 
-		{`www.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.com`, errLabelTooLong}, // Label too long (>63 characters)
+		{identifier.NewDNS(`zomb!.com`), errInvalidDNSCharacter}, // ASCII character out of range
+		{identifier.NewDNS(`emailaddress@myseriously.present.com`), errInvalidDNSCharacter},
+		{identifier.NewDNS(`user:pass@myseriously.present.com`), errInvalidDNSCharacter},
+		{identifier.NewDNS(`zömbo.com`), errInvalidDNSCharacter},                              // non-ASCII character
+		{identifier.NewDNS(`127.0.0.1`), errIPAddressInDNS},                                   // IPv4 address
+		{identifier.NewDNS(`fe80::1:1`), errInvalidDNSCharacter},                              // IPv6 address
+		{identifier.NewDNS(`[2001:db8:85a3:8d3:1319:8a2e:370:7348]`), errInvalidDNSCharacter}, // unexpected IPv6 variants
+		{identifier.NewDNS(`[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443`), errInvalidDNSCharacter},
+		{identifier.NewDNS(`2001:db8::/32`), errInvalidDNSCharacter},
+		{identifier.NewDNS(`a.b.c.d.e.f.g.h.i.j.k`), errTooManyLabels}, // Too many labels (>10)
 
-		{`www.-ombo.com`, errInvalidDNSCharacter}, // Label starts with '-'
-		{`www.zomb-.com`, errInvalidDNSCharacter}, // Label ends with '-'
-		{`xn--.net`, errInvalidDNSCharacter},      // Label ends with '-'
-		{`-0b.net`, errInvalidDNSCharacter},       // First label begins with '-'
-		{`-0.net`, errInvalidDNSCharacter},        // First label begins with '-'
-		{`-.net`, errInvalidDNSCharacter},         // First label is only '-'
-		{`---.net`, errInvalidDNSCharacter},       // First label is only hyphens
-		{`0`, errTooFewLabels},
-		{`1`, errTooFewLabels},
-		{`*`, errMalformedWildcard},
-		{`**`, errTooManyWildcards},
-		{`*.*`, errTooManyWildcards},
-		{`zombo*com`, errMalformedWildcard},
-		{`*.com`, errICANNTLDWildcard},
-		{`..a`, errLabelTooShort},
-		{`a..a`, errLabelTooShort},
-		{`.a..a`, errLabelTooShort},
-		{`..foo.com`, errLabelTooShort},
-		{`.`, errNameEndsInDot},
-		{`..`, errNameEndsInDot},
-		{`a..`, errNameEndsInDot},
-		{`.....`, errNameEndsInDot},
-		{`.a.`, errNameEndsInDot},
-		{`www.zombo.com.`, errNameEndsInDot},
-		{`www.zombo_com.com`, errInvalidDNSCharacter},
-		{`\uFEFF`, errInvalidDNSCharacter}, // Byte order mark
-		{`\uFEFFwww.zombo.com`, errInvalidDNSCharacter},
-		{`www.zom\u202Ebo.com`, errInvalidDNSCharacter}, // Right-to-Left Override
-		{`\u202Ewww.zombo.com`, errInvalidDNSCharacter},
-		{`www.zom\u200Fbo.com`, errInvalidDNSCharacter}, // Right-to-Left Mark
-		{`\u200Fwww.zombo.com`, errInvalidDNSCharacter},
+		{identifier.NewDNS(`www.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef012345.com`), errNameTooLong}, // Too long (254 characters)
+
+		{identifier.NewDNS(`www.ef0123456789abcdef013456789abcdef012345.789abcdef012345679abcdef0123456789abcdef01234.6789abcdef0123456789abcdef0.23456789abcdef0123456789a.cdef0123456789abcdef0123456789ab.def0123456789abcdef0123456789.bcdef0123456789abcdef012345.com`), nil}, // OK, not too long (240 characters)
+
+		{identifier.NewDNS(`www.abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz.com`), errLabelTooLong}, // Label too long (>63 characters)
+
+		{identifier.NewDNS(`www.-ombo.com`), errInvalidDNSCharacter}, // Label starts with '-'
+		{identifier.NewDNS(`www.zomb-.com`), errInvalidDNSCharacter}, // Label ends with '-'
+		{identifier.NewDNS(`xn--.net`), errInvalidDNSCharacter},      // Label ends with '-'
+		{identifier.NewDNS(`-0b.net`), errInvalidDNSCharacter},       // First label begins with '-'
+		{identifier.NewDNS(`-0.net`), errInvalidDNSCharacter},        // First label begins with '-'
+		{identifier.NewDNS(`-.net`), errInvalidDNSCharacter},         // First label is only '-'
+		{identifier.NewDNS(`---.net`), errInvalidDNSCharacter},       // First label is only hyphens
+		{identifier.NewDNS(`0`), errTooFewLabels},
+		{identifier.NewDNS(`1`), errTooFewLabels},
+		{identifier.NewDNS(`*`), errMalformedWildcard},
+		{identifier.NewDNS(`**`), errTooManyWildcards},
+		{identifier.NewDNS(`*.*`), errTooManyWildcards},
+		{identifier.NewDNS(`zombo*com`), errMalformedWildcard},
+		{identifier.NewDNS(`*.com`), errICANNTLDWildcard},
+		{identifier.NewDNS(`..a`), errLabelTooShort},
+		{identifier.NewDNS(`a..a`), errLabelTooShort},
+		{identifier.NewDNS(`.a..a`), errLabelTooShort},
+		{identifier.NewDNS(`..foo.com`), errLabelTooShort},
+		{identifier.NewDNS(`.`), errNameEndsInDot},
+		{identifier.NewDNS(`..`), errNameEndsInDot},
+		{identifier.NewDNS(`a..`), errNameEndsInDot},
+		{identifier.NewDNS(`.....`), errNameEndsInDot},
+		{identifier.NewDNS(`.a.`), errNameEndsInDot},
+		{identifier.NewDNS(`www.zombo.com.`), errNameEndsInDot},
+		{identifier.NewDNS(`www.zombo_com.com`), errInvalidDNSCharacter},
+		{identifier.NewDNS(`\uFEFF`), errInvalidDNSCharacter}, // Byte order mark
+		{identifier.NewDNS(`\uFEFFwww.zombo.com`), errInvalidDNSCharacter},
+		{identifier.NewDNS(`www.zom\u202Ebo.com`), errInvalidDNSCharacter}, // Right-to-Left Override
+		{identifier.NewDNS(`\u202Ewww.zombo.com`), errInvalidDNSCharacter},
+		{identifier.NewDNS(`www.zom\u200Fbo.com`), errInvalidDNSCharacter}, // Right-to-Left Mark
+		{identifier.NewDNS(`\u200Fwww.zombo.com`), errInvalidDNSCharacter},
 		// Underscores are technically disallowed in DNS. Some DNS
 		// implementations accept them but we will be conservative.
-		{`www.zom_bo.com`, errInvalidDNSCharacter},
-		{`zombocom`, errTooFewLabels},
-		{`localhost`, errTooFewLabels},
-		{`mail`, errTooFewLabels},
+		{identifier.NewDNS(`www.zom_bo.com`), errInvalidDNSCharacter},
+		{identifier.NewDNS(`zombocom`), errTooFewLabels},
+		{identifier.NewDNS(`localhost`), errTooFewLabels},
+		{identifier.NewDNS(`mail`), errTooFewLabels},
 
 		// disallow capitalized letters for #927
-		{`CapitalizedLetters.com`, errInvalidDNSCharacter},
+		{identifier.NewDNS(`CapitalizedLetters.com`), errInvalidDNSCharacter},
 
-		{`example.acting`, errNonPublic},
-		{`example.internal`, errNonPublic},
+		{identifier.NewDNS(`example.acting`), errNonPublic},
+		{identifier.NewDNS(`example.internal`), errNonPublic},
 		// All-numeric final label not okay.
-		{`www.zombo.163`, errNonPublic},
-		{`xn--109-3veba6djs1bfxlfmx6c9g.xn--f1awi.xn--p1ai`, errMalformedIDN}, // Not in Unicode NFC
-		{`bq--abwhky3f6fxq.jakacomo.com`, errInvalidRLDH},
+		{identifier.NewDNS(`www.zombo.163`), errNonPublic},
+		{identifier.NewDNS(`xn--109-3veba6djs1bfxlfmx6c9g.xn--f1awi.xn--p1ai`), errMalformedIDN}, // Not in Unicode NFC
+		{identifier.NewDNS(`bq--abwhky3f6fxq.jakacomo.com`), errInvalidRLDH},
 		// Three hyphens starting at third second char of first label.
-		{`bq---abwhky3f6fxq.jakacomo.com`, errInvalidRLDH},
+		{identifier.NewDNS(`bq---abwhky3f6fxq.jakacomo.com`), errInvalidRLDH},
 		// Three hyphens starting at second char of first label.
-		{`h---test.hk2yz.org`, errInvalidRLDH},
-		{`co.uk`, errICANNTLD},
-		{`foo.bd`, errICANNTLD},
+		{identifier.NewDNS(`h---test.hk2yz.org`), errInvalidRLDH},
+		{identifier.NewDNS(`co.uk`), errICANNTLD},
+		{identifier.NewDNS(`foo.bd`), errICANNTLD},
+
+		// IP oopsies
+
+		{identifier.ACMEIdentifier{Type: "ip", Value: `zombo.com`}, errIPInvalid}, // That's DNS!
+
+		// Unexpected IPv6 variants
+		{identifier.ACMEIdentifier{Type: "ip", Value: `[2001:db8:85a3:8d3:1319:8a2e:370:7348]`}, errIPInvalid},
+		{identifier.ACMEIdentifier{Type: "ip", Value: `[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443`}, errIPInvalid},
+		{identifier.ACMEIdentifier{Type: "ip", Value: `2001:db8::/32`}, errIPInvalid},
+
+		// IANA special-purpose address blocks
+		{identifier.NewIP(netip.MustParseAddr("192.0.2.129")), errIPSpecialPurpose},                        // Documentation (TEST-NET-1)
+		{identifier.NewIP(netip.MustParseAddr("2001:db8:eee:eeee:eeee:eeee:d01:f1")), errIPSpecialPurpose}, // Documentation
 	}
 
 	// Test syntax errors
 	for _, tc := range testCases {
-		err := WellFormedIdentifiers(identifier.ACMEIdentifiers{identifier.NewDNS(tc.domain)})
+		err := WellFormedIdentifiers(identifier.ACMEIdentifiers{tc.ident})
 		if tc.err == nil {
-			test.AssertNil(t, err, fmt.Sprintf("Unexpected error for domain %q, got %s", tc.domain, err))
+			test.AssertNil(t, err, fmt.Sprintf("Unexpected error for %q identifier %q, got %s", tc.ident.Type, tc.ident.Value, err))
 		} else {
-			test.AssertError(t, err, fmt.Sprintf("Expected error for domain %q, but got none", tc.domain))
+			test.AssertError(t, err, fmt.Sprintf("Expected error for %q identifier %q, but got none", tc.ident.Type, tc.ident.Value))
 			var berr *berrors.BoulderError
 			test.AssertErrorWraps(t, err, &berr)
 			test.AssertContains(t, berr.Error(), tc.err.Error())
 		}
 	}
-
-	err := WellFormedIdentifiers(identifier.ACMEIdentifiers{identifier.NewIP(netip.MustParseAddr("9.9.9.9"))})
-	test.AssertError(t, err, "Expected error for IP, but got none")
-	var berr *berrors.BoulderError
-	test.AssertErrorWraps(t, err, &berr)
-	test.AssertContains(t, berr.Error(), errUnsupportedIdent.Error())
 }
 
 func TestWillingToIssue(t *testing.T) {
-	shouldBeBlocked := []string{
-		`highvalue.website1.org`,
-		`website2.co.uk`,
-		`www.website3.com`,
-		`lots.of.labels.website4.com`,
-		`banned.in.dc.com`,
-		`bad.brains.banned.in.dc.com`,
+	shouldBeBlocked := identifier.ACMEIdentifiers{
+		identifier.NewDNS(`highvalue.website1.org`),
+		identifier.NewDNS(`website2.co.uk`),
+		identifier.NewDNS(`www.website3.com`),
+		identifier.NewDNS(`lots.of.labels.website4.com`),
+		identifier.NewDNS(`banned.in.dc.com`),
+		identifier.NewDNS(`bad.brains.banned.in.dc.com`),
 	}
 	blocklistContents := []string{
 		`website2.com`,
@@ -153,15 +169,17 @@ func TestWillingToIssue(t *testing.T) {
 		`banned.in.dc.com`,
 	}
 
-	shouldBeAccepted := []string{
-		`lowvalue.website1.org`,
-		`website4.sucks`,
-		"www.unrelated.com",
-		"unrelated.com",
-		"www.8675309.com",
-		"8675309.com",
-		"web5ite2.com",
-		"www.web-site2.com",
+	shouldBeAccepted := identifier.ACMEIdentifiers{
+		identifier.NewDNS(`lowvalue.website1.org`),
+		identifier.NewDNS(`website4.sucks`),
+		identifier.NewDNS(`www.unrelated.com`),
+		identifier.NewDNS(`unrelated.com`),
+		identifier.NewDNS(`www.8675309.com`),
+		identifier.NewDNS(`8675309.com`),
+		identifier.NewDNS(`web5ite2.com`),
+		identifier.NewDNS(`www.web-site2.com`),
+		identifier.NewIP(netip.MustParseAddr(`9.9.9.9`)),
+		identifier.NewIP(netip.MustParseAddr(`2620:fe::fe`)),
 	}
 
 	policy := blockedNamesPolicy{
@@ -186,8 +204,8 @@ func TestWillingToIssue(t *testing.T) {
 	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS("www.xn--m.com")})
 	test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
 	// Invalid identifier type
-	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewIP(netip.MustParseAddr("1.1.1.1"))})
-	test.AssertError(t, err, "WillingToIssue didn't fail on an IP address")
+	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.ACMEIdentifier{Type: "fnord", Value: "uh-oh, Spaghetti-Os[tm]"}})
+	test.AssertError(t, err, "WillingToIssue didn't fail on an invalid identifier type")
 	// Valid encoding
 	err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS("www.xn--mnich-kva.com")})
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
@@ -197,18 +215,18 @@ func TestWillingToIssue(t *testing.T) {
 	features.Reset()
 
 	// Test expected blocked domains
-	for _, domain := range shouldBeBlocked {
-		err := pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(domain)})
-		test.AssertError(t, err, "domain was not correctly forbidden")
+	for _, ident := range shouldBeBlocked {
+		err := pa.WillingToIssue(identifier.ACMEIdentifiers{ident})
+		test.AssertError(t, err, "identifier was not correctly forbidden")
 		var berr *berrors.BoulderError
 		test.AssertErrorWraps(t, err, &berr)
 		test.AssertContains(t, berr.Detail, errPolicyForbidden.Error())
 	}
 
 	// Test acceptance of good names
-	for _, domain := range shouldBeAccepted {
-		err := pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(domain)})
-		test.AssertNotError(t, err, "domain was incorrectly forbidden")
+	for _, ident := range shouldBeAccepted {
+		err := pa.WillingToIssue(identifier.ACMEIdentifiers{ident})
+		test.AssertNotError(t, err, "identifier was incorrectly forbidden")
 	}
 }
 
@@ -415,15 +433,22 @@ func TestChallengeTypesFor(t *testing.T) {
 			},
 		},
 		{
-			name:  "wildcard",
+			name:  "dns wildcard",
 			ident: identifier.NewDNS("*.example.com"),
 			wantChalls: []core.AcmeChallenge{
 				core.ChallengeTypeDNS01,
 			},
 		},
 		{
-			name:    "other",
-			ident:   identifier.NewIP(netip.MustParseAddr("1.2.3.4")),
+			name:  "ip",
+			ident: identifier.NewIP(netip.MustParseAddr("1.2.3.4")),
+			wantChalls: []core.AcmeChallenge{
+				core.ChallengeTypeHTTP01, core.ChallengeTypeTLSALPN01,
+			},
+		},
+		{
+			name:    "invalid",
+			ident:   identifier.ACMEIdentifier{Type: "fnord", Value: "uh-oh, Spaghetti-Os[tm]"},
 			wantErr: "unrecognized identifier type",
 		},
 	}
