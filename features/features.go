@@ -23,6 +23,7 @@ type Config struct {
 	InsertAuthzsIndividually    bool
 	EnforceMultiCAA             bool
 	EnforceMPIC                 bool
+	MPICFullResults             bool
 	UnsplitIssuance             bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
@@ -80,11 +81,6 @@ type Config struct {
 	// functionality (valid authz reuse) while letting us simplify our code by
 	// removing pending authz reuse.
 	NoPendingAuthzReuse bool
-
-	// MPICFullResults causes the VA to wait for all remote (MPIC) results, rather
-	// than cancelling outstanding requests after enough successes or failures for
-	// the result to be determined.
-	MPICFullResults bool
 
 	// StoreARIReplacesInOrders causes the SA to store and retrieve the optional
 	// ARI replaces field in the orders table.

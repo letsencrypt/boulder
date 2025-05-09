@@ -32,46 +32,17 @@ func collectUserAgentsFromDNSRequests(requests []challtestsrvclient.DNSRequest) 
 func assertUserAgentsLength(t *testing.T, got []string, checkType string) {
 	t.Helper()
 
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		// We only need 3 checks if the MPICFullResults feature-flag is not
-		// enabled.
-		//
-		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
-		// true.
-		if len(got) != 4 && len(got) != 3 {
-			t.Errorf("During %s, expected 3 or 4 User-Agents, got %d", checkType, len(got))
-		}
-	} else {
-		if len(got) != 4 {
-			t.Errorf("During %s, expected 4 User-Agents, got %d", checkType, len(got))
-		}
+	if len(got) != 4 {
+		t.Errorf("During %s, expected 4 User-Agents, got %d", checkType, len(got))
 	}
 }
 
 func assertExpectedUserAgents(t *testing.T, got []string, checkType string) {
 	t.Helper()
 
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		// One User-Agent may be missing if the MPICFullResults feature-flag is
-		// not enabled. This will need to be modified to 2 if we have not
-		// removed this feature-flag by the time we get to 6+ perspectives.
-		//
-		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
-		// true.
-		var alreadySkippedOne bool
-		for _, ua := range expectedUserAgents {
-			if !slices.Contains(got, ua) {
-				if alreadySkippedOne {
-					t.Errorf("During %s, missing more than 1 User-Agent in %s (got %v)", checkType, expectedUserAgents, got)
-				}
-				alreadySkippedOne = true
-			}
-		}
-	} else {
-		for _, ua := range expectedUserAgents {
-			if !slices.Contains(got, ua) {
-				t.Errorf("During %s, expected User-Agent %q in %s (got %v)", checkType, ua, expectedUserAgents, got)
-			}
+	for _, ua := range expectedUserAgents {
+		if !slices.Contains(got, ua) {
+			t.Errorf("During %s, expected User-Agent %q in %s (got %v)", checkType, ua, expectedUserAgents, got)
 		}
 	}
 }
@@ -129,15 +100,8 @@ func TestMPICTLSALPN01(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && len(validationEvents) != 4 {
+	if len(validationEvents) != 4 {
 		t.Errorf("expected 4 validation events got %d", len(validationEvents))
-	} else if len(validationEvents) != 3 && len(validationEvents) != 4 {
-		// We only need 3 checks if the MPICFullResults feature-flag is not
-		// enabled.
-		//
-		// TODO(#8121): Remove this once MPICFullResults has been defaulted to
-		// true.
-		t.Errorf("expected 3 or 4 validation events got %d", len(validationEvents))
 	}
 
 	dnsEvents, err := testSrvClient.DNSRequestHistory(domain)
