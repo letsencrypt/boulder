@@ -175,7 +175,7 @@ github.com/go-sql-driver/mysql
 # github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 ## explicit
 github.com/golang/groupcache/lru
-# github.com/google/certificate-transparency-go v1.3.2-0.20250506133818-bc7acd89f703
+# github.com/google/certificate-transparency-go v1.3.2-0.20250507091337-0eddb39e94f8
 ## explicit; go 1.23.0
 github.com/google/certificate-transparency-go
 github.com/google/certificate-transparency-go/asn1
@@ -563,12 +563,3 @@ gopkg.in/tomb.v1
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# k8s.io/klog/v2 v2.130.1
-## explicit; go 1.18
-k8s.io/klog/v2
-k8s.io/klog/v2/internal/buffer
-k8s.io/klog/v2/internal/clock
-k8s.io/klog/v2/internal/dbg
-k8s.io/klog/v2/internal/serialize
-k8s.io/klog/v2/internal/severity
-k8s.io/klog/v2/internal/sloghandler

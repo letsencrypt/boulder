@@ -12,7 +12,7 @@ require (
 	github.com/go-logr/stdr v1.2.2
 	github.com/go-sql-driver/mysql v1.9.1
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
-	github.com/google/certificate-transparency-go v1.3.2-0.20250506133818-bc7acd89f703
+	github.com/google/certificate-transparency-go v1.3.2-0.20250507091337-0eddb39e94f8
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.0.1
 	github.com/jmhodges/clock v1.2.0
 	github.com/letsencrypt/borp v0.0.0-20240620175310-a78493c6e2bd
@@ -91,5 +91,4 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20250106144421-5f5ef82da422 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
-	k8s.io/klog/v2 v2.130.1 // indirect
 )
