@@ -270,7 +270,7 @@ func initTables(dbMap *borp.DbMap) {
 	regTable.ColMap("KeySHA256").SetNotNull(true).SetUnique(true)
 	dbMap.AddTableWithName(issuedNameModel{}, "issuedNames").SetKeys(true, "ID")
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(true, "ID")
-	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(true, "ID")
+	dbMap.AddTableWithName(certificateStatusModel{}, "certificateStatus").SetKeys(true, "ID")
 	dbMap.AddTableWithName(core.FQDNSet{}, "fqdnSets").SetKeys(true, "ID")
 	tableMap := dbMap.AddTableWithName(orderModel{}, "orders").SetKeys(true, "ID")
 	if !features.Get().StoreARIReplacesInOrders {
