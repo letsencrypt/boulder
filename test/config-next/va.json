@@ -38,8 +38,7 @@
 			}
 		},
 		"features": {
-			"DOH": true,
-			"MPICFullResults": true
+			"DOH": true
 		},
 		"remoteVAs": [
 			{
