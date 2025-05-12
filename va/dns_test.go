@@ -17,7 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestDNSValidationWrong(t *testing.T) {
+func TestDNS01ValidationWrong(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 	_, err := va.validateDNS01(context.Background(), identifier.NewDNS("wrong-dns01.com"), expectedKeyAuthorization)
 	if err == nil {
@@ -27,7 +27,7 @@ func TestDNSValidationWrong(t *testing.T) {
 	test.AssertEquals(t, prob.String(), "unauthorized :: Incorrect TXT record \"a\" found at _acme-challenge.wrong-dns01.com")
 }
 
-func TestDNSValidationWrongMany(t *testing.T) {
+func TestDNS01ValidationWrongMany(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
 	_, err := va.validateDNS01(context.Background(), identifier.NewDNS("wrong-many-dns01.com"), expectedKeyAuthorization)
@@ -38,7 +38,7 @@ func TestDNSValidationWrongMany(t *testing.T) {
 	test.AssertEquals(t, prob.String(), "unauthorized :: Incorrect TXT record \"a\" (and 4 more) found at _acme-challenge.wrong-many-dns01.com")
 }
 
-func TestDNSValidationWrongLong(t *testing.T) {
+func TestDNS01ValidationWrongLong(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
 	_, err := va.validateDNS01(context.Background(), identifier.NewDNS("long-dns01.com"), expectedKeyAuthorization)
@@ -49,7 +49,7 @@ func TestDNSValidationWrongLong(t *testing.T) {
 	test.AssertEquals(t, prob.String(), "unauthorized :: Incorrect TXT record \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...\" found at _acme-challenge.long-dns01.com")
 }
 
-func TestDNSValidationFailure(t *testing.T) {
+func TestDNS01ValidationFailure(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
 	_, err := va.validateDNS01(ctx, identifier.NewDNS("localhost"), expectedKeyAuthorization)
@@ -58,7 +58,7 @@ func TestDNSValidationFailure(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
 }
 
-func TestDNSValidationIP(t *testing.T) {
+func TestDNS01ValidationIP(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
 	_, err := va.validateDNS01(ctx, identifier.NewIP(netip.MustParseAddr("127.0.0.1")), expectedKeyAuthorization)
@@ -67,7 +67,7 @@ func TestDNSValidationIP(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 }
 
-func TestDNSValidationInvalid(t *testing.T) {
+func TestDNS01ValidationInvalid(t *testing.T) {
 	var notDNS = identifier.ACMEIdentifier{
 		Type:  identifier.IdentifierType("iris"),
 		Value: "790DB180-A274-47A4-855F-31C428CB1072",
@@ -81,7 +81,7 @@ func TestDNSValidationInvalid(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 }
 
-func TestDNSValidationServFail(t *testing.T) {
+func TestDNS01ValidationServFail(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
 	_, err := va.validateDNS01(ctx, identifier.NewDNS("servfail.com"), expectedKeyAuthorization)
@@ -90,7 +90,7 @@ func TestDNSValidationServFail(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
 
-func TestDNSValidationNoServer(t *testing.T) {
+func TestDNS01ValidationNoServer(t *testing.T) {
 	va, log := setup(nil, "", nil, nil)
 	staticProvider, err := bdns.NewStaticProvider([]string{})
 	test.AssertNotError(t, err, "Couldn't make new static provider")
@@ -110,7 +110,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.DNSProblem)
 }
 
-func TestDNSValidationOK(t *testing.T) {
+func TestDNS01ValidationOK(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
 	_, prob := va.validateDNS01(ctx, identifier.NewDNS("good-dns01.com"), expectedKeyAuthorization)
@@ -118,7 +118,7 @@ func TestDNSValidationOK(t *testing.T) {
 	test.Assert(t, prob == nil, "Should be valid.")
 }
 
-func TestDNSValidationNoAuthorityOK(t *testing.T) {
+func TestDNS01ValidationNoAuthorityOK(t *testing.T) {
 	va, _ := setup(nil, "", nil, nil)
 
 	_, prob := va.validateDNS01(ctx, identifier.NewDNS("no-authority-dns01.com"), expectedKeyAuthorization)
