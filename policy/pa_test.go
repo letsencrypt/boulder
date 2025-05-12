@@ -120,10 +120,30 @@ func TestWellFormedIdentifiers(t *testing.T) {
 
 		{identifier.ACMEIdentifier{Type: "ip", Value: `zombo.com`}, errIPInvalid}, // That's DNS!
 
+		// Unexpected IPv4 variants
+		{identifier.ACMEIdentifier{Type: "ip", Value: `192.168.1.1.1`}, errIPInvalid},            // extra octet
+		{identifier.ACMEIdentifier{Type: "ip", Value: `192.168.1.256`}, errIPInvalid},            // octet out of range
+		{identifier.ACMEIdentifier{Type: "ip", Value: `192.168.1.a1`}, errIPInvalid},             // character out of range
+		{identifier.ACMEIdentifier{Type: "ip", Value: `192.168.1.0/24`}, errIPInvalid},           // with CIDR
+		{identifier.ACMEIdentifier{Type: "ip", Value: `192.168.1.1:443`}, errIPInvalid},          // with port
+		{identifier.ACMEIdentifier{Type: "ip", Value: `0xc0a80101`}, errIPInvalid},               // as hex
+		{identifier.ACMEIdentifier{Type: "ip", Value: `1.1.168.192.in-addr.arpa`}, errIPInvalid}, // reverse DNS
+
 		// Unexpected IPv6 variants
-		{identifier.ACMEIdentifier{Type: "ip", Value: `[2001:db8:85a3:8d3:1319:8a2e:370:7348]`}, errIPInvalid},
-		{identifier.ACMEIdentifier{Type: "ip", Value: `[2001:db8:85a3:8d3:1319:8a2e:370:7348]:443`}, errIPInvalid},
-		{identifier.ACMEIdentifier{Type: "ip", Value: `2001:db8::/32`}, errIPInvalid},
+		{identifier.ACMEIdentifier{Type: "ip", Value: `3fff:aaa:a:c0ff:ee:a:bad:deed:ffff`}, errIPInvalid},                                       // extra octet
+		{identifier.ACMEIdentifier{Type: "ip", Value: `3fff:aaa:a:c0ff:ee:a:bad:mead`}, errIPInvalid},                                            // character out of range
+		{identifier.ACMEIdentifier{Type: "ip", Value: `2001:db8::/32`}, errIPInvalid},                                                            // with CIDR
+		{identifier.ACMEIdentifier{Type: "ip", Value: `[3fff:aaa:a:c0ff:ee:a:bad:deed]`}, errIPInvalid},                                          // in brackets
+		{identifier.ACMEIdentifier{Type: "ip", Value: `[3fff:aaa:a:c0ff:ee:a:bad:deed]:443`}, errIPInvalid},                                      // in brackets, with port
+		{identifier.ACMEIdentifier{Type: "ip", Value: `0x3fff0aaa000ac0ff00ee000a0baddeed`}, errIPInvalid},                                       // as hex
+		{identifier.ACMEIdentifier{Type: "ip", Value: `d.e.e.d.d.a.b.0.a.0.0.0.e.e.0.0.f.f.0.c.a.0.0.0.a.a.a.0.f.f.f.3.ip6.arpa`}, errIPInvalid}, // reverse DNS
+		{identifier.ACMEIdentifier{Type: "ip", Value: `3fff:0aaa:a:c0ff:ee:a:bad:deed`}, errIPInvalid},                                           // leading 0 in 2nd octet (RFC 5952, Sec. 4.1)
+		{identifier.ACMEIdentifier{Type: "ip", Value: `3fff:aaa:0:0:0:a:bad:deed`}, errIPInvalid},                                                // lone 0s in 3rd-5th octets, :: not used (RFC 5952, Sec. 4.2.1)
+		{identifier.ACMEIdentifier{Type: "ip", Value: `3fff:aaa::c0ff:ee:a:bad:deed`}, errIPInvalid},                                             // :: used for just one empty octet (RFC 5952, Sec. 4.2.2)
+		{identifier.ACMEIdentifier{Type: "ip", Value: `3fff:aaa::ee:0:0:0`}, errIPInvalid},                                                       // :: used for the shorter of two possible collapses (RFC 5952, Sec. 4.2.3)
+		{identifier.ACMEIdentifier{Type: "ip", Value: `fe80:0:0:0:a::`}, errIPInvalid},                                                           // :: used for the last of two possible equal-length collapses (RFC 5952, Sec. 4.2.3)
+		{identifier.ACMEIdentifier{Type: "ip", Value: `3fff:aaa:a:C0FF:EE:a:bad:deed`}, errIPInvalid},                                            // alpha characters capitalized (RFC 5952, Sec. 4.3)
+		{identifier.ACMEIdentifier{Type: "ip", Value: `::ffff:192.168.1.1`}, errIPInvalid},                                                       // IPv6-encapsulated IPv4
 
 		// IANA special-purpose address blocks
 		{identifier.NewIP(netip.MustParseAddr("192.0.2.129")), errIPSpecialPurpose},                        // Documentation (TEST-NET-1)

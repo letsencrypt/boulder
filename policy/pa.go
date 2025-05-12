@@ -333,8 +333,13 @@ func validIP(ip string) error {
 		return errEmptyIdentifier
 	}
 
+	// Check the output of net.IP.String(), to ensure the input complied with
+	// RFC 8738, Sec. 3. ("The identifier value MUST contain the textual form of
+	// the address as defined in RFC 1123, Sec. 2.1 for IPv4 and in RFC 5952,
+	// Sec. 4 for IPv6.") ParseIP() will accept a non-compliant but otherwise
+	// valid string; String() will output a compliant string.
 	parsedIP := net.ParseIP(ip)
-	if parsedIP == nil {
+	if parsedIP == nil || parsedIP.String() != ip {
 		return errIPInvalid
 	}
 
