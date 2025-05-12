@@ -354,7 +354,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
 		1, testKeyPolicy, limiter, txnBuilder, 100,
-		profiles, nil, nil, 5*time.Minute, ctp, nil, nil)
+		profiles, nil, 5*time.Minute, ctp, nil, nil)
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
@@ -2832,107 +2832,56 @@ func TestFinalizeWithMustStaple(t *testing.T) {
 		Value: []byte{0x30, 0x03, 0x02, 0x01, 0x05},
 	}
 
-	testCases := []struct {
-		name                  string
-		mustStapleAllowList   *allowlist.List[int64]
-		expectSuccess         bool
-		expectErrorContains   string
-		expectMetricWithLabel prometheus.Labels
-	}{
-		{
-			name:                  "Allow only Registration.ID",
-			mustStapleAllowList:   allowlist.NewList([]int64{Registration.Id}),
-			expectSuccess:         true,
-			expectMetricWithLabel: prometheus.Labels{"allowlist": "allowed"},
-		},
-		{
-			name:                  "Deny all but account Id 1337",
-			mustStapleAllowList:   allowlist.NewList([]int64{1337}),
-			expectSuccess:         false,
-			expectErrorContains:   "no longer available",
-			expectMetricWithLabel: prometheus.Labels{"allowlist": "denied"},
-		},
-		{
-			name:                  "Deny all account Ids",
-			mustStapleAllowList:   allowlist.NewList([]int64{}),
-			expectSuccess:         false,
-			expectErrorContains:   "no longer available",
-			expectMetricWithLabel: prometheus.Labels{"allowlist": "denied"},
-		},
-		{
-			name:                "Allow all account Ids",
-			mustStapleAllowList: nil,
-			expectSuccess:       true,
-			// We don't expect this metric to be be emitted if the allowlist is nil.
-			expectMetricWithLabel: nil,
-		},
+	domain := randomDomain()
+
+	authzID := createFinalizedAuthorization(
+		t, sa, identifier.NewDNS(domain), fc.Now().Add(24*time.Hour), core.ChallengeTypeHTTP01, fc.Now().Add(-1*time.Hour))
+
+	order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Identifiers:    []*corepb.Identifier{identifier.NewDNS(domain).ToProto()},
+	})
+	test.AssertNotError(t, err, "creating test order")
+	test.AssertEquals(t, order.V2Authorizations[0], authzID)
+
+	testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "generating test key")
+
+	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey:       testKey.Public(),
+		DNSNames:        []string{domain},
+		ExtraExtensions: []pkix.Extension{ocspMustStapleExt},
+	}, testKey)
+	test.AssertNotError(t, err, "creating must-staple CSR")
+
+	serial, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
+	test.AssertNotError(t, err, "generating random serial number")
+	template := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: domain},
+		DNSNames:              []string{domain},
+		NotBefore:             fc.Now(),
+		NotAfter:              fc.Now().Add(365 * 24 * time.Hour),
+		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		ExtraExtensions:       []pkix.Extension{ocspMustStapleExt},
+	}
+	cert, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "creating certificate")
+	ra.CA = &mocks.MockCA{
+		PEM: pem.EncodeToMemory(&pem.Block{
+			Bytes: cert,
+			Type:  "CERTIFICATE",
+		}),
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			ra.mustStapleAllowList = tc.mustStapleAllowList
-
-			domain := randomDomain()
-
-			authzID := createFinalizedAuthorization(
-				t, sa, identifier.NewDNS(domain), fc.Now().Add(24*time.Hour), core.ChallengeTypeHTTP01, fc.Now().Add(-1*time.Hour))
-
-			order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-				RegistrationID: Registration.Id,
-				Identifiers:    []*corepb.Identifier{identifier.NewDNS(domain).ToProto()},
-			})
-			test.AssertNotError(t, err, "creating test order")
-			test.AssertEquals(t, order.V2Authorizations[0], authzID)
-
-			testKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-			test.AssertNotError(t, err, "generating test key")
-
-			csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
-				PublicKey:       testKey.Public(),
-				DNSNames:        []string{domain},
-				ExtraExtensions: []pkix.Extension{ocspMustStapleExt},
-			}, testKey)
-			test.AssertNotError(t, err, "creating must-staple CSR")
-
-			serial, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
-			test.AssertNotError(t, err, "generating random serial number")
-			template := &x509.Certificate{
-				SerialNumber:          serial,
-				Subject:               pkix.Name{CommonName: domain},
-				DNSNames:              []string{domain},
-				NotBefore:             fc.Now(),
-				NotAfter:              fc.Now().Add(365 * 24 * time.Hour),
-				BasicConstraintsValid: true,
-				ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-				ExtraExtensions:       []pkix.Extension{ocspMustStapleExt},
-			}
-			cert, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
-			test.AssertNotError(t, err, "creating certificate")
-			ra.CA = &mocks.MockCA{
-				PEM: pem.EncodeToMemory(&pem.Block{
-					Bytes: cert,
-					Type:  "CERTIFICATE",
-				}),
-			}
-
-			_, err = ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{
-				Order: order,
-				Csr:   csr,
-			})
-
-			if tc.expectSuccess {
-				test.AssertNotError(t, err, "finalization should succeed")
-			} else {
-				test.AssertError(t, err, "finalization should fail")
-				test.AssertContains(t, err.Error(), tc.expectErrorContains)
-			}
-
-			if tc.expectMetricWithLabel != nil {
-				test.AssertMetricWithLabelsEquals(t, ra.mustStapleRequestsCounter, tc.expectMetricWithLabel, 1)
-			}
-			ra.mustStapleRequestsCounter.Reset()
-		})
-	}
+	_, err = ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{
+		Order: order,
+		Csr:   csr,
+	})
+	test.AssertError(t, err, "finalization should fail")
+	test.AssertContains(t, err.Error(), "no longer available")
+	test.AssertMetricWithLabelsEquals(t, ra.mustStapleRequestsCounter, prometheus.Labels{"allowlist": "denied"}, 1)
 }
 
 func TestIssueCertificateAuditLog(t *testing.T) {
