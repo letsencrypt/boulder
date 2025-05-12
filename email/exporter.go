@@ -41,6 +41,7 @@ type ExporterImpl struct {
 	limiter               *rate.Limiter
 	client                PardotClient
 	emailsHandledCounter  prometheus.Counter
+	pardotErrorCounter    prometheus.Counter
 	log                   blog.Logger
 }
 
@@ -62,12 +63,19 @@ func NewExporterImpl(client PardotClient, perDayLimit float64, maxConcurrentRequ
 	})
 	scope.MustRegister(emailsHandledCounter)
 
+	pardotErrorCounter := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "email_exporter_errors",
+		Help: "Total number of Pardot API errors encountered by the email exporter",
+	})
+	scope.MustRegister(pardotErrorCounter)
+
 	impl := &ExporterImpl{
 		maxConcurrentRequests: maxConcurrentRequests,
 		limiter:               limiter,
 		toSend:                make([]string, 0, contactsQueueCap),
 		client:                client,
 		emailsHandledCounter:  emailsHandledCounter,
+		pardotErrorCounter:    pardotErrorCounter,
 		log:                   logger,
 	}
 	impl.wake = sync.NewCond(&impl.Mutex)
@@ -145,6 +153,7 @@ func (impl *ExporterImpl) Start(daemonCtx context.Context) {
 
 			err = impl.client.SendContact(email)
 			if err != nil {
+				impl.pardotErrorCounter.Inc()
 				impl.log.Errf("Sending Contact to Pardot: %s", err)
 			}
 			impl.emailsHandledCounter.Inc()
