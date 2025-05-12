@@ -154,20 +154,20 @@ func setup(t *testing.T) *testCtx {
 
 	certProfiles := make(map[string]*issuance.ProfileConfig, 0)
 	certProfiles["legacy"] = &issuance.ProfileConfig{
-		AllowMustStaple:     true,
-		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 90},
-		MaxValidityBackdate: config.Duration{Duration: time.Hour},
-		IgnoredLints:        []string{"w_subject_common_name_included"},
+		IncludeCRLDistributionPoints: true,
+		MaxValidityPeriod:            config.Duration{Duration: time.Hour * 24 * 90},
+		MaxValidityBackdate:          config.Duration{Duration: time.Hour},
+		IgnoredLints:                 []string{"w_subject_common_name_included"},
 	}
 	certProfiles["modern"] = &issuance.ProfileConfig{
-		AllowMustStaple:     true,
-		OmitCommonName:      true,
-		OmitKeyEncipherment: true,
-		OmitClientAuth:      true,
-		OmitSKID:            true,
-		MaxValidityPeriod:   config.Duration{Duration: time.Hour * 24 * 6},
-		MaxValidityBackdate: config.Duration{Duration: time.Hour},
-		IgnoredLints:        []string{"w_ext_subject_key_identifier_missing_sub_cert"},
+		OmitCommonName:               true,
+		OmitKeyEncipherment:          true,
+		OmitClientAuth:               true,
+		OmitSKID:                     true,
+		IncludeCRLDistributionPoints: true,
+		MaxValidityPeriod:            config.Duration{Duration: time.Hour * 24 * 6},
+		MaxValidityBackdate:          config.Duration{Duration: time.Hour},
+		IgnoredLints:                 []string{"w_ext_subject_key_identifier_missing_sub_cert"},
 	}
 	test.AssertEquals(t, len(certProfiles), 2)
 
@@ -178,6 +178,7 @@ func setup(t *testing.T) *testCtx {
 			IssuerURL:  fmt.Sprintf("http://not-example.com/i/%s", name),
 			OCSPURL:    "http://not-example.com/o",
 			CRLURLBase: fmt.Sprintf("http://not-example.com/c/%s/", name),
+			CRLShards:  10,
 			Location: issuance.IssuerLoc{
 				File:     fmt.Sprintf("../test/hierarchy/%s.key.pem", name),
 				CertFile: fmt.Sprintf("../test/hierarchy/%s.cert.pem", name),
@@ -314,7 +315,6 @@ func TestIssuePrecertificate(t *testing.T) {
 		{"IssuePrecertificate", CNandSANCSR, issueCertificateSubTestIssuePrecertificate},
 		{"ProfileSelectionRSA", CNandSANCSR, issueCertificateSubTestProfileSelectionRSA},
 		{"ProfileSelectionECDSA", ECDSACSR, issueCertificateSubTestProfileSelectionECDSA},
-		{"MustStaple", MustStapleCSR, issueCertificateSubTestMustStaple},
 		{"UnknownExtension", UnsupportedExtensionCSR, issueCertificateSubTestUnknownExtension},
 		{"CTPoisonExtension", CTPoisonExtensionCSR, issueCertificateSubTestCTPoisonExtension},
 		{"CTPoisonExtensionEmpty", CTPoisonExtensionEmptyCSR, issueCertificateSubTestCTPoisonExtension},
@@ -492,6 +492,7 @@ func TestUnpredictableIssuance(t *testing.T) {
 			IssuerURL:  fmt.Sprintf("http://not-example.com/i/%s", name),
 			OCSPURL:    "http://not-example.com/o",
 			CRLURLBase: fmt.Sprintf("http://not-example.com/c/%s/", name),
+			CRLShards:  10,
 			Location: issuance.IssuerLoc{
 				File:     fmt.Sprintf("../test/hierarchy/%s.key.pem", name),
 				CertFile: fmt.Sprintf("../test/hierarchy/%s.cert.pem", name),
@@ -572,6 +573,13 @@ func TestMakeCertificateProfilesMap(t *testing.T) {
 			name: "empty profile config",
 			profileConfigs: map[string]*issuance.ProfileConfig{
 				"empty": {},
+			},
+			expectedErrSubstr: "at least one revocation mechanism must be included",
+		},
+		{
+			name: "minimal profile config",
+			profileConfigs: map[string]*issuance.ProfileConfig{
+				"empty": {IncludeCRLDistributionPoints: true},
 			},
 			expectedProfiles: []string{"empty"},
 		},
@@ -733,30 +741,12 @@ func issueCertificateSubTestProfileSelectionECDSA(t *testing.T, i *TestCertifica
 	test.AssertEquals(t, i.cert.KeyUsage, expectedKeyUsage)
 }
 
-func countMustStaple(t *testing.T, cert *x509.Certificate) (count int) {
-	oidTLSFeature := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
-	mustStapleFeatureValue := []byte{0x30, 0x03, 0x02, 0x01, 0x05}
-	for _, ext := range cert.Extensions {
-		if ext.Id.Equal(oidTLSFeature) {
-			test.Assert(t, !ext.Critical, "Extension was marked critical")
-			test.AssertByteEquals(t, ext.Value, mustStapleFeatureValue)
-			count++
-		}
-	}
-	return count
-}
-
-func issueCertificateSubTestMustStaple(t *testing.T, i *TestCertificateIssuance) {
-	test.AssertMetricWithLabelsEquals(t, i.ca.metrics.signatureCount, prometheus.Labels{"purpose": "precertificate"}, 1)
-	test.AssertEquals(t, countMustStaple(t, i.cert), 1)
-}
-
 func issueCertificateSubTestUnknownExtension(t *testing.T, i *TestCertificateIssuance) {
 	test.AssertMetricWithLabelsEquals(t, i.ca.metrics.signatureCount, prometheus.Labels{"purpose": "precertificate"}, 1)
 
 	// NOTE: The hard-coded value here will have to change over time as Boulder
 	// adds or removes (unrequested/default) extensions in certificates.
-	expectedExtensionCount := 9
+	expectedExtensionCount := 10
 	test.AssertEquals(t, len(i.cert.Extensions), expectedExtensionCount)
 }
 

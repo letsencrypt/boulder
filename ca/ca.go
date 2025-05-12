@@ -549,16 +549,15 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 
 	req := &issuance.IssuanceRequest{
-		PublicKey:         issuance.MarshalablePublicKey{PublicKey: csr.PublicKey},
-		SubjectKeyId:      subjectKeyId,
-		Serial:            serialBigInt.Bytes(),
-		DNSNames:          dnsNames,
-		IPAddresses:       ipAddresses,
-		CommonName:        csrlib.NamesFromCSR(csr).CN,
-		IncludeCTPoison:   true,
-		IncludeMustStaple: issuance.ContainsMustStaple(csr.Extensions),
-		NotBefore:         notBefore,
-		NotAfter:          notAfter,
+		PublicKey:       issuance.MarshalablePublicKey{PublicKey: csr.PublicKey},
+		SubjectKeyId:    subjectKeyId,
+		Serial:          serialBigInt.Bytes(),
+		DNSNames:        dnsNames,
+		IPAddresses:     ipAddresses,
+		CommonName:      csrlib.NamesFromCSR(csr).CN,
+		IncludeCTPoison: true,
+		NotBefore:       notBefore,
+		NotAfter:        notAfter,
 	}
 
 	lintCertBytes, issuanceToken, err := issuer.Prepare(certProfile.profile, req)

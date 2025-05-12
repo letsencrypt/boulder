@@ -33,6 +33,9 @@ import (
 type ProfileConfig struct {
 	// AllowMustStaple, when false, causes all IssuanceRequests which specify the
 	// OCSP Must Staple extension to be rejected.
+	//
+	// Deprecated: This has no effect, Must Staple is always omitted.
+	// TODO(#8177): Remove this.
 	AllowMustStaple bool
 
 	// OmitCommonName causes the CN field to be excluded from the resulting
@@ -50,6 +53,9 @@ type ProfileConfig struct {
 	// Information Access extension. This cannot be true unless
 	// IncludeCRLDistributionPoints is also true, to ensure that every
 	// certificate has at least one revocation mechanism included.
+	//
+	// Deprecated: This has no effect; OCSP is always omitted.
+	// TODO(#8177): Remove this.
 	OmitOCSP bool
 	// IncludeCRLDistributionPoints causes the CRLDistributionPoints extension to
 	// be added to all certificates issued by this profile.
@@ -73,12 +79,10 @@ type PolicyConfig struct {
 
 // Profile is the validated structure created by reading in ProfileConfigs and IssuerConfigs
 type Profile struct {
-	allowMustStaple     bool
 	omitCommonName      bool
 	omitKeyEncipherment bool
 	omitClientAuth      bool
 	omitSKID            bool
-	omitOCSP            bool
 
 	includeCRLDistributionPoints bool
 
@@ -105,7 +109,8 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 	// Although the Baseline Requirements say that revocation information may be
 	// omitted entirely *for short-lived certs*, the Microsoft root program still
 	// requires that at least one revocation mechanism be included in all certs.
-	if profileConfig.OmitOCSP && !profileConfig.IncludeCRLDistributionPoints {
+	// TODO(#7673): Remove this restriction.
+	if !profileConfig.IncludeCRLDistributionPoints {
 		return nil, fmt.Errorf("at least one revocation mechanism must be included")
 	}
 
@@ -118,12 +123,10 @@ func NewProfile(profileConfig *ProfileConfig) (*Profile, error) {
 	}
 
 	sp := &Profile{
-		allowMustStaple:              profileConfig.AllowMustStaple,
 		omitCommonName:               profileConfig.OmitCommonName,
 		omitKeyEncipherment:          profileConfig.OmitKeyEncipherment,
 		omitClientAuth:               profileConfig.OmitClientAuth,
 		omitSKID:                     profileConfig.OmitSKID,
-		omitOCSP:                     profileConfig.OmitOCSP,
 		includeCRLDistributionPoints: profileConfig.IncludeCRLDistributionPoints,
 		maxBackdate:                  profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:                  profileConfig.MaxValidityPeriod.Duration,
@@ -161,10 +164,6 @@ func (i *Issuer) requestValid(clk clock.Clock, prof *Profile, req *IssuanceReque
 
 	if len(req.SubjectKeyId) != 0 && len(req.SubjectKeyId) != 20 {
 		return errors.New("unexpected subject key ID length")
-	}
-
-	if !prof.allowMustStaple && req.IncludeMustStaple {
-		return errors.New("must-staple extension cannot be included")
 	}
 
 	if req.IncludeCTPoison && req.sctList != nil {
@@ -253,16 +252,6 @@ func generateSCTListExt(scts []ct.SignedCertificateTimestamp) (pkix.Extension, e
 	}, nil
 }
 
-var mustStapleExt = pkix.Extension{
-	// RFC 7633: id-pe-tlsfeature OBJECT IDENTIFIER ::=  { id-pe 24 }
-	Id: asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24},
-	// ASN.1 encoding of:
-	// SEQUENCE
-	//   INTEGER 5
-	// where "5" is the status_request feature (RFC 6066)
-	Value: []byte{0x30, 0x03, 0x02, 0x01, 0x05},
-}
-
 // MarshalablePublicKey is a wrapper for crypto.PublicKey with a custom JSON
 // marshaller that encodes the public key as a DER-encoded SubjectPublicKeyInfo.
 type MarshalablePublicKey struct {
@@ -301,8 +290,7 @@ type IssuanceRequest struct {
 	DNSNames    []string
 	IPAddresses []net.IP
 
-	IncludeMustStaple bool
-	IncludeCTPoison   bool
+	IncludeCTPoison bool
 
 	// sctList is a list of SCTs to include in a final certificate.
 	// If it is non-empty, PrecertDER must also be non-empty.
@@ -393,10 +381,6 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
 	}
 
-	if !prof.omitOCSP {
-		template.OCSPServer = []string{i.ocspURL}
-	}
-
 	// If explicit CRL sharding is enabled, pick a shard based on the serial number
 	// modulus the number of shards. This gives us random distribution that is
 	// nonetheless consistent between precert and cert.
@@ -408,10 +392,6 @@ func (i *Issuer) Prepare(prof *Profile, req *IssuanceRequest) ([]byte, *issuance
 		shard := int(shardZeroBased.Int64()) + 1
 		url := i.crlURL(shard)
 		template.CRLDistributionPoints = []string{url}
-	}
-
-	if req.IncludeMustStaple {
-		template.ExtraExtensions = append(template.ExtraExtensions, mustStapleExt)
 	}
 
 	// check that the tbsCertificate is properly formed by signing it
@@ -454,18 +434,6 @@ func (i *Issuer) Issue(token *issuanceToken) ([]byte, error) {
 	return x509.CreateCertificate(rand.Reader, template, i.Cert.Certificate, token.pubKey.PublicKey, i.Signer)
 }
 
-// ContainsMustStaple returns true if the provided set of extensions includes
-// an entry whose OID and value both match the expected values for the OCSP
-// Must-Staple (a.k.a. id-pe-tlsFeature) extension.
-func ContainsMustStaple(extensions []pkix.Extension) bool {
-	for _, ext := range extensions {
-		if ext.Id.Equal(mustStapleExt.Id) && bytes.Equal(ext.Value, mustStapleExt.Value) {
-			return true
-		}
-	}
-	return false
-}
-
 // containsCTPoison returns true if the provided set of extensions includes
 // an entry whose OID and value both match the expected values for the CT
 // Poison extension.
@@ -486,16 +454,15 @@ func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTi
 		return nil, errors.New("provided certificate doesn't contain the CT poison extension")
 	}
 	return &IssuanceRequest{
-		PublicKey:         MarshalablePublicKey{precert.PublicKey},
-		SubjectKeyId:      precert.SubjectKeyId,
-		Serial:            precert.SerialNumber.Bytes(),
-		NotBefore:         precert.NotBefore,
-		NotAfter:          precert.NotAfter,
-		CommonName:        precert.Subject.CommonName,
-		DNSNames:          precert.DNSNames,
-		IPAddresses:       precert.IPAddresses,
-		IncludeMustStaple: ContainsMustStaple(precert.Extensions),
-		sctList:           scts,
-		precertDER:        precert.Raw,
+		PublicKey:    MarshalablePublicKey{precert.PublicKey},
+		SubjectKeyId: precert.SubjectKeyId,
+		Serial:       precert.SerialNumber.Bytes(),
+		NotBefore:    precert.NotBefore,
+		NotAfter:     precert.NotAfter,
+		CommonName:   precert.Subject.CommonName,
+		DNSNames:     precert.DNSNames,
+		IPAddresses:  precert.IPAddresses,
+		sctList:      scts,
+		precertDER:   precert.Raw,
 	}, nil
 }
