@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -23,7 +24,12 @@ func paImpl(t *testing.T) *AuthorityImpl {
 		core.ChallengeTypeTLSALPN01: true,
 	}
 
-	pa, err := New(enabledChallenges, blog.NewMock())
+	enabledIdentifiers := map[identifier.IdentifierType]bool{
+		identifier.TypeDNS: true,
+		identifier.TypeIP:  true,
+	}
+
+	pa, err := New(enabledChallenges, enabledIdentifiers, blog.NewMock())
 	if err != nil {
 		t.Fatalf("Couldn't create policy implementation: %s", err)
 	}
@@ -614,6 +620,112 @@ func TestCheckAuthzChallenges(t *testing.T) {
 			} else {
 				test.AssertError(t, err, "should have errored")
 				test.AssertContains(t, err.Error(), tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestWillingToIssue_IdentifierType(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		ident   identifier.ACMEIdentifier
+		enabled map[identifier.IdentifierType]bool
+		wantErr string
+	}{
+		{
+			name:    "DNS identifier, none enabled",
+			ident:   identifier.NewDNS("example.com"),
+			enabled: nil,
+			wantErr: "The ACME server has disabled this identifier type",
+		},
+		{
+			name:    "DNS identifier, DNS enabled",
+			ident:   identifier.NewDNS("example.com"),
+			enabled: map[identifier.IdentifierType]bool{identifier.TypeDNS: true},
+			wantErr: "",
+		},
+		{
+			name:    "DNS identifier, DNS & IP enabled",
+			ident:   identifier.NewDNS("example.com"),
+			enabled: map[identifier.IdentifierType]bool{identifier.TypeDNS: true, identifier.TypeIP: true},
+			wantErr: "",
+		},
+		{
+			name:    "DNS identifier, IP enabled",
+			ident:   identifier.NewDNS("example.com"),
+			enabled: map[identifier.IdentifierType]bool{identifier.TypeIP: true},
+			wantErr: "The ACME server has disabled this identifier type",
+		},
+		{
+			name:    "IP identifier, none enabled",
+			ident:   identifier.NewIP(netip.MustParseAddr("9.9.9.9")),
+			enabled: nil,
+			wantErr: "The ACME server has disabled this identifier type",
+		},
+		{
+			name:    "IP identifier, DNS enabled",
+			ident:   identifier.NewIP(netip.MustParseAddr("9.9.9.9")),
+			enabled: map[identifier.IdentifierType]bool{identifier.TypeDNS: true},
+			wantErr: "The ACME server has disabled this identifier type",
+		},
+		{
+			name:    "IP identifier, DNS & IP enabled",
+			ident:   identifier.NewIP(netip.MustParseAddr("9.9.9.9")),
+			enabled: map[identifier.IdentifierType]bool{identifier.TypeDNS: true, identifier.TypeIP: true},
+			wantErr: "",
+		},
+		{
+			name:    "IP identifier, IP enabled",
+			ident:   identifier.NewIP(netip.MustParseAddr("9.9.9.9")),
+			enabled: map[identifier.IdentifierType]bool{identifier.TypeIP: true},
+			wantErr: "",
+		},
+		{
+			name:    "invalid identifier type",
+			ident:   identifier.ACMEIdentifier{Type: "drywall", Value: "oh yeah!"},
+			enabled: map[identifier.IdentifierType]bool{"drywall": true},
+			wantErr: "Invalid identifier type",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			policy := blockedNamesPolicy{
+				HighRiskBlockedNames: []string{"zombo.gov.us"},
+				ExactBlockedNames:    []string{`highvalue.website1.org`},
+				AdminBlockedNames:    []string{`banned.in.dc.com`},
+			}
+
+			yamlPolicyBytes, err := yaml.Marshal(policy)
+			test.AssertNotError(t, err, "Couldn't YAML serialize blocklist")
+			yamlPolicyFile, _ := os.CreateTemp("", "test-blocklist.*.yaml")
+			defer os.Remove(yamlPolicyFile.Name())
+			err = os.WriteFile(yamlPolicyFile.Name(), yamlPolicyBytes, 0640)
+			test.AssertNotError(t, err, "Couldn't write YAML blocklist")
+
+			pa := paImpl(t)
+
+			err = pa.LoadHostnamePolicyFile(yamlPolicyFile.Name())
+			test.AssertNotError(t, err, "Couldn't load rules")
+
+			pa.enabledIdentifiers = tc.enabled
+
+			err = pa.WillingToIssue(identifier.ACMEIdentifiers{tc.ident})
+
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Errorf("should have succeeded, but got error: %s", err.Error())
+				}
+			} else {
+				if err == nil {
+					t.Errorf("should have failed")
+				} else if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("wrong error; wanted '%s', but got '%s'", tc.wantErr, err.Error())
+				}
 			}
 		})
 	}

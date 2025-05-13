@@ -190,6 +190,10 @@
 			"http-01": true,
 			"dns-01": true,
 			"tls-alpn-01": true
+		},
+		"identifiers": {
+			"dns": true,
+			"ip": true
 		}
 	},
 	"syslog": {

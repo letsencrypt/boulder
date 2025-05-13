@@ -34,14 +34,20 @@ type AuthorityImpl struct {
 	wildcardExactBlocklist map[string]bool
 	blocklistMu            sync.RWMutex
 
-	enabledChallenges map[core.AcmeChallenge]bool
+	enabledChallenges  map[core.AcmeChallenge]bool
+	enabledIdentifiers map[identifier.IdentifierType]bool
 }
 
 // New constructs a Policy Authority.
-func New(challengeTypes map[core.AcmeChallenge]bool, log blog.Logger) (*AuthorityImpl, error) {
+func New(challengeTypes map[core.AcmeChallenge]bool, identifierTypes map[identifier.IdentifierType]bool, log blog.Logger) (*AuthorityImpl, error) {
+	if identifierTypes == nil {
+		identifierTypes = map[identifier.IdentifierType]bool{identifier.TypeDNS: true}
+	}
+
 	return &AuthorityImpl{
-		log:               log,
-		enabledChallenges: challengeTypes,
+		log:                log,
+		enabledChallenges:  challengeTypes,
+		enabledIdentifiers: identifierTypes,
 	}, nil
 }
 
@@ -421,6 +427,11 @@ func (pa *AuthorityImpl) WillingToIssue(idents identifier.ACMEIdentifiers) error
 
 	var subErrors []berrors.SubBoulderError
 	for _, ident := range idents {
+		if !pa.IdentifierTypeEnabled(ident.Type) {
+			subErrors = append(subErrors, subError(ident, berrors.RejectedIdentifierError("The ACME server has disabled this identifier type")))
+			continue
+		}
+
 		// Only DNS identifiers are subject to wildcard and blocklist checks.
 		// Unsupported identifier types will have been caught by
 		// WellFormedIdentifiers().
@@ -632,4 +643,11 @@ func (pa *AuthorityImpl) CheckAuthzChallenges(authz *core.Authorization) error {
 	}
 
 	return nil
+}
+
+// IdentifierTypeEnabled returns whether the specified identifier type is enabled
+func (pa *AuthorityImpl) IdentifierTypeEnabled(t identifier.IdentifierType) bool {
+	pa.blocklistMu.RLock()
+	defer pa.blocklistMu.RUnlock()
+	return pa.enabledIdentifiers[t]
 }

@@ -23,22 +23,24 @@ var (
 	validPAConfig = []byte(`{
   "dbConnect": "dummyDBConnect",
   "enforcePolicyWhitelist": false,
-  "challenges": { "http-01": true }
+  "challenges": { "http-01": true },
+  "identifiers": { "dns": true, "ip": true }
 }`)
 	invalidPAConfig = []byte(`{
   "dbConnect": "dummyDBConnect",
   "enforcePolicyWhitelist": false,
-  "challenges": { "nonsense": true }
+  "challenges": { "nonsense": true },
+  "identifiers": { "openpgp": true }
 }`)
-	noChallengesPAConfig = []byte(`{
+	noChallengesIdentsPAConfig = []byte(`{
   "dbConnect": "dummyDBConnect",
   "enforcePolicyWhitelist": false
 }`)
-
-	emptyChallengesPAConfig = []byte(`{
+	emptyChallengesIdentsPAConfig = []byte(`{
   "dbConnect": "dummyDBConnect",
   "enforcePolicyWhitelist": false,
-  "challenges": {}
+  "challenges": {},
+  "identifiers": {}
 }`)
 )
 
@@ -47,21 +49,25 @@ func TestPAConfigUnmarshal(t *testing.T) {
 	err := json.Unmarshal(validPAConfig, &pc1)
 	test.AssertNotError(t, err, "Failed to unmarshal PAConfig")
 	test.AssertNotError(t, pc1.CheckChallenges(), "Flagged valid challenges as bad")
+	test.AssertNotError(t, pc1.CheckIdentifiers(), "Flagged valid identifiers as bad")
 
 	var pc2 PAConfig
 	err = json.Unmarshal(invalidPAConfig, &pc2)
 	test.AssertNotError(t, err, "Failed to unmarshal PAConfig")
 	test.AssertError(t, pc2.CheckChallenges(), "Considered invalid challenges as good")
+	test.AssertError(t, pc2.CheckIdentifiers(), "Considered invalid identifiers as good")
 
 	var pc3 PAConfig
-	err = json.Unmarshal(noChallengesPAConfig, &pc3)
+	err = json.Unmarshal(noChallengesIdentsPAConfig, &pc3)
 	test.AssertNotError(t, err, "Failed to unmarshal PAConfig")
 	test.AssertError(t, pc3.CheckChallenges(), "Disallow empty challenges map")
+	test.AssertNotError(t, pc3.CheckIdentifiers(), "Disallowed empty identifiers map")
 
 	var pc4 PAConfig
-	err = json.Unmarshal(emptyChallengesPAConfig, &pc4)
+	err = json.Unmarshal(emptyChallengesIdentsPAConfig, &pc4)
 	test.AssertNotError(t, err, "Failed to unmarshal PAConfig")
 	test.AssertError(t, pc4.CheckChallenges(), "Disallow empty challenges map")
+	test.AssertNotError(t, pc4.CheckIdentifiers(), "Disallowed empty identifiers map")
 }
 
 func TestMysqlLogger(t *testing.T) {
