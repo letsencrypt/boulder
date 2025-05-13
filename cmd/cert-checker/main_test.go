@@ -54,8 +54,8 @@ var (
 func init() {
 	var err error
 	pa, err = policy.New(
-		map[core.AcmeChallenge]bool{},
 		map[identifier.IdentifierType]bool{identifier.TypeDNS: true, identifier.TypeIP: true},
+		map[core.AcmeChallenge]bool{},
 		blog.NewMock())
 	if err != nil {
 		log.Fatal(err)

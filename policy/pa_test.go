@@ -29,7 +29,7 @@ func paImpl(t *testing.T) *AuthorityImpl {
 		identifier.TypeIP:  true,
 	}
 
-	pa, err := New(enabledChallenges, enabledIdentifiers, blog.NewMock())
+	pa, err := New(enabledIdentifiers, enabledChallenges, blog.NewMock())
 	if err != nil {
 		t.Fatalf("Couldn't create policy implementation: %s", err)
 	}

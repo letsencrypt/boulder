@@ -576,7 +576,7 @@ func main() {
 	})
 	prometheus.DefaultRegisterer.MustRegister(checkerLatency)
 
-	pa, err := policy.New(config.PA.Challenges, config.PA.Identifiers, logger)
+	pa, err := policy.New(config.PA.Identifiers, config.PA.Challenges, logger)
 	cmd.FailOnError(err, "Failed to create PA")
 
 	err = pa.LoadHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
