@@ -220,7 +220,6 @@ func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req 
 
 func (sa *StorageAuthorityReadOnly) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "unimplemented mock")
-
 }
 
 // GetRevocationStatus is a mock
