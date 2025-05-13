@@ -391,7 +391,6 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 			return
 		}
 	}
-
 }
 
 // isTLD returns a simplified view of whether something is a TLD: does it have

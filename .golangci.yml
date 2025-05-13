@@ -1,6 +1,8 @@
 linters:
   disable-all: true
   enable:
+    - asciicheck
+    - bidichk
     - errcheck
     - gofmt
     - gosec
@@ -9,6 +11,7 @@ linters:
     - ineffassign
     - misspell
     - nolintlint
+    - spancheck
     - sqlclosecheck
     - typecheck
     - unconvert
