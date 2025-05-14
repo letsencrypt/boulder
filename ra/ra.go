@@ -387,6 +387,9 @@ func NewValidationProfiles(defaultName string, configs map[string]*ValidationPro
 			identifierTypes = append(identifierTypes, identifier.IdentifierType(identType))
 		}
 		// If this profile has no identifier types configured, default to DNS.
+		// This default is temporary, to improve deployability.
+		//
+		// TODO(#8184): Remove this default.
 		if len(identifierTypes) == 0 {
 			identifierTypes = append(identifierTypes, identifier.TypeDNS)
 		}
