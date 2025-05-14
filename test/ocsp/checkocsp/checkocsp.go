@@ -48,7 +48,6 @@ stale.
 			}
 			serialNumber := big.NewInt(0).SetBytes(bytes)
 			_, err = helper.ReqSerial(serialNumber, config)
-
 		} else {
 			_, err = helper.ReqFile(a, config)
 		}

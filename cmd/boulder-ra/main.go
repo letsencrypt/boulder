@@ -6,7 +6,6 @@ import (
 	"os"
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
-	"github.com/letsencrypt/boulder/allowlist"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -95,11 +94,13 @@ type Config struct {
 		// default.
 		DefaultProfileName string `validate:"required"`
 
-		// MustStapleAllowList specifies the path to a YAML file containing a
+		// MustStapleAllowList specified the path to a YAML file containing a
 		// list of account IDs permitted to request certificates with the OCSP
-		// Must-Staple extension. If no path is specified, the extension is
-		// permitted for all accounts. If the file exists but is empty, the
-		// extension is disabled for all accounts.
+		// Must-Staple extension.
+		//
+		// Deprecated: This field no longer has any effect, all Must-Staple requests
+		// are rejected.
+		// TODO(#8177): Remove this field.
 		MustStapleAllowList string `validate:"omitempty"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
@@ -166,8 +167,9 @@ func main() {
 
 	// Validate PA config and set defaults if needed
 	cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
+	cmd.FailOnError(c.PA.CheckIdentifiers(), "Invalid PA configuration")
 
-	pa, err := policy.New(c.PA.Challenges, logger)
+	pa, err := policy.New(c.PA.Identifiers, c.PA.Challenges, logger)
 	cmd.FailOnError(err, "Couldn't create PA")
 
 	if c.RA.HostnamePolicyFile == "" {
@@ -253,14 +255,6 @@ func main() {
 	validationProfiles, err := ra.NewValidationProfiles(c.RA.DefaultProfileName, c.RA.ValidationProfiles)
 	cmd.FailOnError(err, "Failed to load validation profiles")
 
-	var mustStapleAllowList *allowlist.List[int64]
-	if c.RA.MustStapleAllowList != "" {
-		data, err := os.ReadFile(c.RA.MustStapleAllowList)
-		cmd.FailOnError(err, "Failed to read allow list for Must-Staple extension")
-		mustStapleAllowList, err = allowlist.NewFromYAML[int64](data)
-		cmd.FailOnError(err, "Failed to parse allow list for Must-Staple extension")
-	}
-
 	if features.Get().AsyncFinalize && c.RA.FinalizeTimeout.Duration == 0 {
 		cmd.Fail("finalizeTimeout must be supplied when AsyncFinalize feature is enabled")
 	}
@@ -293,7 +287,6 @@ func main() {
 		txnBuilder,
 		c.RA.MaxNames,
 		validationProfiles,
-		mustStapleAllowList,
 		pubc,
 		c.RA.FinalizeTimeout.Duration,
 		ctp,
