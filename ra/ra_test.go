@@ -78,16 +78,17 @@ func randomDomain() string {
 	return fmt.Sprintf("%x.example.com", bytes[:])
 }
 
-// randomIPv6 creates a random IPv6 netip.Addr for testing.
+// randomIPv6 creates a random IPv6 netip.Addr for testing. It uses a real IPv6
+// address range, not a test/documentation range.
 //
 // panics if crypto/rand.Rand.Read or netip.AddrFromSlice fails.
 func randomIPv6() netip.Addr {
-	var ipBytes [12]byte
+	var ipBytes [9]byte
 	_, err := rand.Read(ipBytes[:])
 	if err != nil {
 		panic(err)
 	}
-	ipPrefix, _ := hex.DecodeString("20010db8")
+	ipPrefix, _ := hex.DecodeString("2602080a600")
 	ip, ok := netip.AddrFromSlice(bytes.Join([][]byte{ipPrefix, ipBytes[:]}, nil))
 	if !ok {
 		panic("Couldn't parse random IP to netip.Addr")
