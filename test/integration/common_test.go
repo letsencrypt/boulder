@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -37,6 +38,13 @@ func random_domain() string {
 	var bytes [3]byte
 	rand.Read(bytes[:])
 	return hex.EncodeToString(bytes[:]) + ".com"
+}
+
+func random_ipv6() string {
+	var ipBytes [11]byte
+	rand.Read(ipBytes[:])
+	ipPrefix, _ := hex.DecodeString("2602080a600")
+	return net.IP(bytes.Join([][]byte{ipPrefix, ipBytes[:]}, nil)).String()
 }
 
 type client struct {
