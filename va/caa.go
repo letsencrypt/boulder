@@ -36,13 +36,25 @@ type caaParams struct {
 // implements the CAA portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	if core.IsAnyNilOrZero(req.Domain, req.ValidationMethod, req.AccountURIID) {
+	// TODO(#8023): Once Domain is no longer used, remove the conditional, use
+	// req.Identifier directly, and include it in the IsAnyNilOrZero check.
+	if core.IsAnyNilOrZero(req.ValidationMethod, req.AccountURIID) {
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
+
+	ident := identifier.NewDNS(req.Domain)
+	if req.GetIdentifier() != nil {
+		ident = identifier.FromProto(req.GetIdentifier())
+	}
+
+	if ident.Type != identifier.TypeDNS {
+		return nil, berrors.MalformedError("Identifier type for CAA check was not DNS")
+	}
+
 	logEvent := validationLogEvent{
 		AuthzID:    req.AuthzID,
 		Requester:  req.AccountURIID,
-		Identifier: identifier.NewDNS(req.Domain),
+		Identifier: ident,
 	}
 
 	challType := core.AcmeChallenge(req.ValidationMethod)
@@ -50,7 +62,6 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		return nil, berrors.InternalServerError("unrecognized validation method %q", req.ValidationMethod)
 	}
 
-	acmeID := identifier.NewDNS(req.Domain)
 	params := &caaParams{
 		accountURIID:     req.AccountURIID,
 		validationMethod: challType,
@@ -89,7 +100,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		va.log.AuditObject("CAA check result", logEvent)
 	}()
 
-	internalErr = va.checkCAA(ctx, acmeID, params)
+	internalErr = va.checkCAA(ctx, ident, params)
 
 	// Stop the clock for local check latency.
 	localLatency = va.clk.Since(start)
@@ -97,7 +108,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	if internalErr != nil {
 		logEvent.InternalError = internalErr.Error()
 		prob = detailedError(internalErr)
-		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
+		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", req.Identifier.Value, prob.Detail)
 	}
 
 	if va.isPrimaryVA() {
@@ -114,7 +125,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		if remoteProb != nil {
 			prob = remoteProb
 			va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
-				req.Domain, remoteProb)
+				req.Identifier.Value, remoteProb)
 		}
 	}
 
@@ -143,19 +154,19 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 // the CAA lookup & validation fail a problem is returned.
 func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
-	identifier identifier.ACMEIdentifier,
+	ident identifier.ACMEIdentifier,
 	params *caaParams) error {
 	if core.IsAnyNilOrZero(params, params.validationMethod, params.accountURIID) {
 		return errors.New("expected validationMethod or accountURIID not provided to checkCAA")
 	}
 
-	foundAt, valid, response, err := va.checkCAARecords(ctx, identifier, params)
+	foundAt, valid, response, err := va.checkCAARecords(ctx, ident, params)
 	if err != nil {
 		return berrors.DNSError("%s", err)
 	}
 
 	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q] Response=%q",
-		identifier.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, response)
+		ident.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, response)
 	if !valid {
 		return berrors.CAAError("CAA record for %s prevents issuance", foundAt)
 	}
@@ -299,13 +310,13 @@ func (va *ValidationAuthorityImpl) getCAA(ctx context.Context, hostname string) 
 // value (or nil).
 func (va *ValidationAuthorityImpl) checkCAARecords(
 	ctx context.Context,
-	identifier identifier.ACMEIdentifier,
+	ident identifier.ACMEIdentifier,
 	params *caaParams) (string, bool, string, error) {
-	hostname := strings.ToLower(identifier.Value)
+	hostname := strings.ToLower(ident.Value)
 	// If this is a wildcard name, remove the prefix
 	var wildcard bool
 	if strings.HasPrefix(hostname, `*.`) {
-		hostname = strings.TrimPrefix(identifier.Value, `*.`)
+		hostname = strings.TrimPrefix(ident.Value, `*.`)
 		wildcard = true
 	}
 	caaSet, err := va.getCAA(ctx, hostname)

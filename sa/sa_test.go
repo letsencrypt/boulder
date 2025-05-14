@@ -13,11 +13,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"math/bits"
 	mrand "math/rand/v2"
 	"net"
 	"net/netip"
+	"os"
 	"reflect"
 	"slices"
 	"strconv"
@@ -4586,4 +4588,152 @@ func TestUpdateRegistrationKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+type mockRLOStream struct {
+	grpc.ServerStream
+	sent []*sapb.RateLimitOverride
+	ctx  context.Context
+}
+
+func newMockRLOStream() *mockRLOStream {
+	return &mockRLOStream{ctx: ctx}
+}
+func (m *mockRLOStream) Context() context.Context { return m.ctx }
+func (m *mockRLOStream) RecvMsg(any) error        { return io.EOF }
+func (m *mockRLOStream) Send(ov *sapb.RateLimitOverride) error {
+	m.sent = append(m.sent, ov)
+	return nil
+}
+
+func TestAddRateLimitOverrideInsertThenUpdate(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		// TODO(#8147): Remove this skip.
+		t.Skip("skipping, this overrides table must exist for this test to run")
+	}
+
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+
+	expectBucketKey := core.RandomString(10)
+	ov := &sapb.RateLimitOverride{
+		LimitEnum: 1,
+		BucketKey: expectBucketKey,
+		Comment:   "insert",
+		Period:    durationpb.New(time.Hour),
+		Count:     100,
+		Burst:     100,
+	}
+
+	// Insert
+	resp, err := sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov})
+	test.AssertNotError(t, err, "expected successful insert, got error")
+	test.Assert(t, resp.Inserted && resp.Enabled, fmt.Sprintf("expected (Inserted=true, Enabled=true) for initial insert, got (%v,%v)", resp.Inserted, resp.Enabled))
+
+	// Update (change comment)
+	ov.Comment = "updated"
+	resp, err = sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov})
+	test.AssertNotError(t, err, "expected successful update, got error")
+	test.Assert(t, !resp.Inserted && resp.Enabled, fmt.Sprintf("expected (Inserted=false, Enabled=true) for update, got (%v, %v)", resp.Inserted, resp.Enabled))
+
+	got, err := sa.GetRateLimitOverride(ctx, &sapb.GetRateLimitOverrideRequest{LimitEnum: 1, BucketKey: expectBucketKey})
+	test.AssertNotError(t, err, "expected GetRateLimitOverride to succeed, got error")
+	test.AssertEquals(t, got.Override.Comment, "updated")
+
+	// Disable
+	_, err = sa.DisableRateLimitOverride(ctx, &sapb.DisableRateLimitOverrideRequest{LimitEnum: 1, BucketKey: expectBucketKey})
+	test.AssertNotError(t, err, "expected DisableRateLimitOverride to succeed, got error")
+
+	// Update and check that it's still disabled.
+	got, err = sa.GetRateLimitOverride(ctx, &sapb.GetRateLimitOverrideRequest{LimitEnum: 1, BucketKey: expectBucketKey})
+	test.AssertNotError(t, err, "expected GetRateLimitOverride to succeed, got error")
+	test.Assert(t, !got.Enabled, fmt.Sprintf("expected Enabled=false after disable, got Enabled=%v", got.Enabled))
+
+	// Update (change period, count, and burst)
+	ov.Period = durationpb.New(2 * time.Hour)
+	ov.Count = 200
+	ov.Burst = 200
+	_, err = sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov})
+	test.AssertNotError(t, err, "expected successful update, got error")
+
+	got, err = sa.GetRateLimitOverride(ctx, &sapb.GetRateLimitOverrideRequest{LimitEnum: 1, BucketKey: expectBucketKey})
+	test.AssertNotError(t, err, "expected GetRateLimitOverride to succeed, got error")
+	test.AssertEquals(t, got.Override.Period.AsDuration(), 2*time.Hour)
+	test.AssertEquals(t, got.Override.Count, int64(200))
+	test.AssertEquals(t, got.Override.Burst, int64(200))
+}
+
+func TestDisableEnableRateLimitOverride(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		// TODO(#8147): Remove this skip.
+		t.Skip("skipping, this overrides table must exist for this test to run")
+	}
+
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+
+	expectBucketKey := core.RandomString(10)
+	ov := &sapb.RateLimitOverride{
+		LimitEnum: 2,
+		BucketKey: expectBucketKey,
+		Period:    durationpb.New(time.Hour),
+		Count:     1,
+		Burst:     1,
+		Comment:   "test",
+	}
+	_, _ = sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov})
+
+	// Disable
+	_, err := sa.DisableRateLimitOverride(ctx,
+		&sapb.DisableRateLimitOverrideRequest{LimitEnum: 2, BucketKey: expectBucketKey})
+	test.AssertNotError(t, err, "expected DisableRateLimitOverride to succeed, got error")
+
+	st, _ := sa.GetRateLimitOverride(ctx,
+		&sapb.GetRateLimitOverrideRequest{LimitEnum: 2, BucketKey: expectBucketKey})
+	test.Assert(t, !st.Enabled,
+		fmt.Sprintf("expected Enabled=false after disable, got Enabled=%v", st.Enabled))
+
+	// Enable
+	_, err = sa.EnableRateLimitOverride(ctx,
+		&sapb.EnableRateLimitOverrideRequest{LimitEnum: 2, BucketKey: expectBucketKey})
+	test.AssertNotError(t, err, "expected EnableRateLimitOverride to succeed, got error")
+
+	st, _ = sa.GetRateLimitOverride(ctx,
+		&sapb.GetRateLimitOverrideRequest{LimitEnum: 2, BucketKey: expectBucketKey})
+	test.Assert(t, st.Enabled,
+		fmt.Sprintf("expected Enabled=true after enable, got Enabled=%v", st.Enabled))
+}
+
+func TestGetEnabledRateLimitOverrides(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		// TODO(#8147): Remove this skip.
+		t.Skip("skipping, this overrides table must exist for this test to run")
+	}
+
+	sa, _, cleanup := initSA(t)
+	defer cleanup()
+
+	// Enabled
+	ov1 := &sapb.RateLimitOverride{
+		LimitEnum: 10, BucketKey: "on", Period: durationpb.New(time.Second), Count: 1, Burst: 1, Comment: "on",
+	}
+	// Disabled
+	ov2 := &sapb.RateLimitOverride{
+		LimitEnum: 11, BucketKey: "off", Period: durationpb.New(time.Second), Count: 1, Burst: 1, Comment: "off",
+	}
+
+	_, err := sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov1})
+	test.AssertNotError(t, err, "expected successful insert of ov1, got error")
+	_, err = sa.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{Override: ov2})
+	test.AssertNotError(t, err, "expected successful insert of ov2, got error")
+	_, err = sa.DisableRateLimitOverride(ctx, &sapb.DisableRateLimitOverrideRequest{LimitEnum: 11, BucketKey: "off"})
+	test.AssertNotError(t, err, "expected DisableRateLimitOverride of ov2 to succeed, got error")
+	_, err = sa.EnableRateLimitOverride(ctx, &sapb.EnableRateLimitOverrideRequest{LimitEnum: 10, BucketKey: "on"})
+	test.AssertNotError(t, err, "expected EnableRateLimitOverride of ov1 to succeed, got error")
+
+	stream := newMockRLOStream()
+	err = sa.GetEnabledRateLimitOverrides(&emptypb.Empty{}, stream)
+	test.AssertNotError(t, err, "expected streaming enabled overrides to succeed, got error")
+	test.AssertEquals(t, len(stream.sent), 1)
+	test.AssertEquals(t, stream.sent[0].BucketKey, "on")
 }

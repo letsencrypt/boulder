@@ -18,7 +18,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
@@ -341,34 +340,6 @@ func orderValid(order *corepb.Order) bool {
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
 	return !(order.RegistrationID == 0 || order.Expires == nil || len(order.Identifiers) == 0)
-}
-
-func CertStatusToPB(certStatus core.CertificateStatus) *corepb.CertificateStatus {
-	return &corepb.CertificateStatus{
-		Serial:                certStatus.Serial,
-		Status:                string(certStatus.Status),
-		OcspLastUpdated:       timestamppb.New(certStatus.OCSPLastUpdated),
-		RevokedDate:           timestamppb.New(certStatus.RevokedDate),
-		RevokedReason:         int64(certStatus.RevokedReason),
-		LastExpirationNagSent: timestamppb.New(certStatus.LastExpirationNagSent),
-		NotAfter:              timestamppb.New(certStatus.NotAfter),
-		IsExpired:             certStatus.IsExpired,
-		IssuerID:              certStatus.IssuerNameID,
-	}
-}
-
-func PBToCertStatus(pb *corepb.CertificateStatus) core.CertificateStatus {
-	return core.CertificateStatus{
-		Serial:                pb.Serial,
-		Status:                core.OCSPStatus(pb.Status),
-		OCSPLastUpdated:       pb.OcspLastUpdated.AsTime(),
-		RevokedDate:           pb.RevokedDate.AsTime(),
-		RevokedReason:         revocation.Reason(pb.RevokedReason),
-		LastExpirationNagSent: pb.LastExpirationNagSent.AsTime(),
-		NotAfter:              pb.NotAfter.AsTime(),
-		IsExpired:             pb.IsExpired,
-		IssuerNameID:          pb.IssuerID,
-	}
 }
 
 // PBToAuthzMap converts a protobuf map of domains mapped to protobuf authorizations to a

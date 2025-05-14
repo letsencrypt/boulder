@@ -30,6 +30,16 @@ const (
 	TypeIP = IdentifierType("ip")
 )
 
+// IsValid tests whether the identifier type is known
+func (i IdentifierType) IsValid() bool {
+	switch i {
+	case TypeDNS, TypeIP:
+		return true
+	default:
+		return false
+	}
+}
+
 // ACMEIdentifier is a struct encoding an identifier that can be validated. The
 // protocol allows for different types of identifier to be supported (DNS
 // names, IP addresses, etc.), but currently we only support RFC 8555 DNS type

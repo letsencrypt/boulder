@@ -12,6 +12,8 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var ctx = context.Background()
@@ -88,6 +90,9 @@ func TestSendContacts(t *testing.T) {
 	}
 	test.AssertSliceContains(t, gotContacts, wantContacts[0])
 	test.AssertSliceContains(t, gotContacts, wantContacts[1])
+
+	// Check that the error counter was not incremented.
+	test.AssertMetricWithLabelsEquals(t, exporter.pardotErrorCounter, prometheus.Labels{}, 0)
 }
 
 func TestSendContactsQueueFull(t *testing.T) {
@@ -129,4 +134,32 @@ func TestSendContactsQueueDrains(t *testing.T) {
 	cleanup()
 
 	test.AssertEquals(t, 100, len(clientImpl.getCreatedContacts()))
+}
+
+type mockAlwaysFailClient struct{}
+
+func (m *mockAlwaysFailClient) SendContact(email string) error {
+	return fmt.Errorf("simulated failure")
+}
+
+func TestSendContactsErrorMetrics(t *testing.T) {
+	t.Parallel()
+
+	mockClient := &mockAlwaysFailClient{}
+	exporter := NewExporterImpl(mockClient, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
+
+	daemonCtx, cancel := context.WithCancel(context.Background())
+	exporter.Start(daemonCtx)
+
+	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{
+		Emails: []string{"test@example.com"},
+	})
+	test.AssertNotError(t, err, "Error creating contacts")
+
+	// Drain the queue.
+	cancel()
+	exporter.Drain()
+
+	// Check that the error counter was incremented.
+	test.AssertMetricWithLabelsEquals(t, exporter.pardotErrorCounter, prometheus.Labels{}, 1)
 }

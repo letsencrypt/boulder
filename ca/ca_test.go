@@ -147,7 +147,7 @@ func setup(t *testing.T) *testCtx {
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
 
-	pa, err := policy.New(nil, blog.NewMock())
+	pa, err := policy.New(nil, nil, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
 	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")

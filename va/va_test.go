@@ -12,7 +12,6 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -237,11 +236,6 @@ type multiSrv struct {
 	allowedUAs map[string]bool
 }
 
-const (
-	slowUA                = "slow"
-	slowRemoteSleepMillis = 100
-)
-
 func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multiSrv {
 	t.Helper()
 	m := http.NewServeMux()
@@ -250,9 +244,6 @@ func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multi
 	ms := &multiSrv{server, sync.Mutex{}, allowedUAs}
 
 	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.UserAgent() == slowUA {
-			time.Sleep(slowRemoteSleepMillis * time.Millisecond)
-		}
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
 		if ms.allowedUAs[r.UserAgent()] {
@@ -645,7 +636,7 @@ func TestMultiVA(t *testing.T) {
 		},
 		{
 			// With the local and remote VAs seeing diff problems, we expect a problem.
-			Name: "Local and remote VA differential, full results, enforce multi VA",
+			Name: "Local and remote VA differential",
 			Remotes: []remoteConf{
 				{ua: fail, rir: arin},
 				{ua: fail, rir: ripe},
@@ -686,143 +677,6 @@ func TestMultiVA(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestMultiVAEarlyReturn(t *testing.T) {
-	// TODO(#7809): Make this test parallel when it no longer manipulates the
-	// MPICFullResults feature flag.
-
-	testCases := []struct {
-		name              string
-		remoteConfs       []remoteConf
-		wantCorroboration bool
-		wantEarlyReturn   bool
-	}{
-		{
-			name: "Early return when 2/3 pass",
-			remoteConfs: []remoteConf{
-				{ua: pass, rir: arin},
-				{ua: pass, rir: ripe},
-				{ua: slowUA, rir: apnic},
-			},
-			wantCorroboration: true,
-			wantEarlyReturn:   true,
-		},
-		{
-			name: "Early return when 2/3 fail",
-			remoteConfs: []remoteConf{
-				{ua: fail, rir: arin},
-				{ua: fail, rir: ripe},
-				{ua: slowUA, rir: apnic},
-			},
-			wantCorroboration: false,
-			wantEarlyReturn:   true,
-		},
-		{
-			name: "Slow return when first 2/3 are inconclusive",
-			remoteConfs: []remoteConf{
-				{ua: pass, rir: arin},
-				{ua: fail, rir: ripe},
-				{ua: slowUA, rir: apnic},
-			},
-			wantCorroboration: false,
-			wantEarlyReturn:   false,
-		},
-		{
-			name: "Early return when 4/6 pass",
-			remoteConfs: []remoteConf{
-				{ua: pass, rir: arin},
-				{ua: pass, rir: ripe},
-				{ua: pass, rir: apnic},
-				{ua: pass, rir: arin},
-				{ua: fail, rir: ripe},
-				{ua: slowUA, rir: apnic},
-			},
-			wantCorroboration: true,
-			wantEarlyReturn:   true,
-		},
-		{
-			name: "Early return when 4/6 fail",
-			remoteConfs: []remoteConf{
-				{ua: pass, rir: arin},
-				{ua: fail, rir: ripe},
-				{ua: fail, rir: apnic},
-				{ua: fail, rir: arin},
-				{ua: fail, rir: ripe},
-				{ua: slowUA, rir: apnic},
-			},
-			wantCorroboration: false,
-			wantEarlyReturn:   true,
-		},
-		{
-			name: "Slow return when first 5/6 are inconclusive",
-			remoteConfs: []remoteConf{
-				{ua: pass, rir: arin},
-				{ua: pass, rir: ripe},
-				{ua: pass, rir: apnic},
-				{ua: fail, rir: arin},
-				{ua: fail, rir: ripe},
-				{ua: slowUA, rir: apnic},
-			},
-			wantCorroboration: false,
-			wantEarlyReturn:   false,
-		},
-	}
-
-	for _, mpicFullResults := range []bool{false, true} {
-		for _, tc := range testCases {
-			t.Run(fmt.Sprintf("%s_(MPICFullResults: %s)", tc.name, strconv.FormatBool(mpicFullResults)), func(t *testing.T) {
-				// TODO(#7809): Make this test parallel when it no longer manipulates the
-				// MPICFullResults feature flag.
-
-				// Configure one test server per test case so that all tests can run in parallel.
-				ms := httpMultiSrv(t, expectedToken, map[string]bool{pass: true, fail: false})
-				defer ms.Close()
-
-				localVA, _ := setupWithRemotes(ms.Server, pass, tc.remoteConfs, nil)
-
-				features.Set(features.Config{MPICFullResults: mpicFullResults})
-				defer features.Reset()
-
-				// Perform all validations
-				start := time.Now()
-				req := createValidationRequest(identifier.NewDNS("localhost"), core.ChallengeTypeHTTP01)
-				res, _ := localVA.DoDCV(ctx, req)
-
-				if tc.wantCorroboration {
-					if res.Problem != nil {
-						t.Errorf("expected corroboration, but got prob %s", res.Problem)
-					}
-				} else {
-					if res.Problem == nil {
-						t.Error("expected prob from PerformValidation, got nil")
-					}
-				}
-
-				elapsed := time.Since(start).Round(time.Millisecond).Milliseconds()
-
-				if tc.wantEarlyReturn && !mpicFullResults {
-					// The slow UA should sleep for `slowRemoteSleepMillis`. But the first remote
-					// VA should fail quickly and the early-return code should cause the overall
-					// overall validation to return a prob quickly (i.e. in less than half of
-					// `slowRemoteSleepMillis`).
-					if elapsed > slowRemoteSleepMillis/2 {
-						t.Errorf(
-							"Expected an early return from PerformValidation in < %d ms, took %d ms",
-							slowRemoteSleepMillis/2, elapsed)
-					}
-				} else {
-					// The VA will have to wait for all of the results, because the fast
-					// results aren't sufficient to determine (non)corroboration.
-					if elapsed < slowRemoteSleepMillis {
-						t.Errorf(
-							"Expected a slow return from PerformValidation in >= %d ms, took %d ms",
-							slowRemoteSleepMillis, elapsed)
-					}
-				}
-			})
-		}
 	}
 }
 
@@ -918,61 +772,5 @@ func TestDetailedError(t *testing.T) {
 		if actual != tc.expected {
 			t.Errorf("Wrong detail for %v. Got %q, expected %q", tc.err, actual, tc.expected)
 		}
-	}
-}
-
-// TestPerformValidationDnsName modifies the PerformValidationRequest to test
-// backward compatibility during the transition to using an Identifier instead
-// of a DnsName.
-//
-// TODO(#8023): Remove this after the transition is over.
-func TestPerformValidationDnsName(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name            string
-		identDomain     string
-		transmogrifier  func(*vapb.PerformValidationRequest)
-		expectErr       bool
-		expectErrString string
-		expectLog       string
-	}{
-		{
-			name:        "Both Identifier and DnsName",
-			identDomain: "good-dns01.com",
-			transmogrifier: func(req *vapb.PerformValidationRequest) {
-				req.DnsName = "good-dns02.com"
-			},
-			expectErr:       true,
-			expectErrString: "both Identifier and DNSName are set",
-			expectLog:       `"Identifier":{"type":"dns","value":"good-dns01.com"}`,
-		},
-		{
-			name:        "No Identifier",
-			identDomain: "good-dns01.com",
-			transmogrifier: func(req *vapb.PerformValidationRequest) {
-				req.DnsName = "good-dns02.com"
-				req.Identifier = nil
-			},
-			expectLog: `"Identifier":{"type":"dns","value":"good-dns02.com"}`,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			va, _ := setup(nil, "", nil, nil)
-
-			// create a challenge with well known token
-			req := createValidationRequest(identifier.NewDNS(tc.identDomain), core.ChallengeTypeDNS01)
-			tc.transmogrifier(req)
-			res, err := va.DoDCV(context.Background(), req)
-			if tc.expectErr {
-				test.AssertDeepEquals(t, err, errors.New(tc.expectErrString))
-			} else {
-				test.AssertNotNil(t, res.GetProblem(), fmt.Sprintf("validation failed: %#v", res.Problem))
-			}
-		})
 	}
 }

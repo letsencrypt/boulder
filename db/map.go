@@ -129,6 +129,18 @@ func (m *WrappedMap) BeginTx(ctx context.Context) (Transaction, error) {
 	}, err
 }
 
+func (m *WrappedMap) ColumnsForModel(model interface{}) ([]string, error) {
+	tbl, err := m.dbMap.TableFor(reflect.TypeOf(model), true)
+	if err != nil {
+		return nil, err
+	}
+	var columns []string
+	for _, col := range tbl.Columns {
+		columns = append(columns, col.ColumnName)
+	}
+	return columns, nil
+}
+
 // WrappedTransaction wraps a *borp.Transaction such that its major functions
 // wrap error results in ErrDatabaseOp instances before returning them to the
 // caller.

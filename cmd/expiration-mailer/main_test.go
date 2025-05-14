@@ -516,15 +516,18 @@ func insertCertificate(cert certDERWithRegID, lastNagSent time.Time) error {
 		return fmt.Errorf("inserting certificate: %w", err)
 	}
 
-	return setupDBMap.Insert(ctx, &core.CertificateStatus{
-		Serial:                core.SerialToString(parsedCert.SerialNumber),
-		LastExpirationNagSent: lastNagSent,
-		Status:                core.OCSPStatusGood,
-		NotAfter:              parsedCert.NotAfter,
-		OCSPLastUpdated:       time.Time{},
-		RevokedDate:           time.Time{},
-		RevokedReason:         0,
-	})
+	_, err = setupDBMap.ExecContext(context.Background(),
+		`INSERT INTO certificateStatus
+		(serial, notAfter, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		core.SerialToString(parsedCert.SerialNumber),
+		parsedCert.NotAfter,
+		core.OCSPStatusGood,
+		time.Time{},
+		time.Time{},
+		0,
+		lastNagSent)
+	return err
 }
 
 func addExpiringCerts(t *testing.T, ctx *testCtx) []certDERWithRegID {

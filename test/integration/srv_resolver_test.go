@@ -96,7 +96,7 @@ func TestSRVResolver_CaseThree(t *testing.T) {
 	gnc := nonce.NewGetter(getNonceConn)
 	_, err = gnc.Nonce(context.Background(), &emptypb.Empty{})
 	test.AssertError(t, err, "Expected error getting nonce")
-	test.AssertContains(t, err.Error(), "last resolver error: produced zero addresses")
+	test.AssertContains(t, err.Error(), "no children to pick from")
 }
 
 func TestSRVResolver_CaseFour(t *testing.T) {
@@ -117,5 +117,5 @@ func TestSRVResolver_CaseFour(t *testing.T) {
 	gnc := nonce.NewGetter(getNonceConn4)
 	_, err = gnc.Nonce(context.Background(), &emptypb.Empty{})
 	test.AssertError(t, err, "Expected error getting nonce")
-	test.AssertContains(t, err.Error(), "last resolver error: produced zero addresses")
+	test.AssertContains(t, err.Error(), "no children to pick from")
 }

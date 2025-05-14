@@ -25,7 +25,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -610,18 +609,6 @@ func (va *ValidationAuthorityImpl) doRemoteOperation(ctx context.Context, op rem
 			firstProb = currProb
 		}
 
-		if !features.Get().MPICFullResults {
-			// To respond faster, if we get enough successes or too many failures, we cancel remaining RPCs.
-			// Finish the loop to collect remaining responses into `failed` so we can rely on having a response
-			// for every request we made.
-			if len(passed) >= required && len(passedRIRs) >= requiredRIRs {
-				cancel()
-			}
-			if len(failed) > va.maxRemoteFailures {
-				cancel()
-			}
-		}
-
 		// Once all the VAs have returned a result, break the loop.
 		if len(passed)+len(failed) >= remoteVACount {
 			break
@@ -664,16 +651,11 @@ type validationLogEvent struct {
 // implements the DCV portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoDCV(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
-	// TODO(#8023): Once DnsNames are no longer used in RPCs, use req.Identifier
-	// directly instead of setting ident.
-	if req.Identifier != nil && req.DnsName != "" {
-		return nil, errors.New("both Identifier and DNSName are set")
-	}
-	ident := identifier.FromProtoWithDefault(req)
-
-	if core.IsAnyNilOrZero(req, ident, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
+	if core.IsAnyNilOrZero(req, req.Identifier, req.Challenge, req.Authz, req.ExpectedKeyAuthorization) {
 		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
+
+	ident := identifier.FromProto(req.Identifier)
 
 	chall, err := bgrpc.PBToChallenge(req.Challenge)
 	if err != nil {

@@ -816,8 +816,14 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 		if staleCAA, err := validatedBefore(authz, caaRecheckAfter); err != nil {
 			return err
 		} else if staleCAA {
-			// Ensure that CAA is rechecked for this name
-			recheckAuthzs = append(recheckAuthzs, authz)
+			switch authz.Identifier.Type {
+			case identifier.TypeDNS:
+				// Ensure that CAA is rechecked for this name
+				recheckAuthzs = append(recheckAuthzs, authz)
+			case identifier.TypeIP:
+			default:
+				return berrors.MalformedError("invalid identifier type: %s", authz.Identifier.Type)
+			}
 		}
 	}
 
@@ -852,8 +858,6 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 	ch := make(chan authzCAAResult, len(authzs))
 	for _, authz := range authzs {
 		go func(authz *core.Authorization) {
-			name := authz.Identifier.Value
-
 			// If an authorization has multiple valid challenges,
 			// the type of the first valid challenge is used for
 			// the purposes of CAA rechecking.
@@ -869,14 +873,15 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 					authz: authz,
 					err: berrors.InternalServerError(
 						"Internal error determining validation method for authorization ID %v (%v)",
-						authz.ID, name),
+						authz.ID, authz.Identifier.Value),
 				}
 				return
 			}
 			var resp *vapb.IsCAAValidResponse
 			var err error
 			resp, err = ra.VA.DoCAA(ctx, &vapb.IsCAAValidRequest{
-				Domain:           name,
+				Identifier:       authz.Identifier.ToProto(),
+				Domain:           authz.Identifier.Value,
 				ValidationMethod: method,
 				AccountURIID:     authz.RegistrationID,
 			})
@@ -884,7 +889,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 				ra.log.AuditErrf("Rechecking CAA: %s", err)
 				err = berrors.InternalServerError(
 					"Internal error rechecking CAA for authorization ID %v (%v)",
-					authz.ID, name,
+					authz.ID, authz.Identifier.Value,
 				)
 			} else if resp.Problem != nil {
 				err = berrors.CAAError("rechecking caa: %s", resp.Problem.Detail)
@@ -1472,7 +1477,8 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 // countFailedValidations increments the FailedAuthorizationsPerDomainPerAccount limit.
 // and the FailedAuthorizationsForPausingPerDomainPerAccountTransaction limit.
 //
-// TODO(#7311): Handle IP address identifiers.
+// TODO(#7311): Handle IP address identifiers properly; don't just trust that
+// the value will always make sense in context.
 func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) error {
 	txn, err := ra.txnBuilder.FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId, ident.Value)
 	if err != nil {
@@ -1521,7 +1527,8 @@ func (ra *RegistrationAuthorityImpl) countFailedValidations(ctx context.Context,
 // resetAccountPausingLimit resets bucket to maximum capacity for given account.
 // There is no reason to surface errors from this function to the Subscriber.
 //
-// TODO(#7311): Handle IP address identifiers.
+// TODO(#7311): Handle IP address identifiers properly; don't just trust that
+// the value will always make sense in context.
 func (ra *RegistrationAuthorityImpl) resetAccountPausingLimit(ctx context.Context, regId int64, ident identifier.ACMEIdentifier) {
 	bucketKey, err := ratelimits.NewRegIdDomainBucketKey(ratelimits.FailedAuthorizationsForPausingPerDomainPerAccount, regId, ident.Value)
 	if err != nil {
@@ -1545,11 +1552,18 @@ func (ra *RegistrationAuthorityImpl) checkDCVAndCAA(ctx context.Context, dcvReq 
 		return doDCVRes.Problem, doDCVRes.Records, nil
 	}
 
-	doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
-	if err != nil {
-		return nil, nil, err
+	switch identifier.FromProto(dcvReq.Identifier).Type {
+	case identifier.TypeDNS:
+		doCAAResp, err := ra.VA.DoCAA(ctx, caaReq)
+		if err != nil {
+			return nil, nil, err
+		}
+		return doCAAResp.Problem, doDCVRes.Records, nil
+	case identifier.TypeIP:
+		return nil, doDCVRes.Records, nil
+	default:
+		return nil, nil, berrors.MalformedError("invalid identifier type: %s", dcvReq.Identifier.Type)
 	}
-	return doCAAResp.Problem, doDCVRes.Records, nil
 }
 
 // PerformValidation initiates validation for a specific challenge associated
@@ -1643,12 +1657,13 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		checkProb, checkRecords, err := ra.checkDCVAndCAA(
 			vaCtx,
 			&vapb.PerformValidationRequest{
-				DnsName:                  authz.Identifier.Value,
+				Identifier:               authz.Identifier.ToProto(),
 				Challenge:                chall,
 				Authz:                    &vapb.AuthzMeta{Id: authz.ID, RegID: authz.RegistrationID},
 				ExpectedKeyAuthorization: expectedKeyAuthorization,
 			},
 			&vapb.IsCAAValidRequest{
+				Identifier:       authz.Identifier.ToProto(),
 				Domain:           authz.Identifier.Value,
 				ValidationMethod: chall.Type,
 				AccountURIID:     authz.RegistrationID,
@@ -1878,11 +1893,11 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		// authorizations for all names in the cert.
 		logEvent.Method = "control"
 
-		// TODO(#7311): Support other kinds of SANs/identifiers here.
+		idents := identifier.FromCert(cert)
 		var authzPB *sapb.Authorizations
 		authzPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
-			Identifiers:    identifier.NewDNSSlice(cert.DNSNames).ToProtoSlice(),
+			Identifiers:    idents.ToProtoSlice(),
 			ValidUntil:     timestamppb.New(ra.clk.Now()),
 		})
 		if err != nil {
@@ -1895,10 +1910,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 			return nil, err
 		}
 
-		// TODO(#7311): TODO(#7647): Support other kinds of SANs/identifiers here.
-		for _, name := range cert.DNSNames {
-			if _, present := authzMap[identifier.NewDNS(name)]; !present {
-				return nil, berrors.UnauthorizedError("requester does not control all names in cert with serial %q", serialString)
+		for _, ident := range idents {
+			if _, present := authzMap[ident]; !present {
+				return nil, berrors.UnauthorizedError("requester does not control all identifiers in cert with serial %q", serialString)
 			}
 		}
 
@@ -2414,15 +2428,14 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// For each of the identifiers in the order, if there is an acceptable
 	// existing authz, append it to the order to reuse it. Otherwise track that
 	// there is a missing authz for that identifier.
-	//
-	// TODO(#7311): TODO(#7647): Support non-dnsName identifier types here.
 	var newOrderAuthzs []int64
 	var missingAuthzIdents identifier.ACMEIdentifiers
 	for _, ident := range idents {
-		name := ident.Value
 		// If there isn't an existing authz, note that its missing and continue
 		authz, exists := identToExistingAuthz[ident]
 		if !exists {
+			// The existing authz was not acceptable for reuse, and we need to
+			// mark the name as requiring a new pending authz.
 			missingAuthzIdents = append(missingAuthzIdents, ident)
 			continue
 		}
@@ -2430,6 +2443,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// If the authz is associated with the wrong profile, don't reuse it.
 		if authz.CertificateProfileName != req.CertificateProfileName {
 			missingAuthzIdents = append(missingAuthzIdents, ident)
+			// Delete the authz from the identToExistingAuthz map since we are not reusing it.
+			delete(identToExistingAuthz, ident)
 			continue
 		}
 
@@ -2439,40 +2454,28 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			authzAge = (profile.pendingAuthzLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
 		}
 
-		// If the identifier is a wildcard and the existing authz only has one
-		// DNS-01 type challenge we can reuse it. In theory we will
-		// never get back an authorization for a domain with a wildcard prefix
-		// that doesn't meet this criteria from SA.GetAuthorizations but we verify
-		// again to be safe.
-		if strings.HasPrefix(name, "*.") &&
-			len(authz.Challenges) == 1 && authz.Challenges[0].Type == core.ChallengeTypeDNS01 {
-			authzID, err := strconv.ParseInt(authz.ID, 10, 64)
-			if err != nil {
-				return nil, err
-			}
-			newOrderAuthzs = append(newOrderAuthzs, authzID)
-			ra.authzAges.WithLabelValues("NewOrder", string(authz.Status)).Observe(authzAge)
-			continue
-		} else if !strings.HasPrefix(name, "*.") {
-			// If the identifier isn't a wildcard, we can reuse any authz
-			authzID, err := strconv.ParseInt(authz.ID, 10, 64)
-			if err != nil {
-				return nil, err
-			}
-			newOrderAuthzs = append(newOrderAuthzs, authzID)
-			ra.authzAges.WithLabelValues("NewOrder", string(authz.Status)).Observe(authzAge)
-			continue
+		// If the identifier is a wildcard DNS name, it must have exactly one
+		// DNS-01 type challenge. The PA guarantees this at order creation time,
+		// but we verify again to be safe.
+		if ident.Type == identifier.TypeDNS && strings.HasPrefix(ident.Value, "*.") &&
+			(len(authz.Challenges) != 1 || authz.Challenges[0].Type != core.ChallengeTypeDNS01) {
+			return nil, berrors.InternalServerError(
+				"SA.GetAuthorizations returned a DNS wildcard authz (%s) with invalid challenge(s)",
+				authz.ID)
 		}
 
-		// Delete the authz from the identToExistingAuthz map since we are not reusing it.
-		delete(identToExistingAuthz, ident)
-		// If we reached this point then the existing authz was not acceptable for
-		// reuse and we need to mark the name as requiring a new pending authz
-		missingAuthzIdents = append(missingAuthzIdents, ident)
+		// If we reached this point then the existing authz was acceptable for
+		// reuse.
+		authzID, err := strconv.ParseInt(authz.ID, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		newOrderAuthzs = append(newOrderAuthzs, authzID)
+		ra.authzAges.WithLabelValues("NewOrder", string(authz.Status)).Observe(authzAge)
 	}
 
-	// Loop through each of the names missing authzs and create a new pending
-	// authorization for each.
+	// Loop through each of the identifiers missing authzs and create a new
+	// pending authorization for each.
 	var newAuthzs []*sapb.NewAuthzRequest
 	for _, ident := range missingAuthzIdents {
 		challTypes, err := ra.PA.ChallengeTypesFor(ident)

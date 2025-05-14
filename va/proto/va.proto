@@ -14,11 +14,16 @@ service CAA {
 }
 
 message IsCAAValidRequest {
-  // TODO: Accept an identifier instead of a domain (purely for consistency,
-  // because only DNS identifiers support CAA checks).
+  // Next unused field number: 6
   //
-  // NOTE: Domain may be a name with a wildcard prefix (e.g. `*.example.com`)
+  // TODO(#8023): dnsNames are being deprecated in favour of identifiers. Here,
+  // this is purely for consistency, because only DNS identifiers support CAA
+  // checks.
+  //
+  // NOTE: Domain (or the identifier's value) may be a name with a wildcard
+  // prefix (e.g. `*.example.com`)
   string domain = 1;
+  core.Identifier identifier = 5;
   string validationMethod = 2;
   int64 accountURIID = 3;
   string authzID = 4;
@@ -33,8 +38,7 @@ message IsCAAValidResponse {
 
 message PerformValidationRequest {
   // Next unused field number: 6
-  // TODO(#8023): dnsNames are being deprecated in favour of identifiers.
-  string dnsName = 1;
+  reserved 1; // Previously dnsName
   core.Identifier identifier = 5;
   core.Challenge challenge = 2;
   AuthzMeta authz = 3;

@@ -220,7 +220,6 @@ func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req 
 
 func (sa *StorageAuthorityReadOnly) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "unimplemented mock")
-
 }
 
 // GetRevocationStatus is a mock
@@ -275,6 +274,31 @@ func (sa *StorageAuthorityReadOnly) GetRevokedCertsByShard(ctx context.Context, 
 
 // GetMaxExpiration is a mock
 func (sa *StorageAuthorityReadOnly) GetMaxExpiration(_ context.Context, req *emptypb.Empty, _ ...grpc.CallOption) (*timestamppb.Timestamp, error) {
+	return nil, nil
+}
+
+// AddRateLimitOverride is a mock
+func (sa *StorageAuthority) AddRateLimitOverride(_ context.Context, req *sapb.AddRateLimitOverrideRequest, _ ...grpc.CallOption) (*sapb.AddRateLimitOverrideResponse, error) {
+	return nil, nil
+}
+
+// DisableRateLimitOverride is a mock
+func (sa *StorageAuthority) DisableRateLimitOverride(ctx context.Context, req *sapb.DisableRateLimitOverrideRequest) (*emptypb.Empty, error) {
+	return nil, nil
+}
+
+// EnableRateLimitOverride is a mock
+func (sa *StorageAuthority) EnableRateLimitOverride(ctx context.Context, req *sapb.EnableRateLimitOverrideRequest) (*emptypb.Empty, error) {
+	return nil, nil
+}
+
+// GetRateLimitOverride is a mock
+func (sa *StorageAuthorityReadOnly) GetRateLimitOverride(_ context.Context, req *sapb.GetRateLimitOverrideRequest, _ ...grpc.CallOption) (*sapb.RateLimitOverrideResponse, error) {
+	return nil, nil
+}
+
+// GetEnabledRateLimitOverrides is a mock
+func (sa *StorageAuthorityReadOnly) GetEnabledRateLimitOverrides(_ context.Context, _ *emptypb.Empty, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetEnabledRateLimitOverridesClient, error) {
 	return nil, nil
 }
 
