@@ -16,6 +16,7 @@ import (
 
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 // PasswordConfig contains a path to a file containing a password.
@@ -99,8 +100,9 @@ type SMTPConfig struct {
 // database, what policies it should enforce, and what challenges
 // it should offer.
 type PAConfig struct {
-	DBConfig   `validate:"-"`
-	Challenges map[core.AcmeChallenge]bool `validate:"omitempty,dive,keys,oneof=http-01 dns-01 tls-alpn-01,endkeys"`
+	DBConfig    `validate:"-"`
+	Challenges  map[core.AcmeChallenge]bool        `validate:"omitempty,dive,keys,oneof=http-01 dns-01 tls-alpn-01,endkeys"`
+	Identifiers map[identifier.IdentifierType]bool `validate:"omitempty,dive,keys,oneof=dns ip,endkeys"`
 }
 
 // CheckChallenges checks whether the list of challenges in the PA config
@@ -112,6 +114,17 @@ func (pc PAConfig) CheckChallenges() error {
 	for c := range pc.Challenges {
 		if !c.IsValid() {
 			return fmt.Errorf("invalid challenge in PA config: %s", c)
+		}
+	}
+	return nil
+}
+
+// CheckIdentifiers checks whether the list of identifiers in the PA config
+// actually contains valid identifier type names
+func (pc PAConfig) CheckIdentifiers() error {
+	for i := range pc.Identifiers {
+		if !i.IsValid() {
+			return fmt.Errorf("invalid identifier type in PA config: %s", i)
 		}
 	}
 	return nil

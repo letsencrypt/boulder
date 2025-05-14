@@ -562,6 +562,7 @@ func main() {
 
 	// Validate PA config and set defaults if needed.
 	cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
+	cmd.FailOnError(config.PA.CheckIdentifiers(), "Invalid PA configuration")
 
 	kp, err := sagoodkey.NewPolicy(&config.CertChecker.GoodKey, nil)
 	cmd.FailOnError(err, "Unable to create key policy")
@@ -575,7 +576,7 @@ func main() {
 	})
 	prometheus.DefaultRegisterer.MustRegister(checkerLatency)
 
-	pa, err := policy.New(config.PA.Challenges, logger)
+	pa, err := policy.New(config.PA.Identifiers, config.PA.Challenges, logger)
 	cmd.FailOnError(err, "Failed to create PA")
 
 	err = pa.LoadHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)

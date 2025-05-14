@@ -301,10 +301,16 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	}
 	va := va.RemoteClients{VAClient: dummyVA, CAAClient: dummyVA}
 
-	pa, err := policy.New(map[core.AcmeChallenge]bool{
-		core.ChallengeTypeHTTP01: true,
-		core.ChallengeTypeDNS01:  true,
-	}, blog.NewMock())
+	pa, err := policy.New(
+		map[identifier.IdentifierType]bool{
+			identifier.TypeDNS: true,
+			identifier.TypeIP:  true,
+		},
+		map[core.AcmeChallenge]bool{
+			core.ChallengeTypeHTTP01: true,
+			core.ChallengeTypeDNS01:  true,
+		},
+		blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
 	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
@@ -2795,10 +2801,16 @@ func TestFinalizeOrderDisabledChallenge(t *testing.T) {
 	test.AssertNotError(t, err, "Error creating policy forbid CSR")
 
 	// Replace the Policy Authority with one which has this challenge type disabled
-	pa, err := policy.New(map[core.AcmeChallenge]bool{
-		core.ChallengeTypeDNS01:     true,
-		core.ChallengeTypeTLSALPN01: true,
-	}, ra.log)
+	pa, err := policy.New(
+		map[identifier.IdentifierType]bool{
+			identifier.TypeDNS: true,
+			identifier.TypeIP:  true,
+		},
+		map[core.AcmeChallenge]bool{
+			core.ChallengeTypeDNS01:     true,
+			core.ChallengeTypeTLSALPN01: true,
+		},
+		ra.log)
 	test.AssertNotError(t, err, "creating test PA")
 	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "loading test hostname policy")
@@ -3199,7 +3211,7 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 func TestPerformValidationBadChallengeType(t *testing.T) {
 	_, _, ra, _, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	pa, err := policy.New(map[core.AcmeChallenge]bool{}, blog.NewMock())
+	pa, err := policy.New(map[identifier.IdentifierType]bool{}, map[core.AcmeChallenge]bool{}, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ra.PA = pa
 
@@ -4091,10 +4103,16 @@ func TestGetAuthorization(t *testing.T) {
 	}
 
 	// With HTTP01 enabled, GetAuthorization should pass the mock challenge through.
-	pa, err := policy.New(map[core.AcmeChallenge]bool{
-		core.ChallengeTypeHTTP01: true,
-		core.ChallengeTypeDNS01:  true,
-	}, blog.NewMock())
+	pa, err := policy.New(
+		map[identifier.IdentifierType]bool{
+			identifier.TypeDNS: true,
+			identifier.TypeIP:  true,
+		},
+		map[core.AcmeChallenge]bool{
+			core.ChallengeTypeHTTP01: true,
+			core.ChallengeTypeDNS01:  true,
+		},
+		blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ra.PA = pa
 	authz, err := ra.GetAuthorization(context.Background(), &rapb.GetAuthorizationRequest{Id: 1})
@@ -4103,9 +4121,15 @@ func TestGetAuthorization(t *testing.T) {
 	test.AssertEquals(t, authz.Challenges[0].Type, string(core.ChallengeTypeHTTP01))
 
 	// With HTTP01 disabled, GetAuthorization should filter out the mock challenge.
-	pa, err = policy.New(map[core.AcmeChallenge]bool{
-		core.ChallengeTypeDNS01: true,
-	}, blog.NewMock())
+	pa, err = policy.New(
+		map[identifier.IdentifierType]bool{
+			identifier.TypeDNS: true,
+			identifier.TypeIP:  true,
+		},
+		map[core.AcmeChallenge]bool{
+			core.ChallengeTypeDNS01: true,
+		},
+		blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ra.PA = pa
 	authz, err = ra.GetAuthorization(context.Background(), &rapb.GetAuthorizationRequest{Id: 1})

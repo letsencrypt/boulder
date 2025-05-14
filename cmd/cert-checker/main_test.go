@@ -31,6 +31,7 @@ import (
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -52,7 +53,10 @@ var (
 
 func init() {
 	var err error
-	pa, err = policy.New(map[core.AcmeChallenge]bool{}, blog.NewMock())
+	pa, err = policy.New(
+		map[identifier.IdentifierType]bool{identifier.TypeDNS: true, identifier.TypeIP: true},
+		map[core.AcmeChallenge]bool{},
+		blog.NewMock())
 	if err != nil {
 		log.Fatal(err)
 	}
