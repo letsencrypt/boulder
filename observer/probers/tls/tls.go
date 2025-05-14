@@ -11,9 +11,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/letsencrypt/boulder/observer/obsdialer"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
+
+	"github.com/letsencrypt/boulder/observer/obsdialer"
 )
 
 type reason int
@@ -171,6 +172,14 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 	if err != nil {
 		p.exportMetrics(peers[0], rootDidNotMatch)
 		return false
+	}
+
+	// Carve out for certificate profiles that have removed OCSP URLs from
+	// certificates.
+	// https://community.letsencrypt.org/t/removing-ocsp-urls-from-certificates/236699/2
+	if len(peers[0].OCSPServer) == 0 {
+		p.exportMetrics(peers[0], none)
+		return true
 	}
 
 	var ocspStatus bool
