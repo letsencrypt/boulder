@@ -79,33 +79,34 @@ type RegistrationAuthorityImpl struct {
 	PA        core.PolicyAuthority
 	publisher pubpb.PublisherClient
 
-	clk                 clock.Clock
-	log                 blog.Logger
-	keyPolicy           goodkey.KeyPolicy
-	profiles            *validationProfiles
-	mustStapleAllowList *allowlist.List[int64]
-	maxContactsPerReg   int
-	limiter             *ratelimits.Limiter
-	txnBuilder          *ratelimits.TransactionBuilder
-	finalizeTimeout     time.Duration
-	drainWG             sync.WaitGroup
+	clk               clock.Clock
+	log               blog.Logger
+	keyPolicy         goodkey.KeyPolicy
+	profiles          *validationProfiles
+	maxContactsPerReg int
+	limiter           *ratelimits.Limiter
+	txnBuilder        *ratelimits.TransactionBuilder
+	finalizeTimeout   time.Duration
+	drainWG           sync.WaitGroup
 
 	issuersByNameID map[issuance.NameID]*issuance.Certificate
 	purger          akamaipb.AkamaiPurgerClient
 
 	ctpolicy *ctpolicy.CTPolicy
 
-	ctpolicyResults           *prometheus.HistogramVec
-	revocationReasonCounter   *prometheus.CounterVec
-	namesPerCert              *prometheus.HistogramVec
-	newRegCounter             prometheus.Counter
-	recheckCAACounter         prometheus.Counter
-	newCertCounter            prometheus.Counter
-	authzAges                 *prometheus.HistogramVec
-	orderAges                 *prometheus.HistogramVec
-	inflightFinalizes         prometheus.Gauge
-	certCSRMismatch           prometheus.Counter
-	pauseCounter              *prometheus.CounterVec
+	ctpolicyResults         *prometheus.HistogramVec
+	revocationReasonCounter *prometheus.CounterVec
+	namesPerCert            *prometheus.HistogramVec
+	newRegCounter           prometheus.Counter
+	recheckCAACounter       prometheus.Counter
+	newCertCounter          prometheus.Counter
+	authzAges               *prometheus.HistogramVec
+	orderAges               *prometheus.HistogramVec
+	inflightFinalizes       prometheus.Gauge
+	certCSRMismatch         prometheus.Counter
+	pauseCounter            *prometheus.CounterVec
+	// TODO(#8177): Remove once the rate of requests failing to finalize due to
+	// requesting Must-Staple has diminished.
 	mustStapleRequestsCounter *prometheus.CounterVec
 	// TODO(#7966): Remove once the rate of registrations with contacts has been
 	// determined.
@@ -125,7 +126,6 @@ func NewRegistrationAuthorityImpl(
 	txnBuilder *ratelimits.TransactionBuilder,
 	maxNames int,
 	profiles *validationProfiles,
-	mustStapleAllowList *allowlist.List[int64],
 	pubc pubpb.PublisherClient,
 	finalizeTimeout time.Duration,
 	ctp *ctpolicy.CTPolicy,
@@ -244,7 +244,6 @@ func NewRegistrationAuthorityImpl(
 		clk:                        clk,
 		log:                        logger,
 		profiles:                   profiles,
-		mustStapleAllowList:        mustStapleAllowList,
 		maxContactsPerReg:          maxContactsPerReg,
 		keyPolicy:                  keyPolicy,
 		limiter:                    limiter,
@@ -1086,16 +1085,11 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		return nil, berrors.BadCSRError("unable to parse CSR: %s", err.Error())
 	}
 
-	if ra.mustStapleAllowList != nil && issuance.ContainsMustStaple(csr.Extensions) {
-		if !ra.mustStapleAllowList.Contains(req.Order.RegistrationID) {
-			ra.mustStapleRequestsCounter.WithLabelValues("denied").Inc()
-			return nil, berrors.UnauthorizedError(
-				"OCSP must-staple extension is no longer available: see https://letsencrypt.org/2024/12/05/ending-ocsp",
-			)
-		} else {
-			ra.mustStapleRequestsCounter.WithLabelValues("allowed").Inc()
-		}
-
+	if issuance.ContainsMustStaple(csr.Extensions) {
+		ra.mustStapleRequestsCounter.WithLabelValues("denied").Inc()
+		return nil, berrors.UnauthorizedError(
+			"OCSP must-staple extension is no longer available: see https://letsencrypt.org/2024/12/05/ending-ocsp",
+		)
 	}
 
 	err = csrlib.VerifyCSR(ctx, csr, profile.maxNames, &ra.keyPolicy, ra.PA)
