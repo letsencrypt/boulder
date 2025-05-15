@@ -139,7 +139,7 @@ func TestCheckWildcardCert(t *testing.T) {
 	}
 }
 
-func TestCheckCertReturnsDNSNames(t *testing.T) {
+func TestCheckCertReturnsSANs(t *testing.T) {
 	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetBoulderTestDatabase(t)
@@ -167,7 +167,7 @@ func TestCheckCertReturnsDNSNames(t *testing.T) {
 	}
 
 	names, problems := checker.checkCert(context.Background(), cert)
-	if !slices.Equal(names, []string{"quite_invalid.com", "al--so--wr--ong.com"}) {
+	if !slices.Equal(names, []string{"quite_invalid.com", "al--so--wr--ong.com", "127.0.0.1"}) {
 		t.Errorf("didn't get expected DNS names. other problems: %s", strings.Join(problems, "\n"))
 	}
 }
@@ -282,7 +282,7 @@ func TestCheckCert(t *testing.T) {
 				"Certificate has incorrect key usage extensions":                            1,
 				"Certificate has common name >64 characters long (65)":                      1,
 				"Certificate contains an unexpected extension: 1.3.3.7":                     1,
-				"Certificate Common Name does not appear in Subject Alternative Names: \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeexample.com\" !< [example-a.com foodnotbombs.mil dev-myqnapcloud.com]": 1,
+				"Certificate Common Name does not appear in Subject Alternative Name DNSNames: \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeexample.com\" !< [example-a.com foodnotbombs.mil dev-myqnapcloud.com]": 1,
 			}
 			for _, p := range problems {
 				_, ok := problemsMap[p]

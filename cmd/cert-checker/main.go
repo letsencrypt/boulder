@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/netip"
 	"os"
 	"regexp"
 	"slices"
@@ -78,7 +79,7 @@ func (r *report) dump() error {
 
 type reportEntry struct {
 	Valid    bool     `json:"valid"`
-	DNSNames []string `json:"dnsNames"`
+	SANs     []string `json:"sans"`
 	Problems []string `json:"problems,omitempty"`
 }
 
@@ -258,13 +259,13 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 
 func (c *certChecker) processCerts(ctx context.Context, wg *sync.WaitGroup, badResultsOnly bool) {
 	for cert := range c.certs {
-		dnsNames, problems := c.checkCert(ctx, cert)
+		sans, problems := c.checkCert(ctx, cert)
 		valid := len(problems) == 0
 		c.rMu.Lock()
 		if !badResultsOnly || (badResultsOnly && !valid) {
 			c.issuedReport.Entries[cert.Serial] = reportEntry{
 				Valid:    valid,
-				DNSNames: dnsNames,
+				SANs:     sans,
 				Problems: problems,
 			}
 		}
@@ -333,9 +334,8 @@ func (c *certChecker) checkValidations(ctx context.Context, cert *corepb.Certifi
 	return nil
 }
 
-// checkCert returns a list of DNS names in the certificate and a list of problems with the certificate.
+// checkCert returns a list of Subject Alternative Names in the certificate and a list of problems with the certificate.
 func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) ([]string, []string) {
-	var dnsNames []string
 	var problems []string
 
 	// Check that the digests match.
@@ -347,7 +347,6 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 	if err != nil {
 		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
 	} else {
-		dnsNames = parsedCert.DNSNames
 		// Run zlint checks.
 		results := zlint.LintCertificateEx(parsedCert, c.lints)
 		for name, res := range results.Results {
@@ -391,6 +390,10 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 		if parsedCert.NotBefore.Before(cert.Issued.AsTime().Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.AsTime().Add(6*time.Hour)) {
 			problems = append(problems, "Stored issuance date is outside of 6 hour window of certificate NotBefore")
 		}
+		// Check that the cert doesn't contain any SANs of unexpected types.
+		if len(parsedCert.EmailAddresses) != 0 || len(parsedCert.URIs) != 0 {
+			problems = append(problems, "Certificate contains SAN of unacceptable type (email or URI)")
+		}
 		if parsedCert.Subject.CommonName != "" {
 			// Check if the CommonName is <= 64 characters.
 			if len(parsedCert.Subject.CommonName) > 64 {
@@ -400,31 +403,42 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 				)
 			}
 
-			// Check that the CommonName is included in the SANs.
+			// Check that the CommonName is included in the SANs. We only check the
+			// DNSNames here, because any other SAN type should never be in the CN.
 			if !slices.Contains(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
-				problems = append(problems, fmt.Sprintf("Certificate Common Name does not appear in Subject Alternative Names: %q !< %v",
+				problems = append(problems, fmt.Sprintf("Certificate Common Name does not appear in Subject Alternative Name DNSNames: %q !< %v",
 					parsedCert.Subject.CommonName, parsedCert.DNSNames))
 			}
 		}
-		// Check that the PA is still willing to issue for each name in DNSNames.
+		// Check that the PA is still willing to issue for each name in the SANs.
 		// We do not check the CommonName here, as (if it exists) we already checked
 		// that it is identical to one of the DNSNames in the SAN.
-		//
-		// TODO(#7311): We'll need to iterate over IP address identifiers too.
 		for _, name := range parsedCert.DNSNames {
 			err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(name)})
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
-			} else {
-				// For defense-in-depth, even if the PA was willing to issue for a name
-				// we double check it against a list of forbidden domains. This way even
-				// if the hostnamePolicyFile malfunctions we will flag the forbidden
-				// domain matches
-				if forbidden, pattern := isForbiddenDomain(name); forbidden {
-					problems = append(problems, fmt.Sprintf(
-						"Policy Authority was willing to issue but domain '%s' matches "+
-							"forbiddenDomains entry %q", name, pattern))
-				}
+				continue
+			}
+			// For defense-in-depth, even if the PA was willing to issue for a name
+			// we double check it against a list of forbidden domains. This way even
+			// if the hostnamePolicyFile malfunctions we will flag the forbidden
+			// domain matches
+			if forbidden, pattern := isForbiddenDomain(name); forbidden {
+				problems = append(problems, fmt.Sprintf(
+					"Policy Authority was willing to issue but domain '%s' matches "+
+						"forbiddenDomains entry %q", name, pattern))
+			}
+		}
+		for _, name := range parsedCert.IPAddresses {
+			ip, ok := netip.AddrFromSlice(name)
+			if !ok {
+				problems = append(problems, fmt.Sprintf("SANs contain malformed IP %q", name))
+				continue
+			}
+			err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewIP(ip)})
+			if err != nil {
+				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
+				continue
 			}
 		}
 		// Check the cert has the correct key usage extensions
@@ -490,7 +504,12 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 			}
 		}
 	}
-	return dnsNames, problems
+
+	sans := slices.Clone(parsedCert.DNSNames)
+	for _, ip := range parsedCert.IPAddresses {
+		sans = append(sans, ip.String())
+	}
+	return sans, problems
 }
 
 type Config struct {
