@@ -301,7 +301,7 @@ type ValidationProfileConfig struct {
 	AllowList string `validate:"omitempty"`
 	// IdentifierTypes is a list of identifier types that may be issued under
 	// this profile. If none are specified, it defaults to "dns".
-	IdentifierTypes []string `validate:"omitempty"`
+	IdentifierTypes []identifier.IdentifierType `validate:"omitempty,dive,keys,oneof=dns ip,endkeys"`
 }
 
 // validationProfile holds the attributes of a given validation profile.
@@ -381,16 +381,13 @@ func NewValidationProfiles(defaultName string, configs map[string]*ValidationPro
 			}
 		}
 
-		var identifierTypes []identifier.IdentifierType
-		for _, identType := range config.IdentifierTypes {
-			identifierTypes = append(identifierTypes, identifier.IdentifierType(identType))
-		}
+		identifierTypes := config.IdentifierTypes
 		// If this profile has no identifier types configured, default to DNS.
 		// This default is temporary, to improve deployability.
 		//
-		// TODO(#8184): Remove this default.
+		// TODO(#8184): Remove this default and use config.IdentifierTypes below.
 		if len(identifierTypes) == 0 {
-			identifierTypes = append(identifierTypes, identifier.TypeDNS)
+			identifierTypes = []identifier.IdentifierType{identifier.TypeDNS}
 		}
 
 		profiles[name] = &validationProfile{
@@ -2335,7 +2332,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	for _, ident := range idents {
 		if !slices.Contains(profile.identifierTypes, ident.Type) {
-			return nil, berrors.RejectedIdentifierError("Profile does not permit %s type identifiers", ident.Type)
+			return nil, berrors.RejectedIdentifierError("Profile %q does not permit %s type identifiers", req.CertificateProfileName, ident.Type)
 		}
 	}
 
