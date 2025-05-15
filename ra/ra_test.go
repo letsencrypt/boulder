@@ -1973,25 +1973,25 @@ func TestNewOrder_ProfileIdentifierTypes(t *testing.T) {
 			name:       "Permit DNS, provide IP",
 			identTypes: []identifier.IdentifierType{identifier.TypeDNS},
 			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto()},
-			expectErr:  "Profile does not permit ip type identifiers",
+			expectErr:  "Profile \"test\" does not permit ip type identifiers",
 		},
 		{
 			name:       "Permit DNS, provide DNS & IP",
 			identTypes: []identifier.IdentifierType{identifier.TypeDNS},
 			idents:     []*corepb.Identifier{identifier.NewDNS(randomDomain()).ToProto(), identifier.NewIP(randomIPv6()).ToProto()},
-			expectErr:  "Profile does not permit ip type identifiers",
+			expectErr:  "Profile \"test\" does not permit ip type identifiers",
 		},
 		{
 			name:       "Permit IP, provide DNS",
 			identTypes: []identifier.IdentifierType{identifier.TypeIP},
 			idents:     []*corepb.Identifier{identifier.NewDNS(randomDomain()).ToProto()},
-			expectErr:  "Profile does not permit dns type identifiers",
+			expectErr:  "Profile \"test\" does not permit dns type identifiers",
 		},
 		{
 			name:       "Permit IP, provide DNS & IP",
 			identTypes: []identifier.IdentifierType{identifier.TypeIP},
 			idents:     []*corepb.Identifier{identifier.NewIP(randomIPv6()).ToProto(), identifier.NewDNS(randomDomain()).ToProto()},
-			expectErr:  "Profile does not permit dns type identifiers",
+			expectErr:  "Profile \"test\" does not permit dns type identifiers",
 		},
 	}
 
