@@ -108,7 +108,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 	if internalErr != nil {
 		logEvent.InternalError = internalErr.Error()
 		prob = detailedError(internalErr)
-		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", req.Identifier.Value, prob.Detail)
+		prob.Detail = fmt.Sprintf("While processing CAA for %s: %s", ident.Value, prob.Detail)
 	}
 
 	if va.isPrimaryVA() {
@@ -125,7 +125,7 @@ func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAVal
 		if remoteProb != nil {
 			prob = remoteProb
 			va.log.Infof("CAA check failed due to remote failures: identifier=%v err=%s",
-				req.Identifier.Value, remoteProb)
+				ident.Value, remoteProb)
 		}
 	}
 
