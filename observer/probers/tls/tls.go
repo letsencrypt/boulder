@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -22,17 +23,17 @@ type reason int
 const (
 	none reason = iota
 	internalError
-	ocspError
+	revocationStatusError
 	rootDidNotMatch
-	responseDidNotMatch
+	statusDidNotMatch
 )
 
 var reasonToString = map[reason]string{
-	none:                "nil",
-	internalError:       "internalError",
-	ocspError:           "ocspError",
-	rootDidNotMatch:     "rootDidNotMatch",
-	responseDidNotMatch: "responseDidNotMatch",
+	none:                  "nil",
+	internalError:         "internalError",
+	revocationStatusError: "revocationStatusError",
+	rootDidNotMatch:       "rootDidNotMatch",
+	statusDidNotMatch:     "statusDidNotMatch",
 }
 
 func getReasons() []string {
@@ -91,6 +92,40 @@ func checkOCSP(cert, issuer *x509.Certificate, want int) (bool, error) {
 	return ocspRes.Status == want, nil
 }
 
+func checkCRL(cert, issuer *x509.Certificate, want int) (bool, error) {
+	if len(cert.CRLDistributionPoints) != 1 {
+		return false, errors.New("cert does not contain CRLDP URI")
+	}
+
+	resp, err := http.Get(cert.CRLDistributionPoints[0])
+	if err != nil {
+		return false, fmt.Errorf("downloading CRL: %w", err)
+	}
+	defer resp.Body.Close()
+
+	der, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("reading CRL: %w", err)
+	}
+
+	crl, err := x509.ParseRevocationList(der)
+	if err != nil {
+		return false, fmt.Errorf("parsing CRL: %w", err)
+	}
+
+	err = crl.CheckSignatureFrom(issuer)
+	if err != nil {
+		return false, fmt.Errorf("validating CRL: %w", err)
+	}
+
+	for _, entry := range crl.RevokedCertificateEntries {
+		if entry.SerialNumber.Cmp(cert.SerialNumber) == 0 {
+			return want == ocsp.Revoked, nil
+		}
+	}
+	return want == ocsp.Good, nil
+}
+
 // Return an error if the root settings are nonempty and do not match the
 // expected root.
 func (p TLSProbe) checkRoot(rootOrg, rootCN string) error {
@@ -143,7 +178,7 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 	tlsConn := conn.(*tls.Conn)
 	peers := tlsConn.ConnectionState().PeerCertificates
 	if time.Until(peers[0].NotAfter) > 0 {
-		p.exportMetrics(peers[0], responseDidNotMatch)
+		p.exportMetrics(peers[0], statusDidNotMatch)
 		return false
 	}
 
@@ -174,28 +209,27 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 		return false
 	}
 
-	// Carve out for certificate profiles that have removed OCSP URLs from
-	// certificates.
-	// https://community.letsencrypt.org/t/removing-ocsp-urls-from-certificates/236699/2
-	if len(peers[0].OCSPServer) == 0 {
-		p.exportMetrics(peers[0], none)
-		return true
-	}
-
-	var ocspStatus bool
+	var wantStatus int
 	switch p.response {
 	case "valid":
-		ocspStatus, err = checkOCSP(peers[0], peers[1], ocsp.Good)
+		wantStatus = ocsp.Good
 	case "revoked":
-		ocspStatus, err = checkOCSP(peers[0], peers[1], ocsp.Revoked)
+		wantStatus = ocsp.Revoked
+	}
+
+	var statusMatch bool
+	if len(peers[0].OCSPServer) != 0 {
+		statusMatch, err = checkOCSP(peers[0], peers[1], wantStatus)
+	} else {
+		statusMatch, err = checkCRL(peers[0], peers[1], wantStatus)
 	}
 	if err != nil {
-		p.exportMetrics(peers[0], ocspError)
+		p.exportMetrics(peers[0], revocationStatusError)
 		return false
 	}
 
-	if !ocspStatus {
-		p.exportMetrics(peers[0], responseDidNotMatch)
+	if !statusMatch {
+		p.exportMetrics(peers[0], statusDidNotMatch)
 		return false
 	}
 
