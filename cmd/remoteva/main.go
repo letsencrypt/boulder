@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"net"
 	"os"
 	"time"
 
@@ -109,6 +110,7 @@ func main() {
 	}
 
 	var resolver bdns.Client
+	var reservedIPChecker func(ip net.IP) (bool, string, error)
 	if !c.RVA.DNSAllowLoopbackAddresses {
 		resolver = bdns.New(
 			c.RVA.DNSTimeout.Duration,
@@ -119,6 +121,7 @@ func main() {
 			c.RVA.UserAgent,
 			logger,
 			tlsConfig)
+		reservedIPChecker = policy.IsReservedIP
 	} else {
 		resolver = bdns.NewTest(
 			c.RVA.DNSTimeout.Duration,
@@ -129,6 +132,7 @@ func main() {
 			c.RVA.UserAgent,
 			logger,
 			tlsConfig)
+		reservedIPChecker = policy.IsNonLoopbackReservedIP
 	}
 
 	vai, err := va.NewValidationAuthorityImpl(

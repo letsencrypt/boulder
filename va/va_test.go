@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
 	"os"
 	"strings"
 	"sync"
@@ -144,7 +143,7 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 		accountURIPrefixes,
 		perspective,
 		"",
-		isNonLoopbackReservedIP,
+		policy.IsNonLoopbackReservedIP,
 	)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
@@ -322,7 +321,7 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 		accountURIPrefixes,
 		"example perspective",
 		"",
-		isNonLoopbackReservedIP,
+		policy.IsNonLoopbackReservedIP,
 	)
 	test.AssertError(t, err, "NewValidationAuthorityImpl allowed duplicate remote perspectives")
 	test.AssertContains(t, err.Error(), "duplicate remote VA perspective \"dadaist\"")
