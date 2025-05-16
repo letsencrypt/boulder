@@ -86,5 +86,5 @@ func (l *ecdsaPubKeyAidEncoding) Execute(c *x509.Certificate) *lint.LintResult {
 		}
 	}
 
-	return &lint.LintResult{Status: lint.Error, Details: fmt.Sprintf("Wrong encoding of ECC public key. Got the unsupported %s", hex.EncodeToString(encodedPublicKeyAid))}
+	return &lint.LintResult{Status: lint.Error, Details: "Wrong encoding of ECC public key. Got the unsupported " + hex.EncodeToString(encodedPublicKeyAid)}
 }

@@ -22,8 +22,6 @@ import (
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
-
-	"fmt"
 )
 
 func init() {
@@ -72,7 +70,7 @@ func (l *caInvalidEKU) Execute(c *x509.Certificate) *lint.LintResult {
 
 			return &lint.LintResult{
 				Status:  lint.Error,
-				Details: fmt.Sprintf("%s MUST not be present together with serverAuth in the EKU extension", util.GetEKUString(eku)),
+				Details: util.GetEKUString(eku) + "%s MUST not be present together with serverAuth in the EKU extension",
 			}
 		}
 	}

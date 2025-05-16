@@ -15,8 +15,6 @@ package rfc
  */
 
 import (
-	"fmt"
-
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
@@ -77,7 +75,7 @@ func (l *rsaTBSSignatureEncryptionParamNotNULL) Execute(c *x509.Certificate) *li
 	}
 
 	if err := util.CheckAlgorithmIDParamNotNULL(signatureAlgoID, c.SignatureAlgorithmOID); err != nil {
-		return &lint.LintResult{Status: lint.Error, Details: fmt.Sprintf("certificate tbsCertificate.signature %s", err.Error())}
+		return &lint.LintResult{Status: lint.Error, Details: "certificate tbsCertificate.signature " + err.Error()}
 	}
 
 	return &lint.LintResult{Status: lint.Pass}
