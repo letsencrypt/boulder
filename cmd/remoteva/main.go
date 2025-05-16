@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"net"
 	"os"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/va"
 	vaConfig "github.com/letsencrypt/boulder/va/config"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -108,6 +110,7 @@ func main() {
 	}
 
 	var resolver bdns.Client
+	var reservedIPChecker func(ip net.IP) (bool, string, error)
 	if !c.RVA.DNSAllowLoopbackAddresses {
 		resolver = bdns.New(
 			c.RVA.DNSTimeout.Duration,
@@ -118,6 +121,7 @@ func main() {
 			c.RVA.UserAgent,
 			logger,
 			tlsConfig)
+		reservedIPChecker = policy.IsReservedIP
 	} else {
 		resolver = bdns.NewTest(
 			c.RVA.DNSTimeout.Duration,
@@ -128,6 +132,7 @@ func main() {
 			c.RVA.UserAgent,
 			logger,
 			tlsConfig)
+		reservedIPChecker = policy.IsNonLoopbackReservedIP
 	}
 
 	vai, err := va.NewValidationAuthorityImpl(
@@ -141,7 +146,7 @@ func main() {
 		c.RVA.AccountURIPrefixes,
 		c.RVA.Perspective,
 		c.RVA.RIR,
-		bdns.IsReservedIP)
+		reservedIPChecker)
 	cmd.FailOnError(err, "Unable to create Remote-VA server")
 
 	start, err := bgrpc.NewServer(c.RVA.GRPC, logger).Add(
