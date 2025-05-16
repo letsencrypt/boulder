@@ -143,7 +143,7 @@ func TestCheckWildcardCert(t *testing.T) {
 	}
 }
 
-func TestCheckCertReturnsDNSNames(t *testing.T) {
+func TestCheckCertReturnsSANs(t *testing.T) {
 	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetBoulderTestDatabase(t)
@@ -171,7 +171,7 @@ func TestCheckCertReturnsDNSNames(t *testing.T) {
 	}
 
 	names, problems := checker.checkCert(context.Background(), cert)
-	if !slices.Equal(names, []string{"quite_invalid.com", "al--so--wr--ong.com"}) {
+	if !slices.Equal(names, []string{"quite_invalid.com", "al--so--wr--ong.com", "127.0.0.1"}) {
 		t.Errorf("didn't get expected DNS names. other problems: %s", strings.Join(problems, "\n"))
 	}
 }
