@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -209,7 +210,11 @@ func TestIPShortLived(t *testing.T) {
 
 	// Get one cert for the shortlived profile.
 	_, err = authAndIssue(client, key, idents, false, "shortlived")
-	if !strings.Contains(err.Error(), "Network unreachable") {
+	want := "The ACME server has disabled this identifier type"
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		want = "Network unreachable"
+	}
+	if !strings.Contains(err.Error(), want) {
 		t.Fatalf("issuing under shortlived profile failed for the wrong reason: %s", err)
 	}
 }
