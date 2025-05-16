@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/eggsampler/acme/v3"
@@ -175,7 +176,9 @@ func TestIPShortLived(t *testing.T) {
 
 	// Create an account.
 	client, err := makeClient("mailto:example@letsencrypt.org")
-	test.AssertNotError(t, err, "creating acme client")
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
 
 	_, shortlived := client.Directory().Meta.Profiles["shortlived"]
 	if !shortlived {
@@ -184,7 +187,9 @@ func TestIPShortLived(t *testing.T) {
 
 	// Create a private key.
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "creating random cert key")
+	if err != nil {
+		t.Fatalf("creating random cert key: %s", err)
+	}
 
 	// Create an IP address identifier to request.
 	idents := []acme.Identifier{
@@ -192,20 +197,34 @@ func TestIPShortLived(t *testing.T) {
 	}
 
 	// Ensure we fail under each other profile that we know the test server advertises.
-	res, err := authAndIssue(client, key, idents, true, "legacy")
-	test.AssertError(t, err, "issued for IP address identifier under legacy profile")
+	_, err = authAndIssue(client, key, idents, false, "legacy")
+	if err == nil {
+		t.Fatal("issued for IP address identifier under legacy profile")
+	}
 
-	res, err = authAndIssue(client, key, idents, true, "modern")
-	test.AssertError(t, err, "issued for IP address identifier under modern profile")
+	_, err = authAndIssue(client, key, idents, false, "modern")
+	if err == nil {
+		t.Fatal("issued for IP address identifier under modern profile")
+	}
 
 	// Get one cert for the shortlived profile.
-	res, err = authAndIssue(client, key, idents, true, "shortlived")
-	test.AssertNotError(t, err, "failed to issue under shortlived profile")
-	test.AssertEquals(t, res.Order.Profile, "shortlived")
+	res, err := authAndIssue(client, key, idents, false, "shortlived")
+	if err != nil {
+		t.Fatalf("issuing under shortlived profile: %s", err)
+	}
+	if res.Order.Profile != "shortlived" {
+		t.Fatalf("got '%s' profile, wanted 'shortlived'", res.Order.Profile)
+	}
 	cert := res.certs[0]
 
 	// Check that the shortlived profile worked as expected.
-	test.AssertEquals(t, cert.Subject.CommonName, "")
-	test.AssertDeepEquals(t, cert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth})
-	test.AssertEquals(t, len(cert.SubjectKeyId), 0)
+	if cert.Subject.CommonName != "" {
+		t.Fatalf("got cert with CN '%s', wanted none", cert.Subject.CommonName)
+	}
+	if !reflect.DeepEqual(cert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}) {
+		t.Fatal("got cert with unexpected EKUs, wanted ServerAuth")
+	}
+	if len(cert.SubjectKeyId) != 0 {
+		t.Fatalf("got cert with SKID '%s', wanted none", cert.SubjectKeyId)
+	}
 }
