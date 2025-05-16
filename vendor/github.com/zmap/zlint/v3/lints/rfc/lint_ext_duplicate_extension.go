@@ -15,7 +15,6 @@ package rfc
  */
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/zmap/zcrypto/x509"
@@ -82,9 +81,7 @@ func (l *extDuplicateExtension) Execute(cert *x509.Certificate) *lint.LintResult
 	}
 
 	return &lint.LintResult{
-		Status: lint.Error,
-		Details: fmt.Sprintf(
-			"The following extensions are duplicated: %s",
-			strings.Join(duplicateOIDsList, ", ")),
+		Status:  lint.Error,
+		Details: "The following extensions are duplicated: " + strings.Join(duplicateOIDsList, ", "),
 	}
 }

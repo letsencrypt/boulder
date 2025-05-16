@@ -30,6 +30,7 @@ import (
 	_ "github.com/zmap/zlint/v3/lints/etsi"
 	_ "github.com/zmap/zlint/v3/lints/mozilla"
 	_ "github.com/zmap/zlint/v3/lints/rfc"
+	"golang.org/x/crypto/ocsp"
 )
 
 const Version int64 = 3
@@ -86,6 +87,34 @@ func LintRevocationListEx(r *x509.RevocationList, registry lint.Registry) *Resul
 	}
 	res := new(ResultSet)
 	res.executeRevocationList(r, registry)
+	res.Version = Version
+	res.Timestamp = time.Now().Unix()
+	return res
+}
+
+// LintOcspResponse runs all registered lints on o using default options,
+// producing a ResultSet.
+//
+// Using LintOcspResponse(o) is equivalent to calling LintOcspResponseEx(o, nil).
+func LintOcspResponse(o *ocsp.Response) *ResultSet {
+	return LintOcspResponseEx(o, nil)
+}
+
+// LintOcspResponseEx runs lints from the provided registry on o producing
+// a ResultSet. Providing an explicit registry allows the caller to filter the
+// lints that will be run. (See lint.Registry.Filter())
+//
+// If registry is nil then the global registry of all lints is used and this
+// function is equivalent to calling LintOcspResponse(o).
+func LintOcspResponseEx(o *ocsp.Response, registry lint.Registry) *ResultSet {
+	if o == nil {
+		return nil
+	}
+	if registry == nil {
+		registry = lint.GlobalRegistry()
+	}
+	res := new(ResultSet)
+	res.executeOcspResponse(o, registry)
 	res.Version = Version
 	res.Timestamp = time.Now().Unix()
 	return res

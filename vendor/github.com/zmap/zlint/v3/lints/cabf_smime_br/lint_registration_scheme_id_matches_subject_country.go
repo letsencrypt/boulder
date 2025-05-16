@@ -15,7 +15,7 @@
 package cabf_smime_br
 
 import (
-	"fmt"
+	"errors"
 	"regexp"
 
 	"github.com/zmap/zcrypto/x509"
@@ -99,7 +99,7 @@ func verifySMIMEOrganizationIdentifierContainsSubjectNameCountry(id string, coun
 	identifierCountry := submatches[2]
 
 	if identifierCountry != country {
-		return fmt.Errorf("the country code used in the Registration Scheme identifier SHALL match that of the subject:countryName")
+		return errors.New("the country code used in the Registration Scheme identifier SHALL match that of the subject:countryName")
 	}
 
 	return nil

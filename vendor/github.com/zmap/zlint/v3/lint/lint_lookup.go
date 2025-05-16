@@ -24,6 +24,7 @@ var (
 	_ linterLookup               = &linterLookupImpl{}
 	_ CertificateLinterLookup    = &certificateLinterLookupImpl{}
 	_ RevocationListLinterLookup = &revocationListLinterLookupImpl{}
+	_ OcspResponseLinterLookup   = &ocspResponseLinterLookupImpl{}
 )
 
 type linterLookup interface {
@@ -213,5 +214,78 @@ func newRevocationListLintLookup() revocationListLinterLookupImpl {
 		lintsByName:      make(map[string]*RevocationListLint),
 		lintsBySource:    make(map[LintSource][]*RevocationListLint),
 		lints:            make([]*RevocationListLint, 0),
+	}
+}
+
+// OcspResponseLinterLookup is an interface describing how registered OCSP response lints can be looked up.
+type OcspResponseLinterLookup interface {
+	linterLookup
+	// ByName returns a pointer to the registered lint with the given name, or nil
+	// if there is no such lint registered in the registry.
+	ByName(name string) *OcspResponseLint
+	// BySource returns a list of registered lints that have the same LintSource as
+	// provided (or nil if there were no such lints in the registry).
+	BySource(s LintSource) []*OcspResponseLint
+	// Lints returns a list of all the lints registered.
+	Lints() []*OcspResponseLint
+}
+
+type ocspResponseLinterLookupImpl struct {
+	linterLookupImpl
+	// lintsByName is a map of all registered lints by name.
+	lintsByName   map[string]*OcspResponseLint
+	lintsBySource map[LintSource][]*OcspResponseLint
+	lints         []*OcspResponseLint
+}
+
+// ByName returns the Lint previously registered under the given name with
+// Register, or nil if no matching lint name has been registered.
+func (lookup *ocspResponseLinterLookupImpl) ByName(name string) *OcspResponseLint {
+	lookup.RLock()
+	defer lookup.RUnlock()
+	return lookup.lintsByName[name]
+}
+
+// BySource returns a list of registered lints that have the same LintSource as
+// provided (or nil if there were no such lints).
+func (lookup *ocspResponseLinterLookupImpl) BySource(s LintSource) []*OcspResponseLint {
+	lookup.RLock()
+	defer lookup.RUnlock()
+	return lookup.lintsBySource[s]
+}
+
+// Lints returns a list of registered lints.
+func (lookup *ocspResponseLinterLookupImpl) Lints() []*OcspResponseLint {
+	lookup.RLock()
+	defer lookup.RUnlock()
+	return lookup.lints
+}
+
+func (lookup *ocspResponseLinterLookupImpl) register(lint *OcspResponseLint, name string, source LintSource) error {
+	if name == "" {
+		return errEmptyName
+	}
+	lookup.RLock()
+	defer lookup.RUnlock()
+
+	if existing := lookup.lintsByName[name]; existing != nil {
+		return &errDuplicateName{name}
+	}
+	lookup.lints = append(lookup.lints, lint)
+	lookup.lintNames = append(lookup.lintNames, name)
+	lookup.lintsByName[name] = lint
+
+	lookup.sources[source] = struct{}{}
+	lookup.lintsBySource[source] = append(lookup.lintsBySource[source], lint)
+	sort.Strings(lookup.lintNames)
+	return nil
+}
+
+func newOcspResponseLintLookup() ocspResponseLinterLookupImpl {
+	return ocspResponseLinterLookupImpl{
+		linterLookupImpl: newLinterLookup(),
+		lintsByName:      make(map[string]*OcspResponseLint),
+		lintsBySource:    make(map[LintSource][]*OcspResponseLint),
+		lints:            make([]*OcspResponseLint, 0),
 	}
 }

@@ -17,7 +17,6 @@
 package util
 
 import (
-	"fmt"
 	"net"
 )
 
@@ -120,7 +119,7 @@ func init() {
 			var err error
 
 			if _, ipNet, err = net.ParseCIDR(network); err != nil {
-				panic(fmt.Sprintf("unexpected internal network value provided: %s", err.Error()))
+				panic("unexpected internal network value provided: " + err.Error())
 			}
 			reservedNetworks = append(reservedNetworks, ipNet)
 		}

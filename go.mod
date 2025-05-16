@@ -28,8 +28,8 @@ require (
 	github.com/redis/go-redis/v9 v9.7.3
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 	github.com/weppos/publicsuffix-go v0.40.3-0.20250307081557-c05521c3453a
-	github.com/zmap/zcrypto v0.0.0-20231219022726-a1f61fb1661c
-	github.com/zmap/zlint/v3 v3.6.4
+	github.com/zmap/zcrypto v0.0.0-20250129210703-03c45d0bae98
+	github.com/zmap/zlint/v3 v3.6.6
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.55.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.55.0
 	go.opentelemetry.io/otel v1.34.0
