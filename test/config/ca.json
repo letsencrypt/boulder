@@ -56,6 +56,7 @@
 			"certProfiles": {
 				"legacy": {
 					"allowMustStaple": true,
+					"omitOCSP": true,
 					"includeCRLDistributionPoints": true,
 					"maxValidityPeriod": "7776000s",
 					"maxValidityBackdate": "1h5m",
@@ -71,6 +72,7 @@
 					"omitKeyEncipherment": true,
 					"omitClientAuth": true,
 					"omitSKID": true,
+					"omitOCSP": true,
 					"includeCRLDistributionPoints": true,
 					"maxValidityPeriod": "583200s",
 					"maxValidityBackdate": "1h5m",
@@ -85,6 +87,7 @@
 					"omitKeyEncipherment": true,
 					"omitClientAuth": true,
 					"omitSKID": true,
+					"omitOCSP": true,
 					"includeCRLDistributionPoints": true,
 					"maxValidityPeriod": "160h",
 					"maxValidityBackdate": "1h5m",

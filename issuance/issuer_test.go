@@ -24,9 +24,10 @@ import (
 
 func defaultProfileConfig() *ProfileConfig {
 	return &ProfileConfig{
-		AllowMustStaple:     true,
-		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
-		MaxValidityBackdate: config.Duration{Duration: time.Hour},
+		AllowMustStaple:              true,
+		IncludeCRLDistributionPoints: true,
+		MaxValidityPeriod:            config.Duration{Duration: time.Hour},
+		MaxValidityBackdate:          config.Duration{Duration: time.Hour},
 		IgnoredLints: []string{
 			// Ignore the two SCT lints because these tests don't get SCTs.
 			"w_ct_sct_policy_count_unsatisfied",
@@ -42,8 +43,8 @@ func defaultIssuerConfig() IssuerConfig {
 	return IssuerConfig{
 		Active:     true,
 		IssuerURL:  "http://issuer-url.example.org",
-		OCSPURL:    "http://ocsp-url.example.org",
 		CRLURLBase: "http://crl-url.example.org/",
+		CRLShards:  10,
 	}
 }
 
