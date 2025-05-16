@@ -302,10 +302,12 @@ type ValidationProfileConfig struct {
 	// specified, the profile is open to all accounts. If the file
 	// exists but is empty, the profile is closed to all accounts.
 	AllowList string `validate:"omitempty"`
+	// IdentifierTypes is a list of identifier types that may be issued under
+	// this profile. If none are specified, it defaults to "dns".
+	IdentifierTypes []identifier.IdentifierType `validate:"omitempty,dive,oneof=dns ip"`
 }
 
-// validationProfile holds the order and authz lifetimes and allowlist for a
-// given validation profile.
+// validationProfile holds the attributes of a given validation profile.
 type validationProfile struct {
 	// pendingAuthzLifetime defines how far in the future an authorization's
 	// "expires" timestamp is set when it is first created, i.e. how much
@@ -327,6 +329,9 @@ type validationProfile struct {
 	// allowList holds the set of account IDs allowed to use this profile. If
 	// nil, the profile is open to all accounts (everyone is allowed).
 	allowList *allowlist.List[int64]
+	// identifierTypes is a list of identifier types that may be issued under
+	// this profile. If none are specified, it defaults to "dns".
+	identifierTypes []identifier.IdentifierType
 }
 
 // validationProfiles provides access to the set of configured profiles,
@@ -379,12 +384,22 @@ func NewValidationProfiles(defaultName string, configs map[string]*ValidationPro
 			}
 		}
 
+		identifierTypes := config.IdentifierTypes
+		// If this profile has no identifier types configured, default to DNS.
+		// This default is temporary, to improve deployability.
+		//
+		// TODO(#8184): Remove this default and use config.IdentifierTypes below.
+		if len(identifierTypes) == 0 {
+			identifierTypes = []identifier.IdentifierType{identifier.TypeDNS}
+		}
+
 		profiles[name] = &validationProfile{
 			pendingAuthzLifetime: config.PendingAuthzLifetime.Duration,
 			validAuthzLifetime:   config.ValidAuthzLifetime.Duration,
 			orderLifetime:        config.OrderLifetime.Duration,
 			maxNames:             config.MaxNames,
 			allowList:            allowList,
+			identifierTypes:      identifierTypes,
 		}
 	}
 
@@ -2338,7 +2353,14 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			"Order cannot contain more than %d identifiers", profile.maxNames)
 	}
 
-	// Validate that our policy allows issuing for each of the names in the order
+	for _, ident := range idents {
+		if !slices.Contains(profile.identifierTypes, ident.Type) {
+			return nil, berrors.RejectedIdentifierError("Profile %q does not permit %s type identifiers", req.CertificateProfileName, ident.Type)
+		}
+	}
+
+	// Validate that our policy allows issuing for each of the identifiers in
+	// the order
 	err = ra.PA.WillingToIssue(idents)
 	if err != nil {
 		return nil, err
