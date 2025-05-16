@@ -36,17 +36,11 @@ type caaParams struct {
 // implements the CAA portion of Multi-Perspective Issuance Corroboration as
 // defined in BRs Sections 3.2.2.9 and 5.4.1.
 func (va *ValidationAuthorityImpl) DoCAA(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	// TODO(#8023): Once Domain is no longer used, remove the conditional, use
-	// req.Identifier directly, and include it in the IsAnyNilOrZero check.
-	if core.IsAnyNilOrZero(req.ValidationMethod, req.AccountURIID) {
+	if core.IsAnyNilOrZero(req.Identifier, req.ValidationMethod, req.AccountURIID) {
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
 
-	ident := identifier.NewDNS(req.Domain)
-	if req.GetIdentifier() != nil {
-		ident = identifier.FromProto(req.GetIdentifier())
-	}
-
+	ident := identifier.FromProto(req.Identifier)
 	if ident.Type != identifier.TypeDNS {
 		return nil, berrors.MalformedError("Identifier type for CAA check was not DNS")
 	}
