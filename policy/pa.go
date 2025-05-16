@@ -16,7 +16,6 @@ import (
 	"golang.org/x/net/idna"
 	"golang.org/x/text/unicode/norm"
 
-	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
@@ -353,7 +352,11 @@ func validIP(ip string) error {
 		return errIPInvalid
 	}
 
-	if bdns.IsReservedIP(parsedIP) {
+	reserved, _, err := IsReservedIP(parsedIP)
+	if err != nil {
+		return err
+	}
+	if reserved {
 		return errIPSpecialPurpose
 	}
 
