@@ -15,7 +15,6 @@
 package rfc
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
@@ -90,9 +89,8 @@ func (l *ecdsaInvalidKU) Execute(c *x509.Certificate) *lint.LintResult {
 		sort.Strings(invalidKUs)
 		return &lint.LintResult{
 			Status: lint.Notice,
-			Details: fmt.Sprintf(
-				"Certificate had unexpected key usage(s): %s",
-				strings.Join(invalidKUs, ", ")),
+			Details: "Certificate had unexpected key usage(s): " +
+				strings.Join(invalidKUs, ", "),
 		}
 	}
 

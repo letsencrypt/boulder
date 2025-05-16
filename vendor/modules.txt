@@ -281,7 +281,7 @@ github.com/titanous/rocacheck
 # github.com/weppos/publicsuffix-go v0.40.3-0.20250307081557-c05521c3453a
 ## explicit; go 1.16
 github.com/weppos/publicsuffix-go/publicsuffix
-# github.com/zmap/zcrypto v0.0.0-20231219022726-a1f61fb1661c
+# github.com/zmap/zcrypto v0.0.0-20250129210703-03c45d0bae98
 ## explicit; go 1.16
 github.com/zmap/zcrypto/cryptobyte
 github.com/zmap/zcrypto/cryptobyte/asn1
@@ -293,8 +293,8 @@ github.com/zmap/zcrypto/util
 github.com/zmap/zcrypto/x509
 github.com/zmap/zcrypto/x509/ct
 github.com/zmap/zcrypto/x509/pkix
-# github.com/zmap/zlint/v3 v3.6.4
-## explicit; go 1.18
+# github.com/zmap/zlint/v3 v3.6.6
+## explicit; go 1.23.0
 github.com/zmap/zlint/v3
 github.com/zmap/zlint/v3/lint
 github.com/zmap/zlint/v3/lints/apple

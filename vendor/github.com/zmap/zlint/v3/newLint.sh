@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
 function usage() {
-  echo "./newLint.sh [-h|--help] -r|--req <REQUIREMENT> -f|--file <FILENAME> -s|--struct <STRUCTNAME>"
+  echo "./newLint.sh [-h|--help] -r|--req <REQUIREMENT> -n|--name <LINTNAME> -s|--struct <STRUCTNAME>"
   echo ""
   echo "Options:"
   echo "  -h|--help   Prints this help text."
   echo "  -r|--req    The name of the requirements body governing this lint. Valid options are $(valid_requirement_names)."
-  echo "  -f|--file   The target filename for the given lint (no file extension is required)."
+  echo "  -n|--name   The lintname for the given lints."
   echo "  -s|--struct The name of the Golang struct to create."
   echo ""
   echo "Example:"
@@ -45,10 +45,8 @@ while [[ $# -gt 0 ]]; do
       REQUIREMENT="${2}"
       shift 2
       ;;
-    -f | --file)
+    -n| --name)
       LINTNAME="${2}"
-      FILENAME="lint_${LINTNAME}.go"
-      TEST_FILENAME="lint_${LINTNAME}_test.go"
       shift 2
       ;;
     -s | --struct)
@@ -67,6 +65,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ $LINTNAME =~ ^[enw]_ ]]; then
+  FILENAME="lint_${LINTNAME:2}.go"
+  TEST_FILENAME="lint_${LINTNAME:2}_test.go"
+else
+  echo "The lintname should start with e_, w_, n_"
+  usage
+  exit 1
+fi
+
 if [ -z "${REQUIREMENT}" ]; then
   echo "The -r|--req flag is required. Valid options are $(valid_requirement_names)"
   usage
@@ -74,13 +81,13 @@ if [ -z "${REQUIREMENT}" ]; then
 fi
 
 if [ -z "${LINTNAME}" ]; then
-  echo "The -f|--file flag is required."
+  echo "The -n|--name flag is required."
   usage
   exit 1
 fi
 
 if [ -z "${STRUCTNAME}" ]; then
-  echo "The -s|--strut flag is required."
+  echo "The -s|--struct flag is required."
   usage
   exit 1
 fi
@@ -89,12 +96,12 @@ PATHNAME="$(git_root)/v3/lints/${REQUIREMENT}/${FILENAME}"
 TEST_PATHNAME="$(git_root)/v3/lints/${REQUIREMENT}/${TEST_FILENAME}"
 
 sed -e "s/PACKAGE/${REQUIREMENT}/" \
-    -e "s/PASCAL_CASE_SUBST/${STRUCTNAME^}/g" \
+    -e "s/PASCAL_CASE_SUBST/${STRUCTNAME}/g" \
     -e "s/SUBST/${STRUCTNAME}/g" \
     -e "s/SUBTEST/${LINTNAME}/g" "$(git_root)/v3/template" > "${PATHNAME}"
 
 sed -e "s/PACKAGE/${REQUIREMENT}/" \
-    -e "s/PASCAL_CASE_SUBST/${STRUCTNAME^}/g" \
+    -e "s/PASCAL_CASE_SUBST/${STRUCTNAME}/g" \
     -e "s/SUBST/${STRUCTNAME}/g" \
     -e "s/SUBTEST/${LINTNAME}/g" "$(git_root)/v3/test_template" > "${TEST_PATHNAME}"
 

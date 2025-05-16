@@ -15,8 +15,6 @@ package cabf_br
  */
 
 import (
-	"fmt"
-
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
@@ -59,7 +57,7 @@ func (l *subExtKeyUsageCheck) Execute(c *x509.Certificate) *lint.LintResult {
 		case x509.ExtKeyUsageAny, x509.ExtKeyUsageCodeSigning, x509.ExtKeyUsageTimeStamping,
 			x509.ExtKeyUsageOcspSigning, x509.ExtKeyUsageEmailProtection:
 
-			return &lint.LintResult{Status: lint.Error, Details: fmt.Sprintf("%s MUST NOT be present", util.GetEKUString(eku))}
+			return &lint.LintResult{Status: lint.Error, Details: util.GetEKUString(eku) + " MUST NOT be present"}
 		}
 	}
 

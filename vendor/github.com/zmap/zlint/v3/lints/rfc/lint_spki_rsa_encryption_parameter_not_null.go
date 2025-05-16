@@ -61,7 +61,7 @@ func (l *rsaSPKIEncryptionParamNotNULL) Execute(c *x509.Certificate) *lint.LintR
 	}
 
 	if err := util.CheckAlgorithmIDParamNotNULL(encodedPublicKeyAid, util.OidRSAEncryption); err != nil {
-		return &lint.LintResult{Status: lint.Error, Details: fmt.Sprintf("certificate pkixPublicKey %s", err.Error())}
+		return &lint.LintResult{Status: lint.Error, Details: "certificate pkixPublicKey " + err.Error()}
 	}
 
 	return &lint.LintResult{Status: lint.Pass}

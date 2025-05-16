@@ -15,10 +15,12 @@ package lint
  */
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/util"
+	"golang.org/x/crypto/ocsp"
 )
 
 // LintInterface is implemented by each certificate linter.
@@ -217,7 +219,31 @@ func (l *CertificateLint) CheckEffective(c *x509.Certificate) bool {
 // CheckApplies()
 // CheckEffective()
 // Execute()
-func (l *CertificateLint) Execute(cert *x509.Certificate, config Configuration) *LintResult {
+func (l *CertificateLint) Execute(cert *x509.Certificate, config Configuration) (result *LintResult) {
+	defer func() {
+		if err := recover(); err != nil {
+			details := fmt.Sprintf("'%s' panicked. Error: %v", l.Name, err)
+			result = &LintResult{
+				Status:  Fatal,
+				Details: details,
+			}
+		}
+	}()
+	result = l.execute(cert, config)
+	return
+}
+
+// Execute runs the lint against a certificate. For lints that are
+// sourced from the CA/B Forum Baseline Requirements, we first determine
+// if they are within the purview of the BRs. See CertificateLintInterface
+// for details about the other methods called.
+// The ordering is as follows:
+//
+// Configure() ----> only if the lint implements Configurable
+// CheckApplies()
+// CheckEffective()
+// Execute()
+func (l *CertificateLint) execute(cert *x509.Certificate, config Configuration) *LintResult {
 	if l.Source == CABFBaselineRequirements && !util.IsServerAuthCert(cert) {
 		return &LintResult{Status: NA}
 	}
@@ -299,4 +325,61 @@ func checkEffective(effective, ineffective, target time.Time) bool {
 	onOrAfterEffective := effective.IsZero() || util.OnOrAfter(target, effective)
 	strictlyBeforeIneffective := ineffective.IsZero() || target.Before(ineffective)
 	return onOrAfterEffective && strictlyBeforeIneffective
+}
+
+// OcspResponseLintInterface is implemented by each OCSP linter.
+type OcspResponseLintInterface interface {
+	// CheckApplies runs once per OCSP response. It returns true if the Lint
+	// should run on the given OCSP response. If CheckApplies returns false, the
+	// Lint result is automatically set to NA without calling CheckEffective()
+	// or Run().
+	CheckApplies(o *ocsp.Response) bool
+
+	// Execute is the body of the lint. It is called for every OCSP response for
+	// which CheckApplies returns true.
+	Execute(o *ocsp.Response) *LintResult
+}
+
+// OcspResponseLint represents a single OCSP response linter.
+type OcspResponseLint struct {
+	// Metadata associated with the linter.
+	LintMetadata
+	// A constructor which returns the implementation of the linter.
+	Lint func() OcspResponseLintInterface `json:"-"`
+}
+
+// CheckEffective returns true if o was generated on or after the EffectiveDate
+// AND before (but not on) the Ineffective date. That is, CheckEffective
+// returns true if...
+//
+//	o.NextUpdate in [EffectiveDate, IneffectiveDate)
+//
+// If EffectiveDate is zero, then only IneffectiveDate is checked. Conversely,
+// if IneffectiveDate is zero then only EffectiveDate is checked. If both EffectiveDate
+// and IneffectiveDate are zero then CheckEffective always returns true.
+func (l *OcspResponseLint) CheckEffective(o *ocsp.Response) bool {
+	return checkEffective(l.EffectiveDate, l.IneffectiveDate, o.NextUpdate)
+}
+
+// Execute runs the lint against an OCSP response.
+// The ordering is as follows:
+//
+// Configure() ----> only if the lint implements Configurable
+// CheckApplies()
+// CheckEffective()
+// Execute()
+func (l *OcspResponseLint) Execute(o *ocsp.Response, config Configuration) *LintResult {
+	lint := l.Lint()
+	err := config.MaybeConfigure(lint, l.Name)
+	if err != nil {
+		return &LintResult{
+			Status:  Fatal,
+			Details: err.Error()}
+	}
+	if !lint.CheckApplies(o) {
+		return &LintResult{Status: NA}
+	} else if !l.CheckEffective(o) {
+		return &LintResult{Status: NE}
+	}
+	return lint.Execute(o)
 }

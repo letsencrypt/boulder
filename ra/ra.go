@@ -1,9 +1,12 @@
 package ra
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1060,6 +1063,26 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	}
 }
 
+// containsMustStaple returns true if the provided set of extensions includes
+// an entry whose OID and value both match the expected values for the OCSP
+// Must-Staple (a.k.a. id-pe-tlsFeature) extension.
+func containsMustStaple(extensions []pkix.Extension) bool {
+	// RFC 7633: id-pe-tlsfeature OBJECT IDENTIFIER ::=  { id-pe 24 }
+	var mustStapleExtId = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
+	// ASN.1 encoding of:
+	// SEQUENCE
+	//   INTEGER 5
+	// where "5" is the status_request feature (RFC 6066)
+	var mustStapleExtValue = []byte{0x30, 0x03, 0x02, 0x01, 0x05}
+
+	for _, ext := range extensions {
+		if ext.Id.Equal(mustStapleExtId) && bytes.Equal(ext.Value, mustStapleExtValue) {
+			return true
+		}
+	}
+	return false
+}
+
 // validateFinalizeRequest checks that a FinalizeOrder request is fully correct
 // and ready for issuance.
 func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
@@ -1100,7 +1123,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		return nil, berrors.BadCSRError("unable to parse CSR: %s", err.Error())
 	}
 
-	if issuance.ContainsMustStaple(csr.Extensions) {
+	if containsMustStaple(csr.Extensions) {
 		ra.mustStapleRequestsCounter.WithLabelValues("denied").Inc()
 		return nil, berrors.UnauthorizedError(
 			"OCSP must-staple extension is no longer available: see https://letsencrypt.org/2024/12/05/ending-ocsp",
