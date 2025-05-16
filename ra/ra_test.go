@@ -83,12 +83,15 @@ func randomDomain() string {
 //
 // panics if crypto/rand.Rand.Read or netip.AddrFromSlice fails.
 func randomIPv6() netip.Addr {
-	var ipBytes [11]byte
+	var ipBytes [10]byte
 	_, err := rand.Read(ipBytes[:])
 	if err != nil {
 		panic(err)
 	}
-	ipPrefix, _ := hex.DecodeString("2602080a600")
+	ipPrefix, err := hex.DecodeString("2602080a600f")
+	if err != nil {
+		panic(err)
+	}
 	ip, ok := netip.AddrFromSlice(bytes.Join([][]byte{ipPrefix, ipBytes[:]}, nil))
 	if !ok {
 		panic("Couldn't parse random IP to netip.Addr")
