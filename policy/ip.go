@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	// TODO(#8040): Rebuild these as structs that track the structure of IANA's
+	// TODO(#8080): Rebuild these as structs that track the structure of IANA's
 	// CSV files, for better automated handling.
 	//
 	// Private CIDRs to ignore. Sourced from:
