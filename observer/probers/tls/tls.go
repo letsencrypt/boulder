@@ -151,8 +151,6 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 		addr = net.JoinHostPort(addr, "443")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
 	tlsDialer := tls.Dialer{
 		NetDialer: &obsdialer.Dialer,
 		Config: &tls.Config{
@@ -160,18 +158,29 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 			// replacing. This will not disable VerifyConnection.
 			InsecureSkipVerify: true,
 			VerifyConnection: func(cs tls.ConnectionState) error {
-				opts := x509.VerifyOptions{
-					CurrentTime:   cs.PeerCertificates[0].NotAfter,
-					Intermediates: x509.NewCertPool(),
-				}
+				issuers := x509.NewCertPool()
 				for _, cert := range cs.PeerCertificates[1:] {
-					opts.Intermediates.AddCert(cert)
+					issuers.AddCert(cert)
+				}
+				opts := x509.VerifyOptions{
+					// We set the current time to be the cert's expiration date so that
+					// the validation routine doesn't complain that the cert is expired.
+					CurrentTime: cs.PeerCertificates[0].NotAfter,
+					// By settings roots and intermediates to be whatever was presented
+					// in the handshake, we're saying that we don't care about the cert
+					// chaining up to the system trust store. This is safe because we
+					// check the root ourselves in checkRoot().
+					Intermediates: issuers,
+					Roots:         issuers,
 				}
 				_, err := cs.PeerCertificates[0].Verify(opts)
 				return err
 			},
 		},
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
 	conn, err := tlsDialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -181,8 +190,7 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 	defer conn.Close()
 
 	// tls.Dialer.DialContext is documented to always return *tls.Conn
-	tlsConn := conn.(*tls.Conn)
-	peers := tlsConn.ConnectionState().PeerCertificates
+	peers := conn.(*tls.Conn).ConnectionState().PeerCertificates
 	if time.Until(peers[0].NotAfter) > 0 {
 		p.exportMetrics(peers[0], statusDidNotMatch)
 		return false
@@ -206,23 +214,46 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 		addr = net.JoinHostPort(addr, "443")
 	}
 
-	fmt.Println("probing unexpired", addr)
+	tlsDialer := tls.Dialer{
+		NetDialer: &obsdialer.Dialer,
+		Config: &tls.Config{
+			// Set InsecureSkipVerify to skip the default validation we are
+			// replacing. This will not disable VerifyConnection.
+			InsecureSkipVerify: true,
+			VerifyConnection: func(cs tls.ConnectionState) error {
+				issuers := x509.NewCertPool()
+				for _, cert := range cs.PeerCertificates[1:] {
+					issuers.AddCert(cert)
+				}
+				opts := x509.VerifyOptions{
+					// By settings roots and intermediates to be whatever was presented
+					// in the handshake, we're saying that we don't care about the cert
+					// chaining up to the system trust store. This is safe because we
+					// check the root ourselves in checkRoot().
+					Intermediates: issuers,
+					Roots:         issuers,
+				}
+				_, err := cs.PeerCertificates[0].Verify(opts)
+				return err
+			},
+		},
+	}
 
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", addr, &tls.Config{})
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	conn, err := tlsDialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		fmt.Println("bad conn:", err)
 		p.exportMetrics(nil, internalError)
 		return false
 	}
-
-	fmt.Println("dialed", addr)
-
 	defer conn.Close()
-	peers := conn.ConnectionState().PeerCertificates
+
+	// tls.Dialer.DialContext is documented to always return *tls.Conn
+	peers := conn.(*tls.Conn).ConnectionState().PeerCertificates
 	root := peers[len(peers)-1].Issuer
 	err = p.checkRoot(root.Organization[0], root.CommonName)
 	if err != nil {
-		fmt.Println("bad root:", err)
 		p.exportMetrics(peers[0], rootDidNotMatch)
 		return false
 	}
@@ -242,13 +273,11 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 		statusMatch, err = checkCRL(peers[0], peers[1], wantStatus)
 	}
 	if err != nil {
-		fmt.Println("failed status:", err)
 		p.exportMetrics(peers[0], revocationStatusError)
 		return false
 	}
 
 	if !statusMatch {
-		fmt.Println("bad status:", err)
 		p.exportMetrics(peers[0], statusDidNotMatch)
 		return false
 	}
@@ -267,10 +296,8 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	start := time.Now()
 	var success bool
 	if p.response == "expired" {
-		fmt.Println("probing expired")
 		success = p.probeExpired(timeout)
 	} else {
-		fmt.Println("probing unexpired")
 		success = p.probeUnexpired(timeout)
 	}
 

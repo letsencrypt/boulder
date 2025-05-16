@@ -2,6 +2,8 @@ package probers
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -42,16 +44,24 @@ func (c TLSConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) 
 }
 
 func (c TLSConf) validateHostname() error {
-	// url, err := url.Parse(c.Hostname)
-	// if err != nil {
-	// 	return fmt.Errorf(
-	// 		"invalid 'hostname', got %q, expected a valid hostname: %s", c.Hostname, err)
-	// }
+	hostname := c.Hostname
 
-	// if url.Scheme != "" {
-	// 	return fmt.Errorf(
-	// 		"invalid 'hostname', got: %q, should not include scheme", c.Hostname)
-	// }
+	if strings.Contains(c.Hostname, ":") {
+		host, _, err := net.SplitHostPort(c.Hostname)
+		if err != nil {
+			return fmt.Errorf("invalid 'hostname', got %q, expected a valid hostport: %s", c.Hostname, err)
+		}
+		hostname = host
+	}
+
+	url, err := url.Parse(hostname)
+	if err != nil {
+		return fmt.Errorf("invalid 'hostname', got %q, expected a valid hostname: %s", c.Hostname, err)
+	}
+
+	if url.Scheme != "" {
+		return fmt.Errorf("invalid 'hostname', got: %q, should not include scheme", c.Hostname)
+	}
 
 	return nil
 }

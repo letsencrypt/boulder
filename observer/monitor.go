@@ -19,11 +19,9 @@ func (m monitor) start(logger blog.Logger) {
 	ticker := time.NewTicker(m.period)
 	timeout := m.period / 2
 	for {
-		logger.AuditInfo("Top of the monitor loop")
 		go func() {
 			// Attempt to probe the configured target.
 			success, dur := m.prober.Probe(timeout)
-			logger.AuditInfof("Probed, got %#v", success)
 
 			// Produce metrics to be scraped by Prometheus.
 			histObservations.WithLabelValues(

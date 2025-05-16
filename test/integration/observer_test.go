@@ -86,8 +86,6 @@ func TestTLSProbe(t *testing.T) {
 		t.Fatalf("issuing test cert: %s", err)
 	}
 
-	t.Log("created key and cert")
-
 	// Set up the HTTP server that the prober will be pointed at.
 	certFile, err := os.Create(path.Join(tempdir, "fullchain.pem"))
 	if err != nil {
@@ -129,11 +127,7 @@ func TestTLSProbe(t *testing.T) {
 		t.Errorf("closing key file: %s", err)
 	}
 
-	t.Log("creating server")
-
 	go http.ListenAndServeTLS(":8675", certFile.Name(), keyFile.Name(), http.DefaultServeMux)
-
-	t.Log("created server")
 
 	// Kick off the prober, pointed at the server presenting our test cert.
 	configFile, err := os.Create(path.Join(tempdir, "observer.yml"))
@@ -174,7 +168,7 @@ monitors:
 			t.Fatalf("timed out before getting desired log line from boulder-observer")
 		case line := <-output:
 			t.Log(line)
-			if strings.Contains(line, "name=[localhost:8675]") && strings.Contains(line, "success=[true]") {
+			if strings.Contains(line, "name=[integration.trust:8675]") && strings.Contains(line, "success=[true]") {
 				return
 			}
 		}
