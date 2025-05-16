@@ -342,173 +342,187 @@ func (c *certChecker) checkCert(ctx context.Context, cert *corepb.Certificate) (
 	if cert.Digest != core.Fingerprint256(cert.Der) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
 	}
+
 	// Parse the certificate.
 	parsedCert, err := zX509.ParseCertificate(cert.Der)
 	if err != nil {
 		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
-	} else {
-		// Run zlint checks.
-		results := zlint.LintCertificateEx(parsedCert, c.lints)
-		for name, res := range results.Results {
-			if res.Status <= lint.Pass {
-				continue
-			}
-			prob := fmt.Sprintf("zlint %s: %s", res.Status, name)
-			if res.Details != "" {
-				prob = fmt.Sprintf("%s %s", prob, res.Details)
-			}
-			problems = append(problems, prob)
-		}
-		// Check if stored serial is correct.
-		storedSerial, err := core.StringToSerial(cert.Serial)
-		if err != nil {
-			problems = append(problems, "Stored serial is invalid")
-		} else if parsedCert.SerialNumber.Cmp(storedSerial) != 0 {
-			problems = append(problems, "Stored serial doesn't match certificate serial")
-		}
-		// Check that we have the correct expiration time.
-		if !parsedCert.NotAfter.Equal(cert.Expires.AsTime()) {
-			problems = append(problems, "Stored expiration doesn't match certificate NotAfter")
-		}
-		// Check if basic constraints are set.
-		if !parsedCert.BasicConstraintsValid {
-			problems = append(problems, "Certificate doesn't have basic constraints set")
-		}
-		// Check that the cert isn't able to sign other certificates.
-		if parsedCert.IsCA {
-			problems = append(problems, "Certificate can sign other certificates")
-		}
-		// Check that the cert has a valid validity period. The validity
-		// period is computed inclusive of the whole final second indicated by
-		// notAfter.
-		validityDuration := parsedCert.NotAfter.Add(time.Second).Sub(parsedCert.NotBefore)
-		_, ok := c.acceptableValidityDurations[validityDuration]
-		if !ok {
-			problems = append(problems, "Certificate has unacceptable validity period")
-		}
-		// Check that the stored issuance time isn't too far back/forward dated.
-		if parsedCert.NotBefore.Before(cert.Issued.AsTime().Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.AsTime().Add(6*time.Hour)) {
-			problems = append(problems, "Stored issuance date is outside of 6 hour window of certificate NotBefore")
-		}
-		// Check that the cert doesn't contain any SANs of unexpected types.
-		if len(parsedCert.EmailAddresses) != 0 || len(parsedCert.URIs) != 0 {
-			problems = append(problems, "Certificate contains SAN of unacceptable type (email or URI)")
-		}
-		if parsedCert.Subject.CommonName != "" {
-			// Check if the CommonName is <= 64 characters.
-			if len(parsedCert.Subject.CommonName) > 64 {
-				problems = append(
-					problems,
-					fmt.Sprintf("Certificate has common name >64 characters long (%d)", len(parsedCert.Subject.CommonName)),
-				)
-			}
-
-			// Check that the CommonName is included in the SANs. We only check the
-			// DNSNames here, because any other SAN type should never be in the CN.
-			if !slices.Contains(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
-				problems = append(problems, fmt.Sprintf("Certificate Common Name does not appear in Subject Alternative Name DNSNames: %q !< %v",
-					parsedCert.Subject.CommonName, parsedCert.DNSNames))
-			}
-		}
-		// Check that the PA is still willing to issue for each name in the SANs.
-		// We do not check the CommonName here, as (if it exists) we already checked
-		// that it is identical to one of the DNSNames in the SAN.
-		for _, name := range parsedCert.DNSNames {
-			err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(name)})
-			if err != nil {
-				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
-				continue
-			}
-			// For defense-in-depth, even if the PA was willing to issue for a name
-			// we double check it against a list of forbidden domains. This way even
-			// if the hostnamePolicyFile malfunctions we will flag the forbidden
-			// domain matches
-			if forbidden, pattern := isForbiddenDomain(name); forbidden {
-				problems = append(problems, fmt.Sprintf(
-					"Policy Authority was willing to issue but domain '%s' matches "+
-						"forbiddenDomains entry %q", name, pattern))
-			}
-		}
-		for _, name := range parsedCert.IPAddresses {
-			ip, ok := netip.AddrFromSlice(name)
-			if !ok {
-				problems = append(problems, fmt.Sprintf("SANs contain malformed IP %q", name))
-				continue
-			}
-			err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewIP(ip)})
-			if err != nil {
-				problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
-				continue
-			}
-		}
-		// Check the cert has the correct key usage extensions
-		serverAndClient := slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth, zX509.ExtKeyUsageClientAuth})
-		serverOnly := slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth})
-		if !(serverAndClient || serverOnly) {
-			problems = append(problems, "Certificate has incorrect key usage extensions")
-		}
-
-		for _, ext := range parsedCert.Extensions {
-			_, ok := allowedExtensions[ext.Id.String()]
-			if !ok {
-				problems = append(problems, fmt.Sprintf("Certificate contains an unexpected extension: %s", ext.Id))
-			}
-			expectedContent, ok := expectedExtensionContent[ext.Id.String()]
-			if ok {
-				if !bytes.Equal(ext.Value, expectedContent) {
-					problems = append(problems, fmt.Sprintf("Certificate extension %s contains unexpected content: has %x, expected %x", ext.Id, ext.Value, expectedContent))
-				}
-			}
-		}
-
-		// Check that the cert has a good key. Note that this does not perform
-		// checks which rely on external resources such as weak or blocked key
-		// lists, or the list of blocked keys in the database. This only performs
-		// static checks, such as against the RSA key size and the ECDSA curve.
-		p, err := x509.ParseCertificate(cert.Der)
-		if err != nil {
-			problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
-		}
-		err = c.kp.GoodKey(ctx, p.PublicKey)
-		if err != nil {
-			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
-		}
-
-		precertDER, err := c.getPrecert(ctx, cert.Serial)
-		if err != nil {
-			// Log and continue, since we want the problems slice to only contains
-			// problems with the cert itself.
-			c.logger.Errf("fetching linting precertificate for %s: %s", cert.Serial, err)
-			atomic.AddInt64(&c.issuedReport.DbErrs, 1)
-		} else {
-			err = precert.Correspond(precertDER, cert.Der)
-			if err != nil {
-				problems = append(problems,
-					fmt.Sprintf("Certificate does not correspond to precert for %s: %s", cert.Serial, err))
-			}
-		}
-
-		if features.Get().CertCheckerChecksValidations {
-			idents := identifier.FromCert(p)
-			err = c.checkValidations(ctx, cert, idents)
-			if err != nil {
-				if features.Get().CertCheckerRequiresValidations {
-					problems = append(problems, err.Error())
-				} else {
-					var identValues []string
-					for _, ident := range idents {
-						identValues = append(identValues, ident.Value)
-					}
-					c.logger.Errf("Certificate %s %s: %s", cert.Serial, identValues, err)
-				}
-			}
-		}
+		// This is a fatal error, we can't do any further processing.
+		return nil, problems
 	}
 
+	// Now that it's parsed, we can extract the SANs.
 	sans := slices.Clone(parsedCert.DNSNames)
 	for _, ip := range parsedCert.IPAddresses {
 		sans = append(sans, ip.String())
 	}
+
+	// Run zlint checks.
+	results := zlint.LintCertificateEx(parsedCert, c.lints)
+	for name, res := range results.Results {
+		if res.Status <= lint.Pass {
+			continue
+		}
+		prob := fmt.Sprintf("zlint %s: %s", res.Status, name)
+		if res.Details != "" {
+			prob = fmt.Sprintf("%s %s", prob, res.Details)
+		}
+		problems = append(problems, prob)
+	}
+
+	// Check if stored serial is correct.
+	storedSerial, err := core.StringToSerial(cert.Serial)
+	if err != nil {
+		problems = append(problems, "Stored serial is invalid")
+	} else if parsedCert.SerialNumber.Cmp(storedSerial) != 0 {
+		problems = append(problems, "Stored serial doesn't match certificate serial")
+	}
+
+	// Check that we have the correct expiration time.
+	if !parsedCert.NotAfter.Equal(cert.Expires.AsTime()) {
+		problems = append(problems, "Stored expiration doesn't match certificate NotAfter")
+	}
+
+	// Check if basic constraints are set.
+	if !parsedCert.BasicConstraintsValid {
+		problems = append(problems, "Certificate doesn't have basic constraints set")
+	}
+
+	// Check that the cert isn't able to sign other certificates.
+	if parsedCert.IsCA {
+		problems = append(problems, "Certificate can sign other certificates")
+	}
+
+	// Check that the cert has a valid validity period. The validity
+	// period is computed inclusive of the whole final second indicated by
+	// notAfter.
+	validityDuration := parsedCert.NotAfter.Add(time.Second).Sub(parsedCert.NotBefore)
+	_, ok := c.acceptableValidityDurations[validityDuration]
+	if !ok {
+		problems = append(problems, "Certificate has unacceptable validity period")
+	}
+
+	// Check that the stored issuance time isn't too far back/forward dated.
+	if parsedCert.NotBefore.Before(cert.Issued.AsTime().Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.AsTime().Add(6*time.Hour)) {
+		problems = append(problems, "Stored issuance date is outside of 6 hour window of certificate NotBefore")
+	}
+
+	// Check that the cert doesn't contain any SANs of unexpected types.
+	if len(parsedCert.EmailAddresses) != 0 || len(parsedCert.URIs) != 0 {
+		problems = append(problems, "Certificate contains SAN of unacceptable type (email or URI)")
+	}
+
+	if parsedCert.Subject.CommonName != "" {
+		// Check if the CommonName is <= 64 characters.
+		if len(parsedCert.Subject.CommonName) > 64 {
+			problems = append(
+				problems,
+				fmt.Sprintf("Certificate has common name >64 characters long (%d)", len(parsedCert.Subject.CommonName)),
+			)
+		}
+
+		// Check that the CommonName is included in the SANs.
+		if !slices.Contains(sans, parsedCert.Subject.CommonName) {
+			problems = append(problems, fmt.Sprintf("Certificate Common Name does not appear in Subject Alternative Names: %q !< %v",
+				parsedCert.Subject.CommonName, parsedCert.DNSNames))
+		}
+	}
+
+	// Check that the PA is still willing to issue for each DNS name and IP
+	// address in the SANs. We do not check the CommonName here, as (if it exists)
+	// we already checked that it is identical to one of the DNSNames in the SAN.
+	for _, name := range parsedCert.DNSNames {
+		err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(name)})
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
+			continue
+		}
+		// For defense-in-depth, even if the PA was willing to issue for a name
+		// we double check it against a list of forbidden domains. This way even
+		// if the hostnamePolicyFile malfunctions we will flag the forbidden
+		// domain matches
+		if forbidden, pattern := isForbiddenDomain(name); forbidden {
+			problems = append(problems, fmt.Sprintf(
+				"Policy Authority was willing to issue but domain '%s' matches "+
+					"forbiddenDomains entry %q", name, pattern))
+		}
+	}
+	for _, name := range parsedCert.IPAddresses {
+		ip, ok := netip.AddrFromSlice(name)
+		if !ok {
+			problems = append(problems, fmt.Sprintf("SANs contain malformed IP %q", name))
+			continue
+		}
+		err = c.pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewIP(ip)})
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("Policy Authority isn't willing to issue for '%s': %s", name, err))
+			continue
+		}
+	}
+
+	// Check the cert has the correct key usage extensions
+	serverAndClient := slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth, zX509.ExtKeyUsageClientAuth})
+	serverOnly := slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth})
+	if !(serverAndClient || serverOnly) {
+		problems = append(problems, "Certificate has incorrect key usage extensions")
+	}
+
+	for _, ext := range parsedCert.Extensions {
+		_, ok := allowedExtensions[ext.Id.String()]
+		if !ok {
+			problems = append(problems, fmt.Sprintf("Certificate contains an unexpected extension: %s", ext.Id))
+		}
+		expectedContent, ok := expectedExtensionContent[ext.Id.String()]
+		if ok {
+			if !bytes.Equal(ext.Value, expectedContent) {
+				problems = append(problems, fmt.Sprintf("Certificate extension %s contains unexpected content: has %x, expected %x", ext.Id, ext.Value, expectedContent))
+			}
+		}
+	}
+
+	// Check that the cert has a good key. Note that this does not perform
+	// checks which rely on external resources such as weak or blocked key
+	// lists, or the list of blocked keys in the database. This only performs
+	// static checks, such as against the RSA key size and the ECDSA curve.
+	p, err := x509.ParseCertificate(cert.Der)
+	if err != nil {
+		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
+	} else {
+		err = c.kp.GoodKey(ctx, p.PublicKey)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
+		}
+	}
+
+	precertDER, err := c.getPrecert(ctx, cert.Serial)
+	if err != nil {
+		// Log and continue, since we want the problems slice to only contains
+		// problems with the cert itself.
+		c.logger.Errf("fetching linting precertificate for %s: %s", cert.Serial, err)
+		atomic.AddInt64(&c.issuedReport.DbErrs, 1)
+	} else {
+		err = precert.Correspond(precertDER, cert.Der)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("Certificate does not correspond to precert for %s: %s", cert.Serial, err))
+		}
+	}
+
+	if features.Get().CertCheckerChecksValidations {
+		idents := identifier.FromCert(p)
+		err = c.checkValidations(ctx, cert, idents)
+		if err != nil {
+			if features.Get().CertCheckerRequiresValidations {
+				problems = append(problems, err.Error())
+			} else {
+				var identValues []string
+				for _, ident := range idents {
+					identValues = append(identValues, ident.Value)
+				}
+				c.logger.Errf("Certificate %s %s: %s", cert.Serial, identValues, err)
+			}
+		}
+	}
+
 	return sans, problems
 }
 
