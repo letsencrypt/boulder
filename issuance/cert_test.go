@@ -128,19 +128,6 @@ func TestRequestValid(t *testing.T) {
 			expectedError: "unexpected subject key ID length",
 		},
 		{
-			name: "must staple not allowed",
-			issuer: &Issuer{
-				active: true,
-			},
-			profile: &Profile{},
-			request: &IssuanceRequest{
-				PublicKey:         MarshalablePublicKey{&ecdsa.PublicKey{}},
-				SubjectKeyId:      goodSKID,
-				IncludeMustStaple: true,
-			},
-			expectedError: "must-staple extension cannot be included",
-		},
-		{
 			name: "both sct list and ct poison provided",
 			issuer: &Issuer{
 				active: true,
@@ -322,7 +309,6 @@ func TestRequestValid(t *testing.T) {
 
 func TestGenerateTemplate(t *testing.T) {
 	issuer := &Issuer{
-		ocspURL:    "http://ocsp",
 		issuerURL:  "http://issuer",
 		crlURLBase: "http://crl/",
 		sigAlg:     x509.SHA256WithRSA,
@@ -401,10 +387,10 @@ func TestIssue(t *testing.T) {
 			test.AssertDeepEquals(t, cert.IPAddresses, []net.IP{net.ParseIP("128.101.101.101").To4(), net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed")})
 			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 			test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
-			test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Poison
+			test.AssertEquals(t, len(cert.Extensions), 10) // Constraints, KU, EKU, SKID, AKID, AIA, CRLDP, SAN, Policies, Poison
 			test.AssertEquals(t, cert.KeyUsage, tc.ku)
-			if len(cert.CRLDistributionPoints) > 0 {
-				t.Errorf("want CRLDistributionPoints=[], got %v", cert.CRLDistributionPoints)
+			if len(cert.CRLDistributionPoints) != 1 || !strings.HasPrefix(cert.CRLDistributionPoints[0], "http://crl-url.example.org/") {
+				t.Errorf("want CRLDistributionPoints=[http://crl-url.example.org/x.crl], got %v", cert.CRLDistributionPoints)
 			}
 		})
 	}
@@ -656,8 +642,8 @@ func TestIssueCTPoison(t *testing.T) {
 	test.AssertNotError(t, err, "signature validation failed")
 	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
-	test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, CT Poison
-	test.AssertDeepEquals(t, cert.Extensions[8], ctPoisonExt)
+	test.AssertEquals(t, len(cert.Extensions), 10) // Constraints, KU, EKU, SKID, AKID, AIA, CRLDP, SAN, Policies, Poison
+	test.AssertDeepEquals(t, cert.Extensions[9], ctPoisonExt)
 }
 
 func mustDecodeB64(b string) []byte {
@@ -728,8 +714,8 @@ func TestIssueSCTList(t *testing.T) {
 	test.AssertNotError(t, err, "signature validation failed")
 	test.AssertByteEquals(t, finalCert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 	test.AssertDeepEquals(t, finalCert.PublicKey, pk.Public())
-	test.AssertEquals(t, len(finalCert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, SCT list
-	test.AssertDeepEquals(t, finalCert.Extensions[8], pkix.Extension{
+	test.AssertEquals(t, len(finalCert.Extensions), 10) // Constraints, KU, EKU, SKID, AKID, AIA, CRLDP, SAN, Policies, Poison
+	test.AssertDeepEquals(t, finalCert.Extensions[9], pkix.Extension{
 		Id: sctListOID,
 		Value: []byte{
 			4, 100, 0, 98, 0, 47, 0, 56, 152, 140, 148, 208, 53, 152, 195, 147, 45,
@@ -740,37 +726,6 @@ func TestIssueSCTList(t *testing.T) {
 			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		},
 	})
-}
-
-func TestIssueMustStaple(t *testing.T) {
-	fc := clock.NewFake()
-	fc.Set(time.Now())
-
-	signer, err := newIssuer(defaultIssuerConfig(), issuerCert, issuerSigner, fc)
-	test.AssertNotError(t, err, "NewIssuer failed")
-	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "failed to generate test key")
-	_, issuanceToken, err := signer.Prepare(defaultProfile(), &IssuanceRequest{
-		PublicKey:         MarshalablePublicKey{pk.Public()},
-		SubjectKeyId:      goodSKID,
-		Serial:            []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
-		DNSNames:          []string{"example.com"},
-		IncludeMustStaple: true,
-		NotBefore:         fc.Now(),
-		NotAfter:          fc.Now().Add(time.Hour - time.Second),
-		IncludeCTPoison:   true,
-	})
-	test.AssertNotError(t, err, "Prepare failed")
-	certBytes, err := signer.Issue(issuanceToken)
-	test.AssertNotError(t, err, "Issue failed")
-	cert, err := x509.ParseCertificate(certBytes)
-	test.AssertNotError(t, err, "failed to parse certificate")
-	err = cert.CheckSignatureFrom(issuerCert.Certificate)
-	test.AssertNotError(t, err, "signature validation failed")
-	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
-	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
-	test.AssertEquals(t, len(cert.Extensions), 10) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Must-Staple, Poison
-	test.AssertDeepEquals(t, cert.Extensions[9], mustStapleExt)
 }
 
 func TestIssueBadLint(t *testing.T) {
@@ -967,16 +922,8 @@ func TestNewProfile(t *testing.T) {
 		{
 			name: "happy path",
 			config: ProfileConfig{
-				MaxValidityBackdate: config.Duration{Duration: 1 * time.Hour},
-				MaxValidityPeriod:   config.Duration{Duration: 90 * 24 * time.Hour},
-			},
-		},
-		{
-			name: "crl but no ocsp",
-			config: ProfileConfig{
 				MaxValidityBackdate:          config.Duration{Duration: 1 * time.Hour},
 				MaxValidityPeriod:            config.Duration{Duration: 90 * 24 * time.Hour},
-				OmitOCSP:                     false,
 				IncludeCRLDistributionPoints: true,
 			},
 		},
@@ -1001,7 +948,6 @@ func TestNewProfile(t *testing.T) {
 			config: ProfileConfig{
 				MaxValidityBackdate:          config.Duration{Duration: 1 * time.Hour},
 				MaxValidityPeriod:            config.Duration{Duration: 90 * 24 * time.Hour},
-				OmitOCSP:                     true,
 				IncludeCRLDistributionPoints: false,
 			},
 			wantErr: "revocation mechanism must be included",

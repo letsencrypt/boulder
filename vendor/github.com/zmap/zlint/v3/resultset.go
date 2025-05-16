@@ -17,6 +17,7 @@ package zlint
 import (
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
+	"golang.org/x/crypto/ocsp"
 )
 
 // ResultSet contains the output of running all lints in a registry against
@@ -52,6 +53,20 @@ func (z *ResultSet) executeRevocationList(o *x509.RevocationList, registry lint.
 	z.Results = make(map[string]*lint.LintResult, len(registry.Names()))
 	// Run each lints from the registry.
 	for _, lint := range registry.RevocationListLints().Lints() {
+		res := lint.Execute(o, registry.GetConfiguration())
+		res.LintMetadata = lint.LintMetadata
+		z.Results[lint.Name] = res
+		z.updateErrorStatePresent(res)
+	}
+}
+
+// Execute lints on the given OCSP response with all of the lints in the provided
+// registry. The ResultSet is mutated to trace the lint results obtained from
+// linting the OCSP response.
+func (z *ResultSet) executeOcspResponse(o *ocsp.Response, registry lint.Registry) {
+	z.Results = make(map[string]*lint.LintResult, len(registry.Names()))
+	// Run each lints from the registry.
+	for _, lint := range registry.OcspResponseLints().Lints() {
 		res := lint.Execute(o, registry.GetConfiguration())
 		res.LintMetadata = lint.LintMetadata
 		z.Results[lint.Name] = res

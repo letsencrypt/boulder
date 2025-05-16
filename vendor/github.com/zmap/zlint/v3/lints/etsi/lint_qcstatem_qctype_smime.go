@@ -21,40 +21,40 @@ import (
 	"github.com/zmap/zlint/v3/util"
 )
 
-type qcStatemQctypeWeb struct{}
+type qcStatemQctypeSmime struct{}
 
 func init() {
 	lint.RegisterCertificateLint(&lint.CertificateLint{
 		LintMetadata: lint.LintMetadata{
-			Name:          "e_qcstatem_qctype_web",
-			Description:   "Checks that a QC Statement of the type Id-etsi-qcs-QcType features at least the type IdEtsiQcsQctWeb",
+			Name:          "e_qcstatem_qctype_smime",
+			Description:   "Checks that a QC Statement of the type Id-etsi-qcs-QcType features at least one of the types IdEtsiQcsQctEsign or IdEtsiQcsQctEseal, in case of an S/MIME certificate.",
 			Citation:      "ETSI EN 319 412 - 5 V2.2.1 (2017 - 11) / Section 4.2.3",
 			Source:        lint.EtsiEsi,
 			EffectiveDate: util.EtsiEn319_412_5_V2_2_1_Date,
 		},
-		Lint: NewQcStatemQctypeWeb,
+		Lint: NewQcStatemQctypeSmime,
 	})
 }
 
-func NewQcStatemQctypeWeb() lint.LintInterface {
-	return &qcStatemQctypeWeb{}
+func NewQcStatemQctypeSmime() lint.LintInterface {
+	return &qcStatemQctypeSmime{}
 }
 
-func (this *qcStatemQctypeWeb) getStatementOid() *asn1.ObjectIdentifier {
+func (this *qcStatemQctypeSmime) getStatementOid() *asn1.ObjectIdentifier {
 	return &util.IdEtsiQcsQcType
 }
 
-func (l *qcStatemQctypeWeb) CheckApplies(c *x509.Certificate) bool {
+func (l *qcStatemQctypeSmime) CheckApplies(c *x509.Certificate) bool {
 	if !util.IsExtInCert(c, util.QcStateOid) {
 		return false
 	}
 	if util.ParseQcStatem(util.GetExtFromCert(c, util.QcStateOid).Value, *l.getStatementOid()).IsPresent() {
-		return util.IsServerAuthCert(c)
+		return util.IsSMIMEBRCertificate(c)
 	}
 	return false
 }
 
-func (l *qcStatemQctypeWeb) Execute(c *x509.Certificate) *lint.LintResult {
+func (l *qcStatemQctypeSmime) Execute(c *x509.Certificate) *lint.LintResult {
 
 	errString := ""
 	ext := util.GetExtFromCert(c, util.QcStateOid)
@@ -72,12 +72,12 @@ func (l *qcStatemQctypeWeb) Execute(c *x509.Certificate) *lint.LintResult {
 	found := false
 	for _, t := range qcType.TypeOids {
 
-		if t.Equal(util.IdEtsiQcsQctWeb) {
+		if t.Equal(util.IdEtsiQcsQctEseal) || t.Equal(util.IdEtsiQcsQctEsign) {
 			found = true
 		}
 	}
 	if !found {
-		errString += "etsi Type does not indicate certificate as a 'web' certificate"
+		errString += "etsi Type does not indicate certificate as a 'eSeal' or 'eSign' certificate"
 	}
 
 	if len(errString) == 0 {
@@ -85,4 +85,5 @@ func (l *qcStatemQctypeWeb) Execute(c *x509.Certificate) *lint.LintResult {
 	} else {
 		return &lint.LintResult{Status: lint.Error, Details: errString}
 	}
+
 }

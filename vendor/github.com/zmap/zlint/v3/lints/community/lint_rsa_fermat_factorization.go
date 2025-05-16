@@ -61,7 +61,7 @@ func (l *fermatFactorization) Execute(c *x509.Certificate) *lint.LintResult {
 	if err != nil {
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: fmt.Sprintf("this certificate's RSA key pair is susceptible to Fermat factorization, %s", err.Error())}
+			Details: "this certificate's RSA key pair is susceptible to Fermat factorization, " + err.Error()}
 	} else {
 		return &lint.LintResult{Status: lint.Pass}
 	}

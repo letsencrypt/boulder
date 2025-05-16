@@ -91,7 +91,7 @@ func (l *mailboxValidatedEnforceSubjectFieldRestrictions) Execute(c *x509.Certif
 				if fieldName, knownField := l.forbiddenSubjectFields[oidStr]; knownField {
 					return &lint.LintResult{Status: lint.Error, Details: fmt.Sprintf("subject DN contains forbidden field: %s (%s)", fieldName, oidStr)}
 				}
-				return &lint.LintResult{Status: lint.Error, Details: fmt.Sprintf("subject DN contains forbidden field: %s", oidStr)}
+				return &lint.LintResult{Status: lint.Error, Details: "subject DN contains forbidden field: " + oidStr}
 			}
 		}
 	}
