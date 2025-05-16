@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 	"strings"
@@ -729,4 +730,35 @@ func TestWillingToIssue_IdentifierType(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsPrivateIP(t *testing.T) {
+	test.Assert(t, isPrivateV4(net.ParseIP("127.0.0.1")), "should be private")
+	test.Assert(t, isPrivateV4(net.ParseIP("192.168.254.254")), "should be private")
+	test.Assert(t, isPrivateV4(net.ParseIP("10.255.0.3")), "should be private")
+	test.Assert(t, isPrivateV4(net.ParseIP("172.16.255.255")), "should be private")
+	test.Assert(t, isPrivateV4(net.ParseIP("172.31.255.255")), "should be private")
+	test.Assert(t, !isPrivateV4(net.ParseIP("128.0.0.1")), "should be private")
+	test.Assert(t, !isPrivateV4(net.ParseIP("192.169.255.255")), "should not be private")
+	test.Assert(t, !isPrivateV4(net.ParseIP("9.255.0.255")), "should not be private")
+	test.Assert(t, !isPrivateV4(net.ParseIP("172.32.255.255")), "should not be private")
+
+	test.Assert(t, isPrivateV6(net.ParseIP("::0")), "should be private")
+	test.Assert(t, isPrivateV6(net.ParseIP("::1")), "should be private")
+	test.Assert(t, !isPrivateV6(net.ParseIP("::2")), "should not be private")
+
+	test.Assert(t, isPrivateV6(net.ParseIP("fe80::1")), "should be private")
+	test.Assert(t, isPrivateV6(net.ParseIP("febf::1")), "should be private")
+	test.Assert(t, !isPrivateV6(net.ParseIP("fec0::1")), "should not be private")
+	test.Assert(t, !isPrivateV6(net.ParseIP("feff::1")), "should not be private")
+
+	test.Assert(t, isPrivateV6(net.ParseIP("ff00::1")), "should be private")
+	test.Assert(t, isPrivateV6(net.ParseIP("ff10::1")), "should be private")
+	test.Assert(t, isPrivateV6(net.ParseIP("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")), "should be private")
+
+	test.Assert(t, isPrivateV6(net.ParseIP("2002::")), "should be private")
+	test.Assert(t, isPrivateV6(net.ParseIP("2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff")), "should be private")
+	test.Assert(t, isPrivateV6(net.ParseIP("0100::")), "should be private")
+	test.Assert(t, isPrivateV6(net.ParseIP("0100::0000:ffff:ffff:ffff:ffff")), "should be private")
+	test.Assert(t, !isPrivateV6(net.ParseIP("0100::0001:0000:0000:0000:0000")), "should be private")
 }
