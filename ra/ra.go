@@ -865,7 +865,6 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			var err error
 			resp, err = ra.VA.DoCAA(ctx, &vapb.IsCAAValidRequest{
 				Identifier:       authz.Identifier.ToProto(),
-				Domain:           authz.Identifier.Value,
 				ValidationMethod: method,
 				AccountURIID:     authz.RegistrationID,
 			})
@@ -1643,7 +1642,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			},
 			&vapb.IsCAAValidRequest{
 				Identifier:       authz.Identifier.ToProto(),
-				Domain:           authz.Identifier.Value,
 				ValidationMethod: chall.Type,
 				AccountURIID:     authz.RegistrationID,
 				AuthzID:          authz.ID,

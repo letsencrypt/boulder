@@ -1728,21 +1728,3 @@ func TestExtractIssuerDomainAndParameters(t *testing.T) {
 		})
 	}
 }
-
-// TestDoCAADomain tests that DoCAA (IsCAAValid) still handles requests with a
-// (deprecated) DnsName and no (new) Identifier.
-//
-// TODO(#8023): Remove this test when removing DnsName from the protobuf struct.
-func TestDoCAADomain(t *testing.T) {
-	t.Parallel()
-	va, _ := setup(nil, "", nil, caaMockDNS{})
-
-	_, err := va.DoCAA(ctx, &vapb.IsCAAValidRequest{
-		Domain:           "present.com",
-		ValidationMethod: string(core.ChallengeTypeDNS01),
-		AccountURIID:     12345,
-	})
-	if err != nil {
-		t.Errorf("calling IsCAAValid without an Identifier: %s", err)
-	}
-}

@@ -28,6 +28,7 @@ message Challenge {
 
 message ValidationRecord {
   // Next unused field number: 9
+  // TODO(#7311): Replace hostname with Identifier.
   string hostname = 1;
   string port = 2;
   repeated bytes addressesResolved = 3; // net.IP.MarshalText()
