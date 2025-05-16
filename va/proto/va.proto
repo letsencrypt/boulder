@@ -15,10 +15,9 @@ service CAA {
 
 message IsCAAValidRequest {
   // Next unused field number: 6
-  //
-  // NOTE: Domain (or the identifier's value) may be a name with a wildcard
-  // prefix (e.g. `*.example.com`)
   reserved 1; // Previously domain
+  // NOTE: For DNS identifiers, the value may be a wildcard domain name (e.g.
+  // `*.example.com`).
   core.Identifier identifier = 5;
   string validationMethod = 2;
   int64 accountURIID = 3;

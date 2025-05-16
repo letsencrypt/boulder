@@ -23,11 +23,13 @@ const (
 )
 
 type IsCAAValidRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Identifier       *proto.Identifier      `protobuf:"bytes,5,opt,name=identifier,proto3" json:"identifier,omitempty"`
-	ValidationMethod string                 `protobuf:"bytes,2,opt,name=validationMethod,proto3" json:"validationMethod,omitempty"`
-	AccountURIID     int64                  `protobuf:"varint,3,opt,name=accountURIID,proto3" json:"accountURIID,omitempty"`
-	AuthzID          string                 `protobuf:"bytes,4,opt,name=authzID,proto3" json:"authzID,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// NOTE: For DNS identifiers, the value may be a wildcard domain name (e.g.
+	// `*.example.com`).
+	Identifier       *proto.Identifier `protobuf:"bytes,5,opt,name=identifier,proto3" json:"identifier,omitempty"`
+	ValidationMethod string            `protobuf:"bytes,2,opt,name=validationMethod,proto3" json:"validationMethod,omitempty"`
+	AccountURIID     int64             `protobuf:"varint,3,opt,name=accountURIID,proto3" json:"accountURIID,omitempty"`
+	AuthzID          string            `protobuf:"bytes,4,opt,name=authzID,proto3" json:"authzID,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
