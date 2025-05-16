@@ -34,13 +34,13 @@ var (
 	unsupportedSigAlg   = berrors.BadCSRError("signature algorithm not supported")
 	invalidSig          = berrors.BadCSRError("invalid signature on CSR")
 	invalidEmailPresent = berrors.BadCSRError("CSR contains one or more email address fields")
-	invalidIPPresent    = berrors.BadCSRError("CSR contains one or more IP address fields")
+	invalidURIPresent   = berrors.BadCSRError("CSR contains one or more URI fields")
 	invalidNoIdent      = berrors.BadCSRError("at least one identifier is required")
 )
 
-// VerifyCSR checks the validity of a x509.CertificateRequest. It uses
-// NamesFromCSR to normalize the DNS names before checking whether we'll issue
-// for them.
+// VerifyCSR checks the validity of a x509.CertificateRequest. It uses FromCSR
+// and NamesFromCSR to normalize the DNS names before checking whether we'll
+// issue for them.
 func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority) error {
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {
@@ -64,25 +64,26 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	if len(csr.EmailAddresses) > 0 {
 		return invalidEmailPresent
 	}
-	if len(csr.IPAddresses) > 0 {
-		return invalidIPPresent
+	if len(csr.URIs) > 0 {
+		return invalidURIPresent
 	}
 
-	// NamesFromCSR also performs normalization, returning values that may not
-	// match the literal CSR contents.
+	// NamesFromCSR and FromCSR also perform normalization, returning values
+	// that may not match the literal CSR contents.
 	names := NamesFromCSR(csr)
-
-	if len(names.SANs) == 0 && names.CN == "" {
-		return invalidNoIdent
-	}
 	if len(names.CN) > maxCNLength {
 		return berrors.BadCSRError("CN was longer than %d bytes", maxCNLength)
 	}
-	if len(names.SANs) > maxNames {
-		return berrors.BadCSRError("CSR contains more than %d DNS names", maxNames)
+
+	idents := identifier.FromCSR(csr)
+	if len(idents) == 0 {
+		return invalidNoIdent
+	}
+	if len(idents) > maxNames {
+		return berrors.BadCSRError("CSR contains more than %d identifiers", maxNames)
 	}
 
-	err = pa.WillingToIssue(identifier.NewDNSSlice(names.SANs))
+	err = pa.WillingToIssue(idents)
 	if err != nil {
 		return err
 	}

@@ -8,7 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
-	"net"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -65,9 +65,10 @@ func TestVerifyCSR(t *testing.T) {
 	signedReqWithEmailAddress := new(x509.CertificateRequest)
 	*signedReqWithEmailAddress = *signedReq
 	signedReqWithEmailAddress.EmailAddresses = []string{"foo@bar.com"}
-	signedReqWithIPAddress := new(x509.CertificateRequest)
-	*signedReqWithIPAddress = *signedReq
-	signedReqWithIPAddress.IPAddresses = []net.IP{net.IPv4(1, 2, 3, 4)}
+	signedReqWithURI := new(x509.CertificateRequest)
+	*signedReqWithURI = *signedReq
+	testURI, _ := url.ParseRequestURI("https://example.com/")
+	signedReqWithURI.URIs = []*url.URL{testURI}
 	signedReqWithAllLongSANs := new(x509.CertificateRequest)
 	*signedReqWithAllLongSANs = *signedReq
 	signedReqWithAllLongSANs.DNSNames = []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com"}
@@ -130,10 +131,10 @@ func TestVerifyCSR(t *testing.T) {
 			invalidEmailPresent,
 		},
 		{
-			signedReqWithIPAddress,
+			signedReqWithURI,
 			100,
 			&mockPA{},
-			invalidIPPresent,
+			invalidURIPresent,
 		},
 		{
 			signedReqWithAllLongSANs,

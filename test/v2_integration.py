@@ -157,7 +157,7 @@ def test_http_challenge_broken_redirect():
         redirect)
 
     # Expect the specialized error message
-    expectedError = "10.77.77.77: Fetching {0}: Invalid host in redirect target \"{1}.well-known\". Check webserver config for missing '/' in redirect target.".format(redirect, d)
+    expectedError = "64.112.117.122: Fetching {0}: Invalid host in redirect target \"{1}.well-known\". Check webserver config for missing '/' in redirect target.".format(redirect, d)
 
     # NOTE(@cpu): Can't use chisel2.expect_problem here because it doesn't let
     # us interrogate the detail message easily.
@@ -363,7 +363,7 @@ def test_http_challenge_https_redirect():
 
     # Also add an A record for the domain pointing to the interface that the
     # HTTPS HTTP-01 challtestsrv is bound.
-    challSrv.add_a_record(d, ["10.77.77.77"])
+    challSrv.add_a_record(d, ["64.112.117.122"])
 
     try:
         chisel2.auth_and_issue([d], client=client, chall_type="http-01")
@@ -445,7 +445,7 @@ def test_http_challenge_timeout():
     to a slow HTTP server appropriately.
     """
     # Start a simple python HTTP server on port 80 in its own thread.
-    # NOTE(@cpu): The chall-test-srv binds 10.77.77.77:80 for HTTP-01
+    # NOTE(@cpu): The chall-test-srv binds 64.112.117.122:80 for HTTP-01
     # challenges so we must use the 10.88.88.88 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
     httpd = SlowHTTPServer(("10.88.88.88", 80), SlowHTTPRequestHandler)
@@ -785,10 +785,10 @@ def multiva_setup(client, guestlist):
     # Add an A record for the redirect target that sends it to the real chall
     # test srv for a valid HTTP-01 response.
     redirHostname = "chall-test-srv.example.com"
-    challSrv.add_a_record(redirHostname, ["10.77.77.77"])
+    challSrv.add_a_record(redirHostname, ["64.112.117.122"])
 
     # Start a simple python HTTP server on port 80 in its own thread.
-    # NOTE(@cpu): The chall-test-srv binds 10.77.77.77:80 for HTTP-01
+    # NOTE(@cpu): The chall-test-srv binds 64.112.117.122:80 for HTTP-01
     # challenges so we must use the 10.88.88.88 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
     redirect = "http://{0}/.well-known/acme-challenge/{1}".format(

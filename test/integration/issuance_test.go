@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -194,7 +195,7 @@ func TestIPShortLived(t *testing.T) {
 
 	// Create an IP address identifier to request.
 	idents := []acme.Identifier{
-		{Type: "ip", Value: random_ipv6()},
+		{Type: "ip", Value: "64.112.117.122"},
 	}
 
 	// Ensure we fail under each other profile that we know the test server advertises.
@@ -209,12 +210,29 @@ func TestIPShortLived(t *testing.T) {
 	}
 
 	// Get one cert for the shortlived profile.
-	_, err = authAndIssue(client, key, idents, false, "shortlived")
-	want := "The ACME server has disabled this identifier type"
+	res, err := authAndIssue(client, key, idents, false, "shortlived")
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		want = "Network unreachable"
-	}
-	if !strings.Contains(err.Error(), want) {
-		t.Fatalf("issuing under shortlived profile failed for the wrong reason: %s", err)
+		if err != nil {
+			t.Fatalf("issuing under shortlived profile: %s", err)
+		}
+		if res.Order.Profile != "shortlived" {
+			t.Fatalf("got '%s' profile, wanted 'shortlived'", res.Order.Profile)
+		}
+		cert := res.certs[0]
+
+		// Check that the shortlived profile worked as expected.
+		if cert.Subject.CommonName != "" {
+			t.Fatalf("got cert with CN '%s', wanted none", cert.Subject.CommonName)
+		}
+		if !reflect.DeepEqual(cert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}) {
+			t.Fatal("got cert with unexpected EKUs, wanted ServerAuth")
+		}
+		if len(cert.SubjectKeyId) != 0 {
+			t.Fatalf("got cert with SKID '%s', wanted none", cert.SubjectKeyId)
+		}
+	} else {
+		if !strings.Contains(err.Error(), "The ACME server has disabled this identifier type") {
+			t.Fatalf("issuing under shortlived profile failed for the wrong reason: %s", err)
+		}
 	}
 }
