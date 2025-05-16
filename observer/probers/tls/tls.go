@@ -145,29 +145,35 @@ func (p TLSProbe) exportMetrics(cert *x509.Certificate, reason reason) {
 }
 
 func (p TLSProbe) probeExpired(timeout time.Duration) bool {
-	config := &tls.Config{
-		// Set InsecureSkipVerify to skip the default validation we are
-		// replacing. This will not disable VerifyConnection.
-		InsecureSkipVerify: true,
-		VerifyConnection: func(cs tls.ConnectionState) error {
-			opts := x509.VerifyOptions{
-				CurrentTime:   cs.PeerCertificates[0].NotAfter,
-				Intermediates: x509.NewCertPool(),
-			}
-			for _, cert := range cs.PeerCertificates[1:] {
-				opts.Intermediates.AddCert(cert)
-			}
-			_, err := cs.PeerCertificates[0].Verify(opts)
-			return err
-		},
+	addr := p.hostname
+	_, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		addr = net.JoinHostPort(addr, "443")
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	tlsDialer := tls.Dialer{
 		NetDialer: &obsdialer.Dialer,
-		Config:    config,
+		Config: &tls.Config{
+			// Set InsecureSkipVerify to skip the default validation we are
+			// replacing. This will not disable VerifyConnection.
+			InsecureSkipVerify: true,
+			VerifyConnection: func(cs tls.ConnectionState) error {
+				opts := x509.VerifyOptions{
+					CurrentTime:   cs.PeerCertificates[0].NotAfter,
+					Intermediates: x509.NewCertPool(),
+				}
+				for _, cert := range cs.PeerCertificates[1:] {
+					opts.Intermediates.AddCert(cert)
+				}
+				_, err := cs.PeerCertificates[0].Verify(opts)
+				return err
+			},
+		},
 	}
-	conn, err := tlsDialer.DialContext(ctx, "tcp", p.hostname+":443")
+
+	conn, err := tlsDialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		p.exportMetrics(nil, internalError)
 		return false
@@ -194,17 +200,29 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 }
 
 func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.hostname+":443", &tls.Config{})
+	addr := p.hostname
+	_, _, err := net.SplitHostPort(addr)
 	if err != nil {
+		addr = net.JoinHostPort(addr, "443")
+	}
+
+	fmt.Println("probing unexpired", addr)
+
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", addr, &tls.Config{})
+	if err != nil {
+		fmt.Println("bad conn:", err)
 		p.exportMetrics(nil, internalError)
 		return false
 	}
+
+	fmt.Println("dialed", addr)
 
 	defer conn.Close()
 	peers := conn.ConnectionState().PeerCertificates
 	root := peers[len(peers)-1].Issuer
 	err = p.checkRoot(root.Organization[0], root.CommonName)
 	if err != nil {
+		fmt.Println("bad root:", err)
 		p.exportMetrics(peers[0], rootDidNotMatch)
 		return false
 	}
@@ -224,11 +242,13 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 		statusMatch, err = checkCRL(peers[0], peers[1], wantStatus)
 	}
 	if err != nil {
+		fmt.Println("failed status:", err)
 		p.exportMetrics(peers[0], revocationStatusError)
 		return false
 	}
 
 	if !statusMatch {
+		fmt.Println("bad status:", err)
 		p.exportMetrics(peers[0], statusDidNotMatch)
 		return false
 	}
@@ -247,8 +267,10 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	start := time.Now()
 	var success bool
 	if p.response == "expired" {
+		fmt.Println("probing expired")
 		success = p.probeExpired(timeout)
 	} else {
+		fmt.Println("probing unexpired")
 		success = p.probeUnexpired(timeout)
 	}
 
