@@ -116,7 +116,7 @@ func TestVerifyCSR(t *testing.T) {
 			signedReqWithHosts,
 			1,
 			&mockPA{},
-			berrors.BadCSRError("CSR contains more than 1 DNS names"),
+			berrors.BadCSRError("CSR contains more than 1 identifiers"),
 		},
 		{
 			signedReqWithBadNames,
