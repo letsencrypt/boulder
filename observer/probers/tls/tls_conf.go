@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -47,7 +48,12 @@ func (c TLSConf) validateHostname() error {
 	hostname := c.Hostname
 
 	if strings.Contains(c.Hostname, ":") {
-		host, _, err := net.SplitHostPort(c.Hostname)
+		host, port, err := net.SplitHostPort(c.Hostname)
+		if err != nil {
+			return fmt.Errorf("invalid 'hostname', got %q, expected a valid hostport: %s", c.Hostname, err)
+		}
+
+		_, err = strconv.Atoi(port)
 		if err != nil {
 			return fmt.Errorf("invalid 'hostname', got %q, expected a valid hostport: %s", c.Hostname, err)
 		}
