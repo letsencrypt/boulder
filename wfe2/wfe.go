@@ -2022,7 +2022,8 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 // function is returned that can be used to refund the quota if the order is not
 // created, the func will be nil if any error was encountered during the check.
 //
-// TODO(#7311): Handle IP address identifiers.
+// TODO(#7311): Handle IP address identifiers properly; don't just trust that
+// the value will always make sense in context.
 func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, idents identifier.ACMEIdentifiers, isRenewal bool) (func(), error) {
 	names, err := idents.ToDNSSlice()
 	if err != nil {
@@ -2055,7 +2056,7 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 // as identified by the provided ARI CertID. This function ensures that:
 //   - the certificate being replaced exists,
 //   - the requesting account owns that certificate, and
-//   - a name in this new order matches a name in the certificate being
+//   - an identifier in this new order matches an identifier in the certificate being
 //     replaced.
 func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *core.Registration, idents identifier.ACMEIdentifiers, serial string) error {
 	// It's okay to use GetCertificate (vs trying to get a precertificate),
@@ -2077,18 +2078,17 @@ func (wfe *WebFrontEndImpl) orderMatchesReplacement(ctx context.Context, acct *c
 		return fmt.Errorf("error parsing certificate replaced by this order: %w", err)
 	}
 
-	var nameMatch bool
+	var identMatch bool
 	for _, ident := range idents {
-		// TODO(#7311): Handle IP address identifiers.
 		if parsedCert.VerifyHostname(ident.Value) == nil {
-			// At least one name in the new order matches a name in the
-			// predecessor certificate.
-			nameMatch = true
+			// At least one identifier in the new order matches an identifier in
+			// the predecessor certificate.
+			identMatch = true
 			break
 		}
 	}
-	if !nameMatch {
-		return berrors.MalformedError("identifiers in this order do not match any names in the certificate being replaced")
+	if !identMatch {
+		return berrors.MalformedError("identifiers in this order do not match any identifiers in the certificate being replaced")
 	}
 	return nil
 }
@@ -2282,12 +2282,11 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	// TODO(#7311): Handle non-DNS identifiers.
 	idents := newOrderRequest.Identifiers
 	for _, ident := range idents {
-		if ident.Type != identifier.TypeDNS {
+		if !ident.Type.IsValid() {
 			wfe.sendError(response, logEvent,
-				probs.UnsupportedIdentifier("NewOrder request included invalid non-DNS type identifier: type %q, value %q",
+				probs.UnsupportedIdentifier("NewOrder request included unsupported identifier: type %q, value %q",
 					ident.Type, ident.Value),
 				nil)
 			return

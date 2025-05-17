@@ -8,6 +8,9 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"fmt"
+	"os"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/eggsampler/acme/v3"
@@ -166,4 +169,70 @@ func TestIssuanceProfiles(t *testing.T) {
 
 	test.AssertEquals(t, len(legacy.SubjectKeyId), 20)
 	test.AssertEquals(t, len(modern.SubjectKeyId), 0)
+}
+
+// TestIPShortLived verifies that we will allow IP address identifiers only in
+// orders that use the shortlived profile.
+func TestIPShortLived(t *testing.T) {
+	t.Parallel()
+
+	// Create an account.
+	client, err := makeClient("mailto:example@letsencrypt.org")
+	if err != nil {
+		t.Fatalf("creating acme client: %s", err)
+	}
+
+	_, shortlived := client.Directory().Meta.Profiles["shortlived"]
+	if !shortlived {
+		t.Fatal("ACME server not advertising the shortlived profile")
+	}
+
+	// Create a private key.
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("creating random cert key: %s", err)
+	}
+
+	// Create an IP address identifier to request.
+	idents := []acme.Identifier{
+		{Type: "ip", Value: "64.112.117.122"},
+	}
+
+	// Ensure we fail under each other profile that we know the test server advertises.
+	_, err = authAndIssue(client, key, idents, false, "legacy")
+	if err == nil {
+		t.Fatal("issued for IP address identifier under legacy profile")
+	}
+
+	_, err = authAndIssue(client, key, idents, false, "modern")
+	if err == nil {
+		t.Fatal("issued for IP address identifier under modern profile")
+	}
+
+	// Get one cert for the shortlived profile.
+	res, err := authAndIssue(client, key, idents, false, "shortlived")
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		if err != nil {
+			t.Fatalf("issuing under shortlived profile: %s", err)
+		}
+		if res.Order.Profile != "shortlived" {
+			t.Fatalf("got '%s' profile, wanted 'shortlived'", res.Order.Profile)
+		}
+		cert := res.certs[0]
+
+		// Check that the shortlived profile worked as expected.
+		if cert.Subject.CommonName != "" {
+			t.Fatalf("got cert with CN '%s', wanted none", cert.Subject.CommonName)
+		}
+		if !reflect.DeepEqual(cert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}) {
+			t.Fatal("got cert with unexpected EKUs, wanted ServerAuth")
+		}
+		if len(cert.SubjectKeyId) != 0 {
+			t.Fatalf("got cert with SKID '%s', wanted none", cert.SubjectKeyId)
+		}
+	} else {
+		if !strings.Contains(err.Error(), "The ACME server has disabled this identifier type") {
+			t.Fatalf("issuing under shortlived profile failed for the wrong reason: %s", err)
+		}
+	}
 }

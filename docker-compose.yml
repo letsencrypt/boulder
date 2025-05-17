@@ -30,6 +30,8 @@ services:
         ipv4_address: 10.33.33.33
       consulnet:
         ipv4_address: 10.55.55.55
+      publicnet:
+        ipv4_address: 64.112.117.122
     # Use consul as a backup to Docker's embedded DNS server. If there's a name
     # Docker's DNS server doesn't know about, it will forward the query to this
     # IP (running consul).
@@ -206,3 +208,10 @@ networks:
       driver: default
       config:
         - subnet: 10.55.55.0/24
+
+  publicnet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 64.112.117.0/24
