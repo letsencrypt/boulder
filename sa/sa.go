@@ -415,7 +415,7 @@ func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req 
 
 	result, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (any, error) {
 		result, err := tx.ExecContext(ctx,
-			"UPDATE registrations SET status = ?, contact = '[]' WHERE status = ? AND id = ? LIMIT 1",
+			"UPDATE registrations SET status = ? WHERE status = ? AND id = ? LIMIT 1",
 			string(core.StatusDeactivated),
 			string(core.StatusValid),
 			req.Id,
