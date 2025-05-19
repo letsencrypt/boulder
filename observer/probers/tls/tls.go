@@ -67,14 +67,19 @@ func (p TLSProbe) Kind() string {
 }
 
 // Get OCSP status (good, revoked or unknown) of certificate
-func checkOCSP(cert, issuer *x509.Certificate, want int) (bool, error) {
+func checkOCSP(ctx context.Context, cert, issuer *x509.Certificate, want int) (bool, error) {
 	req, err := ocsp.CreateRequest(cert, issuer, nil)
 	if err != nil {
 		return false, err
 	}
 
 	url := fmt.Sprintf("%s/%s", cert.OCSPServer[0], base64.StdEncoding.EncodeToString(req))
-	res, err := http.Get(url)
+	r, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return false, err
+	}
+
+	res, err := http.DefaultClient.Do(r)
 	if err != nil {
 		return false, err
 	}
@@ -92,12 +97,17 @@ func checkOCSP(cert, issuer *x509.Certificate, want int) (bool, error) {
 	return ocspRes.Status == want, nil
 }
 
-func checkCRL(cert, issuer *x509.Certificate, want int) (bool, error) {
+func checkCRL(ctx context.Context, cert, issuer *x509.Certificate, want int) (bool, error) {
 	if len(cert.CRLDistributionPoints) != 1 {
 		return false, errors.New("cert does not contain CRLDP URI")
 	}
 
-	resp, err := http.Get(cert.CRLDistributionPoints[0])
+	req, err := http.NewRequestWithContext(ctx, "GET", cert.CRLDistributionPoints[0], nil)
+	if err != nil {
+		return false, fmt.Errorf("creating HTTP request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return false, fmt.Errorf("downloading CRL: %w", err)
 	}
@@ -268,9 +278,9 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 
 	var statusMatch bool
 	if len(peers[0].OCSPServer) != 0 {
-		statusMatch, err = checkOCSP(peers[0], peers[1], wantStatus)
+		statusMatch, err = checkOCSP(ctx, peers[0], peers[1], wantStatus)
 	} else {
-		statusMatch, err = checkCRL(peers[0], peers[1], wantStatus)
+		statusMatch, err = checkCRL(ctx, peers[0], peers[1], wantStatus)
 	}
 	if err != nil {
 		p.exportMetrics(peers[0], revocationStatusError)
