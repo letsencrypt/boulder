@@ -85,6 +85,10 @@ type Config struct {
 	// StoreARIReplacesInOrders causes the SA to store and retrieve the optional
 	// ARI replaces field in the orders table.
 	StoreARIReplacesInOrders bool
+
+	// IgnoreAccountContacts causes the SA to omit the contacts column when
+	// creating new account rows, and when retrieving existing account rows.
+	IgnoreAccountContacts bool
 }
 
 var fMu = new(sync.RWMutex)
