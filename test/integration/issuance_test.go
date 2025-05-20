@@ -8,9 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"fmt"
-	"net"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -224,7 +222,7 @@ func TestIPShortLived(t *testing.T) {
 		cert := res.certs[0]
 
 		// Check that the shortlived profile worked as expected.
-		if !reflect.DeepEqual(cert.IPAddresses, []net.IP{net.ParseIP(ip)}) {
+		if cert.IPAddresses[0].String() != ip {
 			t.Errorf("got cert with first IP SAN '%s', wanted '%s'", cert.IPAddresses[0], ip)
 		}
 	} else {
