@@ -30,6 +30,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	vapb "github.com/letsencrypt/boulder/va/proto"
