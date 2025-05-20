@@ -117,12 +117,11 @@ type Client interface {
 
 // impl represents a client that talks to an external resolver
 type impl struct {
-	dnsClient                exchanger
-	servers                  ServerProvider
-	allowRestrictedAddresses bool
-	maxTries                 int
-	clk                      clock.Clock
-	log                      blog.Logger
+	dnsClient exchanger
+	servers   ServerProvider
+	maxTries  int
+	clk       clock.Clock
+	log       blog.Logger
 
 	queryTime         *prometheus.HistogramVec
 	totalLookupTime   *prometheus.HistogramVec
@@ -210,35 +209,16 @@ func New(
 	)
 	stats.MustRegister(queryTime, totalLookupTime, timeoutCounter, idMismatchCounter)
 	return &impl{
-		dnsClient:                client,
-		servers:                  servers,
-		allowRestrictedAddresses: false,
-		maxTries:                 maxTries,
-		clk:                      clk,
-		queryTime:                queryTime,
-		totalLookupTime:          totalLookupTime,
-		timeoutCounter:           timeoutCounter,
-		idMismatchCounter:        idMismatchCounter,
-		log:                      log,
+		dnsClient:         client,
+		servers:           servers,
+		maxTries:          maxTries,
+		clk:               clk,
+		queryTime:         queryTime,
+		totalLookupTime:   totalLookupTime,
+		timeoutCounter:    timeoutCounter,
+		idMismatchCounter: idMismatchCounter,
+		log:               log,
 	}
-}
-
-// NewTest constructs a new DNS resolver object that utilizes the
-// provided list of DNS servers for resolution and will allow loopback addresses.
-// This constructor should *only* be called from tests (unit or integration).
-func NewTest(
-	readTimeout time.Duration,
-	servers ServerProvider,
-	stats prometheus.Registerer,
-	clk clock.Clock,
-	maxTries int,
-	userAgent string,
-	log blog.Logger,
-	tlsConfig *tls.Config,
-) Client {
-	resolver := New(readTimeout, servers, stats, clk, maxTries, userAgent, log, tlsConfig)
-	resolver.(*impl).allowRestrictedAddresses = true
-	return resolver
 }
 
 // exchangeOne performs a single DNS exchange with a randomly chosen server
@@ -502,7 +482,7 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 		for _, answer := range recordsA {
 			if answer.Header().Rrtype == dns.TypeA {
 				a, ok := answer.(*dns.A)
-				if ok && a.A.To4() != nil && (!isPrivateV4(a.A) || dnsClient.allowRestrictedAddresses) {
+				if ok && a.A.To4() != nil && !isPrivateV4(a.A) {
 					addrsA = append(addrsA, a.A)
 				}
 			}
@@ -517,7 +497,7 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 		for _, answer := range recordsAAAA {
 			if answer.Header().Rrtype == dns.TypeAAAA {
 				aaaa, ok := answer.(*dns.AAAA)
-				if ok && aaaa.AAAA.To16() != nil && (!isPrivateV6(aaaa.AAAA) || dnsClient.allowRestrictedAddresses) {
+				if ok && aaaa.AAAA.To16() != nil && !isPrivateV6(aaaa.AAAA) {
 					addrsAAAA = append(addrsAAAA, aaaa.AAAA)
 				}
 			}
