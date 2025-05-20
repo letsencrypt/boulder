@@ -3,7 +3,6 @@ package policy
 import (
 	"net"
 	"net/netip"
-	"strings"
 )
 
 var (
@@ -99,15 +98,4 @@ func IsReservedIP(ip net.IP) (bool, string, error) {
 	}
 
 	return false, "", nil
-}
-
-// IsNonLoopbackReservedIP wraps IsReservedIP but excludes loopback ranges.
-//
-// This should *only* be called from tests (unit or integration).
-func IsNonLoopbackReservedIP(ip net.IP) (bool, string, error) {
-	reserved, name, err := IsReservedIP(ip)
-	if reserved && strings.Contains(name, "Loopback") {
-		return false, "", nil
-	}
-	return reserved, name, err
 }

@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
@@ -29,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -99,6 +99,21 @@ func createValidationRequest(ident identifier.ACMEIdentifier, challengeType core
 	}
 }
 
+// isNonLoopbackReservedIP is a mock reserved IP checker that permits loopback
+// networks.
+func isNonLoopbackReservedIP(ip net.IP) bool {
+	loopbackV4 := netip.MustParsePrefix("127.0.0.0/8")
+	loopbackV6 := netip.MustParsePrefix("::1/128")
+	netIPAddr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		panic(fmt.Sprintf("error parsing IP (%s)", ip))
+	}
+	if loopbackV4.Contains(netIPAddr) || loopbackV6.Contains(netIPAddr) {
+		return false
+	}
+	return bdns.IsReservedIP(ip)
+}
+
 // setup returns an in-memory VA and a mock logger. The default resolver client
 // is MockClient{}, but can be overridden.
 //
@@ -132,7 +147,7 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 		accountURIPrefixes,
 		perspective,
 		"",
-		policy.IsNonLoopbackReservedIP,
+		isNonLoopbackReservedIP,
 	)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
@@ -310,7 +325,7 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 		accountURIPrefixes,
 		"example perspective",
 		"",
-		policy.IsNonLoopbackReservedIP,
+		isNonLoopbackReservedIP,
 	)
 	test.AssertError(t, err, "NewValidationAuthorityImpl allowed duplicate remote perspectives")
 	test.AssertContains(t, err.Error(), "duplicate remote VA perspective \"dadaist\"")
