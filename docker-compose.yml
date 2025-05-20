@@ -13,7 +13,7 @@ services:
       # To solve HTTP-01 and TLS-ALPN-01 challenges, change the IP in FAKE_DNS
       # to the IP address where your ACME client's solver is listening.
       # FAKE_DNS: 172.17.0.1
-      FAKE_DNS: 10.77.77.77
+      FAKE_DNS: 64.112.117.122
       BOULDER_CONFIG_DIR: test/config
       GOCACHE: /boulder/.gocache/go-build
       GOFLAGS: -mod=vendor

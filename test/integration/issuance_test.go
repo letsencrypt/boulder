@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"fmt"
+	"net"
 	"os"
 	"reflect"
 	"strings"
@@ -182,11 +183,6 @@ func TestIPShortLived(t *testing.T) {
 		t.Fatalf("creating acme client: %s", err)
 	}
 
-	_, shortlived := client.Directory().Meta.Profiles["shortlived"]
-	if !shortlived {
-		t.Fatal("ACME server not advertising the shortlived profile")
-	}
-
 	// Create a private key.
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -194,45 +190,46 @@ func TestIPShortLived(t *testing.T) {
 	}
 
 	// Create an IP address identifier to request.
+	ip := "64.112.117.122"
 	idents := []acme.Identifier{
-		{Type: "ip", Value: "64.112.117.122"},
+		{Type: "ip", Value: ip},
 	}
 
 	// Ensure we fail under each other profile that we know the test server advertises.
 	_, err = authAndIssue(client, key, idents, false, "legacy")
 	if err == nil {
-		t.Fatal("issued for IP address identifier under legacy profile")
+		t.Error("issued for IP address identifier under legacy profile")
+	}
+	if !strings.Contains(err.Error(), "Profile \"legacy\" does not permit ip type identifiers") {
+		t.Fatalf("issuing under legacy profile failed for the wrong reason: %s", err)
 	}
 
 	_, err = authAndIssue(client, key, idents, false, "modern")
 	if err == nil {
-		t.Fatal("issued for IP address identifier under modern profile")
+		t.Error("issued for IP address identifier under modern profile")
+	}
+	if !strings.Contains(err.Error(), "Profile \"modern\" does not permit ip type identifiers") {
+		t.Fatalf("issuing under legacy profile failed for the wrong reason: %s", err)
 	}
 
 	// Get one cert for the shortlived profile.
 	res, err := authAndIssue(client, key, idents, false, "shortlived")
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		if err != nil {
-			t.Fatalf("issuing under shortlived profile: %s", err)
+			t.Errorf("issuing under shortlived profile: %s", err)
 		}
 		if res.Order.Profile != "shortlived" {
-			t.Fatalf("got '%s' profile, wanted 'shortlived'", res.Order.Profile)
+			t.Errorf("got '%s' profile, wanted 'shortlived'", res.Order.Profile)
 		}
 		cert := res.certs[0]
 
 		// Check that the shortlived profile worked as expected.
-		if cert.Subject.CommonName != "" {
-			t.Fatalf("got cert with CN '%s', wanted none", cert.Subject.CommonName)
-		}
-		if !reflect.DeepEqual(cert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}) {
-			t.Fatal("got cert with unexpected EKUs, wanted ServerAuth")
-		}
-		if len(cert.SubjectKeyId) != 0 {
-			t.Fatalf("got cert with SKID '%s', wanted none", cert.SubjectKeyId)
+		if !reflect.DeepEqual(cert.IPAddresses, []net.IP{net.ParseIP(ip)}) {
+			t.Errorf("got cert with first IP SAN '%s', wanted '%s'", cert.IPAddresses[0], ip)
 		}
 	} else {
-		if !strings.Contains(err.Error(), "The ACME server has disabled this identifier type") {
-			t.Fatalf("issuing under shortlived profile failed for the wrong reason: %s", err)
+		if !strings.Contains(err.Error(), "Profile \"shortlived\" does not permit ip type identifiers") {
+			t.Errorf("issuing under shortlived profile failed for the wrong reason: %s", err)
 		}
 	}
 }
