@@ -46,6 +46,9 @@ services:
       # we can put that name inside our integration test certs (e.g. as a crl
       # url) and have it look like a publicly-accessible name.
       - "ca.example.org:10.77.77.77"
+      # Allow the boulder container to be reached as "integration.trust", for
+      # similar reasons, but intended for use as a SAN rather than a CRLDP.
+      - "integration.trust:10.77.77.77"
     ports:
       - 4001:4001 # ACMEv2
       - 4002:4002 # OCSP
