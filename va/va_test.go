@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
@@ -29,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -143,7 +143,7 @@ func setup(srv *httptest.Server, userAgent string, remoteVAs []RemoteVA, mockDNS
 		accountURIPrefixes,
 		perspective,
 		"",
-		policy.IsNonLoopbackReservedIP,
+		isNonLoopbackReservedIP,
 	)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
@@ -321,7 +321,7 @@ func TestNewValidationAuthorityImplWithDuplicateRemotes(t *testing.T) {
 		accountURIPrefixes,
 		"example perspective",
 		"",
-		policy.IsNonLoopbackReservedIP,
+		isNonLoopbackReservedIP,
 	)
 	test.AssertError(t, err, "NewValidationAuthorityImpl allowed duplicate remote perspectives")
 	test.AssertContains(t, err.Error(), "duplicate remote VA perspective \"dadaist\"")

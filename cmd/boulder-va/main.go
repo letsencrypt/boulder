@@ -3,7 +3,6 @@ package notmain
 import (
 	"context"
 	"flag"
-	"net"
 	"os"
 	"time"
 
@@ -101,7 +100,6 @@ func main() {
 	cmd.FailOnError(err, "tlsConfig config")
 
 	var resolver bdns.Client
-	var reservedIPChecker func(ip net.IP) (bool, string, error)
 	if !c.VA.DNSAllowLoopbackAddresses {
 		resolver = bdns.New(
 			c.VA.DNSTimeout.Duration,
@@ -112,7 +110,6 @@ func main() {
 			c.VA.UserAgent,
 			logger,
 			tlsConfig)
-		reservedIPChecker = policy.IsReservedIP
 	} else {
 		resolver = bdns.NewTest(
 			c.VA.DNSTimeout.Duration,
@@ -123,7 +120,6 @@ func main() {
 			c.VA.UserAgent,
 			logger,
 			tlsConfig)
-		reservedIPChecker = policy.IsNonLoopbackReservedIP
 	}
 	var remotes []va.RemoteVA
 	if len(c.VA.RemoteVAs) > 0 {
