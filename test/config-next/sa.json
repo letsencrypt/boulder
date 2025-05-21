@@ -49,7 +49,8 @@
 		},
 		"healthCheckInterval": "4s",
 		"features": {
-			"StoreARIReplacesInOrders": true
+			"StoreARIReplacesInOrders": true,
+			"IgnoreAccountContacts": true
 		}
 	},
 	"syslog": {
