@@ -4635,7 +4635,7 @@ func TestUpdateRegistrationKey(t *testing.T) {
 
 type mockRLOStream struct {
 	grpc.ServerStream
-	sent []*sapb.RateLimitOverride
+	sent []*sapb.RateLimitOverrideResponse
 	ctx  context.Context
 }
 
@@ -4644,7 +4644,7 @@ func newMockRLOStream() *mockRLOStream {
 }
 func (m *mockRLOStream) Context() context.Context { return m.ctx }
 func (m *mockRLOStream) RecvMsg(any) error        { return io.EOF }
-func (m *mockRLOStream) Send(ov *sapb.RateLimitOverride) error {
+func (m *mockRLOStream) Send(ov *sapb.RateLimitOverrideResponse) error {
 	m.sent = append(m.sent, ov)
 	return nil
 }
@@ -4778,5 +4778,5 @@ func TestGetEnabledRateLimitOverrides(t *testing.T) {
 	err = sa.GetEnabledRateLimitOverrides(&emptypb.Empty{}, stream)
 	test.AssertNotError(t, err, "expected streaming enabled overrides to succeed, got error")
 	test.AssertEquals(t, len(stream.sent), 1)
-	test.AssertEquals(t, stream.sent[0].BucketKey, "on")
+	test.AssertEquals(t, stream.sent[0].Override.BucketKey, "on")
 }

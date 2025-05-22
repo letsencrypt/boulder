@@ -1304,6 +1304,10 @@ func (ssa *SQLStorageAuthorityRO) GetEnabledRateLimitOverrides(_ *emptypb.Empty,
 	}
 
 	return rows.ForEach(func(m *overrideModel) error {
-		return stream.Send(newPBFromOverrideModel(m))
+		return stream.Send(&sapb.RateLimitOverrideResponse{
+			Override:  newPBFromOverrideModel(m),
+			Enabled:   m.Enabled,
+			UpdatedAt: timestamppb.New(m.UpdatedAt),
+		})
 	})
 }
