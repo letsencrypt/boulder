@@ -1061,25 +1061,23 @@ func addIssuedNames(ctx context.Context, queryer db.Execer, cert *x509.Certifica
 	if len(cert.DNSNames) == 0 && len(cert.IPAddresses) == 0 {
 		return berrors.InternalServerError("certificate has no DNSNames or IPAddresses")
 	}
-	if len(cert.DNSNames) > 0 {
-		multiInserter, err := db.NewMultiInserter("issuedNames", []string{"reversedName", "serial", "notBefore", "renewal"})
+
+	multiInserter, err := db.NewMultiInserter("issuedNames", []string{"reversedName", "serial", "notBefore", "renewal"})
+	if err != nil {
+		return err
+	}
+	for _, name := range cert.DNSNames {
+		err = multiInserter.Add([]interface{}{
+			ReverseName(name),
+			core.SerialToString(cert.SerialNumber),
+			cert.NotBefore.Truncate(24 * time.Hour),
+			isRenewal,
+		})
 		if err != nil {
 			return err
 		}
-		for _, name := range cert.DNSNames {
-			err = multiInserter.Add([]interface{}{
-				ReverseName(name),
-				core.SerialToString(cert.SerialNumber),
-				cert.NotBefore.Truncate(24 * time.Hour),
-				isRenewal,
-			})
-			if err != nil {
-				return err
-			}
-		}
-		return multiInserter.Insert(ctx, queryer)
 	}
-	return nil
+	return multiInserter.Insert(ctx, queryer)
 }
 
 func addKeyHash(ctx context.Context, db db.Inserter, cert *x509.Certificate) error {
