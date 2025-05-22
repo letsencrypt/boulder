@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/netip"
 	"regexp"
 	"slices"
@@ -35,9 +34,8 @@ func (mock caaMockDNS) LookupTXT(_ context.Context, hostname string) ([]string, 
 	return nil, bdns.ResolverAddrs{"caaMockDNS"}, nil
 }
 
-func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddrs, error) {
-	ip := net.ParseIP("127.0.0.1")
-	return []net.IP{ip}, bdns.ResolverAddrs{"caaMockDNS"}, nil
+func (mock caaMockDNS) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
+	return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, bdns.ResolverAddrs{"caaMockDNS"}, nil
 }
 
 func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, error) {
@@ -601,7 +599,7 @@ func (b caaBrokenDNS) LookupTXT(_ context.Context, hostname string) ([]string, b
 	return nil, bdns.ResolverAddrs{"caaBrokenDNS"}, errCAABrokenDNSClient
 }
 
-func (b caaBrokenDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddrs, error) {
+func (b caaBrokenDNS) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
 	return nil, bdns.ResolverAddrs{"caaBrokenDNS"}, errCAABrokenDNSClient
 }
 
@@ -619,9 +617,8 @@ func (h caaHijackedDNS) LookupTXT(_ context.Context, hostname string) ([]string,
 	return nil, bdns.ResolverAddrs{"caaHijackedDNS"}, nil
 }
 
-func (h caaHijackedDNS) LookupHost(_ context.Context, hostname string) ([]net.IP, bdns.ResolverAddrs, error) {
-	ip := net.ParseIP("127.0.0.1")
-	return []net.IP{ip}, bdns.ResolverAddrs{"caaHijackedDNS"}, nil
+func (h caaHijackedDNS) LookupHost(_ context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
+	return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, bdns.ResolverAddrs{"caaHijackedDNS"}, nil
 }
 func (h caaHijackedDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, string, bdns.ResolverAddrs, error) {
 	// These records are altered from their caaMockDNS counterparts. Use this to

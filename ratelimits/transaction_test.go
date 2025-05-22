@@ -2,7 +2,7 @@ package ratelimits
 
 import (
 	"fmt"
-	"net"
+	"net/netip"
 	"sort"
 	"testing"
 	"time"
@@ -34,7 +34,7 @@ func TestNewRegistrationsPerIPAddressTransactions(t *testing.T) {
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-and-spend transaction for the global limit.
-	txn, err := tb.registrationsPerIPAddressTransaction(net.ParseIP("1.2.3.4"))
+	txn, err := tb.registrationsPerIPAddressTransaction(netip.MustParseAddr("1.2.3.4"))
 	test.AssertNotError(t, err, "creating transaction")
 	test.AssertEquals(t, txn.bucketKey, "1:1.2.3.4")
 	test.Assert(t, txn.check && txn.spend, "should be check-and-spend")
@@ -47,7 +47,7 @@ func TestNewRegistrationsPerIPv6AddressTransactions(t *testing.T) {
 	test.AssertNotError(t, err, "creating TransactionBuilder")
 
 	// A check-and-spend transaction for the global limit.
-	txn, err := tb.registrationsPerIPv6RangeTransaction(net.ParseIP("2001:db8::1"))
+	txn, err := tb.registrationsPerIPv6RangeTransaction(netip.MustParseAddr("2001:db8::1"))
 	test.AssertNotError(t, err, "creating transaction")
 	test.AssertEquals(t, txn.bucketKey, "2:2001:db8::/48")
 	test.Assert(t, txn.check && txn.spend, "should be check-and-spend")

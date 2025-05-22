@@ -301,13 +301,13 @@ func maxAllowedFailures(perspectiveCount int) int {
 // ipError is an error type used to pass though the IP address of the remote
 // host when an error occurs during HTTP-01 and TLS-ALPN domain validation.
 type ipError struct {
-	ip  net.IP
+	ip  netip.Addr
 	err error
 }
 
 // newIPError wraps an error and the IP of the remote host in an ipError so we
 // can display the IP in the problem details returned to the client.
-func newIPError(ip net.IP, err error) error {
+func newIPError(ip netip.Addr, err error) error {
 	return ipError{ip: ip, err: err}
 }
 
@@ -330,7 +330,7 @@ func detailedError(err error) *probs.ProblemDetails {
 	var ipErr ipError
 	if errors.As(err, &ipErr) {
 		detailedErr := detailedError(ipErr.err)
-		if ipErr.ip == nil {
+		if (ipErr.ip == netip.Addr{}) {
 			// This should never happen.
 			return detailedErr
 		}

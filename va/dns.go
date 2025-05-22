@@ -6,7 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
-	"net"
+	"net/netip"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -15,12 +15,12 @@ import (
 )
 
 // getAddr will query for all A/AAAA records associated with hostname and return
-// the preferred address, the first net.IP in the addrs slice, and all addresses
-// resolved. This is the same choice made by the Go internal resolution library
-// used by net/http. If there is an error resolving the hostname, or if no
-// usable IP addresses are available then a berrors.DNSError instance is
-// returned with a nil net.IP slice.
-func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, bdns.ResolverAddrs, error) {
+// the preferred address, the first netip.Addr in the addrs slice, and all
+// addresses resolved. This is the same choice made by the Go internal
+// resolution library used by net/http. If there is an error resolving the
+// hostname, or if no usable IP addresses are available then a berrors.DNSError
+// instance is returned with a nil netip.Addr slice.
+func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]netip.Addr, bdns.ResolverAddrs, error) {
 	addrs, resolvers, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
 		return nil, resolvers, berrors.DNSError("%v", err)
@@ -37,9 +37,9 @@ func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string)
 
 // availableAddresses takes a ValidationRecord and splits the AddressesResolved
 // into a list of IPv4 and IPv6 addresses.
-func availableAddresses(allAddrs []net.IP) (v4 []net.IP, v6 []net.IP) {
+func availableAddresses(allAddrs []netip.Addr) (v4 []netip.Addr, v6 []netip.Addr) {
 	for _, addr := range allAddrs {
-		if addr.To4() != nil {
+		if addr.Is4() {
 			v4 = append(v4, addr)
 		} else {
 			v6 = append(v6, addr)

@@ -27,17 +27,19 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/grpc/internal/backoff"
-	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
+
+	"github.com/letsencrypt/boulder/bdns"
+	"github.com/letsencrypt/boulder/grpc/internal/backoff"
+	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 )
 
 var logger = grpclog.Component("srv")
@@ -292,11 +294,11 @@ func (d *dnsResolver) lookup() (*resolver.State, error) {
 // If addr is an IPv4 address, return the addr and ok = true.
 // If addr is an IPv6 address, return the addr enclosed in square brackets and ok = true.
 func formatIP(addr string) (addrIP string, ok bool) {
-	ip := net.ParseIP(addr)
-	if ip == nil {
+	ip, err := netip.ParseAddr(addr)
+	if err != nil {
 		return "", false
 	}
-	if ip.To4() != nil {
+	if ip.Is4() {
 		return addr, true
 	}
 	return "[" + addr + "]", true

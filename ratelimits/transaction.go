@@ -3,7 +3,7 @@ package ratelimits
 import (
 	"errors"
 	"fmt"
-	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 )
@@ -16,7 +16,7 @@ var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 
 // newIPAddressBucketKey validates and returns a bucketKey for limits that use
 // the 'enum:ipAddress' bucket key format.
-func newIPAddressBucketKey(name Name, ip net.IP) (string, error) { //nolint:unparam // Only one named rate limit uses this helper
+func newIPAddressBucketKey(name Name, ip netip.Addr) (string, error) { //nolint:unparam // Only one named rate limit uses this helper
 	id := ip.String()
 	err := validateIdForName(name, id)
 	if err != nil {
@@ -27,14 +27,16 @@ func newIPAddressBucketKey(name Name, ip net.IP) (string, error) { //nolint:unpa
 
 // newIPv6RangeCIDRBucketKey validates and returns a bucketKey for limits that
 // use the 'enum:ipv6RangeCIDR' bucket key format.
-func newIPv6RangeCIDRBucketKey(name Name, ip net.IP) (string, error) {
-	if ip.To4() != nil {
+func newIPv6RangeCIDRBucketKey(name Name, ip netip.Addr) (string, error) {
+	if ip.Is4() {
 		return "", fmt.Errorf("invalid IPv6 address, %q must be an IPv6 address", ip.String())
 	}
-	ipMask := net.CIDRMask(48, 128)
-	ipNet := &net.IPNet{IP: ip.Mask(ipMask), Mask: ipMask}
-	id := ipNet.String()
-	err := validateIdForName(name, id)
+	prefix, err := ip.Prefix(48)
+	if err != nil {
+		return "", err
+	}
+	id := prefix.String()
+	err = validateIdForName(name, id)
 	if err != nil {
 		return "", err
 	}
@@ -206,7 +208,7 @@ func NewTransactionBuilder(defaults LimitConfigs) (*TransactionBuilder, error) {
 
 // registrationsPerIPAddressTransaction returns a Transaction for the
 // NewRegistrationsPerIPAddress limit for the provided IP address.
-func (builder *TransactionBuilder) registrationsPerIPAddressTransaction(ip net.IP) (Transaction, error) {
+func (builder *TransactionBuilder) registrationsPerIPAddressTransaction(ip netip.Addr) (Transaction, error) {
 	bucketKey, err := newIPAddressBucketKey(NewRegistrationsPerIPAddress, ip)
 	if err != nil {
 		return Transaction{}, err
@@ -224,7 +226,7 @@ func (builder *TransactionBuilder) registrationsPerIPAddressTransaction(ip net.I
 // registrationsPerIPv6RangeTransaction returns a Transaction for the
 // NewRegistrationsPerIPv6Range limit for the /48 IPv6 range which contains the
 // provided IPv6 address.
-func (builder *TransactionBuilder) registrationsPerIPv6RangeTransaction(ip net.IP) (Transaction, error) {
+func (builder *TransactionBuilder) registrationsPerIPv6RangeTransaction(ip netip.Addr) (Transaction, error) {
 	bucketKey, err := newIPv6RangeCIDRBucketKey(NewRegistrationsPerIPv6Range, ip)
 	if err != nil {
 		return Transaction{}, err
@@ -617,7 +619,7 @@ func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, names 
 // NewAccountLimitTransactions takes in an IP address from a new-account request
 // and returns the set of rate limit transactions that should be evaluated
 // before allowing the request to proceed.
-func (builder *TransactionBuilder) NewAccountLimitTransactions(ip net.IP) ([]Transaction, error) {
+func (builder *TransactionBuilder) NewAccountLimitTransactions(ip netip.Addr) ([]Transaction, error) {
 	makeTxnError := func(err error, limit Name) error {
 		return fmt.Errorf("error constructing rate limit transaction for %s rate limit: %w", limit, err)
 	}
@@ -629,7 +631,7 @@ func (builder *TransactionBuilder) NewAccountLimitTransactions(ip net.IP) ([]Tra
 	}
 	transactions = append(transactions, txn)
 
-	if ip.To4() != nil {
+	if ip.Is4() {
 		// This request was made from an IPv4 address.
 		return transactions, nil
 	}
