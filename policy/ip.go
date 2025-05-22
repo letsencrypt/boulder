@@ -85,7 +85,7 @@ func IsReservedIP(ip netip.Addr) error {
 
 	for net, name := range reservedPrefixes {
 		if net.Contains(ip) {
-			return fmt.Errorf("%w: %s", errIPInvalid, name)
+			return fmt.Errorf("%w: %s", errIPReserved, name)
 		}
 	}
 
