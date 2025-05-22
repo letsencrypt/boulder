@@ -622,6 +622,12 @@ func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 }
 
 func TestBadKeyRevoker(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		// This test relies on contact addresses being persisted, and cares about
+		// emails being sent, which we no longer do in config-next.
+		t.Skip()
+	}
+
 	// Both accounts have two email addresses, one of which is shared between
 	// them. All three addresses should receive mail, because the revocation
 	// request is signed by the certificate key, not an account key, so we don't

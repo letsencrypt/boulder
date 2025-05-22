@@ -16,6 +16,12 @@ import (
 
 func TestAdminClearEmail(t *testing.T) {
 	t.Parallel()
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		// This test relies on contact addresses being persisted, which we no longer
+		// do in config-next.
+		t.Skip()
+	}
+
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	// Note that `example@mail.example.letsencrypt.org` is a substring of `long-example@mail.example.letsencrypt.org`.
