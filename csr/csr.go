@@ -38,8 +38,8 @@ var (
 	invalidNoIdent      = berrors.BadCSRError("at least one identifier is required")
 )
 
-// VerifyCSR checks the validity of a x509.CertificateRequest. It uses FromCSR
-// and NamesFromCSR to normalize the DNS names before checking whether we'll
+// VerifyCSR checks the validity of a x509.CertificateRequest. It uses
+// identifier.FromCSR to normalize the DNS names before checking whether we'll
 // issue for them.
 func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority) error {
 	key, ok := csr.PublicKey.(crypto.PublicKey)
