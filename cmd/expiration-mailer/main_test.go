@@ -417,6 +417,11 @@ func TestProcessCertsConnectError(t *testing.T) {
 }
 
 func TestFindExpiringCertificates(t *testing.T) {
+	// Leave this technically in place until expiration-mailer is fully deleted,
+	// but this test cannot function now that the SA never stores nor retrieves
+	// contacts.
+	t.Skip()
+
 	testCtx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
 
 	addExpiringCerts(t, testCtx)
@@ -620,6 +625,11 @@ func countGroupsAtCapacity(group string, counter *prometheus.GaugeVec) int {
 }
 
 func TestFindCertsAtCapacity(t *testing.T) {
+	// Leave this technically in place until expiration-mailer is fully deleted,
+	// but this test cannot function now that the SA never stores nor retrieves
+	// contacts.
+	t.Skip()
+
 	testCtx := setup(t, []time.Duration{time.Hour * 24})
 
 	addExpiringCerts(t, testCtx)
@@ -776,6 +786,11 @@ func TestCertIsRenewed(t *testing.T) {
 }
 
 func TestLifetimeOfACert(t *testing.T) {
+	// Leave this technically in place until expiration-mailer is fully deleted,
+	// but this test cannot function now that the SA never stores nor retrieves
+	// contacts.
+	t.Skip()
+
 	testCtx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
 	defer testCtx.cleanUp()
 
@@ -882,6 +897,11 @@ func TestDontFindRevokedCert(t *testing.T) {
 }
 
 func TestDedupOnRegistration(t *testing.T) {
+	// Leave this technically in place until expiration-mailer is fully deleted,
+	// but this test cannot function now that the SA never stores nor retrieves
+	// contacts.
+	t.Skip()
+
 	expiresIn := 96 * time.Hour
 	testCtx := setup(t, []time.Duration{expiresIn})
 
