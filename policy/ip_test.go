@@ -6,6 +6,8 @@ import (
 )
 
 func TestIsReservedIP(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		ip   string
 		want bool
