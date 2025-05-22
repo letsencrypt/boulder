@@ -1,7 +1,7 @@
 package policy
 
 import (
-	"net"
+	"net/netip"
 	"testing"
 )
 
@@ -43,12 +43,12 @@ func TestIsReservedIP(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.ip, func(t *testing.T) {
 			t.Parallel()
-			reserved, name, err := IsReservedIP(net.ParseIP(tc.ip))
-			if err != nil {
+			err := IsReservedIP(netip.MustParseAddr(tc.ip))
+			if err != nil && !tc.want {
 				t.Error(err)
 			}
-			if reserved != tc.want {
-				t.Errorf("Got %#v (%#v), but want %#v", reserved, name, tc.want)
+			if err == nil && tc.want {
+				t.Errorf("Wanted error for %#v, got success", tc.ip)
 			}
 		})
 	}

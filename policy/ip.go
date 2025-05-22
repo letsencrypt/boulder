@@ -1,7 +1,7 @@
 package policy
 
 import (
-	"net"
+	"fmt"
 	"net/netip"
 )
 
@@ -74,28 +74,20 @@ var (
 	}
 )
 
-// IsReservedIP returns whether an IP address is part of a reserved range; the
-// range's name, if so; or an error.
-func IsReservedIP(ip net.IP) (bool, string, error) {
-	netIP, ok := netip.AddrFromSlice(ip)
-	if !ok {
-		return false, "", errIPInvalid
-	}
-	// 4in6 would be unexpected and unwelcome. It must be squashed.
-	netIP = netIP.Unmap()
-
+// IsReservedIP returns an error if an IP address is part of a reserved range.
+func IsReservedIP(ip netip.Addr) error {
 	var reservedPrefixes map[netip.Prefix]string
-	if netIP.Is4() {
+	if ip.Is4() {
 		reservedPrefixes = privateV4Prefixes
 	} else {
 		reservedPrefixes = privateV6Prefixes
 	}
 
 	for net, name := range reservedPrefixes {
-		if net.Contains(netIP) {
-			return true, name, nil
+		if net.Contains(ip) {
+			return fmt.Errorf("%w: %s", errIPInvalid, name)
 		}
 	}
 
-	return false, "", nil
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strconv"
@@ -380,6 +381,9 @@ func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uin
 // chase CNAME/DNAME aliases and return relevant records. It will retry
 // requests in the case of temporary network errors. It returns an error if
 // both the A and AAAA lookups fail or are empty, but succeeds otherwise.
+//
+// TODO(#5925): Changing from net.IP to netip.Addr could start from here
+// outwards.
 func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.IP, ResolverAddrs, error) {
 	var recordsA, recordsAAAA []dns.RR
 	var errA, errAAAA error
@@ -409,8 +413,8 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 			if answer.Header().Rrtype == dns.TypeA {
 				a, ok := answer.(*dns.A)
 				if ok && a.A.To4() != nil {
-					reserved, _, err := policy.IsReservedIP(a.A)
-					if err == nil && (!reserved || dnsClient.allowRestrictedAddresses) {
+					netIP, ok := netip.AddrFromSlice(a.A)
+					if ok && policy.IsReservedIP(netIP) == nil || dnsClient.allowRestrictedAddresses {
 						addrsA = append(addrsA, a.A)
 					}
 				}
@@ -427,8 +431,8 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 			if answer.Header().Rrtype == dns.TypeAAAA {
 				aaaa, ok := answer.(*dns.AAAA)
 				if ok && aaaa.AAAA.To16() != nil {
-					reserved, _, err := policy.IsReservedIP(aaaa.AAAA)
-					if err == nil && (!reserved || dnsClient.allowRestrictedAddresses) {
+					netIP, ok := netip.AddrFromSlice(aaaa.AAAA)
+					if ok && policy.IsReservedIP(netIP) == nil || dnsClient.allowRestrictedAddresses {
 						addrsAAAA = append(addrsAAAA, aaaa.AAAA)
 					}
 				}

@@ -152,8 +152,8 @@ func TestWellFormedIdentifiers(t *testing.T) {
 		{identifier.ACMEIdentifier{Type: "ip", Value: `::ffff:192.168.1.1`}, errIPInvalid},                                                       // IPv6-encapsulated IPv4
 
 		// IANA special-purpose address blocks
-		{identifier.NewIP(netip.MustParseAddr("192.0.2.129")), errIPSpecialPurpose},                        // Documentation (TEST-NET-1)
-		{identifier.NewIP(netip.MustParseAddr("2001:db8:eee:eeee:eeee:eeee:d01:f1")), errIPSpecialPurpose}, // Documentation
+		{identifier.NewIP(netip.MustParseAddr("192.0.2.129")), errIPInvalid},                        // Documentation (TEST-NET-1)
+		{identifier.NewIP(netip.MustParseAddr("2001:db8:eee:eeee:eeee:eeee:d01:f1")), errIPInvalid}, // Documentation
 	}
 
 	// Test syntax errors

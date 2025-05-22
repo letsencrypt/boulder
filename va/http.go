@@ -334,12 +334,9 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (iden
 
 	reqIP, err := netip.ParseAddr(reqHost)
 	if err == nil {
-		reserved, _, err := va.isReservedIPFunc(reqIP.AsSlice())
+		err := va.isReservedIPFunc(reqIP)
 		if err != nil {
-			return identifier.ACMEIdentifier{}, 0, err
-		}
-		if reserved {
-			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target, must not be a reserved IP address")
+			return identifier.ACMEIdentifier{}, 0, berrors.ConnectionFailureError("Invalid host in redirect target: %s", err)
 		}
 		return identifier.NewIP(reqIP), reqPort, nil
 	}

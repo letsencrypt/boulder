@@ -102,15 +102,11 @@ func createValidationRequest(ident identifier.ACMEIdentifier, challengeType core
 
 // isNonLoopbackReservedIP is a mock reserved IP checker that permits loopback
 // networks.
-func isNonLoopbackReservedIP(ip net.IP) (bool, string, error) {
+func isNonLoopbackReservedIP(ip netip.Addr) error {
 	loopbackV4 := netip.MustParsePrefix("127.0.0.0/8")
 	loopbackV6 := netip.MustParsePrefix("::1/128")
-	netIPAddr, ok := netip.AddrFromSlice(ip)
-	if !ok {
-		return false, "", fmt.Errorf("error parsing IP (%s)", ip)
-	}
-	if loopbackV4.Contains(netIPAddr) || loopbackV6.Contains(netIPAddr) {
-		return false, "", nil
+	if loopbackV4.Contains(ip) || loopbackV6.Contains(ip) {
+		return nil
 	}
 	return policy.IsReservedIP(ip)
 }
