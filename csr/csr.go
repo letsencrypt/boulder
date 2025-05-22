@@ -68,13 +68,8 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return invalidURIPresent
 	}
 
-	// NamesFromCSR and FromCSR also perform normalization, returning values
-	// that may not match the literal CSR contents.
-	names := NamesFromCSR(csr)
-	if len(names.CN) > maxCNLength {
-		return berrors.BadCSRError("CN was longer than %d bytes", maxCNLength)
-	}
-
+	// FromCSR also performs normalization, returning values that may not match
+	// the literal CSR contents.
 	idents := identifier.FromCSR(csr)
 	if len(idents) == 0 {
 		return invalidNoIdent
@@ -90,46 +85,26 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	return nil
 }
 
-type names struct {
-	SANs []string
-	CN   string
-}
-
-// NamesFromCSR deduplicates and lower-cases the Subject Common Name and Subject
-// Alternative Names from the CSR. If a CN was provided, it will be used if it
-// is short enough, otherwise there will be no CN. If no CN was provided, the CN
-// will be the first SAN that is short enough, which is done only for backwards
-// compatibility with prior Let's Encrypt behaviour. The resulting SANs will
-// always include the original CN, if any.
-//
-// TODO(#7311): For callers that don't care about CNs, use identifier.FromCSR.
-// For the rest, either revise the names struct to hold identifiers instead of
-// strings, or add an ipSANs field (and rename SANs to dnsSANs).
-func NamesFromCSR(csr *x509.CertificateRequest) names {
-	// Produce a new "sans" slice with the same memory address as csr.DNSNames
-	// but force a new allocation if an append happens so that we don't
-	// accidentally mutate the underlying csr.DNSNames array.
-	sans := csr.DNSNames[0:len(csr.DNSNames):len(csr.DNSNames)]
-
-	if csr.Subject.CommonName != "" {
-		sans = append(sans, csr.Subject.CommonName)
-	}
-
+// CNFromCSR returns the lower-cased Subject Common Name from the CSR, if a
+// short enough CN was provided. If it was too long, there will be no CN. If
+// none was provided, the CN will be the first SAN that is short enough, which
+// is done only for backwards compatibility with prior Let's Encrypt behaviour.
+func CNFromCSR(csr *x509.CertificateRequest) string {
 	if len(csr.Subject.CommonName) > maxCNLength {
-		return names{SANs: core.UniqueLowerNames(sans)}
+		return ""
 	}
 
 	if csr.Subject.CommonName != "" {
-		return names{SANs: core.UniqueLowerNames(sans), CN: strings.ToLower(csr.Subject.CommonName)}
+		return strings.ToLower(csr.Subject.CommonName)
 	}
 
 	// If there's no CN already, but we want to set one, promote the first SAN
 	// which is shorter than the maximum acceptable CN length (if any).
-	for _, name := range sans {
+	for _, name := range csr.DNSNames {
 		if len(name) <= maxCNLength {
-			return names{SANs: core.UniqueLowerNames(sans), CN: strings.ToLower(name)}
+			return strings.ToLower(name)
 		}
 	}
 
-	return names{SANs: core.UniqueLowerNames(sans)}
+	return ""
 }
