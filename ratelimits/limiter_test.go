@@ -469,10 +469,10 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 5 * time.Second,
 				transaction: Transaction{
-					limit: &limit{
-						name:   NewRegistrationsPerIPAddress,
-						burst:  10,
-						period: config.Duration{Duration: time.Hour},
+					limit: &Limit{
+						Name:   NewRegistrationsPerIPAddress,
+						Burst:  10,
+						Period: config.Duration{Duration: time.Hour},
 					},
 				},
 			},
@@ -485,10 +485,10 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 10 * time.Second,
 				transaction: Transaction{
-					limit: &limit{
-						name:   NewRegistrationsPerIPv6Range,
-						burst:  5,
-						period: config.Duration{Duration: time.Hour},
+					limit: &Limit{
+						Name:   NewRegistrationsPerIPv6Range,
+						Burst:  5,
+						Period: config.Duration{Duration: time.Hour},
 					},
 				},
 			},
@@ -501,10 +501,10 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 10 * time.Second,
 				transaction: Transaction{
-					limit: &limit{
-						name:   NewOrdersPerAccount,
-						burst:  2,
-						period: config.Duration{Duration: time.Hour},
+					limit: &Limit{
+						Name:   NewOrdersPerAccount,
+						Burst:  2,
+						Period: config.Duration{Duration: time.Hour},
 					},
 				},
 			},
@@ -517,10 +517,10 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 15 * time.Second,
 				transaction: Transaction{
-					limit: &limit{
-						name:   FailedAuthorizationsPerDomainPerAccount,
-						burst:  7,
-						period: config.Duration{Duration: time.Hour},
+					limit: &Limit{
+						Name:   FailedAuthorizationsPerDomainPerAccount,
+						Burst:  7,
+						Period: config.Duration{Duration: time.Hour},
 					},
 					bucketKey: "4:12345:example.com",
 				},
@@ -534,10 +534,10 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 20 * time.Second,
 				transaction: Transaction{
-					limit: &limit{
-						name:   CertificatesPerDomain,
-						burst:  3,
-						period: config.Duration{Duration: time.Hour},
+					limit: &Limit{
+						Name:   CertificatesPerDomain,
+						Burst:  3,
+						Period: config.Duration{Duration: time.Hour},
 					},
 					bucketKey: "5:example.org",
 				},
@@ -551,10 +551,10 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 20 * time.Second,
 				transaction: Transaction{
-					limit: &limit{
-						name:   CertificatesPerDomainPerAccount,
-						burst:  3,
-						period: config.Duration{Duration: time.Hour},
+					limit: &Limit{
+						Name:   CertificatesPerDomainPerAccount,
+						Burst:  3,
+						Period: config.Duration{Duration: time.Hour},
 					},
 					bucketKey: "6:12345678:example.net",
 				},
@@ -568,8 +568,8 @@ func TestRateLimitError(t *testing.T) {
 				allowed: false,
 				retryIn: 30 * time.Second,
 				transaction: Transaction{
-					limit: &limit{
-						name: 9999999,
+					limit: &Limit{
+						Name: 9999999,
 					},
 				},
 			},
