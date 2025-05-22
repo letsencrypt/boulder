@@ -24,7 +24,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
@@ -61,7 +60,7 @@ func badJSONError(msg string, jsonData []byte, err error) error {
 	}
 }
 
-const regFields = "id, jwk, jwk_sha256, contact, agreement, createdAt, LockCol, status"
+const regFields = "id, jwk, jwk_sha256, agreement, createdAt, LockCol, status"
 
 // ClearEmail removes the provided email address from one specified registration. If
 // there are multiple email addresses present, it does not modify other ones. If the email
@@ -273,7 +272,6 @@ type regModel struct {
 	ID        int64     `db:"id"`
 	Key       []byte    `db:"jwk"`
 	KeySHA256 string    `db:"jwk_sha256"`
-	Contact   string    `db:"contact"`
 	Agreement string    `db:"agreement"`
 	CreatedAt time.Time `db:"createdAt"`
 	LockCol   int64
@@ -294,18 +292,6 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		return nil, err
 	}
 
-	// We don't want to write literal JSON "null" strings into the database if the
-	// list of contact addresses is empty. Replace any possibly-`nil` slice with
-	// an empty JSON array. We don't need to check reg.ContactPresent, because
-	// we're going to write the whole object to the database anyway.
-	jsonContact := []byte("[]")
-	if len(reg.Contact) != 0 && !features.Get().IgnoreAccountContacts {
-		jsonContact, err = json.Marshal(reg.Contact)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	var createdAt time.Time
 	if !core.IsAnyNilOrZero(reg.CreatedAt) {
 		createdAt = reg.CreatedAt.AsTime()
@@ -315,7 +301,6 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		ID:        reg.Id,
 		Key:       reg.Key,
 		KeySHA256: sha,
-		Contact:   string(jsonContact),
 		Agreement: reg.Agreement,
 		CreatedAt: createdAt,
 		Status:    reg.Status,
@@ -327,18 +312,9 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 		return nil, errors.New("incomplete Registration retrieved from DB")
 	}
 
-	contact := []string{}
-	if len(reg.Contact) > 0 && !features.Get().IgnoreAccountContacts {
-		err := json.Unmarshal([]byte(reg.Contact), &contact)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return &corepb.Registration{
 		Id:        reg.ID,
 		Key:       reg.Key,
-		Contact:   contact,
 		Agreement: reg.Agreement,
 		CreatedAt: timestamppb.New(reg.CreatedAt.UTC()),
 		Status:    reg.Status,
