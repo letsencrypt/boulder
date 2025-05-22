@@ -24,6 +24,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
@@ -298,7 +299,7 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 	// an empty JSON array. We don't need to check reg.ContactPresent, because
 	// we're going to write the whole object to the database anyway.
 	jsonContact := []byte("[]")
-	if len(reg.Contact) != 0 {
+	if len(reg.Contact) != 0 && !features.Get().IgnoreAccountContacts {
 		jsonContact, err = json.Marshal(reg.Contact)
 		if err != nil {
 			return nil, err
@@ -327,7 +328,7 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 	}
 
 	contact := []string{}
-	if len(reg.Contact) > 0 {
+	if len(reg.Contact) > 0 && !features.Get().IgnoreAccountContacts {
 		err := json.Unmarshal([]byte(reg.Contact), &contact)
 		if err != nil {
 			return nil, err

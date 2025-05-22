@@ -1147,6 +1147,11 @@ def test_ocsp_exp_unauth():
         raise(Exception("timed out waiting for unauthorized OCSP response for expired certificate. Last error: {}".format(last_error)))
 
 def test_expiration_mailer():
+    # This test relies on contact addresses being persisted, which we no longer
+    # do in config-next.
+    if 'config-next' in os.environ['BOULDER_CONFIG_DIR']:
+        return
+
     email_addr = "integration.%x@letsencrypt.org" % random.randrange(2**16)
     order = chisel2.auth_and_issue([random_domain()], email=email_addr)
     cert = parse_cert(order)
@@ -1208,38 +1213,6 @@ def test_caa_extensions():
     ## CAA should fail with an arbitrary account, but succeed with the CAA client.
     chisel2.expect_problem("urn:ietf:params:acme:error:caa", lambda: chisel2.auth_and_issue(["accounturi.good-caa-reserved.com"]))
     chisel2.auth_and_issue(["accounturi.good-caa-reserved.com"], client=client)
-
-def test_new_account():
-    """
-    Test creating new accounts with no email, empty email, one email, and a
-    tuple of multiple emails.
-    """
-    for contact in (None, (), ("mailto:single@chisel.com",), ("mailto:one@chisel.com", "mailto:two@chisel.com")):
-        # We don't use `chisel2.make_client` or `messages.NewRegistration.from_data`
-        # here because they do too much client-side processing to make the
-        # contact addresses look "nice".
-        client = chisel2.uninitialized_client()
-        result = client.new_account(messages.NewRegistration(contact=contact, terms_of_service_agreed=True))
-        actual = result.body.contact
-        if contact is not None and contact != actual:
-            raise(Exception("New Account failed: expected contact %s, got %s" % (contact, actual)))
-
-def test_account_update():
-    """
-    Create a new ACME client/account with one contact email. Then update the
-    account to a different contact emails.
-    """
-    for contact in (None, (), ("mailto:single@chisel.com",), ("mailto:one@chisel.com", "mailto:two@chisel.com")):
-        # We don't use `chisel2.update_email` or `messages.NewRegistration.from_data`
-        # here because they do too much client-side processing to make the
-        # contact addresses look "nice".
-        print()
-        client = chisel2.make_client()
-        update = client.net.account.update(body=client.net.account.body.update(contact=contact))
-        result = client.update_registration(update)
-        actual = result.body.contact
-        if contact is not None and contact != actual:
-            raise(Exception("New Account failed: expected contact %s, got %s" % (contact, actual)))
 
 def test_renewal_exemption():
     """

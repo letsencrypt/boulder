@@ -2478,6 +2478,10 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		response.Header().Set(headerRetryAfter, strconv.Itoa(orderRetryAfter))
 	}
 
+	orderURL := web.RelativeEndpoint(request,
+		fmt.Sprintf("%s%d/%d", orderPath, acctID, order.Id))
+	response.Header().Set("Location", orderURL)
+
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
