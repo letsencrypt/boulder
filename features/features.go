@@ -25,6 +25,7 @@ type Config struct {
 	EnforceMPIC                 bool
 	MPICFullResults             bool
 	UnsplitIssuance             bool
+	IgnoreAccountContacts       bool
 
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
@@ -85,10 +86,6 @@ type Config struct {
 	// StoreARIReplacesInOrders causes the SA to store and retrieve the optional
 	// ARI replaces field in the orders table.
 	StoreARIReplacesInOrders bool
-
-	// IgnoreAccountContacts causes the SA to omit the contacts column when
-	// creating new account rows, and when retrieving existing account rows.
-	IgnoreAccountContacts bool
 }
 
 var fMu = new(sync.RWMutex)
