@@ -21,6 +21,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -130,6 +131,10 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb
 func (ssa *SQLStorageAuthority) UpdateRegistrationContact(ctx context.Context, req *sapb.UpdateRegistrationContactRequest) (*corepb.Registration, error) {
 	if core.IsAnyNilOrZero(req.RegistrationID) {
 		return nil, errIncompleteRequest
+	}
+
+	if features.Get().IgnoreAccountContacts {
+		return ssa.GetRegistration(ctx, &sapb.RegistrationID{Id: req.RegistrationID})
 	}
 
 	// We don't want to write literal JSON "null" strings into the database if the
