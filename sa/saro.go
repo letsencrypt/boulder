@@ -2,15 +2,19 @@ package sa
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
+	"net"
+	"net/netip"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/jmhodges/clock"
+	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -153,12 +157,58 @@ func (ssa *SQLStorageAuthorityRO) GetRegistrationByKey(ctx context.Context, req 
 	return registrationModelToPb(model)
 }
 
+// ReverseName reverses the elements of a dot-separated string, such as a
+// hostname or IPv4 address. To decode entries from the issuedNames table, use
+// DecodeIssuedName() instead.
 func ReverseName(domain string) string {
 	labels := strings.Split(domain, ".")
 	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
 		labels[i], labels[j] = labels[j], labels[i]
 	}
 	return strings.Join(labels, ".")
+}
+
+// EncodeIssuedIP prepares an IP address for the issuedNames table by reversing
+// its `in-addr.arpa` or `ip6.arpa` (reverse DNS style) hostname.
+func EncodeIssuedIP(ip net.IP) string {
+	if ip == nil {
+		return ""
+	}
+	reverseDNS, err := dns.ReverseAddr(ip.String())
+	if err != nil {
+		// This is strictly a fallback in case ReverseAddr() fails, which should
+		// be impossible given the output of net.IP.String() in this context.
+		return ReverseName(ip.String())
+	}
+	cutReverseDNS, _ := strings.CutSuffix(reverseDNS, ".")
+	return ReverseName(cutReverseDNS)
+}
+
+// DecodeIssuedName returns the normal (forward) string form of a hostname or IP
+// address that was stored in the issuedNames table.
+func DecodeIssuedName(issuedName string) (string, error) {
+	reversed := ReverseName(issuedName)
+	cutName4, wasCut4 := strings.CutSuffix(reversed, ".in-addr.arpa")
+	if wasCut4 {
+		return ReverseName(cutName4), nil
+	}
+	cutName6, wasCut6 := strings.CutSuffix(reversed, ".ip6.arpa")
+	if wasCut6 {
+		// Reverse the dot-separated string, then strip the dots, to get the
+		// IPv6 address in hex with no separators. Decode the hex into bytes,
+		// parse them with netip.AddrFromSlice(), and then its .String() returns
+		// the address' RFC 5952 form.
+		bytes, err := hex.DecodeString(strings.ReplaceAll(ReverseName(cutName6), ".", ""))
+		if err != nil {
+			return "", err
+		}
+		ip, ok := netip.AddrFromSlice(bytes)
+		if !ok {
+			return "", fmt.Errorf("Couldn't parse IP address '%b'", bytes)
+		}
+		return ip.String(), nil
+	}
+	return reversed, nil
 }
 
 // GetSerialMetadata returns metadata stored alongside the serial number,

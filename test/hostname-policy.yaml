@@ -14,7 +14,7 @@ ExactBlockedNames:
 # all subdomains/wildcards.
 HighRiskBlockedNames:
   # See RFC 3152
-  - "ipv6.arpa"
+  - "ip6.arpa"
   # See RFC 2317
   - "in-addr.arpa"
   # Etc etc etc

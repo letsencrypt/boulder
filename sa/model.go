@@ -1056,8 +1056,8 @@ func deleteOrderFQDNSet(
 }
 
 func addIssuedNames(ctx context.Context, queryer db.Execer, cert *x509.Certificate, isRenewal bool) error {
-	if len(cert.DNSNames) == 0 {
-		return berrors.InternalServerError("certificate has no DNSNames")
+	if len(cert.DNSNames) == 0 && len(cert.IPAddresses) == 0 {
+		return berrors.InternalServerError("certificate has no DNSNames or IPAddresses")
 	}
 
 	multiInserter, err := db.NewMultiInserter("issuedNames", []string{"reversedName", "serial", "notBefore", "renewal"})
@@ -1067,6 +1067,17 @@ func addIssuedNames(ctx context.Context, queryer db.Execer, cert *x509.Certifica
 	for _, name := range cert.DNSNames {
 		err = multiInserter.Add([]interface{}{
 			ReverseName(name),
+			core.SerialToString(cert.SerialNumber),
+			cert.NotBefore.Truncate(24 * time.Hour),
+			isRenewal,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	for _, ip := range cert.IPAddresses {
+		err = multiInserter.Add([]interface{}{
+			EncodeIssuedIP(ip),
 			core.SerialToString(cert.SerialNumber),
 			cert.NotBefore.Truncate(24 * time.Hour),
 			isRenewal,

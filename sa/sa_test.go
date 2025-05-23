@@ -914,8 +914,8 @@ func TestDeactivateAccount(t *testing.T) {
 
 func TestReverseName(t *testing.T) {
 	testCases := []struct {
-		inputDomain   string
-		inputReversed string
+		input    string
+		reversed string
 	}{
 		{"", ""},
 		{"...", "..."},
@@ -923,11 +923,53 @@ func TestReverseName(t *testing.T) {
 		{"example.com", "com.example"},
 		{"www.example.com", "com.example.www"},
 		{"world.wide.web.example.com", "com.example.web.wide.world"},
+		{"1.2.3.4", "4.3.2.1"},
+		{"d.e.e.d.d.a.b.0.a.0.0.0.e.e.0.0.f.f.0.c.a.0.0.0.a.a.a.0.f.f.f.3", "3.f.f.f.0.a.a.a.0.0.0.a.c.0.f.f.0.0.e.e.0.0.0.a.0.b.a.d.d.e.e.d"},
 	}
 
 	for _, tc := range testCases {
-		output := ReverseName(tc.inputDomain)
-		test.AssertEquals(t, output, tc.inputReversed)
+		output := ReverseName(tc.input)
+		test.AssertEquals(t, output, tc.reversed)
+	}
+}
+
+func TestEncodeIssuedIP(t *testing.T) {
+	testCases := []struct {
+		ip   net.IP
+		want string
+	}{
+		{nil, ""},
+		{net.ParseIP("1.2.3.4"), "arpa.in-addr.1.2.3.4"},
+		{net.ParseIP("3fff:aaa:a:c0ff:ee:a:bad:deed"), "arpa.ip6.3.f.f.f.0.a.a.a.0.0.0.a.c.0.f.f.0.0.e.e.0.0.0.a.0.b.a.d.d.e.e.d"},
+	}
+
+	for _, tc := range testCases {
+		output := EncodeIssuedIP(tc.ip)
+		test.AssertEquals(t, output, tc.want)
+	}
+}
+
+func TestDecodeIssuedName(t *testing.T) {
+	testCases := []struct {
+		// The fields are in this order so it's easier to compare cases with
+		// TestReverseName() and TestEncodeIssuedIP().
+		want       string
+		issuedName string
+	}{
+		{"", ""},
+		{"...", "..."},
+		{"com", "com"},
+		{"example.com", "com.example"},
+		{"www.example.com", "com.example.www"},
+		{"world.wide.web.example.com", "com.example.web.wide.world"},
+		{"1.2.3.4", "arpa.in-addr.1.2.3.4"},
+		{"3fff:aaa:a:c0ff:ee:a:bad:deed", "arpa.ip6.3.f.f.f.0.a.a.a.0.0.0.a.c.0.f.f.0.0.e.e.0.0.0.a.0.b.a.d.d.e.e.d"},
+	}
+
+	for _, tc := range testCases {
+		output, err := DecodeIssuedName(tc.issuedName)
+		test.AssertNotError(t, err, "Failed to decode issued name")
+		test.AssertEquals(t, output, tc.want)
 	}
 }
 
