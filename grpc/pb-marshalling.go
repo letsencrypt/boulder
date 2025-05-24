@@ -23,6 +23,7 @@ import (
 )
 
 var ErrMissingParameters = CodedError(codes.FailedPrecondition, "required RPC parameter was missing")
+var ErrInvalidParameters = CodedError(codes.InvalidArgument, "RPC parameter was invalid")
 
 // This file defines functions to translate between the protobuf types and the
 // code types.
@@ -158,7 +159,7 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 	for i, v := range in.AddressesResolved {
 		netIP, ok := netip.AddrFromSlice(v)
 		if !ok {
-			return core.ValidationRecord{}, ErrMissingParameters
+			return core.ValidationRecord{}, ErrInvalidParameters
 		}
 		addrs[i] = netIP
 	}
@@ -166,7 +167,7 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 	for i, v := range in.AddressesTried {
 		netIP, ok := netip.AddrFromSlice(v)
 		if !ok {
-			return core.ValidationRecord{}, ErrMissingParameters
+			return core.ValidationRecord{}, ErrInvalidParameters
 		}
 		addrsTried[i] = netIP
 	}

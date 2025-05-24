@@ -33,7 +33,7 @@ func newIPv6RangeCIDRBucketKey(name Name, ip netip.Addr) (string, error) {
 	}
 	prefix, err := ip.Prefix(48)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("invalid IPv6 address, can't calculate prefix of %q: %s", ip.String(), err)
 	}
 	id := prefix.String()
 	err = validateIdForName(name, id)

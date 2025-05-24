@@ -221,7 +221,7 @@ func (va *ValidationAuthorityImpl) newHTTPValidationTarget(
 	case identifier.TypeIP:
 		netIP, err := netip.ParseAddr(ident.Value)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("can't parse IP address %q: %s", ident.Value, err)
 		}
 		addrs = []netip.Addr{netIP}
 	default:

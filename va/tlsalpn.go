@@ -81,7 +81,7 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(
 	case identifier.TypeIP:
 		netIP, err := netip.ParseAddr(ident.Value)
 		if err != nil {
-			return nil, nil, validationRecord, err
+			return nil, nil, validationRecord, fmt.Errorf("can't parse IP address %q: %s", ident.Value, err)
 		}
 		addrs = []netip.Addr{netIP}
 	default:
