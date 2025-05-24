@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"strings"
 	"time"
@@ -39,15 +38,10 @@ type resultEntry struct {
 	Hostname string `json:"hostname,omitempty"`
 }
 
-// decodeIssuedName converts (reversed) names sourced from the issuedNames table
-// to standard hostnames.
-func (r *resultEntry) decodeIssuedName() error {
-	hostname, err := sa.DecodeIssuedName(r.Hostname)
-	if err != nil {
-		return err
-	}
-	r.Hostname = hostname
-	return nil
+// encodeIssuedName converts FQDNs and IP addresses to/from their format in the
+// issuedNames table.
+func (r *resultEntry) encodeIssuedName() {
+	r.Hostname = sa.EncodeIssuedName(r.Hostname)
 }
 
 // idExporterResults is passed as a selectable 'holder' for the results
@@ -119,10 +113,7 @@ func (c idExporter) findIDsWithExampleHostnames(ctx context.Context) (idExporter
 	}
 
 	for _, result := range holder {
-		err = result.decodeIssuedName()
-		if err != nil {
-			return nil, err
-		}
+		result.encodeIssuedName()
 	}
 	return holder, nil
 }
@@ -132,12 +123,6 @@ func (c idExporter) findIDsWithExampleHostnames(ctx context.Context) (idExporter
 func (c idExporter) findIDsForHostnames(ctx context.Context, hostnames []string) (idExporterResults, error) {
 	var holder idExporterResults
 	for _, hostname := range hostnames {
-		reversedName := sa.ReverseName(hostname)
-		ip := net.ParseIP(hostname)
-		if ip != nil {
-			reversedName = sa.EncodeIssuedIP(ip)
-		}
-
 		// Pass the same list in each time, borp will happily just append to the slice
 		// instead of overwriting it each time
 		// https://github.com/letsencrypt/borp/blob/c87bd6443d59746a33aca77db34a60cfc344adb2/select.go#L349-L353
@@ -151,7 +136,7 @@ func (c idExporter) findIDsForHostnames(ctx context.Context, hostnames []string)
 				AND n.reversedName = :reversedName;`,
 			map[string]interface{}{
 				"expireCutoff": c.clk.Now().Add(-c.grace),
-				"reversedName": reversedName,
+				"reversedName": sa.EncodeIssuedName(hostname),
 			},
 		)
 		if err != nil {
