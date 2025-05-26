@@ -75,6 +75,7 @@ func main() {
 		"unpause-account":  &subcommandUnpauseAccount{},
 		"import-overrides": &subcommandImportOverrides{},
 		"dump-overrides":   &subcommandDumpEnabledOverrides{},
+		"toggle-override":  &subcommandToggleOverride{},
 	}
 
 	defaultUsage := flag.Usage
