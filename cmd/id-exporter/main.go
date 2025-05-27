@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
@@ -77,8 +78,7 @@ func (c idExporter) findIDs(ctx context.Context) (idExporterResults, error) {
 		`SELECT DISTINCT r.id
 		FROM registrations AS r
 			INNER JOIN certificates AS c on c.registrationID = r.id
-		WHERE r.contact NOT IN ('[]', 'null')
-			AND c.expires >= :expireCutoff;`,
+		WHERE c.expires >= :expireCutoff;`,
 		map[string]interface{}{
 			"expireCutoff": c.clk.Now().Add(-c.grace),
 		})
