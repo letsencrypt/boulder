@@ -57,19 +57,19 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 			if q.Name == "v6.letsencrypt.org." {
 				record := new(dns.AAAA)
 				record.Hdr = dns.RR_Header{Name: "v6.letsencrypt.org.", Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 0}
-				record.AAAA = net.ParseIP("::1")
+				record.AAAA = net.ParseIP("2602:80a:6000:abad:cafe::1")
 				appendAnswer(record)
 			}
 			if q.Name == "dualstack.letsencrypt.org." {
 				record := new(dns.AAAA)
 				record.Hdr = dns.RR_Header{Name: "dualstack.letsencrypt.org.", Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 0}
-				record.AAAA = net.ParseIP("::1")
+				record.AAAA = net.ParseIP("2602:80a:6000:abad:cafe::1")
 				appendAnswer(record)
 			}
 			if q.Name == "v4error.letsencrypt.org." {
 				record := new(dns.AAAA)
 				record.Hdr = dns.RR_Header{Name: "v4error.letsencrypt.org.", Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 0}
-				record.AAAA = net.ParseIP("::1")
+				record.AAAA = net.ParseIP("2602:80a:6000:abad:cafe::1")
 				appendAnswer(record)
 			}
 			if q.Name == "v6error.letsencrypt.org." {
@@ -85,19 +85,19 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 			if q.Name == "cps.letsencrypt.org." {
 				record := new(dns.A)
 				record.Hdr = dns.RR_Header{Name: "cps.letsencrypt.org.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
-				record.A = net.ParseIP("127.0.0.1")
+				record.A = net.ParseIP("64.112.117.1")
 				appendAnswer(record)
 			}
 			if q.Name == "dualstack.letsencrypt.org." {
 				record := new(dns.A)
 				record.Hdr = dns.RR_Header{Name: "dualstack.letsencrypt.org.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
-				record.A = net.ParseIP("127.0.0.1")
+				record.A = net.ParseIP("64.112.117.1")
 				appendAnswer(record)
 			}
 			if q.Name == "v6error.letsencrypt.org." {
 				record := new(dns.A)
 				record.Hdr = dns.RR_Header{Name: "dualstack.letsencrypt.org.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}
-				record.A = net.ParseIP("127.0.0.1")
+				record.A = net.ParseIP("64.112.117.1")
 				appendAnswer(record)
 			}
 			if q.Name == "v4error.letsencrypt.org." {
@@ -326,6 +326,7 @@ func TestDNSLookupTXT(t *testing.T) {
 	test.AssertEquals(t, a[0], "abc")
 }
 
+// TODO(#8213): Convert this to a table test.
 func TestDNSLookupHost(t *testing.T) {
 	staticProvider, err := NewStaticProvider([]string{dnsLoopbackAddr})
 	test.AssertNotError(t, err, "Got error creating StaticProvider")
@@ -373,9 +374,9 @@ func TestDNSLookupHost(t *testing.T) {
 	t.Logf("dualstack.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 2, "Should have 2 IPs")
-	expected := net.ParseIP("127.0.0.1")
+	expected := net.ParseIP("64.112.117.1")
 	test.Assert(t, ip[0].To4().Equal(expected), "wrong ipv4 address")
-	expected = net.ParseIP("::1")
+	expected = net.ParseIP("2602:80a:6000:abad:cafe::1")
 	test.Assert(t, ip[1].To16().Equal(expected), "wrong ipv6 address")
 	slices.Sort(resolvers)
 	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
@@ -385,7 +386,7 @@ func TestDNSLookupHost(t *testing.T) {
 	t.Logf("v6error.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have 1 IP")
-	expected = net.ParseIP("127.0.0.1")
+	expected = net.ParseIP("64.112.117.1")
 	test.Assert(t, ip[0].To4().Equal(expected), "wrong ipv4 address")
 	slices.Sort(resolvers)
 	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
@@ -395,7 +396,7 @@ func TestDNSLookupHost(t *testing.T) {
 	t.Logf("v4error.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have 1 IP")
-	expected = net.ParseIP("::1")
+	expected = net.ParseIP("2602:80a:6000:abad:cafe::1")
 	test.Assert(t, ip[0].To16().Equal(expected), "wrong ipv6 address")
 	slices.Sort(resolvers)
 	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
