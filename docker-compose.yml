@@ -174,6 +174,9 @@ networks:
       driver: default
       config:
         - subnet: 10.77.77.0/24
+          # Only issue DHCP addresses in the top half of the range, to avoid
+          # conflict with static addresses.
+          ip_range: 10.77.77.128/25
 
   # This network is used for two things in the integration tests:
   #  - challtestsrv binds to 10.88.88.88:443 for its tls-alpn-01 challenge
