@@ -1,5 +1,5 @@
-// Read a list of reversed hostnames, separated by newlines. Print only those
-// that are rejected by the current policy.
+// Read a list of reversed FQDNs and/or normal IP addresses, separated by
+// newlines. Print only those that are rejected by the current policy.
 
 package notmain
 
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/netip"
 	"os"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -50,8 +51,15 @@ func main() {
 	}
 	var errors bool
 	for scanner.Scan() {
-		n := sa.ReverseName(scanner.Text())
-		err := pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewDNS(n)})
+		n := sa.EncodeIssuedName(scanner.Text())
+		var ident identifier.ACMEIdentifier
+		ip, err := netip.ParseAddr(n)
+		if err == nil {
+			ident = identifier.NewIP(ip)
+		} else {
+			ident = identifier.NewDNS(n)
+		}
+		err = pa.WillingToIssue(identifier.ACMEIdentifiers{ident})
 		if err != nil {
 			errors = true
 			fmt.Printf("%s: %s\n", n, err)
