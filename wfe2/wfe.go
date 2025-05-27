@@ -13,6 +13,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -660,7 +661,7 @@ func contactsToEmails(contacts *[]string) []string {
 // function is returned that can be called to refund the quota if the account
 // creation fails, the func will be nil if any error was encountered during the
 // check.
-func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) (func(), error) {
+func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip netip.Addr) (func(), error) {
 	txns, err := wfe.txnBuilder.NewAccountLimitTransactions(ip)
 	if err != nil {
 		return nil, fmt.Errorf("building new account limit transactions: %w", err)
@@ -2701,16 +2702,16 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	}
 }
 
-func extractRequesterIP(req *http.Request) (net.IP, error) {
-	ip := net.ParseIP(req.Header.Get("X-Real-IP"))
-	if ip != nil {
+func extractRequesterIP(req *http.Request) (netip.Addr, error) {
+	ip, err := netip.ParseAddr(req.Header.Get("X-Real-IP"))
+	if err == nil {
 		return ip, nil
 	}
 	host, _, err := net.SplitHostPort(req.RemoteAddr)
 	if err != nil {
-		return nil, err
+		return netip.Addr{}, err
 	}
-	return net.ParseIP(host), nil
+	return netip.ParseAddr(host)
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {

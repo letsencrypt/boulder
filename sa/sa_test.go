@@ -17,7 +17,6 @@ import (
 	"math/big"
 	"math/bits"
 	mrand "math/rand/v2"
-	"net"
 	"net/netip"
 	"os"
 	"reflect"
@@ -2221,7 +2220,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	authzID := createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	expires := fc.Now().Add(time.Hour * 2).UTC()
 	attemptedAt := fc.Now()
-	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
+	ip, _ := netip.MustParseAddr("1.1.1.1").MarshalText()
 
 	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,
@@ -2292,7 +2291,7 @@ func TestRehydrateHostPort(t *testing.T) {
 
 	expires := fc.Now().Add(time.Hour * 2).UTC()
 	attemptedAt := fc.Now()
-	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
+	ip, _ := netip.MustParseAddr("1.1.1.1").MarshalText()
 
 	// Implicit good port with good scheme
 	authzID := createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))

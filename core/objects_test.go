@@ -4,7 +4,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"math/big"
-	"net"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -39,8 +39,8 @@ func TestRecordSanityCheckOnUnsupportedChallengeType(t *testing.T) {
 			URL:               "http://localhost/test",
 			DnsName:           "localhost",
 			Port:              "80",
-			AddressesResolved: []net.IP{{127, 0, 0, 1}},
-			AddressUsed:       net.IP{127, 0, 0, 1},
+			AddressesResolved: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+			AddressUsed:       netip.MustParseAddr("127.0.0.1"),
 			ResolverAddrs:     []string{"eastUnboundAndDown"},
 		},
 	}

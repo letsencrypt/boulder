@@ -3,6 +3,7 @@ package grpc
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"strings"
 
 	"google.golang.org/grpc/resolver"
@@ -91,7 +92,8 @@ func parseResolverIPAddress(addr string) (*resolver.Address, error) {
 		// empty (e.g. :80), the local system is assumed.
 		host = "127.0.0.1"
 	}
-	if net.ParseIP(host) == nil {
+	_, err = netip.ParseAddr(host)
+	if err != nil {
 		// Host is a DNS name or an IPv6 address without brackets.
 		return nil, fmt.Errorf("address %q is not an IP address", addr)
 	}

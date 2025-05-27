@@ -7,7 +7,7 @@ package grpc
 
 import (
 	"fmt"
-	"net"
+	"net/netip"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -23,6 +23,7 @@ import (
 )
 
 var ErrMissingParameters = CodedError(codes.FailedPrecondition, "required RPC parameter was missing")
+var ErrInvalidParameters = CodedError(codes.InvalidArgument, "RPC parameter was invalid")
 
 // This file defines functions to translate between the protobuf types and the
 // code types.
@@ -130,10 +131,10 @@ func ValidationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 	addrsTried := make([][]byte, len(record.AddressesTried))
 	var err error
 	for i, v := range record.AddressesResolved {
-		addrs[i] = []byte(v)
+		addrs[i] = v.AsSlice()
 	}
 	for i, v := range record.AddressesTried {
-		addrsTried[i] = []byte(v)
+		addrsTried[i] = v.AsSlice()
 	}
 	addrUsed, err := record.AddressUsed.MarshalText()
 	if err != nil {
@@ -154,15 +155,23 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 	if in == nil {
 		return core.ValidationRecord{}, ErrMissingParameters
 	}
-	addrs := make([]net.IP, len(in.AddressesResolved))
+	addrs := make([]netip.Addr, len(in.AddressesResolved))
 	for i, v := range in.AddressesResolved {
-		addrs[i] = net.IP(v)
+		netIP, ok := netip.AddrFromSlice(v)
+		if !ok {
+			return core.ValidationRecord{}, ErrInvalidParameters
+		}
+		addrs[i] = netIP
 	}
-	addrsTried := make([]net.IP, len(in.AddressesTried))
+	addrsTried := make([]netip.Addr, len(in.AddressesTried))
 	for i, v := range in.AddressesTried {
-		addrsTried[i] = net.IP(v)
+		netIP, ok := netip.AddrFromSlice(v)
+		if !ok {
+			return core.ValidationRecord{}, ErrInvalidParameters
+		}
+		addrsTried[i] = netIP
 	}
-	var addrUsed net.IP
+	var addrUsed netip.Addr
 	err = addrUsed.UnmarshalText(in.AddressUsed)
 	if err != nil {
 		return
