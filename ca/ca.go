@@ -554,7 +554,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		Serial:          serialBigInt.Bytes(),
 		DNSNames:        dnsNames,
 		IPAddresses:     ipAddresses,
-		CommonName:      csrlib.NamesFromCSR(csr).CN,
+		CommonName:      csrlib.CNFromCSR(csr),
 		IncludeCTPoison: true,
 		NotBefore:       notBefore,
 		NotAfter:        notAfter,

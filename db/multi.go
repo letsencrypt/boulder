@@ -85,6 +85,10 @@ func (mi *MultiInserter) query() (string, []interface{}) {
 // Insert inserts all the collected rows into the database represented by
 // `queryer`.
 func (mi *MultiInserter) Insert(ctx context.Context, db Execer) error {
+	if len(mi.values) == 0 {
+		return nil
+	}
+
 	query, queryArgs := mi.query()
 	res, err := db.ExecContext(ctx, query, queryArgs...)
 	if err != nil {
