@@ -297,7 +297,7 @@ def startChallSrv():
         '--management', ':8055',
         '--http01', '64.112.117.122:80',
         '-https01', '64.112.117.122:443',
-        '--tlsalpn01', '10.88.88.88:443'],
+        '--tlsalpn01', '64.112.117.134:443'],
         None)
     # Wait for the chall-test-srv management port.
     if not waitport(8055, ' '.join(challSrvProcess.args)):

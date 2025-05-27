@@ -25,7 +25,7 @@ services:
       bouldernet:
         ipv4_address: 10.77.77.77
       integrationtestnet:
-        ipv4_address: 10.88.88.88
+        ipv4_address: 64.112.117.134
       redisnet:
         ipv4_address: 10.33.33.33
       consulnet:
@@ -182,7 +182,7 @@ networks:
         - subnet: 10.77.77.0/24
 
   # This network is used for two things in the integration tests:
-  #  - challtestsrv binds to 10.88.88.88:443 for its tls-alpn-01 challenge
+  #  - challtestsrv binds to 64.112.117.134:443 for its tls-alpn-01 challenge
   #    responder, to avoid interfering with the HTTPS port used for testing
   #    HTTP->HTTPS redirects during http-01 challenges. Note: this could
   #    probably be updated in the future so that challtestsrv can handle
@@ -190,13 +190,13 @@ networks:
   #  - test/v2_integration.py has some test cases that start their own HTTP
   #    server instead of relying on challtestsrv, because they want very
   #    specific behavior. For these cases, v2_integration.py creates a Python
-  #    HTTP server and binds it to 10.88.88.88:80.
+  #    HTTP server and binds it to 64.112.117.134:80.
   integrationtestnet:
     driver: bridge
     ipam:
       driver: default
       config:
-        - subnet: 10.88.88.0/24
+        - subnet: 64.112.117.128/25
 
   redisnet:
     driver: bridge
@@ -217,4 +217,4 @@ networks:
     ipam:
       driver: default
       config:
-        - subnet: 64.112.117.0/24
+        - subnet: 64.112.117.0/25
