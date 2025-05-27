@@ -3,6 +3,7 @@ package ratelimits
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 
@@ -126,8 +127,8 @@ func (n Name) EnumString() string {
 
 // validIPAddress validates that the provided string is a valid IP address.
 func validIPAddress(id string) error {
-	ip := net.ParseIP(id)
-	if ip == nil {
+	_, err := netip.ParseAddr(id)
+	if err != nil {
 		return fmt.Errorf("invalid IP address, %q must be an IP address", id)
 	}
 	return nil

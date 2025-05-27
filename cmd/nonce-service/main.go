@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -41,8 +42,8 @@ func derivePrefix(key []byte, grpcAddr string) (string, error) {
 		return "", fmt.Errorf("nonce service gRPC address must include an IP address: got %q", grpcAddr)
 	}
 	if host != "" && port != "" {
-		hostIP := net.ParseIP(host)
-		if hostIP == nil {
+		hostIP, err := netip.ParseAddr(host)
+		if err != nil {
 			return "", fmt.Errorf("gRPC address host part was not an IP address")
 		}
 		if hostIP.IsUnspecified() {

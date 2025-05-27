@@ -36,7 +36,7 @@ type ResolverAddrs []string
 // Client queries for DNS records
 type Client interface {
 	LookupTXT(context.Context, string) (txts []string, resolver ResolverAddrs, err error)
-	LookupHost(context.Context, string) ([]net.IP, ResolverAddrs, error)
+	LookupHost(context.Context, string) ([]netip.Addr, ResolverAddrs, error)
 	LookupCAA(context.Context, string) ([]*dns.CAA, string, ResolverAddrs, error)
 }
 
@@ -361,10 +361,7 @@ func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uin
 // chase CNAME/DNAME aliases and return relevant records. It will retry
 // requests in the case of temporary network errors. It returns an error if
 // both the A and AAAA lookups fail or are empty, but succeeds otherwise.
-//
-// TODO(#5925): Changing from net.IP to netip.Addr could start from here
-// outwards.
-func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.IP, ResolverAddrs, error) {
+func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]netip.Addr, ResolverAddrs, error) {
 	var recordsA, recordsAAAA []dns.RR
 	var errA, errAAAA error
 	var resolverA, resolverAAAA string
@@ -387,7 +384,7 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 		return a == ""
 	})
 
-	var addrsA []net.IP
+	var addrsA []netip.Addr
 	if errA == nil {
 		for _, answer := range recordsA {
 			if answer.Header().Rrtype == dns.TypeA {
@@ -405,7 +402,7 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 		}
 	}
 
-	var addrsAAAA []net.IP
+	var addrsAAAA []netip.Addr
 	if errAAAA == nil {
 		for _, answer := range recordsAAAA {
 			if answer.Header().Rrtype == dns.TypeAAAA {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"regexp"
@@ -374,10 +375,10 @@ func TestDNSLookupHost(t *testing.T) {
 	t.Logf("dualstack.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 2, "Should have 2 IPs")
-	expected := net.ParseIP("64.112.117.1")
-	test.Assert(t, ip[0].To4().Equal(expected), "wrong ipv4 address")
-	expected = net.ParseIP("2602:80a:6000:abad:cafe::1")
-	test.Assert(t, ip[1].To16().Equal(expected), "wrong ipv6 address")
+	expected := netip.MustParseAddr("64.112.117.1")
+	test.Assert(t, ip[0] == expected, "wrong ipv4 address")
+	expected = netip.MustParseAddr("2602:80a:6000:abad:cafe::1")
+	test.Assert(t, ip[1] == expected, "wrong ipv6 address")
 	slices.Sort(resolvers)
 	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
 
@@ -386,8 +387,8 @@ func TestDNSLookupHost(t *testing.T) {
 	t.Logf("v6error.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have 1 IP")
-	expected = net.ParseIP("64.112.117.1")
-	test.Assert(t, ip[0].To4().Equal(expected), "wrong ipv4 address")
+	expected = netip.MustParseAddr("64.112.117.1")
+	test.Assert(t, ip[0] == expected, "wrong ipv4 address")
 	slices.Sort(resolvers)
 	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
 
@@ -396,8 +397,8 @@ func TestDNSLookupHost(t *testing.T) {
 	t.Logf("v4error.letsencrypt.org - IP: %s, Err: %s", ip, err)
 	test.AssertNotError(t, err, "Not an error to exist")
 	test.Assert(t, len(ip) == 1, "Should have 1 IP")
-	expected = net.ParseIP("2602:80a:6000:abad:cafe::1")
-	test.Assert(t, ip[0].To16().Equal(expected), "wrong ipv6 address")
+	expected = netip.MustParseAddr("2602:80a:6000:abad:cafe::1")
+	test.Assert(t, ip[0] == expected, "wrong ipv6 address")
 	slices.Sort(resolvers)
 	test.AssertDeepEquals(t, resolvers, ResolverAddrs{"A:127.0.0.1:4053", "AAAA:127.0.0.1:4053"})
 
