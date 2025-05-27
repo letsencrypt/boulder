@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/mail"
+	"net/netip"
 	"os"
 	"regexp"
 	"slices"
@@ -16,7 +17,6 @@ import (
 	"golang.org/x/net/idna"
 	"golang.org/x/text/unicode/norm"
 
-	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
@@ -180,7 +180,7 @@ var (
 	errNameTooLong          = berrors.MalformedError("Domain name is longer than 253 bytes")
 	errIPAddressInDNS       = berrors.MalformedError("Identifier type is DNS but value is an IP address")
 	errIPInvalid            = berrors.MalformedError("IP address is invalid")
-	errIPSpecialPurpose     = berrors.MalformedError("IP address is in a special-purpose address block")
+	errIPReserved           = berrors.MalformedError("IP address is in a reserved address block")
 	errTooManyLabels        = berrors.MalformedError("Domain name has more than 10 labels (parts)")
 	errEmptyIdentifier      = berrors.MalformedError("Identifier value (name) is empty")
 	errNameEndsInDot        = berrors.MalformedError("Domain name ends in a dot")
@@ -348,16 +348,12 @@ func validIP(ip string) error {
 	// the address as defined in RFC 1123, Sec. 2.1 for IPv4 and in RFC 5952,
 	// Sec. 4 for IPv6.") ParseIP() will accept a non-compliant but otherwise
 	// valid string; String() will output a compliant string.
-	parsedIP := net.ParseIP(ip)
-	if parsedIP == nil || parsedIP.String() != ip {
+	parsedIP, err := netip.ParseAddr(ip)
+	if err != nil || parsedIP.String() != ip {
 		return errIPInvalid
 	}
 
-	if bdns.IsReservedIP(parsedIP) {
-		return errIPSpecialPurpose
-	}
-
-	return nil
+	return IsReservedIP(parsedIP)
 }
 
 // forbiddenMailDomains is a map of domain names we do not allow after the
