@@ -5,8 +5,8 @@
 			"username": "rocsp-tool",
 			"passwordFile": "test/secrets/rocsp_tool_password",
 			"shardAddrs": {
-				"shard1": "10.33.33.2:4218",
-				"shard2": "10.33.33.3:4218"
+				"shard1": "10.77.77.2:4218",
+				"shard2": "10.77.77.3:4218"
 			},
 			"timeout": "5s",
 			"tls": {

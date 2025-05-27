@@ -26,10 +26,6 @@ services:
         ipv4_address: 10.77.77.77
       integrationtestnet:
         ipv4_address: 10.88.88.88
-      redisnet:
-        ipv4_address: 10.33.33.33
-      consulnet:
-        ipv4_address: 10.55.55.55
       publicnet:
         ipv4_address: 64.112.117.122
     # Use consul as a backup to Docker's embedded DNS server. If there's a name
@@ -40,7 +36,7 @@ services:
     # are configured via the ServerAddress field of cmd.GRPCClientConfig.
     # TODO: Remove this when ServerAddress is deprecated in favor of SRV records
     # and DNSAuthority.
-    dns: 10.55.55.10
+    dns: 10.77.77.10
     extra_hosts:
       # Allow the boulder container to be reached as "ca.example.org", so that
       # we can put that name inside our integration test certs (e.g. as a crl
@@ -118,8 +114,8 @@ services:
       - ./test/:/test/:cached
     command: redis-server /test/redis-ocsp.config
     networks:
-      redisnet:
-        ipv4_address: 10.33.33.2
+      bouldernet:
+        ipv4_address: 10.77.77.2
 
   bredis_2:
     image: redis:6.2.7
@@ -127,8 +123,8 @@ services:
       - ./test/:/test/:cached
     command: redis-server /test/redis-ocsp.config
     networks:
-      redisnet:
-        ipv4_address: 10.33.33.3
+      bouldernet:
+        ipv4_address: 10.77.77.3
 
   bredis_3:
     image: redis:6.2.7
@@ -136,8 +132,8 @@ services:
       - ./test/:/test/:cached
     command: redis-server /test/redis-ratelimits.config
     networks:
-      redisnet:
-        ipv4_address: 10.33.33.4
+      bouldernet:
+        ipv4_address: 10.77.77.4
 
   bredis_4:
     image: redis:6.2.7
@@ -145,16 +141,14 @@ services:
       - ./test/:/test/:cached
     command: redis-server /test/redis-ratelimits.config
     networks:
-      redisnet:
-        ipv4_address: 10.33.33.5
+      bouldernet:
+        ipv4_address: 10.77.77.5
 
   bconsul:
     image: hashicorp/consul:1.15.4
     volumes:
      - ./test/:/test/:cached
     networks:
-      consulnet:
-        ipv4_address: 10.55.55.10
       bouldernet:
         ipv4_address: 10.77.77.10
     command: "consul agent -dev -config-format=hcl -config-file=/test/consul/config.hcl"
@@ -197,20 +191,6 @@ networks:
       driver: default
       config:
         - subnet: 10.88.88.0/24
-
-  redisnet:
-    driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: 10.33.33.0/24
-
-  consulnet:
-    driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: 10.55.55.0/24
 
   publicnet:
     driver: bridge
