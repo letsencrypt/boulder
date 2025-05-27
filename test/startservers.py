@@ -295,8 +295,8 @@ def startChallSrv():
         '--doh-cert', 'test/certs/ipki/10.77.77.77/cert.pem',
         '--doh-cert-key', 'test/certs/ipki/10.77.77.77/key.pem',
         '--management', ':8055',
-        '--http01', '10.77.77.77:80',
-        '-https01', '10.77.77.77:443',
+        '--http01', '64.112.117.122:80',
+        '-https01', '64.112.117.122:443',
         '--tlsalpn01', '10.88.88.88:443'],
         None)
     # Wait for the chall-test-srv management port.

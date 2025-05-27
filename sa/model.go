@@ -1056,8 +1056,10 @@ func deleteOrderFQDNSet(
 }
 
 func addIssuedNames(ctx context.Context, queryer db.Execer, cert *x509.Certificate, isRenewal bool) error {
-	if len(cert.DNSNames) == 0 {
-		return berrors.InternalServerError("certificate has no DNSNames")
+	// TODO(#7311): Determine & explicitly document whether to place IP address
+	// identifiers in issuedNames. We currently skip them.
+	if len(cert.DNSNames) == 0 && len(cert.IPAddresses) == 0 {
+		return berrors.InternalServerError("certificate has no DNSNames or IPAddresses")
 	}
 
 	multiInserter, err := db.NewMultiInserter("issuedNames", []string{"reversedName", "serial", "notBefore", "renewal"})
