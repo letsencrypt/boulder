@@ -411,7 +411,7 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]netip
 				a, ok := answer.(*dns.A)
 				if ok && a.A.To4() != nil {
 					netIP, ok := netip.AddrFromSlice(a.A)
-					if ok && policy.IsReservedIP(netIP) == nil || dnsClient.allowRestrictedAddresses {
+					if ok && (policy.IsReservedIP(netIP) == nil || dnsClient.allowRestrictedAddresses) {
 						addrsA = append(addrsA, netIP)
 					}
 				}
@@ -429,7 +429,7 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]netip
 				aaaa, ok := answer.(*dns.AAAA)
 				if ok && aaaa.AAAA.To16() != nil {
 					netIP, ok := netip.AddrFromSlice(aaaa.AAAA)
-					if ok && policy.IsReservedIP(netIP) == nil || dnsClient.allowRestrictedAddresses {
+					if ok && (policy.IsReservedIP(netIP) == nil || dnsClient.allowRestrictedAddresses) {
 						addrsAAAA = append(addrsAAAA, netIP)
 					}
 				}
