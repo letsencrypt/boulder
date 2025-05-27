@@ -149,11 +149,11 @@ func TestWellFormedIdentifiers(t *testing.T) {
 		{identifier.ACMEIdentifier{Type: "ip", Value: `3fff:aaa::ee:0:0:0`}, errIPInvalid},                                                       // :: used for the shorter of two possible collapses (RFC 5952, Sec. 4.2.3)
 		{identifier.ACMEIdentifier{Type: "ip", Value: `fe80:0:0:0:a::`}, errIPInvalid},                                                           // :: used for the last of two possible equal-length collapses (RFC 5952, Sec. 4.2.3)
 		{identifier.ACMEIdentifier{Type: "ip", Value: `3fff:aaa:a:C0FF:EE:a:bad:deed`}, errIPInvalid},                                            // alpha characters capitalized (RFC 5952, Sec. 4.3)
-		{identifier.ACMEIdentifier{Type: "ip", Value: `::ffff:192.168.1.1`}, errIPInvalid},                                                       // IPv6-encapsulated IPv4
+		{identifier.ACMEIdentifier{Type: "ip", Value: `::ffff:192.168.1.1`}, errIPReserved},                                                      // IPv6-encapsulated IPv4
 
 		// IANA special-purpose address blocks
-		{identifier.NewIP(netip.MustParseAddr("192.0.2.129")), errIPSpecialPurpose},                        // Documentation (TEST-NET-1)
-		{identifier.NewIP(netip.MustParseAddr("2001:db8:eee:eeee:eeee:eeee:d01:f1")), errIPSpecialPurpose}, // Documentation
+		{identifier.NewIP(netip.MustParseAddr("192.0.2.129")), errIPReserved},                        // Documentation (TEST-NET-1)
+		{identifier.NewIP(netip.MustParseAddr("2001:db8:eee:eeee:eeee:eeee:d01:f1")), errIPReserved}, // Documentation
 	}
 
 	// Test syntax errors

@@ -9,6 +9,7 @@ import (
 	"maps"
 	"math/rand/v2"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"regexp"
@@ -216,7 +217,7 @@ type ValidationAuthorityImpl struct {
 	singleDialTimeout  time.Duration
 	perspective        string
 	rir                string
-	isReservedIPFunc   func(ip net.IP) bool
+	isReservedIPFunc   func(netip.Addr) error
 
 	metrics *vaMetrics
 }
@@ -236,7 +237,7 @@ func NewValidationAuthorityImpl(
 	accountURIPrefixes []string,
 	perspective string,
 	rir string,
-	reservedIPChecker func(ip net.IP) bool,
+	reservedIPChecker func(netip.Addr) error,
 ) (*ValidationAuthorityImpl, error) {
 
 	if len(accountURIPrefixes) == 0 {
