@@ -24,14 +24,14 @@ services:
     networks:
       bouldernet:
         ipv4_address: 10.77.77.77
-      integrationtestnet:
-        ipv4_address: 64.112.117.134
       redisnet:
         ipv4_address: 10.33.33.33
       consulnet:
         ipv4_address: 10.55.55.55
       publicnet:
         ipv4_address: 64.112.117.122
+      publicnet2:
+        ipv4_address: 64.112.117.134
     # Use consul as a backup to Docker's embedded DNS server. If there's a name
     # Docker's DNS server doesn't know about, it will forward the query to this
     # IP (running consul).
@@ -181,23 +181,6 @@ networks:
       config:
         - subnet: 10.77.77.0/24
 
-  # This network is used for two things in the integration tests:
-  #  - challtestsrv binds to 64.112.117.134:443 for its tls-alpn-01 challenge
-  #    responder, to avoid interfering with the HTTPS port used for testing
-  #    HTTP->HTTPS redirects during http-01 challenges. Note: this could
-  #    probably be updated in the future so that challtestsrv can handle
-  #    both tls-alpn-01 and HTTPS on the same port.
-  #  - test/v2_integration.py has some test cases that start their own HTTP
-  #    server instead of relying on challtestsrv, because they want very
-  #    specific behavior. For these cases, v2_integration.py creates a Python
-  #    HTTP server and binds it to 64.112.117.134:80.
-  integrationtestnet:
-    driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: 64.112.117.128/25
-
   redisnet:
     driver: bridge
     ipam:
@@ -212,9 +195,28 @@ networks:
       config:
         - subnet: 10.55.55.0/24
 
+# This network is used by challtestsrv, which binds to 64.112.117.122:80 and
+# :443 for its HTTP-01 challenge responder.
   publicnet:
     driver: bridge
     ipam:
       driver: default
       config:
         - subnet: 64.112.117.0/25
+
+  # This network is used for two things in the integration tests:
+  #  - challtestsrv binds to 64.112.117.134:443 for its tls-alpn-01 challenge
+  #    responder, to avoid interfering with the HTTPS port used for testing
+  #    HTTP->HTTPS redirects during http-01 challenges. Note: this could
+  #    probably be updated in the future so that challtestsrv can handle
+  #    both tls-alpn-01 and HTTPS on the same port.
+  #  - test/v2_integration.py has some test cases that start their own HTTP
+  #    server instead of relying on challtestsrv, because they want very
+  #    specific behavior. For these cases, v2_integration.py creates a Python
+  #    HTTP server and binds it to 64.112.117.134:80.
+  publicnet2:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 64.112.117.128/25
