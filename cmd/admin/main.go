@@ -76,6 +76,7 @@ func main() {
 		"import-overrides": &subcommandImportOverrides{},
 		"dump-overrides":   &subcommandDumpEnabledOverrides{},
 		"toggle-override":  &subcommandToggleOverride{},
+		"add-override":     &subcommandAddOverride{},
 	}
 
 	defaultUsage := flag.Usage
