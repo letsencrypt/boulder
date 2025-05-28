@@ -94,7 +94,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 	staticProvider, err := bdns.NewStaticProvider([]string{})
 	test.AssertNotError(t, err, "Couldn't make new static provider")
 
-	va.dnsClient = bdns.NewTest(
+	va.dnsClient = bdns.New(
 		time.Second*5,
 		staticProvider,
 		metrics.NoopRegisterer,

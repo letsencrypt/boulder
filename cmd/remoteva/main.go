@@ -108,28 +108,15 @@ func main() {
 		tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
 	}
 
-	var resolver bdns.Client
-	if !c.RVA.DNSAllowLoopbackAddresses {
-		resolver = bdns.New(
-			c.RVA.DNSTimeout.Duration,
-			servers,
-			scope,
-			clk,
-			c.RVA.DNSTries,
-			c.RVA.UserAgent,
-			logger,
-			tlsConfig)
-	} else {
-		resolver = bdns.NewTest(
-			c.RVA.DNSTimeout.Duration,
-			servers,
-			scope,
-			clk,
-			c.RVA.DNSTries,
-			c.RVA.UserAgent,
-			logger,
-			tlsConfig)
-	}
+	resolver := bdns.New(
+		c.RVA.DNSTimeout.Duration,
+		servers,
+		scope,
+		clk,
+		c.RVA.DNSTries,
+		c.RVA.UserAgent,
+		logger,
+		tlsConfig)
 
 	vai, err := va.NewValidationAuthorityImpl(
 		resolver,
