@@ -2,7 +2,7 @@ package grpc
 
 import (
 	"encoding/json"
-	"net"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -69,15 +69,15 @@ func TestChallenge(t *testing.T) {
 	test.AssertNotError(t, err, "PBToChallenge failed")
 	test.AssertDeepEquals(t, recon, chall)
 
-	ip := net.ParseIP("1.1.1.1")
+	ip := netip.MustParseAddr("1.1.1.1")
 	chall.ValidationRecord = []core.ValidationRecord{
 		{
 			DnsName:           "example.com",
 			Port:              "2020",
-			AddressesResolved: []net.IP{ip},
+			AddressesResolved: []netip.Addr{ip},
 			AddressUsed:       ip,
 			URL:               "https://example.com:2020",
-			AddressesTried:    []net.IP{ip},
+			AddressesTried:    []netip.Addr{ip},
 		},
 	}
 	chall.Error = &probs.ProblemDetails{Type: probs.TLSProblem, Detail: "asd", HTTPStatus: 200}
@@ -111,14 +111,14 @@ func TestChallenge(t *testing.T) {
 }
 
 func TestValidationRecord(t *testing.T) {
-	ip := net.ParseIP("1.1.1.1")
+	ip := netip.MustParseAddr("1.1.1.1")
 	vr := core.ValidationRecord{
 		DnsName:           "exampleA.com",
 		Port:              "80",
-		AddressesResolved: []net.IP{ip},
+		AddressesResolved: []netip.Addr{ip},
 		AddressUsed:       ip,
 		URL:               "http://exampleA.com",
-		AddressesTried:    []net.IP{ip},
+		AddressesTried:    []netip.Addr{ip},
 		ResolverAddrs:     []string{"resolver:5353"},
 	}
 
@@ -132,23 +132,23 @@ func TestValidationRecord(t *testing.T) {
 }
 
 func TestValidationResult(t *testing.T) {
-	ip := net.ParseIP("1.1.1.1")
+	ip := netip.MustParseAddr("1.1.1.1")
 	vrA := core.ValidationRecord{
 		DnsName:           "exampleA.com",
 		Port:              "443",
-		AddressesResolved: []net.IP{ip},
+		AddressesResolved: []netip.Addr{ip},
 		AddressUsed:       ip,
 		URL:               "https://exampleA.com",
-		AddressesTried:    []net.IP{ip},
+		AddressesTried:    []netip.Addr{ip},
 		ResolverAddrs:     []string{"resolver:5353"},
 	}
 	vrB := core.ValidationRecord{
 		DnsName:           "exampleB.com",
 		Port:              "443",
-		AddressesResolved: []net.IP{ip},
+		AddressesResolved: []netip.Addr{ip},
 		AddressUsed:       ip,
 		URL:               "https://exampleB.com",
-		AddressesTried:    []net.IP{ip},
+		AddressesTried:    []netip.Addr{ip},
 		ResolverAddrs:     []string{"resolver:5353"},
 	}
 	result := []core.ValidationRecord{vrA, vrB}

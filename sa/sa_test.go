@@ -17,7 +17,6 @@ import (
 	"math/big"
 	"math/bits"
 	mrand "math/rand/v2"
-	"net"
 	"net/netip"
 	"os"
 	"reflect"
@@ -322,7 +321,7 @@ func TestReplicationLagRetries(t *testing.T) {
 
 // findIssuedName is a small helper test function to directly query the
 // issuedNames table for a given name to find a serial (or return an err).
-func findIssuedName(ctx context.Context, dbMap db.OneSelector, name string) (string, error) {
+func findIssuedName(ctx context.Context, dbMap db.OneSelector, issuedName string) (string, error) {
 	var issuedNamesSerial string
 	err := dbMap.SelectOne(
 		ctx,
@@ -331,7 +330,7 @@ func findIssuedName(ctx context.Context, dbMap db.OneSelector, name string) (str
 		WHERE reversedName = ?
 		ORDER BY notBefore DESC
 		LIMIT 1`,
-		ReverseName(name))
+		issuedName)
 	return issuedNamesSerial, err
 }
 
@@ -438,7 +437,7 @@ func TestAddPrecertificate(t *testing.T) {
 	test.AssertEquals(t, now, certStatus.OcspLastUpdated.AsTime())
 
 	// It should show up in the issued names table
-	issuedNamesSerial, err := findIssuedName(ctx, sa.dbMap, testCert.DNSNames[0])
+	issuedNamesSerial, err := findIssuedName(ctx, sa.dbMap, reverseFQDN(testCert.DNSNames[0]))
 	test.AssertNotError(t, err, "expected no err querying issuedNames for precert")
 	test.AssertEquals(t, issuedNamesSerial, serial)
 
@@ -912,10 +911,10 @@ func TestDeactivateAccount(t *testing.T) {
 	test.AssertError(t, err, "Deactivating an already-deactivated account should fail")
 }
 
-func TestReverseName(t *testing.T) {
+func TestReverseFQDN(t *testing.T) {
 	testCases := []struct {
-		inputDomain   string
-		inputReversed string
+		fqdn     string
+		reversed string
 	}{
 		{"", ""},
 		{"...", "..."},
@@ -926,8 +925,46 @@ func TestReverseName(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		output := ReverseName(tc.inputDomain)
-		test.AssertEquals(t, output, tc.inputReversed)
+		output := reverseFQDN(tc.fqdn)
+		test.AssertEquals(t, output, tc.reversed)
+
+		output = reverseFQDN(tc.reversed)
+		test.AssertEquals(t, output, tc.fqdn)
+	}
+}
+
+func TestEncodeIssuedName(t *testing.T) {
+	testCases := []struct {
+		issuedName string
+		reversed   string
+		oneWay     bool
+	}{
+		// Empty strings and bare separators/TLDs should be unchanged.
+		{"", "", false},
+		{"...", "...", false},
+		{"com", "com", false},
+		// FQDNs should be reversed.
+		{"example.com", "com.example", false},
+		{"www.example.com", "com.example.www", false},
+		{"world.wide.web.example.com", "com.example.web.wide.world", false},
+		// IP addresses should stay the same.
+		{"1.2.3.4", "1.2.3.4", false},
+		{"2602:ff3a:1:abad:c0f:fee:abad:cafe", "2602:ff3a:1:abad:c0f:fee:abad:cafe", false},
+		// Tricksy FQDNs that look like IPv6 addresses should be parsed as FQDNs.
+		{"2602.ff3a.1.abad.c0f.fee.abad.cafe", "cafe.abad.fee.c0f.abad.1.ff3a.2602", false},
+		{"2602.ff3a.0001.abad.0c0f.0fee.abad.cafe", "cafe.abad.0fee.0c0f.abad.0001.ff3a.2602", false},
+		// IPv6 addresses should be returned in RFC 5952 format.
+		{"2602:ff3a:0001:abad:0c0f:0fee:abad:cafe", "2602:ff3a:1:abad:c0f:fee:abad:cafe", true},
+	}
+
+	for _, tc := range testCases {
+		output := EncodeIssuedName(tc.issuedName)
+		test.AssertEquals(t, output, tc.reversed)
+
+		if !tc.oneWay {
+			output = EncodeIssuedName(tc.reversed)
+			test.AssertEquals(t, output, tc.issuedName)
+		}
 	}
 }
 
@@ -2106,7 +2143,7 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 
 	reg := createWorkingRegistration(t, sa)
 
-	assertIsRenewal := func(t *testing.T, name string, expected bool) {
+	assertIsRenewal := func(t *testing.T, issuedName string, expected bool) {
 		t.Helper()
 		var count int
 		err := sa.dbMap.SelectOne(
@@ -2115,14 +2152,14 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 			`SELECT COUNT(*) FROM issuedNames
 		WHERE reversedName = ?
 		AND renewal = ?`,
-			ReverseName(name),
+			issuedName,
 			expected,
 		)
 		test.AssertNotError(t, err, "Unexpected error from SelectOne on issuedNames")
 		test.AssertEquals(t, count, 1)
 	}
 
-	// Add a certificate with a never-before-seen name.
+	// Add a certificate with never-before-seen identifiers.
 	_, testCert := test.ThrowAwayCert(t, fc)
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
@@ -2138,16 +2175,19 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Failed to add certificate")
 
-	// None of the names should have a issuedNames row marking it as a renewal.
+	// No identifier should have an issuedNames row marking it as a renewal.
 	for _, name := range testCert.DNSNames {
-		assertIsRenewal(t, name, false)
+		assertIsRenewal(t, reverseFQDN(name), false)
+	}
+	for _, ip := range testCert.IPAddresses {
+		assertIsRenewal(t, ip.String(), false)
 	}
 
 	// Make a new cert and add its FQDN set to the db so it will be considered a
 	// renewal
 	serial, testCert := test.ThrowAwayCert(t, fc)
 	err = addFQDNSet(ctx, sa.dbMap, identifier.FromCert(testCert), serial, testCert.NotBefore, testCert.NotAfter)
-	test.AssertNotError(t, err, "Failed to add name set")
+	test.AssertNotError(t, err, "Failed to add identifier set")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		Issued:       timestamppb.New(testCert.NotBefore),
@@ -2162,9 +2202,12 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Failed to add certificate")
 
-	// All of the names should have a issuedNames row marking it as a renewal.
+	// Each identifier should have an issuedNames row marking it as a renewal.
 	for _, name := range testCert.DNSNames {
-		assertIsRenewal(t, name, true)
+		assertIsRenewal(t, reverseFQDN(name), true)
+	}
+	for _, ip := range testCert.IPAddresses {
+		assertIsRenewal(t, ip.String(), true)
 	}
 }
 
@@ -2177,7 +2220,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	authzID := createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))
 	expires := fc.Now().Add(time.Hour * 2).UTC()
 	attemptedAt := fc.Now()
-	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
+	ip, _ := netip.MustParseAddr("1.1.1.1").MarshalText()
 
 	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,
@@ -2248,7 +2291,7 @@ func TestRehydrateHostPort(t *testing.T) {
 
 	expires := fc.Now().Add(time.Hour * 2).UTC()
 	attemptedAt := fc.Now()
-	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
+	ip, _ := netip.MustParseAddr("1.1.1.1").MarshalText()
 
 	// Implicit good port with good scheme
 	authzID := createPendingAuthorization(t, sa, identifier.NewDNS("aaa"), fc.Now().Add(time.Hour))

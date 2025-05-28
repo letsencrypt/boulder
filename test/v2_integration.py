@@ -446,9 +446,9 @@ def test_http_challenge_timeout():
     """
     # Start a simple python HTTP server on port 80 in its own thread.
     # NOTE(@cpu): The chall-test-srv binds 64.112.117.122:80 for HTTP-01
-    # challenges so we must use the 10.88.88.88 address for the throw away
+    # challenges so we must use the 64.112.117.134 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
-    httpd = SlowHTTPServer(("10.88.88.88", 80), SlowHTTPRequestHandler)
+    httpd = SlowHTTPServer(("64.112.117.134", 80), SlowHTTPRequestHandler)
     thread = threading.Thread(target = httpd.serve_forever)
     thread.daemon = False
     thread.start()
@@ -458,7 +458,7 @@ def test_http_challenge_timeout():
 
     # Add A record for the domains to ensure the VA's requests are directed
     # to the interface that we bound the HTTPServer to.
-    challSrv.add_a_record(hostname, ["10.88.88.88"])
+    challSrv.add_a_record(hostname, ["64.112.117.134"])
 
     start = datetime.datetime.utcnow()
     end = 0
@@ -490,7 +490,7 @@ def test_tls_alpn_challenge():
     # to the interface that the challtestsrv has bound for TLS-ALPN-01 challenge
     # responses
     for host in domains:
-        challSrv.add_a_record(host, ["10.88.88.88"])
+        challSrv.add_a_record(host, ["64.112.117.134"])
     chisel2.auth_and_issue(domains, chall_type="tls-alpn-01")
 
     for host in domains:
@@ -780,7 +780,7 @@ def multiva_setup(client, guestlist):
 
     # Add an A record for the domains to ensure the VA's requests are directed
     # to the interface that we bound the HTTPServer to.
-    challSrv.add_a_record(hostname, ["10.88.88.88"])
+    challSrv.add_a_record(hostname, ["64.112.117.134"])
 
     # Add an A record for the redirect target that sends it to the real chall
     # test srv for a valid HTTP-01 response.
@@ -789,11 +789,11 @@ def multiva_setup(client, guestlist):
 
     # Start a simple python HTTP server on port 80 in its own thread.
     # NOTE(@cpu): The chall-test-srv binds 64.112.117.122:80 for HTTP-01
-    # challenges so we must use the 10.88.88.88 address for the throw away
+    # challenges so we must use the 64.112.117.134 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
     redirect = "http://{0}/.well-known/acme-challenge/{1}".format(
             redirHostname, token)
-    httpd = HTTPServer(("10.88.88.88", 80), BouncerHTTPRequestHandler(redirect, guestlist))
+    httpd = HTTPServer(("64.112.117.134", 80), BouncerHTTPRequestHandler(redirect, guestlist))
     thread = threading.Thread(target = httpd.serve_forever)
     thread.daemon = False
     thread.start()
@@ -935,7 +935,7 @@ def test_http2_http01_challenge():
 
     # Add an A record for the test server to ensure the VA's requests are directed
     # to the interface that we bind the FakeH2ServerHandler to.
-    challSrv.add_a_record(hostname, ["10.88.88.88"])
+    challSrv.add_a_record(hostname, ["64.112.117.134"])
 
     # Allow socket address reuse on the base TCPServer class. Failing to do this
     # causes subsequent integration tests to fail with "Address in use" errors even
@@ -945,11 +945,11 @@ def test_http2_http01_challenge():
     # the problem.
     socketserver.TCPServer.allow_reuse_address = True
     # Create, start, and wait for a fake HTTP/2 server.
-    server = socketserver.TCPServer(("10.88.88.88", 80), FakeH2ServerHandler)
+    server = socketserver.TCPServer(("64.112.117.134", 80), FakeH2ServerHandler)
     thread = threading.Thread(target = server.serve_forever)
     thread.daemon = False
     thread.start()
-    wait_for_tcp_server("10.88.88.88", 80)
+    wait_for_tcp_server("64.112.117.134", 80)
 
     # Issuing an HTTP-01 challenge for this hostname should produce a connection
     # problem with an error specific to the HTTP/2 misconfiguration.

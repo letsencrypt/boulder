@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strconv"
@@ -1056,8 +1057,6 @@ func deleteOrderFQDNSet(
 }
 
 func addIssuedNames(ctx context.Context, queryer db.Execer, cert *x509.Certificate, isRenewal bool) error {
-	// TODO(#7311): Determine & explicitly document whether to place IP address
-	// identifiers in issuedNames. We currently skip them.
 	if len(cert.DNSNames) == 0 && len(cert.IPAddresses) == 0 {
 		return berrors.InternalServerError("certificate has no DNSNames or IPAddresses")
 	}
@@ -1068,7 +1067,18 @@ func addIssuedNames(ctx context.Context, queryer db.Execer, cert *x509.Certifica
 	}
 	for _, name := range cert.DNSNames {
 		err = multiInserter.Add([]interface{}{
-			ReverseName(name),
+			reverseFQDN(name),
+			core.SerialToString(cert.SerialNumber),
+			cert.NotBefore.Truncate(24 * time.Hour),
+			isRenewal,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	for _, ip := range cert.IPAddresses {
+		err = multiInserter.Add([]interface{}{
+			ip.String(),
 			core.SerialToString(cert.SerialNumber),
 			cert.NotBefore.Truncate(24 * time.Hour),
 			isRenewal,
@@ -1078,6 +1088,32 @@ func addIssuedNames(ctx context.Context, queryer db.Execer, cert *x509.Certifica
 		}
 	}
 	return multiInserter.Insert(ctx, queryer)
+}
+
+// EncodeIssuedName translates a FQDN to/from the issuedNames table by reversing
+// its dot-separated elements, and translates an IP address by returning its
+// normal string form.
+//
+// This is for strings of ambiguous identifier values. If you know your string
+// is a FQDN, use reverseFQDN(). If you have an IP address, use
+// netip.Addr.String() or net.IP.String().
+func EncodeIssuedName(name string) string {
+	netIP, err := netip.ParseAddr(name)
+	if err == nil {
+		return netIP.String()
+	}
+	return reverseFQDN(name)
+}
+
+// reverseFQDN reverses the elements of a dot-separated FQDN.
+//
+// If your string might be an IP address, use EncodeIssuedName() instead.
+func reverseFQDN(fqdn string) string {
+	labels := strings.Split(fqdn, ".")
+	for i, j := 0, len(labels)-1; i < j; i, j = i+1, j-1 {
+		labels[i], labels[j] = labels[j], labels[i]
+	}
+	return strings.Join(labels, ".")
 }
 
 func addKeyHash(ctx context.Context, db db.Inserter, cert *x509.Certificate) error {

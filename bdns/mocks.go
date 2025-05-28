@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 
 	"github.com/miekg/dns"
@@ -67,13 +68,13 @@ func (t timeoutError) Timeout() bool {
 }
 
 // LookupHost is a mock
-func (mock *MockClient) LookupHost(_ context.Context, hostname string) ([]net.IP, ResolverAddrs, error) {
+func (mock *MockClient) LookupHost(_ context.Context, hostname string) ([]netip.Addr, ResolverAddrs, error) {
 	if hostname == "always.invalid" ||
 		hostname == "invalid.invalid" {
-		return []net.IP{}, ResolverAddrs{"MockClient"}, nil
+		return []netip.Addr{}, ResolverAddrs{"MockClient"}, nil
 	}
 	if hostname == "always.timeout" {
-		return []net.IP{}, ResolverAddrs{"MockClient"}, &Error{dns.TypeA, "always.timeout", makeTimeoutError(), -1, nil}
+		return []netip.Addr{}, ResolverAddrs{"MockClient"}, &Error{dns.TypeA, "always.timeout", makeTimeoutError(), -1, nil}
 	}
 	if hostname == "always.error" {
 		err := &net.OpError{
@@ -86,7 +87,7 @@ func (mock *MockClient) LookupHost(_ context.Context, hostname string) ([]net.IP
 		m.AuthenticatedData = true
 		m.SetEdns0(4096, false)
 		logDNSError(mock.Log, "mock.server", hostname, m, nil, err)
-		return []net.IP{}, ResolverAddrs{"MockClient"}, &Error{dns.TypeA, hostname, err, -1, nil}
+		return []netip.Addr{}, ResolverAddrs{"MockClient"}, &Error{dns.TypeA, hostname, err, -1, nil}
 	}
 	if hostname == "id.mismatch" {
 		err := dns.ErrId
@@ -100,22 +101,21 @@ func (mock *MockClient) LookupHost(_ context.Context, hostname string) ([]net.IP
 		record.A = net.ParseIP("127.0.0.1")
 		r.Answer = append(r.Answer, record)
 		logDNSError(mock.Log, "mock.server", hostname, m, r, err)
-		return []net.IP{}, ResolverAddrs{"MockClient"}, &Error{dns.TypeA, hostname, err, -1, nil}
+		return []netip.Addr{}, ResolverAddrs{"MockClient"}, &Error{dns.TypeA, hostname, err, -1, nil}
 	}
 	// dual-homed host with an IPv6 and an IPv4 address
 	if hostname == "ipv4.and.ipv6.localhost" {
-		return []net.IP{
-			net.ParseIP("::1"),
-			net.ParseIP("127.0.0.1"),
+		return []netip.Addr{
+			netip.MustParseAddr("::1"),
+			netip.MustParseAddr("127.0.0.1"),
 		}, ResolverAddrs{"MockClient"}, nil
 	}
 	if hostname == "ipv6.localhost" {
-		return []net.IP{
-			net.ParseIP("::1"),
+		return []netip.Addr{
+			netip.MustParseAddr("::1"),
 		}, ResolverAddrs{"MockClient"}, nil
 	}
-	ip := net.ParseIP("127.0.0.1")
-	return []net.IP{ip}, ResolverAddrs{"MockClient"}, nil
+	return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, ResolverAddrs{"MockClient"}, nil
 }
 
 // LookupCAA returns mock records for use in tests.

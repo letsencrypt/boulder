@@ -183,14 +183,14 @@ type ValidationRecord struct {
 	// TODO(#7311): Replace hostname with Identifier.
 	Hostname          string   `protobuf:"bytes,1,opt,name=hostname,proto3" json:"hostname,omitempty"`
 	Port              string   `protobuf:"bytes,2,opt,name=port,proto3" json:"port,omitempty"`
-	AddressesResolved [][]byte `protobuf:"bytes,3,rep,name=addressesResolved,proto3" json:"addressesResolved,omitempty"` // net.IP.MarshalText()
-	AddressUsed       []byte   `protobuf:"bytes,4,opt,name=addressUsed,proto3" json:"addressUsed,omitempty"`             // net.IP.MarshalText()
+	AddressesResolved [][]byte `protobuf:"bytes,3,rep,name=addressesResolved,proto3" json:"addressesResolved,omitempty"` // netip.Addr.MarshalText()
+	AddressUsed       []byte   `protobuf:"bytes,4,opt,name=addressUsed,proto3" json:"addressUsed,omitempty"`             // netip.Addr.MarshalText()
 	Authorities       []string `protobuf:"bytes,5,rep,name=authorities,proto3" json:"authorities,omitempty"`
 	Url               string   `protobuf:"bytes,6,opt,name=url,proto3" json:"url,omitempty"`
 	// A list of addresses tried before the address used (see
 	// core/objects.go and the comment on the ValidationRecord structure
 	// definition for more information.
-	AddressesTried [][]byte `protobuf:"bytes,7,rep,name=addressesTried,proto3" json:"addressesTried,omitempty"` // net.IP.MarshalText()
+	AddressesTried [][]byte `protobuf:"bytes,7,rep,name=addressesTried,proto3" json:"addressesTried,omitempty"` // netip.Addr.MarshalText()
 	ResolverAddrs  []string `protobuf:"bytes,8,rep,name=resolverAddrs,proto3" json:"resolverAddrs,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache

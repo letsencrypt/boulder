@@ -36,18 +36,17 @@ type ResolverAddrs []string
 // Client queries for DNS records
 type Client interface {
 	LookupTXT(context.Context, string) (txts []string, resolver ResolverAddrs, err error)
-	LookupHost(context.Context, string) ([]net.IP, ResolverAddrs, error)
+	LookupHost(context.Context, string) ([]netip.Addr, ResolverAddrs, error)
 	LookupCAA(context.Context, string) ([]*dns.CAA, string, ResolverAddrs, error)
 }
 
 // impl represents a client that talks to an external resolver
 type impl struct {
-	dnsClient                exchanger
-	servers                  ServerProvider
-	allowRestrictedAddresses bool
-	maxTries                 int
-	clk                      clock.Clock
-	log                      blog.Logger
+	dnsClient exchanger
+	servers   ServerProvider
+	maxTries  int
+	clk       clock.Clock
+	log       blog.Logger
 
 	queryTime         *prometheus.HistogramVec
 	totalLookupTime   *prometheus.HistogramVec
@@ -135,35 +134,16 @@ func New(
 	)
 	stats.MustRegister(queryTime, totalLookupTime, timeoutCounter, idMismatchCounter)
 	return &impl{
-		dnsClient:                client,
-		servers:                  servers,
-		allowRestrictedAddresses: false,
-		maxTries:                 maxTries,
-		clk:                      clk,
-		queryTime:                queryTime,
-		totalLookupTime:          totalLookupTime,
-		timeoutCounter:           timeoutCounter,
-		idMismatchCounter:        idMismatchCounter,
-		log:                      log,
+		dnsClient:         client,
+		servers:           servers,
+		maxTries:          maxTries,
+		clk:               clk,
+		queryTime:         queryTime,
+		totalLookupTime:   totalLookupTime,
+		timeoutCounter:    timeoutCounter,
+		idMismatchCounter: idMismatchCounter,
+		log:               log,
 	}
-}
-
-// NewTest constructs a new DNS resolver object that utilizes the
-// provided list of DNS servers for resolution and will allow loopback addresses.
-// This constructor should *only* be called from tests (unit or integration).
-func NewTest(
-	readTimeout time.Duration,
-	servers ServerProvider,
-	stats prometheus.Registerer,
-	clk clock.Clock,
-	maxTries int,
-	userAgent string,
-	log blog.Logger,
-	tlsConfig *tls.Config,
-) Client {
-	resolver := New(readTimeout, servers, stats, clk, maxTries, userAgent, log, tlsConfig)
-	resolver.(*impl).allowRestrictedAddresses = true
-	return resolver
 }
 
 // exchangeOne performs a single DNS exchange with a randomly chosen server
@@ -381,10 +361,7 @@ func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uin
 // chase CNAME/DNAME aliases and return relevant records. It will retry
 // requests in the case of temporary network errors. It returns an error if
 // both the A and AAAA lookups fail or are empty, but succeeds otherwise.
-//
-// TODO(#5925): Changing from net.IP to netip.Addr could start from here
-// outwards.
-func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.IP, ResolverAddrs, error) {
+func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]netip.Addr, ResolverAddrs, error) {
 	var recordsA, recordsAAAA []dns.RR
 	var errA, errAAAA error
 	var resolverA, resolverAAAA string
@@ -407,15 +384,15 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 		return a == ""
 	})
 
-	var addrsA []net.IP
+	var addrsA []netip.Addr
 	if errA == nil {
 		for _, answer := range recordsA {
 			if answer.Header().Rrtype == dns.TypeA {
 				a, ok := answer.(*dns.A)
 				if ok && a.A.To4() != nil {
 					netIP, ok := netip.AddrFromSlice(a.A)
-					if ok && (policy.IsReservedIP(netIP) == nil || dnsClient.allowRestrictedAddresses) {
-						addrsA = append(addrsA, a.A)
+					if ok && policy.IsReservedIP(netIP) == nil {
+						addrsA = append(addrsA, netIP)
 					}
 				}
 			}
@@ -425,15 +402,15 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 		}
 	}
 
-	var addrsAAAA []net.IP
+	var addrsAAAA []netip.Addr
 	if errAAAA == nil {
 		for _, answer := range recordsAAAA {
 			if answer.Header().Rrtype == dns.TypeAAAA {
 				aaaa, ok := answer.(*dns.AAAA)
 				if ok && aaaa.AAAA.To16() != nil {
 					netIP, ok := netip.AddrFromSlice(aaaa.AAAA)
-					if ok && (policy.IsReservedIP(netIP) == nil || dnsClient.allowRestrictedAddresses) {
-						addrsAAAA = append(addrsAAAA, aaaa.AAAA)
+					if ok && policy.IsReservedIP(netIP) == nil {
+						addrsAAAA = append(addrsAAAA, netIP)
 					}
 				}
 			}

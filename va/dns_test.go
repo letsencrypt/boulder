@@ -3,7 +3,6 @@ package va
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/netip"
 	"testing"
 	"time"
@@ -95,7 +94,7 @@ func TestDNSValidationNoServer(t *testing.T) {
 	staticProvider, err := bdns.NewStaticProvider([]string{})
 	test.AssertNotError(t, err, "Couldn't make new static provider")
 
-	va.dnsClient = bdns.NewTest(
+	va.dnsClient = bdns.New(
 		time.Second*5,
 		staticProvider,
 		metrics.NoopRegisterer,
@@ -127,51 +126,51 @@ func TestDNSValidationNoAuthorityOK(t *testing.T) {
 }
 
 func TestAvailableAddresses(t *testing.T) {
-	v6a := net.ParseIP("::1")
-	v6b := net.ParseIP("2001:db8::2:1") // 2001:DB8 is reserved for docs (RFC 3849)
-	v4a := net.ParseIP("127.0.0.1")
-	v4b := net.ParseIP("192.0.2.1") // 192.0.2.0/24 is reserved for docs (RFC 5737)
+	v6a := netip.MustParseAddr("::1")
+	v6b := netip.MustParseAddr("2001:db8::2:1") // 2001:DB8 is reserved for docs (RFC 3849)
+	v4a := netip.MustParseAddr("127.0.0.1")
+	v4b := netip.MustParseAddr("192.0.2.1") // 192.0.2.0/24 is reserved for docs (RFC 5737)
 
 	testcases := []struct {
-		input []net.IP
-		v4    []net.IP
-		v6    []net.IP
+		input []netip.Addr
+		v4    []netip.Addr
+		v6    []netip.Addr
 	}{
 		// An empty validation record
 		{
-			[]net.IP{},
-			[]net.IP{},
-			[]net.IP{},
+			[]netip.Addr{},
+			[]netip.Addr{},
+			[]netip.Addr{},
 		},
 		// A validation record with one IPv4 address
 		{
-			[]net.IP{v4a},
-			[]net.IP{v4a},
-			[]net.IP{},
+			[]netip.Addr{v4a},
+			[]netip.Addr{v4a},
+			[]netip.Addr{},
 		},
 		// A dual homed record with an IPv4 and IPv6 address
 		{
-			[]net.IP{v4a, v6a},
-			[]net.IP{v4a},
-			[]net.IP{v6a},
+			[]netip.Addr{v4a, v6a},
+			[]netip.Addr{v4a},
+			[]netip.Addr{v6a},
 		},
 		// The same as above but with the v4/v6 order flipped
 		{
-			[]net.IP{v6a, v4a},
-			[]net.IP{v4a},
-			[]net.IP{v6a},
+			[]netip.Addr{v6a, v4a},
+			[]netip.Addr{v4a},
+			[]netip.Addr{v6a},
 		},
 		// A validation record with just IPv6 addresses
 		{
-			[]net.IP{v6a, v6b},
-			[]net.IP{},
-			[]net.IP{v6a, v6b},
+			[]netip.Addr{v6a, v6b},
+			[]netip.Addr{},
+			[]netip.Addr{v6a, v6b},
 		},
 		// A validation record with interleaved IPv4/IPv6 records
 		{
-			[]net.IP{v6a, v4a, v6b, v4b},
-			[]net.IP{v4a, v4b},
-			[]net.IP{v6a, v6b},
+			[]netip.Addr{v6a, v4a, v6b, v4b},
+			[]netip.Addr{v4a, v4b},
+			[]netip.Addr{v6a, v6b},
 		},
 	}
 

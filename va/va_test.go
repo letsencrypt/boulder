@@ -723,12 +723,12 @@ func TestMultiVALogging(t *testing.T) {
 func TestDetailedError(t *testing.T) {
 	cases := []struct {
 		err      error
-		ip       net.IP
+		ip       netip.Addr
 		expected string
 	}{
 		{
 			err: ipError{
-				ip: net.ParseIP("192.168.1.1"),
+				ip: netip.MustParseAddr("192.168.1.1"),
 				err: &net.OpError{
 					Op:  "dial",
 					Net: "tcp",
@@ -760,7 +760,7 @@ func TestDetailedError(t *testing.T) {
 					Err:     syscall.ECONNRESET,
 				},
 			},
-			ip:       nil,
+			ip:       netip.Addr{},
 			expected: "Connection reset by peer",
 		},
 	}

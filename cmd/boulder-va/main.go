@@ -99,28 +99,15 @@ func main() {
 	tlsConfig, err := c.VA.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
 
-	var resolver bdns.Client
-	if !c.VA.DNSAllowLoopbackAddresses {
-		resolver = bdns.New(
-			c.VA.DNSTimeout.Duration,
-			servers,
-			scope,
-			clk,
-			c.VA.DNSTries,
-			c.VA.UserAgent,
-			logger,
-			tlsConfig)
-	} else {
-		resolver = bdns.NewTest(
-			c.VA.DNSTimeout.Duration,
-			servers,
-			scope,
-			clk,
-			c.VA.DNSTries,
-			c.VA.UserAgent,
-			logger,
-			tlsConfig)
-	}
+	resolver := bdns.New(
+		c.VA.DNSTimeout.Duration,
+		servers,
+		scope,
+		clk,
+		c.VA.DNSTries,
+		c.VA.UserAgent,
+		logger,
+		tlsConfig)
 	var remotes []va.RemoteVA
 	if len(c.VA.RemoteVAs) > 0 {
 		for _, rva := range c.VA.RemoteVAs {

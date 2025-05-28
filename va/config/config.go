@@ -24,9 +24,8 @@ type Common struct {
 	// DNSStaticResolvers is a list of DNS resolvers. Each entry must
 	// be a host or IP and port separated by a colon. IPv6 addresses
 	// must be enclosed in square brackets.
-	DNSStaticResolvers        []string        `validate:"required_without=DNSProvider,dive,hostname_port"`
-	DNSTimeout                config.Duration `validate:"required"`
-	DNSAllowLoopbackAddresses bool
+	DNSStaticResolvers []string        `validate:"required_without=DNSProvider,dive,hostname_port"`
+	DNSTimeout         config.Duration `validate:"required"`
 
 	AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
 }

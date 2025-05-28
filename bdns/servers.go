@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net"
+	"net/netip"
 	"strconv"
 	"sync"
 	"time"
@@ -61,10 +62,9 @@ func validateServerAddress(address string) error {
 	}
 
 	// Ensure the `host` portion of `address` is a valid FQDN or IP address.
-	IPv6 := net.ParseIP(host).To16()
-	IPv4 := net.ParseIP(host).To4()
+	_, err = netip.ParseAddr(host)
 	FQDN := dns.IsFqdn(dns.Fqdn(host))
-	if IPv6 == nil && IPv4 == nil && !FQDN {
+	if err != nil && !FQDN {
 		return errors.New("host is not an FQDN or IP address")
 	}
 	return nil
