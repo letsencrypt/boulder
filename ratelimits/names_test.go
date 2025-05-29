@@ -257,7 +257,7 @@ func TestBuildBucketKey(t *testing.T) {
 		{
 			name:   NewRegistrationsPerIPv6Range,
 			desc:   "valid IPv6",
-			ipAddr: "2001:db8:abcd:0012::1",
+			ipAddr: "2001:db8:abcd:12::1",
 			bucketKeyTest: func(t *testing.T, key string) {
 				test.AssertEquals(t, fmt.Sprintf("%d:2001:db8:abcd::/48", NewRegistrationsPerIPv6Range), key)
 			},

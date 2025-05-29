@@ -26,7 +26,7 @@ func (c *subcommandDumpEnabledOverrides) Flags(f *flag.FlagSet) {
 
 func (c *subcommandDumpEnabledOverrides) Run(ctx context.Context, a *admin) error {
 	if c.file == "" {
-		return errors.New("-file is required")
+		return errors.New("--file is required")
 	}
 
 	stream, err := a.sac.GetEnabledRateLimitOverrides(ctx, &emptypb.Empty{})
@@ -49,7 +49,7 @@ func (c *subcommandDumpEnabledOverrides) Run(ctx context.Context, a *admin) erro
 			Count:  r.Override.Count,
 			Period: config.Duration{Duration: r.Override.Period.AsDuration()},
 			Name:   ratelimits.Name(r.Override.LimitEnum),
-			Comment: fmt.Sprintf("Last Updated:%s - %s",
+			Comment: fmt.Sprintf("Last Updated: %s - %s",
 				r.UpdatedAt.AsTime().Format("2006-01-02"),
 				r.Override.Comment,
 			),

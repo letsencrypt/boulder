@@ -69,6 +69,64 @@ func TestParseOverrideNameId(t *testing.T) {
 	test.AssertError(t, err, "invalid enum")
 }
 
+func TestParseOverrideNameEnumId(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input       string
+		wantName    Name
+		wantId      string
+		expectError bool
+		desc        string
+	}{
+		{
+			input:       NewRegistrationsPerIPAddress.EnumString() + ":10.0.0.1",
+			wantName:    NewRegistrationsPerIPAddress,
+			wantId:      "10.0.0.1",
+			expectError: false,
+			desc:        "valid IPv4 address",
+		},
+		{
+			input:       NewRegistrationsPerIPv6Range.EnumString() + ":2001:0db8:0000::/48",
+			wantName:    NewRegistrationsPerIPv6Range,
+			wantId:      "2001:0db8:0000::/48",
+			expectError: false,
+			desc:        "valid IPv6 address range",
+		},
+		{
+			input:       NewRegistrationsPerIPAddress.EnumString() + "10.0.0.1",
+			expectError: true,
+			desc:        "missing colon",
+		},
+		{
+			input:       "",
+			expectError: true,
+			desc:        "empty string",
+		},
+		{
+			input:       NewRegistrationsPerIPAddress.EnumString() + ":",
+			expectError: true,
+			desc:        "only a colon",
+		},
+		{
+			input:       "lol:noexist",
+			expectError: true,
+			desc:        "invalid enum",
+		},
+	}
+
+	for _, tc := range tests {
+		name, id, err := parseOverrideNameEnumId(tc.input)
+		if tc.expectError {
+			test.AssertError(t, err, tc.desc)
+		} else {
+			test.AssertNotError(t, err, tc.desc)
+			test.AssertEquals(t, name, tc.wantName)
+			test.AssertEquals(t, id, tc.wantId)
+		}
+	}
+}
+
 func TestValidateLimit(t *testing.T) {
 	err := ValidateLimit(&Limit{Burst: 1, Count: 1, Period: config.Duration{Duration: time.Second}})
 	test.AssertNotError(t, err, "valid limit")

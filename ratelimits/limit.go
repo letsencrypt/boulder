@@ -39,7 +39,7 @@ type LimitConfig struct {
 
 type LimitConfigs map[string]*LimitConfig
 
-// Limit defines the configuration for a rate Limit or a rate Limit override.
+// Limit defines the configuration for a rate limit or a rate limit override.
 //
 // The zero value of this struct is invalid, because some of the fields must be
 // greater than zero. It and several of its fields are exported to support admin
@@ -58,7 +58,7 @@ type Limit struct {
 	// allowed. It must be greater than zero.
 	Period config.Duration
 
-	// Name is the Name of the limit. It must be one of the Name enums defined
+	// Name is the name of the limit. It must be one of the Name enums defined
 	// in this package.
 	Name Name
 
@@ -191,7 +191,11 @@ func parseOverrideNameEnumId(key string) (Name, string, error) {
 		return Unknown, "", fmt.Errorf("invalid name %q in override limit %q, must be one of %v", nameStrAndId[0], key, limitNames)
 
 	}
-	return name, nameStrAndId[1], nil
+	id := nameStrAndId[1]
+	if id == "" {
+		return Unknown, "", fmt.Errorf("empty id in override %q, must be formatted 'name:id'", key)
+	}
+	return name, id, nil
 }
 
 // parseOverrideLimits validates a YAML list of override limits. It must be

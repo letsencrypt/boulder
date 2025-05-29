@@ -25,7 +25,7 @@ func (c *subcommandImportOverrides) Flags(f *flag.FlagSet) {
 
 func (c *subcommandImportOverrides) Run(ctx context.Context, a *admin) error {
 	if c.file == "" {
-		return errors.New("-file is required")
+		return errors.New("--file is required")
 	}
 	overrides, err := ratelimits.LoadOverridesByBucketKey(c.file)
 	if err != nil {
