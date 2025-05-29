@@ -36,6 +36,7 @@ const (
 	RegistrationAuthority_FinalizeOrder_FullMethodName                     = "/ra.RegistrationAuthority/FinalizeOrder"
 	RegistrationAuthority_GenerateOCSP_FullMethodName                      = "/ra.RegistrationAuthority/GenerateOCSP"
 	RegistrationAuthority_UnpauseAccount_FullMethodName                    = "/ra.RegistrationAuthority/UnpauseAccount"
+	RegistrationAuthority_AddRateLimitOverride_FullMethodName              = "/ra.RegistrationAuthority/AddRateLimitOverride"
 )
 
 // RegistrationAuthorityClient is the client API for RegistrationAuthority service.
@@ -57,6 +58,7 @@ type RegistrationAuthorityClient interface {
 	// Generate an OCSP response based on the DB's current status and reason code.
 	GenerateOCSP(ctx context.Context, in *GenerateOCSPRequest, opts ...grpc.CallOption) (*proto1.OCSPResponse, error)
 	UnpauseAccount(ctx context.Context, in *UnpauseAccountRequest, opts ...grpc.CallOption) (*UnpauseAccountResponse, error)
+	AddRateLimitOverride(ctx context.Context, in *AddRateLimitOverrideRequest, opts ...grpc.CallOption) (*AddRateLimitOverrideResponse, error)
 }
 
 type registrationAuthorityClient struct {
@@ -207,6 +209,16 @@ func (c *registrationAuthorityClient) UnpauseAccount(ctx context.Context, in *Un
 	return out, nil
 }
 
+func (c *registrationAuthorityClient) AddRateLimitOverride(ctx context.Context, in *AddRateLimitOverrideRequest, opts ...grpc.CallOption) (*AddRateLimitOverrideResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AddRateLimitOverrideResponse)
+	err := c.cc.Invoke(ctx, RegistrationAuthority_AddRateLimitOverride_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RegistrationAuthorityServer is the server API for RegistrationAuthority service.
 // All implementations must embed UnimplementedRegistrationAuthorityServer
 // for forward compatibility.
@@ -226,6 +238,7 @@ type RegistrationAuthorityServer interface {
 	// Generate an OCSP response based on the DB's current status and reason code.
 	GenerateOCSP(context.Context, *GenerateOCSPRequest) (*proto1.OCSPResponse, error)
 	UnpauseAccount(context.Context, *UnpauseAccountRequest) (*UnpauseAccountResponse, error)
+	AddRateLimitOverride(context.Context, *AddRateLimitOverrideRequest) (*AddRateLimitOverrideResponse, error)
 	mustEmbedUnimplementedRegistrationAuthorityServer()
 }
 
@@ -277,6 +290,9 @@ func (UnimplementedRegistrationAuthorityServer) GenerateOCSP(context.Context, *G
 }
 func (UnimplementedRegistrationAuthorityServer) UnpauseAccount(context.Context, *UnpauseAccountRequest) (*UnpauseAccountResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UnpauseAccount not implemented")
+}
+func (UnimplementedRegistrationAuthorityServer) AddRateLimitOverride(context.Context, *AddRateLimitOverrideRequest) (*AddRateLimitOverrideResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddRateLimitOverride not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) mustEmbedUnimplementedRegistrationAuthorityServer() {}
 func (UnimplementedRegistrationAuthorityServer) testEmbeddedByValue()                               {}
@@ -551,6 +567,24 @@ func _RegistrationAuthority_UnpauseAccount_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RegistrationAuthority_AddRateLimitOverride_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddRateLimitOverrideRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegistrationAuthorityServer).AddRateLimitOverride(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RegistrationAuthority_AddRateLimitOverride_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegistrationAuthorityServer).AddRateLimitOverride(ctx, req.(*AddRateLimitOverrideRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RegistrationAuthority_ServiceDesc is the grpc.ServiceDesc for RegistrationAuthority service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -613,6 +647,10 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UnpauseAccount",
 			Handler:    _RegistrationAuthority_UnpauseAccount_Handler,
+		},
+		{
+			MethodName: "AddRateLimitOverride",
+			Handler:    _RegistrationAuthority_AddRateLimitOverride_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

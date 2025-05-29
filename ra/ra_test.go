@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -4389,4 +4390,41 @@ func TestCRLShard(t *testing.T) {
 	if err != nil || n != 123 {
 		t.Errorf("crlShard(%+v) = %d, %s, want 123, nil", cdp, n, err)
 	}
+}
+
+type mockSAWithOverrides struct {
+	sapb.StorageAuthorityClient
+	inserted *sapb.AddRateLimitOverrideRequest
+}
+
+func (sa *mockSAWithOverrides) AddRateLimitOverride(ctx context.Context, req *sapb.AddRateLimitOverrideRequest, _ ...grpc.CallOption) (*sapb.AddRateLimitOverrideResponse, error) {
+	sa.inserted = req
+	return &sapb.AddRateLimitOverrideResponse{}, nil
+}
+
+func TestAddRateLimitOverride(t *testing.T) {
+	_, _, ra, _, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	mockSA := mockSAWithOverrides{}
+	ra.SA = &mockSA
+
+	expectBucketKey := core.RandomString(10)
+	ov := rapb.AddRateLimitOverrideRequest{
+		LimitEnum: 1,
+		BucketKey: expectBucketKey,
+		Comment:   "insert",
+		Period:    durationpb.New(time.Hour),
+		Count:     100,
+		Burst:     100,
+	}
+
+	_, err := ra.AddRateLimitOverride(ctx, &ov)
+	test.AssertNotError(t, err, "expected successful insert, got error")
+	test.AssertEquals(t, mockSA.inserted.Override.LimitEnum, ov.LimitEnum)
+	test.AssertEquals(t, mockSA.inserted.Override.BucketKey, expectBucketKey)
+	test.AssertEquals(t, mockSA.inserted.Override.Comment, ov.Comment)
+	test.AssertEquals(t, mockSA.inserted.Override.Period.AsDuration(), ov.Period.AsDuration())
+	test.AssertEquals(t, mockSA.inserted.Override.Count, ov.Count)
+	test.AssertEquals(t, mockSA.inserted.Override.Burst, ov.Burst)
 }

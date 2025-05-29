@@ -6,6 +6,7 @@ option go_package = "github.com/letsencrypt/boulder/ra/proto";
 import "core/proto/core.proto";
 import "ca/proto/ca.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/duration.proto";
 
 service RegistrationAuthority {
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
@@ -23,6 +24,7 @@ service RegistrationAuthority {
   // Generate an OCSP response based on the DB's current status and reason code.
   rpc GenerateOCSP(GenerateOCSPRequest) returns (ca.OCSPResponse) {}
   rpc UnpauseAccount(UnpauseAccountRequest) returns (UnpauseAccountResponse) {}
+  rpc AddRateLimitOverride(AddRateLimitOverrideRequest) returns (AddRateLimitOverrideResponse) {}
 }
 
 service SCTProvider {
@@ -134,4 +136,18 @@ message UnpauseAccountResponse {
 
   // Count is the number of identifiers which were unpaused for the input regid.
   int64 count = 1;
+}
+
+message AddRateLimitOverrideRequest {
+  int64 limitEnum      = 1;
+  string bucketKey = 2;
+  string comment    = 3;
+  google.protobuf.Duration period = 4;
+  int64 count      = 5;
+  int64 burst      = 6;
+}
+
+message AddRateLimitOverrideResponse {
+  bool inserted = 1;
+  bool enabled = 2;
 }
