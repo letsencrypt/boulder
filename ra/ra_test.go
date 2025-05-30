@@ -486,8 +486,7 @@ func TestNewRegistration(t *testing.T) {
 		t.Fatalf("could not create new registration: %s", err)
 	}
 	test.AssertByteEquals(t, result.Key, acctKeyB)
-	test.Assert(t, len(result.Contact) == 1, "Wrong number of contacts")
-	test.Assert(t, mailto == (result.Contact)[0], "Contact didn't match")
+	test.Assert(t, len(result.Contact) == 0, "Wrong number of contacts")
 	test.Assert(t, result.Agreement == "", "Agreement didn't default empty")
 
 	reg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: result.Id})

@@ -188,23 +188,18 @@ func TestAddRegistration(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
-	jwk := goodTestJWK()
-	jwkJSON, _ := jwk.MarshalJSON()
-
-	contacts := []string{"mailto:foo@example.com"}
+	jwkJSON, _ := goodTestJWK().MarshalJSON()
 	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
 		Key:     jwkJSON,
-		Contact: contacts,
+		Contact: []string{"mailto:foo@example.com"},
 	})
 	if err != nil {
 		t.Fatalf("Couldn't create new registration: %s", err)
 	}
 	test.Assert(t, reg.Id != 0, "ID shouldn't be 0")
-	test.AssertDeepEquals(t, reg.Contact, contacts)
+	test.AssertEquals(t, len(reg.Contact), 0)
 
-	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: 0})
-	test.AssertError(t, err, "Registration object for ID 0 was returned")
-
+	// Confirm that the registration can be retrieved by ID.
 	dbReg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
 	test.AssertNotError(t, err, fmt.Sprintf("Couldn't get registration with ID %v", reg.Id))
 
@@ -212,28 +207,22 @@ func TestAddRegistration(t *testing.T) {
 	test.AssertEquals(t, dbReg.Id, reg.Id)
 	test.AssertByteEquals(t, dbReg.Key, jwkJSON)
 	test.AssertDeepEquals(t, dbReg.CreatedAt.AsTime(), createdAt)
+	test.AssertEquals(t, len(dbReg.Contact), 0)
 
-	regUpdate := &sapb.UpdateRegistrationContactRequest{
-		RegistrationID: reg.Id,
-		Contacts:       []string{"test.com"},
-	}
-	newReg, err := sa.UpdateRegistrationContact(ctx, regUpdate)
-	test.AssertNotError(t, err, fmt.Sprintf("Couldn't update registration with ID %v", reg.Id))
-	test.AssertEquals(t, dbReg.Id, newReg.Id)
-	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
+	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: 0})
+	test.AssertError(t, err, "Registration object for ID 0 was returned")
 
-	// Reconfirm that the updated registration was persisted to the database.
-	newReg, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
+	// Confirm that the registration can be retrieved by key.
+	dbReg, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: jwkJSON})
 	test.AssertNotError(t, err, "Couldn't get registration by key")
-	test.AssertEquals(t, dbReg.Id, newReg.Id)
-	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
+	test.AssertEquals(t, dbReg.Id, dbReg.Id)
+	test.AssertEquals(t, dbReg.Agreement, dbReg.Agreement)
 
 	anotherKey := `{
 		"kty":"RSA",
 		"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw",
 		"e":"AQAB"
 	}`
-
 	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: []byte(anotherKey)})
 	test.AssertError(t, err, "Registration object for invalid key was returned")
 }
@@ -4504,6 +4493,7 @@ func newAcctKey(t *testing.T) []byte {
 }
 
 func TestUpdateRegistrationContact(t *testing.T) {
+	// TODO(#8199): Delete this.
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -4560,13 +4550,12 @@ func TestUpdateRegistrationContact(t *testing.T) {
 			})
 			test.AssertNotError(t, err, "unexpected error for UpdateRegistrationContact()")
 			test.AssertEquals(t, updatedReg.Id, reg.Id)
-			test.AssertDeepEquals(t, updatedReg.Contact, tt.newContacts)
+			test.AssertEquals(t, len(updatedReg.Contact), 0)
 
-			refetchedReg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{
-				Id: reg.Id,
-			})
+			refetchedReg, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
 			test.AssertNotError(t, err, "retrieving registration")
-			test.AssertDeepEquals(t, refetchedReg.Contact, tt.newContacts)
+			test.AssertEquals(t, refetchedReg.Id, reg.Id)
+			test.AssertEquals(t, len(refetchedReg.Contact), 0)
 		})
 	}
 }

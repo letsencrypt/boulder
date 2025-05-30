@@ -9,7 +9,6 @@ import (
 	"html/template"
 	netmail "net/mail"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -191,30 +190,16 @@ func (bkr *badKeyRevoker) markRowChecked(ctx context.Context, unchecked unchecke
 }
 
 // resolveContacts builds a map of id -> email addresses
-func (bkr *badKeyRevoker) resolveContacts(ctx context.Context, ids []int64) (map[int64][]string, error) {
+//
+// TODO(#8199): Remove the rest of BKR's email-handling code.
+func (bkr *badKeyRevoker) resolveContacts(ids []int64) map[int64][]string {
 	idToEmail := map[int64][]string{}
 	for _, id := range ids {
-		var emails struct {
-			Contact []string
-		}
-		err := bkr.dbMap.SelectOne(ctx, &emails, "SELECT contact FROM registrations WHERE id = ?", id)
-		if err != nil {
-			// ErrNoRows is not acceptable here since there should always be a
-			// row for the registration, even if there are no contacts
-			return nil, err
-		}
-		if len(emails.Contact) != 0 {
-			for _, email := range emails.Contact {
-				idToEmail[id] = append(idToEmail[id], strings.TrimPrefix(email, "mailto:"))
-			}
-		} else {
-			// if the account has no contacts add a placeholder empty contact
-			// so that we don't skip any certificates
-			idToEmail[id] = append(idToEmail[id], "")
-			continue
-		}
+		// if the account has no contacts add a placeholder empty contact
+		// so that we don't skip any certificates
+		idToEmail[id] = append(idToEmail[id], "")
 	}
-	return idToEmail, nil
+	return idToEmail
 }
 
 var maxSerials = 100
@@ -356,10 +341,7 @@ func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 		ids = append(ids, unchecked.RevokedBy)
 	}
 	// get contact addresses for the list of IDs
-	idToEmails, err := bkr.resolveContacts(ctx, ids)
-	if err != nil {
-		return false, err
-	}
+	idToEmails := bkr.resolveContacts(ids)
 
 	// build a map of email -> certificates, this de-duplicates accounts with
 	// the same email addresses
