@@ -22,14 +22,16 @@ var ctx = context.Background()
 type mockPardotClientImpl struct {
 	sync.Mutex
 	CreatedContacts []string
+	cache           *EmailCache
 }
 
 // newMockPardotClientImpl returns a MockPardotClientImpl, implementing the
 // PardotClient interface. Both refer to the same instance, with the interface
 // for mock interaction and the struct for state inspection and modification.
-func newMockPardotClientImpl() (PardotClient, *mockPardotClientImpl) {
+func newMockPardotClientImpl(cache *EmailCache) (PardotClient, *mockPardotClientImpl) {
 	mockImpl := &mockPardotClientImpl{
 		CreatedContacts: []string{},
+		cache:           cache,
 	}
 	return mockImpl, mockImpl
 }
@@ -37,9 +39,10 @@ func newMockPardotClientImpl() (PardotClient, *mockPardotClientImpl) {
 // SendContact adds an email to CreatedContacts.
 func (m *mockPardotClientImpl) SendContact(email string) error {
 	m.Lock()
-	defer m.Unlock()
-
 	m.CreatedContacts = append(m.CreatedContacts, email)
+	m.Unlock()
+
+	m.cache.Store(email)
 	return nil
 }
 
@@ -56,7 +59,7 @@ func (m *mockPardotClientImpl) getCreatedContacts() []string {
 // ExporterImpl queue and cleanup() to drain and shutdown. If start() is called,
 // cleanup() must be called.
 func setup() (*ExporterImpl, *mockPardotClientImpl, func(), func()) {
-	mockClient, clientImpl := newMockPardotClientImpl()
+	mockClient, clientImpl := newMockPardotClientImpl(nil)
 	exporter := NewExporterImpl(mockClient, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	return exporter, clientImpl,
