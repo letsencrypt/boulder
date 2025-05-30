@@ -42,9 +42,7 @@ func (m *mockPardotClientImpl) SendContact(email string) error {
 	m.CreatedContacts = append(m.CreatedContacts, email)
 	m.Unlock()
 
-	if m.cache != nil {
-		m.cache.Store(email)
-	}
+	m.cache.Store(email)
 	return nil
 }
 
@@ -62,7 +60,7 @@ func (m *mockPardotClientImpl) getCreatedContacts() []string {
 // cleanup() must be called.
 func setup() (*ExporterImpl, *mockPardotClientImpl, func(), func()) {
 	mockClient, clientImpl := newMockPardotClientImpl(nil)
-	exporter := NewExporterImpl(mockClient, 1000000, 5, nil, metrics.NoopRegisterer, blog.NewMock())
+	exporter := NewExporterImpl(mockClient, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	return exporter, clientImpl,
 		func() { exporter.Start(daemonCtx) },
@@ -151,7 +149,7 @@ func TestSendContactsErrorMetrics(t *testing.T) {
 	t.Parallel()
 
 	mockClient := &mockAlwaysFailClient{}
-	exporter := NewExporterImpl(mockClient, 1000000, 5, nil, metrics.NoopRegisterer, blog.NewMock())
+	exporter := NewExporterImpl(mockClient, 1000000, 5, metrics.NoopRegisterer, blog.NewMock())
 
 	daemonCtx, cancel := context.WithCancel(context.Background())
 	exporter.Start(daemonCtx)
@@ -167,41 +165,4 @@ func TestSendContactsErrorMetrics(t *testing.T) {
 
 	// Check that the error counter was incremented.
 	test.AssertMetricWithLabelsEquals(t, exporter.pardotErrorCounter, prometheus.Labels{}, 1)
-}
-
-func TestEmailCacheDeduplication(t *testing.T) {
-	t.Parallel()
-
-	cache := NewHashedEmailCache(1000, metrics.NoopRegisterer)
-
-	mockClient, clientImpl := newMockPardotClientImpl(cache)
-	exporter := NewExporterImpl(mockClient, 1000, 5, cache, metrics.NoopRegisterer, blog.NewMock())
-
-	daemonCtx, cancel := context.WithCancel(context.Background())
-	exporter.Start(daemonCtx)
-
-	email := "test@example.com"
-
-	_, err := exporter.SendContacts(ctx, &emailpb.SendContactsRequest{Emails: []string{email}})
-	test.AssertNotError(t, err, "first SendContacts failed")
-	test.AssertMetricWithLabelsEquals(t, exporter.emailCache.requests, prometheus.Labels{"status": "miss"}, 1)
-
-	var gotContacts []string
-	for range 100 {
-		gotContacts = clientImpl.getCreatedContacts()
-		if len(gotContacts) == 1 {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-
-	_, err = exporter.SendContacts(ctx, &emailpb.SendContactsRequest{Emails: []string{email}})
-	test.AssertNotError(t, err, "second SendContacts failed")
-
-	// Drain the queue.
-	cancel()
-	exporter.Drain()
-
-	test.AssertEquals(t, 1, len(clientImpl.getCreatedContacts()))
-	test.AssertMetricWithLabelsEquals(t, exporter.emailCache.requests, prometheus.Labels{"status": "hit"}, 1)
 }

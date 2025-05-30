@@ -226,8 +226,7 @@ func TestSendContactDeduplication(t *testing.T) {
 	defer contactSrv.Close()
 
 	cache := NewHashedEmailCache(1000, metrics.NoopRegisterer)
-	client, _ := NewPardotClientImpl(clock.New(), "biz", "cid", "csec",
-		tokenSrv.URL, contactSrv.URL, cache)
+	client, _ := NewPardotClientImpl(clock.New(), "biz", "cid", "csec", tokenSrv.URL, contactSrv.URL, cache)
 
 	err := client.SendContact("test@example.com")
 	test.AssertNotError(t, err, "SendContact should succeed on first call")

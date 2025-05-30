@@ -40,7 +40,6 @@ type ExporterImpl struct {
 	maxConcurrentRequests int
 	limiter               *rate.Limiter
 	client                PardotClient
-	emailCache            *EmailCache
 	emailsHandledCounter  prometheus.Counter
 	pardotErrorCounter    prometheus.Counter
 	log                   blog.Logger
@@ -55,7 +54,7 @@ var _ emailpb.ExporterServer = (*ExporterImpl)(nil)
 // is assigned 40% (20,000 requests), it should also receive 40% of the max
 // concurrent requests (e.g., 2 out of 5). For more details, see:
 // https://developer.salesforce.com/docs/marketing/pardot/guide/overview.html?q=rate%20limits
-func NewExporterImpl(client PardotClient, perDayLimit float64, maxConcurrentRequests int, cache *EmailCache, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
+func NewExporterImpl(client PardotClient, perDayLimit float64, maxConcurrentRequests int, scope prometheus.Registerer, logger blog.Logger) *ExporterImpl {
 	limiter := rate.NewLimiter(rate.Limit(perDayLimit/86400.0), maxConcurrentRequests)
 
 	emailsHandledCounter := prometheus.NewCounter(prometheus.CounterOpts{
@@ -75,7 +74,6 @@ func NewExporterImpl(client PardotClient, perDayLimit float64, maxConcurrentRequ
 		limiter:               limiter,
 		toSend:                make([]string, 0, contactsQueueCap),
 		client:                client,
-		emailCache:            cache,
 		emailsHandledCounter:  emailsHandledCounter,
 		pardotErrorCounter:    pardotErrorCounter,
 		log:                   logger,
@@ -102,24 +100,14 @@ func (impl *ExporterImpl) SendContacts(ctx context.Context, req *emailpb.SendCon
 		return nil, berrors.InternalServerError("Incomplete gRPC request message")
 	}
 
-	var unseen []string
-	for _, email := range req.Emails {
-		// We check the cache here to avoid enqueuing an email that has already
-		// been seen, but we do not add it to the cache until the Pardot client
-		// has successfully sent it.
-		if !impl.emailCache.Seen(email) {
-			unseen = append(unseen, email)
-		}
-	}
-
 	impl.Lock()
 	defer impl.Unlock()
 
 	spotsLeft := contactsQueueCap - len(impl.toSend)
-	if spotsLeft < len(unseen) {
+	if spotsLeft < len(req.Emails) {
 		return nil, ErrQueueFull
 	}
-	impl.toSend = append(impl.toSend, unseen...)
+	impl.toSend = append(impl.toSend, req.Emails...)
 	// Wake waiting workers to process the new emails.
 	impl.wake.Broadcast()
 
