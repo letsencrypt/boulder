@@ -49,6 +49,12 @@ type Config struct {
 		// PardotBaseURL is the base URL for the Pardot API. (e.g.,
 		// "https://pi.pardot.com")
 		PardotBaseURL string `validate:"required"`
+
+		// EmailCache is the configuration for the LRU email cache. It is used
+		// to deduplicate contacts dispatched to the Pardot API. The approximate
+		// size of a single cached email address is ~120 bytes, so a cache size
+		// of 100,000 would consume about 12 MB of memory.
+		EmailCacheSize int `validate:"omitempty,min=1"`
 	}
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
@@ -87,6 +93,11 @@ func main() {
 	clientSecret, err := c.EmailExporter.ClientSecret.Pass()
 	cmd.FailOnError(err, "Loading clientSecret")
 
+	var cache *email.EmailCache
+	if c.EmailExporter.EmailCacheSize > 0 {
+		cache = email.NewHashedEmailCache(c.EmailExporter.EmailCacheSize, scope)
+	}
+
 	pardotClient, err := email.NewPardotClientImpl(
 		clk,
 		c.EmailExporter.PardotBusinessUnit,
@@ -94,9 +105,10 @@ func main() {
 		clientSecret,
 		c.EmailExporter.SalesforceBaseURL,
 		c.EmailExporter.PardotBaseURL,
+		cache,
 	)
 	cmd.FailOnError(err, "Creating Pardot API client")
-	exporterServer := email.NewExporterImpl(pardotClient, c.EmailExporter.PerDayLimit, c.EmailExporter.MaxConcurrentRequests, scope, logger)
+	exporterServer := email.NewExporterImpl(pardotClient, c.EmailExporter.PerDayLimit, c.EmailExporter.MaxConcurrentRequests, cache, scope, logger)
 
 	tlsConfig, err := c.EmailExporter.TLS.Load(scope)
 	cmd.FailOnError(err, "Loading email-exporter TLS config")
