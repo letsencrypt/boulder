@@ -202,6 +202,14 @@ func AssertSliceContains[T comparable](t *testing.T, haystack []T, needle T) {
 	t.Fatalf("Slice %v does not contain %v", haystack, needle)
 }
 
+// AssertStringPrefix determines whether the string `s` starts with the provided `prefix`.
+func AssertStringPrefix(t *testing.T, s string, prefix string) {
+	t.Helper()
+	if !strings.HasPrefix(s, prefix) {
+		t.Fatalf("String [%s] does not start with [%s]", s, prefix)
+	}
+}
+
 // AssertMetricWithLabelsEquals determines whether the value held by a prometheus Collector
 // (e.g. Gauge, Counter, CounterVec, etc) is equal to the expected float64.
 // In order to make useful assertions about just a subset of labels (e.g. for a

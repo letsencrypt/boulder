@@ -221,7 +221,7 @@ func TestNewTransactionBuilder(t *testing.T) {
 
 	newRegDefault, ok := tb.limitRegistry.defaults[NewRegistrationsPerIPAddress.EnumString()]
 	test.Assert(t, ok, "NewRegistrationsPerIPAddress was not populated in registry")
-	test.AssertEquals(t, newRegDefault.burst, expectedBurst)
-	test.AssertEquals(t, newRegDefault.count, expectedCount)
-	test.AssertEquals(t, newRegDefault.period, expectedPeriod)
+	test.AssertEquals(t, newRegDefault.Burst, expectedBurst)
+	test.AssertEquals(t, newRegDefault.Count, expectedCount)
+	test.AssertEquals(t, newRegDefault.Period, expectedPeriod)
 }
