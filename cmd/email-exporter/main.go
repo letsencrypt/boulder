@@ -50,10 +50,10 @@ type Config struct {
 		// "https://pi.pardot.com")
 		PardotBaseURL string `validate:"required"`
 
-		// EmailCache is the configuration for the LRU email cache. It is used
-		// to deduplicate contacts dispatched to the Pardot API. The approximate
-		// size of a single cached email address is ~120 bytes, so a cache size
-		// of 100,000 would consume about 12 MB of memory.
+		// EmailCacheSize controls how many hashed email addresses are retained
+		// in memory to prevent duplicates from being sent to the Pardot API.
+		// Each entry consumes ~120 bytes, so 100,000 entries uses around 12 MB
+		// of memory. If left unset, no caching is performed.
 		EmailCacheSize int `validate:"omitempty,min=1"`
 	}
 	Syslog        cmd.SyslogConfig
