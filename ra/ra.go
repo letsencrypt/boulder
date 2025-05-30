@@ -2637,6 +2637,37 @@ func (ra *RegistrationAuthorityImpl) GetAuthorization(ctx context.Context, req *
 	return authz, nil
 }
 
+// AddRateLimitOverride dispatches an SA RPC to add a rate limit override to the
+// database. If the override already exists, it will be updated. If the override
+// does not exist, it will be inserted and enabled. If the override exists but
+// has been disabled, it will be updated but not be re-enabled. The status of
+// the override is returned in Enabled field of the response. To re-enable an
+// override, use sa.EnableRateLimitOverride.
+func (ra *RegistrationAuthorityImpl) AddRateLimitOverride(ctx context.Context, req *rapb.AddRateLimitOverrideRequest) (*rapb.AddRateLimitOverrideResponse, error) {
+	if core.IsAnyNilOrZero(req, req.LimitEnum, req.BucketKey, req.Count, req.Burst, req.Period, req.Comment) {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	resp, err := ra.SA.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{
+		Override: &sapb.RateLimitOverride{
+			LimitEnum: req.LimitEnum,
+			BucketKey: req.BucketKey,
+			Comment:   req.Comment,
+			Period:    req.Period,
+			Count:     req.Count,
+			Burst:     req.Burst,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("adding rate limit override: %w", err)
+	}
+
+	return &rapb.AddRateLimitOverrideResponse{
+		Inserted: resp.Inserted,
+		Enabled:  resp.Enabled,
+	}, nil
+}
+
 // Drain blocks until all detached goroutines are done.
 //
 // The RA runs detached goroutines for challenge validation and finalization,
