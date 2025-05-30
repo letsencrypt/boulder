@@ -23,13 +23,13 @@ docker compose up boulder
 Then, in a different window, run the following to connect to `bredis_1`:
 
 ```shell
-./test/redis-cli.sh -h 10.33.33.2
+./test/redis-cli.sh -h 10.77.77.2
 ```
 
 Similarly, to connect to `bredis_2`:
 
 ```shell
-./test/redis-cli.sh -h 10.33.33.3
+./test/redis-cli.sh -h 10.77.77.3
 ```
 
 You can pass any IP address for the -h (host) parameter. The full list of IP
@@ -40,7 +40,7 @@ You may want to go a level deeper and communicate with a Redis node using the
 Redis protocol. Here's the command to do that (run from the Boulder root):
 
 ```shell
-openssl s_client -connect 10.33.33.2:4218 \
+openssl s_client -connect 10.77.77.2:4218 \
   -CAfile test/certs/ipki/minica.pem \
   -cert test/certs/ipki/localhost/cert.pem \
   -key test/certs/ipki/localhost/key.pem

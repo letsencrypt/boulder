@@ -38,32 +38,32 @@ func newTestRedisSource(clk clock.FakeClock, addrs map[string]string) *RedisSour
 
 func newRedisTestLimiter(t *testing.T, clk clock.FakeClock) *Limiter {
 	return newTestLimiter(t, newTestRedisSource(clk, map[string]string{
-		"shard1": "10.33.33.4:4218",
-		"shard2": "10.33.33.5:4218",
+		"shard1": "10.77.77.4:4218",
+		"shard2": "10.77.77.5:4218",
 	}), clk)
 }
 
 func TestRedisSource_Ping(t *testing.T) {
 	clk := clock.NewFake()
 	workingSource := newTestRedisSource(clk, map[string]string{
-		"shard1": "10.33.33.4:4218",
-		"shard2": "10.33.33.5:4218",
+		"shard1": "10.77.77.4:4218",
+		"shard2": "10.77.77.5:4218",
 	})
 
 	err := workingSource.Ping(context.Background())
 	test.AssertNotError(t, err, "Ping should not error")
 
 	missingFirstShardSource := newTestRedisSource(clk, map[string]string{
-		"shard1": "10.33.33.4:1337",
-		"shard2": "10.33.33.5:4218",
+		"shard1": "10.77.77.4:1337",
+		"shard2": "10.77.77.5:4218",
 	})
 
 	err = missingFirstShardSource.Ping(context.Background())
 	test.AssertError(t, err, "Ping should not error")
 
 	missingSecondShardSource := newTestRedisSource(clk, map[string]string{
-		"shard1": "10.33.33.4:4218",
-		"shard2": "10.33.33.5:1337",
+		"shard1": "10.77.77.4:4218",
+		"shard2": "10.77.77.5:1337",
 	})
 
 	err = missingSecondShardSource.Ping(context.Background())
@@ -73,8 +73,8 @@ func TestRedisSource_Ping(t *testing.T) {
 func TestRedisSource_BatchSetAndGet(t *testing.T) {
 	clk := clock.NewFake()
 	s := newTestRedisSource(clk, map[string]string{
-		"shard1": "10.33.33.4:4218",
-		"shard2": "10.33.33.5:4218",
+		"shard1": "10.77.77.4:4218",
+		"shard2": "10.77.77.5:4218",
 	})
 
 	set := map[string]time.Time{

@@ -37,7 +37,7 @@ ipki() (
 
   # Presented by the test redis cluster. Contains IP addresses because Boulder
   # components find individual redis servers via SRV records.
-  minica -domains redis -ip-addresses 10.33.33.2,10.33.33.3,10.33.33.4,10.33.33.5,10.33.33.6,10.33.33.7,10.33.33.8,10.33.33.9
+  minica -domains redis -ip-addresses 10.77.77.2,10.77.77.3,10.77.77.4,10.77.77.5
 
   # Used by Boulder gRPC services as both server and client mTLS certificates.
   for SERVICE in admin expiration-mailer ocsp-responder consul \

@@ -1,5 +1,5 @@
 [e_pkimetal_lint_cabf_serverauth_cert]
-addr = "http://10.77.77.9:8080"
+addr = "http://bpkimetal:8080"
 severity = "notice"
 timeout = 2000000000 # 2 seconds
 ignore_lints = [
@@ -18,7 +18,7 @@ ignore_lints = [
 ]
 
 [e_pkimetal_lint_cabf_serverauth_crl]
-addr = "http://10.77.77.9:8080"
+addr = "http://bpkimetal:8080"
 severity = "notice"
 timeout = 2000000000 # 2 seconds
 ignore_lints = []

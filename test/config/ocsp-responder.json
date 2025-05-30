@@ -8,8 +8,8 @@
 			"username": "ocsp-responder",
 			"passwordFile": "test/secrets/ocsp_responder_redis_password",
 			"shardAddrs": {
-				"shard1": "10.33.33.2:4218",
-				"shard2": "10.33.33.3:4218"
+				"shard1": "10.77.77.2:4218",
+				"shard2": "10.77.77.3:4218"
 			},
 			"timeout": "5s",
 			"poolSize": 100,
