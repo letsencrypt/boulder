@@ -6,6 +6,9 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+
+	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/identifier"
 )
 
 // ErrInvalidCost indicates that the cost specified was < 0.
@@ -78,12 +81,19 @@ func NewRegIdDomainBucketKey(name Name, regId int64, orderName string) (string, 
 
 // newFQDNSetBucketKey validates and returns a bucketKey for limits that use the
 // 'enum:fqdnSet' bucket key format.
-func newFQDNSetBucketKey(name Name, orderNames []string) (string, error) { //nolint: unparam // Only one named rate limit uses this helper
-	err := validateIdForName(name, strings.Join(orderNames, ","))
+func newFQDNSetBucketKey(name Name, orderIdents identifier.ACMEIdentifiers) (string, error) { //nolint: unparam // Only one named rate limit uses this helper
+	fqdns, ips, err := orderIdents.ToValues()
 	if err != nil {
 		return "", err
 	}
-	id := fmt.Sprintf("%x", hashNames(orderNames))
+	for _, ip := range ips {
+		fqdns = append(fqdns, ip.String())
+	}
+	err = validateIdForName(name, strings.Join(fqdns, ","))
+	if err != nil {
+		return "", err
+	}
+	id := fmt.Sprintf("%x", core.HashIdentifiers(orderIdents))
 	return joinWithColon(name.EnumString(), id), nil
 }
 
@@ -259,12 +269,12 @@ func (builder *TransactionBuilder) ordersPerAccountTransaction(regId int64) (Tra
 }
 
 // FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions returns a slice
-// of Transactions for the provided order domain names. An error is returned if
-// any of the order domain names are invalid. This method should be used for
-// checking capacity, before allowing more authorizations to be created.
+// of Transactions for the provided order identifiers. An error is returned if
+// any of the order identifiers' values are invalid. This method should be used
+// for checking capacity, before allowing more authorizations to be created.
 //
-// Precondition: len(orderDomains) < maxNames.
-func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId int64, orderDomains []string) ([]Transaction, error) {
+// Precondition: len(orderIdents) < maxNames.
+func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId int64, orderIdents identifier.ACMEIdentifiers) ([]Transaction, error) {
 	// FailedAuthorizationsPerDomainPerAccount limit uses the 'enum:regId'
 	// bucket key format for overrides.
 	perAccountBucketKey, err := newRegIdBucketKey(FailedAuthorizationsPerDomainPerAccount, regId)
@@ -280,10 +290,10 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckO
 	}
 
 	var txns []Transaction
-	for _, name := range orderDomains {
+	for _, ident := range orderIdents {
 		// FailedAuthorizationsPerDomainPerAccount limit uses the
 		// 'enum:regId:domain' bucket key format for transactions.
-		perDomainPerAccountBucketKey, err := NewRegIdDomainBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, name)
+		perDomainPerAccountBucketKey, err := NewRegIdDomainBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, ident.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -301,10 +311,10 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountCheckO
 }
 
 // FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction returns a spend-
-// only Transaction for the provided order domain name. An error is returned if
-// the order domain name is invalid. This method should be used for spending
-// capacity, as a result of a failed authorization.
-func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId int64, orderDomain string) (Transaction, error) {
+// only Transaction for the provided order identifier. An error is returned if
+// the order identifier's value is invalid. This method should be used for
+// spending capacity, as a result of a failed authorization.
+func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendOnlyTransaction(regId int64, orderIdent identifier.ACMEIdentifier) (Transaction, error) {
 	// FailedAuthorizationsPerDomainPerAccount limit uses the 'enum:regId'
 	// bucket key format for overrides.
 	perAccountBucketKey, err := newRegIdBucketKey(FailedAuthorizationsPerDomainPerAccount, regId)
@@ -321,7 +331,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendO
 
 	// FailedAuthorizationsPerDomainPerAccount limit uses the
 	// 'enum:regId:domain' bucket key format for transactions.
-	perDomainPerAccountBucketKey, err := NewRegIdDomainBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, orderDomain)
+	perDomainPerAccountBucketKey, err := NewRegIdDomainBucketKey(FailedAuthorizationsPerDomainPerAccount, regId, orderIdent.Value)
 	if err != nil {
 		return Transaction{}, err
 	}
@@ -334,10 +344,10 @@ func (builder *TransactionBuilder) FailedAuthorizationsPerDomainPerAccountSpendO
 }
 
 // FailedAuthorizationsForPausingPerDomainPerAccountTransaction returns a
-// Transaction for the provided order domain name. An error is returned if
-// the order domain name is invalid. This method should be used for spending
+// Transaction for the provided order identifier. An error is returned if the
+// order identifier's value is invalid. This method should be used for spending
 // capacity, as a result of a failed authorization.
-func (builder *TransactionBuilder) FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId int64, orderDomain string) (Transaction, error) {
+func (builder *TransactionBuilder) FailedAuthorizationsForPausingPerDomainPerAccountTransaction(regId int64, orderIdent identifier.ACMEIdentifier) (Transaction, error) {
 	// FailedAuthorizationsForPausingPerDomainPerAccount limit uses the 'enum:regId'
 	// bucket key format for overrides.
 	perAccountBucketKey, err := newRegIdBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId)
@@ -354,7 +364,7 @@ func (builder *TransactionBuilder) FailedAuthorizationsForPausingPerDomainPerAcc
 
 	// FailedAuthorizationsForPausingPerDomainPerAccount limit uses the
 	// 'enum:regId:domain' bucket key format for transactions.
-	perDomainPerAccountBucketKey, err := NewRegIdDomainBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId, orderDomain)
+	perDomainPerAccountBucketKey, err := NewRegIdDomainBucketKey(FailedAuthorizationsForPausingPerDomainPerAccount, regId, orderIdent.Value)
 	if err != nil {
 		return Transaction{}, err
 	}
@@ -368,18 +378,19 @@ func (builder *TransactionBuilder) FailedAuthorizationsForPausingPerDomainPerAcc
 }
 
 // certificatesPerDomainCheckOnlyTransactions returns a slice of Transactions
-// for the provided order domain names. An error is returned if any of the order
-// domain names are invalid. This method should be used for checking capacity,
-// before allowing more orders to be created. If a CertificatesPerDomainPerAccount
-// override is active, a check-only Transaction is created for each per account
-// per domain bucket. Otherwise, a check-only Transaction is generated for each
-// global per domain bucket. This method should be used for checking capacity,
-// before allowing more orders to be created.
+// for the provided order identifiers. Non-DNS identifiers are ignored. It
+// returns an error if any of the order identifiers' values are invalid. This
+// method should be used for checking capacity, before allowing more orders to
+// be created. If a CertificatesPerDomainPerAccount override is active, a
+// check-only Transaction is created for each per account per domain bucket.
+// Otherwise, a check-only Transaction is generated for each global per domain
+// bucket. This method should be used for checking capacity, before allowing
+// more orders to be created.
 //
-// Precondition: All orderDomains must comply with policy.WellFormedDomainNames.
-func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(regId int64, orderDomains []string) ([]Transaction, error) {
-	if len(orderDomains) > 100 {
-		return nil, fmt.Errorf("unwilling to process more than 100 rate limit transactions, got %d", len(orderDomains))
+// Precondition: All orderIdents must comply with policy.WellFormedIdentifiers.
+func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(regId int64, orderIdents identifier.ACMEIdentifiers) ([]Transaction, error) {
+	if len(orderIdents) > 100 {
+		return nil, fmt.Errorf("unwilling to process more than 100 rate limit transactions, got %d", len(orderIdents))
 	}
 
 	perAccountLimitBucketKey, err := newRegIdBucketKey(CertificatesPerDomainPerAccount, regId)
@@ -401,7 +412,7 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 	}
 
 	var txns []Transaction
-	for _, name := range FQDNsToETLDsPlusOne(orderDomains) {
+	for _, name := range FQDNsToETLDsPlusOne(orderIdents) {
 		perDomainBucketKey, err := newDomainBucketKey(CertificatesPerDomain, name)
 		if err != nil {
 			return nil, err
@@ -446,9 +457,10 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 }
 
 // CertificatesPerDomainSpendOnlyTransactions returns a slice of Transactions
-// for the specified order domain names. It returns an error if any domain names
-// are invalid. If a CertificatesPerDomainPerAccount override is configured, it
-// generates two types of Transactions:
+// for the provided order identifiers. Non-DNS identifiers are ignored. It
+// returns an error if any of the order identifiers' values are invalid. If a
+// CertificatesPerDomainPerAccount override is configured, it generates two
+// types of Transactions:
 //   - A spend-only Transaction for each per-account, per-domain bucket, which
 //     enforces the limit on certificates issued per domain for each account.
 //   - A spend-only Transaction for each per-domain bucket, which enforces the
@@ -458,10 +470,10 @@ func (builder *TransactionBuilder) certificatesPerDomainCheckOnlyTransactions(re
 // spend-only Transaction for each global per-domain bucket. This method should
 // be used for spending capacity, when a certificate is issued.
 //
-// Precondition: orderDomains must all pass policy.WellFormedDomainNames.
-func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(regId int64, orderDomains []string) ([]Transaction, error) {
-	if len(orderDomains) > 100 {
-		return nil, fmt.Errorf("unwilling to process more than 100 rate limit transactions, got %d", len(orderDomains))
+// Precondition: orderIdents must all pass policy.WellFormedIdentifiers.
+func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(regId int64, orderIdents identifier.ACMEIdentifiers) ([]Transaction, error) {
+	if len(orderIdents) > 100 {
+		return nil, fmt.Errorf("unwilling to process more than 100 rate limit transactions, got %d", len(orderIdents))
 	}
 
 	perAccountLimitBucketKey, err := newRegIdBucketKey(CertificatesPerDomainPerAccount, regId)
@@ -483,7 +495,7 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 	}
 
 	var txns []Transaction
-	for _, name := range FQDNsToETLDsPlusOne(orderDomains) {
+	for _, name := range FQDNsToETLDsPlusOne(orderIdents) {
 		perDomainBucketKey, err := newDomainBucketKey(CertificatesPerDomain, name)
 		if err != nil {
 			return nil, err
@@ -540,10 +552,10 @@ func (builder *TransactionBuilder) CertificatesPerDomainSpendOnlyTransactions(re
 }
 
 // certificatesPerFQDNSetCheckOnlyTransaction returns a check-only Transaction
-// for the provided order domain names. This method should only be used for
+// for the provided order identifiers. This method should only be used for
 // checking capacity, before allowing more orders to be created.
-func (builder *TransactionBuilder) certificatesPerFQDNSetCheckOnlyTransaction(orderNames []string) (Transaction, error) {
-	bucketKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, orderNames)
+func (builder *TransactionBuilder) certificatesPerFQDNSetCheckOnlyTransaction(orderIdents identifier.ACMEIdentifiers) (Transaction, error) {
+	bucketKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, orderIdents)
 	if err != nil {
 		return Transaction{}, err
 	}
@@ -558,10 +570,10 @@ func (builder *TransactionBuilder) certificatesPerFQDNSetCheckOnlyTransaction(or
 }
 
 // CertificatesPerFQDNSetSpendOnlyTransaction returns a spend-only Transaction
-// for the provided order domain names. This method should only be used for
+// for the provided order identifiers. This method should only be used for
 // spending capacity, when a certificate is issued.
-func (builder *TransactionBuilder) CertificatesPerFQDNSetSpendOnlyTransaction(orderNames []string) (Transaction, error) {
-	bucketKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, orderNames)
+func (builder *TransactionBuilder) CertificatesPerFQDNSetSpendOnlyTransaction(orderIdents identifier.ACMEIdentifiers) (Transaction, error) {
+	bucketKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, orderIdents)
 	if err != nil {
 		return Transaction{}, err
 	}
@@ -579,9 +591,9 @@ func (builder *TransactionBuilder) CertificatesPerFQDNSetSpendOnlyTransaction(or
 // returns the set of rate limit transactions that should be evaluated before
 // allowing the request to proceed.
 //
-// Precondition: names must be a list of DNS names that all pass
-// policy.WellFormedDomainNames.
-func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, names []string, isRenewal bool) ([]Transaction, error) {
+// Precondition: idents must be a list of identifiers that all pass
+// policy.WellFormedIdentifiers.
+func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, idents identifier.ACMEIdentifiers, isRenewal bool) ([]Transaction, error) {
 	makeTxnError := func(err error, limit Name) error {
 		return fmt.Errorf("error constructing rate limit transaction for %s rate limit: %w", limit, err)
 	}
@@ -595,21 +607,21 @@ func (builder *TransactionBuilder) NewOrderLimitTransactions(regId int64, names 
 		transactions = append(transactions, txn)
 	}
 
-	txns, err := builder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId, names)
+	txns, err := builder.FailedAuthorizationsPerDomainPerAccountCheckOnlyTransactions(regId, idents)
 	if err != nil {
 		return nil, makeTxnError(err, FailedAuthorizationsPerDomainPerAccount)
 	}
 	transactions = append(transactions, txns...)
 
 	if !isRenewal {
-		txns, err := builder.certificatesPerDomainCheckOnlyTransactions(regId, names)
+		txns, err := builder.certificatesPerDomainCheckOnlyTransactions(regId, idents)
 		if err != nil {
 			return nil, makeTxnError(err, CertificatesPerDomain)
 		}
 		transactions = append(transactions, txns...)
 	}
 
-	txn, err := builder.certificatesPerFQDNSetCheckOnlyTransaction(names)
+	txn, err := builder.certificatesPerFQDNSetCheckOnlyTransaction(idents)
 	if err != nil {
 		return nil, makeTxnError(err, CertificatesPerFQDNSet)
 	}

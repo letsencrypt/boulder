@@ -16,28 +16,23 @@ func joinWithColon(args ...string) string {
 
 // FQDNsToETLDsPlusOne transforms a list of FQDNs into a list of eTLD+1's for
 // the CertificatesPerDomain limit. It also de-duplicates the output domains.
-// Exact public suffix matches are included.
-func FQDNsToETLDsPlusOne(names []string) []string {
+// Exact public suffix matches are included. Non-DNS identifiers are ignored.
+func FQDNsToETLDsPlusOne(idents identifier.ACMEIdentifiers) []string {
 	var domains []string
-	for _, name := range names {
-		domain, err := publicsuffix.Domain(name)
+	for _, ident := range idents {
+		if ident.Type != identifier.TypeDNS {
+			continue
+		}
+		domain, err := publicsuffix.Domain(ident.Value)
 		if err != nil {
 			// The only possible errors are:
 			// (1) publicsuffix.Domain is giving garbage values
 			// (2) the public suffix is the domain itself
 			// We assume 2 and include the original name in the result.
-			domains = append(domains, name)
+			domains = append(domains, ident.Value)
 		} else {
 			domains = append(domains, domain)
 		}
 	}
 	return core.UniqueLowerNames(domains)
-}
-
-// hashNames returns a hash of the names requested. This is intended for use
-// when interacting with the orderFqdnSets table and rate limiting.
-//
-// Deprecated: TODO(#7311): Use HashIdentifiers instead.
-func hashNames(names []string) []byte {
-	return core.HashIdentifiers(identifier.NewDNSSlice(names))
 }

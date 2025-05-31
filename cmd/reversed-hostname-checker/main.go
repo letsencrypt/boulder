@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/netip"
 	"os"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -52,14 +51,7 @@ func main() {
 	var errors bool
 	for scanner.Scan() {
 		n := sa.EncodeIssuedName(scanner.Text())
-		var ident identifier.ACMEIdentifier
-		ip, err := netip.ParseAddr(n)
-		if err == nil {
-			ident = identifier.NewIP(ip)
-		} else {
-			ident = identifier.NewDNS(n)
-		}
-		err = pa.WillingToIssue(identifier.ACMEIdentifiers{ident})
+		err = pa.WillingToIssue(identifier.ACMEIdentifiers{identifier.NewGuess(n)})
 		if err != nil {
 			errors = true
 			fmt.Printf("%s: %s\n", n, err)
