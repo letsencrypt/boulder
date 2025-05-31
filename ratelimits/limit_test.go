@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -115,11 +116,11 @@ func TestLoadAndParseOverrideLimits(t *testing.T) {
 	//   - CertificatesPerFQDNSet:example.com
 	//   - CertificatesPerFQDNSet:example.com,example.net
 	//   - CertificatesPerFQDNSet:example.com,example.net,example.org
-	firstEntryKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, []string{"example.com"})
+	firstEntryKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com"}))
 	test.AssertNotError(t, err, "valid fqdnSet with one domain should not fail")
-	secondEntryKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, []string{"example.com", "example.net"})
+	secondEntryKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com", "example.net"}))
 	test.AssertNotError(t, err, "valid fqdnSet with two domains should not fail")
-	thirdEntryKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, []string{"example.com", "example.net", "example.org"})
+	thirdEntryKey, err := newFQDNSetBucketKey(CertificatesPerFQDNSet, identifier.NewDNSSlice([]string{"example.com", "example.net", "example.org"}))
 	test.AssertNotError(t, err, "valid fqdnSet with three domains should not fail")
 	l, err = loadAndParseOverrideLimits("testdata/working_overrides_regid_fqdnset.yml")
 	test.AssertNotError(t, err, "multiple valid override limits with 'fqdnSet' Ids")

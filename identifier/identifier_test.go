@@ -12,6 +12,55 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 )
 
+func TestNewGuessSlice(t *testing.T) {
+	cases := []struct {
+		name  string
+		input []string
+		want  ACMEIdentifiers
+	}{
+		{
+			name:  "empty string",
+			input: []string{""},
+			want:  ACMEIdentifiers{NewDNS("")},
+		},
+		{
+			name:  "one DNS name",
+			input: []string{"example.com"},
+			want:  ACMEIdentifiers{NewDNS("example.com")},
+		},
+		{
+			name:  "one IPv4 address",
+			input: []string{"127.0.0.1"},
+			want:  ACMEIdentifiers{NewIP(netip.MustParseAddr("127.0.0.1"))},
+		},
+		{
+			name:  "one IPv6 address",
+			input: []string{"::1"},
+			want:  ACMEIdentifiers{NewIP(netip.MustParseAddr("::1"))},
+		},
+		{
+			name:  "DNS name, IPv4 address, IPv6 address, DNS name",
+			input: []string{"example.com", "127.0.0.1", "::1", "signed.bad.horse"},
+			want: ACMEIdentifiers{
+				NewDNS("example.com"),
+				NewIP(netip.MustParseAddr("127.0.0.1")),
+				NewIP(netip.MustParseAddr("::1")),
+				NewDNS("signed.bad.horse"),
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := NewGuessSlice(tc.input)
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("Got %#v, but want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
 type withDefaultTestCases struct {
 	Name        string
 	InputIdents []*corepb.Identifier
