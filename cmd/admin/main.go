@@ -73,6 +73,10 @@ func main() {
 		"update-email":     &subcommandUpdateEmail{},
 		"pause-identifier": &subcommandPauseIdentifier{},
 		"unpause-account":  &subcommandUnpauseAccount{},
+		"import-overrides": &subcommandImportOverrides{},
+		"dump-overrides":   &subcommandDumpEnabledOverrides{},
+		"toggle-override":  &subcommandToggleOverride{},
+		"add-override":     &subcommandAddOverride{},
 	}
 
 	defaultUsage := flag.Usage
