@@ -34,7 +34,7 @@ func (c *subcommandDumpEnabledOverrides) Run(ctx context.Context, a *admin) erro
 		return fmt.Errorf("fetching enabled overrides: %w", err)
 	}
 
-	overrides := make(map[string]*ratelimits.Limit)
+	overrides := make(ratelimits.Limits)
 	for {
 		r, err := stream.Recv()
 		if err != nil {
@@ -61,6 +61,6 @@ func (c *subcommandDumpEnabledOverrides) Run(ctx context.Context, a *admin) erro
 		return fmt.Errorf("Dumping overrides: %w", err)
 	}
 
-	fmt.Printf("Wrote %d overrides to %q\n", len(overrides), c.file)
+	a.log.Infof("Wrote %d overrides to %q\n", len(overrides), c.file)
 	return nil
 }

@@ -14,15 +14,15 @@ import (
 )
 
 type subcommandAddOverride struct {
-	limitEnum int64
-	regID     int64
-	domain    string
-	domains   string
-	ipAddr    string
-	count     int64
-	burst     int64
-	period    string
-	comment   string
+	limit   string
+	regID   int64
+	domain  string
+	domains string
+	ipAddr  string
+	count   int64
+	burst   int64
+	period  string
+	comment string
 }
 
 func (*subcommandAddOverride) Desc() string {
@@ -30,7 +30,7 @@ func (*subcommandAddOverride) Desc() string {
 }
 
 func (c *subcommandAddOverride) Flags(f *flag.FlagSet) {
-	f.Int64Var(&c.limitEnum, "limit", 0, "ratelimit enum (required)")
+	f.StringVar(&c.limit, "limit", "", "ratelimit name (required)")
 	f.Int64Var(&c.regID, "regid", 0, "a single registration/account ID")
 	f.StringVar(&c.domain, "domain", "", "single domain (e.g. example.com)")
 	f.StringVar(&c.domains, "domains", "", "comma-separated list of FQDNs (e.g. example.com,www.example.com)")
@@ -43,11 +43,16 @@ func (c *subcommandAddOverride) Flags(f *flag.FlagSet) {
 }
 
 func (c *subcommandAddOverride) Run(ctx context.Context, a *admin) error {
-	if c.limitEnum == 0 {
+	if c.limit == "" {
 		return errors.New("--limit is required")
 	}
 	if c.count == 0 || c.burst == 0 || c.period == "" || c.comment == "" {
 		return errors.New("all of --count, --burst, --period, and --comment are required")
+	}
+
+	name, ok := rl.StringToName[c.limit]
+	if !ok {
+		return fmt.Errorf("unknown limit name %q, must be one in %s", c.limit, rl.LimitNames)
 	}
 
 	dur, err := time.ParseDuration(c.period)
@@ -55,10 +60,9 @@ func (c *subcommandAddOverride) Run(ctx context.Context, a *admin) error {
 		return fmt.Errorf("invalid --period value: %s", err)
 	}
 
-	name := rl.Name(c.limitEnum)
 	bucketKey, err := rl.BuildBucketKey(name, c.regID, c.domain, c.domains, c.ipAddr)
 	if err != nil {
-		return fmt.Errorf("building bucket key for limit %s (%s): %s", name, name.EnumString(), err)
+		return fmt.Errorf("building bucket key for limit %s: %s", name, err)
 	}
 
 	err = rl.ValidateLimit(&rl.Limit{
@@ -68,12 +72,12 @@ func (c *subcommandAddOverride) Run(ctx context.Context, a *admin) error {
 		Period: config.Duration{Duration: dur},
 	})
 	if err != nil {
-		return fmt.Errorf("validating override for limit %s (%s) key %q: %s", name, name.EnumString(), bucketKey, err)
+		return fmt.Errorf("validating override for limit %s key %q: %s", name, bucketKey, err)
 	}
 
 	resp, err := a.sac.AddRateLimitOverride(ctx, &sapb.AddRateLimitOverrideRequest{
 		Override: &sapb.RateLimitOverride{
-			LimitEnum: c.limitEnum,
+			LimitEnum: int64(name),
 			BucketKey: bucketKey,
 			Count:     c.count,
 			Burst:     c.burst,
@@ -82,7 +86,7 @@ func (c *subcommandAddOverride) Run(ctx context.Context, a *admin) error {
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("adding override for limit %s (%s) key %q: %s", name, name.EnumString(), bucketKey, err)
+		return fmt.Errorf("adding override for limit %s key %q: %s", name, bucketKey, err)
 	}
 
 	status := "disabled"
@@ -91,9 +95,9 @@ func (c *subcommandAddOverride) Run(ctx context.Context, a *admin) error {
 	}
 
 	if resp.Inserted {
-		fmt.Printf("Added new override for limit %s (%s) key %q, status=[%s]\n", name, name.EnumString(), bucketKey, status)
+		a.log.Infof("Added new override for limit %s key %q, status=[%s]\n", name, bucketKey, status)
 	} else {
-		fmt.Printf("Updated existing override for limit %s (%s) key %q, status=[%s]\n", name, name.EnumString(), bucketKey, status)
+		a.log.Infof("Updated existing override for limit %s key %q, status=[%s]\n", name, bucketKey, status)
 	}
 	return nil
 }

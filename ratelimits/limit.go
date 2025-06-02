@@ -101,7 +101,7 @@ func ValidateLimit(l *Limit) error {
 	return nil
 }
 
-type limits map[string]*Limit
+type Limits map[string]*Limit
 
 // loadDefaults marshals the defaults YAML file at path into a map of limits.
 func loadDefaults(path string) (LimitConfigs, error) {
@@ -158,9 +158,9 @@ func parseOverrideNameId(key string) (Name, string, error) {
 		return Unknown, "", fmt.Errorf("empty name in override %q, must be formatted 'name:id'", key)
 	}
 
-	name, ok := stringToName[nameStr]
+	name, ok := StringToName[nameStr]
 	if !ok {
-		return Unknown, "", fmt.Errorf("unrecognized name %q in override limit %q, must be one of %v", nameStr, key, limitNames)
+		return Unknown, "", fmt.Errorf("unrecognized name %q in override limit %q, must be one of %v", nameStr, key, LimitNames)
 	}
 	id := nameAndId[1]
 	if id == "" {
@@ -188,7 +188,7 @@ func parseOverrideNameEnumId(key string) (Name, string, error) {
 	}
 	name := Name(nameInt)
 	if !name.isValid() {
-		return Unknown, "", fmt.Errorf("invalid name %q in override limit %q, must be one of %v", nameStrAndId[0], key, limitNames)
+		return Unknown, "", fmt.Errorf("invalid name %q in override limit %q, must be one of %v", nameStrAndId[0], key, LimitNames)
 
 	}
 	id := nameStrAndId[1]
@@ -202,14 +202,14 @@ func parseOverrideNameEnumId(key string) (Name, string, error) {
 // formatted as a list of maps, where each map has a single key representing the
 // limit name and a value that is a map containing the limit fields and an
 // additional 'ids' field that is a list of ids that this override applies to.
-func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
-	parsed := make(limits)
+func parseOverrideLimits(newOverridesYAML overridesYAML) (Limits, error) {
+	parsed := make(Limits)
 
 	for _, ov := range newOverridesYAML {
 		for k, v := range ov {
-			name, ok := stringToName[k]
+			name, ok := StringToName[k]
 			if !ok {
-				return nil, fmt.Errorf("unrecognized name %q in override limit, must be one of %v", k, limitNames)
+				return nil, fmt.Errorf("unrecognized name %q in override limit, must be one of %v", k, LimitNames)
 			}
 
 			for _, entry := range v.Ids {
@@ -249,13 +249,13 @@ func parseOverrideLimits(newOverridesYAML overridesYAML) (limits, error) {
 }
 
 // parseDefaultLimits validates a map of default limits and rekeys it by 'Name'.
-func parseDefaultLimits(newDefaultLimits LimitConfigs) (limits, error) {
-	parsed := make(limits)
+func parseDefaultLimits(newDefaultLimits LimitConfigs) (Limits, error) {
+	parsed := make(Limits)
 
 	for k, v := range newDefaultLimits {
-		name, ok := stringToName[k]
+		name, ok := StringToName[k]
 		if !ok {
-			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, limitNames)
+			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, LimitNames)
 		}
 
 		lim := &Limit{
@@ -278,10 +278,10 @@ func parseDefaultLimits(newDefaultLimits LimitConfigs) (limits, error) {
 
 type limitRegistry struct {
 	// defaults stores default limits by 'name'.
-	defaults limits
+	defaults Limits
 
 	// overrides stores override limits by 'name:id'.
-	overrides limits
+	overrides Limits
 }
 
 func newLimitRegistryFromFiles(defaults, overrides string) (*limitRegistry, error) {
@@ -348,7 +348,7 @@ func (l *limitRegistry) getLimit(name Name, bucketKey string) (*Limit, error) {
 // keyed by "<name>:<id>". This function is exported to support admin tooling
 // used during the migration from overrides.yaml to the overrides database
 // table.
-func LoadOverridesByBucketKey(path string) (map[string]*Limit, error) {
+func LoadOverridesByBucketKey(path string) (Limits, error) {
 	ovs, err := loadOverrides(path)
 	if err != nil {
 		return nil, err
@@ -366,7 +366,7 @@ func LoadOverridesByBucketKey(path string) (map[string]*Limit, error) {
 //
 // This function supports admin tooling that routinely exports the overrides
 // table for investigation or auditing.
-func DumpOverrides(path string, overrides map[string]*Limit) error {
+func DumpOverrides(path string, overrides Limits) error {
 	type entry struct {
 		nameStr string
 		LimitConfig

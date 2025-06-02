@@ -2,6 +2,7 @@ package ratelimits
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -283,7 +284,9 @@ func TestBuildBucketKey(t *testing.T) {
 			desc:    "valid fqdnSet",
 			domains: "example.com,example.org",
 			bucketKeyTest: func(t *testing.T, key string) {
-				test.AssertStringPrefix(t, key, fmt.Sprintf("%d:", CertificatesPerFQDNSet))
+				if !strings.HasPrefix(key, fmt.Sprintf("%d:", CertificatesPerFQDNSet)) {
+					t.Fatalf("expected key to start with %d:, got %s", CertificatesPerFQDNSet, key)
+				}
 			},
 		},
 		{

@@ -15,7 +15,7 @@ import (
 // parseDefaultLimits to handle a YAML file.
 //
 // TODO(#7901): Update the tests to test these functions individually.
-func loadAndParseDefaultLimits(path string) (limits, error) {
+func loadAndParseDefaultLimits(path string) (Limits, error) {
 	fromFile, err := loadDefaults(path)
 	if err != nil {
 		return nil, err
@@ -28,7 +28,7 @@ func loadAndParseDefaultLimits(path string) (limits, error) {
 // parseOverrideLimits to handle a YAML file.
 //
 // TODO(#7901): Update the tests to test these functions individually.
-func loadAndParseOverrideLimits(path string) (limits, error) {
+func loadAndParseOverrideLimits(path string) (Limits, error) {
 	fromFile, err := loadOverrides(path)
 	if err != nil {
 		return nil, err
@@ -286,7 +286,8 @@ func TestLoadAndParseDefaultLimits(t *testing.T) {
 func TestLoadAndDumpOverrides(t *testing.T) {
 	t.Parallel()
 
-	expectOutput := `- CertificatesPerDomain:
+	expectOutput := `
+- CertificatesPerDomain:
     burst: 5000
     count: 5000
     period: 168h0m0s
