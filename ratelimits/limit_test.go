@@ -286,7 +286,7 @@ func TestLoadAndParseDefaultLimits(t *testing.T) {
 func TestLoadAndDumpOverrides(t *testing.T) {
 	t.Parallel()
 
-	expectOutput := `
+	input := `
 - CertificatesPerDomain:
     burst: 5000
     count: 5000
@@ -387,9 +387,29 @@ func TestLoadAndDumpOverrides(t *testing.T) {
         - id: 11.22.33.44
           comment: example.net (IN-1583)`
 
+	expectCSV := `
+name,id,count,burst,period,comment
+CertificatesPerDomain,example.com,5000,5000,168h0m0s,IN-10057
+CertificatesPerDomain,example.net,5000,5000,168h0m0s,IN-10057
+CertificatesPerDomain,example.org,300,300,168h0m0s,IN-10057
+CertificatesPerDomainPerAccount,123456789,12000,12000,168h0m0s,Affluent (IN-8322)
+CertificatesPerDomainPerAccount,543219876,6000,6000,168h0m0s,Affluent (IN-8322)
+CertificatesPerDomainPerAccount,987654321,6000,6000,168h0m0s,Affluent (IN-8322)
+CertificatesPerFQDNSet,7c956936126b492845ddb48f4d220034509e7c0ad54ed2c1ba2650406846d9c3,50,50,168h0m0s,IN-6843
+CertificatesPerFQDNSet,394e82811f52e2da38b970afdb21c9bc9af81060939c690183c00fce37408738,24,24,168h0m0s,IN-6006
+FailedAuthorizationsPerDomainPerAccount,123456789,250,250,1h0m0s,Digital Lake (IN-6736)
+FailedAuthorizationsPerDomainPerAccount,987654321,50,50,1h0m0s,Digital Lake (IN-6856)
+FailedAuthorizationsPerDomainPerAccount,543219876,10,10,1h0m0s,Big Mart (IN-6949)
+NewOrdersPerAccount,123456789,3000,3000,3h0m0s,Galaxy Hoster (IN-8180)
+NewOrdersPerAccount,543219876,1000,1000,3h0m0s,Big Mart (IN-8180)
+NewOrdersPerAccount,987654321,1000,1000,3h0m0s,Buy More (IN-10057)
+NewRegistrationsPerIPAddress,2600:1f1c:5e0:e702:ca06:d2a3:c7ce:a02e,100000,100000,3h0m0s,example.org IN-2395
+NewRegistrationsPerIPAddress,55.66.77.88,100000,100000,3h0m0s,example.org IN-2395
+NewRegistrationsPerIPAddress,11.22.33.44,200,200,3h0m0s,example.net (IN-1583)`
+
 	tempFile := filepath.Join(t.TempDir(), "overrides.yaml")
 
-	err := os.WriteFile(tempFile, []byte(expectOutput), 0644)
+	err := os.WriteFile(tempFile, []byte(input), 0644)
 	test.AssertNotError(t, err, "writing temp overrides.yaml")
 
 	original, err := LoadOverridesByBucketKey(tempFile)
@@ -402,19 +422,5 @@ func TestLoadAndDumpOverrides(t *testing.T) {
 
 	dumped, err := os.ReadFile(dumpFile)
 	test.AssertNotError(t, err, "reading dumped overrides file")
-
-	countLines := func(s string) int {
-		lines := 0
-		for _, line := range strings.Split(s, "\n") {
-			if strings.TrimSpace(line) != "" {
-				lines++
-			}
-		}
-		return lines
-	}
-	expectLines := countLines(expectOutput)
-	gotLines := countLines(string(dumped))
-	if expectLines != gotLines {
-		t.Errorf("Dumped overrides do not match expected number of lines. Expected: %d Got: %d", expectLines, gotLines)
-	}
+	test.AssertEquals(t, strings.TrimLeft(string(dumped), "\n"), strings.TrimLeft(expectCSV, "\n"))
 }

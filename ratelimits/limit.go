@@ -1,9 +1,9 @@
 package ratelimits
 
 import (
+	"encoding/csv"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"sort"
 	"strconv"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/strictyaml"
-	"gopkg.in/yaml.v3"
 )
 
 // errLimitDisabled indicates that the limit name specified is valid but is not
@@ -356,89 +355,89 @@ func LoadOverridesByBucketKey(path string) (Limits, error) {
 	return parseOverrideLimits(ovs)
 }
 
-// DumpOverrides dumps the provided overrides to YAML at the supplied path.
-// Overrides are grouped by Name, then by Count, Burst, and Period. Groups are
-// written in the following order:
-//   - Name  (ascending)
-//   - Count (descending)
-//   - Burst (descending)
-//   - Period (ascending)
+// DumpOverrides writes the provided overrides to CSV at the supplied path. Each
+// override is written as a single row, one per ID. Rows are sorted in the
+// following order:
+//   - Name    (ascending)
+//   - Count   (descending)
+//   - Burst   (descending)
+//   - Period  (ascending)
+//   - Comment (ascending)
+//   - ID      (ascending)
 //
 // This function supports admin tooling that routinely exports the overrides
 // table for investigation or auditing.
 func DumpOverrides(path string, overrides Limits) error {
-	type entry struct {
-		nameStr string
-		LimitConfig
+	type row struct {
+		name    string
+		id      string
+		count   int64
+		burst   int64
+		period  string
+		comment string
 	}
 
-	grouped := make(map[entry][]overrideID)
-
+	var rows []row
 	for bucketKey, limit := range overrides {
 		name, id, err := parseOverrideNameEnumId(bucketKey)
 		if err != nil {
 			return err
 		}
 
-		key := entry{
-			nameStr: name.String(),
-			LimitConfig: LimitConfig{
-				Burst:  limit.Burst,
-				Count:  limit.Count,
-				Period: limit.Period,
-			},
-		}
-
-		grouped[key] = append(grouped[key], overrideID{
-			Id:      id,
-			Comment: limit.Comment,
+		rows = append(rows, row{
+			name:    name.String(),
+			id:      id,
+			count:   limit.Count,
+			burst:   limit.Burst,
+			period:  limit.Period.Duration.String(),
+			comment: limit.Comment,
 		})
 	}
 
-	var keys []entry
-	for k := range maps.Keys(grouped) {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool {
+	sort.Slice(rows, func(i, j int) bool {
 		// Sort by limit name in ascending order.
-		if keys[i].nameStr != keys[j].nameStr {
-			return keys[i].nameStr < keys[j].nameStr
+		if rows[i].name != rows[j].name {
+			return rows[i].name < rows[j].name
 		}
 		// Sort by count in descending order (higher counts first).
-		if keys[i].Count != keys[j].Count {
-			return keys[i].Count > keys[j].Count
+		if rows[i].count != rows[j].count {
+			return rows[i].count > rows[j].count
 		}
 		// Sort by burst in descending order (higher bursts first).
-		if keys[i].Burst != keys[j].Burst {
-			return keys[i].Burst > keys[j].Burst
+		if rows[i].burst != rows[j].burst {
+			return rows[i].burst > rows[j].burst
 		}
-		// Sort by period in ascending order (lower durations first).
-		return keys[i].Period.Duration < keys[j].Period.Duration
+		// Sort by period in ascending order (shorter durations first).
+		if rows[i].period != rows[j].period {
+			return rows[i].period < rows[j].period
+		}
+		// Sort by comment in ascending order.
+		if rows[i].comment != rows[j].comment {
+			return rows[i].comment < rows[j].comment
+		}
+		// Sort by ID in ascending order.
+		return rows[i].id < rows[j].id
 	})
 
-	var out overridesYAML
-	for _, k := range keys {
-		ids := grouped[k]
-		sort.Slice(ids, func(i, j int) bool {
-			if ids[i].Comment != ids[j].Comment {
-				// Sort by comment in ascending order.
-				return ids[i].Comment < ids[j].Comment
-			}
-			// Sort by id in ascending order.
-			return ids[i].Id < ids[j].Id
-		})
-
-		out = append(out, map[string]overrideYAML{
-			k.nameStr: {
-				LimitConfig: k.LimitConfig,
-				Ids:         ids,
-			},
-		})
-	}
-
-	data, err := yaml.Marshal(out)
+	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	err = w.Write([]string{"name", "id", "count", "burst", "period", "comment"})
+	if err != nil {
+		return err
+	}
+
+	for _, r := range rows {
+		err := w.Write([]string{r.name, r.id, strconv.FormatInt(r.count, 10), strconv.FormatInt(r.burst, 10), r.period, r.comment})
+		if err != nil {
+			return err
+		}
+	}
+	w.Flush()
+
+	return w.Error()
 }
